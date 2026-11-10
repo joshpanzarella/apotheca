@@ -9,7 +9,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 }
 
 App::App(Engine& engine)
-    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_),
+    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_),
       phazed_(session_, phazedSpec()), twin_(session_, twinSpec()) {}
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
@@ -47,7 +47,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
         const int now = static_cast<int>(session_.view);
         const int next = now + (event.button == Button::R2 ? 1 : -1);
-        if (next >= 0 && next <= static_cast<int>(View::Device)) session_.view = static_cast<View>(next);
+        if (next >= 0 && next <= static_cast<int>(View::Effects)) session_.view = static_cast<View>(next);
         return;
     }
     const TrackKind kind = project_->current().kind;
@@ -67,6 +67,9 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         } else {
             kit_.onButton(event, input);
         }
+        break;
+    case View::Effects:
+        fx_.onButton(event, input);
         break;
     }
 }
@@ -90,6 +93,9 @@ void App::update(const Input& input, Uint32 nowMs) {
         else if (kind == TrackKind::Twin) twin_.update(input, nowMs);
         else kit_.update(input, nowMs);
         break;
+    case View::Effects:
+        fx_.update(input, nowMs);
+        break;
     }
 }
 
@@ -107,6 +113,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         if (kind == TrackKind::Phazed) phazed_.draw(renderer, fonts);
         else if (kind == TrackKind::Twin) twin_.draw(renderer, fonts);
         else kit_.draw(renderer, fonts);
+        break;
+    case View::Effects:
+        fx_.draw(renderer, fonts);
         break;
     }
 

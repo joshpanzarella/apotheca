@@ -3,7 +3,7 @@
 // moving between them. No SDL window or sound card is needed to drive it, so
 // the tests press its buttons directly.
 //
-//   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE
+//   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE, FX
 //   L1 + L2 + R1 + R2 together: PANIC. Everything stops and the sound is
 //              shut off at once, for as long as they are held.
 //
@@ -14,6 +14,7 @@
 
 #include <memory>
 
+#include "fx_screen.hpp"
 #include "input.hpp"
 #include "kit_screen.hpp"
 #include "note_screen.hpp"
@@ -41,6 +42,7 @@ public:
     PhazedScreen& phazed() { return phazed_; }
     PhazedScreen& twin() { return twin_; }
     KitScreen& kit() { return kit_; }
+    FxScreen& fx() { return fx_; }
     // The notice that says a panic happened. It stays while the buttons are
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
@@ -57,6 +59,7 @@ private:
     View viewBeforeShoulders_ = View::Pattern;
     NoteScreen notes_;
     KitScreen kit_;
+    FxScreen fx_;
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;
 };

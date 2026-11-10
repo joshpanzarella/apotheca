@@ -288,6 +288,13 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
+    } else if (std::strcmp(view, "fx") == 0) {
+        app.session().setEffect(0, 0, EffectKind::Delay);
+        app.session().setEffect(0, 1, EffectKind::Filter);
+        app.session().setEffectParam(0, 1, 0, 0.45f);
+        app.session().setEffect(kMasterTrack, 0, EffectKind::Reverb);
+        app.session().view = View::Effects;
+        app.fx().goTo(0, 2);
     } else if (std::strcmp(view, "panic") == 0) {
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);

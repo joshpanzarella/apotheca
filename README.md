@@ -8,7 +8,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit or one of two synths: Phazed (phase distortion, 65 presets) or Twin
 Analog (two morphing oscillators, 16 presets). Up to sixteen scenes,
-each one bar, each with its own repeat count. Three screens:
+each one bar, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
@@ -18,6 +18,7 @@ each one bar, each with its own repeat count. Three screens:
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
   For drums, the kit: each lane plays its built-in drum or a recording.
+- **FX**: two effects on each track and two on the master.
 
 Songs are kept as you go: there is no save button. A **rev** keeps the song
 as it is at one moment, to go back to.
@@ -26,8 +27,8 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: effects on screen, recording into the device, a sampler
-played from the keys, the sound designer web page.
+Not built yet: recording into the device, a sampler played from the keys,
+the sound designer web page.
 
 ## Build
 
@@ -61,6 +62,28 @@ and the stick shapes the thing under the cursor:
 **L2 and R2** walk along the three screens. **START** plays: the song from
 the SONG screen, the scene being worked on from the others. **SELECT + START**
 quits.
+
+### FX
+
+A fourth screen, after DEVICE. Four rows: the **two effects on the track**
+being worked on, then the **two on the master** (everything, after the tracks
+are mixed).
+
+| On | Hold A + up / down | B |
+| --- | --- | --- |
+| The effect | NONE, FILTER, DRIVE, DELAY, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
+| A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
+
+| Effect | Settings |
+| --- | --- |
+| FILTER | Cutoff, resonance, type (low / band / high pass), mix |
+| DRIVE | Drive, tone, mix, output |
+| DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
+| REVERB | Size, damping, mix |
+| CRUSH | Bits, rate, mix |
+
+Effects are kept in the song. They can be changed while it plays. A panic
+empties their tails.
 
 ### Panic
 

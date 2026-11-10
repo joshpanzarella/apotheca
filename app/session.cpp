@@ -351,6 +351,33 @@ bool Session::openRev(int rev) {
     return true;
 }
 
+// ---- effects ------------------------------------------------------------------------
+
+void Session::setEffect(int track, int slot, EffectKind kind) {
+    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    if (static_cast<int>(kind) < 0 || static_cast<int>(kind) >= kEffectKinds) kind = EffectKind::None;
+    if (!engine.setEffect(track, slot, kind)) return;
+    EffectData& data = effectData(track, slot);
+    data.kind = static_cast<int>(kind);
+    for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectInfo(kind).defaults[i];
+}
+
+void Session::setEffectParam(int track, int slot, int index, float value) {
+    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    EffectData& data = effectData(track, slot);
+    if (index < 0 || index >= effectInfo(static_cast<EffectKind>(data.kind)).params) return;
+    value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
+    if (value == data.param[index]) return;
+    data.param[index] = value;
+    Command c;
+    c.type = Command::SetEffectParam;
+    c.track = track;
+    c.a = slot;
+    c.b = index;
+    c.value = value;
+    engine.send(c);
+}
+
 // ---- recordings on drum lanes -------------------------------------------------------
 
 Session::~Session() {
@@ -559,6 +586,23 @@ void Session::applyProject() {
             for (int m = 0; m < phazed::kMacros; ++m) {
                 c.a = m;
                 c.value = track.macro[m];
+                engine.send(c);
+            }
+        }
+    }
+    // Every slot, the empty ones too: what the last song left there goes.
+    for (int track = kMasterTrack; track < kNumTracks; ++track) {
+        for (int slot = 0; slot < kEffectSlots; ++slot) {
+            const EffectData data = effectData(track, slot);
+            const EffectKind kind = static_cast<EffectKind>(data.kind);
+            engine.setEffect(track, slot, kind);
+            c = Command();
+            c.type = Command::SetEffectParam;
+            c.track = track;
+            c.a = slot;
+            for (int i = 0; i < effectInfo(kind).params; ++i) {
+                c.b = i;
+                c.value = data.param[i];
                 engine.send(c);
             }
         }

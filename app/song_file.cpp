@@ -32,10 +32,23 @@ std::string songText(const Project& project) {
     for (int r : project.repeats) put(out, " %.0f", r);
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
+    // fx SLOT NAME and its settings. Before any track: the master's.
+    const auto putEffects = [&](const EffectData* effects) {
+        for (int slot = 0; slot < kEffectSlots; ++slot) {
+            const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
+            if (kind == EffectKind::None) continue;
+            put(out, "fx %.0f ", slot + 1);
+            for (const char* c = effectInfo(kind).name; *c; ++c) out += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c + 32 : *c);
+            for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", effects[slot].param[i]);
+            out += "\n";
+        }
+    };
+    putEffects(project.masterEffects);
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : "track twin\n";
+        putEffects(track.effects);
         if (track.kind == TrackKind::Drums) {
             out += "lanes";
             for (float level : track.laneLevel) put(out, " %.6g", level);
@@ -131,6 +144,20 @@ bool parseSong(const std::string& text, Project& project) {
             std::string name;
             std::getline(in >> std::ws, name);
             std::snprintf(song->chordPack, sizeof song->chordPack, "%s", name.c_str());
+        } else if (word == "fx") {
+            double slot, value;
+            std::string name;
+            if (!(in >> slot >> name) || slot < 1 || slot > kEffectSlots) continue;
+            EffectData& data = (track ? track->effects : song->masterEffects)[static_cast<int>(slot) - 1];
+            for (int k = 1; k < kEffectKinds; ++k) {
+                const EffectInfo& info = effectInfo(static_cast<EffectKind>(k));
+                std::string lower;
+                for (const char* c = info.name; *c; ++c) lower += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c + 32 : *c);
+                if (lower != name) continue;
+                data.kind = k;
+                for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
+                for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
+            }
         } else if (word == "track") {
             std::string kind;
             in >> kind;

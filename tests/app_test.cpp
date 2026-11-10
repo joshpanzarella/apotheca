@@ -9,10 +9,12 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "song_file.hpp"
 
 using namespace apotheca;
 
@@ -88,17 +90,23 @@ void testTabs() {
     rig.tap(R2, 2);
     CHECK(rig.view() == View::Device);
     rig.tap(R2);
-    CHECK(rig.view() == View::Device);
+    CHECK(rig.view() == View::Effects);
+    rig.tap(R2);
+    CHECK(rig.view() == View::Effects);
     // Not while shaping something: a slip of the finger must not change screens.
-    rig.tap(L2);
+    rig.tap(L2, 2);
+    CHECK(rig.view() == View::Pattern);
     rig.key(A, true);
     rig.tap(L2);
     CHECK(rig.view() == View::Pattern);
     rig.key(A, false);
-    // START works on the kit's page too.
+    // START works on the kit's page and the effects page too.
     rig.tap(R2);
     rig.tap(START);
     CHECK(rig.project().playing);
+    rig.tap(R2);
+    rig.tap(START);
+    CHECK(!rig.project().playing && rig.view() == View::Effects);
 }
 
 // ---- the Song screen ------------------------------------------------------------------
@@ -694,6 +702,218 @@ void testAllFourShoulderButtonsIsPanic() {
     CHECK(!rig.project().silenced && rig.listen(4800) < 1e-4f);
 }
 
+// ---- the effects screen ------------------------------------------------------------------
+
+void testTheEffectsScreen() {
+    Rig rig;
+    FxScreen& fx = rig.app.fx();
+    Session& session = rig.app.session();
+    session.view = View::Effects;
+    const EffectData& first = rig.project().tracks[0].effects[0];
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0 && first.kind == 0);
+    // An empty slot has nothing to move along to.
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 0);
+
+    // Hold A and go up: the effects in turn, each at its usual settings, heard at once.
+    rig.render(100000);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(first.kind == static_cast<int>(EffectKind::Filter) && first.param[0] == effectInfo(EffectKind::Filter).defaults[0] && first.param[3] == 1.f);
+    CHECK(rig.listen(4000) > 0.05f);
+    rig.tap(UP, 2);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    rig.tap(UP, 9);
+    CHECK(first.kind == static_cast<int>(EffectKind::Crush)); // the last one: it stops
+    rig.tap(DOWN, 2);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    rig.tap(LEFT); // sideways does nothing while A is held
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 0);
+    rig.key(A, false);
+
+    // The delay is on the track: a rim shot comes back a quarter note later.
+    rig.render(200000);
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    rig.engine->send(hit);
+    std::vector<float> out = rig.render(40000);
+    CHECK(Rig::peak(out, 24000, 28000) > 0.02f);
+    CHECK(Rig::peak(out, 18000, 23000) < 0.5f * Rig::peak(out, 24000, 28000)); // quiet before it
+
+    // Along to its settings. TIME is a choice: the D-pad steps to the next one.
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 1);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(delaySteps(first.param[0]) == 6);
+    rig.tap(UP, 5);
+    CHECK(delaySteps(first.param[0]) == 8);
+    rig.tap(DOWN, 9);
+    CHECK(delaySteps(first.param[0]) == 1 && first.param[0] > 0.05f && first.param[0] < 0.12f); // the middle of its part of the range
+    rig.key(A, false);
+    // FEEDBACK is an amount: the D-pad moves it a twentieth, the stick turns it.
+    rig.tap(RIGHT);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(near(first.param[1], 0.5f));
+    rig.tap(DOWN, 3);
+    CHECK(near(first.param[1], 0.35f));
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    const float turned = first.param[1];
+    CHECK(turned > 0.4f && turned < 0.6f);
+    rig.frames(120);
+    CHECK(first.param[1] == 1.f);
+    rig.key(STICK_UP, false);
+    rig.key(STICK_DOWN, true);
+    rig.frames(200);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(first.param[1] == 0.f);
+    // B needs A let go. On a setting: its usual value. On the effect: none.
+    rig.tap(B);
+    CHECK(first.param[1] == 0.f);
+    rig.key(A, false);
+    rig.tap(B);
+    CHECK(first.param[1] == effectInfo(EffectKind::Delay).defaults[1]);
+    rig.tap(RIGHT, 9);
+    CHECK(fx.cursorColumn() == 4); // four settings, no more
+    rig.tap(LEFT, 9);
+    CHECK(fx.cursorColumn() == 0);
+
+    // Down through the slots: the track's second, then the master's two, and round.
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 1);
+    rig.key(A, true);
+    rig.tap(UP, 4);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Reverb) && first.kind == static_cast<int>(EffectKind::Delay));
+    rig.tap(RIGHT, 9);
+    CHECK(fx.cursorColumn() == 3); // the reverb has three
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
+    rig.key(A, true);
+    rig.tap(UP, 5);
+    rig.key(A, false);
+    CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
+    rig.tap(DOWN, 2);
+    CHECK(fx.cursorRow() == 0);
+    rig.tap(UP);
+    CHECK(fx.cursorRow() == 3);
+    // The stick moves the cursor too.
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 0);
+    rig.tap(B);
+    CHECK(first.kind == 0 && first.param[0] == 0.f);
+
+    // The top two rows are whichever track is being worked on; the master's stay.
+    session.addTrack(TrackKind::Phazed);
+    session.setEffect(0, 0, EffectKind::Delay);
+    fx.goTo(0, 4);
+    CHECK(fx.cursorColumn() == 4);
+    rig.project().track = 1;
+    rig.frames(1);
+    CHECK(fx.cursorColumn() == 0); // the new track's slot is empty: there is no fourth setting to be on
+    session.setEffect(0, 0, EffectKind::None);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].effects[0].kind == static_cast<int>(EffectKind::Drive) && first.kind == 0);
+    CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
+    // X hears a synth track by a note.
+    rig.render(200000);
+    rig.tap(X);
+    CHECK(rig.listen(4000) > 0.005f);
+
+    // How settings read.
+    char text[32];
+    effectParamText(EffectKind::Filter, 0, 0.f, text, sizeof text);
+    CHECK(std::string(text) == "30 HZ");
+    effectParamText(EffectKind::Filter, 0, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "21.7 KHZ");
+    effectParamText(EffectKind::Filter, 2, 0.5f, text, sizeof text);
+    CHECK(std::string(text) == "BAND PASS");
+    effectParamText(EffectKind::Delay, 0, 0.4f, text, sizeof text);
+    CHECK(std::string(text) == "1/8 DOTTED");
+    effectParamText(EffectKind::Crush, 0, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "3 BITS");
+    effectParamText(EffectKind::Crush, 1, 0.f, text, sizeof text);
+    CHECK(std::string(text) == "FULL");
+    effectParamText(EffectKind::Drive, 3, 0.5f, text, sizeof text);
+    CHECK(std::string(text) == "100%");
+    effectParamText(EffectKind::Reverb, 2, 0.3f, text, sizeof text);
+    CHECK(std::string(text) == "30%");
+}
+
+void testEffectsThroughTheSession() {
+    // Two fresh handhelds: one sets effects up by hand, the other opens the
+    // same thing as a song. A hit must sound the same on both.
+    Rig made, opened;
+    Session& session = made.app.session();
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 1, 0.2f);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffectParam(0, 1, 0, 0.4f);
+    session.setEffect(kMasterTrack, 1, EffectKind::Drive);
+    session.setEffectParam(kMasterTrack, 1, 0, 0.9f);
+    // Nonsense is refused or held in range.
+    session.setEffectParam(0, 0, 4, 0.5f);
+    session.setEffectParam(0, 0, -1, 0.5f);
+    session.setEffectParam(0, 1, 0, 7.f);
+    CHECK(made.project().tracks[0].effects[1].param[0] == 1.f);
+    session.setEffectParam(0, 1, 0, 0.4f);
+    session.setEffect(0, 2, EffectKind::Delay);
+    session.setEffect(12, 0, EffectKind::Delay);
+    session.setEffect(3, 0, static_cast<EffectKind>(42));
+    CHECK(made.project().tracks[3].effects[0].kind == 0);
+    session.setEffectParam(3, 0, 0, 0.5f); // nothing in the slot: nothing to set
+    CHECK(made.project().tracks[3].effects[0].param[0] == 0.f);
+
+    const std::string text = songText(made.project());
+    CHECK(text.find("\nfx 2 drive 0.9 0.7 1 0.5\ntrack drums\nfx 1 delay 0.5 0.2 0.6 0.35\nfx 2 filter 0.4 0.2 0 1\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    opened.project() = *back;
+    opened.app.session().applyProject();
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    made.engine->send(hit);
+    opened.engine->send(hit);
+    const std::vector<float> a = made.render(60000), b = opened.render(60000);
+    CHECK(Rig::peak(a) > 0.02f && a == b);
+    // And not like a handheld with no effects.
+    Rig plain;
+    plain.engine->send(hit);
+    CHECK(plain.render(60000) != a);
+    // A new song after it: the effects are gone from the engine too.
+    {
+        std::unique_ptr<Project> fresh(new Project);
+        opened.project() = *fresh;
+    }
+    opened.app.session().applyProject();
+    opened.render(400000);
+    plain.render(400000);
+    opened.engine->send(hit);
+    plain.engine->send(hit);
+    CHECK(opened.render(60000) == plain.render(60000));
+
+    // Lines in a song file that make no sense are left out.
+    std::unique_ptr<Project> song(new Project);
+    CHECK(parseSong("apotheca-song 1\nfx 1 reverb 0.9\nfx 3 delay\nfx 0 delay\nfx 2 warble 1 1\ntrack drums\nfx 2 crush 5 -5 nonsense\nfx 1\n", *song));
+    CHECK(song->masterEffects[0].kind == static_cast<int>(EffectKind::Reverb) && song->masterEffects[0].param[0] == 0.9f);
+    CHECK(song->masterEffects[0].param[1] == effectInfo(EffectKind::Reverb).defaults[1]); // not given: its usual value
+    CHECK(song->masterEffects[1].kind == 0 && song->tracks[0].effects[0].kind == 0);
+    CHECK(song->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Crush) && song->tracks[0].effects[1].param[0] == 1.f && song->tracks[0].effects[1].param[1] == 0.f);
+}
+
 void testTheKeysShownFollowTheCursor() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
@@ -1168,6 +1388,8 @@ int main(int, char**) {
     testTheKeysScrollAndStopAtTheEnds();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testTheEffectsScreen();
+    testEffectsThroughTheSession();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

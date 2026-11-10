@@ -17,7 +17,7 @@
 
 namespace apotheca {
 
-enum class View { Song, Pattern, Device };
+enum class View { Song, Pattern, Device, Effects };
 
 class Session {
 public:
@@ -56,6 +56,13 @@ public:
     void useChordFolder(const std::string& folder) { packs = loadChordPacks(folder); }
     int packIndex() const;       // the song's pack; the built-in one if it is not here
     void choosePack(int index);  // wraps round
+
+    // ---- effects ---------------------------------------------------------------------
+    // Two slots on every track and two on the master (track kMasterTrack).
+    EffectData& effectData(int track, int slot) { return track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]; }
+    const EffectData& effectData(int track, int slot) const { return track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]; }
+    void setEffect(int track, int slot, EffectKind kind); // goes in at its usual settings
+    void setEffectParam(int track, int slot, int index, float value); // 0..1
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the

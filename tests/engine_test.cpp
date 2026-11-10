@@ -1132,6 +1132,21 @@ static void testEffectsOneByOne() {
         longClick[0] = 1.f;
         out = through(*d, longClick);
         CHECK(peakOf(std::vector<float>(out.begin() + 143990, out.begin() + 144010)) > 0.5f);
+        // TONE works on what is fed back: the first echo is the click as it
+        // was, and each one after is duller, so spread out and lower.
+        d->setTempo(120.f);
+        d->setParam(0, 0.f);
+        d->setParam(1, 0.6f);
+        const auto secondEcho = [&](float tone) {
+            d->setParam(2, tone);
+            d->reset();
+            const std::vector<float> echoes = through(*d, click);
+            CHECK(peakOf(std::vector<float>(echoes.begin() + 5995, echoes.begin() + 6010)) > 0.9f);
+            return peakOf(std::vector<float>(echoes.begin() + 11995, echoes.begin() + 12100));
+        };
+        const float bright = secondEcho(1.f), dull = secondEcho(0.f);
+        CHECK(bright > 0.3f && dull > 0.005f && dull < 0.3f * bright);
+        d->setParam(2, 1.f);
         // No feedback: one echo and no more. Reset: none at all.
         d->setTempo(120.f);
         d->setParam(0, 0.f);

@@ -146,6 +146,13 @@ struct NotePattern {
     }
 };
 
+// An effect in a slot: which one (an EffectKind as a number; 0 is none)
+// and its settings, each 0..1.
+struct EffectData {
+    int kind = 0;
+    float param[kEffectParams] = {};
+};
+
 enum class TrackKind { None, Drums, Phazed, Twin };
 inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin; }
 
@@ -153,6 +160,7 @@ struct TrackData {
     TrackKind kind = TrackKind::None;
     DrumPattern drums[kMaxScenes];
     NotePattern notes[kMaxScenes];
+    EffectData effects[kEffectSlots]; // on this track, one after the other
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][40] = {}; // a recording on the lane in place of the built-in drum: its file's name, or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
@@ -173,6 +181,7 @@ struct TrackData {
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
+    EffectData masterEffects[kEffectSlots]; // on everything, after the tracks are mixed
     float tempo = 120.f;
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show

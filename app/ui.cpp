@@ -116,8 +116,8 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     float x = 6.f;
     fonts.small.draw(r, x, textY, "L2", kDim);
     x += fonts.small.width("L2") + 6.f;
-    const char* tabs[] = {"SONG", "PATTERN", "DEVICE"};
-    for (int i = 0; i < 3; ++i) {
+    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX"};
+    for (int i = 0; i < 4; ++i) {
         const float w = fonts.small.width(tabs[i]) + 14.f;
         const bool here = static_cast<int>(view) == i;
         if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);
