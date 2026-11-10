@@ -4,7 +4,10 @@
 
 #include <SDL.h>
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -19,6 +22,9 @@ enum class View { Song, Pattern, Device };
 class Session {
 public:
     Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {}
+    ~Session();
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
 
     Engine& engine;
     Project& project;
@@ -45,6 +51,30 @@ public:
     void useChordFolder(const std::string& folder) { packs = loadChordPacks(folder); }
     int packIndex() const;       // the song's pack; the built-in one if it is not here
     void choosePack(int index);  // wraps round
+
+    // ---- recordings on drum lanes ----------------------------------------------------
+    // A lane of a drum track plays the built-in drum, or a WAV file from the
+    // sample folder. A lane can be FITTED: stretched, at the same pitch, to
+    // last a number of steps at the song's tempo. That is worked out on
+    // another thread and swapped in when ready; when the tempo changes it is
+    // worked out again.
+    void useSampleFolder(const std::string& folder) { sampleFolder_ = folder; }
+    std::vector<std::string> sampleNames() const;
+    void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
+    void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
+    struct LaneSound {
+        std::shared_ptr<const std::vector<float>> recording; // as it came off the card; null on a built-in lane
+        std::vector<float> peaks; // its outline, for drawing
+        float seconds = 0.f;
+        bool missing = false;     // the song names a file that is not here
+        bool waiting = false;     // a fitted version is wanted and not yet in the engine
+        float fittedTempo = 0.f;  // the tempo the one in the engine was made for
+        int fittedSteps = 0;
+        unsigned version = 0;     // goes up whenever the lane's sound changes
+    };
+    const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
+    bool stretching() const;  // some lane is still waiting for its fitted version
+    void finishStretching();  // wait for them all. For tests, and before leaving.
 
     // ---- songs on disk ------------------------------------------------------------
     // Nothing here needs asking for. The song being worked on is written to
@@ -90,6 +120,27 @@ private:
     std::string folder_, songName_ = "untitled", savedText_;
     std::uint32_t nameSeed_ = 1;
     Uint32 nextSaveAt_ = 0;
+
+    void loadLane(int track, int lane);
+    void install(int track, int lane, const std::vector<float>& samples);
+    bool wantsFitting(int track, int lane) const;
+    void startJob(int track, int lane);
+    void collectJob(bool wait);
+    struct Job {
+        int track = 0, lane = 0, frames = 0;
+        unsigned version = 0;
+        float tempo = 0.f;
+        std::shared_ptr<const std::vector<float>> in;
+        std::vector<float> out;
+        std::atomic<bool> done{false};
+        std::thread thread;
+    };
+    std::string sampleFolder_;
+    LaneSound sounds_[kNumTracks][kDrumLanes];
+    std::unique_ptr<Job> job_;
+    float steadyTempo_ = 0.f;  // the tempo, once it has stopped moving
+    float seenTempo_ = 0.f;
+    Uint32 tempoMovedAt_ = 0;
 };
 
 } // namespace apotheca

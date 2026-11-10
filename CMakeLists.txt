@@ -52,7 +52,7 @@ target_link_libraries(render_demo PRIVATE apotheca_engine)
 if(APOTHECA_BUILD_APP)
   find_package(SDL2 REQUIRED)
   find_package(Threads REQUIRED)
-  set(APOTHECA_SCREENS app/app.cpp app/chords.cpp app/input.cpp app/note_screen.cpp app/pattern_screen.cpp
+  set(APOTHECA_SCREENS app/app.cpp app/chords.cpp app/samples.cpp app/stretch.cpp app/input.cpp app/note_screen.cpp app/pattern_screen.cpp
       app/phazed_screen.cpp app/session.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp
       app/text.cpp app/ui.cpp)
   add_executable(apotheca app/main.cpp app/realtime.cpp ${APOTHECA_SCREENS})

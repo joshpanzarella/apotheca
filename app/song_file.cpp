@@ -40,6 +40,14 @@ std::string songText(const Project& project) {
             out += "lanes";
             for (float level : track.laneLevel) put(out, " %.6g", level);
             out += "\n";
+            // sample LANE FIT NAME: a recording on a lane, stretched to FIT steps (0: as recorded)
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                if (!track.laneSample[lane][0]) continue;
+                put(out, "sample %.0f", lane + 1);
+                put(out, " %.0f ", track.laneFit[lane]);
+                out += track.laneSample[lane];
+                out += "\n";
+            }
             for (int scene = 0; scene < kMaxScenes; ++scene) {
                 const DrumPattern& p = track.drums[scene];
                 if (p.empty()) continue;
@@ -55,7 +63,9 @@ std::string songText(const Project& project) {
                         put(out, " %.6g", p.level[lane][step]);
                         put(out, " %.6g", p.nudge[lane][step]);
                         put(out, " %.6g", p.chance[lane][step]);
-                        out += p.fromDice[lane][step] ? " 1\n" : " 0\n";
+                        out += p.fromDice[lane][step] ? " 1" : " 0";
+                        if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
+                        out += "\n";
                     }
                 }
             }
@@ -137,6 +147,15 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "lanes") {
             double level;
             for (int i = 0; i < kDrumLanes && (in >> level); ++i) track->laneLevel[i] = clampf(static_cast<float>(level), 0.f, 1.f);
+        } else if (word == "sample" && track->kind == TrackKind::Drums) {
+            double lane, fit;
+            std::string name;
+            if (!(in >> lane >> fit) || lane < 1 || lane > kDrumLanes) continue;
+            std::getline(in >> std::ws, name);
+            if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) continue; // a name, not a path
+            const int l = static_cast<int>(lane) - 1;
+            std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
+            track->laneFit[l] = clampi(static_cast<int>(fit), 0, 64);
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);
@@ -164,9 +183,9 @@ bool parseSong(const std::string& text, Project& project) {
             double seed;
             for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene].diceSeed[i] = static_cast<std::uint32_t>(seed);
         } else if (word == "hit" && track->kind == TrackKind::Drums) {
-            double lane, step, level, nudge = 0, chance = 1, dice = 0;
+            double lane, step, level, nudge = 0, chance = 1, dice = 0, start = 0;
             if (!(in >> lane >> step >> level)) continue;
-            in >> nudge >> chance >> dice;
+            in >> nudge >> chance >> dice >> start;
             if (lane < 1 || lane > kDrumLanes || step < 1 || step > kSteps || !(level > 0)) continue;
             DrumPattern& p = track->drums[scene];
             const int l = static_cast<int>(lane) - 1, s = static_cast<int>(step) - 1;
@@ -174,6 +193,7 @@ bool parseSong(const std::string& text, Project& project) {
             p.nudge[l][s] = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
             p.chance[l][s] = clampf(static_cast<float>(chance), 0.05f, 1.f);
             p.fromDice[l][s] = dice != 0;
+            p.start[l][s] = clampf(static_cast<float>(start), 0.f, 1.f);
         } else if (word == "note" && isSynth(track->kind)) {
             double step, pitch, length, level;
             if (!(in >> step >> pitch >> length >> level)) continue;

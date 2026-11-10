@@ -13,6 +13,7 @@ struct DrumPattern {
     float level[kDrumLanes][kSteps] = {};  // 0 = no hit
     float nudge[kDrumLanes][kSteps] = {};  // -0.5..0.5 of a step
     float chance[kDrumLanes][kSteps];      // 0.05..1
+    float start[kDrumLanes][kSteps] = {};  // where in the lane's sound a hit begins, 0..1 of its length
     bool fromDice[kDrumLanes][kSteps] = {}; // hits the dice placed and nobody has touched since
     std::uint32_t diceSeed[kDrumLanes];
 
@@ -151,6 +152,8 @@ struct TrackData {
     DrumPattern drums[kMaxScenes];
     NotePattern notes[kMaxScenes];
     float laneLevel[kDrumLanes]; // each drum's volume
+    char laneSample[kDrumLanes][40] = {}; // a recording on the lane in place of the built-in drum: its file's name, or empty
+    int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog

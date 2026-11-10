@@ -4,12 +4,15 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <memory>
 
+#include "samples.hpp"
 #include "song_file.hpp"
+#include "stretch.hpp"
 #include "synth_spec.hpp"
 
 namespace apotheca {
@@ -19,6 +22,10 @@ constexpr Uint32 kAuditionMs = 350;
 constexpr Uint32 kSaveEveryMs = 2000;
 
 // New songs are named with two words, so nobody has to type on a D-pad.
+constexpr Uint32 kTempoSettleMs = 250;
+constexpr int kPeaks = 240;      // points in a recording's outline
+constexpr int kMaxFitSteps = 64; // four bars
+
 const char* const kFirstWords[] = {"brass", "salt", "amber", "ash", "copper", "glass", "iron", "lunar", "pale", "quiet", "red", "silver",
                                    "slow", "smoke", "tin", "velvet", "wax", "black", "green", "hollow", "mercury", "night", "old", "vitriol"};
 const char* const kSecondWords[] = {"moth", "lantern", "furnace", "garden", "mirror", "river", "vessel", "key", "crow", "flask", "orchard", "tower",
@@ -92,6 +99,20 @@ void Session::update(Uint32 nowMs) {
     project.playScene = engine.playScene();
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
+
+    // Fitted recordings follow the tempo, once it has stopped moving for a
+    // quarter of a second: no point stretching for every number on the way.
+    if (project.tempo != seenTempo_) {
+        seenTempo_ = project.tempo;
+        tempoMovedAt_ = nowMs;
+    }
+    if (nowMs - tempoMovedAt_ >= kTempoSettleMs) steadyTempo_ = seenTempo_;
+    collectJob(false);
+    if (!job_ && steadyTempo_ > 0.f) {
+        for (int track = 0; track < kNumTracks && !job_; ++track)
+            for (int lane = 0; lane < kDrumLanes && !job_; ++lane)
+                if (wantsFitting(track, lane)) startJob(track, lane);
+    }
     if (nowMs >= nextSaveAt_) {
         nextSaveAt_ = nowMs + kSaveEveryMs;
         saveNow();
@@ -125,6 +146,9 @@ void Session::sendDrumPattern(int track, int scene) {
             engine.send(c);
             c.type = Command::SetStepChance;
             c.value = p.chance[lane][step];
+            engine.send(c);
+            c.type = Command::SetStepStart;
+            c.value = p.start[lane][step];
             engine.send(c);
         }
     }
@@ -315,7 +339,131 @@ bool Session::openRev(int rev) {
     return true;
 }
 
+// ---- recordings on drum lanes -------------------------------------------------------
+
+Session::~Session() {
+    if (job_ && job_->thread.joinable()) job_->thread.join();
+}
+
+std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
+
+void Session::install(int track, int lane, const std::vector<float>& samples) {
+    std::unique_ptr<SampleData> data(new SampleData);
+    data->data = samples;
+    engine.setLaneSample(track, lane, std::move(data));
+}
+
+// Read the lane's file and put it in the engine as recorded. If the lane is
+// fitted, update() will follow with the stretched version.
+void Session::loadLane(int track, int lane) {
+    LaneSound& sound = sounds_[track][lane];
+    const unsigned version = sound.version + 1;
+    sound = LaneSound();
+    sound.version = version;
+    const char* name = project.tracks[track].laneSample[lane];
+    if (!name[0]) {
+        engine.setLaneSample(track, lane, nullptr);
+        return;
+    }
+    std::shared_ptr<std::vector<float>> recording(new std::vector<float>);
+    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", *recording) || recording->empty()) {
+        sound.missing = true; // the drum plays in its place, and the song keeps the name
+        engine.setLaneSample(track, lane, nullptr);
+        return;
+    }
+    sound.seconds = static_cast<float>(recording->size()) / kSampleRate;
+    sound.peaks.assign(kPeaks, 0.f);
+    for (std::size_t i = 0; i < recording->size(); ++i) {
+        float& peak = sound.peaks[i * kPeaks / recording->size()];
+        const float v = std::fabs((*recording)[i]);
+        if (v > peak) peak = v;
+    }
+    sound.recording = recording;
+    sound.waiting = project.tracks[track].laneFit[lane] > 0;
+    install(track, lane, *recording);
+}
+
+void Session::setLaneSample(int track, int lane, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    std::snprintf(project.tracks[track].laneSample[lane], sizeof project.tracks[track].laneSample[lane], "%s", name.c_str());
+    loadLane(track, lane);
+}
+
+void Session::setLaneFit(int track, int lane, int steps) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return;
+    steps = steps < 0 ? 0 : (steps > kMaxFitSteps ? kMaxFitSteps : steps);
+    if (project.tracks[track].laneFit[lane] == steps) return;
+    project.tracks[track].laneFit[lane] = steps;
+    LaneSound& sound = sounds_[track][lane];
+    if (!sound.recording) return;
+    ++sound.version; // a stretch on its way is for the old length
+    sound.waiting = steps > 0;
+    if (steps == 0) {
+        sound.fittedTempo = 0.f;
+        sound.fittedSteps = 0;
+        install(track, lane, *sound.recording); // back to as recorded
+    }
+}
+
+bool Session::wantsFitting(int track, int lane) const {
+    const LaneSound& sound = sounds_[track][lane];
+    const int steps = project.tracks[track].laneFit[lane];
+    return sound.recording && steps > 0 && (sound.fittedTempo != steadyTempo_ || sound.fittedSteps != steps);
+}
+
+void Session::startJob(int track, int lane) {
+    LaneSound& sound = sounds_[track][lane];
+    sound.waiting = true;
+    job_.reset(new Job);
+    Job* job = job_.get();
+    job->track = track;
+    job->lane = lane;
+    job->version = sound.version;
+    job->tempo = steadyTempo_;
+    job->in = sound.recording;
+    // A step is a sixteenth note: a quarter of a beat.
+    job->frames = static_cast<int>(std::lround(project.tracks[track].laneFit[lane] * 15.0 / steadyTempo_ * kSampleRate));
+    job->thread = std::thread([job] {
+        job->out = stretchTo(*job->in, job->frames);
+        job->done.store(true);
+    });
+}
+
+void Session::collectJob(bool wait) {
+    if (!job_ || (!wait && !job_->done.load())) return;
+    job_->thread.join();
+    LaneSound& sound = sounds_[job_->track][job_->lane];
+    if (sound.version == job_->version && sound.recording == job_->in) { // else the lane has moved on
+        sound.fittedTempo = job_->tempo;
+        sound.fittedSteps = project.tracks[job_->track].laneFit[job_->lane];
+        sound.waiting = false;
+        install(job_->track, job_->lane, job_->out);
+    }
+    job_.reset();
+}
+
+bool Session::stretching() const {
+    if (job_) return true;
+    for (const auto& track : sounds_)
+        for (const LaneSound& sound : track)
+            if (sound.waiting) return true;
+    return false;
+}
+
+void Session::finishStretching() {
+    steadyTempo_ = seenTempo_ = project.tempo; // no waiting for it to settle
+    for (;;) {
+        collectJob(true);
+        bool started = false;
+        for (int track = 0; track < kNumTracks && !started; ++track)
+            for (int lane = 0; lane < kDrumLanes && !started; ++lane)
+                if (wantsFitting(track, lane)) { startJob(track, lane); started = true; }
+        if (!started) return;
+    }
+}
+
 void Session::applyProject() {
+    collectJob(true); // nothing half-made carries over
     Command c;
     c.type = Command::Stop;
     engine.send(c);
@@ -323,6 +471,12 @@ void Session::applyProject() {
     for (Sounding& sounding : sounding_) sounding.track = -1;
 
     for (int track = 0; track < kNumTracks; ++track) engine.removeTrack(track); // those with nothing say so; fine
+    for (auto& track : sounds_)
+        for (LaneSound& sound : track) {
+            const unsigned version = sound.version + 1;
+            sound = LaneSound();
+            sound.version = version;
+        }
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::Drums) engine.addDrumTrack(t);
@@ -336,6 +490,7 @@ void Session::applyProject() {
                     image->level[scene][lane][step] = track.drums[scene].level[lane][step];
                     image->nudge[scene][lane][step] = track.drums[scene].nudge[lane][step];
                     image->chance[scene][lane][step] = track.drums[scene].chance[lane][step];
+                    image->start[scene][lane][step] = track.drums[scene].start[lane][step];
                 }
             NoteEvent notes[kMaxNotes];
             track.notes[scene].render(notes);
@@ -350,6 +505,8 @@ void Session::applyProject() {
         }
         for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];
         engine.setTrackImage(t, std::move(image));
+        if (track.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane) loadLane(t, lane);
 
         if (const SynthSpec* spec = specFor(track.kind)) {
             c = Command();
