@@ -670,6 +670,15 @@ void testTheEngineHearsMacrosAndSettings() {
     std::unique_ptr<Rig> plain(onPhazed()), bent(onPhazed()), edited(onPhazed());
     const std::vector<float> base = noteNow(*plain);
     CHECK(Rig::peak(base) > 0.f);
+    // Another preset.
+    std::unique_ptr<Rig> other(onPhazed());
+    int organ = 0;
+    while (std::strcmp(Phazed::presetCategory(organ), "Organs") != 0) ++organ;
+    other->key(A, true);
+    other->tap(UP, organ);
+    other->key(A, false);
+    CHECK(other->project().tracks[1].preset == organ);
+    CHECK(noteNow(*other) != base);
     // A macro.
     bent->app.phazed().goTo(0, PhazedScreen::kFirstMacro + phazed::MacroOctave);
     bent->key(A, true);
@@ -695,13 +704,16 @@ void testAdvancedPages() {
     PhazedScreen& screen = rig->app.phazed();
     TrackData& track = rig->project().tracks[1];
     screen.goTo(0, PhazedScreen::kAdvanced);
-    rig->tap(A);
+    rig->key(A, true);
     CHECK(screen.page() == 1 && screen.cursor() == 0);
     CHECK(screen.settingHere() == phazed::LineSelect);
-    // A opened the pages: the stick is the cursor, not a knob.
-    rig->key(STICK_RIGHT, true);
-    rig->frames(1);
-    rig->key(STICK_RIGHT, false);
+    // That press opened the pages. Even with A still down, the stick and the
+    // D-pad are the cursor, not a knob on the first setting.
+    rig->key(STICK_UP, true);
+    rig->frames(10);
+    rig->key(STICK_UP, false);
+    rig->tap(RIGHT);
+    rig->key(A, false);
     CHECK(screen.cursor() == 1);
     CHECK(track.patch.value[phazed::LineSelect] == Phazed::presetPatch(0).value[phazed::LineSelect]);
     rig->tap(LEFT);
@@ -754,6 +766,7 @@ void testAdvancedPages() {
     rig->tap(B);
     CHECK(screen.page() == 0 && screen.cursor() == PhazedScreen::kAdvanced);
     rig->tap(L1); // the page buttons do nothing on MAIN
+    rig->tap(R1);
     CHECK(screen.page() == 0);
     // Every page's cursor stops map to settings inside the patch.
     for (int page = 1; page < PhazedScreen::kPages; ++page) {
