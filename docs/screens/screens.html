@@ -13,7 +13,7 @@
      faded amethyst, on dark brown with cream lettering and brass. */
   :root {
     --bg: #14110e; --panel: #1f1a16; --panel2: #2a231d; --line: #43392f;
-    --text: #e0d5bf; --dim: #8f8370; --teal: #6fbfa3; --purple: #9a76b0; --amber: #c9a15a;
+    --text: #e0d5bf; --dim: #8f8370; --teal: #6fbfa3; --purple: #9a76b0; --amber: #c9a15a; --red: #c0604f;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 20px; background: #000; display: flex; flex-wrap: wrap; gap: 20px;
@@ -67,6 +67,11 @@
   .val .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); }
   .box { position: absolute; border: 1px solid var(--line); background: var(--panel); }
   .title { position: absolute; font-size: 12px; color: var(--dim); }
+  .row { position: absolute; background: var(--panel); border: 1px solid var(--line); display: flex;
+         align-items: center; padding: 0 10px; font-size: 14px; white-space: nowrap; }
+  .row .r { margin-left: auto; color: var(--dim); font-size: 12px; }
+  .row.dimmed { color: var(--dim); }
+  .para { position: absolute; color: var(--dim); font-size: 13px; line-height: 19px; }
   .meter { position: absolute; height: 10px; background: var(--line); }
   .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); }
 </style>
@@ -76,6 +81,10 @@
 <section class="screen" id="3-pattern-drums"></section>
 <section class="screen" id="4-device-drums"></section>
 <section class="screen" id="5-mix"></section>
+<section class="screen" id="6-add-track"></section>
+<section class="screen" id="7-choose-effect"></section>
+<section class="screen" id="8-load-sample"></section>
+<section class="screen" id="9-record-automation"></section>
 
 <script>
 // Small repeatable random, so every render is the same picture.
@@ -92,12 +101,12 @@ function el(parent, cls, style, html) {
 }
 const px = n => n + 'px';
 
-function chrome(id, tab, ctx, hints) {
+function chrome(id, tab, ctx, hints, rec) {
   const s = document.getElementById(id);
   const tabs = ['SONG', 'PATTERN', 'DEVICE', 'MIX']
     .map(t => `<div class="tab${t === tab ? ' on' : ''}">${t}</div>`).join('');
   el(s, 'top', {}, `<div class="tabs">${tabs}</div><div class="ctx">${ctx}</div>
-     <div class="right"><span>SCENE <b>1</b></span><span><b>120</b> BPM</span><span style="color:var(--purple)">&#9654;</span></div>`);
+     <div class="right"><span>SCENE <b>1</b></span><span><b>120</b> BPM</span>${rec ? '<span style="color:var(--red)">&#9679; REC</span>' : '<span style="color:var(--purple)">&#9654;</span>'}</div>`);
   el(s, 'hints', {}, hints.map(h => `<span><k>${h[0]}</k>${h[1]}</span>`).join(''));
   return s;
 }
@@ -139,43 +148,72 @@ songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC'
            (t, r) => r < 5 && rnd() < 0.72, 'night bus');
 
 // ---- pattern: 8 drum lanes by 16 steps -------------------------------------
-(function () {
-  const s = chrome('3-pattern-drums', 'PATTERN', '1 DRUMS &middot; scene 1',
-                   [['D-PAD', 'move'], ['A', 'place'], ['B', 'delete'], ['A+D-PAD', 'velocity'], ['STICK', 'value'], ['L1 R1', 'track']]);
+// With `auto`, the strip under the grid is the automation lane being recorded.
+function patternScreen(id, auto) {
+  const s = auto
+    ? chrome(id, 'PATTERN', '1 DRUMS &middot; scene 1',
+             [['HOLD Y + R-STICK', 'record'], ['L2', 'pick value'], ['Y + B', 'erase'], ['D-PAD', 'move'], ['START', 'stop']], true)
+    : chrome(id, 'PATTERN', '1 DRUMS &middot; scene 1',
+             [['D-PAD', 'move'], ['A', 'place'], ['B', 'delete'], ['A+D-PAD', 'velocity'], ['R-STICK', 'value'], ['L1 R1', 'track']]);
   const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
   const hits = {
     0: { 0: 1, 6: .7, 8: 1, 11: .6 }, 1: { 4: 1, 12: 1, 15: .4 },
     2: { 0: .7, 2: .5, 4: .7, 6: .5, 8: .7, 10: .5, 12: .7 }, 3: { 14: .8 },
     4: { 12: .6 }, 6: { 3: .5, 9: .5 },
   };
-  const left = 116, top = 54, stepW = 32, laneH = 41, cur = [1, 4];
+  const left = 116, top = 54, stepW = 32, laneH = 41, cur = [1, 4], playStep = 6;
   for (let c = 0; c < 16; c++)
     el(s, 'label abs', { left: px(left + c * stepW), top: px(36), width: px(stepW), textAlign: 'center',
                          color: c % 4 === 0 ? 'var(--text)' : '' }, String(c + 1));
   lanes.forEach((name, r) => {
     const y = top + r * laneH;
-    el(s, 'lane' + (r === cur[0] ? ' on' : ''), { top: px(y), height: px(laneH - 3) }, name);
+    el(s, 'lane' + (r === cur[0] && !auto ? ' on' : ''), { top: px(y), height: px(laneH - 3) }, name);
     for (let c = 0; c < 16; c++) {
-      const st = el(s, 'step' + (c % 4 === 0 ? ' beat' : '') + (r === cur[0] && c === cur[1] ? ' cursor' : ''),
+      const st = el(s, 'step' + (c % 4 === 0 ? ' beat' : '') + (r === cur[0] && c === cur[1] && !auto ? ' cursor' : ''),
                     { left: px(left + c * stepW), top: px(y), width: px(stepW - 2), height: px(laneH - 3) });
       const v = (hits[r] || {})[c];
       if (v) el(st, 'hit', { height: px(Math.round(v * (laneH - 11))) });
     }
   });
-  el(s, 'playhead', { left: px(left + 6 * stepW), top: px(top), width: px(stepW - 2), height: px(8 * laneH - 3) });
-  // The step under the cursor, spelled out.
   const y = top + 8 * laneH + 6;
-  const vals = [['LANE', 'SNARE'], ['STEP', '5'], ['VELOCITY', '100'], ['NUDGE', '0'], ['CHANCE', '100%']];
-  vals.forEach((v, i) => {
-    el(s, 'label abs', { left: px(8 + i * 126), top: px(y) }, v[0]);
-    el(s, 'abs', { left: px(8 + i * 126), top: px(y + 16), fontSize: px(16), color: i === 2 ? 'var(--teal)' : '' }, v[1]);
-  });
-})();
+  if (!auto) {
+    el(s, 'playhead', { left: px(left + playStep * stepW), top: px(top), width: px(stepW - 2), height: px(8 * laneH - 3) });
+    // The step under the cursor, spelled out.
+    const vals = [['LANE', 'SNARE'], ['STEP', '5'], ['VELOCITY', '100'], ['NUDGE', '0'], ['CHANCE', '100%']];
+    vals.forEach((v, i) => {
+      el(s, 'label abs', { left: px(8 + i * 126), top: px(y) }, v[0]);
+      el(s, 'abs', { left: px(8 + i * 126), top: px(y + 16), fontSize: px(16), color: i === 2 ? 'var(--teal)' : '' }, v[1]);
+    });
+    return;
+  }
+  // Automation lane: the value's movement, lined up under the steps.
+  const w = 16 * stepW - 2, h = 62, yl = y - 4;
+  el(s, 'lane', { top: px(yl), height: px(h), borderColor: 'var(--red)', flexDirection: 'column', alignItems: 'flex-start',
+                  justifyContent: 'center', gap: '6px', fontSize: px(12) },
+     '<span style="color:var(--dim)">FX 1 CUTOFF</span><span style="font-size:16px;color:var(--red)">2.4 kHz</span>');
+  const box = el(s, 'box', { left: px(left), top: px(yl), width: px(w), height: px(h) });
+  const curve = t => 0.5 + 0.34 * Math.sin(t * 6.3 + 0.6) + 0.1 * Math.sin(t * 21);
+  const now = (playStep + 0.6) / 16;
+  let grid = '', fresh = '', old = '';
+  for (let c = 1; c < 16; c++)
+    grid += `<line x1="${c * stepW - 1}" y1="0" x2="${c * stepW - 1}" y2="${h}" stroke="#43392f" stroke-width="${c % 4 === 0 ? 1 : 0.5}"/>`;
+  for (let i = 0; i <= w; i += 3) {
+    const t = i / w;
+    if (t <= now) fresh += `${i},${(h - 8) * (1 - curve(t)) + 4} `;
+    else old += `${i},${(h - 8) * (1 - (0.45 + 0.12 * Math.sin(t * 9))) + 4} `;
+  }
+  box.innerHTML = `<svg width="${w}" height="${h}" style="position:absolute;left:0;top:0">${grid}
+    <polyline points="${old}" fill="none" stroke="#8f8370" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <polyline points="${fresh}" fill="none" stroke="#c0604f" stroke-width="2"/></svg>`;
+  el(s, 'playhead', { left: px(left + playStep * stepW), top: px(top), width: px(stepW - 2), height: px(yl + h - top) });
+}
+patternScreen('3-pattern-drums', false);
+patternScreen('9-record-automation', true);
 
 // ---- device: one drum lane is a small sampler --------------------------------
 (function () {
   const s = chrome('4-device-drums', 'DEVICE', '1 DRUMS &middot; SNARE',
-                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'load sample'], ['X', 'hear it'], ['L2', 'zoom']]);
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['R-STICK', 'value'], ['A', 'load sample'], ['X', 'hear it'], ['L2', 'zoom']]);
   const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
   lanes.forEach((name, r) =>
     el(s, 'lane' + (r === 1 ? ' on' : ''), { top: px(36 + r * 31), height: px(28), width: px(96), fontSize: px(12),
@@ -218,7 +256,7 @@ songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC'
 // ---- mix: level, pan, two effect slots ---------------------------------------
 (function () {
   const s = chrome('5-mix', 'MIX', '1 DRUMS',
-                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'choose effect'], ['B', 'bypass'], ['L1 R1', 'track']]);
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['R-STICK', 'value'], ['A', 'choose effect'], ['B', 'bypass'], ['L1 R1', 'track']]);
   // Track list with meters.
   const rows = [['1 DRUMS', .72, true], ['MASTER', .64, false]];
   el(s, 'title', { left: px(8), top: px(36) }, 'TRACKS');
@@ -250,5 +288,90 @@ songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC'
       el(s, 'val' + (i === 0 && k === 1 ? ' cursor' : ''), { left: px(x0 + 8 + k * 112), top: px(y + 68), width: px(110), height: px(68), background: 'var(--panel2)' },
          `<div class="n">${v[0]}</div><div class="v" style="font-size:15px">${v[1]}</div><div class="bar"><i style="width:${v[2] * 100}%"></i></div>`));
   });
+})();
+
+// A waveform as thin bars, for previews.
+function waveSvg(w, h, marks) {
+  let bars = '';
+  for (let i = 0; i < w; i += 2) {
+    const t = i / w;
+    const env = t < 0.05 ? t / 0.05 : Math.exp(-(t - 0.05) * 5.2);
+    const bh = Math.max(1, env * (0.55 + 0.45 * rnd()) * (h - 12));
+    bars += `<rect x="${i}" y="${(h - bh) / 2}" width="1" height="${bh}" fill="#e0d5bf"/>`;
+  }
+  (marks || []).forEach(m => bars += `<line x1="${m * w}" y1="0" x2="${m * w}" y2="${h}" stroke="#6fbfa3" stroke-width="1"/>`);
+  return `<svg width="${w}" height="${h}" style="position:absolute;left:0;top:0">${bars}</svg>`;
+}
+
+// ---- add a track: pick its instrument ----------------------------------------
+(function () {
+  const s = chrome('6-add-track', 'SONG', 'add track 2 of 12', [['D-PAD', 'move'], ['A', 'add track'], ['B', 'cancel'], ['X', 'hear it']]);
+  el(s, 'title', { left: px(8), top: px(36) }, 'INSTRUMENT');
+  const list = [['DRUMS', '8 lanes'], ['SAMPLER', 'chops']];
+  list.forEach((r, i) =>
+    el(s, 'row' + (i === 1 ? ' cursor' : ''), { left: px(8), top: px(54 + i * 50), width: px(220), height: px(46), fontSize: px(16),
+                                               color: i === 1 ? 'var(--teal)' : '' }, `${r[0]}<span class="r">${r[1]}</span>`));
+  el(s, 'para', { left: px(8), top: px(166), width: px(220) }, 'More instruments<br>appear in this list<br>as they are built.');
+  const x = 240, w = 392;
+  el(s, 'box', { left: px(x), top: px(54), width: px(w), height: px(372) });
+  el(s, 'abs', { left: px(x + 14), top: px(70), fontSize: px(22) }, 'SAMPLER');
+  el(s, 'para', { left: px(x + 14), top: px(104), width: px(w - 28) },
+     'One sample, cut into pieces called chops.<br>Each chop plays from its own note, so a<br>pattern can replay the pieces in any order.');
+  const wave = el(s, 'box', { left: px(x + 14), top: px(180), width: px(w - 28), height: px(110), background: 'var(--panel2)' });
+  wave.innerHTML = waveSvg(w - 30, 108, [0.02, 0.21, 0.37, 0.52, 0.7, 0.86]);
+  ['1', '2', '3', '4', '5', '6'].forEach((n, i) =>
+    el(s, 'abs', { left: px(x + 20 + [0.02, 0.21, 0.37, 0.52, 0.7, 0.86][i] * (w - 30)), top: px(184), fontSize: px(12), color: 'var(--teal)' }, n));
+  el(s, 'para', { left: px(x + 14), top: px(304), width: px(w - 28) },
+     'Starts empty. Load a sample on the DEVICE screen.<br>The new track is added to the right of DRUMS,<br>with two empty effect slots.');
+})();
+
+// ---- choose an effect for a slot -----------------------------------------------
+(function () {
+  const s = chrome('7-choose-effect', 'MIX', '1 DRUMS &middot; FX 2', [['D-PAD', 'move'], ['A', 'choose'], ['B', 'cancel'], ['X', 'hear with / without']]);
+  el(s, 'title', { left: px(8), top: px(36) }, 'EFFECT');
+  const list = [['EMPTY', ''], ['FILTER', 'light'], ['EQ', 'light'], ['DRIVE', 'light'], ['CRUSHER', 'light'],
+                ['COMPRESSOR', 'light'], ['DELAY', 'medium'], ['CHORUS', 'medium'], ['REVERB', 'heavy']];
+  list.forEach((r, i) =>
+    el(s, 'row' + (i === 6 ? ' cursor' : '') + (i === 0 ? ' dimmed' : ''),
+       { left: px(8), top: px(54 + i * 41), width: px(220), height: px(38), color: i === 6 ? 'var(--teal)' : '' },
+       `${r[0]}<span class="r" style="${r[1] === 'heavy' ? 'color:var(--amber)' : ''}">${r[1]}</span>`));
+  const x = 240, w = 392;
+  el(s, 'box', { left: px(x), top: px(54), width: px(w), height: px(366) });
+  el(s, 'abs', { left: px(x + 14), top: px(70), fontSize: px(22) }, 'DELAY');
+  el(s, 'para', { left: px(x + 14), top: px(104), width: px(w - 28) }, 'Echoes, timed to the song.');
+  [['TIME', '1/8 D'], ['FEEDBACK', '35%'], ['TONE', '60%'], ['MIX', '25%']].forEach((v, k) =>
+    el(s, 'val', { left: px(x + 14 + (k % 2) * 184), top: px(140 + Math.floor(k / 2) * 72), width: px(180), height: px(68), background: 'var(--panel2)' },
+       `<div class="n">${v[0]}</div><div class="v" style="font-size:15px">${v[1]}</div>`));
+  el(s, 'title', { left: px(x + 14), top: px(300) }, 'PROCESSOR LOAD');
+  el(s, 'meter', { left: px(x + 14), top: px(320), width: px(w - 28) }, '<i style="width:46%"></i><i style="left:46%;width:9%;background:var(--amber)"></i>');
+  el(s, 'para', { left: px(x + 14), top: px(340), width: px(w - 28) },
+     'Green is what the song uses now. Brass is what<br>this effect would add. Each slot holds four settings.');
+})();
+
+// ---- load a sample from the card ------------------------------------------------
+(function () {
+  const s = chrome('8-load-sample', 'DEVICE', '1 DRUMS &middot; SNARE &middot; load sample',
+                   [['D-PAD', 'move'], ['A', 'load / open'], ['B', 'up a folder'], ['X', 'hear it'], ['L1 R1', 'page']]);
+  el(s, 'title', { left: px(8), top: px(36) }, 'SD CARD / samples / drums / snares');
+  const files = [['..', '', 'up'], ['808', 'folder', 'f'], ['vinyl', 'folder', 'f'], ['snare_bright.wav', '0.28 s', ''],
+                 ['snare_brush.wav', '0.61 s', ''], ['snare_tight.wav', '0.19 s', ''], ['snare_vinyl_01.wav', '0.39 s', ''],
+                 ['snare_vinyl_02.wav', '0.44 s', ''], ['snare_vinyl_03.wav', '0.41 s', ''], ['snare_wide.wav', '0.52 s', ''],
+                 ['rim_dry.wav', '0.11 s', ''], ['rim_room.wav', '0.33 s', '']];
+  files.forEach((f, i) =>
+    el(s, 'row' + (i === 8 ? ' cursor' : ''), { left: px(8), top: px(54 + i * 32), width: px(300), height: px(29),
+                                               color: i === 8 ? 'var(--teal)' : (f[2] ? 'var(--amber)' : '') },
+       `${f[2] === 'f' ? f[0] + ' /' : f[0]}<span class="r">${f[1]}</span>`));
+  el(s, 'label abs', { left: px(8), top: px(440) }, '9 of 23');
+  const x = 320, w = 312;
+  el(s, 'box', { left: px(x), top: px(54), width: px(w), height: px(382) });
+  el(s, 'abs', { left: px(x + 12), top: px(68), fontSize: px(16) }, 'snare_vinyl_03.wav');
+  const wave = el(s, 'box', { left: px(x + 12), top: px(98), width: px(w - 24), height: px(130), background: 'var(--panel2)' });
+  wave.innerHTML = waveSvg(w - 26, 128);
+  [['LENGTH', '0.412 s'], ['RATE', '44.1 kHz'], ['CHANNELS', 'mono'], ['SIZE', '36 KB']].forEach((v, k) => {
+    el(s, 'label abs', { left: px(x + 12 + (k % 2) * 150), top: px(244 + Math.floor(k / 2) * 46) }, v[0]);
+    el(s, 'abs', { left: px(x + 12 + (k % 2) * 150), top: px(262 + Math.floor(k / 2) * 46), fontSize: px(16) }, v[1]);
+  });
+  el(s, 'para', { left: px(x + 12), top: px(346), width: px(w - 24) },
+     'Loads into the SNARE lane of 1 DRUMS.<br>Moving the cursor plays the file if<br>the song is stopped.');
 })();
 </script>
