@@ -288,6 +288,15 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
+    } else if (std::strcmp(view, "sampler") == 0) {
+        // With --samples: a sampler track playing the first recording.
+        app.session().addTrack(TrackKind::Sampler);
+        app.project().track = app.project().trackCount() - 1;
+        const std::vector<std::string> names = app.session().sampleNames();
+        if (!names.empty()) app.session().setTrackSample(app.project().track, names[0]);
+        app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
+        app.session().view = View::Device;
+        app.sampler().goTo(3);
     } else if (std::strcmp(view, "fx") == 0) {
         app.session().setEffect(0, 0, EffectKind::Delay);
         app.session().setEffect(0, 1, EffectKind::Filter);

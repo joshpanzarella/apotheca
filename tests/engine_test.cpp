@@ -1273,7 +1273,181 @@ static void testEffectsInTheEngine() {
     CHECK(engine->setEffect(3, 0, EffectKind::Reverb));
 }
 
+// ---- the sampler -----------------------------------------------------------------------
+
+static void testTheSampler() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+    const float full = 1.f * 0.8f * sampler::kVoiceGain * kTrackLevel; // velocity, LEVEL at its default, voice gain, track level
+    const auto set = [&](int id, int value) { engine->send(make(Command::SetSetting, 1, id, value)); };
+    const auto play = [&](int note, int frames, float velocity = 1.f) {
+        engine->send(make(Command::NoteOn, 1, note, 0, velocity));
+        return renderFrames(*engine, frames);
+    };
+    const auto quiet = [&] {
+        engine->send(make(Command::NoteOff, 1, 60));
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000 * 5);
+    };
+    // No recording: no sound.
+    CHECK(peakOf(play(60, 4800)) == 0.f);
+    // A recording: a ramp, so where the sampler is reading shows in the level.
+    std::unique_ptr<SampleData> ramp(new SampleData);
+    ramp->data.resize(48000);
+    for (int i = 0; i < 48000; ++i) ramp->data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / 48000.f;
+    CHECK(engine->setTrackSample(1, std::move(ramp)));
+    set(sampler::Attack, 0);
+
+    // At its root key it plays as it was made: a second long, the same values.
+    std::vector<float> out = play(60, 60000);
+    CHECK(std::abs(soundingFrames(out) - 48000) <= 2);
+    CHECK(about(out[2 * 24000] / full, 0.5f) && about(out[2 * 47000] / full, 0.25f + 0.5f * 47000.f / 48000.f));
+    CHECK(out[2 * 100] == out[2 * 100 + 1]);
+    // An octave up: twice as fast, half as long. An octave down: twice as long.
+    quiet();
+    out = play(72, 60000);
+    CHECK(std::abs(soundingFrames(out) - 24000) <= 2 && about(out[2 * 12000] / full, 0.5f));
+    quiet();
+    out = play(48, 120000);
+    CHECK(std::abs(soundingFrames(out) - 96000) <= 4 && about(out[2 * 48000] / full, 0.5f));
+    // ROOT moves which key that is; TUNE bends it by cents (100 is a semitone).
+    quiet();
+    set(sampler::Root, 72);
+    CHECK(std::abs(soundingFrames(play(72, 60000)) - 48000) <= 2);
+    quiet();
+    set(sampler::Root, 60);
+    set(sampler::Tune, 100);
+    CHECK(std::abs(soundingFrames(play(59, 60000)) - 48000) <= 60); // a semitone down, a semitone up: as made
+    quiet();
+    set(sampler::Tune, 0);
+    // Velocity and LEVEL are plain gains.
+    out = play(60, 4800, 0.5f);
+    CHECK(about(out[2 * 2400] / full, 0.5f * (0.25f + 0.5f * 2400.f / 48000.f)));
+    quiet();
+    set(sampler::Level, 40);
+    out = play(60, 4800);
+    CHECK(about(out[2 * 2400] / full, 0.5f * (0.25f + 0.5f * 2400.f / 48000.f)));
+    quiet();
+    set(sampler::Level, 80);
+    // START: a note begins part-way in.
+    set(sampler::Start, 50);
+    out = play(60, 60000);
+    CHECK(std::abs(soundingFrames(out) - 24000) <= 2 && about(out[2 * 100] / full, 0.25f + 0.5f * 24100.f / 48000.f));
+    quiet();
+    // LOOP: it goes round from START for as long as the key is held.
+    set(sampler::Loop, 1);
+    out = play(60, 100000);
+    CHECK(soundingFrames(out) == 100000);
+    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (24000.f + 6001.f) / 48000.f)); // round once, 6001 in (a loop is one sample short of the half)
+    engine->send(make(Command::NoteOff, 1, 60));
+    CHECK(soundingFrames(renderFrames(*engine, 48000)) < 6000); // let go: it fades over the release and stops
+    set(sampler::Loop, 0);
+    set(sampler::Start, 0);
+    quiet();
+    // Letting go fades it over RELEASE; a longer one takes longer.
+    const auto tail = [&](int release) {
+        set(sampler::Release, release);
+        play(60, 4800);
+        engine->send(make(Command::NoteOff, 1, 60));
+        const int frames = soundingFrames(renderFrames(*engine, 48000 * 5));
+        quiet();
+        return frames;
+    };
+    const int shortTail = tail(0), longTail = tail(60);
+    CHECK(shortTail >= 200 && shortTail <= 260); // five milliseconds
+    CHECK(longTail > 10 * shortTail && longTail < 43200);
+    set(sampler::Release, 20);
+    // ATTACK fades it in.
+    set(sampler::Attack, 60);
+    out = play(60, 9600);
+    CHECK(std::fabs(out[2 * 10]) < 0.01f * full && std::fabs(out[2 * 2000]) < std::fabs(out[2 * 4000]) && std::fabs(out[2 * 9000] / full) < 0.4f);
+    set(sampler::Attack, 0);
+    quiet();
+    // Eight notes at once, and a ninth takes the oldest's place.
+    for (int n = 0; n < 8; ++n) engine->send(make(Command::NoteOn, 1, 60 + n, 0, 0.1f));
+    out = renderFrames(*engine, 2400);
+    CHECK(peakOf(out) > 6.f * 0.1f * 0.25f * full);
+    engine->send(make(Command::NoteOn, 1, 80, 0, 0.1f));
+    CHECK(peakOf(renderFrames(*engine, 2400)) < 9.f * 0.1f * full);
+    for (int n = 0; n < 8; ++n) engine->send(make(Command::NoteOff, 1, 60 + n));
+    engine->send(make(Command::NoteOff, 1, 80));
+    quiet();
+    // The same key again restarts its note, it does not stack another on it.
+    play(60, 2400, 0.5f);
+    out = play(60, 2400, 0.5f);
+    CHECK(about(out[2 * 1200] / full, 0.5f * (0.25f + 0.5f * 1200.f / 48000.f)));
+    quiet();
+    // A pattern plays it, to the sample, like any synth. Nonsense settings do no harm.
+    Command note = make(Command::SetNote, 1, 0, 4, 1.f);
+    note.c = 60;
+    note.d = 2;
+    engine->send(note);
+    engine->send(make(Command::Play, 0, 0, 1));
+    out = renderFrames(*engine, 16 * kStep);
+    CHECK(onsetOf(out) == 4 * kStep && soundingFrames(out) > 2 * kStep && soundingFrames(out) < 2 * kStep + 4000);
+    engine->send(make(Command::Stop));
+    for (int id = -1; id <= sampler::kSettings; ++id) { set(id, 99999); set(id, -99999); }
+    play(60, 4800);
+    for (int id = 0; id < sampler::kSettings; ++id) set(id, sampler::settingDefault(id));
+    set(sampler::Attack, 0);
+    quiet();
+    // Between two samples it reads the value in between: an octave down, a
+    // recording that flips 0, 1, 0, 1 passes through the halves.
+    {
+        std::unique_ptr<SampleData> flip(new SampleData);
+        flip->data.resize(2000);
+        for (int i = 0; i < 2000; ++i) flip->data[static_cast<std::size_t>(i)] = static_cast<float>(i % 2);
+        CHECK(engine->setTrackSample(1, std::move(flip)));
+        out = play(48, 1000);
+        int halves = 0;
+        for (int i = 100; i < 900; ++i) halves += about(out[2 * static_cast<std::size_t>(i)] / full, 0.5f);
+        CHECK(halves > 350);
+        quiet();
+        // A longer recording put in while a note is sounding: the note stops; it does not carry on into the new one.
+        play(60, 500);
+        std::unique_ptr<SampleData> longer(new SampleData);
+        longer->data.assign(48000, 0.5f);
+        CHECK(engine->setTrackSample(1, std::move(longer)));
+        CHECK(peakOf(renderFrames(*engine, 4800)) == 0.f);
+        quiet();
+        std::unique_ptr<SampleData> back(new SampleData);
+        back->data.resize(48000);
+        for (int i = 0; i < 48000; ++i) back->data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / 48000.f;
+        CHECK(engine->setTrackSample(1, std::move(back)));
+    }
+    // A new recording replaces the old and stops what was reading it. None: silence.
+    play(60, 2400);
+    std::unique_ptr<SampleData> flat(new SampleData);
+    flat->data.assign(1000, 0.5f);
+    CHECK(engine->setTrackSample(1, std::move(flat)));
+    CHECK(peakOf(renderFrames(*engine, 4800)) == 0.f);
+    engine->send(make(Command::NoteOff, 1, 60));
+    out = play(60, 4800);
+    CHECK(std::abs(soundingFrames(out) - 999) <= 1 && about(out[2 * 500] / full, 0.5f));
+    quiet();
+    CHECK(engine->setTrackSample(1, nullptr));
+    CHECK(peakOf(play(60, 4800)) == 0.f);
+    engine->collectGarbage();
+    // Only a synth track takes one. Removing the track takes its recording with it.
+    CHECK(!engine->setTrackSample(0, nullptr) && !engine->setTrackSample(5, nullptr) && !engine->setTrackSample(12, nullptr));
+    std::unique_ptr<SampleData> again(new SampleData);
+    again->data.assign(1000, 0.5f);
+    CHECK(engine->setTrackSample(1, std::move(again)));
+    renderFrames(*engine, 64);
+    CHECK(engine->removeTrack(1));
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+    CHECK(peakOf(play(60, 4800)) == 0.f);
+    // One still waiting in the queue when the engine goes is freed with it.
+    std::unique_ptr<SampleData> last(new SampleData);
+    last->data.assign(10, 0.5f);
+    CHECK(engine->setTrackSample(1, std::move(last)));
+    CHECK(sampler::settingMin(99) == 0 && sampler::settingMax(-1) == 0 && sampler::settingDefault(sampler::Root) == 60);
+}
+
 int main() {
+    testTheSampler();
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();

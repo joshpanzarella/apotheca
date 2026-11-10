@@ -36,6 +36,7 @@
 #include "apotheca/effects.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
+#include "apotheca/sampler.hpp"
 #include "apotheca/twin.hpp"
 #include "apotheca/spsc_queue.hpp"
 
@@ -87,7 +88,8 @@ struct Command {
         RemoveInstrument, // internal: sent by removeTrack()
         SetTrackImage,  // internal: sent by setTrackImage()
         SetLaneSample,  // internal: sent by setLaneSample()
-        InstallEffect   // internal: sent by setEffect()
+        InstallEffect,  // internal: sent by setEffect()
+        SetTrackSample  // internal: sent by setTrackSample()
     };
     Type type = Trigger;
     int track = 0;
@@ -147,6 +149,9 @@ public:
     // Put a recording on one lane of a drum track in place of the built-in
     // drum, or nullptr to bring the drum back. False if the track has no drums.
     bool setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample);
+    // Give a synth track's instrument a recording to play (the sampler), or
+    // nullptr to take it away. False if the track has no synth.
+    bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
     void collectGarbage();
@@ -195,6 +200,7 @@ private:
         bool hasDrums = false;
         DrumMachine drums;
         SampleData* laneSamples[kDrumLanes] = {}; // owned; freed by the control thread
+        SampleData* trackSample = nullptr;        // likewise: a sampler's recording
         std::unique_ptr<Instrument> synth; // set on a synth track
         DrumScene drumScenes[kMaxScenes];
         Note notes[kMaxScenes][kMaxNotes];

@@ -44,10 +44,12 @@ Engine::~Engine() {
         if (command.type == Command::SetTrackImage) delete static_cast<TrackImage*>(command.pointer);
         if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
         if (command.type == Command::InstallEffect) delete static_cast<Effect*>(command.pointer);
+        if (command.type == Command::SetTrackSample) delete static_cast<SampleData*>(command.pointer);
     }
     collectGarbage();
     for (Track& track : tracks_)
         for (SampleData* sample : track.laneSamples) delete sample;
+    for (Track& track : tracks_) delete track.trackSample;
 }
 
 void Engine::destroy(const Trash& trash) {
@@ -72,6 +74,17 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.pointer = effect.get();
     if (!commands_.push(c)) return false;
     effect.release(); // the audio thread hands the old one back through the trash
+    return true;
+}
+
+bool Engine::setTrackSample(int track, std::unique_ptr<SampleData> sample) {
+    if (track < 0 || track >= kNumTracks || !claimed_[track] || claimedDrums_[track]) return false;
+    Command c;
+    c.type = Command::SetTrackSample;
+    c.track = track;
+    c.pointer = sample.get();
+    if (!commands_.push(c)) return false;
+    sample.release();
     return true;
 }
 
@@ -179,6 +192,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     if (!validTrack(track) || claimed_[track]) return false;
     std::unique_ptr<Instrument> synth;
     if (kind == SynthKind::Twin) synth.reset(new Twin);
+    else if (kind == SynthKind::Sampler) synth.reset(new Sampler);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
@@ -260,6 +274,21 @@ void Engine::apply(const Command& c) {
         place.reset(static_cast<Effect*>(c.pointer));
         if (place) place->setTempo(tempo_);
         if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
+        break;
+    }
+    case Command::SetTrackSample: {
+        SampleData* incoming = static_cast<SampleData*>(c.pointer);
+        Trash trash;
+        trash.isSample = true;
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            trash.pointer = track.trackSample;
+            track.trackSample = incoming;
+            track.synth->setSample(incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+        } else {
+            trash.pointer = incoming;
+        }
+        if (trash.pointer) trash_.push(trash);
         break;
     }
     case Command::SetLaneSample: {
@@ -391,6 +420,13 @@ void Engine::apply(const Command& c) {
                 trash.pointer = track.synth.get();
                 if (trash_.push(trash)) track.synth.release();
                 else break;
+            }
+            if (track.trackSample) { // the synth that read it has gone
+                Trash trash;
+                trash.isSample = true;
+                trash.pointer = track.trackSample;
+                track.trackSample = nullptr;
+                trash_.push(trash);
             }
             track.hasDrums = false;
             track.drums.reset();

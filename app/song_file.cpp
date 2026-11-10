@@ -47,7 +47,7 @@ std::string songText(const Project& project) {
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
-        out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : "track twin\n";
+        out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : "track twin\n";
         putEffects(track.effects);
         if (track.kind == TrackKind::Drums) {
             out += "lanes";
@@ -83,13 +83,21 @@ std::string songText(const Project& project) {
                 }
             }
         } else {
-            put(out, "preset %.0f\n", track.preset + 1);
-            out += "macros";
-            for (float m : track.macro) put(out, " %.6g", m);
-            out += "\nsettings";
-            const int* values = specFor(track.kind)->values(const_cast<TrackData&>(track));
-            for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
-            out += "\n";
+            if (track.kind == TrackKind::Sampler) {
+                // sound NAME: its recording. sampler: root tune start attack release loop level.
+                if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
+                out += "sampler";
+                for (int v : track.sampler) put(out, " %.0f", v);
+                out += "\n";
+            } else {
+                put(out, "preset %.0f\n", track.preset + 1);
+                out += "macros";
+                for (float m : track.macro) put(out, " %.6g", m);
+                out += "\nsettings";
+                const int* values = specFor(track.kind)->values(const_cast<TrackData&>(track));
+                for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
+                out += "\n";
+            }
             for (int scene = 0; scene < kMaxScenes; ++scene) {
                 const NotePattern& p = track.notes[scene];
                 if (p.empty()) continue;
@@ -161,7 +169,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "track") {
             std::string kind;
             in >> kind;
-            const TrackKind k = kind == "drums" ? TrackKind::Drums : kind == "phazed" ? TrackKind::Phazed : kind == "twin" ? TrackKind::Twin : TrackKind::None;
+            const TrackKind k = kind == "drums" ? TrackKind::Drums : kind == "phazed" ? TrackKind::Phazed : kind == "twin" ? TrackKind::Twin : kind == "sampler" ? TrackKind::Sampler : TrackKind::None;
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
@@ -183,6 +191,14 @@ bool parseSong(const std::string& text, Project& project) {
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
             track->laneFit[l] = clampi(static_cast<int>(fit), 0, 64);
+        } else if (word == "sound" && track->kind == TrackKind::Sampler) {
+            std::string name;
+            std::getline(in >> std::ws, name);
+            if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) continue; // a name, not a path
+            std::snprintf(track->sample, sizeof track->sample, "%s", name.c_str());
+        } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
+            double v;
+            for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = clampi(static_cast<int>(v), sampler::settingMin(id), sampler::settingMax(id));
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);

@@ -153,8 +153,9 @@ struct EffectData {
     float param[kEffectParams] = {};
 };
 
-enum class TrackKind { None, Drums, Phazed, Twin };
-inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin; }
+enum class TrackKind { None, Drums, Phazed, Twin, Sampler };
+// Played from the piano roll: the two synths and the sampler.
+inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin || kind == TrackKind::Sampler; }
 
 struct TrackData {
     TrackKind kind = TrackKind::None;
@@ -168,10 +169,13 @@ struct TrackData {
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog
     float macro[phazed::kMacros];
+    char sample[40] = {};           // when it is a sampler: its recording's file name, or empty
+    int sampler[sampler::kSettings]; // ...and its settings
 
     TrackData() {
         for (float& v : laneLevel) v = 1.f;
         for (float& m : macro) m = 0.5f;
+        for (int i = 0; i < sampler::kSettings; ++i) sampler[i] = sampler::settingDefault(i);
     }
     bool sceneEmpty(int scene) const {
         return kind == TrackKind::Drums ? drums[scene].empty() : isSynth(kind) ? notes[scene].empty() : true;

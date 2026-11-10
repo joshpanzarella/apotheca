@@ -20,6 +20,7 @@
 #include "kit_screen.hpp"
 #include "note_screen.hpp"
 #include "pattern_screen.hpp"
+#include "sampler_screen.hpp"
 #include "phazed_screen.hpp"
 #include "session.hpp"
 #include "song_screen.hpp"
@@ -44,6 +45,7 @@ public:
     PhazedScreen& twin() { return twin_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
+    SamplerScreen& sampler() { return sampler_; }
     // The notice that says a panic happened. It stays while the buttons are
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
@@ -61,6 +63,7 @@ private:
     NoteScreen notes_;
     KitScreen kit_;
     FxScreen fx_;
+    SamplerScreen sampler_;
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;
 };

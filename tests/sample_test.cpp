@@ -885,6 +885,183 @@ void testCatch() {
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
 }
 
+void testTheSamplerTrack() {
+    const std::string folder = tempFolder();
+    writeWav(folder + "/alpha.wav", tone(0.5f, 0.25f), 48000);
+    writeWav(folder + "/beta.wav", tone(0.25f, 0.25f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    TrackData& track = rig.project().tracks[1];
+    CHECK(track.kind == TrackKind::Sampler && isSynth(track.kind) && track.sampler[sampler::Root] == 60 && track.sample[0] == 0);
+    rig.project().track = 1;
+    session.view = View::Device;
+    SamplerScreen& screen = rig.app.sampler();
+    const auto heard = [&](int frames = 100000) { return Rig::sounding(rig.render(frames)); };
+
+    // No recording yet: X plays nothing.
+    rig.tap(X);
+    CHECK(heard(4800) == 0);
+    // Hold A and go up: each recording, heard at its root key.
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(std::strcmp(track.sample, "alpha") == 0);
+    int length = heard();
+    CHECK(length > 9000 && length < 24100); // the note is let go after a moment, and fades
+    rig.tap(UP);
+    CHECK(std::strcmp(track.sample, "beta") == 0);
+    rig.tap(UP);
+    CHECK(std::strcmp(track.sample, "beta") == 0); // the last: it stops
+    rig.tap(DOWN);
+    CHECK(std::strcmp(track.sample, "alpha") == 0);
+    rig.key(A, false);
+    CHECK(session.trackSound(1).peaks.size() > 100 && std::fabs(session.trackSound(1).seconds - 0.5f) < 1e-3f);
+    rig.frames(60);
+    rig.render(100000);
+
+    // The settings: right along the row, down to the second row, up to SOUND.
+    rig.tap(RIGHT);
+    CHECK(screen.cursor() == 1);
+    rig.tap(RIGHT, 3);
+    CHECK(screen.cursor() == 4);
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == 7); // LEVEL is under ATTACK; there is no eighth
+    rig.tap(LEFT, 2);
+    CHECK(screen.cursor() == 5);
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == 5);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 1);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 0);
+    rig.tap(DOWN);
+    CHECK(screen.cursor() == 1);
+    // ROOT: hold A, the D-pad moves it a key at a time; the stick turns it.
+    rig.key(A, true);
+    rig.tap(UP, 12);
+    CHECK(track.sampler[sampler::Root] == 72);
+    rig.tap(DOWN, 24);
+    CHECK(track.sampler[sampler::Root] == 48);
+    rig.key(STICK_UP, true);
+    rig.frames(200);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(track.sampler[sampler::Root] == 127);
+    rig.key(A, false);
+    // B puts a setting back; on SOUND it takes the recording away.
+    rig.tap(B);
+    CHECK(track.sampler[sampler::Root] == 60);
+    // The engine has it: with the root an octave up, the root key... is the key that plays it as made.
+    session.setSamplerSetting(1, sampler::Release, 0);
+    session.setSamplerSetting(1, sampler::Root, 72);
+    rig.frames(60);
+    rig.render(100000);
+    session.audition(1, 60, 1.f); // an octave under the root: half speed
+    rig.frames(1);
+    length = Rig::sounding(rig.render(20000));
+    CHECK(length == 20000); // still going: it would take a second
+    rig.frames(60);
+    rig.render(100000);
+    session.setSamplerSetting(1, sampler::Root, 60);
+    session.setSamplerSetting(1, sampler::Loop, 7);
+    CHECK(track.sampler[sampler::Loop] == 1);
+    session.setSamplerSetting(1, sampler::Loop, 0);
+    session.setSamplerSetting(1, 99, 5);
+    session.setSamplerSetting(0, sampler::Root, 5); // not a sampler track
+    session.setTrackSample(0, "alpha");
+    CHECK(rig.project().tracks[0].sample[0] == 0 && rig.project().tracks[0].sampler[sampler::Root] == 60);
+
+    // It plays from the piano roll, and a chord stamps on it like on a synth.
+    session.view = View::Pattern;
+    rig.app.notes().moveCursorTo(60, 2);
+    rig.tap(A);
+    rig.frames(60);
+    rig.render(100000);
+    rig.tap(START);
+    const std::vector<float> bar = rig.render(8 * kStep);
+    int first = -1;
+    for (std::size_t i = 0; i < bar.size() && first < 0; i += 2)
+        if (bar[i] != 0.f) first = static_cast<int>(i / 2);
+    CHECK(first >= 2 * kStep && first <= 2 * kStep + 2);
+    rig.tap(START);
+    rig.app.notes().moveCursorTo(60, 8);
+    rig.tap(Y);
+    CHECK(rig.app.notes().chordCount() == 1);
+
+    // The song file keeps the recording by name and the settings.
+    session.setSamplerSetting(1, sampler::Start, 25);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("track sampler\nsound alpha\nsampler 60 0 25 0 0 0 80\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    // Opened on another handheld with the same card, it sounds the same.
+    Rig other(folder);
+    other.project() = *back;
+    other.session().applyProject();
+    CHECK(other.session().trackSound(1).peaks.size() > 100);
+    // ...the same as one set up by hand, with no song opened.
+    Rig fresh(folder);
+    fresh.session().addTrack(TrackKind::Sampler);
+    fresh.session().setTrackSample(1, "alpha");
+    fresh.session().setSamplerSetting(1, sampler::Start, 25);
+    fresh.session().setSamplerSetting(1, sampler::Release, 0);
+    fresh.project().tracks[1].notes[0] = back->tracks[1].notes[0];
+    fresh.session().sendNotePattern(1, 0);
+    other.session().view = fresh.session().view = View::Pattern;
+    other.project().track = fresh.project().track = 1;
+    other.tap(START);
+    fresh.tap(START);
+    const std::vector<float> a = other.render(16 * kStep), b = fresh.render(16 * kStep);
+    float peak = 0.f;
+    for (float v : a) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    CHECK(peak > 0.02f && a == b);
+    // A recording that is not on the card: silent, and it says so.
+    session.setTrackSample(1, "gone");
+    CHECK(session.trackSound(1).missing && std::strcmp(track.sample, "gone") == 0);
+    rig.frames(60);
+    rig.render(100000);
+    session.audition(1, 60, 1.f);
+    CHECK(heard(4800) == 0);
+
+    // Y catches the last bar onto it.
+    session.setTrackSample(1, "");
+    rig.project().track = 0;
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.tap(START);
+    rig.render(20 * kStep);
+    rig.tap(START);
+    rig.project().track = 1;
+    session.view = View::Device;
+    rig.tap(Y);
+    CHECK(std::strcmp(track.sample, "catch 1") == 0 && screen.said().find("CATCH 1") != std::string::npos);
+    CHECK(session.trackSound(1).peaks.size() > 100);
+    rig.frames(170);
+    CHECK(screen.said().empty());
+    screen.goTo(0);
+    rig.tap(B);
+    CHECK(track.sample[0] == 0);
+    // Lines that make no sense in a song file are left out.
+    std::unique_ptr<Project> song(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsound ../x\nsampler 999 -999 50\ntrack drums\nsound kick\nsampler 1 2 3\n", *song));
+    CHECK(song->tracks[0].kind == TrackKind::Sampler && song->tracks[0].sample[0] == 0);
+    CHECK(song->tracks[0].sampler[sampler::Root] == 127 && song->tracks[0].sampler[sampler::Tune] == -100 && song->tracks[0].sampler[sampler::Start] == 50);
+    CHECK(song->tracks[0].sampler[sampler::Level] == 80 && song->tracks[1].sample[0] == 0 && song->tracks[1].sampler[sampler::Root] == 60);
+    // How settings read.
+    char line[32];
+    samplerSettingText(sampler::Root, 60, line, sizeof line);
+    CHECK(std::string(line) == "C4");
+    samplerSettingText(sampler::Tune, -7, line, sizeof line);
+    CHECK(std::string(line) == "-7 CENTS");
+    samplerSettingText(sampler::Attack, 0, line, sizeof line);
+    CHECK(std::string(line) == "1 MS");
+    samplerSettingText(sampler::Release, 100, line, sizeof line);
+    CHECK(std::string(line) == "4.0 S");
+    samplerSettingText(sampler::Loop, 1, line, sizeof line);
+    CHECK(std::string(line) == "ON");
+    samplerSettingText(sampler::Level, 80, line, sizeof line);
+    CHECK(std::string(line) == "80%");
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -898,6 +1075,7 @@ int main(int, char**) {
     testRollingALanesStarts();
     testTheKitScreen();
     testCatch();
+    testTheSamplerTrack();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

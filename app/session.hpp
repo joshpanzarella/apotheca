@@ -90,6 +90,10 @@ public:
         unsigned version = 0;     // goes up whenever the lane's sound changes
     };
     const LaneSound& laneSound(int track, int lane) const { return sounds_[track][lane]; }
+    // A sampler track's one recording, and its settings (sampler.hpp).
+    void setTrackSample(int track, const std::string& name); // "" for none
+    void setSamplerSetting(int track, int id, int value);
+    const LaneSound& trackSound(int track) const { return sounds_[track][0]; }
     bool stretching() const;  // some lane is still waiting for its fitted version
     void finishStretching();  // wait for them all. For tests, and before leaving.
 
@@ -148,6 +152,7 @@ private:
     Uint32 nextSaveAt_ = 0;
 
     void loadLane(int track, int lane);
+    void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);
     bool wantsFitting(int track, int lane) const;
     void startJob(int track, int lane);

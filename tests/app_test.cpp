@@ -1324,13 +1324,18 @@ void testAddingTwinAnalog() {
     // Its first preset is loaded into the project, as the engine has it.
     const TwinPatch first = Twin::presetPatch(0);
     for (int id = 0; id < twin::kSettings; ++id) CHECK(rig->project().tracks[1].twin.value[id] == first.value[id]);
-    // The chooser goes round all three.
+    // The chooser goes round all four.
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 2); // PHAZED > TWIN > DRUMS
+    rig->tap(DOWN, 3); // PHAZED > TWIN > SAMPLER > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
+    rig->tap(RIGHT);
+    rig->tap(A);
+    rig->tap(UP, 2); // PHAZED > DRUMS > SAMPLER
+    rig->tap(A);
+    CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
     // It gets the piano roll, and the engine plays it.
     rig->app.song().moveCursorTo(0, 1);

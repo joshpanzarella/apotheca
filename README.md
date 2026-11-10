@@ -6,7 +6,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit or one of two synths: Phazed (phase distortion, 65 presets) or Twin
+kit, a sampler, or one of two synths: Phazed (phase distortion, 65 presets) or Twin
 Analog (two morphing oscillators, 16 presets). Up to sixteen scenes,
 each one bar, each with its own repeat count. Four screens:
 
@@ -27,8 +27,8 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: recording into the device, a sampler played from the keys,
-the sound designer web page.
+Not built yet: recording into the device, getting files on over WiFi, the
+sound designer web page.
 
 ## Build
 
@@ -62,6 +62,20 @@ and the stick shapes the thing under the cursor:
 **L2 and R2** walk along the three screens. **START** plays: the song from
 the SONG screen, the scene being worked on from the others. **SELECT + START**
 quits.
+
+### DEVICE, the sampler
+
+A fourth instrument in the + TRACK list. **One recording, played from the
+keys**: the piano roll and the chord button work on it as on a synth. At its
+ROOT key the recording plays as it was made; an octave up, twice as fast.
+
+| On | Hold A + up / down | B |
+| --- | --- | --- |
+| SOUND | Each recording in the `samples` folder, heard as it changes | None |
+| ROOT, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+
+**Y is Catch** here too: the last bar the song played becomes this track's
+recording. Eight notes at a time.
 
 ### FX
 

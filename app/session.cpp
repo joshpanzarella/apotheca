@@ -73,9 +73,10 @@ bool Session::addTrack(TrackKind kind) {
     if (kind == TrackKind::Drums) {
         if (!engine.addDrumTrack(track)) return false;
     } else {
-        if (!engine.addSynthTrack(track, kind == TrackKind::Twin ? SynthKind::Twin : SynthKind::Phazed)) return false;
+        const SynthKind synth = kind == TrackKind::Twin ? SynthKind::Twin : kind == TrackKind::Sampler ? SynthKind::Sampler : SynthKind::Phazed;
+        if (!engine.addSynthTrack(track, synth)) return false;
         project.tracks[track].preset = 0;
-        specFor(kind)->loadPreset(project.tracks[track], 0);
+        if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
     return true;
@@ -486,9 +487,56 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     loadLane(track, lane);
 }
 
+// A sampler track's recording, read from its file and handed to the engine.
+void Session::loadTrackSample(int track) {
+    LaneSound& sound = sounds_[track][0];
+    const unsigned version = sound.version + 1;
+    sound = LaneSound();
+    sound.version = version;
+    const char* name = project.tracks[track].sample;
+    if (!name[0]) {
+        engine.setTrackSample(track, nullptr);
+        return;
+    }
+    std::unique_ptr<SampleData> data(new SampleData);
+    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", data->data) || data->data.empty()) {
+        sound.missing = true;
+        engine.setTrackSample(track, nullptr);
+        return;
+    }
+    sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
+    sound.peaks.assign(kPeaks, 0.f);
+    for (std::size_t i = 0; i < data->data.size(); ++i) {
+        float& peak = sound.peaks[i * kPeaks / data->data.size()];
+        const float v = std::fabs(data->data[i]);
+        if (v > peak) peak = v;
+    }
+    engine.setTrackSample(track, std::move(data));
+}
+
+void Session::setTrackSample(int track, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
+    loadTrackSample(track);
+}
+
+void Session::setSamplerSetting(int track, int id, int value) {
+    if (track < 0 || track >= kNumTracks || id < 0 || id >= sampler::kSettings || project.tracks[track].kind != TrackKind::Sampler) return;
+    value = value < sampler::settingMin(id) ? sampler::settingMin(id) : (value > sampler::settingMax(id) ? sampler::settingMax(id) : value);
+    if (value == project.tracks[track].sampler[id]) return;
+    project.tracks[track].sampler[id] = value;
+    Command c;
+    c.type = Command::SetSetting;
+    c.track = track;
+    c.a = id;
+    c.b = value;
+    engine.send(c);
+}
+
 std::string Session::catchLastBar(int track, int lane) {
     if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
-    if (project.tracks[track].kind != TrackKind::Drums) return "";
+    const bool sampler = project.tracks[track].kind == TrackKind::Sampler; // its one recording; the lane does not matter
+    if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
     const std::vector<float> bar = engine.lastBar();
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
@@ -500,8 +548,12 @@ std::string Session::catchLastBar(int track, int lane) {
         if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", bar, static_cast<int>(kSampleRate))) return "";
-    setLaneSample(track, lane, name);
-    setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+    if (sampler) {
+        setTrackSample(track, name);
+    } else {
+        setLaneSample(track, lane, name);
+        setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+    }
     return name;
 }
 
@@ -598,7 +650,7 @@ void Session::applyProject() {
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::Drums) engine.addDrumTrack(t);
-        else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : SynthKind::Phazed);
+        else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : track.kind == TrackKind::Sampler ? SynthKind::Sampler : SynthKind::Phazed);
 
         // Every pattern on the track, in one piece.
         std::unique_ptr<TrackImage> image(new TrackImage);
@@ -625,6 +677,17 @@ void Session::applyProject() {
         engine.setTrackImage(t, std::move(image));
         if (track.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane) loadLane(t, lane);
+        if (track.kind == TrackKind::Sampler) {
+            c = Command();
+            c.type = Command::SetSetting;
+            c.track = t;
+            for (int id = 0; id < sampler::kSettings; ++id) {
+                c.a = id;
+                c.b = track.sampler[id];
+                engine.send(c);
+            }
+            loadTrackSample(t);
+        }
 
         if (const SynthSpec* spec = specFor(track.kind)) {
             c = Command();

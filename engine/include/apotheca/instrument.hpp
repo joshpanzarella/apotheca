@@ -18,11 +18,14 @@ public:
     virtual void noteOn(int note, float velocity) = 0; // MIDI note number; velocity 0..1
     virtual void noteOff(int note) = 0;
     virtual void allNotesOff() = 0;
+    // For an instrument that plays a recording: here it is (or nullptr for
+    // none). The samples stay alive until replaced. Realtime safe.
+    virtual void setSample(const float* data, int length) { (void)data; (void)length; }
 
     // Writes `frames` samples (replacing what was there).
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Twin };
+enum class SynthKind { Phazed, Twin, Sampler };
 
 } // namespace apotheca
