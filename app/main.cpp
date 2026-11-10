@@ -11,6 +11,7 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a pattern already on the grid
 //   --hold-a       with --demo: hold A on a hit, as if adjusting it
+//   --hold-y       with --demo: hold Y on a hit, with its chance turned down
 //   --on-name      with --demo: hold A on a lane's name, with its volume turned down
 //   --on-tempo     with --demo: hold A on the tempo
 //   --shot FILE    save the last frame drawn as a BMP picture
@@ -63,18 +64,26 @@ void fillDemoPattern(PatternScreen& screen) {
         {2, 0, .7f}, {2, 2, .5f}, {2, 4, .7f}, {2, 6, .5f}, {2, 8, .7f}, {2, 10, .5f}, {2, 12, .7f},
         {3, 14, .8f}, {4, 12, .6f}, {6, 3, .5f}, {6, 9, .5f}};
     for (const auto& hit : hits) screen.setStep(hit.lane, hit.step, hit.level);
+    // Some hats late, for swing; some hits that only sometimes play.
+    for (int step : {2, 6, 10}) screen.setNudge(2, step, 0.3f);
+    screen.setNudge(1, 15, -0.25f);
+    screen.setChance(0, 11, 0.5f);
+    screen.setChance(1, 15, 0.25f);
+    screen.setChance(6, 3, 0.5f);
+    screen.setChance(6, 9, 0.75f);
     screen.moveCursorTo(1, 4);
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    bool smoke = false, demo = false, holdA = false, onName = false, onTempo = false;
+    bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false;
     const char* shot = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
+        else if (std::strcmp(argv[i], "--hold-y") == 0) holdY = true;
         else if (std::strcmp(argv[i], "--on-name") == 0) onName = true;
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
@@ -173,7 +182,20 @@ int main(int argc, char** argv) {
         pushKey(SDLK_x, true);
     } else if (holdA) {
         screen.setStep(screen.cursorLane(), screen.cursorStep(), 0.55f); // part full, so the fill shows
+        screen.setNudge(screen.cursorLane(), screen.cursorStep(), 0.3f);  // and late, so the slide shows
         pushKey(SDLK_x, true);
+        pushKey(SDLK_RIGHT, true); // A + D-pad right: one more tenth late
+        pushKey(SDLK_RIGHT, false);
+    } else if (holdY) {
+        pushKey(SDLK_a, true);
+        pushKey(SDLK_DOWN, true); // Y + D-pad down: chance, a tenth at a time
+        pushKey(SDLK_DOWN, false);
+        pushKey(SDLK_DOWN, true);
+        pushKey(SDLK_DOWN, false);
+        pushKey(SDLK_DOWN, true);
+        pushKey(SDLK_DOWN, false);
+        pushKey(SDLK_DOWN, true);
+        pushKey(SDLK_DOWN, false);
     }
 
     bool running = true;

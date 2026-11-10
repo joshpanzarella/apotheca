@@ -50,18 +50,13 @@ Button fromKey(SDL_Keycode k) {
     }
 }
 
-// Left stick on T F G H, right stick on I J K L. Returns the axis index
-// (0 = left x, 1 = left y, 2 = right x, 3 = right y) or -1.
+// The stick on I J K L. Returns the axis index (0 = x, 1 = y) or -1.
 int stickKey(SDL_Keycode k, float& direction) {
     switch (k) {
-    case SDLK_f: direction = -1.f; return 0;
-    case SDLK_h: direction = 1.f; return 0;
-    case SDLK_t: direction = -1.f; return 1;
-    case SDLK_g: direction = 1.f; return 1;
-    case SDLK_j: direction = -1.f; return 2;
-    case SDLK_l: direction = 1.f; return 2;
-    case SDLK_i: direction = -1.f; return 3;
-    case SDLK_k: direction = 1.f; return 3;
+    case SDLK_j: direction = -1.f; return 0;
+    case SDLK_l: direction = 1.f; return 0;
+    case SDLK_i: direction = -1.f; return 1;
+    case SDLK_k: direction = 1.f; return 1;
     default: return -1;
     }
 }

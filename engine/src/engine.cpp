@@ -20,6 +20,9 @@ float ceiling(float x) {
 } // namespace
 
 Engine::Engine() {
+    for (Track& track : tracks_)
+        for (auto& lane : track.chance)
+            for (float& c : lane) c = 1.f;
     tracks_[0].hasDrums = true;
     prepare(48000.f);
 }
@@ -72,13 +75,24 @@ void Engine::apply(const Command& c) {
             tracks_[c.track].pattern[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
+    case Command::SetStepNudge:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
+            tracks_[c.track].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
+        }
+        break;
+    case Command::SetStepChance:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
+            tracks_[c.track].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        }
+        break;
     case Command::Play:
         playing_ = true;
         nextStep_ = 0;
         untilStep_ = 0.0;
+        clearPending();
         break;
     case Command::Stop:
-        playing_ = false;
+        playing_ = false; // waiting hits only play while playing, and Play clears them
         playStep_.store(-1, std::memory_order_relaxed);
         break;
     case Command::SetTempo:
@@ -104,16 +118,65 @@ void Engine::apply(const Command& c) {
     }
 }
 
-void Engine::fireStep() {
+void Engine::clearPending() {
+    for (Track& track : tracks_)
+        for (auto& lane : track.pending)
+            for (auto& p : lane) p = Track::Pending();
+}
+
+// Roll for the hit, then play it now or put it in a waiting slot.
+void Engine::schedule(Track& track, int lane, int step, double delaySamples) {
+    const float velocity = track.pattern[lane][step];
+    const float chance = track.chance[lane][step];
+    if (chance < 1.f) {
+        dice_ = dice_ * 1664525u + 1013904223u;
+        if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return;
+    }
+    if (delaySamples < 1.0) {
+        track.drums.trigger(lane, velocity);
+        return;
+    }
+    for (auto& p : track.pending[lane]) {
+        if (p.velocity <= 0.f) {
+            p.samplesLeft = delaySamples;
+            p.velocity = velocity;
+            return;
+        }
+    }
+}
+
+void Engine::firePending() {
     for (Track& track : tracks_) {
         if (!track.hasDrums) continue;
         for (int lane = 0; lane < kDrumLanes; ++lane) {
-            const float velocity = track.pattern[lane][nextStep_];
-            if (velocity > 0.f) track.drums.trigger(lane, velocity);
+            for (auto& p : track.pending[lane]) {
+                if (p.velocity > 0.f && p.samplesLeft < 1.0) {
+                    track.drums.trigger(lane, p.velocity);
+                    p = Track::Pending();
+                }
+            }
+        }
+    }
+}
+
+// Called on the first sample of step `nextStep_`. Hits on the grid play now.
+// A late hit of this step, and an early hit of the next step, are both
+// somewhere inside the step that is starting, so they are set to wait.
+void Engine::fireStep() {
+    const int following = (nextStep_ + 1) % kSteps;
+    for (Track& track : tracks_) {
+        if (!track.hasDrums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (track.pattern[lane][nextStep_] > 0.f && track.nudge[lane][nextStep_] >= 0.f) {
+                schedule(track, lane, nextStep_, track.nudge[lane][nextStep_] * samplesPerStep_);
+            }
+            if (track.pattern[lane][following] > 0.f && track.nudge[lane][following] < 0.f) {
+                schedule(track, lane, following, (1.0 + track.nudge[lane][following]) * samplesPerStep_);
+            }
         }
     }
     playStep_.store(nextStep_, std::memory_order_relaxed);
-    nextStep_ = (nextStep_ + 1) % kSteps;
+    nextStep_ = following;
 }
 
 void Engine::render(float* interleaved, int frames) {
@@ -126,13 +189,29 @@ void Engine::render(float* interleaved, int frames) {
         if (playing_) {
             // A step starts on its exact sample: the chunk ends where the
             // next step begins.
+            firePending();
             if (untilStep_ <= 0.0) {
                 fireStep();
                 untilStep_ += samplesPerStep_;
             }
-            const int toStep = static_cast<int>(std::ceil(untilStep_));
-            if (toStep < chunk) chunk = toStep < 1 ? 1 : toStep;
+            // Stop the chunk at whichever comes first: the next step, or the
+            // next waiting hit.
+            double next = untilStep_;
+            for (Track& track : tracks_) {
+                if (!track.hasDrums) continue;
+                for (auto& lane : track.pending)
+                    for (auto& p : lane)
+                        if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+            }
+            const int toNext = static_cast<int>(std::ceil(next));
+            if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
             untilStep_ -= chunk;
+            for (Track& track : tracks_) {
+                if (!track.hasDrums) continue;
+                for (auto& lane : track.pending)
+                    for (auto& p : lane)
+                        if (p.velocity > 0.f) p.samplesLeft -= chunk;
+            }
         }
         renderChunk(interleaved, chunk, peaks);
         interleaved += 2 * chunk;

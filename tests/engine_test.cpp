@@ -262,6 +262,95 @@ static void testPatternPlaysOnTheExactSample() {
     CHECK(engine.playStep() == 5);
 }
 
+static void testNudgeMovesAHitOffTheGrid() {
+    const int quarter = kStep / 4;
+    Engine late, early, wrapped;
+    late.send(step(RIM, 4, 1.f));
+    late.send(make(Command::SetStepNudge, 0, RIM, 4, 0.25f));
+    early.send(step(RIM, 4, 1.f));
+    early.send(make(Command::SetStepNudge, 0, RIM, 4, -0.25f));
+    // An early hit on step 1 belongs to the end of the bar before.
+    wrapped.send(step(RIM, 0, 1.f));
+    wrapped.send(make(Command::SetStepNudge, 0, RIM, 0, -0.25f));
+    for (Engine* e : {&late, &early, &wrapped}) e->send(make(Command::Play));
+
+    const int a = onsetOf(renderFrames(late, 16 * kStep));
+    CHECK(a >= 4 * kStep + quarter && a <= 4 * kStep + quarter + 2);
+    const int b = onsetOf(renderFrames(early, 16 * kStep));
+    CHECK(b >= 4 * kStep - quarter && b <= 4 * kStep - quarter + 2);
+    const int c = onsetOf(renderFrames(wrapped, 16 * kStep));
+    CHECK(c >= 16 * kStep - quarter && c <= 16 * kStep - quarter + 2);
+
+    // The limits are half a step either way, and nonsense is ignored.
+    Engine far;
+    far.send(step(RIM, 4, 1.f));
+    far.send(make(Command::SetStepNudge, 0, RIM, 4, 9.f));
+    far.send(make(Command::SetStepNudge, 0, RIM, 4, std::nanf("")));
+    far.send(make(Command::SetStepNudge, 0, RIM, kSteps, 0.f));
+    far.send(make(Command::SetStepNudge, 0, kDrumLanes, 4, 0.f));
+    far.send(make(Command::Play));
+    const int d = onsetOf(renderFrames(far, 16 * kStep));
+    CHECK(d >= 4 * kStep + kStep / 2 && d <= 4 * kStep + kStep / 2 + 2);
+
+    // Stop forgets a hit that was waiting for its moment.
+    Engine stopped;
+    stopped.send(step(RIM, 0, 1.f));
+    stopped.send(make(Command::SetStepNudge, 0, RIM, 0, 0.4f));
+    stopped.send(make(Command::Play));
+    renderFrames(stopped, 100);
+    stopped.send(make(Command::Stop));
+    CHECK(peakOf(renderFrames(stopped, 4 * kStep)) == 0.f);
+}
+
+static void testNudgedHitsKeepTheirOwnLevels() {
+    // A late hit of one step and an early hit of the next can both be
+    // waiting inside the same step. Each must play, at its own level.
+    Engine engine;
+    engine.send(step(RIM, 2, 1.f));
+    engine.send(make(Command::SetStepNudge, 0, RIM, 2, 0.2f));
+    engine.send(step(RIM, 3, 0.5f));
+    engine.send(make(Command::SetStepNudge, 0, RIM, 3, -0.2f));
+    engine.send(make(Command::Play));
+    const std::vector<float> out = renderFrames(engine, 6 * kStep);
+    const int first = 2 * kStep + kStep / 5, second = 3 * kStep - kStep / 5;
+    const std::vector<float> one(out.begin() + 2 * first, out.begin() + 2 * (first + 2000));
+    const std::vector<float> two(out.begin() + 2 * second, out.begin() + 2 * (second + 2000));
+    CHECK(peakOf(std::vector<float>(out.begin(), out.begin() + 2 * (first - 2))) == 0.f);
+    CHECK(peakOf(one) > 0.3f);
+    CHECK(std::fabs(peakOf(two) - 0.5f * peakOf(one)) < 0.02f);
+}
+
+static void testChance() {
+    // Count the bars in which the hit plays.
+    const auto barsPlayed = [](float chance, int bars) {
+        Engine engine;
+        engine.send(step(RIM, 0, 1.f));
+        engine.send(make(Command::SetStepChance, 0, RIM, 0, chance));
+        engine.send(make(Command::Play));
+        int played = 0;
+        for (int bar = 0; bar < bars; ++bar) played += peakOf(renderFrames(engine, 16 * kStep)) > 0.f ? 1 : 0;
+        return played;
+    };
+    CHECK(barsPlayed(1.f, 40) == 40);
+    CHECK(barsPlayed(0.f, 40) == 0);
+    const int half = barsPlayed(0.5f, 200);
+    CHECK(half > 70 && half < 130);
+    const int rare = barsPlayed(0.1f, 200);
+    CHECK(rare > 5 && rare < 45);
+    CHECK(barsPlayed(7.f, 20) == 20);          // held to "always"
+    CHECK(barsPlayed(std::nanf(""), 20) == 20); // ignored, so still "always"
+
+    // It works on a nudged hit too.
+    Engine nudged;
+    nudged.send(step(RIM, 4, 1.f));
+    nudged.send(make(Command::SetStepNudge, 0, RIM, 4, -0.3f));
+    nudged.send(make(Command::SetStepChance, 0, RIM, 4, 0.5f));
+    nudged.send(make(Command::Play));
+    int played = 0;
+    for (int bar = 0; bar < 200; ++bar) played += peakOf(renderFrames(nudged, 16 * kStep)) > 0.f ? 1 : 0;
+    CHECK(played > 70 && played < 130);
+}
+
 static void testPatternLoopsAfterSixteenSteps() {
     Engine engine;
     engine.send(step(RIM, 0, 1.f));
@@ -394,12 +483,16 @@ static void testBlockSizeDoesNotChangeTheSound() {
         e->send(step(KICK, 0, 1.f));
         e->send(step(CL_HAT, 1, 0.7f));
         e->send(step(SNARE, 2, 0.9f));
+        e->send(make(Command::SetStepNudge, 0, SNARE, 2, -0.37f));
+        e->send(make(Command::SetStepNudge, 0, CL_HAT, 1, 0.21f));
+        e->send(step(RIM, 3, 0.9f));
+        e->send(make(Command::SetStepChance, 0, RIM, 3, 0.5f));
         e->send(make(Command::Play));
     }
-    const int total = 20000;
+    const int total = 60000; // more than a bar, so the dice are rolled several times
     const std::vector<float> a = renderFrames(whole, total);
     std::vector<float> b;
-    const int sizes[] = {1, 63, 64, 65, 7, 300, 5413, 4087, 10000};
+    const int sizes[] = {1, 63, 64, 65, 7, 300, 5413, 4087, 10000, 40000};
     for (int n : sizes) {
         const std::vector<float> part = renderFrames(pieces, n);
         b.insert(b.end(), part.begin(), part.end());
@@ -443,6 +536,9 @@ int main() {
     testCeiling();
     testLaneLevel();
     testPatternPlaysOnTheExactSample();
+    testNudgeMovesAHitOffTheGrid();
+    testNudgedHitsKeepTheirOwnLevels();
+    testChance();
     testPatternLoopsAfterSixteenSteps();
     testStepVelocityAndClearing();
     testStopAndRestart();

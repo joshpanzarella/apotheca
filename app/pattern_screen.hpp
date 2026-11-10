@@ -1,21 +1,26 @@
 #pragma once
 // The Pattern screen for the drum track: eight lanes by sixteen steps.
 //
-// One rule for the whole screen, so there is nothing to memorise:
+// The handheld has ONE stick. It does two jobs, and which one depends only on
+// whether a button is held:
 //
-//   move        D-pad or left stick. Hold either and it runs.
-//   A           act on what is under the cursor
-//   hold A + right stick   turn what is under the cursor; it fills or drains
-//   B           remove what is under the cursor
+//   nothing held    the stick (or the D-pad) moves the cursor. Hold it and it runs.
+//   A held          the stick shapes what is under the cursor
+//   Y held          the stick sets how likely it is to play
 //
-// The cursor can sit on three kinds of thing:
+// On a step, that reads as three pictures of one block:
 //
-//   a step       A places a hit      hold A + stick: that hit's level
-//   a lane name  A plays the drum    hold A + stick: that drum's volume
-//   the tempo    (up from the top)   hold A + stick: the tempo
+//   hold A, stick up / down      LEVEL   the block fills or drains
+//   hold A, stick left / right   NUDGE   the block slides early or late
+//   hold Y, stick up / down      CHANCE  the block fades toward a ghost
 //
-// Also: X hears the lane, START plays and stops. With A held, D-pad up and
-// down nudge the same value in exact steps.
+// Taps: A places a hit. Y places a "maybe" hit (50%), or on a hit that is
+// there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane.
+// START plays and stops.
+//
+// The cursor can also sit on a lane's name (A plays the drum, hold A + stick
+// is that drum's volume) and on the tempo (up from the top lane; hold A +
+// stick). With A or Y held, the D-pad nudges the same values in exact steps.
 
 #include <SDL.h>
 
@@ -30,9 +35,9 @@ namespace apotheca {
 struct Feel {
     Uint32 repeatDelayMs = 170;   // hold the D-pad this long before it runs
     Uint32 repeatEveryMs = 30;    // then one move this often (33 a second)
-    float stickCellsPerSecond = 36.f; // left stick held fully over
-    float fillPerSecond = 3.f;    // right stick fully over: empty to full in a third of a second
-    float tempoPerSecond = 90.f;  // right stick fully over, in BPM
+    float stickCellsPerSecond = 36.f; // stick held fully over, moving the cursor
+    float fillPerSecond = 3.f;    // stick fully over: empty to full in a third of a second
+    float tempoPerSecond = 90.f;  // stick fully over, in BPM
 };
 
 struct Fonts {
@@ -43,9 +48,7 @@ struct Fonts {
 
 class PatternScreen {
 public:
-    explicit PatternScreen(Engine& engine) : engine_(engine) {
-        for (float& level : laneLevel_) level = 1.f;
-    }
+    explicit PatternScreen(Engine& engine);
 
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs); // once per frame
@@ -54,8 +57,12 @@ public:
     // For the build check and for stills: writes through the same path the
     // buttons use.
     void setStep(int lane, int step, float level);
+    void setNudge(int lane, int step, float nudge);   // -0.5..0.5 of a step
+    void setChance(int lane, int step, float chance); // 0.05..1
     void moveCursorTo(int lane, int step); // step -1 is the lane's name
     float level(int lane, int step) const { return pattern_[lane][step]; }
+    float nudge(int lane, int step) const { return nudge_[lane][step]; }
+    float chance(int lane, int step) const { return chance_[lane][step]; }
     float laneLevel(int lane) const { return laneLevel_[lane]; }
     bool playing() const { return playing_; }
     int cursorLane() const { return lane_; }
@@ -67,30 +74,43 @@ public:
 
 private:
     static constexpr int kLaneName = -1; // step_ value when the cursor is on a lane's name
+    enum class Axis { None, UpDown, Sideways };
+    enum class Turning { Nothing, Level, Nudge, Chance }; // which value the stick has hold of, for drawing
 
+    bool onStep() const { return !onTempo_ && step_ != kLaneName; }
+    bool hitHere() const { return onStep() && pattern_[lane_][step_] > 0.f; }
     void moveCursor(Button direction);
-    void turn(float amount);  // right stick: smooth, in units of "full range"
-    void nudge(Button direction); // A + D-pad: exact steps
-    void setHitLevel(float level);
+    void placeHit(float chance);
+    void turnUpDown(float amount);   // with A: level, drum volume or tempo
+    void turnSideways(float amount); // with A: nudge
+    void turnChance(float amount);   // with Y
+    void nudgeExact(Button direction, bool withY);
     void setLaneLevel(float level);
     void setTempo(float bpm);
     void audition(int lane, float level);
 
     Engine& engine_;
     float pattern_[kDrumLanes][kSteps] = {};
+    float nudge_[kDrumLanes][kSteps] = {};
+    float chance_[kDrumLanes][kSteps];
     float laneLevel_[kDrumLanes];
     int lane_ = 0;
     int step_ = 0;
     bool onTempo_ = false;
     bool playing_ = false;
-    bool adjusting_ = false; // A is held
     float tempo_ = 120.f;
     float tempoExact_ = 120.f; // the stick moves this; tempo_ is it, rounded
+
+    bool shaping_ = false;  // A is held
+    bool dicing_ = false;   // Y is held
+    bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
+    Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
+    Turning turning_ = Turning::Nothing;
 
     Button repeating_ = Button::None; // D-pad direction being held
     Uint32 repeatAt_ = 0;
     Uint32 lastMs_ = 0;
-    float stickX_ = 0.f, stickY_ = 0.f; // left stick: part-moves saved up
+    float stickX_ = 0.f, stickY_ = 0.f; // cursor part-moves saved up
     bool stickWasX_ = false, stickWasY_ = false;
 };
 

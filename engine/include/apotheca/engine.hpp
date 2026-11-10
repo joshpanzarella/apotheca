@@ -20,6 +20,7 @@
 //     before the audio device starts.
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 
 #include "apotheca/drums.hpp"
@@ -44,7 +45,9 @@ struct Command {
         SetTempo,       // value = beats per minute
         SetTrackLevel,  // track, value = linear gain
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
-        SetLaneLevel    // one drum's volume:         track, a = lane, value = 0..1
+        SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
+        SetStepNudge,   // move a hit off the grid:   track, a = lane, b = step, value = -0.5..0.5 of a step (negative is early)
+        SetStepChance   // how likely a hit plays:    track, a = lane, b = step, value = 0..1
     };
     Type type = Trigger;
     int track = 0;
@@ -79,6 +82,12 @@ private:
         bool hasDrums = false;
         DrumMachine drums;
         float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
+        float nudge[kDrumLanes][kSteps] = {};   // -0.5..0.5 of a step
+        float chance[kDrumLanes][kSteps];       // 0..1, set to 1 in the constructor
+        // Hits waiting for their moment: a late hit from the step that just
+        // began, and an early hit that belongs to the next one.
+        struct Pending { double samplesLeft = 0.0; float velocity = 0.f; };
+        Pending pending[kDrumLanes][2];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
@@ -86,6 +95,9 @@ private:
 
     void apply(const Command& command);
     void fireStep();
+    void schedule(Track& track, int lane, int step, double delaySamples);
+    void firePending();
+    void clearPending();
     void renderChunk(float* interleaved, int frames, float* peaks);
 
     float sampleRate_ = 48000.f;
@@ -100,6 +112,7 @@ private:
     double untilStep_ = 0.0; // samples left before the next step fires
     int nextStep_ = 0;
     std::atomic<int> playStep_{-1};
+    std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
 
     SpscQueue<Command, 256> commands_;
 };

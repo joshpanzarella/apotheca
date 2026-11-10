@@ -24,9 +24,12 @@ constexpr int kTopBarH = 26, kHintsH = 24;
 constexpr int kGridLeft = 116, kGridTop = 54, kStepW = 32, kLaneH = 41;
 constexpr int kCellW = kStepW - 2, kCellH = kLaneH - 3;
 constexpr int kNameX = 8, kNameW = 104;
+constexpr int kBlockW = kCellW - 8, kBlockFull = kCellH - 8;
 
 constexpr float kNewHitLevel = 0.8f;
 constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
+constexpr float kMinChance = 0.05f;   // likewise
+constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
@@ -49,9 +52,21 @@ void box(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color inside, SDL_Colo
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
-float clamp01(float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); }
+float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+// To the next tenth in a direction: 0.05 goes up to 0.1, 0.5 to 0.6.
+float nextTenth(float now, float sign) {
+    const float tenths = now * 10.f;
+    return (sign > 0.f ? std::floor(tenths + 1.001f) : std::ceil(tenths - 1.001f)) / 10.f;
+}
 
 } // namespace
+
+PatternScreen::PatternScreen(Engine& engine) : engine_(engine) {
+    for (float& level : laneLevel_) level = 1.f;
+    for (auto& lane : chance_)
+        for (float& c : lane) c = 1.f;
+}
 
 // ---- writing values --------------------------------------------------------
 
@@ -65,16 +80,43 @@ void PatternScreen::setStep(int lane, int step, float level) {
     c.b = step;
     c.value = level;
     engine_.send(c);
+    // A removed hit leaves nothing behind for the next one placed there.
+    if (level <= 0.f) {
+        setNudge(lane, step, 0.f);
+        setChance(lane, step, 1.f);
+    }
 }
 
-void PatternScreen::setHitLevel(float level) {
-    if (pattern_[lane_][step_] <= 0.f) return; // no hit here to set
-    level = level < kMinHitLevel ? kMinHitLevel : (level > 1.f ? 1.f : level);
-    if (level != pattern_[lane_][step_]) setStep(lane_, step_, level);
+void PatternScreen::setNudge(int lane, int step, float nudge) {
+    if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
+    nudge = clampTo(nudge, -0.5f, 0.5f);
+    if (nudge == nudge_[lane][step]) return;
+    nudge_[lane][step] = nudge;
+    Command c;
+    c.type = Command::SetStepNudge;
+    c.track = 0;
+    c.a = lane;
+    c.b = step;
+    c.value = nudge;
+    engine_.send(c);
+}
+
+void PatternScreen::setChance(int lane, int step, float chance) {
+    if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
+    chance = clampTo(chance, kMinChance, 1.f);
+    if (chance == chance_[lane][step]) return;
+    chance_[lane][step] = chance;
+    Command c;
+    c.type = Command::SetStepChance;
+    c.track = 0;
+    c.a = lane;
+    c.b = step;
+    c.value = chance;
+    engine_.send(c);
 }
 
 void PatternScreen::setLaneLevel(float level) {
-    level = clamp01(level);
+    level = clampTo(level, 0.f, 1.f);
     if (level == laneLevel_[lane_]) return;
     laneLevel_[lane_] = level;
     Command c;
@@ -86,7 +128,7 @@ void PatternScreen::setLaneLevel(float level) {
 }
 
 void PatternScreen::setTempo(float bpm) {
-    tempoExact_ = bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm);
+    tempoExact_ = clampTo(bpm, kMinTempo, kMaxTempo);
     const float whole = std::round(tempoExact_);
     if (whole == tempo_) return;
     tempo_ = whole;
@@ -103,6 +145,12 @@ void PatternScreen::audition(int lane, float level) {
     c.a = lane;
     c.value = level;
     engine_.send(c);
+}
+
+void PatternScreen::placeHit(float chance) {
+    setStep(lane_, step_, kNewHitLevel);
+    setChance(lane_, step_, chance);
+    if (!playing_) audition(lane_, kNewHitLevel);
 }
 
 // ---- the cursor ------------------------------------------------------------
@@ -130,30 +178,57 @@ void PatternScreen::moveCursor(Button direction) {
     if (direction == Button::Right) moveCursorTo(lane_, step_ + 1);
 }
 
-// ---- turning the value under the cursor --------------------------------------
+// ---- the stick, with a button held ---------------------------------------------
 
-void PatternScreen::turn(float amount) {
+void PatternScreen::turnUpDown(float amount) {
     if (amount == 0.f) return;
-    if (onTempo_) setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
-    else if (step_ == kLaneName) setLaneLevel(laneLevel_[lane_] + amount);
-    else setHitLevel(pattern_[lane_][step_] + amount);
+    if (onTempo_) {
+        setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
+    } else if (step_ == kLaneName) {
+        setLaneLevel(laneLevel_[lane_] + amount);
+    } else if (hitHere()) {
+        setStep(lane_, step_, clampTo(pattern_[lane_][step_] + amount, kMinHitLevel, 1.f));
+        turning_ = Turning::Level;
+    }
 }
 
-void PatternScreen::nudge(Button direction) {
+void PatternScreen::turnSideways(float amount) {
+    if (amount == 0.f || !hitHere()) return;
+    setNudge(lane_, step_, nudge_[lane_][step_] + amount);
+    turning_ = Turning::Nudge;
+}
+
+void PatternScreen::turnChance(float amount) {
+    if (amount == 0.f || !hitHere()) return;
+    setChance(lane_, step_, chance_[lane_][step_] + amount);
+    turning_ = Turning::Chance;
+    yDidSomething_ = true;
+}
+
+// The D-pad with A or Y held: the same values, in exact steps.
+void PatternScreen::nudgeExact(Button direction, bool withY) {
     const float sign = direction == Button::Up || direction == Button::Right ? 1.f : -1.f;
     const bool vertical = direction == Button::Up || direction == Button::Down;
-    if (onTempo_) {
+    if (withY) {
+        if (vertical && hitHere()) {
+            setChance(lane_, step_, nextTenth(chance_[lane_][step_], sign));
+            turning_ = Turning::Chance;
+            yDidSomething_ = true;
+        }
+    } else if (onTempo_) {
         setTempo(tempo_ + sign * (vertical ? 1.f : 10.f));
-    } else if (vertical) {
-        // To the next tenth in that direction: 0.05 goes up to 0.1, 0.5 to 0.6.
-        const float now = step_ == kLaneName ? laneLevel_[lane_] : pattern_[lane_][step_];
-        const float tenths = now * 10.f;
-        const float next = (sign > 0.f ? std::floor(tenths + 1.001f) : std::ceil(tenths - 1.001f)) / 10.f;
-        if (step_ == kLaneName) setLaneLevel(next);
-        else setHitLevel(next);
+    } else if (step_ == kLaneName) {
+        if (vertical) setLaneLevel(nextTenth(laneLevel_[lane_], sign));
+    } else if (hitHere()) {
+        if (vertical) {
+            setStep(lane_, step_, clampTo(nextTenth(pattern_[lane_][step_], sign), kMinHitLevel, 1.f));
+            turning_ = Turning::Level;
+        } else {
+            // Sideways: a tenth of a step, early or late.
+            setNudge(lane_, step_, nextTenth(nudge_[lane_][step_] + 0.5f, sign) - 0.5f);
+            turning_ = Turning::Nudge;
+        }
     }
-    // Left and right do nothing on a hit or a lane, so the cursor cannot slide
-    // off the thing being set.
 }
 
 // ---- buttons -------------------------------------------------------------------
@@ -163,14 +238,29 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     if (b == Button::A) {
         if (event.down && !onTempo_) {
-            if (step_ == kLaneName) {
-                audition(lane_, kNewHitLevel);
-            } else if (pattern_[lane_][step_] <= 0.f) {
-                setStep(lane_, step_, kNewHitLevel);
-                if (!playing_) audition(lane_, kNewHitLevel);
-            }
+            if (step_ == kLaneName) audition(lane_, kNewHitLevel);
+            else if (!hitHere()) placeHit(1.f);
         }
-        adjusting_ = event.down;
+        shaping_ = event.down;
+        axis_ = Axis::None; // a new hold is a new choice of job for the stick
+        if (!event.down && !dicing_) turning_ = Turning::Nothing;
+        return;
+    }
+    if (b == Button::Y) {
+        if (event.down) {
+            yDidSomething_ = false;
+            if (onStep() && !hitHere()) {
+                placeHit(kMaybe); // a "maybe" hit
+                yDidSomething_ = true;
+            }
+        } else if (!yDidSomething_ && hitHere()) {
+            // A plain tap on a hit steps its chance down a quarter, and round again.
+            const float now = chance_[lane_][step_];
+            setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
+        }
+        dicing_ = event.down;
+        axis_ = Axis::None;
+        if (!event.down && !shaping_) turning_ = Turning::Nothing;
         return;
     }
     if (!event.down) {
@@ -179,18 +269,19 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (input.held(Button::A)) nudge(b);
+        if (input.held(Button::Y)) nudgeExact(b, true);
+        else if (input.held(Button::A)) nudgeExact(b, false);
         else moveCursor(b);
         repeating_ = b;
         repeatAt_ = 0; // update() starts the wait, on its own clock
         return;
     }
 
-    if (b == Button::B && !input.held(Button::A)) {
-        if (!onTempo_ && step_ != kLaneName && pattern_[lane_][step_] > 0.f) setStep(lane_, step_, 0.f);
+    const bool busy = input.held(Button::A) || input.held(Button::Y);
+    if (b == Button::B && !busy) {
+        if (hitHere()) setStep(lane_, step_, 0.f);
     } else if (b == Button::X && !onTempo_) {
-        const float here = step_ != kLaneName ? pattern_[lane_][step_] : 0.f;
-        audition(lane_, here > 0.f ? here : kNewHitLevel);
+        audition(lane_, hitHere() ? pattern_[lane_][step_] : kNewHitLevel);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         playing_ = !playing_;
         Command c;
@@ -201,18 +292,34 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
 
 void PatternScreen::update(const Input& input, Uint32 nowMs) {
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
-    if (dt > 0.05f) dt = 0.05f; // a stalled frame must not fling the cursor
+    if (dt > 0.05f) dt = 0.05f; // a stalled frame must not fling anything
     lastMs_ = nowMs;
 
-    if (adjusting_) {
-        // The right stick turns the value. Squared, so a small push is a fine
-        // adjustment and a full push is fast.
-        const float push = -input.rightY();
-        turn(push * std::fabs(push) * feel.fillPerSecond * dt);
+    const float x = input.stickX(), y = input.stickY();
+
+    if (shaping_ || dicing_) {
+        // The stick does one job per push. Whichever way it leaves the centre
+        // is the job until it comes back, so setting a level cannot also
+        // slide the hit sideways.
+        if (x == 0.f && y == 0.f) axis_ = Axis::None;
+        else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+
+        // Squared, so a small push is a fine adjustment and a full push is fast.
+        const float up = -y * std::fabs(y) * feel.fillPerSecond * dt;
+        const float right = x * std::fabs(x) * feel.fillPerSecond * dt;
+        if (dicing_) {
+            if (axis_ == Axis::UpDown) turnChance(up);
+        } else if (axis_ == Axis::UpDown) {
+            turnUpDown(up);
+        } else if (axis_ == Axis::Sideways) {
+            turnSideways(right * 0.5f); // the whole range is one step wide: half the speed is plenty
+        }
+        stickX_ = stickY_ = 0.f;
+        stickWasX_ = stickWasY_ = false;
     } else {
-        // The left stick runs the cursor: one move at once, then at a speed
-        // set by how far it is pushed.
-        const float x = input.leftX(), y = input.leftY();
+        axis_ = Axis::None;
+        // Nothing held: the stick runs the cursor. One move at once, then at
+        // a speed set by how far it is pushed.
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
             stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * dt : 1.f;
@@ -232,7 +339,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + feel.repeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + feel.repeatEveryMs;
-        if (input.held(Button::A)) nudge(repeating_);
+        if (input.held(Button::Y)) nudgeExact(repeating_, true);
+        else if (input.held(Button::A)) nudgeExact(repeating_, false);
         else moveCursor(repeating_);
     }
 }
@@ -242,8 +350,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64];
     const bool onName = !onTempo_ && step_ == kLaneName;
-    const bool onStep = !onTempo_ && step_ != kLaneName;
-    const SDL_Color cursorColor = adjusting_ ? kBrass : kTeal;
+    const bool held = shaping_ || dicing_;
+    const SDL_Color cursorColor = held ? kBrass : kTeal;
 
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
@@ -296,8 +404,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, 36.f, text, s % 4 == 0 ? kText : kDim);
     }
 
-    // ---- lanes and steps -------------------------------------------------------
-    const int playStep = engine_.playStep();
+    // ---- lane names and empty cells ----------------------------------------------
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const int y = kGridTop + lane * kLaneH;
         const bool nameHere = onName && lane == lane_;
@@ -306,7 +413,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // drum is turned up.
         box(r, kNameX, y, kNameW, kCellH, kBg, kLine);
         const int filled = static_cast<int>(std::round((kNameW - 2) * laneLevel_[lane]));
-        if (nameHere && adjusting_) {
+        if (nameHere && shaping_) {
             SDL_Color bar = kBrass;
             bar.a = 110;
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, bar);
@@ -318,22 +425,40 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                           !onTempo_ && lane == lane_ ? kTeal : kText);
 
         for (int s = 0; s < kSteps; ++s) {
-            const int cx = kGridLeft + s * kStepW;
-            const bool cursor = onStep && lane == lane_ && s == step_;
-            box(r, cx, y, kCellW, kCellH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
-
-            // The hit is a block that stands as tall as it is loud.
-            const float level = pattern_[lane][s];
-            if (level > 0.f) {
-                const int full = kCellH - 8;
-                const int h = static_cast<int>(std::round(level * full));
-                const bool live = cursor && adjusting_;
-                if (live) outline(r, cx + 4, y + 4, kCellW - 8, full, kDim); // the vessel being filled
-                fill(r, cx + 4, y + 4 + full - h, kCellW - 8, h < 1 ? 1 : h, live ? kTeal : kText);
-            }
-            if (cursor) outline(r, cx - 1, y - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
+            box(r, kGridLeft + s * kStepW, y, kCellW, kCellH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
         }
     }
+
+    // ---- hits ------------------------------------------------------------------------
+    // Drawn after every cell, because a nudged hit sits across a cell's edge.
+    // One block says three things: how tall is how loud, where it sits is
+    // when it plays, and how solid is how likely.
+    const int gridRight = kGridLeft + kSteps * kStepW - 2;
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const int y = kGridTop + lane * kLaneH;
+        for (int s = 0; s < kSteps; ++s) {
+            const float level = pattern_[lane][s];
+            if (level <= 0.f) continue;
+            const bool live = held && onStep() && lane == lane_ && s == step_;
+            int bx = kGridLeft + s * kStepW + 4 + static_cast<int>(std::round(nudge_[lane][s] * kStepW));
+            if (bx < kGridLeft) bx = kGridLeft;
+            if (bx + kBlockW > gridRight) bx = gridRight - kBlockW;
+            int h = static_cast<int>(std::round(level * kBlockFull));
+            if (h < 1) h = 1;
+
+            SDL_Color body = live ? kTeal : kText;
+            const float chance = chance_[lane][s];
+            body.a = static_cast<Uint8>(std::round(255.f * (0.12f + 0.88f * chance * chance)));
+            if (live) outline(r, bx, y + 4, kBlockW, kBlockFull, kDim); // the vessel being filled
+            fill(r, bx, y + 4 + kBlockFull - h, kBlockW, h, body);
+            // A hit that might not play keeps its edge, so a ghost is still findable.
+            if (chance < 1.f) outline(r, bx, y + 4 + kBlockFull - h, kBlockW, h, live ? kTeal : kText);
+        }
+    }
+    if (onStep()) {
+        outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
+    }
+    const int playStep = engine_.playStep();
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;
@@ -342,61 +467,88 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- what is under the cursor, spelled out -----------------------------------
     const int stripY = kGridTop + kDrumLanes * kLaneH + 6;
-    const char* valueName = "LEVEL";
-    float value = -1.f; // 0..1, or -1 for "nothing here"
+    const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
+        fonts.small.draw(r, fx, stripY, name, kDim);
+        fonts.large.draw(r, fx, stripY + 16.f, value, color);
+    };
+    const auto bar = [&](int bx, float part, SDL_Color color) {
+        fill(r, bx, stripY + 20, 150, 6, kLine);
+        if (part > 0.f) fill(r, bx, stripY + 20, static_cast<int>(std::round(150 * part)), 6, color);
+    };
     if (onTempo_) {
-        fonts.small.draw(r, 8.f, stripY, "SONG", kDim);
-        fonts.large.draw(r, 8.f, stripY + 16.f, "TEMPO", kText);
-        valueName = "BPM";
-        value = (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo);
+        field(8.f, "SONG", "TEMPO", kText);
         std::snprintf(text, sizeof text, "%d", static_cast<int>(tempo_));
+        field(134.f, "BPM", text, cursorColor);
+        bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
+    } else if (onName) {
+        field(8.f, "LANE", DrumKit::laneName(lane_), kText);
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(laneLevel_[lane_] * 100.f)));
+        field(134.f, "DRUM VOLUME", text, cursorColor);
+        bar(244, laneLevel_[lane_], cursorColor);
     } else {
-        fonts.small.draw(r, 8.f, stripY, "LANE", kDim);
-        fonts.large.draw(r, 8.f, stripY + 16.f, DrumKit::laneName(lane_), kText);
-        if (onName) {
-            valueName = "DRUM VOLUME";
-            value = laneLevel_[lane_];
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(value * 100.f)));
+        field(8.f, "LANE", DrumKit::laneName(lane_), kText);
+        std::snprintf(text, sizeof text, "%d", step_ + 1);
+        field(120.f, "STEP", text, kText);
+        if (!hitHere()) {
+            field(190.f, "LEVEL", "-", kDim);
+            field(330.f, "NUDGE", "-", kDim);
+            field(470.f, "CHANCE", "-", kDim);
         } else {
-            fonts.small.draw(r, 134.f, stripY, "STEP", kDim);
-            char number[16];
-            std::snprintf(number, sizeof number, "%d", step_ + 1);
-            fonts.large.draw(r, 134.f, stripY + 16.f, number, kText);
-            if (pattern_[lane_][step_] > 0.f) {
-                value = pattern_[lane_][step_];
-                std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(value * 100.f)));
-            } else {
-                std::snprintf(text, sizeof text, "-");
-            }
+            // The one the stick has hold of is brass; the others are quiet.
+            const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
+            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pattern_[lane_][step_] * 100.f)));
+            field(190.f, "LEVEL", text, shade(Turning::Level));
+            const int n = static_cast<int>(std::round(nudge_[lane_][step_] * 100.f));
+            if (n == 0) std::snprintf(text, sizeof text, "ON GRID");
+            else std::snprintf(text, sizeof text, "%d%% %s", std::abs(n), n < 0 ? "EARLY" : "LATE");
+            field(330.f, "NUDGE", text, shade(Turning::Nudge));
+            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(chance_[lane_][step_] * 100.f)));
+            field(470.f, "CHANCE", text, shade(Turning::Chance));
         }
     }
-    const float valueX = onStep ? 260.f : 134.f;
-    fonts.small.draw(r, valueX, stripY, valueName, kDim);
-    fonts.large.draw(r, valueX, stripY + 16.f, text, value < 0.f ? kDim : cursorColor);
-    // The same value as a bar, so the fill reads at a glance.
-    const int barX = static_cast<int>(valueX) + 110;
-    fill(r, barX, stripY + 20, 180, 6, kLine);
-    if (value > 0.f) fill(r, barX, stripY + 20, static_cast<int>(std::round(180 * value)), 6, cursorColor);
 
     // ---- hints -------------------------------------------------------------------
+    // Only what does something here, and what the ONE stick does right now.
     const int hintsY = kScreenH - kHintsH;
     fill(r, 0, hintsY, kScreenW, kHintsH, kPanel);
     fill(r, 0, hintsY, kScreenW, 1, kLine);
-    const char* act = onTempo_ ? nullptr : onName ? "play drum" : "place";
-    const char* turned = onTempo_ ? "tempo" : onName ? "volume" : "level";
-    const char* hints[6][2] = {{"D-PAD / L-STICK", "move"}, {"A", act}, {"HOLD A + R-STICK", turned},
-                               {"B", onStep ? "delete" : nullptr}, {"X", onTempo_ ? nullptr : "hear"},
-                               {"START", playing_ ? "stop" : "play"}};
+    const char* hints[6][2] = {};
+    int count = 0;
+    const auto hint = [&](const char* key, const char* does) { hints[count][0] = key; hints[count][1] = does; ++count; };
+    if (shaping_ && onStep()) {
+        hint("STICK UP / DOWN", "level");
+        hint("STICK LEFT / RIGHT", "nudge early / late");
+    } else if (dicing_ && onStep()) {
+        hint("STICK UP / DOWN", "chance");
+        hint("TAP Y", "100 > 75 > 50 > 25");
+    } else if (shaping_) {
+        hint("STICK UP / DOWN", onTempo_ ? "tempo" : "drum volume");
+    } else if (onTempo_) {
+        hint("STICK", "move");
+        hint("HOLD A + STICK", "tempo");
+        hint("START", playing_ ? "stop" : "play");
+    } else if (onName) {
+        hint("STICK", "move");
+        hint("A", "play drum");
+        hint("HOLD A + STICK", "volume");
+        hint("START", playing_ ? "stop" : "play");
+    } else {
+        hint("STICK", "move");
+        hint("A", hitHere() ? "hold: level / nudge" : "place");
+        hint("Y", hitHere() ? "chance" : "place a maybe");
+        if (hitHere()) hint("B", "delete");
+        hint("X", "hear");
+        hint("START", playing_ ? "stop" : "play");
+    }
     const float hintTextY = hintsY + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
     x = 8.f;
-    for (const auto& hint : hints) {
-        if (!hint[1]) continue; // this button does nothing here
-        const float keyW = fonts.small.width(hint[0]) + 8.f;
+    for (int i = 0; i < count; ++i) {
+        const float keyW = fonts.small.width(hints[i][0]) + 8.f;
         fill(r, static_cast<int>(x), hintsY + 5, static_cast<int>(keyW), kHintsH - 9, kText);
-        fonts.small.draw(r, x + 4.f, hintTextY, hint[0], kBg);
+        fonts.small.draw(r, x + 4.f, hintTextY, hints[i][0], kBg);
         x += keyW + 5.f;
-        fonts.small.draw(r, x, hintTextY, hint[1], kDim);
-        x += fonts.small.width(hint[1]) + 11.f;
+        fonts.small.draw(r, x, hintTextY, hints[i][1], kDim);
+        x += fonts.small.width(hints[i][1]) + 11.f;
     }
 }
 

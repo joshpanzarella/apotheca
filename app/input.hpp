@@ -1,7 +1,7 @@
 #pragma once
 // The handheld's controls, and nothing else.
 //
-// The rest of the app only ever sees these buttons and sticks, named the way
+// The rest of the app only ever sees these buttons and the one stick, named the way
 // they are printed on the Anbernic RG40XXV. The keyboard is a stand-in for
 // testing on a desk: each key presses one handheld button, so the keyboard
 // can do nothing the handheld cannot.
@@ -15,7 +15,7 @@ enum class Button {
     A, B, X, Y,              // face buttons, by their printed letters
     L1, R1, L2, R2,          // shoulder buttons
     Start, Select, Menu,
-    L3, R3,                  // pressing the sticks in
+    L3, R3,                  // pressing the stick in (either SDL name)
     Count,
     None = Count
 };
@@ -33,16 +33,17 @@ public:
 
     bool held(Button button) const { return held_[static_cast<int>(button)]; }
 
-    // Sticks, each axis -1..1 with a dead zone already taken out.
-    // Up and left are negative.
-    float leftX() const { return shaped(axes_[0]); }
-    float leftY() const { return shaped(axes_[1]); }
-    float rightX() const { return shaped(axes_[2]); }
-    float rightY() const { return shaped(axes_[3]); }
+    // THE stick. The RG40XXV has one. Each axis is -1..1 with a dead zone
+    // already taken out; up and left are negative. Firmwares differ on
+    // whether they report it as SDL's left or right stick, so both are read
+    // and whichever is pushed further counts.
+    float stickX() const { return shaped(further(axes_[0], axes_[2])); }
+    float stickY() const { return shaped(further(axes_[1], axes_[3])); }
 
 private:
     bool set(Button button, bool down, ButtonEvent& out);
     static float shaped(float v);
+    static float further(float a, float b) { return (a < 0 ? -a : a) >= (b < 0 ? -b : b) ? a : b; }
 
     bool held_[static_cast<int>(Button::Count)] = {};
     float axes_[4] = {};
