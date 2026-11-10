@@ -18,8 +18,10 @@ each one bar, each with its own repeat count. Three screens:
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
   For drums, the kit's levels and scope.
 
-Not built yet: effects on screen, saving and opening songs, loading samples,
-the sound designer web page.
+Songs are kept as you go: there is no save button.
+
+Not built yet: effects on screen, loading samples, chord input, the sound
+designer web page.
 
 ## Build
 
@@ -29,7 +31,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, song, both synths, screen and app tests
+ctest --test-dir build      # engine, song, both synths, screens, app and saving tests
 ./build/apotheca            # the app
 ```
 
@@ -63,6 +65,20 @@ quits.
 | + TRACK | Pick DRUMS, PHAZED or TWIN ANALOG | | | |
 
 The song runs to the last scene with anything in it, then comes round.
+
+**SELECT** lists the songs: start a new one, or open another.
+
+### Songs
+
+- **Nothing to save.** The song is written to its file a couple of seconds
+  after any change, and again on the way out.
+- **The last song open comes back** at the next start.
+- **New songs name themselves** with two words ("brass moth"), so nothing has
+  to be typed on a D-pad.
+- **Files** live in a `songs` folder beside the program, one `.song` text
+  file each. They can be read by eye, copied and backed up. The format is
+  described at the top of `app/song_file.hpp`.
+- Deleting a song is done by deleting its file; there is no button for it yet.
 
 ### PATTERN, drums
 

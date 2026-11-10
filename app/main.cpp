@@ -17,6 +17,7 @@
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
+//   --songs DIR    keep songs in this folder (the default is beside the program)
 
 #include <SDL.h>
 
@@ -162,6 +163,7 @@ int main(int argc, char** argv) {
     int paint = 0; // 1: R1, 2: L1
     const char* view = "";
     const char* shot = nullptr;
+    const char* songs = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
@@ -174,6 +176,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
+        else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
     }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -239,7 +242,10 @@ int main(int argc, char** argv) {
 
     Input input;
     App app(engine);
-    if (demo) {
+    if (songs) {
+        app.session().useSongFolder(songs, 1);
+        if (demo) fillDemoSong(app);
+    } else if (demo) {
         fillDemoSong(app);
     } else if (!smoke && !shot) {
         // Songs are kept in a folder beside the program, and the last one
