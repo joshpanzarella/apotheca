@@ -572,7 +572,9 @@ void testTapYOnALaneNameRollsTheDice() {
         CHECK(rig.screen.level(2, step) >= 0.5f && rig.screen.level(2, step) <= 1.f);
         CHECK(rig.screen.nudge(2, step) == 0.f && rig.screen.chance(2, step) == 1.f);
     }
-    CHECK(rig.listen() > 0.05f); // you hear it land
+    const float heard = rig.listen();
+    CHECK(heard > 0.05f); // you hear it land
+    CHECK(heard < 0.6f);  // as one hit, not all four fired at once
     // Only that lane.
     for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(lane == 2 || hitsOn(rig, lane) == 0u);
 
@@ -604,12 +606,16 @@ void testHoldYOnALaneNameFillsAndDrains() {
         rig.tap(SDLK_DOWN);
         CHECK(hitsOn(rig, 2) == trail[i]);
     }
-    // And up again brings the same hits back, at the same levels.
-    const float levelBefore = rig.screen.level(2, 0) + rig.screen.level(2, 4) + rig.screen.level(2, 8) + rig.screen.level(2, 12);
-    rig.tap(SDLK_UP);
-    CHECK(hitsOn(rig, 2) == trail[1]);
-    rig.tap(SDLK_DOWN);
-    CHECK(near(rig.screen.level(2, 0) + rig.screen.level(2, 4) + rig.screen.level(2, 8) + rig.screen.level(2, 12), levelBefore));
+    // And up again brings the same hits back, each at the level it had.
+    for (int i = 1; i < 6; ++i) rig.tap(SDLK_UP);
+    CHECK(hitsOn(rig, 2) == trail[5]);
+    float levels[kSteps];
+    for (int step = 0; step < kSteps; ++step) levels[step] = rig.screen.level(2, step);
+    for (int i = 0; i < 5; ++i) rig.tap(SDLK_DOWN);
+    for (int i = 0; i < 5; ++i) rig.tap(SDLK_UP);
+    for (int step = 0; step < kSteps; ++step) CHECK(rig.screen.level(2, step) == levels[step]);
+    for (int i = 0; i < 5; ++i) rig.tap(SDLK_DOWN);
+    CHECK(hitsOn(rig, 2) == trail[0]);
 
     // The stick is fast: a full lane in under a second, and it stops there.
     rig.key(STICK_UP, true);
@@ -626,6 +632,19 @@ void testHoldYOnALaneNameFillsAndDrains() {
     CHECK(hitsOn(rig, 2) == 0u);
     CHECK(rig.screen.cursorLane() == 2 && rig.screen.cursorStep() == -1);
     CHECK(rig.screen.laneLevel(2) == 1.f); // Y never touches the drum's volume
+}
+
+void testSteppingTheDiceIsNotATap() {
+    // Hold Y, add two hits with the D-pad, let go. Letting go must not roll.
+    Rig rig;
+    rig.screen.moveCursorTo(3, -1);
+    rig.key(Y, true);
+    rig.tap(SDLK_UP);
+    rig.tap(SDLK_UP);
+    const unsigned placed = hitsOn(rig, 3);
+    rig.key(Y, false);
+    CHECK(countOf(placed) == 2);
+    CHECK(hitsOn(rig, 3) == placed);
 }
 
 void testTheDiceNeverTakeYourHits() {
@@ -936,6 +955,7 @@ int main(int, char**) {
     testYDoesNothingOnTheTempo();
     testTapYOnALaneNameRollsTheDice();
     testHoldYOnALaneNameFillsAndDrains();
+    testSteppingTheDiceIsNotATap();
     testTheDiceNeverTakeYourHits();
     testTheDiceLeanTowardTheBeat();
     testEachLaneHasItsOwnDice();
