@@ -81,7 +81,12 @@ float NoteScreen::lengthNow() const {
 
 void NoteScreen::moveCursorTo(int pitch, int step) {
     pitch_ = pitch < kLowest ? kLowest : (pitch > kHighest ? kHighest : pitch);
-    step_ = ((step % kSteps) + kSteps) % kSteps;
+    // A step past either end of the bar is in the next bar of the cell, or
+    // the one before; past the cell's ends it comes round.
+    const int all = cellBars() * kSteps;
+    const int at = (((project_.bar * kSteps + step) % all) + all) % all;
+    project_.bar = at / kSteps;
+    step_ = at % kSteps;
     // The keys scroll to keep the cursor in view.
     if (pitch_ < low_) low_ = pitch_;
     if (pitch_ > low_ + (kVisibleKeys - 1)) low_ = pitch_ - (kVisibleKeys - 1);
@@ -97,7 +102,7 @@ void NoteScreen::moveCursor(Button direction) {
 
 // The engine is told the whole bar again: a chord's notes take whichever
 // slots the loose notes leave, so one change can move several.
-void NoteScreen::resend() { session_.sendNotePattern(project_.track, project_.scene); }
+void NoteScreen::resend() { session_.sendNoteBar(project_.track, project_.scene, project_.bar); }
 
 // A new one-step note under the cursor. False if one is already there, or
 // the pattern is full.
@@ -134,7 +139,7 @@ void NoteScreen::setLength(float length) {
     float& now = slot >= 0 ? pat().notes[slot].length : pat().chords[chord].length;
     // It may run to the end of the bar, or up to the next note on this key
     // (for a chord, up to the next chord).
-    int room = kSteps - start;
+    int room = (cellBars() - project_.bar) * kSteps - start; // to the end of the cell: a note may run on over the bar lines
     if (slot >= 0) {
         for (const NoteEvent& other : pat().notes) {
             if (&other != &pat().notes[slot] && other.velocity > 0.f && other.pitch == pitch_ && other.step > start && other.step - start < room) {
@@ -183,7 +188,8 @@ ChordEvent NoteScreen::inHand() const {
     const ChordShape& shape = p.chords[static_cast<std::size_t>(hand_) % p.chords.size()];
     ChordEvent c = makeChord(shape, pitch_, step_, handLength_, kNewLevel, inversion_);
     // It stops at the end of the bar, or where the next chord starts.
-    if (c.length > kSteps - c.step) c.length = kSteps - c.step;
+    const float most = static_cast<float>((cellBars() - project_.bar) * kSteps - c.step); // to the end of the cell
+    if (c.length > most) c.length = most;
     for (const ChordEvent& other : pat().chords) {
         if (other.velocity > 0.f && other.step > c.step && other.step - c.step < c.length) c.length = other.step - c.step;
     }
@@ -383,6 +389,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     lastMs_ = nowMs;
+    if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
     const float x = input.stickX(), y = input.stickY();
 
     if (picking_) {
@@ -442,7 +449,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
 void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[48], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    std::snprintf(text, sizeof text, "%s / SCENE %d", name, project_.scene + 1);
+    if (cellBars() > 1) std::snprintf(text, sizeof text, "%s / SCENE %d / BAR %d OF %d", name, project_.scene + 1, project_.bar + 1, cellBars());
+    else std::snprintf(text, sizeof text, "%s / SCENE %d", name, project_.scene + 1);
     topBar(r, fonts, View::Pattern, text, project_);
     const bool held = shaping_ || painting_ || picking_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
@@ -505,7 +513,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside, float nudge = 0.f) {
         // A nudged note sits a little up or down from its step line: early is up.
         const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH));
-        const int full = kCellW - 2, tall = static_cast<int>(std::round(length * kRowH)) - 4, h = tall < 3 ? 3 : tall;
+        const int full = kCellW - 2, bottom = kGridTop + kSteps * kRowH - 3;
+        int tall = static_cast<int>(std::round(length * kRowH)) - 4;
+        if (y + tall > bottom) tall = bottom - y; // it runs on into the next bar
+        const int h = tall < 3 ? 3 : tall;
         int w = static_cast<int>(std::round(level * full));
         if (w < 2) w = 2;
         outline(r, x, y, full, h, edge);
@@ -532,6 +543,21 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, static_cast<int>(lx), ly, static_cast<int>(w), 14, color);
         fonts.small.draw(r, lx + 3.f, ly + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
     };
+    // What is still sounding from earlier bars of the cell: drawn faint, from
+    // the top, for as long as it has left. It is changed in the bar it starts in.
+    for (int earlier = 0; earlier < project_.bar; ++earlier) {
+        NoteEvent from[kMaxNotes];
+        project_.current().notes[project_.scene][earlier].render(from);
+        const float gone = static_cast<float>((project_.bar - earlier) * kSteps);
+        for (const NoteEvent& n : from) {
+            const float left = static_cast<float>(n.step) + n.length - gone;
+            if (n.velocity <= 0.f || left <= 0.f || !shows(n.pitch)) continue;
+            int tall = static_cast<int>(std::round(left * kRowH)) - 4;
+            const int most = kSteps * kRowH - 4;
+            outline(r, gx(n.pitch) + 1, kGridTop + 1, kCellW - 2, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
+            fill(r, gx(n.pitch) + 5, kGridTop + 1, 3, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
+        }
+    }
     for (const NoteEvent& n : pat().notes) {
         if (n.velocity <= 0.f || !shows(n.pitch)) continue;
         const bool live = held && &n == under;
@@ -544,7 +570,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     outline(r, gx(pitch_) - 1, gy(step_) - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
-    const int playStep = session_.engine.playScene() == project_.scene ? session_.engine.playStep() : -1;
+    const int playStep = session_.engine.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), kVisibleKeys * kKeyW - 2, kCellH, faded(kPurple, 76));
 
     // ---- what is under the cursor ---------------------------------------------------

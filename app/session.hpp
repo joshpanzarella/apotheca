@@ -165,9 +165,13 @@ public:
     // Tell the engine everything in the project, from nothing.
     void applyProject();
 
-    // Write a whole pattern to the engine, replacing what it had.
+    // Write a whole cell to the engine (every bar of it, and its length),
+    // replacing what it had.
     void sendDrumPattern(int track, int scene);
     void sendNotePattern(int track, int scene);
+    void sendNoteBar(int track, int scene, int bar); // one bar of it: what the piano roll changes
+    // How long a track's cell is in a scene: 1, 2, 4 or 8 bars.
+    void setCellBars(int track, int scene, int bars);
 
 private:
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };

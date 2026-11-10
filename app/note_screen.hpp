@@ -21,6 +21,11 @@
 //   hold R1 and drag      paint a note on every step crossed
 //   START                 play / stop (this scene, looping)
 //
+// A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The roll
+// shows one bar; running the cursor off the bottom goes on to the next bar,
+// and the top bar says which (BAR 2 OF 4). A note may run on over the bar
+// lines to the end of the cell; in the bars after, it shows faint from the top.
+//
 // Chords come from the song's chord pack, and Y is the chord button:
 //
 //   hold Y                the pack's chords appear along the bottom, and the
@@ -78,8 +83,9 @@ public:
 private:
     enum class Axis { None, UpDown, Sideways };
 
-    NotePattern& pat() { return project_.current().notes[project_.scene]; }
-    const NotePattern& pat() const { return project_.current().notes[project_.scene]; }
+    NotePattern& pat() { return project_.current().notes[project_.scene][project_.bar]; }
+    const NotePattern& pat() const { return project_.current().notes[project_.scene][project_.bar]; }
+    int cellBars() const { return project_.current().bars[project_.scene]; }
     void moveCursor(Button direction);
     void press(Button direction); // a direction, whatever it means just now
     void resend();

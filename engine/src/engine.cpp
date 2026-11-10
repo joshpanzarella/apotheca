@@ -375,6 +375,20 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
+    case Command::ClearCell:
+        if (validTrack(c.track) && validScene(c.scene)) {
+            Track& track = tracks_[c.track];
+            for (int slot = c.scene * kMaxBars; slot < (c.scene + 1) * kMaxBars; ++slot) {
+                DrumScene& scene = track.drumScenes[slot];
+                for (int lane = 0; lane < kDrumLanes; ++lane)
+                    for (int step = 0; step < kSteps; ++step) {
+                        scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
+                        scene.chance[lane][step] = 1.f;
+                    }
+                for (Note& note : track.notes[slot]) note = Note();
+            }
+        }
+        break;
     case Command::SetCellBars:
         if (validTrack(c.track) && validScene(c.scene)) tracks_[c.track].bars[c.scene] = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
         break;

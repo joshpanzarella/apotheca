@@ -69,7 +69,7 @@ struct Rig {
         for (int i = 0; i < 40 && listen(48000) > 1e-5f; ++i) {}
     }
     NoteScreen& notes() { return app.notes(); }
-    NotePattern& pat() { return app.project().tracks[1].notes[0]; }
+    NotePattern& pat() { return app.project().tracks[1].notes[0][0]; }
     const ChordEvent* chordOn(int step) { const int i = pat().chordAt(step); return i < 0 ? nullptr : &pat().chords[i]; }
 };
 
@@ -547,7 +547,7 @@ void testPacksAndTheSongFile() {
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back));
     CHECK(songText(*back) == text);
-    const NotePattern& p = back->tracks[1].notes[0];
+    const NotePattern& p = back->tracks[1].notes[0][0];
     const int slot = p.chordAt(0);
     CHECK(slot >= 0 && c && p.chords[slot].root == c->root && p.chords[slot].count == c->count && p.chords[slot].length == 4);
     CHECK(slot >= 0 && std::strcmp(p.chords[slot].name, c->name) == 0 && p.chords[slot].intervals[c->count - 1] == c->intervals[c->count - 1]);
@@ -564,7 +564,7 @@ void testPacksAndTheSongFile() {
         std::unique_ptr<Project> song(new Project);
         if (!parseSong(head + lines, *song)) return -1;
         int count = 0;
-        for (const ChordEvent& e : song->tracks[0].notes[0].chords) count += e.velocity > 0.f ? 1 : 0;
+        for (const ChordEvent& e : song->tracks[0].notes[0][0].chords) count += e.velocity > 0.f ? 1 : 0;
         return count;
     };
     CHECK(chordsIn("chord 1 4 0.8 0 60 C 0 4 7\n") == 1);
@@ -582,15 +582,15 @@ void testPacksAndTheSongFile() {
     {
         std::unique_ptr<Project> song(new Project);
         CHECK(parseSong(head + "chord 15 9 7 -8 60 ? 0 4 99 7\n", *song));
-        const ChordEvent& e = song->tracks[0].notes[0].chords[0];
+        const ChordEvent& e = song->tracks[0].notes[0][0].chords[0];
         CHECK(e.length == 2 && e.velocity == 1.f && e.inversion == -kMaxInversion && e.count == 3 && e.name[0] == 0);
         // Sixty-four notes, however the file is written.
         std::string many;
         for (int i = 0; i < 62; ++i) many += "note 1 30 1 1\n";
         CHECK(parseSong(head + many + "chord 1 4 0.8 0 60 C 0 4 7\n", *song));
-        CHECK(song->tracks[0].notes[0].used() == 62);
+        CHECK(song->tracks[0].notes[0][0].used() == 62);
         CHECK(parseSong(head + "chord 1 4 0.8 0 60 C 0 4 7\n" + many, *song));
-        CHECK(song->tracks[0].notes[0].used() == kMaxNotes);
+        CHECK(song->tracks[0].notes[0][0].used() == kMaxNotes);
     }
 }
 

@@ -49,6 +49,10 @@
 // there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane.
 // START plays and stops.
 //
+// A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The grid
+// shows one bar; running the cursor off the right of step 16 goes on to the
+// next bar, and the top bar says which (BAR 2 OF 4).
+//
 // The cursor can also sit on a lane's name (A plays the drum, hold A + stick
 // is that drum's volume) and on the tempo (up from the top lane; hold A +
 // stick). With A or Y held, the D-pad nudges the same values in exact steps.
@@ -114,8 +118,8 @@ private:
     bool onStep() const { return !onTempo_ && step_ != kLaneName; }
     bool hitHere() const { return onStep() && pat().level[lane_][step_] > 0.f; }
     // The pattern being shown: the project's current track and scene.
-    DrumPattern& pat() { return project_.current().drums[project_.scene]; }
-    const DrumPattern& pat() const { return project_.current().drums[project_.scene]; }
+    DrumPattern& pat() { return project_.current().drums[project_.scene][project_.bar]; }
+    const DrumPattern& pat() const { return project_.current().drums[project_.scene][project_.bar]; }
     TrackData& trk() { return project_.current(); }
     const TrackData& trk() const { return project_.current(); }
     void moveCursor(Button direction);

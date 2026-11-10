@@ -49,6 +49,17 @@ void SongScreen::moveCursor(Button direction) {
     if (copying_) pasteHere();
 }
 
+// A cell's length: 1, 2, 4 or 8 bars. One step along that row each time.
+void SongScreen::stepBars(int by) {
+    static const int lengths[4] = {1, 2, 4, 8};
+    int now = 0;
+    for (int i = 0; i < 4; ++i)
+        if (lengths[i] <= project_.tracks[column_].bars[scene_]) now = i;
+    const int to = now + by;
+    if (to < 0 || to > 3) return;
+    session_.setCellBars(column_, scene_, lengths[to]);
+}
+
 void SongScreen::setRepeats(int count) {
     count = count < 1 ? 1 : (count > kMaxRepeats ? kMaxRepeats : count);
     if (count == project_.repeats[scene_]) return;
@@ -62,11 +73,14 @@ void SongScreen::setRepeats(int count) {
 
 void SongScreen::clearCell(int track, int scene) {
     TrackData& t = project_.tracks[track];
+    // Every bar of it, and it is one bar long again.
+    t.bars[scene] = 1;
+    if (track == project_.track && scene == project_.scene) project_.bar = 0;
     if (t.kind == TrackKind::Drums) {
-        t.drums[scene] = DrumPattern();
+        for (DrumPattern& bar : t.drums[scene]) bar = DrumPattern();
         session_.sendDrumPattern(track, scene);
     } else if (isSynth(t.kind)) {
-        t.notes[scene] = NotePattern();
+        for (NotePattern& bar : t.notes[scene]) bar = NotePattern();
         session_.sendNotePattern(track, scene);
     }
 }
@@ -75,11 +89,13 @@ void SongScreen::copyCell(int fromTrack, int fromScene, int toTrack, int toScene
     TrackData& from = project_.tracks[fromTrack];
     TrackData& to = project_.tracks[toTrack];
     if (from.kind != to.kind || (fromTrack == toTrack && fromScene == toScene)) return; // a drum bar cannot go on a synth
+    to.bars[toScene] = from.bars[fromScene]; // the whole cell: its length and every bar
+    if (toTrack == project_.track && toScene == project_.scene) project_.bar = 0;
     if (to.kind == TrackKind::Drums) {
-        to.drums[toScene] = from.drums[fromScene];
+        for (int bar = 0; bar < kMaxBars; ++bar) to.drums[toScene][bar] = from.drums[fromScene][bar];
         session_.sendDrumPattern(toTrack, toScene);
     } else if (isSynth(to.kind)) {
-        to.notes[toScene] = from.notes[fromScene];
+        for (int bar = 0; bar < kMaxBars; ++bar) to.notes[toScene][bar] = from.notes[fromScene][bar];
         session_.sendNotePattern(toTrack, toScene);
     }
 }
@@ -200,9 +216,11 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::A) {
         if (event.down) {
             if (onCell()) {
-                project_.track = column_;
-                project_.scene = scene_;
-                session_.view = View::Pattern;
+                // Held, the stick sets how many bars long it is. Let go
+                // without doing that, and it opens.
+                holding_ = true;
+                turned_ = false;
+                saved_ = 0.f;
             } else if (column_ == addColumn()) {
                 choosing_ = true;
                 choice_ = 1; // Phazed: the likelier second track
@@ -212,8 +230,13 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 saved_ = 0.f;
             }
         } else {
-            // A plain tap on a repeat count: 1, 2, 4, 8, and round again.
-            if (holding_ && !turned_) {
+            if (holding_ && !turned_ && onCell()) {
+                project_.track = column_;
+                project_.scene = scene_;
+                project_.bar = 0;
+                session_.view = View::Pattern;
+            } else if (holding_ && !turned_) {
+                // A plain tap on a repeat count: 1, 2, 4, 8, and round again.
                 const int now = project_.repeats[scene_];
                 setRepeats(now < 2 ? 2 : now < 4 ? 4 : now < 8 ? 8 : 1);
             }
@@ -235,7 +258,11 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (holding_) {
+        if (holding_ && onCell()) {
+            // A held on a cell: left and right make it shorter or longer.
+            if (b == Button::Right) stepBars(1), turned_ = true;
+            if (b == Button::Left) stepBars(-1), turned_ = true;
+        } else if (holding_) {
             // A held on a repeat count: up and down change it by one.
             if (b == Button::Up) setRepeats(project_.repeats[scene_] + 1), turned_ = true;
             if (b == Button::Down) setRepeats(project_.repeats[scene_] - 1), turned_ = true;
@@ -273,7 +300,17 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
         if (wasOpen) scene_ = column_ = top_ = 0;
     }
 
-    if (holding_) {
+    if (holding_ && onCell()) {
+        // The stick sets the cell's length: one move at once, then slowly (there are only four).
+        if (x == 0.f) saved_ = 0.f, stickWasX_ = false;
+        else {
+            saved_ += stickWasX_ ? std::fabs(x) * 3.f * dt : 1.f;
+            stickWasX_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) stepBars(x > 0.f ? 1 : -1), turned_ = true;
+        }
+        stickX_ = stickY_ = 0.f;
+        stickWasY_ = false;
+    } else if (holding_) {
         // The stick turns the repeat count.
         const float push = -y;
         saved_ += push * std::fabs(push) * kRepeatsPerSecond * dt;
@@ -360,7 +397,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere ? 10.f : 15.f), text, inSong ? kText : kDim);
         if (playingHere) {
             // One block per pass, filling as the bar goes by.
-            sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, session_.engine.playRepeat(), playStep);
+                sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, session_.engine.playRepeat(),
+                          session_.engine.playBar() * kSteps + playStep, project_.sceneBars(scene) * kSteps);
         }
         if (column_ == kRepeatColumn && scene == scene_) {
             if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));
@@ -374,32 +412,59 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (empty) outline(r, x, y, colW, kRowH - 4, inSong ? kLine : kPanel);
             else box(r, x, y, colW, kRowH - 4, kPanel, playingHere ? kPurple : kLine);
 
-            // A small picture of the bar.
-            const float stepW = (colW - 6) / 16.f;
+            // A small picture of the cell: all its bars, as wide as its share of
+            // the scene. A cell shorter than the scene is drawn once, and the
+            // room after it says how many times it goes round.
+            const int cellBars = track.bars[scene], sceneBars = project_.sceneBars(scene);
+            const int pictureW = (colW - 6) * cellBars / sceneBars;
+            const float stepW = static_cast<float>(pictureW) / (16.f * cellBars);
             if (track.kind == TrackKind::Drums) {
-                const DrumPattern& p = track.drums[scene];
-                for (int lane = 0; lane < kDrumLanes; ++lane)
-                    for (int step = 0; step < kSteps; ++step)
-                        if (p.level[lane][step] > 0.f) {
-                            fill(r, x + 3 + static_cast<int>(step * stepW), y + 4 + lane * 4, 2, 2,
-                                 faded(kText, 90 + static_cast<int>(165 * p.level[lane][step])));
-                        }
+                for (int bar = 0; bar < cellBars; ++bar) {
+                    const DrumPattern& p = track.drums[scene][bar];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int step = 0; step < kSteps; ++step)
+                            if (p.level[lane][step] > 0.f) {
+                                fill(r, x + 3 + static_cast<int>((bar * kSteps + step) * stepW), y + 4 + lane * 4, 2, 2,
+                                     faded(kText, 90 + static_cast<int>(165 * p.level[lane][step])));
+                            }
+                }
             } else {
-                NoteEvent notes[kMaxNotes]; // chords drawn as their notes
-                track.notes[scene].render(notes);
                 int low = 127, high = 0;
-                for (const NoteEvent& n : notes)
-                    if (n.velocity > 0.f) { low = n.pitch < low ? n.pitch : low; high = n.pitch > high ? n.pitch : high; }
+                for (int bar = 0; bar < cellBars; ++bar) {
+                    NoteEvent notes[kMaxNotes]; // chords drawn as their notes
+                    track.notes[scene][bar].render(notes);
+                    for (const NoteEvent& n : notes)
+                        if (n.velocity > 0.f) { low = n.pitch < low ? n.pitch : low; high = n.pitch > high ? n.pitch : high; }
+                }
                 const int span = high - low < 7 ? 7 : high - low;
-                for (const NoteEvent& n : notes) {
-                    if (n.velocity <= 0.f) continue;
-                    const int ny = y + 4 + (kRowH - 14) * (high - n.pitch) / span;
-                    const int w = static_cast<int>(n.length * stepW) - 1;
-                    fill(r, x + 3 + static_cast<int>(n.step * stepW), ny, w < 2 ? 2 : w, 2, kText);
+                for (int bar = 0; bar < cellBars; ++bar) {
+                    NoteEvent notes[kMaxNotes];
+                    track.notes[scene][bar].render(notes);
+                    for (const NoteEvent& n : notes) {
+                        if (n.velocity <= 0.f) continue;
+                        const int ny = y + 4 + (kRowH - 14) * (high - n.pitch) / span;
+                        const int from = static_cast<int>((bar * kSteps + n.step) * stepW);
+                        int w = static_cast<int>(n.length * stepW) - 1;
+                        if (from + w > pictureW) w = pictureW - from; // it runs to the end of the cell at most
+                        fill(r, x + 3 + from, ny, w < 2 ? 2 : w, 2, kText);
+                    }
                 }
             }
-            // Where the bar has got to.
-            if (playingHere && playStep >= 0) fill(r, x + 3 + static_cast<int>(playStep * stepW), y + 2, 2, kRowH - 8, kPurple);
+            if (!empty && cellBars < sceneBars) {
+                // The loops mark: where the cell ends, and how many times it plays in the scene.
+                fill(r, x + 3 + pictureW, y + 3, 1, kRowH - 10, kPurple);
+                std::snprintf(text, sizeof text, colW > 60 ? "LOOPS x%d" : "x%d", sceneBars / cellBars);
+                fonts.small.drawCentered(r, x + 3 + pictureW + (colW - 6 - pictureW) / 2.f, y + (kRowH - 4 - fonts.small.capHeight()) / 2.f, text, kPurple);
+            }
+            if (cellBars > 1) { // how long it is, in the corner
+                std::snprintf(text, sizeof text, "%d", cellBars);
+                fonts.small.drawRight(r, x + colW - 4.f, y + kRowH - 6.f - fonts.small.capHeight(), text, kDim);
+            }
+            // Where the cell has got to: a short one goes round under a long scene.
+            if (playingHere && playStep >= 0) {
+                const int at = (session_.engine.playBar() % cellBars) * kSteps + playStep;
+                fill(r, x + 3 + static_cast<int>(at * stepW), y + 2, 2, kRowH - 8, kPurple);
+            }
             if (copying_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass);
             if (t == column_ && scene == scene_) outline(r, x - 1, y - 1, colW + 2, kRowH - 2, cursorColor, 2);
         }
@@ -522,6 +587,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (copying_) {
         hint("DRAG WITH THE STICK", "copy this bar into every cell crossed");
+    } else if (holding_ && onCell()) {
+        hint("STICK LEFT / RIGHT", "how long this cell is: 1, 2, 4 or 8 bars");
     } else if (holding_) {
         hint("STICK UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
@@ -535,8 +602,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");
     } else {
-        hint("STICK", "move");
         hint("A", "open");
+        hint("HOLD A + STICK", "bars");
         hint("B", "empty");
         hint("HOLD R1", "copy");
         hint("START", project_.playing ? "stop" : "play song");

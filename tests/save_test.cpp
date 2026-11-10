@@ -158,8 +158,8 @@ void fillSong(Rig& rig) {
 void testTextRoundTrip() {
     Rig rig;
     fillSong(rig);
-    rig.project().tracks[0].drums[0].fromDice[2][2] = true;
-    rig.project().tracks[0].drums[0].diceSeed[2] = 123456789u;
+    rig.project().tracks[0].drums[0][0].fromDice[2][2] = true;
+    rig.project().tracks[0].drums[0][0].diceSeed[2] = 123456789u;
     const std::string text = songText(rig.project());
     CHECK(text.compare(0, 16, "apotheca-song 1\n") == 0);
     CHECK(text.find("track drums") != std::string::npos && text.find("track phazed") != std::string::npos && text.find("track twin") != std::string::npos);
@@ -173,21 +173,21 @@ void testTextRoundTrip() {
     CHECK(back->tempo == 97.f && back->repeats[0] == 2 && back->repeats[1] == 1);
     const TrackData& drums = back->tracks[0];
     CHECK(drums.kind == TrackKind::Drums);
-    CHECK(drums.drums[0].level[0][0] == 1.f && std::fabs(drums.drums[0].level[0][8] - 0.7f) < 1e-5f);
-    CHECK(std::fabs(drums.drums[0].nudge[2][2] - 0.3f) < 1e-5f && std::fabs(drums.drums[0].nudge[1][4] + 0.2f) < 1e-5f);
-    CHECK(drums.drums[0].fromDice[2][2] && !drums.drums[0].fromDice[0][0] && drums.drums[0].diceSeed[2] == 123456789u);
-    CHECK(std::fabs(drums.drums[2].level[6][5] - 0.6f) < 1e-5f && drums.drums[1].empty());
+    CHECK(drums.drums[0][0].level[0][0] == 1.f && std::fabs(drums.drums[0][0].level[0][8] - 0.7f) < 1e-5f);
+    CHECK(std::fabs(drums.drums[0][0].nudge[2][2] - 0.3f) < 1e-5f && std::fabs(drums.drums[0][0].nudge[1][4] + 0.2f) < 1e-5f);
+    CHECK(drums.drums[0][0].fromDice[2][2] && !drums.drums[0][0].fromDice[0][0] && drums.drums[0][0].diceSeed[2] == 123456789u);
+    CHECK(std::fabs(drums.drums[2][0].level[6][5] - 0.6f) < 1e-5f && drums.drums[1][0].empty());
     CHECK(std::fabs(drums.laneLevel[3] - 0.6f) < 1e-5f && drums.laneLevel[0] == 1.f);
     const TrackData& one = back->tracks[1];
     CHECK(one.kind == TrackKind::Phazed && one.preset == 9);
     CHECK(std::fabs(one.macro[phazed::Tone] - 0.7f) < 1e-5f && one.macro[phazed::Motion] == 0.5f);
     CHECK(one.patch.value[phazed::Level] == Phazed::presetPatch(9).value[phazed::Level] - 3);
-    CHECK(one.notes[0].at(48, 3) >= 0 && one.notes[0].at(48, 4) < 0 && one.notes[0].at(55, 8) >= 0);
+    CHECK(one.notes[0][0].at(48, 3) >= 0 && one.notes[0][0].at(48, 4) < 0 && one.notes[0][0].at(55, 8) >= 0);
     const TrackData& two = back->tracks[2];
     CHECK(two.kind == TrackKind::Twin && two.preset == 4);
     CHECK(two.twin.value[twin::VShape] == rig.project().tracks[2].twin.value[twin::VShape]);
     CHECK(two.twin.value[twin::VShape] != Twin::presetPatch(4).value[twin::VShape]);
-    CHECK(two.notes[1].at(60, 0) >= 0 && two.notes[1].at(64, 0) >= 0 && two.notes[0].empty());
+    CHECK(two.notes[1][0].at(60, 0) >= 0 && two.notes[1][0].at(64, 0) >= 0 && two.notes[0][0].empty());
 }
 
 void testBadFiles() {
@@ -226,23 +226,23 @@ void testBadFiles() {
     CHECK(p->tempo == kMaxTempo);
     CHECK(p->repeats[0] == 1 && p->repeats[1] == kMaxRepeats && p->repeats[2] == 3 && p->repeats[3] == 1);
     CHECK(p->trackCount() == 2 && p->tracks[0].kind == TrackKind::Drums && p->tracks[1].kind == TrackKind::Phazed);
-    const DrumPattern& d = p->tracks[0].drums[0];
+    const DrumPattern& d = p->tracks[0].drums[0][0];
     int hits = 0;
     for (int lane = 0; lane < kDrumLanes; ++lane) for (int step = 0; step < kSteps; ++step) hits += d.level[lane][step] > 0.f ? 1 : 0;
     CHECK(hits == 2);
     CHECK(d.level[1][4] == 1.f && d.nudge[1][4] == -0.5f && std::fabs(d.chance[1][4] - 0.05f) < 1e-6f && d.fromDice[1][4]);
     CHECK(d.level[2][5] == 0.5f && d.nudge[2][5] == 0.f && d.chance[2][5] == 1.f);
     CHECK(p->tracks[0].laneLevel[0] == 1.f && p->tracks[0].laneLevel[1] == 0.f && p->tracks[0].laneLevel[2] == 1.f);
-    CHECK(p->tracks[0].notes[0].empty());
+    CHECK(p->tracks[0].notes[0][0].empty());
     const TrackData& synth = p->tracks[1];
     CHECK(synth.preset == Phazed::presetCount() - 1);
     CHECK(synth.macro[0] == 1.f && synth.macro[1] == 0.f && synth.macro[2] == 0.5f);
     CHECK(synth.patch.value[0] == phazed::settingMax(0) && synth.patch.value[1] == phazed::settingMin(1));
     int notes = 0;
-    for (const NoteEvent& n : synth.notes[0].notes) notes += n.velocity > 0.f ? 1 : 0;
+    for (const NoteEvent& n : synth.notes[0][0].notes) notes += n.velocity > 0.f ? 1 : 0;
     CHECK(notes == 1);
-    CHECK(synth.notes[0].notes[0].step == 15 && synth.notes[0].notes[0].length == 1); // cut to the end of the bar
-    CHECK(synth.drums[0].empty());
+    CHECK(synth.notes[0][0].notes[0].step == 15 && synth.notes[0][0].notes[0].length == 1); // cut to the end of the bar
+    CHECK(synth.drums[0][0].empty());
 
     // More than twelve tracks: twelve. More than 64 notes in a bar: 64. No tracks: one drum track.
     std::string many = "apotheca-song 1\n";
@@ -252,7 +252,7 @@ void testBadFiles() {
     for (int i = 0; i < 80; ++i) crowded += "note " + std::to_string(i % 16 + 1) + " " + std::to_string(30 + i) + " 1 1\n";
     CHECK(parseSong(crowded, *p));
     int kept = 0;
-    for (const NoteEvent& n : p->tracks[0].notes[0].notes) kept += n.velocity > 0.f ? 1 : 0;
+    for (const NoteEvent& n : p->tracks[0].notes[0][0].notes) kept += n.velocity > 0.f ? 1 : 0;
     CHECK(kept == kMaxNotes);
     CHECK(parseSong("apotheca-song 1\n", *p) && p->trackCount() == 1 && p->tracks[0].kind == TrackKind::Drums);
     // A file from a later version still opens.
@@ -333,7 +333,7 @@ void testNewSongAndTheList() {
     rig.session().newSong();
     const std::string second = rig.session().songName();
     CHECK(second != first);
-    CHECK(rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0].empty() && rig.project().tempo == 120.f);
+    CHECK(rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0][0].empty() && rig.project().tempo == 120.f);
     // The engine was emptied with it: playing makes no sound, and the two synths are gone.
     rig.tap(L2);
     rig.tap(START);
@@ -436,13 +436,13 @@ void testTheSongListOnScreen() {
     bare.app.drums().setStep(0, 0, 1.f);
     bare.tap(SELECT);
     bare.tap(A);
-    CHECK(bare.project().tracks[0].drums[0].empty());
+    CHECK(bare.project().tracks[0].drums[0][0].empty());
 }
 
 void testFreeNoteLengthsAreKept() {
     std::unique_ptr<Project> song(new Project);
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 3 60 2.375 0.8\nnote 16 61 9 0.8\nnote 1 62 0.001 0.8\nchord 5 1.5 0.8 0 60 C 0 4 7\n", *song));
-    const NotePattern& p = song->tracks[0].notes[0];
+    const NotePattern& p = song->tracks[0].notes[0][0];
     CHECK(p.notes[0].length == 2.375f);
     CHECK(p.notes[1].length == 1.f);              // not past the end of the bar
     CHECK(p.notes[2].length == kShortestNote);    // nor shorter than the engine will play
@@ -690,7 +690,7 @@ void testRenamingAndDeletingSongs() {
     rig.frames(64);
     rig.key(B, false);
     CHECK(!exists(folder + "/" + third + ".song") && exists(folder + "/deleted/" + third + ".song") && exists(folder + "/deleted/" + third + ".1.rev"));
-    CHECK(session.songName() != third && rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0].empty());
+    CHECK(session.songName() != third && rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0][0].empty());
     CHECK(song.listedSongs() == std::vector<std::string>({third + "s"}));
     CHECK(exists(folder + "/" + third + "s.song") && exists(folder + "/" + third + ".old.rev") && exists(folder + "/" + third + ".7x.rev"));
     rig.frames(200); // the autosave comes round: an empty song is still not worth a file
@@ -699,7 +699,7 @@ void testRenamingAndDeletingSongs() {
     CHECK(readTextFile(folder + "/deleted/" + third + ".song", last) && last == text);
     // At the next start there is no "last song" to come back to.
     Rig next(folder);
-    CHECK(next.project().trackCount() == 1 && next.project().tracks[0].drums[0].empty());
+    CHECK(next.project().trackCount() == 1 && next.project().tracks[0].drums[0][0].empty());
     // What cannot be deleted.
     CHECK(!session.deleteSong("no such song") && !session.deleteSong(""));
     // A name is never a path: nothing outside the song folder can be reached.

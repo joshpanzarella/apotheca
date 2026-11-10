@@ -86,6 +86,7 @@ struct Command {
         SetSceneCount,  // a = how many scenes the song has (1..16)
         SetSceneRepeats,// scene, a = times it plays (1..16)
         SetCellBars,    // how long a track's cell is in a scene: track, scene, a = bars (1..8)
+        ClearCell,      // empty every bar of a track's cell: track, scene. Its length is left as it is.
         SetMacro,       // a synth track's macro:     track, a = macro, value = 0..1
         SetSetting,     // a synth track's patch:     track, a = setting, b = value
         InstallSynth,   // internal: sent by addSynthTrack()
@@ -301,7 +302,7 @@ private:
     std::atomic<float> scope_[kScopeSize];
     std::atomic<unsigned> scopeWritten_{0};
 
-    SpscQueue<Command, 4096> commands_; // room for whole patterns sent at once
+    SpscQueue<Command, 16384> commands_; // room for whole cells sent at once
 
     // Things the audio thread no longer needs and must not free itself.
     struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; };

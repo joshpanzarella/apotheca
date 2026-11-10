@@ -489,8 +489,8 @@ void testTheSongKeepsItsRecordings() {
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back) && songText(*back) == text);
     CHECK(std::strcmp(back->tracks[0].laneSample[2], "my loop") == 0 && back->tracks[0].laneFit[2] == 8);
-    CHECK(back->tracks[0].drums[0].start[2][4] == 0.5f && back->tracks[0].drums[0].start[3][8] == 0.f);
-    back->tracks[0].drums[0].level[3][8] = 0.f; // leave the one hit, to hear it by itself
+    CHECK(back->tracks[0].drums[0][0].start[2][4] == 0.5f && back->tracks[0].drums[0][0].start[3][8] == 0.f);
+    back->tracks[0].drums[0][0].level[3][8] = 0.f; // leave the one hit, to hear it by itself
 
     // Opened on another handheld with the same card: the recording plays,
     // fitted, and the hit starts where it did.
@@ -505,7 +505,7 @@ void testTheSongKeepsItsRecordings() {
     CHECK(std::abs(Rig::sounding(other.render(16 * kStep)) - 4 * kStep) <= 600); // it started half-way in: half of it is heard
     other.tap(START);
     // A bar sent to the engine again by itself (as copying a cell does) takes its starts with it.
-    other.project().tracks[0].drums[0].start[2][4] = 0.75f;
+    other.project().tracks[0].drums[0][0].start[2][4] = 0.75f;
     other.session().sendDrumPattern(0, 0);
     other.render(100000);
     other.tap(START);
@@ -531,7 +531,7 @@ void testTheSongKeepsItsRecordings() {
     CHECK(sampleOf("sample 1 0 ../secret", 0).empty() && sampleOf("sample 1 0 a\\b", 0).empty()); // a name, never a path
     std::unique_ptr<Project> song(new Project);
     CHECK(parseSong("apotheca-song 1\ntrack drums\nsample 2 500 x\nscene 1\nhit 1 1 1 0 1 0 7\nhit 1 2 1 0 1 0 -3\n", *song));
-    CHECK(song->tracks[0].laneFit[1] == 64 && song->tracks[0].drums[0].start[0][0] == 1.f && song->tracks[0].drums[0].start[0][1] == 0.f);
+    CHECK(song->tracks[0].laneFit[1] == 64 && song->tracks[0].drums[0][0].start[0][0] == 1.f && song->tracks[0].drums[0][0].start[0][1] == 0.f);
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nsample 1 0 x\n", *song) && song->tracks[0].laneSample[0][0] == 0);
 }
 
@@ -1005,7 +1005,7 @@ void testTheSamplerTrack() {
     fresh.session().setTrackSample(1, "alpha");
     fresh.session().setSamplerSetting(1, sampler::Start, 25);
     fresh.session().setSamplerSetting(1, sampler::Release, 0);
-    fresh.project().tracks[1].notes[0] = back->tracks[1].notes[0];
+    fresh.project().tracks[1].notes[0][0] = back->tracks[1].notes[0][0];
     fresh.session().sendNotePattern(1, 0);
     other.session().view = fresh.session().view = View::Pattern;
     other.project().track = fresh.project().track = 1;

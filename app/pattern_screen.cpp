@@ -51,6 +51,7 @@ void PatternScreen::setStep(int lane, int step, float level) {
     c.type = Command::SetStep;
     c.track = project_.track;
     c.scene = project_.scene;
+    c.bar = project_.bar;
     c.a = lane;
     c.b = step;
     c.value = level;
@@ -73,6 +74,7 @@ void PatternScreen::setNudge(int lane, int step, float nudge) {
     c.type = Command::SetStepNudge;
     c.track = project_.track;
     c.scene = project_.scene;
+    c.bar = project_.bar;
     c.a = lane;
     c.b = step;
     c.value = nudge;
@@ -89,6 +91,7 @@ void PatternScreen::setChance(int lane, int step, float chance) {
     c.type = Command::SetStepChance;
     c.track = project_.track;
     c.scene = project_.scene;
+    c.bar = project_.bar;
     c.a = lane;
     c.b = step;
     c.value = chance;
@@ -138,6 +141,7 @@ void PatternScreen::setStart(int lane, int step, float start) {
     c.type = Command::SetStepStart;
     c.track = project_.track;
     c.scene = project_.scene;
+    c.bar = project_.bar;
     c.a = lane;
     c.b = step;
     c.value = start;
@@ -314,8 +318,19 @@ void PatternScreen::moveCursor(Button direction) {
         else --lane_;
     }
     if (direction == Button::Down) moveCursorTo(lane_ + 1, step_);
-    if (direction == Button::Left) moveCursorTo(lane_, step_ - 1);
-    if (direction == Button::Right) moveCursorTo(lane_, step_ + 1);
+    // Sideways: the lane's name, then the bar's sixteen steps. Off the right
+    // of step 16 is the next bar of the cell; after the last bar, the name
+    // again. The name is always one left of step 1, whichever bar is showing.
+    const int bars = trk().bars[project_.scene];
+    if (direction == Button::Right) {
+        if (step_ < kSteps - 1) ++step_; // from the name too: it is -1
+        else if (project_.bar + 1 < bars) ++project_.bar, step_ = 0;
+        else project_.bar = 0, step_ = kLaneName;
+    }
+    if (direction == Button::Left) {
+        if (step_ >= 0) --step_; // step 1 goes to the name
+        else project_.bar = project_.bar > 0 ? project_.bar - 1 : bars - 1, step_ = kSteps - 1;
+    }
 }
 
 void PatternScreen::dragCursor(Button direction) {
@@ -480,6 +495,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
 
     const float x = input.stickX(), y = input.stickY();
+    if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
     // The tempo can be set from elsewhere (SELECT + D-pad, or a song opened).
     if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
@@ -543,7 +559,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- top bar -----------------------------------------------------------
     char context[48], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    std::snprintf(context, sizeof context, "%s / SCENE %d", name, project_.scene + 1);
+    if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / SCENE %d / BAR %d OF %d", name, project_.scene + 1, project_.bar + 1, trk().bars[project_.scene]);
+    else std::snprintf(context, sizeof context, "%s / SCENE %d", name, project_.scene + 1);
     const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
     if (onTempo_) {
         // The tempo fills too: its box is a bar from the slowest to the fastest.
@@ -630,7 +647,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (onStep()) {
         outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     }
-    const int playStep = engine_.playScene() == project_.scene ? engine_.playStep() : -1;
+    // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
+    const int playStep = engine_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;

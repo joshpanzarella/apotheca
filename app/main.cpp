@@ -162,7 +162,7 @@ void fillDemoSong(App& app) {
     choose(1, "Bass");
     choose(2, "Strings & Pads");
     const auto put = [&](int track, int scene, int step, int pitch, int length, float level) {
-        NotePattern& p = project.tracks[track].notes[scene];
+        NotePattern& p = project.tracks[track].notes[scene][0];
         const int slot = p.freeSlot();
         if (slot < 0) return;
         p.notes[slot].step = step;
@@ -183,7 +183,7 @@ void fillDemoSong(App& app) {
         // Chords from the built-in pack: Am7, Fmaj7, G7, two to the bar.
         const ChordPack& pack = builtInPack();
         const int which[3] = {12, 10, 11}, then[3] = {9, 7, 8};
-        NotePattern& pads = project.tracks[2].notes[scene];
+        NotePattern& pads = project.tracks[2].notes[scene][0];
         pads.chords[0] = makeChord(pack.chords[static_cast<std::size_t>(which[scene])], root + 12, 0, 8, .7f, 0);
         pads.chords[1] = makeChord(pack.chords[static_cast<std::size_t>(then[scene])], root + 12, 8, 6, .6f, 1);
         session.sendNotePattern(2, scene);

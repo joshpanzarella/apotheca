@@ -61,7 +61,7 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
 
 // How far through a scene the song is: one block per time the scene plays.
 // `play` is the pass it is on (from 0) and `step` the step within it.
-void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step);
+void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step, int steps = kSteps); // `steps` in one pass
 
 // One track's latest output as a line.
 void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h);

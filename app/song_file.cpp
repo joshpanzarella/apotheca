@@ -61,24 +61,31 @@ std::string songText(const Project& project) {
                 out += track.laneSample[lane];
                 out += "\n";
             }
+            // scene N, then "bars B" if the cell is longer than one, then each
+            // bar's hits; "bar K" comes before those of the second bar on.
             for (int scene = 0; scene < kMaxScenes; ++scene) {
-                const DrumPattern& p = track.drums[scene];
-                if (p.empty()) continue;
+                if (track.sceneEmpty(scene) && track.bars[scene] == 1) continue;
                 put(out, "scene %.0f\n", scene + 1);
-                out += "seeds";
-                for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
-                out += "\n";
-                for (int lane = 0; lane < kDrumLanes; ++lane) {
-                    for (int step = 0; step < kSteps; ++step) {
-                        if (p.level[lane][step] <= 0.f) continue;
-                        put(out, "hit %.0f", lane + 1);
-                        put(out, " %.0f", step + 1);
-                        put(out, " %.6g", p.level[lane][step]);
-                        put(out, " %.6g", p.nudge[lane][step]);
-                        put(out, " %.6g", p.chance[lane][step]);
-                        out += p.fromDice[lane][step] ? " 1" : " 0";
-                        if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
-                        out += "\n";
+                if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+                for (int bar = 0; bar < track.bars[scene]; ++bar) {
+                    const DrumPattern& p = track.drums[scene][bar];
+                    if (p.empty()) continue;
+                    if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+                    out += "seeds";
+                    for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
+                    out += "\n";
+                    for (int lane = 0; lane < kDrumLanes; ++lane) {
+                        for (int step = 0; step < kSteps; ++step) {
+                            if (p.level[lane][step] <= 0.f) continue;
+                            put(out, "hit %.0f", lane + 1);
+                            put(out, " %.0f", step + 1);
+                            put(out, " %.6g", p.level[lane][step]);
+                            put(out, " %.6g", p.nudge[lane][step]);
+                            put(out, " %.6g", p.chance[lane][step]);
+                            out += p.fromDice[lane][step] ? " 1" : " 0";
+                            if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
+                            out += "\n";
+                        }
                     }
                 }
             }
@@ -99,30 +106,35 @@ std::string songText(const Project& project) {
                 out += "\n";
             }
             for (int scene = 0; scene < kMaxScenes; ++scene) {
-                const NotePattern& p = track.notes[scene];
-                if (p.empty()) continue;
+                if (track.sceneEmpty(scene) && track.bars[scene] == 1) continue;
                 put(out, "scene %.0f\n", scene + 1);
-                for (const NoteEvent& n : p.notes) {
-                    if (n.velocity <= 0.f) continue;
-                    put(out, "note %.0f", n.step + 1);
-                    put(out, " %.0f", n.pitch);
-                    put(out, " %.6g", n.length);
-                    put(out, " %.6g", n.velocity);
-                    if (n.nudge != 0.f) put(out, " %.6g", n.nudge); // early or late, in steps
-                    out += "\n";
-                }
-                // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
-                for (const ChordEvent& c : p.chords) {
-                    if (c.velocity <= 0.f) continue;
-                    put(out, "chord %.0f", c.step + 1);
-                    put(out, " %.6g", c.length);
-                    put(out, " %.6g", c.velocity);
-                    put(out, " %.0f", c.inversion);
-                    put(out, " %.0f ", c.root);
-                    out += c.name[0] ? c.name : "?";
-                    for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
-                    if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
-                    out += "\n";
+                if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+                for (int bar = 0; bar < track.bars[scene]; ++bar) {
+                    const NotePattern& p = track.notes[scene][bar];
+                    if (p.empty()) continue;
+                    if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+                    for (const NoteEvent& n : p.notes) {
+                        if (n.velocity <= 0.f) continue;
+                        put(out, "note %.0f", n.step + 1);
+                        put(out, " %.0f", n.pitch);
+                        put(out, " %.6g", n.length);
+                        put(out, " %.6g", n.velocity);
+                        if (n.nudge != 0.f) put(out, " %.6g", n.nudge); // early or late, in steps
+                        out += "\n";
+                    }
+                    // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
+                    for (const ChordEvent& c : p.chords) {
+                        if (c.velocity <= 0.f) continue;
+                        put(out, "chord %.0f", c.step + 1);
+                        put(out, " %.6g", c.length);
+                        put(out, " %.6g", c.velocity);
+                        put(out, " %.0f", c.inversion);
+                        put(out, " %.0f ", c.root);
+                        out += c.name[0] ? c.name : "?";
+                        for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                        if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
+                        out += "\n";
+                    }
                 }
             }
         }
@@ -137,7 +149,7 @@ bool parseSong(const std::string& text, Project& project) {
 
     std::unique_ptr<Project> song(new Project);
     song->tracks[0] = TrackData(); // no tracks until the file names them
-    int count = 0, scene = -1;
+    int count = 0, scene = -1, bar = 0;
     TrackData* track = nullptr;
 
     while (std::getline(lines, line)) {
@@ -223,17 +235,26 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "scene") {
             double s;
             scene = (in >> s) && s >= 1 && s <= kMaxScenes ? static_cast<int>(s) - 1 : -1;
+            bar = 0;
         } else if (scene < 0) {
             continue;
+        } else if (word == "bars") {
+            double b;
+            if (in >> b) track->bars[scene] = b < 2 ? 1 : (b < 4 ? 2 : (b < 8 ? 4 : 8));
+        } else if (word == "bar") {
+            double b;
+            bar = (in >> b) && b >= 1 && b <= kMaxBars ? static_cast<int>(b) - 1 : -1;
+        } else if (bar < 0 || bar >= track->bars[scene]) {
+            continue; // lines for a bar the cell does not have
         } else if (word == "seeds" && track->kind == TrackKind::Drums) {
             double seed;
-            for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene].diceSeed[i] = static_cast<std::uint32_t>(seed);
+            for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene][bar].diceSeed[i] = static_cast<std::uint32_t>(seed);
         } else if (word == "hit" && track->kind == TrackKind::Drums) {
             double lane, step, level, nudge = 0, chance = 1, dice = 0, start = 0;
             if (!(in >> lane >> step >> level)) continue;
             in >> nudge >> chance >> dice >> start;
             if (lane < 1 || lane > kDrumLanes || step < 1 || step > kSteps || !(level > 0)) continue;
-            DrumPattern& p = track->drums[scene];
+            DrumPattern& p = track->drums[scene][bar];
             const int l = static_cast<int>(lane) - 1, s = static_cast<int>(step) - 1;
             p.level[l][s] = clampf(static_cast<float>(level), 0.05f, 1.f);
             p.nudge[l][s] = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
@@ -245,13 +266,13 @@ bool parseSong(const std::string& text, Project& project) {
             if (!(in >> step >> pitch >> length >> level)) continue;
             in >> nudge;
             if (step < 1 || step > kSteps || pitch < 0 || pitch > 127 || !(level > 0)) continue;
-            NotePattern& p = track->notes[scene];
+            NotePattern& p = track->notes[scene][bar];
             const int slot = p.freeSlot();
             if (slot < 0 || p.used() >= kMaxNotes) continue; // a sixty-fifth note
             const int s = static_cast<int>(step) - 1;
             p.notes[slot].step = s;
             p.notes[slot].pitch = static_cast<int>(pitch);
-            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>(kSteps - s));
+            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - s)); // to the end of the cell: a note may run on over the bar lines
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
         } else if (word == "chord" && isSynth(track->kind)) {
@@ -259,10 +280,10 @@ bool parseSong(const std::string& text, Project& project) {
             std::string name;
             if (!(in >> step >> length >> level >> inversion >> root >> name)) continue;
             if (step < 1 || step > kSteps || root < 0 || root > 127 || !(level > 0)) continue;
-            NotePattern& p = track->notes[scene];
+            NotePattern& p = track->notes[scene][bar];
             ChordEvent c;
             c.step = static_cast<int>(step) - 1;
-            c.length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>(kSteps - c.step));
+            c.length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - c.step));
             c.velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             c.inversion = clampi(static_cast<int>(inversion), -kMaxInversion, kMaxInversion);
             c.root = static_cast<int>(root);

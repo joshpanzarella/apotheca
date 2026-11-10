@@ -174,8 +174,8 @@ void testOpeningACellWorksOnThatScene() {
     rig.tap(A);
     CHECK(rig.view() == View::Pattern && rig.project().scene == 2 && rig.project().track == 0);
     rig.tap(A); // a kick on step 1 of scene 3
-    CHECK(rig.project().tracks[0].drums[2].level[0][0] > 0.f);
-    CHECK(rig.project().tracks[0].drums[0].empty());
+    CHECK(rig.project().tracks[0].drums[2][0].level[0][0] > 0.f);
+    CHECK(rig.project().tracks[0].drums[0][0].empty());
     CHECK(rig.project().sceneCount() == 3);
     rig.listen(40000);
     // START on the Pattern screen loops the scene being worked on.
@@ -277,23 +277,23 @@ void testCopyingABarByDragging() {
     rig.tap(A);
     rig.tap(A);
     rig.tap(L2);
-    CHECK(!rig.project().tracks[1].notes[2].empty());
+    CHECK(!rig.project().tracks[1].notes[2][0].empty());
     rig.app.song().moveCursorTo(0, 0);
     rig.key(R1, true);
     rig.tap(DOWN, 2);
     rig.tap(RIGHT); // across onto the synth: a drum bar cannot go there
     rig.key(R1, false);
-    CHECK(!rig.project().tracks[1].notes[2].empty()); // and it did not wipe the synth's bar
+    CHECK(!rig.project().tracks[1].notes[2][0].empty()); // and it did not wipe the synth's bar
     for (int scene = 1; scene <= 2; ++scene) {
-        const DrumPattern& p = rig.project().tracks[0].drums[scene];
+        const DrumPattern& p = rig.project().tracks[0].drums[scene][0];
         CHECK(near(p.level[0][0], 0.9f) && near(p.level[2][5], 0.4f));
         CHECK(near(p.nudge[2][5], 0.25f) && near(p.chance[2][5], 0.5f));
     }
-    CHECK(rig.project().tracks[0].drums[3].empty());
+    CHECK(rig.project().tracks[0].drums[3][0].empty());
     // Moving with R1 let go copies nothing.
     rig.app.song().moveCursorTo(2, 0);
     rig.tap(DOWN);
-    CHECK(rig.project().tracks[0].drums[3].empty());
+    CHECK(rig.project().tracks[0].drums[3][0].empty());
     // The engine has the copies: the kick opens all three bars of the song.
     rig.frames(1);
     rig.tap(START);
@@ -311,8 +311,8 @@ void testCopyingABarByDragging() {
     synth.key(R1, true);
     synth.tap(DOWN);
     synth.key(R1, false);
-    CHECK(!synth.project().tracks[1].notes[1].empty());
-    CHECK(synth.project().tracks[1].notes[1].notes[0].pitch == synth.project().tracks[1].notes[0].notes[0].pitch);
+    CHECK(!synth.project().tracks[1].notes[1][0].empty());
+    CHECK(synth.project().tracks[1].notes[1][0].notes[0].pitch == synth.project().tracks[1].notes[0][0].notes[0].pitch);
 }
 
 void testBEmptiesACell() {
@@ -320,8 +320,8 @@ void testBEmptiesACell() {
     markScenes(rig, 2);
     rig.tap(L2);
     rig.tap(B); // scene 1
-    CHECK(rig.project().tracks[0].drums[0].empty());
-    CHECK(!rig.project().tracks[0].drums[1].empty());
+    CHECK(rig.project().tracks[0].drums[0][0].empty());
+    CHECK(!rig.project().tracks[0].drums[1][0].empty());
     CHECK(rig.project().sceneCount() == 2);
     rig.frames(1);
     rig.tap(START);
@@ -343,15 +343,15 @@ void testTheCopyBrushLifts() {
     rig.tap(DOWN);
     rig.key(R1, false); // let go on a drum cell
     rig.tap(DOWN, 3);
-    CHECK(!rig.project().tracks[0].drums[1].empty());
-    for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene].empty());
+    CHECK(!rig.project().tracks[0].drums[1][0].empty());
+    for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene][0].empty());
     // R1 on a repeat count or on + TRACK picks nothing up.
     rig.app.song().moveCursorTo(0, -1);
     rig.key(R1, true);
     rig.tap(DOWN);
     rig.tap(RIGHT);
     rig.key(R1, false);
-    CHECK(rig.project().tracks[0].drums[2].empty());
+    CHECK(rig.project().tracks[0].drums[2][0].empty());
 }
 
 void testTheSongScreenScrolls() {
@@ -537,8 +537,8 @@ void testPaintingNotes() {
     rig->tap(DOWN);
     rig->key(R1, false);
     CHECK(notes.noteCount() == 6);
-    for (int step = 0; step <= 3; ++step) CHECK(rig->project().tracks[1].notes[0].at(60, step) >= 0);
-    CHECK(rig->project().tracks[1].notes[0].at(61, 3) >= 0 && rig->project().tracks[1].notes[0].at(61, 4) >= 0);
+    for (int step = 0; step <= 3; ++step) CHECK(rig->project().tracks[1].notes[0][0].at(60, step) >= 0);
+    CHECK(rig->project().tracks[1].notes[0][0].at(61, 3) >= 0 && rig->project().tracks[1].notes[0][0].at(61, 4) >= 0);
     rig->tap(DOWN);
     CHECK(notes.noteCount() == 6); // the brush is up
     // The brush copies the level of the note it starts on.
@@ -551,8 +551,8 @@ void testPaintingNotes() {
     rig->tap(DOWN, 2);
     rig->key(R1, false);
     for (int step = 0; step <= 2; ++step) {
-        const int slot = rig->project().tracks[1].notes[0].at(72, step);
-        CHECK(slot >= 0 && near(rig->project().tracks[1].notes[0].notes[slot].velocity, 0.3f));
+        const int slot = rig->project().tracks[1].notes[0][0].at(72, step);
+        CHECK(slot >= 0 && near(rig->project().tracks[1].notes[0][0].notes[slot].velocity, 0.3f));
     }
 }
 
@@ -620,7 +620,7 @@ void testNudgingWithTheOuterShoulderButtons() {
     rig->key(A, true);
     rig->tap(L2, 2);
     rig->key(A, false);
-    const NotePattern& p = rig->project().tracks[1].notes[0];
+    const NotePattern& p = rig->project().tracks[1].notes[0][0];
     CHECK(near(p.chords[p.chordAt(8)].nudge, -0.2f));
     NoteEvent out[kMaxNotes];
     p.render(out);
@@ -656,7 +656,7 @@ void testNudgingWithTheOuterShoulderButtons() {
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(nudgedText, *back) && songText(*back) == nudgedText);
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 1 60 1 0.8 9\nchord 5 2 0.8 0 60 C 0 4 7 nudge -9\nchord 9 2 0.8 0 60 C 0 4 7 nudge\n", *back));
-    CHECK(back->tracks[0].notes[0].notes[0].nudge == 0.5f && back->tracks[0].notes[0].chords[0].nudge == -0.5f && back->tracks[0].notes[0].chords[1].nudge == 0.f);
+    CHECK(back->tracks[0].notes[0][0].notes[0].nudge == 0.5f && back->tracks[0].notes[0][0].chords[0].nudge == -0.5f && back->tracks[0].notes[0][0].chords[1].nudge == 0.f);
 
     // ---- the drum grid: the same two buttons ------------------------------------------
     Rig drumsRig;
@@ -705,7 +705,7 @@ void testAFreeLengthReachesTheEngine() {
     const auto bar = [](float length, bool asASong) {
         std::unique_ptr<Rig> rig(new Rig);
         rig->app.session().addTrack(TrackKind::Phazed);
-        NoteEvent& n = rig->project().tracks[1].notes[0].notes[0];
+        NoteEvent& n = rig->project().tracks[1].notes[0][0].notes[0];
         n.step = 1;
         n.pitch = 60;
         n.length = length;

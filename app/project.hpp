@@ -162,8 +162,11 @@ inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind =
 
 struct TrackData {
     TrackKind kind = TrackKind::None;
-    DrumPattern drums[kMaxScenes];
-    NotePattern notes[kMaxScenes];
+    // A cell (this track in one scene) is 1 to 8 bars long. Bars past its
+    // length are kept but not played.
+    DrumPattern drums[kMaxScenes][kMaxBars];
+    NotePattern notes[kMaxScenes][kMaxBars];
+    int bars[kMaxScenes];
     EffectData effects[kEffectSlots]; // on this track, one after the other
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][40] = {}; // a recording on the lane in place of the built-in drum: its file's name, or empty
@@ -178,10 +181,15 @@ struct TrackData {
     TrackData() {
         for (float& v : laneLevel) v = 1.f;
         for (float& m : macro) m = 0.5f;
+        for (int& b : bars) b = 1;
         for (int i = 0; i < sampler::kSettings; ++i) sampler[i] = sampler::settingDefault(i);
     }
     bool sceneEmpty(int scene) const {
-        return kind == TrackKind::Drums ? drums[scene].empty() : isSynth(kind) ? notes[scene].empty() : true;
+        for (int bar = 0; bar < bars[scene]; ++bar) {
+            if (kind == TrackKind::Drums && !drums[scene][bar].empty()) return false;
+            if (isSynth(kind) && !notes[scene][bar].empty()) return false;
+        }
+        return true;
     }
 };
 
@@ -193,10 +201,11 @@ struct Project {
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;
+    int bar = 0;   // ...and which bar of that cell
     bool playing = false;
     // Where the engine is, copied in once a frame for the screens to draw.
     // Not part of the song.
-    int playScene = -1, playStep = -1, playRepeat = 0;
+    int playScene = -1, playStep = -1, playRepeat = 0, playBar = 0;
     bool playLoop = false; // one scene going round, not the song
     bool silenced = false; // a panic has shut the output and it has not opened again yet
 
@@ -217,6 +226,13 @@ struct Project {
                 if (!t.sceneEmpty(scene)) return scene + 1;
         }
         return 1;
+    }
+    // A scene is as long as the longest cell in it.
+    int sceneBars(int s) const {
+        int most = 1;
+        for (const TrackData& t : tracks)
+            if (t.kind != TrackKind::None && t.bars[s] > most) most = t.bars[s];
+        return most;
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

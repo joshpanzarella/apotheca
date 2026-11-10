@@ -31,14 +31,15 @@ SDL_Color faded(SDL_Color c, int alpha) {
     return c;
 }
 
-void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step) {
+void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step, int steps) {
+    if (steps < 1) steps = kSteps;
     if (plays < 1) plays = 1;
     const int gap = plays > 8 ? 1 : 2;
     for (int i = 0; i < plays; ++i) {
         const int x0 = x + (w + gap) * i / plays, x1 = x + (w + gap) * (i + 1) / plays - gap;
         const int bw = x1 - x0 < 1 ? 1 : x1 - x0;
         fill(r, x0, y, bw, h, kLine);
-        int done = i < play ? bw : (i == play && step >= 0 ? bw * (step + 1) / kSteps : 0);
+        int done = i < play ? bw : (i == play && step >= 0 ? bw * (step + 1) / steps : 0);
         if (i == play && step >= 0 && done < 1) done = 1;
         if (done > 0) fill(r, x0, y, done, h, kPurple);
     }
@@ -153,7 +154,14 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(bar.tempoNumberRight) - 40, w = 78;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
-        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playStep);
+        // A pass of a long scene is all its bars: the block fills across them.
+        const int bars = project.sceneBars(project.playScene);
+        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playBar * kSteps + project.playStep, bars * kSteps);
+        if (bars > 1) {
+            char bar[32];
+            std::snprintf(bar, sizeof bar, "%d/%d", project.playBar + 1, bars);
+            fonts.small.draw(r, right + 5.f, textY, bar, kPurple);
+        }
         char scene[24];
         std::snprintf(scene, sizeof scene, "SCENE %d", project.playScene + 1);
         fonts.small.drawRight(r, right - w - 7.f, textY, scene, kPurple);

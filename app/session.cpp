@@ -110,6 +110,7 @@ void Session::update(Uint32 nowMs) {
     project.playScene = engine.playScene();
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
+    project.playBar = engine.playBar();
     project.silenced = engine.silenced();
 
     // A chord pack that has just arrived over WiFi is there to pick from at once.
@@ -155,38 +156,76 @@ void Session::update(Uint32 nowMs) {
     syncSong();
 }
 
+void Session::setCellBars(int track, int scene, int bars) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return;
+    bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
+    project.tracks[track].bars[scene] = bars;
+    if (track == project.track && scene == project.scene && project.bar >= bars) project.bar = bars - 1;
+    Command c;
+    c.type = Command::SetCellBars;
+    c.track = track;
+    c.scene = scene;
+    c.a = bars;
+    engine.send(c);
+}
+
+// A whole cell to the engine: emptied there in one command, then only what
+// is in it. (Every step of eight bars would be four thousand commands.)
 void Session::sendDrumPattern(int track, int scene) {
-    const DrumPattern& p = project.tracks[track].drums[scene];
     Command c;
     c.track = track;
     c.scene = scene;
-    for (int lane = 0; lane < kDrumLanes; ++lane) {
-        for (int step = 0; step < kSteps; ++step) {
-            c.a = lane;
-            c.b = step;
-            c.type = Command::SetStep;
-            c.value = p.level[lane][step];
-            engine.send(c);
-            c.type = Command::SetStepNudge;
-            c.value = p.nudge[lane][step];
-            engine.send(c);
-            c.type = Command::SetStepChance;
-            c.value = p.chance[lane][step];
-            engine.send(c);
-            c.type = Command::SetStepStart;
-            c.value = p.start[lane][step];
-            engine.send(c);
+    c.type = Command::ClearCell;
+    engine.send(c);
+    c.type = Command::SetCellBars;
+    c.a = project.tracks[track].bars[scene];
+    engine.send(c);
+    for (int bar = 0; bar < kMaxBars; ++bar) {
+        const DrumPattern& p = project.tracks[track].drums[scene][bar];
+        c.bar = bar;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            for (int step = 0; step < kSteps; ++step) {
+                if (p.level[lane][step] <= 0.f) continue;
+                c.a = lane;
+                c.b = step;
+                c.type = Command::SetStep;
+                c.value = p.level[lane][step];
+                engine.send(c);
+                c.type = Command::SetStepNudge;
+                c.value = p.nudge[lane][step];
+                engine.send(c);
+                c.type = Command::SetStepChance;
+                c.value = p.chance[lane][step];
+                engine.send(c);
+                c.type = Command::SetStepStart;
+                c.value = p.start[lane][step];
+                engine.send(c);
+            }
         }
     }
 }
 
 void Session::sendNotePattern(int track, int scene) {
+    Command c;
+    c.track = track;
+    c.scene = scene;
+    c.type = Command::ClearCell;
+    engine.send(c);
+    c.type = Command::SetCellBars;
+    c.a = project.tracks[track].bars[scene];
+    engine.send(c);
+    for (int bar = 0; bar < kMaxBars; ++bar)
+        if (!project.tracks[track].notes[scene][bar].empty()) sendNoteBar(track, scene, bar);
+}
+
+void Session::sendNoteBar(int track, int scene, int bar) {
     NoteEvent notes[kMaxNotes]; // chords written out as their notes
-    project.tracks[track].notes[scene].render(notes);
+    project.tracks[track].notes[scene][bar].render(notes);
     Command c;
     c.type = Command::SetNote;
     c.track = track;
     c.scene = scene;
+    c.bar = bar;
     for (int slot = 0; slot < kMaxNotes; ++slot) {
         c.a = slot;
         c.b = notes[slot].step;
@@ -723,23 +762,28 @@ void Session::applyProject() {
         // Every pattern on the track, in one piece.
         std::unique_ptr<TrackImage> image(new TrackImage);
         for (int scene = 0; scene < kMaxScenes; ++scene) {
-            for (int lane = 0; lane < kDrumLanes; ++lane)
-                for (int step = 0; step < kSteps; ++step) {
-                    image->level[scene][lane][step] = track.drums[scene].level[lane][step];
-                    image->nudge[scene][lane][step] = track.drums[scene].nudge[lane][step];
-                    image->chance[scene][lane][step] = track.drums[scene].chance[lane][step];
-                    image->start[scene][lane][step] = track.drums[scene].start[lane][step];
+            image->bars[scene] = track.bars[scene];
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                const int slot = scene * kMaxBars + bar;
+                const DrumPattern& drums = track.drums[scene][bar];
+                for (int lane = 0; lane < kDrumLanes; ++lane)
+                    for (int step = 0; step < kSteps; ++step) {
+                        image->level[slot][lane][step] = drums.level[lane][step];
+                        image->nudge[slot][lane][step] = drums.nudge[lane][step];
+                        image->chance[slot][lane][step] = drums.chance[lane][step];
+                        image->start[slot][lane][step] = drums.start[lane][step];
+                    }
+                NoteEvent notes[kMaxNotes];
+                track.notes[scene][bar].render(notes);
+                for (int i = 0; i < kMaxNotes; ++i) {
+                    const NoteEvent& n = notes[i];
+                    if (n.velocity <= 0.f) continue;
+                    image->notes[slot][i].step = static_cast<std::uint8_t>(n.step);
+                    image->notes[slot][i].pitch = static_cast<std::uint8_t>(n.pitch);
+                    image->notes[slot][i].length = n.length;
+                    image->notes[slot][i].nudge = n.nudge;
+                    image->notes[slot][i].velocity = n.velocity;
                 }
-            NoteEvent notes[kMaxNotes];
-            track.notes[scene].render(notes);
-            for (int slot = 0; slot < kMaxNotes; ++slot) {
-                const NoteEvent& n = notes[slot];
-                if (n.velocity <= 0.f) continue;
-                image->notes[scene][slot].step = static_cast<std::uint8_t>(n.step);
-                image->notes[scene][slot].pitch = static_cast<std::uint8_t>(n.pitch);
-                image->notes[scene][slot].length = n.length;
-                image->notes[scene][slot].nudge = n.nudge;
-                image->notes[scene][slot].velocity = n.velocity;
             }
         }
         for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];

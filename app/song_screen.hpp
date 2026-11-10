@@ -7,6 +7,10 @@
 // turns the thing under the cursor, B removes.
 //
 //   on a cell          A opens it on the Pattern screen. B empties it.
+//                      Hold A + stick left / right: how long it is, 1, 2, 4
+//                      or 8 bars. The scene lasts as long as its longest
+//                      cell; a shorter one goes round under it, and is
+//                      drawn once with a LOOPS mark.
 //                      Hold R1 and drag: copy it into every cell crossed.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
@@ -63,6 +67,7 @@ private:
     bool onCell() const { return column_ >= 0 && column_ < project_.trackCount(); }
     void moveCursor(Button direction);
     void setRepeats(int count);
+    void stepBars(int by);
     void clearCell(int track, int scene);
     void copyCell(int fromTrack, int fromScene, int toTrack, int toScene);
     void pasteHere();
