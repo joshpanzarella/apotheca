@@ -3,7 +3,7 @@
 //
 //   build/render_demo out.wav
 //
-// Eight bars: the drum pattern from the app's --demo, a Phazed bass and Phazed chords.
+// Eight bars: the drum pattern from the app's --demo, a Phazed bass and Twin Analog chords.
 
 #include <cstdint>
 #include <cstdio>
@@ -58,23 +58,25 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "usage: render_demo out.wav\n");
         return 1;
     }
-    const int rate = 44100;
+    const int rate = 48000;
     const float tempo = 110.f;
     const int stepFrames = static_cast<int>(rate * 60.f / tempo / 4.f);
 
     Engine engine;
     engine.prepare(static_cast<float>(rate));
     engine.addSynthTrack(1);
-    engine.addSynthTrack(2);
-    const int bass = firstPresetIn("Bass"), pad = firstPresetIn("Strings & Pads");
+    engine.addSynthTrack(2, SynthKind::Twin);
+    const int bass = firstPresetIn("Bass");
+    int pad = 0; // Twin Analog's first pad
+    while (std::strcmp(Twin::presetCategory(pad), "Pads") != 0) ++pad;
     engine.send(make(Command::SelectPreset, 1, bass));
     engine.send(make(Command::SelectPreset, 2, pad));
     // Levels that leave the mix under the ceiling, so nothing is squashed.
     engine.send(make(Command::SetTrackLevel, 0, 0, 0, 0.5f));
     engine.send(make(Command::SetTrackLevel, 1, 0, 0, 0.35f));
-    engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.2f));
+    engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.45f));
     engine.send(make(Command::SetTempo, 0, 0, 0, tempo));
-    std::printf("bass: %s\nchords: %s\n", Phazed::presetName(bass), Phazed::presetName(pad));
+    std::printf("bass: Phazed, %s\nchords: Twin Analog, %s\n", Phazed::presetName(bass), Twin::presetName(pad));
 
     // The drum pattern from the app's --demo.
     const struct { int lane, step; float level; } hits[] = {

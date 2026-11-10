@@ -213,13 +213,18 @@ static void testVoices() {
     nine.render(48000 * 2);
     CHECK(peakOf(nine.render(4800)) == 0.f);
 
-    // The same key twice uses one voice, not two.
+    // The same key twice uses one voice, not two. Fill all eight, play the
+    // newest key again, then let go of every key but the oldest: the oldest
+    // must still be sounding, which it would not be had the repeat taken it.
     Synth again(plain());
-    again.twin.noteOn(60, 1.f);
+    for (int i = 0; i < 8; ++i) again.twin.noteOn(48 + 2 * i, 1.f);
     again.render(4800);
-    again.twin.noteOn(60, 1.f);
+    again.twin.noteOn(48 + 14, 1.f);
     again.render(4800);
-    again.twin.noteOff(60);
+    for (int i = 1; i < 8; ++i) again.twin.noteOff(48 + 2 * i);
+    again.render(48000);
+    CHECK(peakOf(again.render(4800)) > 0.05f);
+    again.twin.noteOff(48);
     again.render(48000 * 2);
     CHECK(peakOf(again.render(4800)) == 0.f);
 
@@ -292,6 +297,14 @@ static void testReverseSyncAlwaysFlips() {
     CHECK(note(on) == note(on));
     CHECK(note(on) != note(plain({{Crossfade, 100}, {ZSemitone, 7}})));
     CHECK(note(plain({{ReverseSync, 2}, {Crossfade, 50}, {ZSemitone, 7}})) != note(plain({{ReverseSync, 1}, {Crossfade, 50}, {ZSemitone, 7}})));
+    // It turns both of Z's copies: the left side changes as well as the right.
+    const std::vector<float> flipped = note(on), straight = note(plain({{Crossfade, 100}, {ZSemitone, 7}}));
+    bool leftDiffers = false, rightDiffers = false;
+    for (std::size_t i = 0; i < flipped.size(); i += 2) {
+        leftDiffers = leftDiffers || flipped[i] != straight[i];
+        rightDiffers = rightDiffers || flipped[i + 1] != straight[i + 1];
+    }
+    CHECK(leftDiffers && rightDiffers);
     // Cross sync wins when both are on, as on the module.
     CHECK(note(plain({{CrossSync, 1}, {ReverseSync, 2}, {Crossfade, 100}, {ZSemitone, 7}})) == note(plain({{CrossSync, 1}, {Crossfade, 100}, {ZSemitone, 7}})));
 }
