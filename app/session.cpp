@@ -280,6 +280,7 @@ std::vector<int> Session::revs() const {
 int Session::saveRev() {
     if (folder_.empty()) return 0;
     saveNow();
+    if (!fileExists(pathOf(songName_))) return 0; // an empty song that was never written: nothing to keep
     const std::vector<int> have = revs();
     const int rev = have.empty() ? 1 : have.front() + 1;
     return writeTextFile(revPath(rev), songText(project)) ? rev : 0;
@@ -301,7 +302,7 @@ bool Session::openRev(int rev) {
     if (folder_.empty() || !readTextFile(revPath(rev), text) || !parseSong(text, *back)) return false;
     // Keep where the song is now, unless a rev already holds exactly that.
     const std::string now = songText(project);
-    bool kept = now == songText(*back);
+    bool kept = false; // the rev being opened is one of these, so "already there" is covered
     for (int other : revs()) {
         std::string theirs;
         if (kept) break;

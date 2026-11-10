@@ -14,7 +14,7 @@ namespace {
 // Keys run across, as on a keyboard; the bar runs down the screen.
 constexpr int kGridLeft = 28, kGridTop = 60, kKeyW = 17, kRowH = 20;
 constexpr int kCellW = kKeyW - 2, kCellH = kRowH - 2;
-constexpr int kKeysTop = 30, kKeysH = 27, kBlackKeyH = 17;
+constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42, kKeysH = 16, kBlackKeyH = 10;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 24.f;
@@ -424,20 +424,35 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto shows = [&](int pitch) { return pitch >= low_ && pitch <= low_ + (kVisibleKeys - 1); };
 
     // ---- the keyboard, across the top ---------------------------------------------
+    // Drawn as a keyboard is: the white keys one cream strip with lines
+    // between them, the black keys dark bars hanging from the top edge.
+    const int keysW = kVisibleKeys * kKeyW - 2;
+    fill(r, kGridLeft, kKeysTop, keysW, kKeysH, kDim);
     for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
         const bool black = isBlackKey(pitch), here = pitch == pitch_;
         const int x = gx(pitch);
         if (black) {
-            fill(r, x, kKeysTop, kCellW, kKeysH, kPanel);
-            fill(r, x, kKeysTop, kCellW, kBlackKeyH, here ? cursorColor : kBg);
-            outline(r, x, kKeysTop, kCellW, kBlackKeyH, here ? cursorColor : kLine);
+            // The two white keys meet under the middle of a black one.
+            fill(r, x + kCellW / 2, kKeysTop + kBlackKeyH, 1, kKeysH - kBlackKeyH, kBg);
+            fill(r, x + 1, kKeysTop, kCellW - 2, kBlackKeyH, here ? cursorColor : kBg);
         } else {
-            fill(r, x, kKeysTop, kCellW, kKeysH, here ? cursorColor : kDim);
-            if (pitch % 12 == 0) { // every C says which octave it is
-                std::snprintf(text, sizeof text, "C%d", pitch / 12 - 1);
-                fonts.small.drawCentered(r, x + kCellW / 2.f, kKeysTop + kKeysH - fonts.small.capHeight() - 4.f, text, kBg);
-            }
+            if (here) fill(r, x, kKeysTop + kBlackKeyH + 1, kCellW, kKeysH - kBlackKeyH - 1, cursorColor);
+            // Two white keys side by side (E and F, B and C): a line all the way up.
+            if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, kKeysH, kBg);
         }
+    }
+    // ---- which octave: a band over each, from its C ------------------------------------
+    for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+        if (pitch != low_ && pitch % 12 != 0) continue;
+        const int c = pitch - ((pitch % 12) + 12) % 12; // this octave's C, perhaps off to the left
+        int end = c + 12 < low_ + kVisibleKeys ? c + 12 : low_ + kVisibleKeys;
+        const int x0 = gx(pitch), x1 = gx(end) - 3;
+        const bool mine = pitch_ >= c && pitch_ < c + 12;
+        const SDL_Color color = mine ? cursorColor : kDim;
+        fill(r, x0, kOctaveTop + kOctaveH - 2, x1 - x0, 1, color);
+        if (pitch % 12 == 0) fill(r, x0, kOctaveTop + 2, 1, kOctaveH - 3, color); // the C end
+        std::snprintf(text, sizeof text, x1 - x0 > 70 ? "OCTAVE %d" : "%d", c / 12 - 1);
+        if (x1 - x0 > 14) fonts.small.draw(r, x0 + 5.f, kOctaveTop - 1.f, text, mine ? cursorColor : kText);
     }
 
     // ---- the empty grid: a column for each key, a row for each step ------------------
@@ -450,6 +465,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             box(r, gx(pitch), gy(step), kCellW, kCellH, inside, kLine);
         }
     }
+    // A brighter line down the grid where each octave starts.
+    for (int pitch = low_ + 1; pitch < low_ + kVisibleKeys; ++pitch)
+        if (pitch % 12 == 0) fill(r, gx(pitch) - 2, kGridTop, 1, kSteps * kRowH - 2, kDim);
 
     // ---- notes --------------------------------------------------------------------------
     // A block as long (down the screen) as the note lasts, filled across as

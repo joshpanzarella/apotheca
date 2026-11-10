@@ -470,6 +470,7 @@ void testRevs() {
     writeTextFile(folder + "/" + name + ".1234567.rev", first);
     writeTextFile(folder + "/someone else.7.rev", first);
     writeTextFile(folder + "/" + name + ".5.song", first);
+    writeTextFile(folder + "/" + name + ".7.txt", first);
     CHECK(session.revs() == std::vector<int>({2, 1}));
     std::remove((folder + "/" + name + ".5.song").c_str());
 
@@ -550,6 +551,10 @@ void testRevs() {
     session.newSong();
     CHECK(session.revs().empty());
     CHECK(session.openSong(name) && session.revs().size() >= 6);
+
+    // An empty song that was never written has nothing to keep.
+    session.newSong();
+    CHECK(session.saveRev() == 0 && session.revs().empty());
 
     // With no song folder there is nowhere to keep one.
     Rig loose;

@@ -13,15 +13,21 @@ each one bar, each with its own repeat count. Three screens:
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
 - **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice) or, for
-  a synth, a piano roll.
+  a synth, a piano roll on its side (keys across, time down) with chords
+  from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
   For drums, the kit's levels and scope.
 
-Songs are kept as you go: there is no save button.
+Songs are kept as you go: there is no save button. A **rev** keeps the song
+as it is at one moment, to go back to.
 
-Not built yet: effects on screen, loading samples, chord input, the sound
-designer web page.
+While it plays, the top bar of every screen shows which scene is playing and
+how far through it is: one block for each time the scene plays, filling as
+the bar goes by.
+
+Not built yet: effects on screen, loading samples, the sound designer web
+page.
 
 ## Build
 
@@ -31,7 +37,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, song, both synths, screens, app and saving tests
+ctest --test-dir build      # engine, song, both synths, screens, app, saving and chord tests
 ./build/apotheca            # the app
 ```
 
@@ -68,6 +74,18 @@ The song runs to the last scene with anything in it, then comes round.
 
 **SELECT** lists the songs: start a new one, or open another.
 
+### Revs
+
+A rev is a snapshot: the song as it is now, kept beside it and never written
+to again.
+
+- **SELECT, then X** saves a rev.
+- **SELECT, then A on the open song** lists its revs. A on one goes back to it.
+- **Going back loses nothing.** If no rev holds the song as it is now, it is
+  kept as a new rev first.
+- Revs are files named `<song>.<number>.rev` in the `songs` folder, in the
+  same text form as a song.
+
 ### Songs
 
 - **Nothing to save.** The song is written to its file a couple of seconds
@@ -101,24 +119,63 @@ they leave; tap Y to reshuffle). Up from the top lane is the tempo.
 
 ### PATTERN, a synth
 
-A piano roll. The drum grid's rules, except that sideways a note has a
-length where a hit has a nudge.
+A piano roll on its side. The keys run across the top, laid out as a
+keyboard is, three octaves at a time. The bar runs down the screen, step 1
+at the top. A note is as tall as it is long, and filled across as far as it
+is loud; holding A shapes it the way it is drawn.
 
 | Gesture | Does |
 | --- | --- |
+| Stick or D-pad left / right | Along the keys (they scroll) |
+| Stick or D-pad up / down | Through the bar |
 | A | Place a note, one step long |
-| Hold A, stick up / down | Level |
-| Hold A, stick left / right | Length, up to the end of the bar or the next note on that key |
+| Hold A, left / right | Level |
+| Hold A, up / down | Length, up to the end of the bar or the next note on that key |
 | B | Delete the note under the cursor |
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
+
+### Chords
+
+Y is the chord button. Chords come from the song's chord pack.
+
+| Gesture | Does |
+| --- | --- |
+| Hold Y | The pack's chords appear along the bottom; the one in hand sounds |
+| ...left / right | The next chord (stick or D-pad, either) |
+| ...up / down | Inversion: the bottom note goes up an octave, or the top one comes down |
+| ...L1 / R1 | Another pack |
+| ...X | Hear it again |
+| Let go of Y | The chord lands at the cursor, and the cursor moves on past it |
+| ...B first | Nothing lands |
+
+So a tap of Y places the chord in hand again; hold, flick, let go places a
+different one.
+
+**A chord stays a chord**: one block, with one level, one length and its
+name. Chords never overlap in time.
+
+- Cursor on one of its notes: hold A to set the level and length of the
+  whole chord, B to remove it.
+- Cursor anywhere in its steps: hold Y to swap it for another chord in
+  place. B while Y is held breaks it into loose notes instead.
+- A new chord is as long as the last one you set.
+
+**Chord packs** are JSON files in the form Shapetaker's Transmutation reads,
+in a `chords` folder beside the program (`assets/chords` in this repository).
+Drop a file in and it shows up. What is read from a pack is listed at the
+top of `app/chords.hpp`. A pack called "Plain C" is built in. A song file
+stores each chord whole, so a song still plays on a device without its pack.
+A bar holds 64 notes, chords' notes included, and 16 chords.
 
 ### DEVICE, a synth
 
 MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
 MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. Twin Analog's are
 SHAPE, BLEND, FORMANT, WIDTH, DETUNE, VINTAGE, ATTACK, RELEASE. Hold A + stick turns the one under
-the cursor; B puts a macro back in the middle. Macros bend the sound and
+the cursor; B puts a macro back in the middle. Each macro has a small picture
+of what it does and a colour for its kind (teal: the sound's colour; purple:
+movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
 leave the preset as it was made. A new preset is played at once when the
 song is stopped.
 

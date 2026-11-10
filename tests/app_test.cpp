@@ -525,6 +525,60 @@ void testTheKeysScrollAndStopAtTheEnds() {
     CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
 }
 
+void testTheKeysShownFollowTheCursor() {
+    std::unique_ptr<Rig> rig(onNotes());
+    NoteScreen& notes = rig->app.notes();
+    notes.moveCursorTo(60, 0);
+    const int low = notes.lowestKeyShown();
+    CHECK(low <= 60 && low + NoteScreen::kVisibleKeys > 60);
+    notes.moveCursorTo(low + NoteScreen::kVisibleKeys - 1, 0); // the last key showing: no scroll
+    CHECK(notes.lowestKeyShown() == low);
+    rig->tap(RIGHT); // one past it: the keys move one along
+    CHECK(notes.lowestKeyShown() == low + 1);
+    notes.moveCursorTo(100, 0);
+    CHECK(notes.lowestKeyShown() == 100 - (NoteScreen::kVisibleKeys - 1));
+    notes.moveCursorTo(30, 0);
+    CHECK(notes.lowestKeyShown() == 30);
+    rig->tap(RIGHT, 5);
+    CHECK(notes.lowestKeyShown() == 30); // inside what shows: nothing moves
+}
+
+void testTheScreensKnowWhereTheSongIs() {
+    // What the progress blocks are drawn from.
+    Rig rig;
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.project().scene = 1;
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.project().scene = 0;
+    rig.project().repeats[0] = 2;
+    {
+        Command c;
+        c.type = Command::SetSceneRepeats;
+        c.scene = 0;
+        c.a = 2;
+        rig.engine->send(c);
+    }
+    rig.app.session().view = View::Pattern;
+    rig.frames(2);
+    CHECK(rig.project().playScene == -1 && rig.project().playStep == -1);
+    rig.tap(START); // from the Pattern screen: this scene, round and round
+    CHECK(rig.project().playLoop);
+    rig.render(kBar + 2 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playScene == 0 && rig.project().playStep == 2);
+    rig.tap(START);
+    rig.render(100);
+    rig.app.session().view = View::Song;
+    rig.tap(START); // from the Song screen: the song
+    CHECK(!rig.project().playLoop);
+    rig.render(kBar + 5 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playScene == 0 && rig.project().playRepeat == 1 && rig.project().playStep == 5);
+    rig.render(kBar);
+    rig.frames(1);
+    CHECK(rig.project().playScene == 1 && rig.project().playRepeat == 0);
+}
+
 void testAPatternHoldsSixtyFourNotes() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
@@ -943,6 +997,8 @@ int main(int, char**) {
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
+    testTheKeysShownFollowTheCursor();
+    testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();
     testPresetsAndFolders();
     testMacros();

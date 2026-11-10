@@ -129,7 +129,6 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // Anywhere in the list: keep the song as it is now.
             savedRev_ = session_.saveRev();
             if (revsOpen_) openRevList();
-            else songs_ = session_.songNames();
             return;
         }
         if (revsOpen_) {

@@ -55,6 +55,7 @@ public:
     void moveCursorTo(int pitch, int step);
     int cursorPitch() const { return pitch_; }
     int cursorStep() const { return step_; }
+    int lowestKeyShown() const { return low_; }
     // The note under the cursor, or nullptr.
     const NoteEvent* noteHere() const;
     int noteCount() const;
@@ -67,9 +68,10 @@ public:
 
     static constexpr int kLowest = 12, kHighest = 108; // C0 to C8
 
+    static constexpr int kVisibleKeys = 36;
+
 private:
     enum class Axis { None, UpDown, Sideways };
-    static constexpr int kVisibleKeys = 36;
 
     NotePattern& pat() { return project_.current().notes[project_.scene]; }
     const NotePattern& pat() const { return project_.current().notes[project_.scene]; }
