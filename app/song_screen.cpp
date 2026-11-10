@@ -353,7 +353,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char title[40];
     std::snprintf(title, sizeof title, "%s", session_.songName().c_str());
     for (char* c = title; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-    std::snprintf(text, sizeof text, "%s  %d/%d TRACKS", title, tracks, kNumTracks);
+    std::snprintf(text, sizeof text, "%s", title); // the song's name; the tracks can be counted by looking
     topBar(r, fonts, View::Song, text, project_);
 
     const int colW = columnWidth(tracks);

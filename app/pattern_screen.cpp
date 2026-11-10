@@ -557,7 +557,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
 
     // ---- top bar -----------------------------------------------------------
-    char context[64], name[24];
+    char context[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
     if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / BAR %d OF %d / SCENE %d", name, project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
     else std::snprintf(context, sizeof context, "%s / SCENE %d", name, project_.scene + 1);
