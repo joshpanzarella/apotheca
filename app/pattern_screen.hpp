@@ -14,6 +14,16 @@
 //   hold A, stick left / right   NUDGE   the block slides early or late
 //   hold Y, stick up / down      CHANCE  the block fades toward a ghost
 //
+// Painting, for rows of hits in one sweep. Hold a shoulder button and drag
+// the cursor with the stick or D-pad; every step it crosses gets a hit:
+//
+//   hold R1 and drag   every hit at ONE level: the level of the hit you
+//                      started on, or 80% if you started on an empty step
+//   hold L1 and drag   every hit at a RANDOM level
+//
+// Dragging over hits that are already there re-levels them and leaves their
+// nudge and chance alone.
+//
 // Taps: A places a hit. Y places a "maybe" hit (50%), or on a hit that is
 // there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane.
 // START plays and stops.
@@ -23,6 +33,8 @@
 // stick). With A or Y held, the D-pad nudges the same values in exact steps.
 
 #include <SDL.h>
+
+#include <cstdint>
 
 #include "apotheca/engine.hpp"
 #include "input.hpp"
@@ -69,6 +81,7 @@ public:
     int cursorStep() const { return step_; }
     bool cursorOnTempo() const { return onTempo_; }
     float tempo() const { return tempo_; }
+    bool painting() const { return paint_ != Paint::None; }
 
     Feel feel;
 
@@ -76,11 +89,15 @@ private:
     static constexpr int kLaneName = -1; // step_ value when the cursor is on a lane's name
     enum class Axis { None, UpDown, Sideways };
     enum class Turning { Nothing, Level, Nudge, Chance }; // which value the stick has hold of, for drawing
+    enum class Paint { None, OneLevel, Random };
 
     bool onStep() const { return !onTempo_ && step_ != kLaneName; }
     bool hitHere() const { return onStep() && pattern_[lane_][step_] > 0.f; }
     void moveCursor(Button direction);
+    void dragCursor(Button direction); // a move the player made: it paints if a brush is down
     void placeHit(float chance);
+    void paintHere();
+    float randomLevel();
     void turnUpDown(float amount);   // with A: level, drum volume or tempo
     void turnSideways(float amount); // with A: nudge
     void turnChance(float amount);   // with Y
@@ -106,6 +123,10 @@ private:
     bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
+
+    Paint paint_ = Paint::None;
+    float brush_ = 0.8f;              // the level R1 is painting with
+    std::uint32_t dice_ = 0x9E3779B9u; // for L1's random levels
 
     Button repeating_ = Button::None; // D-pad direction being held
     Uint32 repeatAt_ = 0;

@@ -54,6 +54,7 @@ struct Rig {
 
 // Keyboard stand-ins (see app/input.cpp).
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
+const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w;
 // The one stick.
 const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l;
 
@@ -545,6 +546,185 @@ void testYDoesNothingOffTheGrid() {
     CHECK(rig.listen() == 0.f);
 }
 
+void testR1PaintsARowAtOneLevel() {
+    Rig rig;
+    // Starting on an empty step, the brush is 80%. The first hit lands at once.
+    rig.key(R1, true);
+    CHECK(rig.screen.painting());
+    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(rig.listen() > 0.2f); // and is heard, since the song is stopped
+    rig.tap(SDLK_RIGHT);
+    rig.tap(SDLK_RIGHT);
+    rig.tap(SDLK_RIGHT);
+    for (int step = 0; step <= 3; ++step) CHECK(near(rig.screen.level(0, step), 0.8f));
+    CHECK(rig.screen.level(0, 4) == 0.f);
+    // It paints down a column too.
+    rig.tap(SDLK_DOWN);
+    CHECK(near(rig.screen.level(1, 3), 0.8f));
+    // Let go and the cursor is just a cursor again.
+    rig.key(R1, false);
+    CHECK(!rig.screen.painting());
+    rig.tap(SDLK_RIGHT);
+    rig.tap(SDLK_RIGHT);
+    CHECK(rig.screen.level(1, 4) == 0.f && rig.screen.level(1, 5) == 0.f);
+
+    // The engine has them: four kicks in a row from the top.
+    rig.listen(40000);
+    rig.tap(START);
+    for (int step = 0; step < 4; ++step) CHECK(rig.listen(6000) > 0.2f);
+}
+
+void testR1CopiesTheLevelItStartsOn() {
+    Rig rig;
+    rig.screen.setStep(2, 0, 0.3f);
+    // A hit already in the way, with its own timing and chance.
+    rig.screen.setStep(2, 2, 1.f);
+    rig.screen.setNudge(2, 2, 0.25f);
+    rig.screen.setChance(2, 2, 0.5f);
+    rig.screen.moveCursorTo(2, 0);
+    rig.key(R1, true);
+    CHECK(near(rig.screen.level(2, 0), 0.3f)); // the hit it started on is left as it was
+    rig.tap(SDLK_RIGHT);
+    rig.tap(SDLK_RIGHT);
+    rig.tap(SDLK_RIGHT);
+    rig.key(R1, false);
+    for (int step = 0; step <= 3; ++step) CHECK(near(rig.screen.level(2, step), 0.3f));
+    // The hit in the way took the level and kept the rest.
+    CHECK(near(rig.screen.nudge(2, 2), 0.25f) && near(rig.screen.chance(2, 2), 0.5f));
+    // A new hit is a plain one.
+    CHECK(rig.screen.nudge(2, 1) == 0.f && rig.screen.chance(2, 1) == 1.f);
+
+    // The next sweep from an empty step is back at 80%, not the last brush.
+    rig.screen.moveCursorTo(3, 0);
+    rig.key(R1, true);
+    rig.tap(SDLK_RIGHT);
+    rig.key(R1, false);
+    CHECK(near(rig.screen.level(3, 0), 0.8f) && near(rig.screen.level(3, 1), 0.8f));
+}
+
+void testPaintingRunsWithTheStick() {
+    Rig rig;
+    rig.key(R1, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(26); // under half a second
+    rig.key(STICK_RIGHT, false);
+    rig.key(R1, false);
+    const int reached = rig.screen.cursorStep();
+    CHECK(reached >= 12); // most of the row
+    for (int step = 0; step <= reached; ++step) CHECK(near(rig.screen.level(0, step), 0.8f)); // and no step skipped
+    // A held D-pad paints as it repeats.
+    rig.screen.moveCursorTo(4, 0);
+    rig.key(R1, true);
+    rig.key(SDLK_RIGHT, true);
+    rig.frames(30);
+    rig.key(SDLK_RIGHT, false);
+    rig.key(R1, false);
+    for (int step = 0; step <= rig.screen.cursorStep(); ++step) CHECK(near(rig.screen.level(4, step), 0.8f));
+    CHECK(rig.screen.cursorStep() >= 8);
+}
+
+void testTheBrushSkipsNamesAndTempo() {
+    Rig rig;
+    rig.tap(SDLK_LEFT); // onto the lane's name
+    rig.key(R1, true);  // nothing to paint here
+    rig.tap(SDLK_LEFT); // round to step 16: painted, at 80%
+    CHECK(near(rig.screen.level(0, 15), 0.8f));
+    rig.tap(SDLK_RIGHT); // back over the name
+    rig.tap(SDLK_RIGHT); // step 1
+    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    rig.tap(SDLK_UP); // the tempo
+    rig.tap(SDLK_UP); // round to the bottom lane
+    CHECK(near(rig.screen.level(kDrumLanes - 1, 0), 0.8f));
+    rig.key(R1, false);
+    CHECK(rig.screen.tempo() == 120.f && rig.screen.laneLevel(0) == 1.f);
+    int hits = 0;
+    for (int lane = 0; lane < kDrumLanes; ++lane)
+        for (int step = 0; step < kSteps; ++step) hits += rig.screen.level(lane, step) > 0.f ? 1 : 0;
+    CHECK(hits == 3);
+}
+
+void testL1PaintsRandomLevels() {
+    Rig rig;
+    rig.key(L1, true);
+    for (int i = 0; i < kSteps - 1; ++i) rig.tap(SDLK_RIGHT);
+    rig.key(L1, false);
+    float low = 1.f, high = 0.f;
+    int different = 0;
+    for (int step = 0; step < kSteps; ++step) {
+        const float level = rig.screen.level(0, step);
+        CHECK(level >= 0.25f && level <= 1.f); // every step has a hit, never a faint one
+        low = std::fmin(low, level);
+        high = std::fmax(high, level);
+        if (step > 0 && level != rig.screen.level(0, step - 1)) ++different;
+    }
+    CHECK(different >= 13);          // not one level repeated
+    CHECK(low < 0.5f && high > 0.8f); // and they spread over the range
+
+    // Dragging over them again rolls new levels and keeps timing and chance.
+    float before[kSteps];
+    for (int step = 0; step < kSteps; ++step) before[step] = rig.screen.level(0, step);
+    rig.screen.setNudge(0, 3, -0.2f);
+    rig.screen.setChance(0, 3, 0.25f);
+    rig.screen.moveCursorTo(0, 0);
+    rig.key(L1, true);
+    for (int i = 0; i < kSteps - 1; ++i) rig.tap(SDLK_RIGHT);
+    rig.key(L1, false);
+    int changed = 0;
+    for (int step = 0; step < kSteps; ++step) changed += rig.screen.level(0, step) != before[step] ? 1 : 0;
+    CHECK(changed >= 13);
+    CHECK(near(rig.screen.nudge(0, 3), -0.2f) && near(rig.screen.chance(0, 3), 0.25f));
+
+    // The engine plays the levels it was given: a quiet step is quieter.
+    int quiet = 0, loud = 0;
+    for (int step = 1; step < kSteps; ++step) {
+        if (rig.screen.level(0, step) < rig.screen.level(0, quiet)) quiet = step;
+        if (rig.screen.level(0, step) > rig.screen.level(0, loud)) loud = step;
+    }
+    Rig a, b;
+    a.screen.setStep(1, 0, rig.screen.level(0, quiet));
+    b.screen.setStep(1, 0, rig.screen.level(0, loud));
+    a.tap(START);
+    b.tap(START);
+    CHECK(a.listen() < 0.7f * b.listen());
+}
+
+void testPaintWaitsItsTurn() {
+    // A brush cannot start while A or Y is shaping a hit.
+    Rig rig;
+    rig.screen.setStep(0, 0, 0.5f);
+    rig.key(A, true);
+    rig.key(R1, true);
+    CHECK(!rig.screen.painting());
+    rig.tap(SDLK_RIGHT); // with A held this is still the nudge
+    CHECK(rig.screen.cursorStep() == 0 && rig.screen.level(0, 1) == 0.f);
+    rig.key(R1, false);
+    rig.key(A, false);
+    rig.key(Y, true);
+    rig.key(L1, true);
+    CHECK(!rig.screen.painting());
+    rig.key(L1, false);
+    rig.key(Y, false);
+
+    // Letting go of the other shoulder button does not lift this brush.
+    rig.key(R1, true);
+    rig.key(L1, false);
+    CHECK(rig.screen.painting());
+    rig.key(R1, false);
+    CHECK(!rig.screen.painting());
+}
+
+void testPaintingWhilePlayingIsNotDoubled() {
+    Rig rig;
+    rig.tap(START);
+    rig.listen(1000);
+    rig.screen.moveCursorTo(6, 8); // the rim, half a bar ahead of the play position
+    rig.key(R1, true);
+    rig.tap(SDLK_RIGHT);
+    rig.key(R1, false);
+    CHECK(rig.listen(40000) == 0.f); // nothing fired by hand
+    CHECK(rig.listen(12000) > 0.2f); // the loop reaches them
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -569,6 +749,13 @@ int main(int, char**) {
     testTheEngineRollsTheChance();
     testDeletingAHitLeavesNothingBehind();
     testYDoesNothingOffTheGrid();
+    testR1PaintsARowAtOneLevel();
+    testR1CopiesTheLevelItStartsOn();
+    testPaintingRunsWithTheStick();
+    testTheBrushSkipsNamesAndTempo();
+    testL1PaintsRandomLevels();
+    testPaintWaitsItsTurn();
+    testPaintingWhilePlayingIsNotDoubled();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

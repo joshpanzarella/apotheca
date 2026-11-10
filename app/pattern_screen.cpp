@@ -30,6 +30,7 @@ constexpr float kNewHitLevel = 0.8f;
 constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
 constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
+constexpr float kRandomLow = 0.25f;   // L1 paints levels from here up to full
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
@@ -153,6 +154,22 @@ void PatternScreen::placeHit(float chance) {
     if (!playing_) audition(lane_, kNewHitLevel);
 }
 
+// ---- painting ----------------------------------------------------------------
+
+float PatternScreen::randomLevel() {
+    dice_ = dice_ * 1664525u + 1013904223u;
+    const float roll = static_cast<float>(dice_ >> 8) * (1.f / 16777216.f); // 0..1
+    return kRandomLow + (1.f - kRandomLow) * roll;
+}
+
+// Put a hit under the cursor, or re-level the one that is there.
+void PatternScreen::paintHere() {
+    if (paint_ == Paint::None || !onStep()) return; // the brush skips the lane names and the tempo
+    const float level = paint_ == Paint::OneLevel ? brush_ : randomLevel();
+    setStep(lane_, step_, level);
+    if (!playing_) audition(lane_, level);
+}
+
 // ---- the cursor ------------------------------------------------------------
 
 void PatternScreen::moveCursorTo(int lane, int step) {
@@ -176,6 +193,11 @@ void PatternScreen::moveCursor(Button direction) {
     if (direction == Button::Down) moveCursorTo(lane_ + 1, step_);
     if (direction == Button::Left) moveCursorTo(lane_, step_ - 1);
     if (direction == Button::Right) moveCursorTo(lane_, step_ + 1);
+}
+
+void PatternScreen::dragCursor(Button direction) {
+    moveCursor(direction);
+    paintHere(); // does nothing unless a brush is down
 }
 
 // ---- the stick, with a button held ---------------------------------------------
@@ -263,6 +285,18 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
         return;
     }
+    if (b == Button::R1 || b == Button::L1) {
+        const Paint mine = b == Button::R1 ? Paint::OneLevel : Paint::Random;
+        if (!event.down) {
+            if (paint_ == mine) paint_ = Paint::None;
+        } else if (!shaping_ && !dicing_) {
+            paint_ = mine;
+            // The brush takes the level of the hit it starts on, or 80%.
+            brush_ = hitHere() ? pattern_[lane_][step_] : kNewHitLevel;
+            paintHere();
+        }
+        return;
+    }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         return;
@@ -271,7 +305,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         if (input.held(Button::Y)) nudgeExact(b, true);
         else if (input.held(Button::A)) nudgeExact(b, false);
-        else moveCursor(b);
+        else dragCursor(b);
         repeating_ = b;
         repeatAt_ = 0; // update() starts the wait, on its own clock
         return;
@@ -324,13 +358,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         else {
             stickX_ += stickWasX_ ? std::fabs(x) * feel.stickCellsPerSecond * dt : 1.f;
             stickWasX_ = true;
-            for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) dragCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
             stickY_ += stickWasY_ ? std::fabs(y) * feel.stickCellsPerSecond * 0.5f * dt : 1.f; // eight lanes: half speed is plenty
             stickWasY_ = true;
-            for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
+            for (; stickY_ >= 1.f; stickY_ -= 1.f) dragCursor(y > 0.f ? Button::Down : Button::Up);
         }
     }
 
@@ -341,7 +375,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + feel.repeatEveryMs;
         if (input.held(Button::Y)) nudgeExact(repeating_, true);
         else if (input.held(Button::A)) nudgeExact(repeating_, false);
-        else moveCursor(repeating_);
+        else dragCursor(repeating_);
     }
 }
 
@@ -351,7 +385,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64];
     const bool onName = !onTempo_ && step_ == kLaneName;
     const bool held = shaping_ || dicing_;
-    const SDL_Color cursorColor = held ? kBrass : kTeal;
+    const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
 
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
@@ -512,10 +546,16 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int hintsY = kScreenH - kHintsH;
     fill(r, 0, hintsY, kScreenW, kHintsH, kPanel);
     fill(r, 0, hintsY, kScreenW, 1, kLine);
-    const char* hints[6][2] = {};
+    const char* hints[7][2] = {};
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { hints[count][0] = key; hints[count][1] = does; ++count; };
-    if (shaping_ && onStep()) {
+    char brushText[40];
+    if (paint_ == Paint::OneLevel) {
+        std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
+        hint("DRAG WITH THE STICK", brushText);
+    } else if (paint_ == Paint::Random) {
+        hint("DRAG WITH THE STICK", "paint hits at random levels");
+    } else if (shaping_ && onStep()) {
         hint("STICK UP / DOWN", "level");
         hint("STICK LEFT / RIGHT", "nudge early / late");
     } else if (dicing_ && onStep()) {
@@ -534,11 +574,11 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("START", playing_ ? "stop" : "play");
     } else {
         hint("STICK", "move");
-        hint("A", hitHere() ? "hold: level / nudge" : "place");
-        hint("Y", hitHere() ? "chance" : "place a maybe");
+        hint("A", hitHere() ? "level / nudge" : "place");
+        hint("Y", hitHere() ? "chance" : "maybe");
         if (hitHere()) hint("B", "delete");
-        hint("X", "hear");
-        hint("START", playing_ ? "stop" : "play");
+        hint("HOLD R1", "paint");
+        hint("HOLD L1", "paint random");
     }
     const float hintTextY = hintsY + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
     x = 8.f;
