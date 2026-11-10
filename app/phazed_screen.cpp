@@ -284,7 +284,7 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int x = 8 + (m % 4) * 157, y = 98 + (m / 4) * 76;
             const float v = t.macro[m];
             spec_.macroText(m, v, text, sizeof text);
-            valueBox(r, fonts, x, y, 153, 70, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_, true);
+            macroBox(r, fonts, x, y, 153, 70, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
         }
         box(r, 8, 252, 153, 40, kPanel2, kLine);
         fonts.medium.draw(r, 20.f, 252.f + (40 - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);

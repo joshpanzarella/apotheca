@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 namespace apotheca {
 namespace ui {
@@ -28,6 +29,80 @@ void box(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color inside, SDL_Colo
 SDL_Color faded(SDL_Color c, int alpha) {
     c.a = static_cast<Uint8>(alpha);
     return c;
+}
+
+void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step) {
+    if (plays < 1) plays = 1;
+    const int gap = plays > 8 ? 1 : 2;
+    for (int i = 0; i < plays; ++i) {
+        const int x0 = x + (w + gap) * i / plays, x1 = x + (w + gap) * (i + 1) / plays - gap;
+        const int bw = x1 - x0 < 1 ? 1 : x1 - x0;
+        fill(r, x0, y, bw, h, kLine);
+        int done = i < play ? bw : (i == play && step >= 0 ? bw * (step + 1) / kSteps : 0);
+        if (i == play && step >= 0 && done < 1) done = 1;
+        if (done > 0) fill(r, x0, y, done, h, kPurple);
+    }
+}
+
+// ---- macro pictures -----------------------------------------------------------------
+// Each is a few lines on a 20 by 14 grid, drawn in the top right of its box.
+
+namespace {
+
+struct Stroke { int n; int p[16]; }; // x,y pairs
+struct Picture { const char* name; int family; Stroke strokes[3]; };
+// family: 0 the sound's colour, 1 movement and width, 2 time
+const Picture kPictures[] = {
+    {"TONE", 0, {{4, {0, 4, 9, 4, 13, 2, 19, 13}}}},
+    {"MOTION", 1, {{7, {0, 7, 3, 2, 6, 7, 9, 12, 12, 7, 15, 2, 19, 9}}}},
+    {"ATTACK", 2, {{3, {0, 13, 9, 1, 19, 1}}}},
+    {"RELEASE", 2, {{5, {0, 1, 6, 1, 9, 8, 13, 11, 19, 13}}}},
+    {"DETUNE", 1, {{5, {0, 7, 4, 2, 9, 12, 14, 2, 19, 7}}, {5, {0, 9, 5, 3, 11, 12, 17, 3, 19, 6}}}},
+    {"VIBRATO", 1, {{8, {0, 7, 3, 6, 6, 8, 9, 4, 12, 10, 15, 1, 18, 13, 19, 9}}}},
+    {"CHORUS", 1, {{5, {0, 3, 5, 1, 10, 3, 15, 5, 19, 3}}, {5, {0, 7, 5, 5, 10, 7, 15, 9, 19, 7}}, {5, {0, 11, 5, 9, 10, 11, 15, 13, 19, 11}}}},
+    {"OCTAVE", 0, {{6, {0, 13, 6, 13, 6, 7, 13, 7, 13, 1, 19, 1}}}},
+    {"SHAPE", 0, {{3, {0, 13, 4, 1, 8, 13}}, {4, {11, 13, 11, 2, 18, 2, 18, 13}}}},
+    {"BLEND", 0, {{2, {0, 1, 19, 13}}, {2, {0, 13, 19, 1}}}},
+    {"FORMANT", 0, {{5, {0, 13, 4, 3, 8, 11, 13, 1, 19, 13}}}},
+    {"WIDTH", 1, {{3, {6, 2, 0, 7, 6, 12}}, {3, {13, 2, 19, 7, 13, 12}}, {2, {9, 5, 10, 9}}}},
+    {"VINTAGE", 1, {{7, {0, 7, 3, 5, 6, 9, 9, 6, 12, 10, 15, 4, 19, 7}}}},
+};
+
+const Picture* pictureFor(const char* name) {
+    for (const Picture& p : kPictures)
+        if (std::strcmp(p.name, name) == 0) return &p;
+    return nullptr;
+}
+
+} // namespace
+
+void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
+              float part, bool cursor, bool held) {
+    const Picture* picture = pictureFor(name);
+    const SDL_Color family = !picture ? kDim : picture->family == 0 ? kTeal : picture->family == 1 ? kPurple : kText;
+    const bool turned = std::fabs(part - 0.5f) > 0.005f; // away from "as the preset has it"
+    const SDL_Color accent = held ? kBrass : kTeal;
+    box(r, x, y, w, h, turned ? kPanel2 : kPanel, kLine);
+    fonts.small.draw(r, x + 7.f, y + 7.f, name, turned || cursor ? kText : kDim);
+    fonts.large.draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : (turned ? kText : kDim));
+    if (picture) {
+        const SDL_Color c = turned || cursor ? family : faded(family, 110);
+        SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
+        const int px = x + w - 27, py = y + 7;
+        for (const Stroke& s : picture->strokes)
+            for (int i = 0; i + 1 < s.n; ++i)
+                for (int thick = 0; thick < 2; ++thick) // two passes: one pixel is too faint at this size
+                    SDL_RenderDrawLine(r, px + s.p[2 * i], py + s.p[2 * i + 1] + thick, px + s.p[2 * i + 2], py + s.p[2 * i + 3] + thick);
+    }
+    // The bar grows from the middle, in the macro's own colour.
+    const int bx = x + 7, bw = w - 14, by = y + h - 11;
+    fill(r, bx, by, bw, 5, kLine);
+    if (part > 1.f) part = 1.f;
+    if (part < 0.f) part = 0.f;
+    const int mid = bx + bw / 2, to = bx + static_cast<int>(std::round(bw * part));
+    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, 5, cursor ? accent : family);
+    fill(r, mid, by - 2, 1, 9, kDim);
+    if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project) {
@@ -69,6 +144,17 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     bar.tempoNumberRight = bar.tempoRight - fonts.small.width("BPM") - 5.f;
     fonts.small.drawRight(r, bar.tempoRight, textY, "BPM", kDim);
     fonts.small.drawRight(r, bar.tempoNumberRight, textY, text, kText);
+
+    // While it plays: which scene, and how far through it. One block for
+    // each time the scene plays, filling as the bar goes by, so the change
+    // to the next scene can be seen coming.
+    if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
+        const int right = static_cast<int>(bar.tempoNumberRight) - 40, w = 78;
+        const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
+        sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playStep);
+        std::snprintf(text, sizeof text, "SCENE %d", project.playScene + 1);
+        fonts.small.drawRight(r, right - w - 7.f, textY, text, kPurple);
+    }
     return bar;
 }
 

@@ -190,6 +190,9 @@ void testAChordsNotes() {
     CHECK(makeChord(g, 67, 0, 4, 0.5f, 0).root == 67);
     CHECK(makeChord(g, 0, 0, 4, 0.5f, 0).root == 7);
     CHECK(makeChord(g, 127, 0, 4, 0.5f, 0).root == 127);
+    g.rootKey = 0;
+    CHECK(makeChord(g, 127, 0, 4, 0.5f, 0).root == 120); // the C above is off the keyboard
+    g.rootKey = 7;
     const ChordEvent c = makeChord(g, 60, 3, 4, 0.5f, 9);
     CHECK(c.step == 3 && c.length == 4 && c.velocity == 0.5f && c.count == 3 && c.inversion == kMaxInversion);
     CHECK(makeChord(g, 60, 3, 4, 0.5f, -9).inversion == -kMaxInversion);
@@ -337,7 +340,16 @@ void testSwappingAChordInPlace() {
     rig.key(Y, false);
     CHECK(rig.notes().chordCount() == 1 && rig.notes().noteCount() == 1); // nothing new landed
     CHECK(rig.notes().cursorStep() == 2 && rig.notes().cursorPitch() == 50);
-    // Holding Y on it again starts from its inversion too.
+    // Holding Y on it again starts from its chord and inversion, whatever
+    // was in hand in between.
+    rig.notes().moveCursorTo(50, 9);
+    rig.key(Y, true);
+    rig.tap(SDLK_RIGHT, 4);
+    rig.tap(SDLK_DOWN, 3);
+    rig.tap(B);
+    rig.key(Y, false);
+    CHECK(rig.notes().handIndex() == 7 && rig.notes().handInversion() == -2 && rig.notes().chordCount() == 1);
+    rig.notes().moveCursorTo(50, 2);
     rig.key(Y, true);
     CHECK(rig.notes().handIndex() == 3 && rig.notes().handInversion() == 1);
     rig.key(Y, false);
@@ -421,12 +433,12 @@ void testShapingAndRemovingAWholeChord() {
     rig.tap(B);
     CHECK(rig.notes().chordCount() == 2 && rig.chordOn(0) == nullptr && rig.chordOn(4) != nullptr);
     // And the engine was told: with every chord gone and the loose note too, the bar is silent.
+    rig.notes().moveCursorTo(62, 1);
+    rig.tap(B);
     rig.notes().moveCursorTo(60, 4);
     rig.tap(B);
     rig.notes().moveCursorTo(60, 9);
-    rig.tap(B);
-    rig.notes().moveCursorTo(62, 1);
-    rig.tap(B);
+    rig.tap(B); // a chord goes last: removing one must reach the engine by itself
     CHECK(rig.pat().empty());
     rig.quiet();
     rig.tap(START);

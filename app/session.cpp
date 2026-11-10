@@ -35,6 +35,7 @@ void Session::togglePlay(bool song) {
     c.a = project.scene;
     c.b = song ? 0 : 1;
     engine.send(c);
+    project.playLoop = !song;
 }
 
 void Session::syncSong() {
@@ -86,6 +87,9 @@ void Session::audition(int track, int pitch, float velocity) {
 void Session::update(Uint32 nowMs) {
     now_ = nowMs;
     engine.collectGarbage();
+    project.playScene = engine.playScene();
+    project.playStep = engine.playStep();
+    project.playRepeat = engine.playRepeat();
     if (nowMs >= nextSaveAt_) {
         nextSaveAt_ = nowMs + kSaveEveryMs;
         saveNow();

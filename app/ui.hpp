@@ -53,6 +53,16 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count);
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
               float part, bool cursor, bool held, bool centre = false);
 
+// A macro: its name, a small picture of what it does in the top right, its
+// value, and a bar that grows from the middle. Dim until it is turned away
+// from the middle, so the ones in use stand out.
+void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
+              float part, bool cursor, bool held);
+
+// How far through a scene the song is: one block per time the scene plays.
+// `play` is the pass it is on (from 0) and `step` the step within it.
+void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step);
+
 // One track's latest output as a line.
 void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h);
 

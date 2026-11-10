@@ -173,6 +173,10 @@ struct Project {
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;
     bool playing = false;
+    // Where the engine is, copied in once a frame for the screens to draw.
+    // Not part of the song.
+    int playScene = -1, playStep = -1, playRepeat = 0;
+    bool playLoop = false; // one scene going round, not the song
 
     Project() {
         for (int& r : repeats) r = 1;

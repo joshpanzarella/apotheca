@@ -251,7 +251,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int colW = columnWidth(tracks);
     const bool held = holding_ || copying_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
-    const int playScene = session_.engine.playScene();
+    const int playScene = session_.engine.playScene(), playStep = session_.engine.playStep();
 
     // ---- column heads ----------------------------------------------------------
     fonts.small.drawRight(r, kColumnsLeft - 7.f, kGridTop + 14.f, "PLAYS", kDim);
@@ -285,12 +285,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int rx = 8 + kNumberW;
         box(r, rx, y, kRepeatW - 4, kRowH - 4, kBg, inSong ? kLine : kPanel);
         const int repeats = project_.repeats[scene];
-        if (playingHere) {
-            const int done = session_.engine.playRepeat() + 1;
-            fill(r, rx + 1, y + 1, (kRepeatW - 6) * done / repeats, kRowH - 6, faded(kPurple, 90));
-        }
         std::snprintf(text, sizeof text, "x%d", repeats);
-        fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + 15.f, text, inSong ? kText : kDim);
+        fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere ? 10.f : 15.f), text, inSong ? kText : kDim);
+        if (playingHere) {
+            // One block per pass, filling as the bar goes by.
+            sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, session_.engine.playRepeat(), playStep);
+        }
         if (column_ == kRepeatColumn && scene == scene_) {
             if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));
             outline(r, rx - 1, y - 1, kRepeatW - 2, kRowH - 2, cursorColor, 2);
@@ -327,6 +327,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                     fill(r, x + 3 + static_cast<int>(n.step * stepW), ny, w < 2 ? 2 : w, 2, kText);
                 }
             }
+            // Where the bar has got to.
+            if (playingHere && playStep >= 0) fill(r, x + 3 + static_cast<int>(playStep * stepW), y + 2, 2, kRowH - 8, kPurple);
             if (copying_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass);
             if (t == column_ && scene == scene_) outline(r, x - 1, y - 1, colW + 2, kRowH - 2, cursorColor, 2);
         }
