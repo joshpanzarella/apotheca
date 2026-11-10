@@ -130,6 +130,12 @@ int main(int argc, char** argv) {
     }
     std::printf("controls: %s\n", pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
 
+    // List what the device can record from, so a log from the handheld shows
+    // whether a plugged-in USB microphone or interface was recognised.
+    const int inputs = SDL_GetNumAudioDevices(1);
+    std::printf("audio inputs: %d\n", inputs < 0 ? 0 : inputs);
+    for (int i = 0; i < inputs; ++i) std::printf("  input %d: %s\n", i + 1, SDL_GetAudioDeviceName(i, 1));
+
     Engine engine;
     AudioState audio;
     audio.engine = &engine;
