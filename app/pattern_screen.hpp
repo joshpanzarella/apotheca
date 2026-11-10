@@ -24,6 +24,19 @@
 // Dragging over hits that are already there re-levels them and leaves their
 // nudge and chance alone.
 //
+// Lane dice, for a whole pattern in a second. With the cursor on a lane's
+// name:
+//
+//   hold Y, stick up     hits arrive on that lane, one after another, in a
+//                        shuffled order that leans toward the beat
+//   hold Y, stick down   they leave again, last in first out
+//   tap Y                reshuffle: the same number of hits, somewhere new
+//                        (from an empty lane, four hits)
+//
+// The dice only ever remove hits they placed. A hit you placed, or one of
+// theirs that you have since shaped, painted or re-rolled a chance on, is
+// yours and stays.
+//
 // Taps: A places a hit. Y places a "maybe" hit (50%), or on a hit that is
 // there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane.
 // START plays and stops.
@@ -82,6 +95,8 @@ public:
     bool cursorOnTempo() const { return onTempo_; }
     float tempo() const { return tempo_; }
     bool painting() const { return paint_ != Paint::None; }
+    int diceHits(int lane) const; // how many hits on the lane the dice placed and still own
+    bool fromDice(int lane, int step) const { return fromDice_[lane][step]; }
 
     Feel feel;
 
@@ -97,6 +112,12 @@ private:
     void dragCursor(Button direction); // a move the player made: it paints if a brush is down
     void placeHit(float chance);
     void paintHere();
+    void diceOrder(int lane, int order[kSteps]) const;
+    float diceLevel(int lane, int step) const;
+    bool diceAdd();
+    bool diceRemove();
+    void diceTurn(float hits);
+    void diceReshuffle();
     float randomLevel();
     void turnUpDown(float amount);   // with A: level, drum volume or tempo
     void turnSideways(float amount); // with A: nudge
@@ -123,6 +144,10 @@ private:
     bool yDidSomething_ = false; // this hold of Y already placed or turned, so letting go is not a tap
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
+
+    bool fromDice_[kDrumLanes][kSteps] = {}; // hits the dice placed and nobody has touched since
+    std::uint32_t diceSeed_[kDrumLanes];
+    float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
     Paint paint_ = Paint::None;
     float brush_ = 0.8f;              // the level R1 is painting with

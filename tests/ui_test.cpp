@@ -534,16 +534,196 @@ void testDeletingAHitLeavesNothingBehind() {
     CHECK(rig.screen.level(0, 0) > 0.f);
 }
 
-void testYDoesNothingOffTheGrid() {
+void testYDoesNothingOnTheTempo() {
     Rig rig;
-    rig.tap(SDLK_LEFT); // the lane's name
-    rig.tap(Y);
-    rig.tap(SDLK_UP);
     rig.tap(SDLK_UP); // the tempo
+    CHECK(rig.screen.cursorOnTempo());
     rig.tap(Y);
+    rig.key(Y, true);
+    rig.key(STICK_UP, true);
+    rig.frames(20);
+    rig.key(STICK_UP, false);
+    rig.tap(SDLK_UP);
+    rig.key(Y, false);
     for (int lane = 0; lane < kDrumLanes; ++lane)
         for (int step = 0; step < kSteps; ++step) CHECK(rig.screen.level(lane, step) == 0.f);
     CHECK(rig.listen() == 0.f);
+    CHECK(rig.screen.tempo() == 120.f);
+}
+
+// The steps of a lane that hold a hit, as sixteen bits.
+unsigned hitsOn(const Rig& rig, int lane) {
+    unsigned bits = 0;
+    for (int step = 0; step < kSteps; ++step) bits |= rig.screen.level(lane, step) > 0.f ? 1u << step : 0u;
+    return bits;
+}
+int countOf(unsigned bits) { int n = 0; for (; bits; bits &= bits - 1) ++n; return n; }
+
+void testTapYOnALaneNameRollsTheDice() {
+    Rig rig;
+    rig.screen.moveCursorTo(2, -1); // the closed hat's name
+    rig.tap(Y);
+    const unsigned first = hitsOn(rig, 2);
+    CHECK(countOf(first) == 4);
+    CHECK(rig.screen.diceHits(2) == 4);
+    for (int step = 0; step < kSteps; ++step) {
+        if (!(first >> step & 1)) continue;
+        CHECK(rig.screen.fromDice(2, step));
+        CHECK(rig.screen.level(2, step) >= 0.5f && rig.screen.level(2, step) <= 1.f);
+        CHECK(rig.screen.nudge(2, step) == 0.f && rig.screen.chance(2, step) == 1.f);
+    }
+    CHECK(rig.listen() > 0.05f); // you hear it land
+    // Only that lane.
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(lane == 2 || hitsOn(rig, lane) == 0u);
+
+    // Tap again: four hits still, somewhere new.
+    rig.tap(Y);
+    CHECK(countOf(hitsOn(rig, 2)) == 4 && rig.screen.diceHits(2) == 4);
+    CHECK(hitsOn(rig, 2) != first);
+    // And the engine has the new ones, not the old.
+    rig.listen(40000);
+    rig.tap(START);
+    const unsigned now = hitsOn(rig, 2);
+    for (int step = 0; step < kSteps; ++step) CHECK((rig.listen(6000) > 0.f) == ((now >> step & 1) != 0));
+}
+
+void testHoldYOnALaneNameFillsAndDrains() {
+    Rig rig;
+    rig.screen.moveCursorTo(2, -1);
+    rig.key(Y, true);
+    // Exact steps with the D-pad: one hit more each time.
+    unsigned trail[6];
+    for (int i = 0; i < 6; ++i) {
+        rig.tap(SDLK_UP);
+        trail[i] = hitsOn(rig, 2);
+        CHECK(countOf(trail[i]) == i + 1);
+        if (i > 0) CHECK((trail[i] & trail[i - 1]) == trail[i - 1]); // the earlier hits stay put
+    }
+    // Back down retraces the same steps, last in first out.
+    for (int i = 4; i >= 0; --i) {
+        rig.tap(SDLK_DOWN);
+        CHECK(hitsOn(rig, 2) == trail[i]);
+    }
+    // And up again brings the same hits back, at the same levels.
+    const float levelBefore = rig.screen.level(2, 0) + rig.screen.level(2, 4) + rig.screen.level(2, 8) + rig.screen.level(2, 12);
+    rig.tap(SDLK_UP);
+    CHECK(hitsOn(rig, 2) == trail[1]);
+    rig.tap(SDLK_DOWN);
+    CHECK(near(rig.screen.level(2, 0) + rig.screen.level(2, 4) + rig.screen.level(2, 8) + rig.screen.level(2, 12), levelBefore));
+
+    // The stick is fast: a full lane in under a second, and it stops there.
+    rig.key(STICK_UP, true);
+    rig.frames(50);
+    CHECK(countOf(hitsOn(rig, 2)) == kSteps && rig.screen.diceHits(2) == kSteps);
+    rig.frames(50);
+    rig.key(STICK_UP, false);
+    rig.key(STICK_DOWN, true);
+    rig.frames(100);
+    rig.key(STICK_DOWN, false);
+    CHECK(hitsOn(rig, 2) == 0u && rig.screen.diceHits(2) == 0);
+    // Letting go of Y after all that is not a tap: no roll.
+    rig.key(Y, false);
+    CHECK(hitsOn(rig, 2) == 0u);
+    CHECK(rig.screen.cursorLane() == 2 && rig.screen.cursorStep() == -1);
+    CHECK(rig.screen.laneLevel(2) == 1.f); // Y never touches the drum's volume
+}
+
+void testTheDiceNeverTakeYourHits() {
+    Rig rig;
+    // Two hits of the player's own.
+    rig.screen.setStep(2, 5, 0.33f);
+    rig.screen.setStep(2, 0, 0.44f);
+    rig.screen.setNudge(2, 5, 0.2f);
+    rig.screen.moveCursorTo(2, -1);
+    rig.key(Y, true);
+    rig.key(STICK_UP, true);
+    rig.frames(100); // fill the lane around them
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(countOf(hitsOn(rig, 2)) == kSteps);
+    CHECK(rig.screen.diceHits(2) == kSteps - 2);
+    CHECK(near(rig.screen.level(2, 5), 0.33f) && near(rig.screen.level(2, 0), 0.44f)); // not overwritten
+    rig.key(Y, false);
+
+    // Shape one of the dice's hits: now it is the player's too.
+    int adopted = -1;
+    for (int step = 0; step < kSteps && adopted < 0; ++step) if (rig.screen.fromDice(2, step)) adopted = step;
+    rig.screen.moveCursorTo(2, adopted);
+    rig.key(A, true);
+    rig.tap(SDLK_DOWN);
+    rig.key(A, false);
+    CHECK(!rig.screen.fromDice(2, adopted));
+    const float shaped = rig.screen.level(2, adopted);
+    // So is one given a chance with Y, and one painted over.
+    int diced = -1;
+    for (int step = 0; step < kSteps && diced < 0; ++step) if (rig.screen.fromDice(2, step)) diced = step;
+    rig.screen.moveCursorTo(2, diced);
+    rig.tap(Y);
+    CHECK(!rig.screen.fromDice(2, diced));
+    int painted = -1;
+    for (int step = 0; step < kSteps && painted < 0; ++step) if (rig.screen.fromDice(2, step)) painted = step;
+    rig.screen.moveCursorTo(2, painted);
+    rig.key(L1, true);
+    rig.key(L1, false);
+    CHECK(!rig.screen.fromDice(2, painted));
+
+    // Drain the dice all the way, then roll: the five that are the player's stay.
+    rig.screen.moveCursorTo(2, -1);
+    rig.key(Y, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(100);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    rig.key(Y, false);
+    const unsigned mine = 1u << 5 | 1u << 0 | 1u << adopted | 1u << diced | 1u << painted;
+    CHECK(hitsOn(rig, 2) == mine);
+    CHECK(near(rig.screen.level(2, 5), 0.33f) && near(rig.screen.nudge(2, 5), 0.2f));
+    CHECK(near(rig.screen.level(2, adopted), shaped));
+    rig.tap(Y);
+    CHECK((hitsOn(rig, 2) & mine) == mine);
+    CHECK(rig.screen.diceHits(2) == 4);
+    // A dice hit deleted with B is simply gone; the count follows.
+    int doomed = -1;
+    for (int step = 0; step < kSteps && doomed < 0; ++step) if (rig.screen.fromDice(2, step)) doomed = step;
+    rig.screen.moveCursorTo(2, doomed);
+    rig.tap(B);
+    CHECK(rig.screen.diceHits(2) == 3 && rig.screen.level(2, doomed) == 0.f);
+}
+
+void testTheDiceLeanTowardTheBeat() {
+    // Four hits a roll. If every step were as likely, a quarter of them would
+    // land on the four quarter notes. The shuffle is weighted, so far more do.
+    Rig rig;
+    rig.tap(START); // playing, so the rolls are silent
+    rig.screen.moveCursorTo(0, -1);
+    int onBeat = 0, total = 0;
+    unsigned seen = 0;
+    for (int roll = 0; roll < 100; ++roll) {
+        rig.tap(Y);
+        const unsigned bits = hitsOn(rig, 0);
+        CHECK(countOf(bits) == 4);
+        seen |= bits;
+        total += 4;
+        onBeat += countOf(bits & 0x1111u);
+    }
+    CHECK(onBeat * 100 / total > 45);
+    CHECK(onBeat * 100 / total < 90); // but not only the beat
+    CHECK(seen == 0xFFFFu);           // every step turns up sooner or later
+}
+
+void testEachLaneHasItsOwnDice() {
+    Rig rig;
+    rig.screen.moveCursorTo(0, -1);
+    rig.tap(Y);
+    rig.screen.moveCursorTo(1, -1);
+    rig.tap(Y);
+    rig.screen.moveCursorTo(2, -1);
+    rig.tap(Y);
+    CHECK(!(hitsOn(rig, 0) == hitsOn(rig, 1) && hitsOn(rig, 1) == hitsOn(rig, 2)));
+    // Rolling one lane leaves the others as they were.
+    const unsigned kick = hitsOn(rig, 0), snare = hitsOn(rig, 1);
+    rig.tap(Y);
+    CHECK(hitsOn(rig, 0) == kick && hitsOn(rig, 1) == snare);
 }
 
 void testR1PaintsARowAtOneLevel() {
@@ -753,7 +933,12 @@ int main(int, char**) {
     testYSetsTheChance();
     testTheEngineRollsTheChance();
     testDeletingAHitLeavesNothingBehind();
-    testYDoesNothingOffTheGrid();
+    testYDoesNothingOnTheTempo();
+    testTapYOnALaneNameRollsTheDice();
+    testHoldYOnALaneNameFillsAndDrains();
+    testTheDiceNeverTakeYourHits();
+    testTheDiceLeanTowardTheBeat();
+    testEachLaneHasItsOwnDice();
     testR1PaintsARowAtOneLevel();
     testR1CopiesTheLevelItStartsOn();
     testPaintingRunsWithTheStick();

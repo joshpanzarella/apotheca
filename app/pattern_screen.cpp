@@ -31,6 +31,8 @@ constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
 constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // L1 paints levels from here up to full
+constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
+constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
@@ -67,12 +69,14 @@ PatternScreen::PatternScreen(Engine& engine) : engine_(engine) {
     for (float& level : laneLevel_) level = 1.f;
     for (auto& lane : chance_)
         for (float& c : lane) c = 1.f;
+    for (int lane = 0; lane < kDrumLanes; ++lane) diceSeed_[lane] = 0x51ED270Bu * static_cast<std::uint32_t>(lane + 1);
 }
 
 // ---- writing values --------------------------------------------------------
 
 void PatternScreen::setStep(int lane, int step, float level) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
+    fromDice_[lane][step] = false; // any write makes the hit the player's; the dice re-mark their own
     pattern_[lane][step] = level;
     Command c;
     c.type = Command::SetStep;
@@ -92,6 +96,7 @@ void PatternScreen::setNudge(int lane, int step, float nudge) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
     nudge = clampTo(nudge, -0.5f, 0.5f);
     if (nudge == nudge_[lane][step]) return;
+    fromDice_[lane][step] = false;
     nudge_[lane][step] = nudge;
     Command c;
     c.type = Command::SetStepNudge;
@@ -106,6 +111,7 @@ void PatternScreen::setChance(int lane, int step, float chance) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
     chance = clampTo(chance, kMinChance, 1.f);
     if (chance == chance_[lane][step]) return;
+    fromDice_[lane][step] = false;
     chance_[lane][step] = chance;
     Command c;
     c.type = Command::SetStepChance;
@@ -170,6 +176,95 @@ void PatternScreen::paintHere() {
     if (!playing_) audition(lane_, level);
 }
 
+// ---- lane dice ---------------------------------------------------------------
+
+int PatternScreen::diceHits(int lane) const {
+    int count = 0;
+    for (int step = 0; step < kSteps; ++step) count += fromDice_[lane][step] ? 1 : 0;
+    return count;
+}
+
+// The order hits arrive in: a shuffle of the sixteen steps that leans toward
+// the beat. Quarter notes are four times as likely to come early as the
+// off-sixteenths, eighths twice. The same seed always gives the same order,
+// so turning up and back down retraces its steps.
+void PatternScreen::diceOrder(int lane, int order[kSteps]) const {
+    std::uint32_t state = diceSeed_[lane];
+    int weight[kSteps], total = 0;
+    for (int step = 0; step < kSteps; ++step) total += weight[step] = step % 4 == 0 ? 4 : (step % 2 == 0 ? 2 : 1);
+    for (int i = 0; i < kSteps; ++i) {
+        state = state * 1664525u + 1013904223u;
+        int pick = static_cast<int>((state >> 8) % static_cast<std::uint32_t>(total));
+        int step = 0;
+        while (weight[step] == 0 || pick >= weight[step]) pick -= weight[step++];
+        order[i] = step;
+        total -= weight[step];
+        weight[step] = 0;
+    }
+}
+
+// A dice hit's level, 50% to 100%, fixed by the shuffle and the step.
+float PatternScreen::diceLevel(int lane, int step) const {
+    std::uint32_t h = diceSeed_[lane] ^ (0x9E3779B9u * static_cast<std::uint32_t>(step + 1));
+    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+    return 0.5f + 0.5f * static_cast<float>(h >> 8) * (1.f / 16777216.f);
+}
+
+// One more hit: the first step in the order that is still empty.
+bool PatternScreen::diceAdd() {
+    int order[kSteps];
+    diceOrder(lane_, order);
+    for (int i = 0; i < kSteps; ++i) {
+        const int step = order[i];
+        if (pattern_[lane_][step] > 0.f) continue;
+        const float level = diceLevel(lane_, step);
+        setStep(lane_, step, level);
+        fromDice_[lane_][step] = true;
+        if (!playing_) audition(lane_, level);
+        return true;
+    }
+    return false; // the lane is full
+}
+
+// One fewer: the last of the dice's own hits in the order. Never the player's.
+bool PatternScreen::diceRemove() {
+    int order[kSteps];
+    diceOrder(lane_, order);
+    for (int i = kSteps - 1; i >= 0; --i) {
+        if (!fromDice_[lane_][order[i]]) continue;
+        setStep(lane_, order[i], 0.f);
+        return true;
+    }
+    return false;
+}
+
+void PatternScreen::diceTurn(float hits) {
+    diceSaved_ += hits;
+    while (diceSaved_ >= 1.f) {
+        diceSaved_ -= 1.f;
+        if (!diceAdd()) { diceSaved_ = 0.f; break; } // full: nothing saved up against the stop
+    }
+    while (diceSaved_ <= -1.f) {
+        diceSaved_ += 1.f;
+        if (!diceRemove()) { diceSaved_ = 0.f; break; }
+    }
+}
+
+// The same number of dice hits, in a new shuffle.
+void PatternScreen::diceReshuffle() {
+    int count = diceHits(lane_);
+    while (diceRemove()) {}
+    diceSeed_[lane_] = diceSeed_[lane_] * 1664525u + 1013904223u;
+    if (count == 0) count = kFirstRoll;
+    const bool wasPlaying = playing_;
+    playing_ = true; // sound only the first of the new hits, not all of them at once
+    for (int i = 0; i < count; ++i) {
+        if (i == count - 1) playing_ = wasPlaying;
+        if (!diceAdd()) break;
+    }
+    playing_ = wasPlaying;
+}
+
 // ---- the cursor ------------------------------------------------------------
 
 void PatternScreen::moveCursorTo(int lane, int step) {
@@ -221,7 +316,14 @@ void PatternScreen::turnSideways(float amount) {
 }
 
 void PatternScreen::turnChance(float amount) {
-    if (amount == 0.f || !hitHere()) return;
+    if (amount == 0.f) return;
+    if (!onTempo_ && step_ == kLaneName) {
+        // On a lane's name, Y is the dice: more hits or fewer.
+        diceTurn(amount / feel.fillPerSecond * kDiceHitsPerSecond);
+        yDidSomething_ = true;
+        return;
+    }
+    if (!hitHere()) return;
     setChance(lane_, step_, chance_[lane_][step_] + amount);
     turning_ = Turning::Chance;
     yDidSomething_ = true;
@@ -232,7 +334,11 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
     const float sign = direction == Button::Up || direction == Button::Right ? 1.f : -1.f;
     const bool vertical = direction == Button::Up || direction == Button::Down;
     if (withY) {
-        if (vertical && hitHere()) {
+        if (vertical && !onTempo_ && step_ == kLaneName) {
+            if (sign > 0.f) diceAdd(); // exactly one hit more, or one fewer
+            else diceRemove();
+            yDidSomething_ = true;
+        } else if (vertical && hitHere()) {
             setChance(lane_, step_, nextTenth(chance_[lane_][step_], sign));
             turning_ = Turning::Chance;
             yDidSomething_ = true;
@@ -275,12 +381,15 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
                 placeHit(kMaybe); // a "maybe" hit
                 yDidSomething_ = true;
             }
+        } else if (!yDidSomething_ && !onTempo_ && step_ == kLaneName) {
+            diceReshuffle(); // a plain tap on a lane's name rolls the dice
         } else if (!yDidSomething_ && hitHere()) {
             // A plain tap on a hit steps its chance down a quarter, and round again.
             const float now = chance_[lane_][step_];
             setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
         }
         dicing_ = event.down;
+        diceSaved_ = 0.f;
         axis_ = Axis::None;
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
         return;
@@ -487,6 +596,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fill(r, bx, y + 4 + kBlockFull - h, kBlockW, h, body);
             // A hit that might not play keeps its edge, so a ghost is still findable.
             if (chance < 1.f) outline(r, bx, y + 4 + kBlockFull - h, kBlockW, h, live ? kTeal : kText);
+            // On a lane's name, the dice's own hits wear a brass cap: those are
+            // the ones the stick will take away again.
+            if (onName && lane == lane_ && fromDice_[lane][s]) fill(r, bx, y + 4 + kBlockFull - h, kBlockW, 3, kBrass);
         }
     }
     if (onStep()) {
@@ -517,8 +629,10 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (onName) {
         field(8.f, "LANE", DrumKit::laneName(lane_), kText);
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(laneLevel_[lane_] * 100.f)));
-        field(134.f, "DRUM VOLUME", text, cursorColor);
-        bar(244, laneLevel_[lane_], cursorColor);
+        field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
+        bar(244, laneLevel_[lane_], dicing_ ? kDim : cursorColor);
+        std::snprintf(text, sizeof text, "%d", diceHits(lane_));
+        field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
     } else {
         field(8.f, "LANE", DrumKit::laneName(lane_), kText);
         std::snprintf(text, sizeof text, "%d", step_ + 1);
@@ -561,6 +675,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (dicing_ && onStep()) {
         hint("STICK UP / DOWN", "chance");
         hint("TAP Y", "100 > 75 > 50 > 25");
+    } else if (dicing_ && onName) {
+        hint("STICK UP / DOWN", "more / fewer hits");
+        hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("STICK UP / DOWN", onTempo_ ? "tempo" : "drum volume");
     } else if (onTempo_) {
@@ -571,7 +688,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK", "move");
         hint("A", "play drum");
         hint("HOLD A + STICK", "volume");
-        hint("START", playing_ ? "stop" : "play");
+        hint("HOLD Y + STICK", "dice");
+        hint("TAP Y", "roll");
     } else {
         hint("STICK", "move");
         hint("A", hitHere() ? "level / nudge" : "place");
