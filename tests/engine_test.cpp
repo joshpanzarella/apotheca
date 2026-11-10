@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "apotheca/engine.hpp"
@@ -974,7 +975,292 @@ static void testCatchingTheLastBar() {
     CHECK(bar.size() == 288000u && about(bar[0], 0.2f * kTrackLevel));
 }
 
+// ---- the effects ------------------------------------------------------------------------
+
+// Run a signal through one effect by itself.
+static std::vector<float> through(Effect& effect, const std::vector<float>& in) {
+    std::vector<float> left = in, right = in;
+    for (std::size_t at = 0; at < in.size(); at += 64) {
+        const int n = static_cast<int>(in.size() - at < 64 ? in.size() - at : 64);
+        effect.process(left.data() + at, right.data() + at, n);
+    }
+    for (std::size_t i = 0; i < in.size(); ++i) CHECK(std::isfinite(left[i]) && std::isfinite(right[i]));
+    return left;
+}
+static std::vector<float> sine(float hz, int frames, float level = 0.5f) {
+    std::vector<float> v(static_cast<std::size_t>(frames));
+    for (int i = 0; i < frames; ++i) v[static_cast<std::size_t>(i)] = level * std::sin(6.2831853f * hz * static_cast<float>(i) / 48000.f);
+    return v;
+}
+static float rmsOf(const std::vector<float>& v, int from, int to) {
+    double e = 0.0;
+    for (int i = from; i < to; ++i) e += static_cast<double>(v[static_cast<std::size_t>(i)]) * v[static_cast<std::size_t>(i)];
+    return static_cast<float>(std::sqrt(e / (to - from)));
+}
+
+static void testEffectsOneByOne() {
+    CHECK(makeEffect(EffectKind::None, 48000.f, 120.f) == nullptr);
+    CHECK(makeEffect(EffectKind::Count, 48000.f, 120.f) == nullptr);
+    // Every one of them: with MIX at nothing the sound comes through
+    // untouched, and nonsense settings do no harm.
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        const EffectInfo& info = effectInfo(kind);
+        CHECK(info.params >= 3 && info.params <= kEffectParams && info.name[0]);
+        int mix = -1;
+        for (int p = 0; p < info.params; ++p)
+            if (std::string(info.paramNames[p]) == "MIX") mix = p;
+        CHECK(mix >= 0);
+        std::unique_ptr<Effect> effect = makeEffect(kind, 48000.f, 120.f);
+        CHECK(effect != nullptr);
+        if (!effect || mix < 0) continue;
+        const std::vector<float> in = sine(330.f, 48000); // long enough for an echo to come back
+        std::vector<float> wet = through(*effect, in);
+        CHECK(wet != in); // at its defaults it does something
+        effect->reset();
+        effect->setParam(mix, 0.f);
+        if (kind == EffectKind::Drive) effect->setParam(3, 0.5f); // its OUTPUT: the middle is unchanged
+        std::vector<float> dry = through(*effect, in);
+        float worst = 0.f;
+        for (std::size_t i = 0; i < in.size(); ++i) worst = std::fabs(dry[i] - in[i]) > worst ? std::fabs(dry[i] - in[i]) : worst;
+        CHECK(worst < 1e-6f);
+        effect->setParam(mix, 1.f);
+        for (int p = -1; p <= kEffectParams; ++p) {
+            effect->setParam(p, std::nanf(""));
+            effect->setParam(p, 99.f);
+            effect->setParam(p, -99.f);
+        }
+        effect->setTempo(0.f);
+        effect->setTempo(std::nanf(""));
+        through(*effect, in); // checks every sample is a number
+        std::vector<float> loud(4800, 4.f);
+        through(*effect, loud);
+    }
+    CHECK(std::string(effectInfo(EffectKind::None).name) == "NONE" && std::string(effectInfo(static_cast<EffectKind>(99)).name) == "NONE");
+
+    // FILTER: low-pass keeps the low tone and loses the high one; high-pass the other way.
+    {
+        std::unique_ptr<Effect> f = makeEffect(EffectKind::Filter, 48000.f, 120.f);
+        f->setParam(0, 0.5f); // about 800 Hz
+        f->setParam(1, 0.f);
+        const std::vector<float> low = sine(100.f, 24000), high = sine(8000.f, 24000);
+        const float lowIn = rmsOf(low, 12000, 24000), highIn = rmsOf(high, 12000, 24000);
+        CHECK(rmsOf(through(*f, low), 12000, 24000) > 0.9f * lowIn);
+        f->reset();
+        CHECK(rmsOf(through(*f, high), 12000, 24000) < 0.05f * highIn);
+        f->setParam(2, 1.f); // high-pass
+        f->reset();
+        CHECK(rmsOf(through(*f, low), 12000, 24000) < 0.05f * lowIn);
+        f->reset();
+        CHECK(rmsOf(through(*f, high), 12000, 24000) > 0.9f * highIn);
+        f->setParam(2, 0.5f); // band-pass: both go
+        f->reset();
+        CHECK(rmsOf(through(*f, low), 12000, 24000) < 0.5f * lowIn);
+        f->reset();
+        CHECK(rmsOf(through(*f, high), 12000, 24000) < 0.5f * highIn);
+        // Resonance lifts what sits at the cutoff. Opening the cutoff lets the high tone back.
+        f->setParam(2, 0.f);
+        const std::vector<float> at = sine(807.f, 24000, 0.1f);
+        f->reset();
+        const float plain = rmsOf(through(*f, at), 12000, 24000);
+        f->setParam(1, 1.f);
+        f->reset();
+        CHECK(rmsOf(through(*f, at), 12000, 24000) > 4.f * plain);
+        f->setParam(1, 0.f);
+        f->setParam(0, 1.f);
+        f->reset();
+        CHECK(rmsOf(through(*f, high), 12000, 24000) > 0.8f * highIn);
+        // Reset empties it: after a loud burst, silence in is silence out.
+        through(*f, sine(200.f, 4800, 1.f));
+        f->reset();
+        CHECK(peakOf(through(*f, std::vector<float>(480, 0.f))) == 0.f);
+    }
+    // DRIVE: never louder than its ceiling however hard it is hit, and it bends the wave.
+    {
+        std::unique_ptr<Effect> d = makeEffect(EffectKind::Drive, 48000.f, 120.f);
+        d->setParam(0, 1.f);
+        d->setParam(1, 1.f);
+        d->setParam(3, 0.5f);
+        const std::vector<float> out = through(*d, sine(200.f, 9600, 1.f));
+        CHECK(peakOf(out) < 0.2f && peakOf(out) > 0.1f); // tanh, made up by 1/sqrt(40)
+        // Flat on top: most of the time it sits near its peak.
+        int nearPeak = 0;
+        for (int i = 4800; i < 9600; ++i) nearPeak += std::fabs(out[static_cast<std::size_t>(i)]) > 0.9f * peakOf(out);
+        CHECK(nearPeak > 4800 * 0.7);
+        d->setParam(0, 0.f); // no drive: nearly the wave that went in
+        d->reset();
+        const std::vector<float> in = sine(200.f, 9600, 0.1f);
+        const std::vector<float> clean = through(*d, in);
+        CHECK(std::fabs(rmsOf(clean, 4800, 9600) - rmsOf(in, 4800, 9600)) < 0.01f);
+        d->setParam(3, 1.f); // OUTPUT up: twice as loud
+        d->reset();
+        CHECK(std::fabs(rmsOf(through(*d, in), 4800, 9600) - 2.f * rmsOf(in, 4800, 9600)) < 0.02f);
+        d->setParam(3, 0.f);
+        CHECK(peakOf(through(*d, in)) == 0.f);
+    }
+    // DELAY: a click comes back when the tempo says, quieter each time.
+    {
+        std::unique_ptr<Effect> d = makeEffect(EffectKind::Delay, 48000.f, 120.f);
+        d->setParam(0, 0.5f); // a quarter note: four steps
+        d->setParam(1, 0.5f);
+        d->setParam(2, 1.f);
+        d->setParam(3, 1.f);
+        std::vector<float> click(80000, 0.f);
+        click[0] = 1.f;
+        std::vector<float> out = through(*d, click);
+        CHECK(out[0] == 1.f); // the click itself
+        CHECK(peakOf(std::vector<float>(out.begin() + 1, out.begin() + 23990)) == 0.f);
+        float first = 0.f, second = 0.f;
+        for (int i = 23995; i < 24010; ++i) first = std::fabs(out[static_cast<std::size_t>(i)]) > first ? std::fabs(out[static_cast<std::size_t>(i)]) : first;
+        for (int i = 47990; i < 48020; ++i) second = std::fabs(out[static_cast<std::size_t>(i)]) > second ? std::fabs(out[static_cast<std::size_t>(i)]) : second;
+        CHECK(first > 0.5f && second > 0.1f && second < 0.6f * first);
+        // Faster song, sooner echo. The time setting picks the note value.
+        d->reset();
+        d->setTempo(240.f);
+        out = through(*d, click);
+        CHECK(peakOf(std::vector<float>(out.begin() + 11995, out.begin() + 12010)) > 0.5f);
+        d->reset();
+        d->setParam(0, 0.f); // a sixteenth
+        out = through(*d, click);
+        CHECK(peakOf(std::vector<float>(out.begin() + 2995, out.begin() + 3010)) > 0.5f);
+        CHECK(delaySteps(0.f) == 1 && delaySteps(0.2f) == 2 && delaySteps(0.4f) == 3 && delaySteps(0.5f) == 4 && delaySteps(0.7f) == 6 && delaySteps(1.f) == 8);
+        // The slowest tempo and the longest time still fits its memory.
+        d->reset();
+        d->setTempo(40.f);
+        d->setParam(0, 1.f);
+        std::vector<float> longClick(150000, 0.f);
+        longClick[0] = 1.f;
+        out = through(*d, longClick);
+        CHECK(peakOf(std::vector<float>(out.begin() + 143990, out.begin() + 144010)) > 0.5f);
+        // No feedback: one echo and no more. Reset: none at all.
+        d->setTempo(120.f);
+        d->setParam(0, 0.f);
+        d->setParam(1, 0.f);
+        d->reset();
+        out = through(*d, click);
+        CHECK(peakOf(std::vector<float>(out.begin() + 5995, out.begin() + 6010)) > 0.5f);   // a sixteenth at 120
+        CHECK(peakOf(std::vector<float>(out.begin() + 6010, out.end())) == 0.f);              // and nothing after it
+        through(*d, sine(300.f, 4800));
+        d->reset();
+        CHECK(peakOf(through(*d, std::vector<float>(48000, 0.f))) == 0.f);
+    }
+    // REVERB: a click leaves a tail that dies away; a bigger room, a longer one.
+    {
+        std::unique_ptr<Effect> r = makeEffect(EffectKind::Reverb, 48000.f, 120.f);
+        r->setParam(2, 1.f);
+        std::vector<float> click(96000, 0.f);
+        click[0] = 1.f;
+        const auto tail = [&](float size) {
+            r->setParam(0, size);
+            r->reset();
+            const std::vector<float> out = through(*r, click);
+            CHECK(rmsOf(out, 2400, 9600) > 1e-4f);                         // there is a tail
+            CHECK(rmsOf(out, 48000, 52800) < rmsOf(out, 2400, 7200));     // and it dies away
+            return rmsOf(out, 24000, 28800);
+        };
+        const float small = tail(0.f), big = tail(1.f);
+        CHECK(big > 5.f * small);
+        // The two sides are not the same: that is the width.
+        r->reset();
+        std::vector<float> left = click, right = click;
+        r->process(left.data(), right.data(), 9600);
+        CHECK(std::vector<float>(left.begin(), left.begin() + 9600) != std::vector<float>(right.begin(), right.begin() + 9600));
+        r->reset();
+        CHECK(peakOf(through(*r, std::vector<float>(48000, 0.f))) == 0.f);
+    }
+    // CRUSH: few bits, few levels; a low rate, the same value held.
+    {
+        std::unique_ptr<Effect> c = makeEffect(EffectKind::Crush, 48000.f, 120.f);
+        c->setParam(0, 1.f); // three bits
+        c->setParam(1, 0.f);
+        c->setParam(2, 1.f);
+        const std::vector<float> out = through(*c, sine(100.f, 9600, 0.9f));
+        std::vector<float> levels;
+        for (float v : out) {
+            bool seen = false;
+            for (float l : levels) seen = seen || std::fabs(l - v) < 1e-6f;
+            if (!seen) levels.push_back(v);
+        }
+        CHECK(levels.size() >= 5 && levels.size() <= 9);
+        c->setParam(0, 0.f); // sixteen bits: as good as untouched
+        c->reset();
+        const std::vector<float> in = sine(100.f, 9600, 0.9f);
+        const std::vector<float> fine = through(*c, in);
+        float worst = 0.f;
+        for (std::size_t i = 0; i < in.size(); ++i) worst = std::fabs(fine[i] - in[i]) > worst ? std::fabs(fine[i] - in[i]) : worst;
+        CHECK(worst < 1e-4f);
+        c->setParam(1, 1.f); // one sample in forty
+        c->reset();
+        const std::vector<float> held = through(*c, in);
+        int changes = 0;
+        for (std::size_t i = 1; i < held.size(); ++i) changes += held[i] != held[i - 1];
+        CHECK(changes > 200 && changes < 250); // 9600 / 40
+    }
+}
+
+static void testEffectsInTheEngine() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.2f)));
+    const auto hit = [&](int frames) {
+        engine->send(trigger(0));
+        return renderFrames(*engine, frames);
+    };
+    const std::vector<float> dry = hit(30000);
+    CHECK(soundingFrames(dry) == 1000);
+    // A delay on the track, put in while it runs: the hit comes back a quarter note later.
+    CHECK(engine->setEffect(0, 0, EffectKind::Delay));
+    std::vector<float> out = hit(30000);
+    CHECK(soundingFrames(out) > 24000 && std::fabs(out[2 * 24500]) > 0.01f);
+    // Its settings by command. MIX to nothing: dry again.
+    engine->send(effectParam(0, 0, 3, 0.f));
+    renderFrames(*engine, 200000);
+    CHECK(hit(30000) == dry);
+    engine->send(effectParam(0, 0, 3, 1.f));
+    engine->send(effectParam(0, 0, 1, 0.f));
+    // It follows the engine's tempo, whenever that is set.
+    engine->send(make(Command::SetTempo, 0, 0, 0, 240.f));
+    renderFrames(*engine, 200000);
+    out = hit(30000);
+    CHECK(std::fabs(out[2 * 12500]) > 0.01f && std::fabs(out[2 * 24500]) == 0.f);
+    CHECK(engine->setEffect(0, 0, EffectKind::Delay)); // a new one learns the tempo as it goes in
+    engine->send(effectParam(0, 0, 1, 0.f));
+    renderFrames(*engine, 100);
+    out = hit(30000);
+    CHECK(std::fabs(out[2 * 12500]) > 0.01f && std::fabs(out[2 * 24500]) == 0.f);
+    engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    // Another kind replaces it; None empties the slot. The old ones are handed back.
+    CHECK(engine->setEffect(0, 0, EffectKind::Crush));
+    engine->send(effectParam(0, 0, 0, 1.f));
+    renderFrames(*engine, 100000);
+    out = hit(30000);
+    CHECK(soundingFrames(out) >= 996 && soundingFrames(out) <= 1003 && out != dry); // it holds each value a sample or two, so it starts and ends that much late
+    CHECK(engine->setEffect(0, 0, EffectKind::None));
+    renderFrames(*engine, 100000);
+    CHECK(hit(30000) == dry);
+    engine->collectGarbage();
+    // The second slot comes after the first; the master's after every track.
+    CHECK(engine->setEffect(0, 1, EffectKind::Delay) && engine->setEffect(kMasterTrack, 1, EffectKind::Delay));
+    engine->send(effectParam(0, 1, 1, 0.f));
+    engine->send(effectParam(kMasterTrack, 1, 1, 0.f));
+    out = hit(60000);
+    CHECK(std::fabs(out[2 * 24500]) > 0.01f && std::fabs(out[2 * 48500]) > 0.001f); // an echo, and the echo's echo
+    // Panic empties them: no echo comes back after it.
+    engine->send(trigger(0));
+    renderFrames(*engine, 2000);
+    engine->send(make(Command::Panic, 0, 1));
+    renderFrames(*engine, 1000);
+    engine->send(make(Command::Panic, 0, 0));
+    CHECK(peakOf(renderFrames(*engine, 60000)) == 0.f);
+    // Nowhere to put one: refused.
+    CHECK(!engine->setEffect(0, 2, EffectKind::Delay) && !engine->setEffect(0, -1, EffectKind::Delay));
+    CHECK(!engine->setEffect(12, 0, EffectKind::Delay) && !engine->setEffect(-2, 0, EffectKind::Delay));
+    // One still waiting in the queue when the engine goes is freed with it.
+    CHECK(engine->setEffect(3, 0, EffectKind::Reverb));
+}
+
 int main() {
+    testEffectsOneByOne();
+    testEffectsInTheEngine();
     testCatchingTheLastBar();
     testPanic();
     testANoteEndsPartWayThroughAStep();

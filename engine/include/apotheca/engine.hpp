@@ -33,6 +33,7 @@
 
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
+#include "apotheca/effects.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/twin.hpp"
@@ -85,7 +86,8 @@ struct Command {
         InstallDrums,   // internal: sent by addDrumTrack()
         RemoveInstrument, // internal: sent by removeTrack()
         SetTrackImage,  // internal: sent by setTrackImage()
-        SetLaneSample   // internal: sent by setLaneSample()
+        SetLaneSample,  // internal: sent by setLaneSample()
+        InstallEffect   // internal: sent by setEffect()
     };
     Type type = Trigger;
     int track = 0;
@@ -138,6 +140,10 @@ public:
     bool removeTrack(int track);
     // Replace every pattern on a track at once.
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
+    // From the control thread, at any time: put an effect in a slot (None
+    // empties it), at its default settings. `track` may be kMasterTrack.
+    // Its settings are then SetEffectParam, each 0..1 (see effects.hpp).
+    bool setEffect(int track, int slot, EffectKind kind);
     // Put a recording on one lane of a drum track in place of the built-in
     // drum, or nullptr to bring the drum back. False if the track has no drums.
     bool setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample);
@@ -264,7 +270,7 @@ private:
     SpscQueue<Command, 4096> commands_; // room for whole patterns sent at once
 
     // Things the audio thread no longer needs and must not free itself.
-    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; };
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; };
     SpscQueue<Trash, 64> trash_;
     static void destroy(const Trash& trash);
 };

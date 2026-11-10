@@ -16,6 +16,7 @@ public:
     virtual ~Effect() = default;
     virtual void prepare(float sampleRate) { (void)sampleRate; }
     virtual void reset() {}
+    virtual void setTempo(float bpm) { (void)bpm; } // for effects that keep time. Realtime safe.
     virtual void setParam(int index, float value) = 0;
     virtual void process(float* left, float* right, int frames) = 0;
 };

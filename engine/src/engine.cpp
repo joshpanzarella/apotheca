@@ -43,6 +43,7 @@ Engine::~Engine() {
         if (command.type == Command::InstallSynth) delete static_cast<Instrument*>(command.pointer);
         if (command.type == Command::SetTrackImage) delete static_cast<TrackImage*>(command.pointer);
         if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
+        if (command.type == Command::InstallEffect) delete static_cast<Effect*>(command.pointer);
     }
     collectGarbage();
     for (Track& track : tracks_)
@@ -50,7 +51,8 @@ Engine::~Engine() {
 }
 
 void Engine::destroy(const Trash& trash) {
-    if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
+    if (trash.isEffect) delete static_cast<Effect*>(trash.pointer);
+    else if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
     else if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
     else delete static_cast<Instrument*>(trash.pointer);
 }
@@ -58,6 +60,19 @@ void Engine::destroy(const Trash& trash) {
 void Engine::collectGarbage() {
     Trash trash;
     while (trash_.pop(trash)) destroy(trash);
+}
+
+bool Engine::setEffect(int track, int slot, EffectKind kind) {
+    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return false;
+    std::unique_ptr<Effect> effect = makeEffect(kind, sampleRate_, 120.f); // the audio thread tells it the real tempo
+    Command c;
+    c.type = Command::InstallEffect;
+    c.track = track;
+    c.a = slot;
+    c.pointer = effect.get();
+    if (!commands_.push(c)) return false;
+    effect.release(); // the audio thread hands the old one back through the trash
+    return true;
 }
 
 bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample) {
@@ -232,6 +247,21 @@ void Engine::apply(const Command& c) {
             tracks_[c.track].drumScenes[c.scene].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
+    case Command::InstallEffect: {
+        Trash trash;
+        trash.isEffect = true;
+        if ((c.track != kMasterTrack && !validTrack(c.track)) || !validSlot(c.a)) {
+            trash.pointer = c.pointer; // nowhere to put it
+            if (trash.pointer) trash_.push(trash);
+            break;
+        }
+        std::unique_ptr<Effect>& place = c.track == kMasterTrack ? masterEffects_[c.a] : tracks_[c.track].effects[c.a];
+        trash.pointer = place.release();
+        place.reset(static_cast<Effect*>(c.pointer));
+        if (place) place->setTempo(tempo_);
+        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
+        break;
+    }
     case Command::SetLaneSample: {
         SampleData* incoming = static_cast<SampleData*>(c.pointer);
         Trash trash;
@@ -313,6 +343,12 @@ void Engine::apply(const Command& c) {
         if (std::isfinite(c.value)) {
             tempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
             samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
+            // Effects that keep time (the delay) follow.
+            for (Track& track : tracks_)
+                for (auto& effect : track.effects)
+                    if (effect) effect->setTempo(tempo_);
+            for (auto& effect : masterEffects_)
+                if (effect) effect->setTempo(tempo_);
         }
         break;
     case Command::SetTrackLevel:

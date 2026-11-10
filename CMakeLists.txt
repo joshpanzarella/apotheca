@@ -24,7 +24,7 @@ if(MATH_LIBRARY)
   target_link_libraries(easycz PUBLIC ${MATH_LIBRARY})
 endif()
 
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/twin.cpp)
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/twin.cpp)
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
 target_compile_options(apotheca_engine PRIVATE -Wall -Wextra)
