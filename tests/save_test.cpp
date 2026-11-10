@@ -106,7 +106,7 @@ void fillSong(Rig& rig) {
     rig.app.notes().moveCursorTo(48, 0);
     rig.tap(A);
     rig.key(A, true);
-    rig.tap(SDLK_RIGHT, 3);
+    rig.tap(SDLK_DOWN, 3);
     rig.key(A, false);
     rig.app.notes().moveCursorTo(55, 8);
     rig.tap(A);
@@ -416,6 +416,8 @@ void testTheSongListOnScreen() {
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.session().songName() == first || rig.session().songName() == second);
+    if (rig.app.song().listingRevs()) rig.tap(SELECT); // it was the open song: A showed its revs. Close them.
+    CHECK(!rig.app.song().listingSongs());
     if (rig.session().songName() == second) { // the new one was listed first; the old one is next
         rig.tap(SELECT);
         rig.tap(DOWN, 2);
@@ -554,6 +556,23 @@ void testRevs() {
     CHECK(loose.session().saveRev() == 0 && loose.session().revs().empty() && !loose.session().openRev(1));
 }
 
+void testASongMadeAMomentAgoIsInTheList() {
+    // Nothing has been saved yet when SELECT is pressed: the list must still
+    // show the song, so its revs can be reached.
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    fillSong(rig);
+    rig.project().playing = false;
+    rig.session().view = View::Song;
+    CHECK(rig.session().songNames().empty());
+    rig.tap(SELECT);
+    rig.tap(DOWN);
+    CHECK(rig.app.song().listCursor() == 1);
+    rig.tap(A);
+    CHECK(rig.app.song().listingRevs());
+    rig.tap(SELECT);
+}
+
 void testNamesDoNotRepeat() {
     const std::string folder = tempFolder();
     Rig rig(folder, 3);
@@ -580,6 +599,7 @@ int main(int, char**) {
     testNewSongAndTheList();
     testTheSongListOnScreen();
     testRevs();
+    testASongMadeAMomentAgoIsInTheList();
     testNamesDoNotRepeat();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

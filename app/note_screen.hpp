@@ -1,14 +1,16 @@
 #pragma once
-// The Pattern screen for a synth track: a piano roll, sixteen steps across
-// and the keys up the side.
+// The Pattern screen for a synth track: a piano roll on its side. The keys
+// run across the top, laid out as a keyboard is, three octaves at a time;
+// the bar runs down the screen, step 1 at the top.
 //
-// It is the drum grid's rules again, with one change: sideways, a note has a
-// length where a drum hit has a nudge.
+// Holding A shapes a note the way it is drawn: it is as long as it is tall,
+// and filled across as far as it is loud.
 //
-//   nothing held          the stick (or D-pad) moves the cursor; the keys scroll
+//   nothing held          the stick (or D-pad) moves the cursor: left / right
+//                         along the keys (they scroll), up / down through the bar
 //   A                     place a note, one step long
-//   hold A, stick up / down      LEVEL   the note fills or drains
-//   hold A, stick left / right   LENGTH  the note stretches or shrinks
+//   hold A, stick left / right   LEVEL   the note fills or drains
+//   hold A, stick up / down      LENGTH  the note grows or shrinks
 //   B                     delete the note under the cursor
 //   X                     hear the key under the cursor
 //   hold R1 and drag      paint a note on every step crossed
@@ -67,7 +69,7 @@ public:
 
 private:
     enum class Axis { None, UpDown, Sideways };
-    static constexpr int kVisibleRows = 16;
+    static constexpr int kVisibleKeys = 36;
 
     NotePattern& pat() { return project_.current().notes[project_.scene]; }
     const NotePattern& pat() const { return project_.current().notes[project_.scene]; }
@@ -94,7 +96,7 @@ private:
     Project& project_;
     int pitch_ = 60; // middle C
     int step_ = 0;
-    int top_ = 67;   // the highest key shown
+    int low_ = 48;   // the lowest key shown: C3, so middle C sits in the middle
 
     bool shaping_ = false; // A is held
     Axis axis_ = Axis::None;

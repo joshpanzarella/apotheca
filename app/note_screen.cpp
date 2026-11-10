@@ -11,12 +11,13 @@ using namespace ui;
 
 namespace {
 
-constexpr int kGridLeft = 116, kGridTop = 54, kStepW = 32, kRowH = 20;
-constexpr int kCellW = kStepW - 2, kCellH = kRowH - 2;
-constexpr int kNameX = 8, kNameW = 104;
+// Keys run across, as on a keyboard; the bar runs down the screen.
+constexpr int kGridLeft = 28, kGridTop = 60, kKeyW = 17, kRowH = 20;
+constexpr int kCellW = kKeyW - 2, kCellH = kRowH - 2;
+constexpr int kKeysTop = 30, kKeysH = 27, kBlackKeyH = 17;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
-constexpr float kStickCellsPerSecond = 36.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 24.f;
+constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 24.f;
 constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
@@ -80,15 +81,15 @@ void NoteScreen::moveCursorTo(int pitch, int step) {
     pitch_ = pitch < kLowest ? kLowest : (pitch > kHighest ? kHighest : pitch);
     step_ = ((step % kSteps) + kSteps) % kSteps;
     // The keys scroll to keep the cursor in view.
-    if (pitch_ > top_) top_ = pitch_;
-    if (pitch_ < top_ - (kVisibleRows - 1)) top_ = pitch_ + (kVisibleRows - 1);
+    if (pitch_ < low_) low_ = pitch_;
+    if (pitch_ > low_ + (kVisibleKeys - 1)) low_ = pitch_ - (kVisibleKeys - 1);
 }
 
 void NoteScreen::moveCursor(Button direction) {
-    if (direction == Button::Up) moveCursorTo(pitch_ + 1, step_);
-    if (direction == Button::Down) moveCursorTo(pitch_ - 1, step_);
-    if (direction == Button::Left) moveCursorTo(pitch_, step_ - 1);
-    if (direction == Button::Right) moveCursorTo(pitch_, step_ + 1);
+    if (direction == Button::Right) moveCursorTo(pitch_ + 1, step_);
+    if (direction == Button::Left) moveCursorTo(pitch_ - 1, step_);
+    if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
+    if (direction == Button::Down) moveCursorTo(pitch_, step_ + 1);
     if (painting_) paintHere();
 }
 
@@ -176,13 +177,12 @@ void NoteScreen::showChord(const ChordEvent& chord) {
     int keys[kChordNotes];
     const int n = chord.pitches(keys);
     if (n == 0) return;
-    int top = top_;
-    if (keys[n - 1] > top) top = keys[n - 1];
-    if (keys[0] < top - (kVisibleRows - 1)) top = keys[0] + (kVisibleRows - 1);
-    if (top < pitch_) top = pitch_;
-    if (top > pitch_ + (kVisibleRows - 1)) top = pitch_ + (kVisibleRows - 1);
-    if (top > kHighest) top = kHighest;
-    top_ = top;
+    int low = low_;
+    if (keys[0] < low) low = keys[0];
+    if (keys[n - 1] > low + (kVisibleKeys - 1)) low = keys[n - 1] - (kVisibleKeys - 1);
+    if (low > pitch_) low = pitch_;
+    if (low < pitch_ - (kVisibleKeys - 1)) low = pitch_ - (kVisibleKeys - 1);
+    low_ = low;
 }
 
 void NoteScreen::beginPick() {
@@ -266,10 +266,11 @@ void NoteScreen::press(Button b) {
         pickChanged();
     } else if (shaping_) {
         if (levelNow() <= 0.f) return;
-        if (b == Button::Up) setLevel(nextTenth(levelNow(), 1.f)), turningLength_ = false;
-        if (b == Button::Down) setLevel(nextTenth(levelNow(), -1.f)), turningLength_ = false;
-        if (b == Button::Right) setLength(lengthNow() + 1), turningLength_ = true;
-        if (b == Button::Left) setLength(lengthNow() - 1), turningLength_ = true;
+        // As it is drawn: a note grows down the screen and fills across it.
+        if (b == Button::Right) setLevel(nextTenth(levelNow(), 1.f)), turningLength_ = false;
+        if (b == Button::Left) setLevel(nextTenth(levelNow(), -1.f)), turningLength_ = false;
+        if (b == Button::Down) setLength(lengthNow() + 1), turningLength_ = true;
+        if (b == Button::Up) setLength(lengthNow() - 1), turningLength_ = true;
     } else {
         moveCursor(b);
     }
@@ -374,11 +375,11 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         if (x == 0.f && y == 0.f) axis_ = Axis::None;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
         const bool here = levelNow() > 0.f;
-        if (here && axis_ == Axis::UpDown && y != 0.f) {
-            setLevel(levelNow() - y * std::fabs(y) * kFillPerSecond * dt);
+        if (here && axis_ == Axis::Sideways && x != 0.f) {
+            setLevel(levelNow() + x * std::fabs(x) * kFillPerSecond * dt);
             turningLength_ = false;
-        } else if (here && axis_ == Axis::Sideways && x != 0.f) {
-            lengthSaved_ += x * std::fabs(x) * kLengthStepsPerSecond * dt;
+        } else if (here && axis_ == Axis::UpDown && y != 0.f) {
+            lengthSaved_ += y * std::fabs(y) * kLengthStepsPerSecond * dt;
             turningLength_ = true;
             while (lengthSaved_ >= 1.f) { lengthSaved_ -= 1.f; setLength(lengthNow() + 1); }
             while (lengthSaved_ <= -1.f) { lengthSaved_ += 1.f; setLength(lengthNow() - 1); }
@@ -389,13 +390,13 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         axis_ = Axis::None;
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
-            stickX_ += stickWasX_ ? std::fabs(x) * kStickCellsPerSecond * dt : 1.f;
+            stickX_ += stickWasX_ ? std::fabs(x) * kStickKeysPerSecond * dt : 1.f;
             stickWasX_ = true;
             for (; stickX_ >= 1.f; stickX_ -= 1.f) moveCursor(x > 0.f ? Button::Right : Button::Left);
         }
         if (y == 0.f) stickY_ = 0.f, stickWasY_ = false;
         else {
-            stickY_ += stickWasY_ ? std::fabs(y) * kStickCellsPerSecond * 0.5f * dt : 1.f;
+            stickY_ += stickWasY_ ? std::fabs(y) * kStickStepsPerSecond * dt : 1.f;
             stickWasY_ = true;
             for (; stickY_ >= 1.f; stickY_ -= 1.f) moveCursor(y > 0.f ? Button::Down : Button::Up);
         }
@@ -418,44 +419,52 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const bool held = shaping_ || painting_ || picking_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
 
-    for (int s = 0; s < kSteps; ++s) {
-        std::snprintf(text, sizeof text, "%d", s + 1);
-        fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, 36.f, text, s % 4 == 0 ? kText : kDim);
+    const auto gx = [&](int pitch) { return kGridLeft + (pitch - low_) * kKeyW; };
+    const auto gy = [](int step) { return kGridTop + step * kRowH; };
+    const auto shows = [&](int pitch) { return pitch >= low_ && pitch <= low_ + (kVisibleKeys - 1); };
+
+    // ---- the keyboard, across the top ---------------------------------------------
+    for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+        const bool black = isBlackKey(pitch), here = pitch == pitch_;
+        const int x = gx(pitch);
+        if (black) {
+            fill(r, x, kKeysTop, kCellW, kKeysH, kPanel);
+            fill(r, x, kKeysTop, kCellW, kBlackKeyH, here ? cursorColor : kBg);
+            outline(r, x, kKeysTop, kCellW, kBlackKeyH, here ? cursorColor : kLine);
+        } else {
+            fill(r, x, kKeysTop, kCellW, kKeysH, here ? cursorColor : kDim);
+            if (pitch % 12 == 0) { // every C says which octave it is
+                std::snprintf(text, sizeof text, "C%d", pitch / 12 - 1);
+                fonts.small.drawCentered(r, x + kCellW / 2.f, kKeysTop + kKeysH - fonts.small.capHeight() - 4.f, text, kBg);
+            }
+        }
     }
 
-    // ---- the keys and the empty grid ---------------------------------------------
-    for (int row = 0; row < kVisibleRows; ++row) {
-        const int pitch = top_ - row;
-        const int y = kGridTop + row * kRowH;
-        const bool black = isBlackKey(pitch);
-        box(r, kNameX, y, kNameW, kCellH, black ? kBg : kPanel2, kLine);
-        noteName(pitch, text, sizeof text);
-        // Every C is named; so is the key the cursor is on.
-        if (pitch % 12 == 0 || pitch == pitch_) {
-            fonts.small.draw(r, kNameX + 7.f, y + (kCellH - fonts.small.capHeight()) / 2.f, text, pitch == pitch_ ? kTeal : kDim);
-        }
-        for (int s = 0; s < kSteps; ++s) {
-            const SDL_Color inside = black ? kBg : (s % 4 == 0 ? kPanel2 : kPanel);
-            box(r, kGridLeft + s * kStepW, y, kCellW, kCellH, inside, kLine);
+    // ---- the empty grid: a column for each key, a row for each step ------------------
+    for (int step = 0; step < kSteps; ++step) {
+        std::snprintf(text, sizeof text, "%d", step + 1);
+        fonts.small.drawRight(r, kGridLeft - 7.f, gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
+                              step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
+        for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+            const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
+            box(r, gx(pitch), gy(step), kCellW, kCellH, inside, kLine);
         }
     }
 
     // ---- notes --------------------------------------------------------------------------
-    // A block as long as the note lasts, filled as far as it is loud.
+    // A block as long (down the screen) as the note lasts, filled across as
+    // far as it is loud.
     const NoteEvent* under = noteHere();
     const ChordEvent* chordUnder = chordHere();
-    const auto shows = [&](int pitch) { return pitch <= top_ && pitch >= top_ - (kVisibleRows - 1); };
     const auto block = [&](int pitch, int step, int length, float level, SDL_Color edge, SDL_Color inside) {
-        const int y = kGridTop + (top_ - pitch) * kRowH;
-        const int x = kGridLeft + step * kStepW + 2;
-        const int w = length * kStepW - 6;
-        const int full = kCellH - 4;
-        int h = static_cast<int>(std::round(level * full));
-        if (h < 2) h = 2;
-        outline(r, x, y + 2, w, full, edge);
-        if (level > 0.f) fill(r, x, y + 2 + full - h, w, h, inside);
+        const int x = gx(pitch) + 1, y = gy(step) + 1;
+        const int full = kCellW - 2, h = length * kRowH - 4;
+        int w = static_cast<int>(std::round(level * full));
+        if (w < 2) w = 2;
+        outline(r, x, y, full, h, edge);
+        if (level > 0.f) fill(r, x, y, w, h, inside);
     };
-    // A chord: its notes in purple, tied down the left side, named on top.
+    // A chord: its notes in purple, tied along the top, named above.
     const auto drawChord = [&](const ChordEvent& c, bool live, bool ghost) {
         int keys[kChordNotes];
         const int n = c.pitches(keys);
@@ -463,16 +472,16 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const SDL_Color color = ghost ? kBrass : (live ? kTeal : kPurple);
         for (int i = 0; i < n; ++i)
             if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color);
-        const int high = keys[n - 1] > top_ ? top_ : keys[n - 1];
-        const int low = keys[0] < top_ - (kVisibleRows - 1) ? top_ - (kVisibleRows - 1) : keys[0];
+        const int low = keys[0] < low_ ? low_ : keys[0];
+        const int high = keys[n - 1] > low_ + (kVisibleKeys - 1) ? low_ + (kVisibleKeys - 1) : keys[n - 1];
         if (high < low) return; // all of it is off the screen
-        const int x = kGridLeft + c.step * kStepW;
-        const int y0 = kGridTop + (top_ - high) * kRowH + 2, y1 = kGridTop + (top_ - low) * kRowH + kCellH - 2;
-        fill(r, x - 1, y0, 2, y1 - y0, color);
+        const int x0 = gx(low), x1 = gx(high) + kCellW, y = gy(c.step);
+        fill(r, x0, y - 1, x1 - x0, 2, color);
         const float w = fonts.small.width(c.name) + 6.f;
-        float lx = static_cast<float>(x - 1);
+        float lx = static_cast<float>(x0);
         if (lx + w > kScreenW - 2) lx = kScreenW - 2 - w;
-        const int ly = y0 - 15 < kGridTop ? y1 + 1 : y0 - 15; // under it when there is no room above
+        // Above it; on the first step there is no room, so just inside the top.
+        const int ly = c.step == 0 ? y + 1 : y - 15;
         fill(r, static_cast<int>(lx), ly, static_cast<int>(w), 14, color);
         fonts.small.draw(r, lx + 3.f, ly + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
     };
@@ -487,15 +496,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         drawChord(c, (shaping_ && &c == chordUnder) || (picking_ && i == editing_), false);
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
-    {
-        const int y = kGridTop + (top_ - pitch_) * kRowH;
-        outline(r, kGridLeft + step_ * kStepW - 1, y - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
-    }
+    outline(r, gx(pitch_) - 1, gy(step_) - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     const int playStep = session_.engine.playScene() == project_.scene ? session_.engine.playStep() : -1;
-    if (playStep >= 0) fill(r, kGridLeft + playStep * kStepW, kGridTop, kCellW, kVisibleRows * kRowH - 2, faded(kPurple, 76));
+    if (playStep >= 0) fill(r, kGridLeft, gy(playStep), kVisibleKeys * kKeyW - 2, kCellH, faded(kPurple, 76));
 
     // ---- what is under the cursor ---------------------------------------------------
-    const int stripY = kGridTop + kVisibleRows * kRowH + 12;
+    const int stripY = kGridTop + kSteps * kRowH + 8;
     const auto field = [&](float fx, const char* label, const char* value, SDL_Color color) {
         fonts.small.draw(r, fx, static_cast<float>(stripY), label, kDim);
         fonts.large.draw(r, fx, stripY + 16.f, value, color);
@@ -568,8 +574,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG WITH THE STICK", brushText);
     } else if (shaping_) {
-        hint("STICK UP / DOWN", "level");
-        hint("STICK LEFT / RIGHT", "length");
+        hint("STICK LEFT / RIGHT", "level");
+        hint("STICK UP / DOWN", "length");
     } else {
         hint("STICK", "move");
         hint("A", under || chordUnder ? "level / length" : "place");

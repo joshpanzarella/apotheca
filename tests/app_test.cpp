@@ -63,7 +63,7 @@ struct Rig {
 // Keyboard stand-ins (see app/input.cpp).
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
 const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2;
-const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
+const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 
 bool near(float a, float b) { return std::fabs(a - b) < 1e-4f; }
@@ -394,46 +394,46 @@ void testPlacingAndDeletingNotes() {
 void testNoteLevelAndLength() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
-    rig->tap(RIGHT, 4); // step 5
+    rig->tap(DOWN, 4); // step 5
     rig->key(A, true);
-    rig->tap(RIGHT, 3);
+    rig->tap(DOWN, 3);
     CHECK(notes.noteHere()->length == 4);
     CHECK(notes.cursorStep() == 4); // the cursor stays at the note's start
-    rig->tap(LEFT);
-    CHECK(notes.noteHere()->length == 3);
-    rig->tap(LEFT, 9);
-    CHECK(notes.noteHere()->length == 1); // never to nothing
-    rig->tap(DOWN, 3);
-    CHECK(near(notes.noteHere()->velocity, 0.5f));
     rig->tap(UP);
+    CHECK(notes.noteHere()->length == 3);
+    rig->tap(UP, 9);
+    CHECK(notes.noteHere()->length == 1); // never to nothing
+    rig->tap(LEFT, 3);
+    CHECK(near(notes.noteHere()->velocity, 0.5f));
+    rig->tap(RIGHT);
     CHECK(near(notes.noteHere()->velocity, 0.6f));
     // The stick does the same, fast, one job per push.
-    rig->key(STICK_RIGHT, true);
+    rig->key(STICK_DOWN, true);
     rig->frames(40);
-    rig->key(STICK_RIGHT, false);
+    rig->key(STICK_DOWN, false);
     CHECK(notes.noteHere()->length == 12); // to the end of the bar and no further
     CHECK(near(notes.noteHere()->velocity, 0.6f));
     // Drifting up during a sideways push does not also change the level.
-    rig->key(STICK_RIGHT, true);
+    rig->key(STICK_DOWN, true);
     rig->frames(2);
-    rig->key(STICK_UP, true);
+    rig->key(STICK_RIGHT, true);
     rig->frames(10);
-    rig->key(STICK_UP, false);
     rig->key(STICK_RIGHT, false);
+    rig->key(STICK_DOWN, false);
     CHECK(near(notes.noteHere()->velocity, 0.6f));
     rig->frames(1);
-    rig->key(STICK_UP, true);
+    rig->key(STICK_RIGHT, true);
     rig->frames(40);
-    rig->key(STICK_UP, false);
+    rig->key(STICK_RIGHT, false);
     CHECK(notes.noteHere()->velocity == 1.f && notes.noteHere()->length == 12);
-    rig->key(STICK_DOWN, true);
+    rig->key(STICK_LEFT, true);
     rig->frames(100);
-    rig->key(STICK_DOWN, false);
+    rig->key(STICK_LEFT, false);
     CHECK(near(notes.noteHere()->velocity, 0.05f)); // quiet, never gone
     rig->key(A, false);
 
     // The cursor anywhere inside a long note is on that note.
-    rig->tap(RIGHT, 5);
+    rig->tap(DOWN, 5);
     CHECK(notes.noteHere() && notes.noteHere()->step == 4);
     rig->tap(B);
     CHECK(notes.noteCount() == 0);
@@ -445,7 +445,7 @@ void testNoteLevelAndLength() {
     rig->tap(A);
     rig->app.notes().moveCursorTo(60, 0);
     rig->key(A, true);
-    rig->tap(RIGHT, 9);
+    rig->tap(DOWN, 9);
     rig->key(A, false);
     CHECK(notes.noteHere()->length == 3 && notes.noteCount() == 2);
 }
@@ -461,9 +461,9 @@ void testTheEnginePlaysNotesAtTheirStepAndLength() {
     c.a = organ;
     rig->engine->send(c);
     rig->project().playing = true; // as if the song were running, so placing is silent
-    rig->tap(RIGHT, 4);
+    rig->tap(DOWN, 4);
     rig->key(A, true);
-    rig->tap(RIGHT, 3); // step 5, four steps long
+    rig->tap(DOWN, 3); // step 5, four steps long
     rig->key(A, false);
     rig->project().playing = false;
     rig->listen(48000);
@@ -488,23 +488,23 @@ void testPaintingNotes() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
     rig->key(R1, true);
-    rig->tap(RIGHT, 3);
-    rig->tap(UP); // and up a key: an arpeggio
-    rig->tap(RIGHT);
+    rig->tap(DOWN, 3);
+    rig->tap(RIGHT); // and up a key: an arpeggio
+    rig->tap(DOWN);
     rig->key(R1, false);
     CHECK(notes.noteCount() == 6);
     for (int step = 0; step <= 3; ++step) CHECK(rig->project().tracks[1].notes[0].at(60, step) >= 0);
     CHECK(rig->project().tracks[1].notes[0].at(61, 3) >= 0 && rig->project().tracks[1].notes[0].at(61, 4) >= 0);
-    rig->tap(RIGHT);
+    rig->tap(DOWN);
     CHECK(notes.noteCount() == 6); // the brush is up
     // The brush copies the level of the note it starts on.
     rig->app.notes().moveCursorTo(72, 0);
     rig->tap(A);
     rig->key(A, true);
-    rig->tap(DOWN, 5);
+    rig->tap(LEFT, 5);
     rig->key(A, false);
     rig->key(R1, true);
-    rig->tap(RIGHT, 2);
+    rig->tap(DOWN, 2);
     rig->key(R1, false);
     for (int step = 0; step <= 2; ++step) {
         const int slot = rig->project().tracks[1].notes[0].at(72, step);
@@ -515,13 +515,13 @@ void testPaintingNotes() {
 void testTheKeysScrollAndStopAtTheEnds() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
-    rig->tap(UP, 200);
+    rig->tap(RIGHT, 200);
     CHECK(notes.cursorPitch() == NoteScreen::kHighest);
     rig->tap(A); // a note up there
     CHECK(notes.noteHere() && notes.noteHere()->pitch == NoteScreen::kHighest);
-    rig->tap(DOWN, 200);
+    rig->tap(LEFT, 200);
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
-    rig->tap(LEFT);
+    rig->tap(UP);
     CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
 }
 

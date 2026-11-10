@@ -29,7 +29,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN;
 const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w;
-const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l;
+const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l, STICK_LEFT = SDLK_j, STICK_DOWN = SDLK_k;
 
 // A handheld with one Phazed track, on its note screen.
 struct Rig {
@@ -394,19 +394,19 @@ void testShapingAndRemovingAWholeChord() {
     CHECK(rig.notes().chordHere() && rig.notes().chordHere()->step == 0);
     rig.key(A, true);
     CHECK(rig.notes().noteCount() == 0); // A takes hold of the chord; it does not drop a note on it
-    rig.tap(SDLK_UP);
+    rig.tap(SDLK_RIGHT);
     CHECK(std::fabs(rig.chordOn(0)->velocity - 0.9f) < 1e-4f);
     CHECK(rig.chordOn(4)->velocity == 0.8f); // only this chord
-    rig.tap(SDLK_LEFT, 5);
+    rig.tap(SDLK_UP, 5);
     CHECK(rig.chordOn(0)->length == 2); // never out from under the cursor
-    rig.tap(SDLK_RIGHT, 9);
+    rig.tap(SDLK_DOWN, 9);
     CHECK(rig.chordOn(0)->length == 4); // up to the next chord, no further
-    rig.tap(SDLK_LEFT);
+    rig.tap(SDLK_UP);
     CHECK(rig.chordOn(0)->length == 3);
     // The stick, the same.
-    rig.key(STICK_UP, true);
+    rig.key(STICK_RIGHT, true);
     rig.frames(40);
-    rig.key(STICK_UP, false);
+    rig.key(STICK_RIGHT, false);
     rig.frames(1);
     CHECK(rig.chordOn(0)->velocity == 1.f);
     rig.key(A, false);

@@ -106,6 +106,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             revsOpen_ = false;
             savedRev_ = 0;
             if (listing_) {
+                session_.saveNow(); // so a song made a moment ago is in its own list
                 songs_ = session_.songNames();
                 listCursor_ = 0;
             }
@@ -128,6 +129,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             // Anywhere in the list: keep the song as it is now.
             savedRev_ = session_.saveRev();
             if (revsOpen_) openRevList();
+            else songs_ = session_.songNames();
             return;
         }
         if (revsOpen_) {

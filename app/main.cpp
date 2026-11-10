@@ -279,6 +279,12 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
+    } else if (std::strcmp(view, "revs") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT
+        tapKey(SDLK_s, 2);      // X twice: two revs
+        tapKey(SDLK_DOWN);
+        tapKey(SDLK_x);         // A on the open song: its revs
     } else if (std::strcmp(view, "add-track") == 0) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
