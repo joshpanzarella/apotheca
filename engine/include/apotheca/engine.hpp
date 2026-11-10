@@ -11,7 +11,8 @@
 // ever leaves louder than full scale.
 //
 // A new engine has one track with an instrument: track 0, the drums, playing
-// the built-in kit. The other tracks are empty and cost nothing.
+// the built-in kit. The other tracks are empty and cost nothing, until
+// addSynthTrack() puts the CZ synth on one.
 //
 // Threads:
 //   - Any ONE other thread calls send(). It never blocks.
@@ -23,6 +24,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "apotheca/cz.hpp"
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
 #include "apotheca/spsc_queue.hpp"
@@ -47,7 +49,10 @@ struct Command {
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
         SetStepNudge,   // move a hit off the grid:   track, a = lane, b = step, value = -0.5..0.5 of a step (negative is early)
-        SetStepChance   // how likely a hit plays:    track, a = lane, b = step, value = 0..1
+        SetStepChance,  // how likely a hit plays:    track, a = lane, b = step, value = 0..1
+        NoteOn,         // a synth track plays a note: track, a = MIDI note, value = velocity 0..1
+        NoteOff,        //                             track, a = MIDI note
+        SelectPreset    // a synth track's sound:      track, a = preset number
     };
     Type type = Trigger;
     int track = 0;
@@ -64,6 +69,9 @@ public:
     void prepare(float sampleRate);
     void setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect);
     void setMasterEffect(int slot, std::unique_ptr<Effect> effect);
+    // Put the CZ synth on an empty track. Returns false if the track already
+    // has an instrument or the synth could not be built.
+    bool addSynthTrack(int track);
 
     // From the screen thread. Returns false if the queue is full.
     bool send(const Command& command) { return commands_.push(command); }
@@ -81,6 +89,7 @@ private:
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
+        std::unique_ptr<CzSynth> synth; // set on a synth track
         float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
         float nudge[kDrumLanes][kSteps] = {};   // -0.5..0.5 of a step
         float chance[kDrumLanes][kSteps];       // 0..1, set to 1 in the constructor
@@ -89,6 +98,7 @@ private:
         struct Pending { double samplesLeft = 0.0; float velocity = 0.f; };
         Pending pending[kDrumLanes][2];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
+        bool hasInstrument() const { return hasDrums || synth; }
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
     };

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(apotheca VERSION 0.1.0 LANGUAGES CXX)
+project(apotheca VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,7 +12,20 @@ option(APOTHECA_BUILD_APP "Build the SDL2 app (needs SDL2)" ON)
 option(APOTHECA_BUILD_TESTS "Build the engine tests" ON)
 
 # The engine: no SDL, no device code. Keep it that way so it stays testable.
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/drums.cpp)
+# EasyCZ's engine, copied unchanged from joshpanzarella/schwung-easycz.
+set(CMAKE_C_STANDARD 11)
+add_library(easycz STATIC
+  third_party/easycz/dsp/cz_chorus.c third_party/easycz/dsp/cz_output.c
+  third_party/easycz/dsp/cz_presets.c third_party/easycz/dsp/cz_synth.c
+  third_party/easycz/dsp/cz_tone.c third_party/easycz/dsp/upd933.c)
+target_include_directories(easycz PUBLIC third_party/easycz)
+find_library(MATH_LIBRARY m)
+if(MATH_LIBRARY)
+  target_link_libraries(easycz PUBLIC ${MATH_LIBRARY})
+endif()
+
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/drums.cpp engine/src/cz.cpp)
+target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
 target_compile_options(apotheca_engine PRIVATE -Wall -Wextra)
 
@@ -21,6 +34,9 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(engine_test tests/engine_test.cpp)
   target_link_libraries(engine_test PRIVATE apotheca_engine)
   add_test(NAME engine COMMAND engine_test)
+  add_executable(cz_test tests/cz_test.cpp)
+  target_link_libraries(cz_test PRIVATE apotheca_engine)
+  add_test(NAME cz COMMAND cz_test)
 endif()
 
 if(APOTHECA_BUILD_APP)

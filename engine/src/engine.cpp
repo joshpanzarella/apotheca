@@ -34,6 +34,7 @@ void Engine::prepare(float sampleRate) {
     for (Track& track : tracks_) {
         track.drums.setKit(&builtInKit_);
         track.drums.prepare(sampleRate);
+        if (track.synth) track.synth->prepare(sampleRate);
         for (auto& effect : track.effects) {
             if (effect) {
                 effect->prepare(sampleRate);
@@ -61,6 +62,15 @@ void Engine::setMasterEffect(int slot, std::unique_ptr<Effect> effect) {
     masterEffects_[slot] = std::move(effect);
 }
 
+bool Engine::addSynthTrack(int track) {
+    if (!validTrack(track) || tracks_[track].hasInstrument()) return false;
+    std::unique_ptr<CzSynth> synth(new CzSynth);
+    if (!synth->ok()) return false;
+    synth->prepare(sampleRate_);
+    tracks_[track].synth = std::move(synth);
+    return true;
+}
+
 float Engine::trackPeak(int track) const {
     return validTrack(track) ? tracks_[track].peak.load(std::memory_order_relaxed) : 0.f;
 }
@@ -84,6 +94,15 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
             tracks_[c.track].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
+        break;
+    case Command::NoteOn:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
+        break;
+    case Command::NoteOff:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
+        break;
+    case Command::SelectPreset:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
         break;
     case Command::Play:
         playing_ = true;
@@ -228,9 +247,10 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
 
     for (int t = 0; t < kNumTracks; ++t) {
         Track& track = tracks_[t];
-        if (!track.hasDrums) continue; // an empty track costs nothing
+        if (!track.hasInstrument()) continue; // an empty track costs nothing
 
-        track.drums.render(left, right, frames);
+        if (track.synth) track.synth->render(left, right, frames);
+        else track.drums.render(left, right, frames);
         for (auto& effect : track.effects) {
             if (effect) effect->process(left, right, frames);
         }
