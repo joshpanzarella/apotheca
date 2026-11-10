@@ -232,6 +232,7 @@ bool PatternScreen::diceRemove() {
     diceOrder(lane_, order);
     for (int i = kSteps - 1; i >= 0; --i) {
         if (!fromDice_[lane_][order[i]]) continue;
+        fromDice_[lane_][order[i]] = false; // first, so this can never find the same hit twice
         setStep(lane_, order[i], 0.f);
         return true;
     }
