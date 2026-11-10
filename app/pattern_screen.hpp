@@ -13,6 +13,13 @@
 //   hold A, stick up / down      LEVEL   the block fills or drains
 //   hold A, stick left / right   NUDGE   the block slides early or late
 //   hold Y, stick up / down      CHANCE  the block fades toward a ghost
+//   hold Y, stick left / right   START   where in the drum's sound the hit
+//                                        begins: a mark slides under the block,
+//                                        and it is heard as it moves
+//
+// On a lane's name, hold Y and push right to roll a new start for every hit
+// on the lane (on the sixteenths of the sound); left puts them all back. On
+// a recording fitted to one bar that rearranges the beat and keeps it in time.
 //
 // Painting, for rows of hits in one sweep. Hold a shoulder button and drag
 // the cursor with the stick or D-pad; every step it crosses gets a hit:
@@ -79,6 +86,8 @@ public:
     void setStep(int lane, int step, float level);
     void setNudge(int lane, int step, float nudge);   // -0.5..0.5 of a step
     void setChance(int lane, int step, float chance); // 0.05..1
+    void setStart(int lane, int step, float start);   // 0..15/16 of the lane's sound
+    float start(int lane, int step) const { return pat().start[lane][step]; }
     void moveCursorTo(int lane, int step); // step -1 is the lane's name
     float level(int lane, int step) const { return pat().level[lane][step]; }
     float nudge(int lane, int step) const { return pat().nudge[lane][step]; }
@@ -98,7 +107,7 @@ public:
 private:
     static constexpr int kLaneName = -1; // step_ value when the cursor is on a lane's name
     enum class Axis { None, UpDown, Sideways };
-    enum class Turning { Nothing, Level, Nudge, Chance }; // which value the stick has hold of, for drawing
+    enum class Turning { Nothing, Level, Nudge, Chance, Start }; // which value the stick has hold of, for drawing
     enum class Paint { None, OneLevel, Random };
 
     bool onStep() const { return !onTempo_ && step_ != kLaneName; }
@@ -125,7 +134,9 @@ private:
     void nudgeExact(Button direction, bool withY);
     void setLaneLevel(float level);
     void setTempo(float bpm);
-    void audition(int lane, float level);
+    void audition(int lane, float level, float start = 0.f);
+    void turnStart(float amount);    // with Y, sideways
+    const char* laneLabel(int lane) const; // the drum's name, or its recording's
 
     Session& session_;
     Engine& engine_;
@@ -141,6 +152,8 @@ private:
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
 
+    bool rolled_ = false;        // this push of the stick has already rolled the lane's starts
+    Uint32 heardStartAt_ = 0;    // when a sliding start was last played
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
     Paint paint_ = Paint::None;

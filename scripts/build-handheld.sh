@@ -88,6 +88,9 @@ mv "$pack/apotheca/routed-gothic-LICENSE.txt" "$pack/apotheca/licences/"
 # Chord packs: any JSON file dropped in this folder is picked up.
 mkdir -p "$pack/apotheca/chords"
 cp "$here"/assets/chords/*.json "$pack/apotheca/chords/"
+# Recordings for drum lanes go here: WAV files, up to ten seconds each.
+mkdir -p "$pack/apotheca/samples"
+printf 'Put .wav files here. Each can go on a drum lane: DEVICE screen of a drum track.\nUp to ten seconds of each is used.\n' > "$pack/apotheca/samples/README.txt"
 cp "$here/scripts/Apotheca.sh" "$pack/Apotheca.sh"
 chmod +x "$pack/Apotheca.sh" "$pack/apotheca/apotheca"
 

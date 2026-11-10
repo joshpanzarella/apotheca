@@ -22,6 +22,9 @@ constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // L1 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
+constexpr int kStartSlices = 16;          // the D-pad and the lane roll move a start by sixteenths of the sound
+constexpr float kMaxStart = 15.f / 16.f;  // the last sixteenth is always left to hear
+constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
@@ -56,6 +59,7 @@ void PatternScreen::setStep(int lane, int step, float level) {
     if (level <= 0.f) {
         setNudge(lane, step, 0.f);
         setChance(lane, step, 1.f);
+        setStart(lane, step, 0.f);
     }
 }
 
@@ -114,13 +118,67 @@ void PatternScreen::setTempo(float bpm) {
     engine_.send(c);
 }
 
-void PatternScreen::audition(int lane, float level) {
+void PatternScreen::audition(int lane, float level, float start) {
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
     c.a = lane;
+    c.b = static_cast<int>(std::round(start * 10000.f));
     c.value = level;
     engine_.send(c);
+}
+
+// Where in the lane's sound a hit begins. Never so late that nothing is left.
+void PatternScreen::setStart(int lane, int step, float start) {
+    if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
+    start = clampTo(start, 0.f, kMaxStart);
+    if (start == pat().start[lane][step]) return;
+    pat().start[lane][step] = start;
+    Command c;
+    c.type = Command::SetStepStart;
+    c.track = project_.track;
+    c.scene = project_.scene;
+    c.a = lane;
+    c.b = step;
+    c.value = start;
+    engine_.send(c);
+}
+
+// With Y, sideways. On a hit: slide its start, hearing it on the way. On a
+// lane's name: right rolls a new start for every hit on the lane, on the
+// sixteenths of the sound; left puts them all back at the beginning.
+void PatternScreen::turnStart(float amount) {
+    if (amount == 0.f || onTempo_) return;
+    if (step_ == kLaneName) {
+        if (rolled_) return; // one roll per push
+        rolled_ = true;
+        yDidSomething_ = true;
+        for (int step = 0; step < kSteps; ++step) {
+            if (pat().level[lane_][step] <= 0.f) continue;
+            dice_ = dice_ * 1664525u + 1013904223u;
+            setStart(lane_, step, amount > 0.f ? static_cast<float>((dice_ >> 12) % kStartSlices) / kStartSlices : 0.f);
+        }
+        return;
+    }
+    if (!hitHere()) return;
+    const float before = pat().start[lane_][step_];
+    setStart(lane_, step_, before + amount);
+    turning_ = Turning::Start;
+    yDidSomething_ = true;
+    if (pat().start[lane_][step_] != before && !project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
+        heardStartAt_ = lastMs_;
+        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_]);
+    }
+}
+
+const char* PatternScreen::laneLabel(int lane) const {
+    const char* file = trk().laneSample[lane];
+    if (!file[0]) return DrumKit::laneName(lane);
+    static char labels[kDrumLanes][12];
+    int n = 0;
+    for (; file[n] && n < 9; ++n) labels[lane][n] = static_cast<char>(file[n] >= 'a' && file[n] <= 'z' ? file[n] - 32 : file[n]);
+    labels[lane][n] = 0;
+    return labels[lane];
 }
 
 void PatternScreen::placeHit(float chance) {
@@ -312,6 +370,16 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             setChance(lane_, step_, nextTenth(pat().chance[lane_][step_], sign));
             turning_ = Turning::Chance;
             yDidSomething_ = true;
+        } else if (!vertical && !onTempo_ && step_ == kLaneName) {
+            rolled_ = false;
+            turnStart(sign); // roll the lane's starts, or put them back
+            rolled_ = false; // each press of the D-pad is its own roll
+        } else if (!vertical && hitHere()) {
+            // Sideways: the next sixteenth of the sound, exactly.
+            const float now = pat().start[lane_][step_] * kStartSlices;
+            const float to = sign > 0.f ? std::floor(now + 1.001f) : std::ceil(now - 1.001f);
+            heardStartAt_ = 0;
+            turnStart(to / kStartSlices - pat().start[lane_][step_]);
         }
     } else if (onTempo_) {
         setTempo(project_.tempo + sign * (vertical ? 1.f : 10.f));
@@ -394,7 +462,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::B && !busy) {
         if (hitHere()) setStep(lane_, step_, 0.f);
     } else if (b == Button::X && !onTempo_) {
-        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel);
+        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : 0.f);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false); // loop this scene
     }
@@ -411,7 +479,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         // The stick does one job per push. Whichever way it leaves the centre
         // is the job until it comes back, so setting a level cannot also
         // slide the hit sideways.
-        if (x == 0.f && y == 0.f) axis_ = Axis::None;
+        if (x == 0.f && y == 0.f) axis_ = Axis::None, rolled_ = false;
         else if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
 
         // Squared, so a small push is a fine adjustment and a full push is fast.
@@ -419,6 +487,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         const float right = x * std::fabs(x) * feel.fillPerSecond * dt;
         if (dicing_) {
             if (axis_ == Axis::UpDown) turnChance(up);
+            else if (axis_ == Axis::Sideways) turnStart(right * 0.5f);
         } else if (axis_ == Axis::UpDown) {
             turnUpDown(up);
         } else if (axis_ == Axis::Sideways) {
@@ -505,7 +574,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, kPanel);
         }
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
-        fonts.medium.draw(r, 15.f, y + (kCellH - fonts.medium.capHeight()) / 2.f, DrumKit::laneName(lane),
+        fonts.medium.draw(r, 15.f, y + (kCellH - fonts.medium.capHeight()) / 2.f, laneLabel(lane),
                           !onTempo_ && lane == lane_ ? kTeal : kText);
 
         for (int s = 0; s < kSteps; ++s) {
@@ -540,6 +609,14 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // On a lane's name, the dice's own hits wear a brass cap: those are
             // the ones the stick will take away again.
             if (onName && lane == lane_ && pat().fromDice[lane][s]) fill(r, bx, y + 4 + kBlockFull - h, kBlockW, 3, kBrass);
+            // A hit that starts part-way into its sound: a line under the
+            // block for the whole sound, and a mark where this hit comes in.
+            const float start = pat().start[lane][s];
+            if (start > 0.f) {
+                const SDL_Color mark = live && turning_ == Turning::Start ? kBrass : kPurple;
+                fill(r, bx, y + kCellH - 3, kBlockW, 1, kDim);
+                fill(r, bx + static_cast<int>(std::round(start * (kBlockW - 3))), y + kCellH - 5, 3, 4, mark);
+            }
         }
     }
     if (onStep()) {
@@ -568,20 +645,21 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         field(134.f, "BPM", text, cursorColor);
         bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
     } else if (onName) {
-        field(8.f, "LANE", DrumKit::laneName(lane_), kText);
+        field(8.f, "LANE", laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
         std::snprintf(text, sizeof text, "%d", diceHits(lane_));
         field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
     } else {
-        field(8.f, "LANE", DrumKit::laneName(lane_), kText);
+        field(8.f, "LANE", laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d", step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {
             field(190.f, "LEVEL", "-", kDim);
-            field(330.f, "NUDGE", "-", kDim);
-            field(470.f, "CHANCE", "-", kDim);
+            field(290.f, "NUDGE", "-", kDim);
+            field(420.f, "CHANCE", "-", kDim);
+            field(520.f, "START", "-", kDim);
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
@@ -590,9 +668,25 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int n = static_cast<int>(std::round(pat().nudge[lane_][step_] * 100.f));
             if (n == 0) std::snprintf(text, sizeof text, "ON GRID");
             else std::snprintf(text, sizeof text, "%d%% %s", std::abs(n), n < 0 ? "EARLY" : "LATE");
-            field(330.f, "NUDGE", text, shade(Turning::Nudge));
+            field(290.f, "NUDGE", text, shade(Turning::Nudge));
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().chance[lane_][step_] * 100.f)));
-            field(470.f, "CHANCE", text, shade(Turning::Chance));
+            field(420.f, "CHANCE", text, shade(Turning::Chance));
+            // Where in the sound it begins, with a picture of the sound when there is one.
+            const float start = pat().start[lane_][step_];
+            if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
+            else std::snprintf(text, sizeof text, "%d%% IN", static_cast<int>(std::round(start * 100.f)));
+            field(520.f, "START", text, shade(Turning::Start));
+            const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+            if (!sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
+                const int wx = 8, wy = stripY + 38, ww = 624, wh = 20;
+                const int count = static_cast<int>(sound.peaks.size());
+                for (int i = 0; i < count; ++i) {
+                    const int px = wx + ww * i / count, ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
+                    const bool played = static_cast<float>(i) / count >= start;
+                    fill(r, px, wy + (wh - ph) / 2, ww / count, ph, played ? kText : kLine);
+                }
+                fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, turning_ == Turning::Start ? kBrass : kPurple);
+            }
         }
     }
 
@@ -612,9 +706,12 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK LEFT / RIGHT", "nudge early / late");
     } else if (dicing_ && onStep()) {
         hint("STICK UP / DOWN", "chance");
+        hint("STICK LEFT / RIGHT", "where the sound starts");
         hint("TAP Y", "100 > 75 > 50 > 25");
     } else if (dicing_ && onName) {
         hint("STICK UP / DOWN", "more / fewer hits");
+        hint("RIGHT", "roll every hit's start");
+        hint("LEFT", "starts back to the top");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("STICK UP / DOWN", onTempo_ ? "tempo" : "drum volume");
@@ -631,7 +728,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         hint("STICK", "move");
         hint("A", hitHere() ? "level / nudge" : "place");
-        hint("Y", hitHere() ? "chance" : "maybe");
+        hint("Y", hitHere() ? "chance / start" : "maybe");
         if (hitHere()) hint("B", "delete");
         hint("HOLD R1", "paint");
         hint("HOLD L1", "paint random");

@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "input.hpp"
+#include "kit_screen.hpp"
 #include "note_screen.hpp"
 #include "pattern_screen.hpp"
 #include "phazed_screen.hpp"
@@ -37,15 +38,15 @@ public:
     NoteScreen& notes() { return notes_; }
     PhazedScreen& phazed() { return phazed_; }
     PhazedScreen& twin() { return twin_; }
+    KitScreen& kit() { return kit_; }
 
 private:
-    void drawKit(SDL_Renderer* renderer, const Fonts& fonts) const;
-
     std::unique_ptr<Project> project_; // large, so not on the stack
     Session session_;
     SongScreen song_;
     PatternScreen drums_;
     NoteScreen notes_;
+    KitScreen kit_;
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;
 };

@@ -18,6 +18,7 @@
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
 //   --songs DIR    keep songs in this folder (the default is beside the program)
+//   --samples DIR  look for recordings (WAV files) in this folder
 
 #include <SDL.h>
 
@@ -25,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sys/stat.h>
 #include <ctime>
 #include <string>
 
@@ -169,6 +171,7 @@ int main(int argc, char** argv) {
     const char* view = "";
     const char* shot = nullptr;
     const char* songs = nullptr;
+    const char* samples = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
@@ -182,6 +185,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
         else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
+        else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
     }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -256,6 +260,11 @@ int main(int argc, char** argv) {
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
+        // Recordings for drum lanes: WAV files in a "samples" folder beside the program.
+        const std::string folder = samples ? samples : beside.substr(0, beside.size() - 6) + "samples";
+        if (!samples && !smoke && !shot) mkdir(folder.c_str(), 0755); // so there is somewhere to copy them to
+        app.session().useSampleFolder(folder);
+        std::printf("samples: %d in %s\n", static_cast<int>(app.session().sampleNames().size()), folder.c_str());
     }
     if (songs) {
         app.session().useSongFolder(songs, 1);
@@ -317,7 +326,30 @@ int main(int argc, char** argv) {
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
         app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : PhazedScreen::kFirstMacro + 1);
-    } else if (std::strcmp(view, "kit") == 0) {
+    } else if (std::strcmp(view, "kit") == 0 || std::strcmp(view, "starts") == 0) {
+        // With --samples: the first recording goes on lane 6, fitted to one
+        // bar, with hits on the beat whose starts have been rolled.
+        const std::vector<std::string> names = app.session().sampleNames();
+        if (!names.empty()) {
+            app.session().setLaneSample(0, 5, names[0]);
+            app.session().setLaneFit(0, 5, 16);
+            app.session().finishStretching();
+            for (int step = 0; step < kSteps; ++step) app.drums().setStep(5, step, 0.f);
+            const float starts[8] = {0.f, 0.375f, 0.25f, 0.75f, 0.f, 0.125f, 0.5f, 0.875f};
+            for (int i = 0; i < 8; ++i) {
+                app.drums().setStep(5, i * 2, 0.9f);
+                app.drums().setStart(5, i * 2, starts[i]);
+            }
+        }
+        if (std::strcmp(view, "starts") == 0) {
+            app.drums().moveCursorTo(5, 6);
+            pushKey(SDLK_a, true); // Y held
+            pushKey(SDLK_l, true); // the stick, to the right
+        } else {
+            app.session().view = View::Device;
+            app.kit().goTo(5, KitScreen::kSound);
+        }
+    } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }
 
