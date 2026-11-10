@@ -264,17 +264,23 @@ void testCopyingABarByDragging() {
     rig.app.drums().setNudge(2, 5, 0.25f);
     rig.app.drums().setChance(2, 5, 0.5f);
     addPhazed(rig);
+    // The synth has a note in scene 3, which the drag will cross.
+    rig.app.song().moveCursorTo(2, 1);
+    rig.tap(A);
+    rig.tap(A);
+    rig.tap(L2);
+    CHECK(!rig.project().tracks[1].notes[2].empty());
     rig.app.song().moveCursorTo(0, 0);
     rig.key(R1, true);
     rig.tap(DOWN, 2);
     rig.tap(RIGHT); // across onto the synth: a drum bar cannot go there
     rig.key(R1, false);
+    CHECK(!rig.project().tracks[1].notes[2].empty()); // and it did not wipe the synth's bar
     for (int scene = 1; scene <= 2; ++scene) {
         const DrumPattern& p = rig.project().tracks[0].drums[scene];
         CHECK(near(p.level[0][0], 0.9f) && near(p.level[2][5], 0.4f));
         CHECK(near(p.nudge[2][5], 0.25f) && near(p.chance[2][5], 0.5f));
     }
-    CHECK(rig.project().tracks[1].notes[2].empty());
     CHECK(rig.project().tracks[0].drums[3].empty());
     // Moving with R1 let go copies nothing.
     rig.app.song().moveCursorTo(2, 0);
@@ -305,16 +311,39 @@ void testBEmptiesACell() {
     Rig rig;
     markScenes(rig, 2);
     rig.tap(L2);
+    rig.tap(B); // scene 1
+    CHECK(rig.project().tracks[0].drums[0].empty());
+    CHECK(!rig.project().tracks[0].drums[1].empty());
+    CHECK(rig.project().sceneCount() == 2);
+    rig.frames(1);
+    rig.tap(START);
+    // The engine dropped it too: scene 1's bar is silent, scene 2's is not.
+    CHECK(rig.listen(kBar) == 0.f);
+    CHECK(sceneHeard(rig) == 1);
+    rig.tap(START);
+    // Emptying the last scene shortens the song.
     rig.tap(DOWN);
     rig.tap(B);
-    CHECK(rig.project().tracks[0].drums[1].empty());
-    CHECK(!rig.project().tracks[0].drums[0].empty());
     CHECK(rig.project().sceneCount() == 1);
-    rig.frames(1);
-    rig.tap(UP);
-    rig.tap(START);
-    // One scene left, and its hit is the only one: the engine dropped the other.
-    for (int bar = 0; bar < 3; ++bar) CHECK(sceneHeard(rig) == 0);
+}
+
+void testTheCopyBrushLifts() {
+    Rig rig;
+    rig.app.drums().setStep(0, 0, 0.9f);
+    rig.tap(L2);
+    rig.key(R1, true);
+    rig.tap(DOWN);
+    rig.key(R1, false); // let go on a drum cell
+    rig.tap(DOWN, 3);
+    CHECK(!rig.project().tracks[0].drums[1].empty());
+    for (int scene = 2; scene <= 4; ++scene) CHECK(rig.project().tracks[0].drums[scene].empty());
+    // R1 on a repeat count or on + TRACK picks nothing up.
+    rig.app.song().moveCursorTo(0, -1);
+    rig.key(R1, true);
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    rig.key(R1, false);
+    CHECK(rig.project().tracks[0].drums[2].empty());
 }
 
 void testTheSongScreenScrolls() {
@@ -742,6 +771,7 @@ int main(int, char**) {
     testStartOnTheSongScreenPlaysTheSong();
     testCopyingABarByDragging();
     testBEmptiesACell();
+    testTheCopyBrushLifts();
     testTheSongScreenScrolls();
     testPlacingAndDeletingNotes();
     testNoteLevelAndLength();
