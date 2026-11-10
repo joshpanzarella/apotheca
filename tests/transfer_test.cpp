@@ -267,12 +267,157 @@ void testTurningItOnFromTheDevice() {
     CHECK(get(lastPort, lastDoor).status == 0);
 }
 
+// A file that passes for a program on this machine (or another), of a size.
+std::string aProgram(unsigned machine, std::size_t size = 200 * 1024) {
+    std::string b(size, '\0');
+    b[0] = 0x7F; b[1] = 'E'; b[2] = 'L'; b[3] = 'F';
+    b[4] = 2;  // 64-bit
+    b[5] = 1;  // low byte first
+    b[16] = 3; // a program that can be loaded anywhere
+    b[18] = static_cast<char>(machine & 255);
+    b[19] = static_cast<char>(machine >> 8);
+    for (std::size_t i = 64; i < size; ++i) b[i] = static_cast<char>(i * 31);
+    return b;
+}
+#if defined(__aarch64__)
+const unsigned kThisMachine = 183, kAnotherMachine = 62;
+#else
+const unsigned kThisMachine = 62, kAnotherMachine = 183;
+#endif
+
+void testUpdatingOverWiFi() {
+    // What counts as a program for this machine.
+    const std::string program = aProgram(kThisMachine);
+    CHECK(isProgramForThisMachine(program));
+    CHECK(!isProgramForThisMachine(aProgram(kAnotherMachine)));     // for a different processor
+    CHECK(!isProgramForThisMachine(aProgram(kThisMachine, 4000)));  // far too small to be Apotheca
+    CHECK(!isProgramForThisMachine("") && !isProgramForThisMachine(std::string(200000, 'x')) && !isProgramForThisMachine(aWav(3.f)));
+    for (std::size_t at : {0u, 1u, 3u, 4u, 5u, 16u}) {
+        std::string spoiled = program;
+        spoiled[at] = 9;
+        CHECK(!isProgramForThisMachine(spoiled));
+    }
+
+    const std::string root = tempFolder();
+    const std::string programs = root + "/apotheca";
+    mkdir(programs.c_str(), 0755);
+    writeTextFile(programs + "/apotheca", "the one running now");
+    writeTextFile(programs + "/apotheca.pending", "left over from last time");
+
+    std::unique_ptr<Engine> engine(new Engine);
+    Input input;
+    App app(*engine);
+    Session& session = app.session();
+    Uint32 clock = 1000;
+    const auto key = [&](SDL_Keycode code, bool down) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press)) app.onButton(press, input);
+    };
+    const auto tap = [&](SDL_Keycode code) { key(code, true); key(code, false); };
+    const auto frames = [&](int count) { for (int i = 0; i < count; ++i) app.update(input, clock += 16); };
+    const SDL_Keycode A = SDLK_x, B = SDLK_z, START = SDLK_RETURN;
+    session.useSongFolder(root + "/songs", 3);
+    session.useSampleFolder(root + "/samples");
+
+    // Before the program's folder is known, an update is refused.
+    CHECK(session.toggleTransfer(5));
+    std::string address = session.transferAddress();
+    int port = std::atoi(address.c_str() + address.find(':') + 1);
+    std::string door = address.substr(address.find('/'));
+    CHECK(put(port, door + "/update/apotheca", program).status == 400);
+    session.toggleTransfer(5);
+    session.useProgramFolder(programs);
+    CHECK(!exists(programs + "/apotheca.pending")); // one never answered last time does not linger
+    CHECK(session.toggleTransfer(6));
+    address = session.transferAddress();
+    port = std::atoi(address.c_str() + address.find(':') + 1);
+    door = address.substr(address.find('/'));
+
+    // What is refused: no number, the wrong processor, not a program, too big, the wrong way of asking.
+    CHECK(put(port, "/update/apotheca", program).status == 403);
+    CHECK(put(port, door + "/update/apotheca", aProgram(kAnotherMachine)).status == 400);
+    CHECK(put(port, door + "/update/apotheca", "#!/bin/sh\nrm -rf /\n").status == 400);
+    CHECK(put(port, door + "/update/apotheca", aWav()).status == 400);
+    CHECK(raw(port, "PUT " + door + "/update/apotheca HTTP/1.1\r\nContent-Length: 40000000\r\n\r\n\x7f" "ELF").status == 413);
+    CHECK(raw(port, "PUT " + door + "/update/apotheca HTTP/1.1\r\n\r\n" + program).status == 411);
+    CHECK(get(port, door + "/update/apotheca").status == 405);
+    CHECK(put(port, door + "/update/other", program).status == 400 && put(port, door + "/update/..%2Fapotheca", program).status == 400);
+    frames(2);
+    CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending") && !exists(programs + "/apotheca.new"));
+
+    // A real one is only set aside. Nothing is in place for the next start yet.
+    Answer a = put(port, door + "/update/apotheca", program);
+    CHECK(a.status == 200 && a.body.find("hold A") != std::string::npos);
+    std::string kept;
+    CHECK(readTextFile(programs + "/apotheca.pending", kept) && kept == program);
+    CHECK(!exists(programs + "/apotheca.new"));
+    CHECK(readTextFile(programs + "/apotheca", kept) && kept == "the one running now");
+    frames(1);
+    CHECK(session.updateWaiting() && session.updateMegabytes() > 0.19f && session.updateMegabytes() < 0.21f);
+
+    // The handheld asks, and nothing else happens until it is answered.
+    session.view = View::Pattern;
+    tap(START);
+    CHECK(!app.project().playing);
+    tap(SDLK_RIGHT);
+    CHECK(app.drums().cursorStep() == 0);
+    // A tap of A is not enough; nor is holding it for most of a second.
+    tap(A);
+    frames(80);
+    CHECK(session.updateWaiting() && !exists(programs + "/apotheca.new") && app.drums().level(0, 0) == 0.f);
+    key(A, true);
+    frames(50);
+    key(A, false);
+    frames(80);
+    CHECK(session.updateWaiting() && !exists(programs + "/apotheca.new"));
+    // B throws it away.
+    tap(B);
+    CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending") && !exists(programs + "/apotheca.new"));
+    frames(2);
+    tap(SDLK_RIGHT); // the buttons are the screen's again
+    CHECK(app.drums().cursorStep() == 1 && app.updateSaid() == 0);
+
+    // Sent again, and A held for the whole second: accepted. It is in place
+    // for the next start; the one running is untouched.
+    const std::string newer = aProgram(kThisMachine, 300 * 1024);
+    CHECK(put(port, door + "/update/apotheca", program).status == 200);
+    CHECK(put(port, door + "/update/apotheca", newer).status == 200); // a second one before any answer takes the first one's place
+    frames(1);
+    CHECK(session.updateWaiting());
+    key(A, true);
+    frames(61);
+    CHECK(session.updateWaiting());
+    frames(4);
+    CHECK(!session.updateWaiting() && app.updateSaid() == 1);
+    key(A, false);
+    CHECK(readTextFile(programs + "/apotheca.new", kept) && kept == newer && !exists(programs + "/apotheca.pending"));
+    CHECK(readTextFile(programs + "/apotheca", kept) && kept == "the one running now");
+    CHECK(app.drums().level(0, 1) == 0.f); // letting go of A did not place a hit
+    frames(320);
+    CHECK(app.updateSaid() == 0); // the message goes after a few seconds
+
+    // One nobody answers goes when WiFi is turned off.
+    CHECK(put(port, door + "/update/apotheca", program).status == 200);
+    frames(1);
+    CHECK(session.updateWaiting());
+    session.toggleTransfer(1);
+    CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending"));
+    // The program tells the launcher "this start worked" by taking its mark away.
+    writeTextFile(programs + "/update-trying", "");
+    session.startedFine();
+    CHECK(!exists(programs + "/update-trying"));
+}
+
 } // namespace
 
 int main(int, char**) {
     testNames();
     testTheServer();
     testTurningItOnFromTheDevice();
+    testUpdatingOverWiFi();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

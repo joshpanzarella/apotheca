@@ -176,6 +176,24 @@ the same network.
   song. Anything else is refused and nothing is written.
 - It is off until turned on, and off again when Apotheca closes.
 
+**Updating Apotheca the same way.** The page has an UPDATE APOTHECA button:
+choose the new `apotheca` program file (inside the `apotheca` folder of the
+zip).
+
+1. The page sends it. It is checked (a program for this processor, 30 MB at
+   most) and only set aside. The network alone installs nothing.
+2. The handheld shows AN UPDATE HAS ARRIVED. **Hold A for a second** to
+   accept, or B to throw it away. Nothing else responds until it is answered.
+3. Accepted, it is used the next time Apotheca starts. The program that was
+   running is kept.
+4. If the new one does not get going (it has to run for three seconds), the
+   launcher goes back to the one before by itself and starts that.
+
+One that nobody answers is dropped when WiFi is turned off or Apotheca is
+closed. The first install still goes by SD card. Only the program is
+updated this way: a new launcher script, fonts or chord packs still come
+from the zip.
+
 The handheld has to be on a WiFi network already (set in the firmware's own
 settings). Making its own hotspot, so no router is needed, is a job for the
 Apotheca-only system image.

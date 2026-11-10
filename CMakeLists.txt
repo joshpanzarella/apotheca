@@ -80,6 +80,8 @@ if(APOTHECA_BUILD_APP)
     add_executable(transfer_test tests/transfer_test.cpp ${APOTHECA_SCREENS})
     target_include_directories(transfer_test PRIVATE app third_party)
     add_test(NAME transfer COMMAND transfer_test)
+    # The handheld's launcher: an update is put in place, or taken back out.
+    add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
   endif()
   target_compile_options(apotheca PRIVATE -Wall -Wextra)
   if(TARGET SDL2::SDL2)

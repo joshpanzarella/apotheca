@@ -51,6 +51,7 @@ public:
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
     bool panicNoteShowing() const { return panicNote_; }
+    int updateSaid() const { return updateSaid_; } // 0 nothing, 1 "accepted", 2 "could not"
 
 private:
     std::unique_ptr<Project> project_; // large, so not on the stack
@@ -58,6 +59,9 @@ private:
     SongScreen song_;
     PatternScreen drums_;
     bool panicking_ = false; // all four shoulder buttons are down
+    bool updateHeld_ = false;   // A is down on the update notice
+    Uint32 updateSince_ = 0, updateSaidUntil_ = 0;
+    int updateSaid_ = 0;        // 1: accepted, 2: could not; shown for a few seconds
     bool panicNote_ = false; // the notice is up
     Uint32 panicNoteUntil_ = 0, now_ = 0;
     View viewBeforeShoulders_ = View::Pattern;

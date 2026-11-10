@@ -303,6 +303,7 @@ int main(int argc, char** argv) {
         char* base = SDL_GetBasePath();
         const std::string beside = std::string(base ? base : "") + "chords";
         if (base) SDL_free(base);
+        if (!smoke && !shot) app.session().useProgramFolder(beside.substr(0, beside.size() - 7)); // where the program is: updates land here
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
@@ -488,6 +489,7 @@ int main(int argc, char** argv) {
     }
 
     bool running = true;
+    bool startedFine = false;
     bool reported = false;
     float loudest = 0.f;
     const Uint32 start = SDL_GetTicks();
@@ -505,6 +507,12 @@ int main(int argc, char** argv) {
             else app.onButton(press, input);
         }
         app.update(input, SDL_GetTicks());
+        // Three seconds in and still going: this start worked. (After an
+        // update, that is what tells the launcher to keep the new program.)
+        if (!startedFine && SDL_GetTicks() - start > 3000) {
+            startedFine = true;
+            app.session().startedFine();
+        }
 
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;

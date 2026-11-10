@@ -113,6 +113,13 @@ void Session::update(Uint32 nowMs) {
     project.playBar = engine.playBar();
     project.silenced = engine.silenced();
 
+    // A new program has arrived: ask whoever is holding the handheld.
+    if (transfer_.updatesArrived() != seenUpdates_) {
+        seenUpdates_ = transfer_.updatesArrived();
+        struct stat info;
+        updateWaiting_ = stat((programFolder_ + "/apotheca.pending").c_str(), &info) == 0;
+        updateMegabytes_ = updateWaiting_ ? static_cast<float>(info.st_size) / (1024.f * 1024.f) : 0.f;
+    }
     // A chord pack that has just arrived over WiFi is there to pick from at once.
     if (transfer_.received() != seenReceived_) {
         seenReceived_ = transfer_.received();
@@ -547,6 +554,7 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
 bool Session::toggleTransfer(unsigned seed) {
     if (transfer_.running()) {
         transfer_.stop();
+        discardUpdate(); // an update nobody answered goes when WiFi is turned off
         return false;
     }
     if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
@@ -555,6 +563,31 @@ bool Session::toggleTransfer(unsigned seed) {
     const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
     return on;
+}
+
+// ---- updating Apotheca over WiFi ---------------------------------------------------------
+
+void Session::useProgramFolder(const std::string& folder) {
+    programFolder_ = folder;
+    transfer_.setProgramFolder(folder);
+    // One that was sent but never answered, last time: it does not linger.
+    std::remove((folder + "/apotheca.pending").c_str());
+}
+
+bool Session::acceptUpdate() {
+    if (!updateWaiting_) return false;
+    updateWaiting_ = false;
+    return std::rename((programFolder_ + "/apotheca.pending").c_str(), (programFolder_ + "/apotheca.new").c_str()) == 0;
+}
+
+void Session::discardUpdate() {
+    if (!updateWaiting_) return;
+    updateWaiting_ = false;
+    std::remove((programFolder_ + "/apotheca.pending").c_str());
+}
+
+void Session::startedFine() {
+    if (!programFolder_.empty()) std::remove((programFolder_ + "/update-trying").c_str());
 }
 
 // ---- recording ------------------------------------------------------------------------

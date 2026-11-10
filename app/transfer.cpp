@@ -39,6 +39,9 @@ li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;m
 <div id="drop"><p>Drop files here: recordings (.wav), chord packs (.json), songs (.song).</p>
 <button id="pick">Choose files</button><input id="files" type="file" multiple accept=".wav,.json,.song"></div>
 <ul id="log"></ul>
+<h2>UPDATE APOTHECA</h2>
+<p>Choose the new <b>apotheca</b> program file (inside the apotheca folder of the zip). It is only sent here; you accept it on the handheld by holding A, and it is used the next time Apotheca starts.</p>
+<button id="pickUpdate">Choose the program file</button><input id="update" type="file">
 <h2>RECORDINGS</h2><ul id="samples"></ul><h2>SONGS</h2><ul id="songs"></ul><h2>CHORD PACKS</h2><ul id="chords"></ul>
 <script>
 const base = location.pathname.replace(/\/$/, '');
@@ -62,6 +65,14 @@ async function send(files) {
   }
   list();
 }
+const update = document.getElementById('update');
+document.getElementById('pickUpdate').onclick = () => update.click();
+update.onchange = async () => {
+  const file = update.files[0];
+  if (!file) return;
+  const answer = await fetch(base + '/update/apotheca', {method: 'PUT', body: file});
+  line('update: ' + (await answer.text()), answer.ok ? 'ok' : 'no');
+};
 const drop = document.getElementById('drop'), input = document.getElementById('files');
 document.getElementById('pick').onclick = () => input.click();
 input.onchange = () => send(input.files);
@@ -130,6 +141,22 @@ std::string jsonList(const std::vector<std::string>& names) {
 }
 
 } // namespace
+
+bool isProgramForThisMachine(const std::string& b) {
+#if defined(__aarch64__)
+    const unsigned machine = 183; // 64-bit ARM: the handheld
+#elif defined(__x86_64__)
+    const unsigned machine = 62;  // a desk computer, for testing
+#else
+    const unsigned machine = 0;   // unknown here: nothing is accepted
+#endif
+    if (b.size() < 64u * 1024u) return false; // Apotheca is hundreds of kilobytes
+    const auto byte = [&](std::size_t i) { return static_cast<unsigned>(static_cast<unsigned char>(b[i])); };
+    if (byte(0) != 0x7F || b[1] != 'E' || b[2] != 'L' || b[3] != 'F') return false; // the format Linux programs are in
+    if (byte(4) != 2 || byte(5) != 1) return false;                                 // 64-bit, low byte first
+    const unsigned type = byte(16) | byte(17) << 8, made = byte(18) | byte(19) << 8;
+    return machine != 0 && made == machine && (type == 2 || type == 3);            // a program, for this processor
+}
 
 std::string safeFileName(const std::string& fromAddress, const std::string& ending) {
     const std::string name = unescape(fromAddress);
@@ -248,6 +275,29 @@ void Transfer::answer(int fd) {
         return reply(fd, "200 OK", "application/json",
                      "{\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
                          ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + "}");
+    }
+
+    // A new Apotheca: set aside, never installed from here.
+    if (path == "/update/apotheca") {
+        if (method != "PUT") return reply(fd, "405 Not Allowed", "text/plain", "only PUT\n");
+        if (program_.empty()) return reply(fd, "400 Bad Request", "text/plain", "this Apotheca cannot be updated this way\n");
+        std::string lowerHead = head;
+        for (char& c : lowerHead) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        const std::size_t where = lowerHead.find("\r\ncontent-length:");
+        if (where == std::string::npos) return reply(fd, "411 Length Required", "text/plain", "how big is it?\n");
+        const unsigned long long size = std::strtoull(lowerHead.c_str() + where + 17, nullptr, 10);
+        if (size > kLargestFile) return reply(fd, "413 Too Large", "text/plain", "too big: 30 MB at most\n");
+        if (lowerHead.find("\r\nexpect: 100-continue") != std::string::npos) sendAll(fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
+        if (body.size() > size) body.resize(static_cast<std::size_t>(size));
+        while (body.size() < size) {
+            const ssize_t got = recv(fd, block, sizeof block, 0);
+            if (got <= 0) return;
+            body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
+        }
+        if (!isProgramForThisMachine(body)) return reply(fd, "400 Bad Request", "text/plain", "not an Apotheca program for this handheld\n");
+        if (!writeTextFile(program_ + "/apotheca.pending", body)) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
+        updates_.fetch_add(1);
+        return reply(fd, "200 OK", "text/plain", "sent. Now accept it on the handheld: hold A.\n");
     }
 
     // /samples/<name>.wav, /songs/<name>.song, /chords/<name>.json

@@ -115,6 +115,18 @@ public:
     bool transferOn() const { return transfer_.running(); }
     std::string transferAddress() const { return transfer_.address(); } // what to type into the browser
 
+    // ---- updating Apotheca over WiFi ----------------------------------------------------
+    // A new program sent to the page is only set aside. It is installed
+    // when someone accepts it on the handheld, and used at the next start;
+    // the launcher keeps the old one and goes back to it if the new one
+    // does not get going (scripts/Apotheca.sh).
+    void useProgramFolder(const std::string& folder);
+    bool updateWaiting() const { return updateWaiting_; }   // one has arrived and wants an answer
+    float updateMegabytes() const { return updateMegabytes_; }
+    bool acceptUpdate();   // true if it is now in place for the next start
+    void discardUpdate();
+    void startedFine();    // call once the program has been running a few seconds: this start worked
+
     // ---- recording -------------------------------------------------------------------
     // Record from the input onto a drum lane, or onto a sampler track (the
     // lane is then ignored). The first call starts it waiting for sound; the
@@ -189,6 +201,10 @@ private:
     void loadLane(int track, int lane);
     void finishRecording();
     Transfer transfer_;
+    std::string programFolder_;
+    unsigned seenUpdates_ = 0;
+    bool updateWaiting_ = false;
+    float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
     std::string chordFolder_;
     AudioInput* input_ = nullptr;

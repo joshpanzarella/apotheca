@@ -50,4 +50,29 @@ cd "$dir" || exit 1
     done
 } > device-info.log 2>&1
 
+# An update accepted on the handheld is waiting as "apotheca.new". Put it in
+# place, and keep the one that was there. The mark "update-trying" is taken
+# away by the program itself once it has been running for three seconds.
+if [ -f apotheca.new ]; then
+    rm -f apotheca.old
+    if mv apotheca apotheca.old && mv apotheca.new apotheca; then
+        chmod +x apotheca
+        : > update-trying
+    else
+        [ -f apotheca ] || mv apotheca.old apotheca # could not swap: leave things as they were
+    fi
+fi
+
 ./apotheca > apotheca.log 2>&1
+
+# The mark is still there: the new program never got going (or was closed in
+# its first three seconds). Go back to the one before and start that.
+if [ -f update-trying ]; then
+    rm -f update-trying
+    if [ -f apotheca.old ]; then
+        mv apotheca apotheca.failed
+        mv apotheca.old apotheca
+        echo "the update did not start; back to the one before" >> apotheca.log
+        ./apotheca >> apotheca.log 2>&1
+    fi
+fi

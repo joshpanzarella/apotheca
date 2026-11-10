@@ -5,6 +5,7 @@
 namespace apotheca {
 
 namespace {
+constexpr Uint32 kUpdateHoldMs = 1000; // A held this long accepts an update
 constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the buttons are let go
 }
 
@@ -34,6 +35,15 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         panicNoteUntil_ = now_ + kPanicNoteMs;
         session_.panic(false);
     }
+    // An update has arrived over WiFi and wants an answer. Nothing else
+    // happens until it has one: hold A for a second to accept, B to refuse.
+    if (session_.updateWaiting()) {
+        if (b == Button::A) updateHeld_ = event.down, updateSince_ = 0;
+        else if (b == Button::B && event.down) session_.discardUpdate(), updateHeld_ = false;
+        return;
+    }
+    updateHeld_ = false;
+
     // The notice is up and the buttons are let go: the next press only puts
     // it away. It might have been an accident; that press must not also
     // place a hit or start the song.
@@ -97,6 +107,16 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
     if (panicNote_ && !panicking_ && nowMs >= panicNoteUntil_) panicNote_ = false;
+    // A held for a whole second on the update notice: accepted.
+    if (session_.updateWaiting() && updateHeld_) {
+        if (updateSince_ == 0) updateSince_ = nowMs;
+        if (nowMs - updateSince_ >= kUpdateHoldMs) {
+            updateHeld_ = false;
+            updateSaid_ = session_.acceptUpdate() ? 1 : 2;
+            updateSaidUntil_ = nowMs + 5000;
+        }
+    }
+    if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
     session_.update(nowMs);
     session_.engine.setScopeTrack(project_->track);
     const TrackKind kind = project_->current().kind;
@@ -141,7 +161,35 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         break;
     }
 
-    if (panicNote_) {
+    if (session_.updateWaiting() || updateSaid_ != 0) {
+        using namespace ui;
+        const int w = 470, h = 150, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;
+        fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 190));
+        box(renderer, x, y, w, h, kPanel, kTeal);
+        outline(renderer, x, y, w, h, kTeal, 2);
+        if (updateSaid_ == 1) {
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "UPDATE ACCEPTED", kTeal);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, "It will be used the next time Apotheca starts.", kText);
+            fonts.small.draw(renderer, x + 18.f, y + 74.f, "The one running now is kept. If the new one does not", kDim);
+            fonts.small.draw(renderer, x + 18.f, y + 90.f, "start, Apotheca goes back to this one by itself.", kDim);
+        } else if (updateSaid_ == 2) {
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "COULD NOT KEEP THE UPDATE", kBrass);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, "Nothing was changed. Is the card full?", kText);
+        } else {
+            char size[64];
+            std::snprintf(size, sizeof size, "A new Apotheca was sent over WiFi (%.1f MB).", static_cast<double>(session_.updateMegabytes()));
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "AN UPDATE HAS ARRIVED", kTeal);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, size, kText);
+            fonts.small.draw(renderer, x + 18.f, y + 72.f, "Only accept it if you sent it yourself.", kBrass);
+            fonts.small.draw(renderer, x + 18.f, y + 96.f, "HOLD A for a second to accept.    B to throw it away.", kText);
+            // The hold, filling.
+            fill(renderer, x + 18, y + 120, w - 36, 8, kLine);
+            if (updateHeld_ && updateSince_ != 0) {
+                const float part = static_cast<float>(now_ - updateSince_) / static_cast<float>(kUpdateHoldMs);
+                fill(renderer, x + 18, y + 120, static_cast<int>((w - 36) * (part > 1.f ? 1.f : part)), 8, kTeal);
+            }
+        }
+    } else if (panicNote_) {
         using namespace ui;
         const int w = 440, h = 132, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 170));

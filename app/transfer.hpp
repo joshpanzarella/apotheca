@@ -16,6 +16,12 @@
 //   - it is what it says: a WAV this can read, a chord pack with chords in
 //     it, a song this can open. Anything else is refused and not written.
 //
+// Updating Apotheca itself the same way: the page takes a new program file.
+// It must be a program for this kind of processor, and it is only SET ASIDE
+// (as "apotheca.pending" beside the program). Nothing is installed by the
+// network alone: someone holding the handheld has to accept it there, and
+// then it is used at the next start. See session.hpp and scripts/Apotheca.sh.
+//
 // It runs on its own thread and only ever touches files. No SDL, no engine.
 
 #include <atomic>
@@ -32,6 +38,10 @@ public:
     // Start listening. `port` 0 picks any free one. False if it could not.
     bool start(const std::string& sampleFolder, const std::string& songFolder, const std::string& chordFolder, int port, unsigned seed);
     void stop();
+    // Where the program lives. Until this is set, updates are refused.
+    void setProgramFolder(const std::string& folder) { program_ = folder; }
+    // Goes up each time a new program has been set aside for confirming.
+    unsigned updatesArrived() const { return updates_.load(); }
     bool running() const { return listening_ >= 0; }
     int port() const { return port_; }
     const std::string& pin() const { return pin_; }
@@ -48,13 +58,18 @@ private:
     void answer(int connection);
     std::string folderFor(const std::string& kind) const;
 
-    std::string samples_, songs_, chords_, pin_;
+    std::string samples_, songs_, chords_, pin_, program_;
+    std::atomic<unsigned> updates_{0};
     int port_ = 0;
     int listening_ = -1;
     std::atomic<bool> stopping_{false};
     std::atomic<unsigned> received_{0};
     std::thread thread_;
 };
+
+// True if these bytes are a program this machine could run: the right file
+// format, 64-bit, for this processor, and not suspiciously small.
+bool isProgramForThisMachine(const std::string& bytes);
 
 // A file's name as it came in a web address, made safe: "" if it is not a
 // plain name ending in `ending` (".wav", ".json" or ".song").

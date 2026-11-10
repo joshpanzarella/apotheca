@@ -447,7 +447,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
 }
 
 void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[64], name[24];
+    char text[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
     if (cellBars() > 1) std::snprintf(text, sizeof text, "%s / BAR %d OF %d / SCENE %d", name, project_.bar + 1, cellBars(), project_.scene + 1);
     else std::snprintf(text, sizeof text, "%s / SCENE %d", name, project_.scene + 1);
