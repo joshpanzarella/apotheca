@@ -702,9 +702,9 @@ static void testWhereAHitStarts() {
     // From the very start there is no fade: a drum keeps its front.
     engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
     CHECK(about(renderFrames(*engine, 4000)[0], 0.2f * kTrackLevel));
-    // Past the end, or nonsense: the last sample, or the start.
+    // Past the end: nothing. Before the start: the start.
     engine->send(make(Command::Trigger, 0, 0, 20000, 1.f));
-    CHECK(soundingFrames(renderFrames(*engine, 4000)) <= 1);
+    CHECK(soundingFrames(renderFrames(*engine, 4000)) == 0);
     engine->send(make(Command::Trigger, 0, 0, -300, 1.f));
     CHECK(soundingFrames(renderFrames(*engine, 4000)) == 1000);
 

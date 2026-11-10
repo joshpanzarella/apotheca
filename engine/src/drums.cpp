@@ -194,8 +194,7 @@ void DrumMachine::trigger(int lane, float velocity, float start) {
     const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
     if (length == 0) return;
     if (!(start > 0.f)) start = 0.f; // also NaN
-    int from = static_cast<int>(start * static_cast<float>(length));
-    if (from >= length) from = length - 1;
+    const int from = static_cast<int>(start * static_cast<float>(length)); // at or past the end: nothing plays
 
     Voice& fresh = voices_[lane][next_[lane]];
     Voice& old = voices_[lane][1 - next_[lane]];

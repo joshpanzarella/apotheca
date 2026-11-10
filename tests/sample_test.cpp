@@ -396,17 +396,18 @@ void testTheSongKeepsItsRecordings() {
     rig.session().setLaneSample(0, 6, "not here");
     rig.app.drums().setStep(2, 4, 0.9f);
     rig.app.drums().setStart(2, 4, 0.5f);
-    rig.app.drums().setStep(2, 8, 0.9f);
+    rig.app.drums().setStep(3, 8, 0.9f);
     const std::string text = songText(rig.project());
     CHECK(text.find("\nsample 3 8 my loop\n") != std::string::npos);
     CHECK(text.find("\nsample 7 0 not here\n") != std::string::npos);
     CHECK(text.find("hit 3 5 0.9 0 1 0 0.5\n") != std::string::npos);
-    CHECK(text.find("hit 3 9 0.9 0 1 0\n") != std::string::npos); // from the top: nothing extra written
+    CHECK(text.find("hit 4 9 0.9 0 1 0\n") != std::string::npos); // from the top: nothing extra written
 
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back) && songText(*back) == text);
     CHECK(std::strcmp(back->tracks[0].laneSample[2], "my loop") == 0 && back->tracks[0].laneFit[2] == 8);
-    CHECK(back->tracks[0].drums[0].start[2][4] == 0.5f && back->tracks[0].drums[0].start[2][8] == 0.f);
+    CHECK(back->tracks[0].drums[0].start[2][4] == 0.5f && back->tracks[0].drums[0].start[3][8] == 0.f);
+    back->tracks[0].drums[0].level[3][8] = 0.f; // leave the one hit, to hear it by itself
 
     // Opened on another handheld with the same card: the recording plays,
     // fitted, and the hit starts where it did.
@@ -418,9 +419,14 @@ void testTheSongKeepsItsRecordings() {
     CHECK(std::abs(other.hit(2) - 8 * kStep) <= 600);
     other.session().view = View::Pattern;
     other.tap(START);
-    const std::vector<float> bar = other.render(8 * kStep);
-    const std::vector<float> second(bar.begin() + 2 * 4 * kStep, bar.end());
-    CHECK(std::abs(Rig::sounding(second) - 4 * kStep) <= 600); // half of it left, cut off by the hit on step 9
+    CHECK(std::abs(Rig::sounding(other.render(16 * kStep)) - 4 * kStep) <= 600); // it started half-way in: half of it is heard
+    other.tap(START);
+    // A bar sent to the engine again by itself (as copying a cell does) takes its starts with it.
+    other.project().tracks[0].drums[0].start[2][4] = 0.75f;
+    other.session().sendDrumPattern(0, 0);
+    other.render(100000);
+    other.tap(START);
+    CHECK(std::abs(Rig::sounding(other.render(16 * kStep)) - 2 * kStep) <= 600);
     other.tap(START);
     // A new song after it has no recordings left over.
     {
@@ -639,6 +645,11 @@ void testTheKitScreen() {
     CHECK(track.laneSample[2][0] == 0);
     rig.tap(LEFT); // sideways does nothing while A is held
     CHECK(kit.cursorColumn() == KitScreen::kSound);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(5);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(kit.cursorColumn() == KitScreen::kSound && track.laneSample[2][0] == 0);
     // The stick does the same, one at once and then slowly enough to hear each.
     rig.key(STICK_UP, true);
     rig.frames(1);

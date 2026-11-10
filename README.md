@@ -17,7 +17,7 @@ each one bar, each with its own repeat count. Three screens:
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
-  For drums, the kit's levels and scope.
+  For drums, the kit: each lane plays its built-in drum or a recording.
 
 Songs are kept as you go: there is no save button. A **rev** keeps the song
 as it is at one moment, to go back to.
@@ -26,8 +26,9 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: effects on screen, loading samples, the sound designer web
-page.
+Not built yet: effects on screen, recording into the device, catching your
+own output as a sample, a sampler played from the keys, the sound designer
+web page.
 
 ## Build
 
@@ -37,7 +38,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, song, both synths, screens, app, saving and chord tests
+ctest --test-dir build      # engine, song, both synths, screens, app, saving, chord and sample tests
 ./build/apotheca            # the app
 ```
 
@@ -105,6 +106,7 @@ to again.
 | Hold A, stick up / down | Level | Fills or drains |
 | Hold A, stick left / right | Nudge, up to half a step | Slides early or late |
 | Hold Y, stick up / down | Chance | Fades toward a ghost |
+| Hold Y, stick left / right | Start: where in the drum's sound the hit begins | A mark slides under it, and it is heard as it moves |
 
 The stick does one of those per push. A places a hit. Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
@@ -116,6 +118,35 @@ The cursor can also sit on a lane's name, left of step 1: A plays the drum,
 hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
 they leave; tap Y to reshuffle). Up from the top lane is the tempo.
+
+On a lane's name, hold Y and push **right** to roll a new start for every
+hit on the lane, on the sixteenths of the sound. **Left** puts them all back
+at the top. On a loop fitted to one bar, that rearranges the beat and keeps
+it in time.
+
+### DEVICE, drums: the kit
+
+A row for each lane. Each lane plays its built-in drum or a **recording**: a
+WAV file from the `samples` folder beside the program. A kit can mix the two.
+
+| On | Hold A + stick up / down | B |
+| --- | --- | --- |
+| SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
+| FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
+
+**FIT** stretches the recording, at the same pitch, to last that many steps
+at the song's tempo. Change the tempo and it is fitted again, a quarter of a
+second after the tempo stops moving. The work is done ahead of time on
+another thread and swapped in when ready, so it never costs the sound
+anything while playing. Until it is ready the lane plays what it had.
+
+- WAV files of 8, 16, 24 or 32 bits or 32-bit float, any sample rate, any
+  number of channels. They are played as one channel at 48 kHz.
+- **Ten seconds** of each is used.
+- The song file keeps each lane's file by name and each hit's start. If the
+  file is not on the card, the lane plays its drum and says so.
+- The stretch is my own (`app/stretch.hpp` says how it works). It suits drums
+  and loops. Held notes and voices stretched a long way pick up a flutter.
 
 ### PATTERN, a synth
 
