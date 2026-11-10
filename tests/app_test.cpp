@@ -674,11 +674,22 @@ void testTheEngineHearsMacrosAndSettings() {
     std::unique_ptr<Rig> other(onPhazed());
     int organ = 0;
     while (std::strcmp(Phazed::presetCategory(organ), "Organs") != 0) ++organ;
+    other->project().playing = true; // as if the song were running, so stepping through is silent
     other->key(A, true);
     other->tap(UP, organ);
     other->key(A, false);
+    other->project().playing = false;
     CHECK(other->project().tracks[1].preset == organ);
-    CHECK(noteNow(*other) != base);
+    // It must now sound exactly like an engine told directly to use that preset.
+    std::unique_ptr<Rig> direct(onPhazed());
+    Command choose;
+    choose.type = Command::SelectPreset;
+    choose.track = 1;
+    choose.a = organ;
+    direct->engine->send(choose);
+    const std::vector<float> wanted = noteNow(*direct);
+    CHECK(noteNow(*other) == wanted);
+    CHECK(wanted != base);
     // A macro.
     bent->app.phazed().goTo(0, PhazedScreen::kFirstMacro + phazed::MacroOctave);
     bent->key(A, true);
