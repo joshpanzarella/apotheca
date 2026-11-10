@@ -40,17 +40,17 @@ enum Global {
 };
 enum LineSetting { Wave1, Wave2, AmpKeyFollow, WaveKeyFollow, kLineHead }; // waves 1..8 (0 = none); key follow 0..9
 enum Envelope { AmpEnv, WaveEnv, PitchEnv, kEnvelopes };
-constexpr int kSteps = 8;
-constexpr int kEnvSettings = 2 * kSteps + 2; // eight rates, eight levels, sustain step, end step
+constexpr int kEnvSteps = 8;
+constexpr int kEnvSettings = 2 * kEnvSteps + 2; // eight rates, eight levels, sustain step, end step
 constexpr int kLineSettings = kLineHead + kEnvelopes * kEnvSettings;
 constexpr int kSettings = kGlobals + 2 * kLineSettings;
 
 constexpr int lineSetting(int line, int setting) { return kGlobals + line * kLineSettings + setting; }
 constexpr int envBase(int line, int env) { return lineSetting(line, kLineHead) + env * kEnvSettings; }
 constexpr int envRate(int line, int env, int step) { return envBase(line, env) + step; }           // 0..99
-constexpr int envLevel(int line, int env, int step) { return envBase(line, env) + kSteps + step; } // 0..99
-constexpr int envSustain(int line, int env) { return envBase(line, env) + 2 * kSteps; }            // 0 none, 1..8
-constexpr int envEnd(int line, int env) { return envBase(line, env) + 2 * kSteps + 1; }            // 1..8
+constexpr int envLevel(int line, int env, int step) { return envBase(line, env) + kEnvSteps + step; } // 0..99
+constexpr int envSustain(int line, int env) { return envBase(line, env) + 2 * kEnvSteps; }            // 0 none, 1..8
+constexpr int envEnd(int line, int env) { return envBase(line, env) + 2 * kEnvSteps + 1; }            // 1..8
 
 int settingMin(int id);
 int settingMax(int id);

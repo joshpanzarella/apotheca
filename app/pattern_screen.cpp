@@ -7,20 +7,9 @@ namespace apotheca {
 
 namespace {
 
-// The palette from docs/screens/screens.html.
-const SDL_Color kBg = {20, 17, 14, 255};
-const SDL_Color kPanel = {31, 26, 22, 255};
-const SDL_Color kPanel2 = {42, 35, 29, 255};
-const SDL_Color kLine = {67, 57, 47, 255};
-const SDL_Color kText = {224, 213, 191, 255};
-const SDL_Color kDim = {143, 131, 112, 255};
-const SDL_Color kTeal = {111, 191, 163, 255};
-const SDL_Color kPurple = {154, 118, 176, 255};
-const SDL_Color kBrass = {201, 161, 90, 255};
+using namespace ui;
 
 // The layout from the same file, in pixels on the 640x480 screen.
-constexpr int kScreenW = 640, kScreenH = 480;
-constexpr int kTopBarH = 26, kHintsH = 24;
 constexpr int kGridLeft = 116, kGridTop = 54, kStepW = 32, kLaneH = 41;
 constexpr int kCellW = kStepW - 2, kCellH = kLaneH - 3;
 constexpr int kNameX = 8, kNameW = 104;
@@ -34,25 +23,6 @@ constexpr float kRandomLow = 0.25f;   // L1 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 
-void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {
-    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
-    SDL_Rect rect = {x, y, w, h};
-    SDL_RenderFillRect(r, &rect);
-}
-
-void outline(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c, int thickness = 1) {
-    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
-    for (int i = 0; i < thickness; ++i) {
-        SDL_Rect rect = {x + i, y + i, w - 2 * i, h - 2 * i};
-        SDL_RenderDrawRect(r, &rect);
-    }
-}
-
-void box(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color inside, SDL_Color edge) {
-    fill(r, x, y, w, h, inside);
-    outline(r, x, y, w, h, edge);
-}
-
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
 float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -65,22 +35,19 @@ float nextTenth(float now, float sign) {
 
 } // namespace
 
-PatternScreen::PatternScreen(Engine& engine) : engine_(engine) {
-    for (float& level : laneLevel_) level = 1.f;
-    for (auto& lane : chance_)
-        for (float& c : lane) c = 1.f;
-    for (int lane = 0; lane < kDrumLanes; ++lane) diceSeed_[lane] = 0x51ED270Bu * static_cast<std::uint32_t>(lane + 1);
-}
+PatternScreen::PatternScreen(Session& session)
+    : session_(session), engine_(session.engine), project_(session.project), tempoExact_(session.project.tempo) {}
 
 // ---- writing values --------------------------------------------------------
 
 void PatternScreen::setStep(int lane, int step, float level) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
-    fromDice_[lane][step] = false; // any write makes the hit the player's; the dice re-mark their own
-    pattern_[lane][step] = level;
+    pat().fromDice[lane][step] = false; // any write makes the hit the player's; the dice re-mark their own
+    pat().level[lane][step] = level;
     Command c;
     c.type = Command::SetStep;
-    c.track = 0;
+    c.track = project_.track;
+    c.scene = project_.scene;
     c.a = lane;
     c.b = step;
     c.value = level;
@@ -95,12 +62,13 @@ void PatternScreen::setStep(int lane, int step, float level) {
 void PatternScreen::setNudge(int lane, int step, float nudge) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
     nudge = clampTo(nudge, -0.5f, 0.5f);
-    if (nudge == nudge_[lane][step]) return;
-    fromDice_[lane][step] = false;
-    nudge_[lane][step] = nudge;
+    if (nudge == pat().nudge[lane][step]) return;
+    pat().fromDice[lane][step] = false;
+    pat().nudge[lane][step] = nudge;
     Command c;
     c.type = Command::SetStepNudge;
-    c.track = 0;
+    c.track = project_.track;
+    c.scene = project_.scene;
     c.a = lane;
     c.b = step;
     c.value = nudge;
@@ -110,12 +78,13 @@ void PatternScreen::setNudge(int lane, int step, float nudge) {
 void PatternScreen::setChance(int lane, int step, float chance) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
     chance = clampTo(chance, kMinChance, 1.f);
-    if (chance == chance_[lane][step]) return;
-    fromDice_[lane][step] = false;
-    chance_[lane][step] = chance;
+    if (chance == pat().chance[lane][step]) return;
+    pat().fromDice[lane][step] = false;
+    pat().chance[lane][step] = chance;
     Command c;
     c.type = Command::SetStepChance;
-    c.track = 0;
+    c.track = project_.track;
+    c.scene = project_.scene;
     c.a = lane;
     c.b = step;
     c.value = chance;
@@ -124,11 +93,11 @@ void PatternScreen::setChance(int lane, int step, float chance) {
 
 void PatternScreen::setLaneLevel(float level) {
     level = clampTo(level, 0.f, 1.f);
-    if (level == laneLevel_[lane_]) return;
-    laneLevel_[lane_] = level;
+    if (level == trk().laneLevel[lane_]) return;
+    trk().laneLevel[lane_] = level;
     Command c;
     c.type = Command::SetLaneLevel;
-    c.track = 0;
+    c.track = project_.track;
     c.a = lane_;
     c.value = level;
     engine_.send(c);
@@ -137,18 +106,18 @@ void PatternScreen::setLaneLevel(float level) {
 void PatternScreen::setTempo(float bpm) {
     tempoExact_ = clampTo(bpm, kMinTempo, kMaxTempo);
     const float whole = std::round(tempoExact_);
-    if (whole == tempo_) return;
-    tempo_ = whole;
+    if (whole == project_.tempo) return;
+    project_.tempo = whole;
     Command c;
     c.type = Command::SetTempo;
-    c.value = tempo_;
+    c.value = project_.tempo;
     engine_.send(c);
 }
 
 void PatternScreen::audition(int lane, float level) {
     Command c;
     c.type = Command::Trigger;
-    c.track = 0;
+    c.track = project_.track;
     c.a = lane;
     c.value = level;
     engine_.send(c);
@@ -157,7 +126,7 @@ void PatternScreen::audition(int lane, float level) {
 void PatternScreen::placeHit(float chance) {
     setStep(lane_, step_, kNewHitLevel);
     setChance(lane_, step_, chance);
-    if (!playing_) audition(lane_, kNewHitLevel);
+    if (!project_.playing) audition(lane_, kNewHitLevel);
 }
 
 // ---- painting ----------------------------------------------------------------
@@ -173,14 +142,14 @@ void PatternScreen::paintHere() {
     if (paint_ == Paint::None || !onStep()) return; // the brush skips the lane names and the tempo
     const float level = paint_ == Paint::OneLevel ? brush_ : randomLevel();
     setStep(lane_, step_, level);
-    if (!playing_) audition(lane_, level);
+    if (!project_.playing) audition(lane_, level);
 }
 
 // ---- lane dice ---------------------------------------------------------------
 
 int PatternScreen::diceHits(int lane) const {
     int count = 0;
-    for (int step = 0; step < kSteps; ++step) count += fromDice_[lane][step] ? 1 : 0;
+    for (int step = 0; step < kSteps; ++step) count += pat().fromDice[lane][step] ? 1 : 0;
     return count;
 }
 
@@ -189,7 +158,7 @@ int PatternScreen::diceHits(int lane) const {
 // off-sixteenths, eighths twice. The same seed always gives the same order,
 // so turning up and back down retraces its steps.
 void PatternScreen::diceOrder(int lane, int order[kSteps]) const {
-    std::uint32_t state = diceSeed_[lane];
+    std::uint32_t state = pat().diceSeed[lane];
     int weight[kSteps], total = 0;
     for (int step = 0; step < kSteps; ++step) total += weight[step] = step % 4 == 0 ? 4 : (step % 2 == 0 ? 2 : 1);
     for (int i = 0; i < kSteps; ++i) {
@@ -205,7 +174,7 @@ void PatternScreen::diceOrder(int lane, int order[kSteps]) const {
 
 // A dice hit's level, 50% to 100%, fixed by the shuffle and the step.
 float PatternScreen::diceLevel(int lane, int step) const {
-    std::uint32_t h = diceSeed_[lane] ^ (0x9E3779B9u * static_cast<std::uint32_t>(step + 1));
+    std::uint32_t h = pat().diceSeed[lane] ^ (0x9E3779B9u * static_cast<std::uint32_t>(step + 1));
     h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
     return 0.5f + 0.5f * static_cast<float>(h >> 8) * (1.f / 16777216.f);
 }
@@ -216,11 +185,11 @@ bool PatternScreen::diceAdd() {
     diceOrder(lane_, order);
     for (int i = 0; i < kSteps; ++i) {
         const int step = order[i];
-        if (pattern_[lane_][step] > 0.f) continue;
+        if (pat().level[lane_][step] > 0.f) continue;
         const float level = diceLevel(lane_, step);
         setStep(lane_, step, level);
-        fromDice_[lane_][step] = true;
-        if (!playing_) audition(lane_, level);
+        pat().fromDice[lane_][step] = true;
+        if (!project_.playing) audition(lane_, level);
         return true;
     }
     return false; // the lane is full
@@ -231,8 +200,8 @@ bool PatternScreen::diceRemove() {
     int order[kSteps];
     diceOrder(lane_, order);
     for (int i = kSteps - 1; i >= 0; --i) {
-        if (!fromDice_[lane_][order[i]]) continue;
-        fromDice_[lane_][order[i]] = false; // first, so this can never find the same hit twice
+        if (!pat().fromDice[lane_][order[i]]) continue;
+        pat().fromDice[lane_][order[i]] = false; // first, so this can never find the same hit twice
         setStep(lane_, order[i], 0.f);
         return true;
     }
@@ -255,15 +224,15 @@ void PatternScreen::diceTurn(float hits) {
 void PatternScreen::diceReshuffle() {
     int count = diceHits(lane_);
     while (diceRemove()) {}
-    diceSeed_[lane_] = diceSeed_[lane_] * 1664525u + 1013904223u;
+    pat().diceSeed[lane_] = pat().diceSeed[lane_] * 1664525u + 1013904223u;
     if (count == 0) count = kFirstRoll;
-    const bool wasPlaying = playing_;
-    playing_ = true; // sound only the last of the new hits, not all of them at once
+    const bool wasPlaying = project_.playing;
+    project_.playing = true; // sound only the last of the new hits, not all of them at once
     for (int i = 0; i < count; ++i) {
-        if (i == count - 1) playing_ = wasPlaying;
+        if (i == count - 1) project_.playing = wasPlaying;
         if (!diceAdd()) break;
     }
-    playing_ = wasPlaying;
+    project_.playing = wasPlaying;
 }
 
 // ---- the cursor ------------------------------------------------------------
@@ -303,16 +272,16 @@ void PatternScreen::turnUpDown(float amount) {
     if (onTempo_) {
         setTempo(tempoExact_ + amount * (feel.tempoPerSecond / feel.fillPerSecond));
     } else if (step_ == kLaneName) {
-        setLaneLevel(laneLevel_[lane_] + amount);
+        setLaneLevel(trk().laneLevel[lane_] + amount);
     } else if (hitHere()) {
-        setStep(lane_, step_, clampTo(pattern_[lane_][step_] + amount, kMinHitLevel, 1.f));
+        setStep(lane_, step_, clampTo(pat().level[lane_][step_] + amount, kMinHitLevel, 1.f));
         turning_ = Turning::Level;
     }
 }
 
 void PatternScreen::turnSideways(float amount) {
     if (amount == 0.f || !hitHere()) return;
-    setNudge(lane_, step_, nudge_[lane_][step_] + amount);
+    setNudge(lane_, step_, pat().nudge[lane_][step_] + amount);
     turning_ = Turning::Nudge;
 }
 
@@ -325,7 +294,7 @@ void PatternScreen::turnChance(float amount) {
         return;
     }
     if (!hitHere()) return;
-    setChance(lane_, step_, chance_[lane_][step_] + amount);
+    setChance(lane_, step_, pat().chance[lane_][step_] + amount);
     turning_ = Turning::Chance;
     yDidSomething_ = true;
 }
@@ -340,21 +309,21 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             else diceRemove();
             yDidSomething_ = true;
         } else if (vertical && hitHere()) {
-            setChance(lane_, step_, nextTenth(chance_[lane_][step_], sign));
+            setChance(lane_, step_, nextTenth(pat().chance[lane_][step_], sign));
             turning_ = Turning::Chance;
             yDidSomething_ = true;
         }
     } else if (onTempo_) {
-        setTempo(tempo_ + sign * (vertical ? 1.f : 10.f));
+        setTempo(project_.tempo + sign * (vertical ? 1.f : 10.f));
     } else if (step_ == kLaneName) {
-        if (vertical) setLaneLevel(nextTenth(laneLevel_[lane_], sign));
+        if (vertical) setLaneLevel(nextTenth(trk().laneLevel[lane_], sign));
     } else if (hitHere()) {
         if (vertical) {
-            setStep(lane_, step_, clampTo(nextTenth(pattern_[lane_][step_], sign), kMinHitLevel, 1.f));
+            setStep(lane_, step_, clampTo(nextTenth(pat().level[lane_][step_], sign), kMinHitLevel, 1.f));
             turning_ = Turning::Level;
         } else {
             // Sideways: a tenth of a step, early or late.
-            setNudge(lane_, step_, nextTenth(nudge_[lane_][step_] + 0.5f, sign) - 0.5f);
+            setNudge(lane_, step_, nextTenth(pat().nudge[lane_][step_] + 0.5f, sign) - 0.5f);
             turning_ = Turning::Nudge;
         }
     }
@@ -386,7 +355,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             diceReshuffle(); // a plain tap on a lane's name rolls the dice
         } else if (!yDidSomething_ && hitHere()) {
             // A plain tap on a hit steps its chance down a quarter, and round again.
-            const float now = chance_[lane_][step_];
+            const float now = pat().chance[lane_][step_];
             setChance(lane_, step_, now > 0.76f ? 0.75f : now > 0.51f ? 0.5f : now > 0.26f ? 0.25f : 1.f);
         }
         dicing_ = event.down;
@@ -402,7 +371,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (!shaping_ && !dicing_) {
             paint_ = mine;
             // The brush takes the level of the hit it starts on, or 80%.
-            brush_ = hitHere() ? pattern_[lane_][step_] : kNewHitLevel;
+            brush_ = hitHere() ? pat().level[lane_][step_] : kNewHitLevel;
             paintHere();
         }
         return;
@@ -425,12 +394,9 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::B && !busy) {
         if (hitHere()) setStep(lane_, step_, 0.f);
     } else if (b == Button::X && !onTempo_) {
-        audition(lane_, hitHere() ? pattern_[lane_][step_] : kNewHitLevel);
+        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel);
     } else if (b == Button::Start && !input.held(Button::Select)) {
-        playing_ = !playing_;
-        Command c;
-        c.type = playing_ ? Command::Play : Command::Stop;
-        engine_.send(c);
+        session_.togglePlay(false); // loop this scene
     }
 }
 
@@ -497,50 +463,24 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const bool held = shaping_ || dicing_;
     const SDL_Color cursorColor = held || paint_ != Paint::None ? kBrass : kTeal;
 
-    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
-    fill(r, 0, 0, kScreenW, kScreenH, kBg);
-
     // ---- top bar -----------------------------------------------------------
-    fill(r, 0, 0, kScreenW, kTopBarH, kPanel);
-    fill(r, 0, kTopBarH, kScreenW, 1, kLine);
-    const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
-    float x = 8.f;
-    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "MIX"};
-    for (int i = 0; i < 4; ++i) {
-        const float w = fonts.small.width(tabs[i]) + 14.f;
-        const bool here = i == 1;
-        if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);
-        fonts.small.draw(r, x + 7.f, textY, tabs[i], here ? kBg : kDim);
-        x += w + 2.f;
-    }
-    fonts.small.draw(r, x + 10.f, textY, "1 DRUMS / SCENE 1", kText);
-
-    // Right side: tempo, then a triangle while playing or a square when stopped.
-    const int markX = kScreenW - 20;
-    SDL_SetRenderDrawColor(r, kPurple.r, kPurple.g, kPurple.b, 255);
-    if (playing_) {
-        for (int i = 0; i <= 12; ++i) {
-            SDL_RenderDrawLine(r, markX, 7 + i, markX + (i <= 6 ? i : 12 - i) * 2, 7 + i);
-        }
-    } else {
-        fill(r, markX, 8, 10, 10, kDim);
-    }
-    std::snprintf(text, sizeof text, "%d", static_cast<int>(tempo_));
-    const float bpmRight = markX - 14.f;
-    const float numberRight = bpmRight - fonts.small.width("BPM") - 5.f;
+    char context[48], name[24];
+    trackName(project_, project_.track, name, sizeof name);
+    std::snprintf(context, sizeof context, "%s / SCENE %d", name, project_.scene + 1);
+    const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
     if (onTempo_) {
         // The tempo fills too: its box is a bar from the slowest to the fastest.
-        const int bx = static_cast<int>(numberRight - fonts.small.width("240") - 6.f);
-        const int bw = static_cast<int>(bpmRight) - bx + 6;
+        const int bx = static_cast<int>(top.tempoNumberRight - fonts.small.width("240") - 6.f);
+        const int bw = static_cast<int>(top.tempoRight) - bx + 6;
         const float part = (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo);
         fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
-        SDL_Color bar = cursorColor;
-        bar.a = 90;
-        fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, bar);
+        fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursorColor, 90));
         outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursorColor, 2);
+        const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
+        std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
+        fonts.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
+        fonts.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
     }
-    fonts.small.drawRight(r, bpmRight, textY, "BPM", onTempo_ ? kText : kDim);
-    fonts.small.drawRight(r, numberRight, textY, text, kText);
 
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
@@ -556,7 +496,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         // The lane's name is also its volume: the box is filled as far as the
         // drum is turned up.
         box(r, kNameX, y, kNameW, kCellH, kBg, kLine);
-        const int filled = static_cast<int>(std::round((kNameW - 2) * laneLevel_[lane]));
+        const int filled = static_cast<int>(std::round((kNameW - 2) * trk().laneLevel[lane]));
         if (nameHere && shaping_) {
             SDL_Color bar = kBrass;
             bar.a = 110;
@@ -581,17 +521,17 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const int y = kGridTop + lane * kLaneH;
         for (int s = 0; s < kSteps; ++s) {
-            const float level = pattern_[lane][s];
+            const float level = pat().level[lane][s];
             if (level <= 0.f) continue;
             const bool live = held && onStep() && lane == lane_ && s == step_;
-            int bx = kGridLeft + s * kStepW + 4 + static_cast<int>(std::round(nudge_[lane][s] * kStepW));
+            int bx = kGridLeft + s * kStepW + 4 + static_cast<int>(std::round(pat().nudge[lane][s] * kStepW));
             if (bx < kGridLeft) bx = kGridLeft;
             if (bx + kBlockW > gridRight) bx = gridRight - kBlockW;
             int h = static_cast<int>(std::round(level * kBlockFull));
             if (h < 1) h = 1;
 
             SDL_Color body = live ? kTeal : kText;
-            const float chance = chance_[lane][s];
+            const float chance = pat().chance[lane][s];
             body.a = static_cast<Uint8>(std::round(255.f * (0.12f + 0.88f * chance * chance)));
             if (live) outline(r, bx, y + 4, kBlockW, kBlockFull, kDim); // the vessel being filled
             fill(r, bx, y + 4 + kBlockFull - h, kBlockW, h, body);
@@ -599,13 +539,13 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (chance < 1.f) outline(r, bx, y + 4 + kBlockFull - h, kBlockW, h, live ? kTeal : kText);
             // On a lane's name, the dice's own hits wear a brass cap: those are
             // the ones the stick will take away again.
-            if (onName && lane == lane_ && fromDice_[lane][s]) fill(r, bx, y + 4 + kBlockFull - h, kBlockW, 3, kBrass);
+            if (onName && lane == lane_ && pat().fromDice[lane][s]) fill(r, bx, y + 4 + kBlockFull - h, kBlockW, 3, kBrass);
         }
     }
     if (onStep()) {
         outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     }
-    const int playStep = engine_.playStep();
+    const int playStep = engine_.playScene() == project_.scene ? engine_.playStep() : -1;
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;
@@ -624,14 +564,14 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     if (onTempo_) {
         field(8.f, "SONG", "TEMPO", kText);
-        std::snprintf(text, sizeof text, "%d", static_cast<int>(tempo_));
+        std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
         field(134.f, "BPM", text, cursorColor);
         bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
     } else if (onName) {
         field(8.f, "LANE", DrumKit::laneName(lane_), kText);
-        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(laneLevel_[lane_] * 100.f)));
+        std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
-        bar(244, laneLevel_[lane_], dicing_ ? kDim : cursorColor);
+        bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
         std::snprintf(text, sizeof text, "%d", diceHits(lane_));
         field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
     } else {
@@ -645,25 +585,22 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pattern_[lane_][step_] * 100.f)));
+            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().level[lane_][step_] * 100.f)));
             field(190.f, "LEVEL", text, shade(Turning::Level));
-            const int n = static_cast<int>(std::round(nudge_[lane_][step_] * 100.f));
+            const int n = static_cast<int>(std::round(pat().nudge[lane_][step_] * 100.f));
             if (n == 0) std::snprintf(text, sizeof text, "ON GRID");
             else std::snprintf(text, sizeof text, "%d%% %s", std::abs(n), n < 0 ? "EARLY" : "LATE");
             field(330.f, "NUDGE", text, shade(Turning::Nudge));
-            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(chance_[lane_][step_] * 100.f)));
+            std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(pat().chance[lane_][step_] * 100.f)));
             field(470.f, "CHANCE", text, shade(Turning::Chance));
         }
     }
 
     // ---- hints -------------------------------------------------------------------
     // Only what does something here, and what the ONE stick does right now.
-    const int hintsY = kScreenH - kHintsH;
-    fill(r, 0, hintsY, kScreenW, kHintsH, kPanel);
-    fill(r, 0, hintsY, kScreenW, 1, kLine);
-    const char* hints[7][2] = {};
+    Hint hints[7];
     int count = 0;
-    const auto hint = [&](const char* key, const char* does) { hints[count][0] = key; hints[count][1] = does; ++count; };
+    const auto hint = [&](const char* key, const char* does) { hints[count].key = key; hints[count].does = does; ++count; };
     char brushText[40];
     if (paint_ == Paint::OneLevel) {
         std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
@@ -684,7 +621,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (onTempo_) {
         hint("STICK", "move");
         hint("HOLD A + STICK", "tempo");
-        hint("START", playing_ ? "stop" : "play");
+        hint("START", project_.playing ? "stop" : "play");
     } else if (onName) {
         hint("STICK", "move");
         hint("A", "play drum");
@@ -699,16 +636,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD R1", "paint");
         hint("HOLD L1", "paint random");
     }
-    const float hintTextY = hintsY + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
-    x = 8.f;
-    for (int i = 0; i < count; ++i) {
-        const float keyW = fonts.small.width(hints[i][0]) + 8.f;
-        fill(r, static_cast<int>(x), hintsY + 5, static_cast<int>(keyW), kHintsH - 9, kText);
-        fonts.small.draw(r, x + 4.f, hintTextY, hints[i][0], kBg);
-        x += keyW + 5.f;
-        fonts.small.draw(r, x, hintTextY, hints[i][1], kDim);
-        x += fonts.small.width(hints[i][1]) + 11.f;
-    }
+    ui::hints(r, fonts, hints, count);
 }
 
 } // namespace apotheca

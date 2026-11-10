@@ -51,7 +51,8 @@
 
 #include "apotheca/engine.hpp"
 #include "input.hpp"
-#include "text.hpp"
+#include "session.hpp"
+#include "ui.hpp"
 
 namespace apotheca {
 
@@ -65,15 +66,9 @@ struct Feel {
     float tempoPerSecond = 90.f;  // stick fully over, in BPM
 };
 
-struct Fonts {
-    Font small;  // 12: labels, hints, tabs
-    Font medium; // 14: lane names
-    Font large;  // 16: values
-};
-
 class PatternScreen {
 public:
-    explicit PatternScreen(Engine& engine);
+    explicit PatternScreen(Session& session);
 
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs); // once per frame
@@ -85,18 +80,18 @@ public:
     void setNudge(int lane, int step, float nudge);   // -0.5..0.5 of a step
     void setChance(int lane, int step, float chance); // 0.05..1
     void moveCursorTo(int lane, int step); // step -1 is the lane's name
-    float level(int lane, int step) const { return pattern_[lane][step]; }
-    float nudge(int lane, int step) const { return nudge_[lane][step]; }
-    float chance(int lane, int step) const { return chance_[lane][step]; }
-    float laneLevel(int lane) const { return laneLevel_[lane]; }
-    bool playing() const { return playing_; }
+    float level(int lane, int step) const { return pat().level[lane][step]; }
+    float nudge(int lane, int step) const { return pat().nudge[lane][step]; }
+    float chance(int lane, int step) const { return pat().chance[lane][step]; }
+    float laneLevel(int lane) const { return project_.current().laneLevel[lane]; }
+    bool playing() const { return project_.playing; }
     int cursorLane() const { return lane_; }
     int cursorStep() const { return step_; }
     bool cursorOnTempo() const { return onTempo_; }
-    float tempo() const { return tempo_; }
+    float tempo() const { return project_.tempo; }
     bool painting() const { return paint_ != Paint::None; }
     int diceHits(int lane) const; // how many hits on the lane the dice placed and still own
-    bool fromDice(int lane, int step) const { return fromDice_[lane][step]; }
+    bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 
     Feel feel;
 
@@ -107,7 +102,12 @@ private:
     enum class Paint { None, OneLevel, Random };
 
     bool onStep() const { return !onTempo_ && step_ != kLaneName; }
-    bool hitHere() const { return onStep() && pattern_[lane_][step_] > 0.f; }
+    bool hitHere() const { return onStep() && pat().level[lane_][step_] > 0.f; }
+    // The pattern being shown: the project's current track and scene.
+    DrumPattern& pat() { return project_.current().drums[project_.scene]; }
+    const DrumPattern& pat() const { return project_.current().drums[project_.scene]; }
+    TrackData& trk() { return project_.current(); }
+    const TrackData& trk() const { return project_.current(); }
     void moveCursor(Button direction);
     void dragCursor(Button direction); // a move the player made: it paints if a brush is down
     void placeHit(float chance);
@@ -127,17 +127,13 @@ private:
     void setTempo(float bpm);
     void audition(int lane, float level);
 
+    Session& session_;
     Engine& engine_;
-    float pattern_[kDrumLanes][kSteps] = {};
-    float nudge_[kDrumLanes][kSteps] = {};
-    float chance_[kDrumLanes][kSteps];
-    float laneLevel_[kDrumLanes];
+    Project& project_;
     int lane_ = 0;
     int step_ = 0;
     bool onTempo_ = false;
-    bool playing_ = false;
-    float tempo_ = 120.f;
-    float tempoExact_ = 120.f; // the stick moves this; tempo_ is it, rounded
+    float tempoExact_; // the stick moves this; the project's tempo is it, rounded
 
     bool shaping_ = false;  // A is held
     bool dicing_ = false;   // Y is held
@@ -145,8 +141,6 @@ private:
     Axis axis_ = Axis::None; // the stick does one job at a time until it is let go
     Turning turning_ = Turning::Nothing;
 
-    bool fromDice_[kDrumLanes][kSteps] = {}; // hits the dice placed and nobody has touched since
-    std::uint32_t diceSeed_[kDrumLanes];
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
     Paint paint_ = Paint::None;

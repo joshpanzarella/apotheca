@@ -181,7 +181,7 @@ private:
     std::atomic<float> scope_[kScopeSize];
     std::atomic<unsigned> scopeWritten_{0};
 
-    SpscQueue<Command, 1024> commands_;
+    SpscQueue<Command, 4096> commands_; // room for whole patterns sent at once
 };
 
 } // namespace apotheca

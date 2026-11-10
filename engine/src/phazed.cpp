@@ -45,7 +45,7 @@ void toPanel(const PhazedPatch& p, cz_panel_tone_t& t) {
         l.dcw_kf = static_cast<uint8_t>(p.value[lineSetting(line, WaveKeyFollow)]);
         for (int env = 0; env < kEnvelopes; ++env) {
             cz_panel_env_t* e = envOf(l, env);
-            for (int step = 0; step < kSteps; ++step) {
+            for (int step = 0; step < kEnvSteps; ++step) {
                 e->rate[step] = static_cast<uint8_t>(p.value[envRate(line, env, step)]);
                 e->level[step] = static_cast<uint8_t>(p.value[envLevel(line, env, step)]);
             }
@@ -80,7 +80,7 @@ PhazedPatch fromPreset(const cz_preset_t& preset) {
         p.value[lineSetting(line, WaveKeyFollow)] = l.dcw_kf;
         for (int env = 0; env < kEnvelopes; ++env) {
             const cz_panel_env_t* e = envOf(l, env);
-            for (int step = 0; step < kSteps; ++step) {
+            for (int step = 0; step < kEnvSteps; ++step) {
                 p.value[envRate(line, env, step)] = e->rate[step];
                 p.value[envLevel(line, env, step)] = e->level[step];
             }
@@ -105,7 +105,7 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus) {
         // TONE: how far the wave is bent, from half as far to twice as far.
         // MOTION: how fast that bend moves.
         const float scale = std::pow(2.f, 2.f * tone);
-        for (int step = 0; step < kSteps; ++step) {
+        for (int step = 0; step < kEnvSteps; ++step) {
             line.dcw.level[step] = static_cast<uint8_t>(clampInt(static_cast<int>(std::lround(line.dcw.level[step] * scale)), 0, 99));
             line.dcw.rate[step] = static_cast<uint8_t>(bent(line.dcw.rate[step], 60.f * motion));
         }
@@ -114,7 +114,7 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus) {
         // RELEASE: the stages after the held one (or after the first, in a
         // sound that never holds). Up is longer.
         const int from = line.dca.sustain ? line.dca.sustain : 1;
-        const int end = line.dca.end < 1 ? 1 : (line.dca.end > kSteps ? kSteps : line.dca.end);
+        const int end = line.dca.end < 1 ? 1 : (line.dca.end > kEnvSteps ? kEnvSteps : line.dca.end);
         for (int step = from; step < end; ++step) {
             line.dca.rate[step] = static_cast<uint8_t>(bent(line.dca.rate[step], -100.f * release));
         }
@@ -146,7 +146,7 @@ int settingMin(int id) {
     if (in == Wave1) return line == 0 ? 1 : 0; // line 2 may be left empty: it then plays line 1's settings
     if (in < kLineHead) return 0;
     const int e = (in - kLineHead) % kEnvSettings;
-    return e == 2 * kSteps + 1 ? 1 : 0; // the end step is 1..8
+    return e == 2 * kEnvSteps + 1 ? 1 : 0; // the end step is 1..8
 }
 
 int settingMax(int id) {
@@ -169,7 +169,7 @@ int settingMax(int id) {
     if (in == Wave1 || in == Wave2) return 8;
     if (in < kLineHead) return 9;
     const int e = (in - kLineHead) % kEnvSettings;
-    return e < 2 * kSteps ? 99 : 8;
+    return e < 2 * kEnvSteps ? 99 : 8;
 }
 
 } // namespace phazed

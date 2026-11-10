@@ -1,33 +1,32 @@
 // Apotheca app shell: a 640x480 window, an audio device, and the handheld's
-// controls. All sound comes from the engine library; this file only connects
-// it to the screen, the speaker and the buttons.
+// controls. All sound comes from the engine library and all behaviour from
+// App; this file only connects them to the screen, the speaker and the
+// buttons.
 //
 // Everything is written against the handheld's buttons (input.hpp). The
 // keyboard only stands in for them; see the README for the key map.
-// What the buttons do is in pattern_screen.hpp. SELECT + START quits.
+// SELECT + START quits.
 //
 // For checks and stills:
 //   --smoke        place a hit and press play through the keyboard stand-in,
 //                  check that sound came out, quit after one second
-//   --demo         start with a pattern already on the grid
-//   --hold-a       with --demo: hold A on a hit, as if adjusting it
-//   --hold-y       with --demo: hold Y on a hit, with its chance turned down
-//   --dice         with --demo: hold Y on a lane's name, with six hits rolled in
-//   --paint        with --demo: sweep a row with R1 held (one level)
-//   --paint-random with --demo: sweep a row with L1 held (random levels)
-//   --on-name      with --demo: hold A on a lane's name, with its volume turned down
-//   --on-tempo     with --demo: hold A on the tempo
+//   --demo         start with a song already made: drums and two Phazed tracks
+//   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
+//                  add-track, or page1 .. page9 (Phazed's advanced pages)
+//   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
+//                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
 
 #include <SDL.h>
 
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "apotheca/engine.hpp"
+#include "app.hpp"
 #include "input.hpp"
-#include "pattern_screen.hpp"
 #include "realtime.hpp"
 #include "text.hpp"
 
@@ -60,29 +59,105 @@ void pushKey(SDL_Keycode key, bool down) {
     event.key.keysym.sym = key;
     SDL_PushEvent(&event);
 }
+void tapKey(SDL_Keycode key, int times = 1) {
+    for (int i = 0; i < times; ++i) {
+        pushKey(key, true);
+        pushKey(key, false);
+    }
+}
 
-void fillDemoPattern(PatternScreen& screen) {
+// A song to look at: three scenes of drums, a Phazed bass and Phazed chords.
+// Everything goes through the same calls the buttons make.
+void fillDemoSong(App& app) {
+    Project& project = app.project();
+    Session& session = app.session();
+    PatternScreen& drums = app.drums();
     const struct { int lane, step; float level; } hits[] = {
         {0, 0, 1.f}, {0, 6, .7f}, {0, 8, 1.f}, {0, 11, .6f}, {1, 4, 1.f}, {1, 12, 1.f}, {1, 15, .4f},
         {2, 0, .7f}, {2, 2, .5f}, {2, 4, .7f}, {2, 6, .5f}, {2, 8, .7f}, {2, 10, .5f}, {2, 12, .7f},
         {3, 14, .8f}, {4, 12, .6f}, {6, 3, .5f}, {6, 9, .5f}};
-    for (const auto& hit : hits) screen.setStep(hit.lane, hit.step, hit.level);
-    // Some hats late, for swing; some hits that only sometimes play.
-    for (int step : {2, 6, 10}) screen.setNudge(2, step, 0.3f);
-    screen.setNudge(1, 15, -0.25f);
-    screen.setChance(0, 11, 0.5f);
-    screen.setChance(1, 15, 0.25f);
-    screen.setChance(6, 3, 0.5f);
-    screen.setChance(6, 9, 0.75f);
-    screen.moveCursorTo(1, 4);
+    for (int scene = 0; scene < 3; ++scene) {
+        project.scene = scene;
+        for (const auto& hit : hits) {
+            if (scene == 2 && hit.lane == 0 && hit.step > 0) continue; // the last scene thins the kick
+            drums.setStep(hit.lane, hit.step, hit.level);
+        }
+        // Some hats late, for swing; some hits that only sometimes play.
+        for (int step : {2, 6, 10}) drums.setNudge(2, step, 0.3f);
+        drums.setNudge(1, 15, -0.25f);
+        drums.setChance(1, 15, 0.25f);
+        drums.setChance(6, 3, 0.5f);
+        drums.setChance(6, 9, 0.75f);
+        if (scene != 2) drums.setChance(0, 11, 0.5f);
+    }
+    project.scene = 0;
+    drums.moveCursorTo(1, 4);
+
+    // Track 2: a bass. Track 3: chords.
+    session.addTrack(TrackKind::Phazed);
+    session.addTrack(TrackKind::Phazed);
+    const auto choose = [&](int track, const char* folder) {
+        for (int i = 0; i < Phazed::presetCount(); ++i) {
+            if (std::strcmp(Phazed::presetCategory(i), folder) != 0) continue;
+            project.tracks[track].preset = i;
+            project.tracks[track].patch = Phazed::presetPatch(i);
+            Command c;
+            c.type = Command::SelectPreset;
+            c.track = track;
+            c.a = i;
+            session.engine.send(c);
+            return;
+        }
+    };
+    choose(1, "Bass");
+    choose(2, "Strings & Pads");
+    const auto put = [&](int track, int scene, int step, int pitch, int length, float level) {
+        NotePattern& p = project.tracks[track].notes[scene];
+        const int slot = p.freeSlot();
+        if (slot < 0) return;
+        p.notes[slot].step = step;
+        p.notes[slot].pitch = pitch;
+        p.notes[slot].length = length;
+        p.notes[slot].velocity = level;
+    };
+    const int roots[3] = {45, 41, 43};
+    for (int scene = 0; scene < 3; ++scene) {
+        const int root = roots[scene];
+        put(1, scene, 0, root, 2, 1.f);
+        put(1, scene, 3, root, 1, .7f);
+        put(1, scene, 6, root + 12, 2, .8f);
+        put(1, scene, 8, root, 2, 1.f);
+        put(1, scene, 11, root + 3, 1, .7f);
+        put(1, scene, 14, root + 7, 2, .8f);
+        session.sendNotePattern(1, scene);
+        for (int i = 0; i < 3; ++i) put(2, scene, 0, root + 12 + (i == 0 ? 0 : i == 1 ? 3 : 7), 14, .7f);
+        session.sendNotePattern(2, scene);
+    }
+    const int repeats[3] = {2, 2, 4};
+    for (int scene = 0; scene < 3; ++scene) {
+        project.repeats[scene] = repeats[scene];
+        Command c;
+        c.type = Command::SetSceneRepeats;
+        c.scene = scene;
+        c.a = repeats[scene];
+        session.engine.send(c);
+    }
+    const float levels[3] = {0.5f, 0.35f, 0.2f}; // room under the ceiling for three tracks
+    for (int track = 0; track < 3; ++track) {
+        Command c;
+        c.type = Command::SetTrackLevel;
+        c.track = track;
+        c.value = levels[track];
+        session.engine.send(c);
+    }
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false;
+    bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false, dice = false;
     int paint = 0; // 1: R1, 2: L1
-    bool dice = false;
+    const char* view = "";
     const char* shot = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
@@ -94,6 +169,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--paint-random") == 0) paint = 2;
         else if (std::strcmp(argv[i], "--on-name") == 0) onName = true;
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
+        else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     }
 
@@ -136,7 +212,8 @@ int main(int argc, char** argv) {
     std::printf("audio inputs: %d\n", inputs < 0 ? 0 : inputs);
     for (int i = 0; i < inputs; ++i) std::printf("  input %d: %s\n", i + 1, SDL_GetAudioDeviceName(i, 1));
 
-    Engine engine;
+    // The engine is large; it lives for the whole run.
+    static Engine engine;
     AudioState audio;
     audio.engine = &engine;
 
@@ -148,76 +225,79 @@ int main(int argc, char** argv) {
     want.callback = audioCallback;
     want.userdata = &audio;
     SDL_AudioSpec have = {};
-    const SDL_AudioDeviceID device =
-        SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (!device) {
         std::fprintf(stderr, "could not open audio: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
-    SDL_PauseAudioDevice(device, 0);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     Input input;
-    PatternScreen screen(engine);
-    if (demo) fillDemoPattern(screen);
+    App app(engine);
+    if (demo) fillDemoSong(app);
+    SDL_PauseAudioDevice(device, 0); // after the demo is in, so its commands are not racing the audio thread
+
+    // ---- what to show, for stills ---------------------------------------------------
+    if (std::strcmp(view, "song") == 0) {
+        app.session().view = View::Song;
+    } else if (std::strcmp(view, "add-track") == 0) {
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, app.project().trackCount());
+        tapKey(SDLK_x);
+    } else if (std::strcmp(view, "notes") == 0) {
+        app.project().track = 1;
+        app.notes().moveCursorTo(57, 6);
+    } else if (std::strcmp(view, "phazed") == 0) {
+        app.project().track = 1;
+        app.session().view = View::Device;
+        app.phazed().goTo(0, PhazedScreen::kFirstMacro);
+        pushKey(SDLK_x, true);  // hold A on TONE
+        tapKey(SDLK_UP, 6);     // and turn it up
+    } else if (std::strncmp(view, "page", 4) == 0) {
+        app.project().track = 1;
+        app.session().view = View::Device;
+        app.phazed().goTo(std::atoi(view + 4), 1);
+    } else if (std::strcmp(view, "kit") == 0) {
+        app.session().view = View::Device;
+    }
 
     if (smoke) {
         // What a tester would do: A to place a kick, START to play.
-        pushKey(SDLK_x, true);
-        pushKey(SDLK_x, false);
-        pushKey(SDLK_RETURN, true);
-        pushKey(SDLK_RETURN, false);
-    } else if (demo) {
-        pushKey(SDLK_RETURN, true);
-        pushKey(SDLK_RETURN, false);
+        tapKey(SDLK_x);
+        tapKey(SDLK_RETURN);
+    } else if (demo && !*view) {
+        tapKey(SDLK_RETURN);
+    } else if (demo && std::strcmp(view, "add-track") != 0) {
+        tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
-    // For stills: the dice held on the tom's name, six hits rolled in.
+    // A gesture held on the drum grid.
+    PatternScreen& drums = app.drums();
     if (dice) {
-        screen.moveCursorTo(5, -1);
+        drums.moveCursorTo(5, -1);
         pushKey(SDLK_a, true);
-        for (int i = 0; i < 6; ++i) {
-            pushKey(SDLK_UP, true);
-            pushKey(SDLK_UP, false);
-        }
+        tapKey(SDLK_UP, 6);
     } else if (paint) {
-        screen.moveCursorTo(5, 2);
+        drums.moveCursorTo(5, 2);
         pushKey(paint == 1 ? SDLK_w : SDLK_q, true);
-        for (int i = 0; i < 10; ++i) {
-            pushKey(SDLK_RIGHT, true);
-            pushKey(SDLK_RIGHT, false);
-        }
+        tapKey(SDLK_RIGHT, 10);
     } else if (onName) {
-        screen.moveCursorTo(1, -1);
+        drums.moveCursorTo(1, -1);
         pushKey(SDLK_x, true);
-        pushKey(SDLK_DOWN, true); // A + D-pad down: the drum's volume, a tenth
-        pushKey(SDLK_DOWN, false);
-        pushKey(SDLK_DOWN, true);
-        pushKey(SDLK_DOWN, false);
-        pushKey(SDLK_DOWN, true);
-        pushKey(SDLK_DOWN, false);
+        tapKey(SDLK_DOWN, 3);
     } else if (onTempo) {
-        screen.moveCursorTo(0, 0);
-        pushKey(SDLK_UP, true);
-        pushKey(SDLK_UP, false);
+        drums.moveCursorTo(0, 0);
+        tapKey(SDLK_UP);
         pushKey(SDLK_x, true);
     } else if (holdA) {
-        screen.setStep(screen.cursorLane(), screen.cursorStep(), 0.55f); // part full, so the fill shows
-        screen.setNudge(screen.cursorLane(), screen.cursorStep(), 0.3f);  // and late, so the slide shows
+        drums.setStep(drums.cursorLane(), drums.cursorStep(), 0.55f);
+        drums.setNudge(drums.cursorLane(), drums.cursorStep(), 0.3f);
         pushKey(SDLK_x, true);
-        pushKey(SDLK_RIGHT, true); // A + D-pad right: one more tenth late
-        pushKey(SDLK_RIGHT, false);
+        tapKey(SDLK_RIGHT);
     } else if (holdY) {
         pushKey(SDLK_a, true);
-        pushKey(SDLK_DOWN, true); // Y + D-pad down: chance, a tenth at a time
-        pushKey(SDLK_DOWN, false);
-        pushKey(SDLK_DOWN, true);
-        pushKey(SDLK_DOWN, false);
-        pushKey(SDLK_DOWN, true);
-        pushKey(SDLK_DOWN, false);
-        pushKey(SDLK_DOWN, true);
-        pushKey(SDLK_DOWN, false);
+        tapKey(SDLK_DOWN, 4);
     }
 
     bool running = true;
@@ -235,9 +315,9 @@ int main(int argc, char** argv) {
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
             if (input.held(Button::Select) && input.held(Button::Start)) running = false;
-            else screen.onButton(press, input);
+            else app.onButton(press, input);
         }
-        screen.update(input, SDL_GetTicks());
+        app.update(input, SDL_GetTicks());
 
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;
@@ -246,7 +326,7 @@ int main(int argc, char** argv) {
         const float peak = engine.trackPeak(0);
         if (peak > loudest) loudest = peak;
 
-        screen.draw(renderer, fonts);
+        app.draw(renderer, fonts);
         if ((smoke || shot) && SDL_GetTicks() - start > 1000) running = false;
         if (!running && shot) {
             SDL_Surface* picture = SDL_CreateRGBSurfaceWithFormat(0, kScreenW, kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);
@@ -267,8 +347,8 @@ int main(int argc, char** argv) {
     SDL_Quit();
 
     if (smoke) {
-        if (screen.level(0, 0) <= 0.f) { std::fprintf(stderr, "smoke: pressing A placed no hit\n"); return 1; }
-        if (!screen.playing()) { std::fprintf(stderr, "smoke: pressing START did not play\n"); return 1; }
+        if (app.drums().level(0, 0) <= 0.f) { std::fprintf(stderr, "smoke: pressing A placed no hit\n"); return 1; }
+        if (!app.project().playing) { std::fprintf(stderr, "smoke: pressing START did not play\n"); return 1; }
         if (loudest <= 0.f) { std::fprintf(stderr, "smoke: the pattern made no sound\n"); return 1; }
     }
     return 0;

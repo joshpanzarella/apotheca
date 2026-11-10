@@ -49,13 +49,15 @@ target_link_libraries(render_demo PRIVATE apotheca_engine)
 if(APOTHECA_BUILD_APP)
   find_package(SDL2 REQUIRED)
   find_package(Threads REQUIRED)
-  add_executable(apotheca app/main.cpp app/input.cpp app/pattern_screen.cpp app/realtime.cpp app/text.cpp)
+  set(APOTHECA_SCREENS app/app.cpp app/input.cpp app/note_screen.cpp app/pattern_screen.cpp
+      app/phazed_screen.cpp app/session.cpp app/song_screen.cpp app/text.cpp app/ui.cpp)
+  add_executable(apotheca app/main.cpp app/realtime.cpp ${APOTHECA_SCREENS})
   target_include_directories(apotheca PRIVATE third_party)
   # stb_truetype is someone else's code; do not hold it to our warnings.
   set_source_files_properties(app/text.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-function")
   if(APOTHECA_BUILD_TESTS)
     # The screen's button handling, driven without a window or a sound card.
-    add_executable(ui_test tests/ui_test.cpp app/input.cpp app/pattern_screen.cpp app/text.cpp)
+    add_executable(ui_test tests/ui_test.cpp ${APOTHECA_SCREENS})
     target_include_directories(ui_test PRIVATE app third_party)
     add_test(NAME ui COMMAND ui_test)
   endif()

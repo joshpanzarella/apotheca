@@ -6,6 +6,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <memory>
 #include <vector>
 
 #include "apotheca/engine.hpp"
@@ -29,7 +30,9 @@ namespace {
 struct Rig {
     Engine engine;
     Input input;
-    PatternScreen screen{engine};
+    std::unique_ptr<Project> project{new Project};
+    Session session{engine, *project};
+    PatternScreen screen{session};
     Uint32 clock = 1000;
 
     void key(SDL_Keycode code, bool down) {
