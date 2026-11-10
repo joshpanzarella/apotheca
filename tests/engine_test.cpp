@@ -801,7 +801,107 @@ static void testANoteEndsPartWayThroughAStep() {
     CHECK(peakOf(renderFrames(*engine, 4000)) < 1e-4f);
 }
 
+static void testPanic() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1));
+    for (int s = 0; s < kSteps; ++s) engine->send(step(s % 2 == 0 ? 0 : 7, s, 1.f)); // kicks and crashes: something always ringing
+    Command note = make(Command::SetNote, 1, 0, 0, 1.f);
+    note.c = 48;
+    note.d = 16;
+    engine->send(note);
+    engine->send(make(Command::Play, 0, 0, 1));
+    CHECK(peakOf(renderFrames(*engine, 3 * kStep)) > 0.2f);
+    CHECK(!engine->silenced() && engine->playStep() >= 0);
+
+    // Panic: nothing within 5 ms, without a click on the way down.
+    engine->send(make(Command::Panic, 0, 1));
+    const std::vector<float> down = renderFrames(*engine, 480);
+    CHECK(down[0] != 0.f);                 // a fade, not a cut
+    for (int i = 245; i < 480; ++i) CHECK(down[2 * i] == 0.f && down[2 * i + 1] == 0.f);
+    CHECK(engine->silenced() && engine->playStep() == -1 && engine->playScene() == -1);
+    // It stays shut for as long as it is held, whatever is asked for.
+    engine->send(trigger(0));
+    engine->send(make(Command::NoteOn, 1, 60, 0, 1.f));
+    CHECK(peakOf(renderFrames(*engine, 48000)) == 0.f);
+    engine->send(make(Command::NoteOff, 1, 60));
+    CHECK(peakOf(renderFrames(*engine, 96000)) == 0.f);
+    CHECK(engine->silenced());
+    // The song has stopped: nothing plays by itself.
+    CHECK(engine->playStep() == -1);
+
+    // Let go. What was ringing has died away behind the gate, so it opens,
+    // and it opens onto silence: the crash that was cut does not come back.
+    engine->send(make(Command::Panic, 0, 0));
+    CHECK(peakOf(renderFrames(*engine, 24000)) == 0.f);
+    CHECK(!engine->silenced());
+    // And everything works as before.
+    engine->send(trigger(0));
+    CHECK(peakOf(renderFrames(*engine, 4000)) > 0.2f);
+    renderFrames(*engine, 96000);
+
+    // Let go while something still rings: the gate waits for it. A crash is
+    // cut at once, so use a held synth note, which is only let go.
+    engine->send(make(Command::NoteOn, 1, 48, 0, 1.f));
+    renderFrames(*engine, 4800);
+    engine->send(make(Command::Panic, 0, 1));
+    engine->send(make(Command::Panic, 0, 0)); // a quick squeeze
+    const std::vector<float> squeeze = renderFrames(*engine, 2400);
+    for (int i = 245; i < 2400; ++i) CHECK(squeeze[2 * i] == 0.f);
+    CHECK(engine->silenced());
+    // The next thing played opens it at once, fading up over 30 ms.
+    renderFrames(*engine, 480);
+    engine->send(trigger(0));
+    const std::vector<float> up = renderFrames(*engine, 4000);
+    CHECK(peakOf(up) > 0.2f && std::fabs(up[2 * 100]) < 0.2f); // the kick's front is under the fade
+    CHECK(!engine->silenced());
+    // Three seconds at most, even if something never dies away.
+    renderFrames(*engine, 96000);
+    engine->send(make(Command::NoteOn, 1, 48, 0, 1.f));
+    renderFrames(*engine, 4800);
+    engine->send(make(Command::Panic, 0, 1));
+    renderFrames(*engine, 480);
+    CHECK(engine->silenced());
+    engine->send(make(Command::Panic, 0, 0));
+    renderFrames(*engine, 3 * 48000 + 4800);
+    CHECK(!engine->silenced());
+    // A note started while it is held never dies away. Let go, and the gate
+    // waits for it, but only until three seconds after it shut.
+    engine->send(make(Command::Panic, 0, 1));
+    engine->send(make(Command::NoteOn, 1, 48, 0, 1.f));
+    renderFrames(*engine, 48000);
+    engine->send(make(Command::Panic, 0, 0));
+    CHECK(peakOf(renderFrames(*engine, 48000)) == 0.f && engine->silenced()); // two seconds in: still shut
+    renderFrames(*engine, 48000 + 4800);
+    CHECK(!engine->silenced());                         // three seconds: open, though it never went quiet
+    CHECK(peakOf(renderFrames(*engine, 4800)) > 0.f);   // what is left of the note is there
+    engine->send(make(Command::NoteOff, 1, 48));
+    renderFrames(*engine, 4 * 48000);
+
+    // A crash rings for nearly two seconds. Panic cuts it, so a quick
+    // squeeze is over in a tenth of a second, not two.
+    {
+        std::unique_ptr<Engine> drums(new Engine);
+        drums->send(trigger(7));
+        renderFrames(*drums, 4800);
+        drums->send(make(Command::Panic, 0, 1));
+        renderFrames(*drums, 480);
+        drums->send(make(Command::Panic, 0, 0));
+        renderFrames(*drums, 9600);
+        CHECK(!drums->silenced());
+        CHECK(peakOf(renderFrames(*drums, 48000)) == 0.f); // and the crash is gone, not waiting behind the gate
+    }
+
+    // Panic twice over is still one panic.
+    engine->send(make(Command::Panic, 0, 1));
+    engine->send(make(Command::Panic, 0, 1));
+    CHECK(peakOf(renderFrames(*engine, 4800)) < 1.f && engine->silenced());
+    engine->send(make(Command::Panic, 0, 0));
+    renderFrames(*engine, 4 * 48000);
+    CHECK(!engine->silenced());
+}
+
 int main() {
+    testPanic();
     testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();
     testWhereAHitStarts();

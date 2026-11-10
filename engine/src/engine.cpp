@@ -189,6 +189,11 @@ void Engine::fireNoteOffs() {
 }
 
 void Engine::apply(const Command& c) {
+    // After a panic, with the buttons let go, the next thing asked for is heard.
+    if (gate_ == Gate::Shut && !panicHeld_ && !cutEverything_ &&
+        (c.type == Command::Play || c.type == Command::Trigger || c.type == Command::NoteOn)) {
+        gate_ = Gate::Opening;
+    }
     switch (c.type) {
     case Command::Trigger:
         if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f);
@@ -263,6 +268,17 @@ void Engine::apply(const Command& c) {
         letGoOfNotes();
         playStep_.store(-1, std::memory_order_relaxed);
         playScene_.store(-1, std::memory_order_relaxed);
+        break;
+    case Command::Panic:
+        panicHeld_ = c.a != 0;
+        if (!panicHeld_) break;
+        playing_ = false;
+        clearPending();
+        letGoOfNotes();
+        playStep_.store(-1, std::memory_order_relaxed);
+        playScene_.store(-1, std::memory_order_relaxed);
+        if (gate_ != Gate::Shut) gate_ = Gate::Closing;
+        silenced_.store(true, std::memory_order_relaxed);
         break;
     case Command::SetTempo:
         if (std::isfinite(c.value)) {
@@ -563,9 +579,53 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         if (effect) effect->process(mixL, mixR, frames);
     }
 
+    if (gate_ == Gate::Open) {
+        for (int i = 0; i < frames; ++i) {
+            interleaved[2 * i] = ceiling(mixL[i]);
+            interleaved[2 * i + 1] = ceiling(mixR[i]);
+        }
+        return;
+    }
+    // The panic gate: shut in 5 ms, so even a wall of noise does not click;
+    // open again in 30 ms, once what was sounding has died away (or after
+    // three seconds whatever is left).
+    const float closeStep = 1.f / (0.005f * sampleRate_), openStep = 1.f / (0.03f * sampleRate_);
     for (int i = 0; i < frames; ++i) {
-        interleaved[2 * i] = ceiling(mixL[i]);
-        interleaved[2 * i + 1] = ceiling(mixR[i]);
+        if (gate_ == Gate::Closing) {
+            gateGain_ -= closeStep;
+            if (gateGain_ <= 0.f) {
+                gateGain_ = 0.f;
+                gate_ = Gate::Shut;
+                cutEverything_ = true;
+                shutFrames_ = quietFrames_ = 0;
+            }
+        } else if (gate_ == Gate::Shut) {
+            const float loud = std::fabs(mixL[i]) > std::fabs(mixR[i]) ? std::fabs(mixL[i]) : std::fabs(mixR[i]);
+            quietFrames_ = loud < 1e-3f ? quietFrames_ + 1 : 0;
+            ++shutFrames_;
+            const bool died = static_cast<float>(quietFrames_) >= 0.1f * sampleRate_ || static_cast<float>(shutFrames_) >= 3.f * sampleRate_;
+            if (!panicHeld_ && !cutEverything_ && died) gate_ = Gate::Opening;
+        } else if (gate_ == Gate::Opening) {
+            gateGain_ += openStep;
+            if (gateGain_ >= 1.f) {
+                gateGain_ = 1.f;
+                gate_ = Gate::Open;
+                silenced_.store(false, std::memory_order_relaxed);
+            }
+        }
+        interleaved[2 * i] = ceiling(mixL[i]) * gateGain_;
+        interleaved[2 * i + 1] = ceiling(mixR[i]) * gateGain_;
+    }
+    if (cutEverything_) {
+        // Behind the shut gate: stop what rings by itself.
+        cutEverything_ = false;
+        for (Track& track : tracks_) {
+            track.drums.reset();
+            for (auto& effect : track.effects)
+                if (effect) effect->reset();
+        }
+        for (auto& effect : masterEffects_)
+            if (effect) effect->reset();
     }
 }
 

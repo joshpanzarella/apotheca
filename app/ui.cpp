@@ -148,7 +148,9 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     // While it plays: which scene, and how far through it. One block for
     // each time the scene plays, filling as the bar goes by, so the change
     // to the next scene can be seen coming.
-    if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
+    if (project.silenced) {
+        fonts.small.drawRight(r, bar.tempoNumberRight - 40.f, textY, "SILENCED", kBrass);
+    } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(bar.tempoNumberRight) - 40, w = 78;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
         sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playStep);

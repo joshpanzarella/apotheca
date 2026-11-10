@@ -4,6 +4,8 @@
 // the tests press its buttons directly.
 //
 //   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE
+//   L1 + L2 + R1 + R2 together: PANIC. Everything stops and the sound is
+//              shut off at once, for as long as they are held.
 //
 // PATTERN and DEVICE show whichever track the Song screen's cursor chose: the
 // drum grid or the piano roll, the kit or the synth.
@@ -45,6 +47,8 @@ private:
     Session session_;
     SongScreen song_;
     PatternScreen drums_;
+    bool panicking_ = false; // all four shoulder buttons are down
+    View viewBeforeShoulders_ = View::Pattern;
     NoteScreen notes_;
     KitScreen kit_;
     PhazedScreen phazed_; // the same screen, once for each synth

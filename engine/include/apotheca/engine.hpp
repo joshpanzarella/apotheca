@@ -59,6 +59,9 @@ struct Command {
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
         Stop,           // stop; drums ring out, synth notes are let go
+        Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
+                        //   playing stops, every drum is cut and every note let go. a = 0: it may
+                        //   open again, once what is left has died away (or the next thing is played).
         SetTempo,       // value = beats per minute
         SetTrackLevel,  // track, value = linear gain
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
@@ -157,6 +160,8 @@ public:
     void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
+    // True from a Panic until the output has opened again.
+    bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
 
 private:
     struct DrumScene {
@@ -224,6 +229,15 @@ private:
     std::atomic<int> playStep_{-1};
     std::atomic<int> playScene_{-1};
     std::atomic<int> playRepeat_{0};
+    // The gate at the very end of the chain, for Panic.
+    enum class Gate { Open, Closing, Shut, Opening };
+    Gate gate_ = Gate::Open;
+    float gateGain_ = 1.f;
+    bool panicHeld_ = false;
+    bool cutEverything_ = false; // the gate has just shut: cut the drums and clear the effects
+    int shutFrames_ = 0, quietFrames_ = 0;
+    std::atomic<bool> silenced_{false};
+
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
 
     std::atomic<int> scopeTrack_{-1};

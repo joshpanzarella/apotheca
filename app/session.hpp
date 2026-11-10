@@ -34,6 +34,11 @@ public:
     // that one scene loops.
     void togglePlay(bool song);
 
+    // Too loud, and no time to find out why: everything stops and the
+    // output shuts, at once, for as long as `held`. Let go, and it opens
+    // again when what was sounding has died away.
+    void panic(bool held);
+
     // Tell the engine how long the song is, if that has changed.
     void syncSong();
 

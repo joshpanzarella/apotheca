@@ -63,6 +63,17 @@ and the stick shapes the thing under the cursor:
 the SONG screen, the scene being worked on from the others. **SELECT + START**
 quits.
 
+### Panic
+
+**Hold all four shoulder buttons (L1, L2, R1, R2).** The sound is shut off
+within 5 milliseconds and stays off for as long as they are held. The song
+stops, every drum is cut and every note is let go. It works on every screen
+and changes nothing else.
+
+Let go, and the sound opens again once whatever was left has died away, or
+at the next thing you play, or after three seconds at the latest. The top
+bar says SILENCED until it has.
+
 ### SONG
 
 | On | A | Hold A + stick | B | Hold R1 and drag |

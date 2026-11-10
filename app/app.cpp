@@ -9,6 +9,26 @@ App::App(Engine& engine)
       phazed_(session_, phazedSpec()), twin_(session_, twinSpec()) {}
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
+    // All four shoulder buttons at once: panic. Silence now, whatever screen
+    // this is. It lasts as long as they are held.
+    const Button b = event.button;
+    const bool shoulder = b == Button::L1 || b == Button::R1 || b == Button::L2 || b == Button::R2;
+    if (shoulder && event.down) {
+        const int down = input.held(Button::L1) + input.held(Button::R1) + input.held(Button::L2) + input.held(Button::R2);
+        if (down == 1) viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
+        if (down == 4) {
+            panicking_ = true;
+            session_.view = viewBeforeShoulders_;
+            session_.panic(true);
+            return;
+        }
+        // With both triggers down the bumpers are on their way to a panic, not painting.
+        if ((b == Button::L1 || b == Button::R1) && input.held(Button::L2) && input.held(Button::R2)) return;
+    } else if (shoulder && panicking_) {
+        panicking_ = false;
+        session_.panic(false);
+    }
+
     // The shoulder triggers walk along the tabs. Nothing else uses them.
     if (event.button == Button::L2 || event.button == Button::R2) {
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;

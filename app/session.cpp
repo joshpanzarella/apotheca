@@ -47,6 +47,16 @@ void Session::togglePlay(bool song) {
     project.playLoop = !song;
 }
 
+void Session::panic(bool held) {
+    Command c;
+    c.type = Command::Panic;
+    c.a = held ? 1 : 0;
+    engine.send(c);
+    if (!held) return;
+    project.playing = false;
+    project.silenced = true;
+}
+
 void Session::syncSong() {
     const int count = project.sceneCount();
     if (count == sentSceneCount_) return;
@@ -99,6 +109,7 @@ void Session::update(Uint32 nowMs) {
     project.playScene = engine.playScene();
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
+    project.silenced = engine.silenced();
 
     // Fitted recordings follow the tempo, once it has stopped moving for a
     // quarter of a second: no point stretching for every number on the way.

@@ -600,6 +600,71 @@ void testAFreeLengthReachesTheEngine() {
     CHECK(notes.noteHere() && near(notes.noteHere()->length, 2.1f)); // a tenth of the cursor's step is left
 }
 
+void testAllFourShoulderButtonsIsPanic() {
+    Rig rig;
+    for (int s = 0; s < kSteps; ++s) rig.app.drums().setStep(s % 2 == 0 ? 0 : 7, s, 1.f);
+    rig.app.session().view = View::Pattern;
+    rig.app.drums().moveCursorTo(4, 6);
+    rig.tap(START);
+    CHECK(rig.listen(3 * kStep) > 0.2f && rig.project().playing);
+
+    // Three of the four is not a panic.
+    rig.key(L2, true);
+    rig.key(R2, true);
+    rig.key(L1, true);
+    rig.frames(1);
+    CHECK(rig.project().playing && !rig.project().silenced);
+    CHECK(rig.listen(2 * kStep) > 0.2f);
+    // The fourth is: silence within a few milliseconds, and the song stopped.
+    rig.key(R1, true);
+    CHECK(!rig.project().playing && rig.project().silenced);
+    rig.render(300);
+    CHECK(rig.listen(48000) == 0.f);
+    rig.frames(1);
+    CHECK(rig.project().silenced && rig.project().playStep == -1);
+    // It did nothing else: the same screen, and no hit painted under the cursor.
+    CHECK(rig.view() == View::Pattern);
+    CHECK(rig.app.drums().level(4, 6) == 0.f && !rig.app.drums().painting());
+    // Held: still nothing, whatever is pressed.
+    rig.tap(A);
+    CHECK(rig.listen(24000) == 0.f);
+    // Let go: it opens again, and START plays as before.
+    rig.key(R1, false);
+    rig.key(L1, false);
+    rig.key(R2, false);
+    rig.key(L2, false);
+    rig.render(48000);
+    rig.frames(1);
+    CHECK(!rig.project().silenced && rig.view() == View::Pattern);
+    rig.tap(START);
+    CHECK(rig.project().playing && rig.listen(3 * kStep) > 0.2f);
+
+    // Any order, and from any screen. From SONG the triggers would have
+    // turned the tab on the way; it is put back.
+    rig.app.session().view = View::Song;
+    rig.key(R1, true);
+    rig.key(R2, true);
+    rig.key(L1, true);
+    rig.key(L2, true);
+    CHECK(!rig.project().playing && rig.view() == View::Song);
+    rig.render(300);
+    CHECK(rig.listen(24000) == 0.f);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.render(48000);
+    // A synth note being heard is let go too.
+    rig.app.session().addTrack(TrackKind::Phazed);
+    rig.app.session().audition(1, 60, 1.f);
+    CHECK(rig.listen(4800) > 0.01f);
+    for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, true);
+    rig.render(300);
+    CHECK(rig.listen(24000) == 0.f);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(200); // the audition's own timer runs out: nothing odd happens
+    rig.render(4 * 48000);
+    rig.frames(1);
+    CHECK(!rig.project().silenced && rig.listen(4800) < 1e-4f);
+}
+
 void testTheKeysShownFollowTheCursor() {
     std::unique_ptr<Rig> rig(onNotes());
     NoteScreen& notes = rig->app.notes();
@@ -1073,6 +1138,7 @@ int main(int, char**) {
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
     testAFreeLengthReachesTheEngine();
+    testAllFourShoulderButtonsIsPanic();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

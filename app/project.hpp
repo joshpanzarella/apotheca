@@ -182,6 +182,7 @@ struct Project {
     // Not part of the song.
     int playScene = -1, playStep = -1, playRepeat = 0;
     bool playLoop = false; // one scene going round, not the song
+    bool silenced = false; // a panic has shut the output and it has not opened again yet
 
     Project() {
         for (int& r : repeats) r = 1;
