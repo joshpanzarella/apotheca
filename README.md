@@ -21,11 +21,35 @@ ctest --test-dir build      # engine tests
 ./build/apotheca            # the app
 ```
 
-| Control | Keyboard | Gamepad |
-| --- | --- | --- |
-| Pick a track | Up / Down | D-pad up / down |
-| Play a note on it | Z X C V B N M , | A B X Y |
-| Quit | Esc | |
+## Controls
+
+**The handheld comes first.** Every action is defined on the Anbernic
+RG40XXV's own buttons, named as printed on it. The keyboard is only a
+stand-in for testing at a desk: each key presses one handheld button, so the
+keyboard can do nothing the handheld cannot.
+
+What the skeleton app does today:
+
+| Handheld | Does |
+| --- | --- |
+| D-pad up / down | Pick a track |
+| A B X Y | Play a note on it |
+| Right stick up / down | Set the track's level (the brass tick) |
+| SELECT + START | Quit |
+
+Keyboard stand-ins:
+
+| Handheld | Key | | Handheld | Key |
+| --- | --- | --- | --- | --- |
+| D-pad | Arrow keys | | L1 / R1 | Q / W |
+| A | X | | L2 / R2 | 1 / 2 |
+| B | Z | | START | Return |
+| X | S | | SELECT | Backspace |
+| Y | A | | MENU | Tab |
+| Right stick | I J K L | | (quit, desk only) | Esc |
+
+The button code lives in `app/input.hpp`. Nothing else in the app may read a
+key or a gamepad button directly.
 
 ## Build for the handheld
 
@@ -48,3 +72,5 @@ cmake/    cross-compile settings.
   printing inside `Engine::render()` or any `Effect::process()`.
 - **The screen thread talks to the engine only through `Engine::send()`.**
 - **The engine never includes SDL.**
+- **Handheld first.** A feature is designed on the handheld's buttons. A
+  keyboard key only ever stands in for one of them.

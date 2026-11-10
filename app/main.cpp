@@ -1,10 +1,17 @@
-// Apotheca app shell: a 640x480 window, an audio device, and the buttons.
-// All sound comes from the engine library; this file only connects it to
-// the screen, the speaker and the controls.
+// Apotheca app shell: a 640x480 window, an audio device, and the handheld's
+// controls. All sound comes from the engine library; this file only connects
+// it to the screen, the speaker and the buttons.
 //
-// Keyboard:  Up/Down pick a track.  Z X C V B N M , play notes on it.
-// Gamepad:   D-pad up/down pick a track.  A B X Y play notes on it.
-// --smoke    run for one second and quit (used by the build check).
+// Everything here is written against the handheld's buttons (input.hpp).
+// The keyboard only stands in for them; see the README for the key map.
+//
+//   D-pad up/down      pick a track
+//   A B X Y            play a note on it
+//   Right stick        up/down sets the track's level
+//   SELECT + START     quit
+//
+// --smoke  press A through the keyboard stand-in, check that sound came out,
+//          and quit after one second (used by the build check).
 
 #include <SDL.h>
 
@@ -14,6 +21,7 @@
 #include <memory>
 
 #include "apotheca/engine.hpp"
+#include "input.hpp"
 #include "realtime.hpp"
 
 using namespace apotheca;
@@ -39,26 +47,12 @@ void audioCallback(void* userdata, Uint8* stream, int bytes) {
     state->engine->render(reinterpret_cast<float*>(stream), frames);
 }
 
-int pitchForKey(SDL_Keycode key) {
-    switch (key) {
-    case SDLK_z: return 60;
-    case SDLK_x: return 62;
-    case SDLK_c: return 64;
-    case SDLK_v: return 65;
-    case SDLK_b: return 67;
-    case SDLK_n: return 69;
-    case SDLK_m: return 71;
-    case SDLK_COMMA: return 72;
-    default: return -1;
-    }
-}
-
-int pitchForButton(Uint8 button) {
+int pitchFor(Button button) {
     switch (button) {
-    case SDL_CONTROLLER_BUTTON_A: return 60;
-    case SDL_CONTROLLER_BUTTON_B: return 64;
-    case SDL_CONTROLLER_BUTTON_X: return 67;
-    case SDL_CONTROLLER_BUTTON_Y: return 72;
+    case Button::B: return 60;
+    case Button::A: return 64;
+    case Button::Y: return 67;
+    case Button::X: return 72;
     default: return -1;
     }
 }
@@ -72,8 +66,16 @@ void note(Engine& engine, int track, int pitch, bool on) {
     engine.send(c);
 }
 
-void draw(SDL_Renderer* renderer, const Engine& engine, int selected, float* meters) {
-    SDL_SetRenderDrawColor(renderer, 14, 12, 16, 255);
+void setLevel(Engine& engine, int track, float level) {
+    Command c;
+    c.type = Command::SetTrackLevel;
+    c.track = track;
+    c.value = level;
+    engine.send(c);
+}
+
+void draw(SDL_Renderer* renderer, const Engine& engine, int selected, float* meters, const float* levels) {
+    SDL_SetRenderDrawColor(renderer, 20, 17, 14, 255);
     SDL_RenderClear(renderer);
 
     const int rowH = kScreenH / kNumTracks;
@@ -82,15 +84,20 @@ void draw(SDL_Renderer* renderer, const Engine& engine, int selected, float* met
         const float peak = engine.trackPeak(t);
         meters[t] = peak > meters[t] ? peak : meters[t] * 0.9f;
 
-        SDL_Rect row = {8, t * rowH + 4, kScreenW - 16, rowH - 8};
-        if (t == selected) SDL_SetRenderDrawColor(renderer, 60, 50, 70, 255);
-        else SDL_SetRenderDrawColor(renderer, 30, 26, 34, 255);
+        SDL_Rect row = {8, t * rowH + 3, kScreenW - 16, rowH - 6};
+        if (t == selected) SDL_SetRenderDrawColor(renderer, 67, 57, 47, 255);
+        else SDL_SetRenderDrawColor(renderer, 31, 26, 22, 255);
         SDL_RenderFillRect(renderer, &row);
 
-        float level = meters[t] > 1.f ? 1.f : meters[t];
-        SDL_Rect bar = {row.x + 4, row.y + 4, static_cast<int>((row.w - 8) * level), row.h - 8};
-        SDL_SetRenderDrawColor(renderer, 0, 255, 180, 255);
+        const float shown = meters[t] > 1.f ? 1.f : meters[t];
+        SDL_Rect bar = {row.x + 4, row.y + 4, static_cast<int>((row.w - 8) * shown), row.h - 8};
+        SDL_SetRenderDrawColor(renderer, 111, 191, 163, 255);
         SDL_RenderFillRect(renderer, &bar);
+
+        // The track's level, as a brass tick.
+        SDL_Rect tick = {row.x + 4 + static_cast<int>((row.w - 10) * levels[t]), row.y + 2, 2, row.h - 4};
+        SDL_SetRenderDrawColor(renderer, 201, 161, 90, 255);
+        SDL_RenderFillRect(renderer, &tick);
     }
     SDL_RenderPresent(renderer);
 }
@@ -121,6 +128,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < SDL_NumJoysticks() && !pad; ++i) {
         if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
     }
+    std::printf("controls: %s\n", pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
 
     Engine engine;
     AudioState audio;
@@ -151,45 +159,49 @@ int main(int argc, char** argv) {
     SDL_PauseAudioDevice(device, 0);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
+    Input input;
     int selected = 0;
     float meters[kNumTracks] = {};
+    float levels[kNumTracks];
+    for (float& level : levels) level = 0.8f;
     bool running = true;
     bool reported = false;
+    float loudest = 0.f;
     const Uint32 start = SDL_GetTicks();
-    if (smoke) note(engine, 0, 69, true);
+
+    if (smoke) {
+        // Press A the way a tester would: through the keyboard stand-in.
+        SDL_Event press = {};
+        press.type = SDL_KEYDOWN;
+        press.key.keysym.sym = SDLK_x;
+        SDL_PushEvent(&press);
+    }
 
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
-            switch (event.type) {
-            case SDL_QUIT:
-                running = false;
-                break;
-            case SDL_KEYDOWN:
-            case SDL_KEYUP: {
-                const bool down = event.type == SDL_KEYDOWN;
-                const SDL_Keycode key = event.key.keysym.sym;
-                if (event.key.repeat) break;
-                if (down && key == SDLK_ESCAPE) running = false;
-                if (down && key == SDLK_UP) selected = (selected + kNumTracks - 1) % kNumTracks;
-                if (down && key == SDLK_DOWN) selected = (selected + 1) % kNumTracks;
-                const int pitch = pitchForKey(key);
-                if (pitch >= 0) note(engine, selected, pitch, down);
-                break;
-            }
-            case SDL_CONTROLLERBUTTONDOWN:
-            case SDL_CONTROLLERBUTTONUP: {
-                const bool down = event.type == SDL_CONTROLLERBUTTONDOWN;
-                const Uint8 button = event.cbutton.button;
-                if (down && button == SDL_CONTROLLER_BUTTON_DPAD_UP)
-                    selected = (selected + kNumTracks - 1) % kNumTracks;
-                if (down && button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) selected = (selected + 1) % kNumTracks;
-                const int pitch = pitchForButton(button);
-                if (pitch >= 0) note(engine, selected, pitch, down);
-                break;
-            }
-            default:
-                break;
+            if (event.type == SDL_QUIT) running = false;
+            // Desk testing only: the handheld has no Escape key.
+            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) running = false;
+
+            ButtonEvent press;
+            if (!input.handle(event, press)) continue;
+
+            if (press.down && press.button == Button::Up) selected = (selected + kNumTracks - 1) % kNumTracks;
+            if (press.down && press.button == Button::Down) selected = (selected + 1) % kNumTracks;
+            const int pitch = pitchFor(press.button);
+            if (pitch >= 0) note(engine, selected, pitch, press.down);
+            if (input.held(Button::Select) && input.held(Button::Start)) running = false;
+        }
+
+        // The right stick turns the value under the cursor: here, the level.
+        const float turn = -input.rightY();
+        if (turn != 0.f) {
+            float level = levels[selected] + 0.02f * turn;
+            level = level < 0.f ? 0.f : (level > 1.f ? 1.f : level);
+            if (level != levels[selected]) {
+                levels[selected] = level;
+                setLevel(engine, selected, level);
             }
         }
 
@@ -198,7 +210,10 @@ int main(int argc, char** argv) {
             std::printf("realtime priority: %s\n", audio.realtime.load() == 1 ? "granted" : "not granted");
         }
 
-        draw(renderer, engine, selected, meters);
+        const float peak = engine.trackPeak(0);
+        if (peak > loudest) loudest = peak;
+
+        draw(renderer, engine, selected, meters, levels);
         SDL_Delay(16);
         if (smoke && SDL_GetTicks() - start > 1000) running = false;
     }
@@ -208,5 +223,10 @@ int main(int argc, char** argv) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
+    if (smoke && loudest <= 0.f) {
+        std::fprintf(stderr, "smoke: pressing A made no sound\n");
+        return 1;
+    }
     return 0;
 }
