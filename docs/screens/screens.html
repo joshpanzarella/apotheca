@@ -1,0 +1,249 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Apotheca screens</title>
+<!--
+  Still mockups of the screens at the handheld's true size, 640x480.
+  Render to PNG with:  node docs/screens/render.js
+  Each <section class="screen" id="..."> becomes docs/screens/<id>.png
+-->
+<style>
+  :root {
+    --bg: #0e0c10; --panel: #1b1720; --panel2: #262030; --line: #3a3344;
+    --text: #e2dacb; --dim: #857b8c; --teal: #00ffb4; --purple: #b400ff; --amber: #ffb400;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px; background: #000; display: flex; flex-wrap: wrap; gap: 20px;
+         font: 14px/1 "DejaVu Sans Mono", Menlo, monospace; color: var(--text); }
+  .screen { position: relative; width: 640px; height: 480px; background: var(--bg); overflow: hidden; }
+  .abs { position: absolute; }
+
+  /* top bar: 26 px */
+  .top { position: absolute; left: 0; top: 0; width: 640px; height: 26px; background: var(--panel);
+         border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 8px; gap: 10px; }
+  .tabs { display: flex; gap: 2px; }
+  .tab { padding: 5px 7px; color: var(--dim); font-size: 12px; }
+  .tab.on { background: var(--teal); color: #000; }
+  .top .ctx { color: var(--text); font-size: 12px; }
+  .top .right { margin-left: auto; font-size: 12px; color: var(--dim); display: flex; gap: 12px; }
+  .top .right b { color: var(--text); font-weight: normal; }
+
+  /* bottom hints: 24 px */
+  .hints { position: absolute; left: 0; bottom: 0; width: 640px; height: 24px; background: var(--panel);
+           border-top: 1px solid var(--line); display: flex; align-items: center; padding: 0 8px; gap: 14px;
+           font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .hints k { color: #000; background: var(--text); padding: 2px 4px; margin-right: 4px; font-style: normal; }
+
+  .label { color: var(--dim); font-size: 12px; }
+  .cursor { outline: 2px solid var(--teal); outline-offset: -1px; }
+
+  /* song grid */
+  .cell { position: absolute; background: var(--panel); border: 1px solid var(--line); }
+  .cell.empty { background: transparent; border-style: dashed; border-color: #2a2532; }
+  .cell.playing { border-color: var(--purple); }
+  .head { position: absolute; font-size: 12px; text-align: center; background: var(--panel2);
+          border: 1px solid var(--line); padding-top: 4px; }
+  .head small { display: block; color: var(--dim); font-size: 12px; margin-bottom: 3px; }
+  .dot { position: absolute; width: 2px; height: 2px; background: var(--text); }
+
+  /* pattern grid */
+  .lane { position: absolute; left: 8px; width: 104px; font-size: 14px; padding-left: 6px;
+          display: flex; align-items: center; background: var(--panel); border: 1px solid var(--line); }
+  .lane.on { color: var(--teal); }
+  .step { position: absolute; border: 1px solid var(--line); background: var(--panel); }
+  .step.beat { background: var(--panel2); }
+  .hit { position: absolute; left: 4px; right: 4px; bottom: 4px; background: var(--text); }
+  .playhead { position: absolute; background: var(--purple); opacity: .28; }
+
+  /* value boxes */
+  .val { position: absolute; background: var(--panel); border: 1px solid var(--line); padding: 7px 8px; }
+  .val .n { color: var(--dim); font-size: 12px; margin-bottom: 8px; }
+  .val .v { font-size: 18px; }
+  .val .bar { position: absolute; left: 8px; right: 8px; bottom: 7px; height: 4px; background: var(--line); }
+  .val .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); }
+  .box { position: absolute; border: 1px solid var(--line); background: var(--panel); }
+  .title { position: absolute; font-size: 12px; color: var(--dim); }
+  .meter { position: absolute; height: 10px; background: var(--line); }
+  .meter i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--teal); }
+</style>
+
+<section class="screen" id="1-song-new"></section>
+<section class="screen" id="2-song-full"></section>
+<section class="screen" id="3-pattern-drums"></section>
+<section class="screen" id="4-device-drums"></section>
+<section class="screen" id="5-mix"></section>
+
+<script>
+// Small repeatable random, so every render is the same picture.
+let seed = 7;
+function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+
+function el(parent, cls, style, html) {
+  const d = document.createElement('div');
+  d.className = cls;
+  Object.assign(d.style, style || {});
+  if (html !== undefined) d.innerHTML = html;
+  parent.appendChild(d);
+  return d;
+}
+const px = n => n + 'px';
+
+function chrome(id, tab, ctx, hints) {
+  const s = document.getElementById(id);
+  const tabs = ['SONG', 'PATTERN', 'DEVICE', 'MIX']
+    .map(t => `<div class="tab${t === tab ? ' on' : ''}">${t}</div>`).join('');
+  el(s, 'top', {}, `<div class="tabs">${tabs}</div><div class="ctx">${ctx}</div>
+     <div class="right"><span>SCENE <b>1</b></span><span><b>120</b> BPM</span><span style="color:var(--purple)">&#9654;</span></div>`);
+  el(s, 'hints', {}, hints.map(h => `<span><k>${h[0]}</k>${h[1]}</span>`).join(''));
+  return s;
+}
+
+// One pattern cell drawn small: a few dots standing for notes.
+function miniPattern(cell, w, h, density) {
+  const rows = 4, cols = Math.floor((w - 8) / 5);
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      if (rnd() < density) el(cell, 'dot', { left: px(4 + c * 5), top: px(6 + r * Math.floor((h - 12) / rows)) });
+}
+
+function songScreen(id, tracks, filled, ctx) {
+  const s = chrome(id, 'SONG', `${ctx} &middot; ${tracks.length}/12 tracks`, [['D-PAD', 'move'], ['A', 'open'], ['B', 'clear'], ['A+D-PAD', 'copy'], ['R2+D-PAD', 'screen'], ['START', 'play']]);
+  const gutter = 34, top = 34, headH = 40, rowH = 44, scenes = 8;
+  const colW = tracks.length <= 4 ? 96 : 49;
+  for (let r = 0; r < scenes; r++)
+    el(s, 'label abs', { left: px(8), top: px(top + headH + 6 + r * rowH + 14), width: px(gutter - 12), textAlign: 'right',
+                         color: r === 0 ? 'var(--purple)' : '' }, String(r + 1));
+  tracks.forEach((name, t) => {
+    const x = gutter + t * (colW + 1);
+    el(s, 'head', { left: px(x), top: px(top), width: px(colW), height: px(headH) }, `<small>${t + 1}</small>${name}`);
+    for (let r = 0; r < scenes; r++) {
+      const has = filled(t, r);
+      const c = el(s, 'cell' + (has ? '' : ' empty') + (has && r === 0 ? ' playing' : '') + (t === 0 && r === 0 ? ' cursor' : ''),
+                   { left: px(x), top: px(top + headH + 6 + r * rowH), width: px(colW), height: px(rowH - 4) });
+      if (has) miniPattern(c, colW, rowH - 4, 0.3);
+    }
+  });
+  if (tracks.length < 12) {
+    const x = gutter + tracks.length * (colW + 1);
+    el(s, 'head', { left: px(x), top: px(top), width: px(colW), height: px(headH), background: 'transparent',
+                    borderStyle: 'dashed', color: 'var(--dim)' }, `<small>&nbsp;</small>+ TRACK`);
+  }
+}
+
+songScreen('1-song-new', ['DRUMS'], (t, r) => r === 0, 'new project');
+songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC', 'LEAD', 'STAB', 'FX', 'SUB', 'TEXT'],
+           (t, r) => r < 5 && rnd() < 0.72, 'night bus');
+
+// ---- pattern: 8 drum lanes by 16 steps -------------------------------------
+(function () {
+  const s = chrome('3-pattern-drums', 'PATTERN', '1 DRUMS &middot; scene 1',
+                   [['D-PAD', 'move'], ['A', 'place'], ['B', 'delete'], ['A+D-PAD', 'velocity'], ['STICK', 'value'], ['L1 R1', 'track']]);
+  const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
+  const hits = {
+    0: { 0: 1, 6: .7, 8: 1, 11: .6 }, 1: { 4: 1, 12: 1, 15: .4 },
+    2: { 0: .7, 2: .5, 4: .7, 6: .5, 8: .7, 10: .5, 12: .7 }, 3: { 14: .8 },
+    4: { 12: .6 }, 6: { 3: .5, 9: .5 },
+  };
+  const left = 116, top = 54, stepW = 32, laneH = 41, cur = [1, 4];
+  for (let c = 0; c < 16; c++)
+    el(s, 'label abs', { left: px(left + c * stepW), top: px(36), width: px(stepW), textAlign: 'center',
+                         color: c % 4 === 0 ? 'var(--text)' : '' }, String(c + 1));
+  lanes.forEach((name, r) => {
+    const y = top + r * laneH;
+    el(s, 'lane' + (r === cur[0] ? ' on' : ''), { top: px(y), height: px(laneH - 3) }, name);
+    for (let c = 0; c < 16; c++) {
+      const st = el(s, 'step' + (c % 4 === 0 ? ' beat' : '') + (r === cur[0] && c === cur[1] ? ' cursor' : ''),
+                    { left: px(left + c * stepW), top: px(y), width: px(stepW - 2), height: px(laneH - 3) });
+      const v = (hits[r] || {})[c];
+      if (v) el(st, 'hit', { height: px(Math.round(v * (laneH - 11))) });
+    }
+  });
+  el(s, 'playhead', { left: px(left + 6 * stepW), top: px(top), width: px(stepW - 2), height: px(8 * laneH - 3) });
+  // The step under the cursor, spelled out.
+  const y = top + 8 * laneH + 6;
+  const vals = [['LANE', 'SNARE'], ['STEP', '5'], ['VELOCITY', '100'], ['NUDGE', '0'], ['CHANCE', '100%']];
+  vals.forEach((v, i) => {
+    el(s, 'label abs', { left: px(8 + i * 126), top: px(y) }, v[0]);
+    el(s, 'abs', { left: px(8 + i * 126), top: px(y + 16), fontSize: px(16), color: i === 2 ? 'var(--teal)' : '' }, v[1]);
+  });
+})();
+
+// ---- device: one drum lane is a small sampler --------------------------------
+(function () {
+  const s = chrome('4-device-drums', 'DEVICE', '1 DRUMS &middot; SNARE',
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'load sample'], ['X', 'hear it'], ['L2', 'zoom']]);
+  const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
+  lanes.forEach((name, r) =>
+    el(s, 'lane' + (r === 1 ? ' on' : ''), { top: px(36 + r * 31), height: px(28), width: px(96), fontSize: px(12),
+                                             borderColor: r === 1 ? 'var(--teal)' : '' }, name));
+  // Waveform.
+  const wx = 114, wy = 36, ww = 518, wh = 190;
+  const box = el(s, 'box', { left: px(wx), top: px(wy), width: px(ww), height: px(wh) });
+  el(s, 'title', { left: px(wx + 8), top: px(wy + 7) }, 'snare_vinyl_03.wav &middot; 0.412 s &middot; 44.1k mono');
+  const start = 0.06, end = 0.78, fadeIn = 0.02, fadeOut = 0.22;
+  let bars = '';
+  for (let i = 0; i < ww - 2; i += 2) {
+    const t = i / ww;
+    const env = t < 0.05 ? t / 0.05 : Math.exp(-(t - 0.05) * 5.2);
+    const h = Math.max(1, env * (0.55 + 0.45 * rnd()) * (wh - 60));
+    const inside = t >= start && t <= end;
+    bars += `<rect x="${i}" y="${(wh + 16 - h) / 2}" width="1" height="${h}" fill="${inside ? '#e2dacb' : '#4a4352'}"/>`;
+  }
+  const X = f => Math.round(f * ww);
+  const mid = (wh + 16) / 2, amp = (wh - 60) / 2;
+  bars += `<polyline points="${X(start)},${mid + amp} ${X(start + fadeIn)},${mid - amp} ${X(end - fadeOut)},${mid - amp} ${X(end)},${mid + amp}"
+            fill="none" stroke="#ffb400" stroke-width="1"/>`;
+  bars += `<line x1="${X(start)}" y1="24" x2="${X(start)}" y2="${wh}" stroke="#00ffb4" stroke-width="2"/>`;
+  bars += `<line x1="${X(end)}" y1="24" x2="${X(end)}" y2="${wh}" stroke="#00ffb4" stroke-width="1"/>`;
+  box.innerHTML = `<svg width="${ww - 2}" height="${wh - 2}" style="position:absolute;left:0;top:0">${bars}</svg>`;
+  el(s, 'abs', { left: px(wx + X(start) + 5), top: px(wy + 26), fontSize: px(12), color: 'var(--teal)' }, 'START');
+  el(s, 'abs', { left: px(wx + X(end) + 5), top: px(wy + 26), fontSize: px(12), color: 'var(--teal)' }, 'END');
+  // Values.
+  const vals = [['START', '0.025 s', .06], ['END', '0.321 s', .78], ['FADE IN', '8 ms', .1], ['FADE OUT', '90 ms', .45],
+                ['PITCH', '+0 st', .5], ['DECAY', '100%', 1], ['LEVEL', '-3.0 dB', .8], ['PAN', 'C', .5]];
+  vals.forEach((v, i) => {
+    const c = i % 4, r = Math.floor(i / 4);
+    el(s, 'val' + (i === 0 ? ' cursor' : ''), { left: px(wx + c * 130), top: px(234 + r * 72), width: px(128), height: px(68) },
+       `<div class="n">${v[0]}</div><div class="v">${v[1]}</div><div class="bar"><i style="width:${v[2] * 100}%"></i></div>`);
+  });
+  el(s, 'label abs', { left: px(8), top: px(292), width: px(98), lineHeight: '16px' }, 'each lane<br>holds one<br>sample');
+  el(s, 'label abs', { left: px(wx), top: px(388), width: px(ww), lineHeight: '18px' },
+     'The same waveform, markers and fades are the base of the sampler instrument.<br>The sampler adds more markers (chops), one per key.');
+})();
+
+// ---- mix: level, pan, two effect slots ---------------------------------------
+(function () {
+  const s = chrome('5-mix', 'MIX', '1 DRUMS',
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'choose effect'], ['B', 'bypass'], ['L1 R1', 'track']]);
+  // Track list with meters.
+  const rows = [['1 DRUMS', .72, true], ['MASTER', .64, false]];
+  el(s, 'title', { left: px(8), top: px(36) }, 'TRACKS');
+  rows.forEach((r, i) => {
+    const y = 54 + i * 44;
+    el(s, 'box' + (r[2] ? ' cursor' : ''), { left: px(8), top: px(y), width: px(150), height: px(40) });
+    el(s, 'abs', { left: px(16), top: px(y + 7), fontSize: px(12), color: r[2] ? 'var(--teal)' : '' }, r[0]);
+    el(s, 'meter', { left: px(16), top: px(y + 24), width: px(134) }, `<i style="width:${r[1] * 100}%"></i>`);
+  });
+  el(s, 'label abs', { left: px(8), top: px(150), width: px(150), lineHeight: '16px' }, 'MASTER has the<br>same screen:<br>2 effect slots');
+  // Strip values.
+  const x0 = 170;
+  [['LEVEL', '-2.5 dB', .78], ['PAN', 'C', .5]].forEach((v, i) =>
+    el(s, 'val', { left: px(x0 + i * 232), top: px(54), width: px(228), height: px(68) },
+       `<div class="n">${v[0]}</div><div class="v">${v[1]}</div><div class="bar"><i style="width:${v[2] * 100}%"></i></div>`));
+  el(s, 'title', { left: px(x0), top: px(36) }, 'TRACK');
+  // Effect slots.
+  const slots = [
+    ['FX 1', 'FILTER', [['TYPE', 'LOWPASS', 0], ['CUTOFF', '2.4 kHz', .62], ['RESONANCE', '20%', .2], ['DRIVE', '0%', 0]]],
+    ['FX 2', 'DELAY', [['TIME', '1/8 D', .4], ['FEEDBACK', '35%', .35], ['TONE', '60%', .6], ['MIX', '25%', .25]]],
+  ];
+  slots.forEach((sl, i) => {
+    const y = 136 + i * 156;
+    el(s, 'title', { left: px(x0), top: px(y) }, sl[0]);
+    el(s, 'box', { left: px(x0), top: px(y + 16), width: px(462), height: px(130) });
+    el(s, 'abs', { left: px(x0 + 10), top: px(y + 28), fontSize: px(18), color: 'var(--text)' }, sl[1]);
+    el(s, 'label abs', { left: px(x0 + 330), top: px(y + 32), width: px(122), textAlign: 'right', color: 'var(--teal)' }, 'ON');
+    sl[2].forEach((v, k) =>
+      el(s, 'val' + (i === 0 && k === 1 ? ' cursor' : ''), { left: px(x0 + 8 + k * 112), top: px(y + 68), width: px(110), height: px(68), background: 'var(--panel2)' },
+         `<div class="n">${v[0]}</div><div class="v" style="font-size:15px">${v[1]}</div><div class="bar"><i style="width:${v[2] * 100}%"></i></div>`));
+  });
+})();
+</script>
