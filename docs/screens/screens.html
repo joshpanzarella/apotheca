@@ -249,8 +249,23 @@ patternScreen('9-record-automation', true);
        `<div class="n">${v[0]}</div><div class="v">${v[1]}</div><div class="bar"><i style="width:${v[2] * 100}%"></i></div>`);
   });
   el(s, 'label abs', { left: px(8), top: px(292), width: px(98), lineHeight: '16px' }, 'each lane<br>holds one<br>sample');
-  el(s, 'label abs', { left: px(wx), top: px(388), width: px(ww), lineHeight: '18px' },
-     'The same waveform, markers and fades are the base of the sampler instrument.<br>The sampler adds more markers (chops), one per key.');
+  // Where in the sample the sound is right now.
+  el(s, 'abs', { left: px(wx + X(0.31)), top: px(wy + 24), width: px(2), height: px(wh - 25), background: 'var(--purple)' });
+  // Live scope: what this track is putting out at this moment, after its effects.
+  const sy = 384, sh = 64;
+  const scope = el(s, 'box', { left: px(wx), top: px(sy), width: px(ww), height: px(sh) });
+  let line = '';
+  for (let i = 0; i <= ww - 2; i += 2) {
+    const t = i / (ww - 2);
+    // a kick's low swing with the snare's rattle riding on it
+    const kick = Math.exp(-t * 3.2) * Math.sin(t * 34 * (1 - 0.45 * t));
+    const snare = t > 0.42 ? Math.exp(-(t - 0.42) * 9) * (rnd() * 2 - 1) * 0.8 : 0;
+    line += `${i},${(sh / 2 - 1 + (kick * 0.7 + snare * 1.0) * (sh / 2 - 8)).toFixed(1)} `;
+  }
+  scope.innerHTML = `<svg width="${ww - 2}" height="${sh - 2}" style="position:absolute;left:0;top:0">
+    <line x1="0" y1="${sh / 2 - 1}" x2="${ww}" y2="${sh / 2 - 1}" stroke="#43392f" stroke-width="1"/>
+    <polyline points="${line}" fill="none" stroke="#6fbfa3" stroke-width="1.5"/></svg>`;
+  el(s, 'title', { left: px(8), top: px(sy + 8), width: px(98), lineHeight: '16px' }, 'LIVE<br>OUTPUT');
 })();
 
 // ---- mix: level, pan, two effect slots ---------------------------------------
