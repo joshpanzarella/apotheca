@@ -5,16 +5,18 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 ## Status
 
-A small song machine that runs. Up to twelve tracks, each a drum kit or
-Phazed (a phase distortion synth with 65 presets). Up to sixteen scenes,
+A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
+kit or one of two synths: Phazed (phase distortion, 65 presets) or Twin
+Analog (two morphing oscillators, 16 presets). Up to sixteen scenes,
 each one bar, each with its own repeat count. Three screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
 - **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice) or, for
-  Phazed, a piano roll.
-- **DEVICE**: for Phazed, a main panel of folder, preset and eight macros,
-  with nine advanced pages behind it. For drums, the kit's levels and scope.
+  a synth, a piano roll.
+- **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
+  with advanced pages behind it (nine for Phazed, three for Twin Analog).
+  For drums, the kit's levels and scope.
 
 Not built yet: effects on screen, saving and opening songs, loading samples,
 the sound designer web page.
@@ -27,7 +29,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, song, synth, screen and app tests
+ctest --test-dir build      # engine, song, both synths, screen and app tests
 ./build/apotheca            # the app
 ```
 
@@ -58,7 +60,7 @@ quits.
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
-| + TRACK | Pick DRUMS or PHAZED | | | |
+| + TRACK | Pick DRUMS, PHAZED or TWIN ANALOG | | | |
 
 The song runs to the last scene with anything in it, then comes round.
 
@@ -81,7 +83,7 @@ hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
 they leave; tap Y to reshuffle). Up from the top lane is the tempo.
 
-### PATTERN, Phazed
+### PATTERN, a synth
 
 A piano roll. The drum grid's rules, except that sideways a note has a
 length where a hit has a nudge.
@@ -95,16 +97,18 @@ length where a hit has a nudge.
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
 
-### DEVICE, Phazed
+### DEVICE, a synth
 
-MAIN: folder, preset, eight macros (TONE, MOTION, ATTACK, RELEASE, DETUNE,
-VIBRATO, CHORUS, OCTAVE) and ADVANCED. Hold A + stick turns the one under
+MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
+MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. Twin Analog's are
+SHAPE, BLEND, FORMANT, WIDTH, DETUNE, VINTAGE, ATTACK, RELEASE. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Macros bend the sound and
 leave the preset as it was made. A new preset is played at once when the
 song is stopped.
 
-ADVANCED: every setting on nine pages (the sound, each line, and each line's
-volume, wave and pitch envelopes drawn out). L1 and R1 turn the pages; B
+ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
+each line's volume, wave and pitch envelopes drawn out). Twin Analog has
+three (oscillators, formant and character, envelope). L1 and R1 turn the pages; B
 goes back to MAIN.
 
 How fast the drum grid moves is set in one place, `Feel` in
@@ -172,7 +176,12 @@ scripts/  the handheld build and the port launcher.
 - **One button and the stick, not a combination.** New controls follow the
   rule on the Pattern screen: the stick moves; hold a button and it shapes.
 - **Fast.** Held input runs quickly. Nobody has asked for slower.
-- **The synth is called Phazed.** That is the only name a player sees. Its
+- **Twin Analog is a port of Clairaudient**, the oscillator in the Shapetaker
+  Rack plugin (`src/clairaudient.cpp` there). `engine/src/twin.cpp` restates
+  its sound-making code without Rack and lists what changed in the move.
+  The four oscillator copies are computed in one branch-free loop of four:
+  measured with clang, that halves the synth's cost. Keep it branch-free.
+- **The first synth is called Phazed.** That is the only name a player sees. Its
   engine lives in `third_party/easycz` under its own names and licences;
   anything from it that reaches the screen goes through
   `engine/include/apotheca/phazed.hpp`.

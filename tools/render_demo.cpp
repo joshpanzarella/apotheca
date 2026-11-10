@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     // Levels that leave the mix under the ceiling, so nothing is squashed.
     engine.send(make(Command::SetTrackLevel, 0, 0, 0, 0.5f));
     engine.send(make(Command::SetTrackLevel, 1, 0, 0, 0.35f));
-    engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.45f));
+    engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.3f));
     engine.send(make(Command::SetTempo, 0, 0, 0, tempo));
     std::printf("bass: Phazed, %s\nchords: Twin Analog, %s\n", Phazed::presetName(bass), Twin::presetName(pad));
 

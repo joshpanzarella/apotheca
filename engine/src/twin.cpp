@@ -71,6 +71,45 @@ inline float voicedSigmoidSaw(float phase, float blend, float range, float cente
     return baseSaw + (shaped - baseSaw) * lowShape;
 }
 
+// ---- the same maths without branches ---------------------------------------------
+// Each oscillator step works out four waves: V's two copies and Z's two. Written
+// as a loop of four with no if-statements inside, the compiler can do all four
+// in one go on processors that have four-wide arithmetic (the handheld's does).
+// The results match the functions above.
+
+inline float tanhNoBranch(float x) {
+    x = x < -5.f ? -5.f : (x > 5.f ? 5.f : x);
+    const float x2 = x * x;
+    const float a = x * (135135.f + x2 * (17325.f + x2 * (378.f + x2)));
+    const float b = 135135.f + x2 * (62370.f + x2 * (3150.f + x2 * 28.f));
+    const float y = a / b;
+    return y < -1.f ? -1.f : (y > 1.f ? 1.f : y);
+}
+
+// For phases of zero or more only.
+inline float sinNoBranch(float phase) {
+    const float frac = phase - static_cast<float>(static_cast<std::int32_t>(phase));
+    const float x = frac * 2.f - 1.f;
+    const float y = 4.f * x * (1.f - std::fabs(x));
+    return y * (0.225f * (std::fabs(y) - 1.f) + 1.f);
+}
+
+inline float sigmoidSawNoBranch(float phase, float blend, float range, float center, float lowShape, float airGain, float season) {
+    const float linearSaw = 2.f * phase - 1.f;
+    const float baseSaw = linearSaw * (1.f - 0.245f * linearSaw * linearSaw);
+    const float sigmoidInput = (phase - center) * range * 2.f + sinNoBranch(phase * 3.f) * 0.03f * season;
+    const float result = linearSaw * (1.f - blend) + tanhNoBranch(sigmoidInput) * blend + sinNoBranch(phase * 7.f) * 0.008f * season * airGain;
+    const float shaped = tanhNoBranch(result * 1.05f) * 0.95f;
+    return baseSaw + (shaped - baseSaw) * lowShape;
+}
+
+inline float wrapBlepNoBranch(float phase, float dt) {
+    const float t1 = phase / dt, t2 = (phase - 1.f) / dt;
+    const float after = phase < dt ? t1 + t1 - t1 * t1 - 1.f : 0.f;
+    const float before = phase > 1.f - dt ? t2 + t2 + t2 * t2 + 1.f : 0.f;
+    return phase < dt ? after : before;
+}
+
 inline float polyBLEP(float t) {
     if (t >= 0.f && t < 1.f) return t + t - t * t - 1.f;
     if (t > -1.f && t < 0.f) return t + t + t * t + 1.f;
@@ -590,6 +629,15 @@ void Twin::State::renderBlock(float* left, float* right, int frames) {
             formantMod(zOsc.rangeBase, 0.f, 0.f, r.baseAsym, 0.f, r.width.scaleB, sZB, sCentre);
         }
 
+        // Per copy, for the loop of four: V left, V right, Z left, Z right.
+        const float blend4[4] = {vOsc.blend, vOsc.blend, zOsc.blend, zOsc.blend};
+        const float lowShape4[4] = {vOsc.lowShape, vOsc.lowShape, zOsc.lowShape, zOsc.lowShape};
+        const float season4[4] = {vOsc.season, vOsc.season, zOsc.season, zOsc.season};
+        const float air4[4] = {vOsc.airGainA, vOsc.airGainB, zOsc.airGainA, zOsc.airGainB};
+        const float delta4[4] = {vOsc.deltaA, vOsc.deltaB, zOsc.deltaA, zOsc.deltaB};
+        const float rangeBase4[4] = {vOsc.rangeBase, vOsc.rangeBase, zOsc.rangeBase, zOsc.rangeBase};
+        const float widthScale4[4] = {r.width.scaleA, r.width.scaleB, r.width.scaleA, r.width.scaleB};
+
         OscPair& V = voice.v;
         OscPair& Z = voice.z;
         int at = 0;
@@ -671,32 +719,45 @@ void Twin::State::renderBlock(float* left, float* right, int frames) {
                     zA = pwmWithPolyBLEP(Z.a.phase, wZA, zOsc.deltaA);
                     zB = pwmWithPolyBLEP(Z.b.phase, wZB, zOsc.deltaB);
                 } else {
-                    float rVA, cVA, rVB, cVB, rZA, cZA, rZB, cZB;
+                    const float phase[4] = {V.a.phase, V.b.phase, Z.a.phase, Z.b.phase};
+                    float range[4], centre[4];
                     if (formantActive && !formantMoves) {
-                        rVA = sVA; rVB = sVB; rZA = sZA; rZB = sZB;
-                        cVA = cVB = cZA = cZB = sCentre;
+                        range[0] = sVA; range[1] = sVB; range[2] = sZA; range[3] = sZB;
+                        centre[0] = centre[1] = centre[2] = centre[3] = sCentre;
                     } else if (formantActive) {
                         // The formant section: a modulator locked to each
                         // oscillator's own pitch bends its slope and centre.
+                        // The right-hand copies' modulators run ahead by the
+                        // width's phase. Four at once, as below.
                         const float baseV = V.a.phase * r.formantRatio, baseZ = Z.a.phase * r.formantRatio;
-                        formantMod(vOsc.rangeBase, fastSin2Pi(baseV), fastSin2Pi(baseV + 0.25f), r.baseAsym, r.formantDepth, r.width.scaleA, rVA, cVA);
-                        formantMod(vOsc.rangeBase, fastSin2Pi(baseV + r.width.phase), fastSin2Pi(baseV + 0.25f + r.width.phase), r.baseAsym, r.formantDepth, r.width.scaleB, rVB, cVB);
-                        formantMod(zOsc.rangeBase, fastSin2Pi(baseZ), fastSin2Pi(baseZ + 0.25f), r.baseAsym, r.formantDepth, r.width.scaleA, rZA, cZA);
-                        formantMod(zOsc.rangeBase, fastSin2Pi(baseZ + r.width.phase), fastSin2Pi(baseZ + 0.25f + r.width.phase), r.baseAsym, r.formantDepth, r.width.scaleB, rZB, cZB);
+                        const float base[4] = {baseV, baseV + r.width.phase, baseZ, baseZ + r.width.phase};
+                        for (int i = 0; i < 4; ++i) {
+                            const float wob = sinNoBranch(base[i]), asymWob = sinNoBranch(base[i] + 0.25f);
+                            float scale = 1.f + 3.f * r.formantDepth * wob;
+                            scale = (scale > 0.12f ? scale : 0.12f) * widthScale4[i];
+                            range[i] = rangeBase4[i] * scale;
+                            float a = r.baseAsym + 0.7f * r.formantDepth * asymWob;
+                            a = a < -0.9f ? -0.9f : (a > 0.9f ? 0.9f : a);
+                            centre[i] = 0.5f + 0.22f * a;
+                        }
                     } else {
-                        rVA = rVB = vOsc.rangeBase;
-                        rZA = rZB = zOsc.rangeBase;
-                        cVA = cVB = cZA = cZB = 0.5f;
+                        range[0] = range[1] = vOsc.rangeBase;
+                        range[2] = range[3] = zOsc.rangeBase;
+                        centre[0] = centre[1] = centre[2] = centre[3] = 0.5f;
                     }
-                    vA = voicedSigmoidSaw(V.a.phase, vOsc.blend, rVA, cVA, vOsc.lowShape, vOsc.airGainA, vOsc.season);
-                    vB = voicedSigmoidSaw(V.b.phase, vOsc.blend, rVB, cVB, vOsc.lowShape, vOsc.airGainB, vOsc.season);
-                    zA = voicedSigmoidSaw(Z.a.phase, zOsc.blend, rZA, cZA, zOsc.lowShape, zOsc.airGainA, zOsc.season);
-                    zB = voicedSigmoidSaw(Z.b.phase, zOsc.blend, rZB, cZB, zOsc.lowShape, zOsc.airGainB, zOsc.season);
+                    // The four waves, as one loop the compiler can do in one go.
                     // Smooth the jump where a forward-running phase comes round.
-                    if (V.a.dir > 0.f) vA -= vOsc.wrapJump * phaseWrapBlep(V.a.phase, vOsc.deltaA);
-                    if (V.b.dir > 0.f) vB -= vOsc.wrapJump * phaseWrapBlep(V.b.phase, vOsc.deltaB);
-                    if (Z.a.dir > 0.f) zA -= zOsc.wrapJump * phaseWrapBlep(Z.a.phase, zOsc.deltaA);
-                    if (Z.b.dir > 0.f) zB -= zOsc.wrapJump * phaseWrapBlep(Z.b.phase, zOsc.deltaB);
+                    const float jump[4] = {V.a.dir > 0.f ? vOsc.wrapJump : 0.f, V.b.dir > 0.f ? vOsc.wrapJump : 0.f,
+                                           Z.a.dir > 0.f ? zOsc.wrapJump : 0.f, Z.b.dir > 0.f ? zOsc.wrapJump : 0.f};
+                    float wave[4];
+                    for (int i = 0; i < 4; ++i) {
+                        wave[i] = sigmoidSawNoBranch(phase[i], blend4[i], range[i], centre[i], lowShape4[i], air4[i], season4[i])
+                                  - jump[i] * wrapBlepNoBranch(phase[i], delta4[i]);
+                    }
+                    vA = wave[0];
+                    vB = wave[1];
+                    zA = wave[2];
+                    zB = wave[3];
                 }
 
                 float outL, outR;
