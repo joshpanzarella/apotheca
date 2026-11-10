@@ -16,73 +16,18 @@ constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
 constexpr float kPresetsPerSecond = 10.f;
 
-const char* const kPageNames[PhazedScreen::kPages] = {"MAIN", "SOUND", "LINE 1", "LINE 2", "LINE 1 VOLUME", "LINE 1 WAVE",
-                                                      "LINE 1 PITCH", "LINE 2 VOLUME", "LINE 2 WAVE", "LINE 2 PITCH"};
-const char* const kMacroNames[kMacros] = {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"};
-const char* const kWaveNames[9] = {"NONE", "SAW", "SQUARE", "PULSE", "DOUBLE SINE", "SAW PULSE", "RESO 1", "RESO 2", "RESO 3"};
-const char* const kStepNames[kEnvSteps] = {"1", "2", "3", "4", "5", "6", "7", "8"};
-
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
-
-// A setting's value as the player reads it.
-void settingText(int id, int value, char* out, int size) {
-    const std::size_t n = static_cast<std::size_t>(size);
-    if (id == LineSelect) {
-        static const char* lines[4] = {"LINE 1", "LINE 2", "1 + 1'", "1 + 2'"};
-        std::snprintf(out, n, "%s", lines[value & 3]);
-    } else if (id == Octave) {
-        std::snprintf(out, n, "%+d", value);
-    } else if (id == DetuneSign) {
-        std::snprintf(out, n, "%s", value ? "UP" : "DOWN");
-    } else if (id == Mod) {
-        static const char* mods[3] = {"OFF", "RING", "NOISE"};
-        std::snprintf(out, n, "%s", mods[value % 3]);
-    } else if (id == VibratoWave) {
-        static const char* waves[4] = {"TRIANGLE", "SAW UP", "SAW DOWN", "SQUARE"};
-        std::snprintf(out, n, "%s", waves[value & 3]);
-    } else if (id == ChorusOn) {
-        std::snprintf(out, n, "%s", value ? "ON" : "OFF");
-    } else if (id == Level) {
-        std::snprintf(out, n, "%+d dB", value);
-    } else if (id >= kGlobals && (id - kGlobals) % kLineSettings <= Wave2) {
-        const bool second = (id - kGlobals) % kLineSettings == Wave2;
-        const bool lineTwo = (id - kGlobals) / kLineSettings == 1;
-        if (value == 0 && !second && lineTwo) std::snprintf(out, n, "AS LINE 1");
-        else std::snprintf(out, n, "%s", kWaveNames[value < 0 || value > 8 ? 0 : value]);
-    } else if (id >= kGlobals && (id - kGlobals) % kLineSettings >= kLineHead &&
-               ((id - kGlobals) % kLineSettings - kLineHead) % kEnvSettings == 2 * kEnvSteps) {
-        if (value == 0) std::snprintf(out, n, "NONE");
-        else std::snprintf(out, n, "STEP %d", value);
-    } else {
-        std::snprintf(out, n, "%d", value);
-    }
-}
 
 } // namespace
 
 // ---- what is on each page --------------------------------------------------------
 
-int PhazedScreen::itemCount() const {
-    if (page_ == 0) return kMainStops;
-    if (page_ == 1) return kGlobals;
-    if (page_ <= 3) return kLineHead;
-    return kEnvSettings;
-}
+int PhazedScreen::itemCount() const { return page_ == 0 ? kMainStops : spec_.itemCount(page_); }
 
 PhazedScreen::Item PhazedScreen::item(int index) const {
-    if (page_ == 1) {
-        static const char* names[kGlobals] = {"LINES", "OCTAVE", "DETUNE", "DETUNE OCTAVE", "DETUNE NOTE", "DETUNE FINE", "MODULATION",
-                                              "VIBRATO WAVE", "VIBRATO DELAY", "VIBRATO RATE", "VIBRATO DEPTH", "CHORUS", "LEVEL"};
-        return {index, names[index]};
-    }
-    if (page_ <= 3) {
-        static const char* names[kLineHead] = {"WAVE", "SECOND WAVE", "VOLUME KEY FOLLOW", "WAVE KEY FOLLOW"};
-        return {lineSetting(page_ - 2, index), names[index]};
-    }
-    const int line = (page_ - 4) / 3, env = (page_ - 4) % 3;
-    if (index < kEnvSteps) return {envRate(line, env, index), kStepNames[index]};
-    if (index < 2 * kEnvSteps) return {envLevel(line, env, index - kEnvSteps), kStepNames[index - kEnvSteps]};
-    return index == 2 * kEnvSteps ? Item{envSustain(line, env), "HOLD AT"} : Item{envEnd(line, env), "LAST STEP"};
+    Item it = {0, ""};
+    spec_.item(page_, index, it.id, it.name);
+    return it;
 }
 
 int PhazedScreen::columns() const { return envelopePage() ? kEnvSteps : 4; }
@@ -90,7 +35,7 @@ int PhazedScreen::columns() const { return envelopePage() ? kEnvSteps : 4; }
 int PhazedScreen::settingHere() const { return page_ == 0 ? -1 : item(cursor_).id; }
 
 void PhazedScreen::goTo(int page, int cursor) {
-    page_ = page < 0 ? 0 : (page >= kPages ? kPages - 1 : page);
+    page_ = page < 0 ? 0 : (page >= spec_.pages ? spec_.pages - 1 : page);
     const int count = itemCount();
     cursor_ = cursor < 0 ? 0 : (cursor >= count ? count - 1 : cursor);
 }
@@ -140,11 +85,11 @@ void PhazedScreen::hear() {
 }
 
 void PhazedScreen::choosePreset(int index) {
-    const int count = Phazed::presetCount();
+    const int count = spec_.presetCount();
     index = ((index % count) + count) % count;
     if (index == trk().preset) return;
     trk().preset = index;
-    trk().patch = Phazed::presetPatch(index);
+    spec_.loadPreset(trk(), index);
     for (float& m : trk().macro) m = 0.5f; // a new sound starts as it was made
     Command c;
     c.type = Command::SelectPreset;
@@ -158,17 +103,17 @@ void PhazedScreen::stepPreset(int by) { choosePreset(trk().preset + by); }
 
 // To the first preset of the next or the previous folder.
 void PhazedScreen::stepFolder(int by) {
-    const int count = Phazed::presetCount();
-    const char* here = Phazed::presetCategory(trk().preset);
+    const int count = spec_.presetCount();
+    const char* here = spec_.presetCategory(trk().preset);
     int i = trk().preset;
     if (by > 0) {
-        while (std::strcmp(Phazed::presetCategory(i), here) == 0) i = (i + 1) % count;
+        while (std::strcmp(spec_.presetCategory(i), here) == 0) i = (i + 1) % count;
     } else {
         // Back past the start of this folder, then to the start of the one before.
-        while (std::strcmp(Phazed::presetCategory((i + count - 1) % count), here) == 0) i = (i + count - 1) % count;
+        while (std::strcmp(spec_.presetCategory((i + count - 1) % count), here) == 0) i = (i + count - 1) % count;
         i = (i + count - 1) % count;
-        const char* before = Phazed::presetCategory(i);
-        while (std::strcmp(Phazed::presetCategory((i + count - 1) % count), before) == 0) i = (i + count - 1) % count;
+        const char* before = spec_.presetCategory(i);
+        while (std::strcmp(spec_.presetCategory((i + count - 1) % count), before) == 0) i = (i + count - 1) % count;
     }
     choosePreset(i);
 }
@@ -186,9 +131,9 @@ void PhazedScreen::setMacro(int macro, float value) {
 }
 
 void PhazedScreen::setSetting(int id, int value) {
-    value = value < settingMin(id) ? settingMin(id) : (value > settingMax(id) ? settingMax(id) : value);
-    if (value == trk().patch.value[id]) return;
-    trk().patch.value[id] = value;
+    value = value < spec_.settingMin(id) ? spec_.settingMin(id) : (value > spec_.settingMax(id) ? spec_.settingMax(id) : value);
+    if (value == values()[id]) return;
+    values()[id] = value;
     Command c;
     c.type = Command::SetSetting;
     c.track = project_.track;
@@ -213,11 +158,11 @@ void PhazedScreen::turn(float amount) {
     }
     // A setting: its whole range in about two thirds of a second.
     const int id = item(cursor_).id;
-    saved_ += amount * 1.5f * static_cast<float>(settingMax(id) - settingMin(id) + 1);
+    saved_ += amount * 1.5f * static_cast<float>(spec_.settingMax(id) - spec_.settingMin(id) + 1);
     const int whole = static_cast<int>(saved_);
     if (whole != 0) {
         saved_ -= static_cast<float>(whole);
-        setSetting(id, trk().patch.value[id] + whole);
+        setSetting(id, values()[id] + whole);
     }
 }
 
@@ -233,7 +178,7 @@ void PhazedScreen::stepExact(int by) {
         return;
     }
     const int id = item(cursor_).id;
-    setSetting(id, trk().patch.value[id] + by);
+    setSetting(id, values()[id] + by);
 }
 
 // ---- buttons ----------------------------------------------------------------------------
@@ -268,9 +213,9 @@ void PhazedScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (page_ > 0) goTo(0, kAdvanced); // back to MAIN, on the way in
         else if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) setMacro(cursor_ - kFirstMacro, 0.5f);
     } else if (b == Button::R1 && page_ > 0) {
-        goTo(page_ == kPages - 1 ? 1 : page_ + 1, 0);
+        goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
-        goTo(page_ == 1 ? kPages - 1 : page_ - 1, 0);
+        goTo(page_ == 1 ? spec_.pages - 1 : page_ - 1, 0);
     } else if (b == Button::X) {
         hear();
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -318,7 +263,7 @@ void PhazedScreen::update(const Input& input, Uint32 nowMs) {
 void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    std::snprintf(text, sizeof text, "%s / %s", name, kPageNames[page_]);
+    std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);
     topBar(r, fonts, View::Device, text, project_);
     const TrackData& t = trk();
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
@@ -329,24 +274,23 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     if (page_ == 0) {
         // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        valueBox(r, fonts, 8, 36, 200, 50, "FOLDER", Phazed::presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
-        std::snprintf(text, sizeof text, "%s", Phazed::presetName(t.preset));
+        valueBox(r, fonts, 8, 36, 200, 50, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
         valueBox(r, fonts, 216, 36, 416, 50, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
-        std::snprintf(text, sizeof text, "%d / %d", t.preset + 1, Phazed::presetCount());
+        std::snprintf(text, sizeof text, "%d / %d", t.preset + 1, spec_.presetCount());
         fonts.small.drawRight(r, 622.f, 43.f, text, kDim);
 
         for (int m = 0; m < kMacros; ++m) {
             const int x = 8 + (m % 4) * 157, y = 98 + (m / 4) * 76;
             const float v = t.macro[m];
-            if (m == Chorus) std::snprintf(text, sizeof text, "%s", v < 0.4f ? "OFF" : v > 0.6f ? "ON" : "AS PRESET");
-            else if (m == MacroOctave) std::snprintf(text, sizeof text, "%s", v < 0.25f ? "DOWN" : v > 0.75f ? "UP" : "AS PRESET");
-            else std::snprintf(text, sizeof text, "%+d", static_cast<int>(std::round((v - 0.5f) * 200.f)));
-            valueBox(r, fonts, x, y, 153, 70, kMacroNames[m], text, v, cursor_ == kFirstMacro + m, holding_, true);
+            spec_.macroText(m, v, text, sizeof text);
+            valueBox(r, fonts, x, y, 153, 70, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_, true);
         }
         box(r, 8, 252, 153, 40, kPanel2, kLine);
         fonts.medium.draw(r, 20.f, 252.f + (40 - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
         if (cursor_ == kAdvanced) outline(r, 7, 251, 155, 42, kTeal, 2);
-        fonts.small.draw(r, 174.f, 258.f, "Every setting of this sound, on nine pages.", kDim);
+        std::snprintf(text, sizeof text, "Every setting of this sound, on %d pages.", spec_.pages - 1);
+        fonts.small.draw(r, 174.f, 258.f, text, kDim);
         fonts.small.draw(r, 174.f, 274.f, "The macros above bend the sound and leave it as it was made.", kDim);
 
         fonts.small.draw(r, 8.f, 306.f, "LIVE OUTPUT", kDim);
@@ -369,18 +313,18 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // ---- ADVANCED ----------------------------------------------------------------------
-    std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, kPages - 1);
+    std::snprintf(text, sizeof text, "PAGE %d OF %d", page_, spec_.pages - 1);
     fonts.small.drawRight(r, 632.f, 38.f, text, kDim);
-    fonts.medium.draw(r, 8.f, 36.f, kPageNames[page_], kText);
+    fonts.medium.draw(r, 8.f, 36.f, spec_.pageNames[page_], kText);
 
     if (!envelopePage()) {
         for (int i = 0; i < itemCount(); ++i) {
             const Item it = item(i);
             const int x = 8 + (i % 4) * 157, y = 60 + (i / 4) * 76;
-            const int value = t.patch.value[it.id];
-            settingText(it.id, value, text, sizeof text);
-            const int range = settingMax(it.id) - settingMin(it.id);
-            const float part = range > 0 ? static_cast<float>(value - settingMin(it.id)) / range : 0.f;
+            const int value = values()[it.id];
+            spec_.settingText(it.id, value, text, sizeof text);
+            const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
+            const float part = range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f;
             valueBox(r, fonts, x, y, 153, 70, it.name, text, part, i == cursor_, holding_);
         }
         scope(r, session_.engine, 8, 372, 624, 74);
@@ -432,7 +376,7 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         for (int i = 2 * kEnvSteps; i < kEnvSettings; ++i) {
             const Item it = item(i);
-            settingText(it.id, t.patch.value[it.id], text, sizeof text);
+            spec_.settingText(it.id, t.patch.value[it.id], text, sizeof text);
             if (i == 2 * kEnvSteps + 1) std::snprintf(text, sizeof text, "STEP %d", t.patch.value[it.id]);
             valueBox(r, fonts, 8 + (i - 2 * kEnvSteps) * 312, 384, 308, 58, it.name, text, -1.f, i == cursor_, holding_);
         }

@@ -57,15 +57,17 @@ struct NotePattern {
     }
 };
 
-enum class TrackKind { None, Drums, Phazed };
+enum class TrackKind { None, Drums, Phazed, Twin };
+inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin; }
 
 struct TrackData {
     TrackKind kind = TrackKind::None;
     DrumPattern drums[kMaxScenes];
     NotePattern notes[kMaxScenes];
     float laneLevel[kDrumLanes]; // each drum's volume
-    int preset = 0;              // Phazed
-    PhazedPatch patch;
+    int preset = 0;              // a synth's preset, patch and macros
+    PhazedPatch patch;           // when the track is Phazed
+    TwinPatch twin;              // when it is Twin Analog
     float macro[phazed::kMacros];
 
     TrackData() {
@@ -73,7 +75,7 @@ struct TrackData {
         for (float& m : macro) m = 0.5f;
     }
     bool sceneEmpty(int scene) const {
-        return kind == TrackKind::Drums ? drums[scene].empty() : kind == TrackKind::Phazed ? notes[scene].empty() : true;
+        return kind == TrackKind::Drums ? drums[scene].empty() : isSynth(kind) ? notes[scene].empty() : true;
     }
 };
 

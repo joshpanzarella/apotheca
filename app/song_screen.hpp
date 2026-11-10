@@ -10,7 +10,7 @@
 //                      Hold R1 and drag: copy it into every cell crossed.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
-//   on + TRACK         A, then pick the instrument.
+//   on + TRACK         A, then pick the instrument: drums, Phazed or Twin Analog.
 //   START              play the song from the cursor's scene
 
 #include <SDL.h>
@@ -54,7 +54,7 @@ private:
     int column_ = 0;
     int top_ = 0; // first scene shown
     bool choosing_ = false; // the instrument list is open
-    int choice_ = 0;        // 0 drums, 1 Phazed
+    int choice_ = 0;        // 0 drums, 1 Phazed, 2 Twin Analog
 
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap

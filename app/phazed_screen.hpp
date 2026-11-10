@@ -1,5 +1,6 @@
 #pragma once
-// The Device screen for Phazed.
+// The Device screen for a synth: Phazed or Twin Analog. Each is described
+// by a SynthSpec (synth_spec.hpp); the screen itself is the same.
 //
 // MAIN is all most sounds need: the folder, the preset, eight macros, and a
 // way into ADVANCED. Nothing else is on it, on purpose.
@@ -11,28 +12,31 @@
 //   ADVANCED         A opens the pages.
 //   X                hear the sound
 //
-// ADVANCED is every setting, nine pages of it: the sound as a whole, each of
-// the two lines, and each line's three eight-step envelopes drawn out. L1 and
-// R1 turn the pages; B goes back to MAIN.
+// ADVANCED is every setting. For Phazed that is nine pages: the sound as a
+// whole, each of the two lines, and each line's three eight-step envelopes
+// drawn out. For Twin Analog, three. L1 and R1 turn the pages; B goes back
+// to MAIN.
 
 #include <SDL.h>
 
 #include "input.hpp"
 #include "session.hpp"
+#include "synth_spec.hpp"
 #include "ui.hpp"
 
 namespace apotheca {
 
 class PhazedScreen {
 public:
-    explicit PhazedScreen(Session& session) : session_(session), project_(session.project) {}
+    PhazedScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec) {}
 
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs);
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
 
     // For tests and stills.
-    static constexpr int kPages = 10; // MAIN, then nine advanced pages
+    static constexpr int kPages = 10; // Phazed's: MAIN, then nine advanced pages
+    int pageCount() const { return spec_.pages; }
     int page() const { return page_; }
     int cursor() const { return cursor_; }
     void goTo(int page, int cursor);
@@ -50,7 +54,9 @@ private:
     int itemCount() const;
     Item item(int index) const;
     int columns() const;
-    bool envelopePage() const { return page_ >= 4; }
+    bool envelopePage() const { return page_ > 0 && spec_.envelopePage(page_); }
+    int* values() { return spec_.values(trk()); }
+    const int* values() const { return spec_.values(const_cast<TrackData&>(trk())); }
     void moveCursor(Button direction);
     void choosePreset(int index);
     void stepPreset(int by);
@@ -63,6 +69,7 @@ private:
 
     Session& session_;
     Project& project_;
+    const SynthSpec& spec_;
     int page_ = 0;
     int cursor_ = kPreset;
     bool holding_ = false; // A is held

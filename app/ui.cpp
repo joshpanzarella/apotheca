@@ -133,7 +133,7 @@ void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h) {
 void trackName(const Project& project, int track, char* out, int size) {
     const TrackKind kind = project.tracks[track].kind;
     std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1,
-                  kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : "");
+                  kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : kind == TrackKind::Twin ? "TWIN" : "");
 }
 
 void noteName(int pitch, char* out, int size) {

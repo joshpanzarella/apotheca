@@ -6,7 +6,7 @@
 //   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE
 //
 // PATTERN and DEVICE show whichever track the Song screen's cursor chose: the
-// drum grid or the piano roll, the kit or Phazed.
+// drum grid or the piano roll, the kit or the synth.
 
 #include <SDL.h>
 
@@ -36,6 +36,7 @@ public:
     PatternScreen& drums() { return drums_; }
     NoteScreen& notes() { return notes_; }
     PhazedScreen& phazed() { return phazed_; }
+    PhazedScreen& twin() { return twin_; }
 
 private:
     void drawKit(SDL_Renderer* renderer, const Fonts& fonts) const;
@@ -45,7 +46,8 @@ private:
     SongScreen song_;
     PatternScreen drums_;
     NoteScreen notes_;
-    PhazedScreen phazed_;
+    PhazedScreen phazed_; // the same screen, once for each synth
+    PhazedScreen twin_;
 };
 
 } // namespace apotheca

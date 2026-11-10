@@ -30,7 +30,8 @@ void SongScreen::moveCursorTo(int scene, int column) {
 
 void SongScreen::moveCursor(Button direction) {
     if (choosing_) {
-        if (direction == Button::Up || direction == Button::Down) choice_ = 1 - choice_;
+        if (direction == Button::Up) choice_ = (choice_ + 2) % 3;
+        if (direction == Button::Down) choice_ = (choice_ + 1) % 3;
         return;
     }
     if (direction == Button::Up) moveCursorTo(scene_ - 1, column_);
@@ -56,7 +57,7 @@ void SongScreen::clearCell(int track, int scene) {
     if (t.kind == TrackKind::Drums) {
         t.drums[scene] = DrumPattern();
         session_.sendDrumPattern(track, scene);
-    } else if (t.kind == TrackKind::Phazed) {
+    } else if (isSynth(t.kind)) {
         t.notes[scene] = NotePattern();
         session_.sendNotePattern(track, scene);
     }
@@ -69,7 +70,7 @@ void SongScreen::copyCell(int fromTrack, int fromScene, int toTrack, int toScene
     if (to.kind == TrackKind::Drums) {
         to.drums[toScene] = from.drums[fromScene];
         session_.sendDrumPattern(toTrack, toScene);
-    } else if (to.kind == TrackKind::Phazed) {
+    } else if (isSynth(to.kind)) {
         to.notes[toScene] = from.notes[fromScene];
         session_.sendNotePattern(toTrack, toScene);
     }
@@ -88,7 +89,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
             choosing_ = false;
-            if (session_.addTrack(choice_ == 0 ? TrackKind::Drums : TrackKind::Phazed)) {
+            if (session_.addTrack(choice_ == 0 ? TrackKind::Drums : choice_ == 1 ? TrackKind::Phazed : TrackKind::Twin)) {
                 moveCursorTo(scene_, project_.trackCount() - 1); // onto the new track
             }
         }
@@ -214,7 +215,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);
         std::snprintf(text, sizeof text, "%d", t + 1);
         fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
-        const char* name = project_.tracks[t].kind == TrackKind::Drums ? "DRUMS" : (colW > 60 ? "PHAZED" : "PHZD");
+        const TrackKind kind = project_.tracks[t].kind;
+        const char* name = kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Twin ? "TWIN" : (colW > 60 ? "PHAZED" : "PHZD");
         fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, name, kText);
     }
     if (addColumn() >= 0) {
@@ -292,16 +294,18 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the instrument list -----------------------------------------------------
     if (choosing_) {
-        const int w = 300, h = 150, x = (kScreenW - w) / 2, y = 150;
+        const int w = 300, h = 202, x = (kScreenW - w) / 2, y = 124;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, h, kPanel, kLine);
         std::snprintf(text, sizeof text, "TRACK %d: PICK AN INSTRUMENT", tracks + 1);
         fonts.small.draw(r, x + 12.f, y + 12.f, text, kDim);
-        const char* names[2] = {"DRUMS", "PHAZED"};
+        const char* names[3] = {"DRUMS", "PHAZED", "TWIN ANALOG"};
         char synthAbout[40];
         std::snprintf(synthAbout, sizeof synthAbout, "the synth, %d presets", Phazed::presetCount());
-        const char* about[2] = {"8 lanes, the built-in kit", synthAbout};
-        for (int i = 0; i < 2; ++i) {
+        char twinAbout[48];
+        std::snprintf(twinAbout, sizeof twinAbout, "two morphing oscillators, %d presets", Twin::presetCount());
+        const char* about[3] = {"8 lanes, the built-in kit", synthAbout, twinAbout};
+        for (int i = 0; i < 3; ++i) {
             const int by = y + 36 + i * 52;
             box(r, x + 12, by, w - 24, 46, kPanel2, kLine);
             fonts.large.draw(r, x + 24.f, by + 9.f, names[i], i == choice_ ? kTeal : kText);

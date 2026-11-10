@@ -1,5 +1,7 @@
 #include "session.hpp"
 
+#include "synth_spec.hpp"
+
 namespace apotheca {
 
 namespace {
@@ -31,9 +33,9 @@ bool Session::addTrack(TrackKind kind) {
     if (kind == TrackKind::Drums) {
         if (!engine.addDrumTrack(track)) return false;
     } else {
-        if (!engine.addSynthTrack(track)) return false;
+        if (!engine.addSynthTrack(track, kind == TrackKind::Twin ? SynthKind::Twin : SynthKind::Phazed)) return false;
         project.tracks[track].preset = 0;
-        project.tracks[track].patch = Phazed::presetPatch(0);
+        specFor(kind)->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
     return true;

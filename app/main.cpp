@@ -12,7 +12,8 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a song already made: drums and two Phazed tracks
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
-//                  add-track, or page1 .. page9 (Phazed's advanced pages)
+//                  add-track, page1 .. page9 (Phazed's advanced pages), or
+//                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
@@ -259,6 +260,12 @@ int main(int argc, char** argv) {
         app.project().track = 1;
         app.session().view = View::Device;
         app.phazed().goTo(std::atoi(view + 4), 1);
+    } else if (std::strncmp(view, "twin", 4) == 0) {
+        // A Twin Analog track, added the way the Song screen adds one.
+        app.session().addTrack(TrackKind::Twin);
+        app.project().track = app.project().trackCount() - 1;
+        app.session().view = View::Device;
+        app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : PhazedScreen::kFirstMacro + 1);
     } else if (std::strcmp(view, "kit") == 0) {
         app.session().view = View::Device;
     }

@@ -801,6 +801,130 @@ void testEveryPatchSettingIsOnSomePage() {
     for (bool s : seen) CHECK(s);
 }
 
+// ---- Twin Analog, through the same screens ------------------------------------------
+
+Rig* onTwin() {
+    Rig* rig = new Rig;
+    rig->app.session().view = View::Song;
+    rig->app.song().moveCursorTo(0, rig->project().trackCount());
+    rig->tap(A);    // + TRACK
+    rig->tap(DOWN); // from PHAZED down to TWIN ANALOG
+    rig->tap(A);
+    return rig;
+}
+
+void testAddingTwinAnalog() {
+    std::unique_ptr<Rig> rig(onTwin());
+    CHECK(rig->project().trackCount() == 2);
+    CHECK(rig->project().tracks[1].kind == TrackKind::Twin);
+    // Its first preset is loaded into the project, as the engine has it.
+    const TwinPatch first = Twin::presetPatch(0);
+    for (int id = 0; id < twin::kSettings; ++id) CHECK(rig->project().tracks[1].twin.value[id] == first.value[id]);
+    // The chooser goes round all three.
+    rig->tap(RIGHT);
+    rig->tap(A);
+    CHECK(rig->app.song().choosing());
+    rig->tap(DOWN, 2); // PHAZED > TWIN > DRUMS
+    rig->tap(A);
+    CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
+
+    // It gets the piano roll, and the engine plays it.
+    rig->app.song().moveCursorTo(0, 1);
+    rig->tap(A);
+    CHECK(rig->view() == View::Pattern && rig->project().track == 1);
+    rig->tap(A);
+    CHECK(rig->app.notes().noteCount() == 1);
+    rig->listen();
+    CHECK(rig->engine->trackPeak(1) > 0.f);
+    CHECK(rig->engine->trackPeak(0) == 0.f && rig->engine->trackPeak(2) == 0.f);
+}
+
+void testTwinsDeviceScreen() {
+    std::unique_ptr<Rig> rig(onTwin());
+    rig->tap(A);  // open its pattern
+    rig->tap(R2); // and its device
+    PhazedScreen& screen = rig->app.twin();
+    TrackData& track = rig->project().tracks[1];
+    CHECK(rig->view() == View::Device && screen.pageCount() == 4);
+    CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
+
+    // Presets: sixteen, and round.
+    rig->key(A, true);
+    rig->tap(UP);
+    CHECK(track.preset == 1);
+    for (int id = 0; id < twin::kSettings; ++id) CHECK(track.twin.value[id] == Twin::presetPatch(1).value[id]);
+    rig->tap(DOWN, 2);
+    CHECK(track.preset == Twin::presetCount() - 1);
+    rig->tap(UP);
+    rig->key(A, false);
+
+    // A macro.
+    screen.goTo(0, PhazedScreen::kFirstMacro + twin::Blend);
+    rig->key(A, true);
+    rig->tap(UP, 3);
+    rig->key(A, false);
+    CHECK(near(track.macro[twin::Blend], 0.65f));
+
+    // Three advanced pages hold all twenty-three settings, each once.
+    int seen[twin::kSettings] = {};
+    for (int page = 1; page < screen.pageCount(); ++page) {
+        for (int stop = 0; stop < 40; ++stop) {
+            screen.goTo(page, stop);
+            if (screen.cursor() == stop) ++seen[screen.settingHere()];
+        }
+    }
+    for (int count : seen) CHECK(count == 1);
+    screen.goTo(9, 0);
+    CHECK(screen.page() == 3); // there is no page nine here
+    rig->tap(R1);
+    CHECK(screen.page() == 1); // round
+    rig->tap(L1);
+    CHECK(screen.page() == 3);
+
+    // A setting changes the project and stops at its limits.
+    screen.goTo(1, 0);
+    CHECK(screen.settingHere() == twin::VOctave);
+    rig->key(A, true);
+    rig->tap(UP, 9);
+    CHECK(track.twin.value[twin::VOctave] == 2);
+    rig->tap(DOWN, 9);
+    CHECK(track.twin.value[twin::VOctave] == -2);
+    rig->key(A, false);
+    CHECK(track.patch.value[phazed::Octave] == 0); // and never touches the other synth's patch
+}
+
+void testTheEngineHearsTwinsSettings() {
+    // The level setting, 12 dB down, is a quarter as loud.
+    const auto loudness = [](int steps) {
+        std::unique_ptr<Rig> rig(onTwin());
+        rig->tap(A);
+        rig->tap(R2);
+        rig->app.twin().goTo(3, 4);
+        CHECK(rig->app.twin().settingHere() == twin::Level);
+        rig->key(A, true);
+        rig->tap(DOWN, steps);
+        rig->key(A, false);
+        // Vintage off, so the bus colour is out of the way of the measurement.
+        Command off;
+        off.type = Command::SetSetting;
+        off.track = 1;
+        off.a = twin::Vintage;
+        off.b = 0;
+        rig->engine->send(off);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 57;
+        c.value = 1.f;
+        rig->engine->send(c);
+        rig->render(9600);
+        return Rig::peak(rig->render(9600));
+    };
+    const float full = loudness(0), down = loudness(12);
+    CHECK(full > 0.01f);
+    CHECK(std::fabs(down / full - 0.251f) < 0.03f);
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -825,6 +949,9 @@ int main(int, char**) {
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();
     testEveryPatchSettingIsOnSomePage();
+    testAddingTwinAnalog();
+    testTwinsDeviceScreen();
+    testTheEngineHearsTwinsSettings();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

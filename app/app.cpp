@@ -5,7 +5,8 @@
 namespace apotheca {
 
 App::App(Engine& engine)
-    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), phazed_(session_) {}
+    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_),
+      phazed_(session_, phazedSpec()), twin_(session_, twinSpec()) {}
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
     // The shoulder triggers walk along the tabs. Nothing else uses them.
@@ -22,12 +23,14 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         song_.onButton(event, input);
         break;
     case View::Pattern:
-        if (kind == TrackKind::Phazed) notes_.onButton(event, input);
+        if (isSynth(kind)) notes_.onButton(event, input);
         else drums_.onButton(event, input);
         break;
     case View::Device:
         if (kind == TrackKind::Phazed) {
             phazed_.onButton(event, input);
+        } else if (kind == TrackKind::Twin) {
+            twin_.onButton(event, input);
         } else if (event.down && event.button == Button::Start && !input.held(Button::Select)) {
             session_.togglePlay(false);
         }
@@ -44,11 +47,12 @@ void App::update(const Input& input, Uint32 nowMs) {
         song_.update(input, nowMs);
         break;
     case View::Pattern:
-        if (kind == TrackKind::Phazed) notes_.update(input, nowMs);
+        if (isSynth(kind)) notes_.update(input, nowMs);
         else drums_.update(input, nowMs);
         break;
     case View::Device:
         if (kind == TrackKind::Phazed) phazed_.update(input, nowMs);
+        else if (kind == TrackKind::Twin) twin_.update(input, nowMs);
         break;
     }
 }
@@ -60,11 +64,12 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         song_.draw(renderer, fonts);
         break;
     case View::Pattern:
-        if (kind == TrackKind::Phazed) notes_.draw(renderer, fonts);
+        if (isSynth(kind)) notes_.draw(renderer, fonts);
         else drums_.draw(renderer, fonts);
         break;
     case View::Device:
         if (kind == TrackKind::Phazed) phazed_.draw(renderer, fonts);
+        else if (kind == TrackKind::Twin) twin_.draw(renderer, fonts);
         else drawKit(renderer, fonts);
         break;
     }
