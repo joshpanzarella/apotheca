@@ -31,7 +31,7 @@ static int failures = 0;
 
 namespace {
 
-const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, R2 = SDLK_2;
+const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, R2 = SDLK_2, R1 = SDLK_w;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l;
 const float kTrackLevel = 0.65f;
@@ -1062,6 +1062,174 @@ void testTheSamplerTrack() {
     CHECK(std::string(line) == "80%");
 }
 
+// ---- recording ---------------------------------------------------------------------------
+
+void testTheRecorder() {
+    Recorder r;
+    CHECK(r.state() == Recorder::Idle && r.finish().empty());
+    std::vector<float> quiet(48000, 0.001f); // hiss, under the level that counts as sound
+    r.feed(quiet.data(), 48000); // not armed: ignored
+    CHECK(r.state() == Recorder::Idle);
+    r.arm();
+    CHECK(r.state() == Recorder::Waiting);
+    r.feed(quiet.data(), 48000);
+    CHECK(r.state() == Recorder::Waiting && r.seconds() == 0.f); // still waiting: silence is not kept
+    // Sound: it starts, with the 20 ms before it.
+    const std::vector<float> sound = tone(0.5f, 0.25f);
+    r.feed(sound.data(), static_cast<int>(sound.size()));
+    CHECK(r.state() == Recorder::Recording && r.level() > 0.2f);
+    CHECK(std::fabs(r.seconds() - 0.52f) < 0.005f);
+    r.feed(quiet.data(), 48000); // and a second of nothing after
+    std::vector<float> take = r.finish();
+    CHECK(r.state() == Recorder::Idle);
+    // Tidied: the front is the moment before the sound, the silence on the end is gone bar 50 ms.
+    CHECK(std::abs(static_cast<int>(take.size()) - (960 + 24000 + 2400)) <= 300);
+    // Brought up: the tone came in at a quarter and goes out near nine tenths.
+    float peak = 0.f;
+    for (float v : take) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    CHECK(std::fabs(peak - 0.9f) < 0.01f);
+    CHECK(std::fabs(take.back()) < 1e-4f && std::fabs(take[2000]) > 0.05f);
+    // Armed and stopped with no sound: nothing.
+    r.arm();
+    r.feed(quiet.data(), 48000);
+    CHECK(r.finish().empty());
+    // Ten seconds is the most.
+    r.arm();
+    const std::vector<float> loud = tone(1.f, 0.95f);
+    for (int i = 0; i < 9; ++i) r.feed(loud.data(), 48000);
+    CHECK(!r.full());
+    for (int i = 0; i < 3; ++i) r.feed(loud.data(), 48000);
+    CHECK(r.full() && std::fabs(r.seconds() - 10.f) < 0.001f);
+    take = r.finish();
+    CHECK(take.size() == 480000);
+    peak = 0.f;
+    for (float v : take) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    CHECK(std::fabs(peak - 0.95f) < 0.01f); // already loud: left as it is
+    // Very quiet sound is brought up eight times at most, and nonsense from a driver is dropped.
+    r.arm();
+    std::vector<float> faint = tone(0.2f, 0.03f);
+    faint[100] = std::nanf("");
+    faint[101] = 50.f;
+    r.feed(faint.data(), static_cast<int>(faint.size()));
+    take = r.finish();
+    peak = 0.f;
+    for (float v : take) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    CHECK(std::fabs(peak - 0.24f) < 0.01f);
+}
+
+// An input made of whatever the test gives it.
+struct FakeInput : AudioInput {
+    bool there = true, open = false;
+    std::vector<float> coming;
+    std::size_t at = 0;
+    bool start() override { open = there; return there; }
+    void stop() override { open = false; }
+    int read(float* out, int most) override {
+        int got = 0;
+        while (open && got < most && at < coming.size()) out[got++] = coming[at++];
+        return got;
+    }
+    void add(const std::vector<float>& v) { coming.insert(coming.end(), v.begin(), v.end()); }
+};
+
+void testRecordingOntoALane() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Session& session = rig.session();
+    FakeInput input;
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Device;
+    kit.goTo(3, KitScreen::kSound);
+
+    // Nothing to record from: it says so, and nothing changes.
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::NoInput && kit.said().find("NO INPUT") != std::string::npos);
+    session.useAudioInput(&input);
+    input.there = false;
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::NoInput && !input.open);
+    input.there = true;
+
+    // R1: it waits for sound. Silence comes in and nothing is kept.
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting && input.open);
+    input.add(std::vector<float>(24000, 0.f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Waiting && session.recordSeconds() == 0.f);
+    CHECK(kit.said().find("WAITING") != std::string::npos);
+    // Sound comes: it is recording, and says how long.
+    input.add(tone(0.5f, 0.25f));
+    rig.frames(5);
+    CHECK(session.recording() == Session::Rec::Recording && session.recordSeconds() > 0.4f && session.recordLevel() > 0.1f);
+    CHECK(kit.said().find("RECORDING") != std::string::npos);
+    // R1 again: stopped, saved, and on the lane.
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Idle && !input.open);
+    CHECK(session.lastRecorded() == "rec 1" && std::strcmp(track.laneSample[3], "rec 1") == 0 && track.laneFit[3] == 0);
+    rig.frames(1);
+    CHECK(kit.said().find("REC 1") != std::string::npos);
+    std::vector<float> file;
+    CHECK(readWav(folder + "/rec 1.wav", file) && std::abs(static_cast<int>(file.size()) - (960 + 24000)) <= 300);
+    const int played = rig.hit(3); // the lane plays it: all but the silent 20 ms on its front and the last faded sample
+    CHECK(played > static_cast<int>(file.size()) - 1000 && played <= static_cast<int>(file.size()));
+    rig.frames(200);
+    CHECK(kit.said().empty());
+
+    // Started and stopped with no sound: nothing saved, the lane left alone, and it says so.
+    rig.tap(R1);
+    input.add(std::vector<float>(4800, 0.f));
+    rig.frames(3);
+    rig.tap(R1);
+    CHECK(session.lastRecorded().empty() && std::strcmp(track.laneSample[3], "rec 1") == 0 && wavNames(folder).size() == 1);
+    rig.frames(1);
+    CHECK(kit.said().find("NOTHING RECORDED") != std::string::npos);
+
+    // Ten seconds: it stops by itself, as "rec 2", on the lane the cursor was on when it began.
+    kit.goTo(5, KitScreen::kSound);
+    rig.tap(R1);
+    rig.frames(1);
+    kit.goTo(6, KitScreen::kSound);
+    for (int i = 0; i < 11; ++i) input.add(tone(1.f, 0.5f));
+    for (int i = 0; i < 400 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
+    CHECK(session.recording() == Session::Rec::Idle && !input.open && session.lastRecorded() == "rec 2");
+    CHECK(std::strcmp(track.laneSample[5], "rec 2") == 0 && track.laneSample[6][0] == 0);
+    CHECK(readWav(folder + "/rec 2.wav", file) && file.size() == 480000);
+    rig.frames(1);
+    CHECK(kit.said().find("REC 2") != std::string::npos);
+    // Not while A is held.
+    rig.key(A, true);
+    rig.tap(R1);
+    rig.key(A, false);
+    CHECK(session.recording() == Session::Rec::Idle);
+
+    // Onto a sampler track: its one recording.
+    session.addTrack(TrackKind::Sampler);
+    rig.project().track = 1;
+    rig.tap(R1);
+    CHECK(session.recording() == Session::Rec::Waiting);
+    input.add(tone(0.3f, 0.25f));
+    rig.frames(3);
+    rig.tap(R1);
+    CHECK(std::strcmp(rig.project().tracks[1].sample, "rec 3") == 0 && session.trackSound(1).peaks.size() > 100);
+    rig.frames(1);
+    CHECK(rig.app.sampler().said().find("REC 3") != std::string::npos);
+    // A synth track has nowhere to put one. Nor has a session with no sample folder.
+    session.addTrack(TrackKind::Phazed);
+    CHECK(session.toggleRecording(2, 0) == Session::Rec::Idle && !input.open);
+    CHECK(session.toggleRecording(0, 9) == Session::Rec::Idle && session.toggleRecording(12, 0) == Session::Rec::Idle);
+    Rig bare;
+    bare.session().useAudioInput(&input);
+    CHECK(bare.session().toggleRecording(0, 0) == Session::Rec::NoInput);
+    // A session that goes away mid-recording lets go of the input.
+    {
+        Rig going(folder);
+        going.session().useAudioInput(&input);
+        CHECK(going.session().toggleRecording(0, 0) == Session::Rec::Waiting && input.open);
+    }
+    CHECK(!input.open);
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -1076,6 +1244,8 @@ int main(int, char**) {
     testTheKitScreen();
     testCatch();
     testTheSamplerTrack();
+    testTheRecorder();
+    testRecordingOntoALane();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

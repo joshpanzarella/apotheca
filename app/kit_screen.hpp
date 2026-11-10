@@ -14,6 +14,8 @@
 //           B: off.
 //   Y       CATCH: the last bar the song played, all of it as it was
 //           heard, becomes a recording on this lane, fitted to one bar.
+//   R1      RECORD from a USB microphone or interface onto this lane: once
+//           to start (it waits for sound), again to stop. Ten seconds at most.
 //   X       hear the lane
 //   START   play / stop
 
@@ -58,6 +60,7 @@ private:
     std::vector<std::string> names_; // the recordings there were when A went down
     std::string said_; // what the last catch came to, shown for a moment
     Uint32 saidUntil_ = 0;
+    bool wasRecording_ = false;
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;

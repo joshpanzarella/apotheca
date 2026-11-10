@@ -13,11 +13,21 @@
 
 #include "apotheca/engine.hpp"
 #include "chords.hpp"
+#include "recorder.hpp"
 #include "project.hpp"
 
 namespace apotheca {
 
 enum class View { Song, Pattern, Device, Effects };
+
+// Somewhere to record from: a USB microphone or interface. The app gives the
+// session one (main.cpp, through SDL); the tests give it a made-up one.
+struct AudioInput {
+    virtual ~AudioInput() = default;
+    virtual bool start() = 0;                     // false: nothing to record from
+    virtual void stop() = 0;
+    virtual int read(float* out, int most) = 0;   // mono samples at 48 kHz that have come in since last asked
+};
 
 class Session {
 public:
@@ -97,6 +107,19 @@ public:
     bool stretching() const;  // some lane is still waiting for its fitted version
     void finishStretching();  // wait for them all. For tests, and before leaving.
 
+    // ---- recording -------------------------------------------------------------------
+    // Record from the input onto a drum lane, or onto a sampler track (the
+    // lane is then ignored). The first call starts it waiting for sound; the
+    // next stops it. It also stops by itself at ten seconds. What was
+    // recorded is saved as "rec 1", "rec 2"... in the sample folder.
+    enum class Rec { Idle, NoInput, Waiting, Recording };
+    void useAudioInput(AudioInput* input) { input_ = input; }
+    Rec toggleRecording(int track, int lane); // what it is doing now
+    Rec recording() const { return rec_; }
+    float recordSeconds() const { return recorder_.seconds(); }
+    float recordLevel() const { return recorder_.level(); }
+    const std::string& lastRecorded() const { return lastRecorded_; } // "" if the last one came to nothing
+
     // ---- songs on disk ------------------------------------------------------------
     // Nothing here needs asking for. The song being worked on is written to
     // its file a couple of seconds after any change, and again on the way
@@ -152,6 +175,12 @@ private:
     Uint32 nextSaveAt_ = 0;
 
     void loadLane(int track, int lane);
+    void finishRecording();
+    AudioInput* input_ = nullptr;
+    Recorder recorder_;
+    Rec rec_ = Rec::Idle;
+    int recTrack_ = 0, recLane_ = 0;
+    std::string lastRecorded_;
     void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);
     bool wantsFitting(int track, int lane) const;

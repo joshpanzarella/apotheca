@@ -112,6 +112,14 @@ void Session::update(Uint32 nowMs) {
     project.playRepeat = engine.playRepeat();
     project.silenced = engine.silenced();
 
+    // What has come in from the input goes to the recorder.
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
+        float block[2048];
+        for (int got = input_->read(block, 2048); got > 0; got = input_->read(block, 2048)) recorder_.feed(block, got);
+        if (recorder_.state() == Recorder::Recording) rec_ = Rec::Recording;
+        if (recorder_.full()) finishRecording(); // ten seconds
+    }
+
     // Fitted recordings follow the tempo, once it has stopped moving for a
     // quarter of a second: no point stretching for every number on the way.
     if (project.tempo != seenTempo_) {
@@ -440,6 +448,7 @@ void Session::setEffectParam(int track, int slot, int index, float value) {
 // ---- recordings on drum lanes -------------------------------------------------------
 
 Session::~Session() {
+    if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
 }
 
@@ -485,6 +494,43 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
     std::snprintf(project.tracks[track].laneSample[lane], sizeof project.tracks[track].laneSample[lane], "%s", name.c_str());
     loadLane(track, lane);
+}
+
+// ---- recording ------------------------------------------------------------------------
+
+Session::Rec Session::toggleRecording(int track, int lane) {
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
+        finishRecording();
+        return rec_;
+    }
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return rec_;
+    const TrackKind kind = project.tracks[track].kind;
+    if (kind != TrackKind::Drums && kind != TrackKind::Sampler) return rec_;
+    if (sampleFolder_.empty() || !input_ || !input_->start()) return rec_ = Rec::NoInput;
+    recTrack_ = track;
+    recLane_ = lane;
+    recorder_.arm(kSampleRate);
+    return rec_ = Rec::Waiting;
+}
+
+void Session::finishRecording() {
+    if (input_) input_->stop();
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+    const std::vector<float> take = recorder_.finish();
+    if (take.empty()) return; // no sound came
+    mkdir(sampleFolder_.c_str(), 0755);
+    std::string name;
+    for (int number = 1; number < 10000; ++number) {
+        name = "rec " + std::to_string(number);
+        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+    }
+    if (!writeWav(sampleFolder_ + "/" + name + ".wav", take, static_cast<int>(kSampleRate))) return;
+    lastRecorded_ = name;
+    if (project.tracks[recTrack_].kind == TrackKind::Sampler) setTrackSample(recTrack_, name);
+    else if (project.tracks[recTrack_].kind == TrackKind::Drums) setLaneSample(recTrack_, recLane_, name);
 }
 
 // A sampler track's recording, read from its file and handed to the engine.

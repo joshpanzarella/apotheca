@@ -27,8 +27,7 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: recording into the device, getting files on over WiFi, the
-sound designer web page.
+Not built yet: getting files on over WiFi, the sound designer web page.
 
 ## Build
 
@@ -200,6 +199,14 @@ saves it as `catch 1.wav`, `catch 2.wav`... in the `samples` folder, and puts
 it on that lane fitted to one bar. It works just after stopping too. With no
 whole bar to take (the first bar, or after playing by hand), it takes the
 last bar's worth of sound.
+
+**R1 is Record.** With a USB microphone or audio interface plugged into the
+USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
+on the front. R1 again stops it; it stops by itself at ten seconds. Silence
+on the end is trimmed, a quiet take is brought up, and it is saved as
+`rec 1.wav`, `rec 2.wav`... and put on the lane. The sampler has the same
+button. Not tried on the handheld yet: it depends on the firmware seeing the
+USB device, which `apotheca.log` reports at startup ("audio inputs").
 
 **FIT** stretches the recording, at the same pitch, to last that many steps
 at the song's tempo. Change the tempo and it is fitted again, a quarter of a

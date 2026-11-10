@@ -15,6 +15,8 @@
 //                LOOP     go round from START while the key is held
 //                LEVEL
 //   Y          CATCH: the last bar the song played becomes this track's recording
+//   R1         RECORD from a USB microphone or interface: once to start (it
+//              waits for sound), again to stop. Ten seconds at most.
 //   X          hear it, at its root key
 //   START      play / stop
 
@@ -58,6 +60,7 @@ private:
     std::vector<std::string> names_;
     std::string said_;
     Uint32 saidUntil_ = 0;
+    bool wasRecording_ = false;
     float saved_ = 0.f, turned_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;

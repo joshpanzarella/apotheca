@@ -82,6 +82,12 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
         for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
         saidUntil_ = lastMs_ + 2500;
+    } else if (b == Button::R1 && !holding_) {
+        // Record from the input: once to start (it waits for sound), again to stop.
+        const Session::Rec now = session_.toggleRecording(project_.track, lane_);
+        if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
+        else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
+        saidUntil_ = lastMs_ + 3000;
     } else if (b == Button::X) {
         hear();
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -93,6 +99,25 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     lastMs_ = nowMs;
+    // While recording, the line says how it is going.
+    const Session::Rec rec = session_.recording();
+    if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
+        char text[64];
+        if (rec == Session::Rec::Waiting) std::snprintf(text, sizeof text, "WAITING FOR SOUND...  R1 TO CANCEL");
+        else std::snprintf(text, sizeof text, "RECORDING  %.1f S OF 10  R1 TO STOP", static_cast<double>(session_.recordSeconds()));
+        said_ = text;
+        wasRecording_ = true;
+        saidUntil_ = nowMs + 3000;
+    } else if (wasRecording_) {
+        wasRecording_ = false; // it has just stopped, by R1 or at ten seconds
+        if (!session_.lastRecorded().empty()) {
+            said_ = "RECORDED AS \"" + session_.lastRecorded() + "\"";
+            for (char& c : said_) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        } else {
+            said_ = "NOTHING RECORDED: NO SOUND CAME IN";
+        }
+        saidUntil_ = nowMs + 3000;
+    }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     // One move at once, then at a steady rate. With A held only up / down counts.
     const float x = holding_ ? 0.f : input.stickX(), y = input.stickY();
@@ -174,16 +199,16 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int below = top + kDrumLanes * rowH + 4;
     scope(r, session_.engine, 8, below, 624, kScreenH - kHintsH - below - 6);
 
-    Hint list[6];
+    Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
         hint("STICK UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
     } else {
-        hint("STICK", "move");
         hint("HOLD A + STICK", column_ == kSound ? "pick the sound" : "fit to steps");
         hint("B", column_ == kSound ? "the drum back" : "fit off");
-        hint("Y", "catch the last bar");
+        hint("Y", "catch");
+        hint("R1", "record");
         hint("X", "hear");
         hint("START", project_.playing ? "stop" : "play");
     }

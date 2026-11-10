@@ -72,6 +72,50 @@ void tapKey(SDL_Keycode key, int times = 1) {
     }
 }
 
+// Recording, through SDL: the default capture device (on the handheld, a USB
+// microphone or interface), as one channel at 48 kHz. It is only open while
+// a recording is being made.
+class SdlInput : public AudioInput {
+public:
+    bool start() override {
+        stop();
+        SDL_AudioSpec want = {}, have = {};
+        want.freq = 48000;
+        want.format = AUDIO_F32SYS;
+        want.channels = 1;
+        want.samples = 512;
+        want.callback = [](void* self, Uint8* stream, int bytes) {
+            SdlInput* input = static_cast<SdlInput*>(self);
+            const float* samples = reinterpret_cast<const float*>(stream);
+            for (int i = 0; i < bytes / 4; ++i) input->queue_.push(samples[i]); // full: the sample is dropped
+        };
+        want.userdata = this;
+        device_ = SDL_OpenAudioDevice(nullptr, 1, &want, &have, 0); // SDL converts whatever the device gives
+        if (!device_) {
+            std::printf("recording: no input (%s)\n", SDL_GetError());
+            return false;
+        }
+        float old;
+        while (queue_.pop(old)) {}
+        SDL_PauseAudioDevice(device_, 0);
+        return true;
+    }
+    void stop() override {
+        if (device_) SDL_CloseAudioDevice(device_);
+        device_ = 0;
+    }
+    int read(float* out, int most) override {
+        int got = 0;
+        while (got < most && queue_.pop(out[got])) ++got;
+        return got;
+    }
+    ~SdlInput() override { stop(); }
+
+private:
+    SDL_AudioDeviceID device_ = 0;
+    SpscQueue<float, 65536> queue_; // over a second: the screen empties it sixty times in that
+};
+
 // A song to look at: three scenes of drums, a Phazed bass and Phazed chords.
 // Everything goes through the same calls the buttons make.
 void fillDemoSong(App& app) {
@@ -250,7 +294,9 @@ int main(int argc, char** argv) {
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     Input input;
+    static SdlInput recordingInput;
     App app(engine);
+    app.session().useAudioInput(&recordingInput);
     {
         // Chord packs: a "chords" folder beside the program, or the one in
         // the source tree when running from a build folder.
