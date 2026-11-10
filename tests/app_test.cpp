@@ -625,9 +625,12 @@ void testAllFourShoulderButtonsIsPanic() {
     // It did nothing else: the same screen, and no hit painted under the cursor.
     CHECK(rig.view() == View::Pattern);
     CHECK(rig.app.drums().level(4, 6) == 0.f && !rig.app.drums().painting());
-    // Held: still nothing, whatever is pressed.
+    // Held: still nothing, whatever is pressed. And a notice says what happened.
+    CHECK(rig.app.panicNoteShowing());
     rig.tap(A);
-    CHECK(rig.listen(24000) == 0.f);
+    CHECK(rig.listen(24000) == 0.f && rig.app.panicNoteShowing());
+    CHECK(rig.app.drums().level(4, 6) > 0.f); // A still did its job on the grid: the notice is not in the way while held
+    rig.app.drums().setStep(4, 6, 0.f);
     // Let go: it opens again, and START plays as before.
     rig.key(R1, false);
     rig.key(L1, false);
@@ -636,6 +639,14 @@ void testAllFourShoulderButtonsIsPanic() {
     rig.render(48000);
     rig.frames(1);
     CHECK(!rig.project().silenced && rig.view() == View::Pattern);
+    // The notice is still up. The next press puts it away and does nothing else.
+    CHECK(rig.app.panicNoteShowing());
+    rig.tap(A);
+    CHECK(!rig.app.panicNoteShowing() && rig.app.drums().level(4, 6) == 0.f);
+    rig.tap(A);
+    CHECK(rig.app.drums().level(4, 6) > 0.f); // the one after that is an ordinary press
+    rig.app.drums().setStep(4, 6, 0.f);
+    rig.render(48000);
     rig.tap(START);
     CHECK(rig.project().playing && rig.listen(3 * kStep) > 0.2f);
 
@@ -651,6 +662,24 @@ void testAllFourShoulderButtonsIsPanic() {
     CHECK(rig.listen(24000) == 0.f);
     for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
     rig.render(48000);
+    // Left alone, the notice goes by itself after four seconds, and not before.
+    rig.frames(1);
+    CHECK(rig.app.panicNoteShowing());
+    rig.tap(L1); // a shoulder button alone is not "any button": fingers are still coming off them
+    CHECK(rig.app.panicNoteShowing());
+    rig.frames(240); // 3.8 s
+    CHECK(rig.app.panicNoteShowing());
+    rig.frames(15);
+    CHECK(!rig.app.panicNoteShowing());
+    // A shoulder button by itself does not put it away early (it is how the panic is let go).
+    for (SDL_Keycode k : {L2, R2, L1, R1}) rig.key(k, true);
+    rig.key(L1, false);
+    CHECK(rig.app.panicNoteShowing());
+    rig.key(L1, true); // back to all four: a panic again, still showing
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.tap(START);
+    CHECK(!rig.app.panicNoteShowing() && !rig.project().playing);
+    rig.render(4 * 48000);
     // A synth note being heard is let go too.
     rig.app.session().addTrack(TrackKind::Phazed);
     rig.app.session().audition(1, 60, 1.f);

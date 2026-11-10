@@ -41,6 +41,10 @@ public:
     PhazedScreen& phazed() { return phazed_; }
     PhazedScreen& twin() { return twin_; }
     KitScreen& kit() { return kit_; }
+    // The notice that says a panic happened. It stays while the buttons are
+    // held, and after that until any button is pressed (that press does
+    // nothing else) or four seconds have gone by.
+    bool panicNoteShowing() const { return panicNote_; }
 
 private:
     std::unique_ptr<Project> project_; // large, so not on the stack
@@ -48,6 +52,8 @@ private:
     SongScreen song_;
     PatternScreen drums_;
     bool panicking_ = false; // all four shoulder buttons are down
+    bool panicNote_ = false; // the notice is up
+    Uint32 panicNoteUntil_ = 0, now_ = 0;
     View viewBeforeShoulders_ = View::Pattern;
     NoteScreen notes_;
     KitScreen kit_;

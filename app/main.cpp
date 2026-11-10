@@ -288,6 +288,9 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
+    } else if (std::strcmp(view, "panic") == 0) {
+        for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
+        for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
     } else if (std::strcmp(view, "revs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT
@@ -359,6 +362,8 @@ int main(int argc, char** argv) {
         tapKey(SDLK_RETURN);
     } else if (demo && !*view) {
         tapKey(SDLK_RETURN);
+    } else if (demo && std::strcmp(view, "panic") == 0) {
+        // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "add-track") != 0) {
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }

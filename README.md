@@ -74,6 +74,10 @@ Let go, and the sound opens again once whatever was left has died away, or
 at the next thing you play, or after three seconds at the latest. The top
 bar says SILENCED until it has.
 
+A notice comes up saying a panic happened, in case it was an accident. Once
+the buttons are let go, any button puts it away (that press does nothing
+else), or it goes by itself after four seconds.
+
 ### SONG
 
 | On | A | Hold A + stick | B | Hold R1 and drag |
