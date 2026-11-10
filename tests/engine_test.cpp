@@ -1511,7 +1511,170 @@ static void testANoteNudgedOffItsStep() {
     CHECK(std::abs(onsetOf(out) - (2 * kStep + 2 * kStep / 5)) <= 1);
 }
 
+// ---- cells longer than a bar ---------------------------------------------------------
+
+static void testCellsOfSeveralBars() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.2f)));
+    const float hit = 0.2f * kTrackLevel;
+    const auto at = [&](int bar, int stepIndex, float velocity, int scene = 0) {
+        Command c = step(0, stepIndex, velocity);
+        c.scene = scene;
+        c.bar = bar;
+        engine->send(c);
+    };
+    const auto bars = [&](int count, int scene = 0, int track = 0) {
+        Command c = make(Command::SetCellBars, track, count);
+        c.scene = scene;
+        engine->send(c);
+    };
+    // Where the drum sounds, as bar.step, over a stretch of playing.
+    const auto heard = [&](int barsToPlay) {
+        const std::vector<float> out = renderFrames(*engine, barsToPlay * 16 * kStep);
+        std::vector<int> starts;
+        for (int i = 0; i < barsToPlay * 16; ++i)
+            if (out[2 * static_cast<std::size_t>(i * kStep)] != 0.f) starts.push_back(i);
+        return starts;
+    };
+    const auto play = [&](int loop) { engine->send(make(Command::Play, 0, 0, loop)); };
+    const auto stop = [&] { engine->send(make(Command::Stop)); renderFrames(*engine, 20000); };
+
+    // One bar, as ever: step 1 every bar.
+    at(0, 0, 1.f);
+    play(1);
+    CHECK(heard(3) == std::vector<int>({0, 16, 32}));
+    stop();
+    // Four bars: the first bar's hit comes once in four; a hit written into bar 3 plays in bar 3.
+    bars(4);
+    at(2, 4, 1.f);
+    play(1);
+    CHECK(heard(8) == std::vector<int>({0, 36, 64, 100}));
+    CHECK(engine->playBar() == 3 && engine->playScene() == 0);
+    stop();
+    // A bar past the cell's length is kept but not played; shorten the cell and it goes round sooner.
+    bars(2);
+    play(1);
+    CHECK(heard(4) == std::vector<int>({0, 32}));
+    stop();
+    bars(4);
+
+    // A second track with a one-bar cell loops under it: four times to its once.
+    CHECK(engine->addDrumTrack(1));
+    CHECK(engine->setLaneSample(1, 0, twoHalves(500, 0.1f, 0.1f)));
+    Command c = step(0, 8, 1.f, 1);
+    engine->send(c);
+    play(1);
+    std::vector<float> out = renderFrames(*engine, 4 * 16 * kStep);
+    for (int bar = 0; bar < 4; ++bar) CHECK(about(out[2 * static_cast<std::size_t>((bar * 16 + 8) * kStep)], 0.1f * kTrackLevel));
+    CHECK(about(out[0], hit) && about(out[2 * static_cast<std::size_t>(36 * kStep)], hit) && out[2 * static_cast<std::size_t>(16 * kStep)] == 0.f);
+    stop();
+    // A two-bar cell under a four-bar one goes round twice.
+    bars(2, 0, 1);
+    c = step(0, 2, 1.f, 1);
+    c.bar = 1;
+    engine->send(c);
+    play(1);
+    out = renderFrames(*engine, 4 * 16 * kStep);
+    CHECK(about(out[2 * static_cast<std::size_t>(18 * kStep)], 0.1f * kTrackLevel) && about(out[2 * static_cast<std::size_t>(50 * kStep)], 0.1f * kTrackLevel));
+    CHECK(out[2 * static_cast<std::size_t>(2 * kStep)] == 0.f && out[2 * static_cast<std::size_t>(34 * kStep)] == 0.f);
+    stop();
+    CHECK(engine->removeTrack(1));
+    renderFrames(*engine, 64);
+
+    // In the song, the repeat count is whole passes of the scene: four bars
+    // twice, then scene 2 (one bar), then round again.
+    at(0, 15, 0.5f, 1); // scene 2: a hit on step 16 only
+    engine->send(make(Command::SetSceneCount, 0, 2));
+    Command repeats = make(Command::SetSceneRepeats, 0, 2);
+    engine->send(repeats);
+    play(0);
+    CHECK(heard(10) == std::vector<int>({0, 36, 64, 100, 143, 144}));
+    stop();
+    // The read-outs follow: the bar of the scene, and which pass.
+    play(0);
+    renderFrames(*engine, (4 * 16 + 2 * 16 + 3) * kStep + 100);
+    CHECK(engine->playScene() == 0 && engine->playRepeat() == 1 && engine->playBar() == 2 && engine->playStep() == 3);
+    renderFrames(*engine, 2 * 16 * kStep);
+    CHECK(engine->playScene() == 1 && engine->playRepeat() == 0 && engine->playBar() == 0);
+    stop();
+    // A hit nudged early on step 1 of bar 2 sounds at the end of bar 1.
+    at(1, 0, 1.f);
+    Command nudge = make(Command::SetStepNudge, 0, 0, 0, -0.25f);
+    nudge.bar = 1;
+    engine->send(nudge);
+    play(1);
+    out = renderFrames(*engine, 2 * 16 * kStep);
+    CHECK(about(out[2 * static_cast<std::size_t>(16 * kStep - kStep / 4 + 10)], hit) && out[2 * static_cast<std::size_t>(16 * kStep - kStep / 4 - 10)] == 0.f);
+    stop();
+    at(1, 0, 0.f);
+
+    // Notes: a synth cell of four bars with a note in its third.
+    CHECK(engine->addSynthTrack(2, SynthKind::Sampler));
+    std::unique_ptr<SampleData> flat(new SampleData);
+    flat->data.assign(48000, 0.5f);
+    CHECK(engine->setTrackSample(2, std::move(flat)));
+    engine->send(make(Command::SetSetting, 2, sampler::Attack, 0));
+    bars(1); // the drums back to one bar; the sampler's cell alone makes the scene four
+    for (int b = 0; b < 4; ++b) at(b, 0, 0.f);
+    at(2, 4, 0.f);
+    bars(4, 0, 2);
+    Command note = make(Command::SetNote, 2, 0, 0, 1.f);
+    note.c = 60;
+    note.d = 1;
+    note.bar = 2;
+    engine->send(note);
+    play(1);
+    out = renderFrames(*engine, 8 * 16 * kStep);
+    CHECK(onsetOf(out) == 32 * kStep);
+    CHECK(out[2 * static_cast<std::size_t>(96 * kStep + 10)] != 0.f && out[2 * static_cast<std::size_t>(64 * kStep + 10)] == 0.f);
+    stop();
+
+    // Lengths are held to 1..8; a bar that does not exist is not written; no such scene, nothing.
+    bars(99, 0, 2);
+    play(1);
+    out = renderFrames(*engine, 11 * 16 * kStep);
+    CHECK(out[2 * static_cast<std::size_t>((8 * 16 + 32) * kStep + 10)] != 0.f); // round after eight
+    stop();
+    bars(0, 0, 2);
+    note.bar = 0;
+    engine->send(note);
+    play(1);
+    CHECK(onsetOf(renderFrames(*engine, 16 * kStep)) == 0);
+    stop();
+    note.bar = 8;
+    note.b = 4;
+    engine->send(note);
+    note.bar = -1;
+    engine->send(note);
+    Command far = make(Command::SetCellBars, 2, 4);
+    far.scene = 16;
+    engine->send(far);
+    play(1);
+    out = renderFrames(*engine, 16 * kStep);
+    CHECK(onsetOf(out) == 0 && out[2 * static_cast<std::size_t>(4 * kStep + 10)] == 0.f);
+    stop();
+
+    // A whole song loaded at once brings its lengths and its later bars.
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->bars[0] = 2;
+    image->level[1][0][3] = 1.f; // scene 1, bar 2, lane 1, step 4
+    CHECK(engine->setTrackImage(0, std::move(image)));
+    CHECK(engine->removeTrack(2));
+    engine->send(make(Command::SetSceneCount, 0, 1));
+    play(1);
+    CHECK(heard(4) == std::vector<int>({19, 51}));
+    stop();
+    // Taking the track away forgets its lengths.
+    CHECK(engine->removeTrack(0));
+    CHECK(engine->addDrumTrack(0));
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.2f)));
+    at(0, 0, 1.f);
+    play(1);
+    CHECK(heard(3) == std::vector<int>({0, 16, 32}));
+}
+
 int main() {
+    testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();
     testTheSampler();
     testEffectsOneByOne();

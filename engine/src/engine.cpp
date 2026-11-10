@@ -9,6 +9,8 @@ namespace {
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 bool validSlot(int slot) { return slot >= 0 && slot < kEffectSlots; }
 bool validScene(int scene) { return scene >= 0 && scene < kMaxScenes; }
+// A bar of a scene, as the pattern commands name it. -1 if there is no such bar.
+int slotFor(const Command& c) { return validScene(c.scene) && c.bar >= 0 && c.bar < kMaxBars ? c.scene * kMaxBars + c.bar : -1; }
 bool validCell(int lane, int step) { return lane >= 0 && lane < kDrumLanes && step >= 0 && step < kSteps; }
 
 // The ceiling: untouched up to 0.8, then rounded off toward 1.0.
@@ -23,8 +25,8 @@ float ceiling(float x) {
 
 Engine::Engine() {
     for (Track& track : tracks_)
-        for (DrumScene& scene : track.drumScenes)
-            for (auto& lane : scene.chance)
+        for (int slot = 0; slot < kPatternSlots; ++slot)
+            for (auto& lane : track.drumScenes[slot].chance)
                 for (float& c : lane) c = 1.f;
     for (int& r : repeats_) r = 1;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
@@ -290,8 +292,8 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f);
         break;
     case Command::SetStepStart:
-        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[c.scene].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[slotFor(c)].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::InstallEffect: {
@@ -340,23 +342,23 @@ void Engine::apply(const Command& c) {
         break;
     }
     case Command::SetStep:
-        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[c.scene].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[slotFor(c)].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::SetStepNudge:
-        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[c.scene].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[slotFor(c)].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
         }
         break;
     case Command::SetStepChance:
-        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
-            tracks_[c.track].drumScenes[c.scene].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[slotFor(c)].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::SetNote:
-        if (validTrack(c.track) && validScene(c.scene) && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value)) {
-            Note& note = tracks_[c.track].notes[c.scene][c.a];
+        if (validTrack(c.track) && slotFor(c) >= 0 && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value)) {
+            Note& note = tracks_[c.track].notes[slotFor(c)][c.a];
             float length = static_cast<float>(c.d) + (std::isfinite(c.extra) ? c.extra : 0.f);
             if (length > 255.f) length = 255.f;
             const bool sound = c.value > 0.f && c.b >= 0 && c.b < kSteps && c.c >= 0 && c.c <= 127 && c.d >= 0 && length >= kShortestNote;
@@ -373,12 +375,16 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
+    case Command::SetCellBars:
+        if (validTrack(c.track) && validScene(c.scene)) tracks_[c.track].bars[c.scene] = static_cast<std::uint8_t>(c.a < 1 ? 1 : (c.a > kMaxBars ? kMaxBars : c.a));
+        break;
     case Command::Play:
         playing_ = true;
         loopScene_ = c.b != 0;
         scene_ = validScene(c.a) ? c.a : 0;
         if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
         repeat_ = 0;
+        bar_ = 0;
         nextStep_ = 0;
         untilStep_ = 0.0;
         firstStep_ = true;
@@ -474,15 +480,17 @@ void Engine::apply(const Command& c) {
                 trash_.push(trash);
             }
             for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
-            for (DrumScene& scene : track.drumScenes) {
+            for (int slot = 0; slot < kPatternSlots; ++slot) {
+                DrumScene& scene = track.drumScenes[slot];
                 for (int lane = 0; lane < kDrumLanes; ++lane)
                     for (int step = 0; step < kSteps; ++step) {
                         scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
                         scene.chance[lane][step] = 1.f;
                     }
             }
-            for (auto& scene : track.notes)
-                for (Note& note : scene) note = Note();
+            for (int slot = 0; slot < kPatternSlots; ++slot)
+                for (Note& note : track.notes[slot]) note = Note();
+            for (auto& b : track.bars) b = 1;
             for (double& off : track.offIn) off = kNoNote;
             for (auto& p : track.pendingNotes) p = Track::PendingNote();
             for (auto& lane : track.pending)
@@ -494,7 +502,8 @@ void Engine::apply(const Command& c) {
             const TrackImage& image = *static_cast<TrackImage*>(c.pointer);
             if (validTrack(c.track)) {
                 Track& track = tracks_[c.track];
-                for (int scene = 0; scene < kMaxScenes; ++scene) {
+                for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
+                for (int scene = 0; scene < kPatternSlots; ++scene) {
                     for (int lane = 0; lane < kDrumLanes; ++lane)
                         for (int step = 0; step < kSteps; ++step) {
                             track.drumScenes[scene].level[lane][step] = image.level[scene][lane][step];
@@ -577,10 +586,19 @@ void Engine::firePending() {
 }
 
 // Where the song is once the bar now playing ends.
+// A scene is as long as the longest cell in it.
+int Engine::sceneBars(int scene) const {
+    int bars = 1;
+    for (const Track& track : tracks_)
+        if (track.hasInstrument() && track.bars[scene] > bars) bars = track.bars[scene];
+    return bars;
+}
+
 Engine::Position Engine::afterThisBar() const {
-    if (loopScene_) return {scene_, repeat_};
-    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1};
-    return {(scene_ + 1) % sceneCount_, 0};
+    if (bar_ + 1 < sceneBars(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
+    if (loopScene_) return {scene_, repeat_, 0};
+    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0};
+    return {(scene_ + 1) % sceneCount_, 0, 0};
 }
 
 // Called on the first sample of step `nextStep_`. Hits on the grid play now.
@@ -602,17 +620,20 @@ void Engine::fireStep() {
         const Position next = afterThisBar();
         scene_ = next.scene;
         repeat_ = next.repeat;
+        bar_ = next.bar;
     }
     firstStep_ = false;
 
     const int following = (nextStep_ + 1) % kSteps;
     // An early hit on step 1 belongs to whichever scene the next bar plays.
-    const int followingScene = following == 0 ? afterThisBar().scene : scene_;
+    const Position after = afterThisBar();
+    const int followingScene = following == 0 ? after.scene : scene_;
+    const int followingBar = following == 0 ? after.bar : bar_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
-            const DrumScene& now = track.drumScenes[scene_];
-            const DrumScene& then = track.drumScenes[followingScene];
+            const DrumScene& now = track.drumScenes[slotOf(track, scene_, bar_)];
+            const DrumScene& then = track.drumScenes[slotOf(track, followingScene, followingBar)];
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (now.level[lane][nextStep_] > 0.f && now.nudge[lane][nextStep_] >= 0.f) {
                     schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_);
@@ -626,10 +647,10 @@ void Engine::fireStep() {
             // (fireNoteOffs). Start this step's.
             // A late note waits; an early one belongs to the step after
             // this and is set waiting now, as a drum hit is.
-            for (const Note& note : track.notes[scene_]) {
+            for (const Note& note : track.notes[slotOf(track, scene_, bar_)]) {
                 if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_);
             }
-            for (const Note& note : track.notes[followingScene]) {
+            for (const Note& note : track.notes[slotOf(track, followingScene, followingBar)]) {
                 if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_);
             }
         }
@@ -637,6 +658,7 @@ void Engine::fireStep() {
     playStep_.store(nextStep_, std::memory_order_relaxed);
     playScene_.store(scene_, std::memory_order_relaxed);
     playRepeat_.store(repeat_, std::memory_order_relaxed);
+    playBar_.store(bar_, std::memory_order_relaxed);
     nextStep_ = following;
 }
 

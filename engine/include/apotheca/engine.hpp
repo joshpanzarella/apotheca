@@ -10,8 +10,10 @@
 // sound passes untouched, above it the peaks are rounded off, and nothing
 // ever leaves louder than full scale.
 //
-// A song is up to sixteen scenes. A scene is one bar of sixteen steps for
-// every track, and has a repeat count. Playing a song plays scene 1 its
+// A song is up to sixteen scenes. In a scene each track has a cell of 1 to 8
+// bars of sixteen steps. The scene lasts as long as its longest cell; a
+// shorter cell goes round under it (a one-bar drum loop plays four times
+// under a four-bar part). A scene has a repeat count: whole passes of it. Playing a song plays scene 1 its
 // number of times, then scene 2, and so on, then starts again. A scene can
 // also be looped on its own.
 //
@@ -50,6 +52,8 @@ constexpr float kMinTempo = 40.f;
 constexpr float kMaxTempo = 240.f;
 constexpr int kMaxScenes = 16;
 constexpr int kMaxRepeats = 16;
+constexpr int kMaxBars = 8;       // the longest a cell (one track in one scene) can be
+constexpr int kPatternSlots = kMaxScenes * kMaxBars; // a bar of a scene is slot scene * kMaxBars + bar
 constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
 constexpr int kScopeSize = 1024;  // samples the scope keeps
 constexpr double kNoNote = 1e30;
@@ -81,6 +85,7 @@ struct Command {
                         //   step more (so d = 2, extra = 0.4 is 2.4 steps), value = velocity (0 empties the slot)
         SetSceneCount,  // a = how many scenes the song has (1..16)
         SetSceneRepeats,// scene, a = times it plays (1..16)
+        SetCellBars,    // how long a track's cell is in a scene: track, scene, a = bars (1..8)
         SetMacro,       // a synth track's macro:     track, a = macro, value = 0..1
         SetSetting,     // a synth track's patch:     track, a = setting, b = value
         InstallSynth,   // internal: sent by addSynthTrack()
@@ -94,6 +99,7 @@ struct Command {
     Type type = Trigger;
     int track = 0;
     int scene = 0;
+    int bar = 0;             // which bar of the cell a pattern command writes: 0..7
     int a = 0;
     int b = 0;
     int c = 0;
@@ -107,18 +113,21 @@ struct Command {
 // Everything a track plays, in one piece: for loading a whole song in a
 // handful of commands instead of thousands.
 struct TrackImage {
-    float level[kMaxScenes][kDrumLanes][kSteps] = {};
-    float nudge[kMaxScenes][kDrumLanes][kSteps] = {};
-    float chance[kMaxScenes][kDrumLanes][kSteps];
-    float start[kMaxScenes][kDrumLanes][kSteps] = {};
+    // Indexed by pattern slot: scene * kMaxBars + bar. Slot 0 is scene 1, bar 1.
+    float level[kPatternSlots][kDrumLanes][kSteps] = {};
+    float nudge[kPatternSlots][kDrumLanes][kSteps] = {};
+    float chance[kPatternSlots][kDrumLanes][kSteps];
+    float start[kPatternSlots][kDrumLanes][kSteps] = {};
+    int bars[kMaxScenes]; // how long the track's cell is in each scene
     struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; }; // length in steps, not only whole ones
-    Note notes[kMaxScenes][kMaxNotes];
+    Note notes[kPatternSlots][kMaxNotes];
     float laneLevel[kDrumLanes];
     TrackImage() {
         for (auto& scene : chance)
             for (auto& lane : scene)
                 for (float& c : lane) c = 1.f;
         for (float& l : laneLevel) l = 1.f;
+        for (int& b : bars) b = 1;
     }
 };
 
@@ -168,6 +177,7 @@ public:
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
     int playScene() const { return playScene_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
+    int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
 
     // The scope: the last samples one track put out, after its effects.
     void setScopeTrack(int track) { scopeTrack_.store(track, std::memory_order_relaxed); } // -1: none
@@ -204,8 +214,11 @@ private:
         SampleData* laneSamples[kDrumLanes] = {}; // owned; freed by the control thread
         SampleData* trackSample = nullptr;        // likewise: a sampler's recording
         std::unique_ptr<Instrument> synth; // set on a synth track
-        DrumScene drumScenes[kMaxScenes];
-        Note notes[kMaxScenes][kMaxNotes];
+        // The patterns are large (every bar of every scene), so they live
+        // on the heap: an Engine can then sit on the stack.
+        std::unique_ptr<DrumScene[]> drumScenes{new DrumScene[kPatternSlots]};
+        std::unique_ptr<Note[][kMaxNotes]> notes{new Note[kPatternSlots][kMaxNotes]};
+        std::uint8_t bars[kMaxScenes]; // the cell's length in each scene
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
@@ -213,7 +226,10 @@ private:
         struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0; float velocity = 0.f, length = 0.f; };
         PendingNote pendingNotes[24];
         double offIn[128];
-        Track() { for (double& off : offIn) off = kNoNote; }
+        Track() {
+            for (double& off : offIn) off = kNoNote;
+            for (auto& b : bars) b = 1;
+        }
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
         struct Pending { double samplesLeft = 0.0; float velocity = 0.f, start = 0.f; };
@@ -223,7 +239,9 @@ private:
         std::atomic<float> peak{0.f};
         bool hasInstrument() const { return hasDrums || synth; }
     };
-    struct Position { int scene, repeat; };
+    struct Position { int scene, repeat, bar; };
+    int sceneBars(int scene) const;                 // the longest cell in it
+    int slotOf(const Track& track, int scene, int bar) const { return scene * kMaxBars + bar % track.bars[scene]; }
     void fireNoteOffs();
     void firePendingNotes();
     void startNote(Track& track, const Note& note, double delaySamples);
@@ -254,11 +272,13 @@ private:
     int nextStep_ = 0;
     int scene_ = 0;
     int repeat_ = 0;
+    int bar_ = 0;    // the bar of the scene now playing
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
     std::atomic<int> playStep_{-1};
     std::atomic<int> playScene_{-1};
     std::atomic<int> playRepeat_{0};
+    std::atomic<int> playBar_{0};
     // The gate at the very end of the chain, for Panic.
     enum class Gate { Open, Closing, Shut, Opening };
     Gate gate_ = Gate::Open;
