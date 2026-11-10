@@ -160,8 +160,10 @@ anything while playing. Until it is ready the lane plays what it had.
 - **Ten seconds** of each is used.
 - The song file keeps each lane's file by name and each hit's start. If the
   file is not on the card, the lane plays its drum and says so.
-- The stretch is my own (`app/stretch.hpp` says how it works). It suits drums
-  and loops. Held notes and voices stretched a long way pick up a flutter.
+- The stretching is done by **Signalsmith Stretch** (MIT licence, in
+  `third_party/signalsmith`). A recording too short for it, under about a
+  tenth of a second, is done by a simpler method of our own
+  (`app/stretch.hpp` says how both are used).
 
 ### PATTERN, a synth
 
@@ -282,10 +284,11 @@ engine/   the audio engine. No SDL, no device code, so it tests on its own.
 app/      window, audio device, buttons, and the screens. Talks to the
           engine through commands. app.hpp ties the screens together.
 tests/    engine tests, and screen tests that press the buttons.
-third_party/  stb_truetype, which reads the font (public domain), and
+third_party/  stb_truetype, which reads the font (public domain);
           easycz, the engine behind Phazed, copied unchanged from
           joshpanzarella/schwung-easycz (MIT, with a BSD-3-Clause chip
-          emulation from MAME).
+          emulation from MAME); and signalsmith, which stretches
+          recordings to fit the tempo (MIT).
 tools/    render_demo, which renders a short piece to a WAV file.
 cmake/    cross-compile settings.
 scripts/  the handheld build and the port launcher.

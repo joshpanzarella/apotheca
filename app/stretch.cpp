@@ -46,4 +46,11 @@ std::vector<float> stretchTo(const std::vector<float>& in, int frames) {
     return out;
 }
 
+std::vector<float> fitTo(const std::vector<float>& in, int frames, float sampleRate) {
+    if (frames > 0 && static_cast<int>(in.size()) == frames) return in;
+    std::vector<float> out;
+    if (stretchSmooth(in, frames, sampleRate, out)) return out;
+    return stretchTo(in, frames); // too short for that, or nothing to stretch
+}
+
 } // namespace apotheca

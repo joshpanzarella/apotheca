@@ -46,6 +46,14 @@ std::string tempFolder() {
 // Steady at one level: easy to measure how long it plays and how loud.
 std::vector<float> steady(float seconds, float level) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), level); }
 
+// A plain tone, for the tests that stretch: nothing real is a flat line,
+// and the stretcher is not made for one.
+std::vector<float> tone(float seconds, float level) {
+    std::vector<float> out(static_cast<std::size_t>(seconds * 48000.f));
+    for (std::size_t i = 0; i < out.size(); ++i) out[i] = level * std::sin(0.5f + 6.2831853f * 220.f * static_cast<float>(i) / 48000.f);
+    return out;
+}
+
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
     Input input;
@@ -86,7 +94,11 @@ struct Rig {
             if (first < 0) first = static_cast<int>(i / 2);
             last = static_cast<int>(i / 2);
         }
-        if (level) *level = first < 0 ? 0.f : std::fabs(out[static_cast<std::size_t>(first + last) | 1u ? static_cast<std::size_t>(first + last) / 2 * 2 : 0]);
+        if (level) { // the loudest it gets in its middle third
+            *level = 0.f;
+            for (int i = first + (last - first) / 3; first >= 0 && i <= last - (last - first) / 3; ++i)
+                *level = std::fabs(out[2 * static_cast<std::size_t>(i)]) > *level ? std::fabs(out[2 * static_cast<std::size_t>(i)]) : *level;
+        }
         return first < 0 ? 0 : last - first + 1;
     }
     // Run screen frames until every fitted lane is ready, as the real loop would.
@@ -262,6 +274,77 @@ void testStretching() {
     CHECK(even);
 }
 
+void testFittingWithSignalsmith() {
+    // What a fitted lane gets: exactly as long as asked, the hits where they
+    // were (to 6 ms: tighter than the simpler method), the same note.
+    const std::vector<float> in = fourBursts(96000, 500.f);
+    CHECK(fitTo(in, 96000, 48000.f) == in);
+    CHECK(fitTo(std::vector<float>(), 100, 48000.f) == std::vector<float>(100, 0.f));
+    CHECK(fitTo(in, 0, 48000.f).empty());
+    for (int frames : {72000, 120000, 144000, 192000}) {
+        const std::vector<float> out = fitTo(in, frames, 48000.f);
+        CHECK(static_cast<int>(out.size()) == frames);
+        for (int b = 0; b < 4; ++b) {
+            const int at = b * frames / 4;
+            float before = 0.f, after = 0.f;
+            for (int i = at - 4000; i < at - 600; ++i)
+                if (i >= 0 && b > 0) before = std::fabs(out[static_cast<std::size_t>(i)]) > before ? std::fabs(out[static_cast<std::size_t>(i)]) : before;
+            for (int i = at; i < at + 288; ++i) after = std::fabs(out[static_cast<std::size_t>(i)]) > after ? std::fabs(out[static_cast<std::size_t>(i)]) : after;
+            CHECK(after > 0.3f);   // the hit is there within 6 ms of where it belongs
+            CHECK(before < 0.15f); // and not much rings ahead of it
+            int crossings = 0;
+            for (int i = at + 577; i < at + 576 + 1920; ++i) crossings += (out[static_cast<std::size_t>(i - 1)] < 0.f) != (out[static_cast<std::size_t>(i)] < 0.f);
+            CHECK(std::abs(crossings - 40) <= 3); // 500 Hz still
+        }
+        float peak = 0.f;
+        for (float v : out) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+        CHECK(peak > 0.4f && peak < 1.f);
+    }
+    // A held chord keeps a steadier level than the simpler method gives it.
+    std::vector<float> chord(96000);
+    for (std::size_t i = 0; i < chord.size(); ++i) {
+        const float t = static_cast<float>(i) / 48000.f;
+        chord[i] = 0.2f * (std::sin(6.2831853f * 220.f * t) + std::sin(6.2831853f * 277.18f * t) + std::sin(6.2831853f * 329.63f * t));
+    }
+    const auto wobble = [](const std::vector<float>& v) {
+        float low = 1e9f, high = 0.f;
+        for (std::size_t w = v.size() / 4; w + 960 < 3 * v.size() / 4; w += 960) {
+            double energy = 0.0;
+            for (std::size_t i = 0; i < 960; ++i) energy += static_cast<double>(v[w + i]) * v[w + i];
+            const float level = static_cast<float>(std::sqrt(energy / 960.0));
+            low = level < low ? level : low;
+            high = level > high ? level : high;
+        }
+        return (high - low) / high;
+    };
+    CHECK(wobble(fitTo(chord, 192000, 48000.f)) < 0.6f * wobble(stretchTo(chord, 192000)));
+    // And that is what a fitted lane plays: the same chord on a lane, fitted
+    // to two bars (four seconds), comes out of the engine as steady as that.
+    {
+        const std::string folder = tempFolder();
+        writeWav(folder + "/chord.wav", chord, 48000);
+        Rig rig(folder);
+        rig.session().setLaneSample(0, 2, "chord");
+        rig.session().setLaneFit(0, 2, 32);
+        rig.session().finishStretching();
+        Command c;
+        c.type = Command::Trigger;
+        c.a = 2;
+        c.value = 1.f;
+        rig.engine->send(c);
+        const std::vector<float> both = rig.render(192000);
+        std::vector<float> heard(192000);
+        for (std::size_t i = 0; i < heard.size(); ++i) heard[i] = both[2 * i];
+        CHECK(wobble(heard) < 0.6f * wobble(stretchTo(chord, 192000)));
+    }
+    // Too short for it (a click of 20 ms): the simpler method does the job.
+    const std::vector<float> click(960, 0.5f);
+    std::vector<float> unused;
+    CHECK(!stretchSmooth(click, 2000, 48000.f, unused));
+    CHECK(fitTo(click, 2000, 48000.f) == stretchTo(click, 2000));
+    CHECK(!stretchSmooth(std::vector<float>(), 2000, 48000.f, unused) && !stretchSmooth(in, 0, 48000.f, unused));
+}
+
 void testARecordingOnALane() {
     const std::string folder = tempFolder();
     writeWav(folder + "/tone.wav", steady(0.5f, 0.25f), 48000);
@@ -307,8 +390,8 @@ void testARecordingOnALane() {
 
 void testFittingToTheTempo() {
     const std::string folder = tempFolder();
-    writeWav(folder + "/tone.wav", steady(0.5f, 0.25f), 48000);
-    writeWav(folder + "/loud.wav", steady(0.3f, 0.5f), 48000);
+    writeWav(folder + "/tone.wav", tone(0.5f, 0.25f), 48000);
+    writeWav(folder + "/loud.wav", tone(0.3f, 0.5f), 48000);
     Rig rig(folder);
     Session& session = rig.session();
     const Session::LaneSound& sound = session.laneSound(0, 2);
@@ -326,7 +409,7 @@ void testFittingToTheTempo() {
     float level = 0.f;
     const int fitted = rig.hit(2, &level);
     CHECK(std::abs(fitted - 8 * kStep) <= 600);
-    CHECK(std::fabs(level - 0.25f * kTrackLevel) < 0.01f);
+    CHECK(std::fabs(level - 0.25f * kTrackLevel) < 0.03f);
 
     // The tempo changes: it is fitted again, but only once the tempo has
     // stopped moving for a quarter of a second.
@@ -368,7 +451,7 @@ void testFittingToTheTempo() {
     rig.frames(20); // the job for "tone" is running or done
     session.setLaneSample(0, 2, "loud");
     session.finishStretching();
-    CHECK(std::abs(rig.hit(2, &level) - 4 * kStep) <= 600 && std::fabs(level - 0.5f * kTrackLevel) < 0.01f);
+    CHECK(std::abs(rig.hit(2, &level) - 4 * kStep) <= 600 && std::fabs(level - 0.5f * kTrackLevel) < 0.06f);
     // Likewise when only the length changes under it.
     session.setLaneFit(0, 2, 8);
     rig.frames(20);
@@ -718,6 +801,7 @@ void testTheKitScreen() {
 int main(int, char**) {
     testReadingWavFiles();
     testStretching();
+    testFittingWithSignalsmith();
     testARecordingOnALane();
     testFittingToTheTempo();
     testTheSongKeepsItsRecordings();

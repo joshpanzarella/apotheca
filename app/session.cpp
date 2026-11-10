@@ -436,7 +436,7 @@ void Session::startJob(int track, int lane) {
     // A step is a sixteenth note: a quarter of a beat.
     job->frames = static_cast<int>(std::lround(project.tracks[track].laneFit[lane] * 15.0 / steadyTempo_ * kSampleRate));
     job->thread = std::thread([job] {
-        job->out = stretchTo(*job->in, job->frames);
+        job->out = fitTo(*job->in, job->frames, kSampleRate);
         job->done.store(true);
     });
 }

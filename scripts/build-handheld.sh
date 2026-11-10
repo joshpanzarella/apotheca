@@ -85,6 +85,8 @@ mkdir -p "$pack/apotheca/licences"
 cp "$here/third_party/easycz/LICENSE" "$pack/apotheca/licences/phazed-engine-LICENSE.txt"
 cp "$here/third_party/easycz/THIRD_PARTY_LICENSES.md" "$pack/apotheca/licences/phazed-engine-third-party.md"
 mv "$pack/apotheca/routed-gothic-LICENSE.txt" "$pack/apotheca/licences/"
+cp "$here/third_party/signalsmith/LICENSE-stretch.txt" "$pack/apotheca/licences/signalsmith-stretch-LICENSE.txt"
+cp "$here/third_party/signalsmith/LICENSE-linear.txt" "$pack/apotheca/licences/signalsmith-linear-LICENSE.txt"
 # Chord packs: any JSON file dropped in this folder is picked up.
 mkdir -p "$pack/apotheca/chords"
 cp "$here"/assets/chords/*.json "$pack/apotheca/chords/"
