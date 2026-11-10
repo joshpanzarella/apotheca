@@ -1629,6 +1629,28 @@ static void testCellsOfSeveralBars() {
     CHECK(out[2 * static_cast<std::size_t>(96 * kStep + 10)] != 0.f && out[2 * static_cast<std::size_t>(64 * kStep + 10)] == 0.f);
     stop();
 
+    // A long note runs on over the bar lines: forty steps from the middle of
+    // bar 1 is still sounding all through bar 2 and into bar 3, and then stops.
+    {
+        Command longNote = make(Command::SetNote, 2, 1, 8, 1.f);
+        longNote.c = 72;
+        longNote.d = 40;
+        engine->send(make(Command::SetSetting, 2, sampler::Loop, 1));
+        engine->send(make(Command::SetSetting, 2, sampler::Release, 0));
+        engine->send(longNote);
+        note.b = 15; // the short note out of the way, late in its bar
+        engine->send(note);
+        play(1);
+        out = renderFrames(*engine, 4 * 16 * kStep);
+        for (int stepIndex = 8; stepIndex < 47; ++stepIndex) CHECK(out[2 * static_cast<std::size_t>(stepIndex * kStep + 100)] != 0.f);
+        CHECK(out[2 * static_cast<std::size_t>(48 * kStep + 2000)] == 0.f && out[2 * static_cast<std::size_t>(7 * kStep)] == 0.f);
+        stop();
+        longNote.value = 0.f;
+        engine->send(longNote);
+        note.b = 0;
+        engine->send(note);
+        engine->send(make(Command::SetSetting, 2, sampler::Loop, 0));
+    }
     // Lengths are held to 1..8; a bar that does not exist is not written; no such scene, nothing.
     bars(99, 0, 2);
     play(1);

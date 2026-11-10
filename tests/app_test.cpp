@@ -569,6 +569,208 @@ void testTheKeysScrollAndStopAtTheEnds() {
     CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
 }
 
+// ---- cells longer than a bar --------------------------------------------------------------
+
+void testCellsOfSeveralBars() {
+    Rig rig;
+    Session& session = rig.app.session();
+    SongScreen& song = rig.app.song();
+    PatternScreen& drums = rig.app.drums();
+    TrackData& track = rig.project().tracks[0];
+    session.view = View::Song;
+    song.moveCursorTo(0, 0);
+
+    // Hold A on a cell and go right: 2, 4, 8 bars, and no further. Letting go then does not open it.
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(track.bars[0] == 2);
+    rig.tap(RIGHT, 5);
+    CHECK(track.bars[0] == 8);
+    rig.tap(LEFT);
+    CHECK(track.bars[0] == 4);
+    rig.tap(UP); // up and down are nothing here
+    rig.key(A, false);
+    CHECK(rig.view() == View::Song && track.bars[0] == 4 && song.cursorScene() == 0 && song.cursorColumn() == 0);
+    // The stick does the same, one at once and then slowly.
+    rig.key(A, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    CHECK(track.bars[0] == 2);
+    rig.frames(5);
+    CHECK(track.bars[0] == 2);
+    rig.frames(40);
+    CHECK(track.bars[0] == 1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.key(A, false);
+    CHECK(track.bars[0] == 2 && rig.view() == View::Song);
+    // A plain tap still opens the cell, on its first bar.
+    rig.project().bar = 1;
+    rig.tap(A);
+    CHECK(rig.view() == View::Pattern && rig.project().bar == 0 && rig.project().scene == 0);
+
+    // ---- the drum grid: off the right of step 16 is the next bar ---------------------
+    drums.moveCursorTo(0, 14);
+    rig.tap(RIGHT, 2);
+    CHECK(rig.project().bar == 1 && drums.cursorStep() == 0);
+    rig.tap(A); // a kick on step 1 of bar 2
+    CHECK(track.drums[0][1].level[0][0] == 0.8f && track.drums[0][0].level[0][0] == 0.f);
+    CHECK(drums.level(0, 0) == 0.8f); // the grid shows the bar it is on
+    // Left of step 1 is the lane's name, in whichever bar; left of that, the bar before.
+    rig.tap(LEFT);
+    CHECK(drums.cursorStep() == -1 && rig.project().bar == 1);
+    rig.tap(LEFT);
+    CHECK(drums.cursorStep() == 15 && rig.project().bar == 0);
+    rig.tap(RIGHT);
+    CHECK(drums.cursorStep() == 0 && rig.project().bar == 1);
+    // Off the end of the last bar: the name, and round to the first bar.
+    rig.tap(RIGHT, 16);
+    CHECK(drums.cursorStep() == -1 && rig.project().bar == 0);
+    rig.tap(RIGHT);
+    CHECK(drums.cursorStep() == 0 && rig.project().bar == 0);
+    rig.tap(LEFT, 2);
+    CHECK(drums.cursorStep() == 15 && rig.project().bar == 1); // and back the other way
+    // The engine plays it there: a kick at the start of every second bar.
+    rig.render(100000);
+    rig.tap(START);
+    std::vector<float> out = rig.render(4 * kBar);
+    CHECK(Rig::peak(out, 0, kBar - 100) == 0.f && Rig::peak(out, kBar, kBar + 2000) > 0.2f);
+    CHECK(Rig::peak(out, 2 * kBar, 3 * kBar - 100) < 0.01f && Rig::peak(out, 3 * kBar, 3 * kBar + 2000) > 0.2f);
+    rig.frames(1);
+    CHECK(rig.project().playBar == 1 && rig.project().sceneBars(0) == 2);
+    rig.tap(START);
+    // Gestures work in the bar being shown: nudge, chance, delete.
+    drums.moveCursorTo(0, 0);
+    rig.key(A, true);
+    rig.tap(R2);
+    rig.key(A, false);
+    CHECK(near(track.drums[0][1].nudge[0][0], 0.1f) && track.drums[0][0].nudge[0][0] == 0.f);
+    drums.moveCursorTo(3, 5);
+    rig.tap(A);
+    rig.tap(B);
+    CHECK(track.drums[0][1].level[3][5] == 0.f);
+
+    // ---- a second track, one bar long, goes round under it ---------------------------
+    session.addTrack(TrackKind::Phazed);
+    CHECK(rig.project().tracks[1].bars[0] == 1 && rig.project().sceneBars(0) == 2);
+    // Made longer on the Song screen, it makes the scene longer.
+    session.view = View::Song;
+    song.moveCursorTo(0, 1);
+    rig.key(A, true);
+    rig.tap(RIGHT, 2);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].bars[0] == 4 && rig.project().sceneBars(0) == 4);
+    CHECK(rig.project().sceneBars(1) == 1); // each scene is its own
+
+    // ---- the piano roll: off the bottom is the next bar --------------------------------
+    rig.tap(A);
+    NoteScreen& notes = rig.app.notes();
+    NotePattern* bars = rig.project().tracks[1].notes[0];
+    notes.moveCursorTo(60, 15);
+    rig.tap(DOWN);
+    CHECK(rig.project().bar == 1 && notes.cursorStep() == 0);
+    rig.tap(A);
+    CHECK(bars[1].at(60, 0) >= 0 && bars[0].empty());
+    rig.tap(UP);
+    CHECK(rig.project().bar == 0 && notes.cursorStep() == 15);
+    rig.tap(UP, 16);
+    CHECK(rig.project().bar == 3 && notes.cursorStep() == 15); // round the top to the last bar
+    rig.tap(DOWN);
+    CHECK(rig.project().bar == 0 && notes.cursorStep() == 0);
+    // A note may run on over the bar lines, to the end of the cell and no further.
+    notes.moveCursorTo(64, 8);
+    rig.key(A, true);
+    rig.tap(DOWN, 80);
+    rig.key(A, false);
+    CHECK(bars[0].notes[bars[0].at(64, 8)].length == 56.f); // four bars less the eight steps before it
+    // In bar 3 the same note placed late can only reach the end of the cell.
+    rig.project().bar = 2;
+    notes.moveCursorTo(67, 12);
+    rig.key(A, true);
+    rig.tap(DOWN, 80);
+    rig.key(A, false);
+    CHECK(bars[2].notes[bars[2].at(67, 12)].length == 20.f);
+    // A chord placed near the end of a bar runs on into the next; the cursor follows it there.
+    rig.project().bar = 0;
+    notes.moveCursorTo(60, 14);
+    rig.tap(Y);
+    CHECK(bars[0].chords[bars[0].chordAt(14)].length == 4.f && rig.project().bar == 1 && notes.cursorStep() == 2);
+
+    // Shortened while a later bar is showing: the screen comes back to a bar the cell has.
+    rig.project().bar = 3;
+    session.setCellBars(1, 0, 2);
+    CHECK(rig.project().bar == 1);
+    session.setCellBars(1, 0, 4);
+    rig.project().bar = 3;
+    rig.project().tracks[1].bars[0] = 1; // as when another cell is opened
+    rig.frames(1);
+    CHECK(rig.project().bar == 0);
+    rig.project().tracks[1].bars[0] = 4;
+    // Lengths are 1, 2, 4 or 8, whatever is asked.
+    session.setCellBars(1, 5, 3);
+    CHECK(rig.project().tracks[1].bars[5] == 2);
+    session.setCellBars(1, 5, 99);
+    CHECK(rig.project().tracks[1].bars[5] == 8);
+    session.setCellBars(1, 5, -4);
+    CHECK(rig.project().tracks[1].bars[5] == 1);
+    session.setCellBars(12, 0, 4);
+    session.setCellBars(0, 16, 4);
+
+    // ---- copying and emptying take the whole cell ------------------------------------------
+    session.view = View::Song;
+    song.moveCursorTo(0, 0);
+    rig.key(R1, true);
+    rig.tap(DOWN);
+    rig.key(R1, false);
+    CHECK(track.bars[1] == 2 && track.drums[1][1].level[0][0] == 0.8f && near(track.drums[1][1].nudge[0][0], 0.1f));
+    rig.tap(B); // empty the copy
+    CHECK(track.bars[1] == 1 && track.drums[1][1].empty() && track.sceneEmpty(1));
+    CHECK(track.bars[0] == 2 && track.drums[0][1].level[0][0] == 0.8f);
+    // A cell with something only in a later bar is not "empty": the song runs to it.
+    CHECK(!track.sceneEmpty(0));
+    track.bars[3] = 2;
+    track.drums[3][1].level[2][2] = 0.5f;
+    CHECK(!track.sceneEmpty(3) && rig.project().sceneCount() == 4);
+    track.bars[3] = 1; // that bar is past the cell's end now: kept, not played, not counted
+    CHECK(track.sceneEmpty(3));
+    track.drums[3][1].level[2][2] = 0.f;
+
+    // ---- the song file ------------------------------------------------------------------------
+    const std::string text = songText(rig.project());
+    CHECK(text.find("track drums\nlanes 1 1 1 1 1 1 1 1\nscene 1\nbars 2\nbar 2\nseeds") != std::string::npos);
+    CHECK(text.find("hit 1 1 0.8 0.1 1 0\n") != std::string::npos);
+    CHECK(text.find("scene 1\nbars 4\nnote 9 64 56 0.8\n") != std::string::npos);
+    CHECK(text.find("\nbar 2\nnote 1 60 1 0.8\n") != std::string::npos && text.find("\nbar 3\nnote 13 67 20 0.8\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    CHECK(back->tracks[0].bars[0] == 2 && back->tracks[1].bars[0] == 4 && back->tracks[0].drums[0][1].level[0][0] == 0.8f);
+    // Opened on another handheld it sounds the same as one whose engine was told bar by bar.
+    Rig opened, told;
+    opened.project() = *back;
+    opened.app.session().applyProject();
+    told.app.session().addTrack(TrackKind::Phazed);
+    told.project().tracks[0] = back->tracks[0];
+    told.project().tracks[1] = back->tracks[1];
+    told.app.session().sendDrumPattern(0, 0);
+    told.app.session().sendNotePattern(1, 0);
+    opened.app.session().view = told.app.session().view = View::Pattern;
+    opened.tap(START);
+    told.tap(START);
+    const std::vector<float> a = opened.render(4 * kBar), b = told.render(4 * kBar);
+    CHECK(Rig::peak(a) > 0.05f && a == b);
+    // Lines that make no sense are left out: a bar the cell does not have, a length that is not one.
+    CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nbars 3\nbar 2\nhit 1 1 1\nbar 3\nhit 2 2 1\nbar 9\nhit 3 3 1\nbar 0\nhit 4 4 1\nscene 2\nhit 5 5 1\n", *back));
+    CHECK(back->tracks[0].bars[0] == 2 && back->tracks[0].drums[0][1].level[0][0] == 1.f);
+    CHECK(back->tracks[0].drums[0][2].empty() && back->tracks[0].drums[0][0].empty()); // bars 3, 9 and 0 are not there
+    CHECK(back->tracks[0].drums[1][0].level[4][4] == 1.f && back->tracks[0].bars[1] == 1); // a new scene starts at its first bar
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 9 60 40 1\nscene 2\nbars 2\nnote 9 60 40 1\n", *back));
+    CHECK(back->tracks[0].notes[0][0].notes[0].length == 8.f && back->tracks[0].notes[1][0].notes[0].length == 24.f);
+}
+
 void testNudgingWithTheOuterShoulderButtons() {
     // ---- the piano roll -----------------------------------------------------------
     std::unique_ptr<Rig> rig(onNotes());
@@ -1582,6 +1784,7 @@ int main(int, char**) {
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
+    testCellsOfSeveralBars();
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
