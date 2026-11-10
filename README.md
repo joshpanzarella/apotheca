@@ -53,9 +53,24 @@ key or a gamepad button directly.
 
 ## Build for the handheld
 
-`cmake/toolchain-aarch64.cmake` cross-compiles for the handheld's chip. The
-engine and its tests build with a stock ARM compiler. The app also needs the
-firmware's own SDL2; see the comments in that file.
+```
+scripts/build-handheld.sh
+```
+
+Runs on Linux (needs clang, lld, curl, dpkg-deb, zip). It writes
+`build-handheld/Apotheca-port.zip`:
+
+```
+Apotheca.sh         the launcher the Ports menu shows
+apotheca/apotheca   the program
+```
+
+Unzip it into the firmware's ports folder on the SD card, beside the other
+ports. If it fails to start, the reason is in `apotheca/apotheca.log`.
+
+The program asks the device for only two things: the C library (version 2.27
+or newer) and SDL2. `cmake/toolchain-aarch64.cmake` is a second route, for
+building the engine and its tests alone.
 
 ## Layout
 
@@ -64,6 +79,7 @@ engine/   the audio engine. No SDL, no device code, so it tests on its own.
 app/      window, audio device, buttons. Talks to the engine through commands.
 tests/    engine tests.
 cmake/    cross-compile settings.
+scripts/  the handheld build and the port launcher.
 ```
 
 ## Rules
