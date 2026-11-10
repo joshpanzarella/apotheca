@@ -6,7 +6,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 One drum track that plays. Eight lanes with a built-in kit (made in code, no
-recordings), a 16-step pattern, tempo, and the Pattern screen from the
+recordings, and built to hit hard), a 16-step pattern, tempo, and the Pattern screen from the
 mockups in `docs/screens/`. The engine holds up to twelve tracks, each with
 two effect slots, into a master with two; only track 1 has an instrument so
 far, and no screen reaches the effects yet.
@@ -30,19 +30,29 @@ RG40XXV's own buttons, named as printed on it. The keyboard is only a
 stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
-The Pattern screen:
+The Pattern screen has one rule, so there is nothing to memorise:
 
 | Handheld | Does |
 | --- | --- |
-| D-pad | Move the cursor |
-| A | Place a hit |
-| Hold A + right stick | Set the hit's level. The block fills or drains |
-| Hold A + D-pad up / down | The same, a tenth at a time |
-| B | Delete the hit |
+| D-pad or left stick | Move the cursor. Hold either and it runs |
+| A | Act on what is under the cursor |
+| Hold A + right stick | Turn what is under the cursor. It fills or drains |
+| Hold A + D-pad up / down | The same, in exact steps |
+| B | Remove what is under the cursor |
 | X | Hear the lane |
 | START | Play / stop |
-| SELECT + D-pad | Tempo: up / down by 1, left / right by 10 |
 | SELECT + START | Quit |
+
+The cursor can sit on three kinds of thing:
+
+| Under the cursor | A | Hold A + right stick |
+| --- | --- | --- |
+| A step | Places a hit | That hit's level |
+| A lane's name (left of step 1) | Plays the drum | That drum's volume |
+| The tempo (up from the top lane) | | The tempo |
+
+How fast everything moves is set in one place, `Feel` in
+`app/pattern_screen.hpp`.
 
 Keyboard stand-ins:
 
@@ -54,6 +64,7 @@ Keyboard stand-ins:
 | X | S | | SELECT | Backspace |
 | Y | A | | MENU | Tab |
 | Right stick | I J K L | | (quit, desk only) | Esc |
+| Left stick | T F G H | | | |
 
 The button code lives in `app/input.hpp`. Nothing else in the app may read a
 key or a gamepad button directly.
@@ -97,5 +108,8 @@ scripts/  the handheld build and the port launcher.
   printing inside `Engine::render()` or any `Effect::process()`.
 - **The screen thread talks to the engine only through `Engine::send()`.**
 - **The engine never includes SDL.**
+- **One button and a stick, not a combination.** New controls follow the
+  rule on the Pattern screen: move, A acts, hold A and turn, B removes.
+- **Fast.** Held input runs quickly. Nobody has asked for slower.
 - **Handheld first.** A feature is designed on the handheld's buttons. A
   keyboard key only ever stands in for one of them.

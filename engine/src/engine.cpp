@@ -8,6 +8,15 @@ namespace apotheca {
 namespace {
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 bool validSlot(int slot) { return slot >= 0 && slot < kEffectSlots; }
+
+// The ceiling: untouched up to 0.8, then rounded off toward 1.0.
+float ceiling(float x) {
+    const float knee = 0.8f;
+    const float a = std::fabs(x);
+    if (a <= knee) return x;
+    const float y = knee + (1.f - knee) * std::tanh((a - knee) / (1.f - knee));
+    return x < 0.f ? -y : y;
+}
 } // namespace
 
 Engine::Engine() {
@@ -80,6 +89,9 @@ void Engine::apply(const Command& c) {
         break;
     case Command::SetTrackLevel:
         if (validTrack(c.track) && std::isfinite(c.value)) tracks_[c.track].level = c.value;
+        break;
+    case Command::SetLaneLevel:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
         break;
     case Command::SetEffectParam:
         if (!validSlot(c.a)) break;
@@ -161,8 +173,8 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     }
 
     for (int i = 0; i < frames; ++i) {
-        interleaved[2 * i] = mixL[i];
-        interleaved[2 * i + 1] = mixR[i];
+        interleaved[2 * i] = ceiling(mixL[i]);
+        interleaved[2 * i + 1] = ceiling(mixR[i]);
     }
 }
 

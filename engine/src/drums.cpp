@@ -73,64 +73,90 @@ const char* DrumKit::laneName(int lane) {
     return lane >= 0 && lane < kDrumLanes ? names[lane] : "";
 }
 
+// Drive: pushes a sound into a soft ceiling. The peaks flatten and the body
+// comes up, which is what makes a drum sound loud at the same peak level.
+static float drive(float x, float amount) { return std::tanh(amount * x); }
+
 void DrumKit::buildBuiltIn(float sr) {
-    // Kick: a sine falling from 160 Hz to 46 Hz, with a short click on top.
+    // The kit is built to hit hard: fast pitch drops, a sharp click on the
+    // front of each drum, and every sound driven before it is levelled.
+
+    // Kick: a sine that drops from 250 Hz to 47 Hz in a few milliseconds,
+    // driven hard, with a click in front.
     {
         Noise noise(1);
-        OnePole click(3000.f, sr);
-        samples[0] = make(sr, 0.45f, 0.95f, [&](float t) {
-            const float body = std::sin(kTwoPi * sweepPhase(t, 160.f, 46.f, 0.12f)) * decay(t, 0.42f);
-            return body + 0.25f * click.lowpass(noise.next()) * decay(t, 0.012f);
+        OnePole clickTone(5000.f, sr);
+        samples[0] = make(sr, 0.6f, 0.98f, [&](float t) {
+            const float body = std::sin(kTwoPi * sweepPhase(t, 250.f, 47.f, 0.075f)) * decay(t, 0.7f);
+            const float click = clickTone.lowpass(noise.next()) * decay(t, 0.006f)
+                              + 0.6f * std::sin(kTwoPi * 2900.f * t) * decay(t, 0.004f);
+            return drive(drive(body, 3.5f) + 0.5f * click, 1.4f);
         });
     }
-    // Snare: a short tone with bright noise over it.
+    // Snare: two falling tones for the shell, bright noise for the wires,
+    // and a crack of full-band noise on the front.
     {
         Noise noise(2);
-        OnePole hp(1800.f, sr);
-        samples[1] = make(sr, 0.28f, 0.9f, [&](float t) {
-            const float tone = std::sin(kTwoPi * sweepPhase(t, 240.f, 180.f, 0.05f)) * decay(t, 0.11f);
-            return 0.6f * tone + 0.8f * hp.highpass(noise.next()) * decay(t, 0.2f);
+        OnePole hp(1400.f, sr);
+        samples[1] = make(sr, 0.34f, 0.98f, [&](float t) {
+            const float shell = std::sin(kTwoPi * sweepPhase(t, 340.f, 188.f, 0.04f)) * decay(t, 0.13f)
+                              + 0.5f * std::sin(kTwoPi * sweepPhase(t, 560.f, 290.f, 0.03f)) * decay(t, 0.08f);
+            const float n = noise.next();
+            const float wires = hp.highpass(n) * decay(t, 0.3f);
+            const float crack = n * decay(t, 0.012f);
+            return drive(0.8f * shell + 0.9f * wires + 0.9f * crack, 3.f);
         });
     }
-    // Hats: metal and noise through a highpass. Closed is short, open rings.
+    // Hats: metal and noise above 8 kHz, driven so they cut. Closed is a
+    // tick, open rings.
     {
         Noise noise(3);
-        OnePole hp(7000.f, sr);
-        samples[2] = make(sr, 0.07f, 0.7f, [&](float t) {
-            return hp.highpass(0.6f * metal(t) + 0.5f * noise.next()) * decay(t, 0.05f);
+        OnePole hp(8000.f, sr);
+        samples[2] = make(sr, 0.07f, 0.85f, [&](float t) {
+            return drive(hp.highpass(0.6f * metal(t) + 0.6f * noise.next()) * decay(t, 0.05f), 2.5f);
         });
     }
     {
         Noise noise(4);
-        OnePole hp(7000.f, sr);
-        samples[3] = make(sr, 0.5f, 0.7f, [&](float t) {
-            return hp.highpass(0.6f * metal(t) + 0.5f * noise.next()) * decay(t, 0.45f);
+        OnePole hp(8000.f, sr);
+        samples[3] = make(sr, 0.55f, 0.85f, [&](float t) {
+            return drive(hp.highpass(0.6f * metal(t) + 0.6f * noise.next()) * decay(t, 0.55f), 2.5f);
         });
     }
-    // Clap: three quick bursts of mid noise, then a tail.
+    // Clap: four tight bursts of mid noise, then a wide tail.
     {
         Noise noise(5);
-        OnePole hp(900.f, sr), lp(3500.f, sr);
-        samples[4] = make(sr, 0.3f, 0.85f, [&](float t) {
-            float env = decay(t > 0.03f ? t - 0.03f : 0.f, 0.22f);
-            if (t < 0.03f) env = decay(std::fmod(t, 0.01f), 0.012f);
-            return lp.lowpass(hp.highpass(noise.next())) * env;
+        OnePole hp(700.f, sr), lp(5500.f, sr);
+        samples[4] = make(sr, 0.42f, 0.95f, [&](float t) {
+            float env = decay(t > 0.036f ? t - 0.036f : 0.f, 0.36f);
+            if (t < 0.036f) env = decay(std::fmod(t, 0.009f), 0.011f);
+            return drive(lp.lowpass(hp.highpass(noise.next())) * env, 3.5f);
         });
     }
-    // Tom: like the kick, higher and shorter.
-    samples[5] = make(sr, 0.35f, 0.9f, [&](float t) {
-        return std::sin(kTwoPi * sweepPhase(t, 210.f, 120.f, 0.1f)) * decay(t, 0.3f);
-    });
-    // Rim: two high tones, very short.
-    samples[6] = make(sr, 0.05f, 0.8f, [&](float t) {
-        return (std::sin(kTwoPi * 1720.f * t) + 0.6f * std::sin(kTwoPi * 487.f * t)) * decay(t, 0.03f);
-    });
+    // Tom: the kick's recipe, higher.
+    {
+        Noise noise(6);
+        OnePole clickTone(4000.f, sr);
+        samples[5] = make(sr, 0.45f, 0.95f, [&](float t) {
+            const float body = std::sin(kTwoPi * sweepPhase(t, 300.f, 112.f, 0.07f)) * decay(t, 0.45f);
+            return drive(drive(body, 2.5f) + 0.3f * clickTone.lowpass(noise.next()) * decay(t, 0.005f), 1.3f);
+        });
+    }
+    // Rim: two high tones and a click, very short and very loud.
+    {
+        Noise noise(7);
+        samples[6] = make(sr, 0.06f, 0.95f, [&](float t) {
+            const float tones = std::sin(kTwoPi * 1720.f * t) + 0.7f * std::sin(kTwoPi * 487.f * t);
+            return drive(tones * decay(t, 0.04f) + 0.8f * noise.next() * decay(t, 0.003f), 3.f);
+        });
+    }
     // Crash: the hat recipe, darker and long.
     {
         Noise noise(8);
-        OnePole hp(4000.f, sr);
-        samples[7] = make(sr, 1.4f, 0.7f, [&](float t) {
-            return hp.highpass(0.5f * metal(t * 1.31f) + 0.6f * noise.next()) * decay(t, 1.3f);
+        OnePole hp(3500.f, sr);
+        samples[7] = make(sr, 1.8f, 0.85f, [&](float t) {
+            const float wash = hp.highpass(0.5f * metal(t * 1.31f) + 0.7f * noise.next());
+            return drive(wash * (decay(t, 1.7f) + 0.6f * decay(t, 0.05f)), 2.2f);
         });
     }
 }
@@ -138,6 +164,11 @@ void DrumKit::buildBuiltIn(float sr) {
 void DrumMachine::prepare(float sampleRate) {
     chokeStep_ = 1.f / (0.003f * sampleRate);
     reset();
+}
+
+void DrumMachine::setLaneLevel(int lane, float level) {
+    if (lane < 0 || lane >= kDrumLanes || !(level >= 0.f)) return; // also drops NaN
+    laneLevel_[lane] = level > 1.f ? 1.f : level;
 }
 
 void DrumMachine::reset() {
@@ -170,11 +201,12 @@ void DrumMachine::render(float* left, float* right, int frames) {
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             const std::vector<float>& sample = kit_->samples[lane];
             const int length = static_cast<int>(sample.size());
+            const float laneLevel = laneLevel_[lane];
             for (Voice& v : voices_[lane]) {
                 if (v.position < 0) continue;
                 for (int i = 0; i < frames; ++i) {
                     if (v.position >= length) { v.position = -1; break; }
-                    left[i] += sample[v.position++] * v.gain * v.fade;
+                    left[i] += sample[v.position++] * v.gain * v.fade * laneLevel;
                     if (v.fadeStep > 0.f) {
                         v.fade -= v.fadeStep;
                         if (v.fade <= 0.f) { v.position = -1; break; }

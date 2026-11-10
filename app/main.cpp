@@ -11,6 +11,8 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a pattern already on the grid
 //   --hold-a       with --demo: hold A on a hit, as if adjusting it
+//   --on-name      with --demo: hold A on a lane's name, with its volume turned down
+//   --on-tempo     with --demo: hold A on the tempo
 //   --shot FILE    save the last frame drawn as a BMP picture
 
 #include <SDL.h>
@@ -67,12 +69,14 @@ void fillDemoPattern(PatternScreen& screen) {
 } // namespace
 
 int main(int argc, char** argv) {
-    bool smoke = false, demo = false, holdA = false;
+    bool smoke = false, demo = false, holdA = false, onName = false, onTempo = false;
     const char* shot = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
+        else if (std::strcmp(argv[i], "--on-name") == 0) onName = true;
+        else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     }
 
@@ -152,7 +156,22 @@ int main(int argc, char** argv) {
         pushKey(SDLK_RETURN, true);
         pushKey(SDLK_RETURN, false);
     }
-    if (holdA) {
+    // For stills: put the cursor on a lane's name, or on the tempo, and hold A.
+    if (onName) {
+        screen.moveCursorTo(1, -1);
+        pushKey(SDLK_x, true);
+        pushKey(SDLK_DOWN, true); // A + D-pad down: the drum's volume, a tenth
+        pushKey(SDLK_DOWN, false);
+        pushKey(SDLK_DOWN, true);
+        pushKey(SDLK_DOWN, false);
+        pushKey(SDLK_DOWN, true);
+        pushKey(SDLK_DOWN, false);
+    } else if (onTempo) {
+        screen.moveCursorTo(0, 0);
+        pushKey(SDLK_UP, true);
+        pushKey(SDLK_UP, false);
+        pushKey(SDLK_x, true);
+    } else if (holdA) {
         screen.setStep(screen.cursorLane(), screen.cursorStep(), 0.55f); // part full, so the fill shows
         pushKey(SDLK_x, true);
     }

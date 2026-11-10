@@ -19,7 +19,7 @@ static int failures = 0;
         }                                                                  \
     } while (0)
 
-enum { KICK = 0, SNARE = 1, CL_HAT = 2, OP_HAT = 3, RIM = 6, CRASH = 7 };
+enum { KICK = 0, SNARE = 1, CL_HAT = 2, OP_HAT = 3, TOM = 5, RIM = 6, CRASH = 7 };
 static const int kStep = 6000; // frames in one step at 120 BPM and 48 kHz
 
 static float peakOf(const std::vector<float>& buffer) {
@@ -163,6 +163,95 @@ static void testRetriggerDoesNotClick() {
     CHECK(same);
 }
 
+static void testKitHitsHard() {
+    // Loudness of the first tenth of a second, at nearly the same peak. The
+    // first kit measured 0.36 for the kick and 0.14 for the snare; this one
+    // measures 0.81 and 0.47. Fail if a change gives much of that back.
+    DrumKit kit;
+    kit.buildBuiltIn(48000.f);
+    const auto loudness = [&](int lane) {
+        double sum = 0.0;
+        for (int i = 0; i < 4800; ++i) sum += double(kit.samples[lane][i]) * kit.samples[lane][i];
+        return std::sqrt(sum / 4800.0);
+    };
+    CHECK(loudness(KICK) > 0.7);
+    CHECK(loudness(SNARE) > 0.4);
+    // A kick must start at once: half its peak inside the first 3 ms.
+    float early = 0.f;
+    for (int i = 0; i < 144; ++i) early = std::fmax(early, std::fabs(kit.samples[KICK][i]));
+    CHECK(early > 0.5f);
+    // The snare starts at once too: near full level inside the first millisecond.
+    float crack = 0.f;
+    for (int i = 0; i < 48; ++i) crack = std::fmax(crack, std::fabs(kit.samples[SNARE][i]));
+    CHECK(crack > 0.8f);
+}
+
+static void testCeiling() {
+    // One full hit passes untouched.
+    Engine one;
+    DrumKit kit;
+    kit.buildBuiltIn(48000.f);
+    one.send(trigger(KICK));
+    const std::vector<float> clean = renderFrames(one, 2000);
+    bool untouched = true;
+    for (int i = 0; i < 2000; ++i) untouched = untouched && std::fabs(clean[2 * i] - 0.65f * kit.samples[KICK][i]) < 1e-6f;
+    CHECK(untouched);
+
+    // Everything at once would be far over full scale. It comes out under
+    // it, and still loud.
+    Engine all;
+    for (int lane = 0; lane < kDrumLanes; ++lane) all.send(trigger(lane));
+    const std::vector<float> out = renderFrames(all, 4000);
+    CHECK(peakOf(out) <= 1.f);
+    CHECK(peakOf(out) > 0.9f);
+    // Rounded off, not folded: louder in never means quieter out.
+    Engine two;
+    two.send(trigger(KICK));
+    two.send(trigger(TOM));
+    const std::vector<float> pair = renderFrames(two, 2000);
+    bool keepsOrder = true;
+    for (int i = 0; i < 2000; ++i) {
+        const float in = 0.65f * (kit.samples[KICK][i] + kit.samples[TOM][i]);
+        if (in * pair[2 * i] < 0.f || std::fabs(pair[2 * i]) > std::fabs(in) + 1e-6f) keepsOrder = false;
+    }
+    CHECK(keepsOrder);
+}
+
+static void testLaneLevel() {
+    Engine full, half, muted;
+    half.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.5f));
+    muted.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.f));
+    for (Engine* e : {&full, &half, &muted}) e->send(trigger(SNARE));
+    const std::vector<float> a = renderFrames(full, 3000);
+    const std::vector<float> b = renderFrames(half, 3000);
+    bool halved = true;
+    for (std::size_t i = 0; i < a.size(); ++i) halved = halved && std::fabs(b[i] - 0.5f * a[i]) < 1e-6f;
+    CHECK(halved);
+    CHECK(peakOf(a) > 0.1f);
+    CHECK(peakOf(renderFrames(muted, 3000)) == 0.f);
+
+    // Only that lane.
+    muted.send(trigger(KICK));
+    CHECK(peakOf(renderFrames(muted, 3000)) > 0.1f);
+
+    // It acts on a sound that is already ringing.
+    Engine live;
+    live.send(trigger(CRASH));
+    renderFrames(live, 1000);
+    live.send(make(Command::SetLaneLevel, 0, CRASH, 0, 0.f));
+    CHECK(peakOf(renderFrames(live, 1000)) == 0.f);
+
+    // Nonsense is ignored, and too much is held to full.
+    Engine odd;
+    odd.send(make(Command::SetLaneLevel, 0, -1, 0, 0.f));
+    odd.send(make(Command::SetLaneLevel, 0, kDrumLanes, 0, 0.f));
+    odd.send(make(Command::SetLaneLevel, 0, SNARE, 0, std::nanf("")));
+    odd.send(make(Command::SetLaneLevel, 0, SNARE, 0, -1.f));
+    odd.send(make(Command::SetLaneLevel, 0, SNARE, 0, 7.f));
+    odd.send(trigger(SNARE));
+    CHECK(renderFrames(odd, 3000) == a);
+}
+
 static void testPatternPlaysOnTheExactSample() {
     Engine engine;
     engine.send(step(RIM, 4, 1.f));
@@ -270,8 +359,8 @@ static void testMasterEffectSlots() {
     shaped.send(effectParam(kMasterTrack, 0, 0, 0.5f));
     shaped.send(effectParam(kMasterTrack, 1, 0, 0.5f));
     for (Engine* e : {&plain, &shaped}) {
-        e->send(trigger(KICK));
-        e->send(trigger(CL_HAT));
+        e->send(trigger(KICK, 0.4f)); // quiet enough to stay under the ceiling
+        e->send(trigger(CL_HAT, 0.4f));
     }
     const std::vector<float> a = renderFrames(plain, 2000);
     const std::vector<float> b = renderFrames(shaped, 2000);
@@ -350,6 +439,9 @@ int main() {
     testVelocityIsLinearGain();
     testLanesAreDifferentSounds();
     testRetriggerDoesNotClick();
+    testKitHitsHard();
+    testCeiling();
+    testLaneLevel();
     testPatternPlaysOnTheExactSample();
     testPatternLoopsAfterSixteenSteps();
     testStepVelocityAndClearing();

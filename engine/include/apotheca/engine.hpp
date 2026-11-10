@@ -4,7 +4,11 @@
 //
 // Signal path:
 //   track instrument -> track slot 0 -> track slot 1 -> track level -+
-//   (up to 12)                                                       +-> master slot 0 -> master slot 1 -> out
+//   (up to 12)                                                       +-> master slot 0 -> master slot 1 -> ceiling -> out
+//
+// The ceiling is a soft limit at the very end: below 0.8 of full scale the
+// sound passes untouched, above it the peaks are rounded off, and nothing
+// ever leaves louder than full scale.
 //
 // A new engine has one track with an instrument: track 0, the drums, playing
 // the built-in kit. The other tracks are empty and cost nothing.
@@ -39,7 +43,8 @@ struct Command {
         Stop,           // stop the pattern; sounds already playing ring out
         SetTempo,       // value = beats per minute
         SetTrackLevel,  // track, value = linear gain
-        SetEffectParam  // track (or kMasterTrack), a = slot, b = param, value
+        SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
+        SetLaneLevel    // one drum's volume:         track, a = lane, value = 0..1
     };
     Type type = Trigger;
     int track = 0;
@@ -74,7 +79,7 @@ private:
         bool hasDrums = false;
         DrumMachine drums;
         float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
-        float level = 0.5f; // headroom: several drums landing together must not clip
+        float level = 0.65f; // one full hit stays clean; hits that land together push the master
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
     };

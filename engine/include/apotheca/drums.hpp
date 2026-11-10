@@ -33,6 +33,10 @@ public:
     // ringing on that lane is faded out over a few milliseconds, not cut.
     void trigger(int lane, float velocity);
 
+    // A lane's own volume, 0..1. Takes effect at once, on sounds already
+    // ringing too. Survives reset().
+    void setLaneLevel(int lane, float level);
+
     // Writes `frames` samples (replacing what was there).
     void render(float* left, float* right, int frames);
 
@@ -47,6 +51,7 @@ private:
     const DrumKit* kit_ = nullptr;
     Voice voices_[kDrumLanes][2];
     int next_[kDrumLanes] = {};
+    float laneLevel_[kDrumLanes] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
     float chokeStep_ = 1.f / 144.f; // 3 ms at 48 kHz
 };
 
