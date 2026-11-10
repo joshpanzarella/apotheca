@@ -632,7 +632,10 @@ void testTheBrushSkipsNamesAndTempo() {
     rig.tap(SDLK_RIGHT); // back over the name
     rig.tap(SDLK_RIGHT); // step 1
     CHECK(near(rig.screen.level(0, 0), 0.8f));
-    rig.tap(SDLK_UP); // the tempo
+    rig.listen(40000); // let those ring out
+    rig.tap(SDLK_UP);  // the tempo: nothing is painted from up here
+    CHECK(rig.screen.cursorOnTempo());
+    CHECK(rig.listen() == 0.f);
     rig.tap(SDLK_UP); // round to the bottom lane
     CHECK(near(rig.screen.level(kDrumLanes - 1, 0), 0.8f));
     rig.key(R1, false);
@@ -705,11 +708,13 @@ void testPaintWaitsItsTurn() {
     rig.key(L1, false);
     rig.key(Y, false);
 
-    // Letting go of the other shoulder button does not lift this brush.
+    // With both down, the one pressed last is the brush, and letting go of
+    // the other does not lift it.
     rig.key(R1, true);
-    rig.key(L1, false);
-    CHECK(rig.screen.painting());
+    rig.key(L1, true);
     rig.key(R1, false);
+    CHECK(rig.screen.painting());
+    rig.key(L1, false);
     CHECK(!rig.screen.painting());
 }
 
