@@ -3,8 +3,11 @@
 // stereo samples, so it can be tested on its own.
 //
 // Signal path:
-//   track source -> track slot 0 -> track slot 1 -> track level -+
-//   (x12)                                                        +-> master slot 0 -> master slot 1 -> out
+//   track instrument -> track slot 0 -> track slot 1 -> track level -+
+//   (up to 12)                                                       +-> master slot 0 -> master slot 1 -> out
+//
+// A new engine has one track with an instrument: track 0, the drums, playing
+// the built-in kit. The other tracks are empty and cost nothing.
 //
 // Threads:
 //   - Any ONE other thread calls send(). It never blocks.
@@ -15,6 +18,7 @@
 #include <atomic>
 #include <memory>
 
+#include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
 #include "apotheca/spsc_queue.hpp"
 
@@ -24,14 +28,24 @@ constexpr int kNumTracks = 12;
 constexpr int kEffectSlots = 2;   // per track, and on the master
 constexpr int kMasterTrack = -1;  // "track" index that addresses the master
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
+constexpr float kMinTempo = 40.f;
+constexpr float kMaxTempo = 240.f;
 
 struct Command {
-    enum Type { NoteOn, NoteOff, SetTrackLevel, SetEffectParam };
-    Type type = NoteOn;
-    int track = 0;     // 0..kNumTracks-1, or kMasterTrack for SetEffectParam
-    int a = 0;         // NoteOn: MIDI pitch.  SetEffectParam: slot
-    int b = 0;         // SetEffectParam: param index
-    float value = 0.f; // NoteOn: velocity 0..1.  SetTrackLevel / SetEffectParam: value
+    enum Type {
+        Trigger,        // play a drum lane now:      track, a = lane, value = velocity
+        SetStep,        // write one pattern step:    track, a = lane, b = step, value = velocity (0 clears)
+        Play,           // start the pattern from step 1
+        Stop,           // stop the pattern; sounds already playing ring out
+        SetTempo,       // value = beats per minute
+        SetTrackLevel,  // track, value = linear gain
+        SetEffectParam  // track (or kMasterTrack), a = slot, b = param, value
+    };
+    Type type = Trigger;
+    int track = 0;
+    int a = 0;
+    int b = 0;
+    float value = 0.f;
 };
 
 class Engine {
@@ -49,36 +63,39 @@ public:
     // From the audio thread. Writes `frames` interleaved stereo frames (L R L R ...).
     void render(float* interleaved, int frames);
 
-    // Loudest sample a track produced in the last render() call. For meters.
-    float trackPeak(int track) const;
+    // For the screen. Safe from any thread.
+    float trackPeak(int track) const; // loudest sample in the last render() call
+    int playStep() const { return playStep_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
 
     float sampleRate() const { return sampleRate_; }
 
 private:
-    // Stand-in sound source until the sampler exists: a decaying sine.
-    struct Voice {
-        float phase = 0.f;
-        float increment = 0.f;
-        float amplitude = 0.f;
-        float decay = 1.f;
-        bool held = false;
-    };
-
     struct Track {
-        Voice voice;
-        float level = 0.8f;
+        bool hasDrums = false;
+        DrumMachine drums;
+        float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
+        float level = 0.5f; // headroom: several drums landing together must not clip
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
     };
 
     void apply(const Command& command);
+    void fireStep();
     void renderChunk(float* interleaved, int frames, float* peaks);
 
     float sampleRate_ = 48000.f;
-    float heldDecay_ = 1.f;
-    float releaseDecay_ = 1.f;
+    DrumKit builtInKit_;
     Track tracks_[kNumTracks];
     std::unique_ptr<Effect> masterEffects_[kEffectSlots];
+
+    // The step clock. Steps are sixteenth notes.
+    bool playing_ = false;
+    float tempo_ = 120.f;
+    double samplesPerStep_ = 6000.0;
+    double untilStep_ = 0.0; // samples left before the next step fires
+    int nextStep_ = 0;
+    std::atomic<int> playStep_{-1};
+
     SpscQueue<Command, 256> commands_;
 };
 

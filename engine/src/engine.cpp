@@ -6,25 +6,22 @@
 namespace apotheca {
 
 namespace {
-constexpr float kTwoPi = 6.2831853f;
-
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 bool validSlot(int slot) { return slot >= 0 && slot < kEffectSlots; }
-
-// Per-sample multiplier that falls to 1/1000 (-60 dB) in `seconds`.
-float decayFor(float seconds, float sampleRate) {
-    return std::exp(-6.9077553f / (seconds * sampleRate));
-}
 } // namespace
 
-Engine::Engine() { prepare(48000.f); }
+Engine::Engine() {
+    tracks_[0].hasDrums = true;
+    prepare(48000.f);
+}
 
 void Engine::prepare(float sampleRate) {
     sampleRate_ = sampleRate;
-    heldDecay_ = decayFor(2.0f, sampleRate);
-    releaseDecay_ = decayFor(0.08f, sampleRate);
+    samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
+    builtInKit_.buildBuiltIn(sampleRate);
     for (Track& track : tracks_) {
-        track.voice = Voice();
+        track.drums.setKit(&builtInKit_);
+        track.drums.prepare(sampleRate);
         for (auto& effect : track.effects) {
             if (effect) {
                 effect->prepare(sampleRate);
@@ -58,21 +55,27 @@ float Engine::trackPeak(int track) const {
 
 void Engine::apply(const Command& c) {
     switch (c.type) {
-    case Command::NoteOn:
-        if (validTrack(c.track)) {
-            Voice& v = tracks_[c.track].voice;
-            const float hz = 440.f * std::pow(2.f, (static_cast<float>(c.a) - 69.f) / 12.f);
-            v.phase = 0.f;
-            v.increment = hz / sampleRate_;
-            v.amplitude = std::isfinite(c.value) ? c.value : 0.f;
-            v.decay = heldDecay_;
-            v.held = true;
+    case Command::Trigger:
+        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value);
+        break;
+    case Command::SetStep:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
+            tracks_[c.track].pattern[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
-    case Command::NoteOff:
-        if (validTrack(c.track)) {
-            tracks_[c.track].voice.held = false;
-            tracks_[c.track].voice.decay = releaseDecay_;
+    case Command::Play:
+        playing_ = true;
+        nextStep_ = 0;
+        untilStep_ = 0.0;
+        break;
+    case Command::Stop:
+        playing_ = false;
+        playStep_.store(-1, std::memory_order_relaxed);
+        break;
+    case Command::SetTempo:
+        if (std::isfinite(c.value)) {
+            tempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
+            samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
         }
         break;
     case Command::SetTrackLevel:
@@ -89,13 +92,36 @@ void Engine::apply(const Command& c) {
     }
 }
 
+void Engine::fireStep() {
+    for (Track& track : tracks_) {
+        if (!track.hasDrums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            const float velocity = track.pattern[lane][nextStep_];
+            if (velocity > 0.f) track.drums.trigger(lane, velocity);
+        }
+    }
+    playStep_.store(nextStep_, std::memory_order_relaxed);
+    nextStep_ = (nextStep_ + 1) % kSteps;
+}
+
 void Engine::render(float* interleaved, int frames) {
     Command command;
     while (commands_.pop(command)) apply(command);
 
     float peaks[kNumTracks] = {};
     while (frames > 0) {
-        const int chunk = frames < kMaxBlock ? frames : kMaxBlock;
+        int chunk = frames < kMaxBlock ? frames : kMaxBlock;
+        if (playing_) {
+            // A step starts on its exact sample: the chunk ends where the
+            // next step begins.
+            if (untilStep_ <= 0.0) {
+                fireStep();
+                untilStep_ += samplesPerStep_;
+            }
+            const int toStep = static_cast<int>(std::ceil(untilStep_));
+            if (toStep < chunk) chunk = toStep < 1 ? 1 : toStep;
+            untilStep_ -= chunk;
+        }
         renderChunk(interleaved, chunk, peaks);
         interleaved += 2 * chunk;
         frames -= chunk;
@@ -111,17 +137,9 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
 
     for (int t = 0; t < kNumTracks; ++t) {
         Track& track = tracks_[t];
-        Voice& v = track.voice;
+        if (!track.hasDrums) continue; // an empty track costs nothing
 
-        for (int i = 0; i < frames; ++i) {
-            const float s = v.amplitude * std::sin(kTwoPi * v.phase);
-            left[i] = right[i] = s;
-            v.phase += v.increment;
-            if (v.phase >= 1.f) v.phase -= 1.f;
-            v.amplitude *= v.decay;
-        }
-        if (v.amplitude < 1e-6f) v.amplitude = 0.f; // also keeps denormals out
-
+        track.drums.render(left, right, frames);
         for (auto& effect : track.effects) {
             if (effect) effect->process(left, right, frames);
         }

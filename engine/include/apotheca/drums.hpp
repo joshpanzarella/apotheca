@@ -1,0 +1,53 @@
+#pragma once
+// The drum instrument: eight lanes, one sample each, played from a 16-step
+// pattern. No SDL, no files: the built-in kit is made in code.
+
+#include <vector>
+
+namespace apotheca {
+
+constexpr int kDrumLanes = 8;
+constexpr int kSteps = 16;
+
+// Eight mono samples.
+struct DrumKit {
+    std::vector<float> samples[kDrumLanes];
+
+    // Fills every lane with a synthesised sound: kick, snare, closed hat,
+    // open hat, clap, tom, rim, crash. Allocates, so call it off the audio
+    // thread. The same sample rate always gives the same samples.
+    void buildBuiltIn(float sampleRate);
+
+    static const char* laneName(int lane);
+};
+
+// Plays a kit. render() is realtime safe; the kit must outlive the machine
+// and must not change while audio runs.
+class DrumMachine {
+public:
+    void setKit(const DrumKit* kit) { kit_ = kit; }
+    void prepare(float sampleRate);
+    void reset();
+
+    // Start a lane's sample at `velocity` (0..1, linear gain). A sound still
+    // ringing on that lane is faded out over a few milliseconds, not cut.
+    void trigger(int lane, float velocity);
+
+    // Writes `frames` samples (replacing what was there).
+    void render(float* left, float* right, int frames);
+
+private:
+    struct Voice {
+        int position = -1; // -1: silent
+        float gain = 0.f;
+        float fade = 1.f;     // multiplies the gain; falls while choking
+        float fadeStep = 0.f; // 0: not choking
+    };
+
+    const DrumKit* kit_ = nullptr;
+    Voice voices_[kDrumLanes][2];
+    int next_[kDrumLanes] = {};
+    float chokeStep_ = 1.f / 144.f; // 3 ms at 48 kHz
+};
+
+} // namespace apotheca

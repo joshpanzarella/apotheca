@@ -6,6 +6,7 @@
 # Output: build-handheld/Apotheca-port.zip, holding
 #   Apotheca.sh         the launcher the firmware's Ports menu shows
 #   apotheca/apotheca   the program
+#   apotheca/*.ttf      the lettering, and its licence
 #
 # Runs on Linux. Needs clang, lld, curl, dpkg-deb and zip.
 #
@@ -62,12 +63,15 @@ mkdir -p "$pack/apotheca"
 echo "building..."
 clang++ --target=aarch64-linux-gnu --sysroot="$sysroot" -fuse-ld=lld \
     -std=c++17 -O2 -mcpu=cortex-a53 -Wall -Wextra \
-    -I"$here/engine/include" -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
-    "$here/engine/src/engine.cpp" \
-    "$here/app/main.cpp" "$here/app/input.cpp" "$here/app/realtime.cpp" \
+    -Wno-unused-function \
+    -I"$here/engine/include" -I"$here/third_party" -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
+    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" \
+    "$here/app/main.cpp" "$here/app/input.cpp" "$here/app/pattern_screen.cpp" \
+    "$here/app/realtime.cpp" "$here/app/text.cpp" \
     -o "$pack/apotheca/apotheca" \
     -lSDL2 -lpthread -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined
 
+cp "$here/assets/fonts/routed-gothic-narrow.ttf" "$here/assets/fonts/routed-gothic-LICENSE.txt" "$pack/apotheca/"
 cp "$here/scripts/Apotheca.sh" "$pack/Apotheca.sh"
 chmod +x "$pack/Apotheca.sh" "$pack/apotheca/apotheca"
 
