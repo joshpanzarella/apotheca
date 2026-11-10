@@ -16,6 +16,8 @@
 
 #include <memory>
 
+#include "apotheca/instrument.hpp"
+
 namespace apotheca {
 
 namespace phazed {
@@ -63,14 +65,14 @@ struct PhazedPatch {
     int value[phazed::kSettings] = {};
 };
 
-class Phazed {
+class Phazed : public Instrument {
 public:
     // Allocates and builds tables: not for the audio thread.
     Phazed();
-    ~Phazed();
-    bool ok() const { return ok_; }
+    ~Phazed() override;
+    bool ok() const override { return ok_; }
 
-    void prepare(float sampleRate);
+    void prepare(float sampleRate) override;
 
     // The built-in presets, in folders. Names are as shown to the player.
     static int presetCount();
@@ -79,16 +81,16 @@ public:
     static PhazedPatch presetPatch(int index);
 
     // Everything below is realtime safe.
-    void selectPreset(int index); // sounding notes fade out; macros go back to the middle
+    void selectPreset(int index) override; // sounding notes fade out; macros go back to the middle
     int preset() const { return preset_; }
-    void setSetting(int id, int value);     // edit the patch
-    void setMacro(int macro, float value);  // 0..1, 0.5 = as the patch says
-    void noteOn(int note, float velocity);  // MIDI note number; velocity 0..1
-    void noteOff(int note);
-    void allNotesOff();
+    void setSetting(int id, int value) override;     // edit the patch
+    void setMacro(int macro, float value) override;  // 0..1, 0.5 = as the patch says
+    void noteOn(int note, float velocity) override;  // MIDI note number; velocity 0..1
+    void noteOff(int note) override;
+    void allNotesOff() override;
 
     // Writes `frames` samples (replacing what was there).
-    void render(float* left, float* right, int frames);
+    void render(float* left, float* right, int frames) override;
 
 private:
     struct State;

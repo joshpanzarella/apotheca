@@ -37,7 +37,7 @@ Engine::~Engine() {
     // A synth that was sent but never installed (no render() since) is still ours.
     Command command;
     while (commands_.pop(command)) {
-        if (command.type == Command::InstallSynth) delete static_cast<Phazed*>(command.pointer);
+        if (command.type == Command::InstallSynth) delete static_cast<Instrument*>(command.pointer);
     }
 }
 
@@ -86,9 +86,11 @@ bool Engine::addDrumTrack(int track) {
     return true;
 }
 
-bool Engine::addSynthTrack(int track) {
+bool Engine::addSynthTrack(int track, SynthKind kind) {
     if (!validTrack(track) || claimed_[track]) return false;
-    std::unique_ptr<Phazed> synth(new Phazed);
+    std::unique_ptr<Instrument> synth;
+    if (kind == SynthKind::Twin) synth.reset(new Twin);
+    else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
     Command c;
@@ -205,7 +207,7 @@ void Engine::apply(const Command& c) {
     case Command::InstallSynth:
         // addSynthTrack() only sends this for a track it found empty.
         if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) {
-            tracks_[c.track].synth.reset(static_cast<Phazed*>(c.pointer));
+            tracks_[c.track].synth.reset(static_cast<Instrument*>(c.pointer));
         }
         break;
     case Command::InstallDrums:

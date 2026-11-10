@@ -32,7 +32,9 @@
 
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
+#include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
+#include "apotheca/twin.hpp"
 #include "apotheca/spsc_queue.hpp"
 
 namespace apotheca {
@@ -97,7 +99,7 @@ public:
     // instrument; it is there from the next render(). False if the track
     // already has one (or, for the synth, if it could not be built).
     bool addDrumTrack(int track);
-    bool addSynthTrack(int track); // Phazed. Allocates here, never on the audio thread.
+    bool addSynthTrack(int track, SynthKind kind = SynthKind::Phazed); // Allocates here, never on the audio thread.
 
     // From the control thread. Returns false if the queue is full.
     bool send(const Command& command) { return commands_.push(command); }
@@ -130,7 +132,7 @@ private:
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
-        std::unique_ptr<Phazed> synth; // set on a synth track
+        std::unique_ptr<Instrument> synth; // set on a synth track
         DrumScene drumScenes[kMaxScenes];
         Note notes[kMaxScenes][kMaxNotes];
         std::uint8_t stepsLeft[128] = {}; // synth notes sounding from the pattern: steps until each is let go
