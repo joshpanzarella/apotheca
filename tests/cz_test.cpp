@@ -213,8 +213,6 @@ static void testPresetsSoundDifferent() {
     CHECK(sounds.size() == 7);
     for (std::size_t a = 0; a < sounds.size(); ++a)
         for (std::size_t b = 0; b < a; ++b) CHECK(sounds[a] != sounds[b]);
-    // Velocity is off in these presets, as on a CZ-101: soft and hard are the same.
-    // (So the engine passes velocity through; EasyCZ decides what it does.)
 }
 
 static void testChords() {

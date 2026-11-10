@@ -5,7 +5,9 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 ## Status
 
-One drum track that plays. Eight lanes with a built-in kit (made in code, no
+One drum track that plays, and the CZ synth in the engine (no screen for it
+yet: `build/render_demo out.wav` renders drums, a CZ bass and CZ chords to a
+file to listen to). The drums: Eight lanes with a built-in kit (made in code, no
 recordings, and built to hit hard), a 16-step pattern, tempo, and the Pattern screen from the
 mockups in `docs/screens/`. The engine holds up to twelve tracks, each with
 two effect slots, into a master with two; only track 1 has an instrument so
@@ -19,7 +21,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine tests and screen tests
+ctest --test-dir build      # engine, synth and screen tests
 ./build/apotheca            # the app
 ```
 
@@ -122,7 +124,7 @@ apotheca/*.ttf      the lettering, and its licence
 Unzip it into the firmware's ports folder on the SD card, beside the other
 ports. If it fails to start, the reason is in `apotheca/apotheca.log`.
 
-The program asks the device for only two things: the C library (version 2.27
+The program asks the device for only two things: the C library (version 2.29
 or newer) and SDL2. `cmake/toolchain-aarch64.cmake` is a second route, for
 building the engine and its tests alone.
 
@@ -132,7 +134,11 @@ building the engine and its tests alone.
 engine/   the audio engine. No SDL, no device code, so it tests on its own.
 app/      window, audio device, buttons. Talks to the engine through commands.
 tests/    engine tests, and screen tests that press the buttons.
-third_party/  stb_truetype, which reads the font (public domain).
+third_party/  stb_truetype, which reads the font (public domain), and
+          easycz, the CZ synth's engine, copied unchanged from
+          joshpanzarella/schwung-easycz (MIT, with a BSD-3-Clause chip
+          emulation from MAME).
+tools/    render_demo, which renders a short piece to a WAV file.
 cmake/    cross-compile settings.
 scripts/  the handheld build and the port launcher.
 ```

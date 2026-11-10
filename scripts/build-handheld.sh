@@ -61,15 +61,23 @@ rm -rf "$pack"
 mkdir -p "$pack/apotheca"
 
 echo "building..."
-clang++ --target=aarch64-linux-gnu --sysroot="$sysroot" -fuse-ld=lld \
-    -std=c++17 -O2 -mcpu=cortex-a53 -Wall -Wextra \
-    -Wno-unused-function \
-    -I"$here/engine/include" -I"$here/third_party" -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
-    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" \
+flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O2 -mcpu=cortex-a53"
+# EasyCZ's engine is C.
+objects=""
+mkdir -p "$out/obj"
+for c in cz_chorus cz_output cz_presets cz_synth cz_tone upd933; do
+    clang $flags -std=c11 -I"$here/third_party/easycz" -c "$here/third_party/easycz/dsp/$c.c" -o "$out/obj/$c.o"
+    objects="$objects $out/obj/$c.o"
+done
+clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
+    -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
+    -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
+    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" "$here/engine/src/cz.cpp" \
     "$here/app/main.cpp" "$here/app/input.cpp" "$here/app/pattern_screen.cpp" \
     "$here/app/realtime.cpp" "$here/app/text.cpp" \
+    $objects \
     -o "$pack/apotheca/apotheca" \
-    -lSDL2 -lpthread -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined
+    -lSDL2 -lpthread -lm -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined
 
 cp "$here/assets/fonts/routed-gothic-narrow.ttf" "$here/assets/fonts/routed-gothic-LICENSE.txt" "$pack/apotheca/"
 cp "$here/scripts/Apotheca.sh" "$pack/Apotheca.sh"

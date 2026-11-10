@@ -39,6 +39,10 @@ if(APOTHECA_BUILD_TESTS)
   add_test(NAME cz COMMAND cz_test)
 endif()
 
+# Renders a short piece to a WAV file, to hear the engine without the app.
+add_executable(render_demo tools/render_demo.cpp)
+target_link_libraries(render_demo PRIVATE apotheca_engine)
+
 if(APOTHECA_BUILD_APP)
   find_package(SDL2 REQUIRED)
   find_package(Threads REQUIRED)

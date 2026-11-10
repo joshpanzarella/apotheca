@@ -141,15 +141,15 @@ int main(int argc, char** argv) {
     audio.engine = &engine;
 
     SDL_AudioSpec want = {};
-    want.freq = 48000;
+    want.freq = 44100; // the rate the CZ synth is built for; SDL converts if the device differs
     want.format = AUDIO_F32SYS;
     want.channels = 2;
-    want.samples = 256; // about 5 ms at 48 kHz
+    want.samples = 256; // about 6 ms
     want.callback = audioCallback;
     want.userdata = &audio;
     SDL_AudioSpec have = {};
     const SDL_AudioDeviceID device =
-        SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+        SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
     if (!device) {
         std::fprintf(stderr, "could not open audio: %s\n", SDL_GetError());
         SDL_Quit();
