@@ -14,6 +14,9 @@
 //   START              play the song from the cursor's scene
 //   SELECT             the list of songs: start a new one, or open another.
 //                      There is no "save": the song is kept as you go.
+//     X in the list    save a rev: the song as it is now, to come back to.
+//     A on the open song   its revs. A on one goes back to it; where the
+//                      song was is kept as a rev first.
 
 #include <SDL.h>
 
@@ -40,6 +43,8 @@ public:
     int cursorColumn() const { return column_; }
     bool choosing() const { return choosing_; }
     bool listingSongs() const { return listing_; }
+    bool listingRevs() const { return listing_ && revsOpen_; }
+    int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
 
 private:
     static constexpr int kRepeatColumn = -1;
@@ -69,6 +74,11 @@ private:
     bool listing_ = false;  // the list of songs is open
     std::vector<std::string> songs_; // as it was when the list opened, newest first
     int listCursor_ = 0;    // 0 is NEW SONG
+    bool revsOpen_ = false; // ...and inside it, the open song's revs
+    std::vector<int> revs_; // newest first
+    int revCursor_ = 0;     // 0 is SAVE A REV
+    int savedRev_ = 0;      // the rev X just saved, to say so
+    void openRevList();
     bool selectAlone_ = false; // SELECT went down and nothing else has since
 
     bool copying_ = false;  // R1 is held: the brush carries a cell

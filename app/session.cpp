@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <memory>
 
 #include "song_file.hpp"
@@ -247,6 +249,68 @@ bool Session::openSong(const std::string& name) {
     savedText_ = songText(project);
     writeTextFile(folder_ + "/last.txt", songName_ + "\n");
     applyProject();
+    return true;
+}
+
+// ---- revs ---------------------------------------------------------------------------
+// Kept as "<song name>.<number>.rev" in the song folder: the same text as a
+// song file, under a name the song list does not pick up.
+
+std::string Session::revPath(int rev) const { return folder_ + "/" + songName_ + "." + std::to_string(rev) + ".rev"; }
+
+std::vector<int> Session::revs() const {
+    std::vector<int> found;
+    const std::string front = songName_ + ".";
+    if (DIR* dir = folder_.empty() ? nullptr : opendir(folder_.c_str())) {
+        while (const dirent* entry = readdir(dir)) {
+            const std::string file = entry->d_name;
+            if (file.size() <= front.size() + 4 || file.compare(0, front.size(), front) != 0) continue;
+            if (file.compare(file.size() - 4, 4, ".rev") != 0) continue;
+            const std::string number = file.substr(front.size(), file.size() - front.size() - 4);
+            if (number.empty() || number.size() > 6 || number.find_first_not_of("0123456789") != std::string::npos) continue;
+            const int rev = std::atoi(number.c_str());
+            if (rev >= 1) found.push_back(rev);
+        }
+        closedir(dir);
+    }
+    std::sort(found.begin(), found.end(), [](int a, int b) { return a > b; });
+    return found;
+}
+
+int Session::saveRev() {
+    if (folder_.empty()) return 0;
+    saveNow();
+    const std::vector<int> have = revs();
+    const int rev = have.empty() ? 1 : have.front() + 1;
+    return writeTextFile(revPath(rev), songText(project)) ? rev : 0;
+}
+
+std::string Session::revWhen(int rev) const {
+    struct stat info;
+    if (folder_.empty() || stat(revPath(rev).c_str(), &info) != 0) return "";
+    const std::time_t at = info.st_mtime;
+    char text[32] = "";
+    if (const std::tm* local = std::localtime(&at)) std::strftime(text, sizeof text, "%d %b %H:%M", local);
+    for (char& c : text) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+    return text;
+}
+
+bool Session::openRev(int rev) {
+    std::string text;
+    std::unique_ptr<Project> back(new Project);
+    if (folder_.empty() || !readTextFile(revPath(rev), text) || !parseSong(text, *back)) return false;
+    // Keep where the song is now, unless a rev already holds exactly that.
+    const std::string now = songText(project);
+    bool kept = now == songText(*back);
+    for (int other : revs()) {
+        std::string theirs;
+        if (kept) break;
+        kept = readTextFile(revPath(other), theirs) && theirs == now;
+    }
+    if (!kept && saveRev() == 0) return false; // could not keep it: do not throw it away
+    project = *back;
+    applyProject();
+    saveNow();
     return true;
 }
 

@@ -30,9 +30,10 @@ void SongScreen::moveCursorTo(int scene, int column) {
 
 void SongScreen::moveCursor(Button direction) {
     if (listing_) {
-        const int last = static_cast<int>(songs_.size());
-        if (direction == Button::Up && listCursor_ > 0) --listCursor_;
-        if (direction == Button::Down && listCursor_ < last) ++listCursor_;
+        int& cursor = revsOpen_ ? revCursor_ : listCursor_;
+        const int last = static_cast<int>(revsOpen_ ? revs_.size() : songs_.size());
+        if (direction == Button::Up && cursor > 0) --cursor;
+        if (direction == Button::Down && cursor < last) ++cursor;
         return;
     }
     if (choosing_) {
@@ -86,6 +87,12 @@ void SongScreen::pasteHere() {
     if (onCell()) copyCell(copyTrack_, copyScene_, column_, scene_);
 }
 
+void SongScreen::openRevList() {
+    revsOpen_ = true;
+    revs_ = session_.revs();
+    revCursor_ = 0;
+}
+
 void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
 
@@ -96,6 +103,8 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             selectAlone_ = true;
         } else if (selectAlone_ && !choosing_) {
             listing_ = !listing_;
+            revsOpen_ = false;
+            savedRev_ = 0;
             if (listing_) {
                 songs_ = session_.songNames();
                 listCursor_ = 0;
@@ -115,8 +124,31 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             repeating_ = b;
             repeatAt_ = 0;
         }
+        if (b == Button::X) {
+            // Anywhere in the list: keep the song as it is now.
+            savedRev_ = session_.saveRev();
+            if (revsOpen_) openRevList();
+            return;
+        }
+        if (revsOpen_) {
+            if (b == Button::B) revsOpen_ = false; // back to the songs
+            if (b == Button::A && revCursor_ == 0) {
+                savedRev_ = session_.saveRev();
+                openRevList();
+            } else if (b == Button::A) {
+                if (session_.openRev(revs_[static_cast<std::size_t>(revCursor_ - 1)])) {
+                    listing_ = revsOpen_ = false;
+                    scene_ = column_ = top_ = 0;
+                }
+            }
+            return;
+        }
         if (b == Button::B) listing_ = false;
         if (b == Button::A) {
+            if (listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName()) {
+                openRevList(); // the song that is open: its revs
+                return;
+            }
             listing_ = false;
             if (listCursor_ == 0) session_.newSong();
             else session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
@@ -343,12 +375,40 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- the list of songs --------------------------------------------------------
     if (listing_) {
         const int w = 360, rowH = 34, shown = 9, x = (kScreenW - w) / 2, y = 60;
-        const int rows = static_cast<int>(songs_.size()) + 1;
-        const int first = listCursor_ < shown ? 0 : listCursor_ - shown + 1;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, 40 + shown * rowH, kPanel, kLine);
+        char saved[32] = "";
+        if (savedRev_ > 0) std::snprintf(saved, sizeof saved, "REV %d SAVED", savedRev_);
+        if (revsOpen_) {
+            char upper[48];
+            std::snprintf(upper, sizeof upper, "REVS OF %s", session_.songName().c_str());
+            for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
+            fonts.small.draw(r, x + 12.f, y + 12.f, upper, kDim);
+            fonts.small.drawRight(r, x + w - 12.f, y + 12.f, saved, kBrass);
+            const int rows = static_cast<int>(revs_.size()) + 1;
+            const int first = revCursor_ < shown ? 0 : revCursor_ - shown + 1;
+            for (int i = first; i < rows && i < first + shown; ++i) {
+                const int by = y + 32 + (i - first) * rowH;
+                box(r, x + 12, by, w - 24, rowH - 4, kPanel2, kLine);
+                if (i == 0) {
+                    fonts.medium.draw(r, x + 22.f, by + 9.f, "+ SAVE A REV", i == revCursor_ ? kTeal : kText);
+                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "THE SONG AS IT IS NOW", kDim);
+                } else {
+                    const int rev = revs_[static_cast<std::size_t>(i - 1)];
+                    std::snprintf(text, sizeof text, "REV %d", rev);
+                    fonts.medium.draw(r, x + 22.f, by + 9.f, text, i == revCursor_ ? kTeal : kText);
+                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, session_.revWhen(rev).c_str(), kDim);
+                }
+                if (i == revCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
+            }
+            const Hint list[] = {{"STICK", "move"}, {"A", revCursor_ == 0 ? "save a rev" : "go back to this rev"}, {"X", "save a rev"}, {"B", "songs"}};
+            hints(r, fonts, list, 4);
+            return;
+        }
+        const int rows = static_cast<int>(songs_.size()) + 1;
+        const int first = listCursor_ < shown ? 0 : listCursor_ - shown + 1;
         fonts.small.draw(r, x + 12.f, y + 12.f, "SONGS", kDim);
-        fonts.small.drawRight(r, x + w - 12.f, y + 12.f, "KEPT AS YOU GO. NOTHING TO SAVE.", kDim);
+        fonts.small.drawRight(r, x + w - 12.f, y + 12.f, saved[0] ? saved : "KEPT AS YOU GO. NOTHING TO SAVE.", saved[0] ? kBrass : kDim);
         for (int i = first; i < rows && i < first + shown; ++i) {
             const int by = y + 32 + (i - first) * rowH;
             box(r, x + 12, by, w - 24, rowH - 4, kPanel2, kLine);
@@ -360,12 +420,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 std::snprintf(upper, sizeof upper, "%s", name.c_str());
                 for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
                 fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
-                if (name == session_.songName()) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW", kPurple);
+                if (name == session_.songName()) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
             }
             if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
         }
-        const Hint list[] = {{"STICK", "move"}, {"A", listCursor_ == 0 ? "start a new song" : "open"}, {"B", "close"}};
-        hints(r, fonts, list, 3);
+        const bool onOpen = listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName();
+        const Hint list[] = {{"STICK", "move"}, {"A", listCursor_ == 0 ? "start a new song" : onOpen ? "its revs" : "open"}, {"X", "save a rev"}, {"B", "close"}};
+        hints(r, fonts, list, 4);
         return;
     }
 

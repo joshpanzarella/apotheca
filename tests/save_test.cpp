@@ -32,6 +32,7 @@ static int failures = 0;
 namespace {
 
 const int kStep = 6000, kBar = 16 * kStep;
+const SDL_Keycode X = SDLK_s;
 const SDL_Keycode A = SDLK_x, B = SDLK_z, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE, L2 = SDLK_1, UP = SDLK_UP, DOWN = SDLK_DOWN;
 
 std::string tempFolder() {
@@ -436,6 +437,123 @@ void testTheSongListOnScreen() {
     CHECK(bare.project().tracks[0].drums[0].empty());
 }
 
+void testRevs() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Session& session = rig.session();
+    fillSong(rig);
+    rig.project().playing = false;
+    session.saveNow();
+    const std::string name = session.songName();
+    const std::string first = songText(rig.project());
+    const float firstTempo = rig.project().tempo;
+    CHECK(firstTempo != 90.f && firstTempo != 150.f && firstTempo != 77.f);
+
+    // A rev is the song as it is now, in a file of its own.
+    CHECK(session.revs().empty());
+    CHECK(session.saveRev() == 1);
+    CHECK(exists(folder + "/" + name + ".1.rev"));
+    std::string text;
+    CHECK(readTextFile(folder + "/" + name + ".1.rev", text) && text == first);
+    CHECK(!session.revWhen(1).empty() && session.revWhen(2).empty());
+    rig.project().tempo = 90.f;
+    CHECK(session.saveRev() == 2);
+    CHECK(session.revs() == std::vector<int>({2, 1})); // newest first
+    CHECK(readTextFile(folder + "/" + name + ".song", text) && text.find("tempo 90") != std::string::npos); // saving a rev saves the song too
+    CHECK(session.songNames().size() == 1); // revs are not songs
+    // Files that only look like revs are not listed.
+    writeTextFile(folder + "/" + name + ".x.rev", first);
+    writeTextFile(folder + "/" + name + ".0.rev", first);
+    writeTextFile(folder + "/" + name + "..rev", first);
+    writeTextFile(folder + "/" + name + ".1234567.rev", first);
+    writeTextFile(folder + "/someone else.7.rev", first);
+    writeTextFile(folder + "/" + name + ".5.song", first);
+    CHECK(session.revs() == std::vector<int>({2, 1}));
+    std::remove((folder + "/" + name + ".5.song").c_str());
+
+    // Going back: where the song was is kept first, because no rev holds it.
+    rig.project().tempo = 150.f;
+    const std::string third = songText(rig.project());
+    CHECK(session.openRev(1));
+    CHECK(session.revs() == std::vector<int>({3, 2, 1}));
+    CHECK(readTextFile(folder + "/" + name + ".3.rev", text) && text == third);
+    CHECK(songText(rig.project()) == first && rig.project().tempo == firstTempo);
+    CHECK(readTextFile(folder + "/" + name + ".song", text) && text == first); // and the song file follows
+    CHECK(readTextFile(folder + "/" + name + ".1.rev", text) && text == first); // the rev itself is never rewritten
+    CHECK(session.songName() == name);
+    // Now the song is what rev 1 holds: going elsewhere needs no new rev.
+    CHECK(session.openRev(2));
+    CHECK(session.revs().size() == 3 && rig.project().tempo == 90.f);
+    CHECK(session.openRev(2)); // to where it already is
+    CHECK(session.revs().size() == 3);
+    // A rev that is not there, or is not a song: nothing happens.
+    CHECK(!session.openRev(99));
+    writeTextFile(folder + "/" + name + ".9.rev", "not a song");
+    rig.project().tempo = 101.f;
+    CHECK(!session.openRev(9));
+    CHECK(rig.project().tempo == 101.f && session.revs().size() == 4);
+    std::remove((folder + "/" + name + ".9.rev").c_str());
+
+    // The engine goes back too: empty the song, hear nothing, go back, hear them.
+    {
+        std::unique_ptr<Project> blank(new Project);
+        rig.project() = *blank;
+    }
+    session.applyProject();
+    rig.session().view = View::Pattern;
+    rig.tap(START);
+    CHECK(peakOf(rig.render(24000)) < 1e-5f);
+    rig.tap(START);
+    CHECK(session.openRev(1));
+    rig.tap(START);
+    CHECK(peakOf(rig.render(24000)) > 0.01f);
+    rig.tap(START);
+
+    // ---- on screen: SELECT, then X saves one ----------------------------------------
+    rig.session().view = View::Song;
+    const int before = static_cast<int>(session.revs().size());
+    rig.tap(SELECT);
+    rig.tap(X);
+    CHECK(static_cast<int>(session.revs().size()) == before + 1 && rig.app.song().listingSongs());
+    // A on the song that is open shows its revs.
+    rig.tap(DOWN);
+    rig.tap(A);
+    CHECK(rig.app.song().listingRevs() && rig.app.song().listCursor() == 0);
+    CHECK(session.songName() == name);
+    rig.tap(A); // the top row: save a rev
+    CHECK(static_cast<int>(session.revs().size()) == before + 2 && rig.app.song().listingRevs());
+    rig.tap(X); // X does it here as well, and the list shows the new one
+    CHECK(static_cast<int>(session.revs().size()) == before + 3);
+    rig.tap(DOWN, 50);
+    CHECK(rig.app.song().listCursor() == before + 3); // stops at the oldest
+    rig.tap(UP, 50);
+    CHECK(rig.app.song().listCursor() == 0);
+    // B goes back to the songs, not out.
+    rig.tap(B);
+    CHECK(rig.app.song().listingSongs() && !rig.app.song().listingRevs());
+    rig.tap(A);
+    CHECK(rig.app.song().listingRevs());
+    // A on a rev goes back to it and closes the list. The oldest is rev 1.
+    rig.project().tempo = 77.f;
+    rig.tap(DOWN, 50);
+    rig.tap(A);
+    CHECK(!rig.app.song().listingSongs() && rig.project().tempo == firstTempo);
+    CHECK(songText(rig.project()) == first);
+    // SELECT again opens on the songs, not the revs.
+    rig.tap(SELECT);
+    CHECK(rig.app.song().listingSongs() && !rig.app.song().listingRevs());
+    rig.tap(SELECT);
+
+    // Revs belong to their song.
+    session.newSong();
+    CHECK(session.revs().empty());
+    CHECK(session.openSong(name) && session.revs().size() >= 6);
+
+    // With no song folder there is nowhere to keep one.
+    Rig loose;
+    CHECK(loose.session().saveRev() == 0 && loose.session().revs().empty() && !loose.session().openRev(1));
+}
+
 void testNamesDoNotRepeat() {
     const std::string folder = tempFolder();
     Rig rig(folder, 3);
@@ -461,6 +579,7 @@ int main(int, char**) {
     testAnOpenedSongSoundsLikeTheOneSaved();
     testNewSongAndTheList();
     testTheSongListOnScreen();
+    testRevs();
     testNamesDoNotRepeat();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

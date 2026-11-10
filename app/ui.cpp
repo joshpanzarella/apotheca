@@ -152,8 +152,9 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
         const int right = static_cast<int>(bar.tempoNumberRight) - 40, w = 78;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
         sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playStep);
-        std::snprintf(text, sizeof text, "SCENE %d", project.playScene + 1);
-        fonts.small.drawRight(r, right - w - 7.f, textY, text, kPurple);
+        char scene[24];
+        std::snprintf(scene, sizeof scene, "SCENE %d", project.playScene + 1);
+        fonts.small.drawRight(r, right - w - 7.f, textY, scene, kPurple);
     }
     return bar;
 }

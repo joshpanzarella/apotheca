@@ -60,6 +60,17 @@ public:
     bool openSong(const std::string& name);     // likewise
     void saveNow();                             // only writes if something changed
 
+    // ---- revs -------------------------------------------------------------------------
+    // A rev is the song as it was at one moment, kept beside it and never
+    // written to again. Saving is still automatic; a rev is a place to come
+    // back to.
+    int saveRev();                      // returns the new rev's number, or 0 if it could not be kept
+    std::vector<int> revs() const;      // of the open song, newest first
+    std::string revWhen(int rev) const; // "12 NOV 14:05", or "" if it is not there
+    // Go back to a rev. If no rev holds the song as it is now, it is kept
+    // as a new rev first, so going back loses nothing.
+    bool openRev(int rev);
+
     // Tell the engine everything in the project, from nothing.
     void applyProject();
 
@@ -74,6 +85,7 @@ private:
     int sentSceneCount_ = 1;
 
     std::string pathOf(const std::string& name) const;
+    std::string revPath(int rev) const;
     std::string freshName();
     std::string folder_, songName_ = "untitled", savedText_;
     std::uint32_t nameSeed_ = 1;
