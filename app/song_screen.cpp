@@ -132,6 +132,10 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             repeating_ = b;
             repeatAt_ = 0;
         }
+        if (b == Button::L1) {
+            session_.toggleTransfer(lastMs_ * 2654435761u + 12345u); // files over WiFi, on or off
+            return;
+        }
         if (b == Button::X) {
             // Anywhere in the list: keep the song as it is now.
             savedRev_ = session_.saveRev();
@@ -411,7 +415,22 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (listing_) {
         const int w = 360, rowH = 34, shown = 9, x = (kScreenW - w) / 2, y = 60;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
-        box(r, x, y, w, 40 + shown * rowH, kPanel, kLine);
+        box(r, x, y, w, 80 + shown * rowH, kPanel, kLine);
+        {
+            // Files over WiFi: off, or the address to type into a browser.
+            const int ty = y + 42 + shown * rowH;
+            fill(r, x + 12, ty - 6, w - 24, 1, kLine);
+            const bool on = session_.transferOn();
+            fonts.small.draw(r, x + 12.f, static_cast<float>(ty), "L1", kDim);
+            fonts.small.draw(r, x + 34.f, static_cast<float>(ty), on ? "FILES OVER WIFI: ON" : "FILES OVER WIFI: OFF", on ? kTeal : kText);
+            if (on) {
+                const std::string address = session_.transferAddress();
+                if (address[0] == ':') fonts.small.draw(r, x + 12.f, ty + 16.f, "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST.", kBrass);
+                else fonts.small.draw(r, x + 12.f, ty + 16.f, ("OPEN IN A BROWSER:  " + address).c_str(), kBrass);
+            } else {
+                fonts.small.draw(r, x + 12.f, ty + 16.f, "Recordings, chord packs and songs, from a browser.", kDim);
+            }
+        }
         char saved[32] = "";
         if (savedRev_ > 0) std::snprintf(saved, sizeof saved, "REV %d SAVED", savedRev_);
         if (revsOpen_) {

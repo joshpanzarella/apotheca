@@ -353,6 +353,10 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "panic") == 0) {
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
+    } else if (std::strcmp(view, "wifi") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list
+        tapKey(SDLK_q);         // L1: files over WiFi
     } else if (std::strcmp(view, "revs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT

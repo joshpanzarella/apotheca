@@ -14,6 +14,8 @@
 //   START              play the song from the cursor's scene
 //   SELECT             the list of songs: start a new one, or open another.
 //                      There is no "save": the song is kept as you go.
+//     L1 in the list   files over WiFi, on or off. On, it shows an address to
+//                      open in a browser on the same network.
 //     X in the list    save a rev: the song as it is now, to come back to.
 //     Y on the open song   a new name for it (two words, rolled again each press)
 //     hold B on a song     delete it: hold for a second while the row fills.

@@ -14,6 +14,7 @@
 #include "apotheca/engine.hpp"
 #include "chords.hpp"
 #include "recorder.hpp"
+#include "transfer.hpp"
 #include "project.hpp"
 
 namespace apotheca {
@@ -63,7 +64,7 @@ public:
     // There is always at least the built-in pack. The song remembers which
     // one it picks from, by name.
     std::vector<ChordPack> packs;
-    void useChordFolder(const std::string& folder) { packs = loadChordPacks(folder); }
+    void useChordFolder(const std::string& folder) { chordFolder_ = folder; packs = loadChordPacks(folder); }
     int packIndex() const;       // the song's pack; the built-in one if it is not here
     void choosePack(int index);  // wraps round
 
@@ -106,6 +107,13 @@ public:
     const LaneSound& trackSound(int track) const { return sounds_[track][0]; }
     bool stretching() const;  // some lane is still waiting for its fitted version
     void finishStretching();  // wait for them all. For tests, and before leaving.
+
+    // ---- files over WiFi -------------------------------------------------------------
+    // A web page in a browser on the same network: recordings, chord packs
+    // and songs go on and come off (transfer.hpp). Off until turned on.
+    bool toggleTransfer(unsigned seed);  // true if it is now on
+    bool transferOn() const { return transfer_.running(); }
+    std::string transferAddress() const { return transfer_.address(); } // what to type into the browser
 
     // ---- recording -------------------------------------------------------------------
     // Record from the input onto a drum lane, or onto a sampler track (the
@@ -176,6 +184,9 @@ private:
 
     void loadLane(int track, int lane);
     void finishRecording();
+    Transfer transfer_;
+    unsigned seenReceived_ = 0;
+    std::string chordFolder_;
     AudioInput* input_ = nullptr;
     Recorder recorder_;
     Rec rec_ = Rec::Idle;

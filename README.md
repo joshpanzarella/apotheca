@@ -27,7 +27,8 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: getting files on over WiFi, the sound designer web page.
+Not built yet: the sound designer web page, and the handheld making its own
+WiFi hotspot.
 
 ## Build
 
@@ -37,7 +38,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, song, both synths, screens, app, saving, chord and sample tests
+ctest --test-dir build      # engine, song, both synths, screens, app, saving, chord, sample and transfer tests
 ./build/apotheca            # the app
 ```
 
@@ -134,6 +135,29 @@ In the list:
 
 **SELECT + D-pad** sets the tempo from any screen: up / down by 1, left /
 right by 10.
+
+### Files over WiFi
+
+**L1 in the song list** turns it on. The list then shows an address, like
+`192.168.1.23:8080/4821`. Open it in a browser on any computer or phone on
+the same network.
+
+- **Drop files on the page** to send them: recordings (`.wav`), chord packs
+  (`.json`), songs (`.song`). A recording is on the kit screen at once; a
+  chord pack is in the chord button's list on the next frame.
+- **Click a file on the page** to fetch it back: a catch, a recording, a song.
+- The four digits on the end are made up each time it is turned on. A
+  request without them is refused, so someone on the network who has not
+  seen the handheld's screen cannot get in. It is not encryption: use it on
+  a network you trust.
+- Every file is checked before it is kept: a plain name of the right kind
+  (no folders, no `..`), 30 MB at most, and really a WAV, a chord pack or a
+  song. Anything else is refused and nothing is written.
+- It is off until turned on, and off again when Apotheca closes.
+
+The handheld has to be on a WiFi network already (set in the firmware's own
+settings). Making its own hotspot, so no router is needed, is a job for the
+Apotheca-only system image.
 
 ### Revs
 

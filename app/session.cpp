@@ -112,6 +112,12 @@ void Session::update(Uint32 nowMs) {
     project.playRepeat = engine.playRepeat();
     project.silenced = engine.silenced();
 
+    // A chord pack that has just arrived over WiFi is there to pick from at once.
+    if (transfer_.received() != seenReceived_) {
+        seenReceived_ = transfer_.received();
+        if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
+    }
+
     // What has come in from the input goes to the recorder.
     if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
         float block[2048];
@@ -494,6 +500,21 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
     std::snprintf(project.tracks[track].laneSample[lane], sizeof project.tracks[track].laneSample[lane], "%s", name.c_str());
     loadLane(track, lane);
+}
+
+// ---- files over WiFi --------------------------------------------------------------------
+
+bool Session::toggleTransfer(unsigned seed) {
+    if (transfer_.running()) {
+        transfer_.stop();
+        return false;
+    }
+    if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
+    const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
+    // 8080 if it is free (easy to type), else whatever is.
+    const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
+    if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
+    return on;
 }
 
 // ---- recording ------------------------------------------------------------------------
