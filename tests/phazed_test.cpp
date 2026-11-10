@@ -39,9 +39,9 @@ static std::vector<float> renderFrames(Engine& engine, int frames) {
     return out;
 }
 
-static float peakOf(const std::vector<float>& buffer) {
+static float peakOf(const std::vector<float>& buffer, int fromFrame = 0) {
     float peak = 0.f;
-    for (float s : buffer) peak = std::fabs(s) > peak ? std::fabs(s) : peak;
+    for (std::size_t i = 2 * static_cast<std::size_t>(fromFrame); i < buffer.size(); ++i) peak = std::fabs(buffer[i]) > peak ? std::fabs(buffer[i]) : peak;
     return peak;
 }
 
@@ -270,6 +270,178 @@ static void testDrumsAndSynthTogether() {
     CHECK(engine.trackPeak(1) == 0.f);
 }
 
+// ---- patches, settings and macros ---------------------------------------------------
+
+static Command setting(int id, int value) {
+    Command c = make(Command::SetSetting, 1, id);
+    c.b = value;
+    return c;
+}
+static Command macro(int which, float value) { return make(Command::SetMacro, 1, which, value); }
+
+// One note of a preset, with whatever was sent first. Returns the audio.
+struct Played {
+    std::vector<float> held, tail;
+};
+static Played playNote(int preset, const std::vector<Command>& before, int note = 60) {
+    Engine engine;
+    engine.prepare(44100.f);
+    engine.addSynthTrack(1);
+    engine.send(make(Command::SelectPreset, 1, preset));
+    for (const Command& c : before) engine.send(c);
+    renderFrames(engine, 22050); // let the preset change and any chorus fade settle
+    engine.send(make(Command::NoteOn, 1, note, 1.f));
+    Played p;
+    p.held = renderFrames(engine, 22050);
+    engine.send(make(Command::NoteOff, 1, note));
+    p.tail = renderFrames(engine, 22050);
+    return p;
+}
+static double energyOf(const std::vector<float>& v, int fromFrame, int toFrame) {
+    double sum = 0.0;
+    for (int i = 2 * fromFrame; i < 2 * toFrame; ++i) sum += double(v[i]) * v[i];
+    return sum;
+}
+// How bright: the energy of the sample-to-sample changes over the energy itself.
+static double brightnessOf(const std::vector<float>& v) {
+    double changes = 0.0, total = 1e-12;
+    for (std::size_t i = 2; i < v.size(); i += 2) {
+        changes += double(v[i] - v[i - 2]) * (v[i] - v[i - 2]);
+        total += double(v[i]) * v[i];
+    }
+    return changes / total;
+}
+static int firstPresetWhere(bool (*wanted)(const PhazedPatch&)) {
+    for (int i = 0; i < Phazed::presetCount(); ++i) {
+        if (wanted(Phazed::presetPatch(i))) return i;
+    }
+    return -1;
+}
+
+static void testPatchesAreInRange() {
+    using namespace phazed;
+    CHECK(kSettings == 129);
+    CHECK(settingMin(Octave) == -1 && settingMax(Octave) == 1);
+    CHECK(settingMin(Level) == -24 && settingMax(Level) == 6);
+    CHECK(settingMin(lineSetting(0, Wave1)) == 1 && settingMin(lineSetting(1, Wave1)) == 0);
+    CHECK(settingMax(lineSetting(1, Wave2)) == 8 && settingMax(lineSetting(0, AmpKeyFollow)) == 9);
+    CHECK(settingMax(envRate(1, PitchEnv, 7)) == 99 && settingMax(envLevel(0, AmpEnv, 0)) == 99);
+    CHECK(settingMin(envSustain(0, WaveEnv)) == 0 && settingMax(envSustain(0, WaveEnv)) == 8);
+    CHECK(settingMin(envEnd(1, AmpEnv)) == 1 && settingMax(envEnd(1, AmpEnv)) == 8);
+    CHECK(envEnd(1, PitchEnv) == kSettings - 1); // the numbering fills the patch exactly
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        const PhazedPatch patch = Phazed::presetPatch(preset);
+        for (int id = 0; id < kSettings; ++id) {
+            CHECK(patch.value[id] >= settingMin(id) && patch.value[id] <= settingMax(id));
+        }
+    }
+}
+
+static void testAPatchIsTheWholeSound() {
+    // Start on one preset and set every setting to another preset's values,
+    // one at a time. The result must be that other preset, exactly.
+    const int from = 0, to = organPreset();
+    const PhazedPatch target = Phazed::presetPatch(to);
+    std::vector<Command> edits;
+    for (int id = 0; id < phazed::kSettings; ++id) edits.push_back(setting(id, target.value[id]));
+    const Played built = playNote(from, edits);
+    const Played chosen = playNote(to, {});
+    CHECK(built.held == chosen.held);
+    CHECK(built.tail == chosen.tail);
+    CHECK(peakOf(chosen.held) > 0.01f);
+    CHECK(playNote(from, {}).held != chosen.held);
+}
+
+static void testSettingsAreHeldToTheirLimits() {
+    const int preset = organPreset();
+    CHECK(playNote(preset, {setting(phazed::Level, 999)}).held == playNote(preset, {setting(phazed::Level, 6)}).held);
+    CHECK(playNote(preset, {setting(-1, 5), setting(phazed::kSettings, 5)}).held == playNote(preset, {}).held);
+    // The level is the loudness, in decibels: 12 dB down is a quarter.
+    const float loud = peakOf(playNote(preset, {setting(phazed::Level, 0)}).held, 0);
+    const float soft = peakOf(playNote(preset, {setting(phazed::Level, -12)}).held, 0);
+    CHECK(std::fabs(soft / loud - 0.251f) < 0.02f);
+}
+
+static void testMacrosInTheMiddleChangeNothing() {
+    std::vector<Command> middle;
+    for (int m = 0; m < phazed::kMacros; ++m) middle.push_back(macro(m, 0.5f));
+    for (int preset : {0, organPreset(), Phazed::presetCount() - 1}) {
+        CHECK(playNote(preset, middle).held == playNote(preset, {}).held);
+    }
+}
+
+static void testEachMacroDoesItsJob() {
+    using namespace phazed;
+    // A preset that holds its note, with two lines, and one with a moving tone.
+    const int organ = organPreset();
+    const int twoLine = firstPresetWhere([](const PhazedPatch& p) { return p.value[LineSelect] >= 2 && p.value[envSustain(0, AmpEnv)] > 0; });
+    CHECK(twoLine >= 0);
+    const Played plain = playNote(twoLine, {});
+
+    // TONE: up is brighter, down is duller.
+    const double dull = brightnessOf(playNote(twoLine, {macro(Tone, 0.f)}).held);
+    const double bright = brightnessOf(playNote(twoLine, {macro(Tone, 1.f)}).held);
+    CHECK(bright > 1.2 * dull);
+
+    // MOTION changes how the tone moves, so the note is a different sound.
+    CHECK(playNote(twoLine, {macro(Motion, 1.f)}).held != plain.held);
+    CHECK(playNote(twoLine, {macro(Motion, 0.f)}).held != plain.held);
+
+    // ATTACK: up is a slower start, so less sound in the first 30 ms.
+    const double fast = energyOf(playNote(organ, {macro(Attack, 0.f)}).held, 0, 1323);
+    const double slow = energyOf(playNote(organ, {macro(Attack, 1.f)}).held, 0, 1323);
+    CHECK(slow < 0.5 * fast);
+
+    // RELEASE: up is a longer tail after the key is let go.
+    const double shortTail = energyOf(playNote(organ, {macro(Release, 0.f)}).tail, 4410, 22050);
+    const double longTail = energyOf(playNote(organ, {macro(Release, 1.f)}).tail, 4410, 22050);
+    CHECK(longTail > 4.0 * shortTail + 1e-9);
+
+    // DETUNE: the second line moves against the first.
+    CHECK(playNote(twoLine, {macro(Detune, 1.f)}).held != plain.held);
+
+    // VIBRATO: up makes the pitch wobble, even on a sound that had none.
+    const int still = firstPresetWhere([](const PhazedPatch& p) { return p.value[VibratoDepth] == 0 && p.value[envSustain(0, AmpEnv)] > 0; });
+    CHECK(still >= 0);
+    CHECK(playNote(still, {macro(Vibrato, 1.f)}).held != playNote(still, {}).held);
+    CHECK(playNote(still, {macro(Vibrato, 0.f)}).held == playNote(still, {}).held); // none to take away
+
+    // CHORUS: top is on (the two sides differ), bottom is off (they match).
+    const auto sidesDiffer = [](const std::vector<float>& v) {
+        for (std::size_t i = 0; i < v.size(); i += 2) if (v[i] != v[i + 1]) return true;
+        return false;
+    };
+    CHECK(sidesDiffer(playNote(organ, {macro(Chorus, 1.f)}).held));
+    CHECK(!sidesDiffer(playNote(organ, {macro(Chorus, 0.f)}).held));
+
+    // OCTAVE: top is an octave up, bottom an octave down.
+    const int level = firstPresetWhere([](const PhazedPatch& p) { return p.value[Octave] == 0 && p.value[envSustain(0, AmpEnv)] > 0 && p.value[LineSelect] == 0 && p.value[VibratoDepth] == 0; });
+    CHECK(level >= 0);
+    const auto hz = [&](float octaveMacro) {
+        const Played p = playNote(level, {macro(MacroOctave, octaveMacro)}, 69);
+        return 44100.0 / periodOf(std::vector<float>(p.held.begin() + 2 * 8000, p.held.end()), 20, 1200);
+    };
+    const double middle = hz(0.5f);
+    CHECK(std::fabs(1200.0 * std::log2(hz(1.f) / middle) - 1200.0) < 10.0);
+    CHECK(std::fabs(1200.0 * std::log2(hz(0.f) / middle) + 1200.0) < 10.0);
+}
+
+static void testChoosingAPresetClearsTheMacros() {
+    const int preset = organPreset();
+    Engine engine;
+    engine.prepare(44100.f);
+    engine.addSynthTrack(1);
+    engine.send(make(Command::SelectPreset, 1, preset));
+    engine.send(macro(phazed::Attack, 1.f));
+    engine.send(macro(phazed::Tone, 0.f));
+    engine.send(make(Command::SelectPreset, 1, preset)); // choose it again
+    renderFrames(engine, 22050);
+    engine.send(make(Command::NoteOn, 1, 60, 1.f));
+    CHECK(renderFrames(engine, 22050) == playNote(preset, {}).held);
+    // Nonsense macros are ignored.
+    CHECK(playNote(preset, {macro(-1, 1.f), macro(phazed::kMacros, 1.f), macro(phazed::Tone, std::nanf(""))}).held == playNote(preset, {}).held);
+}
+
 // Not a pass or fail: how much processor the synth takes, on this machine.
 static void reportCost() {
     for (int notes : {1, 4, 8}) {
@@ -297,6 +469,12 @@ int main(int argc, char** argv) {
     testPresetsSoundDifferent();
     testChords();
     testDrumsAndSynthTogether();
+    testPatchesAreInRange();
+    testAPatchIsTheWholeSound();
+    testSettingsAreHeldToTheirLimits();
+    testMacrosInTheMiddleChangeNothing();
+    testEachMacroDoesItsJob();
+    testChoosingAPresetClearsTheMacros();
     if (argc > 1 && std::strcmp(argv[1], "--cost") == 0) reportCost();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

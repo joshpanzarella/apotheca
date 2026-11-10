@@ -10,12 +10,18 @@
 // sound passes untouched, above it the peaks are rounded off, and nothing
 // ever leaves louder than full scale.
 //
+// A song is up to sixteen scenes. A scene is one bar of sixteen steps for
+// every track, and has a repeat count. Playing a song plays scene 1 its
+// number of times, then scene 2, and so on, then starts again. A scene can
+// also be looped on its own.
+//
 // A new engine has one track with an instrument: track 0, the drums, playing
 // the built-in kit. The other tracks are empty and cost nothing, until
-// addSynthTrack() puts Phazed, the synth, on one.
+// addDrumTrack() or addSynthTrack() gives one an instrument.
 //
 // Threads:
-//   - Any ONE other thread calls send(). It never blocks.
+//   - ONE control thread (the screen) calls send(), addDrumTrack(),
+//     addSynthTrack() and the read-outs. None of them block.
 //   - The audio thread calls render(). It allocates nothing and takes no lock.
 //   - setTrackEffect()/setMasterEffect()/prepare() are setup calls. Make them
 //     before the audio device starts.
@@ -24,9 +30,9 @@
 #include <cstdint>
 #include <memory>
 
-#include "apotheca/phazed.hpp"
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
+#include "apotheca/phazed.hpp"
 #include "apotheca/spsc_queue.hpp"
 
 namespace apotheca {
@@ -37,94 +43,145 @@ constexpr int kMasterTrack = -1;  // "track" index that addresses the master
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kMinTempo = 40.f;
 constexpr float kMaxTempo = 240.f;
+constexpr int kMaxScenes = 16;
+constexpr int kMaxRepeats = 16;
+constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
+constexpr int kScopeSize = 1024;  // samples the scope keeps
 
 struct Command {
     enum Type {
         Trigger,        // play a drum lane now:      track, a = lane, value = velocity
-        SetStep,        // write one pattern step:    track, a = lane, b = step, value = velocity (0 clears)
-        Play,           // start the pattern from step 1
-        Stop,           // stop the pattern; sounds already playing ring out
+        SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
+        Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
+        Stop,           // stop; drums ring out, synth notes are let go
         SetTempo,       // value = beats per minute
         SetTrackLevel,  // track, value = linear gain
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
-        SetStepNudge,   // move a hit off the grid:   track, a = lane, b = step, value = -0.5..0.5 of a step (negative is early)
-        SetStepChance,  // how likely a hit plays:    track, a = lane, b = step, value = 0..1
-        NoteOn,         // a synth track plays a note: track, a = MIDI note, value = velocity 0..1
-        NoteOff,        //                             track, a = MIDI note
-        SelectPreset    // a synth track's sound:      track, a = preset number
+        SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
+        SetStepChance,  // how likely a hit plays:    track, scene, a = lane, b = step, value = 0..1
+        NoteOn,         // a synth track plays a note now: track, a = MIDI note, value = velocity 0..1
+        NoteOff,        //                                 track, a = MIDI note
+        SelectPreset,   // a synth track's sound:     track, a = preset number
+        SetNote,        // write one note of a synth pattern: track, scene, a = slot (0..63),
+                        //   b = step, c = MIDI note, d = length in steps, value = velocity (0 empties the slot)
+        SetSceneCount,  // a = how many scenes the song has (1..16)
+        SetSceneRepeats,// scene, a = times it plays (1..16)
+        SetMacro,       // a synth track's macro:     track, a = macro, value = 0..1
+        SetSetting,     // a synth track's patch:     track, a = setting, b = value
+        InstallSynth,   // internal: sent by addSynthTrack()
+        InstallDrums    // internal: sent by addDrumTrack()
     };
     Type type = Trigger;
     int track = 0;
+    int scene = 0;
     int a = 0;
     int b = 0;
+    int c = 0;
+    int d = 0;
     float value = 0.f;
+    void* pointer = nullptr; // InstallSynth only
 };
 
 class Engine {
 public:
     Engine();
+    ~Engine();
 
     // Setup calls (not realtime safe).
     void prepare(float sampleRate);
     void setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect);
     void setMasterEffect(int slot, std::unique_ptr<Effect> effect);
-    // Put Phazed on an empty track. Returns false if the track already
-    // has an instrument or the synth could not be built.
-    bool addSynthTrack(int track);
 
-    // From the screen thread. Returns false if the queue is full.
+    // From the control thread, at any time. Give an empty track an
+    // instrument; it is there from the next render(). False if the track
+    // already has one (or, for the synth, if it could not be built).
+    bool addDrumTrack(int track);
+    bool addSynthTrack(int track); // Phazed. Allocates here, never on the audio thread.
+
+    // From the control thread. Returns false if the queue is full.
     bool send(const Command& command) { return commands_.push(command); }
 
     // From the audio thread. Writes `frames` interleaved stereo frames (L R L R ...).
     void render(float* interleaved, int frames);
 
-    // For the screen. Safe from any thread.
+    // Read-outs for the screen. Safe from any thread.
     float trackPeak(int track) const; // loudest sample in the last render() call
-    int playStep() const { return playStep_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
+    int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
+    int playScene() const { return playScene_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
+    int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
+
+    // The scope: the last samples one track put out, after its effects.
+    void setScopeTrack(int track) { scopeTrack_.store(track, std::memory_order_relaxed); } // -1: none
+    void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
 
 private:
+    struct DrumScene {
+        float level[kDrumLanes][kSteps] = {}; // 0 = no hit
+        float nudge[kDrumLanes][kSteps] = {}; // -0.5..0.5 of a step
+        float chance[kDrumLanes][kSteps];     // 0..1, set to 1 in the constructor
+    };
+    struct Note {
+        std::uint8_t step = 0, pitch = 0, length = 0;
+        float velocity = 0.f; // 0 = empty slot
+    };
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
         std::unique_ptr<Phazed> synth; // set on a synth track
-        float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
-        float nudge[kDrumLanes][kSteps] = {};   // -0.5..0.5 of a step
-        float chance[kDrumLanes][kSteps];       // 0..1, set to 1 in the constructor
+        DrumScene drumScenes[kMaxScenes];
+        Note notes[kMaxScenes][kMaxNotes];
+        std::uint8_t stepsLeft[128] = {}; // synth notes sounding from the pattern: steps until each is let go
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
         struct Pending { double samplesLeft = 0.0; float velocity = 0.f; };
         Pending pending[kDrumLanes][2];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
-        bool hasInstrument() const { return hasDrums || synth; }
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
+        bool hasInstrument() const { return hasDrums || synth; }
     };
+    struct Position { int scene, repeat; };
 
     void apply(const Command& command);
+    Position afterThisBar() const;
     void fireStep();
-    void schedule(Track& track, int lane, int step, double delaySamples);
+    void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
     void firePending();
     void clearPending();
+    void letGoOfNotes();
     void renderChunk(float* interleaved, int frames, float* peaks);
 
     float sampleRate_ = 48000.f;
     DrumKit builtInKit_;
     Track tracks_[kNumTracks];
+    bool claimed_[kNumTracks] = {}; // control thread's view of which tracks have an instrument
     std::unique_ptr<Effect> masterEffects_[kEffectSlots];
 
     // The step clock. Steps are sixteenth notes.
     bool playing_ = false;
+    bool loopScene_ = false;
+    bool firstStep_ = true; // the step about to fire is the first since Play
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;
     double untilStep_ = 0.0; // samples left before the next step fires
     int nextStep_ = 0;
+    int scene_ = 0;
+    int repeat_ = 0;
+    int sceneCount_ = 1;
+    int repeats_[kMaxScenes];
     std::atomic<int> playStep_{-1};
+    std::atomic<int> playScene_{-1};
+    std::atomic<int> playRepeat_{0};
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
 
-    SpscQueue<Command, 256> commands_;
+    std::atomic<int> scopeTrack_{-1};
+    std::atomic<float> scope_[kScopeSize];
+    std::atomic<unsigned> scopeWritten_{0};
+
+    SpscQueue<Command, 1024> commands_;
 };
 
 } // namespace apotheca

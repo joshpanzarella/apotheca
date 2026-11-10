@@ -37,6 +37,9 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(phazed_test tests/phazed_test.cpp)
   target_link_libraries(phazed_test PRIVATE apotheca_engine)
   add_test(NAME phazed COMMAND phazed_test)
+  add_executable(song_test tests/song_test.cpp)
+  target_link_libraries(song_test PRIVATE apotheca_engine)
+  add_test(NAME song COMMAND song_test)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

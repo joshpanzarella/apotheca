@@ -8,6 +8,8 @@ namespace apotheca {
 namespace {
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 bool validSlot(int slot) { return slot >= 0 && slot < kEffectSlots; }
+bool validScene(int scene) { return scene >= 0 && scene < kMaxScenes; }
+bool validCell(int lane, int step) { return lane >= 0 && lane < kDrumLanes && step >= 0 && step < kSteps; }
 
 // The ceiling: untouched up to 0.8, then rounded off toward 1.0.
 float ceiling(float x) {
@@ -21,10 +23,22 @@ float ceiling(float x) {
 
 Engine::Engine() {
     for (Track& track : tracks_)
-        for (auto& lane : track.chance)
-            for (float& c : lane) c = 1.f;
+        for (DrumScene& scene : track.drumScenes)
+            for (auto& lane : scene.chance)
+                for (float& c : lane) c = 1.f;
+    for (int& r : repeats_) r = 1;
+    for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
+    claimed_[0] = true;
     prepare(48000.f);
+}
+
+Engine::~Engine() {
+    // A synth that was sent but never installed (no render() since) is still ours.
+    Command command;
+    while (commands_.pop(command)) {
+        if (command.type == Command::InstallSynth) delete static_cast<Phazed*>(command.pointer);
+    }
 }
 
 void Engine::prepare(float sampleRate) {
@@ -62,17 +76,49 @@ void Engine::setMasterEffect(int slot, std::unique_ptr<Effect> effect) {
     masterEffects_[slot] = std::move(effect);
 }
 
+bool Engine::addDrumTrack(int track) {
+    if (!validTrack(track) || claimed_[track]) return false;
+    Command c;
+    c.type = Command::InstallDrums;
+    c.track = track;
+    if (!send(c)) return false;
+    claimed_[track] = true;
+    return true;
+}
+
 bool Engine::addSynthTrack(int track) {
-    if (!validTrack(track) || tracks_[track].hasInstrument()) return false;
+    if (!validTrack(track) || claimed_[track]) return false;
     std::unique_ptr<Phazed> synth(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
-    tracks_[track].synth = std::move(synth);
+    Command c;
+    c.type = Command::InstallSynth;
+    c.track = track;
+    c.pointer = synth.get();
+    if (!send(c)) return false;
+    synth.release(); // the audio thread owns it from here
+    claimed_[track] = true;
     return true;
 }
 
 float Engine::trackPeak(int track) const {
     return validTrack(track) ? tracks_[track].peak.load(std::memory_order_relaxed) : 0.f;
+}
+
+void Engine::readScope(float* out, int count) const {
+    if (count > kScopeSize) count = kScopeSize;
+    const unsigned written = scopeWritten_.load(std::memory_order_relaxed);
+    for (int i = 0; i < count; ++i) {
+        out[i] = scope_[(written - static_cast<unsigned>(count) + static_cast<unsigned>(i)) % kScopeSize].load(std::memory_order_relaxed);
+    }
+}
+
+void Engine::letGoOfNotes() {
+    for (Track& track : tracks_) {
+        if (!track.synth) continue;
+        track.synth->allNotesOff();
+        for (auto& left : track.stepsLeft) left = 0;
+    }
 }
 
 void Engine::apply(const Command& c) {
@@ -81,38 +127,53 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value);
         break;
     case Command::SetStep:
-        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
-            tracks_[c.track].pattern[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[c.scene].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
     case Command::SetStepNudge:
-        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
-            tracks_[c.track].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
+        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[c.scene].nudge[c.a][c.b] = c.value < -0.5f ? -0.5f : (c.value > 0.5f ? 0.5f : c.value);
         }
         break;
     case Command::SetStepChance:
-        if (validTrack(c.track) && c.a >= 0 && c.a < kDrumLanes && c.b >= 0 && c.b < kSteps && std::isfinite(c.value)) {
-            tracks_[c.track].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[c.scene].chance[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
         }
         break;
-    case Command::NoteOn:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
+    case Command::SetNote:
+        if (validTrack(c.track) && validScene(c.scene) && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value)) {
+            Note& note = tracks_[c.track].notes[c.scene][c.a];
+            const bool sound = c.value > 0.f && c.b >= 0 && c.b < kSteps && c.c >= 0 && c.c <= 127 && c.d >= 1;
+            note.velocity = sound ? (c.value > 1.f ? 1.f : c.value) : 0.f;
+            note.step = static_cast<std::uint8_t>(sound ? c.b : 0);
+            note.pitch = static_cast<std::uint8_t>(sound ? c.c : 0);
+            note.length = static_cast<std::uint8_t>(sound ? (c.d > 255 ? 255 : c.d) : 0);
+        }
         break;
-    case Command::NoteOff:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
+    case Command::SetSceneCount:
+        sceneCount_ = c.a < 1 ? 1 : (c.a > kMaxScenes ? kMaxScenes : c.a);
         break;
-    case Command::SelectPreset:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
+    case Command::SetSceneRepeats:
+        if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
     case Command::Play:
         playing_ = true;
+        loopScene_ = c.b != 0;
+        scene_ = validScene(c.a) ? c.a : 0;
+        if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
+        repeat_ = 0;
         nextStep_ = 0;
         untilStep_ = 0.0;
+        firstStep_ = true;
         clearPending();
+        letGoOfNotes();
         break;
     case Command::Stop:
         playing_ = false; // waiting hits only play while playing, and Play clears them
+        letGoOfNotes();
         playStep_.store(-1, std::memory_order_relaxed);
+        playScene_.store(-1, std::memory_order_relaxed);
         break;
     case Command::SetTempo:
         if (std::isfinite(c.value)) {
@@ -125,6 +186,30 @@ void Engine::apply(const Command& c) {
         break;
     case Command::SetLaneLevel:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
+        break;
+    case Command::NoteOn:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
+        break;
+    case Command::NoteOff:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
+        break;
+    case Command::SelectPreset:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
+        break;
+    case Command::SetMacro:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setMacro(c.a, c.value);
+        break;
+    case Command::SetSetting:
+        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
+        break;
+    case Command::InstallSynth:
+        // addSynthTrack() only sends this for a track it found empty.
+        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) {
+            tracks_[c.track].synth.reset(static_cast<Phazed*>(c.pointer));
+        }
+        break;
+    case Command::InstallDrums:
+        if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].hasDrums = true;
         break;
     case Command::SetEffectParam:
         if (!validSlot(c.a)) break;
@@ -144,9 +229,9 @@ void Engine::clearPending() {
 }
 
 // Roll for the hit, then play it now or put it in a waiting slot.
-void Engine::schedule(Track& track, int lane, int step, double delaySamples) {
-    const float velocity = track.pattern[lane][step];
-    const float chance = track.chance[lane][step];
+void Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples) {
+    const float velocity = scene.level[lane][step];
+    const float chance = scene.chance[lane][step];
     if (chance < 1.f) {
         dice_ = dice_ * 1664525u + 1013904223u;
         if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return;
@@ -178,23 +263,58 @@ void Engine::firePending() {
     }
 }
 
+// Where the song is once the bar now playing ends.
+Engine::Position Engine::afterThisBar() const {
+    if (loopScene_) return {scene_, repeat_};
+    if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1};
+    return {(scene_ + 1) % sceneCount_, 0};
+}
+
 // Called on the first sample of step `nextStep_`. Hits on the grid play now.
 // A late hit of this step, and an early hit of the next step, are both
 // somewhere inside the step that is starting, so they are set to wait.
 void Engine::fireStep() {
+    // Step 1 of a new bar: move on through the song (not on the very first
+    // step after Play, which is where the song starts).
+    if (nextStep_ == 0 && !firstStep_) {
+        const Position next = afterThisBar();
+        scene_ = next.scene;
+        repeat_ = next.repeat;
+    }
+    firstStep_ = false;
+
     const int following = (nextStep_ + 1) % kSteps;
+    // An early hit on step 1 belongs to whichever scene the next bar plays.
+    const int followingScene = following == 0 ? afterThisBar().scene : scene_;
+
     for (Track& track : tracks_) {
-        if (!track.hasDrums) continue;
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            if (track.pattern[lane][nextStep_] > 0.f && track.nudge[lane][nextStep_] >= 0.f) {
-                schedule(track, lane, nextStep_, track.nudge[lane][nextStep_] * samplesPerStep_);
+        if (track.hasDrums) {
+            const DrumScene& now = track.drumScenes[scene_];
+            const DrumScene& then = track.drumScenes[followingScene];
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                if (now.level[lane][nextStep_] > 0.f && now.nudge[lane][nextStep_] >= 0.f) {
+                    schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_);
+                }
+                if (then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
+                    schedule(track, lane, then, following, (1.0 + then.nudge[lane][following]) * samplesPerStep_);
+                }
             }
-            if (track.pattern[lane][following] > 0.f && track.nudge[lane][following] < 0.f) {
-                schedule(track, lane, following, (1.0 + track.nudge[lane][following]) * samplesPerStep_);
+        } else if (track.synth) {
+            // Let go of the notes whose time is up, then start this step's.
+            for (int pitch = 0; pitch < 128; ++pitch) {
+                if (track.stepsLeft[pitch] && --track.stepsLeft[pitch] == 0) track.synth->noteOff(pitch);
+            }
+            for (const Note& note : track.notes[scene_]) {
+                if (note.velocity <= 0.f || note.step != nextStep_) continue;
+                if (track.stepsLeft[note.pitch]) track.synth->noteOff(note.pitch); // the same key again
+                track.synth->noteOn(note.pitch, note.velocity);
+                track.stepsLeft[note.pitch] = note.length;
             }
         }
     }
     playStep_.store(nextStep_, std::memory_order_relaxed);
+    playScene_.store(scene_, std::memory_order_relaxed);
+    playRepeat_.store(repeat_, std::memory_order_relaxed);
     nextStep_ = following;
 }
 
@@ -244,6 +364,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     float mixR[kMaxBlock] = {};
     float left[kMaxBlock];
     float right[kMaxBlock];
+    const int scopeTrack = scopeTrack_.load(std::memory_order_relaxed);
 
     for (int t = 0; t < kNumTracks; ++t) {
         Track& track = tracks_[t];
@@ -265,6 +386,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             if (a > peak) peak = a;
         }
         peaks[t] = peak;
+
+        if (t == scopeTrack) {
+            unsigned written = scopeWritten_.load(std::memory_order_relaxed);
+            for (int i = 0; i < frames; ++i) {
+                scope_[written++ % kScopeSize].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+            }
+            scopeWritten_.store(written, std::memory_order_relaxed);
+        }
     }
 
     for (auto& effect : masterEffects_) {
