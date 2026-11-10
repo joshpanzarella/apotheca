@@ -52,7 +52,8 @@ constexpr int kScopeSize = 1024;  // samples the scope keeps
 
 struct Command {
     enum Type {
-        Trigger,        // play a drum lane now:      track, a = lane, value = velocity
+        Trigger,        // play a drum lane now:      track, a = lane, value = velocity,
+                        //   b = where in the sound to start, in ten-thousandths of its length
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
         Stop,           // stop; drums ring out, synth notes are let go
@@ -62,6 +63,7 @@ struct Command {
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
         SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
         SetStepChance,  // how likely a hit plays:    track, scene, a = lane, b = step, value = 0..1
+        SetStepStart,   // where in the sound a hit starts: track, scene, a = lane, b = step, value = 0..1 of its length
         NoteOn,         // a synth track plays a note now: track, a = MIDI note, value = velocity 0..1
         NoteOff,        //                                 track, a = MIDI note
         SelectPreset,   // a synth track's sound:     track, a = preset number
@@ -74,7 +76,8 @@ struct Command {
         InstallSynth,   // internal: sent by addSynthTrack()
         InstallDrums,   // internal: sent by addDrumTrack()
         RemoveInstrument, // internal: sent by removeTrack()
-        SetTrackImage   // internal: sent by setTrackImage()
+        SetTrackImage,  // internal: sent by setTrackImage()
+        SetLaneSample   // internal: sent by setLaneSample()
     };
     Type type = Trigger;
     int track = 0;
@@ -93,6 +96,7 @@ struct TrackImage {
     float level[kMaxScenes][kDrumLanes][kSteps] = {};
     float nudge[kMaxScenes][kDrumLanes][kSteps] = {};
     float chance[kMaxScenes][kDrumLanes][kSteps];
+    float start[kMaxScenes][kDrumLanes][kSteps] = {};
     struct Note { std::uint8_t step = 0, pitch = 0, length = 0; float velocity = 0.f; };
     Note notes[kMaxScenes][kMaxNotes];
     float laneLevel[kDrumLanes];
@@ -125,6 +129,9 @@ public:
     bool removeTrack(int track);
     // Replace every pattern on a track at once.
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
+    // Put a recording on one lane of a drum track in place of the built-in
+    // drum, or nullptr to bring the drum back. False if the track has no drums.
+    bool setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
     void collectGarbage();
@@ -152,6 +159,7 @@ private:
         float level[kDrumLanes][kSteps] = {}; // 0 = no hit
         float nudge[kDrumLanes][kSteps] = {}; // -0.5..0.5 of a step
         float chance[kDrumLanes][kSteps];     // 0..1, set to 1 in the constructor
+        float start[kDrumLanes][kSteps] = {}; // 0..1 of the sound's length
     };
     struct Note {
         std::uint8_t step = 0, pitch = 0, length = 0;
@@ -160,13 +168,14 @@ private:
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
+        SampleData* laneSamples[kDrumLanes] = {}; // owned; freed by the control thread
         std::unique_ptr<Instrument> synth; // set on a synth track
         DrumScene drumScenes[kMaxScenes];
         Note notes[kMaxScenes][kMaxNotes];
         std::uint8_t stepsLeft[128] = {}; // synth notes sounding from the pattern: steps until each is let go
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
-        struct Pending { double samplesLeft = 0.0; float velocity = 0.f; };
+        struct Pending { double samplesLeft = 0.0; float velocity = 0.f, start = 0.f; };
         Pending pending[kDrumLanes][2];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         std::unique_ptr<Effect> effects[kEffectSlots];
@@ -187,7 +196,8 @@ private:
     float sampleRate_ = 48000.f;
     DrumKit builtInKit_;
     Track tracks_[kNumTracks];
-    bool claimed_[kNumTracks] = {}; // control thread's view of which tracks have an instrument
+    bool claimed_[kNumTracks] = {};
+    bool claimedDrums_[kNumTracks] = {}; // ...and which of those are drums // control thread's view of which tracks have an instrument
     std::unique_ptr<Effect> masterEffects_[kEffectSlots];
 
     // The step clock. Steps are sixteenth notes.
@@ -214,7 +224,7 @@ private:
     SpscQueue<Command, 4096> commands_; // room for whole patterns sent at once
 
     // Things the audio thread no longer needs and must not free itself.
-    struct Trash { bool isImage = false; void* pointer = nullptr; };
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; };
     SpscQueue<Trash, 64> trash_;
     static void destroy(const Trash& trash);
 };

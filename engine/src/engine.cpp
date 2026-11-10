@@ -30,6 +30,7 @@ Engine::Engine() {
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
     claimed_[0] = true;
+    claimedDrums_[0] = true;
     prepare(48000.f);
 }
 
@@ -39,18 +40,34 @@ Engine::~Engine() {
     while (commands_.pop(command)) {
         if (command.type == Command::InstallSynth) delete static_cast<Instrument*>(command.pointer);
         if (command.type == Command::SetTrackImage) delete static_cast<TrackImage*>(command.pointer);
+        if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
     }
     collectGarbage();
+    for (Track& track : tracks_)
+        for (SampleData* sample : track.laneSamples) delete sample;
 }
 
 void Engine::destroy(const Trash& trash) {
-    if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
+    if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
+    else if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
     else delete static_cast<Instrument*>(trash.pointer);
 }
 
 void Engine::collectGarbage() {
     Trash trash;
     while (trash_.pop(trash)) destroy(trash);
+}
+
+bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || !claimedDrums_[track]) return false;
+    Command c;
+    c.type = Command::SetLaneSample;
+    c.track = track;
+    c.a = lane;
+    c.pointer = sample.get();
+    if (!commands_.push(c)) return false;
+    sample.release(); // the audio thread hands the old one back through the trash
+    return true;
 }
 
 bool Engine::removeTrack(int track) {
@@ -60,6 +77,7 @@ bool Engine::removeTrack(int track) {
     c.track = track;
     if (!send(c)) return false;
     claimed_[track] = false;
+    claimedDrums_[track] = false;
     return true;
 }
 
@@ -116,6 +134,7 @@ bool Engine::addDrumTrack(int track) {
     c.track = track;
     if (!send(c)) return false;
     claimed_[track] = true;
+    claimedDrums_[track] = true;
     return true;
 }
 
@@ -159,8 +178,28 @@ void Engine::letGoOfNotes() {
 void Engine::apply(const Command& c) {
     switch (c.type) {
     case Command::Trigger:
-        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value);
+        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f);
         break;
+    case Command::SetStepStart:
+        if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
+            tracks_[c.track].drumScenes[c.scene].start[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        }
+        break;
+    case Command::SetLaneSample: {
+        SampleData* incoming = static_cast<SampleData*>(c.pointer);
+        Trash trash;
+        trash.isSample = true;
+        if (validTrack(c.track) && tracks_[c.track].hasDrums && c.a >= 0 && c.a < kDrumLanes) {
+            Track& track = tracks_[c.track];
+            trash.pointer = track.laneSamples[c.a];
+            track.laneSamples[c.a] = incoming;
+            track.drums.setLaneSample(c.a, incoming ? incoming->data.data() : nullptr, incoming ? static_cast<int>(incoming->data.size()) : 0);
+        } else {
+            trash.pointer = incoming; // nowhere to put it
+        }
+        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
+        break;
+    }
     case Command::SetStep:
         if (validTrack(c.track) && validScene(c.scene) && validCell(c.a, c.b) && std::isfinite(c.value)) {
             tracks_[c.track].drumScenes[c.scene].level[c.a][c.b] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
@@ -259,11 +298,20 @@ void Engine::apply(const Command& c) {
             }
             track.hasDrums = false;
             track.drums.reset();
+            for (int lane = 0; lane < kDrumLanes; ++lane) {
+                if (!track.laneSamples[lane]) continue;
+                Trash trash;
+                trash.isSample = true;
+                trash.pointer = track.laneSamples[lane];
+                track.drums.setLaneSample(lane, nullptr, 0);
+                track.laneSamples[lane] = nullptr;
+                trash_.push(trash);
+            }
             for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
             for (DrumScene& scene : track.drumScenes) {
                 for (int lane = 0; lane < kDrumLanes; ++lane)
                     for (int step = 0; step < kSteps; ++step) {
-                        scene.level[lane][step] = scene.nudge[lane][step] = 0.f;
+                        scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
                         scene.chance[lane][step] = 1.f;
                     }
             }
@@ -285,6 +333,7 @@ void Engine::apply(const Command& c) {
                             track.drumScenes[scene].level[lane][step] = image.level[scene][lane][step];
                             track.drumScenes[scene].nudge[lane][step] = image.nudge[scene][lane][step];
                             track.drumScenes[scene].chance[lane][step] = image.chance[scene][lane][step];
+                            track.drumScenes[scene].start[lane][step] = image.start[scene][lane][step];
                         }
                     for (int slot = 0; slot < kMaxNotes; ++slot) {
                         const TrackImage::Note& from = image.notes[scene][slot];
@@ -328,14 +377,16 @@ void Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         dice_ = dice_ * 1664525u + 1013904223u;
         if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return;
     }
+    const float start = scene.start[lane][step];
     if (delaySamples < 1.0) {
-        track.drums.trigger(lane, velocity);
+        track.drums.trigger(lane, velocity, start);
         return;
     }
     for (auto& p : track.pending[lane]) {
         if (p.velocity <= 0.f) {
             p.samplesLeft = delaySamples;
             p.velocity = velocity;
+            p.start = start;
             return;
         }
     }
@@ -347,7 +398,7 @@ void Engine::firePending() {
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             for (auto& p : track.pending[lane]) {
                 if (p.velocity > 0.f && p.samplesLeft < 1.0) {
-                    track.drums.trigger(lane, p.velocity);
+                    track.drums.trigger(lane, p.velocity, p.start);
                     p = Track::Pending();
                 }
             }

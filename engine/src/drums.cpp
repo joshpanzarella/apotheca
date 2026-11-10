@@ -179,19 +179,33 @@ void DrumMachine::reset() {
     }
 }
 
-void DrumMachine::trigger(int lane, float velocity) {
+void DrumMachine::setLaneSample(int lane, const float* data, int length) {
+    if (lane < 0 || lane >= kDrumLanes) return;
+    own_[lane] = length > 0 ? data : nullptr;
+    ownLength_[lane] = own_[lane] ? length : 0;
+    voices_[lane][0] = Voice(); // they were reading the old sound
+    voices_[lane][1] = Voice();
+}
+
+void DrumMachine::trigger(int lane, float velocity, float start) {
     if (!kit_ || lane < 0 || lane >= kDrumLanes) return;
     if (!(velocity > 0.f)) return; // also drops NaN
     if (velocity > 1.f) velocity = 1.f;
-    if (kit_->samples[lane].empty()) return;
+    const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
+    if (length == 0) return;
+    if (!(start > 0.f)) start = 0.f; // also NaN
+    int from = static_cast<int>(start * static_cast<float>(length));
+    if (from >= length) from = length - 1;
 
     Voice& fresh = voices_[lane][next_[lane]];
     Voice& old = voices_[lane][1 - next_[lane]];
     if (old.position >= 0) old.fadeStep = chokeStep_;
-    fresh.position = 0;
+    fresh.position = from;
     fresh.gain = velocity;
     fresh.fade = 1.f;
     fresh.fadeStep = 0.f;
+    fresh.rise = from > 0 ? 0.f : 1.f;
+    fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
     next_[lane] = 1 - next_[lane];
 }
 
@@ -199,14 +213,18 @@ void DrumMachine::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     if (kit_) {
         for (int lane = 0; lane < kDrumLanes; ++lane) {
-            const std::vector<float>& sample = kit_->samples[lane];
-            const int length = static_cast<int>(sample.size());
+            const float* sample = own_[lane] ? own_[lane] : kit_->samples[lane].data();
+            const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
             const float laneLevel = laneLevel_[lane];
             for (Voice& v : voices_[lane]) {
                 if (v.position < 0) continue;
                 for (int i = 0; i < frames; ++i) {
                     if (v.position >= length) { v.position = -1; break; }
-                    left[i] += sample[v.position++] * v.gain * v.fade * laneLevel;
+                    left[i] += sample[v.position++] * v.gain * v.fade * v.rise * laneLevel;
+                    if (v.rise < 1.f) {
+                        v.rise += v.riseStep;
+                        if (v.rise > 1.f) v.rise = 1.f;
+                    }
                     if (v.fadeStep > 0.f) {
                         v.fade -= v.fadeStep;
                         if (v.fade <= 0.f) { v.position = -1; break; }

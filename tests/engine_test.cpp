@@ -593,7 +593,163 @@ static void testBadCommandsAreIgnored() {
     CHECK(peakOf(renderFrames(engine, 17 * kStep)) == 0.f);
 }
 
+// ---- recordings on drum lanes ---------------------------------------------------------
+
+// A recording that is easy to measure: steady at `first` for its first half,
+// then steady at `second`.
+static std::unique_ptr<SampleData> twoHalves(int frames, float first, float second) {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.assign(static_cast<std::size_t>(frames), first);
+    for (int i = frames / 2; i < frames; ++i) s->data[static_cast<std::size_t>(i)] = second;
+    return s;
+}
+// How many frames from the first sound to the last.
+static int soundingFrames(const std::vector<float>& buffer) {
+    int first = -1, last = -1;
+    for (std::size_t i = 0; i < buffer.size(); i += 2) {
+        if (buffer[i] == 0.f) continue;
+        if (first < 0) first = static_cast<int>(i / 2);
+        last = static_cast<int>(i / 2);
+    }
+    return first < 0 ? 0 : last - first + 1;
+}
+static const float kTrackLevel = 0.65f;
+static bool about(float a, float b) { return std::fabs(a - b) < 1e-4f; }
+
+static void testARecordingOnALane() {
+    std::unique_ptr<Engine> engine(new Engine);
+    const std::vector<float> kick = (engine->send(trigger(0)), renderFrames(*engine, 48000));
+    CHECK(soundingFrames(kick) > 5000);
+    renderFrames(*engine, 48000);
+
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(trigger(0));
+    std::vector<float> out = renderFrames(*engine, 4000);
+    CHECK(soundingFrames(out) == 1000); // the recording, all of it, and nothing after
+    CHECK(about(out[0], 0.2f * kTrackLevel) && about(out[2 * 499], 0.2f * kTrackLevel));
+    CHECK(about(out[2 * 500], 0.4f * kTrackLevel) && about(out[2 * 999], 0.4f * kTrackLevel));
+    CHECK(out[0] == out[1]); // both sides
+    // The other lanes are still the kit.
+    engine->send(trigger(1));
+    CHECK(soundingFrames(renderFrames(*engine, 48000)) > 2000);
+    // Level and the lane's volume work on it as on a drum.
+    engine->send(trigger(0, 0.5f));
+    CHECK(about(renderFrames(*engine, 4000)[0], 0.1f * kTrackLevel));
+    engine->send(make(Command::SetLaneLevel, 0, 0, 0, 0.5f));
+    engine->send(trigger(0));
+    CHECK(about(renderFrames(*engine, 4000)[0], 0.1f * kTrackLevel));
+    engine->send(make(Command::SetLaneLevel, 0, 0, 0, 1.f));
+
+    // A different recording replaces it, and stops the old one ringing.
+    engine->send(trigger(0));
+    renderFrames(*engine, 100);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(300, 0.3f, 0.3f)));
+    CHECK(peakOf(renderFrames(*engine, 2000)) == 0.f);
+    engine->collectGarbage();
+    engine->send(trigger(0));
+    out = renderFrames(*engine, 2000);
+    CHECK(soundingFrames(out) == 300 && about(out[0], 0.3f * kTrackLevel));
+    // Nothing brings the drum back.
+    CHECK(engine->setLaneSample(0, 0, nullptr));
+    engine->send(trigger(0));
+    out = renderFrames(*engine, 48000);
+    CHECK(out == kick);
+    engine->collectGarbage();
+
+    // Only a drum track's lanes can take one.
+    CHECK(!engine->setLaneSample(1, 0, twoHalves(10, 1.f, 1.f))); // an empty track
+    CHECK(engine->addSynthTrack(1));
+    CHECK(!engine->setLaneSample(1, 0, twoHalves(10, 1.f, 1.f)));
+    CHECK(!engine->setLaneSample(0, kDrumLanes, twoHalves(10, 1.f, 1.f)));
+    CHECK(!engine->setLaneSample(0, -1, twoHalves(10, 1.f, 1.f)));
+    CHECK(!engine->setLaneSample(kNumTracks, 0, twoHalves(10, 1.f, 1.f)));
+    CHECK(engine->addDrumTrack(2));
+    CHECK(engine->setLaneSample(2, 3, twoHalves(400, 0.2f, 0.2f)));
+    engine->send(trigger(3, 1.f, 2));
+    CHECK(soundingFrames(renderFrames(*engine, 2000)) == 400);
+    // An empty recording is the same as none.
+    std::unique_ptr<SampleData> empty(new SampleData);
+    CHECK(engine->setLaneSample(2, 3, std::move(empty)));
+    engine->send(trigger(3, 1.f, 2));
+    CHECK(soundingFrames(renderFrames(*engine, 48000)) > 2000);
+
+    // Taking the track away takes its recordings with it.
+    CHECK(engine->setLaneSample(2, 3, twoHalves(400, 0.2f, 0.2f)));
+    renderFrames(*engine, 64);
+    CHECK(engine->removeTrack(2));
+    CHECK(!engine->setLaneSample(2, 3, twoHalves(400, 0.2f, 0.2f)));
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    CHECK(engine->addDrumTrack(2));
+    engine->send(trigger(3, 1.f, 2));
+    CHECK(soundingFrames(renderFrames(*engine, 48000)) > 2000); // the kit's drum again
+    // One still waiting in the queue when the engine goes is freed with it.
+    CHECK(engine->setLaneSample(0, 5, twoHalves(400, 0.2f, 0.2f)));
+}
+
+static void testWhereAHitStarts() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    // From the middle: half as long, and already in the second half.
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    std::vector<float> out = renderFrames(*engine, 4000);
+    CHECK(soundingFrames(out) <= 500 && soundingFrames(out) >= 498);
+    CHECK(about(out[2 * 250], 0.4f * kTrackLevel));
+    // It fades up over about a millisecond instead of clicking in.
+    CHECK(std::fabs(out[0]) < 0.01f && std::fabs(out[2 * 10]) < 0.4f * kTrackLevel * 0.5f);
+    CHECK(about(out[2 * 60], 0.4f * kTrackLevel));
+    for (int i = 1; i < 60; ++i) CHECK(out[2 * i] >= out[2 * (i - 1)]);
+    // From the very start there is no fade: a drum keeps its front.
+    engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
+    CHECK(about(renderFrames(*engine, 4000)[0], 0.2f * kTrackLevel));
+    // Past the end, or nonsense: the last sample, or the start.
+    engine->send(make(Command::Trigger, 0, 0, 20000, 1.f));
+    CHECK(soundingFrames(renderFrames(*engine, 4000)) <= 1);
+    engine->send(make(Command::Trigger, 0, 0, -300, 1.f));
+    CHECK(soundingFrames(renderFrames(*engine, 4000)) == 1000);
+
+    // In a pattern each hit has its own.
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 4, 1.f));
+    engine->send(make(Command::SetStepStart, 0, 0, 4, 0.75f));
+    engine->send(make(Command::SetStepStart, 0, 0, 99, 0.5f)); // no such step: ignored
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    std::vector<float> first(out.begin(), out.begin() + 2 * 4 * kStep), second(out.begin() + 2 * 4 * kStep, out.end());
+    CHECK(soundingFrames(first) == 1000);
+    CHECK(soundingFrames(second) <= 250 && soundingFrames(second) >= 248);
+    engine->send(make(Command::Stop));
+    // A hit moved late still starts where it was told to.
+    engine->send(make(Command::SetStepNudge, 0, 0, 4, 0.25f));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    second.assign(out.begin() + 2 * 4 * kStep, out.end());
+    CHECK(onsetOf(second) >= kStep / 4 - 1 && onsetOf(second) <= kStep / 4 + 1);
+    CHECK(soundingFrames(second) <= 250 && soundingFrames(second) >= 248);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 64);
+
+    // A whole song loaded at once brings its starts.
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->level[0][0][2] = 1.f;
+    image->start[0][0][2] = 0.5f;
+    CHECK(engine->setTrackImage(0, std::move(image)));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(onsetOf(out) >= 2 * kStep && onsetOf(out) <= 2 * kStep + 1 && soundingFrames(out) <= 500 && soundingFrames(out) >= 498);
+    // And removing the track forgets them.
+    engine->send(make(Command::Stop));
+    CHECK(engine->removeTrack(0));
+    CHECK(engine->addDrumTrack(0));
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 2, 1.f));
+    engine->send(make(Command::Play));
+    CHECK(soundingFrames(renderFrames(*engine, 8 * kStep)) == 1000);
+}
+
 int main() {
+    testARecordingOnALane();
+    testWhereAHitStarts();
     testQueue();
     testBuiltInKit();
     testSilentUntilPlayed();
