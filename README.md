@@ -5,7 +5,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 ## Status
 
-Skeleton. Eight tracks, each with two effect slots, into a master with two
+Skeleton. Twelve tracks, each with two effect slots, into a master with two
 effect slots. The sound source is a stand-in sine tone until the sampler
 exists. The screen shows one level meter per track.
 

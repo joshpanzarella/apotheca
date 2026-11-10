@@ -4,7 +4,7 @@
 //
 // Signal path:
 //   track source -> track slot 0 -> track slot 1 -> track level -+
-//   (x8)                                                         +-> master slot 0 -> master slot 1 -> out
+//   (x12)                                                        +-> master slot 0 -> master slot 1 -> out
 //
 // Threads:
 //   - Any ONE other thread calls send(). It never blocks.
@@ -20,7 +20,7 @@
 
 namespace apotheca {
 
-constexpr int kNumTracks = 8;
+constexpr int kNumTracks = 12;
 constexpr int kEffectSlots = 2;   // per track, and on the master
 constexpr int kMasterTrack = -1;  // "track" index that addresses the master
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
