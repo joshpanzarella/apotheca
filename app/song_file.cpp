@@ -85,14 +85,14 @@ std::string songText(const Project& project) {
                     if (n.velocity <= 0.f) continue;
                     put(out, "note %.0f", n.step + 1);
                     put(out, " %.0f", n.pitch);
-                    put(out, " %.0f", n.length);
+                    put(out, " %.6g", n.length);
                     put(out, " %.6g\n", n.velocity);
                 }
                 // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
                 for (const ChordEvent& c : p.chords) {
                     if (c.velocity <= 0.f) continue;
                     put(out, "chord %.0f", c.step + 1);
-                    put(out, " %.0f", c.length);
+                    put(out, " %.6g", c.length);
                     put(out, " %.6g", c.velocity);
                     put(out, " %.0f", c.inversion);
                     put(out, " %.0f ", c.root);
@@ -204,7 +204,7 @@ bool parseSong(const std::string& text, Project& project) {
             const int s = static_cast<int>(step) - 1;
             p.notes[slot].step = s;
             p.notes[slot].pitch = static_cast<int>(pitch);
-            p.notes[slot].length = clampi(static_cast<int>(length), 1, kSteps - s);
+            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>(kSteps - s));
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
         } else if (word == "chord" && isSynth(track->kind)) {
             double step, length, level, inversion, root, interval;
@@ -214,7 +214,7 @@ bool parseSong(const std::string& text, Project& project) {
             NotePattern& p = track->notes[scene];
             ChordEvent c;
             c.step = static_cast<int>(step) - 1;
-            c.length = clampi(static_cast<int>(length), 1, kSteps - c.step);
+            c.length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>(kSteps - c.step));
             c.velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             c.inversion = clampi(static_cast<int>(inversion), -kMaxInversion, kMaxInversion);
             c.root = static_cast<int>(root);
@@ -227,7 +227,8 @@ bool parseSong(const std::string& text, Project& project) {
             int keys[kChordNotes];
             const int slot = p.freeChord();
             bool clash = false;
-            for (int s = c.step; s < c.step + c.length; ++s) clash = clash || p.chordAt(s) >= 0;
+            for (const ChordEvent& other : p.chords)
+                clash = clash || (other.velocity > 0.f && other.step < c.step + c.length && c.step < other.step + other.length);
             if (c.count == 0 || slot < 0 || clash || p.used() + c.pitches(keys) > kMaxNotes) continue;
             p.chords[slot] = c;
         }

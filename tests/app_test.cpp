@@ -407,9 +407,45 @@ void testNoteLevelAndLength() {
     CHECK(near(notes.noteHere()->velocity, 0.5f));
     rig->tap(RIGHT);
     CHECK(near(notes.noteHere()->velocity, 0.6f));
-    // The stick does the same, fast, one job per push.
+    // The stick is free: the end goes to any point in a step.
     rig->key(STICK_DOWN, true);
-    rig->frames(40);
+    rig->frames(5);
+    rig->key(STICK_DOWN, false);
+    rig->frames(1);
+    const float free = notes.noteHere()->length;
+    CHECK(free > 1.5f && free < 2.f && free != std::floor(free)); // about ten steps a second, fully pushed
+    CHECK(notes.cursorStep() == 4);
+    // The D-pad puts it back on a step line: the next one, or the one before.
+    rig->tap(DOWN);
+    CHECK(notes.noteHere()->length == 2.f);
+    rig->key(STICK_DOWN, true);
+    rig->frames(3);
+    rig->key(STICK_DOWN, false);
+    rig->frames(1);
+    CHECK(notes.noteHere()->length > 2.f && notes.noteHere()->length < 3.f);
+    rig->tap(UP);
+    CHECK(notes.noteHere()->length == 2.f);
+    rig->tap(UP);
+    CHECK(notes.noteHere()->length == 1.f);
+    // Shorter than a step, with the stick only; never to nothing.
+    rig->key(STICK_UP, true);
+    rig->frames(3);
+    rig->key(STICK_UP, false);
+    rig->frames(1);
+    const float shortNote = notes.noteHere()->length;
+    CHECK(shortNote > 0.3f && shortNote < 0.8f);
+    rig->tap(UP); // there is no whole step below it: nothing happens
+    CHECK(notes.noteHere()->length == shortNote);
+    rig->key(STICK_UP, true);
+    rig->frames(60);
+    rig->key(STICK_UP, false);
+    rig->frames(1);
+    CHECK(near(notes.noteHere()->length, 0.1f));
+    rig->tap(DOWN);
+    CHECK(notes.noteHere()->length == 1.f);
+    // A small push is a fine adjustment: a quarter of the way over moves a sixteenth as fast.
+    rig->key(STICK_DOWN, true);
+    rig->frames(100);
     rig->key(STICK_DOWN, false);
     CHECK(notes.noteHere()->length == 12); // to the end of the bar and no further
     CHECK(near(notes.noteHere()->velocity, 0.6f));
@@ -523,6 +559,45 @@ void testTheKeysScrollAndStopAtTheEnds() {
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
     CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
+}
+
+void testAFreeLengthReachesTheEngine() {
+    // Three fresh handhelds with one note each: two and a half steps, two
+    // steps, and two and a half again but loaded as a whole song.
+    const auto bar = [](float length, bool asASong) {
+        std::unique_ptr<Rig> rig(new Rig);
+        rig->app.session().addTrack(TrackKind::Phazed);
+        NoteEvent& n = rig->project().tracks[1].notes[0].notes[0];
+        n.step = 1;
+        n.pitch = 60;
+        n.length = length;
+        n.velocity = 0.8f;
+        if (asASong) rig->app.session().applyProject();
+        else rig->app.session().sendNotePattern(1, 0);
+        rig->app.session().view = View::Pattern;
+        rig->tap(START);
+        return rig->render(8 * kStep);
+    };
+    const std::vector<float> free = bar(2.5f, false), whole = bar(2.f, false), three = bar(3.f, false);
+    CHECK(Rig::peak(free) > 0.01f);
+    CHECK(free != whole && free != three);
+    CHECK(bar(2.5f, true) == free);
+    // With the cursor inside a long note, the stick cannot pull its end back past the cursor.
+    std::unique_ptr<Rig> rig(onNotes());
+    NoteScreen& notes = rig->app.notes();
+    notes.moveCursorTo(60, 4);
+    rig->key(A, true);
+    rig->tap(DOWN, 3);
+    rig->key(A, false);
+    notes.moveCursorTo(60, 6);
+    CHECK(notes.noteHere() && notes.noteHere()->length == 4.f);
+    rig->key(A, true);
+    rig->key(STICK_UP, true);
+    rig->frames(80);
+    rig->key(STICK_UP, false);
+    rig->frames(1);
+    rig->key(A, false);
+    CHECK(notes.noteHere() && near(notes.noteHere()->length, 2.1f)); // a tenth of the cursor's step is left
 }
 
 void testTheKeysShownFollowTheCursor() {
@@ -997,6 +1072,7 @@ int main(int, char**) {
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
+    testAFreeLengthReachesTheEngine();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

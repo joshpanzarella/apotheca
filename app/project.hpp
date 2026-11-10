@@ -32,7 +32,8 @@ struct DrumPattern {
 
 // One scene of a synth track: up to 64 notes in one bar.
 struct NoteEvent {
-    int step = 0, pitch = 0, length = 0;
+    int step = 0, pitch = 0;
+    float length = 0.f;   // in steps. Not only whole ones: a note may end part-way through a step.
     float velocity = 0.f; // 0 = empty slot
 };
 
@@ -41,7 +42,8 @@ struct NoteEvent {
 // out from it each time, never stored.
 constexpr int kMaxChords = 16, kChordNotes = 8, kMaxInversion = 3;
 struct ChordEvent {
-    int step = 0, length = 0;
+    int step = 0;
+    float length = 0.f; // in steps, as a note's
     int root = 60;      // the key the chord is built on
     int inversion = 0;  // +n: the n lowest notes go up an octave. -n: the n highest come down.
     int count = 0;      // how many of `intervals` are used

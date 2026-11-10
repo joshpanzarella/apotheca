@@ -165,7 +165,8 @@ void Session::sendNotePattern(int track, int scene) {
         c.a = slot;
         c.b = notes[slot].step;
         c.c = notes[slot].pitch;
-        c.d = notes[slot].length;
+        c.d = static_cast<int>(std::floor(notes[slot].length));
+        c.extra = notes[slot].length - static_cast<float>(c.d);
         c.value = notes[slot].velocity;
         engine.send(c);
     }
@@ -499,7 +500,7 @@ void Session::applyProject() {
                 if (n.velocity <= 0.f) continue;
                 image->notes[scene][slot].step = static_cast<std::uint8_t>(n.step);
                 image->notes[scene][slot].pitch = static_cast<std::uint8_t>(n.pitch);
-                image->notes[scene][slot].length = static_cast<std::uint8_t>(n.length);
+                image->notes[scene][slot].length = n.length;
                 image->notes[scene][slot].velocity = n.velocity;
             }
         }

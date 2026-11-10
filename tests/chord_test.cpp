@@ -411,6 +411,34 @@ void testShapingAndRemovingAWholeChord() {
     CHECK(rig.chordOn(0)->velocity == 1.f);
     rig.key(A, false);
     CHECK(rig.notes().noteCount() == 0);
+    // The stick with A held slides the chord's end freely; the D-pad snaps it.
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(4);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    const float freeLength = rig.chordOn(0)->length;
+    CHECK(freeLength > 2.f && freeLength < 3.f && freeLength != std::floor(freeLength));
+    {
+        // Every note of the chord goes to the engine that long.
+        NoteEvent out[kMaxNotes];
+        rig.pat().render(out);
+        int same = 0;
+        for (const NoteEvent& n : out) same += n.velocity > 0.f && n.step == 0 && n.length == freeLength;
+        CHECK(same == 3);
+    }
+    // A chord that ends part-way through a step: the next one goes on the step after.
+    rig.key(A, false);
+    rig.notes().moveCursorTo(60, 9);
+    rig.tap(Y);
+    CHECK(rig.chordOn(9) && rig.chordOn(9)->length == freeLength && rig.notes().cursorStep() == 12);
+    rig.notes().moveCursorTo(60, 9);
+    rig.tap(B);
+    rig.notes().moveCursorTo(64, 1);
+    rig.key(A, true);
+    rig.tap(SDLK_DOWN);
+    CHECK(rig.chordOn(0)->length == 3.f);
+    rig.key(A, false);
     // The next chord placed is as long as that one was left.
     rig.notes().moveCursorTo(60, 9);
     rig.tap(Y);
@@ -542,6 +570,9 @@ void testPacksAndTheSongFile() {
     CHECK(chordsIn("chord 1 4 0.8 0 60 C 0 4 7\n") == 1);
     CHECK(chordsIn("chord 1 4 0.8 0 60 C 0 4 7\nchord 5 4 0.8 0 60 C 0 4 7\n") == 2);
     CHECK(chordsIn("chord 1 4 0.8 0 60 C 0 4 7\nchord 4 4 0.8 0 60 C 0 4 7\n") == 1); // two at once
+    CHECK(chordsIn("chord 1 3.5 0.8 0 60 C 0 4 7\nchord 4 4 0.8 0 60 C 0 4 7\n") == 1); // the first runs into step 4
+    CHECK(chordsIn("chord 1 2.5 0.8 0 60 C 0 4 7\nchord 4 4 0.8 0 60 C 0 4 7\n") == 2); // ...and this one does not
+    CHECK(chordsIn("chord 5 4 0.8 0 60 C 0 4 7\nchord 1 4.5 0.8 0 60 C 0 4 7\n") == 1);
     CHECK(chordsIn("chord 1 4 0.8 0 60 C\n") == 0);            // no notes
     CHECK(chordsIn("chord 0 4 0.8 0 60 C 0 4 7\n") == 0);      // no such step
     CHECK(chordsIn("chord 17 4 0.8 0 60 C 0 4 7\n") == 0);

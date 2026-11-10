@@ -17,7 +17,8 @@ constexpr int kCellW = kKeyW - 2, kCellH = kRowH - 2;
 constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42, kKeysH = 16, kBlackKeyH = 10;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
-constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 24.f;
+constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
+constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
@@ -71,10 +72,10 @@ float NoteScreen::levelNow() const {
     return 0.f;
 }
 
-int NoteScreen::lengthNow() const {
+float NoteScreen::lengthNow() const {
     if (const NoteEvent* n = noteHere()) return n->length;
     if (const ChordEvent* c = chordHere()) return c->length;
-    return 0;
+    return 0.f;
 }
 
 void NoteScreen::moveCursorTo(int pitch, int step) {
@@ -106,7 +107,7 @@ bool NoteScreen::placeNote(float velocity) {
     NoteEvent& n = pat().notes[slot];
     n.step = step_;
     n.pitch = pitch_;
-    n.length = 1;
+    n.length = 1.f;
     n.velocity = velocity;
     resend();
     if (!project_.playing) session_.audition(project_.track, pitch_, velocity);
@@ -123,11 +124,13 @@ void NoteScreen::setLevel(float level) {
     resend();
 }
 
-void NoteScreen::setLength(int length) {
+// Any length, not only whole steps: the stick slides a note's end freely,
+// and the D-pad puts it on a step.
+void NoteScreen::setLength(float length) {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
     if (slot < 0 && chord < 0) return;
     const int start = slot >= 0 ? pat().notes[slot].step : pat().chords[chord].step;
-    int& now = slot >= 0 ? pat().notes[slot].length : pat().chords[chord].length;
+    float& now = slot >= 0 ? pat().notes[slot].length : pat().chords[chord].length;
     // It may run to the end of the bar, or up to the next note on this key
     // (for a chord, up to the next chord).
     int room = kSteps - start;
@@ -142,13 +145,21 @@ void NoteScreen::setLength(int length) {
             if (other.velocity > 0.f && other.step > start && other.step - start < room) room = other.step - start;
         }
     }
-    length = length < 1 ? 1 : (length > room ? room : length);
-    // Never shrink it out from under the cursor.
-    if (length < step_ - start + 1) length = step_ - start + 1;
+    // Never shrink it out from under the cursor: some of it stays in the cursor's step.
+    const float least = static_cast<float>(step_ - start) + kShortestLength;
+    length = length < least ? least : (length > static_cast<float>(room) ? static_cast<float>(room) : length);
     if (slot < 0) handLength_ = length; // the next chord placed will be this long
     if (length == now) return;
     now = length;
     resend();
+}
+
+// The D-pad: the end goes to the next step line, or the one before.
+void NoteScreen::stepLength(int by) {
+    const float now = lengthNow();
+    const float to = by > 0 ? std::floor(now + 1.0001f) : std::ceil(now - 1.0001f);
+    if (by < 0 && to < static_cast<float>(step_ - (noteHere() ? noteHere()->step : chordHere()->step) + 1)) return; // already as short as whole steps go here
+    setLength(to);
 }
 
 // ---- chords ---------------------------------------------------------------------------
@@ -233,7 +244,7 @@ void NoteScreen::endPick() {
     if (slot < 0 || pat().used() + c.pitches(keys) > kMaxNotes) return;
     pat().chords[slot] = c;
     resend();
-    moveCursorTo(pitch_, step_ + c.length); // on to where the next one goes
+    moveCursorTo(pitch_, step_ + static_cast<int>(std::ceil(c.length))); // on to where the next one goes
 }
 
 void NoteScreen::breakUp(int chord) {
@@ -269,8 +280,8 @@ void NoteScreen::press(Button b) {
         // As it is drawn: a note grows down the screen and fills across it.
         if (b == Button::Right) setLevel(nextTenth(levelNow(), 1.f)), turningLength_ = false;
         if (b == Button::Left) setLevel(nextTenth(levelNow(), -1.f)), turningLength_ = false;
-        if (b == Button::Down) setLength(lengthNow() + 1), turningLength_ = true;
-        if (b == Button::Up) setLength(lengthNow() - 1), turningLength_ = true;
+        if (b == Button::Down) stepLength(1), turningLength_ = true;
+        if (b == Button::Up) stepLength(-1), turningLength_ = true;
     } else {
         moveCursor(b);
     }
@@ -314,7 +325,6 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
         shaping_ = event.down;
         axis_ = Axis::None;
-        lengthSaved_ = 0.f;
         return;
     }
     if (b == Button::R1) {
@@ -379,10 +389,9 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             setLevel(levelNow() + x * std::fabs(x) * kFillPerSecond * dt);
             turningLength_ = false;
         } else if (here && axis_ == Axis::UpDown && y != 0.f) {
-            lengthSaved_ += y * std::fabs(y) * kLengthStepsPerSecond * dt;
+            // Freely: the end follows the stick, to any point in a step.
+            setLength(lengthNow() + y * std::fabs(y) * kLengthStepsPerSecond * dt);
             turningLength_ = true;
-            while (lengthSaved_ >= 1.f) { lengthSaved_ -= 1.f; setLength(lengthNow() + 1); }
-            while (lengthSaved_ <= -1.f) { lengthSaved_ += 1.f; setLength(lengthNow() - 1); }
         }
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
@@ -474,9 +483,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // far as it is loud.
     const NoteEvent* under = noteHere();
     const ChordEvent* chordUnder = chordHere();
-    const auto block = [&](int pitch, int step, int length, float level, SDL_Color edge, SDL_Color inside) {
+    const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside) {
         const int x = gx(pitch) + 1, y = gy(step) + 1;
-        const int full = kCellW - 2, h = length * kRowH - 4;
+        const int full = kCellW - 2, tall = static_cast<int>(std::round(length * kRowH)) - 4, h = tall < 3 ? 3 : tall;
         int w = static_cast<int>(std::round(level * full));
         if (w < 2) w = 2;
         outline(r, x, y, full, h, edge);
@@ -567,7 +576,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));
             field(190.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
-            std::snprintf(text, sizeof text, "%d STEP%s", lengthNow(), lengthNow() == 1 ? "" : "S");
+            const float length = lengthNow();
+            if (length == std::floor(length)) std::snprintf(text, sizeof text, "%d STEP%s", static_cast<int>(length), length == 1.f ? "" : "S");
+            else std::snprintf(text, sizeof text, "%.2f STEPS", length);
             field(330.f, "LENGTH", text, shaping_ && turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
         } else {
             field(190.f, "LEVEL", "-", kDim);
@@ -593,7 +604,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("DRAG WITH THE STICK", brushText);
     } else if (shaping_) {
         hint("STICK LEFT / RIGHT", "level");
-        hint("STICK UP / DOWN", "length");
+        hint("STICK UP / DOWN", "length, freely");
+        hint("D-PAD UP / DOWN", "length, by steps");
     } else {
         hint("STICK", "move");
         hint("A", under || chordUnder ? "level / length" : "place");

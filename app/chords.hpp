@@ -44,6 +44,6 @@ const ChordPack& builtInPack();
 std::vector<ChordPack> loadChordPacks(const std::string& folder);
 
 // A chord from a shape, with its root on the key nearest to `nearPitch`.
-ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, int length, float velocity, int inversion);
+ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, float length, float velocity, int inversion);
 
 } // namespace apotheca

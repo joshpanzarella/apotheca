@@ -10,7 +10,10 @@
 //                         along the keys (they scroll), up / down through the bar
 //   A                     place a note, one step long
 //   hold A, stick left / right   LEVEL   the note fills or drains
-//   hold A, stick up / down      LENGTH  the note grows or shrinks
+//   hold A, stick up / down      LENGTH  freely: the note's end follows the
+//                                        stick to any point in a step
+//   hold A, D-pad up / down      LENGTH  by whole steps: the end goes to the
+//                                        next step line, or the one before
 //   B                     delete the note under the cursor
 //   X                     hear the key under the cursor
 //   hold R1 and drag      paint a note on every step crossed
@@ -80,7 +83,7 @@ private:
     void resend();
     int chordSlotHere() const;
     float levelNow() const;
-    int lengthNow() const;
+    float lengthNow() const;
     const ChordPack& pack() const { return session_.packs[static_cast<std::size_t>(session_.packIndex())]; }
     ChordEvent inHand() const; // the chord Y would place here
     void hearChord(const ChordEvent& chord);
@@ -91,7 +94,8 @@ private:
     void showChord(const ChordEvent& chord);
     bool placeNote(float velocity);
     void setLevel(float level);
-    void setLength(int length);
+    void setLength(float length);
+    void stepLength(int by);
     void paintHere();
 
     Session& session_;
@@ -103,12 +107,11 @@ private:
     bool shaping_ = false; // A is held
     Axis axis_ = Axis::None;
     bool turningLength_ = false; // for drawing: which value the stick has hold of
-    float lengthSaved_ = 0.f;
     bool picking_ = false;  // Y is held: choosing a chord
     int editing_ = -1;      // ...to replace this chord; -1 to place a new one
     int hand_ = 0;          // the chord in hand: its place in the pack
     int inversion_ = 0;
-    int handLength_ = 4;    // new chords are as long as the last one set
+    float handLength_ = 4.f;    // new chords are as long as the last one set
     bool painting_ = false; // R1 is held
     float brush_ = 0.8f;
 

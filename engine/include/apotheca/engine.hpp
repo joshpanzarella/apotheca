@@ -49,6 +49,8 @@ constexpr int kMaxScenes = 16;
 constexpr int kMaxRepeats = 16;
 constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
 constexpr int kScopeSize = 1024;  // samples the scope keeps
+constexpr double kNoNote = 1e30;
+constexpr float kShortestNote = 0.05f; // of a step
 
 struct Command {
     enum Type {
@@ -68,7 +70,8 @@ struct Command {
         NoteOff,        //                                 track, a = MIDI note
         SelectPreset,   // a synth track's sound:     track, a = preset number
         SetNote,        // write one note of a synth pattern: track, scene, a = slot (0..63),
-                        //   b = step, c = MIDI note, d = length in steps, value = velocity (0 empties the slot)
+                        //   b = step, c = MIDI note, d = length in whole steps, extra = and this much of a
+                        //   step more (so d = 2, extra = 0.4 is 2.4 steps), value = velocity (0 empties the slot)
         SetSceneCount,  // a = how many scenes the song has (1..16)
         SetSceneRepeats,// scene, a = times it plays (1..16)
         SetMacro,       // a synth track's macro:     track, a = macro, value = 0..1
@@ -87,6 +90,7 @@ struct Command {
     int c = 0;
     int d = 0;
     float value = 0.f;
+    float extra = 0.f;       // SetNote only
     void* pointer = nullptr; // InstallSynth only
 };
 
@@ -97,7 +101,7 @@ struct TrackImage {
     float nudge[kMaxScenes][kDrumLanes][kSteps] = {};
     float chance[kMaxScenes][kDrumLanes][kSteps];
     float start[kMaxScenes][kDrumLanes][kSteps] = {};
-    struct Note { std::uint8_t step = 0, pitch = 0, length = 0; float velocity = 0.f; };
+    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; }; // length in steps, not only whole ones
     Note notes[kMaxScenes][kMaxNotes];
     float laneLevel[kDrumLanes];
     TrackImage() {
@@ -162,7 +166,8 @@ private:
         float start[kDrumLanes][kSteps] = {}; // 0..1 of the sound's length
     };
     struct Note {
-        std::uint8_t step = 0, pitch = 0, length = 0;
+        std::uint8_t step = 0, pitch = 0;
+        float length = 0.f;   // in steps; a note may end part-way through one
         float velocity = 0.f; // 0 = empty slot
     };
     struct Track {
@@ -172,7 +177,10 @@ private:
         std::unique_ptr<Instrument> synth; // set on a synth track
         DrumScene drumScenes[kMaxScenes];
         Note notes[kMaxScenes][kMaxNotes];
-        std::uint8_t stepsLeft[128] = {}; // synth notes sounding from the pattern: steps until each is let go
+        // Synth notes sounding from the pattern: samples until each is let
+        // go, to the sample. kNoNote: that key is not sounding.
+        double offIn[128];
+        Track() { for (double& off : offIn) off = kNoNote; }
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
         struct Pending { double samplesLeft = 0.0; float velocity = 0.f, start = 0.f; };
@@ -183,6 +191,7 @@ private:
         bool hasInstrument() const { return hasDrums || synth; }
     };
     struct Position { int scene, repeat; };
+    void fireNoteOffs();
 
     void apply(const Command& command);
     Position afterThisBar() const;

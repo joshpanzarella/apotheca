@@ -241,7 +241,7 @@ std::vector<ChordPack> loadChordPacks(const std::string& folder) {
     return found;
 }
 
-ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, int length, float velocity, int inversion) {
+ChordEvent makeChord(const ChordShape& shape, int nearPitch, int step, float length, float velocity, int inversion) {
     ChordEvent c;
     c.step = step;
     c.length = length;

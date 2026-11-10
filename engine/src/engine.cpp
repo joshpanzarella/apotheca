@@ -171,7 +171,20 @@ void Engine::letGoOfNotes() {
     for (Track& track : tracks_) {
         if (!track.synth) continue;
         track.synth->allNotesOff();
-        for (auto& left : track.stepsLeft) left = 0;
+        for (double& off : track.offIn) off = kNoNote;
+    }
+}
+
+// Let go of the pattern's notes whose moment has come.
+void Engine::fireNoteOffs() {
+    for (Track& track : tracks_) {
+        if (!track.synth) continue;
+        for (int pitch = 0; pitch < 128; ++pitch) {
+            if (track.offIn[pitch] < 1.0) {
+                track.synth->noteOff(pitch);
+                track.offIn[pitch] = kNoNote;
+            }
+        }
     }
 }
 
@@ -218,11 +231,13 @@ void Engine::apply(const Command& c) {
     case Command::SetNote:
         if (validTrack(c.track) && validScene(c.scene) && c.a >= 0 && c.a < kMaxNotes && std::isfinite(c.value)) {
             Note& note = tracks_[c.track].notes[c.scene][c.a];
-            const bool sound = c.value > 0.f && c.b >= 0 && c.b < kSteps && c.c >= 0 && c.c <= 127 && c.d >= 1;
+            float length = static_cast<float>(c.d) + (std::isfinite(c.extra) ? c.extra : 0.f);
+            if (length > 255.f) length = 255.f;
+            const bool sound = c.value > 0.f && c.b >= 0 && c.b < kSteps && c.c >= 0 && c.c <= 127 && c.d >= 0 && length >= kShortestNote;
             note.velocity = sound ? (c.value > 1.f ? 1.f : c.value) : 0.f;
             note.step = static_cast<std::uint8_t>(sound ? c.b : 0);
             note.pitch = static_cast<std::uint8_t>(sound ? c.c : 0);
-            note.length = static_cast<std::uint8_t>(sound ? (c.d > 255 ? 255 : c.d) : 0);
+            note.length = sound ? length : 0.f;
         }
         break;
     case Command::SetSceneCount:
@@ -317,7 +332,7 @@ void Engine::apply(const Command& c) {
             }
             for (auto& scene : track.notes)
                 for (Note& note : scene) note = Note();
-            for (auto& left : track.stepsLeft) left = 0;
+            for (double& off : track.offIn) off = kNoNote;
             for (auto& lane : track.pending)
                 for (auto& p : lane) p = Track::Pending();
         }
@@ -443,15 +458,13 @@ void Engine::fireStep() {
                 }
             }
         } else if (track.synth) {
-            // Let go of the notes whose time is up, then start this step's.
-            for (int pitch = 0; pitch < 128; ++pitch) {
-                if (track.stepsLeft[pitch] && --track.stepsLeft[pitch] == 0) track.synth->noteOff(pitch);
-            }
+            // The notes whose time was up have been let go already
+            // (fireNoteOffs). Start this step's.
             for (const Note& note : track.notes[scene_]) {
                 if (note.velocity <= 0.f || note.step != nextStep_) continue;
-                if (track.stepsLeft[note.pitch]) track.synth->noteOff(note.pitch); // the same key again
+                if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
                 track.synth->noteOn(note.pitch, note.velocity);
-                track.stepsLeft[note.pitch] = note.length;
+                track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
             }
         }
     }
@@ -472,14 +485,18 @@ void Engine::render(float* interleaved, int frames) {
             // A step starts on its exact sample: the chunk ends where the
             // next step begins.
             firePending();
+            fireNoteOffs(); // before the step, so a note that ends where the next begins is let go first
             if (untilStep_ <= 0.0) {
                 fireStep();
                 untilStep_ += samplesPerStep_;
             }
-            // Stop the chunk at whichever comes first: the next step, or the
-            // next waiting hit.
+            // Stop the chunk at whichever comes first: the next step, the
+            // next waiting hit, or the next note to be let go.
             double next = untilStep_;
             for (Track& track : tracks_) {
+                if (track.synth)
+                    for (double off : track.offIn)
+                        if (off < next) next = off;
                 if (!track.hasDrums) continue;
                 for (auto& lane : track.pending)
                     for (auto& p : lane)
@@ -489,6 +506,9 @@ void Engine::render(float* interleaved, int frames) {
             if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
             untilStep_ -= chunk;
             for (Track& track : tracks_) {
+                if (track.synth)
+                    for (double& off : track.offIn)
+                        if (off < kNoNote) off -= chunk;
                 if (!track.hasDrums) continue;
                 for (auto& lane : track.pending)
                     for (auto& p : lane)

@@ -747,7 +747,62 @@ static void testWhereAHitStarts() {
     CHECK(soundingFrames(renderFrames(*engine, 8 * kStep)) == 1000);
 }
 
+// A note may be any length, and is let go on its own sample.
+static void testANoteEndsPartWayThroughAStep() {
+    // The same note at three lengths. Each plays exactly like a longer one
+    // until the moment it is let go, and differently from then on.
+    const auto bar = [](int whole, float extra) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1));
+        Command c = make(Command::SetNote, 1, 0, 2, 0.9f); // slot 0, step 3
+        c.c = 60;
+        c.d = whole;
+        c.extra = extra;
+        engine->send(c);
+        engine->send(make(Command::Play, 0, 0, 1));
+        return renderFrames(*engine, 12 * kStep);
+    };
+    const auto partsAt = [](const std::vector<float>& a, const std::vector<float>& b) {
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (a[i] != b[i]) return static_cast<int>(i / 2);
+        return -1;
+    };
+    const std::vector<float> two = bar(2, 0.f), twoAndAHalf = bar(2, 0.5f), three = bar(3, 0.f), four = bar(4, 0.f);
+    CHECK(peakOf(four) > 0.01f);
+    // Phazed's own output is a fixed 12 to 15 samples behind (its sample-rate converter).
+    const int start = 2 * kStep + 13;
+    CHECK(std::abs(partsAt(two, four) - (start + 2 * kStep)) <= 3);
+    CHECK(std::abs(partsAt(three, four) - (start + 3 * kStep)) <= 3);
+    CHECK(std::abs(partsAt(twoAndAHalf, four) - (start + 2 * kStep + kStep / 2)) <= 3);
+    CHECK(std::abs(partsAt(bar(0, 0.25f), four) - (start + kStep / 4)) <= 3); // shorter than a step
+    // Written either way, the same length is the same sound.
+    CHECK(bar(2, 1.f) == three);
+    // Nonsense: no note at all, or a whole-step one.
+    CHECK(peakOf(bar(0, 0.f)) == 0.f && peakOf(bar(0, 0.01f)) == 0.f && peakOf(bar(-1, 0.5f)) == 0.f);
+    CHECK(bar(2, std::nanf("")) == two);
+
+    // A note that ends exactly where the same key starts again is let go
+    // first and then played: the second one is not swallowed.
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1));
+    for (int slot = 0; slot < 2; ++slot) {
+        Command c = make(Command::SetNote, 1, slot, slot * 2, 0.9f);
+        c.c = 60;
+        c.d = 2;
+        engine->send(c);
+    }
+    engine->send(make(Command::Play, 0, 0, 1));
+    const std::vector<float> both = renderFrames(*engine, 4 * kStep);
+    const std::vector<float> firstHalf(both.begin(), both.begin() + 2 * 2 * kStep), secondHalf(both.begin() + 2 * 2 * kStep, both.end());
+    CHECK(peakOf(secondHalf) > 0.5f * peakOf(firstHalf));
+    // And Stop lets go of a note that was part-way through.
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 96000);
+    CHECK(peakOf(renderFrames(*engine, 4000)) < 1e-4f);
+}
+
 int main() {
+    testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();
     testWhereAHitStarts();
     testQueue();

@@ -161,10 +161,15 @@ is loud; holding A shapes it the way it is drawn.
 | Stick or D-pad up / down | Through the bar |
 | A | Place a note, one step long |
 | Hold A, left / right | Level |
-| Hold A, up / down | Length, up to the end of the bar or the next note on that key |
+| Hold A, **stick** up / down | Length, freely: the note's end follows the stick to any point in a step |
+| Hold A, **D-pad** up / down | Length by whole steps: the end goes to the next step line, or the one before |
 | B | Delete the note under the cursor |
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
+
+A note runs at most to the end of the bar, or to the next note on that key.
+It can be as short as a tenth of a step. The engine lets go of each note on
+its own sample, not on a step line.
 
 ### Chords
 

@@ -439,6 +439,20 @@ void testTheSongListOnScreen() {
     CHECK(bare.project().tracks[0].drums[0].empty());
 }
 
+void testFreeNoteLengthsAreKept() {
+    std::unique_ptr<Project> song(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 3 60 2.375 0.8\nnote 16 61 9 0.8\nnote 1 62 0.001 0.8\nchord 5 1.5 0.8 0 60 C 0 4 7\n", *song));
+    const NotePattern& p = song->tracks[0].notes[0];
+    CHECK(p.notes[0].length == 2.375f);
+    CHECK(p.notes[1].length == 1.f);              // not past the end of the bar
+    CHECK(p.notes[2].length == kShortestNote);    // nor shorter than the engine will play
+    CHECK(p.chords[0].length == 1.5f);
+    const std::string text = songText(*song);
+    CHECK(text.find("note 3 60 2.375 0.8\n") != std::string::npos && text.find("chord 5 1.5 0.8 ") != std::string::npos);
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(text, *again) && songText(*again) == text);
+}
+
 void testRevs() {
     const std::string folder = tempFolder();
     Rig rig(folder);
@@ -603,6 +617,7 @@ int main(int, char**) {
     testAnOpenedSongSoundsLikeTheOneSaved();
     testNewSongAndTheList();
     testTheSongListOnScreen();
+    testFreeNoteLengthsAreKept();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testNamesDoNotRepeat();
