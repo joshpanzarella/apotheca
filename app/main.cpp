@@ -216,6 +216,10 @@ void fillDemoSong(App& app) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // Every line reaches the log as it is written. On the handheld the log is
+    // a file, and the program is often stopped by the firmware, not by
+    // quitting: without this, nothing it said would be in the file.
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
     bool learn = false; // ask for each button again, whatever has been learned
     bool handheld = false; // started by the handheld's launcher: with no controls learned yet, ask, joystick or not
     bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false, dice = false;
