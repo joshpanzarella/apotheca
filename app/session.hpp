@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "chords.hpp"
 #include "project.hpp"
 
 namespace apotheca {
@@ -17,7 +18,7 @@ enum class View { Song, Pattern, Device };
 
 class Session {
 public:
-    Session(Engine& engine, Project& project) : engine(engine), project(project) {}
+    Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {}
 
     Engine& engine;
     Project& project;
@@ -36,6 +37,14 @@ public:
     // Hear a synth note for a moment. update() lets go of it.
     void audition(int track, int pitch, float velocity);
     void update(Uint32 nowMs);
+
+    // ---- chord packs ----------------------------------------------------------------
+    // There is always at least the built-in pack. The song remembers which
+    // one it picks from, by name.
+    std::vector<ChordPack> packs;
+    void useChordFolder(const std::string& folder) { packs = loadChordPacks(folder); }
+    int packIndex() const;       // the song's pack; the built-in one if it is not here
+    void choosePack(int index);  // wraps round
 
     // ---- songs on disk ------------------------------------------------------------
     // Nothing here needs asking for. The song being worked on is written to

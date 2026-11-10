@@ -1,0 +1,221 @@
+{
+  "chords": [
+    {
+      "function": "unknown",
+      "id": "weightless.Isus2",
+      "intervals": [
+        0,
+        2,
+        7
+      ],
+      "preferredVoices": 3,
+      "quality": "sus2",
+      "requiredIntervals": [
+        0,
+        2,
+        7
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.Isus4",
+      "intervals": [
+        0,
+        5,
+        7
+      ],
+      "preferredVoices": 3,
+      "quality": "sus4",
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.Iquartal",
+      "intervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 3,
+      "quality": "quartal",
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.Iquartal4",
+      "intervals": [
+        0,
+        5,
+        10,
+        15
+      ],
+      "preferredVoices": 4,
+      "quality": "quartal4",
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.IIsus4",
+      "intervals": [
+        0,
+        5,
+        7,
+        14
+      ],
+      "preferredVoices": 4,
+      "quality": "sus4",
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 1
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.IVsus2",
+      "intervals": [
+        0,
+        2,
+        7,
+        17
+      ],
+      "preferredVoices": 4,
+      "quality": "sus2",
+      "requiredIntervals": [
+        0,
+        2,
+        7
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 3
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.Vsus4",
+      "intervals": [
+        0,
+        5,
+        7,
+        10
+      ],
+      "pedalSemitone": 0,
+      "preferredVoices": 4,
+      "quality": "sus4",
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 4
+      }
+    },
+    {
+      "function": "unknown",
+      "id": "weightless.vim7no3",
+      "intervals": [
+        0,
+        7,
+        10
+      ],
+      "pedalSemitone": 0,
+      "preferredVoices": 3,
+      "quality": "7no3",
+      "requiredIntervals": [
+        0,
+        7,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 5
+      }
+    }
+  ],
+  "description": "Suspended and quartal. No thirds, no functional pull; a tonic pedal supplies what gravity there is.",
+  "guidance": {
+    "bassRegister": {
+      "high": 50,
+      "low": 28
+    },
+    "chordRegister": {
+      "high": 86,
+      "low": 50
+    },
+    "density": "sparse",
+    "leadRegister": {
+      "high": 96,
+      "low": 67
+    },
+    "melody": {
+      "allowApproach": false,
+      "requireResolution": true,
+      "targets": [
+        0,
+        2,
+        5,
+        7,
+        10,
+        14
+      ]
+    }
+  },
+  "id": "authored.weightless",
+  "name": "Weightless",
+  "progressions": [],
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "schemaVersion": 2,
+  "sourceTonic": 0,
+  "tags": [
+    "suspended",
+    "quartal",
+    "sparse",
+    "authored"
+  ]
+}

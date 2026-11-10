@@ -125,19 +125,32 @@ void Session::sendDrumPattern(int track, int scene) {
 }
 
 void Session::sendNotePattern(int track, int scene) {
-    const NotePattern& p = project.tracks[track].notes[scene];
+    NoteEvent notes[kMaxNotes]; // chords written out as their notes
+    project.tracks[track].notes[scene].render(notes);
     Command c;
     c.type = Command::SetNote;
     c.track = track;
     c.scene = scene;
     for (int slot = 0; slot < kMaxNotes; ++slot) {
         c.a = slot;
-        c.b = p.notes[slot].step;
-        c.c = p.notes[slot].pitch;
-        c.d = p.notes[slot].length;
-        c.value = p.notes[slot].velocity;
+        c.b = notes[slot].step;
+        c.c = notes[slot].pitch;
+        c.d = notes[slot].length;
+        c.value = notes[slot].velocity;
         engine.send(c);
     }
+}
+
+int Session::packIndex() const {
+    for (std::size_t i = 0; i < packs.size(); ++i)
+        if (packs[i].name == project.chordPack) return static_cast<int>(i);
+    return 0;
+}
+
+void Session::choosePack(int index) {
+    const int count = static_cast<int>(packs.size());
+    index = ((index % count) + count) % count;
+    std::snprintf(project.chordPack, sizeof project.chordPack, "%s", packs[static_cast<std::size_t>(index)].name.c_str());
 }
 
 } // namespace apotheca
@@ -255,8 +268,10 @@ void Session::applyProject() {
                     image->nudge[scene][lane][step] = track.drums[scene].nudge[lane][step];
                     image->chance[scene][lane][step] = track.drums[scene].chance[lane][step];
                 }
+            NoteEvent notes[kMaxNotes];
+            track.notes[scene].render(notes);
             for (int slot = 0; slot < kMaxNotes; ++slot) {
-                const NoteEvent& n = track.notes[scene].notes[slot];
+                const NoteEvent& n = notes[slot];
                 if (n.velocity <= 0.f) continue;
                 image->notes[scene][slot].step = static_cast<std::uint8_t>(n.step);
                 image->notes[scene][slot].pitch = static_cast<std::uint8_t>(n.pitch);

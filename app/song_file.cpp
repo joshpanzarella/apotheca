@@ -31,6 +31,7 @@ std::string songText(const Project& project) {
     out += "repeats";
     for (int r : project.repeats) put(out, " %.0f", r);
     out += "\n";
+    if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
@@ -77,6 +78,18 @@ std::string songText(const Project& project) {
                     put(out, " %.0f", n.length);
                     put(out, " %.6g\n", n.velocity);
                 }
+                // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
+                for (const ChordEvent& c : p.chords) {
+                    if (c.velocity <= 0.f) continue;
+                    put(out, "chord %.0f", c.step + 1);
+                    put(out, " %.0f", c.length);
+                    put(out, " %.6g", c.velocity);
+                    put(out, " %.0f", c.inversion);
+                    put(out, " %.0f ", c.root);
+                    out += c.name[0] ? c.name : "?";
+                    for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                    out += "\n";
+                }
             }
         }
     }
@@ -104,6 +117,10 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "repeats") {
             double r;
             for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = clampi(static_cast<int>(r), 1, kMaxRepeats);
+        } else if (word == "pack") {
+            std::string name;
+            std::getline(in >> std::ws, name);
+            std::snprintf(song->chordPack, sizeof song->chordPack, "%s", name.c_str());
         } else if (word == "track") {
             std::string kind;
             in >> kind;
@@ -163,12 +180,36 @@ bool parseSong(const std::string& text, Project& project) {
             if (step < 1 || step > kSteps || pitch < 0 || pitch > 127 || !(level > 0)) continue;
             NotePattern& p = track->notes[scene];
             const int slot = p.freeSlot();
-            if (slot < 0) continue; // a sixty-fifth note
+            if (slot < 0 || p.used() >= kMaxNotes) continue; // a sixty-fifth note
             const int s = static_cast<int>(step) - 1;
             p.notes[slot].step = s;
             p.notes[slot].pitch = static_cast<int>(pitch);
             p.notes[slot].length = clampi(static_cast<int>(length), 1, kSteps - s);
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
+        } else if (word == "chord" && isSynth(track->kind)) {
+            double step, length, level, inversion, root, interval;
+            std::string name;
+            if (!(in >> step >> length >> level >> inversion >> root >> name)) continue;
+            if (step < 1 || step > kSteps || root < 0 || root > 127 || !(level > 0)) continue;
+            NotePattern& p = track->notes[scene];
+            ChordEvent c;
+            c.step = static_cast<int>(step) - 1;
+            c.length = clampi(static_cast<int>(length), 1, kSteps - c.step);
+            c.velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
+            c.inversion = clampi(static_cast<int>(inversion), -kMaxInversion, kMaxInversion);
+            c.root = static_cast<int>(root);
+            std::snprintf(c.name, sizeof c.name, "%s", name == "?" ? "" : name.c_str());
+            while (c.count < kChordNotes && (in >> interval)) {
+                if (interval >= 0 && interval <= 48) c.intervals[c.count++] = static_cast<int>(interval);
+            }
+            // Not one with no notes, not a seventeenth, not two at once, and
+            // not past the sixty-four notes.
+            int keys[kChordNotes];
+            const int slot = p.freeChord();
+            bool clash = false;
+            for (int s = c.step; s < c.step + c.length; ++s) clash = clash || p.chordAt(s) >= 0;
+            if (c.count == 0 || slot < 0 || clash || p.used() + c.pitches(keys) > kMaxNotes) continue;
+            p.chords[slot] = c;
         }
     }
     if (count == 0) song->tracks[0].kind = TrackKind::Drums; // a song always has its drum track

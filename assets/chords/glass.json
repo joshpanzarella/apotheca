@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.glass",
+  "name": "Glass",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "majorPentatonic",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      7,
+      9
+    ]
+  },
+  "description": "Clear pentatonic fragments with open thirds and ringing upper seconds. Mostly three voices, no semitone clusters, and no required progression.",
+  "tags": [
+    "clear",
+    "pentatonic",
+    "open",
+    "sparse",
+    "authored"
+  ],
+  "chords": [
+    {
+      "id": "glass.Iopen",
+      "quality": "major(open)",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        16
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "glass.Iadd9open",
+      "quality": "add9(open)",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        14,
+        16
+      ],
+      "requiredIntervals": [
+        0,
+        14,
+        16
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "glass.I6no3",
+      "quality": "6(no3)",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        7,
+        9
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.IIsus2",
+      "quality": "sus2",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.IIsus4",
+      "quality": "sus4",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.IIsus2add11",
+      "quality": "sus2add11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        2,
+        5,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        2,
+        5
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.IIIm7no5",
+      "quality": "m7(no5)",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.Vsus4",
+      "quality": "sus4",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "unknown"
+    },
+    {
+      "id": "glass.vimin",
+      "quality": "m",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        7
+      ],
+      "preferredVoices": 3,
+      "function": "tonic"
+    },
+    {
+      "id": "glass.vim7",
+      "quality": "m7",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    }
+  ],
+  "guidance": {
+    "density": "sparse",
+    "chordRegister": {
+      "low": 60,
+      "high": 93
+    },
+    "leadRegister": {
+      "low": 74,
+      "high": 103
+    },
+    "bassRegister": {
+      "low": 36,
+      "high": 55
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        7,
+        9,
+        14,
+        16
+      ],
+      "allowApproach": false,
+      "requireResolution": true
+    }
+  },
+  "progressions": []
+}

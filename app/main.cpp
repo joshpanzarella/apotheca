@@ -134,7 +134,12 @@ void fillDemoSong(App& app) {
         put(1, scene, 11, root + 3, 1, .7f);
         put(1, scene, 14, root + 7, 2, .8f);
         session.sendNotePattern(1, scene);
-        for (int i = 0; i < 3; ++i) put(2, scene, 0, root + 12 + (i == 0 ? 0 : i == 1 ? 3 : 7), 14, .7f);
+        // Chords from the built-in pack: Am7, Fmaj7, G7, two to the bar.
+        const ChordPack& pack = builtInPack();
+        const int which[3] = {12, 10, 11}, then[3] = {9, 7, 8};
+        NotePattern& pads = project.tracks[2].notes[scene];
+        pads.chords[0] = makeChord(pack.chords[static_cast<std::size_t>(which[scene])], root + 12, 0, 8, .7f, 0);
+        pads.chords[1] = makeChord(pack.chords[static_cast<std::size_t>(then[scene])], root + 12, 8, 6, .6f, 1);
         session.sendNotePattern(2, scene);
     }
     const int repeats[3] = {2, 2, 4};
@@ -242,6 +247,16 @@ int main(int argc, char** argv) {
 
     Input input;
     App app(engine);
+    {
+        // Chord packs: a "chords" folder beside the program, or the one in
+        // the source tree when running from a build folder.
+        char* base = SDL_GetBasePath();
+        const std::string beside = std::string(base ? base : "") + "chords";
+        if (base) SDL_free(base);
+        app.session().useChordFolder(beside);
+        if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
+        std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
+    }
     if (songs) {
         app.session().useSongFolder(songs, 1);
         if (demo) fillDemoSong(app);
@@ -268,6 +283,15 @@ int main(int argc, char** argv) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
         tapKey(SDLK_x);
+    } else if (std::strncmp(view, "chords", 6) == 0) {
+        // The pads, with Y held: "chords" to place one, "chords-swap" on one.
+        app.project().track = 2;
+        const bool swap = std::strcmp(view, "chords-swap") == 0;
+        app.notes().moveCursorTo(60, swap ? 2 : 14);
+        if (swap) app.session().choosePack(1);
+        app.session().view = View::Pattern;
+        pushKey(SDLK_a, true); // Y, held
+        tapKey(SDLK_RIGHT, swap ? 1 : 2);
     } else if (std::strcmp(view, "notes") == 0) {
         app.project().track = 1;
         app.notes().moveCursorTo(57, 6);

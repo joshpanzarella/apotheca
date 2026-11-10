@@ -1,0 +1,206 @@
+{
+  "chords": [
+    {
+      "function": "tonic",
+      "id": "moonlit.im9",
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "quality": "m9",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "tonic",
+      "id": "moonlit.im11",
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "quality": "m11",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "predominant",
+      "id": "moonlit.iim7",
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "preferredVoices": 4,
+      "quality": "m7",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 1
+      }
+    },
+    {
+      "function": "tonic",
+      "id": "moonlit.bIIImaj7",
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "preferredVoices": 4,
+      "quality": "maj7",
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 2
+      }
+    },
+    {
+      "borrowedFrom": "dorian major fourth",
+      "function": "predominant",
+      "id": "moonlit.IV7",
+      "intervals": [
+        0,
+        4,
+        7,
+        10
+      ],
+      "preferredVoices": 4,
+      "quality": "7",
+      "requiredIntervals": [
+        0,
+        4,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 3
+      }
+    },
+    {
+      "function": "dominant",
+      "id": "moonlit.vm7",
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "preferredVoices": 4,
+      "quality": "m7",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 4
+      }
+    },
+    {
+      "function": "dominant",
+      "id": "moonlit.bVIImaj7",
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "preferredVoices": 4,
+      "quality": "maj7",
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 6
+      }
+    }
+  ],
+  "description": "Dorian minor. Ninths and elevenths over a minor tonic, with the major fourth as the light in it.",
+  "guidance": {
+    "bassRegister": {
+      "high": 48,
+      "low": 26
+    },
+    "chordRegister": {
+      "high": 79,
+      "low": 48
+    },
+    "density": "medium",
+    "leadRegister": {
+      "high": 91,
+      "low": 60
+    },
+    "melody": {
+      "allowApproach": true,
+      "requireResolution": true,
+      "targets": [
+        0,
+        3,
+        5,
+        7,
+        10,
+        14,
+        17
+      ]
+    }
+  },
+  "id": "authored.moonlit",
+  "name": "Moonlit",
+  "progressions": [],
+  "scale": {
+    "id": "dorian",
+    "pitchClasses": [
+      0,
+      2,
+      3,
+      5,
+      7,
+      9,
+      10
+    ]
+  },
+  "schemaVersion": 2,
+  "sourceTonic": 0,
+  "tags": [
+    "dark",
+    "dorian",
+    "modal",
+    "authored"
+  ]
+}

@@ -314,12 +314,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                                  faded(kText, 90 + static_cast<int>(165 * p.level[lane][step])));
                         }
             } else {
-                const NotePattern& p = track.notes[scene];
+                NoteEvent notes[kMaxNotes]; // chords drawn as their notes
+                track.notes[scene].render(notes);
                 int low = 127, high = 0;
-                for (const NoteEvent& n : p.notes)
+                for (const NoteEvent& n : notes)
                     if (n.velocity > 0.f) { low = n.pitch < low ? n.pitch : low; high = n.pitch > high ? n.pitch : high; }
                 const int span = high - low < 7 ? 7 : high - low;
-                for (const NoteEvent& n : p.notes) {
+                for (const NoteEvent& n : notes) {
                     if (n.velocity <= 0.f) continue;
                     const int ny = y + 4 + (kRowH - 14) * (high - n.pitch) / span;
                     const int w = static_cast<int>(n.length * stepW) - 1;

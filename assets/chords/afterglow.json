@@ -1,0 +1,351 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.afterglow",
+  "name": "Afterglow",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "major",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      11
+    ]
+  },
+  "description": "Warm major harmony with sixths and upper extensions. A borrowed minor fourth, flat sixth and flat seventh offer softer shadows without making a cadence compulsory.",
+  "tags": [
+    "warm",
+    "major",
+    "modal-mixture",
+    "lush",
+    "authored"
+  ],
+  "chords": [
+    {
+      "id": "afterglow.I69",
+      "quality": "6/9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "afterglow.Imaj7add13",
+      "quality": "maj7add13",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "afterglow.iim11",
+      "quality": "m11",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 6,
+      "function": "predominant"
+    },
+    {
+      "id": "afterglow.iiim7",
+      "quality": "m7",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "afterglow.IVmaj13no5",
+      "quality": "maj13(no5)",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        11,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        21
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "afterglow.IV69",
+      "quality": "6/9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "afterglow.viadd9",
+      "quality": "madd9",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "afterglow.vim11",
+      "quality": "m11",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "afterglow.ivm6",
+      "quality": "m6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel natural minor: minor iv, added sixth"
+    },
+    {
+      "id": "afterglow.bVImaj7",
+      "quality": "maj7",
+      "root": {
+        "degree": 5,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "preferredVoices": 4,
+      "function": "predominant",
+      "borrowedFrom": "parallel natural minor: bVI"
+    },
+    {
+      "id": "afterglow.bVIIadd9",
+      "quality": "add9",
+      "root": {
+        "degree": 6,
+        "alteration": -1
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        14
+      ],
+      "preferredVoices": 4,
+      "function": "unknown",
+      "borrowedFrom": "parallel natural minor: bVII"
+    },
+    {
+      "id": "afterglow.V9sus4",
+      "quality": "9sus4",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 5,
+      "function": "dominant"
+    }
+  ],
+  "guidance": {
+    "density": "lush",
+    "chordRegister": {
+      "low": 48,
+      "high": 84
+    },
+    "leadRegister": {
+      "low": 64,
+      "high": 93
+    },
+    "bassRegister": {
+      "low": 28,
+      "high": 50
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        3,
+        4,
+        7,
+        9,
+        11,
+        14,
+        17,
+        21
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "progressions": [
+    {
+      "id": "afterglow.soft-return",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "afterglow.IV69",
+          "durationTicks": 2880,
+          "weight": 1.0
+        },
+        {
+          "chordId": "afterglow.ivm6",
+          "durationTicks": 960,
+          "weight": 1.0
+        },
+        {
+          "chordId": "afterglow.Imaj7add13",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

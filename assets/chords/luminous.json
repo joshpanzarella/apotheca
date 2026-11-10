@@ -1,0 +1,227 @@
+{
+  "chords": [
+    {
+      "function": "tonic",
+      "id": "luminous.Imaj9",
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "quality": "maj9",
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "tonic",
+      "id": "luminous.Imaj7s11",
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        18
+      ],
+      "preferredVoices": 5,
+      "quality": "maj7#11",
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 0
+      }
+    },
+    {
+      "function": "predominant",
+      "id": "luminous.IIadd9",
+      "intervals": [
+        0,
+        4,
+        7,
+        14
+      ],
+      "preferredVoices": 4,
+      "quality": "add9",
+      "requiredIntervals": [
+        0,
+        4
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 1
+      }
+    },
+    {
+      "function": "tonic",
+      "id": "luminous.iiim7",
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "preferredVoices": 4,
+      "quality": "m7",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 2
+      }
+    },
+    {
+      "function": "dominant",
+      "id": "luminous.Vmaj7",
+      "intervals": [
+        0,
+        4,
+        7,
+        11
+      ],
+      "preferredVoices": 4,
+      "quality": "maj7",
+      "requiredIntervals": [
+        0,
+        4,
+        11
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 4
+      }
+    },
+    {
+      "function": "tonic",
+      "id": "luminous.vim9",
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "quality": "m9",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 5
+      }
+    },
+    {
+      "function": "dominant",
+      "id": "luminous.viim7",
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "preferredVoices": 4,
+      "quality": "m7",
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "root": {
+        "alteration": 0,
+        "degree": 6
+      }
+    }
+  ],
+  "description": "Bright lydian palette. Major sevenths and ninths with the raised fourth as the resident colour.",
+  "guidance": {
+    "bassRegister": {
+      "high": 55,
+      "low": 33
+    },
+    "chordRegister": {
+      "high": 88,
+      "low": 55
+    },
+    "density": "lush",
+    "leadRegister": {
+      "high": 100,
+      "low": 72
+    },
+    "melody": {
+      "allowApproach": true,
+      "requireResolution": true,
+      "targets": [
+        2,
+        4,
+        6,
+        9,
+        11,
+        14,
+        18
+      ]
+    }
+  },
+  "id": "authored.luminous",
+  "name": "Luminous",
+  "progressions": [
+    {
+      "id": "luminous.rise",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "luminous.Imaj9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "luminous.IIadd9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "luminous.Imaj7s11",
+          "durationTicks": 3840,
+          "weight": 1.0
+        }
+      ]
+    }
+  ],
+  "scale": {
+    "id": "lydian",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      6,
+      7,
+      9,
+      11
+    ]
+  },
+  "schemaVersion": 2,
+  "sourceTonic": 0,
+  "tags": [
+    "bright",
+    "lydian",
+    "lush",
+    "authored"
+  ]
+}

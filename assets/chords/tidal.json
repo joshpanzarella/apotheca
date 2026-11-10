@@ -1,0 +1,360 @@
+{
+  "schemaVersion": 2,
+  "id": "authored.tidal",
+  "name": "Tidal",
+  "sourceTonic": 0,
+  "scale": {
+    "id": "mixolydian",
+    "pitchClasses": [
+      0,
+      2,
+      4,
+      5,
+      7,
+      9,
+      10
+    ]
+  },
+  "description": "Flowing Mixolydian: sixths, suspended ninths and broad thirteenths, with a soft flat seventh instead of a leading-tone cadence.",
+  "tags": [
+    "flowing",
+    "mixolydian",
+    "suspended",
+    "extended",
+    "authored"
+  ],
+  "chords": [
+    {
+      "id": "tidal.I6",
+      "quality": "6",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "tidal.I69",
+      "quality": "6/9",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "tidal.I9sus4",
+      "quality": "9sus4",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        5,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        5,
+        10
+      ],
+      "preferredVoices": 5,
+      "function": "tonic"
+    },
+    {
+      "id": "tidal.I13",
+      "quality": "13",
+      "root": {
+        "degree": 0,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        10,
+        14,
+        21
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        10,
+        21
+      ],
+      "preferredVoices": 6,
+      "function": "tonic"
+    },
+    {
+      "id": "tidal.iim9",
+      "quality": "m9",
+      "root": {
+        "degree": 1,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "tidal.iiim7b5",
+      "quality": "m7b5",
+      "root": {
+        "degree": 2,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        6,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "unknown"
+    },
+    {
+      "id": "tidal.IVmaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "predominant"
+    },
+    {
+      "id": "tidal.IV6",
+      "quality": "6",
+      "root": {
+        "degree": 3,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9
+      ],
+      "preferredVoices": 4,
+      "function": "predominant"
+    },
+    {
+      "id": "tidal.vm11",
+      "quality": "m11",
+      "root": {
+        "degree": 4,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10,
+        14,
+        17
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10,
+        17
+      ],
+      "preferredVoices": 6,
+      "function": "unknown"
+    },
+    {
+      "id": "tidal.vim7",
+      "quality": "m7",
+      "root": {
+        "degree": 5,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        3,
+        7,
+        10
+      ],
+      "requiredIntervals": [
+        0,
+        3,
+        10
+      ],
+      "preferredVoices": 4,
+      "function": "tonic"
+    },
+    {
+      "id": "tidal.bVIImaj9",
+      "quality": "maj9",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        11,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        11,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    },
+    {
+      "id": "tidal.bVII69",
+      "quality": "6/9",
+      "root": {
+        "degree": 6,
+        "alteration": 0
+      },
+      "intervals": [
+        0,
+        4,
+        7,
+        9,
+        14
+      ],
+      "requiredIntervals": [
+        0,
+        4,
+        9,
+        14
+      ],
+      "preferredVoices": 5,
+      "function": "unknown"
+    }
+  ],
+  "guidance": {
+    "density": "medium",
+    "chordRegister": {
+      "low": 50,
+      "high": 86
+    },
+    "leadRegister": {
+      "low": 65,
+      "high": 96
+    },
+    "bassRegister": {
+      "low": 29,
+      "high": 52
+    },
+    "melody": {
+      "targets": [
+        0,
+        2,
+        5,
+        7,
+        9,
+        14,
+        17,
+        21
+      ],
+      "allowApproach": true,
+      "requireResolution": true
+    }
+  },
+  "progressions": [
+    {
+      "id": "tidal.swell",
+      "loop": true,
+      "segments": [
+        {
+          "chordId": "tidal.I9sus4",
+          "durationTicks": 1440,
+          "weight": 1.0
+        },
+        {
+          "chordId": "tidal.IV6",
+          "durationTicks": 960,
+          "weight": 1.0
+        },
+        {
+          "chordId": "tidal.iim9",
+          "durationTicks": 1920,
+          "weight": 1.0
+        },
+        {
+          "chordId": "tidal.bVIImaj9",
+          "durationTicks": 1440,
+          "weight": 1.0
+        },
+        {
+          "chordId": "tidal.I69",
+          "durationTicks": 1920,
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

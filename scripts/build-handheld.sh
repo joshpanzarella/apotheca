@@ -7,6 +7,7 @@
 #   Apotheca.sh         the launcher the firmware's Ports menu shows
 #   apotheca/apotheca   the program
 #   apotheca/*.ttf      the lettering
+#   apotheca/chords/    chord packs
 #   apotheca/licences/  licences of the code and lettering built in
 #
 # Runs on Linux. Needs clang, lld, curl, dpkg-deb and zip.
@@ -84,6 +85,9 @@ mkdir -p "$pack/apotheca/licences"
 cp "$here/third_party/easycz/LICENSE" "$pack/apotheca/licences/phazed-engine-LICENSE.txt"
 cp "$here/third_party/easycz/THIRD_PARTY_LICENSES.md" "$pack/apotheca/licences/phazed-engine-third-party.md"
 mv "$pack/apotheca/routed-gothic-LICENSE.txt" "$pack/apotheca/licences/"
+# Chord packs: any JSON file dropped in this folder is picked up.
+mkdir -p "$pack/apotheca/chords"
+cp "$here"/assets/chords/*.json "$pack/apotheca/chords/"
 cp "$here/scripts/Apotheca.sh" "$pack/Apotheca.sh"
 chmod +x "$pack/Apotheca.sh" "$pack/apotheca/apotheca"
 
