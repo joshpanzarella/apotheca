@@ -5,9 +5,9 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 ## Status
 
-One drum track that plays, and the CZ synth in the engine (no screen for it
-yet: `build/render_demo out.wav` renders drums, a CZ bass and CZ chords to a
-file to listen to). The drums: Eight lanes with a built-in kit (made in code, no
+One drum track that plays, and Phazed, a phase distortion synth, in the
+engine (no screen for it yet: `build/render_demo out.wav` renders drums, a
+Phazed bass and Phazed chords to a file to listen to). The drums: Eight lanes with a built-in kit (made in code, no
 recordings, and built to hit hard), a 16-step pattern, tempo, and the Pattern screen from the
 mockups in `docs/screens/`. The engine holds up to twelve tracks, each with
 two effect slots, into a master with two; only track 1 has an instrument so
@@ -118,7 +118,8 @@ Runs on Linux (needs clang, lld, curl, dpkg-deb, zip). It writes
 ```
 Apotheca.sh         the launcher the Ports menu shows
 apotheca/apotheca   the program
-apotheca/*.ttf      the lettering, and its licence
+apotheca/*.ttf      the lettering
+apotheca/licences/  licences of the code and lettering built in
 ```
 
 Unzip it into the firmware's ports folder on the SD card, beside the other
@@ -135,7 +136,7 @@ engine/   the audio engine. No SDL, no device code, so it tests on its own.
 app/      window, audio device, buttons. Talks to the engine through commands.
 tests/    engine tests, and screen tests that press the buttons.
 third_party/  stb_truetype, which reads the font (public domain), and
-          easycz, the CZ synth's engine, copied unchanged from
+          easycz, the engine behind Phazed, copied unchanged from
           joshpanzarella/schwung-easycz (MIT, with a BSD-3-Clause chip
           emulation from MAME).
 tools/    render_demo, which renders a short piece to a WAV file.
@@ -152,5 +153,9 @@ scripts/  the handheld build and the port launcher.
 - **One button and the stick, not a combination.** New controls follow the
   rule on the Pattern screen: the stick moves; hold a button and it shapes.
 - **Fast.** Held input runs quickly. Nobody has asked for slower.
+- **The synth is called Phazed.** That is the only name a player sees. Its
+  engine lives in `third_party/easycz` under its own names and licences;
+  anything from it that reaches the screen goes through
+  `engine/include/apotheca/phazed.hpp`.
 - **Handheld first.** A feature is designed on the handheld's buttons. A
   keyboard key only ever stands in for one of them.

@@ -12,7 +12,7 @@
 //
 // A new engine has one track with an instrument: track 0, the drums, playing
 // the built-in kit. The other tracks are empty and cost nothing, until
-// addSynthTrack() puts the CZ synth on one.
+// addSynthTrack() puts Phazed, the synth, on one.
 //
 // Threads:
 //   - Any ONE other thread calls send(). It never blocks.
@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <memory>
 
-#include "apotheca/cz.hpp"
+#include "apotheca/phazed.hpp"
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
 #include "apotheca/spsc_queue.hpp"
@@ -69,7 +69,7 @@ public:
     void prepare(float sampleRate);
     void setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect);
     void setMasterEffect(int slot, std::unique_ptr<Effect> effect);
-    // Put the CZ synth on an empty track. Returns false if the track already
+    // Put Phazed on an empty track. Returns false if the track already
     // has an instrument or the synth could not be built.
     bool addSynthTrack(int track);
 
@@ -89,7 +89,7 @@ private:
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
-        std::unique_ptr<CzSynth> synth; // set on a synth track
+        std::unique_ptr<Phazed> synth; // set on a synth track
         float pattern[kDrumLanes][kSteps] = {}; // velocity per step, 0 = no hit
         float nudge[kDrumLanes][kSteps] = {};   // -0.5..0.5 of a step
         float chance[kDrumLanes][kSteps];       // 0..1, set to 1 in the constructor

@@ -12,7 +12,7 @@ option(APOTHECA_BUILD_APP "Build the SDL2 app (needs SDL2)" ON)
 option(APOTHECA_BUILD_TESTS "Build the engine tests" ON)
 
 # The engine: no SDL, no device code. Keep it that way so it stays testable.
-# EasyCZ's engine, copied unchanged from joshpanzarella/schwung-easycz.
+# The engine behind Phazed, copied unchanged from joshpanzarella/schwung-easycz.
 set(CMAKE_C_STANDARD 11)
 add_library(easycz STATIC
   third_party/easycz/dsp/cz_chorus.c third_party/easycz/dsp/cz_output.c
@@ -24,7 +24,7 @@ if(MATH_LIBRARY)
   target_link_libraries(easycz PUBLIC ${MATH_LIBRARY})
 endif()
 
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/drums.cpp engine/src/cz.cpp)
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/drums.cpp engine/src/phazed.cpp)
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
 target_compile_options(apotheca_engine PRIVATE -Wall -Wextra)
@@ -34,9 +34,9 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(engine_test tests/engine_test.cpp)
   target_link_libraries(engine_test PRIVATE apotheca_engine)
   add_test(NAME engine COMMAND engine_test)
-  add_executable(cz_test tests/cz_test.cpp)
-  target_link_libraries(cz_test PRIVATE apotheca_engine)
-  add_test(NAME cz COMMAND cz_test)
+  add_executable(phazed_test tests/phazed_test.cpp)
+  target_link_libraries(phazed_test PRIVATE apotheca_engine)
+  add_test(NAME phazed COMMAND phazed_test)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

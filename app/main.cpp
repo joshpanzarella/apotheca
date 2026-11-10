@@ -141,7 +141,7 @@ int main(int argc, char** argv) {
     audio.engine = &engine;
 
     SDL_AudioSpec want = {};
-    want.freq = 44100; // the rate the CZ synth is built for; SDL converts if the device differs
+    want.freq = 44100; // the rate Phazed is built for; SDL converts if the device differs
     want.format = AUDIO_F32SYS;
     want.channels = 2;
     want.samples = 256; // about 6 ms

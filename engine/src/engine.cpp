@@ -64,7 +64,7 @@ void Engine::setMasterEffect(int slot, std::unique_ptr<Effect> effect) {
 
 bool Engine::addSynthTrack(int track) {
     if (!validTrack(track) || tracks_[track].hasInstrument()) return false;
-    std::unique_ptr<CzSynth> synth(new CzSynth);
+    std::unique_ptr<Phazed> synth(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
     tracks_[track].synth = std::move(synth);

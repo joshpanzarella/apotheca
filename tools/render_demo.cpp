@@ -3,7 +3,7 @@
 //
 //   build/render_demo out.wav
 //
-// Eight bars: the drum pattern from the app's --demo, a CZ bass and CZ chords.
+// Eight bars: the drum pattern from the app's --demo, a Phazed bass and Phazed chords.
 
 #include <cstdint>
 #include <cstdio>
@@ -27,8 +27,8 @@ Command make(Command::Type type, int track, int a = 0, int b = 0, float value = 
 }
 
 int firstPresetIn(const char* folder) {
-    for (int i = 0; i < CzSynth::presetCount(); ++i) {
-        if (std::strcmp(CzSynth::presetCategory(i), folder) == 0) return i;
+    for (int i = 0; i < Phazed::presetCount(); ++i) {
+        if (std::strcmp(Phazed::presetCategory(i), folder) == 0) return i;
     }
     return 0;
 }
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     engine.send(make(Command::SetTrackLevel, 1, 0, 0, 0.35f));
     engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.2f));
     engine.send(make(Command::SetTempo, 0, 0, 0, tempo));
-    std::printf("bass: %s\nchords: %s\n", CzSynth::presetName(bass), CzSynth::presetName(pad));
+    std::printf("bass: %s\nchords: %s\n", Phazed::presetName(bass), Phazed::presetName(pad));
 
     // The drum pattern from the app's --demo.
     const struct { int lane, step; float level; } hits[] = {

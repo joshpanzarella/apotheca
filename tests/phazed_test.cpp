@@ -1,4 +1,4 @@
-// Tests for the CZ synth inside Apotheca's engine. EasyCZ has its own tests
+// Tests for Phazed, the synth, inside Apotheca's engine. Its engine has its own tests
 // for the sound itself (in its own repository); these check the joins: that
 // it is in tune at the engine's sample rate, that every preset plays, and
 // that the engine's commands reach it.
@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cctype>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "apotheca/engine.hpp"
@@ -70,8 +72,8 @@ static double periodOf(const std::vector<float>& stereo, int minLag, int maxLag)
 
 // A plain, steady preset to measure pitch on: the first in the Organs folder.
 static int organPreset() {
-    for (int i = 0; i < CzSynth::presetCount(); ++i) {
-        if (std::strcmp(CzSynth::presetCategory(i), "Organs") == 0) return i;
+    for (int i = 0; i < Phazed::presetCount(); ++i) {
+        if (std::strcmp(Phazed::presetCategory(i), "Organs") == 0) return i;
     }
     return 0;
 }
@@ -95,17 +97,30 @@ static double centsFromOctaveOf(double hz, double target) {
 }
 
 static void testPresetsAreThere() {
-    CHECK(CzSynth::presetCount() >= 60);
+    CHECK(Phazed::presetCount() >= 60);
     int folders = 0;
     const char* last = "";
-    for (int i = 0; i < CzSynth::presetCount(); ++i) {
-        CHECK(CzSynth::presetName(i)[0] != '\0');
-        CHECK(CzSynth::presetCategory(i)[0] != '\0');
-        if (std::strcmp(CzSynth::presetCategory(i), last) != 0) ++folders;
-        last = CzSynth::presetCategory(i);
+    for (int i = 0; i < Phazed::presetCount(); ++i) {
+        CHECK(Phazed::presetName(i)[0] != '\0');
+        CHECK(Phazed::presetCategory(i)[0] != '\0');
+        if (std::strcmp(Phazed::presetCategory(i), last) != 0) ++folders;
+        last = Phazed::presetCategory(i);
     }
     CHECK(folders == 7); // each folder's presets sit together
-    CHECK(CzSynth::presetName(-1)[0] == '\0' && CzSynth::presetName(CzSynth::presetCount())[0] == '\0');
+    // The player only ever sees "Phazed": no name or folder carries the
+    // initials or the maker of the instrument its engine was modelled on.
+    bool renamed = false;
+    for (int i = 0; i < Phazed::presetCount(); ++i) {
+        for (const char* text : {Phazed::presetName(i), Phazed::presetCategory(i)}) {
+            std::string lower = text;
+            for (char& c : lower) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            CHECK(lower.find("cz") == std::string::npos);
+            CHECK(lower.find("casio") == std::string::npos);
+        }
+        if (std::strcmp(Phazed::presetName(i), "Phazed Strings") == 0) renamed = true;
+    }
+    CHECK(renamed);
+    CHECK(Phazed::presetName(-1)[0] == '\0' && Phazed::presetName(Phazed::presetCount())[0] == '\0');
 }
 
 static void testASynthTrackIsAddedOnce() {
@@ -172,7 +187,7 @@ static void testEveryPresetPlays() {
     Engine engine;
     engine.prepare(44100.f);
     engine.addSynthTrack(1);
-    for (int preset = 0; preset < CzSynth::presetCount(); ++preset) {
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
         engine.send(make(Command::SelectPreset, 1, preset));
         renderFrames(engine, 2000); // the fade a preset change makes
         engine.send(make(Command::NoteOn, 1, 60, 1.f));
@@ -185,7 +200,7 @@ static void testEveryPresetPlays() {
             peak = std::fabs(s) > peak ? std::fabs(s) : peak;
         }
         if (!finite || peak <= 0.005f || peak > 1.f) {
-            std::printf("  preset %d \"%s\": peak %.4f%s\n", preset, CzSynth::presetName(preset), peak, finite ? "" : ", not finite");
+            std::printf("  preset %d \"%s\": peak %.4f%s\n", preset, Phazed::presetName(preset), peak, finite ? "" : ", not finite");
         }
         CHECK(finite);
         CHECK(peak > 0.005f);
@@ -199,9 +214,9 @@ static void testPresetsSoundDifferent() {
     // The same note on the first preset of each folder: seven different sounds.
     std::vector<std::vector<float>> sounds;
     const char* last = "";
-    for (int preset = 0; preset < CzSynth::presetCount(); ++preset) {
-        if (std::strcmp(CzSynth::presetCategory(preset), last) == 0) continue;
-        last = CzSynth::presetCategory(preset);
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        if (std::strcmp(Phazed::presetCategory(preset), last) == 0) continue;
+        last = Phazed::presetCategory(preset);
         Engine engine;
         engine.prepare(44100.f);
         engine.addSynthTrack(1);
@@ -287,6 +302,6 @@ int main(int argc, char** argv) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
     }
-    std::printf("cz tests passed\n");
+    std::printf("phazed tests passed\n");
     return 0;
 }

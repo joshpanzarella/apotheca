@@ -6,7 +6,8 @@
 # Output: build-handheld/Apotheca-port.zip, holding
 #   Apotheca.sh         the launcher the firmware's Ports menu shows
 #   apotheca/apotheca   the program
-#   apotheca/*.ttf      the lettering, and its licence
+#   apotheca/*.ttf      the lettering
+#   apotheca/licences/  licences of the code and lettering built in
 #
 # Runs on Linux. Needs clang, lld, curl, dpkg-deb and zip.
 #
@@ -62,7 +63,7 @@ mkdir -p "$pack/apotheca"
 
 echo "building..."
 flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O2 -mcpu=cortex-a53"
-# EasyCZ's engine is C.
+# Phazed's engine is C.
 objects=""
 mkdir -p "$out/obj"
 for c in cz_chorus cz_output cz_presets cz_synth cz_tone upd933; do
@@ -72,7 +73,7 @@ done
 clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
     -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
-    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" "$here/engine/src/cz.cpp" \
+    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" "$here/engine/src/phazed.cpp" \
     "$here/app/main.cpp" "$here/app/input.cpp" "$here/app/pattern_screen.cpp" \
     "$here/app/realtime.cpp" "$here/app/text.cpp" \
     $objects \
@@ -80,6 +81,11 @@ clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -lSDL2 -lpthread -lm -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined
 
 cp "$here/assets/fonts/routed-gothic-narrow.ttf" "$here/assets/fonts/routed-gothic-LICENSE.txt" "$pack/apotheca/"
+# Licences of the code built into the program, which must travel with it.
+mkdir -p "$pack/apotheca/licences"
+cp "$here/third_party/easycz/LICENSE" "$pack/apotheca/licences/phazed-engine-LICENSE.txt"
+cp "$here/third_party/easycz/THIRD_PARTY_LICENSES.md" "$pack/apotheca/licences/phazed-engine-third-party.md"
+mv "$pack/apotheca/routed-gothic-LICENSE.txt" "$pack/apotheca/licences/"
 cp "$here/scripts/Apotheca.sh" "$pack/Apotheca.sh"
 chmod +x "$pack/Apotheca.sh" "$pack/apotheca/apotheca"
 
