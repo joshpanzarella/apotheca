@@ -402,6 +402,12 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
 void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
 
+    if (b == Button::L2 || b == Button::R2) {
+        // The app sends these here only while A is held: nudge, early or late,
+        // a tenth of a step. The same as A with the D-pad sideways.
+        if (event.down && shaping_ && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
+        return;
+    }
     if (b == Button::A) {
         if (event.down && !onTempo_) {
             if (step_ == kLaneName) audition(lane_, kNewHitLevel);
@@ -705,7 +711,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("DRAG WITH THE STICK", "paint hits at random levels");
     } else if (shaping_ && onStep()) {
         hint("STICK UP / DOWN", "level");
-        hint("STICK LEFT / RIGHT", "nudge early / late");
+        hint("STICK LEFT / RIGHT", "nudge");
+        hint("L2 / R2", "nudge early / late");
     } else if (dicing_ && onStep()) {
         hint("STICK UP / DOWN", "chance");
         hint("STICK LEFT / RIGHT", "where the sound starts");

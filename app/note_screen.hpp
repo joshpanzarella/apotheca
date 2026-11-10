@@ -14,6 +14,8 @@
 //                                        stick to any point in a step
 //   hold A, D-pad up / down      LENGTH  by whole steps: the end goes to the
 //                                        next step line, or the one before
+//   hold A, L2 / R2              NUDGE   the note a tenth of a step early
+//                                        (L2) or late (R2), up to half a step
 //   B                     delete the note under the cursor
 //   X                     hear the key under the cursor
 //   hold R1 and drag      paint a note on every step crossed
@@ -96,6 +98,7 @@ private:
     void setLevel(float level);
     void setLength(float length);
     void stepLength(int by);
+    void nudgeBy(float steps);
     void paintHere();
 
     Session& session_;

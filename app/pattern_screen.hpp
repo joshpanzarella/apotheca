@@ -12,6 +12,7 @@
 //
 //   hold A, stick up / down      LEVEL   the block fills or drains
 //   hold A, stick left / right   NUDGE   the block slides early or late
+//   hold A, L2 / R2              NUDGE   the same, a tenth of a step a press
 //   hold Y, stick up / down      CHANCE  the block fades toward a ghost
 //   hold Y, stick left / right   START   where in the drum's sound the hit
 //                                        begins: a mark slides under the block,

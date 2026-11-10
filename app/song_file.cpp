@@ -107,7 +107,9 @@ std::string songText(const Project& project) {
                     put(out, "note %.0f", n.step + 1);
                     put(out, " %.0f", n.pitch);
                     put(out, " %.6g", n.length);
-                    put(out, " %.6g\n", n.velocity);
+                    put(out, " %.6g", n.velocity);
+                    if (n.nudge != 0.f) put(out, " %.6g", n.nudge); // early or late, in steps
+                    out += "\n";
                 }
                 // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
                 for (const ChordEvent& c : p.chords) {
@@ -119,6 +121,7 @@ std::string songText(const Project& project) {
                     put(out, " %.0f ", c.root);
                     out += c.name[0] ? c.name : "?";
                     for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                    if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
                     out += "\n";
                 }
             }
@@ -238,8 +241,9 @@ bool parseSong(const std::string& text, Project& project) {
             p.fromDice[l][s] = dice != 0;
             p.start[l][s] = clampf(static_cast<float>(start), 0.f, 1.f);
         } else if (word == "note" && isSynth(track->kind)) {
-            double step, pitch, length, level;
+            double step, pitch, length, level, nudge = 0;
             if (!(in >> step >> pitch >> length >> level)) continue;
+            in >> nudge;
             if (step < 1 || step > kSteps || pitch < 0 || pitch > 127 || !(level > 0)) continue;
             NotePattern& p = track->notes[scene];
             const int slot = p.freeSlot();
@@ -249,6 +253,7 @@ bool parseSong(const std::string& text, Project& project) {
             p.notes[slot].pitch = static_cast<int>(pitch);
             p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>(kSteps - s));
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
+            p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
         } else if (word == "chord" && isSynth(track->kind)) {
             double step, length, level, inversion, root, interval;
             std::string name;
@@ -265,6 +270,11 @@ bool parseSong(const std::string& text, Project& project) {
             while (c.count < kChordNotes && (in >> interval)) {
                 if (interval >= 0 && interval <= 48) c.intervals[c.count++] = static_cast<int>(interval);
             }
+            // After its notes, perhaps "nudge" and how far.
+            in.clear();
+            std::string extra;
+            double nudge = 0;
+            if ((in >> extra) && extra == "nudge" && (in >> nudge)) c.nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
             // Not one with no notes, not a seventeenth, not two at once, and
             // not past the sixty-four notes.
             int keys[kChordNotes];

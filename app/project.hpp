@@ -34,6 +34,7 @@ struct DrumPattern {
 struct NoteEvent {
     int step = 0, pitch = 0;
     float length = 0.f;   // in steps. Not only whole ones: a note may end part-way through a step.
+    float nudge = 0.f;    // early or late: -0.5..0.5 of a step
     float velocity = 0.f; // 0 = empty slot
 };
 
@@ -44,6 +45,7 @@ constexpr int kMaxChords = 16, kChordNotes = 8, kMaxInversion = 3;
 struct ChordEvent {
     int step = 0;
     float length = 0.f; // in steps, as a note's
+    float nudge = 0.f;  // early or late, the whole chord: -0.5..0.5 of a step
     int root = 60;      // the key the chord is built on
     int inversion = 0;  // +n: the n lowest notes go up an octave. -n: the n highest come down.
     int count = 0;      // how many of `intervals` are used
@@ -115,6 +117,7 @@ struct NotePattern {
                 out[next].step = c.step;
                 out[next].pitch = keys[k];
                 out[next].length = c.length;
+                out[next].nudge = c.nudge;
                 out[next].velocity = c.velocity;
                 ++count;
             }

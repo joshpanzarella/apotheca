@@ -188,6 +188,7 @@ to again.
 | --- | --- | --- |
 | Hold A, stick up / down | Level | Fills or drains |
 | Hold A, stick left / right | Nudge, up to half a step | Slides early or late |
+| Hold A, **L2 / R2** | Nudge, a tenth of a step a press: L2 early, R2 late | The same |
 | Hold Y, stick up / down | Chance | Fades toward a ghost |
 | Hold Y, stick left / right | Start: where in the drum's sound the hit begins | A mark slides under it, and it is heard as it moves |
 
@@ -263,6 +264,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold A, left / right | Level |
 | Hold A, **stick** up / down | Length, freely: the note's end follows the stick to any point in a step |
 | Hold A, **D-pad** up / down | Length by whole steps: the end goes to the next step line, or the one before |
+| Hold A, **L2 / R2** | Nudge: the note a tenth of a step early (L2) or late (R2), up to half a step. It sits a little above or below its line. |
 | B | Delete the note under the cursor |
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |

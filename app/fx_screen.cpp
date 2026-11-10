@@ -202,7 +202,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         hint("STICK", "move");
         hint("HOLD A + STICK", column_ == 0 ? "pick the effect" : "turn");
-        hint("B", column_ == 0 ? "none" : "usual value");
+        hint("B", column_ == 0 ? "none" : "default value");
         hint("X", "hear");
         hint("START", project_.playing ? "stop" : "play");
     }

@@ -1446,7 +1446,73 @@ static void testTheSampler() {
     CHECK(sampler::settingMin(99) == 0 && sampler::settingMax(-1) == 0 && sampler::settingDefault(sampler::Root) == 60);
 }
 
+// A note can sit early or late of its step, as a drum hit can.
+static void testANoteNudgedOffItsStep() {
+    // A sampler playing a steady recording: where a note starts and stops
+    // shows to the sample.
+    const auto bar = [](float nudge, int stepIndex = 4, int bars = 1) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+        std::unique_ptr<SampleData> flat(new SampleData);
+        flat->data.assign(48000, 0.5f);
+        CHECK(engine->setTrackSample(1, std::move(flat)));
+        engine->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+        engine->send(make(Command::SetSetting, 1, sampler::Release, 0));
+        Command c = make(Command::SetNote, 1, 0, stepIndex, 1.f);
+        c.c = 60;
+        c.d = 2;
+        c.shift = nudge;
+        engine->send(c);
+        engine->send(make(Command::Play, 0, 0, 1));
+        return renderFrames(*engine, bars * 16 * kStep);
+    };
+    const std::vector<float> onTime = bar(0.f);
+    CHECK(onsetOf(onTime) == 4 * kStep);
+    // Late and early by a quarter of a step; the length goes with it.
+    std::vector<float> out = bar(0.25f);
+    CHECK(std::abs(onsetOf(out) - (4 * kStep + kStep / 4)) <= 1);
+    CHECK(std::abs(soundingFrames(out) - soundingFrames(onTime)) <= 2);
+    out = bar(-0.25f);
+    CHECK(std::abs(onsetOf(out) - (4 * kStep - kStep / 4)) <= 1);
+    CHECK(std::abs(soundingFrames(out) - soundingFrames(onTime)) <= 2);
+    // Half a step is the most, whatever is asked; nonsense is "on time".
+    CHECK(std::abs(onsetOf(bar(3.f)) - (4 * kStep + kStep / 2)) <= 1);
+    CHECK(std::abs(onsetOf(bar(-3.f)) - (4 * kStep - kStep / 2)) <= 1);
+    CHECK(onsetOf(bar(std::nanf(""))) == 4 * kStep);
+    // An early note on step 1 belongs to the end of the bar before: nothing
+    // the first time round, then just before each bar line.
+    out = bar(-0.25f, 0, 2);
+    CHECK(std::abs(onsetOf(out) - (16 * kStep - kStep / 4)) <= 1);
+    // A late note on step 16 runs on over the bar line and is not cut there.
+    out = bar(0.25f, 15, 2);
+    CHECK(std::abs(onsetOf(out) - (15 * kStep + kStep / 4)) <= 1);
+    CHECK(out[2 * (16 * kStep + 100)] != 0.f);
+    // A whole song loaded at once brings its nudges; Stop forgets a note that was waiting.
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+    std::unique_ptr<SampleData> flat(new SampleData);
+    flat->data.assign(48000, 0.5f);
+    CHECK(engine->setTrackSample(1, std::move(flat)));
+    engine->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->notes[0][0].step = 2;
+    image->notes[0][0].pitch = 60;
+    image->notes[0][0].length = 1.f;
+    image->notes[0][0].velocity = 1.f;
+    image->notes[0][0].nudge = 0.4f;
+    CHECK(engine->setTrackImage(1, std::move(image)));
+    engine->send(make(Command::Play, 0, 0, 1));
+    out = renderFrames(*engine, 2 * kStep + 100); // the note is waiting: it is due 0.4 of a step on
+    CHECK(peakOf(out) == 0.f);
+    engine->send(make(Command::Stop));
+    CHECK(peakOf(renderFrames(*engine, 4 * kStep)) == 0.f); // stopped: it never comes
+    engine->send(make(Command::Play, 0, 0, 1));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(std::abs(onsetOf(out) - (2 * kStep + 2 * kStep / 5)) <= 1);
+}
+
 int main() {
+    testANoteNudgedOffItsStep();
     testTheSampler();
     testEffectsOneByOne();
     testEffectsInTheEngine();

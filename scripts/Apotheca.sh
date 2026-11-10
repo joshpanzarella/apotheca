@@ -32,6 +32,22 @@ cd "$dir" || exit 1
 
     echo "== sound cards =="
     cat /proc/asound/cards 2>/dev/null
+
+    # Whether a USB keyboard or controller plugged in could be read as MIDI:
+    # the kernel needs its USB MIDI driver, and a device shows up as a
+    # "midi" entry here when one is plugged in.
+    echo "== midi =="
+    ls /dev/snd 2>/dev/null | tr '\n' ' '; echo
+    cat /proc/asound/devices 2>/dev/null | grep -i midi || echo "no midi device just now"
+    if [ -e /proc/config.gz ]; then
+        zcat /proc/config.gz 2>/dev/null | grep -E 'CONFIG_SND_USB_AUDIO|CONFIG_SND_RAWMIDI|CONFIG_SND_SEQUENCER|CONFIG_USB_GADGET|CONFIG_USB_F_MIDI' || echo "kernel config has none of the MIDI options"
+    else
+        echo "kernel config: not readable here"
+    fi
+    echo "usb devices:"
+    for d in /sys/bus/usb/devices/*; do
+        [ -f "$d/product" ] && echo "  $(cat "$d/product" 2>/dev/null)"
+    done
 } > device-info.log 2>&1
 
 ./apotheca > apotheca.log 2>&1

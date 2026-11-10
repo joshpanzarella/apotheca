@@ -100,6 +100,7 @@ struct Command {
     int d = 0;
     float value = 0.f;
     float extra = 0.f;       // SetNote only
+    float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step
     void* pointer = nullptr; // InstallSynth only
 };
 
@@ -110,7 +111,7 @@ struct TrackImage {
     float nudge[kMaxScenes][kDrumLanes][kSteps] = {};
     float chance[kMaxScenes][kDrumLanes][kSteps];
     float start[kMaxScenes][kDrumLanes][kSteps] = {};
-    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; }; // length in steps, not only whole ones
+    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; }; // length in steps, not only whole ones
     Note notes[kMaxScenes][kMaxNotes];
     float laneLevel[kDrumLanes];
     TrackImage() {
@@ -194,6 +195,7 @@ private:
     struct Note {
         std::uint8_t step = 0, pitch = 0;
         float length = 0.f;   // in steps; a note may end part-way through one
+        float nudge = 0.f;    // early or late, -0.5..0.5 of a step
         float velocity = 0.f; // 0 = empty slot
     };
     struct Track {
@@ -206,6 +208,10 @@ private:
         Note notes[kMaxScenes][kMaxNotes];
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.
+        // Notes waiting for their moment: late ones from the step that just
+        // began, early ones that belong to the next.
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0; float velocity = 0.f, length = 0.f; };
+        PendingNote pendingNotes[24];
         double offIn[128];
         Track() { for (double& off : offIn) off = kNoNote; }
         // Hits waiting for their moment: a late hit from the step that just
@@ -219,6 +225,8 @@ private:
     };
     struct Position { int scene, repeat; };
     void fireNoteOffs();
+    void firePendingNotes();
+    void startNote(Track& track, const Note& note, double delaySamples);
 
     void apply(const Command& command);
     Position afterThisBar() const;

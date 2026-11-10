@@ -56,6 +56,12 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
 
     // The shoulder triggers walk along the tabs. Nothing else uses them.
     if (event.button == Button::L2 || event.button == Button::R2) {
+        // With A held on a grid they nudge what A has hold of, early or late.
+        if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
+            if (isSynth(project_->current().kind)) notes_.onButton(event, input);
+            else drums_.onButton(event, input);
+            return;
+        }
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
         const int now = static_cast<int>(session_.view);
         const int next = now + (event.button == Button::R2 ? 1 : -1);

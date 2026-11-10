@@ -19,6 +19,7 @@ constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step
+constexpr float kMostNudge = 0.5f;      // half a step early or late
 constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
@@ -151,6 +152,19 @@ void NoteScreen::setLength(float length) {
     if (slot < 0) handLength_ = length; // the next chord placed will be this long
     if (length == now) return;
     now = length;
+    resend();
+}
+
+// Early or late, for the note or chord under the cursor: the outer
+// shoulder buttons with A held, a tenth of a step a press.
+void NoteScreen::nudgeBy(float steps) {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot < 0 && chord < 0) return;
+    float& now = slot >= 0 ? pat().notes[slot].nudge : pat().chords[chord].nudge;
+    float to = std::round((now + steps) * 10.f) / 10.f;
+    to = to < -kMostNudge ? -kMostNudge : (to > kMostNudge ? kMostNudge : to);
+    if (to == now) return;
+    now = to;
     resend();
 }
 
@@ -321,6 +335,11 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    if (b == Button::L2 || b == Button::R2) {
+        // The app sends these here only while A is held: nudge, early or late.
+        if (event.down && shaping_) nudgeBy(b == Button::R2 ? 0.1f : -0.1f);
+        return;
+    }
     if (b == Button::A) {
         if (event.down && !chordHere()) placeNote(kNewLevel); // on a chord, A takes hold of the chord
         shaping_ = event.down;
@@ -483,8 +502,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // far as it is loud.
     const NoteEvent* under = noteHere();
     const ChordEvent* chordUnder = chordHere();
-    const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside) {
-        const int x = gx(pitch) + 1, y = gy(step) + 1;
+    const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside, float nudge = 0.f) {
+        // A nudged note sits a little up or down from its step line: early is up.
+        const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH));
         const int full = kCellW - 2, tall = static_cast<int>(std::round(length * kRowH)) - 4, h = tall < 3 ? 3 : tall;
         int w = static_cast<int>(std::round(level * full));
         if (w < 2) w = 2;
@@ -498,7 +518,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (n == 0) return;
         const SDL_Color color = ghost ? kBrass : (live ? kTeal : kPurple);
         for (int i = 0; i < n; ++i)
-            if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color);
+            if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color, c.nudge);
         const int low = keys[0] < low_ ? low_ : keys[0];
         const int high = keys[n - 1] > low_ + (kVisibleKeys - 1) ? low_ + (kVisibleKeys - 1) : keys[n - 1];
         if (high < low) return; // all of it is off the screen
@@ -515,7 +535,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (const NoteEvent& n : pat().notes) {
         if (n.velocity <= 0.f || !shows(n.pitch)) continue;
         const bool live = held && &n == under;
-        block(n.pitch, n.step, n.length, n.velocity, live ? kTeal : kDim, live ? kTeal : kText);
+        block(n.pitch, n.step, n.length, n.velocity, live ? kTeal : kDim, live ? kTeal : kText, n.nudge);
     }
     for (int i = 0; i < kMaxChords; ++i) {
         const ChordEvent& c = pat().chords[i];
@@ -584,8 +604,14 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(190.f, "LEVEL", "-", kDim);
             field(330.f, "LENGTH", "-", kDim);
         }
-        std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
-        field(470.f, "NOTES", text, kDim);
+        const float nudge = under ? under->nudge : (chordUnder ? chordUnder->nudge : 0.f);
+        if (nudge != 0.f) {
+            std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
+            field(470.f, "NUDGE", text, shaping_ ? kText : kTeal);
+        } else {
+            std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
+            field(470.f, "NOTES", text, kDim);
+        }
     }
 
     // ---- hints ----------------------------------------------------------------------
@@ -603,9 +629,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG WITH THE STICK", brushText);
     } else if (shaping_) {
-        hint("STICK LEFT / RIGHT", "level");
-        hint("STICK UP / DOWN", "length, freely");
-        hint("D-PAD UP / DOWN", "length, by steps");
+        hint("STICK < >", "level");
+        hint("STICK ^ v", "length");
+        hint("D-PAD ^ v", "length by steps");
+        hint("L2 / R2", "nudge early / late");
     } else {
         hint("STICK", "move");
         hint("A", under || chordUnder ? "level / length" : "place");

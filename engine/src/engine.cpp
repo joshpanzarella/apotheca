@@ -226,6 +226,39 @@ void Engine::letGoOfNotes() {
     }
 }
 
+// Play a pattern's note now, or set it waiting.
+void Engine::startNote(Track& track, const Note& note, double delaySamples) {
+    if (delaySamples < 1.0) {
+        if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
+        track.synth->noteOn(note.pitch, note.velocity);
+        track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
+        return;
+    }
+    for (auto& p : track.pendingNotes) {
+        if (p.velocity > 0.f) continue;
+        p.samplesLeft = delaySamples;
+        p.pitch = note.pitch;
+        p.velocity = note.velocity;
+        p.length = note.length;
+        return;
+    }
+}
+
+void Engine::firePendingNotes() {
+    for (Track& track : tracks_) {
+        if (!track.synth) continue;
+        for (auto& p : track.pendingNotes) {
+            if (p.velocity <= 0.f || p.samplesLeft >= 1.0) continue;
+            Note note;
+            note.pitch = p.pitch;
+            note.velocity = p.velocity;
+            note.length = p.length;
+            p = Track::PendingNote();
+            startNote(track, note, 0.0);
+        }
+    }
+}
+
 // Let go of the pattern's notes whose moment has come.
 void Engine::fireNoteOffs() {
     for (Track& track : tracks_) {
@@ -331,6 +364,7 @@ void Engine::apply(const Command& c) {
             note.step = static_cast<std::uint8_t>(sound ? c.b : 0);
             note.pitch = static_cast<std::uint8_t>(sound ? c.c : 0);
             note.length = sound ? length : 0.f;
+            note.nudge = sound && std::isfinite(c.shift) ? (c.shift < -0.5f ? -0.5f : (c.shift > 0.5f ? 0.5f : c.shift)) : 0.f;
         }
         break;
     case Command::SetSceneCount:
@@ -450,6 +484,7 @@ void Engine::apply(const Command& c) {
             for (auto& scene : track.notes)
                 for (Note& note : scene) note = Note();
             for (double& off : track.offIn) off = kNoNote;
+            for (auto& p : track.pendingNotes) p = Track::PendingNote();
             for (auto& lane : track.pending)
                 for (auto& p : lane) p = Track::Pending();
         }
@@ -473,6 +508,7 @@ void Engine::apply(const Command& c) {
                         to.step = from.step;
                         to.pitch = from.pitch;
                         to.length = from.length;
+                        to.nudge = from.nudge;
                         to.velocity = from.velocity;
                     }
                 }
@@ -496,6 +532,8 @@ void Engine::apply(const Command& c) {
 }
 
 void Engine::clearPending() {
+    for (Track& track : tracks_)
+        for (auto& p : track.pendingNotes) p = Track::PendingNote();
     for (Track& track : tracks_)
         for (auto& lane : track.pending)
             for (auto& p : lane) p = Track::Pending();
@@ -586,11 +624,13 @@ void Engine::fireStep() {
         } else if (track.synth) {
             // The notes whose time was up have been let go already
             // (fireNoteOffs). Start this step's.
+            // A late note waits; an early one belongs to the step after
+            // this and is set waiting now, as a drum hit is.
             for (const Note& note : track.notes[scene_]) {
-                if (note.velocity <= 0.f || note.step != nextStep_) continue;
-                if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
-                track.synth->noteOn(note.pitch, note.velocity);
-                track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
+                if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_);
+            }
+            for (const Note& note : track.notes[followingScene]) {
+                if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_);
             }
         }
     }
@@ -612,6 +652,7 @@ void Engine::render(float* interleaved, int frames) {
             // next step begins.
             firePending();
             fireNoteOffs(); // before the step, so a note that ends where the next begins is let go first
+            firePendingNotes();
             if (untilStep_ <= 0.0) {
                 fireStep();
                 untilStep_ += samplesPerStep_;
@@ -620,9 +661,12 @@ void Engine::render(float* interleaved, int frames) {
             // next waiting hit, or the next note to be let go.
             double next = untilStep_;
             for (Track& track : tracks_) {
-                if (track.synth)
+                if (track.synth) {
                     for (double off : track.offIn)
                         if (off < next) next = off;
+                    for (const auto& p : track.pendingNotes)
+                        if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+                }
                 if (!track.hasDrums) continue;
                 for (auto& lane : track.pending)
                     for (auto& p : lane)
@@ -632,9 +676,12 @@ void Engine::render(float* interleaved, int frames) {
             if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
             untilStep_ -= chunk;
             for (Track& track : tracks_) {
-                if (track.synth)
+                if (track.synth) {
                     for (double& off : track.offIn)
                         if (off < kNoNote) off -= chunk;
+                    for (auto& p : track.pendingNotes)
+                        if (p.velocity > 0.f) p.samplesLeft -= chunk;
+                }
                 if (!track.hasDrums) continue;
                 for (auto& lane : track.pending)
                     for (auto& p : lane)

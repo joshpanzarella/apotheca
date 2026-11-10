@@ -63,7 +63,7 @@ struct Rig {
 };
 
 // Keyboard stand-ins (see app/input.cpp).
-const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
+const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
 const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2;
 const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
@@ -567,6 +567,136 @@ void testTheKeysScrollAndStopAtTheEnds() {
     CHECK(notes.cursorPitch() == NoteScreen::kLowest);
     rig->tap(UP);
     CHECK(notes.cursorStep() == kSteps - 1); // sideways comes round
+}
+
+void testNudgingWithTheOuterShoulderButtons() {
+    // ---- the piano roll -----------------------------------------------------------
+    std::unique_ptr<Rig> rig(onNotes());
+    NoteScreen& notes = rig->app.notes();
+    notes.moveCursorTo(60, 4);
+    rig->key(A, true); // places the note and takes hold of it
+    CHECK(notes.noteHere() && notes.noteHere()->nudge == 0.f);
+    rig->tap(R2);
+    CHECK(near(notes.noteHere()->nudge, 0.1f));
+    CHECK(rig->view() == View::Pattern); // not a change of screen while A is held
+    rig->tap(R2, 9);
+    CHECK(near(notes.noteHere()->nudge, 0.5f)); // half a step is the most
+    rig->tap(L2, 7);
+    CHECK(near(notes.noteHere()->nudge, -0.2f));
+    rig->tap(L2, 9);
+    CHECK(near(notes.noteHere()->nudge, -0.5f));
+    rig->tap(R2, 5);
+    CHECK(notes.noteHere()->nudge == 0.f); // back on the line exactly, not a rounding away from it
+    rig->tap(R2, 3);
+    CHECK(notes.noteHere()->length == 1.f && notes.cursorStep() == 4 && notes.cursorPitch() == 60); // nothing else moved
+    rig->key(A, false);
+    // With A let go they are the tabs again.
+    rig->tap(R2);
+    CHECK(rig->view() == View::Device && near(notes.noteHere()->nudge, 0.3f));
+    rig->tap(L2);
+    CHECK(rig->view() == View::Pattern);
+    // The engine plays it late: compare with the same note on its line.
+    const auto firstSound = [](Rig& r) {
+        r.frames(60);
+        r.render(200000);
+        r.tap(START);
+        const std::vector<float> out = r.render(8 * kStep);
+        r.tap(START);
+        for (std::size_t i = 0; i < out.size(); i += 2)
+            if (std::fabs(out[i]) > 1e-4f) return static_cast<int>(i / 2);
+        return -1;
+    };
+    const int late = firstSound(*rig);
+    rig->key(A, true);
+    rig->tap(L2, 3);
+    rig->key(A, false);
+    const int onLine = firstSound(*rig);
+    CHECK(onLine > 4 * kStep - 10 && onLine < 4 * kStep + 200);
+    CHECK(std::abs((late - onLine) - 3 * kStep / 10) <= 4);
+    // A chord is nudged as one thing, and its notes go to the engine nudged.
+    notes.moveCursorTo(60, 8);
+    rig->tap(Y);
+    notes.moveCursorTo(60, 9);
+    rig->key(A, true);
+    rig->tap(L2, 2);
+    rig->key(A, false);
+    const NotePattern& p = rig->project().tracks[1].notes[0];
+    CHECK(near(p.chords[p.chordAt(8)].nudge, -0.2f));
+    NoteEvent out[kMaxNotes];
+    p.render(out);
+    int nudged = 0;
+    for (const NoteEvent& n : out) nudged += n.velocity > 0.f && n.step == 8 && near(n.nudge, -0.2f);
+    CHECK(nudged == 3);
+    // On an empty key there is nothing to nudge. (A placed a note there; take it off first.)
+    notes.moveCursorTo(70, 12);
+    rig->key(A, true);
+    rig->tap(B);
+    rig->tap(R2);
+    rig->key(A, false);
+    // While Y is choosing a chord, A and the shoulder buttons are not nudging anything.
+    notes.moveCursorTo(60, 4);
+    const float before = notes.noteHere()->nudge;
+    rig->key(Y, true);
+    rig->key(A, true);
+    rig->tap(R2, 2);
+    rig->key(A, false);
+    rig->tap(B); // call the chord off
+    rig->key(Y, false);
+    CHECK(notes.noteHere()->nudge == before);
+    // The song file keeps it; a note on its line has nothing extra written.
+    const std::string text = songText(rig->project());
+    CHECK(text.find("note 5 60 1 0.8\n") != std::string::npos);
+    CHECK(text.find(" nudge -0.2\n") != std::string::npos);
+    notes.moveCursorTo(60, 4);
+    rig->key(A, true);
+    rig->tap(R2, 2);
+    rig->key(A, false);
+    const std::string nudgedText = songText(rig->project());
+    CHECK(nudgedText.find("note 5 60 1 0.8 0.2\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(nudgedText, *back) && songText(*back) == nudgedText);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 1 60 1 0.8 9\nchord 5 2 0.8 0 60 C 0 4 7 nudge -9\nchord 9 2 0.8 0 60 C 0 4 7 nudge\n", *back));
+    CHECK(back->tracks[0].notes[0].notes[0].nudge == 0.5f && back->tracks[0].notes[0].chords[0].nudge == -0.5f && back->tracks[0].notes[0].chords[1].nudge == 0.f);
+
+    // ---- the drum grid: the same two buttons ------------------------------------------
+    Rig drumsRig;
+    PatternScreen& drums = drumsRig.app.drums();
+    drumsRig.app.session().view = View::Pattern;
+    drums.moveCursorTo(2, 6);
+    drumsRig.key(A, true);
+    drumsRig.tap(R2, 2);
+    CHECK(near(drums.nudge(2, 6), 0.2f) && drumsRig.view() == View::Pattern);
+    drumsRig.tap(L2, 5);
+    CHECK(near(drums.nudge(2, 6), -0.3f));
+    drumsRig.tap(L2, 9);
+    CHECK(near(drums.nudge(2, 6), -0.5f));
+    CHECK(drums.level(2, 6) == 0.8f && drums.cursorStep() == 6);
+    drumsRig.key(A, false);
+    drumsRig.tap(L2);
+    CHECK(drumsRig.view() == View::Song && near(drums.nudge(2, 6), -0.5f));
+    // On a lane's name or the tempo, with A held, they do nothing (and do not change screen).
+    drumsRig.app.session().view = View::Pattern;
+    drums.moveCursorTo(2, -1);
+    drumsRig.key(A, true);
+    drumsRig.tap(R2, 2);
+    drumsRig.key(A, false);
+    CHECK(drumsRig.view() == View::Pattern && near(drums.nudge(2, 6), -0.5f) && drums.laneLevel(2) == 1.f);
+    // ...nor on the tempo, where sideways would otherwise be ten beats a minute.
+    drums.moveCursorTo(0, 0);
+    drumsRig.tap(UP);
+    CHECK(drums.cursorOnTempo());
+    const float tempo = drumsRig.project().tempo;
+    drumsRig.key(A, true);
+    drumsRig.tap(R2, 2);
+    drumsRig.tap(L2);
+    drumsRig.key(A, false);
+    CHECK(drumsRig.project().tempo == tempo && drumsRig.view() == View::Pattern);
+    // On the other screens A + L2 / R2 is still "not a change of screen", and nothing else.
+    drumsRig.app.session().view = View::Device;
+    drumsRig.key(A, true);
+    drumsRig.tap(R2);
+    drumsRig.key(A, false);
+    CHECK(drumsRig.view() == View::Device);
 }
 
 void testAFreeLengthReachesTheEngine() {
@@ -1452,6 +1582,7 @@ int main(int, char**) {
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
     testTheKeysScrollAndStopAtTheEnds();
+    testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
     testTheTempoFromAnyScreen();
