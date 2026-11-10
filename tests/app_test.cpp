@@ -413,6 +413,14 @@ void testNoteLevelAndLength() {
     rig->key(STICK_RIGHT, false);
     CHECK(notes.noteHere()->length == 12); // to the end of the bar and no further
     CHECK(near(notes.noteHere()->velocity, 0.6f));
+    // Drifting up during a sideways push does not also change the level.
+    rig->key(STICK_RIGHT, true);
+    rig->frames(2);
+    rig->key(STICK_UP, true);
+    rig->frames(10);
+    rig->key(STICK_UP, false);
+    rig->key(STICK_RIGHT, false);
+    CHECK(near(notes.noteHere()->velocity, 0.6f));
     rig->frames(1);
     rig->key(STICK_UP, true);
     rig->frames(40);
@@ -462,9 +470,18 @@ void testTheEnginePlaysNotesAtTheirStepAndLength() {
     rig->tap(START);
     const std::vector<float> bar = rig->render(kBar);
     CHECK(Rig::peak(bar, 0, 4 * kStep - 10) == 0.f);
-    const float sounding = Rig::peak(bar, 5 * kStep, 8 * kStep);
+    const float sounding = Rig::peak(bar, 5 * kStep, 6 * kStep);
     CHECK(sounding > 0.005f);
-    CHECK(Rig::peak(bar, 12 * kStep, kBar) < 0.2f * sounding);
+    CHECK(Rig::peak(bar, 7 * kStep, 8 * kStep) > 0.7f * sounding); // still held in its fourth step
+    CHECK(Rig::peak(bar, 12 * kStep, kBar) < 0.2f * sounding);     // and let go after it
+
+    // Delete it, and the engine stops playing it.
+    rig->tap(START);
+    rig->listen(48000);
+    rig->tap(B);
+    CHECK(rig->app.notes().noteCount() == 0);
+    rig->tap(START);
+    CHECK(rig->listen(kBar) < 0.001f);
 }
 
 void testPaintingNotes() {
