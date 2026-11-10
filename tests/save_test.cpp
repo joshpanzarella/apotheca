@@ -1,0 +1,466 @@
+// Tests for songs on disk: the file format, saving as you go, opening, and
+// the engine being told everything when a song comes back.
+
+#include <SDL.h>
+
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "apotheca/engine.hpp"
+#include "app.hpp"
+#include "song_file.hpp"
+
+using namespace apotheca;
+
+static int failures = 0;
+#define CHECK(cond)                                                        \
+    do {                                                                   \
+        if (!(cond)) {                                                     \
+            std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);    \
+            ++failures;                                                    \
+        }                                                                  \
+    } while (0)
+
+namespace {
+
+const int kStep = 6000, kBar = 16 * kStep;
+const SDL_Keycode A = SDLK_x, B = SDLK_z, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE, L2 = SDLK_1, UP = SDLK_UP, DOWN = SDLK_DOWN;
+
+std::string tempFolder() {
+    char pattern[] = "/tmp/apotheca-test-XXXXXX";
+    const char* made = mkdtemp(pattern);
+    return made ? made : "/tmp";
+}
+bool exists(const std::string& path) {
+    struct stat info;
+    return stat(path.c_str(), &info) == 0;
+}
+
+struct Rig {
+    std::unique_ptr<Engine> engine{new Engine};
+    Input input;
+    App app{*engine};
+    Uint32 clock = 1000;
+
+    explicit Rig(const std::string& folder = "", std::uint32_t seed = 7) {
+        if (!folder.empty()) app.session().useSongFolder(folder, seed);
+    }
+    void key(SDL_Keycode code, bool down) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press)) app.onButton(press, input);
+    }
+    void tap(SDL_Keycode code, int times = 1) { for (int i = 0; i < times; ++i) { key(code, true); key(code, false); } }
+    void frames(int count) { for (int i = 0; i < count; ++i) { clock += 16; app.update(input, clock); } }
+    std::vector<float> render(int n) {
+        std::vector<float> out(2 * n);
+        engine->render(out.data(), n);
+        return out;
+    }
+    Project& project() { return app.project(); }
+    Session& session() { return app.session(); }
+};
+
+float peakOf(const std::vector<float>& v) {
+    float p = 0.f;
+    for (float s : v) p = std::fabs(s) > p ? std::fabs(s) : p;
+    return p;
+}
+
+// A song with something of everything in it, made without a sound (as if the
+// song were playing, so nothing is auditioned and the engine stays untouched
+// until it is asked to play).
+void fillSong(Rig& rig) {
+    Project& p = rig.project();
+    p.playing = true;
+    PatternScreen& drums = rig.app.drums();
+    drums.setStep(0, 0, 1.f);
+    drums.setStep(0, 8, 0.7f);
+    drums.setStep(1, 4, 0.9f);
+    drums.setStep(2, 2, 0.5f);
+    drums.setNudge(2, 2, 0.3f);
+    drums.setNudge(1, 4, -0.2f);
+    p.scene = 2;
+    drums.setStep(6, 5, 0.6f);
+    p.scene = 0;
+    drums.moveCursorTo(3, -1); // a drum's volume, the way the buttons set it
+    rig.key(A, true);
+    rig.tap(DOWN, 4);
+    rig.key(A, false);
+    drums.moveCursorTo(0, 0);
+
+    rig.session().addTrack(TrackKind::Phazed);
+    rig.session().addTrack(TrackKind::Twin);
+    p.track = 1;
+    rig.app.notes().moveCursorTo(48, 0);
+    rig.tap(A);
+    rig.key(A, true);
+    rig.tap(SDLK_RIGHT, 3);
+    rig.key(A, false);
+    rig.app.notes().moveCursorTo(55, 8);
+    rig.tap(A);
+    rig.session().view = View::Device;
+    rig.app.phazed().goTo(0, PhazedScreen::kPreset);
+    rig.key(A, true);
+    rig.tap(UP, 9);
+    rig.key(A, false);
+    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + phazed::Tone);
+    rig.key(A, true);
+    rig.tap(UP, 4);
+    rig.key(A, false);
+    rig.app.phazed().goTo(1, phazed::Level);
+    rig.key(A, true);
+    rig.tap(DOWN, 3);
+    rig.key(A, false);
+
+    p.track = 2;
+    p.scene = 1;
+    rig.session().view = View::Pattern;
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.tap(A);
+    rig.app.notes().moveCursorTo(64, 0);
+    rig.tap(A);
+    rig.session().view = View::Device;
+    rig.app.twin().goTo(0, PhazedScreen::kPreset);
+    rig.key(A, true);
+    rig.tap(UP, 4);
+    rig.key(A, false);
+    rig.app.twin().goTo(1, 2); // V SHAPE
+    rig.key(A, true);
+    rig.tap(UP, 7);
+    rig.key(A, false);
+
+    p.scene = 0;
+    p.track = 0;
+    rig.session().view = View::Song;
+    rig.app.song().moveCursorTo(0, -1);
+    rig.tap(A); // scene 1 plays twice
+    rig.app.song().moveCursorTo(0, 0);
+    p.playing = false;
+    p.tempo = 97.f;
+    Command tempo;
+    tempo.type = Command::SetTempo;
+    tempo.value = 97.f;
+    rig.engine->send(tempo);
+}
+
+void testTextRoundTrip() {
+    Rig rig;
+    fillSong(rig);
+    rig.project().tracks[0].drums[0].fromDice[2][2] = true;
+    rig.project().tracks[0].drums[0].diceSeed[2] = 123456789u;
+    const std::string text = songText(rig.project());
+    CHECK(text.compare(0, 16, "apotheca-song 1\n") == 0);
+    CHECK(text.find("track drums") != std::string::npos && text.find("track phazed") != std::string::npos && text.find("track twin") != std::string::npos);
+    CHECK(text.find("tempo 97") != std::string::npos);
+
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back));
+    CHECK(songText(*back) == text); // nothing lost, nothing added
+    // And spot checks, in case reading and writing were wrong in the same way.
+    CHECK(back->trackCount() == 3);
+    CHECK(back->tempo == 97.f && back->repeats[0] == 2 && back->repeats[1] == 1);
+    const TrackData& drums = back->tracks[0];
+    CHECK(drums.kind == TrackKind::Drums);
+    CHECK(drums.drums[0].level[0][0] == 1.f && std::fabs(drums.drums[0].level[0][8] - 0.7f) < 1e-5f);
+    CHECK(std::fabs(drums.drums[0].nudge[2][2] - 0.3f) < 1e-5f && std::fabs(drums.drums[0].nudge[1][4] + 0.2f) < 1e-5f);
+    CHECK(drums.drums[0].fromDice[2][2] && !drums.drums[0].fromDice[0][0] && drums.drums[0].diceSeed[2] == 123456789u);
+    CHECK(std::fabs(drums.drums[2].level[6][5] - 0.6f) < 1e-5f && drums.drums[1].empty());
+    CHECK(std::fabs(drums.laneLevel[3] - 0.6f) < 1e-5f && drums.laneLevel[0] == 1.f);
+    const TrackData& one = back->tracks[1];
+    CHECK(one.kind == TrackKind::Phazed && one.preset == 9);
+    CHECK(std::fabs(one.macro[phazed::Tone] - 0.7f) < 1e-5f && one.macro[phazed::Motion] == 0.5f);
+    CHECK(one.patch.value[phazed::Level] == Phazed::presetPatch(9).value[phazed::Level] - 3);
+    CHECK(one.notes[0].at(48, 3) >= 0 && one.notes[0].at(48, 4) < 0 && one.notes[0].at(55, 8) >= 0);
+    const TrackData& two = back->tracks[2];
+    CHECK(two.kind == TrackKind::Twin && two.preset == 4);
+    CHECK(two.twin.value[twin::VShape] == rig.project().tracks[2].twin.value[twin::VShape]);
+    CHECK(two.twin.value[twin::VShape] != Twin::presetPatch(4).value[twin::VShape]);
+    CHECK(two.notes[1].at(60, 0) >= 0 && two.notes[1].at(64, 0) >= 0 && two.notes[0].empty());
+}
+
+void testBadFiles() {
+    std::unique_ptr<Project> p(new Project);
+    p->tempo = 133.f;
+    // Not a song: refused, and the project is left alone.
+    CHECK(!parseSong("", *p));
+    CHECK(!parseSong("hello\ntempo 90\n", *p));
+    CHECK(p->tempo == 133.f);
+    // A song with nonsense in it: the nonsense is skipped or held to limits.
+    const std::string odd =
+        "apotheca-song 1\n"
+        "tempo 9999\n"
+        "repeats 0 99 3\n"
+        "hit 1 1 1\n"                      // before any track
+        "track kazoo\n"                    // an instrument this version does not have
+        "scene 1\nhit 1 1 1\n"             // ...so its lines are skipped
+        "track drums\n"
+        "lanes 5 -1 nonsense\n"
+        "scene 0\nhit 1 1 1\n"             // no such scene
+        "scene 99\nhit 1 2 1\n"
+        "scene 1\n"
+        "hit 0 1 1\nhit 9 1 1\nhit 1 0 1\nhit 1 17 1\nhit 1 3 0\nhit 1 4 nan\n" // none of these
+        "hit 2 5 7 -9 0 1\n"               // held to limits
+        "hit 3 6 0.5\n"                    // short: the rest take their usual values
+        "note 1 60 1 1\n"                  // a note on a drum track
+        "something new 1 2 3\n"            // a line from a later version
+        "track phazed\n"
+        "preset 9999\n"
+        "macros 7 -7\n"
+        "settings 999 -999\n"
+        "scene 1\n"
+        "note 16 60 9 0.5\nnote 0 60 1 1\nnote 1 128 1 1\nnote 1 60 1 0\n"
+        "hit 1 1 1\n";                     // a hit on a synth track
+    CHECK(parseSong(odd, *p));
+    CHECK(p->tempo == kMaxTempo);
+    CHECK(p->repeats[0] == 1 && p->repeats[1] == kMaxRepeats && p->repeats[2] == 3 && p->repeats[3] == 1);
+    CHECK(p->trackCount() == 2 && p->tracks[0].kind == TrackKind::Drums && p->tracks[1].kind == TrackKind::Phazed);
+    const DrumPattern& d = p->tracks[0].drums[0];
+    int hits = 0;
+    for (int lane = 0; lane < kDrumLanes; ++lane) for (int step = 0; step < kSteps; ++step) hits += d.level[lane][step] > 0.f ? 1 : 0;
+    CHECK(hits == 2);
+    CHECK(d.level[1][4] == 1.f && d.nudge[1][4] == -0.5f && std::fabs(d.chance[1][4] - 0.05f) < 1e-6f && d.fromDice[1][4]);
+    CHECK(d.level[2][5] == 0.5f && d.nudge[2][5] == 0.f && d.chance[2][5] == 1.f);
+    CHECK(p->tracks[0].laneLevel[0] == 1.f && p->tracks[0].laneLevel[1] == 0.f && p->tracks[0].laneLevel[2] == 1.f);
+    CHECK(p->tracks[0].notes[0].empty());
+    const TrackData& synth = p->tracks[1];
+    CHECK(synth.preset == Phazed::presetCount() - 1);
+    CHECK(synth.macro[0] == 1.f && synth.macro[1] == 0.f && synth.macro[2] == 0.5f);
+    CHECK(synth.patch.value[0] == phazed::settingMax(0) && synth.patch.value[1] == phazed::settingMin(1));
+    int notes = 0;
+    for (const NoteEvent& n : synth.notes[0].notes) notes += n.velocity > 0.f ? 1 : 0;
+    CHECK(notes == 1);
+    CHECK(synth.notes[0].notes[0].step == 15 && synth.notes[0].notes[0].length == 1); // cut to the end of the bar
+    CHECK(synth.drums[0].empty());
+
+    // More than twelve tracks: twelve. More than 64 notes in a bar: 64. No tracks: one drum track.
+    std::string many = "apotheca-song 1\n";
+    for (int i = 0; i < 15; ++i) many += "track drums\n";
+    CHECK(parseSong(many, *p) && p->trackCount() == kNumTracks);
+    std::string crowded = "apotheca-song 1\ntrack twin\nscene 1\n";
+    for (int i = 0; i < 80; ++i) crowded += "note " + std::to_string(i % 16 + 1) + " " + std::to_string(30 + i) + " 1 1\n";
+    CHECK(parseSong(crowded, *p));
+    int kept = 0;
+    for (const NoteEvent& n : p->tracks[0].notes[0].notes) kept += n.velocity > 0.f ? 1 : 0;
+    CHECK(kept == kMaxNotes);
+    CHECK(parseSong("apotheca-song 1\n", *p) && p->trackCount() == 1 && p->tracks[0].kind == TrackKind::Drums);
+    // A file from a later version still opens.
+    CHECK(parseSong("apotheca-song 7\ntempo 100\n", *p) && p->tempo == 100.f);
+}
+
+void testSavedAsYouGoAndBackAtTheNextStart() {
+    const std::string folder = tempFolder();
+    std::string name, text;
+    {
+        Rig rig(folder);
+        name = rig.session().songName();
+        CHECK(!name.empty() && name.find(' ') != std::string::npos); // two words
+        rig.frames(200);
+        CHECK(!exists(folder + "/" + name + ".song")); // an empty song is not worth a file
+        fillSong(rig);
+        rig.frames(10);
+        CHECK(!exists(folder + "/" + name + ".song")); // not yet: two seconds have not passed
+        rig.frames(140);
+        CHECK(exists(folder + "/" + name + ".song"));
+        CHECK(exists(folder + "/last.txt"));
+        text = songText(rig.project());
+        std::string onDisk;
+        CHECK(readTextFile(folder + "/" + name + ".song", onDisk) && onDisk == text);
+        // Nothing changed: nothing is written. (Take the file away and see it stay away.)
+        std::remove((folder + "/" + name + ".song").c_str());
+        rig.frames(300);
+        CHECK(!exists(folder + "/" + name + ".song"));
+        // One more hit, and it is back with the hit in it.
+        rig.app.drums().setStep(7, 7, 1.f);
+        rig.frames(140);
+        CHECK(readTextFile(folder + "/" + name + ".song", onDisk) && onDisk.find("hit 8 8 1") != std::string::npos);
+        // A change in the last moments is caught on the way out.
+        rig.app.drums().setStep(7, 9, 1.f);
+        rig.session().saveNow();
+        CHECK(readTextFile(folder + "/" + name + ".song", onDisk) && onDisk.find("hit 8 10 1") != std::string::npos);
+        text = songText(rig.project());
+    }
+    // The next start: the same song, by name, with everything in it.
+    Rig next(folder, 99);
+    CHECK(next.session().songName() == name);
+    CHECK(songText(next.project()) == text);
+    CHECK(next.project().trackCount() == 3);
+    // No half-written file is left about.
+    CHECK(!exists(folder + "/" + name + ".song.part"));
+}
+
+void testAnOpenedSongSoundsLikeTheOneSaved() {
+    const std::string folder = tempFolder();
+    Rig made(folder);
+    fillSong(made);
+    made.session().saveNow();
+    Rig opened(folder, 99);
+    CHECK(songText(opened.project()) == songText(made.project()));
+
+    // Play both from the top: every sample must match. The first has been
+    // told each thing as it was done; the second, everything at once from the file.
+    for (Rig* rig : {&made, &opened}) {
+        rig->session().view = View::Song;
+        rig->frames(1);
+        rig->render(96000); // making the song played a drum by hand once; let that ring out
+        rig->tap(START);
+    }
+    const std::vector<float> a = made.render(6 * kBar), b = opened.render(6 * kBar);
+    CHECK(peakOf(a) > 0.05f);
+    CHECK(a == b);
+    for (int track = 0; track < 3; ++track) CHECK(opened.engine->trackPeak(track) > 0.f || made.engine->trackPeak(track) == 0.f);
+    CHECK(opened.engine->playScene() == made.engine->playScene());
+}
+
+void testNewSongAndTheList() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    fillSong(rig);
+    rig.session().saveNow();
+    const std::string first = rig.session().songName();
+
+    rig.session().newSong();
+    const std::string second = rig.session().songName();
+    CHECK(second != first);
+    CHECK(rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0].empty() && rig.project().tempo == 120.f);
+    // The engine was emptied with it: playing makes no sound, and the two synths are gone.
+    rig.tap(L2);
+    rig.tap(START);
+    CHECK(peakOf(rig.render(2 * kBar)) == 0.f);
+    rig.tap(START);
+    Command note;
+    note.type = Command::NoteOn;
+    note.track = 1;
+    note.a = 60;
+    note.value = 1.f;
+    rig.engine->send(note);
+    CHECK(peakOf(rig.render(4000)) == 0.f);
+    // And its tracks can be used again.
+    CHECK(rig.session().addTrack(TrackKind::Twin));
+    rig.engine->send(note);
+    CHECK(peakOf(rig.render(4000)) > 0.f);
+    rig.project().playing = true; // silent placing
+    rig.app.drums().setStep(4, 4, 1.f);
+    rig.project().playing = false;
+    rig.session().saveNow();
+
+    // The list: both, the one just saved first.
+    const std::vector<std::string> names = rig.session().songNames();
+    CHECK(names.size() == 2);
+    CHECK(names.size() == 2 && names[0] == second && names[1] == first);
+
+    // Opening the first brings all of it back, and saves the second on the way.
+    CHECK(rig.session().openSong(first));
+    CHECK(rig.session().songName() == first && rig.project().trackCount() == 3);
+    CHECK(rig.project().tracks[1].kind == TrackKind::Phazed); // track 2 is Phazed again, not the Twin just added
+    CHECK(!rig.session().openSong("no such song"));
+    CHECK(rig.session().songName() == first);
+    std::string onDisk;
+    CHECK(readTextFile(folder + "/" + second + ".song", onDisk) && onDisk.find("track twin") != std::string::npos);
+    // The next start opens the one that was open last.
+    Rig next(folder, 5);
+    CHECK(next.session().songName() == first);
+}
+
+void testTheSongListOnScreen() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    fillSong(rig);
+    rig.session().saveNow();
+    const std::string first = rig.session().songName();
+    rig.session().view = View::Song;
+
+    // SELECT, alone, opens the list. B closes it.
+    rig.tap(SELECT);
+    CHECK(rig.app.song().listingSongs());
+    rig.tap(B);
+    CHECK(!rig.app.song().listingSongs());
+    rig.tap(SELECT);
+    rig.tap(SELECT);
+    CHECK(!rig.app.song().listingSongs());
+    // SELECT held with something else is not "alone".
+    rig.key(SELECT, true);
+    rig.tap(DOWN);
+    rig.key(SELECT, false);
+    CHECK(!rig.app.song().listingSongs());
+
+    // The top row starts a new song.
+    rig.tap(SELECT);
+    rig.tap(A);
+    CHECK(!rig.app.song().listingSongs());
+    const std::string second = rig.session().songName();
+    CHECK(second != first && rig.project().trackCount() == 1);
+    rig.project().playing = true;
+    rig.app.drums().setStep(1, 1, 1.f);
+    rig.project().playing = false;
+
+    // Below it, the saved songs. The first one made is there to open.
+    rig.tap(SELECT);
+    rig.tap(UP); // already at the top: stays
+    rig.tap(DOWN);
+    rig.tap(A);
+    CHECK(rig.session().songName() == first || rig.session().songName() == second);
+    if (rig.session().songName() == second) { // the new one was listed first; the old one is next
+        rig.tap(SELECT);
+        rig.tap(DOWN, 2);
+        rig.tap(A);
+    }
+    CHECK(rig.session().songName() == first && rig.project().trackCount() == 3);
+    CHECK(rig.app.song().cursorScene() == 0 && rig.app.song().cursorColumn() == 0);
+    // While the list is open the buttons do nothing else.
+    rig.tap(SELECT);
+    rig.tap(START);
+    CHECK(!rig.project().playing);
+    rig.tap(B);
+    // Without a folder (as in the other tests) the list still offers a new song.
+    Rig bare;
+    bare.session().view = View::Song;
+    bare.app.drums().setStep(0, 0, 1.f);
+    bare.tap(SELECT);
+    bare.tap(A);
+    CHECK(bare.project().tracks[0].drums[0].empty());
+}
+
+void testNamesDoNotRepeat() {
+    const std::string folder = tempFolder();
+    Rig rig(folder, 3);
+    std::vector<std::string> seen;
+    for (int i = 0; i < 40; ++i) {
+        rig.project().playing = true;
+        rig.app.drums().setStep(0, i % 16, 1.f);
+        rig.project().playing = false;
+        rig.session().saveNow();
+        for (const std::string& name : seen) CHECK(name != rig.session().songName());
+        seen.push_back(rig.session().songName());
+        rig.session().newSong();
+    }
+    CHECK(rig.session().songNames().size() == 40);
+}
+
+} // namespace
+
+int main(int, char**) {
+    testTextRoundTrip();
+    testBadFiles();
+    testSavedAsYouGoAndBackAtTheNextStart();
+    testAnOpenedSongSoundsLikeTheOneSaved();
+    testNewSongAndTheList();
+    testTheSongListOnScreen();
+    testNamesDoNotRepeat();
+    if (failures) {
+        std::printf("%d check(s) failed\n", failures);
+        return 1;
+    }
+    std::printf("save tests passed\n");
+    return 0;
+}

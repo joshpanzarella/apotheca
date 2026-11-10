@@ -29,6 +29,12 @@ void SongScreen::moveCursorTo(int scene, int column) {
 }
 
 void SongScreen::moveCursor(Button direction) {
+    if (listing_) {
+        const int last = static_cast<int>(songs_.size());
+        if (direction == Button::Up && listCursor_ > 0) --listCursor_;
+        if (direction == Button::Down && listCursor_ < last) ++listCursor_;
+        return;
+    }
     if (choosing_) {
         if (direction == Button::Up) choice_ = (choice_ + 2) % 3;
         if (direction == Button::Down) choice_ = (choice_ + 1) % 3;
@@ -82,6 +88,42 @@ void SongScreen::pasteHere() {
 
 void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+
+    // SELECT, pressed and let go with nothing else in between, opens and
+    // closes the list of songs. (SELECT with START is "quit", elsewhere.)
+    if (b == Button::Select) {
+        if (event.down) {
+            selectAlone_ = true;
+        } else if (selectAlone_ && !choosing_) {
+            listing_ = !listing_;
+            if (listing_) {
+                songs_ = session_.songNames();
+                listCursor_ = 0;
+            }
+        }
+        return;
+    }
+    if (event.down) selectAlone_ = false;
+
+    if (listing_) {
+        if (!event.down) {
+            if (b == repeating_) repeating_ = Button::None;
+            return;
+        }
+        if (isDirection(b)) {
+            moveCursor(b);
+            repeating_ = b;
+            repeatAt_ = 0;
+        }
+        if (b == Button::B) listing_ = false;
+        if (b == Button::A) {
+            listing_ = false;
+            if (listCursor_ == 0) session_.newSong();
+            else session_.openSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
+            scene_ = column_ = top_ = 0; // a different song: start at its top
+        }
+        return;
+    }
 
     if (choosing_) {
         if (!event.down) return;
@@ -197,10 +239,13 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
 }
 
 void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
-    char text[48];
+    char text[96];
     const int tracks = project_.trackCount();
     const int songScenes = project_.sceneCount();
-    std::snprintf(text, sizeof text, "%d / %d TRACKS, %d SCENE%s", tracks, kNumTracks, songScenes, songScenes == 1 ? "" : "S");
+    char title[40];
+    std::snprintf(title, sizeof title, "%s", session_.songName().c_str());
+    for (char* c = title; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
+    std::snprintf(text, sizeof text, "%s  %d/%d TRACKS", title, tracks, kNumTracks);
     topBar(r, fonts, View::Song, text, project_);
 
     const int colW = columnWidth(tracks);
@@ -292,6 +337,35 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
     if (top_ > 0) fonts.small.draw(r, 10.f, kGridTop + 28.f, "^", kDim);
 
+    // ---- the list of songs --------------------------------------------------------
+    if (listing_) {
+        const int w = 360, rowH = 34, shown = 9, x = (kScreenW - w) / 2, y = 60;
+        const int rows = static_cast<int>(songs_.size()) + 1;
+        const int first = listCursor_ < shown ? 0 : listCursor_ - shown + 1;
+        fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
+        box(r, x, y, w, 40 + shown * rowH, kPanel, kLine);
+        fonts.small.draw(r, x + 12.f, y + 12.f, "SONGS", kDim);
+        fonts.small.drawRight(r, x + w - 12.f, y + 12.f, "KEPT AS YOU GO. NOTHING TO SAVE.", kDim);
+        for (int i = first; i < rows && i < first + shown; ++i) {
+            const int by = y + 32 + (i - first) * rowH;
+            box(r, x + 12, by, w - 24, rowH - 4, kPanel2, kLine);
+            if (i == 0) {
+                fonts.medium.draw(r, x + 22.f, by + 9.f, "+ NEW SONG", i == listCursor_ ? kTeal : kText);
+            } else {
+                const std::string& name = songs_[static_cast<std::size_t>(i - 1)];
+                char upper[40];
+                std::snprintf(upper, sizeof upper, "%s", name.c_str());
+                for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
+                fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
+                if (name == session_.songName()) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW", kPurple);
+            }
+            if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
+        }
+        const Hint list[] = {{"STICK", "move"}, {"A", listCursor_ == 0 ? "start a new song" : "open"}, {"B", "close"}};
+        hints(r, fonts, list, 3);
+        return;
+    }
+
     // ---- the instrument list -----------------------------------------------------
     if (choosing_) {
         const int w = 300, h = 202, x = (kScreenW - w) / 2, y = 124;
@@ -339,8 +413,9 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK", "move");
         hint("A", "open");
         hint("B", "empty");
-        hint("HOLD R1", "copy by dragging");
+        hint("HOLD R1", "copy");
         hint("START", project_.playing ? "stop" : "play song");
+        hint("SELECT", "songs");
     }
     hints(r, fonts, list, count);
 }

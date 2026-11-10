@@ -12,8 +12,13 @@
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
 //   on + TRACK         A, then pick the instrument: drums, Phazed or Twin Analog.
 //   START              play the song from the cursor's scene
+//   SELECT             the list of songs: start a new one, or open another.
+//                      There is no "save": the song is kept as you go.
 
 #include <SDL.h>
+
+#include <string>
+#include <vector>
 
 #include "input.hpp"
 #include "session.hpp"
@@ -34,6 +39,7 @@ public:
     int cursorScene() const { return scene_; }
     int cursorColumn() const { return column_; }
     bool choosing() const { return choosing_; }
+    bool listingSongs() const { return listing_; }
 
 private:
     static constexpr int kRepeatColumn = -1;
@@ -59,6 +65,11 @@ private:
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap
     float saved_ = 0.f;     // part-steps of the repeat count saved up
+
+    bool listing_ = false;  // the list of songs is open
+    std::vector<std::string> songs_; // as it was when the list opened, newest first
+    int listCursor_ = 0;    // 0 is NEW SONG
+    bool selectAlone_ = false; // SELECT went down and nothing else has since
 
     bool copying_ = false;  // R1 is held: the brush carries a cell
     int copyTrack_ = 0, copyScene_ = 0;

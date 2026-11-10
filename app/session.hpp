@@ -4,6 +4,10 @@
 
 #include <SDL.h>
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "apotheca/engine.hpp"
 #include "project.hpp"
 
@@ -33,6 +37,23 @@ public:
     void audition(int track, int pitch, float velocity);
     void update(Uint32 nowMs);
 
+    // ---- songs on disk ------------------------------------------------------------
+    // Nothing here needs asking for. The song being worked on is written to
+    // its file a couple of seconds after any change, and again on the way
+    // out; the last one open comes back at the next start.
+
+    // Turn saving on: songs live in this folder. Opens the last song, or
+    // starts a new one. `seed` picks the names new songs are given.
+    void useSongFolder(const std::string& folder, std::uint32_t seed);
+    const std::string& songName() const { return songName_; }
+    std::vector<std::string> songNames() const; // most recently saved first
+    void newSong();                             // saves the current one first
+    bool openSong(const std::string& name);     // likewise
+    void saveNow();                             // only writes if something changed
+
+    // Tell the engine everything in the project, from nothing.
+    void applyProject();
+
     // Write a whole pattern to the engine, replacing what it had.
     void sendDrumPattern(int track, int scene);
     void sendNotePattern(int track, int scene);
@@ -42,6 +63,12 @@ private:
     Sounding sounding_[8];
     Uint32 now_ = 0;
     int sentSceneCount_ = 1;
+
+    std::string pathOf(const std::string& name) const;
+    std::string freshName();
+    std::string folder_, songName_ = "untitled", savedText_;
+    std::uint32_t nameSeed_ = 1;
+    Uint32 nextSaveAt_ = 0;
 };
 
 } // namespace apotheca

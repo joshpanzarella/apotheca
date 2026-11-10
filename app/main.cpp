@@ -24,6 +24,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <string>
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
@@ -237,12 +239,25 @@ int main(int argc, char** argv) {
 
     Input input;
     App app(engine);
-    if (demo) fillDemoSong(app);
+    if (demo) {
+        fillDemoSong(app);
+    } else if (!smoke && !shot) {
+        // Songs are kept in a folder beside the program, and the last one
+        // open comes back. (Checks and stills run without touching it.)
+        char* base = SDL_GetBasePath();
+        const std::string folder = std::string(base ? base : "") + "songs";
+        if (base) SDL_free(base);
+        app.session().useSongFolder(folder, static_cast<std::uint32_t>(std::time(nullptr)));
+        std::printf("songs: %s (open: %s)\n", folder.c_str(), app.session().songName().c_str());
+    }
     SDL_PauseAudioDevice(device, 0); // after the demo is in, so its commands are not racing the audio thread
 
     // ---- what to show, for stills ---------------------------------------------------
     if (std::strcmp(view, "song") == 0) {
         app.session().view = View::Song;
+    } else if (std::strcmp(view, "songs") == 0) {
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
     } else if (std::strcmp(view, "add-track") == 0) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
@@ -347,6 +362,7 @@ int main(int argc, char** argv) {
         SDL_Delay(16);
     }
 
+    app.session().saveNow(); // the last couple of seconds of changes
     SDL_CloseAudioDevice(device);
     if (pad) SDL_GameControllerClose(pad);
     SDL_DestroyRenderer(renderer);

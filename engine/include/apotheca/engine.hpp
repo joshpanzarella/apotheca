@@ -72,7 +72,9 @@ struct Command {
         SetMacro,       // a synth track's macro:     track, a = macro, value = 0..1
         SetSetting,     // a synth track's patch:     track, a = setting, b = value
         InstallSynth,   // internal: sent by addSynthTrack()
-        InstallDrums    // internal: sent by addDrumTrack()
+        InstallDrums,   // internal: sent by addDrumTrack()
+        RemoveInstrument, // internal: sent by removeTrack()
+        SetTrackImage   // internal: sent by setTrackImage()
     };
     Type type = Trigger;
     int track = 0;
@@ -83,6 +85,23 @@ struct Command {
     int d = 0;
     float value = 0.f;
     void* pointer = nullptr; // InstallSynth only
+};
+
+// Everything a track plays, in one piece: for loading a whole song in a
+// handful of commands instead of thousands.
+struct TrackImage {
+    float level[kMaxScenes][kDrumLanes][kSteps] = {};
+    float nudge[kMaxScenes][kDrumLanes][kSteps] = {};
+    float chance[kMaxScenes][kDrumLanes][kSteps];
+    struct Note { std::uint8_t step = 0, pitch = 0, length = 0; float velocity = 0.f; };
+    Note notes[kMaxScenes][kMaxNotes];
+    float laneLevel[kDrumLanes];
+    TrackImage() {
+        for (auto& scene : chance)
+            for (auto& lane : scene)
+                for (float& c : lane) c = 1.f;
+        for (float& l : laneLevel) l = 1.f;
+    }
 };
 
 class Engine {
@@ -100,6 +119,15 @@ public:
     // already has one (or, for the synth, if it could not be built).
     bool addDrumTrack(int track);
     bool addSynthTrack(int track, SynthKind kind = SynthKind::Phazed); // Allocates here, never on the audio thread.
+
+    // Take a track's instrument away and empty its patterns, so the track
+    // can be given another. False if it had none.
+    bool removeTrack(int track);
+    // Replace every pattern on a track at once.
+    bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
+    // Free what the audio thread has handed back (removed synths, used
+    // images). Call now and then from the control thread.
+    void collectGarbage();
 
     // From the control thread. Returns false if the queue is full.
     bool send(const Command& command) { return commands_.push(command); }
@@ -184,6 +212,11 @@ private:
     std::atomic<unsigned> scopeWritten_{0};
 
     SpscQueue<Command, 4096> commands_; // room for whole patterns sent at once
+
+    // Things the audio thread no longer needs and must not free itself.
+    struct Trash { bool isImage = false; void* pointer = nullptr; };
+    SpscQueue<Trash, 64> trash_;
+    static void destroy(const Trash& trash);
 };
 
 } // namespace apotheca

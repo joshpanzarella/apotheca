@@ -34,11 +34,44 @@ Engine::Engine() {
 }
 
 Engine::~Engine() {
-    // A synth that was sent but never installed (no render() since) is still ours.
+    // Anything sent but never taken up (no render() since) is still ours.
     Command command;
     while (commands_.pop(command)) {
         if (command.type == Command::InstallSynth) delete static_cast<Instrument*>(command.pointer);
+        if (command.type == Command::SetTrackImage) delete static_cast<TrackImage*>(command.pointer);
     }
+    collectGarbage();
+}
+
+void Engine::destroy(const Trash& trash) {
+    if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
+    else delete static_cast<Instrument*>(trash.pointer);
+}
+
+void Engine::collectGarbage() {
+    Trash trash;
+    while (trash_.pop(trash)) destroy(trash);
+}
+
+bool Engine::removeTrack(int track) {
+    if (!validTrack(track) || !claimed_[track]) return false;
+    Command c;
+    c.type = Command::RemoveInstrument;
+    c.track = track;
+    if (!send(c)) return false;
+    claimed_[track] = false;
+    return true;
+}
+
+bool Engine::setTrackImage(int track, std::unique_ptr<TrackImage> image) {
+    if (!validTrack(track) || !image) return false;
+    Command c;
+    c.type = Command::SetTrackImage;
+    c.track = track;
+    c.pointer = image.get();
+    if (!send(c)) return false;
+    image.release(); // the audio thread hands it back through the trash
+    return true;
 }
 
 void Engine::prepare(float sampleRate) {
@@ -212,6 +245,63 @@ void Engine::apply(const Command& c) {
         break;
     case Command::InstallDrums:
         if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) tracks_[c.track].hasDrums = true;
+        break;
+    case Command::RemoveInstrument:
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            if (track.synth) {
+                // Freeing is not for this thread: hand it back. If the trash is
+                // full (it never should be) the synth is kept rather than lost.
+                Trash trash;
+                trash.pointer = track.synth.get();
+                if (trash_.push(trash)) track.synth.release();
+                else break;
+            }
+            track.hasDrums = false;
+            track.drums.reset();
+            for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
+            for (DrumScene& scene : track.drumScenes) {
+                for (int lane = 0; lane < kDrumLanes; ++lane)
+                    for (int step = 0; step < kSteps; ++step) {
+                        scene.level[lane][step] = scene.nudge[lane][step] = 0.f;
+                        scene.chance[lane][step] = 1.f;
+                    }
+            }
+            for (auto& scene : track.notes)
+                for (Note& note : scene) note = Note();
+            for (auto& left : track.stepsLeft) left = 0;
+            for (auto& lane : track.pending)
+                for (auto& p : lane) p = Track::Pending();
+        }
+        break;
+    case Command::SetTrackImage:
+        if (c.pointer) {
+            const TrackImage& image = *static_cast<TrackImage*>(c.pointer);
+            if (validTrack(c.track)) {
+                Track& track = tracks_[c.track];
+                for (int scene = 0; scene < kMaxScenes; ++scene) {
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int step = 0; step < kSteps; ++step) {
+                            track.drumScenes[scene].level[lane][step] = image.level[scene][lane][step];
+                            track.drumScenes[scene].nudge[lane][step] = image.nudge[scene][lane][step];
+                            track.drumScenes[scene].chance[lane][step] = image.chance[scene][lane][step];
+                        }
+                    for (int slot = 0; slot < kMaxNotes; ++slot) {
+                        const TrackImage::Note& from = image.notes[scene][slot];
+                        Note& to = track.notes[scene][slot];
+                        to.step = from.step;
+                        to.pitch = from.pitch;
+                        to.length = from.length;
+                        to.velocity = from.velocity;
+                    }
+                }
+                for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, image.laneLevel[lane]);
+            }
+            Trash trash;
+            trash.isImage = true;
+            trash.pointer = c.pointer;
+            trash_.push(trash); // if full, the image is leaked rather than freed here
+        }
         break;
     case Command::SetEffectParam:
         if (!validSlot(c.a)) break;
