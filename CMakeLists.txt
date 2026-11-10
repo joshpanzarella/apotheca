@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.16)
+project(apotheca VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
+option(APOTHECA_BUILD_APP "Build the SDL2 app (needs SDL2)" ON)
+option(APOTHECA_BUILD_TESTS "Build the engine tests" ON)
+
+# The engine: no SDL, no device code. Keep it that way so it stays testable.
+add_library(apotheca_engine STATIC engine/src/engine.cpp)
+target_include_directories(apotheca_engine PUBLIC engine/include)
+target_compile_options(apotheca_engine PRIVATE -Wall -Wextra)
+
+if(APOTHECA_BUILD_TESTS)
+  enable_testing()
+  add_executable(engine_test tests/engine_test.cpp)
+  target_link_libraries(engine_test PRIVATE apotheca_engine)
+  add_test(NAME engine COMMAND engine_test)
+endif()
+
+if(APOTHECA_BUILD_APP)
+  find_package(SDL2 REQUIRED)
+  find_package(Threads REQUIRED)
+  add_executable(apotheca app/main.cpp app/realtime.cpp)
+  target_compile_options(apotheca PRIVATE -Wall -Wextra)
+  if(TARGET SDL2::SDL2)
+    target_link_libraries(apotheca PRIVATE apotheca_engine SDL2::SDL2 Threads::Threads)
+  else()
+    target_include_directories(apotheca PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(apotheca PRIVATE apotheca_engine ${SDL2_LIBRARIES} Threads::Threads)
+  endif()
+endif()
