@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/rate_converter.hpp"
 
 using namespace apotheca;
 
@@ -504,6 +505,74 @@ static void testBlockSizeDoesNotChangeTheSound() {
     CHECK(peakOf(a) > 0.1f);
 }
 
+// ---- the rate converter ----------------------------------------------------------
+
+// Convert a pure tone and measure two things: how loud it comes out, and how
+// much of the output is anything other than that tone.
+struct Converted { double level, impurity; };
+static Converted convertTone(double inRate, double outRate, double hz) {
+    RateConverter converter;
+    converter.prepare(inRate, outRate);
+    long n = 0;
+    const auto pull = [&](float& l, float& r) {
+        l = r = static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * hz * static_cast<double>(n++) / inRate));
+    };
+    std::vector<float> left(20000), right(20000);
+    converter.render(pull, left.data(), right.data(), 2000); // let it fill
+    converter.render(pull, left.data(), right.data(), 20000);
+    // The best-fitting tone at `hz`, by projecting onto a sine and a cosine.
+    double ss = 0, cc = 0, sy = 0, cy = 0;
+    for (int i = 0; i < 20000; ++i) {
+        const double s = std::sin(2.0 * 3.14159265358979323846 * hz * i / outRate), c = std::cos(2.0 * 3.14159265358979323846 * hz * i / outRate);
+        ss += s * s; cc += c * c; sy += s * left[i]; cy += c * left[i];
+    }
+    const double a = sy / ss, b = cy / cc;
+    double rest = 0;
+    for (int i = 0; i < 20000; ++i) {
+        const double fit = a * std::sin(2.0 * 3.14159265358979323846 * hz * i / outRate) + b * std::cos(2.0 * 3.14159265358979323846 * hz * i / outRate);
+        rest += (left[i] - fit) * (left[i] - fit);
+    }
+    bool sidesMatch = true;
+    for (int i = 0; i < 20000; ++i) sidesMatch = sidesMatch && left[i] == right[i];
+    CHECK(sidesMatch);
+    return {std::sqrt(a * a + b * b), std::sqrt(rest / 20000.0) / (std::sqrt(a * a + b * b) / std::sqrt(2.0) + 1e-12)};
+}
+
+static void testRateConverter() {
+    // 44100 to 48000 is the one the app uses. A tone must come out at the
+    // same level, with everything else at least 60 dB (a thousand times) down.
+    // (Each tone fits a whole number of times into the stretch measured, so
+    // the measurement itself adds nothing.)
+    for (double hz : {120.0, 1200.0, 4800.0, 9600.0, 15000.0}) {
+        const Converted c = convertTone(44100.0, 48000.0, hz);
+        CHECK(std::fabs(c.level - 1.0) < 0.02);
+        CHECK(c.impurity < 0.001);
+    }
+    // Still good near the top of hearing.
+    CHECK(convertTone(44100.0, 48000.0, 18000.0).impurity < 0.003);
+    // Going down in rate, a tone the lower rate cannot carry is removed, not
+    // folded back as a false tone.
+    const Converted kept = convertTone(44100.0, 32000.0, 5000.0);
+    CHECK(std::fabs(kept.level - 1.0) < 0.02 && kept.impurity < 0.001);
+    RateConverter down;
+    down.prepare(44100.0, 32000.0);
+    long n = 0;
+    std::vector<float> left(8000), right(8000);
+    down.render([&](float& l, float& r) { l = r = static_cast<float>(std::sin(2.0 * 3.14159265358979323846 * 19000.0 * static_cast<double>(n++) / 44100.0)); },
+                left.data(), right.data(), 8000);
+    float folded = 0.f;
+    for (int i = 2000; i < 8000; ++i) folded = std::fabs(left[i]) > folded ? std::fabs(left[i]) : folded;
+    CHECK(folded < 0.01f);
+    // A steady level stays exactly steady.
+    RateConverter flat;
+    flat.prepare(44100.0, 48000.0);
+    flat.render([](float& l, float& r) { l = 0.5f; r = -0.25f; }, left.data(), right.data(), 8000);
+    for (int i = 100; i < 8000; ++i) {
+        CHECK(std::fabs(left[i] - 0.5f) < 1e-5f && std::fabs(right[i] + 0.25f) < 1e-5f);
+        if (std::fabs(left[i] - 0.5f) >= 1e-5f) break;
+    }
+}
+
 static void testBadCommandsAreIgnored() {
     Engine engine;
     engine.send(trigger(KICK, 1.f, -5));
@@ -548,6 +617,7 @@ int main() {
     testMasterEffectSlots();
     testLowpassCutsHighs();
     testBlockSizeDoesNotChangeTheSound();
+    testRateConverter();
     testBadCommandsAreIgnored();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

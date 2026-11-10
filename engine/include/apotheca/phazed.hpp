@@ -7,9 +7,8 @@
 // on screen without passing through this file.
 //
 // The engine makes sound at 44100 Hz, the rate its filters were designed for.
-// If Apotheca's engine runs at another rate the output is converted here,
-// with a plain straight-line interpolation. Run the audio device at 44100 Hz
-// and that step does nothing.
+// Apotheca runs at 48000 Hz, so the output is converted on the way out
+// (rate_converter.hpp). At 44100 Hz that step is skipped.
 //
 // A sound is a PhazedPatch: every setting as a plain number. On top of the
 // patch sit eight macros, each 0..1 with 0.5 meaning "as the patch says".

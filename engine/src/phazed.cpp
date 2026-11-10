@@ -1,5 +1,7 @@
 #include "apotheca/phazed.hpp"
 
+#include "apotheca/rate_converter.hpp"
+
 #include <cmath>
 #include <string>
 #include <vector>
@@ -179,9 +181,7 @@ struct Phazed::State {
 
     // Rate conversion, used only when the engine is not at 44100 Hz.
     float engineRate = kSynthRate;
-    double step = 1.0;     // synth samples per engine sample
-    double position = 1.0; // where the next output falls between `before` and `after`
-    float beforeL = 0.f, beforeR = 0.f, afterL = 0.f, afterR = 0.f;
+    RateConverter converter;
 };
 
 Phazed::Phazed() : state_(new State) {
@@ -196,9 +196,7 @@ Phazed::~Phazed() {
 
 void Phazed::prepare(float sampleRate) {
     state_->engineRate = sampleRate;
-    state_->step = static_cast<double>(kSynthRate) / sampleRate;
-    state_->position = 1.0;
-    state_->beforeL = state_->beforeR = state_->afterL = state_->afterR = 0.f;
+    if (sampleRate != kSynthRate) state_->converter.prepare(kSynthRate, sampleRate);
 }
 
 int Phazed::presetCount() { return cz_preset_count; }
@@ -292,19 +290,7 @@ void Phazed::render(float* left, float* right, int frames) {
         cz_synth_render_stereo(&s.synth, left, right, frames);
         return;
     }
-    // Draw a straight line between neighbouring synth samples and read off it.
-    for (int i = 0; i < frames; ++i) {
-        while (s.position >= 1.0) {
-            s.beforeL = s.afterL;
-            s.beforeR = s.afterR;
-            cz_synth_render_stereo(&s.synth, &s.afterL, &s.afterR, 1);
-            s.position -= 1.0;
-        }
-        const float t = static_cast<float>(s.position);
-        left[i] = s.beforeL + t * (s.afterL - s.beforeL);
-        right[i] = s.beforeR + t * (s.afterR - s.beforeR);
-        s.position += s.step;
-    }
+    s.converter.render([&s](float& l, float& r) { cz_synth_render_stereo(&s.synth, &l, &r, 1); }, left, right, frames);
 }
 
 } // namespace apotheca
