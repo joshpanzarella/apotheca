@@ -27,6 +27,8 @@ Engine::Engine() {
             for (auto& lane : scene.chance)
                 for (float& c : lane) c = 1.f;
     for (int& r : repeats_) r = 1;
+    caught_.reset(new std::atomic<float>[kCatchFrames]);
+    for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
     claimed_[0] = true;
@@ -68,6 +70,26 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
     if (!commands_.push(c)) return false;
     sample.release(); // the audio thread hands the old one back through the trash
     return true;
+}
+
+std::vector<float> Engine::lastBar() const {
+    const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
+    std::uint64_t end = barEndedAt_.load(std::memory_order_relaxed);
+    int frames = barFrames_.load(std::memory_order_relaxed);
+    // No whole bar, or one so long ago that the ring has gone round past it:
+    // the last bar's worth up to now.
+    if (frames <= 0 || now - (end - static_cast<std::uint64_t>(frames)) > static_cast<std::uint64_t>(kCatchFrames)) {
+        frames = barFramesNow_.load(std::memory_order_relaxed);
+        if (frames > kCatchFrames) frames = kCatchFrames;
+        end = now;
+    }
+    std::vector<float> out(static_cast<std::size_t>(frames), 0.f);
+    for (int i = 0; i < frames; ++i) {
+        const std::uint64_t back = static_cast<std::uint64_t>(frames - i);
+        if (back > end) continue; // before the engine began: silence
+        out[static_cast<std::size_t>(i)] = caught_[(end - back) % kCatchFrames].load(std::memory_order_relaxed);
+    }
+    return out;
 }
 
 bool Engine::removeTrack(int track) {
@@ -190,6 +212,13 @@ void Engine::fireNoteOffs() {
 
 void Engine::apply(const Command& c) {
     // After a panic, with the buttons let go, the next thing asked for is heard.
+    // Catch gives the last whole bar the song played. That bar stops being
+    // "the last thing heard" when the song starts again, when something is
+    // played by hand after it stopped, or on a panic.
+    if (c.type == Command::Play || c.type == Command::Panic ||
+        (!playing_ && (c.type == Command::Trigger || c.type == Command::NoteOn))) {
+        barFrames_.store(0, std::memory_order_relaxed);
+    }
     if (gate_ == Gate::Shut && !panicHeld_ && !cutEverything_ &&
         (c.type == Command::Play || c.type == Command::Trigger || c.type == Command::NoteOn)) {
         gate_ = Gate::Opening;
@@ -450,6 +479,15 @@ Engine::Position Engine::afterThisBar() const {
 void Engine::fireStep() {
     // Step 1 of a new bar: move on through the song (not on the very first
     // step after Play, which is where the song starts).
+    // Bar lines, for Catch: where the bar that has just ended began and ended.
+    if (nextStep_ == 0) {
+        const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
+        if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
+            barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_relaxed);
+            barEndedAt_.store(now, std::memory_order_relaxed);
+        }
+        barBeganAt_ = now;
+    }
     if (nextStep_ == 0 && !firstStep_) {
         const Position next = afterThisBar();
         scene_ = next.scene;
@@ -579,11 +617,21 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         if (effect) effect->process(mixL, mixR, frames);
     }
 
+    // Remember what goes out, for Catch.
+    const auto remember = [&] {
+        std::uint64_t at = caughtCount_.load(std::memory_order_relaxed);
+        for (int i = 0; i < frames; ++i, ++at) {
+            caught_[at % kCatchFrames].store(0.5f * (interleaved[2 * i] + interleaved[2 * i + 1]), std::memory_order_relaxed);
+        }
+        caughtCount_.store(at, std::memory_order_relaxed);
+        barFramesNow_.store(static_cast<int>(samplesPerStep_ * kSteps), std::memory_order_relaxed);
+    };
     if (gate_ == Gate::Open) {
         for (int i = 0; i < frames; ++i) {
             interleaved[2 * i] = ceiling(mixL[i]);
             interleaved[2 * i + 1] = ceiling(mixR[i]);
         }
+        remember();
         return;
     }
     // The panic gate: shut in 5 ms, so even a wall of noise does not click;
@@ -616,6 +664,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         interleaved[2 * i] = ceiling(mixL[i]) * gateGain_;
         interleaved[2 * i + 1] = ceiling(mixR[i]) * gateGain_;
     }
+    remember();
     if (cutEverything_) {
         // Behind the shut gate: stop what rings by itself.
         cutEverything_ = false;

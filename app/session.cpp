@@ -401,6 +401,25 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
     loadLane(track, lane);
 }
 
+std::string Session::catchLastBar(int track, int lane) {
+    if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
+    if (project.tracks[track].kind != TrackKind::Drums) return "";
+    const std::vector<float> bar = engine.lastBar();
+    float peak = 0.f;
+    for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    if (peak < 1e-4f) return ""; // nothing was playing
+    mkdir(sampleFolder_.c_str(), 0755); // fine if it is already there
+    std::string name;
+    for (int number = 1; number < 10000; ++number) {
+        name = "catch " + std::to_string(number);
+        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+    }
+    if (!writeWav(sampleFolder_ + "/" + name + ".wav", bar, static_cast<int>(kSampleRate))) return "";
+    setLaneSample(track, lane, name);
+    setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+    return name;
+}
+
 void Session::setLaneFit(int track, int lane, int steps) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return;
     steps = steps < 0 ? 0 : (steps > kMaxFitSteps ? kMaxFitSteps : steps);
@@ -436,7 +455,9 @@ void Session::startJob(int track, int lane) {
     // A step is a sixteenth note: a quarter of a beat.
     job->frames = static_cast<int>(std::lround(project.tracks[track].laneFit[lane] * 15.0 / steadyTempo_ * kSampleRate));
     job->thread = std::thread([job] {
-        job->out = fitTo(*job->in, job->frames, kSampleRate);
+        // As good as the right length already (a bar caught at this tempo): leave it be.
+        const int have = static_cast<int>(job->in->size());
+        job->out = std::abs(have - job->frames) <= 8 ? *job->in : fitTo(*job->in, job->frames, kSampleRate);
         job->done.store(true);
     });
 }

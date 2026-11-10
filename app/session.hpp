@@ -67,6 +67,11 @@ public:
     std::vector<std::string> sampleNames() const;
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
+    // Catch: the last bar the song played (everything, as it was heard)
+    // becomes a recording, "catch 1", "catch 2"..., and goes on this lane
+    // fitted to one bar. Returns its name, or "" if there was only silence
+    // to catch or nowhere to keep it.
+    std::string catchLastBar(int track, int lane);
     struct LaneSound {
         std::shared_ptr<const std::vector<float>> recording; // as it came off the card; null on a built-in lane
         std::vector<float> peaks; // its outline, for drawing

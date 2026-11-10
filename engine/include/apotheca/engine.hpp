@@ -29,6 +29,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
@@ -50,6 +51,7 @@ constexpr int kMaxRepeats = 16;
 constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
 constexpr int kScopeSize = 1024;  // samples the scope keeps
 constexpr double kNoNote = 1e30;
+constexpr int kCatchFrames = 480000; // what the engine remembers of its own output: ten seconds
 constexpr float kShortestNote = 0.05f; // of a step
 
 struct Command {
@@ -160,6 +162,14 @@ public:
     void readScope(float* out, int count) const; // the newest `count` samples (up to kScopeSize), oldest first
 
     float sampleRate() const { return sampleRate_; }
+    // Catch: the engine remembers the last ten seconds it put out (both
+    // sides mixed to one). This copies out the last whole bar the song
+    // played, exactly, bar line to bar line, also just after it has been
+    // stopped. If there is no such bar (the song is in its first bar, or
+    // something has been played by hand since it stopped, or there was a
+    // panic) it is the last bar's worth of sound up to now. From the control thread; allocates.
+    std::vector<float> lastBar() const;
+
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
 
@@ -237,6 +247,13 @@ private:
     bool cutEverything_ = false; // the gate has just shut: cut the drums and clear the effects
     int shutFrames_ = 0, quietFrames_ = 0;
     std::atomic<bool> silenced_{false};
+
+    std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
+    std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
+    std::atomic<std::uint64_t> barEndedAt_{0};     // caughtCount_ when the last whole bar ended
+    std::atomic<int> barFrames_{0};                // how long that bar was; 0: none yet
+    std::uint64_t barBeganAt_ = 0;
+    std::atomic<int> barFramesNow_{96000};         // a bar at the present tempo
 
     std::uint32_t dice_ = 0x2545F491u; // for chance; runs on, so no two bars need match
 

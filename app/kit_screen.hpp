@@ -12,6 +12,8 @@
 //           is heard as it changes when the song is stopped. B: the drum back.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
 //           B: off.
+//   Y       CATCH: the last bar the song played, all of it as it was
+//           heard, becomes a recording on this lane, fitted to one bar.
 //   X       hear the lane
 //   START   play / stop
 
@@ -38,6 +40,7 @@ public:
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }
     int cursorLane() const { return lane_; }
     int cursorColumn() const { return column_; }
+    const std::string& said() const { return said_; }
     enum { kSound, kFit };
 
 private:
@@ -53,6 +56,8 @@ private:
     int lane_ = 0, column_ = kSound;
     bool holding_ = false; // A is held
     std::vector<std::string> names_; // the recordings there were when A went down
+    std::string said_; // what the last catch came to, shown for a moment
+    Uint32 saidUntil_ = 0;
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;

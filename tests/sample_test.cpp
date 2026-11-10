@@ -796,6 +796,95 @@ void testTheKitScreen() {
     CHECK(std::strcmp(track.laneSample[3], "aaa") == 0 && track.laneSample[2][0] == 0);
 }
 
+void testCatch() {
+    const std::string folder = tempFolder() + "/not-made-yet";
+    Rig rig(folder);
+    KitScreen& kit = rig.app.kit();
+    TrackData& track = rig.project().tracks[0];
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.app.drums().setStep(0, 8, 1.f);
+    rig.session().view = View::Device;
+    kit.goTo(5, KitScreen::kSound);
+
+    // Nothing has played: nothing to catch, and it says so.
+    rig.tap(Y);
+    CHECK(track.laneSample[5][0] == 0 && wavNames(folder).empty());
+    CHECK(kit.said().find("NOTHING") != std::string::npos);
+    rig.frames(170); // the message goes after a couple of seconds
+    CHECK(kit.said().empty());
+
+    // Play a bar and a half, and catch: the first bar is on the lane, as a
+    // file, fitted to one bar.
+    rig.tap(START);
+    const std::vector<float> played = rig.render(16 * kStep + 8 * kStep);
+    rig.tap(Y);
+    CHECK(std::strcmp(track.laneSample[5], "catch 1") == 0 && track.laneFit[5] == 16);
+    CHECK(kit.said().find("CATCH 1") != std::string::npos);
+    std::vector<float> file;
+    CHECK(readWav(folder + "/catch 1.wav", file) && file.size() == 16u * kStep);
+    bool same = file.size() == 16u * kStep;
+    for (int i = 0; same && i < 16 * kStep; i += 7) same = std::fabs(file[static_cast<std::size_t>(i)] - played[2 * static_cast<std::size_t>(i)]) < 1e-3f; // what was heard, to 16 bits
+    CHECK(same);
+    rig.tap(START);
+    rig.session().finishStretching();
+    CHECK(!rig.session().laneSound(0, 5).waiting);
+    float level = 0.f;
+    const int length = rig.hit(5, &level);
+    CHECK(length > 8 * kStep && length <= 16 * kStep); // the bar, from its first kick to the tail of its second
+    // A bar caught at this tempo is not put through the stretcher: it plays as it was.
+    Command c;
+    c.type = Command::Trigger;
+    c.a = 5;
+    c.value = 1.f;
+    rig.render(200000);
+    rig.engine->send(c);
+    const std::vector<float> again = rig.render(16 * kStep);
+    same = true;
+    for (int i = 0; same && i < 16 * kStep; i += 7) same = std::fabs(again[2 * static_cast<std::size_t>(i)] - file[static_cast<std::size_t>(i)] * kTrackLevel) < 1e-3f;
+    CHECK(same);
+    {
+        // The same for a recording a few samples off a bar: close enough is left alone.
+        std::vector<float> nearly = tone(2.f, 0.25f);
+        nearly.resize(96003, 0.1f);
+        writeWav(folder + "/nearly.wav", nearly, 48000);
+        rig.session().setLaneSample(0, 1, "nearly");
+        rig.session().setLaneFit(0, 1, 16);
+        rig.session().finishStretching();
+        rig.render(200000);
+        c.a = 1;
+        rig.engine->send(c);
+        const std::vector<float> heard = rig.render(16 * kStep);
+        same = true;
+        for (int i = 0; same && i < 16 * kStep; i += 7) same = std::fabs(heard[2 * static_cast<std::size_t>(i)] - nearly[static_cast<std::size_t>(i)] * kTrackLevel) < 1e-3f;
+        CHECK(same);
+        rig.session().setLaneSample(0, 1, "");
+        std::remove((folder + "/nearly.wav").c_str());
+    }
+    // The next catch is "catch 2", on whichever lane the cursor is on; the first is left alone.
+    rig.render(200000);
+    rig.tap(X); // something to catch: the lane, played by hand
+    rig.render(4000);
+    rig.tap(DOWN);
+    rig.tap(Y);
+    CHECK(std::strcmp(track.laneSample[6], "catch 2") == 0 && std::strcmp(track.laneSample[5], "catch 1") == 0);
+    CHECK(wavNames(folder) == std::vector<std::string>({"catch 1", "catch 2"}));
+    // Not while A is held (that is for stepping through sounds).
+    rig.tap(X);
+    rig.render(4000);
+    rig.key(A, true);
+    rig.tap(Y);
+    rig.key(A, false);
+    CHECK(wavNames(folder).size() == 2);
+    // With nowhere to keep it, or on a track that is not drums, nothing happens.
+    CHECK(rig.session().catchLastBar(0, 8).empty() && rig.session().catchLastBar(3, 0).empty());
+    Rig bare;
+    bare.app.drums().setStep(0, 0, 1.f);
+    bare.session().view = View::Pattern;
+    bare.tap(START);
+    bare.render(20 * kStep);
+    CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -808,6 +897,7 @@ int main(int, char**) {
     testWhereAHitStarts();
     testRollingALanesStarts();
     testTheKitScreen();
+    testCatch();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

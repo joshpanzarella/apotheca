@@ -900,7 +900,82 @@ static void testPanic() {
     CHECK(!engine->silenced());
 }
 
+static void testCatchingTheLastBar() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 8, 0.5f));
+    // Stopped, nothing played: a bar's worth of silence.
+    renderFrames(*engine, 5000);
+    std::vector<float> bar = engine->lastBar();
+    CHECK(bar.size() == 16u * kStep && peakOf(bar) == 0.f);
+
+    // Play. Part-way through the second bar, the catch is the first bar,
+    // exactly: bar line to bar line, the hits where they were.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 16 * kStep + 7 * kStep + 123);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 16u * kStep);
+    CHECK(about(bar[0], 0.2f * kTrackLevel) && about(bar[999], 0.4f * kTrackLevel) && bar[1000] == 0.f);
+    CHECK(bar[8 * kStep - 1] == 0.f && about(bar[8 * kStep], 0.1f * kTrackLevel) && about(bar[8 * kStep + 999], 0.2f * kTrackLevel));
+    CHECK(bar[16 * kStep - 1] == 0.f);
+    // The same thing asked again is the same bar; a bar later it is the next one.
+    CHECK(engine->lastBar() == bar);
+    engine->send(step(0, 4, 1.f));
+    renderFrames(*engine, 2 * 16 * kStep); // on into the bar after the one that has the new hit
+    const std::vector<float> next = engine->lastBar();
+    CHECK(next.size() == 16u * kStep && next != bar && about(next[4 * kStep], 0.2f * kTrackLevel));
+    // Stopped part-way through a bar: the catch is still the last whole one.
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 20000);
+    CHECK(engine->lastBar() == next);
+    // Played by hand after stopping: now the catch is what was just heard.
+    engine->send(trigger(0, 0.5f));
+    renderFrames(*engine, 3000);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 16u * kStep && about(bar[bar.size() - 3000], 0.1f * kTrackLevel) && bar[bar.size() - 1] == 0.f);
+    // Started again, two steps in: no whole bar yet, so a bar's worth up to
+    // now, not the stretch of time since the song last began.
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 2 * kStep);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 16u * kStep && about(bar[bar.size() - 2 * kStep], 0.2f * kTrackLevel));
+    renderFrames(*engine, 16 * kStep);
+    CHECK(engine->lastBar().size() == 16u * kStep && about(engine->lastBar()[0], 0.2f * kTrackLevel));
+    // A panic: the silence after it is what is caught, not the din before.
+    engine->send(make(Command::Panic, 0, 1));
+    renderFrames(*engine, 20 * kStep);
+    CHECK(peakOf(engine->lastBar()) == 0.f);
+    engine->send(make(Command::Panic, 0, 0));
+    renderFrames(*engine, 48000);
+    // A tempo change: the bar caught is as long as the bar that was played.
+    renderFrames(*engine, 20000);
+    engine->send(make(Command::SetTempo, 0, 0, 0, 240.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 8 * kStep + 100);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 8u * kStep && about(bar[0], 0.2f * kTrackLevel) && about(bar[2 * kStep], 0.2f * kTrackLevel));
+    // Stopped a long while (longer than it remembers): the last bar's worth
+    // of what was heard, which is silence, not something ten seconds stale.
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, kCatchFrames + 5000);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 8u * kStep && peakOf(bar) == 0.f);
+    // Stopped and played by hand: what was just heard is what is caught.
+    engine->send(trigger(0));
+    renderFrames(*engine, 3000);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 8u * kStep && about(bar[bar.size() - 3000], 0.2f * kTrackLevel) && bar[bar.size() - 1] == 0.f);
+    // The slowest tempo: a bar is six seconds, and still fits.
+    engine->send(make(Command::SetTempo, 0, 0, 0, 40.f));
+    engine->send(make(Command::Play, 0, 0, 1));
+    renderFrames(*engine, 288000 + 1000);
+    bar = engine->lastBar();
+    CHECK(bar.size() == 288000u && about(bar[0], 0.2f * kTrackLevel));
+}
+
 int main() {
+    testCatchingTheLastBar();
     testPanic();
     testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();

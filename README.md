@@ -26,9 +26,8 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: effects on screen, recording into the device, catching your
-own output as a sample, a sampler played from the keys, the sound designer
-web page.
+Not built yet: effects on screen, recording into the device, a sampler
+played from the keys, the sound designer web page.
 
 ## Build
 
@@ -148,6 +147,13 @@ WAV file from the `samples` folder beside the program. A kit can mix the two.
 | --- | --- | --- |
 | SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
+
+**Y is Catch.** The engine remembers the last ten seconds it played. Y on a
+lane takes the last whole bar the song played, everything as it was heard,
+saves it as `catch 1.wav`, `catch 2.wav`... in the `samples` folder, and puts
+it on that lane fitted to one bar. It works just after stopping too. With no
+whole bar to take (the first bar, or after playing by hand), it takes the
+last bar's worth of sound.
 
 **FIT** stretches the recording, at the same pitch, to last that many steps
 at the song's tempo. Change the tempo and it is fitted again, a quarter of a
