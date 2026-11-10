@@ -61,6 +61,18 @@ the cursor; every step it crosses gets a hit:
 Dragging over hits that are already there re-levels them and keeps their
 nudge and chance.
 
+Lane dice, for a whole pattern in a second. With the cursor on a lane's
+name:
+
+| Gesture | Does |
+| --- | --- |
+| Hold Y, stick up | Hits arrive on that lane one after another, in a shuffled order that leans toward the beat |
+| Hold Y, stick down | They leave again, last in first out |
+| Tap Y | Reshuffle: the same number of hits, somewhere new. On an empty lane, four hits |
+
+The dice only remove hits they placed. A hit you placed, or one of theirs
+that you have since shaped, painted or given a chance, is yours and stays.
+
 | Tap | Does |
 | --- | --- |
 | A | Place a hit |

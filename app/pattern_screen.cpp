@@ -258,7 +258,7 @@ void PatternScreen::diceReshuffle() {
     diceSeed_[lane_] = diceSeed_[lane_] * 1664525u + 1013904223u;
     if (count == 0) count = kFirstRoll;
     const bool wasPlaying = playing_;
-    playing_ = true; // sound only the first of the new hits, not all of them at once
+    playing_ = true; // sound only the last of the new hits, not all of them at once
     for (int i = 0; i < count; ++i) {
         if (i == count - 1) playing_ = wasPlaying;
         if (!diceAdd()) break;
