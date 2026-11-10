@@ -15,6 +15,10 @@
 //   SELECT             the list of songs: start a new one, or open another.
 //                      There is no "save": the song is kept as you go.
 //     X in the list    save a rev: the song as it is now, to come back to.
+//     Y on the open song   a new name for it (two words, rolled again each press)
+//     hold B on a song     delete it: hold for a second while the row fills.
+//                      It goes to a "deleted" folder on the card, not to nothing.
+//                      A tap of B only closes the list.
 //     A on the open song   its revs. A on one goes back to it; where the
 //                      song was is kept as a rev first.
 
@@ -45,6 +49,8 @@ public:
     bool listingSongs() const { return listing_; }
     bool listingRevs() const { return listing_ && revsOpen_; }
     int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
+    const std::vector<std::string>& listedSongs() const { return songs_; }
+    void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
 
 private:
     static constexpr int kRepeatColumn = -1;
@@ -74,6 +80,10 @@ private:
     bool listing_ = false;  // the list of songs is open
     std::vector<std::string> songs_; // as it was when the list opened, newest first
     int listCursor_ = 0;    // 0 is NEW SONG
+    bool bHeld_ = false;    // B is down on a song's row
+    Uint32 bDownAt_ = 0;    // ...since when
+    int bRow_ = 0;
+    void cancelSelectTap() { selectAlone_ = false; }
     bool revsOpen_ = false; // ...and inside it, the open song's revs
     std::vector<int> revs_; // newest first
     int revCursor_ = 0;     // 0 is SAVE A REV

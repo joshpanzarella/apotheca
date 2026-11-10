@@ -8,6 +8,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
+constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 34, kColumnsLeft = 8 + kNumberW + kRepeatW;
@@ -118,8 +119,14 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (listing_) {
         if (!event.down) {
             if (b == repeating_) repeating_ = Button::None;
+            // B let go before the second was up: only a tap. It closes the list.
+            if (b == Button::B && bHeld_) {
+                bHeld_ = false;
+                listing_ = false;
+            }
             return;
         }
+        bHeld_ = false; // any other press calls a held B off
         if (isDirection(b)) {
             moveCursor(b);
             repeating_ = b;
@@ -144,7 +151,22 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             }
             return;
         }
-        if (b == Button::B) listing_ = false;
+        if (b == Button::B) {
+            // On a song: held for a second it deletes; let go sooner it closes.
+            if (listCursor_ > 0) {
+                bHeld_ = true;
+                bDownAt_ = 0; // update() starts the clock, on its own time
+                bRow_ = listCursor_;
+            } else {
+                listing_ = false;
+            }
+        }
+        if (b == Button::Y && listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName()) {
+            const std::string renamed = session_.renameSong();
+            songs_ = session_.songNames();
+            for (std::size_t i = 0; i < songs_.size(); ++i)
+                if (songs_[i] == renamed) listCursor_ = static_cast<int>(i) + 1;
+        }
         if (b == Button::A) {
             if (listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName()) {
                 openRevList(); // the song that is open: its revs
@@ -234,6 +256,18 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     lastMs_ = nowMs;
     const float x = input.stickX(), y = input.stickY();
+
+    // B held on a song for a second: it is deleted.
+    if (!listing_ || bRow_ != listCursor_ || revsOpen_) bHeld_ = false; // the cursor moved off it
+    if (bHeld_ && bDownAt_ == 0) bDownAt_ = nowMs;
+    if (bHeld_ && nowMs - bDownAt_ >= kDeleteHoldMs) {
+        bHeld_ = false;
+        const bool wasOpen = songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName();
+        session_.deleteSong(songs_[static_cast<std::size_t>(listCursor_ - 1)]);
+        songs_ = session_.songNames();
+        if (listCursor_ > static_cast<int>(songs_.size())) listCursor_ = static_cast<int>(songs_.size());
+        if (wasOpen) scene_ = column_ = top_ = 0;
+    }
 
     if (holding_) {
         // The stick turns the repeat count.
@@ -422,12 +456,19 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
                 fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
                 if (name == session_.songName()) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
+                // B held on it: the row fills, and at full the song is deleted.
+                if (bHeld_ && bDownAt_ != 0 && i == bRow_) {
+                    const float part = static_cast<float>(lastMs_ - bDownAt_) / static_cast<float>(kDeleteHoldMs);
+                    fill(r, x + 13, by + 1, static_cast<int>((w - 26) * (part > 1.f ? 1.f : part)), rowH - 6, faded(kBrass, 120));
+                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "KEEP HOLDING TO DELETE", kBrass);
+                }
             }
             if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
         }
         const bool onOpen = listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName();
-        const Hint list[] = {{"STICK", "move"}, {"A", listCursor_ == 0 ? "start a new song" : onOpen ? "its revs" : "open"}, {"X", "save a rev"}, {"B", "close"}};
-        hints(r, fonts, list, 4);
+        const Hint list[] = {{"A", listCursor_ == 0 ? "new song" : onOpen ? "its revs" : "open"}, {"X", "save a rev"}, {"Y", onOpen ? "new name" : nullptr},
+                             {"B", "close"}, {"HOLD B", listCursor_ > 0 ? "delete" : nullptr}};
+        hints(r, fonts, list, 5);
         return;
     }
 

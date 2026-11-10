@@ -106,6 +106,15 @@ public:
     void newSong();                             // saves the current one first
     bool openSong(const std::string& name);     // likewise
     void saveNow();                             // only writes if something changed
+    // Give the open song a new two-word name (there is no keyboard to type
+    // one). Its file and its revs follow. Returns the new name.
+    std::string renameSong();
+    // Take a song off the list. Its file and revs are not destroyed: they
+    // are moved to a "deleted" folder inside the song folder. Deleting the
+    // open song starts a new one.
+    bool deleteSong(const std::string& name);
+    // The tempo, from anywhere. Held to what the engine can play.
+    void setTempo(float bpm);
 
     // ---- revs -------------------------------------------------------------------------
     // A rev is the song as it was at one moment, kept beside it and never

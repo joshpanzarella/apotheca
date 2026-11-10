@@ -474,6 +474,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
 
     const float x = input.stickX(), y = input.stickY();
+    // The tempo can be set from elsewhere (SELECT + D-pad, or a song opened).
+    if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
     if (shaping_ || dicing_) {
         // The stick does one job per push. Whichever way it leaves the centre

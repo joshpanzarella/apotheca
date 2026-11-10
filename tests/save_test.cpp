@@ -32,7 +32,7 @@ static int failures = 0;
 namespace {
 
 const int kStep = 6000, kBar = 16 * kStep;
-const SDL_Keycode X = SDLK_s;
+const SDL_Keycode X = SDLK_s, Y = SDLK_a;
 const SDL_Keycode A = SDLK_x, B = SDLK_z, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE, L2 = SDLK_1, UP = SDLK_UP, DOWN = SDLK_DOWN;
 
 std::string tempFolder() {
@@ -592,6 +592,125 @@ void testASongMadeAMomentAgoIsInTheList() {
     rig.tap(SELECT);
 }
 
+void testRenamingAndDeletingSongs() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Session& session = rig.session();
+    SongScreen& song = rig.app.song();
+    fillSong(rig);
+    rig.project().playing = false;
+    session.saveNow();
+    const std::string first = session.songName();
+    const std::string text = songText(rig.project());
+    CHECK(session.saveRev() == 1 && session.saveRev() == 2);
+    // A neighbour whose name starts the same way must never be touched.
+    writeTextFile(folder + "/" + first + " two.song", text);
+    writeTextFile(folder + "/" + first + " two.1.rev", text);
+
+    // ---- a new name: Y on the open song in the list ---------------------------------
+    session.view = View::Song;
+    // Put the list's cursor on a song, wherever the list has it just now.
+    const auto goToSong = [&](const std::string& name) {
+        rig.tap(UP, 20);
+        for (std::size_t i = 0; i < song.listedSongs().size(); ++i)
+            if (song.listedSongs()[i] == name) rig.tap(DOWN, static_cast<int>(i) + 1);
+    };
+    rig.tap(SELECT);
+    goToSong(first);
+    rig.tap(Y);
+    const std::string second = session.songName();
+    CHECK(second != first && !exists(folder + "/" + first + ".song") && exists(folder + "/" + second + ".song"));
+    CHECK(exists(folder + "/" + second + ".1.rev") && exists(folder + "/" + second + ".2.rev") && !exists(folder + "/" + first + ".1.rev"));
+    CHECK(session.revs() == std::vector<int>({2, 1}));
+    std::string last;
+    CHECK(readTextFile(folder + "/last.txt", last) && last == second + "\n");
+    CHECK(exists(folder + "/" + first + " two.song") && exists(folder + "/" + first + " two.1.rev"));
+    CHECK(song.listingSongs() && song.listedSongs()[static_cast<std::size_t>(song.listCursor() - 1)] == second); // the cursor is still on it
+    CHECK(songText(rig.project()) == text);
+    rig.tap(Y); // again: another
+    CHECK(session.songName() != second && session.songName() != first);
+    const std::string third = session.songName();
+    // Y on a song that is not the open one, or on NEW SONG, does nothing.
+    rig.tap(UP, 9);
+    rig.tap(Y);
+    CHECK(session.songName() == third);
+    goToSong(first + " two");
+    rig.tap(Y);
+    CHECK(session.songName() == third && exists(folder + "/" + first + " two.song"));
+
+    // ---- deleting: hold B on a song for a second --------------------------------------
+    // A tap of B only closes the list.
+    rig.tap(B);
+    CHECK(!song.listingSongs() && exists(folder + "/" + first + " two.song"));
+    rig.tap(SELECT);
+    goToSong(first + " two");
+    // Held, but not long enough.
+    rig.key(B, true);
+    rig.frames(50); // 0.8 s
+    CHECK(exists(folder + "/" + first + " two.song") && song.listingSongs());
+    rig.key(B, false);
+    CHECK(!song.listingSongs());
+    // Held, and the cursor moved off it: called off.
+    rig.tap(SELECT);
+    goToSong(first + " two");
+    rig.key(B, true);
+    rig.frames(30);
+    rig.key(SDLK_i, true); // the stick, up: no button is pressed, but the cursor leaves the row
+    rig.frames(2);
+    rig.key(SDLK_i, false);
+    rig.frames(60);
+    rig.key(B, false);
+    CHECK(exists(folder + "/" + first + " two.song") && song.listingSongs());
+    goToSong(first + " two");
+    // Held for the whole second: gone from the list, and moved, not destroyed.
+    rig.key(B, true);
+    rig.frames(64);
+    CHECK(!exists(folder + "/" + first + " two.song") && !exists(folder + "/" + first + " two.1.rev"));
+    CHECK(exists(folder + "/deleted/" + first + " two.song") && exists(folder + "/deleted/" + first + " two.1.rev"));
+    CHECK(song.listingSongs() && song.listedSongs() == std::vector<std::string>({third}));
+    rig.key(B, false); // letting go after that does not also close the list
+    CHECK(song.listingSongs());
+    CHECK(session.songName() == third && exists(folder + "/" + third + ".song") && exists(folder + "/" + third + ".2.rev"));
+    CHECK(readTextFile(folder + "/deleted/" + first + " two.song", last) && last == text);
+    // NEW SONG cannot be deleted.
+    rig.tap(UP, 5);
+    rig.key(B, true);
+    rig.frames(80);
+    rig.key(B, false);
+    CHECK(exists(folder + "/" + third + ".song"));
+
+    // Deleting the open song: a new, empty one takes its place, and nothing is written over what was moved.
+    // Files that only look like its own stay where they are.
+    writeTextFile(folder + "/" + third + "s.song", text);
+    writeTextFile(folder + "/" + third + ".old.rev", text);
+    writeTextFile(folder + "/" + third + ".7x.rev", text);
+    rig.tap(SELECT);
+    goToSong(third);
+    rig.key(B, true);
+    rig.frames(64);
+    rig.key(B, false);
+    CHECK(!exists(folder + "/" + third + ".song") && exists(folder + "/deleted/" + third + ".song") && exists(folder + "/deleted/" + third + ".1.rev"));
+    CHECK(session.songName() != third && rig.project().trackCount() == 1 && rig.project().tracks[0].drums[0].empty());
+    CHECK(song.listedSongs() == std::vector<std::string>({third + "s"}));
+    CHECK(exists(folder + "/" + third + "s.song") && exists(folder + "/" + third + ".old.rev") && exists(folder + "/" + third + ".7x.rev"));
+    rig.frames(200); // the autosave comes round: an empty song is still not worth a file
+    session.saveNow();
+    CHECK(session.songNames().size() == 1 && !exists(folder + "/" + third + ".song"));
+    CHECK(readTextFile(folder + "/deleted/" + third + ".song", last) && last == text);
+    // At the next start there is no "last song" to come back to.
+    Rig next(folder);
+    CHECK(next.project().trackCount() == 1 && next.project().tracks[0].drums[0].empty());
+    // What cannot be deleted.
+    CHECK(!session.deleteSong("no such song") && !session.deleteSong(""));
+    // A name is never a path: nothing outside the song folder can be reached.
+    const std::string outside = folder.substr(folder.rfind('/') + 1) + "-victim";
+    writeTextFile(folder + "/../" + outside + ".song", text);
+    CHECK(!session.deleteSong("../" + outside) && exists(folder + "/../" + outside + ".song"));
+    std::remove((folder + "/../" + outside + ".song").c_str());
+    Rig loose;
+    CHECK(!loose.session().deleteSong("x") && loose.session().renameSong() == loose.session().songName());
+}
+
 void testNamesDoNotRepeat() {
     const std::string folder = tempFolder();
     Rig rig(folder, 3);
@@ -620,6 +739,7 @@ int main(int, char**) {
     testFreeNoteLengthsAreKept();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
+    testRenamingAndDeletingSongs();
     testNamesDoNotRepeat();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

@@ -702,6 +702,67 @@ void testAllFourShoulderButtonsIsPanic() {
     CHECK(!rig.project().silenced && rig.listen(4800) < 1e-4f);
 }
 
+void testTheTempoFromAnyScreen() {
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Phazed);
+    CHECK(rig.project().tempo == 120.f);
+    const View views[] = {View::Song, View::Pattern, View::Device, View::Effects};
+    float want = 120.f;
+    for (int track = 0; track < 2; ++track) {
+        rig.project().track = track;
+        for (View view : views) {
+            rig.app.session().view = view;
+            rig.key(SELECT, true);
+            rig.tap(UP);
+            rig.key(SELECT, false);
+            want += 1.f;
+            CHECK(rig.project().tempo == want);
+            CHECK(!rig.app.song().listingSongs()); // SELECT did something: letting go is not a tap
+            CHECK(rig.view() == view);
+        }
+    }
+    rig.app.session().view = View::Pattern;
+    rig.project().track = 0;
+    rig.key(SELECT, true);
+    rig.tap(RIGHT, 2);
+    rig.tap(DOWN, 3);
+    rig.tap(LEFT);
+    CHECK(rig.project().tempo == want + 20.f - 3.f - 10.f);
+    CHECK(rig.app.drums().cursorStep() == 0 && rig.app.drums().cursorLane() == 0); // the cursor did not move
+    rig.tap(RIGHT, 40);
+    CHECK(rig.project().tempo == kMaxTempo);
+    rig.tap(LEFT, 40);
+    CHECK(rig.project().tempo == kMinTempo);
+    rig.key(SELECT, false);
+    // The engine follows: a bar at 40 BPM is six seconds.
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.tap(START);
+    rig.render(288000 - 2000);
+    CHECK(rig.listen(1900) < 0.01f); // nothing just before the bar comes round
+    CHECK(rig.listen(4000) > 0.2f);  // the kick, on the next bar line
+    rig.tap(START);
+    // The drum grid's own tempo box starts from there, not from where it last left it.
+    rig.frames(1);
+    rig.app.drums().moveCursorTo(0, 0);
+    rig.tap(UP);
+    CHECK(rig.app.drums().cursorOnTempo());
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(2);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    rig.key(A, false);
+    CHECK(rig.project().tempo > kMinTempo && rig.project().tempo < kMinTempo + 8.f);
+    rig.app.session().setTempo(kMinTempo + 1.f);
+    // A plain SELECT tap on the Song screen still opens the list.
+    rig.app.session().view = View::Song;
+    rig.tap(SELECT);
+    CHECK(rig.app.song().listingSongs());
+    rig.tap(SELECT);
+    rig.app.session().setTempo(std::nanf(""));
+    CHECK(rig.project().tempo == kMinTempo + 1.f);
+}
+
 // ---- the effects screen ------------------------------------------------------------------
 
 void testTheEffectsScreen() {
@@ -1388,6 +1449,7 @@ int main(int, char**) {
     testTheKeysScrollAndStopAtTheEnds();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testEffectsThroughTheSession();
     testTheKeysShownFollowTheCursor();

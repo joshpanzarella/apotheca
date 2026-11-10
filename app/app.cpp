@@ -42,6 +42,18 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // SELECT held with the D-pad: the tempo, from any screen. Up and down a
+    // beat a minute, left and right ten.
+    const bool direction = b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right;
+    if (direction && input.held(Button::Select)) {
+        if (event.down) {
+            const float by = b == Button::Up ? 1.f : b == Button::Down ? -1.f : b == Button::Right ? 10.f : -10.f;
+            session_.setTempo(project_->tempo + by);
+            song_.selectWasUsed();
+        }
+        return;
+    }
+
     // The shoulder triggers walk along the tabs. Nothing else uses them.
     if (event.button == Button::L2 || event.button == Button::R2) {
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;

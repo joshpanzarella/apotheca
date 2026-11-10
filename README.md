@@ -112,6 +112,16 @@ The song runs to the last scene with anything in it, then comes round.
 
 **SELECT** lists the songs: start a new one, or open another.
 
+In the list:
+
+- **Y on the open song** gives it a new two-word name. Press again for another.
+- **Hold B on a song for a second** deletes it; the row fills as you hold. A
+  tap of B only closes the list. A deleted song and its revs are moved to a
+  `deleted` folder inside `songs`, not destroyed.
+
+**SELECT + D-pad** sets the tempo from any screen: up / down by 1, left /
+right by 10.
+
 ### Revs
 
 A rev is a snapshot: the song as it is now, kept beside it and never written
@@ -134,7 +144,6 @@ to again.
 - **Files** live in a `songs` folder beside the program, one `.song` text
   file each. They can be read by eye, copied and backed up. The format is
   described at the top of `app/song_file.hpp`.
-- Deleting a song is done by deleting its file; there is no button for it yet.
 
 ### PATTERN, drums
 

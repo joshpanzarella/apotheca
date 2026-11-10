@@ -4,6 +4,7 @@
 // the tests press its buttons directly.
 //
 //   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE, FX
+//   SELECT + D-pad   the tempo: up / down by 1, left / right by 10
 //   L1 + L2 + R1 + R2 together: PANIC. Everything stops and the sound is
 //              shut off at once, for as long as they are held.
 //
