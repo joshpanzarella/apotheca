@@ -453,12 +453,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (!empty && cellBars < sceneBars) {
                 // The loops mark: where the cell ends, and how many times it plays in the scene.
                 fill(r, x + 3 + pictureW, y + 3, 1, kRowH - 10, kPurple);
-                std::snprintf(text, sizeof text, colW > 60 ? "LOOPS x%d" : "x%d", sceneBars / cellBars);
+                std::snprintf(text, sizeof text, colW - 6 - pictureW >= 60 ? "LOOPS x%d" : "x%d", sceneBars / cellBars);
                 fonts.small.drawCentered(r, x + 3 + pictureW + (colW - 6 - pictureW) / 2.f, y + (kRowH - 4 - fonts.small.capHeight()) / 2.f, text, kPurple);
             }
             if (cellBars > 1) { // how long it is, in the corner
                 std::snprintf(text, sizeof text, "%d", cellBars);
-                fonts.small.drawRight(r, x + colW - 4.f, y + kRowH - 6.f - fonts.small.capHeight(), text, kDim);
+                fonts.small.drawRight(r, x + colW - 4.f, y + 3.f, text, kDim);
             }
             // Where the cell has got to: a short one goes round under a long scene.
             if (playingHere && playStep >= 0) {

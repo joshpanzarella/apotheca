@@ -1651,6 +1651,37 @@ static void testCellsOfSeveralBars() {
         engine->send(note);
         engine->send(make(Command::SetSetting, 2, sampler::Loop, 0));
     }
+    // A track with no instrument cannot make a scene longer, whatever it is told.
+    {
+        std::unique_ptr<Engine> bare(new Engine);
+        CHECK(bare->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.2f)));
+        bare->send(step(0, 0, 1.f));
+        Command empty = make(Command::SetCellBars, 7, 8);
+        bare->send(empty);
+        bare->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> two = renderFrames(*bare, 2 * 16 * kStep);
+        CHECK(two[2 * static_cast<std::size_t>(16 * kStep)] != 0.f);
+        renderFrames(*bare, 8 * kStep);
+        CHECK(bare->playBar() == 0); // the scene is still one bar long: it is in its first bar again, not its third
+        // ClearCell empties notes as well as hits, in every bar of the cell.
+        CHECK(bare->addSynthTrack(1, SynthKind::Sampler));
+        std::unique_ptr<SampleData> flat2(new SampleData);
+        flat2->data.assign(4800, 0.5f);
+        CHECK(bare->setTrackSample(1, std::move(flat2)));
+        Command n = make(Command::SetNote, 1, 0, 4, 1.f);
+        n.c = 60;
+        n.d = 1;
+        n.bar = 3;
+        bare->send(n);
+        bare->send(make(Command::SetCellBars, 1, 4));
+        Command clear = make(Command::ClearCell, 1);
+        bare->send(clear);
+        bare->send(make(Command::Stop));
+        renderFrames(*bare, 20000);
+        bare->send(step(0, 0, 0.f));
+        bare->send(make(Command::Play, 0, 0, 1));
+        CHECK(peakOf(renderFrames(*bare, 4 * 16 * kStep)) == 0.f);
+    }
     // Lengths are held to 1..8; a bar that does not exist is not written; no such scene, nothing.
     bars(99, 0, 2);
     play(1);

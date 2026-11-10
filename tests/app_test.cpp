@@ -710,6 +710,18 @@ void testCellsOfSeveralBars() {
     rig.frames(1);
     CHECK(rig.project().bar == 0);
     rig.project().tracks[1].bars[0] = 4;
+    // The same on the drum grid.
+    rig.project().track = 0;
+    rig.project().bar = 1;
+    track.bars[0] = 1;
+    rig.frames(1);
+    CHECK(rig.project().bar == 0);
+    track.bars[0] = 2;
+    rig.project().track = 1;
+    // A track with no instrument does not make a scene longer.
+    rig.project().tracks[7].bars[2] = 8;
+    CHECK(rig.project().sceneBars(2) == 1);
+    rig.project().tracks[7].bars[2] = 1;
     // Lengths are 1, 2, 4 or 8, whatever is asked.
     session.setCellBars(1, 5, 3);
     CHECK(rig.project().tracks[1].bars[5] == 2);

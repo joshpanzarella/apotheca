@@ -128,8 +128,6 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     x += 4.f;
     fonts.small.draw(r, x, textY, "R2", kDim);
     x += fonts.small.width("R2") + 12.f;
-    fonts.small.draw(r, x, textY, context, kText);
-
     // Tempo, then a triangle while playing or a square when stopped.
     const int markX = kScreenW - 20;
     SDL_SetRenderDrawColor(r, kPurple.r, kPurple.g, kPurple.b, 255);
@@ -147,25 +145,29 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     fonts.small.drawRight(r, bar.tempoNumberRight, textY, text, kText);
 
     // While it plays: which scene, and how far through it. One block for
-    // each time the scene plays, filling as the bar goes by, so the change
-    // to the next scene can be seen coming.
+    // each time the scene plays, filling as the bars go by, so the change
+    // to the next scene can be seen coming. Then the bar of the scene, if
+    // it has more than one.
+    float room = bar.tempoNumberRight - 34.f; // where the screen's own words must stop
     if (project.silenced) {
-        fonts.small.drawRight(r, bar.tempoNumberRight - 40.f, textY, "SILENCED", kBrass);
+        fonts.small.drawRight(r, room - 6.f, textY, "SILENCED", kBrass);
+        room -= fonts.small.width("SILENCED") + 16.f;
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
-        const int right = static_cast<int>(bar.tempoNumberRight) - 40, w = 78;
+        const int right = static_cast<int>(room) - 6, w = 60;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
-        // A pass of a long scene is all its bars: the block fills across them.
         const int bars = project.sceneBars(project.playScene);
         sceneProgress(r, right - w, 9, w, 8, plays, project.playRepeat, project.playBar * kSteps + project.playStep, bars * kSteps);
-        if (bars > 1) {
-            char bar[32];
-            std::snprintf(bar, sizeof bar, "%d/%d", project.playBar + 1, bars);
-            fonts.small.draw(r, right + 5.f, textY, bar, kPurple);
-        }
-        char scene[24];
-        std::snprintf(scene, sizeof scene, "SCENE %d", project.playScene + 1);
+        char scene[48];
+        if (bars > 1) std::snprintf(scene, sizeof scene, "SCENE %d  %d/%d", project.playScene + 1, project.playBar + 1, bars);
+        else std::snprintf(scene, sizeof scene, "SCENE %d", project.playScene + 1);
         fonts.small.drawRight(r, right - w - 7.f, textY, scene, kPurple);
+        room = right - w - 7.f - fonts.small.width(scene) - 10.f;
     }
+    // The screen's own words, cut short if they would run into that.
+    char shown[64];
+    std::snprintf(shown, sizeof shown, "%s", context);
+    for (std::size_t n = std::strlen(shown); n > 0 && x + fonts.small.width(shown) > room; --n) shown[n - 1] = 0;
+    fonts.small.draw(r, x, textY, shown, kText);
     return bar;
 }
 

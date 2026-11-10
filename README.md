@@ -7,8 +7,8 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of two synths: Phazed (phase distortion, 65 presets) or Twin
-Analog (two morphing oscillators, 16 presets). Up to sixteen scenes,
-each one bar, each with its own repeat count. Four screens:
+Analog (two morphing oscillators, 16 presets). Up to sixteen scenes of
+one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
@@ -123,6 +123,27 @@ else), or it goes by itself after four seconds.
 | + TRACK | Pick DRUMS, PHAZED or TWIN ANALOG | | | |
 
 The song runs to the last scene with anything in it, then comes round.
+
+### Longer phrases
+
+A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
+
+- **Hold A on a cell and push the stick left / right** to set its length. A
+  tap of A still opens it.
+- **The scene lasts as long as its longest cell.** A shorter cell goes round
+  under it: a one-bar drum loop plays four times under a four-bar part.
+- A shorter cell is drawn once, as wide as its share of the scene, with
+  **LOOPS x4** in the room after it. A long cell shows its length in the corner.
+- **The repeat count is whole passes of the scene.** A four-bar scene at x2
+  is eight bars.
+- On the PATTERN screen the grid shows one bar. Run the cursor off the end
+  of step 16 and you are in the next bar; the top bar says **BAR 2 OF 4**.
+  On the drum grid the lane's name is always one left of step 1.
+- On the piano roll **a note may run on over the bar lines**, to the end of
+  the cell. In the bars after, it shows faint from the top; it is changed
+  in the bar it starts in.
+- While it plays, the top bar shows the bar of the scene (2/4) beside the
+  progress blocks.
 
 **SELECT** lists the songs: start a new one, or open another.
 

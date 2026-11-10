@@ -343,6 +343,32 @@ int main(int argc, char** argv) {
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
         app.session().view = View::Device;
         app.sampler().goTo(3);
+    } else if (std::strncmp(view, "bars", 4) == 0) {
+        // Scene 1 with cells of different lengths: the pads four bars (a
+        // chord a bar, the last held over two), the bass two, the drums one.
+        Session& session = app.session();
+        Project& project = app.project();
+        session.setCellBars(2, 0, 4);
+        const ChordPack& pack = builtInPack();
+        const int order[3] = {10, 7, 11};
+        for (int bar = 1; bar < 3; ++bar) {
+            NotePattern& p = project.tracks[2].notes[0][bar];
+            p.chords[0] = makeChord(pack.chords[static_cast<std::size_t>(order[bar])], 57, 0, bar == 2 ? 28.f : 14.f, .7f, 0);
+        }
+        project.tracks[2].notes[0][0].chords[0].length = 14.f;
+        project.tracks[2].notes[0][0].chords[1] = ChordEvent();
+        session.sendNotePattern(2, 0);
+        session.setCellBars(1, 0, 2);
+        project.tracks[1].notes[0][1] = project.tracks[1].notes[1][0];
+        session.sendNotePattern(1, 0);
+        if (std::strcmp(view, "bars-roll") == 0) {
+            project.track = 2;
+            project.bar = 3;
+            app.notes().moveCursorTo(64, 4);
+        } else {
+            session.view = View::Song;
+            app.song().moveCursorTo(0, 2);
+        }
     } else if (std::strcmp(view, "fx") == 0) {
         app.session().setEffect(0, 0, EffectKind::Delay);
         app.session().setEffect(0, 1, EffectKind::Filter);
