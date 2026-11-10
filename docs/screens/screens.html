@@ -7,13 +7,18 @@
   Each <section class="screen" id="..."> becomes docs/screens/<id>.png
 -->
 <style>
+  /* The lettering on the Shapetaker panels (SIL Open Font License). */
+  @font-face { font-family: "Routed Gothic Narrow"; src: url("../../assets/fonts/routed-gothic-narrow.ttf"); }
+  /* Warm and muted: Shapetaker's teal and purple, dulled to verdigris and
+     faded amethyst, on dark brown with cream lettering and brass. */
   :root {
-    --bg: #0e0c10; --panel: #1b1720; --panel2: #262030; --line: #3a3344;
-    --text: #e2dacb; --dim: #857b8c; --teal: #00ffb4; --purple: #b400ff; --amber: #ffb400;
+    --bg: #14110e; --panel: #1f1a16; --panel2: #2a231d; --line: #43392f;
+    --text: #e0d5bf; --dim: #8f8370; --teal: #6fbfa3; --purple: #9a76b0; --amber: #c9a15a;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 20px; background: #000; display: flex; flex-wrap: wrap; gap: 20px;
-         font: 14px/1 "DejaVu Sans Mono", Menlo, monospace; color: var(--text); }
+         font: 14px/1 "Routed Gothic Narrow", sans-serif; font-size-adjust: 0.58; letter-spacing: 0.06em;
+         color: var(--text); }
   .screen { position: relative; width: 640px; height: 480px; background: var(--bg); overflow: hidden; }
   .abs { position: absolute; }
 
@@ -22,7 +27,7 @@
          border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 8px; gap: 10px; }
   .tabs { display: flex; gap: 2px; }
   .tab { padding: 5px 7px; color: var(--dim); font-size: 12px; }
-  .tab.on { background: var(--teal); color: #000; }
+  .tab.on { background: var(--teal); color: var(--bg); }
   .top .ctx { color: var(--text); font-size: 12px; }
   .top .right { margin-left: auto; font-size: 12px; color: var(--dim); display: flex; gap: 12px; }
   .top .right b { color: var(--text); font-weight: normal; }
@@ -31,14 +36,14 @@
   .hints { position: absolute; left: 0; bottom: 0; width: 640px; height: 24px; background: var(--panel);
            border-top: 1px solid var(--line); display: flex; align-items: center; padding: 0 8px; gap: 14px;
            font-size: 12px; color: var(--dim); white-space: nowrap; }
-  .hints k { color: #000; background: var(--text); padding: 2px 4px; margin-right: 4px; font-style: normal; }
+  .hints k { color: var(--bg); background: var(--text); padding: 2px 4px; margin-right: 4px; font-style: normal; }
 
   .label { color: var(--dim); font-size: 12px; }
   .cursor { outline: 2px solid var(--teal); outline-offset: -1px; }
 
   /* song grid */
   .cell { position: absolute; background: var(--panel); border: 1px solid var(--line); }
-  .cell.empty { background: transparent; border-style: dashed; border-color: #2a2532; }
+  .cell.empty { background: transparent; border-style: dashed; border-color: #2e2720; }
   .cell.playing { border-color: var(--purple); }
   .head { position: absolute; font-size: 12px; text-align: center; background: var(--panel2);
           border: 1px solid var(--line); padding-top: 4px; }
@@ -52,7 +57,7 @@
   .step { position: absolute; border: 1px solid var(--line); background: var(--panel); }
   .step.beat { background: var(--panel2); }
   .hit { position: absolute; left: 4px; right: 4px; bottom: 4px; background: var(--text); }
-  .playhead { position: absolute; background: var(--purple); opacity: .28; }
+  .playhead { position: absolute; background: var(--purple); opacity: .3; }
 
   /* value boxes */
   .val { position: absolute; background: var(--panel); border: 1px solid var(--line); padding: 7px 8px; }
@@ -186,14 +191,14 @@ songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC'
     const env = t < 0.05 ? t / 0.05 : Math.exp(-(t - 0.05) * 5.2);
     const h = Math.max(1, env * (0.55 + 0.45 * rnd()) * (wh - 60));
     const inside = t >= start && t <= end;
-    bars += `<rect x="${i}" y="${(wh + 16 - h) / 2}" width="1" height="${h}" fill="${inside ? '#e2dacb' : '#4a4352'}"/>`;
+    bars += `<rect x="${i}" y="${(wh + 16 - h) / 2}" width="1" height="${h}" fill="${inside ? '#e0d5bf' : '#544a3e'}"/>`;
   }
   const X = f => Math.round(f * ww);
   const mid = (wh + 16) / 2, amp = (wh - 60) / 2;
   bars += `<polyline points="${X(start)},${mid + amp} ${X(start + fadeIn)},${mid - amp} ${X(end - fadeOut)},${mid - amp} ${X(end)},${mid + amp}"
-            fill="none" stroke="#ffb400" stroke-width="1"/>`;
-  bars += `<line x1="${X(start)}" y1="24" x2="${X(start)}" y2="${wh}" stroke="#00ffb4" stroke-width="2"/>`;
-  bars += `<line x1="${X(end)}" y1="24" x2="${X(end)}" y2="${wh}" stroke="#00ffb4" stroke-width="1"/>`;
+            fill="none" stroke="#c9a15a" stroke-width="1"/>`;
+  bars += `<line x1="${X(start)}" y1="24" x2="${X(start)}" y2="${wh}" stroke="#6fbfa3" stroke-width="2"/>`;
+  bars += `<line x1="${X(end)}" y1="24" x2="${X(end)}" y2="${wh}" stroke="#6fbfa3" stroke-width="1"/>`;
   box.innerHTML = `<svg width="${ww - 2}" height="${wh - 2}" style="position:absolute;left:0;top:0">${bars}</svg>`;
   el(s, 'abs', { left: px(wx + X(start) + 5), top: px(wy + 26), fontSize: px(12), color: 'var(--teal)' }, 'START');
   el(s, 'abs', { left: px(wx + X(end) + 5), top: px(wy + 26), fontSize: px(12), color: 'var(--teal)' }, 'END');
