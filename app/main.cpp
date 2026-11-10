@@ -12,6 +12,8 @@
 //   --demo         start with a pattern already on the grid
 //   --hold-a       with --demo: hold A on a hit, as if adjusting it
 //   --hold-y       with --demo: hold Y on a hit, with its chance turned down
+//   --paint        with --demo: sweep a row with R1 held (one level)
+//   --paint-random with --demo: sweep a row with L1 held (random levels)
 //   --on-name      with --demo: hold A on a lane's name, with its volume turned down
 //   --on-tempo     with --demo: hold A on the tempo
 //   --shot FILE    save the last frame drawn as a BMP picture
@@ -78,12 +80,15 @@ void fillDemoPattern(PatternScreen& screen) {
 
 int main(int argc, char** argv) {
     bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false;
+    int paint = 0; // 1: R1, 2: L1
     const char* shot = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
         else if (std::strcmp(argv[i], "--hold-y") == 0) holdY = true;
+        else if (std::strcmp(argv[i], "--paint") == 0) paint = 1;
+        else if (std::strcmp(argv[i], "--paint-random") == 0) paint = 2;
         else if (std::strcmp(argv[i], "--on-name") == 0) onName = true;
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
@@ -165,8 +170,15 @@ int main(int argc, char** argv) {
         pushKey(SDLK_RETURN, true);
         pushKey(SDLK_RETURN, false);
     }
-    // For stills: put the cursor on a lane's name, or on the tempo, and hold A.
-    if (onName) {
+    // For stills: a sweep along the tom lane with a brush held.
+    if (paint) {
+        screen.moveCursorTo(5, 2);
+        pushKey(paint == 1 ? SDLK_w : SDLK_q, true);
+        for (int i = 0; i < 10; ++i) {
+            pushKey(SDLK_RIGHT, true);
+            pushKey(SDLK_RIGHT, false);
+        }
+    } else if (onName) {
         screen.moveCursorTo(1, -1);
         pushKey(SDLK_x, true);
         pushKey(SDLK_DOWN, true); // A + D-pad down: the drum's volume, a tenth

@@ -50,6 +50,17 @@ On a step, that is three pictures of one block:
 The stick does one of those per push: whichever way it leaves the centre is
 the job until it comes back.
 
+Painting, for a row of hits in one sweep. Hold a shoulder button and drag
+the cursor; every step it crosses gets a hit:
+
+| Held | Paints |
+| --- | --- |
+| R1 | Every hit at one level: the level of the hit the sweep started on, or 80% from an empty step |
+| L1 | Every hit at a random level, 25% to 100% |
+
+Dragging over hits that are already there re-levels them and keeps their
+nudge and chance.
+
 | Tap | Does |
 | --- | --- |
 | A | Place a hit |
