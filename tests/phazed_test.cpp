@@ -352,6 +352,19 @@ static void testAPatchIsTheWholeSound() {
     CHECK(playNote(from, {}).held != chosen.held);
 }
 
+static void testVibratoSettingsAllReachTheSound() {
+    using namespace phazed;
+    const int preset = organPreset();
+    const auto with = [&](int wave, int delay, int rate, int depth) {
+        return playNote(preset, {setting(VibratoWave, wave), setting(VibratoDelay, delay), setting(VibratoRate, rate), setting(VibratoDepth, depth)}).held;
+    };
+    const std::vector<float> base = with(0, 0, 40, 50);
+    CHECK(with(3, 0, 40, 50) != base); // wave
+    CHECK(with(0, 60, 40, 50) != base); // delay
+    CHECK(with(0, 0, 80, 50) != base); // rate
+    CHECK(with(0, 0, 40, 90) != base); // depth
+}
+
 static void testSettingsAreHeldToTheirLimits() {
     const int preset = organPreset();
     CHECK(playNote(preset, {setting(phazed::Level, 999)}).held == playNote(preset, {setting(phazed::Level, 6)}).held);
@@ -405,14 +418,22 @@ static void testEachMacroDoesItsJob() {
     CHECK(still >= 0);
     CHECK(playNote(still, {macro(Vibrato, 1.f)}).held != playNote(still, {}).held);
     CHECK(playNote(still, {macro(Vibrato, 0.f)}).held == playNote(still, {}).held); // none to take away
+    // Even when the sound's vibrato speed is set to nothing: the macro gives it one.
+    const std::vector<Command> noVibrato = {setting(VibratoRate, 0), setting(VibratoDepth, 0)};
+    std::vector<Command> turnedUp = noVibrato;
+    turnedUp.push_back(macro(Vibrato, 1.f));
+    CHECK(playNote(organ, turnedUp).held != playNote(organ, noVibrato).held);
 
     // CHORUS: top is on (the two sides differ), bottom is off (they match).
     const auto sidesDiffer = [](const std::vector<float>& v) {
         for (std::size_t i = 0; i < v.size(); i += 2) if (v[i] != v[i + 1]) return true;
         return false;
     };
-    CHECK(sidesDiffer(playNote(organ, {macro(Chorus, 1.f)}).held));
-    CHECK(!sidesDiffer(playNote(organ, {macro(Chorus, 0.f)}).held));
+    CHECK(sidesDiffer(playNote(organ, {setting(ChorusOn, 0), macro(Chorus, 1.f)}).held));
+    CHECK(!sidesDiffer(playNote(organ, {setting(ChorusOn, 1), macro(Chorus, 0.f)}).held));
+    // In the middle it is whatever the patch says.
+    CHECK(sidesDiffer(playNote(organ, {setting(ChorusOn, 1)}).held));
+    CHECK(!sidesDiffer(playNote(organ, {setting(ChorusOn, 0)}).held));
 
     // OCTAVE: top is an octave up, bottom an octave down.
     const int level = firstPresetWhere([](const PhazedPatch& p) { return p.value[Octave] == 0 && p.value[envSustain(0, AmpEnv)] > 0 && p.value[LineSelect] == 0 && p.value[VibratoDepth] == 0; });
@@ -471,6 +492,7 @@ int main(int argc, char** argv) {
     testDrumsAndSynthTogether();
     testPatchesAreInRange();
     testAPatchIsTheWholeSound();
+    testVibratoSettingsAllReachTheSound();
     testSettingsAreHeldToTheirLimits();
     testMacrosInTheMiddleChangeNothing();
     testEachMacroDoesItsJob();
