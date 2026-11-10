@@ -30,26 +30,39 @@ RG40XXV's own buttons, named as printed on it. The keyboard is only a
 stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
-The Pattern screen has one rule, so there is nothing to memorise:
+**The handheld has one stick.** It does two jobs, and which one depends only
+on whether a button is held:
 
-| Handheld | Does |
+| Held | The stick |
 | --- | --- |
-| D-pad or left stick | Move the cursor. Hold either and it runs |
-| A | Act on what is under the cursor |
-| Hold A + right stick | Turn what is under the cursor. It fills or drains |
-| Hold A + D-pad up / down | The same, in exact steps |
-| B | Remove what is under the cursor |
+| Nothing | Moves the cursor (so does the D-pad). Hold it and it runs |
+| A | Shapes what is under the cursor |
+| Y | Sets how likely it is to play |
+
+On a step, that is three pictures of one block:
+
+| Gesture | Sets | The block |
+| --- | --- | --- |
+| Hold A, stick up / down | Level | Fills or drains |
+| Hold A, stick left / right | Nudge, up to half a step | Slides early or late |
+| Hold Y, stick up / down | Chance | Fades toward a ghost |
+
+The stick does one of those per push: whichever way it leaves the centre is
+the job until it comes back.
+
+| Tap | Does |
+| --- | --- |
+| A | Place a hit |
+| Y | Place a "maybe" hit (50%). On a hit: chance 100 > 75 > 50 > 25 |
+| B | Delete the hit |
 | X | Hear the lane |
 | START | Play / stop |
 | SELECT + START | Quit |
 
-The cursor can sit on three kinds of thing:
-
-| Under the cursor | A | Hold A + right stick |
-| --- | --- | --- |
-| A step | Places a hit | That hit's level |
-| A lane's name (left of step 1) | Plays the drum | That drum's volume |
-| The tempo (up from the top lane) | | The tempo |
+The cursor can also sit on a lane's name, left of step 1 (A plays the drum,
+hold A + stick is that drum's volume), and on the tempo, up from the top
+lane (hold A + stick). With A or Y held, the D-pad sets the same values in
+exact steps.
 
 How fast everything moves is set in one place, `Feel` in
 `app/pattern_screen.hpp`.
@@ -63,8 +76,7 @@ Keyboard stand-ins:
 | B | Z | | START | Return |
 | X | S | | SELECT | Backspace |
 | Y | A | | MENU | Tab |
-| Right stick | I J K L | | (quit, desk only) | Esc |
-| Left stick | T F G H | | | |
+| The stick | I J K L | | (quit, desk only) | Esc |
 
 The button code lives in `app/input.hpp`. Nothing else in the app may read a
 key or a gamepad button directly.
@@ -108,8 +120,8 @@ scripts/  the handheld build and the port launcher.
   printing inside `Engine::render()` or any `Effect::process()`.
 - **The screen thread talks to the engine only through `Engine::send()`.**
 - **The engine never includes SDL.**
-- **One button and a stick, not a combination.** New controls follow the
-  rule on the Pattern screen: move, A acts, hold A and turn, B removes.
+- **One button and the stick, not a combination.** New controls follow the
+  rule on the Pattern screen: the stick moves; hold a button and it shapes.
 - **Fast.** Held input runs quickly. Nobody has asked for slower.
 - **Handheld first.** A feature is designed on the handheld's buttons. A
   keyboard key only ever stands in for one of them.

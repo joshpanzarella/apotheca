@@ -152,9 +152,9 @@ songScreen('2-song-full', ['DRUMS', 'BASS', 'CHOP', 'KEYS', 'PAD', 'VOX', 'PERC'
 function patternScreen(id, auto) {
   const s = auto
     ? chrome(id, 'PATTERN', '1 DRUMS &middot; scene 1',
-             [['HOLD Y + R-STICK', 'record'], ['L2', 'pick value'], ['Y + B', 'erase'], ['D-PAD', 'move'], ['START', 'stop']], true)
+             [['HOLD Y + STICK', 'record'], ['L2', 'pick value'], ['Y + B', 'erase'], ['D-PAD', 'move'], ['START', 'stop']], true)
     : chrome(id, 'PATTERN', '1 DRUMS &middot; scene 1',
-             [['D-PAD', 'move'], ['A', 'place'], ['B', 'delete'], ['A+D-PAD', 'velocity'], ['R-STICK', 'value'], ['L1 R1', 'track']]);
+             [['D-PAD', 'move'], ['A', 'place'], ['B', 'delete'], ['A+D-PAD', 'velocity'], ['STICK', 'value'], ['L1 R1', 'track']]);
   const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
   const hits = {
     0: { 0: 1, 6: .7, 8: 1, 11: .6 }, 1: { 4: 1, 12: 1, 15: .4 },
@@ -213,7 +213,7 @@ patternScreen('9-record-automation', true);
 // ---- device: one drum lane is a small sampler --------------------------------
 (function () {
   const s = chrome('4-device-drums', 'DEVICE', '1 DRUMS &middot; SNARE',
-                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['R-STICK', 'value'], ['A', 'load sample'], ['X', 'hear it'], ['L2', 'zoom']]);
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'load sample'], ['X', 'hear it'], ['L2', 'zoom']]);
   const lanes = ['KICK', 'SNARE', 'CL HAT', 'OP HAT', 'CLAP', 'TOM', 'RIM', 'CRASH'];
   lanes.forEach((name, r) =>
     el(s, 'lane' + (r === 1 ? ' on' : ''), { top: px(36 + r * 31), height: px(28), width: px(96), fontSize: px(12),
@@ -271,7 +271,7 @@ patternScreen('9-record-automation', true);
 // ---- mix: level, pan, two effect slots ---------------------------------------
 (function () {
   const s = chrome('5-mix', 'MIX', '1 DRUMS',
-                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['R-STICK', 'value'], ['A', 'choose effect'], ['B', 'bypass'], ['L1 R1', 'track']]);
+                   [['D-PAD', 'move'], ['A+D-PAD', 'change'], ['STICK', 'value'], ['A', 'choose effect'], ['B', 'bypass'], ['L1 R1', 'track']]);
   // Track list with meters.
   const rows = [['1 DRUMS', .72, true], ['MASTER', .64, false]];
   el(s, 'title', { left: px(8), top: px(36) }, 'TRACKS');
