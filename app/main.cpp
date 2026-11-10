@@ -17,6 +17,10 @@
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
+//   --learn        set up the controls again (as on a first start with a joystick)
+//   --handheld     what the launcher passes: set up the controls on a first start
+//                  even if the buttons do not show up as a joystick (some
+//                  firmwares send them as keys)
 //   --songs DIR    keep songs in this folder (the default is beside the program)
 //   --samples DIR  look for recordings (WAV files) in this folder
 
@@ -32,8 +36,10 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "controls.hpp"
 #include "input.hpp"
 #include "realtime.hpp"
+#include "song_file.hpp"
 #include "text.hpp"
 
 using namespace apotheca;
@@ -210,6 +216,8 @@ void fillDemoSong(App& app) {
 } // namespace
 
 int main(int argc, char** argv) {
+    bool learn = false; // ask for each button again, whatever has been learned
+    bool handheld = false; // started by the handheld's launcher: with no controls learned yet, ask, joystick or not
     bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false, dice = false;
     int paint = 0; // 1: R1, 2: L1
     const char* view = "";
@@ -218,6 +226,8 @@ int main(int argc, char** argv) {
     const char* samples = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
+        else if (std::strcmp(argv[i], "--learn") == 0) learn = true;
+        else if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
         else if (std::strcmp(argv[i], "--hold-y") == 0) holdY = true;
@@ -259,11 +269,52 @@ int main(int argc, char** argv) {
         }
     }
 
-    SDL_GameController* pad = nullptr;
-    for (int i = 0; i < SDL_NumJoysticks() && !pad; ++i) {
-        if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
+    // ---- the controls ----------------------------------------------------------------
+    // What the device has, for the log: a start that hears no buttons leaves
+    // the reason behind.
+    static ControlLearner learner;
+    const int joysticks = SDL_NumJoysticks();
+    std::vector<SDL_Joystick*> opened;
+    for (int i = 0; i < joysticks; ++i) {
+        SDL_Joystick* stick = SDL_JoystickOpen(i);
+        std::printf("joystick %d: \"%s\", %d buttons, %d axes, %d hats, %s\n", i + 1, SDL_JoystickNameForIndex(i) ? SDL_JoystickNameForIndex(i) : "?",
+                    stick ? SDL_JoystickNumButtons(stick) : 0, stick ? SDL_JoystickNumAxes(stick) : 0, stick ? SDL_JoystickNumHats(stick) : 0,
+                    SDL_IsGameController(i) ? "known to SDL as a gamepad" : "not known to SDL as a gamepad");
+        if (stick) {
+            opened.push_back(stick);
+            // Where each axis rests, for the setup: a trigger sits at one end.
+            for (int axis = 0; axis < SDL_JoystickNumAxes(stick); ++axis) {
+                Sint16 rest = 0;
+                if (SDL_JoystickGetAxisInitialState(stick, axis, &rest)) learner.setAxisRest(axis, rest);
+            }
+        }
     }
-    std::printf("controls: %s\n", pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
+    if (joysticks == 0) std::printf("joysticks: none\n");
+    // Controls learned on this device are kept beside the program. With none
+    // yet, and a joystick there, the first thing shown is the setup that
+    // learns them (controls.hpp). With no joystick at all (a desk), SDL's own
+    // gamepad reading and the keyboard stand-ins are used.
+    std::string programDir;
+    {
+        char* base = SDL_GetBasePath();
+        programDir = base ? base : "";
+        if (base) SDL_free(base);
+    }
+    const std::string controlsFile = programDir + "controls.txt";
+    static ControlMap controlMap;
+    std::string savedControls;
+    const bool mapped = !smoke && !shot && !learn && readTextFile(controlsFile, savedControls) && controlMap.parse(savedControls);
+    bool learning = !mapped && !smoke && (!shot || learn) && (joysticks > 0 || learn || handheld);
+    SDL_GameController* pad = nullptr;
+    if (!mapped && !learning) {
+        for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
+        opened.clear();
+        for (int i = 0; i < joysticks && !pad; ++i) {
+            if (SDL_IsGameController(i)) pad = SDL_GameControllerOpen(i);
+        }
+    }
+    std::printf("controls: %s\n", mapped ? "as learned (controls.txt)" : learning ? "not learned yet: asking for each button"
+                                                                        : pad ? SDL_GameControllerName(pad) : "no gamepad found, keyboard stand-in only");
 
     // List what the device can record from, so a log from the handheld shows
     // whether a plugged-in USB microphone or interface was recognised.
@@ -294,6 +345,7 @@ int main(int argc, char** argv) {
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     Input input;
+    if (mapped) input.useMap(&controlMap);
     static SdlInput recordingInput;
     App app(engine);
     app.session().useAudioInput(&recordingInput);
@@ -494,19 +546,40 @@ int main(int argc, char** argv) {
     float loudest = 0.f;
     const Uint32 start = SDL_GetTicks();
 
+    int rawLogged = 0;
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
             // Desk testing only: the handheld has no Escape key.
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) running = false;
+            if (learning) {
+                // The setup has the controls to itself until it is done.
+                const std::string before = learner.saw();
+                learner.handle(event);
+                if (learner.saw() != before && rawLogged < 80) {
+                    ++rawLogged;
+                    std::printf("the handheld sent: %s\n", learner.saw().c_str());
+                }
+                continue;
+            }
 
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
             if (input.held(Button::Select) && input.held(Button::Start)) running = false;
             else app.onButton(press, input);
         }
-        app.update(input, SDL_GetTicks());
+        if (learning) {
+            learner.update(SDL_GetTicks());
+            if (learner.done()) {
+                controlMap = learner.map();
+                const bool kept = writeTextFile(controlsFile, controlMap.text());
+                std::printf("controls learned%s:\n%s", kept ? "" : " (but could not be saved)", controlMap.text().c_str());
+                input.useMap(&controlMap);
+                learning = false;
+            }
+        }
+        if (!learning) app.update(input, SDL_GetTicks());
         // Three seconds in and still going: this start worked. (After an
         // update, that is what tells the launcher to keep the new program.)
         if (!startedFine && SDL_GetTicks() - start > 3000) {
@@ -521,7 +594,8 @@ int main(int argc, char** argv) {
         const float peak = engine.trackPeak(0);
         if (peak > loudest) loudest = peak;
 
-        app.draw(renderer, fonts);
+        if (learning) learner.draw(renderer, fonts);
+        else app.draw(renderer, fonts);
         if ((smoke || shot) && SDL_GetTicks() - start > 1000) running = false;
         if (!running && shot) {
             SDL_Surface* picture = SDL_CreateRGBSurfaceWithFormat(0, kScreenW, kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);
@@ -538,6 +612,7 @@ int main(int argc, char** argv) {
     app.session().saveNow(); // the last couple of seconds of changes
     SDL_CloseAudioDevice(device);
     if (pad) SDL_GameControllerClose(pad);
+    for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

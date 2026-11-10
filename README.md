@@ -44,6 +44,16 @@ ctest --test-dir build      # engine, song, both synths, screens, app, saving, c
 
 ## Controls
 
+**The first start on the handheld sets up the controls.** Apotheca asks for
+each button in turn ("PRESS A", "PRESS B"...) and learns what this handheld
+sends for it, whatever the firmware calls it. It takes about twenty seconds,
+once. MENU and the stick may be left out by waiting eight seconds, for a
+device that has none or keeps MENU for itself. The answers are kept in
+`controls.txt` in the `apotheca` folder; delete that file to be asked again.
+The bottom of the setup screen shows what the handheld last sent: if it
+stays at "nothing yet" while you press buttons, the firmware is not passing
+them on, and `apotheca.log` and `device-info.log` will say what it has.
+
 **The handheld comes first.** Every action is defined on the Anbernic
 RG40XXV's own buttons, named as printed on it. The keyboard is only a
 stand-in for testing at a desk: each key presses one handheld button, so the

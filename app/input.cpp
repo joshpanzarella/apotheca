@@ -1,5 +1,7 @@
 #include "input.hpp"
 
+#include "controls.hpp"
+
 namespace apotheca {
 
 namespace {
@@ -80,7 +82,61 @@ float Input::shaped(float v) {
     return 0.f;
 }
 
+// With learned controls: whatever the device sends is looked up in the map.
+// One event can only report one button changing, so the screens get the
+// first that changed; a hat moving from one direction straight to another
+// lets go of the old one first and presses the new one on the next event.
+bool Input::handleMapped(const SDL_Event& e, ButtonEvent& out) {
+    const ControlMap& m = *map_;
+    const int count = static_cast<int>(Button::Count);
+    if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP) {
+        for (int i = 0; i < count; ++i)
+            if (m.button[i].kind == RawControl::JoyButton && m.button[i].index == e.jbutton.button)
+                return set(static_cast<Button>(i), e.type == SDL_JOYBUTTONDOWN, out);
+        return false;
+    }
+    if (e.type == SDL_JOYHATMOTION) {
+        if (e.jhat.hat < 8) hat_[e.jhat.hat] = e.jhat.value;
+        bool changed = false;
+        for (int i = 0; i < count && !changed; ++i)
+            if (m.button[i].kind == RawControl::JoyHat && m.button[i].index == e.jhat.hat && !(e.jhat.value & m.button[i].value))
+                changed = set(static_cast<Button>(i), false, out); // let go first
+        for (int i = 0; i < count && !changed; ++i)
+            if (m.button[i].kind == RawControl::JoyHat && m.button[i].index == e.jhat.hat && (e.jhat.value & m.button[i].value))
+                changed = set(static_cast<Button>(i), true, out);
+        return changed;
+    }
+    if (e.type == SDL_JOYAXISMOTION) {
+        // The stick.
+        if (m.stickRight.kind == RawControl::JoyAxis && m.stickRight.index == e.jaxis.axis) axes_[0] = static_cast<float>(e.jaxis.value - m.stickRight.rest) / 32767.f * static_cast<float>(m.stickRight.value);
+        if (m.stickDown.kind == RawControl::JoyAxis && m.stickDown.index == e.jaxis.axis) axes_[1] = static_cast<float>(e.jaxis.value - m.stickDown.rest) / 32767.f * static_cast<float>(m.stickDown.value);
+        // An axis that is a button (a trigger, or a D-pad that reports as two axes).
+        bool changed = false;
+        for (int i = 0; i < count && !changed; ++i) {
+            const RawControl& c = m.button[i];
+            if (c.kind != RawControl::JoyAxis || c.index != e.jaxis.axis) continue;
+            const int moved = (e.jaxis.value - c.rest) * c.value;
+            const Button b = static_cast<Button>(i);
+            changed = set(b, held(b) ? moved > 9000 : moved > 16000, out); // two thresholds, so a half press cannot chatter
+        }
+        return changed;
+    }
+    if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
+        if (e.key.repeat) return false;
+        for (int i = 0; i < count; ++i)
+            if (m.button[i].kind == RawControl::Key && m.button[i].index == static_cast<int>(e.key.keysym.sym))
+                return set(static_cast<Button>(i), e.type == SDL_KEYDOWN, out);
+    }
+    return false;
+}
+
 bool Input::handle(const SDL_Event& event, ButtonEvent& out) {
+    if (map_) {
+        if (handleMapped(event, out)) return true;
+        // Nothing learned for it. SDL's own gamepad reading is ignored now
+        // (it would press things twice); the keyboard stand-ins still work.
+        if (event.type != SDL_KEYDOWN && event.type != SDL_KEYUP) return false;
+    }
     switch (event.type) {
     case SDL_CONTROLLERBUTTONDOWN:
     case SDL_CONTROLLERBUTTONUP:

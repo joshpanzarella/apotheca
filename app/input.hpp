@@ -31,6 +31,10 @@ public:
     // the event was a handheld button going down or up.
     bool handle(const SDL_Event& event, ButtonEvent& out);
 
+    // Use controls learned from this device (controls.hpp) in place of
+    // SDL's own idea of a gamepad. The keyboard stand-ins still work.
+    void useMap(const struct ControlMap* map) { map_ = map; }
+
     bool held(Button button) const { return held_[static_cast<int>(button)]; }
 
     // THE stick. The RG40XXV has one. Each axis is -1..1 with a dead zone
@@ -45,6 +49,9 @@ private:
     static float shaped(float v);
     static float further(float a, float b) { return (a < 0 ? -a : a) >= (b < 0 ? -b : b) ? a : b; }
 
+    bool handleMapped(const SDL_Event& event, ButtonEvent& out);
+    const struct ControlMap* map_ = nullptr;
+    int hat_[8] = {};
     bool held_[static_cast<int>(Button::Count)] = {};
     float axes_[4] = {};
 };

@@ -30,6 +30,11 @@ cd "$dir" || exit 1
         if command -v "$tool" >/dev/null 2>&1; then echo "$tool: yes"; else echo "$tool: no"; fi
     done
 
+    echo "== buttons =="
+    ls /dev/input 2>/dev/null | tr '\n' ' '; echo
+    grep -E '^N: Name|^H: Handlers' /proc/bus/input/devices 2>/dev/null
+    echo "SDL_GAMECONTROLLERCONFIG set: ${SDL_GAMECONTROLLERCONFIG:+yes}"
+
     echo "== sound cards =="
     cat /proc/asound/cards 2>/dev/null
 
@@ -63,7 +68,7 @@ if [ -f apotheca.new ]; then
     fi
 fi
 
-./apotheca > apotheca.log 2>&1
+./apotheca --handheld > apotheca.log 2>&1
 
 # The mark is still there: the new program never got going (or was closed in
 # its first three seconds). Go back to the one before and start that.
@@ -73,6 +78,6 @@ if [ -f update-trying ]; then
         mv apotheca apotheca.failed
         mv apotheca.old apotheca
         echo "the update did not start; back to the one before" >> apotheca.log
-        ./apotheca >> apotheca.log 2>&1
+        ./apotheca --handheld >> apotheca.log 2>&1
     fi
 fi
