@@ -73,9 +73,7 @@ done
 clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
     -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
-    "$here/engine/src/engine.cpp" "$here/engine/src/drums.cpp" "$here/engine/src/phazed.cpp" \
-    "$here/app/main.cpp" "$here/app/input.cpp" "$here/app/pattern_screen.cpp" \
-    "$here/app/realtime.cpp" "$here/app/text.cpp" \
+    "$here"/engine/src/*.cpp "$here"/app/*.cpp \
     $objects \
     -o "$pack/apotheca/apotheca" \
     -lSDL2 -lpthread -lm -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined

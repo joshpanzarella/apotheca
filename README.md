@@ -5,13 +5,19 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 ## Status
 
-One drum track that plays, and Phazed, a phase distortion synth, in the
-engine (no screen for it yet: `build/render_demo out.wav` renders drums, a
-Phazed bass and Phazed chords to a file to listen to). The drums: Eight lanes with a built-in kit (made in code, no
-recordings, and built to hit hard), a 16-step pattern, tempo, and the Pattern screen from the
-mockups in `docs/screens/`. The engine holds up to twelve tracks, each with
-two effect slots, into a master with two; only track 1 has an instrument so
-far, and no screen reaches the effects yet.
+A small song machine that runs. Up to twelve tracks, each a drum kit or
+Phazed (a phase distortion synth with 65 presets). Up to sixteen scenes,
+each one bar, each with its own repeat count. Three screens:
+
+- **SONG**: tracks across, scenes down. Add tracks, set how many times each
+  scene plays, copy bars by dragging.
+- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice) or, for
+  Phazed, a piano roll.
+- **DEVICE**: for Phazed, a main panel of folder, preset and eight macros,
+  with nine advanced pages behind it. For drums, the kit's levels and scope.
+
+Not built yet: effects on screen, saving and opening songs, loading samples,
+the sound designer web page.
 
 ## Build
 
@@ -21,7 +27,7 @@ Needs CMake, a C++17 compiler and SDL2 (`brew install cmake sdl2` on macOS,
 ```
 cmake -B build
 cmake --build build
-ctest --test-dir build      # engine, synth and screen tests
+ctest --test-dir build      # engine, song, synth, screen and app tests
 ./build/apotheca            # the app
 ```
 
@@ -32,16 +38,31 @@ RG40XXV's own buttons, named as printed on it. The keyboard is only a
 stand-in for testing at a desk: each key presses one handheld button, so the
 keyboard can do nothing the handheld cannot.
 
-**The handheld has one stick.** It does two jobs, and which one depends only
-on whether a button is held:
+**The handheld has one stick, and one rule for it.** With nothing held it
+moves the cursor (so does the D-pad; hold either and it runs). Hold a button
+and the stick shapes the thing under the cursor:
 
 | Held | The stick |
 | --- | --- |
-| Nothing | Moves the cursor (so does the D-pad). Hold it and it runs |
-| A | Shapes what is under the cursor |
-| Y | Sets how likely it is to play |
+| Nothing | Moves the cursor |
+| A | Turns the value: it fills or drains |
+| Y | Chance, on the drum grid |
 
-On a step, that is three pictures of one block:
+**L2 and R2** walk along the three screens. **START** plays: the song from
+the SONG screen, the scene being worked on from the others. **SELECT + START**
+quits.
+
+### SONG
+
+| On | A | Hold A + stick | B | Hold R1 and drag |
+| --- | --- | --- | --- | --- |
+| A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
+| A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
+| + TRACK | Pick DRUMS or PHAZED | | | |
+
+The song runs to the last scene with anything in it, then comes round.
+
+### PATTERN, drums
 
 | Gesture | Sets | The block |
 | --- | --- | --- |
@@ -49,47 +70,44 @@ On a step, that is three pictures of one block:
 | Hold A, stick left / right | Nudge, up to half a step | Slides early or late |
 | Hold Y, stick up / down | Chance | Fades toward a ghost |
 
-The stick does one of those per push: whichever way it leaves the centre is
-the job until it comes back.
+The stick does one of those per push. A places a hit. Y places a "maybe"
+(50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
 
-Painting, for a row of hits in one sweep. Hold a shoulder button and drag
-the cursor; every step it crosses gets a hit:
+Hold **R1** and drag to paint hits at one level (the level of the hit you
+started on, or 80%). Hold **L1** and drag for random levels.
 
-| Held | Paints |
-| --- | --- |
-| R1 | Every hit at one level: the level of the hit the sweep started on, or 80% from an empty step |
-| L1 | Every hit at a random level, 25% to 100% |
+The cursor can also sit on a lane's name, left of step 1: A plays the drum,
+hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
+and hits arrive in a shuffled order that leans toward the beat; down and
+they leave; tap Y to reshuffle). Up from the top lane is the tempo.
 
-Dragging over hits that are already there re-levels them and keeps their
-nudge and chance.
+### PATTERN, Phazed
 
-Lane dice, for a whole pattern in a second. With the cursor on a lane's
-name:
+A piano roll. The drum grid's rules, except that sideways a note has a
+length where a hit has a nudge.
 
 | Gesture | Does |
 | --- | --- |
-| Hold Y, stick up | Hits arrive on that lane one after another, in a shuffled order that leans toward the beat |
-| Hold Y, stick down | They leave again, last in first out |
-| Tap Y | Reshuffle: the same number of hits, somewhere new. On an empty lane, four hits |
+| A | Place a note, one step long |
+| Hold A, stick up / down | Level |
+| Hold A, stick left / right | Length, up to the end of the bar or the next note on that key |
+| B | Delete the note under the cursor |
+| X | Hear the key |
+| Hold R1 and drag | Paint a note on every step crossed |
 
-The dice only remove hits they placed. A hit you placed, or one of theirs
-that you have since shaped, painted or given a chance, is yours and stays.
+### DEVICE, Phazed
 
-| Tap | Does |
-| --- | --- |
-| A | Place a hit |
-| Y | Place a "maybe" hit (50%). On a hit: chance 100 > 75 > 50 > 25 |
-| B | Delete the hit |
-| X | Hear the lane |
-| START | Play / stop |
-| SELECT + START | Quit |
+MAIN: folder, preset, eight macros (TONE, MOTION, ATTACK, RELEASE, DETUNE,
+VIBRATO, CHORUS, OCTAVE) and ADVANCED. Hold A + stick turns the one under
+the cursor; B puts a macro back in the middle. Macros bend the sound and
+leave the preset as it was made. A new preset is played at once when the
+song is stopped.
 
-The cursor can also sit on a lane's name, left of step 1 (A plays the drum,
-hold A + stick is that drum's volume), and on the tempo, up from the top
-lane (hold A + stick). With A or Y held, the D-pad sets the same values in
-exact steps.
+ADVANCED: every setting on nine pages (the sound, each line, and each line's
+volume, wave and pitch envelopes drawn out). L1 and R1 turn the pages; B
+goes back to MAIN.
 
-How fast everything moves is set in one place, `Feel` in
+How fast the drum grid moves is set in one place, `Feel` in
 `app/pattern_screen.hpp`.
 
 Keyboard stand-ins:
@@ -133,7 +151,8 @@ building the engine and its tests alone.
 
 ```
 engine/   the audio engine. No SDL, no device code, so it tests on its own.
-app/      window, audio device, buttons. Talks to the engine through commands.
+app/      window, audio device, buttons, and the screens. Talks to the
+          engine through commands. app.hpp ties the screens together.
 tests/    engine tests, and screen tests that press the buttons.
 third_party/  stb_truetype, which reads the font (public domain), and
           easycz, the engine behind Phazed, copied unchanged from
