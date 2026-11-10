@@ -359,7 +359,11 @@ void testNewSongAndTheList() {
     CHECK(names.size() == 2);
     CHECK(names.size() == 2 && names[0] == second && names[1] == first);
 
-    // Opening the first brings all of it back, and saves the second on the way.
+    // Opening the first brings all of it back, and saves the second on the
+    // way, with a change made a moment ago and not yet written.
+    rig.project().playing = true;
+    rig.app.drums().setStep(5, 5, 1.f);
+    rig.project().playing = false;
     CHECK(rig.session().openSong(first));
     CHECK(rig.session().songName() == first && rig.project().trackCount() == 3);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed); // track 2 is Phazed again, not the Twin just added
@@ -367,6 +371,7 @@ void testNewSongAndTheList() {
     CHECK(rig.session().songName() == first);
     std::string onDisk;
     CHECK(readTextFile(folder + "/" + second + ".song", onDisk) && onDisk.find("track twin") != std::string::npos);
+    CHECK(onDisk.find("hit 6 6 1") != std::string::npos);
     // The next start opens the one that was open last.
     Rig next(folder, 5);
     CHECK(next.session().songName() == first);

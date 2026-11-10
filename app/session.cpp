@@ -300,8 +300,7 @@ void Session::applyProject() {
     c.type = Command::SetTempo;
     c.value = project.tempo;
     engine.send(c);
-    sentSceneCount_ = -1; // whatever the engine had, tell it again
-    syncSong();
+    syncSong(); // the song's length, if it differs from the last one's
 }
 
 } // namespace apotheca
