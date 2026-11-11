@@ -31,6 +31,16 @@
 
 namespace apotheca {
 
+// The sound-designer page talks to the program through one of these. The
+// server only passes text along; what it means is the session's business
+// (designer.hpp). Every call may come from the server's thread.
+struct DesignDesk {
+    virtual ~DesignDesk() = default;
+    virtual std::string spec() = 0;  // JSON: what the synth on the track being worked on has
+    virtual std::string state() = 0; // JSON: its values now
+    virtual bool ask(const std::string& line) = 0; // "set 12 40", "note 60 1"...: false if it makes no sense
+};
+
 class Transfer {
 public:
     ~Transfer() { stop(); }
@@ -40,6 +50,8 @@ public:
     void stop();
     // Where the program lives. Until this is set, updates are refused.
     void setProgramFolder(const std::string& folder) { program_ = folder; }
+    // The sound-designer page is served only when there is one of these.
+    void setDesk(DesignDesk* desk) { desk_ = desk; }
     // Goes up each time a new program has been set aside for confirming.
     unsigned updatesArrived() const { return updates_.load(); }
     bool running() const { return listening_ >= 0; }
@@ -60,6 +72,7 @@ private:
 
     std::string samples_, songs_, chords_, pin_, program_;
     std::atomic<unsigned> updates_{0};
+    DesignDesk* desk_ = nullptr;
     int port_ = 0;
     int listening_ = -1;
     std::atomic<bool> stopping_{false};

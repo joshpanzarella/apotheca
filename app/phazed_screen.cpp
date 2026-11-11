@@ -88,14 +88,7 @@ void PhazedScreen::choosePreset(int index) {
     const int count = spec_.presetCount();
     index = ((index % count) + count) % count;
     if (index == trk().preset) return;
-    trk().preset = index;
-    spec_.loadPreset(trk(), index);
-    for (float& m : trk().macro) m = 0.5f; // a new sound starts as it was made
-    Command c;
-    c.type = Command::SelectPreset;
-    c.track = project_.track;
-    c.a = index;
-    session_.engine.send(c);
+    session_.chooseSynthPreset(project_.track, index);
     hear();
 }
 

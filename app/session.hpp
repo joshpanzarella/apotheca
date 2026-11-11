@@ -16,6 +16,7 @@
 #include "recorder.hpp"
 #include "transfer.hpp"
 #include "midi.hpp"
+#include "designer.hpp"
 #include "project.hpp"
 
 namespace apotheca {
@@ -177,6 +178,21 @@ public:
     void setOctavesShown(int octaves);
     void loadSettings();
 
+    // ---- a synth's sound ---------------------------------------------------------------
+    // One place for changing a synth track's patch, used by the Device screen
+    // and by the sound-designer page alike.
+    void setSynthSetting(int track, int id, int value);
+    void setSynthMacro(int track, int macro, float value);
+    // A built-in preset or one of the player's own. The macros go back to the middle.
+    void chooseSynthPreset(int track, int index);
+    // The player's own presets: files in this folder, "NAME.phazed" and "NAME.twin".
+    void usePresetFolder(const std::string& folder);
+    // Keep the track's sound, as it is now with its macros, under a name.
+    // The track is then on that preset. False if the name is no good or it could not be written.
+    bool savePreset(int track, const std::string& name);
+    // The sound-designer page's way in (see designer.hpp); the WiFi page serves it.
+    Designer& designer() { return designer_; }
+
     // ---- a USB keyboard ---------------------------------------------------------------
     // Keys play the track being worked on (midi.hpp). With recording on, and
     // the song playing, what is played is also written into the cell that is
@@ -229,6 +245,18 @@ private:
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
+    void serveDesigner();
+    std::string designSpec(TrackKind kind) const;
+    std::string designState() const;
+    Designer designer_;
+    std::string presetFolder_;
+    bool designHeld_[128] = {}; // keys the page is holding down
+    int designHeldTrack_ = 0;
+    unsigned designLooks_ = 0;
+    Uint32 designSeenAt_ = 0;
+    TrackKind designSpecKind_ = TrackKind::None;
+    int designSpecPresets_ = -1;
+    std::string designSpecText_ = "{}";
     void hearMidi();
     MidiInput midi_;
     bool midiRecord_ = false;

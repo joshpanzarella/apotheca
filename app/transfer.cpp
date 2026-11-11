@@ -21,6 +21,8 @@
 
 namespace apotheca {
 
+extern const char* const kDesignPage; // design_page.cpp
+
 namespace {
 
 const char* const kPage = R"page(<!doctype html>
@@ -35,7 +37,7 @@ p{color:#8f8370;margin:0 0 16px} a{color:#6fbfa3}
 li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;margin:0}
 .ok{color:#6fbfa3}.no{color:#c9a15a} input{display:none}
 </style></head><body>
-<h1>APOTHECA</h1><p>Files to and from the handheld.</p>
+<h1>APOTHECA</h1><p>Files to and from the handheld. <a id="design" href="#">Open the sound designer</a></p>
 <div id="drop"><p>Drop files here: recordings (.wav), chord packs (.json), songs (.song).</p>
 <button id="pick">Choose files</button><input id="files" type="file" multiple accept=".wav,.json,.song"></div>
 <ul id="log"></ul>
@@ -44,6 +46,7 @@ li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;m
 <button id="pickUpdate">Choose the program file</button><input id="update" type="file">
 <h2>RECORDINGS</h2><ul id="samples"></ul><h2>SONGS</h2><ul id="songs"></ul><h2>CHORD PACKS</h2><ul id="chords"></ul>
 <script>
+document.getElementById('design').href = location.pathname.replace(/\/$/, '') + '/design';
 const base = location.pathname.replace(/\/$/, '');
 const kinds = {wav: 'samples', json: 'chords', song: 'songs'};
 function line(text, cls) { const li = document.createElement('li'); li.textContent = text; li.className = cls; document.getElementById('log').prepend(li); }
@@ -275,6 +278,30 @@ void Transfer::answer(int fd) {
         return reply(fd, "200 OK", "application/json",
                      "{\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
                          ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + "}");
+    }
+
+    // The sound-designer page and what it says to the program.
+    if (path == "/design" || path.compare(0, 8, "/design/") == 0) {
+        if (!desk_) return reply(fd, "404 Not Found", "text/plain", "no sound designer here\n");
+        if (method == "GET" && path == "/design") return reply(fd, "200 OK", "text/html; charset=utf-8", kDesignPage);
+        if (method == "GET" && path == "/design/spec") return reply(fd, "200 OK", "application/json", desk_->spec());
+        if (method == "GET" && path == "/design/state") return reply(fd, "200 OK", "application/json", desk_->state());
+        if (path != "/design/do" || (method != "POST" && method != "PUT")) return reply(fd, "404 Not Found", "text/plain", "no such thing\n");
+        // One short line of text.
+        std::string lowerHead = head;
+        for (char& c : lowerHead) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        const std::size_t where = lowerHead.find("\r\ncontent-length:");
+        const unsigned long long size = where == std::string::npos ? 0 : std::strtoull(lowerHead.c_str() + where + 17, nullptr, 10);
+        if (size == 0 || size > 200) return reply(fd, "400 Bad Request", "text/plain", "one short line\n");
+        if (body.size() > size) body.resize(static_cast<std::size_t>(size));
+        while (body.size() < size) {
+            const ssize_t got = recv(fd, block, sizeof block, 0);
+            if (got <= 0) return;
+            body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(size) - body.size()));
+        }
+        for (char c : body)
+            if (static_cast<unsigned char>(c) < 32 || static_cast<unsigned char>(c) > 126) return reply(fd, "400 Bad Request", "text/plain", "plain letters only\n");
+        return desk_->ask(body) ? reply(fd, "200 OK", "text/plain", "ok\n") : reply(fd, "400 Bad Request", "text/plain", "that makes no sense\n");
     }
 
     // A new Apotheca: set aside, never installed from here.

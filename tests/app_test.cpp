@@ -103,46 +103,34 @@ void testTabs() {
     rig.tap(L2);
     CHECK(rig.view() == View::Pattern);
     rig.key(A, false);
-    // On the drum grid R2 is also the random brush. A quick tap still turns
-    // the screen; held, it paints and the screen stays.
+    // On the drum grid R2 is the next screen AT ONCE, on the press: no waiting
+    // to see whether it is being held.
     rig.app.drums().moveCursorTo(3, 5);
     rig.key(R2, true);
-    rig.frames(20);
+    CHECK(rig.view() == View::Device);
     rig.key(R2, false);
-    CHECK(rig.view() == View::Pattern && rig.app.drums().level(3, 5) >= 0.25f);
+    CHECK(rig.view() == View::Device && rig.app.drums().level(3, 5) == 0.f);
+    rig.tap(L2);
+    // With R1 painting, R2 is not the next screen: it turns the brush random.
+    rig.key(R1, true);
     rig.key(R2, true);
+    CHECK(rig.view() == View::Pattern && rig.app.drums().paintingRandom());
     rig.tap(RIGHT);
     rig.key(R2, false);
-    CHECK(rig.view() == View::Pattern && rig.app.drums().level(3, 6) >= 0.25f);
-    // With Y held it is neither.
+    CHECK(rig.view() == View::Pattern && rig.app.drums().painting() && !rig.app.drums().paintingRandom());
+    rig.key(R1, false);
+    CHECK(rig.app.drums().level(3, 5) >= 0.25f && rig.app.drums().level(3, 6) >= 0.25f);
+    // R1 let go first: R2 coming up after it changes no screen.
+    rig.key(R1, true);
+    rig.key(R2, true);
+    rig.key(R1, false);
+    rig.key(R2, false);
+    CHECK(rig.view() == View::Pattern);
+    // With Y held R2 does nothing.
     rig.app.drums().moveCursorTo(4, 2);
     rig.key(Y, true);
     rig.tap(R2);
     rig.key(Y, false);
-    CHECK(rig.view() == View::Pattern);
-    rig.app.drums().moveCursorTo(3, 9);
-    // With another shoulder button down it is neither: no hit, however long.
-    rig.key(R1, true);
-    rig.key(R2, true);
-    rig.frames(20);
-    rig.key(R2, false);
-    rig.key(R1, false);
-    CHECK(rig.view() == View::Pattern && near(rig.app.drums().level(3, 9), 0.8f)); // R1's own hit only
-    rig.app.drums().moveCursorTo(5, 3);
-    rig.key(L1, true); // L1 does nothing by itself here, but R2 after it is still not the brush
-    rig.key(R2, true);
-    rig.frames(20);
-    rig.key(R2, false);
-    rig.key(L1, false);
-    CHECK(rig.view() == View::Pattern && rig.app.drums().level(5, 3) == 0.f);
-    rig.app.drums().moveCursorTo(3, 12);
-    rig.key(R2, true);
-    rig.key(L2, true); // L2 arriving puts the brush down (and turns back a screen, as ever)
-    rig.frames(20);
-    rig.key(L2, false);
-    rig.key(R2, false);
-    CHECK(rig.view() == View::Song && rig.app.drums().level(3, 12) == 0.f);
-    rig.tap(R2);
     CHECK(rig.view() == View::Pattern);
     // START works on the kit's page and the effects page too.
     rig.tap(R2);

@@ -7,6 +7,25 @@ namespace apotheca {
 
 namespace {
 
+std::vector<UserPreset>& userList(TrackKind kind) {
+    static std::vector<UserPreset> phazedOnes, twinOnes;
+    return kind == TrackKind::Twin ? twinOnes : phazedOnes;
+}
+
+// The preset functions every spec uses: the built-in presets first, then the
+// player's own.
+template <typename Synth, TrackKind kind>
+struct Presets {
+    static int count() { return Synth::presetCount() + static_cast<int>(userList(kind).size()); }
+    static const char* name(int i) { return i < Synth::presetCount() ? Synth::presetName(i) : userList(kind)[i - Synth::presetCount()].name.c_str(); }
+    static const char* category(int i) { return i < Synth::presetCount() ? Synth::presetCategory(i) : "USER"; }
+    // The player's values for preset `i`, or nullptr if it is a built-in one.
+    static const std::vector<int>* own(int i) {
+        const int at = i - Synth::presetCount();
+        return at >= 0 && at < static_cast<int>(userList(kind).size()) ? &userList(kind)[at].values : nullptr;
+    }
+};
+
 void plusMinus(float v, char* out, int size) { // a macro as -100..+100
     std::snprintf(out, static_cast<std::size_t>(size), "%+d", static_cast<int>(std::round((v - 0.5f) * 200.f)));
 }
@@ -21,7 +40,16 @@ const char* const kPages[10] = {"MAIN", "SOUND", "LINE 1", "LINE 2", "LINE 1 VOL
 const char* const kWaveNames[9] = {"NONE", "SAW", "SQUARE", "PULSE", "DOUBLE SINE", "SAW PULSE", "RESO 1", "RESO 2", "RESO 3"};
 const char* const kStepNames[kEnvSteps] = {"1", "2", "3", "4", "5", "6", "7", "8"};
 
-void loadPreset(TrackData& t, int index) { t.patch = Phazed::presetPatch(index); }
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Phazed, TrackKind::Phazed>::own(index)) {
+        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) {
+            const int v = (*own)[id];
+            t.patch.value[id] = v < settingMin(id) ? settingMin(id) : (v > settingMax(id) ? settingMax(id) : v);
+        }
+    } else {
+        t.patch = Phazed::presetPatch(index);
+    }
+}
 int* values(TrackData& t) { return t.patch.value; }
 
 void settingText(int id, int value, char* out, int size) {
@@ -102,7 +130,16 @@ const char* const kCharacterNames[] = {"FORMANT DEPTH", "FORMANT RATIO", "ASYMME
 const int kEnvelope[] = {Attack, Decay, Sustain, Release, Level};
 const char* const kEnvelopeNames[] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE", "LEVEL"};
 
-void loadPreset(TrackData& t, int index) { t.twin = Twin::presetPatch(index); }
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Twin, TrackKind::Twin>::own(index)) {
+        for (int id = 0; id < twin::kSettings && id < static_cast<int>(own->size()); ++id) {
+            const int v = (*own)[id];
+            t.twin.value[id] = v < twin::settingMin(id) ? twin::settingMin(id) : (v > twin::settingMax(id) ? twin::settingMax(id) : v);
+        }
+    } else {
+        t.twin = Twin::presetPatch(index);
+    }
+}
 int* values(TrackData& t) { return t.twin.value; }
 
 void settingText(int id, int value, char* out, int size) {
@@ -151,7 +188,7 @@ void item(int page, int index, int& id, const char*& name) {
 } // namespace
 
 const SynthSpec& phazedSpec() {
-    static const SynthSpec spec = {"PHAZED", Phazed::presetCount, Phazed::presetName, Phazed::presetCategory, pz::loadPreset, pz::values,
+    static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
                                    10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage};
@@ -159,11 +196,18 @@ const SynthSpec& phazedSpec() {
 }
 
 const SynthSpec& twinSpec() {
-    static const SynthSpec spec = {"TWIN", Twin::presetCount, Twin::presetName, Twin::presetCategory, tw::loadPreset, tw::values,
+    static const SynthSpec spec = {"TWIN", Presets<Twin, TrackKind::Twin>::count, Presets<Twin, TrackKind::Twin>::name, Presets<Twin, TrackKind::Twin>::category, tw::loadPreset, tw::values,
                                    twin::settingMin, twin::settingMax, tw::settingText,
                                    {"SHAPE", "BLEND", "FORMANT", "WIDTH", "DETUNE", "VINTAGE", "ATTACK", "RELEASE"}, tw::macroText,
                                    4, tw::kPages, tw::itemCount, tw::item, tw::envelopePage};
     return spec;
+}
+
+void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(kind) = std::move(presets); }
+const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
+int builtInPresets(TrackKind kind) { return kind == TrackKind::Twin ? Twin::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : 0; }
+int settingCount(TrackKind kind) {
+    return kind == TrackKind::Twin ? static_cast<int>(twin::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : 0;
 }
 
 const SynthSpec* specFor(TrackKind kind) {

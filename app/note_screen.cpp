@@ -12,9 +12,9 @@ using namespace ui;
 namespace {
 
 // Keys run across, as on a keyboard; the bar runs down the screen.
-constexpr int kGridLeft = 28, kGridTop = 60, kGridW = 612, kRowH = 20;
+constexpr int kGridLeft = 28, kGridW = 612, kRowH = 20;
 constexpr int kCellH = kRowH - 2;
-constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42, kKeysH = 16, kBlackKeyH = 10;
+constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
@@ -93,6 +93,11 @@ void NoteScreen::moveCursorTo(int pitch, int step) {
 }
 
 int NoteScreen::visibleKeys() const { return session_.octavesShown() * 12; }
+// Wider keys are taller keys, so a keyboard zoomed in still looks like one.
+// The grid starts just under them, lower when they are taller.
+int NoteScreen::keysH() const { return session_.octavesShown() == 1 ? 30 : session_.octavesShown() == 2 ? 22 : 16; }
+int NoteScreen::blackKeyH() const { return keysH() * 5 / 8; }
+int NoteScreen::gridTop() const { return kKeysTop + keysH() + 2; }
 int NoteScreen::keyW() const { return kGridW / visibleKeys(); } // 51, 25 or 17
 int NoteScreen::cellW() const { return keyW() - 2; }
 
@@ -509,25 +514,25 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const SDL_Color cursorColor = held ? kBrass : kTeal;
 
     const auto gx = [&](int pitch) { return kGridLeft + (pitch - low_) * keyW(); };
-    const auto gy = [](int step) { return kGridTop + step * kRowH; };
+    const auto gy = [&](int step) { return gridTop() + step * kRowH; };
     const auto shows = [&](int pitch) { return pitch >= low_ && pitch <= low_ + (visibleKeys() - 1); };
 
     // ---- the keyboard, across the top ---------------------------------------------
     // Drawn as a keyboard is: the white keys one cream strip with lines
     // between them, the black keys dark bars hanging from the top edge.
     const int keysW = visibleKeys() * keyW() - 2;
-    fill(r, kGridLeft, kKeysTop, keysW, kKeysH, kDim);
+    fill(r, kGridLeft, kKeysTop, keysW, keysH(), kDim);
     for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
         const bool black = isBlackKey(pitch), here = pitch == pitch_;
         const int x = gx(pitch);
         if (black) {
             // The two white keys meet under the middle of a black one.
-            fill(r, x + cellW() / 2, kKeysTop + kBlackKeyH, 1, kKeysH - kBlackKeyH, kBg);
-            fill(r, x + 1, kKeysTop, cellW() - 2, kBlackKeyH, here ? cursorColor : kBg);
+            fill(r, x + cellW() / 2, kKeysTop + blackKeyH(), 1, keysH() - blackKeyH(), kBg);
+            fill(r, x + 1, kKeysTop, cellW() - 2, blackKeyH(), here ? cursorColor : kBg);
         } else {
-            if (here) fill(r, x, kKeysTop + kBlackKeyH + 1, cellW(), kKeysH - kBlackKeyH - 1, cursorColor);
+            if (here) fill(r, x, kKeysTop + blackKeyH() + 1, cellW(), keysH() - blackKeyH() - 1, cursorColor);
             // Two white keys side by side (E and F, B and C): a line all the way up.
-            if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, kKeysH, kBg);
+            if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, keysH(), kBg);
         }
     }
     // ---- which octave: a band over each, from its C ------------------------------------
@@ -556,7 +561,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
     // A brighter line down the grid where each octave starts.
     for (int pitch = low_ + 1; pitch < low_ + visibleKeys(); ++pitch)
-        if (pitch % 12 == 0) fill(r, gx(pitch) - 2, kGridTop, 1, kSteps * kRowH - 2, kDim);
+        if (pitch % 12 == 0) fill(r, gx(pitch) - 2, gridTop(), 1, kSteps * kRowH - 2, kDim);
 
     // ---- notes --------------------------------------------------------------------------
     // A block as long (down the screen) as the note lasts, filled across as
@@ -566,7 +571,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside, float nudge = 0.f) {
         // A nudged note sits a little up or down from its step line: early is up.
         const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH));
-        const int full = cellW() - 2, bottom = kGridTop + kSteps * kRowH - 3;
+        const int full = cellW() - 2, bottom = gridTop() + kSteps * kRowH - 3;
         int tall = static_cast<int>(std::round(length * kRowH)) - 4;
         if (y + tall > bottom) tall = bottom - y; // it runs on into the next bar
         const int h = tall < 3 ? 3 : tall;
@@ -607,8 +612,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (n.velocity <= 0.f || left <= 0.f || !shows(n.pitch)) continue;
             int tall = static_cast<int>(std::round(left * kRowH)) - 4;
             const int most = kSteps * kRowH - 4;
-            outline(r, gx(n.pitch) + 1, kGridTop + 1, cellW() - 2, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
-            fill(r, gx(n.pitch) + 5, kGridTop + 1, 3, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
+            outline(r, gx(n.pitch) + 1, gridTop() + 1, cellW() - 2, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
+            fill(r, gx(n.pitch) + 5, gridTop() + 1, 3, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
         }
     }
     for (const NoteEvent& n : pat().notes) {
@@ -627,7 +632,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
 
     // ---- what is under the cursor ---------------------------------------------------
-    const int stripY = kGridTop + kSteps * kRowH + 8;
+    const int stripY = gridTop() + kSteps * kRowH + 8;
     const auto field = [&](float fx, const char* label, const char* value, SDL_Color color) {
         fonts.small.draw(r, fx, stripY + 12.f, label, kDim);
         fonts.large.draw(r, fx, stripY + 30.f, value, color);

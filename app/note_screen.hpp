@@ -116,6 +116,9 @@ private:
     int pitch_ = 60; // middle C
     int step_ = 0;
     int keyW() const;
+    int keysH() const;
+    int blackKeyH() const;
+    int gridTop() const;
     int cellW() const;
     void keepInView();
     bool zoomPushed_ = false;

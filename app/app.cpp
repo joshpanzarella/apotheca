@@ -103,17 +103,11 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             else drums_.onButton(event, input);
             return;
         }
-        // On the drum grid R2 is also the random brush: held or dragged it
-        // paints, and only a quick tap of it turns to the next screen. With
-        // another shoulder button down it is neither (a panic may be coming).
+        // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
+        // itself is the next screen, at once, like everywhere else.
         const bool onDrums = session_.view == View::Pattern && !isSynth(project_->current().kind);
-        if (event.button == Button::L2 && event.down) drums_.dropBrush();
-        if (event.button == Button::R2 && onDrums && !panicking_ && !input.held(Button::A)) {
-            const bool alone = !input.held(Button::L1) && !input.held(Button::R1) && !input.held(Button::L2);
-            if (event.down && !alone) return;
+        if (event.button == Button::R2 && onDrums && !panicking_ && drums_.painting() && !input.held(Button::L2)) {
             drums_.onButton(event, input);
-            if (event.down || !drums_.takeR2Tap()) return;
-            session_.view = View::Device; // from PATTERN, the next screen
             return;
         }
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;

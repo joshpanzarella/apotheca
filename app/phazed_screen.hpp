@@ -30,6 +30,7 @@ class PhazedScreen {
 public:
     PhazedScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec) {}
 
+    void choosePreset(int index); // any preset, the player's own included; it comes round at the ends
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs);
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
@@ -58,7 +59,6 @@ private:
     int* values() { return spec_.values(trk()); }
     const int* values() const { return spec_.values(const_cast<TrackData&>(trk())); }
     void moveCursor(Button direction);
-    void choosePreset(int index);
     void stepPreset(int by);
     void stepFolder(int by);
     void setMacro(int macro, float value);

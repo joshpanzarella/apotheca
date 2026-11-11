@@ -20,7 +20,6 @@ constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
 constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
-constexpr Uint32 kTapMs = 250;        // R2 let go sooner than this, with nothing painted, was a tap: next screen
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr int kStartSlices = 16;          // the D-pad and the lane roll move a start by sixteenths of the sound
@@ -335,12 +334,6 @@ void PatternScreen::moveCursor(Button direction) {
 }
 
 void PatternScreen::dragCursor(Button direction) {
-    // The random brush waits to see whether R2 is a tap. A drag says it is
-    // not: the step being left gets its hit too.
-    if (paint_ == Paint::Random && !randomBegun_) {
-        randomBegun_ = true;
-        paintHere();
-    }
     moveCursor(direction);
     paintHere(); // does nothing unless a brush is down
 }
@@ -431,19 +424,15 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (event.down && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
             return;
         }
-        // R2 alone: the random brush. Nothing is painted yet, in case this
-        // is a quick tap, which means "next screen" (see update and dragCursor).
+        // R2 while R1 is painting: the brush paints random levels for as
+        // long as R2 is held too. (R2 by itself is "next screen"; the app
+        // only sends it here with R1 down.)
         if (b != Button::R2) return;
-        if (event.down) {
-            r2Tap_ = false;
-            if (!dicing_ && paint_ == Paint::None) {
-                paint_ = Paint::Random;
-                randomBegun_ = false;
-                randomTimed_ = false;
-            }
-        } else if (paint_ == Paint::Random) {
-            paint_ = Paint::None;
-            r2Tap_ = !randomBegun_;
+        if (event.down && paint_ == Paint::OneLevel) {
+            paint_ = Paint::Random;
+            paintHere();
+        } else if (!event.down && paint_ == Paint::Random) {
+            paint_ = Paint::OneLevel;
         }
         return;
     }
@@ -480,7 +469,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::R1) {
         const Paint mine = Paint::OneLevel;
         if (!event.down) {
-            if (paint_ == mine) paint_ = Paint::None;
+            paint_ = Paint::None; // whichever brush it was
         } else if (!shaping_ && !dicing_ && paint_ == Paint::None) {
             paint_ = mine;
             // The brush takes the level of the hit it starts on, or 80%.
@@ -518,12 +507,6 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number // a stalled frame must not fling anything
     lastMs_ = nowMs;
-
-    // R2 held long enough is the random brush even without a drag.
-    if (paint_ == Paint::Random && !randomBegun_) {
-        if (!randomTimed_) randomTimed_ = true, randomSince_ = nowMs;
-        else if (nowMs - randomSince_ >= kTapMs) randomBegun_ = true, paintHere();
-    }
 
     const float x = input.stickX(), y = input.stickY();
     if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
@@ -756,6 +739,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (paint_ == Paint::OneLevel) {
         std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG WITH THE STICK", brushText);
+        hint("+ R2", "random levels");
     } else if (paint_ == Paint::Random) {
         hint("DRAG WITH THE STICK", "paint hits at random levels");
     } else if (shaping_ && onStep()) {
@@ -789,7 +773,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("Y", hitHere() ? "chance / start" : "maybe");
         if (hitHere()) hint("B", "delete");
         hint("HOLD R1", "paint");
-        hint("HOLD R2", "paint random");
+        hint("R1 + R2", "paint random");
     }
     ui::hints(r, fonts, hints, count);
 }

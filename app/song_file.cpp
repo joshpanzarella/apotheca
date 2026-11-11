@@ -21,7 +21,6 @@ void put(std::string& out, const char* format, double a) {
     out += text;
 }
 
-int settingCount(TrackKind kind) { return kind == TrackKind::Phazed ? phazed::kSettings : kind == TrackKind::Twin ? twin::kSettings : 0; }
 
 } // namespace
 
