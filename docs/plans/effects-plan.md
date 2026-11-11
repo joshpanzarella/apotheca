@@ -412,6 +412,25 @@ metallic is for ears.
 | Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
 | Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
 
+**Step 4 (TAPE) as built, 2026-11-11.** `engine/src/fx/tape.cpp`, number 6,
+word `tape`, in the list before DELAY. Only tests and measurements have seen
+it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| TIME | Eight choices: 1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2. The step length **to the sample** at 90, 120 and 174 BPM, all eight |
+| TIME turned, or a new tempo | The tape runs between half and double speed until it is there: a 1 kHz sine on it reads 500.0 Hz slowing, 2000.0 Hz catching up. The largest step is 0.99 of the sines' own: no click |
+| FEEDBACK | 0 to **120%**. At AGE 0 and 1 kHz each echo is FEEDBACK times the last within 0.05 dB (plan: 0.5) |
+| Tone lost each repeat | A high cut (12 kHz at AGE 0, 4.2 kHz at 50%, 1.5 kHz at full) and a low cut (40 / 126 / 400 Hz), 6 dB an octave. Per repeat at 100 Hz / 1 kHz / 6 kHz: -0.6 / 0.0 / -0.8 dB at AGE 0; -3.9 / -0.1 / -4.4 at 50%; -10.5 / -0.4 / -10.4 at full |
+| Wow | A 0.8 Hz sine on the time, 1.5 ms either way at AGE full: **13 cents** either way. In proportion to AGE (measured 0.750 ms and 6.5 cents at 50%), none at 0 |
+| Never runs away | FEEDBACK 120% for 30 s: level 0.79 / 0.43 / 0.18 at AGE 0 / 35 / 100%, the same within 0.2 dB from 10 to 20 s and 20 to 30 s. Loudest sample out with full-scale noise in at every extreme: 2.9 |
+| Settings glide | 20 ms, all four. A sweep under a 100 Hz sine is 1.15 / 0.90 / 1.01 / 1.00 of the sine's own step (old DELAY's TIME: 33) |
+| Small numbers | It makes **none too small to hold with flush-to-zero off** (checked by the processor's own mark, not a clock), and is the same to the bit with it on or off. A tail ends at 240 dB down and the effect sleeps: exact zeros, 0.1 us a block |
+| Cost | **0.13%** of a desk core (plan: 0.16), so about 0.65% of a handheld core by the times-5 guess |
+| MIX | The echoes' level; the dry sound stays whole (as the old DELAY). On a bus: `wetOnly_` in `tape.cpp`, read in one line; the bus call sets it |
+| Departed from the plan | FEEDBACK tops out at 120%, a number the plan did not give. The clip is a cubic soft ceiling, not `tanh` (cheaper, and flat above 1.5) |
+| Not done | The bus call itself (step 1a). Not heard; `bench` not run on the handheld |
+
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.
 

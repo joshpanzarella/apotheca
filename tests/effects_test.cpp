@@ -36,6 +36,7 @@
 // non-zero if any failed.
 
 #include <atomic>
+#include <cfenv>
 #include <cfloat>
 #include <chrono>
 #include <cmath>
@@ -419,7 +420,7 @@ static void testTheTable() {
     CHECK(effectFromWord("filter") == EffectKind::Filter && effectFromWord("drive") == EffectKind::Drive && effectFromWord("delay") == EffectKind::Delay);
     CHECK(effectFromWord("reverb") == EffectKind::Reverb && effectFromWord("crush") == EffectKind::Crush);
     CHECK(effectFromWord("") == EffectKind::None && effectFromWord(nullptr) == EffectKind::None && effectFromWord("FILTER") == EffectKind::None);
-    CHECK(effectFromWord("tape") == EffectKind::None && effectFromWord("filte") == EffectKind::None && effectFromWord("filters") == EffectKind::None);
+    CHECK(effectFromWord("nosuch") == EffectKind::None && effectFromWord("filte") == EffectKind::None && effectFromWord("filters") == EffectKind::None);
     // Every effect: a word of its own, one word, lower case; in a group; in the list once.
     CHECK(effectListSize() == kEffectKinds && effectAt(0) == EffectKind::None && effectPlace(EffectKind::None) == 0);
     CHECK(effectAt(-1) == EffectKind::None && effectAt(effectListSize()) == EffectKind::None && effectPlace(EffectKind::Count) == 0 && effectPlace(static_cast<EffectKind>(-3)) == 0);
@@ -456,8 +457,16 @@ static void testTheTable() {
     }
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
-    // The list as it is today: the same order as before there was a list.
-    CHECK(effectAt(1) == EffectKind::Filter && effectAt(2) == EffectKind::Drive && effectAt(3) == EffectKind::Delay && effectAt(4) == EffectKind::Reverb && effectAt(5) == EffectKind::Crush);
+    // The list as it is today, in groups, a new effect before the old one of its group.
+    {
+        const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Tape, EffectKind::Delay, EffectKind::Reverb, EffectKind::Crush};
+        CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
+        for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
+    }
+    // The numbers of the new ones: fixed for good, as the old five's are.
+    CHECK(static_cast<int>(EffectKind::Tape) == 6);
+    CHECK(std::string(effectInfo(EffectKind::Tape).word) == "tape" && effectFromWord("tape") == EffectKind::Tape);
+    CHECK(effectInfo(EffectKind::Tape).group == EffectGroup::Delay && effectChoices(EffectKind::Tape, 0) == 8 && effectChoices(EffectKind::Tape, 1) == 0);
     // Which settings are choices today, and the groups.
     CHECK(effectChoices(EffectKind::Filter, 2) == 5 && effectChoices(EffectKind::Delay, 0) == 6);
     CHECK(effectChoices(EffectKind::Filter, 0) == 0 && effectChoices(EffectKind::Delay, 1) == 0 && effectChoices(EffectKind::Drive, 0) == 0);
@@ -728,7 +737,7 @@ static void testEveryEffect() {
             const Stereo in = pinInput(48000.f);
             Stereo out = in;
             through(*effect, out);
-            if (kind == EffectKind::Reverb || kind == EffectKind::Crush || kind == EffectKind::Delay || kind == EffectKind::Filter) CHECK(out.l == in.l && out.r == in.r);
+            if (kind != EffectKind::Drive) CHECK(out.l == in.l && out.r == in.r);
             float worst = 0.f;
             for (std::size_t i = 0; i < in.frames(); ++i) worst = std::fmax(worst, std::fabs(out.l[i] - in.l[i]));
             CHECK(worst < 1e-6f);
@@ -749,7 +758,7 @@ static void testEveryEffect() {
             loudest = std::fmax(loudest, std::fmax(peakOf(io.l), peakOf(io.r)));
         }
         // Today, with full-scale noise in, the loudest sample out:
-        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0
+        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9
         SAY("bounded  %-7s loudest %.2f\n", info.name, static_cast<double>(loudest));
         CHECK(loudest < 8.f);
         // A setting past either end is the end; one that is not a number is 0;
@@ -802,8 +811,16 @@ static void testEveryEffect() {
         //   CRUSH   BITS 38       RATE 39         MIX 3.8                    4.2  (it is steps by design)
         // The choices (TYPE, TIME) jump from one to the next, and CRUSH is
         // all jumps; the tool shows both as it should.
+        // The new ones glide every setting, a choice included:
+        //   TAPE    TIME 1.2      FEEDBACK 0.9    AGE 1.0     MIX 1.0        0.9
         static const double today[kEffectKinds][kEffectParams + 1] = {
-            {0, 0, 0, 0, 0}, {1.15, 1.01, 18.1, 1.00, 1.00}, {5.87, 1.91, 1.90, 3.80, 1.91}, {33.5, 1.51, 1.55, 2.57, 1.55}, {0.94, 0.90, 1.09, 0, 0.83}, {38.2, 38.8, 3.79, 0, 4.22},
+            {0, 0, 0, 0, 0},
+            {1.15, 1.01, 18.1, 1.00, 1.00},
+            {5.87, 1.91, 1.90, 3.80, 1.91},
+            {33.5, 1.51, 1.55, 2.57, 1.55},
+            {0.94, 0.90, 1.09, 0, 0.83},
+            {38.2, 38.8, 3.79, 0, 4.22},
+            {1.15, 0.90, 1.01, 1.00, 0.88}, // TAPE
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -811,6 +828,7 @@ static void testEveryEffect() {
             SAY("sweep    %-7s %-10s %6.2f  (held still %.2f)\n", info.name, info.paramNames[p], jump, steady);
             CHECK(std::fabs(jump - today[k][p]) < 0.1 * today[k][p] + 0.05);
             CHECK(std::fabs(steady - today[k][kEffectParams]) < 0.05 * today[k][kEffectParams] + 0.02);
+            if (k > static_cast<int>(EffectKind::Crush)) CHECK(jump < 1.5); // a new effect glides: turning it is about as smooth as the sine
         }
     }
 }
@@ -975,6 +993,513 @@ static void testReverbTail() {
     const std::vector<float> tone = sineOf(100.0, 0.5, 48000);
     CHECK(std::fabs(largestJump(tone) / sineStep(100.0, 0.5) - 1.0) < 1e-3);
     CHECK(std::fabs(partAt(tone.data(), 48000, 100.0) - 0.5) < 1e-6 && partAt(tone.data(), 48000, 200.0) < 1e-6 && partAt(tone.data(), 48000, 101.0) < 1e-6);
+}
+
+// ---- tools for the effects that glide (TAPE, HALL) ------------------------------------------------
+
+// The wet sound alone: what came out, less what went in. (In a slot TAPE
+// keeps the dry sound whole, so this is its echoes times MIX.)
+static std::vector<float> wetOf(Effect& effect, const std::vector<float>& in, std::vector<float>* out = nullptr) {
+    Stereo io(in.size());
+    io.l = io.r = in;
+    through(effect, io);
+    if (out) *out = io.l;
+    std::vector<float> wet(in.size());
+    for (std::size_t i = 0; i < in.size(); ++i) wet[i] = io.l[i] - in[i];
+    return wet;
+}
+
+// A click of a chosen size (impulseOf's is 1, which a ceiling would bend).
+static std::vector<float> clickOf(Effect& effect, double seconds, float size) {
+    Stereo io(static_cast<std::size_t>(seconds * 48000.0));
+    io.l[0] = io.r[0] = size;
+    through(effect, io);
+    return io.l;
+}
+
+// Where the loudest sample is between two places, or -1 if all is silent.
+static long peakAt(const std::vector<float>& v, std::size_t from, std::size_t to) {
+    long at = -1;
+    float peak = 0.f;
+    for (std::size_t i = from; i < to && i < v.size(); ++i)
+        if (std::fabs(v[i]) > peak) peak = std::fabs(v[i]), at = static_cast<long>(i);
+    return at;
+}
+
+// A DELAY'S FEEDBACK AT ONE FREQUENCY: how much of echo `which` is in the
+// next, at `hz`, with echoes every `every` samples (a whole number of cycles
+// of `hz`). echoGain adds an echo up, which a low cut in the loop brings to
+// nothing; this does not mind.
+static double echoGainAt(const std::vector<float>& ir, std::size_t every, double hz, int which = 1) {
+    // Each echo is looked for half a gap either side of where it is due, so one that comes a little early is still whole.
+    const std::size_t from = static_cast<std::size_t>(which) * every - every / 2;
+    if (from + 2 * every > ir.size()) return 0.0;
+    const double first = partAt(ir.data() + from, every, hz);
+    return first > 0.0 ? partAt(ir.data() + from + every, every, hz) / first : 0.0;
+}
+
+// What a 6 dB an octave cut with its corner at `corner` leaves at `hz`:
+// the high cut, and (low: true) the low cut. Exact for the kind used here.
+static double cutAt(double corner, double hz, bool low = false, double rate = 48000.0) {
+    const double a = 1.0 - std::exp(-2.0 * kPi * corner / rate), w = 2.0 * kPi * hz / rate;
+    const double re = 1.0 - (1.0 - a) * std::cos(w), im = (1.0 - a) * std::sin(w); // 1 - (1-a)/z
+    const double pass = a / std::sqrt(re * re + im * im);
+    if (!low) return pass;
+    // 1 - a / (1 - (1-a)/z) = (1-a)(1 - 1/z) / (1 - (1-a)/z)
+    return (1.0 - a) * 2.0 * std::sin(0.5 * w) / std::sqrt(re * re + im * im);
+}
+
+// THE DELAY OF A SINE AS IT WANDERS: `wet` is a sine at `hz` (48 whole
+// samples to a cycle or a divisor of 480) coming out late by an amount that
+// moves. One reading every 10 ms, in samples, give or take a whole number of
+// cycles: only how it MOVES is meant.
+static std::vector<double> delayTrack(const std::vector<float>& wet, double hz, std::size_t from, std::size_t to) {
+    std::vector<double> track;
+    const double w = 2.0 * kPi * hz / 48000.0;
+    double last = 0.0, turns = 0.0;
+    for (std::size_t at = from; at + 480 <= to && at + 480 <= wet.size(); at += 480) {
+        double re = 0.0, im = 0.0;
+        for (std::size_t i = at; i < at + 480; ++i) {
+            re += wet[i] * std::cos(w * static_cast<double>(i));
+            im += wet[i] * std::sin(w * static_cast<double>(i));
+        }
+        const double angle = std::atan2(-re, im); // sin(w(n - d)): w d
+        if (!track.empty()) {
+            if (angle - last > kPi) turns -= 2.0 * kPi;
+            if (angle - last < -kPi) turns += 2.0 * kPi;
+        }
+        last = angle;
+        track.push_back((angle + turns) / w);
+    }
+    return track;
+}
+struct Wander {
+    double depth = 0.0; // samples either way
+    double hz = 0.0;    // how often it goes round
+    double cents = 0.0; // the most the pitch is off, either way
+};
+static Wander wanderOf(const std::vector<double>& track) {
+    Wander result;
+    if (track.size() < 3) return result;
+    double low = track[0], high = track[0], mean = 0.0, steepest = 0.0;
+    for (double d : track) low = d < low ? d : low, high = d > high ? d : high, mean += d / static_cast<double>(track.size());
+    for (std::size_t i = 1; i < track.size(); ++i) steepest = std::fmax(steepest, std::fabs(track[i] - track[i - 1]) / 480.0);
+    result.depth = 0.5 * (high - low);
+    result.cents = 1200.0 * std::log2(1.0 + steepest);
+    double firstUp = -1.0, lastUp = -1.0;
+    int ups = 0;
+    for (std::size_t i = 1; i < track.size(); ++i) {
+        if (track[i - 1] < mean && track[i] >= mean) {
+            const double at = static_cast<double>(i - 1) + (mean - track[i - 1]) / (track[i] - track[i - 1]);
+            if (firstUp < 0.0) firstUp = at;
+            lastUp = at;
+            ++ups;
+        }
+    }
+    if (ups >= 2) result.hz = (ups - 1) / ((lastUp - firstUp) * 0.01);
+    return result;
+}
+
+// THE PITCH of something close to a sine, between two places: by its upward crossings of zero.
+static double pitchOf(const std::vector<float>& v, std::size_t from, std::size_t to, double rate = 48000.0) {
+    double first = -1.0, last = -1.0;
+    int ups = 0;
+    for (std::size_t i = from + 1; i < to && i < v.size(); ++i) {
+        if (v[i - 1] < 0.f && v[i] >= 0.f) {
+            const double at = static_cast<double>(i - 1) + static_cast<double>(-v[i - 1]) / (static_cast<double>(v[i]) - v[i - 1]);
+            if (first < 0.0) first = at;
+            last = at;
+            ++ups;
+        }
+    }
+    return ups >= 2 ? (ups - 1) * rate / (last - first) : 0.0;
+}
+
+// How long a block takes, in microseconds, over `count` blocks of silence.
+static double blocksOfSilence(Effect& effect, int count) {
+    Stereo io(kMaxBlock);
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < count; ++i) {
+        io.l.assign(kMaxBlock, 0.f);
+        io.r.assign(kMaxBlock, 0.f);
+        effect.process(io.l.data(), io.r.data(), kMaxBlock);
+    }
+    return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / count;
+}
+// A TAIL DOES NOT SLOW DOWN, with the processor's flush-to-zero OFF (as the
+// app has it): a click, then `seconds` of silence timed a second at a time.
+// `early` is the first second, `slowest` the worst, `late` the last.
+struct TailTimes { double early, slowest, late; };
+static TailTimes tailTimes(Effect& effect, int seconds) {
+    CHECK(!denormalsFlushed());
+    Stereo io(kMaxBlock);
+    io.l[0] = io.r[0] = 1.f;
+    effect.process(io.l.data(), io.r.data(), kMaxBlock);
+    TailTimes t = {blocksOfSilence(effect, 750), 0.0, 0.0};
+    for (int second = 0; second < seconds; ++second) t.slowest = std::fmax(t.slowest, blocksOfSilence(effect, 750));
+    t.late = blocksOfSilence(effect, 750);
+    return t;
+}
+// THE SAME WITH FLUSH-TO-ZERO ON OR OFF, to the last bit: the pinned input,
+// then `seconds` of nothing. (The old five are not: see testFlushToZero.)
+static bool sameFlushed(EffectKind kind, float a, float b, float c, float d, double seconds) {
+    Stereo plain = pinInput(48000.f);
+    plain.l.resize(plain.l.size() + static_cast<std::size_t>(seconds * 48000.0), 0.f);
+    plain.r.resize(plain.l.size(), 0.f);
+    Stereo flushed = plain;
+    through(*fresh(kind, a, b, c, d), plain);
+    {
+        const FlushDenormals on;
+        through(*fresh(kind, a, b, c, d), flushed);
+    }
+    return std::memcmp(plain.l.data(), flushed.l.data(), plain.l.size() * sizeof(float)) == 0 && std::memcmp(plain.r.data(), flushed.r.data(), plain.r.size() * sizeof(float)) == 0 &&
+           peakOf(plain.l) > 0.1f;
+}
+
+// NUMBERS TOO SMALL TO HOLD, COUNTED WITHOUT A CLOCK. The processor keeps a
+// mark that is set whenever a sum comes out too small to hold (and, on a desk
+// machine, a second one whenever such a number is used in a sum). Lower the
+// marks, run something, look. `usedToo` false leaves the second mark out, for
+// when the sound going in is itself that small on purpose.
+struct TooSmall {
+    explicit TooSmall(bool usedToo = true) : which_(FE_UNDERFLOW) {
+#ifdef FE_DENORMAL
+        if (usedToo) which_ |= FE_DENORMAL;
+#else
+        (void)usedToo;
+#endif
+        CHECK(!denormalsFlushed()); // with flush-to-zero on there is nothing to see
+        std::feclearexcept(which_);
+    }
+    bool seen() const { return std::fetestexcept(which_) != 0; }
+    int which_;
+};
+
+// ---- TAPE -------------------------------------------------------------------------------------------
+
+static float tapeTime(int choice) { return (static_cast<float>(choice) + 0.5f) / 8.f; }
+
+static void testTape() {
+    const EffectKind tape = EffectKind::Tape;
+    const EffectInfo& info = effectInfo(tape);
+    CHECK(std::string(info.name) == "TAPE" && info.params == 4 && std::string(info.paramNames[0]) == "TIME" && std::string(info.paramNames[1]) == "FEEDBACK");
+    CHECK(std::string(info.paramNames[2]) == "AGE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(info.defaults[0] == 0.5625f && info.defaults[1] == 0.4f && info.defaults[2] == 0.35f && info.defaults[3] == 0.35f);
+    // How it reads.
+    const char* names[8] = {"1/16", "1/8 TRIPLET", "1/8", "1/4 TRIPLET", "1/8 DOTTED", "1/4", "1/4 DOTTED", "1/2"};
+    for (int i = 0; i < 8; ++i) CHECK(reads(tape, 0, tapeTime(i)) == names[i]);
+    CHECK(reads(tape, 0, 0.f) == "1/16" && reads(tape, 0, 1.f) == "1/2" && reads(tape, 0, info.defaults[0]) == "1/8 DOTTED" && reads(tape, 0, 0.125f) == "1/8 TRIPLET");
+    CHECK(reads(tape, 1, 0.f) == "0%" && reads(tape, 1, 1.f) == "120%" && reads(tape, 1, 0.4f) == "48%" && reads(tape, 2, 0.35f) == "35%" && reads(tape, 3, 1.f) == "100%");
+
+    // WHEN EACH ECHO LANDS: the step length to the nearest sample, at three
+    // tempos, each of the eight choices. In thirds of a step: 3 4 6 8 9 12 18 24.
+    const int thirds[8] = {3, 4, 6, 8, 9, 12, 18, 24};
+    for (float tempo : {90.f, 120.f, 174.f}) {
+        for (int i = 0; i < 8; ++i) {
+            std::unique_ptr<Effect> t = fresh(tape, tapeTime(i), 0.5f, 0.f, 1.f, tempo);
+            const long want = std::lround(thirds[i] * 5.0 / tempo * 48000.0);
+            const std::vector<float> ir = clickOf(*t, 2.6 * static_cast<double>(want) / 48000.0, 0.1f);
+            CHECK(echoAt(ir, 0) == want);                                                                                     // nothing before it, to the sample
+            CHECK(peakAt(ir, 1, ir.size()) == want);                                                                          // and it is the loudest thing there
+            CHECK(peakAt(ir, static_cast<std::size_t>(want + want / 2), ir.size()) == 2 * want);                              // the echo's echo
+        }
+    }
+    // A quarter note at 120 is 24000 samples; a dotted eighth (where it starts) 18000.
+    CHECK(echoAt(clickOf(*fresh(tape, -1.f, -1.f, 0.f), 0.5, 0.1f), 0) == 18000);
+
+    // FEEDBACK AND THE TONE LOST EACH TIME ROUND. A small click (well under the
+    // ceiling), echoes a quarter note apart. How much of one echo is in the
+    // next, at three frequencies, is FEEDBACK (0 to 120%) times what the two
+    // cuts leave, times the little FEEDBACK adds to make up for them
+    // (1 + low corner / high corner). In dB a repeat, against FEEDBACK:
+    //   AGE     high cut   low cut     100 Hz    1 kHz    6 kHz
+    //   0%      12 kHz     40 Hz        -0.6      0.0     -0.8
+    //   50%     4.2 kHz    126 Hz       -3.9     -0.1     -4.5
+    //   100%    1.5 kHz    400 Hz      -10.3     -0.2    -10.6
+    // At AGE 0 and 1 kHz an echo comes back at FEEDBACK to within 0.05 dB.
+    for (float age : {0.f, 0.5f, 1.f}) {
+        const double highCorner = 12000.0 * std::pow(0.125, age), lowCorner = 40.0 * std::pow(10.0, age);
+        for (float feedback : {0.25f, 0.5f, 0.75f}) {
+            std::unique_ptr<Effect> t = fresh(tape, tapeTime(5), feedback, 0.f, 1.f);
+            t->setParam(2, age);
+            const std::vector<float> ir = clickOf(*t, 2.0, 0.01f);
+            for (double hz : {100.0, 1000.0, 6000.0}) {
+                const double want = 1.2 * feedback * (1.0 + lowCorner / highCorner) * cutAt(highCorner, hz) * cutAt(lowCorner, hz, true);
+                const double got = echoGainAt(ir, 24000, hz, 1), next = echoGainAt(ir, 24000, hz, 2);
+                if (feedback == 0.5f) SAY("tape     age %3.0f%% at %5.0f Hz: each echo x %.4f (FEEDBACK 60%%, and %.2f dB from the cuts)\n", age * 100.0, hz, got, dB(got / 0.6));
+                CHECK(std::fabs(dB(got / want)) < 0.1 && std::fabs(dB(next / want)) < 0.1);
+                if (age == 0.f && hz == 1000.0) CHECK(std::fabs(dB(got / (1.2 * feedback))) < 0.05);
+            }
+        }
+    }
+    SAY("tape     the tool: a cut at its own corner leaves %.2f dB (high cut at 1500 Hz), %.2f dB (low cut at 400 Hz)\n", dB(cutAt(1500.0, 1500.0)), dB(cutAt(400.0, 400.0, true)));
+    CHECK(std::fabs(dB(cutAt(1500.0, 1500.0)) + 3.0) < 0.3 && std::fabs(dB(cutAt(400.0, 400.0, true)) + 3.0) < 0.3 && cutAt(400.0, 0.0, true) == 0.0); // the tool: 3 dB down at the corner
+    // The first echo has been through the cuts once: duller than the click, and its sum is nothing (no low end at all).
+    {
+        const std::vector<float> ir = clickOf(*fresh(tape, tapeTime(5), 0.f, 1.f, 1.f), 1.4, 0.01f);
+        const long at = peakAt(ir, 1, ir.size());
+        CHECK(at > 24000 - 74 && at < 24000 + 74); // the wow has moved it, by 72 samples at the very most
+        const float top = std::fabs(ir[static_cast<std::size_t>(at)]);
+        CHECK(top < 0.2f * 0.01f && top > 0.1f * 0.01f);
+        double sum = 0.0;
+        for (std::size_t i = 12000; i < 36000; ++i) sum += ir[i];
+        CHECK(std::fabs(sum) < 1e-3 * 0.01);
+        CHECK(std::fabs(dB(partAt(ir.data() + 12000, 24000, 1000.0) / (0.01 * 2.0 / 24000.0)) - dB(cutAt(1500.0, 1000.0) * cutAt(400.0, 1000.0, true))) < 0.1);
+        // FEEDBACK at 0: one echo and no more.
+        float after = 0.f;
+        for (std::size_t i = 36000; i < ir.size(); ++i) after = std::fmax(after, std::fabs(ir[i]));
+        CHECK(after < 1e-6f * top);
+    }
+
+    // MIX is how loud the echoes are; the sound itself is not touched.
+    {
+        const std::vector<float> in = sineOf(1000.0, 0.25, 48000);
+        std::vector<float> outFull, outHalf;
+        const std::vector<float> full = wetOf(*fresh(tape, tapeTime(0), 0.5f, 0.3f, 1.f), in, &outFull), half = wetOf(*fresh(tape, tapeTime(0), 0.5f, 0.3f, 0.5f), in, &outHalf);
+        bool dryWhole = true, halved = true;
+        for (std::size_t i = 0; i < 6000 - 80; ++i) dryWhole = dryWhole && outFull[i] == in[i]; // before the first echo (less the wow's reach): the sine, to the bit
+        for (std::size_t i = 0; i < in.size(); ++i) halved = halved && std::fabs(half[i] - 0.5f * full[i]) < 1e-6f;
+        CHECK(dryWhole && halved && rmsOf(full, 24000) > 0.1);
+    }
+
+    // WOW. A 1 kHz sine, one echo: how late the echo is, tracked for ten
+    // seconds. It swings as a 0.8 Hz sine, 1.5 ms (72 samples) either way at
+    // AGE full, which is 13 cents of pitch either way; half of each at AGE 50%;
+    // nothing at AGE 0.
+    for (float age : {0.f, 0.5f, 1.f}) {
+        const std::vector<float> wet = wetOf(*fresh(tape, tapeTime(0), 0.f, age, 1.f), sineOf(1000.0, 0.25, 12 * 48000));
+        const Wander wow = wanderOf(delayTrack(wet, 1000.0, 48000, 11 * 48000));
+        SAY("tape     age %3.0f%%: wow %.2f samples either way (%.3f ms), %.3f Hz, %.2f cents either way\n", age * 100.0, wow.depth, wow.depth / 48.0, wow.hz, wow.cents);
+        if (age == 0.f) {
+            CHECK(wow.depth < 0.001 && wow.cents < 0.001);
+        } else {
+            CHECK(std::fabs(wow.depth - 72.0 * age) < 0.02 * 72.0 * age);
+            CHECK(std::fabs(wow.hz - 0.8) < 0.01);
+            CHECK(std::fabs(wow.cents - 13.0 * age) < 0.3);
+        }
+    }
+    // The tools on a wander that is known: 48 samples either way, twice a second.
+    {
+        std::vector<float> made(6 * 48000);
+        for (std::size_t i = 0; i < made.size(); ++i) {
+            const double t = static_cast<double>(i) / 48000.0;
+            made[i] = static_cast<float>(0.25 * std::sin(2.0 * kPi * 1000.0 * (t - (4800.0 + 48.0 * std::sin(2.0 * kPi * 2.0 * t)) / 48000.0)));
+        }
+        const Wander known = wanderOf(delayTrack(made, 1000.0, 0, made.size()));
+        CHECK(std::fabs(known.depth - 48.0) < 0.5 && std::fabs(known.hz - 2.0) < 0.01 && std::fabs(known.cents - 1200.0 * std::log2(1.0 + 2.0 * kPi * 2.0 * 0.001)) < 0.3);
+        CHECK(std::fabs(pitchOf(sineOf(1000.0, 0.3, 48000), 0, 48000) - 1000.0) < 0.01 && std::fabs(pitchOf(sineOf(437.0, 0.3, 48000), 100, 40000) - 437.0) < 0.01);
+        CHECK(pitchOf(std::vector<float>(1000, 0.f), 0, 1000) == 0.0);
+    }
+
+    // TIME GLIDES, as tape does: turned from a sixteenth to a half note, the
+    // tape slows to half speed (a 1 kHz sine on it reads 500 Hz) until it has
+    // got there, and is then exactly a half note; turned back it runs at
+    // double (2 kHz). Never slower or faster than that, and never a jump.
+    {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.f, 0.f, 1.f), there = fresh(tape, 1.f, 0.f, 0.f, 1.f);
+        Stereo io(13 * 48000), other(0);
+        io.l = io.r = sineOf(1000.0, 0.25, io.frames());
+        other = io;
+        const std::vector<float> in = io.l;
+        through(*t, io, 0, 48000);
+        t->setParam(0, 1.f);
+        through(*t, io, 48000, 7 * 48000);
+        t->setParam(0, 0.f);
+        through(*t, io, 7 * 48000, io.frames());
+        through(*there, other, 0, 7 * 48000);
+        std::vector<float> wet(io.frames());
+        for (std::size_t i = 0; i < wet.size(); ++i) wet[i] = io.l[i] - in[i];
+        double slowest = 1e9, fastest = 0.0;
+        for (std::size_t at = 48000; at + 2400 <= wet.size(); at += 2400) {
+            const double hz = pitchOf(wet, at, at + 2400);
+            (at < 7 * 48000 ? slowest : fastest) = at < 7 * 48000 ? std::fmin(slowest, hz) : std::fmax(fastest, hz);
+            if (at >= 7 * 48000) CHECK(hz > 990.0);
+            else CHECK(hz < 1010.0);
+        }
+        SAY("tape     TIME turned: the slowest the tape reads a 1 kHz sine is %.1f Hz, the fastest %.1f Hz\n", slowest, fastest);
+        CHECK(std::fabs(slowest - 500.0) < 5.0 && std::fabs(fastest - 2000.0) < 20.0);
+        // Slowing: 42000 samples further away at half a sample a sample is 1.75 s. Still on the way at 1.5 s, there by 6.
+        CHECK(pitchOf(wet, 48000 + 72000 - 2400, 48000 + 72000) < 510.0);
+        CHECK(std::fabs(pitchOf(wet, 6 * 48000, 7 * 48000) - 1000.0) < 0.01 && std::fabs(pitchOf(wet, 12 * 48000, 13 * 48000) - 1000.0) < 0.01);
+        bool arrived = true;
+        for (std::size_t i = 7 * 48000 - 4800; i < 7 * 48000; ++i) arrived = arrived && io.l[i] == other.l[i]; // exactly where one that started there is
+        CHECK(arrived);
+        const double roughest = largestJump(io.l, 48000, io.frames()) / (sineStep(1000.0, 0.25) + sineStep(2000.0, 0.25));
+        SAY("tape     TIME turned: the largest step is %.2f of a 1 kHz and a 2 kHz sine together\n", roughest);
+        CHECK(roughest < 1.02);
+        // A new tempo is the same thing: half the tempo, and the tape slows to half speed to get there.
+        std::unique_ptr<Effect> slowed = fresh(tape, 0.f, 0.f, 0.f, 1.f);
+        Stereo again(4 * 48000);
+        again.l = again.r = sineOf(1000.0, 0.25, again.frames());
+        through(*slowed, again, 0, 48000);
+        slowed->setTempo(60.f);
+        through(*slowed, again, 48000, again.frames());
+        for (std::size_t i = 0; i < wet.size() && i < again.frames(); ++i) wet[i] = again.l[i] - in[i];
+        CHECK(std::fabs(pitchOf(wet, 48000 + 2400, 48000 + 4800) - 500.0) < 5.0 && std::fabs(pitchOf(wet, 3 * 48000, 4 * 48000) - 1000.0) < 0.01);
+        CHECK(largestJump(again.l, 48000, again.frames()) / (sineStep(1000.0, 0.25) + sineStep(2000.0, 0.25)) < 1.02);
+        // A tempo that is no tempo is not taken.
+        std::unique_ptr<Effect> odd = fresh(tape, tapeTime(5), 0.f, 0.f, 1.f);
+        odd->setTempo(10.f);
+        odd->setTempo(900.f);
+        odd->setTempo(std::nanf(""));
+        CHECK(echoAt(clickOf(*odd, 0.6, 0.1f), 0) == 24000);
+        // And the slowest one that is: half a bar at 20 would not fit on the tape, so it is as long as the tape allows.
+        odd->reset();
+        odd->setTempo(20.f);
+        odd->setParam(0, 1.f);
+        const long longest = echoAt(clickOf(*odd, 3.2, 0.1f), 0);
+        CHECK(longest == 144008); // three seconds (half a bar at 40) and the spare: 144088, less the wow's reach and 8
+    }
+
+    // IT NEVER RUNS AWAY. FEEDBACK at 120%, a burst of noise, then nothing for
+    // 30 seconds: it howls, and holds one level. The echo alone, at a sixteenth:
+    //   AGE     level from 10 to 20 s, and from 20 to 30 s     loudest once it has settled
+    //   0%          0.79   0.80                                   1.02
+    //   35%         0.43   0.44                                   0.63
+    //   100%        0.18   0.18                                   0.27
+    // (The ceiling is 1, 0.59 and 0.33; the low cut after it can lift a peak
+    // a little over.) At 96% it dies away instead.
+    for (float age : {0.f, 0.35f, 1.f}) {
+        std::vector<float> in(30 * 48000, 0.f);
+        Noise noise(31u);
+        for (std::size_t i = 0; i < 12000; ++i) in[i] = 0.5f * noise.next();
+        const std::vector<float> wet = wetOf(*fresh(tape, 0.f, 1.f, age, 1.f), in);
+        const double middle = rmsOf(wet, 10 * 48000, 20 * 48000), end = rmsOf(wet, 20 * 48000, 30 * 48000);
+        const float ceiling = 1.f / (1.f + 2.f * age);
+        float held = 0.f;
+        for (std::size_t i = 10 * 48000; i < wet.size(); ++i) held = std::fmax(held, std::fabs(wet[i]));
+        SAY("tape     feedback 120%%, age %3.0f%%: level %.3f from 10 to 20 s, %.3f from 20 to 30 s; loudest %.3f (the ceiling is %.2f)\n", age * 100.0, middle, end, static_cast<double>(held), static_cast<double>(ceiling));
+        CHECK(middle > 0.5 * ceiling && std::fabs(dB(end / middle)) < 0.2);
+        CHECK(peakOf(wet) < 1.5f); // the noise itself, once round
+        CHECK(held <= 1.1f * ceiling && held > 0.7f * ceiling);
+        const std::vector<float> dying = wetOf(*fresh(tape, 0.f, 0.8f, age, 1.f), in);
+        CHECK(rmsOf(dying, 20 * 48000, 30 * 48000) < 0.05 * rmsOf(dying, 48000, 2 * 48000));
+    }
+    // The ceiling on one loud echo: a click four times full scale comes back no louder than the ceiling.
+    for (float age : {0.f, 1.f}) {
+        const std::vector<float> ir = clickOf(*fresh(tape, tapeTime(5), 1.f, age, 1.f), 2.0, 4.f);
+        const float second = std::fabs(ir[static_cast<std::size_t>(peakAt(ir, 36000, 60000))]);
+        CHECK(second <= 1.f / (1.f + 2.f * age) && second > 0.1f / (1.f + 2.f * age));
+    }
+
+    // SILENCE IN, SILENCE OUT, and no slower on the way. With FEEDBACK at
+    // 60% and a sixteenth, each echo is 4.4 dB under the last: the tail is
+    // 180 dB down after 5 s and still there (it is not cut short), goes
+    // round for the last time when it is 240 dB down (6.75 s), and the effect
+    // is asleep (exact zeros, no work) once a whole tape of nothing has gone
+    // by, 3 s later. Measured: a block takes 1.4 us while it rings, 1.4 us at
+    // its slowest, 0.1 us asleep.
+    {
+        const std::vector<float> ir = clickOf(*fresh(tape, 0.f, 0.5f, 0.f, 1.f), 14.0, 1.f);
+        float late = 0.f;
+        for (std::size_t i = 5 * 48000; i < 5 * 48000 + 6000; ++i) late = std::fmax(late, std::fabs(ir[i]));
+        std::size_t last = 0;
+        for (std::size_t i = 0; i < ir.size(); ++i) last = ir[i] != 0.f ? i : last;
+        SAY("tape     a click at 60%%: 5 s on the echo is %.1e; the last sample that is not zero is %.2f s in\n", static_cast<double>(late), static_cast<double>(last) / 48000.0);
+        CHECK(late > 1e-10f && late < 1e-8f);
+        CHECK(last > 6 * 48000 + 24000 && last < 11 * 48000);
+        float smallest = 1.f;
+        for (float v : ir) smallest = v != 0.f ? std::fmin(smallest, std::fabs(v)) : smallest;
+        CHECK(smallest > 1e-30f); // nothing that came out was anywhere near too small to hold (that starts at 1e-38)
+        // Woken by a new sound, it plays as one fresh from the box does.
+        std::unique_ptr<Effect> slept = fresh(tape, 0.f, 0.5f, 0.f, 1.f), box = fresh(tape, 0.f, 0.5f, 0.f, 1.f);
+        clickOf(*slept, 14.0, 1.f);
+        const std::vector<float> a = clickOf(*slept, 1.0, 0.5f), b = clickOf(*box, 1.0, 0.5f);
+        float apart = 0.f;
+        for (std::size_t i = 0; i < a.size(); ++i) apart = std::fmax(apart, std::fabs(a[i] - b[i]));
+        CHECK(apart < 1e-9f && std::fabs(a[6000]) > 0.1f);
+        // Sound too faint to be sound (1e-20) does not get onto the tape: what comes out is what went in, to the bit.
+        std::unique_ptr<Effect> faint = fresh(tape, 0.f, 0.f, 0.f, 1.f);
+        Stereo io(48000);
+        io.l.assign(48000, 1e-20f);
+        io.r.assign(48000, 1e-20f);
+        io.l[0] = io.r[0] = 0.5f;
+        io.l[36000] = io.r[36000] = 0.5f; // and a second click, to read the tape back by
+        const Stereo before = io;
+        through(*faint, io);
+        bool nothingOn = io.l[6000] != before.l[6000];
+        for (std::size_t i = 36001; i < 42000; ++i) nothingOn = nothingOn && std::fabs(io.l[i] - before.l[i]) < 1e-22f && std::fabs(io.r[i] - before.r[i]) < 1e-22f; // the echo of 1e-20 would be 8e-21
+        CHECK(nothingOn);
+        // Turned while asleep, a setting is simply there when sound comes: no glide from where it was.
+        std::unique_ptr<Effect> turned = fresh(tape, 1.f, 0.f, 0.f, 0.f);
+        clickOf(*turned, 0.1, 0.f);
+        turned->setParam(0, 0.f);
+        turned->setParam(3, 1.f);
+        const std::vector<float> woke = clickOf(*turned, 0.5, 0.1f);
+        CHECK(echoAt(woke, 0) == 6000 && std::fabs(woke[6000]) > 0.05f);
+    }
+    CHECK(sameFlushed(tape, tapeTime(0), 0.5f, 0.6f, 1.f, 14.0)); // the same with the processor's flush-to-zero on or off
+    // NOTHING TOO SMALL TO HOLD IS EVER MADE, with flush-to-zero off: a whole
+    // tail, down to asleep, at three ages; and the same with sound coming in
+    // that is itself too small to hold (another effect's dying tail).
+    for (float age : {0.f, 0.35f, 1.f}) {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.5f, age, 1.f);
+        const TooSmall marks;
+        const std::vector<float> ir = clickOf(*t, 14.0, 1.f);
+        const bool seen = marks.seen();
+        CHECK(!seen && ir.back() == 0.f && rmsOf(ir, 5900, 6100) > 0.005);
+    }
+    {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.5f, 0.35f, 1.f);
+        Stereo io(4 * 48000);
+        io.l.assign(io.frames(), 1e-39f);
+        io.r.assign(io.frames(), -1e-39f);
+        io.l[0] = io.r[0] = 0.5f;
+        const TooSmall marks(false);
+        through(*t, io);
+        const bool seen = marks.seen();
+        CHECK(!seen && rmsOf(io.l, 5900, 6100) > 0.005);
+    }
+    {
+        // The tool does see them: the old REVERB's tail fades through them (which is why it cuts them off by hand).
+        std::unique_ptr<Effect> r = fresh(EffectKind::Reverb, 0.f, 0.5f, 1.f);
+        const TooSmall marks;
+        clickOf(*r, 8.0, 1.f);
+        const bool seen = marks.seen();
+        CHECK(seen);
+    }
+    // A TURNED SETTING ARRIVES IN ABOUT 20 MS, and then is exactly there. MIX
+    // from 0 to full under a steady echo: 6% of the way after the first chunk
+    // (64 samples), about a quarter after 5 ms, all but there after 100 ms.
+    {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.f, 0.f, 0.f);
+        Stereo io(96000);
+        io.l = io.r = sineOf(1000.0, 0.25, io.frames());
+        const std::vector<float> in = io.l;
+        through(*t, io, 0, 48000);
+        t->setParam(3, 1.f);
+        through(*t, io, 48000, 72000);
+        std::vector<float> wet(io.frames());
+        for (std::size_t i = 0; i < wet.size(); ++i) wet[i] = io.l[i] - in[i];
+        const double full = partAt(wet.data() + 67200, 4800, 1000.0), first = partAt(wet.data() + 48000 + 48, 48, 1000.0), soon = partAt(wet.data() + 48000 + 240, 48, 1000.0);
+        SAY("tape     MIX turned to full: the echo is %.3f of the way after 1.5 ms, %.3f after 5.5 ms, %.4f after 100 ms\n", first / full, soon / full, partAt(wet.data() + 52800, 4800, 1000.0) / full);
+        CHECK(std::fabs(full - 0.25) < 0.005);
+        CHECK(first / full > 0.02 && first / full < 0.12 && soon / full > 0.15 && soon / full < 0.4);
+        CHECK(std::fabs(partAt(wet.data() + 52800, 4800, 1000.0) / full - 1.0) < 0.01);
+        // ...and back to 0: within a second the sound is untouched, to the bit (it lands; it does not creep for ever).
+        t->setParam(3, 0.f);
+        through(*t, io, 72000, 96000);
+        bool untouched = true;
+        for (std::size_t i = 84000; i < 96000; ++i) untouched = untouched && io.l[i] == in[i];
+        CHECK(untouched && io.l[72100] != in[72100]);
+    }
+    {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.5f, 0.35f, 1.f);
+        const TailTimes took = tailTimes(*t, 16);
+        SAY("flush    tape (flush-to-zero OFF): a block takes %.2f us early, %.2f us at its slowest, %.2f us at the end (asleep)\n", took.early, took.slowest, took.late);
+        CHECK(took.slowest < 3.0 * took.early + 20.0 && took.late < took.early + 5.0);
+    }
+    // Both sides are the same tape: left and right in, left and right out, each its own.
+    {
+        std::unique_ptr<Effect> t = fresh(tape, 0.f, 0.5f, 0.f, 1.f);
+        Stereo io(24000);
+        io.l[0] = 0.1f;
+        io.r[100] = -0.05f;
+        through(*t, io);
+        const long l = peakAt(io.l, 1, io.frames()), r = peakAt(io.r, 101, io.frames());
+        CHECK(l == 6000 && r == 6100 && std::fabs(io.r[static_cast<std::size_t>(r)] + 0.5f * io.l[static_cast<std::size_t>(l)]) < 1e-4f);
+        CHECK(io.l[static_cast<std::size_t>(r)] != io.r[static_cast<std::size_t>(r)]);
+    }
 }
 
 // ---- 4. flush-to-zero ------------------------------------------------------------------------
@@ -1509,6 +2034,7 @@ int main(int argc, char** argv) {
     testDriveHarmonics();
     testDelayEchoes();
     testReverbTail();
+    testTape();
     testFlushToZero();
     testReverbDoesNotSlowDown();
     testSwapFade();

@@ -103,6 +103,7 @@ Where effects are, in the engine:
 | `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
 | `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
+| `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`), a delay read between samples, the going-to-sleep rule |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -168,6 +169,14 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   last vanishing samples of a tail (all below 1e-30) and so 1 of the 40 pinned
   checksums; turning it on is the owner's call. The old five do not need it.
   **A new effect with many fading states (HALL) does**: settle this before it ships.
+- **A new effect glides its settings and looks after its own small numbers**
+  (`fx/glide.hpp`; TAPE is the pattern). Every setting goes through a `Glide`
+  (20 ms, and it lands exactly). Anything that fades is fed a floor of 1e-18
+  or gated at `kQuiet`, and the effect goes to sleep (exact zeros, no work)
+  when its memory is empty: it must make **no number too small to hold with
+  flush-to-zero off**, and `TooSmall` in `effects_test` checks that without a
+  clock. A new effect also keeps a `wetOnly_` flag read in one place, ready
+  for the bus call.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
