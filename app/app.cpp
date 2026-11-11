@@ -17,6 +17,27 @@ App::App(Engine& engine)
     : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_), settings_(session_),
       phazed_(session_, phazedSpec()), twin_(session_, twinSpec()), qmod_(session_, qmodSpec()) {}
 
+// The one screen that is up: by the tab, and for PATTERN and DEVICE by the
+// track's instrument.
+Screen& App::screenNow() {
+    const TrackKind kind = project_->current().kind;
+    switch (session_.view) {
+    case View::Song: return song_;
+    case View::Pattern:
+        if (isSynth(kind)) return notes_;
+        return drums_;
+    case View::Device:
+        if (kind == TrackKind::Phazed) return phazed_;
+        if (kind == TrackKind::Twin) return twin_;
+        if (kind == TrackKind::Qmod) return qmod_;
+        if (kind == TrackKind::Sampler) return sampler_;
+        return kit_;
+    case View::Effects: return fx_;
+    case View::Settings: break;
+    }
+    return settings_;
+}
+
 void App::onButton(const ButtonEvent& event, const Input& input) {
     // All four shoulder buttons at once: panic. Silence now, whatever screen
     // this is. It lasts as long as they are held.
@@ -129,8 +150,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     if (event.button == Button::L2 || event.button == Button::R2) {
         // With A held on a grid they nudge what A has hold of, early or late.
         if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
-            if (isSynth(project_->current().kind)) notes_.onButton(event, input);
-            else drums_.onButton(event, input);
+            screenNow().onButton(event, input);
             return;
         }
         // On the drum grid, R2 with R1 held turns R1's brush random. R2 by
@@ -146,35 +166,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (next >= 0 && next <= static_cast<int>(View::Settings)) session_.view = static_cast<View>(next);
         return;
     }
-    const TrackKind kind = project_->current().kind;
-    switch (session_.view) {
-    case View::Song:
-        song_.onButton(event, input);
-        break;
-    case View::Pattern:
-        if (isSynth(kind)) notes_.onButton(event, input);
-        else drums_.onButton(event, input);
-        break;
-    case View::Device:
-        if (kind == TrackKind::Phazed) {
-            phazed_.onButton(event, input);
-        } else if (kind == TrackKind::Twin) {
-            twin_.onButton(event, input);
-        } else if (kind == TrackKind::Qmod) {
-            qmod_.onButton(event, input);
-        } else if (kind == TrackKind::Sampler) {
-            sampler_.onButton(event, input);
-        } else {
-            kit_.onButton(event, input);
-        }
-        break;
-    case View::Effects:
-        fx_.onButton(event, input);
-        break;
-    case View::Settings:
-        settings_.onButton(event, input);
-        break;
-    }
+    screenNow().onButton(event, input);
 }
 
 void App::changeVolume(float by) {
@@ -221,55 +213,11 @@ void App::update(const Input& input, Uint32 nowMs) {
     if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
     session_.update(nowMs);
     session_.engine.setScopeTrack(project_->track);
-    const TrackKind kind = project_->current().kind;
-    switch (session_.view) {
-    case View::Song:
-        song_.update(input, nowMs);
-        break;
-    case View::Pattern:
-        if (isSynth(kind)) notes_.update(input, nowMs);
-        else drums_.update(input, nowMs);
-        break;
-    case View::Device:
-        if (kind == TrackKind::Phazed) phazed_.update(input, nowMs);
-        else if (kind == TrackKind::Twin) twin_.update(input, nowMs);
-        else if (kind == TrackKind::Qmod) qmod_.update(input, nowMs);
-        else if (kind == TrackKind::Sampler) sampler_.update(input, nowMs);
-        else kit_.update(input, nowMs);
-        break;
-    case View::Effects:
-        fx_.update(input, nowMs);
-        break;
-    case View::Settings:
-        settings_.update(input, nowMs);
-        break;
-    }
+    screenNow().update(input, nowMs);
 }
 
 void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
-    const TrackKind kind = project_->current().kind;
-    switch (session_.view) {
-    case View::Song:
-        song_.draw(renderer, fonts);
-        break;
-    case View::Pattern:
-        if (isSynth(kind)) notes_.draw(renderer, fonts);
-        else drums_.draw(renderer, fonts);
-        break;
-    case View::Device:
-        if (kind == TrackKind::Phazed) phazed_.draw(renderer, fonts);
-        else if (kind == TrackKind::Twin) twin_.draw(renderer, fonts);
-        else if (kind == TrackKind::Qmod) qmod_.draw(renderer, fonts);
-        else if (kind == TrackKind::Sampler) sampler_.draw(renderer, fonts);
-        else kit_.draw(renderer, fonts);
-        break;
-    case View::Effects:
-        fx_.draw(renderer, fonts);
-        break;
-    case View::Settings:
-        settings_.draw(renderer, fonts);
-        break;
-    }
+    screenNow().draw(renderer, fonts);
 
     if (now_ < volumeShownUntil_) {
         // The volume, for a moment after it is changed.

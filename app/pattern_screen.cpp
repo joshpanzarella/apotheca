@@ -26,7 +26,6 @@ constexpr int kStartSlices = 16;          // the D-pad and the lane roll move a 
 constexpr float kMaxStart = 15.f / 16.f;  // the last sixteenth is always left to hear
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
 
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
 float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 

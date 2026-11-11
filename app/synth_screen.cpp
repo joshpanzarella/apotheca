@@ -1,4 +1,4 @@
-#include "phazed_screen.hpp"
+#include "synth_screen.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -17,25 +17,24 @@ constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
 constexpr float kPresetsPerSecond = 10.f;
 
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
 } // namespace
 
 // ---- what is on each page --------------------------------------------------------
 
-int PhazedScreen::itemCount() const { return page_ == 0 ? kMainStops : spec_.itemCount(page_); }
+int SynthScreen::itemCount() const { return page_ == 0 ? kMainStops : spec_.itemCount(page_); }
 
-PhazedScreen::Item PhazedScreen::item(int index) const {
+SynthScreen::Item SynthScreen::item(int index) const {
     Item it = {0, ""};
     spec_.item(page_, index, it.id, it.name);
     return it;
 }
 
-int PhazedScreen::columns() const { return envelopePage() ? kEnvSteps : 4; }
+int SynthScreen::columns() const { return envelopePage() ? kEnvSteps : 4; }
 
-int PhazedScreen::settingHere() const { return page_ == 0 ? -1 : item(cursor_).id; }
+int SynthScreen::settingHere() const { return page_ == 0 ? -1 : item(cursor_).id; }
 
-void PhazedScreen::goTo(int page, int cursor) {
+void SynthScreen::goTo(int page, int cursor) {
     page_ = page < 0 ? 0 : (page >= spec_.pages ? spec_.pages - 1 : page);
     const int count = itemCount();
     cursor_ = cursor < 0 ? 0 : (cursor >= count ? count - 1 : cursor);
@@ -43,7 +42,7 @@ void PhazedScreen::goTo(int page, int cursor) {
 
 // ---- the cursor --------------------------------------------------------------------
 
-void PhazedScreen::moveCursor(Button direction) {
+void SynthScreen::moveCursor(Button direction) {
     if (page_ == 0) {
         // Four rows: folder and preset; two rows of four macros; ADVANCED.
         const int row = cursor_ < kFirstMacro ? 0 : cursor_ == kAdvanced ? 3 : 1 + (cursor_ - kFirstMacro) / 4;
@@ -81,11 +80,11 @@ void PhazedScreen::moveCursor(Button direction) {
 
 // ---- changing the sound ----------------------------------------------------------------
 
-void PhazedScreen::hear() {
+void SynthScreen::hear() {
     if (!project_.playing) session_.audition(project_.track, 60, 0.8f);
 }
 
-void PhazedScreen::choosePreset(int index) {
+void SynthScreen::choosePreset(int index) {
     const int count = spec_.presetCount();
     index = ((index % count) + count) % count;
     if (index == trk().preset) return;
@@ -93,10 +92,10 @@ void PhazedScreen::choosePreset(int index) {
     hear();
 }
 
-void PhazedScreen::stepPreset(int by) { choosePreset(trk().preset + by); }
+void SynthScreen::stepPreset(int by) { choosePreset(trk().preset + by); }
 
 // To the first preset of the next or the previous folder.
-void PhazedScreen::stepFolder(int by) {
+void SynthScreen::stepFolder(int by) {
     const int count = spec_.presetCount();
     const char* here = spec_.presetCategory(trk().preset);
     int i = trk().preset;
@@ -113,9 +112,9 @@ void PhazedScreen::stepFolder(int by) {
 }
 
 // Through the session, so that with WRITE on and the song playing the move is recorded into the pattern.
-void PhazedScreen::setMacro(int macro, float value) { session_.setSynthMacro(project_.track, macro, value); }
+void SynthScreen::setMacro(int macro, float value) { session_.setSynthMacro(project_.track, macro, value); }
 
-void PhazedScreen::setSetting(int id, int value) {
+void SynthScreen::setSetting(int id, int value) {
     value = value < spec_.settingMin(id) ? spec_.settingMin(id) : (value > spec_.settingMax(id) ? spec_.settingMax(id) : value);
     if (value == values()[id]) return;
     values()[id] = value;
@@ -127,9 +126,9 @@ void PhazedScreen::setSetting(int id, int value) {
     session_.engine.send(c);
 }
 
-bool PhazedScreen::isChoice(int id) const { return spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
+bool SynthScreen::isChoice(int id) const { return spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
 
-void PhazedScreen::turn(float amount) {
+void SynthScreen::turn(float amount) {
     if (amount == 0.f) return;
     if (page_ == 0) {
         if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
@@ -170,7 +169,7 @@ void PhazedScreen::turn(float amount) {
     }
 }
 
-void PhazedScreen::stepExact(int by) {
+void SynthScreen::stepExact(int by) {
     if (page_ == 0) {
         if (cursor_ == kFolder) stepFolder(by);
         else if (cursor_ == kPreset) stepPreset(by);
@@ -187,7 +186,7 @@ void PhazedScreen::stepExact(int by) {
 
 // ---- buttons ----------------------------------------------------------------------------
 
-void PhazedScreen::onButton(const ButtonEvent& event, const Input& input) {
+void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (b == Button::A) {
         if (event.down && page_ == 0 && cursor_ == kAdvanced) {
@@ -239,7 +238,7 @@ void PhazedScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 }
 
-void PhazedScreen::update(const Input& input, Uint32 nowMs) {
+void SynthScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
@@ -283,7 +282,7 @@ void PhazedScreen::update(const Input& input, Uint32 nowMs) {
 
 // ---- drawing ----------------------------------------------------------------------------
 
-void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
+void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
     std::snprintf(text, sizeof text, "%s / %s", name, spec_.pageNames[page_]);

@@ -28,6 +28,7 @@
 //     A on the open song   its revs. A on one goes back to it; where the
 //                      song was is kept as a rev first.
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include <string>
@@ -45,16 +46,16 @@ namespace apotheca {
 extern const char* const kTrackNames[];
 extern const int kTrackNameCount;
 
-class SongScreen {
+class SongScreen : public Screen {
 public:
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     float trackDeletePart() const { return trackHoldPart_; }
     explicit SongScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills.
     void moveCursorTo(int scene, int column); // column -1 is the repeat count; trackCount() is + TRACK

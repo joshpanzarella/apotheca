@@ -13,6 +13,7 @@
 //   X                hear the track
 //   START            play / stop
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include "input.hpp"
@@ -26,13 +27,13 @@ namespace apotheca {
 // another (the DJ filter's cutoff); without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
-class FxScreen {
+class FxScreen : public Screen {
 public:
     explicit FxScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills. Rows: 0, 1 the track's slots; 2, 3 the master's.
     // Column 0 is the effect; 1.. are its settings.

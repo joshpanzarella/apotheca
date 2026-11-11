@@ -21,6 +21,7 @@
 // by itself four seconds after the last press or let-go, even if a button
 // is stuck down.
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include <string>
@@ -31,15 +32,15 @@
 
 namespace apotheca {
 
-class SettingsScreen {
+class SettingsScreen : public Screen {
 public:
     enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     void goTo(int row) { row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row); }
     int cursorRow() const { return row_; }

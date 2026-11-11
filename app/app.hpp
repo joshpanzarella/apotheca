@@ -26,10 +26,11 @@
 #include "note_screen.hpp"
 #include "pattern_screen.hpp"
 #include "sampler_screen.hpp"
-#include "phazed_screen.hpp"
+#include "synth_screen.hpp"
 #include "session.hpp"
 #include "settings_screen.hpp"
 #include "song_screen.hpp"
+#include "screen.hpp"
 #include "ui.hpp"
 
 namespace apotheca {
@@ -49,9 +50,9 @@ public:
     SongScreen& song() { return song_; }
     PatternScreen& drums() { return drums_; }
     NoteScreen& notes() { return notes_; }
-    PhazedScreen& phazed() { return phazed_; }
-    PhazedScreen& twin() { return twin_; }
-    PhazedScreen& qmod() { return qmod_; }
+    SynthScreen& phazed() { return phazed_; }
+    SynthScreen& twin() { return twin_; }
+    SynthScreen& qmod() { return qmod_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     SamplerScreen& sampler() { return sampler_; }
@@ -72,6 +73,8 @@ public:
     int updateSaid() const { return updateSaid_; } // 0 nothing, 1 "accepted", 2 "could not"
 
 private:
+    Screen& screenNow();
+    const Screen& screenNow() const { return const_cast<App*>(this)->screenNow(); }
     std::unique_ptr<Project> project_; // large, so not on the stack
     Session session_;
     SongScreen song_;
@@ -98,9 +101,9 @@ private:
     bool help_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
-    PhazedScreen phazed_; // the same screen, once for each synth
-    PhazedScreen twin_;
-    PhazedScreen qmod_;
+    SynthScreen phazed_; // the same screen, once for each synth
+    SynthScreen twin_;
+    SynthScreen qmod_;
 };
 
 } // namespace apotheca

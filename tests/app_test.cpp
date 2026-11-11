@@ -1611,7 +1611,7 @@ void testRecordingAutomation() {
     session.setSynthMacro(1, 0, 0.6f); // twice in one step: the last word stands
     CHECK(written(0) == 2 && near(track.automation[0][0][4], 0.6f));
     // The screen's own way of turning a macro records too (hold A, D-pad up, on a macro).
-    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + 2);
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro + 2);
     rig.render(kStep);
     rig.frames(1);
     rig.key(A, true);
@@ -1622,7 +1622,7 @@ void testRecordingAutomation() {
     CHECK(near(session.automated(1, 2, 0.123f), track.automation[0][2][5]) && near(session.automated(1, 4, 0.123f), 0.123f));
     // B while it plays with WRITE on: the macro goes back to the middle and its lane is cleared, and that
     // reset is not itself written down as a move.
-    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + 2);
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro + 2);
     rig.tap(B);
     CHECK(written(2) == 0 && near(track.macro[2], 0.5f) && session.writing());
     rig.render(kStep);
@@ -1661,7 +1661,7 @@ void testRecordingAutomation() {
     CHECK(near(session.automated(1, 0, 0.5f), 0.5f)); // stopped: every reading is the knob's
 
     // B on a macro: back to the middle, and its automation in this cell goes (and that reset is not itself recorded).
-    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro);
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro);
     rig.tap(B);
     CHECK(written(0) == 0 && near(track.macro[0], 0.5f) && written(2) == 1 && session.writing());
     // B on an effect's setting: its default, and its automation goes.
@@ -1813,7 +1813,7 @@ void testChoicesClick() {
     addPhazed(rig);
     rig.project().track = 1;
     session.view = View::Device;
-    PhazedScreen& device = rig.app.phazed();
+    SynthScreen& device = rig.app.phazed();
     const SynthSpec& spec = phazedSpec();
     int wavePage = -1, waveItem = -1, waveId = -1;
     for (int page = 1; page < spec.pages && wavePage < 0; ++page)
@@ -3254,9 +3254,9 @@ Rig* onPhazed() {
 
 void testPresetsAndFolders() {
     std::unique_ptr<Rig> rig(onPhazed());
-    PhazedScreen& screen = rig->app.phazed();
+    SynthScreen& screen = rig->app.phazed();
     TrackData& track = rig->project().tracks[1];
-    CHECK(rig->view() == View::Device && screen.page() == 0 && screen.cursor() == PhazedScreen::kPreset);
+    CHECK(rig->view() == View::Device && screen.page() == 0 && screen.cursor() == SynthScreen::kPreset);
     CHECK(track.preset == 0);
     // Hold A and step: the next preset, and it is played at once.
     rig->key(A, true);
@@ -3272,7 +3272,7 @@ void testPresetsAndFolders() {
 
     // The folder steps a folder at a time, to its first preset.
     rig->tap(LEFT);
-    CHECK(screen.cursor() == PhazedScreen::kFolder);
+    CHECK(screen.cursor() == SynthScreen::kFolder);
     const char* first = Phazed::presetCategory(0);
     rig->key(A, true);
     rig->tap(UP);
@@ -3303,12 +3303,12 @@ void testPresetsAndFolders() {
 
 void testMacros() {
     std::unique_ptr<Rig> rig(onPhazed());
-    PhazedScreen& screen = rig->app.phazed();
+    SynthScreen& screen = rig->app.phazed();
     TrackData& track = rig->project().tracks[1];
     rig->tap(DOWN);
-    CHECK(screen.cursor() == PhazedScreen::kFirstMacro + 2); // under PRESET: the right half of the row
+    CHECK(screen.cursor() == SynthScreen::kFirstMacro + 2); // under PRESET: the right half of the row
     rig->tap(LEFT, 2);
-    CHECK(screen.cursor() == PhazedScreen::kFirstMacro); // TONE
+    CHECK(screen.cursor() == SynthScreen::kFirstMacro); // TONE
     for (float m : track.macro) CHECK(m == 0.5f);
     rig->key(A, true);
     rig->tap(UP);
@@ -3327,20 +3327,20 @@ void testMacros() {
 
     // The cursor walks the two rows of four, then ADVANCED.
     rig->tap(RIGHT, 3);
-    CHECK(screen.cursor() == PhazedScreen::kFirstMacro + 3);
+    CHECK(screen.cursor() == SynthScreen::kFirstMacro + 3);
     rig->tap(DOWN);
-    CHECK(screen.cursor() == PhazedScreen::kFirstMacro + 7);
+    CHECK(screen.cursor() == SynthScreen::kFirstMacro + 7);
     rig->tap(DOWN);
-    CHECK(screen.cursor() == PhazedScreen::kAdvanced);
+    CHECK(screen.cursor() == SynthScreen::kAdvanced);
     rig->tap(UP);
-    CHECK(screen.cursor() == PhazedScreen::kFirstMacro + 4);
+    CHECK(screen.cursor() == SynthScreen::kFirstMacro + 4);
 
     // Choosing another preset clears the macros.
     rig->key(A, true);
     rig->tap(UP, 4);
     rig->key(A, false);
     CHECK(track.macro[phazed::Detune] > 0.5f);
-    rig->app.phazed().goTo(0, PhazedScreen::kPreset);
+    rig->app.phazed().goTo(0, SynthScreen::kPreset);
     rig->key(A, true);
     rig->tap(UP);
     rig->key(A, false);
@@ -3388,7 +3388,7 @@ void testTheEngineHearsMacrosAndSettings() {
     CHECK(noteNow(*other) == wanted);
     CHECK(wanted != base);
     // A macro.
-    bent->app.phazed().goTo(0, PhazedScreen::kFirstMacro + phazed::MacroOctave);
+    bent->app.phazed().goTo(0, SynthScreen::kFirstMacro + phazed::MacroOctave);
     bent->key(A, true);
     bent->key(STICK_UP, true);
     bent->frames(60);
@@ -3409,9 +3409,9 @@ void testTheEngineHearsMacrosAndSettings() {
 
 void testAdvancedPages() {
     std::unique_ptr<Rig> rig(onPhazed());
-    PhazedScreen& screen = rig->app.phazed();
+    SynthScreen& screen = rig->app.phazed();
     TrackData& track = rig->project().tracks[1];
-    screen.goTo(0, PhazedScreen::kAdvanced);
+    screen.goTo(0, SynthScreen::kAdvanced);
     rig->key(A, true);
     CHECK(screen.page() == 1 && screen.cursor() == 0);
     CHECK(screen.settingHere() == phazed::LineSelect);
@@ -3472,12 +3472,12 @@ void testAdvancedPages() {
 
     // B goes back to MAIN, onto ADVANCED, and the pages are a tap away again.
     rig->tap(B);
-    CHECK(screen.page() == 0 && screen.cursor() == PhazedScreen::kAdvanced);
+    CHECK(screen.page() == 0 && screen.cursor() == SynthScreen::kAdvanced);
     rig->tap(L1); // the page buttons do nothing on MAIN
     rig->tap(R1);
     CHECK(screen.page() == 0);
     // Every page's cursor stops map to settings inside the patch.
-    for (int page = 1; page < PhazedScreen::kPages; ++page) {
+    for (int page = 1; page < SynthScreen::kPages; ++page) {
         for (int stop = 0; stop < 40; ++stop) {
             screen.goTo(page, stop);
             CHECK(screen.settingHere() >= 0 && screen.settingHere() < phazed::kSettings);
@@ -3487,9 +3487,9 @@ void testAdvancedPages() {
 
 void testEveryPatchSettingIsOnSomePage() {
     std::unique_ptr<Rig> rig(onPhazed());
-    PhazedScreen& screen = rig->app.phazed();
+    SynthScreen& screen = rig->app.phazed();
     bool seen[phazed::kSettings] = {};
-    for (int page = 1; page < PhazedScreen::kPages; ++page) {
+    for (int page = 1; page < SynthScreen::kPages; ++page) {
         for (int stop = 0; stop < 40; ++stop) {
             screen.goTo(page, stop);
             if (screen.cursor() == stop) seen[screen.settingHere()] = true;
@@ -3545,7 +3545,7 @@ void testTwinsDeviceScreen() {
     std::unique_ptr<Rig> rig(onTwin());
     rig->tap(A);  // open its pattern
     rig->tap(R2); // and its device
-    PhazedScreen& screen = rig->app.twin();
+    SynthScreen& screen = rig->app.twin();
     TrackData& track = rig->project().tracks[1];
     CHECK(rig->view() == View::Device && screen.pageCount() == 4);
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
@@ -3561,7 +3561,7 @@ void testTwinsDeviceScreen() {
     rig->key(A, false);
 
     // A macro.
-    screen.goTo(0, PhazedScreen::kFirstMacro + twin::Blend);
+    screen.goTo(0, SynthScreen::kFirstMacro + twin::Blend);
     rig->key(A, true);
     rig->tap(UP, 3);
     rig->key(A, false);

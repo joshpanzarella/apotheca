@@ -54,6 +54,7 @@
 // the cursor anywhere in its steps, hold Y to swap it for another chord in
 // place; B while Y is held breaks it up into loose notes instead.
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include "input.hpp"
@@ -62,13 +63,13 @@
 
 namespace apotheca {
 
-class NoteScreen {
+class NoteScreen : public Screen {
 public:
     explicit NoteScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills.
     void moveCursorTo(int pitch, int step);

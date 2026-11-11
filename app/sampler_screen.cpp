@@ -13,7 +13,6 @@ namespace {
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 40;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
 const char* const kNames[sampler::kSettings] = {"ROOT", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 }
 
 void samplerSettingText(int id, int value, char* out, int size) {

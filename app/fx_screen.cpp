@@ -10,7 +10,6 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 60;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
 // Settings that are a choice, not an amount: how many choices.
 int choices(EffectKind kind, int index) {

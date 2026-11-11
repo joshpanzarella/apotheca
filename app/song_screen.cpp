@@ -22,7 +22,6 @@ constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
 
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
 // The columns share the width of the screen: few tracks, wide columns. The
 // "+ TRACK" column (there until all twelve are used) is one of them.

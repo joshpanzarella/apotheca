@@ -17,6 +17,7 @@
 // drawn out. For Twin Analog, three. L1 and R1 turn the pages; B goes back
 // to MAIN.
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include "input.hpp"
@@ -26,14 +27,14 @@
 
 namespace apotheca {
 
-class PhazedScreen {
+class SynthScreen : public Screen {
 public:
-    PhazedScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec) {}
+    SynthScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec) {}
 
     void choosePreset(int index); // any preset, the player's own included; it comes round at the ends
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills.
     static constexpr int kPages = 10; // Phazed's: MAIN, then nine advanced pages

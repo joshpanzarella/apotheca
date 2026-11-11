@@ -1,7 +1,7 @@
 #pragma once
 // What the Device screen needs to know about a synth to show it: its
 // presets, its macros, its pages of settings and how each value reads.
-// One screen (phazed_screen.hpp) serves every synth from one of these.
+// One screen (synth_screen.hpp) serves every synth from one of these.
 
 #include <string>
 #include <vector>

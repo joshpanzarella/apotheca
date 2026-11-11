@@ -23,7 +23,6 @@ constexpr float kMostNudge = 0.5f;      // half a step early or late
 constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
 constexpr float kCarryKeysPerSecond = 10.f, kCarryStepsPerSecond = 6.f; // the stick with X held on a note
 
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 bool isBlackKey(int pitch) {
     const int k = ((pitch % 12) + 12) % 12;
     return k == 1 || k == 3 || k == 6 || k == 8 || k == 10;

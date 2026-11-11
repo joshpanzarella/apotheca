@@ -17,7 +17,6 @@ constexpr Uint32 kRelearnHoldMs = 1000; // A held this long on CONTROLS
 constexpr Uint32 kTestQuietMs = 4000;   // the button test closes this long after the last press
 constexpr Uint32 kRepeatDelayMs = 350, kRepeatEveryMs = 90;
 constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
-bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 }
 
 // Four rows of ten: the letters, the digits, and the three marks a name may have. '_' at the end; the space is the wide one.

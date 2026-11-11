@@ -20,6 +20,7 @@
 //   X       hear the lane
 //   START   play / stop
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include <string>
@@ -32,13 +33,13 @@
 
 namespace apotheca {
 
-class KitScreen {
+class KitScreen : public Screen {
 public:
     explicit KitScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills.
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }

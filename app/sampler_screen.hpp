@@ -20,6 +20,7 @@
 //   X          hear it, at its root key
 //   START      play / stop
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include <string>
@@ -34,13 +35,13 @@ namespace apotheca {
 
 void samplerSettingText(int id, int value, char* out, int size);
 
-class SamplerScreen {
+class SamplerScreen : public Screen {
 public:
     explicit SamplerScreen(Session& session) : session_(session), project_(session.project) {}
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs);
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override;
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For tests and stills. Stop 0 is SOUND; 1.. are the settings in order.
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }

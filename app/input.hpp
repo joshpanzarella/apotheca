@@ -20,6 +20,9 @@ enum class Button {
     None = Count
 };
 
+// One of the four on the D-pad. (The stick is turned into these too.)
+inline bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
+
 struct ButtonEvent {
     Button button = Button::None;
     bool down = false;

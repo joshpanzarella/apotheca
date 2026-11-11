@@ -111,11 +111,11 @@ void fillSong(Rig& rig) {
     rig.app.notes().moveCursorTo(55, 8);
     rig.tap(A);
     rig.session().view = View::Device;
-    rig.app.phazed().goTo(0, PhazedScreen::kPreset);
+    rig.app.phazed().goTo(0, SynthScreen::kPreset);
     rig.key(A, true);
     rig.tap(UP, 9);
     rig.key(A, false);
-    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + phazed::Tone);
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro + phazed::Tone);
     rig.key(A, true);
     rig.tap(UP, 4);
     rig.key(A, false);
@@ -132,7 +132,7 @@ void fillSong(Rig& rig) {
     rig.app.notes().moveCursorTo(64, 0);
     rig.tap(A);
     rig.session().view = View::Device;
-    rig.app.twin().goTo(0, PhazedScreen::kPreset);
+    rig.app.twin().goTo(0, SynthScreen::kPreset);
     rig.key(A, true);
     rig.tap(UP, 4);
     rig.key(A, false);

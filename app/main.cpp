@@ -492,7 +492,7 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "phazed") == 0) {
         app.project().track = 1;
         app.session().view = View::Device;
-        app.phazed().goTo(0, PhazedScreen::kFirstMacro);
+        app.phazed().goTo(0, SynthScreen::kFirstMacro);
         pushKey(SDLK_x, true);  // hold A on TONE
         tapKey(SDLK_UP, 6);     // and turn it up
     } else if (std::strncmp(view, "page", 4) == 0) {
@@ -504,7 +504,7 @@ int main(int argc, char** argv) {
         app.session().addTrack(TrackKind::Twin);
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
-        app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : PhazedScreen::kFirstMacro + 1);
+        app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : SynthScreen::kFirstMacro + 1);
     } else if (std::strcmp(view, "kit") == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one
         // bar, with hits on the beat whose starts have been rolled.

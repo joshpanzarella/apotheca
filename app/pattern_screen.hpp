@@ -60,6 +60,7 @@
 // is that drum's volume) and on the tempo (up from the top lane; hold A +
 // stick). With A or Y held, the D-pad nudges the same values in exact steps.
 
+#include "screen.hpp"
 #include <SDL.h>
 
 #include <cstdint>
@@ -81,13 +82,13 @@ struct Feel {
     float tempoPerSecond = 90.f;  // stick fully over, in BPM
 };
 
-class PatternScreen {
+class PatternScreen : public Screen {
 public:
     explicit PatternScreen(Session& session);
 
-    void onButton(const ButtonEvent& event, const Input& input);
-    void update(const Input& input, Uint32 nowMs); // once per frame
-    void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    void onButton(const ButtonEvent& event, const Input& input) override;
+    void update(const Input& input, Uint32 nowMs) override; // once per frame
+    void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
 
     // For the build check and for stills: writes through the same path the
     // buttons use.
