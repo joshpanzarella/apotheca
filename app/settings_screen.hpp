@@ -63,6 +63,7 @@ private:
     mutable char bounced_[64] = "";
     int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
     bool typing_ = false;
+    bool fromSong_ = false; // the keyboard was asked for from the SONG screen, and goes back there
     std::string typed_;
     int key_ = 0; // which character of the grid the cursor is on
     void typeButton(Button b);

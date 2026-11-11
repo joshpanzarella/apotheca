@@ -49,6 +49,11 @@ void SettingsScreen::typeButton(Button b) {
         session_.setTrackName(project_.track, typed_);
         typing_ = false;
     }
+    // Opened from the SONG screen: back to it when the typing is over.
+    if (!typing_ && fromSong_) {
+        fromSong_ = false;
+        session_.view = View::Song;
+    }
 }
 
 void SettingsScreen::change(int by) {
@@ -118,6 +123,15 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false, holdPart_ = 0.f;
+    // The SONG screen asked for the keyboard, for the track its cursor is on.
+    if (session_.wantTrackName) {
+        session_.wantTrackName = false;
+        row_ = kTrackName;
+        typing_ = true;
+        fromSong_ = true;
+        typed_ = project_.current().name;
+        key_ = 0;
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;

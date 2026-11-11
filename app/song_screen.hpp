@@ -61,6 +61,7 @@ public:
     void moveCursorTo(int scene, int column); // column -1 is the repeat count; trackCount() is + TRACK
     int cursorScene() const { return scene_; }
     int cursorColumn() const { return column_; }
+    bool cursorOnHead() const { return onHead_; }
     bool choosing() const { return choosing_; }
     bool listingSongs() const { return listing_; }
     bool listingRevs() const { return listing_ && revsOpen_; }
@@ -75,7 +76,7 @@ private:
     int addColumn() const { return project_.trackCount() < kNumTracks ? project_.trackCount() : -2; } // -2: no such column
     int lastColumn() const { return project_.trackCount() < kNumTracks ? project_.trackCount() : kNumTracks - 1; }
     bool onCell() const { return column_ >= 0 && column_ < project_.trackCount(); }
-    void moveCursor(Button direction);
+    void moveCursor(Button direction, bool pressed = false); // pressed: a press of the D-pad itself, not a run of it or the stick
     void setRepeats(int count);
     void stepBars(int by);
     void clearCell(int track, int scene);
@@ -84,6 +85,7 @@ private:
 
     Session& session_;
     Project& project_;
+    bool onHead_ = false; // the cursor is on a track's head (its name), above the top scene
     int scene_ = 0;
     int column_ = 0;
     int top_ = 0; // first scene shown

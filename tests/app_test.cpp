@@ -400,6 +400,8 @@ void testTheSongScreenScrolls() {
     CHECK(rig.app.song().cursorScene() == kMaxScenes - 1);
     rig.tap(UP, 40);
     CHECK(rig.app.song().cursorScene() == 0);
+    rig.tap(DOWN); // (the last of those presses went up onto the track's head: back down off it)
+    CHECK(rig.app.song().cursorScene() == 0 && !rig.app.song().cursorOnHead());
     rig.key(STICK_DOWN, true);
     rig.frames(40);
     rig.key(STICK_DOWN, false);
@@ -3940,9 +3942,84 @@ void testStepEffects() {
     drums.setFx(0, 99, wild);
 }
 
+// On the SONG screen, up from the top scene is the track's head; A there types its name.
+void testNamingATrackFromTheSongScreen() {
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Phazed);
+    rig.frames(2);
+    rig.tap(L2); // SONG
+    CHECK(rig.view() == View::Song);
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(1, 1);
+    rig.tap(UP);
+    CHECK(!song.cursorOnHead() && song.cursorScene() == 0);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead() && song.cursorScene() == 0 && song.cursorColumn() == 1);
+    // Left and right along the heads, and no further than the tracks; down is back to the cells.
+    rig.tap(LEFT);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 0);
+    rig.tap(LEFT);
+    CHECK(song.cursorColumn() == 0);
+    rig.tap(RIGHT, 5);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.tap(DOWN);
+    CHECK(!song.cursorOnHead() && song.cursorScene() == 0);
+    // The stick running up the scenes stops at the top one: only a press of the D-pad goes onto the head.
+    song.moveCursorTo(3, 1);
+    rig.key(STICK_UP, true);
+    rig.frames(40);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(!song.cursorOnHead() && song.cursorScene() == 0);
+    rig.key(UP, true); // and so does a held D-pad that got there by running
+    song.moveCursorTo(2, 1);
+    rig.frames(60);
+    rig.key(UP, false);
+    CHECK(!song.cursorOnHead() && song.cursorScene() == 0);
+    rig.tap(UP);
+    // B there empties nothing, and R1 copies nothing.
+    rig.app.session().setTrackName(1, "");
+    rig.app.drums().setStep(0, 0, 0.9f); // something in the top cell of track 1, to see it left alone
+    rig.tap(LEFT);
+    rig.tap(B);
+    rig.tap(R1);
+    CHECK(song.cursorOnHead() && rig.view() == View::Song && rig.app.drums().level(0, 0) == 0.9f);
+    rig.tap(RIGHT);
+    // A: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
+    rig.tap(A);
+    rig.frames(1);
+    CHECK(rig.view() == View::Settings && rig.app.settings().typing() && rig.project().track == 1);
+    rig.tap(A); // the first key
+    rig.tap(RIGHT);
+    rig.tap(A);
+    rig.tap(START);
+    CHECK(rig.view() == View::Song && !rig.app.settings().typing() && std::strlen(rig.project().tracks[1].name) == 2 && rig.project().tracks[0].name[0] == 0);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
+    // B with nothing typed leaves it as it was, and also comes back.
+    const std::string kept = rig.project().tracks[1].name;
+    rig.tap(A);
+    rig.frames(1);
+    rig.tap(B, 3);
+    CHECK(rig.view() == View::Song && kept == rig.project().tracks[1].name);
+    // From the SET tab's own row the keyboard stays on SET when it is done.
+    rig.app.session().view = View::Settings;
+    rig.app.settings().goTo(SettingsScreen::kTrackName);
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(rig.app.settings().typing());
+    rig.tap(START);
+    CHECK(rig.view() == View::Settings);
+    // Not from the PLAYS column or + TRACK: up there does nothing at the top.
+    rig.app.session().view = View::Song;
+    song.moveCursorTo(0, -1);
+    rig.tap(UP);
+    CHECK(!song.cursorOnHead());
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testNamingATrackFromTheSongScreen();
     testStepEffects();
     testAFullQueueIsRecoveredFrom();
     testANewProjectIsOneDrumTrack();

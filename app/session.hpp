@@ -108,6 +108,9 @@ public:
     void setLaneOneSlice(int track, int lane, bool on);
     // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
     int wantSlices = -1; // a lane, or -1
+    // Asked for from the SONG screen: the keyboard for the current track's name (it lives on the SET tab).
+    // When it is done, the SONG screen comes back.
+    bool wantTrackName = false;
     // Catch: the last bar the song played (everything, as it was heard)
     // becomes a recording, "catch 1", "catch 2"..., and goes on this lane
     // fitted to one bar. Returns its name, or "" if there was only silence
