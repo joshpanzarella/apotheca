@@ -17,6 +17,7 @@
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
+//   --battery DIR  read the battery from DIR (laid out like /sys/class/power_supply)
 //   --learn        set up the controls again (as on a first start with a joystick)
 //   --handheld     what the launcher passes: set up the controls on a first start
 //                  even if the buttons do not show up as a joystick (some
@@ -228,6 +229,7 @@ int main(int argc, char** argv) {
     int paint = 0; // 1: R1, 2: L1
     const char* view = "";
     const char* shot = nullptr;
+    const char* batteryFolder = nullptr;
     const char* songs = nullptr;
     const char* samples = nullptr;
     for (int i = 1; i < argc; ++i) {
@@ -244,6 +246,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--on-tempo") == 0) onTempo = true;
         else if (std::strcmp(argv[i], "--view") == 0 && i + 1 < argc) view = argv[++i];
         else if (std::strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
+        else if (std::strcmp(argv[i], "--battery") == 0 && i + 1 < argc) batteryFolder = argv[++i];
         else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
         else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
     }
@@ -364,6 +367,7 @@ int main(int argc, char** argv) {
     if (mapped) input.useMap(&controlMap);
     static SdlInput recordingInput;
     App app(engine);
+    if (batteryFolder) app.useBatteryFolder(batteryFolder);
     app.session().useAudioInput(&recordingInput);
     {
         // Chord packs: a "chords" folder beside the program, or the one in

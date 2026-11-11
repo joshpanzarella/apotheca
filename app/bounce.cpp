@@ -20,6 +20,7 @@
 
 #include <sys/stat.h>
 
+#include "instruments.hpp"
 #include "session.hpp"
 #include "song_file.hpp"
 
@@ -137,8 +138,7 @@ bool Session::startBounce(Bounce what) {
             if (stems[n] >= 0) {
                 char name[32];
                 const TrackData& t = song.tracks[stems[n]];
-                const char* kind = t.kind == TrackKind::Drums ? "DRUMS" : t.kind == TrackKind::Phazed ? "PHAZED" : t.kind == TrackKind::Twin ? "TWIN" : t.kind == TrackKind::Qmod ? "QMOD" : "SAMPLER";
-                std::snprintf(name, sizeof name, " - %d %s", stems[n] + 1, t.name[0] ? t.name : kind);
+                std::snprintf(name, sizeof name, " - %d %s", stems[n] + 1, t.name[0] ? t.name : instrumentName(t.kind));
                 path += name;
             }
             path += ".wav";

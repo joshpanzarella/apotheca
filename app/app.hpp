@@ -18,6 +18,7 @@
 #include <SDL.h>
 
 #include <memory>
+#include <string>
 
 #include "fx_screen.hpp"
 #include "input.hpp"
@@ -40,6 +41,8 @@ public:
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs); // once per frame
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    // Read the battery from another folder (the stills and the tests have no battery of their own).
+    void useBatteryFolder(const std::string& folder) { batteryRoot_ = folder; batteryReadAt_ = 0; }
 
     Project& project() { return *project_; }
     Session& session() { return session_; }
@@ -86,6 +89,7 @@ private:
     FxScreen fx_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
+    std::string batteryRoot_;  // where to read it from, if not the usual place (for stills and tests)
     int battery_ = -1;         // percent, or -1 if the device has none to read
     bool charging_ = false;
     Uint32 batteryReadAt_ = 0;

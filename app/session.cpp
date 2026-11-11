@@ -1,4 +1,5 @@
 #include "session.hpp"
+#include "instruments.hpp"
 #include "ui.hpp"
 
 #include <dirent.h>
@@ -90,8 +91,7 @@ bool Session::addTrack(TrackKind kind) {
     if (kind == TrackKind::Drums) {
         if (!engine.addDrumTrack(track)) return false;
     } else {
-        const SynthKind synth = kind == TrackKind::Twin ? SynthKind::Twin : kind == TrackKind::Sampler ? SynthKind::Sampler : kind == TrackKind::Qmod ? SynthKind::Qmod : SynthKind::Phazed;
-        if (!engine.addSynthTrack(track, synth)) return false;
+        if (!engine.addSynthTrack(track, instrument(kind)->synth)) return false;
         project.tracks[track].preset = 0;
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
@@ -724,8 +724,6 @@ void Session::sendSynthPatch(int track) {
 }
 
 namespace {
-const char* presetEnding(TrackKind kind) { return kind == TrackKind::Twin ? ".twin" : kind == TrackKind::Qmod ? ".qmod" : ".phazed"; }
-
 // A preset file: "apotheca-preset 1", then "macros" and "settings" lines.
 bool readPreset(const std::string& text, UserPreset& out) {
     std::istringstream lines(text);
@@ -755,8 +753,10 @@ std::string jsonText(const char* text) {
 void Session::usePresetFolder(const std::string& folder) {
     presetFolder_ = folder;
     mkdir(folder.c_str(), 0755);
-    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod}) {
-        const std::string ending = presetEnding(kind);
+    for (int i = 0; i < kInstrumentCount; ++i) {
+        if (!kInstruments[i].presetEnding) continue; // it keeps no presets
+        const TrackKind kind = kInstruments[i].kind;
+        const std::string ending = kInstruments[i].presetEnding;
         std::vector<std::string> names;
         if (DIR* dir = opendir(folder.c_str())) {
             while (const dirent* entry = readdir(dir)) {
@@ -782,9 +782,10 @@ bool Session::savePreset(int track, const std::string& typed) {
     TrackData& t = project.tracks[track];
     const SynthSpec* spec = specFor(t.kind);
     const std::string name = presetNameFrom(typed);
-    if (!spec || name.empty()) return false;
+    const InstrumentInfo* info = instrument(t.kind);
+    if (!spec || !info || !info->presetEnding || name.empty()) return false;
     std::string text = "apotheca-preset 1\nsynth ";
-    text += t.kind == TrackKind::Twin ? "twin" : t.kind == TrackKind::Qmod ? "qmod" : "phazed";
+    text += info->word;
     text += "\nmacros";
     char number[32];
     for (float m : t.macro) std::snprintf(number, sizeof number, " %.6g", m), text += number;
@@ -792,7 +793,7 @@ bool Session::savePreset(int track, const std::string& typed) {
     const int* values = spec->values(t);
     for (int id = 0; id < settingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
     text += "\n";
-    if (!writeTextFile(presetFolder_ + "/" + name + presetEnding(t.kind), text)) return false;
+    if (!writeTextFile(presetFolder_ + "/" + name + info->presetEnding, text)) return false;
     // It is in the list now; the track is on it. The sound itself has not changed.
     usePresetFolder(presetFolder_);
     const std::vector<UserPreset>& mine = userPresets(t.kind);
@@ -1529,7 +1530,7 @@ void Session::applyProject() {
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::Drums) engine.addDrumTrack(t);
-        else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : track.kind == TrackKind::Sampler ? SynthKind::Sampler : track.kind == TrackKind::Qmod ? SynthKind::Qmod : SynthKind::Phazed);
+        else engine.addSynthTrack(t, instrument(track.kind)->synth);
 
         sendTrackImage(t); // every pattern on the track, in one piece
         if (track.kind == TrackKind::Drums)

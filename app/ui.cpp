@@ -1,4 +1,5 @@
 #include "ui.hpp"
+#include "instruments.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -280,8 +281,7 @@ void trackName(const Project& project, int track, char* out, int size) {
         std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1, project.tracks[track].name);
         return;
     }
-    std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1,
-                  kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Qmod ? "QMOD" : kind == TrackKind::Sampler ? "SAMPLER" : "");
+    std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1, instrumentName(kind));
 }
 
 void noteName(int pitch, char* out, int size) {

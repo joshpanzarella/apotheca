@@ -157,8 +157,9 @@ struct EffectData {
 };
 
 enum class TrackKind { None, Drums, Phazed, Twin, Sampler, Qmod };
-// Played from the piano roll: the two synths and the sampler.
-inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin || kind == TrackKind::Sampler || kind == TrackKind::Qmod; }
+// Played from the piano roll: everything but the drums. (What else there is
+// to know about each instrument is in instruments.hpp.)
+inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
 
 struct TrackData {
     TrackKind kind = TrackKind::None;

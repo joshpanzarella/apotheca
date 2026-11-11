@@ -68,7 +68,7 @@ if(APOTHECA_BUILD_APP)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
   add_library(apotheca_app STATIC app/app.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp
-      app/phazed_screen.cpp app/recorder.cpp app/session.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
+      app/instruments.cpp app/phazed_screen.cpp app/recorder.cpp app/session.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)

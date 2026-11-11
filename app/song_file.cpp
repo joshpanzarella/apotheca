@@ -1,4 +1,5 @@
 #include "song_file.hpp"
+#include "instruments.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -48,7 +49,7 @@ std::string songText(const Project& project) {
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
-        out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : track.kind == TrackKind::Qmod ? "track qmod\n" : "track twin\n";
+        out += std::string("track ") + instrument(track.kind)->word + "\n";
         if (track.name[0]) out += std::string("name ") + track.name + "\n";
         // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
         for (int scene = 0; scene < kMaxScenes; ++scene)
@@ -205,7 +206,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "track") {
             std::string kind;
             in >> kind;
-            const TrackKind k = kind == "drums" ? TrackKind::Drums : kind == "phazed" ? TrackKind::Phazed : kind == "twin" ? TrackKind::Twin : kind == "sampler" ? TrackKind::Sampler : kind == "qmod" ? TrackKind::Qmod : TrackKind::None;
+            const TrackKind k = trackKindFromWord(kind.c_str());
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
