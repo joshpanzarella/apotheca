@@ -615,6 +615,28 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     }
 }
 
+// Is this note written where something else on the same key is already sounding: one of a
+// chord's notes, or another note that began before it and is still held? Then the other's
+// block covers it on the screen.
+bool NoteScreen::isUnderAnother(const NoteEvent& n) const {
+    const float from = static_cast<float>(n.step) + n.nudge, to = from + n.length;
+    for (const ChordEvent& c : pat().chords) {
+        if (c.velocity <= 0.f) continue;
+        const float cFrom = static_cast<float>(c.step) + c.nudge, cTo = cFrom + c.length;
+        if (cFrom >= to || cTo <= from) continue; // not at the same time
+        int keys[kChordNotes];
+        const int count = c.pitches(keys);
+        for (int i = 0; i < count; ++i)
+            if (keys[i] == n.pitch) return true;
+    }
+    for (const NoteEvent& other : pat().notes) {
+        if (&other == &n || other.velocity <= 0.f || other.pitch != n.pitch) continue;
+        const float oFrom = static_cast<float>(other.step) + other.nudge;
+        if (oFrom < from && oFrom + other.length > from) return true;
+    }
+    return false;
+}
+
 void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
@@ -736,6 +758,21 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const ChordEvent& c = pat().chords[i];
         if (c.velocity <= 0.f) continue;
         drawChord(c, (shaping_ && &c == chordUnder) || (picking_ && i == editing_), false);
+    }
+    // A note written where something longer is already sounding on the same key (a held chord, or
+    // a long note) would be hidden under it. It is drawn again on top, narrower, with a dark edge:
+    // a note inside a note.
+    for (const NoteEvent& n : pat().notes) {
+        if (n.velocity <= 0.f || !shows(n.pitch) || !isUnderAnother(n)) continue;
+        const bool live = held && &n == under;
+        const int inset = cellW() >= 20 ? 5 : 3;
+        const int x = gx(n.pitch) + 1 + inset, y = gy(n.step) + 1 + static_cast<int>(std::round(n.nudge * kRowH));
+        const int w = cellW() - 2 - 2 * inset, bottom = gridTop() + kSteps * kRowH - 3;
+        int h = static_cast<int>(std::round(n.length * kRowH)) - 4;
+        h = y + h > bottom ? bottom - y : h;
+        h = h < 3 ? 3 : h;
+        fill(r, x - 1, y, w + 2, h, kBg);
+        fill(r, x, y + 1, w, h - 2, live ? kTeal : kText);
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);

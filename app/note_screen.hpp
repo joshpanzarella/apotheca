@@ -70,6 +70,8 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    // A note hidden on the screen by a chord, or a longer note, on the same key at the same time. (It is drawn inside the other.)
+    bool isUnderAnother(const NoteEvent& note) const;
 
     // For tests and stills.
     void moveCursorTo(int pitch, int step);

@@ -693,6 +693,10 @@ A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on
 its own sample, not on a step line.
 
+**A note under a held chord still shows.** A note written where a chord (or a
+longer note) is already sounding on the same key is drawn on top of it,
+narrower, with a dark edge: a note inside a note.
+
 ### Chords
 
 Y is the chord button. Chords come from the song's chord pack.

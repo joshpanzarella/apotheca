@@ -4114,9 +4114,44 @@ void testChangingATracksInstrument() {
     CHECK(rig.project().trackCount() == 3 && rig.project().tracks[1].kind == TrackKind::Phazed);
 }
 
+// A note written under a held chord (or a longer note) on the same key is known to be hidden, so it can be drawn on top.
+void testANoteUnderAChordIsKnown() {
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Phazed);
+    rig.project().track = 1;
+    rig.frames(1);
+    NotePattern& p = rig.project().tracks[1].notes[0][0];
+    p.chords[0] = makeChord(builtInPack().chords[0], 60, 2, 8.f, 0.7f, 0); // steps 3 to 10
+    int keys[kChordNotes];
+    const int count = p.chords[0].pitches(keys);
+    CHECK(count >= 3);
+    const NoteScreen& roll = rig.app.notes();
+    const auto under = [&](int step, int pitch, float length, float nudge = 0.f) {
+        p.notes[0] = NoteEvent{step, pitch, length, nudge, 0.8f};
+        return roll.isUnderAnother(p.notes[0]);
+    };
+    CHECK(under(4, keys[1], 2.f));         // inside the chord, on one of its keys
+    CHECK(under(2, keys[0], 8.f));         // exactly where the chord's own note is
+    CHECK(under(0, keys[2], 3.f));         // begins before it and runs into it
+    CHECK(under(9, keys[1], 4.f));         // begins in it and runs out of it
+    CHECK(!under(4, keys[1] + 1, 2.f));    // a key the chord does not have
+    CHECK(!under(10, keys[1], 2.f));       // just after it has ended
+    CHECK(!under(0, keys[1], 2.f));        // ended just as it begins
+    CHECK(under(0, keys[1], 2.f, 0.3f));   // ...unless it is pushed late into it
+    p.chords[0].velocity = 0.f;            // the chord taken away: nothing is over it
+    CHECK(!under(4, keys[1], 2.f));
+    // Under a longer note on the same key that began before it. The longer one is not "under" the shorter.
+    p.notes[1] = NoteEvent{2, 70, 10.f, 0.f, 0.8f};
+    CHECK(under(6, 70, 2.f) && !roll.isUnderAnother(p.notes[1]));
+    CHECK(!under(6, 71, 2.f) && !under(12, 70, 2.f) && !under(1, 70, 1.f));
+    p.notes[1].velocity = 0.f;
+    CHECK(!under(6, 70, 2.f));
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testANoteUnderAChordIsKnown();
     testChangingATracksInstrument();
     testNamingATrackFromTheSongScreen();
     testStepEffects();

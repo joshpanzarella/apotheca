@@ -437,6 +437,24 @@ int main(int argc, char** argv) {
         fx(5, 3, 0, 0, true, 0);
         drums.moveCursorTo(1, 4);
         if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
+    } else if (std::strcmp(view, "under") == 0) {
+        // A held chord with notes written under it, and a short note under a long one.
+        Session& session = app.session();
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const ChordPack& pack = builtInPack();
+        p.chords[0] = makeChord(pack.chords[0], 60, 0, 12.f, .7f, 0);
+        int keys[kChordNotes];
+        p.chords[0].pitches(keys);
+        p.notes[0] = NoteEvent{4, keys[1], 2.f, 0.f, 0.9f};
+        p.notes[1] = NoteEvent{8, keys[2], 3.f, 0.f, 0.6f};
+        p.notes[2] = NoteEvent{2, 70, 10.f, 0.f, 0.8f};
+        p.notes[3] = NoteEvent{6, 70, 2.f, 0.f, 0.8f};
+        p.notes[4] = NoteEvent{13, keys[0], 2.f, 0.f, 0.8f}; // after the chord has ended: plain
+        session.sendNotePattern(2, 0);
+        app.notes().moveCursorTo(72, 14);
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
