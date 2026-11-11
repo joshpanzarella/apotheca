@@ -422,6 +422,9 @@ void Engine::apply(const Command& c) {
         if (gate_ != Gate::Shut) gate_ = Gate::Closing;
         silenced_.store(true, std::memory_order_relaxed);
         break;
+    case Command::SetVolume:
+        if (std::isfinite(c.value)) volume_ = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+        break;
     case Command::SetTempo:
         if (std::isfinite(c.value)) {
             tempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
@@ -773,6 +776,17 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     }
 
     // Remember what goes out, for Catch.
+    // The volume: after everything, Catch included. It glides to a new
+    // setting over a few milliseconds.
+    const auto turnDown = [&] {
+        if (volume_ == 1.f && volumeNow_ == 1.f) return;
+        for (int i = 0; i < frames; ++i) {
+            volumeNow_ += (volume_ - volumeNow_) * 0.005f;
+            if (std::fabs(volume_ - volumeNow_) < 1e-5f) volumeNow_ = volume_;
+            interleaved[2 * i] *= volumeNow_;
+            interleaved[2 * i + 1] *= volumeNow_;
+        }
+    };
     const auto remember = [&] {
         std::uint64_t at = caughtCount_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i, ++at) {
@@ -787,6 +801,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             interleaved[2 * i + 1] = ceiling(mixR[i]);
         }
         remember();
+        turnDown();
         return;
     }
     // The panic gate: shut in 5 ms, so even a wall of noise does not click;
@@ -820,6 +835,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         interleaved[2 * i + 1] = ceiling(mixR[i]) * gateGain_;
     }
     remember();
+    turnDown();
     if (cutEverything_) {
         // Behind the shut gate: stop what rings by itself.
         cutEverything_ = false;

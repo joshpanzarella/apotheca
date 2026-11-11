@@ -405,6 +405,21 @@ void testUpdatingOverWiFi() {
     CHECK(session.updateWaiting());
     session.toggleTransfer(1);
     CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending"));
+    // The volume is kept beside the program, and comes back at the next start.
+    session.loadVolume(0.4f);
+    CHECK(std::fabs(session.volume() - 0.4f) < 1e-4f && !exists(programs + "/volume.txt")); // nothing kept yet: the quiet default
+    session.setVolume(0.7f);
+    CHECK(readTextFile(programs + "/volume.txt", kept) && kept == "70\n");
+    {
+        std::unique_ptr<Engine> next(new Engine);
+        App later(*next);
+        later.session().useProgramFolder(programs);
+        later.session().loadVolume(0.4f);
+        CHECK(std::fabs(later.session().volume() - 0.7f) < 1e-4f);
+    }
+    writeTextFile(programs + "/volume.txt", "nonsense");
+    session.loadVolume(0.4f);
+    CHECK(session.volume() == 0.f || std::fabs(session.volume() - 0.4f) < 1e-4f); // rubbish in the file is not loud
     // The program tells the launcher "this start worked" by taking its mark away.
     writeTextFile(programs + "/update-trying", "");
     session.startedFine();

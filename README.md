@@ -167,6 +167,16 @@ In the list:
 **SELECT + D-pad** sets the tempo from any screen: up / down by 1, left /
 right by 10.
 
+**SELECT + L1 / R1** is the volume: quieter / louder, from any screen. A bar
+shows it for a moment. The handheld's own volume buttons belong to its
+firmware and may not reach a running program; if they do arrive as the usual
+volume keys, they work too. It starts at 40% on the handheld and is
+remembered between starts. Catch takes the sound before the volume, so a
+quiet handheld still catches at full level.
+
+The stick's speed, for everything it moves and turns on every screen, is one
+number: `gStickSpeed` in `app/ui.hpp` (0.75: a quarter slower than first built).
+
 ### Files over WiFi
 
 **L1 in the song list** turns it on. The list then shows an address, like

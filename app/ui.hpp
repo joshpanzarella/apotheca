@@ -32,6 +32,12 @@ constexpr SDL_Color kBrass = {201, 161, 90, 255};
 constexpr int kScreenW = 640, kScreenH = 480;
 constexpr int kTopBarH = 26, kHintsH = 24;
 
+// How fast the stick moves and turns things, on every screen: 1 is as first
+// built; lower is slower. The owner asked for a quarter off (2026-11).
+// It is a variable so it can become a setting, and so the tests can measure
+// the screens at their own speeds.
+inline float gStickSpeed = 0.75f;
+
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c);
 void outline(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c, int thickness = 1);
 void box(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color inside, SDL_Color edge);

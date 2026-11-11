@@ -360,6 +360,8 @@ int main(int argc, char** argv) {
         const std::string beside = std::string(base ? base : "") + "chords";
         if (base) SDL_free(base);
         if (!smoke && !shot) app.session().useProgramFolder(beside.substr(0, beside.size() - 7)); // where the program is: updates land here
+        // Not full blast on the handheld's little speaker: two fifths, until it is changed.
+        app.session().loadVolume(handheld ? 0.4f : 1.f);
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
@@ -557,6 +559,11 @@ int main(int argc, char** argv) {
             if (event.type == SDL_QUIT) running = false;
             // Desk testing only: the handheld has no Escape key.
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) running = false;
+            // The handheld's volume buttons, if the firmware passes them on as the usual keys.
+            if (event.type == SDL_KEYDOWN && (event.key.keysym.sym == SDLK_VOLUMEUP || event.key.keysym.sym == SDLK_VOLUMEDOWN)) {
+                app.changeVolume(event.key.keysym.sym == SDLK_VOLUMEUP ? 0.1f : -0.1f);
+                continue;
+            }
             if (learning) {
                 // The setup has the controls to itself until it is done.
                 const std::string before = learner.saw();

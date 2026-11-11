@@ -631,6 +631,7 @@ void testNothingIsHeardWhileTheSongPlays() {
 } // namespace
 
 int main(int, char**) {
+    ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testReadingAPack();
     testThePacksThatShip();
     testAChordsNotes();

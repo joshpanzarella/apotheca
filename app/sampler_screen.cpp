@@ -99,6 +99,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
 void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
+    dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();

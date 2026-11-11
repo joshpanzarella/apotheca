@@ -71,6 +71,7 @@ struct Command {
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
                         //   open again, once what is left has died away (or the next thing is played).
         SetTempo,       // value = beats per minute
+        SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track, value = linear gain
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
@@ -289,6 +290,7 @@ private:
     int shutFrames_ = 0, quietFrames_ = 0;
     std::atomic<bool> silenced_{false};
 
+    float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
     std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it
     std::atomic<std::uint64_t> barEndedAt_{0};     // caughtCount_ when the last whole bar ended

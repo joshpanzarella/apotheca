@@ -350,6 +350,29 @@ bool Session::openSong(const std::string& name) {
     return true;
 }
 
+void Session::setVolume(float volume) {
+    volume = std::round((volume != volume ? volume_ : volume) * 20.f) / 20.f; // in twentieths
+    volume_ = volume < 0.f ? 0.f : (volume > 1.f ? 1.f : volume);
+    Command c;
+    c.type = Command::SetVolume;
+    c.value = volume_ * volume_; // squared: even steps to the ear
+    engine.send(c);
+    if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
+}
+
+void Session::loadVolume(float ifNone) {
+    std::string text;
+    float volume = ifNone;
+    if (!programFolder_.empty() && readTextFile(programFolder_ + "/volume.txt", text) && !text.empty()) {
+        const int percent = std::atoi(text.c_str());
+        if (percent >= 0 && percent <= 100) volume = static_cast<float>(percent) / 100.f;
+    }
+    const std::string folder = programFolder_;
+    programFolder_.clear(); // setting it now is not a change worth writing down
+    setVolume(volume);
+    programFolder_ = folder;
+}
+
 void Session::setTempo(float bpm) {
     bpm = std::round(bpm != bpm ? project.tempo : bpm);
     bpm = bpm < kMinTempo ? kMinTempo : (bpm > kMaxTempo ? kMaxTempo : bpm);

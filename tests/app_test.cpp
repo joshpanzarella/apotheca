@@ -1046,6 +1046,88 @@ void testAllFourShoulderButtonsIsPanic() {
     CHECK(!rig.project().silenced && rig.listen(4800) < 1e-4f);
 }
 
+void testTheStickSpeedAndTheVolume() {
+    // ---- one number slows everything the stick does -----------------------------------
+    const auto travel = [](float speed) {
+        ui::gStickSpeed = speed;
+        Rig rig;
+        rig.app.session().view = View::Song;
+        rig.key(STICK_DOWN, true);
+        rig.frames(26); // the first move is at once; the rest at the stick's speed
+        rig.key(STICK_DOWN, false);
+        ui::gStickSpeed = 1.f;
+        return rig.app.song().cursorScene();
+    };
+    const int full = travel(1.f), slower = travel(0.75f), half = travel(0.5f);
+    CHECK(full >= 9 && full <= 11);
+    CHECK(slower >= 7 && slower <= 8);   // a quarter off
+    CHECK(half >= 5 && half <= 6);
+    // ...and what it turns with a button held, the same.
+    const auto turned = [](float speed) {
+        ui::gStickSpeed = speed;
+        Rig rig;
+        rig.app.session().view = View::Pattern;
+        rig.app.drums().setStep(0, 0, 0.2f);
+        rig.key(A, true);
+        rig.key(STICK_UP, true);
+        rig.frames(10);
+        rig.key(STICK_UP, false);
+        rig.key(A, false);
+        ui::gStickSpeed = 1.f;
+        return rig.app.drums().level(0, 0) - 0.2f;
+    };
+    CHECK(std::fabs(turned(0.75f) / turned(1.f) - 0.75f) < 0.02f);
+
+    // ---- the volume: SELECT with L1 and R1 -------------------------------------------
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Pattern;
+    rig.app.drums().setStep(0, 0, 1.f);
+    CHECK(session.volume() == 1.f && !rig.app.volumeShowing());
+    const auto kick = [&] {
+        rig.render(100000);
+        Command c;
+        c.type = Command::Trigger;
+        c.value = 1.f;
+        rig.engine->send(c);
+        return rig.listen(4000);
+    };
+    const float loud = kick();
+    rig.key(SELECT, true);
+    rig.tap(L1, 5);
+    rig.key(SELECT, false);
+    CHECK(near(session.volume(), 0.5f) && rig.app.volumeShowing());
+    CHECK(!rig.app.song().listingSongs() && !rig.app.drums().painting()); // it was not a tap of SELECT, nor L1's painting
+    CHECK(rig.app.drums().level(0, 1) == 0.f);
+    const float halfWay = kick();
+    CHECK(std::fabs(halfWay / loud - 0.25f) < 0.02f); // half-way on the knob is a quarter of the level: a good deal quieter
+    rig.frames(100);
+    CHECK(!rig.app.volumeShowing()); // the bar goes after a moment
+    rig.key(SELECT, true);
+    rig.tap(L1, 9);
+    CHECK(session.volume() == 0.f);
+    rig.key(SELECT, false);
+    CHECK(kick() == 0.f);
+    rig.key(SELECT, true);
+    rig.tap(R1, 30);
+    rig.key(SELECT, false);
+    CHECK(session.volume() == 1.f && std::fabs(kick() / loud - 1.f) < 0.01f);
+    // What Catch takes is the sound before the volume: a quiet handheld still catches at full level.
+    session.setVolume(0.2f);
+    rig.render(100000);
+    rig.tap(START);
+    const std::vector<float> out = rig.render(kBar + 4 * kStep);
+    rig.tap(START);
+    float heard = 0.f, caught = 0.f;
+    for (int i = 0; i < 2000; ++i) heard = std::fabs(out[2 * static_cast<std::size_t>(i)]) > heard ? std::fabs(out[2 * static_cast<std::size_t>(i)]) : heard;
+    for (float v : rig.engine->lastBar()) caught = std::fabs(v) > caught ? std::fabs(v) : caught;
+    CHECK(heard < 0.06f * loud && caught > 0.9f * loud);
+    session.setVolume(std::nanf(""));
+    CHECK(near(session.volume(), 0.2f));
+    session.setVolume(7.f);
+    CHECK(session.volume() == 1.f);
+}
+
 void testTheTempoFromAnyScreen() {
     Rig rig;
     rig.app.session().addTrack(TrackKind::Phazed);
@@ -1781,6 +1863,7 @@ void testTheEngineHearsTwinsSettings() {
 } // namespace
 
 int main(int, char**) {
+    ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
     testANewProjectIsOneDrumTrack();
     testAddingTracks();
@@ -1800,6 +1883,7 @@ int main(int, char**) {
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testTheStickSpeedAndTheVolume();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testEffectsThroughTheSession();

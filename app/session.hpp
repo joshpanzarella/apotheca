@@ -160,6 +160,12 @@ public:
     // are moved to a "deleted" folder inside the song folder. Deleting the
     // open song starts a new one.
     bool deleteSong(const std::string& name);
+    // How loud Apotheca is, 0..1, as on a volume knob (half-way is a good
+    // deal quieter than full, the way ears hear it). Kept beside the
+    // program, so it is the same at the next start.
+    float volume() const { return volume_; }
+    void setVolume(float volume);
+    void loadVolume(float ifNone); // at start: what was kept, or this
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
 
@@ -200,6 +206,7 @@ private:
 
     void loadLane(int track, int lane);
     void finishRecording();
+    float volume_ = 1.f;
     Transfer transfer_;
     std::string programFolder_;
     unsigned seenUpdates_ = 0;

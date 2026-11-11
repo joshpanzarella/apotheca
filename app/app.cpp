@@ -52,6 +52,17 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // SELECT held with L1 or R1: quieter or louder, from any screen. (The
+    // handheld's own volume buttons belong to its firmware and may not
+    // reach a running program.)
+    if ((b == Button::L1 || b == Button::R1) && input.held(Button::Select) && !panicking_) {
+        if (event.down) {
+            changeVolume(b == Button::R1 ? 0.1f : -0.1f);
+            song_.selectWasUsed();
+        }
+        return;
+    }
+
     // SELECT held with the D-pad: the tempo, from any screen. Up and down a
     // beat a minute, left and right ten.
     const bool direction = b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right;
@@ -102,6 +113,11 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         fx_.onButton(event, input);
         break;
     }
+}
+
+void App::changeVolume(float by) {
+    session_.setVolume(session_.volume() + by);
+    volumeShownUntil_ = now_ + 1500;
 }
 
 void App::update(const Input& input, Uint32 nowMs) {
@@ -161,6 +177,17 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         break;
     }
 
+    if (now_ < volumeShownUntil_) {
+        // The volume, for a moment after it is changed.
+        using namespace ui;
+        const int w = 260, h = 46, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
+        box(renderer, x, y, w, h, kPanel, kLine);
+        char text[32];
+        std::snprintf(text, sizeof text, "VOLUME  %d%%", static_cast<int>(session_.volume() * 100.f + 0.5f));
+        fonts.small.draw(renderer, x + 12.f, y + 9.f, text, kText);
+        fill(renderer, x + 12, y + 28, w - 24, 8, kLine);
+        fill(renderer, x + 12, y + 28, static_cast<int>((w - 24) * session_.volume()), 8, kTeal);
+    }
     if (session_.updateWaiting() || updateSaid_ != 0) {
         using namespace ui;
         const int w = 470, h = 150, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;

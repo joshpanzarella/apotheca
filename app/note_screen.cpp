@@ -388,6 +388,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
 void NoteScreen::update(const Input& input, Uint32 nowMs) {
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
+    dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
     const float x = input.stickX(), y = input.stickY();

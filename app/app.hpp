@@ -6,6 +6,7 @@
 //   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE, FX
 //              (with A held on a grid: nudge the note or hit early / late)
 //   SELECT + D-pad   the tempo: up / down by 1, left / right by 10
+//   SELECT + L1 / R1 the volume: quieter / louder
 //   L1 + L2 + R1 + R2 together: PANIC. Everything stops and the sound is
 //              shut off at once, for as long as they are held.
 //
@@ -47,6 +48,9 @@ public:
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     SamplerScreen& sampler() { return sampler_; }
+    // Quieter or louder, and show the volume for a moment.
+    void changeVolume(float by);
+    bool volumeShowing() const { return now_ < volumeShownUntil_; }
     // The notice that says a panic happened. It stays while the buttons are
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
@@ -59,6 +63,7 @@ private:
     SongScreen song_;
     PatternScreen drums_;
     bool panicking_ = false; // all four shoulder buttons are down
+    Uint32 volumeShownUntil_ = 0;
     bool updateHeld_ = false;   // A is down on the update notice
     Uint32 updateSince_ = 0, updateSaidUntil_ = 0;
     int updateSaid_ = 0;        // 1: accepted, 2: could not; shown for a few seconds
