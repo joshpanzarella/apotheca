@@ -561,7 +561,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down && hitHere()) {
             StepFx fx = pat().fx[lane_][step_];
             if (b == Button::L1) fx.reverse = fx.reverse ? 0 : 1;
-            else fx.cut = static_cast<std::uint8_t>((fx.cut + 1) % kCutChoices);
+            else fx.cut = static_cast<std::uint8_t>(fx.cut + 1); // past the last, setFx makes it "off" again
             setFx(lane_, step_, fx);
             if (!project_.playing) hearHit();
         }

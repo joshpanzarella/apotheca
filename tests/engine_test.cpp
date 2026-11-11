@@ -1464,6 +1464,18 @@ static void testStepEffectPitch() {
     out = renderFrames(*engine, 40 * kStep);
     const double fifth = std::pow(2.0, 7.0 / 12.0);
     CHECK(std::abs(soundingFrames(out) - static_cast<int>(16 * kStep / fifth)) <= 2 && std::fabs(out[2 * 30000] - slopeAt(30000 * fifth)) < 1e-3f);
+    // Between two samples it is on the straight line from one to the next: a recording that goes
+    // 0.2, 0.6, 0.2, 0.6... at half speed comes out 0.2, 0.4, 0.6, 0.4...
+    {
+        std::unique_ptr<Engine> zig(new Engine);
+        std::unique_ptr<SampleData> teeth(new SampleData);
+        teeth->data.resize(4000);
+        for (std::size_t i = 0; i < teeth->data.size(); ++i) teeth->data[i] = i % 2 ? 0.6f : 0.2f;
+        CHECK(zig->setLaneSample(0, 0, std::move(teeth)));
+        zig->send(hitWith(-12, 0, false, 0));
+        const std::vector<float> half = renderFrames(*zig, 400);
+        CHECK(about(half[2 * 100], 0.2f * kTrackLevel) && about(half[2 * 101], 0.4f * kTrackLevel) && about(half[2 * 102], 0.6f * kTrackLevel) && about(half[2 * 103], 0.4f * kTrackLevel));
+    }
     // Past an octave either way is an octave.
     engine->send(hitWith(40, 0, false, 0));
     CHECK(soundingFrames(renderFrames(*engine, 40 * kStep)) == 8 * kStep);
@@ -1516,6 +1528,14 @@ static void testStepEffectReverse() {
     out = renderFrames(*engine, 8 * kStep);
     CHECK(about(out[2 * (4 * kStep + 3000)], slopeAt(16 * kStep - 1 - 3000)));
     engine->send(make(Command::Stop));
+    // A hit backwards never "carries on" a sound that is at its start: it goes to its own end and comes back.
+    renderFrames(*engine, 40 * kStep);
+    engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
+    renderFrames(*engine, 4 * kStep); // forwards, a quarter of the way in
+    engine->send(hitWith(0, 0, true, 0, 2500));
+    out = renderFrames(*engine, 400);
+    CHECK(about(out[2 * 300], slopeAt(16 * kStep - 1 - 300)));
+    renderFrames(*engine, 40 * kStep);
     // A hit forwards never carries on a sound that is running backwards, wherever it is.
     engine->send(hitWith(0, 0, true, 0));
     renderFrames(*engine, 8 * kStep); // now at half-way, going down

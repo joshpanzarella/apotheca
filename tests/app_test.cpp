@@ -3699,6 +3699,9 @@ void testStepEffects() {
     CHECK(drums.fx(0, 4).pitch == 1 && drums.cursorLane() == 0 && drums.cursorStep() == 4);
     rig.tap(UP, 20);
     CHECK(drums.fx(0, 4).pitch == 12); // an octave is the most
+    rig.render(60000);
+    rig.tap(UP);
+    CHECK(soundsFor(rig, 6000) == 0); // against the stop nothing changes, so nothing is played
     rig.tap(DOWN, 30);
     CHECK(drums.fx(0, 4).pitch == -12);
     rig.tap(UP, 12);
@@ -3746,7 +3749,11 @@ void testStepEffects() {
     rig.key(STICK_UP, true);
     rig.frames(1);
     CHECK(drums.fx(0, 4).pitch == 1);
-    rig.frames(62);
+    rig.key(STICK_RIGHT, true); // pushed across as well, mid-push: it is still the pitch's push
+    rig.frames(30);
+    rig.key(STICK_RIGHT, false);
+    CHECK(drums.fx(0, 4).hits() == 1 && drums.fx(0, 4).pitch > 1);
+    rig.frames(32);
     CHECK(drums.fx(0, 4).pitch >= 6 && drums.fx(0, 4).pitch <= 11 && drums.fx(0, 4).hits() == 1);
     rig.key(STICK_UP, false);
     rig.frames(1);
@@ -3833,11 +3840,14 @@ void testStepEffects() {
     // Nonsense in a file is held to what there is; a line for a step or lane there is not is skipped.
     const std::size_t at = text.find("stepfx 1 5 0 3 0 3");
     CHECK(at != std::string::npos);
-    if (at != std::string::npos) text.replace(at, 18, "stepfx 1 5 -40 9 7 5\nstepfx 99 5 3 3 1 1\nstepfx 1 99 3 3 1 1\nstepfx 3 10 2");
+    if (at != std::string::npos) text.replace(at, 18, "stepfx 1 5 -40 9 7 5\nstepfx 99 5 3 3 1 1\nstepfx 9 5 3 3 1 1\nstepfx 0 5 3 3 1 1\nstepfx 1 99 3 3 1 1\nstepfx 1 17 3 3 1 1\nstepfx 3 10 2");
     std::unique_ptr<Project> odd(new Project);
     CHECK(parseSong(text, *odd));
     const StepFx& held = odd->tracks[0].drums[0][0].fx[0][4];
     CHECK(held.pitch == -12 && held.ratchet == 4 && held.reverse == 1 && held.cut == 0);
+    // A lane just past the last did not land on what the pattern keeps after its effects (the dice's seeds), nor a step past the last on the next lane.
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(odd->tracks[0].drums[0][0].diceSeed[lane] == back->tracks[0].drums[0][0].diceSeed[lane]);
+    CHECK(!odd->tracks[0].drums[0][0].fx[1][0].any() && !odd->tracks[0].drums[0][0].fx[0][0].any());
     CHECK(odd->tracks[0].drums[0][0].fx[2][9].pitch == 2 && odd->tracks[0].drums[0][0].fx[2][9].hits() == 1); // a short line: the rest as usual
     // Opened afresh, it plays as it did.
     Rig opened;
@@ -3855,13 +3865,30 @@ void testStepEffects() {
     CHECK(!drums.fx(0, 4).any());
     rig.tap(A);
     CHECK(drums.level(0, 4) > 0.f && !drums.fx(0, 4).any());
-    // Undo takes an effect back.
+    // The whole cell sent again (as a copy or a cleared cell does) takes each hit's effects with it.
+    {
+        StepFx quarter;
+        quarter.cut = 3;
+        drums.setFx(0, 4, quarter);
+        rig.app.session().sendDrumPattern(0, 0);
+        rig.frames(2);
+        rig.render(60000);
+        rig.tap(START);
+        const std::vector<float> sent = rig.render(6 * kStep);
+        rig.tap(START);
+        CHECK(Rig::peak(sent, 4 * kStep, 4 * kStep + 1400) > 0.05f && Rig::peak(sent, 4 * kStep + 1600, 6 * kStep) == 0.f);
+        drums.setFx(0, 4, StepFx());
+        rig.render(60000);
+    }
+    // Undo takes an effect back: a change to an effect is a step of its own.
     rig.frames(60);
+    const int stepsBefore = rig.app.session().undoSteps();
     rig.key(X, true);
     rig.tap(L1);
     rig.key(X, false);
     CHECK(drums.fx(0, 4).reverse == 1);
     rig.frames(60);
+    CHECK(rig.app.session().undoSteps() == stepsBefore + 1 || stepsBefore == 20);
     rig.key(SELECT, true);
     rig.tap(B);
     rig.key(SELECT, false);

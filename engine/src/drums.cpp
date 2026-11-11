@@ -219,15 +219,16 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     const int from = static_cast<int>(start * static_cast<float>(length)); // at or past the end: nothing plays
     if (!(part >= 0.f)) part = lanePart_[lane]; // below zero (or NaN): as the lane is set
     const int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
-    const double rate = how.rate > 0.f ? (how.rate < 0.25f ? 0.25 : (how.rate > 4.f ? 4.0 : static_cast<double>(how.rate))) : 1.0; // also NaN: as it is
+    const double rate = how.rate > 0.f ? static_cast<double>(how.rate) : 1.0; // nonsense (NaN too): as it is. The engine keeps it within an octave.
 
     Voice& fresh = voices_[lane][next_[lane]];
     Voice& old = voices_[lane][1 - next_[lane]];
     // The sound is already at this very place: it carries on. (If it had just
     // begun to fade at the end of its own part, it comes back up.) Not a hit
-    // from the very top, which always starts the sound again; and not
-    // backwards, either of them.
-    if (old.position >= 0.0 && from > 0 && !how.reverse && old.rate > 0.0 && std::fabs(old.position - from) <= joinFrames_) {
+    // from the very top, which always starts the sound again; and not a hit
+    // that plays backwards, which has its own place to start. (A sound that
+    // was running backwards is turned round by it: its speed is the hit's.)
+    if (old.position >= 0.0 && from > 0 && !how.reverse && std::fabs(old.position - from) <= joinFrames_) {
         old.end = end;
         old.rate = rate;
         old.life = how.life;
