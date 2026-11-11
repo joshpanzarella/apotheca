@@ -254,8 +254,8 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         hint("UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
     } else {
-        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from the list" : "fit to steps");
-        hint("B", column_ == kSound ? "the drum back" : "fit off");
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from list" : "fit to steps");
+        hint("B", column_ == kSound ? "default drum" : "fit off");
         hint("Y", "catch");
         hint("R1", "record");
         if (trk().laneSample[lane_][0]) hint("L1", "slices");
