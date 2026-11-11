@@ -614,8 +614,8 @@ it changes:
   stops when the next one comes.
 - Kept in the song, undone by SELECT + B, and gone with the hit when it is
   deleted.
-- Drum hits only, for now. Not yet: GLIDE and THROW, and ratchets on a
-  synth's notes.
+- A synth's notes have their own two: see "Note effects" under PATTERN, a
+  synth. Not yet: THROW.
 
 ### Slices: chopping a break
 
@@ -718,6 +718,8 @@ is loud; holding A shapes it the way it is drawn.
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
+| **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
+| **Hold X on a note**, up / down | **GLIDE** on / off: the note slides in from the note before it |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
@@ -728,6 +730,23 @@ its own sample, not on a step line.
 **A note under a held chord still shows.** A note written where a chord (or a
 longer note) is already sounding on the same key is drawn on top of it,
 narrower, with a dark edge: a note inside a note.
+
+### Note effects
+
+Hold **X** on a note. The D-pad or the stick sets what the note does besides
+play, one click per push. The strip at the bottom shows both values.
+
+| Effect | Does | On a chord |
+| --- | --- | --- |
+| **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
+| **GLIDE** (up = on, down = off) | The pitch slides from the last note the track began to this one, over half a step. | No: a chord has no one note to slide from |
+
+- A note with an effect carries a mark, so it can be told from a plain one.
+- The first note after pressing play has nothing to slide from, so it does
+  not glide.
+- With both set, only the first of the ratchet glides.
+- A note too short for its ratchet plays as many as fit.
+- Kept in the song, undone by SELECT + B, gone with the note.
 
 ### Chords
 

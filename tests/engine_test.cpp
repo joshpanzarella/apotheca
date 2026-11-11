@@ -1800,7 +1800,7 @@ static void testANoteRatchets() {
     CHECK(near(play(3, 1.f), {kStep, kStep + 2000, kStep + 4000}));
     CHECK((play(4, 2.f) == std::vector<int>{kStep, kStep + 1500, kStep + 3000, kStep + 4500})); // inside its first step, however long it is
     CHECK(play(9, 1.f).size() == 4 && play(1, 1.f).size() == 1);                                    // four at most; "one" is one
-    CHECK(play(4, 0.5f).size() == 2);                                                              // a note shorter than its ratchet: as many as fit
+    CHECK(play(4, 0.5f).size() == 2 && play(4, 0.52f).size() == 2);                                                              // a note shorter than its ratchet: as many as fit
     CHECK(near(play(3 + 256, 1.f), {kStep, kStep + 2000, kStep + 4000}));                         // with a glide as well: still three
 
     // Each is let go before the next, and the last is held for what is left of the note. A steady
@@ -1871,6 +1871,41 @@ static void testANoteGlides() {
         const auto same = second(256, 69);
         if (!(std::fabs(same.first - plain.first) < 0.12 * plain.first)) std::printf("  same key: %.0f against %.0f\n", same.first, plain.first);
         CHECK(std::fabs(same.first - plain.first) < 0.12 * plain.first);
+    }
+    // Stopped and played again: the first note of the new run does not glide from the last note of the old one.
+    // And a gliding note pushed late (so it waits its moment) still glides.
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
+        engine->send(noteAt(0, 0, 69, 2.f, 256)); // glides, but is the first
+        engine->send(noteAt(1, 8, 45, 2.f));      // two octaves down, later in the bar
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> first = renderFrames(*engine, 12 * kStep);
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> again = renderFrames(*engine, 2 * kStep);
+        const double a = pitchOver(first, 96, 1440), b = pitchOver(again, 96, 1440);
+        CHECK(std::fabs(a - b) < 0.1 * a); // the same start both times: not dragged up from the low note
+
+        std::unique_ptr<Engine> late(new Engine);
+        CHECK(late->addSynthTrack(1, SynthKind::Qmod));
+        late->send(noteAt(0, 0, 57, 1.f, 0, 0.02f));
+        Command pushed = noteAt(1, 4, 69, 8.f, 256);
+        pushed.shift = 0.4f; // 40% of a step late
+        late->send(pushed);
+        Command plainLate = noteAt(1, 4, 69, 8.f, 0);
+        plainLate.shift = 0.4f;
+        late->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> slid = renderFrames(*late, 8 * kStep);
+        std::unique_ptr<Engine> flat(new Engine);
+        CHECK(flat->addSynthTrack(1, SynthKind::Qmod));
+        flat->send(noteAt(0, 0, 57, 1.f, 0, 0.02f));
+        flat->send(plainLate);
+        flat->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> straight = renderFrames(*flat, 8 * kStep);
+        const int at = 4 * kStep + 2400 + 96;
+        CHECK(pitchOver(slid, at, 1440) < 0.85 * pitchOver(straight, at, 1440));
     }
     // The slide by itself: semitones off, closing at a steady rate, from either side, and nonsense is no slide.
     Slide s;

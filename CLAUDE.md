@@ -39,7 +39,7 @@ New screens and gestures keep these; do not invent a variant.
 
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
 - **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button.
-- **X** hears. **Hold X** is "what it does": step effects on a drum hit, and kept free for note effects.
+- **X** hears. **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
@@ -148,6 +148,11 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
   pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
+- **Note effects are two bytes on a note** (`NoteEvent::ratchet`, `glide`; a
+  chord has `ratchet` only). They reach the engine in `Command::e` (low byte
+  the ratchet, +256 a glide). In a song file: `notefx STEP KEY RATCHET GLIDE`
+  and `chordfx STEP RATCHET`, each after its note. A glide comes from
+  `track.lastPitch`, which Play resets, through `Instrument::noteOnFrom`.
 - **A recording's name may carry one folder**: `kicks/808`. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
@@ -186,7 +191,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The rest of step effects: GLIDE and THROW, and ratchets on synth notes.
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW, then the new effects.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

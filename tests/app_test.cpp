@@ -4326,8 +4326,10 @@ void testPresetsEightAtATime() {
 void testNoteEffects() {
     Rig rig;
     Session& session = rig.app.session();
-    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Qmod);
     rig.project().track = 1;
+    session.setSynthMacro(1, qmod::MacroRelease, 0.f); // a note let go is gone at once, so a gap between two notes can be heard
+    session.setSynthMacro(1, qmod::MacroAttack, 0.f);
     rig.frames(2);
     NoteScreen& roll = rig.app.notes();
     NotePattern& p = rig.project().tracks[1].notes[0][0];
@@ -4361,18 +4363,23 @@ void testNoteEffects() {
     rig.tap(LEFT);
     // The stick clicks too: one at once, and one way per push.
     rig.key(X, true);
+    rig.tap(DOWN); // the glide off, to see that the push below leaves it off
+    CHECK(p.notes[slot].glide == 0);
     rig.key(STICK_LEFT, true);
     rig.frames(1);
     CHECK(p.notes[slot].ratchet == 2);
-    rig.key(STICK_UP, true); // pushed up as well: still the ratchet's push
-    rig.frames(3);
+    rig.key(STICK_UP, true); // pushed up as well, and further: still the ratchet's push, not the glide's
+    rig.frames(30);
     rig.key(STICK_UP, false);
     rig.key(STICK_LEFT, false);
     rig.frames(1);
+    CHECK(p.notes[slot].glide == 0 && p.notes[slot].ratchet <= 2);
+    // Back to a glide and a ratchet of three, by the buttons (so the engine is told by them, not by the test).
+    rig.tap(UP);
+    rig.tap(LEFT, 3);
+    rig.tap(RIGHT, 2);
     rig.key(X, false);
-    CHECK(p.notes[slot].glide == 1 && p.notes[slot].ratchet <= 2);
-    p.notes[slot].ratchet = 3;
-    session.sendNoteBar(1, 0, 0);
+    CHECK(p.notes[slot].glide == 1 && p.notes[slot].ratchet == 3);
     // X on an empty step is only "hear": nothing is held, and the D-pad moves the cursor.
     roll.moveCursorTo(70, 9);
     rig.key(X, true);
@@ -4391,13 +4398,15 @@ void testNoteEffects() {
     // The engine plays it: three starts inside step 5 (each let go before the next), where a plain note is one long sound.
     rig.frames(30);
     rig.render(96000);
-    session.setSynthSetting(1, twin::kSettings - 1, 0); // (whatever the last setting is: untouched if it does not exist)
     rig.tap(START);
     const std::vector<float> out = rig.render(8 * kStep);
     rig.tap(START);
     rig.render(96000);
-    CHECK(Rig::peak(out, 0, 4 * kStep - 10) < 0.002f && Rig::peak(out, 4 * kStep + 200, 4 * kStep + 1500) > 0.005f);
-    CHECK(Rig::peak(out, 4 * kStep + 2200, 4 * kStep + 3500) > 0.005f && Rig::peak(out, 4 * kStep + 4200, 4 * kStep + 5500) > 0.005f);
+    const float sounding = Rig::peak(out, 4 * kStep + 300, 4 * kStep + 1500);
+    CHECK(Rig::peak(out, 0, 4 * kStep - 10) < 0.002f && sounding > 0.005f);
+    CHECK(Rig::peak(out, 4 * kStep + 2300, 4 * kStep + 3500) > 0.5f * sounding && Rig::peak(out, 4 * kStep + 4300, 4 * kStep + 5500) > 0.5f * sounding);
+    // ...with a gap before the second and the third (each is let go before the next begins). A plain note has none.
+    CHECK(Rig::peak(out, 4 * kStep + 1900, 4 * kStep + 1990) < 0.2f * sounding && Rig::peak(out, 4 * kStep + 3900, 4 * kStep + 3990) < 0.2f * sounding);
 
     // A chord takes a ratchet, and has no glide.
     p.chords[0] = makeChord(builtInPack().chords[0], 48, 10, 3.f, 0.7f, 0);
@@ -4420,6 +4429,7 @@ void testNoteEffects() {
     // The song keeps them, on lines of their own; a plain note has no such line.
     roll.moveCursorTo(72, 0);
     rig.tap(A);
+    p.notes[slot].length = 3.f; // held over steps 6 and 7, for the file check below
     std::string text = songText(rig.project());
     CHECK(text.find("\nnotefx 5 60 3 1\n") != std::string::npos && text.find("\nchordfx 11 2\n") != std::string::npos && text.find("notefx 1 72") == std::string::npos);
     std::unique_ptr<Project> back(new Project);
@@ -4430,7 +4440,7 @@ void testNoteEffects() {
     // Nonsense in a file is held to what there is; a line for a note that is not there is skipped.
     const std::size_t at = text.find("notefx 5 60 3 1");
     CHECK(at != std::string::npos);
-    if (at != std::string::npos) text.replace(at, 15, "notefx 5 60 99 7\nnotefx 9 60 3 1\nnotefx 6 60 4 1\nnotefx 5 200 3 1\nnotefx 99 60 3 1");
+    if (at != std::string::npos) text.replace(at, 15, "notefx 5 60 99 7\nnotefx 9 60 3 1\nnotefx 6 60 2 0\nnotefx 5 200 3 1\nnotefx 99 60 3 1");
     std::unique_ptr<Project> odd(new Project);
     CHECK(parseSong(text, *odd));
     const NotePattern& o = odd->tracks[1].notes[0][0];
