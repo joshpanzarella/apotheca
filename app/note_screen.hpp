@@ -20,6 +20,9 @@
 //   B                     delete the note under the cursor
 //   hold B and drag       delete every note the cursor crosses
 //   X                     hear the key under the cursor
+//   hold X and move       carry the note (or the whole chord) under the cursor
+//                         to another key or another step. It stops at the
+//                         ends of the bar and will not land on another note.
 //   hold R1 and drag      paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3);
 //                         held, up is closer and down is further
@@ -69,6 +72,7 @@ public:
     void moveCursorTo(int pitch, int step);
     int cursorPitch() const { return pitch_; }
     int cursorStep() const { return step_; }
+    bool carrying() const { return carrying_ != Carry::Nothing; }
     int lowestKeyShown() const { return low_; }
     // The note under the cursor, or nullptr.
     const NoteEvent* noteHere() const;
@@ -136,6 +140,11 @@ private:
     int inversion_ = 0;
     float handLength_ = 4.f;    // new chords are as long as the last one set
     bool painting_ = false; // R1 is held
+    // X is held on a note or a chord: the cursor carries it.
+    enum class Carry { Nothing, Note, Chord };
+    Carry carrying_ = Carry::Nothing;
+    int carried_ = 0; // its slot
+    void carry(Button direction);
     bool erasing_ = false;  // B is held: the cursor deletes what it crosses
     void eraseHere();
     float brush_ = 0.8f;

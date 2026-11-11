@@ -1300,6 +1300,105 @@ void testHoldingSelectShowsTheHelp() {
     rig.key(SELECT, false);
 }
 
+void testHoldXCarriesANote() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    rig.app.session().view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    rig.project().playing = true; // so that placing and moving are silent
+    notes.moveCursorTo(60, 4);
+    rig.tap(A);
+    bar.notes[bar.at(60, 4)].length = 3.f;
+    bar.notes[bar.at(60, 4)].velocity = 0.6f;
+    notes.moveCursorTo(62, 5);
+    rig.tap(A);
+    rig.app.session().sendNotePattern(1, 0);
+    // A tap of X only hears: nothing moves.
+    notes.moveCursorTo(60, 5); // on the long note's second step
+    rig.tap(X);
+    rig.tap(RIGHT);
+    CHECK(bar.at(60, 4) >= 0 && bar.at(61, 4) < 0 && notes.cursorPitch() == 61 && !notes.carrying());
+    // Held on a note: it goes where the cursor goes, whole, with its length and level.
+    notes.moveCursorTo(60, 5);
+    rig.key(X, true);
+    CHECK(notes.carrying());
+    rig.tap(LEFT, 2); // two keys down
+    CHECK(bar.at(60, 4) < 0 && bar.at(58, 4) >= 0 && notes.cursorPitch() == 58 && notes.cursorStep() == 5);
+    rig.tap(DOWN, 3); // three steps later
+    int slot = bar.at(58, 7);
+    CHECK(slot >= 0 && bar.notes[slot].step == 7 && bar.notes[slot].length == 3.f && near(bar.notes[slot].velocity, 0.6f) && notes.cursorStep() == 8);
+    CHECK(bar.at(58, 4) < 0 && bar.at(58, 6) < 0);
+    // It stops at the top and bottom of the bar; the cursor stays with it.
+    rig.tap(UP, 20);
+    CHECK(bar.notes[slot].step == 0 && notes.cursorStep() == 1);
+    rig.tap(DOWN, 30);
+    CHECK(bar.notes[slot].step == 14 && notes.cursorStep() == 15 && rig.project().bar == 0); // the cursor, a step along the note, is at the bar's end
+    rig.tap(UP, 9);
+    CHECK(bar.notes[slot].step == 5);
+    // It will not land on another note: 62 at step 5 is in the way, so it stops beside it.
+    rig.tap(RIGHT, 10);
+    CHECK(bar.notes[slot].pitch == 61 && bar.at(62, 5) >= 0 && bar.at(62, 5) != slot);
+    // Let go: the cursor moves alone again.
+    rig.key(X, false);
+    CHECK(!notes.carrying());
+    rig.tap(LEFT);
+    CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 60);
+    // The stick carries too.
+    notes.moveCursorTo(61, 5);
+    rig.key(X, true);
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    rig.key(X, false);
+    CHECK(bar.notes[slot].step == 4);
+    // X held on an empty step is only "hear": nothing is carried.
+    notes.moveCursorTo(70, 0);
+    rig.key(X, true);
+    CHECK(!notes.carrying());
+    rig.tap(DOWN);
+    rig.key(X, false);
+    CHECK(notes.cursorStep() == 1);
+    // The engine is told: the bar plays the note where it now is.
+    rig.project().playing = false;
+    rig.tap(START);
+    const std::vector<float> early = rig.render(4 * kStep - 200);
+    const std::vector<float> then = rig.render(2 * kStep);
+    CHECK(Rig::peak(early) < 0.002f && Rig::peak(then) > 0.005f);
+    rig.tap(START);
+    rig.render(96000);
+
+    // A chord: the whole of it goes, by key and by step, and not onto another chord's steps.
+    rig.project().playing = true;
+    ChordEvent& one = bar.chords[0];
+    one = ChordEvent();
+    one.step = 8;
+    one.length = 2.f;
+    one.root = 48;
+    one.count = 3;
+    one.intervals[0] = 0, one.intervals[1] = 4, one.intervals[2] = 7;
+    one.velocity = 0.7f;
+    ChordEvent& two = bar.chords[1];
+    two = one;
+    two.step = 12;
+    notes.moveCursorTo(52, 9); // on its middle note, second step
+    rig.key(X, true);
+    CHECK(notes.carrying());
+    rig.tap(RIGHT, 2);
+    CHECK(one.root == 50 && notes.cursorPitch() == 54);
+    rig.tap(DOWN, 5); // step 10, then 11 would run into the chord at 12
+    CHECK(one.step == 10 && two.step == 12 && notes.cursorStep() == 11);
+    rig.tap(UP, 20);
+    CHECK(one.step == 0);
+    rig.tap(LEFT, 200); // down the keyboard until its lowest note is the lowest key
+    CHECK(one.root == NoteScreen::kLowest);
+    rig.key(X, false);
+    CHECK(one.count == 3 && near(one.velocity, 0.7f) && one.length == 2.f);
+    rig.project().playing = false;
+}
+
 void testSelectGoesToTheSongScreen() {
     Rig rig;
     for (View from : {View::Pattern, View::Device, View::Effects, View::Settings}) {
@@ -2499,6 +2598,7 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testHoldingSelectShowsTheHelp();
+    testHoldXCarriesANote();
     testSelectGoesToTheSongScreen();
     testTheSetupScreen();
     testTheButtonTestAndSettingUpAgain();

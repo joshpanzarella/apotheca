@@ -132,7 +132,55 @@ void NoteScreen::keepInView() {
     if (low_ + keys - 1 > kHighest) low_ = kHighest - (keys - 1);
 }
 
+// X held on a note or chord: it goes one key or one step that way, and the
+// cursor with it. It does not leave the bar, go off the keyboard, or land
+// on top of another note (a chord: on steps another chord has).
+void NoteScreen::carry(Button direction) {
+    const int dp = direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0;
+    const int ds = direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0;
+    NotePattern& p = pat();
+    if (step_ + ds < 0 || step_ + ds >= kSteps) return; // the cursor has hold of it somewhere along its length, and stays in the bar too
+    if (carrying_ == Carry::Note) {
+        NoteEvent& n = p.notes[carried_];
+        const int pitch = n.pitch + dp, step = n.step + ds;
+        if (n.velocity <= 0.f || pitch < kLowest || pitch > kHighest || step < 0 || step >= kSteps) return;
+        // Is the place it would start on taken by another note of that key?
+        const float v = n.velocity;
+        n.velocity = 0.f; // out of the way while looking
+        const bool taken = p.at(pitch, step) >= 0;
+        n.velocity = v;
+        if (taken) return;
+        n.pitch = pitch;
+        n.step = step;
+        if (dp != 0 && !project_.playing) session_.audition(project_.track, pitch, v);
+    } else {
+        ChordEvent& c = p.chords[carried_];
+        const int step = c.step + ds;
+        if (c.velocity <= 0.f || step < 0 || step >= kSteps) return;
+        ChordEvent moved = c;
+        moved.root += dp;
+        moved.step = step;
+        int was[kChordNotes], now[kChordNotes];
+        const int n = c.pitches(was);
+        if (moved.pitches(now) != n) return; // a note of it would fall off the keyboard
+        for (int i = 0; i < n; ++i)
+            if (now[i] < kLowest || now[i] > kHighest) return;
+        // Chords do not overlap in time.
+        const float v = c.velocity;
+        c.velocity = 0.f;
+        bool taken = false;
+        for (int at = step; at < step + static_cast<int>(std::ceil(moved.length)) && at < kSteps; ++at) taken = taken || p.chordAt(at) >= 0;
+        c.velocity = v;
+        if (taken) return;
+        c = moved;
+        if (dp != 0) hearChord(c);
+    }
+    resend();
+    moveCursorTo(pitch_ + dp, step_ + ds);
+}
+
 void NoteScreen::moveCursor(Button direction) {
+    if (carrying_ != Carry::Nothing) return carry(direction);
     if (direction == Button::Right) moveCursorTo(pitch_ + 1, step_);
     if (direction == Button::Left) moveCursorTo(pitch_ - 1, step_);
     if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
@@ -420,6 +468,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         if (b == Button::B) erasing_ = false;
+        if (b == Button::X) carrying_ = Carry::Nothing;
         return;
     }
 
@@ -436,6 +485,12 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (b == Button::X) {
         if (const ChordEvent* chord = chordHere()) hearChord(*chord);
         else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
+        // Held, it has hold of what it heard: moving now carries it.
+        const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+        if (!shaping_ && !painting_ && !erasing_ && (slot >= 0 || chord >= 0)) {
+            carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
+            carried_ = slot >= 0 ? slot : chord;
+        }
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -717,6 +772,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "inversion");
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
+    } else if (carrying_ != Carry::Nothing) {
+        hint("UP / DOWN", "to another step");
+        hint("LEFT / RIGHT", "to another key");
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG", brushText);
@@ -730,6 +788,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (under || chordUnder) hint("B", "delete");
         hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap chord" : "chord");
         hint("HOLD R1", "paint");
+        if (under || chordUnder) hint("HOLD X", "move it");
         hint("HOLD B", "erase");
         hint("L1", "zoom");
     }
