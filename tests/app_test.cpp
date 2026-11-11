@@ -1281,6 +1281,17 @@ void testRecordingAutomation() {
     CHECK(written(2) == 1 && track.automation[0][2][5] > 0.5f);
     // While it plays, an automated macro reads as the pattern has it on this step; one that is not reads as its knob.
     CHECK(near(session.automated(1, 2, 0.123f), track.automation[0][2][5]) && near(session.automated(1, 4, 0.123f), 0.123f));
+    // B while it plays with WRITE on: the macro goes back to the middle and its lane is cleared, and that
+    // reset is not itself written down as a move.
+    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + 2);
+    rig.tap(B);
+    CHECK(written(2) == 0 && near(track.macro[2], 0.5f) && session.writing());
+    rig.render(kStep);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(written(2) == 1);
     // WRITE off: moves are only moves again, even while playing.
     rig.key(SELECT, true);
     rig.tap(X);
@@ -1364,6 +1375,14 @@ void testRecordingAutomation() {
     CHECK(written(2) == 0 && session.undoSteps() == steps + 1);
     CHECK(session.undo() && written(2) == 1);
 
+    // Writing is itself a step of undo: one recorded move, taken back.
+    rig.frames(60);
+    const int beforeMove = session.undoSteps();
+    session.setAutomation(1, 0, 6, 3, 0.4f);
+    rig.frames(60);
+    CHECK(session.undoSteps() == beforeMove + 1 && written(6) == 1);
+    CHECK(session.undo() && written(6) == 0);
+
     // And the engine plays it: OCTAVE (macro 7) written up for steps 9 to 12 is heard there and not before.
     // (Phazed's octave macro jumps at three quarters; a long plain note makes it countable.)
     Rig heard;
@@ -1385,8 +1404,23 @@ void testRecordingAutomation() {
     std::vector<int> waves;
     for (int i = 0; i < 16; ++i) waves.push_back(count());
     CHECK(waves[4] >= 12 && std::abs(waves[10] - 2 * waves[4]) <= 2 && std::abs(waves[14] - waves[4]) <= 1);
-    // A song opened carries it to the engine too.
-    hs.saveNow();
+    // Taken away and brought back by undo, it is the engine that gets it back, not only the screen.
+    heard.tap(START);
+    heard.render(96000);
+    heard.frames(60);
+    hs.clearAutomation(1, 0, qmod::MacroOctave);
+    heard.frames(60);
+    heard.tap(START);
+    waves.clear();
+    for (int i = 0; i < 16; ++i) waves.push_back(count());
+    CHECK(std::abs(waves[10] - waves[4]) <= 1); // cleared: no octave
+    heard.tap(START);
+    heard.render(96000);
+    CHECK(hs.undo());
+    heard.tap(START);
+    waves.clear();
+    for (int i = 0; i < 16; ++i) waves.push_back(count());
+    CHECK(std::abs(waves[10] - 2 * waves[4]) <= 2 && std::abs(waves[14] - waves[4]) <= 1);
 }
 
 // A setting that is a choice clicks from one to the next: one per push of the stick, as with the D-pad.

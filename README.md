@@ -95,8 +95,9 @@ the screen: a hint that does not fit is left out.
 
 **SELECT + B is undo; SELECT + A puts it back.** Twenty steps deep. One
 step is one burst of editing: a paint stroke, a roll of the dice, a cell
-emptied, a chord placed. It covers what is in the patterns (hits, notes,
-chords, how long each cell is, how often each scene plays); sounds, effects
+emptied, a chord placed, a pass of automation. It covers what is in the
+patterns (hits, notes, chords, automation, how long each cell is, how often
+each scene plays); sounds, effects
 and settings are not part of it. The song keeps playing while you undo.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
@@ -215,6 +216,29 @@ designer".
 
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
+
+### Automation
+
+A macro, or a setting of a track's effect, can be **moved by the pattern**.
+
+1. **SELECT + X** turns WRITE on. A red WRITE chip shows in the top bar.
+2. Play the song, and move the thing: hold A on a macro (DEVICE) or on an
+   effect's setting (FX) and turn it.
+3. What you do is written into the cell that is playing, step by step.
+   Turn WRITE off (SELECT + X again) and it plays back every time round.
+
+| | |
+| --- | --- |
+| How fine | One value a step (16 a bar, for every bar of the cell). The setting **glides** to each value over the first half of its step, so a sweep is smooth, not a staircase. |
+| Steps with nothing written | The setting rests where its knob is |
+| A mark | A purple line under a macro or setting that has automation in the cell being worked on. While it plays, the box shows the value the pattern has it at. |
+| Take it away | **B** on the macro or setting: back to its middle or default, and its automation in this cell is cleared |
+| What can be automated | A synth's eight macros; the four settings of each of a track's two effects. Not the master's effects, and not the settings on a synth's ADVANCED pages. |
+| Undo | SELECT + B takes back a recorded pass like any other edit |
+
+With WRITE off, moving a knob is only moving a knob. Stopped, nothing is
+ever written. There is no screen yet for drawing automation step by step:
+it is recorded by performing it.
 
 ### QMOD
 
