@@ -11,6 +11,7 @@
 
 #include "apotheca/engine.hpp"
 #include "input.hpp"
+#include "note_marks.hpp"
 #include "ui.hpp"
 #include "pattern_screen.hpp"
 
@@ -986,6 +987,52 @@ void testPaintingWhilePlayingIsNotDoubled() {
 
 } // namespace
 
+// A ratchet's dark lines cut a note's first step into even pieces, as many as it plays.
+void testRatchetLinesCutEvenPieces() {
+    int tops[3] = {-1, -1, -1};
+    // A one-step note on the piano roll is 17 pixels tall.
+    CHECK(ratchetLines(17, 2, tops) == 3 && tops[0] == 7);                                  // 7 | 7
+    CHECK(ratchetLines(17, 3, tops) == 3 && tops[0] == 4 && tops[1] == 10);                 // 4 | 3 | 4
+    CHECK(ratchetLines(17, 4, tops) == 3 && tops[0] == 2 && tops[1] == 7 && tops[2] == 12); // four of 2
+    // Half a step: thinner lines when thick ones would leave pieces under two pixels.
+    CHECK(ratchetLines(7, 2, tops) == 3 && tops[0] == 2);
+    CHECK(ratchetLines(7, 3, tops) == 0);
+    CHECK(ratchetLines(8, 3, tops) == 1 && tops[0] == 2 && tops[1] == 5);
+    CHECK(ratchetLines(10, 3, tops) == 2 && tops[0] == 2 && tops[1] == 6);
+    CHECK(ratchetLines(5, 2, tops) == 1 && tops[0] == 2);
+    CHECK(ratchetLines(4, 2, tops) == 0);
+    // Not a ratchet: nothing is drawn and nothing is written.
+    int kept[3] = {-7, -7, -7};
+    CHECK(ratchetLines(17, 1, kept) == 0 && ratchetLines(17, 0, kept) == 0 && ratchetLines(17, 5, kept) == 0);
+    CHECK(kept[0] == -7 && kept[1] == -7 && kept[2] == -7);
+    // Whatever the height: the right number of pieces, none under two pixels, none more than a
+    // pixel taller than another, the whole height used, and the same from both ends where it can be.
+    for (int tall = 1; tall <= 48; ++tall) {
+        for (int pieces = 2; pieces <= 4; ++pieces) {
+            const int thick = ratchetLines(tall, pieces, tops);
+            // The thickest lines that leave two pixels a piece.
+            int want = 0;
+            for (int t = 3; t >= 1 && !want; --t)
+                if (tall - t * (pieces - 1) >= 2 * pieces) want = t;
+            CHECK(thick == want);
+            if (!thick) continue;
+            int size[4], y = 0, least = 99, most = 0;
+            for (int i = 0; i < pieces; ++i) {
+                const int end = i < pieces - 1 ? tops[i] : tall;
+                size[i] = end - y;
+                y = end + thick;
+                least = size[i] < least ? size[i] : least;
+                most = size[i] > most ? size[i] : most;
+            }
+            CHECK(least >= 2);
+            CHECK(most - least <= 1);
+            const int light = tall - thick * (pieces - 1);
+            if (pieces % 2 == 1 || (light % pieces) % 2 == 0)
+                for (int i = 0; i < pieces; ++i) CHECK(size[i] == size[pieces - 1 - i]);
+        }
+    }
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
@@ -1023,6 +1070,7 @@ int main(int, char**) {
     testRandomIsR1WithR2();
     testPaintWaitsItsTurn();
     testPaintingWhilePlayingIsNotDoubled();
+    testRatchetLinesCutEvenPieces();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
