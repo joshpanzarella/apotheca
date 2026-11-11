@@ -1403,6 +1403,286 @@ static void testSlicesInOrderHaveNoSeams() {
     CHECK(twice[2 * 10] > 0.2f * kTrackLevel * 1.5f); // the first is still fading under the second
 }
 
+// ---- step effects: what one hit does besides play ----------------------------------------
+
+// A click: one sample, then silence. Where it comes out says exactly when a hit was played.
+static std::unique_ptr<SampleData> click() {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.assign(1000, 0.f);
+    s->data[0] = 0.8f;
+    return s;
+}
+// A slope from 0.25 up to 0.75 over one bar: its value says where in the recording the sound is.
+static std::unique_ptr<SampleData> slope() {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.resize(static_cast<std::size_t>(16 * kStep));
+    for (int i = 0; i < 16 * kStep; ++i) s->data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / (16 * kStep);
+    return s;
+}
+static float slopeAt(double i) { return (0.25f + 0.5f * static_cast<float>(i / (16 * kStep))) * kTrackLevel; }
+static std::vector<int> clicksIn(const std::vector<float>& out) {
+    std::vector<int> at;
+    for (std::size_t i = 0; i < out.size(); i += 2)
+        if (out[i] > 0.3f) at.push_back(static_cast<int>(i / 2));
+    return at;
+}
+static Command fxOf(int stepIndex, int pitch, int ratchet, bool reverse, int cut, int lane = 0) {
+    Command c = make(Command::SetStepFx, 0, lane, stepIndex, reverse ? 1.f : 0.f);
+    c.c = pitch;
+    c.d = ratchet;
+    c.extra = static_cast<float>(cut);
+    return c;
+}
+// A hit by hand, with step effects.
+static Command hitWith(int pitch, int ratchet, bool reverse, int cut, int start = 0, int part = 0) {
+    Command c = make(Command::Trigger, 0, 0, start, 1.f);
+    c.c = part;
+    c.d = pitch;
+    c.bar = ratchet;
+    c.scene = reverse ? 1 : 0;
+    c.extra = static_cast<float>(cut);
+    return c;
+}
+
+static void testStepEffectPitch() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, slope()));
+    // As it is: a bar long, and the slope as recorded.
+    engine->send(hitWith(0, 0, false, 0));
+    std::vector<float> out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) == 16 * kStep && about(out[2 * 3000], slopeAt(3000)));
+    // An octave up: twice as fast, so half as long, and twice as far along at any moment.
+    engine->send(hitWith(12, 0, false, 0));
+    out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) == 8 * kStep && about(out[2 * 3000], slopeAt(6000)) && about(out[2 * 30001], slopeAt(60002)));
+    // An octave down: half as fast, twice as long, with the samples between filled in on a straight line.
+    engine->send(hitWith(-12, 0, false, 0));
+    out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) == 32 * kStep && about(out[2 * 3001], slopeAt(1500.5)) && about(out[2 * 60000], slopeAt(30000)));
+    // A fifth up: 2^(7/12) as fast.
+    engine->send(hitWith(7, 0, false, 0));
+    out = renderFrames(*engine, 40 * kStep);
+    const double fifth = std::pow(2.0, 7.0 / 12.0);
+    CHECK(std::abs(soundingFrames(out) - static_cast<int>(16 * kStep / fifth)) <= 2 && std::fabs(out[2 * 30000] - slopeAt(30000 * fifth)) < 1e-3f);
+    // Past an octave either way is an octave.
+    engine->send(hitWith(40, 0, false, 0));
+    CHECK(soundingFrames(renderFrames(*engine, 40 * kStep)) == 8 * kStep);
+    engine->send(hitWith(-40, 0, false, 0));
+    CHECK(soundingFrames(renderFrames(*engine, 40 * kStep)) == 32 * kStep);
+
+    // In a pattern: this hit and no other.
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 8, 1.f));
+    engine->send(fxOf(8, 12, 0, false, 0));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 16 * kStep);
+    CHECK(about(out[2 * 3000], slopeAt(3000)) && about(out[2 * (8 * kStep + 3000)], slopeAt(6000)));
+    engine->send(make(Command::Stop));
+}
+
+static void testStepEffectReverse() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, slope()));
+    // The whole sound backwards: it starts at its end and stops at its start, and is as long.
+    engine->send(hitWith(0, 0, true, 0));
+    std::vector<float> out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) >= 16 * kStep - 2 && soundingFrames(out) <= 16 * kStep);
+    CHECK(about(out[2 * 3000], slopeAt(16 * kStep - 1 - 3000)) && about(out[2 * 60000], slopeAt(16 * kStep - 1 - 60000)));
+    // It fades in and it fades out: no click at either end (the slope is far from zero at both).
+    CHECK(std::fabs(out[0]) < 0.02f && out[2 * 10] < out[2 * 30] && about(out[2 * 60], slopeAt(16 * kStep - 61)));
+    CHECK(std::fabs(out[2 * (16 * kStep - 2)]) < 0.03f && out[2 * (16 * kStep - 30)] > out[2 * (16 * kStep - 10)]);
+    CHECK(about(out[2 * (16 * kStep - 60)], slopeAt(59)));
+    // A slice backwards: from the slice's end to its start, and no further.
+    engine->send(part(0, 1.f / 16.f));
+    engine->send(hitWith(0, 0, true, 0, 2500)); // slice 4
+    out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) >= kStep - 2 && soundingFrames(out) <= kStep);
+    CHECK(about(out[2 * 1000], slopeAt(5 * kStep - 1 - 1000)) && about(out[2 * 5000], slopeAt(5 * kStep - 1 - 5000)));
+    // From a start, with no slices: what it would have played (from there to the end), backwards.
+    engine->send(part(0, 0.f));
+    engine->send(hitWith(0, 0, true, 0, 7500));
+    out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) >= 4 * kStep - 2 && soundingFrames(out) <= 4 * kStep && about(out[2 * 1000], slopeAt(16 * kStep - 1 - 1000)));
+    // Backwards and an octave up: half as long.
+    engine->send(hitWith(12, 0, true, 0));
+    out = renderFrames(*engine, 40 * kStep);
+    CHECK(soundingFrames(out) >= 8 * kStep - 2 && soundingFrames(out) <= 8 * kStep && about(out[2 * 3000], slopeAt(16 * kStep - 1 - 6000)));
+    CHECK(std::fabs(out[2 * (8 * kStep - 2)]) < 0.06f); // still faded out by its start
+
+    // In a pattern.
+    engine->send(step(0, 4, 1.f));
+    engine->send(fxOf(4, 0, 0, true, 0));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(about(out[2 * (4 * kStep + 3000)], slopeAt(16 * kStep - 1 - 3000)));
+    engine->send(make(Command::Stop));
+    // A hit forwards never carries on a sound that is running backwards, wherever it is.
+    engine->send(hitWith(0, 0, true, 0));
+    renderFrames(*engine, 8 * kStep); // now at half-way, going down
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    out = renderFrames(*engine, 400);
+    CHECK(about(out[2 * 300], slopeAt(8 * kStep + 300))); // going up from the middle: a new start
+}
+
+static void testStepEffectCut() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, slope()));
+    const auto lasts = [&](int cut, int pitch = 0) {
+        engine->send(hitWith(pitch, 0, false, cut));
+        const std::vector<float> out = renderFrames(*engine, 40 * kStep);
+        return soundingFrames(out);
+    };
+    CHECK(lasts(0) == 16 * kStep);
+    CHECK(lasts(1) >= kStep && lasts(1) <= kStep + 50);         // a step, and a millisecond's fade
+    CHECK(lasts(2) >= kStep / 2 && lasts(2) <= kStep / 2 + 50); // half a step
+    CHECK(lasts(3) >= kStep / 4 && lasts(3) <= kStep / 4 + 50); // a quarter
+    CHECK(lasts(4) == 16 * kStep && lasts(-1) == 16 * kStep);   // nonsense: not cut
+    CHECK(lasts(1, 12) >= kStep && lasts(1, 12) <= kStep + 50); // a step is a step whatever the pitch
+    // It is at full level right up to the cut.
+    engine->send(hitWith(0, 0, false, 1));
+    std::vector<float> out = renderFrames(*engine, 40 * kStep);
+    CHECK(about(out[2 * (kStep - 5)], slopeAt(kStep - 5)) && out[2 * (kStep + 60)] == 0.f);
+    // A step at the tempo: half as fast, twice as long.
+    engine->send(make(Command::SetTempo, 0, 0, 0, 60.f));
+    CHECK(lasts(1) >= 2 * kStep && lasts(1) <= 2 * kStep + 50);
+    engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+
+    // In a pattern: the cut hit stops, the others ring on until the next hit.
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 4, 1.f));
+    engine->send(fxOf(0, 0, 0, false, 2));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(out[2 * (kStep / 2 - 5)] != 0.f && out[2 * (kStep / 2 + 60)] == 0.f && out[2 * (3 * kStep)] == 0.f);
+    CHECK(out[2 * (5 * kStep)] != 0.f && out[2 * (7 * kStep)] != 0.f);
+    engine->send(make(Command::Stop));
+}
+
+static void testStepEffectRatchet() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, click()));
+    engine->send(step(0, 0, 1.f));
+    engine->send(step(0, 4, 1.f));
+    engine->send(step(0, 8, 1.f));
+    engine->send(step(0, 12, 1.f));
+    engine->send(fxOf(4, 0, 2, false, 0));
+    engine->send(fxOf(8, 0, 3, false, 0));
+    engine->send(fxOf(12, 0, 4, false, 0));
+    engine->send(make(Command::Play));
+    std::vector<float> out = renderFrames(*engine, 16 * kStep);
+    // One hit; two, half a step apart; three, a third apart; four, a quarter apart: each on its exact sample.
+    const std::vector<int> expected = {0, 4 * kStep, 4 * kStep + 3000, 8 * kStep, 8 * kStep + 2000, 8 * kStep + 4000,
+                                       12 * kStep, 12 * kStep + 1500, 12 * kStep + 3000, 12 * kStep + 4500};
+    CHECK(clicksIn(out) == expected);
+    // Round again it is the same (nothing was left waiting, nothing doubled).
+    out = renderFrames(*engine, 16 * kStep);
+    CHECK(clicksIn(out) == expected);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 4000);
+
+    // A hit moved late takes its ratchet with it; one moved early too.
+    engine->send(make(Command::SetStepNudge, 0, 0, 8, 0.25f));
+    engine->send(make(Command::SetStepNudge, 0, 0, 12, -0.5f));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 16 * kStep);
+    const std::vector<int> moved = {0, 4 * kStep, 4 * kStep + 3000, 8 * kStep + 1500, 8 * kStep + 3500, 8 * kStep + 5500,
+                                    12 * kStep - 3000, 12 * kStep - 1500, 12 * kStep, 12 * kStep + 1500};
+    CHECK(clicksIn(out) == moved);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 4000);
+    engine->send(make(Command::SetStepNudge, 0, 0, 8, 0.f));
+    engine->send(make(Command::SetStepNudge, 0, 0, 12, 0.f));
+
+    // Stopping part-way through a ratchet stops it: the hits still waiting do not come.
+    engine->send(make(Command::Play));
+    renderFrames(*engine, 12 * kStep + 2000); // two of the four have played
+    engine->send(make(Command::Stop));
+    CHECK(clicksIn(renderFrames(*engine, 4 * kStep)).empty());
+
+    // A chance is rolled once for the whole ratchet: all of its hits or none.
+    engine->send(make(Command::SetStepChance, 0, 0, 12, 0.5f));
+    engine->send(make(Command::Play));
+    int all = 0, none = 0, some = 0;
+    for (int bar = 0; bar < 60; ++bar) {
+        out = renderFrames(*engine, 16 * kStep);
+        int count = 0;
+        for (int at : clicksIn(out)) count += at >= 12 * kStep;
+        all += count == 4;
+        none += count == 0;
+        some += count != 0 && count != 4;
+    }
+    CHECK(some == 0 && all > 10 && none > 10);
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 4000);
+
+    // Heard by hand, with the song stopped: the whole ratchet, at the tempo.
+    engine->send(hitWith(0, 3, false, 0));
+    CHECK((clicksIn(renderFrames(*engine, 2 * kStep)) == std::vector<int>{0, 2000, 4000}));
+    engine->send(hitWith(0, 9, false, 0)); // more than four is four
+    CHECK(clicksIn(renderFrames(*engine, 2 * kStep)).size() == 4);
+    engine->send(hitWith(0, 1, false, 0));
+    CHECK(clicksIn(renderFrames(*engine, 2 * kStep)).size() == 1);
+
+    // Ratchet and cut together: each hit stops when its time is up, or when the next one comes.
+    std::unique_ptr<Engine> held(new Engine);
+    CHECK(held->setLaneSample(0, 0, slope()));
+    held->send(hitWith(0, 2, false, 3)); // two hits, each a quarter of a step long
+    out = renderFrames(*held, 2 * kStep);
+    CHECK(out[2 * 1400] != 0.f && out[2 * 1600] == 0.f && out[2 * 2900] == 0.f && out[2 * 3100] != 0.f && out[2 * 4400] != 0.f && out[2 * 4600] == 0.f);
+    held->send(hitWith(0, 4, false, 1)); // four hits, cut after a step: the next hit comes first, and the last stops at the step's end
+    out = renderFrames(*held, 3 * kStep);
+    CHECK(out[2 * 1400] != 0.f && out[2 * 2900] != 0.f && out[2 * 5900] != 0.f && out[2 * (kStep + 60)] == 0.f);
+    // Each hit of a ratchet starts the sound again from where the hit starts.
+    CHECK(about(out[2 * 1700], slopeAt(200)) && about(out[2 * 4700], slopeAt(200)));
+}
+
+static void testStepEffectsTravel() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, slope()));
+    // Nonsense is held to what there is, or ignored.
+    engine->send(step(0, 2, 1.f));
+    engine->send(fxOf(2, 99, 99, false, 99));
+    engine->send(fxOf(99, 12, 2, true, 1)); // no such step
+    engine->send(fxOf(2, 12, 2, true, 1, kDrumLanes)); // no such lane
+    engine->send(make(Command::Play));
+    std::vector<float> out = renderFrames(*engine, 8 * kStep);
+    CHECK(about(out[2 * (2 * kStep + 1000)], slopeAt(2000))); // an octave up at most
+    CHECK(about(out[2 * (2 * kStep + 1500 + 1000)], slopeAt(2000))); // four hits at most: the second, a quarter of a step on
+    CHECK(out[2 * (6 * kStep)] != 0.f); // a cut that is not one of the three: not cut
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 40 * kStep);
+
+    // Emptying the cell takes the effects with the hits: a new hit on the same step is plain.
+    engine->send(make(Command::ClearCell));
+    engine->send(step(0, 2, 1.f));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(about(out[2 * (2 * kStep + 1000)], slopeAt(1000)) && about(out[2 * (2 * kStep + 2500)], slopeAt(2500)));
+    engine->send(make(Command::Stop));
+    renderFrames(*engine, 40 * kStep);
+
+    // A whole song loaded at once brings them.
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->level[0][0][2] = 1.f;
+    image->fx[0][0][2].pitch = -12;
+    image->fx[0][0][2].reverse = 1;
+    image->fx[0][0][2].cut = 1;
+    CHECK(engine->setTrackImage(0, std::move(image)));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(about(out[2 * (2 * kStep + 3000)], slopeAt(16 * kStep - 1 - 1500)));
+    CHECK(out[2 * (3 * kStep - 5)] != 0.f && out[2 * (3 * kStep + 60)] == 0.f);
+    engine->send(make(Command::Stop));
+    // And removing the track forgets them.
+    CHECK(engine->removeTrack(0));
+    CHECK(engine->addDrumTrack(0));
+    CHECK(engine->setLaneSample(0, 0, slope()));
+    engine->send(step(0, 2, 1.f));
+    engine->send(make(Command::Play));
+    out = renderFrames(*engine, 8 * kStep);
+    CHECK(about(out[2 * (2 * kStep + 3000)], slopeAt(3000)) && out[2 * (4 * kStep)] != 0.f);
+}
+
 // A note may be any length, and is let go on its own sample.
 static void testANoteEndsPartWayThroughAStep() {
     // The same note at three lengths. Each plays exactly like a longer one
@@ -2463,6 +2743,11 @@ int main() {
     testWhereAHitStarts();
     testAHitPlaysOnlyItsSlice();
     testSlicesInOrderHaveNoSeams();
+    testStepEffectPitch();
+    testStepEffectReverse();
+    testStepEffectCut();
+    testStepEffectRatchet();
+    testStepEffectsTravel();
     testQueue();
     testBuiltInKit();
     testSilentUntilPlayed();

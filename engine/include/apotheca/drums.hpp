@@ -2,6 +2,7 @@
 // The drum instrument: eight lanes, one sample each, played from a 16-step
 // pattern. No SDL, no files: the built-in kit is made in code.
 
+#include <cstdint>
 #include <vector>
 
 namespace apotheca {
@@ -25,6 +26,29 @@ struct DrumKit {
     static const DrumKit& builtIn(float sampleRate);
 
     static const char* laneName(int lane);
+};
+
+// The step effects: what one hit does besides play. Each hit of a pattern
+// has its own, and they combine (a hit can be an octave down, backwards and
+// played three times).
+struct StepFx {
+    std::int8_t pitch = 0;    // semitones up or down, -12..12: the sound played faster or slower
+    std::uint8_t ratchet = 0; // 2, 3 or 4: that many hits, evenly, inside the step. 0 or 1: the one
+    std::uint8_t reverse = 0; // 1: backwards, from the end of what it would have played to its start
+    std::uint8_t cut = 0;     // 1, 2, 3: stopped after a step, half a step, a quarter. 0: it rings on
+    bool any() const { return pitch != 0 || ratchet > 1 || reverse != 0 || cut != 0; }
+    int hits() const { return ratchet < 2 ? 1 : (ratchet > 4 ? 4 : ratchet); }
+    // How long a cut hit sounds, in steps (0: not cut).
+    float cutSteps() const { return cut == 1 ? 1.f : cut == 2 ? 0.5f : cut == 3 ? 0.25f : 0.f; }
+};
+constexpr int kMaxStepPitch = 12, kMaxRatchet = 4, kCutChoices = 4;
+
+// How one hit is played (the drum machine's own terms; the engine works them
+// out from a StepFx and the tempo).
+struct HitPlay {
+    float rate = 1.f;     // speed: 2 is an octave up, 0.5 an octave down
+    bool reverse = false;
+    int life = 0;         // frames it may sound before it is faded out. 0: as long as it lasts
 };
 
 // A recording to play on a lane in place of the kit's drum: mono, at the
@@ -56,7 +80,11 @@ public:
     // straight on, at the new hit's level. So a recording cut into slices
     // and played back in order has no seams, and only a slice that is out
     // of order is heard as a cut.
-    void trigger(int lane, float velocity, float start = 0.f, float part = -1.f);
+    //
+    // `how` is the step effects' doing: faster or slower, backwards, cut short.
+    // A hit played backwards starts at the end of what it would have played
+    // (its slice, or the whole sound from `start` on) and stops at its start.
+    void trigger(int lane, float velocity, float start = 0.f, float part = -1.f, const HitPlay& how = HitPlay());
 
     // How much of the sound every hit on a lane plays (see trigger). 0, the
     // default: all of it. Survives reset().
@@ -76,8 +104,11 @@ public:
 
 private:
     struct Voice {
-        int position = -1; // -1: silent
-        int end = 0;       // where its part of the sound stops (then it fades); past the sound's end: it plays out
+        double position = -1.0; // below zero: silent. Not always a whole number: a pitched hit moves in parts of a sample
+        double rate = 1.0;      // how far it moves each frame; below zero: backwards
+        int end = 0;            // where its part of the sound stops (then it fades); past the sound's end: it plays out
+        int stop = 0;           // backwards: where it stops (it has faded by then)
+        int life = 0;           // frames left before it is cut (0: not cut)
         float gain = 0.f;     // the hit's level...
         float gainTo = 0.f;   // ...and where it is heading (a hit that carries the sound on may change it)
         float fade = 1.f;     // multiplies the gain; falls while choking

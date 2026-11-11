@@ -69,6 +69,8 @@ struct Command {
         Trigger,        // play a drum lane now:      track, a = lane, value = velocity,
                         //   b = where in the sound to start, in ten-thousandths of its length
                         //   c = how much of the sound to play, in ten-thousandths (0: as the lane is set)
+                        //   and the step effects, to hear a hit as the pattern would play it: d = pitch in
+                        //   semitones, bar = ratchet (2..4), scene = 1 for backwards, extra = cut (1, 2, 3)
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
         Stop,           // stop; drums ring out, synth notes are let go
@@ -106,8 +108,10 @@ struct Command {
         SetLaneSample,  // internal: sent by setLaneSample()
         InstallEffect,  // internal: sent by setEffect()
         SetTrackSample, // internal: sent by setTrackSample()
-        SetLanePart     // how much of its sound each hit on a drum lane plays: track, a = lane,
+        SetLanePart,    // how much of its sound each hit on a drum lane plays: track, a = lane,
                         //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
+        SetStepFx       // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
+                        //   c = pitch in semitones, d = ratchet, value = 1 for backwards, extra = cut (0..3)
     };
     Type type = Trigger;
     int track = 0;
@@ -149,6 +153,7 @@ struct TrackImage {
     std::unique_ptr<float[]> automation;
     float laneLevel[kDrumLanes];
     float lanePart[kDrumLanes] = {}; // how much of its sound each hit on a lane plays (0: all); see Command::SetLanePart
+    StepFx fx[kPatternSlots][kDrumLanes][kSteps]; // each hit's step effects
     TrackImage() {
         for (auto& scene : chance)
             for (auto& lane : scene)
@@ -273,6 +278,7 @@ private:
         float nudge[kDrumLanes][kSteps] = {}; // -0.5..0.5 of a step
         float chance[kDrumLanes][kSteps];     // 0..1, set to 1 in the constructor
         float start[kDrumLanes][kSteps] = {}; // 0..1 of the sound's length
+        StepFx fx[kDrumLanes][kSteps];        // the step effects: pitch, ratchet, backwards, cut
     };
     struct Note {
         std::uint8_t step = 0, pitch = 0;
@@ -311,8 +317,14 @@ private:
         }
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
-        struct Pending { double samplesLeft = 0.0; float velocity = 0.f, start = 0.f; };
-        Pending pending[kDrumLanes][2];
+        // A ratchet waits here too: `more` hits after the next, `gap` samples apart.
+        struct Pending {
+            double samplesLeft = 0.0, gap = 0.0;
+            float velocity = 0.f, start = 0.f, part = -1.f;
+            HitPlay how;
+            int more = 0;
+        };
+        Pending pending[kDrumLanes][3];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
@@ -334,6 +346,7 @@ private:
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1
+    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples);
     void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
     void firePending();
     void clearPending();

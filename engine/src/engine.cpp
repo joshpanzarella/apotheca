@@ -312,7 +312,23 @@ void Engine::apply(const Command& c) {
     }
     switch (c.type) {
     case Command::Trigger:
-        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f);
+        if (validTrack(c.track) && tracks_[c.track].hasDrums && c.a >= 0 && c.a < kDrumLanes) {
+            StepFx fx;
+            fx.pitch = static_cast<std::int8_t>(c.d < -kMaxStepPitch ? -kMaxStepPitch : (c.d > kMaxStepPitch ? kMaxStepPitch : c.d));
+            fx.ratchet = static_cast<std::uint8_t>(c.bar < 0 ? 0 : (c.bar > kMaxRatchet ? kMaxRatchet : c.bar));
+            fx.reverse = c.scene == 1;
+            fx.cut = static_cast<std::uint8_t>(c.extra >= 1.f && c.extra < kCutChoices ? c.extra : 0.f);
+            playHit(tracks_[c.track], c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f, fx, 0.0);
+        }
+        break;
+    case Command::SetStepFx:
+        if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b)) {
+            StepFx& fx = tracks_[c.track].drumScenes[slotFor(c)].fx[c.a][c.b];
+            fx.pitch = static_cast<std::int8_t>(c.c < -kMaxStepPitch ? -kMaxStepPitch : (c.c > kMaxStepPitch ? kMaxStepPitch : c.c));
+            fx.ratchet = static_cast<std::uint8_t>(c.d < 0 ? 0 : (c.d > kMaxRatchet ? kMaxRatchet : c.d));
+            fx.reverse = c.value == 1.f;
+            fx.cut = static_cast<std::uint8_t>(c.extra >= 1.f && c.extra < kCutChoices ? c.extra : 0.f);
+        }
         break;
     case Command::SetStepStart:
         if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
@@ -418,6 +434,7 @@ void Engine::apply(const Command& c) {
                     for (int step = 0; step < kSteps; ++step) {
                         scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
                         scene.chance[lane][step] = 1.f;
+                        scene.fx[lane][step] = StepFx();
                     }
                 for (Note& note : track.notes[slot]) note = Note();
             }
@@ -440,7 +457,8 @@ void Engine::apply(const Command& c) {
         letGoOfNotes();
         break;
     case Command::Stop:
-        playing_ = false; // waiting hits only play while playing, and Play clears them
+        playing_ = false;
+        clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
         letGoOfNotes();
         settleAutomation(); // every automated setting back to where its knob was left
         playStep_.store(-1, std::memory_order_relaxed);
@@ -562,6 +580,7 @@ void Engine::apply(const Command& c) {
                     for (int step = 0; step < kSteps; ++step) {
                         scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
                         scene.chance[lane][step] = 1.f;
+                        scene.fx[lane][step] = StepFx();
                     }
             }
             for (int slot = 0; slot < kPatternSlots; ++slot)
@@ -586,6 +605,7 @@ void Engine::apply(const Command& c) {
                             track.drumScenes[scene].nudge[lane][step] = image.nudge[scene][lane][step];
                             track.drumScenes[scene].chance[lane][step] = image.chance[scene][lane][step];
                             track.drumScenes[scene].start[lane][step] = image.start[scene][lane][step];
+                            track.drumScenes[scene].fx[lane][step] = image.fx[scene][lane][step];
                         }
                     for (int slot = 0; slot < kMaxNotes; ++slot) {
                         const TrackImage::Note& from = image.notes[scene][slot];
@@ -636,22 +656,45 @@ void Engine::clearPending() {
 
 // Roll for the hit, then play it now or put it in a waiting slot.
 void Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples) {
-    const float velocity = scene.level[lane][step];
     const float chance = scene.chance[lane][step];
     if (chance < 1.f) {
         dice_ = dice_ * 1664525u + 1013904223u;
         if (static_cast<float>(dice_ >> 8) * (1.f / 16777216.f) >= chance) return;
     }
-    const float start = scene.start[lane][step];
+    playHit(track, lane, scene.level[lane][step], scene.start[lane][step], -1.f, scene.fx[lane][step], delaySamples);
+}
+
+// One hit, with its step effects, now or after a wait. A ratchet is the same
+// hit several times across the step; each of its hits is cut by the next, and
+// a hit that is CUT stops when its time is up, or when the next of the ratchet
+// comes, whichever is first.
+void Engine::playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples) {
+    const int hits = fx.hits();
+    const double gap = samplesPerStep_ / hits;
+    HitPlay how;
+    how.rate = fx.pitch == 0 ? 1.f : std::exp2(static_cast<float>(fx.pitch) / 12.f);
+    how.reverse = fx.reverse != 0;
+    if (fx.cut != 0) {
+        const double life = static_cast<double>(fx.cutSteps()) * samplesPerStep_;
+        how.life = static_cast<int>(life < gap ? life : gap);
+        if (how.life < 1) how.life = 1;
+    }
+    int more = hits - 1;
     if (delaySamples < 1.0) {
-        track.drums.trigger(lane, velocity, start);
-        return;
+        track.drums.trigger(lane, velocity, start, part, how);
+        if (more == 0) return;
+        delaySamples += gap; // the rest of the ratchet waits its turn
+        --more;
     }
     for (auto& p : track.pending[lane]) {
         if (p.velocity <= 0.f) {
             p.samplesLeft = delaySamples;
+            p.gap = gap;
+            p.more = more;
             p.velocity = velocity;
             p.start = start;
+            p.part = part;
+            p.how = how;
             return;
         }
     }
@@ -663,8 +706,13 @@ void Engine::firePending() {
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             for (auto& p : track.pending[lane]) {
                 if (p.velocity > 0.f && p.samplesLeft < 1.0) {
-                    track.drums.trigger(lane, p.velocity, p.start);
-                    p = Track::Pending();
+                    track.drums.trigger(lane, p.velocity, p.start, p.part, p.how);
+                    if (p.more > 0) { // a ratchet: the same again, a part of a step on
+                        --p.more;
+                        p.samplesLeft += p.gap;
+                    } else {
+                        p = Track::Pending();
+                    }
                 }
             }
         }
@@ -818,46 +866,51 @@ void Engine::render(float* interleaved, int frames) {
     float peaks[kNumTracks] = {};
     while (frames > 0) {
         int chunk = frames < kMaxBlock ? frames : kMaxBlock;
+        // A step starts on its exact sample: the chunk ends where the next
+        // step begins. Drum hits that are waiting come on theirs whether
+        // the song is playing or not (a ratchet heard by hand has its later
+        // hits waiting).
+        firePending();
+        double next = 1e18;
         if (playing_) {
-            // A step starts on its exact sample: the chunk ends where the
-            // next step begins.
-            firePending();
             fireNoteOffs(); // before the step, so a note that ends where the next begins is let go first
             firePendingNotes();
             if (untilStep_ <= 0.0) {
                 fireStep();
                 untilStep_ += samplesPerStep_;
             }
-            // Stop the chunk at whichever comes first: the next step, the
-            // next waiting hit, or the next note to be let go.
-            double next = untilStep_;
-            for (Track& track : tracks_) {
-                if (track.synth) {
-                    for (double off : track.offIn)
-                        if (off < next) next = off;
-                    for (const auto& p : track.pendingNotes)
-                        if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
-                }
-                if (!track.hasDrums) continue;
-                for (auto& lane : track.pending)
-                    for (auto& p : lane)
-                        if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+            next = untilStep_;
+        }
+        // Stop the chunk at whichever comes first: the next step, the next
+        // waiting hit, or the next note to be let go.
+        for (Track& track : tracks_) {
+            if (track.synth && playing_) {
+                for (double off : track.offIn)
+                    if (off < next) next = off;
+                for (const auto& p : track.pendingNotes)
+                    if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
             }
+            if (!track.hasDrums) continue;
+            for (auto& lane : track.pending)
+                for (auto& p : lane)
+                    if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+        }
+        if (next < chunk) {
             const int toNext = static_cast<int>(std::ceil(next));
             if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
-            untilStep_ -= chunk;
-            for (Track& track : tracks_) {
-                if (track.synth) {
-                    for (double& off : track.offIn)
-                        if (off < kNoNote) off -= chunk;
-                    for (auto& p : track.pendingNotes)
-                        if (p.velocity > 0.f) p.samplesLeft -= chunk;
-                }
-                if (!track.hasDrums) continue;
-                for (auto& lane : track.pending)
-                    for (auto& p : lane)
-                        if (p.velocity > 0.f) p.samplesLeft -= chunk;
+        }
+        if (playing_) untilStep_ -= chunk;
+        for (Track& track : tracks_) {
+            if (track.synth && playing_) {
+                for (double& off : track.offIn)
+                    if (off < kNoNote) off -= chunk;
+                for (auto& p : track.pendingNotes)
+                    if (p.velocity > 0.f) p.samplesLeft -= chunk;
             }
+            if (!track.hasDrums) continue;
+            for (auto& lane : track.pending)
+                for (auto& p : lane)
+                    if (p.velocity > 0.f) p.samplesLeft -= chunk;
         }
         renderChunk(interleaved, chunk, peaks);
         interleaved += 2 * chunk;

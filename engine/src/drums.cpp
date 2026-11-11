@@ -209,7 +209,7 @@ void DrumMachine::setLaneSample(int lane, const float* data, int length) {
     voices_[lane][1] = Voice();
 }
 
-void DrumMachine::trigger(int lane, float velocity, float start, float part) {
+void DrumMachine::trigger(int lane, float velocity, float start, float part, const HitPlay& how) {
     if (!kit_ || lane < 0 || lane >= kDrumLanes) return;
     if (!(velocity > 0.f)) return; // also drops NaN
     if (velocity > 1.f) velocity = 1.f;
@@ -219,13 +219,18 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part) {
     const int from = static_cast<int>(start * static_cast<float>(length)); // at or past the end: nothing plays
     if (!(part >= 0.f)) part = lanePart_[lane]; // below zero (or NaN): as the lane is set
     const int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
+    const double rate = how.rate > 0.f ? (how.rate < 0.25f ? 0.25 : (how.rate > 4.f ? 4.0 : static_cast<double>(how.rate))) : 1.0; // also NaN: as it is
 
     Voice& fresh = voices_[lane][next_[lane]];
     Voice& old = voices_[lane][1 - next_[lane]];
     // The sound is already at this very place: it carries on. (If it had just
-    // begun to fade at the end of its own part, it comes back up.)
-    if (old.position >= 0 && from > 0 && std::abs(old.position - from) <= joinFrames_) {
+    // begun to fade at the end of its own part, it comes back up.) Not a hit
+    // from the very top, which always starts the sound again; and not
+    // backwards, either of them.
+    if (old.position >= 0.0 && from > 0 && !how.reverse && old.rate > 0.0 && std::fabs(old.position - from) <= joinFrames_) {
         old.end = end;
+        old.rate = rate;
+        old.life = how.life;
         old.gainTo = velocity;
         old.fadeStep = 0.f;
         if (old.fade < 1.f) { // back up from where the fade had got to
@@ -235,33 +240,58 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part) {
         }
         return;
     }
-    if (old.position >= 0 && old.fadeStep == 0.f) old.fadeStep = chokeStep_;
+    if (old.position >= 0.0 && old.fadeStep == 0.f) old.fadeStep = chokeStep_;
     fresh = Voice();
-    fresh.position = from;
     fresh.end = end;
+    fresh.life = how.life > 0 ? how.life : 0;
     fresh.gain = fresh.gainTo = velocity;
-    fresh.rise = from > 0 ? 0.f : 1.f;
-    fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
+    if (how.reverse) {
+        // From the last sample it would have played, back to the first.
+        const int last = (end < length ? end : length) - 1;
+        if (last < from) return; // nothing there to play
+        fresh.position = last;
+        fresh.rate = -rate;
+        fresh.stop = from;
+        fresh.rise = 0.f; // it comes in from the middle of the sound, or from its tail
+        fresh.riseStep = chokeStep_ * 3.f;
+    } else {
+        fresh.position = from;
+        fresh.rate = rate;
+        fresh.rise = from > 0 ? 0.f : 1.f;
+        fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
+    }
     next_[lane] = 1 - next_[lane];
 }
 
 void DrumMachine::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     if (kit_) {
+        const float quick = chokeStep_ * 3.f; // a fade of a millisecond
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             const float* sample = own_[lane] ? own_[lane] : kit_->samples[lane].data();
             const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
             const float laneLevel = laneLevel_[lane];
             for (Voice& v : voices_[lane]) {
-                if (v.position < 0) continue;
+                if (v.position < 0.0) continue;
+                // Backwards, the fade must be over when it reaches its start (the front of a drum is its
+                // loudest part): it begins this far short of it.
+                const double fadeRoom = v.rate < 0.0 ? -v.rate / static_cast<double>(quick) : 0.0;
                 for (int i = 0; i < frames; ++i) {
-                    if (v.position >= length) { v.position = -1; break; }
-                    // The end of its part: a quick fade (a millisecond), so the next slice's first moment is not heard as a tick.
-                    if (v.position >= v.end && v.fadeStep == 0.f) v.fadeStep = chokeStep_ * 3.f;
-                    left[i] += sample[v.position++] * v.gain * v.fade * v.rise * laneLevel;
+                    if (v.position >= length || (v.rate < 0.0 && v.position < v.stop)) { v.position = -1.0; break; }
+                    // The end of its part: a quick fade, so the next slice's first moment is not heard as a tick.
+                    if (v.fadeStep == 0.f && (v.rate > 0.0 ? v.position >= v.end : v.position <= v.stop + fadeRoom)) v.fadeStep = quick;
+                    // Cut: its time is up.
+                    if (v.life > 0 && --v.life == 0 && v.fadeStep == 0.f) v.fadeStep = quick;
+                    const int at = static_cast<int>(v.position);
+                    float value = sample[at];
+                    if (v.rate != 1.0) { // between two samples: a straight line from one to the next
+                        const float part = static_cast<float>(v.position - at);
+                        value += part * ((at + 1 < length ? sample[at + 1] : 0.f) - value);
+                    }
+                    v.position += v.rate;
+                    left[i] += value * v.gain * v.fade * v.rise * laneLevel;
                     if (v.gain != v.gainTo) { // a level that changes mid-sound moves there over a millisecond
-                        const float step = chokeStep_ * 3.f;
-                        v.gain = v.gain < v.gainTo ? (v.gain + step > v.gainTo ? v.gainTo : v.gain + step) : (v.gain - step < v.gainTo ? v.gainTo : v.gain - step);
+                        v.gain = v.gain < v.gainTo ? (v.gain + quick > v.gainTo ? v.gainTo : v.gain + quick) : (v.gain - quick < v.gainTo ? v.gainTo : v.gain - quick);
                     }
                     if (v.rise < 1.f) {
                         v.rise += v.riseStep;
@@ -269,7 +299,7 @@ void DrumMachine::render(float* left, float* right, int frames) {
                     }
                     if (v.fadeStep > 0.f) {
                         v.fade -= v.fadeStep;
-                        if (v.fade <= 0.f) { v.position = -1; break; }
+                        if (v.fade <= 0.f) { v.position = -1.0; break; }
                     }
                 }
             }
