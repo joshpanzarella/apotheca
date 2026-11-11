@@ -5,9 +5,15 @@
 //   up / down (stick or D-pad)   choose a row
 //   left / right                 change it
 //   A                            on WIFI PAGE: on / off
+//                                on TRACK NAME: type a name (below)
 //                                on BUTTONS: the button test
 //   hold A for a second          on CONTROLS: set the controls up again
 //   START                        play / stop
+//
+// Typing a track's name: a grid of letters and numbers. The stick or D-pad
+// moves, A types the one under the cursor, B rubs out the last (B with
+// nothing typed leaves without changing the name), Y or START keeps it.
+// Ten characters at most. While it is open every button belongs to it.
 //
 // The button test shows what Apotheca hears from each button and the stick.
 // While it is open every button goes to it and does nothing else. It closes
@@ -15,6 +21,8 @@
 // is stuck down.
 
 #include <SDL.h>
+
+#include <string>
 
 #include "input.hpp"
 #include "session.hpp"
@@ -35,6 +43,10 @@ public:
     void goTo(int row) { row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row); }
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
+    bool typing() const { return typing_; }
+    const std::string& typed() const { return typed_; }
+    static const char* const kKeys; // the grid's characters, row after row
+    static constexpr int kKeyColumns = 10, kNameLength = 10;
     // True once after A was held a second on CONTROLS. The program then runs
     // the controls setup again (main.cpp); asking clears it.
     bool takeRelearn() { const bool was = relearn_; relearn_ = false; return was; }
@@ -46,6 +58,11 @@ private:
     Session& session_;
     Project& project_;
     int row_ = 0;
+    bool typing_ = false;
+    std::string typed_;
+    int key_ = 0; // which character of the grid the cursor is on
+    void typeButton(Button b);
+    void moveKey(Button direction);
     bool testing_ = false, testTimed_ = false;
     Uint32 testUntil_ = 0;
     Button lastPressed_ = Button::None;

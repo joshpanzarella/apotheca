@@ -1300,6 +1300,85 @@ void testHoldingSelectShowsTheHelp() {
     rig.key(SELECT, false);
 }
 
+void testTypingATrackName() {
+    Rig rig;
+    rig.app.session().view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kTrackName);
+    const char* name = rig.project().tracks[0].name;
+    // A on TRACK NAME opens the keys, on A, with nothing typed.
+    rig.tap(A);
+    CHECK(setup.typing() && setup.typed().empty());
+    // A types the key under the cursor; the D-pad moves over the grid and comes round at its edges.
+    rig.tap(A); // A
+    rig.tap(RIGHT);
+    rig.tap(A); // B
+    rig.tap(LEFT, 2); // off the left edge: round to J
+    rig.tap(A);
+    CHECK(setup.typed() == "ABJ");
+    rig.tap(DOWN, 3); // the bottom row, under J: the last key, a space
+    rig.tap(A);
+    rig.tap(A); // two spaces together: only one is taken
+    CHECK(setup.typed() == "ABJ ");
+    rig.tap(DOWN); // off the bottom: round to the top
+    rig.tap(A);
+    CHECK(setup.typed() == "ABJ J");
+    // B rubs out the last one.
+    rig.tap(B, 2);
+    CHECK(setup.typed() == "ABJ" && setup.typing());
+    // Ten at most.
+    rig.tap(A, 20);
+    CHECK(setup.typed() == "ABJJJJJJJJ");
+    // While it is open nothing else happens: no tab, no SONG screen, no row moves; the name is not changed yet.
+    rig.tap(L2);
+    rig.tap(R2);
+    rig.tap(SELECT);
+    rig.tap(X);
+    CHECK(rig.view() == View::Settings && setup.typing() && setup.cursorRow() == SettingsScreen::kTrackName && name[0] == 0);
+    // Y keeps it.
+    rig.tap(Y);
+    CHECK(!setup.typing() && std::string(name) == "ABJJJJJJJJ");
+    char shown[24];
+    ui::trackName(rig.project(), 0, shown, sizeof shown);
+    CHECK(std::string(shown) == "1 ABJJJJJJJJ");
+    // Opened again it starts from the name there is. START keeps too (and does not play).
+    rig.tap(A);
+    CHECK(setup.typed() == "ABJJJJJJJJ");
+    rig.tap(B, 8);
+    rig.tap(START);
+    CHECK(!setup.typing() && std::string(name) == "AB" && !rig.project().playing);
+    // B with nothing typed leaves, and the name stays as it was.
+    rig.tap(A);
+    rig.tap(B, 2);
+    CHECK(setup.typing() && setup.typed().empty());
+    rig.tap(B);
+    CHECK(!setup.typing() && std::string(name) == "AB");
+    // Emptied and kept: the instrument's own name again. A space cannot come first.
+    rig.tap(A);
+    rig.tap(B, 2);
+    rig.tap(UP); // the bottom row
+    rig.tap(LEFT); // its last key: space
+    rig.tap(A);
+    CHECK(setup.typed().empty());
+    rig.tap(Y);
+    CHECK(name[0] == 0);
+    // The stick moves over the keys too; left and right on the row still pick from the list when the keys are closed.
+    rig.tap(A);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(setup.typed() == "B");
+    rig.tap(B, 2);
+    rig.tap(RIGHT);
+    CHECK(std::string(name) == kTrackNames[1]);
+    // The digits and marks are all there, and every key is one a name may have.
+    const std::string keys = SettingsScreen::kKeys;
+    CHECK(keys.size() == 40 && keys.find('Z') != std::string::npos && keys.find('9') != std::string::npos && keys.find('-') != std::string::npos);
+    for (char c : keys) CHECK((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '-' || c == '_');
+}
+
 void testHoldXCarriesANote() {
     Rig rig;
     addPhazed(rig);
@@ -2614,6 +2693,7 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testHoldingSelectShowsTheHelp();
+    testTypingATrackName();
     testHoldXCarriesANote();
     testSelectGoesToTheSongScreen();
     testTheSetupScreen();

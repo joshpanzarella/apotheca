@@ -54,7 +54,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     // The button test (SETUP) has every button to itself.
-    if (session_.view == View::Settings && settings_.testing() && !panicking_) {
+    if (session_.view == View::Settings && (settings_.testing() || settings_.typing()) && !panicking_) {
         settings_.onButton(event, input);
         return;
     }
@@ -161,7 +161,7 @@ void App::update(const Input& input, Uint32 nowMs) {
         help_ = false;
     } else if (selectHeldSince_ == 0) {
         selectHeldSince_ = nowMs;
-    } else if (!help_ && nowMs - selectHeldSince_ >= kHelpAfterMs && !(session_.view == View::Settings && settings_.testing())) {
+    } else if (!help_ && nowMs - selectHeldSince_ >= kHelpAfterMs && !(session_.view == View::Settings && (settings_.testing() || settings_.typing()))) {
         help_ = true;
         selectAlone_ = false;
         song_.selectWasUsed();

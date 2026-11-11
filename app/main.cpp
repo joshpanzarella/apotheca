@@ -520,6 +520,11 @@ int main(int argc, char** argv) {
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
         }
+    } else if (std::strcmp(view, "typing") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kTrackName);
+        tapKey(SDLK_x);
+        for (const char* k = "\x01\x01x\x02x\x02\x02x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : SDLK_x);
     } else if (std::strcmp(view, "help") == 0) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {

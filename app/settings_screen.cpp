@@ -19,6 +19,38 @@ constexpr float kMovesPerSecond = 7.f, kChangesPerSecond = 9.f;
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 }
 
+// Four rows of ten: the letters, the digits, and the three marks a name may have. '_' at the end; the space is the wide one.
+const char* const SettingsScreen::kKeys = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_ ";
+
+void SettingsScreen::moveKey(Button direction) {
+    const int count = 40, columns = kKeyColumns;
+    int col = key_ % columns, row = key_ / columns;
+    if (direction == Button::Left) col = (col + columns - 1) % columns;
+    if (direction == Button::Right) col = (col + 1) % columns;
+    if (direction == Button::Up) row = (row + count / columns - 1) % (count / columns);
+    if (direction == Button::Down) row = (row + 1) % (count / columns);
+    key_ = row * columns + col;
+}
+
+void SettingsScreen::typeButton(Button b) {
+    if (isDirection(b)) {
+        moveKey(b);
+        repeating_ = b;
+        repeatAt_ = 0;
+    } else if (b == Button::A) {
+        const char c = kKeys[key_];
+        // No space first, and not two together; ten at most.
+        const bool space = c == ' ';
+        if (static_cast<int>(typed_.size()) < kNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
+    } else if (b == Button::B) {
+        if (typed_.empty()) typing_ = false; // nothing typed: leave, and the name stays as it was
+        else typed_.pop_back();
+    } else if (b == Button::Y || b == Button::Start) {
+        session_.setTrackName(project_.track, typed_);
+        typing_ = false;
+    }
+}
+
 void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
@@ -47,11 +79,17 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) lastPressed_ = b, testTimed_ = false;
         return;
     }
+    if (typing_) {
+        if (event.down) typeButton(b);
+        else if (b == repeating_) repeating_ = Button::None;
+        return;
+    }
     if (b == Button::A) {
         holding_ = event.down && row_ == kControls;
         holdTimed_ = false;
         holdPart_ = 0.f;
         if (!event.down) return;
+        if (row_ == kTrackName) typing_ = true, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
         return;
@@ -100,6 +138,26 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
         repeating_ = Button::None;
         return;
     }
+    if (typing_) {
+        // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.
+        const bool sideways = std::fabs(stickX_) > std::fabs(stickY_);
+        const float push = sideways ? stickX_ : stickY_;
+        if (push == 0.f) {
+            saved_ = 0.f;
+            stickWas_ = false;
+        } else {
+            saved_ += stickWas_ ? std::fabs(push) * kMovesPerSecond * dt : 1.f;
+            stickWas_ = true;
+            for (; saved_ >= 1.f; saved_ -= 1.f) moveKey(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
+        }
+        if (repeating_ != Button::None && repeatAt_ == 0) {
+            repeatAt_ = nowMs + kRepeatDelayMs;
+        } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
+            repeatAt_ = nowMs + kRepeatEveryMs;
+            moveKey(repeating_);
+        }
+        return;
+    }
     if (holding_) {
         if (!holdTimed_) holdTimed_ = true, holdSince_ = nowMs;
         holdPart_ = static_cast<float>(nowMs - holdSince_) / static_cast<float>(kRelearnHoldMs);
@@ -140,6 +198,32 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Settings, "", project_);
     char text[96];
 
+    if (typing_) {
+        char title[48];
+        std::snprintf(title, sizeof title, "TRACK %d: ITS NAME", project_.track + 1);
+        fonts.small.draw(r, 40.f, 46.f, title, kDim);
+        // What has been typed, with a mark where the next letter goes.
+        box(r, 40, 66, kScreenW - 80, 52, kPanel2, kTeal);
+        const float tx = 56.f, ty = 66.f + (52.f - fonts.large.capHeight()) / 2.f;
+        fonts.large.draw(r, tx, ty, typed_.c_str(), kText);
+        if (static_cast<int>(typed_.size()) < kNameLength) fill(r, static_cast<int>(tx + fonts.large.width(typed_.c_str()) + (typed_.empty() ? 0 : 3)), 66 + 14, 2, 24, kTeal);
+        std::snprintf(text, sizeof text, "%d OF %d", static_cast<int>(typed_.size()), kNameLength);
+        fonts.small.drawRight(r, kScreenW - 56.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, text, kDim);
+        if (typed_.empty()) fonts.small.draw(r, tx + 12.f, 66.f + (52.f - fonts.small.capHeight()) / 2.f, "(empty: its instrument's own name)", kDim);
+        const int kw = 52, kh = 52, gx = (kScreenW - kKeyColumns * kw) / 2, gy = 140;
+        for (int i = 0; i < 40; ++i) {
+            const int x = gx + (i % kKeyColumns) * kw, y = gy + (i / kKeyColumns) * kh;
+            const bool here = i == key_;
+            box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
+            char one[8];
+            std::snprintf(one, sizeof one, "%s", kKeys[i] == ' ' ? "SPACE" : std::string(1, kKeys[i]).c_str());
+            const Font& font = kKeys[i] == ' ' ? fonts.small : fonts.large;
+            font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
+        }
+        const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "rub out"}, {"Y", "keep"}};
+        hints(r, fonts, list, 3);
+        return;
+    }
     if (testing_) {
         fonts.medium.draw(r, 24.f, 44.f, "BUTTON TEST", kText);
         fonts.small.draw(r, 24.f, 66.f, "Press each button. It should light up here, and only while you hold it.", kDim);
@@ -184,7 +268,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             char full[24];
             trackName(project_, project_.track, full, sizeof full);
             std::snprintf(text, sizeof text, "%s", full);
-            note = project_.current().name[0] ? "of the track being worked on" : "any name can be typed on the designer page";
+            note = "left / right: from a list.  A: type one";
             break;
         }
         case kVolume:
@@ -236,6 +320,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
     if (row_ <= kMidi) hint("LEFT / RIGHT", "change");
+    if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");
