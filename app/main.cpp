@@ -520,6 +520,8 @@ int main(int argc, char** argv) {
             pushKey(SDLK_w, true);
             pushKey(SDLK_l, true);
         }
+    } else if (std::strcmp(view, "help") == 0) {
+        pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }

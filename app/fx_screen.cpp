@@ -206,13 +206,13 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("STICK UP / DOWN", column_ == 0 ? "next / previous effect" : "turn it");
+        hint("UP / DOWN", column_ == 0 ? "next / previous effect" : "turn it");
     } else {
-        hint("HOLD A + STICK", column_ == 0 ? "pick the effect" : "turn");
+        hint("HOLD A", column_ == 0 ? "pick the effect" : "turn");
         hint("B", column_ == 0 ? "none" : "default value");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count, true);
+    hints(r, fonts, list, count);
 }
 
 } // namespace apotheca

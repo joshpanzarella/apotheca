@@ -738,17 +738,17 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char brushText[40];
     if (paint_ == Paint::OneLevel) {
         std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
-        hint("DRAG WITH THE STICK", brushText);
+        hint("DRAG", brushText);
         hint("+ R2", "random levels");
     } else if (paint_ == Paint::Random) {
-        hint("DRAG WITH THE STICK", "paint hits at random levels");
+        hint("DRAG", "paint hits at random levels");
     } else if (shaping_ && onStep()) {
-        hint("STICK UP / DOWN", "level");
-        hint("STICK LEFT / RIGHT", "nudge");
+        hint("UP / DOWN", "level");
+        hint("LEFT / RIGHT", "nudge");
         hint("L2 / R2", "nudge early / late");
     } else if (dicing_ && onStep()) {
-        hint("STICK UP / DOWN", "chance");
-        hint("STICK LEFT / RIGHT", "where the sound starts");
+        hint("UP / DOWN", "chance");
+        hint("LEFT / RIGHT", "where the sound starts");
         hint("TAP Y", "100 > 75 > 50 > 25");
     } else if (dicing_ && onName) {
         hint("UP / DOWN", "more / fewer hits");
@@ -756,9 +756,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT", "starts to the top");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
-        hint("STICK UP / DOWN", onTempo_ ? "tempo" : "drum volume");
+        hint("UP / DOWN", onTempo_ ? "tempo" : "drum volume");
     } else if (onTempo_) {
-        hint("HOLD A + STICK", "tempo");
+        hint("HOLD A", "tempo");
         hint("START", project_.playing ? "stop" : "play");
     } else if (onName) {
         hint("HOLD A", "volume");
@@ -771,7 +771,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD R1", "paint");
         hint("R1 + R2", "paint random");
     }
-    ui::hints(r, fonts, hints, count, !onTempo_);
+    ui::hints(r, fonts, hints, count);
 }
 
 } // namespace apotheca

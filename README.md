@@ -83,11 +83,14 @@ and the stick shapes the thing under the cursor:
 | A | Turns the value: it fills or drains |
 | Y | Chance, on the drum grid |
 
-**X hears what is under the cursor on every working screen** (a drum, a
-key, a chord, a track). The bottom bar shows an X and a small loudspeaker
-where that is so, and does not list it each time. Moving with the stick or
-D-pad is not listed either. The bar never runs off the screen: a hint that
-does not fit is left out.
+**Hold SELECT for a moment and a help card comes up**: what the buttons do
+on every screen (X hears what is under the cursor, the stick and D-pad
+move, A, B, START, L2 / R2, what SELECT does with other buttons, the
+panic). Let go and it closes. The bar at the bottom of each screen lists
+only what is particular to where the cursor is. A direction that either the
+stick or the D-pad gives is written as the direction alone (UP / DOWN); the
+two are named only where they do different things. The bar never runs off
+the screen: a hint that does not fit is left out.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens

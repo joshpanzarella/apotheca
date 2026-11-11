@@ -55,6 +55,8 @@ public:
     // Quieter or louder, and show the volume for a moment.
     void changeVolume(float by);
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
+    // SELECT held for a moment: a card of what the buttons do everywhere. It goes when SELECT is let go.
+    bool helpShowing() const { return help_; }
     // The notice that says a panic happened. It stays while the buttons are
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
@@ -79,6 +81,8 @@ private:
     FxScreen fx_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
+    bool help_ = false;
+    Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;

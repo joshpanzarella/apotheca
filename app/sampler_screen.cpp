@@ -223,15 +223,15 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("STICK UP / DOWN", stop_ == 0 ? "next / previous recording" : "turn it");
+        hint("UP / DOWN", stop_ == 0 ? "next / previous recording" : "turn it");
     } else {
-        hint("HOLD A + STICK", stop_ == 0 ? "pick the recording" : "turn");
+        hint("HOLD A", stop_ == 0 ? "pick the recording" : "turn");
         hint("B", stop_ == 0 ? "none" : "default value");
         hint("Y", "catch");
         hint("R1", "record");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count, true);
+    hints(r, fonts, list, count);
     picker_.draw(r, fonts);
 }
 

@@ -200,27 +200,16 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     return bar;
 }
 
-void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count, bool hear) {
+void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
     fill(r, 0, y, kScreenW, 1, kLine);
-    if (hear) {
-        // X, and a loudspeaker: a box, a cone, two waves.
-        const int sx = kScreenW - 22, cy = y + kHintsH / 2 + 1;
-        const float w = fonts.small.width("X") + 8.f;
-        fill(r, static_cast<int>(sx - 8 - w), y + 5, static_cast<int>(w), kHintsH - 9, kBrass);
-        fonts.small.draw(r, sx - 8 - w + 4.f, y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f, "X", kBg);
-        fill(r, sx, cy - 2, 3, 5, kBrass);
-        for (int i = 0; i < 4; ++i) fill(r, sx + 3 + i, cy - 2 - i, 1, 5 + 2 * i, kBrass);
-        fill(r, sx + 10, cy - 2, 1, 5, kBrass);
-        fill(r, sx + 13, cy - 4, 1, 9, kBrass);
-    }
     const float textY = y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
     float x = 8.f;
-    // Nothing is ever drawn past the right-hand end (or over the X mark): a
+    // Nothing is ever drawn past the right-hand end: a
     // hint that does not fit is left out, and so are the ones after it. The
     // lists are written most useful first.
-    const float limit = hear ? kScreenW - 22.f - 8.f - fonts.small.width("X") - 8.f - 10.f : kScreenW - 6.f;
+    const float limit = kScreenW - 6.f;
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
         const float keyW = fonts.small.width(list[i].key) + 8.f;
@@ -231,6 +220,9 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count, boo
         fonts.small.draw(r, x, textY, list[i].does, kDim);
         x += fonts.small.width(list[i].does) + 11.f;
     }
+    // In what room is left at the end: how to see the help card.
+    const char* help = "HOLD SELECT: HELP";
+    if (x + 6.f + fonts.small.width(help) <= limit) fonts.small.drawRight(r, limit, textY, help, faded(kDim, 170));
 }
 
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,

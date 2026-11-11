@@ -6,6 +6,7 @@ namespace apotheca {
 
 namespace {
 constexpr Uint32 kUpdateHoldMs = 1000; // A held this long accepts an update
+constexpr Uint32 kHelpAfterMs = 400;   // SELECT held this long shows the help card
 constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the buttons are let go
 }
 
@@ -152,6 +153,19 @@ void App::changeVolume(float by) {
 
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
+    // SELECT held by itself for four tenths of a second: the help card. Having
+    // shown it, letting go of SELECT is not a tap (it does not go to SONG or
+    // open the list of songs).
+    if (!input.held(Button::Select)) {
+        selectHeldSince_ = 0;
+        help_ = false;
+    } else if (selectHeldSince_ == 0) {
+        selectHeldSince_ = nowMs;
+    } else if (!help_ && nowMs - selectHeldSince_ >= kHelpAfterMs && !(session_.view == View::Settings && settings_.testing())) {
+        help_ = true;
+        selectAlone_ = false;
+        song_.selectWasUsed();
+    }
     if (panicNote_ && !panicking_ && nowMs >= panicNoteUntil_) panicNote_ = false;
     // A held for a whole second on the update notice: accepted.
     if (session_.updateWaiting() && updateHeld_) {
@@ -263,6 +277,51 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fonts.small.draw(renderer, x + 18.f, y + 70.f, "All four shoulder buttons were held: L1, L2, R1 and R2.", kDim);
         fonts.small.draw(renderer, x + 18.f, y + 88.f, "Nothing in the song was changed.", kDim);
         fonts.small.draw(renderer, x + 18.f, y + 108.f, panicking_ ? "Let go to carry on." : "Press any button to carry on.", kText);
+    } else if (help_) {
+        // What is true on every screen, so the bar at the bottom need not say it each time.
+        using namespace ui;
+        const int w = 560, h = 372, x = (kScreenW - w) / 2, y = kTopBarH + 14;
+        fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 215));
+        box(renderer, x, y, w, h, kPanel, kTeal);
+        outline(renderer, x, y, w, h, kTeal, 2);
+        struct Line { const char* key; const char* does; };
+        const Line everywhere[] = {
+            {"X", "hear what is under the cursor: a drum, a key, a chord, a track"},
+            {"STICK or D-PAD", "move. The stick for big moves, the D-pad for exact ones"},
+            {"A", "place, open or pick. Held, it takes hold: then a direction changes it"},
+            {"B", "delete, empty, or go back"},
+            {"START", "play / stop"},
+            {"L2  R2", "the screen before / the screen after"},
+            {"SELECT, tapped", "the SONG screen. On SONG: the list of songs"},
+        };
+        const Line held[] = {
+            {"L1  R1", "quieter / louder"},
+            {"UP  DOWN", "tempo, a beat a minute"},
+            {"LEFT  RIGHT", "tempo, ten at a time"},
+            {"START", "quit Apotheca"},
+        };
+        float ly = y + 14.f;
+        const auto title = [&](const char* text) {
+            fonts.small.draw(renderer, x + 18.f, ly, text, kDim);
+            ly += 20.f;
+        };
+        const auto line = [&](const Line& l) {
+            const float kw = fonts.small.width(l.key) + 8.f;
+            fill(renderer, x + 18, static_cast<int>(ly) - 3, static_cast<int>(kw), 17, kText);
+            fonts.small.draw(renderer, x + 22.f, ly, l.key, kBg);
+            fonts.small.draw(renderer, x + 150.f, ly, l.does, kText);
+            ly += 22.f;
+        };
+        title("ON EVERY SCREEN");
+        for (const Line& l : everywhere) line(l);
+        ly += 6.f;
+        title("WITH SELECT HELD");
+        for (const Line& l : held) line(l);
+        ly += 6.f;
+        title("IF IT IS TOO LOUD TO THINK");
+        line({"L1 + L2 + R1 + R2", ""});
+        fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once: silence, now", kText);
+        fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO OF SELECT TO CLOSE", kDim);
     }
 }
 

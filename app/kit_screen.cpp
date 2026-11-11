@@ -225,7 +225,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("STICK UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
+        hint("UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
     } else {
         hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from the list" : "fit to steps");
         hint("B", column_ == kSound ? "the drum back" : "fit off");
@@ -233,7 +233,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("R1", "record");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count, true);
+    hints(r, fonts, list, count);
     picker_.draw(r, fonts); // over everything, when it is open
 }
 

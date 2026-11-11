@@ -719,11 +719,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
-        hint("DRAG WITH THE STICK", brushText);
+        hint("DRAG", brushText);
     } else if (shaping_) {
-        hint("STICK < >", "level");
-        hint("STICK ^ v", "length");
-        hint("D-PAD ^ v", "length by steps");
+        hint("LEFT / RIGHT", "level");
+        hint("STICK UP / DOWN", "length");
+        hint("D-PAD UP / DOWN", "by whole steps");
         hint("L2 / R2", "nudge early / late");
     } else {
         hint("A", under || chordUnder ? "level / length" : "place");
@@ -733,7 +733,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD B", "erase");
         hint("L1", "zoom");
     }
-    hints(r, fonts, list, count, true);
+    hints(r, fonts, list, count);
 }
 
 } // namespace apotheca

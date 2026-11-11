@@ -291,16 +291,16 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         scope(r, session_.engine, 8, 322, 624, 124);
 
         if (holding_) {
-            if (cursor_ == kFolder) hint("STICK UP / DOWN", "next / previous folder");
-            else if (cursor_ == kPreset) hint("STICK UP / DOWN", "next / previous preset");
-            else hint("STICK UP / DOWN", "turn it");
+            if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
+            else if (cursor_ == kPreset) hint("UP / DOWN", "next / previous preset");
+            else hint("UP / DOWN", "turn it");
         } else {
             if (cursor_ == kAdvanced) hint("A", "open");
-            else hint("HOLD A + STICK", cursor_ < kFirstMacro ? "change" : "turn");
+            else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             hint("START", project_.playing ? "stop" : "play");
         }
-        hints(r, fonts, list, count, true);
+        hints(r, fonts, list, count);
         return;
     }
 
@@ -378,12 +378,12 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK UP / DOWN", "change it");
         hint("D-PAD UP / DOWN", "by one");
     } else {
-        hint("HOLD A + STICK", "change");
+        hint("HOLD A", "change");
         hint("L1 R1", "page");
         hint("B", "main");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count, true);
+    hints(r, fonts, list, count);
 }
 
 } // namespace apotheca

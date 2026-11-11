@@ -136,7 +136,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x + w - 8, ly + (track - bar) * first / (count() - kRows), 3, bar, kTeal);
     }
     const Hint list[] = {{"A", "keep it"}, {"B", "as it was"}, {"UP / DOWN", playing_ ? "next (heard in the beat)" : "next"}, {"LEFT / RIGHT", "8 at a time"}};
-    hints(r, fonts, list, 4, true);
+    hints(r, fonts, list, 4);
 }
 
 } // namespace apotheca

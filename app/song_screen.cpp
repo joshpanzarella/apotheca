@@ -623,14 +623,14 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (copying_) {
-        hint("DRAG WITH THE STICK", "copy this bar into every cell crossed");
+        hint("DRAG", "copy this bar into every cell crossed");
     } else if (holding_ && onCell()) {
-        hint("STICK LEFT / RIGHT", "how long this cell is: 1, 2, 4 or 8 bars");
+        hint("LEFT / RIGHT", "how long this cell is: 1, 2, 4 or 8 bars");
     } else if (holding_) {
-        hint("STICK UP / DOWN", "times the scene plays");
+        hint("UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
     } else if (column_ == kRepeatColumn) {
-        hint("HOLD A + STICK", "times it plays");
+        hint("HOLD A", "times it plays");
         hint("TAP A", "1 > 2 > 4 > 8");
         hint("START", project_.playing ? "stop" : "play song");
     } else if (column_ == addColumn()) {
@@ -645,7 +645,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD R1", "copy");
         hint("SELECT", "songs");
     }
-    hints(r, fonts, list, count, onCell());
+    hints(r, fonts, list, count);
 }
 
 } // namespace apotheca

@@ -1236,6 +1236,70 @@ void testHoldBAndDragErases() {
     rig.project().playing = false;
 }
 
+void testHoldingSelectShowsTheHelp() {
+    Rig rig;
+    rig.app.session().view = View::Pattern;
+    rig.frames(2);
+    CHECK(!rig.app.helpShowing());
+    // A tap is too quick for it, and still goes to SONG.
+    rig.key(SELECT, true);
+    rig.frames(20); // 0.32 s
+    CHECK(!rig.app.helpShowing());
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(rig.view() == View::Song && !rig.app.helpShowing());
+    // Held four tenths of a second: the card. Letting go closes it and does nothing else.
+    rig.app.session().view = View::Device;
+    rig.key(SELECT, true);
+    rig.frames(24);
+    CHECK(!rig.app.helpShowing());
+    rig.frames(3);
+    CHECK(rig.app.helpShowing());
+    rig.frames(200);
+    CHECK(rig.app.helpShowing());
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(!rig.app.helpShowing() && rig.view() == View::Device);
+    // The same on SONG: the list of songs does not open behind it.
+    rig.app.session().view = View::Song;
+    rig.key(SELECT, true);
+    rig.frames(30);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(!rig.app.helpShowing() && rig.view() == View::Song && !rig.app.song().listingSongs());
+    rig.tap(SELECT); // and a tap after it is a tap again
+    CHECK(rig.app.song().listingSongs());
+    rig.tap(SELECT);
+    // What SELECT does with other buttons still works with the card up.
+    rig.app.session().view = View::Pattern;
+    rig.key(SELECT, true);
+    rig.frames(30);
+    CHECK(rig.app.helpShowing() && rig.app.session().volume() == 1.f);
+    rig.tap(L1);
+    rig.tap(UP);
+    CHECK(near(rig.app.session().volume(), 0.9f) && rig.project().tempo == 121.f);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(rig.view() == View::Pattern);
+    // Each hold starts its own count.
+    rig.key(SELECT, true);
+    rig.frames(15);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    rig.key(SELECT, true);
+    rig.frames(15);
+    CHECK(!rig.app.helpShowing());
+    rig.key(SELECT, false);
+    // Not over the button test, which has every button to itself.
+    rig.app.session().view = View::Settings;
+    rig.app.settings().goTo(SettingsScreen::kTest);
+    rig.tap(A);
+    rig.key(SELECT, true);
+    rig.frames(40);
+    CHECK(!rig.app.helpShowing() && rig.app.settings().testing());
+    rig.key(SELECT, false);
+}
+
 void testSelectGoesToTheSongScreen() {
     Rig rig;
     for (View from : {View::Pattern, View::Device, View::Effects, View::Settings}) {
@@ -2434,6 +2498,7 @@ int main(int, char**) {
     testAllFourShoulderButtonsIsPanic();
     testMuteSoloAndNames();
     testHoldBAndDragErases();
+    testHoldingSelectShowsTheHelp();
     testSelectGoesToTheSongScreen();
     testTheSetupScreen();
     testTheButtonTestAndSettingUpAgain();
