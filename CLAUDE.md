@@ -123,6 +123,13 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
   that, shorten the words.
 - **Sample names from `wavNames` have no `.wav` ending.**
+- **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
+  drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
+  gesture works in it unchanged. A hit's slice is its `start`; there is no
+  separate slice data. A lane has 16 slices, or its FIT in steps if longer.
+- **A drum hit that starts where the lane's sound has just got to carries it
+  on** (`DrumMachine::trigger`, within 1.5 ms, never from the very top). That
+  is what makes slices in order seamless. Do not "simplify" it away.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
@@ -158,9 +165,8 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. Slice view for chopping breaks.
-2. Step effects, tracker style (ratchet, reverse, pitch, cut, glide, throw).
-3. LFO and random stepper per track.
+1. Step effects, tracker style (ratchet, reverse, pitch, cut, glide, throw).
+2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring.

@@ -510,8 +510,13 @@ int main(int argc, char** argv) {
         // bar, with hits on the beat whose starts have been rolled.
         const std::vector<std::string> names = app.session().sampleNames();
         if (!names.empty()) {
-            app.session().setLaneSample(0, 5, names[0]);
-            app.session().setLaneFit(0, 5, 16);
+            // The break, if there is one, for the slice view; else the first recording there is.
+            std::string pick = names[0];
+            if (std::strncmp(view, "slices", 6) == 0)
+                for (const std::string& n : names)
+                    if (n.find("break") != std::string::npos) pick = n;
+            app.session().setLaneSample(0, 5, pick);
+            app.session().setLaneFit(0, 5, std::strcmp(view, "slices-32") == 0 ? 32 : 16);
             app.session().finishStretching();
             for (int step = 0; step < kSteps; ++step) app.drums().setStep(5, step, 0.f);
             const float starts[8] = {0.f, 0.375f, 0.25f, 0.75f, 0.f, 0.125f, 0.5f, 0.875f};
@@ -532,6 +537,7 @@ int main(int argc, char** argv) {
             app.drums().setStart(5, 13, 9.f / 16.f);
             app.drums().setStep(5, 11, 0.f);
             app.session().setLaneOneSlice(0, 5, true);
+            if (std::strcmp(view, "slices-32") == 0) app.drums().setStart(5, 5, 25.f / 32.f + 0.012f); // on a finer cut, and slid a little off it
             app.drums().moveCursorTo(5, std::strcmp(view, "slices-name") == 0 ? -1 : 5);
             app.drums().setSlicing(true);
         } else if (std::strcmp(view, "starts") == 0) {

@@ -507,6 +507,43 @@ hit on the lane, on the sixteenths of the sound. **Left** puts them all back
 at the top. On a loop fitted to one bar, that rearranges the beat and keeps
 it in time.
 
+### Slices: chopping a break
+
+**L1 on a lane that plays a recording** zooms the grid into that one lane.
+L1 again goes back. (L1 on the kit screen goes straight there too.)
+
+The recording is drawn large and cut into **slices**: sixteen of them, or
+one to a step if it is fitted to more than a bar (32 for two bars, 64 for
+four). Under it are the bar's sixteen steps. A line runs from every hit up
+to the slice it plays: straight down when the slice is the step's own,
+crossing and purple when it has been moved.
+
+Everything the grid does works the same here. What is added:
+
+| Do this | To |
+| --- | --- |
+| Up / down on a hit | The next / previous slice, heard as it changes. It goes round the ends. |
+| A on an empty step | Place a hit on the step's **own** slice (step 5 plays slice 5) |
+| Hold R1 and drag | Lay the break out **in order**: a hit on every step crossed, each on its own slice |
+| ...and R2 as well | A **random** slice on every step crossed: the break, shuffled |
+| X | Hear one slice: the hit's, or on an empty step the one a hit would get |
+| Up / down on the lane's name | Each hit plays **ONE SLICE** and stops, or **RUNS ON** through the recording until the next hit |
+| Hold Y + right on the name | Roll every hit's slice. Left: back in order. |
+
+So, to chop a break: put it on a lane, FIT it to 1 bar, L1, hold R1 and
+sweep the stick across. That is the break as it was, in sixteen hits. Now
+move to a step and press up or down until it plays the slice you want.
+
+- **Slices in order play as one unbroken sound.** A hit that starts where
+  the recording has just got to carries it on, with no gap or click. Only a
+  slice out of order is heard as a cut.
+- **ONE SLICE** is for beats with gaps: take a hit out and its step is
+  silent. With **RUNS ON** the recording plays on through the gap.
+- A hit's start can still be slid off the cuts (hold Y, stick left / right).
+  The strip then reads `9 + 40%`: slice 9, and 40% of a slice further in.
+- A slice change is undone by SELECT + B like any other edit. ONE SLICE /
+  RUNS ON is kept in the song.
+
 ### DEVICE, drums: the kit
 
 A row for each lane. Each lane plays its built-in drum or a **recording**: a
@@ -516,6 +553,9 @@ WAV file from the `samples` folder beside the program. A kit can mix the two.
 | --- | --- | --- |
 | SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
+
+**L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut
+into slices (see "Slices: chopping a break").
 
 **Y is Catch.** The engine remembers the last ten seconds it played. Y on a
 lane takes the last whole bar the song played, everything as it was heard,
