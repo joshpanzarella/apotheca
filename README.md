@@ -449,6 +449,10 @@ the same network.
   takes a name; the folder is made when the first file lands in it.
 - **PLAY** plays a recording or a bounce in the browser.
 - **DOWNLOAD** fetches a file back: a catch, a recording, a song, a bounce.
+- **Several at once.** Tick the box on each recording (or CHOOSE ALL on a
+  folder; with something in the find box, that is every match). A bar comes up:
+  pick a folder (or NEW FOLDER) and MOVE, or DELETE (it asks once more). They
+  go one after another, each with its own line in the list at the top.
 - **RENAME and MOVE** (recordings only) open a small form: the name, and the
   folder. On a computer a recording can also be dragged onto a folder.
   Nothing is written over: a name that is taken is refused. A song that uses

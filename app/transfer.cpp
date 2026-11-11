@@ -79,6 +79,9 @@ ul{list-style:none;padding:0;margin:0}
 .acts{display:flex;gap:6px;flex-wrap:wrap}
 .edit{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#2a231d;padding:10px;border-radius:3px}
 .edit input{flex:1 1 150px;min-width:0}
+input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;flex:none}
+#bulk{position:sticky;top:0;z-index:5;background:#2a231d;border:1px solid #6fbfa3;border-radius:3px;padding:9px 12px;margin:0 0 8px}
+#bulk b{color:#6fbfa3;font-weight:600;letter-spacing:.06em}
 .none{padding:8px 12px;color:#8f8370;font-size:13px;border-top:1px solid #2a231d}
 .panel>.none:first-child,.panel>ul>.row:first-child{border-top:0}
 #find{margin-left:auto;width:150px;font-size:13px;padding:4px 8px;letter-spacing:0;text-transform:none}
@@ -102,6 +105,7 @@ ul{list-style:none;padding:0;margin:0}
 </div>
 
 <h2>Recordings <span class="count" id="nSamples"></span><input id="find" type="text" placeholder="find"></h2>
+<div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="24" placeholder="new folder name"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
 <div id="recordings"></div>
 <h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files.</p><div class="panel"><ul id="bounces"></ul></div>
 <h2>Songs <span class="count" id="nSongs"></span></h2><div class="panel"><ul id="songs"></ul></div>
@@ -117,6 +121,7 @@ const $ = id => document.getElementById(id);
 const kinds = {wav: 'samples', json: 'chords', song: 'songs'};
 const NEW = '*new'; // a folder name cannot have a * in it
 let all = {samples: [], songs: [], chords: [], bounces: [], folders: [], sizes: {}};
+const picked = new Set(); // recordings ticked, to move or delete together
 const open = new Set(), made = new Set(); // folders showing their files; folders named here with nothing in them yet
 let first = true, filter = '', playing = '', audio = null, into = '';
 $('design').href = base + '/design';
@@ -176,6 +181,7 @@ function draw() {
 }
 function row(kind, name, label, size) {
   const li = el('li', 'row'); li.dataset.kind = kind; li.dataset.name = name;
+  if (kind == 'samples') { const tick = el('input', 'pick'); tick.type = 'checkbox'; tick.checked = picked.has(name); tick.title = 'choose it, to move or delete several together'; li.append(tick); }
   if (kind == 'samples' || kind == 'bounces') {
     const on = playing == kind + '/' + name;
     li.append(btn(on ? 'stop' : 'play', 'play', on ? 'play on' : 'play'));
@@ -203,7 +209,7 @@ function drawRecordings() {
     shown += rows.length;
     const isOpen = filter ? true : open.has(f), sec = el('section', 'folder'), head = el('div', 'fhead');
     sec.dataset.folder = f; head.dataset.act = 'toggle';
-    head.append(el('span', 'tw', isOpen ? '-' : '+'), el('span', 'fname' + (f ? '' : ' loose'), f || 'UNSORTED'), el('span', 'count', rows.length), btn('add files', 'add'));
+    head.append(el('span', 'tw', isOpen ? '-' : '+'), el('span', 'fname' + (f ? '' : ' loose'), f || 'UNSORTED'), el('span', 'count', rows.length), btn(rows.length && rows.every(r => picked.has(r[0])) ? 'choose none' : 'choose all', 'all'), btn('add files', 'add'));
     sec.append(head);
     if (isOpen) { // a shut folder draws no rows, so hundreds of files stay quick
       const ul = el('ul');
@@ -215,7 +221,55 @@ function drawRecordings() {
   }
   if (filter && !shown) page.append(el('div', 'none', 'nothing by that name'));
   box.textContent = ''; box.append(page);
+  bulkBar();
 }
+
+// ---- several at once ----
+// Tick recordings (or CHOOSE ALL on a folder), then move or delete them together. They go one
+// after another, each with its own line in the list above, and the page is read again once at the end.
+function bulkBar() {
+  for (const n of [...picked]) if (!all.samples.includes(n)) picked.delete(n);
+  $('bulk').classList.toggle('hid', !picked.size);
+  $('nPicked').textContent = picked.size + ' chosen';
+  $('bulkDelete').textContent = 'delete'; $('bulkDelete').dataset.sure = '';
+  const now = $('bulkTo').value;
+  folderSelect($('bulkTo'), $('bulkNew').classList.contains('hid') ? now : NEW);
+}
+$('bulkTo').onchange = () => { $('bulkNew').classList.toggle('hid', $('bulkTo').value != NEW); if ($('bulkTo').value == NEW) $('bulkNew').focus(); };
+$('bulkNone').onclick = () => { picked.clear(); drawRecordings(); };
+$('bulkMove').onclick = async () => {
+  const f = $('bulkTo').value == NEW ? $('bulkNew').value.trim() : $('bulkTo').value;
+  if (f && wrong(f, 24)) { note('folder ' + f, 'refused: ' + wrong(f, 24), 'no'); return; }
+  const names = [...picked].sort();
+  for (const from of names) {
+    const to = (f ? f + '/' : '') + split(from)[1];
+    if (to == from) { picked.delete(from); continue; } // already there
+    if (await moveOne(from, to)) picked.delete(from);
+  }
+  if (f) open.add(f);
+  $('bulkNew').value = ''; $('bulkNew').classList.add('hid');
+  list();
+};
+$('bulkDelete').onclick = async () => {
+  const b = $('bulkDelete');
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'delete all ' + picked.size; setTimeout(() => { b.dataset.sure = ''; b.textContent = 'delete'; }, 6000); return; }
+  for (const name of [...picked].sort()) {
+    if (playing == 'samples/' + name) stop();
+    const r = await ask('DELETE', 'samples', name);
+    note(name, r.ok ? r.text : 'not deleted: ' + r.text, r.ok ? 'ok' : 'no');
+    if (r.ok) picked.delete(name);
+  }
+  list();
+};
+document.addEventListener('change', e => {
+  if (!e.target.classList || !e.target.classList.contains('pick')) return;
+  const name = e.target.closest('li').dataset.name;
+  if (e.target.checked) picked.add(name); else picked.delete(name);
+  // Only the bar and this folder's button change: the list is not drawn again for a tick.
+  const sec = e.target.closest('.folder'), ticks = [...sec.querySelectorAll('input.pick')];
+  sec.querySelector('[data-act=all]').textContent = ticks.length && ticks.every(t => t.checked) ? 'choose none' : 'choose all';
+  bulkBar();
+});
 $('find').oninput = () => { filter = $('find').value.trim().toLowerCase(); drawRecordings(); };
 
 // ---- sending ----
@@ -315,13 +369,14 @@ async function remove(kind, name) {
   note(name, r.ok ? r.text : 'not deleted: ' + r.text, r.ok ? 'ok' : 'no');
   list();
 }
-async function move(from, to) {
+async function moveOne(from, to) { // one move, and its line in the list; true if it went
   if (playing == 'samples/' + from) stop();
   const r = await ask('POST', 'samples', from, {'X-To': to.split('/').map(encodeURIComponent).join('/')});
   note(from + ' to ' + to, r.ok ? r.text : 'refused: ' + r.text, r.ok ? 'ok' : 'no');
   if (r.ok && split(to)[0]) open.add(split(to)[0]);
-  list();
+  return r.ok;
 }
+async function move(from, to) { await moveOne(from, to); list(); }
 function edit(li, moving) { // one small form for both: the name, and the folder
   const old = li.querySelector('.edit'); if (old) { old.remove(); return; }
   for (const e of document.querySelectorAll('.edit')) e.remove();
@@ -348,6 +403,12 @@ document.addEventListener('click', e => {
   const t = e.target.closest('[data-act]'); if (!t || !t.dataset.act) return;
   const li = t.closest('li.row'), sec = t.closest('.folder'), act = t.dataset.act;
   if (act == 'add') { e.stopPropagation(); pickFor = sec.dataset.folder; $('files').click(); return; }
+  if (act == 'all') { // every recording in this folder (as the find box has narrowed it), or none of them
+    const f = sec.dataset.folder, names = all.samples.filter(n => split(n)[0] == f && (!filter || n.toLowerCase().includes(filter)));
+    const every = names.length && names.every(n => picked.has(n));
+    for (const n of names) if (every) picked.delete(n); else picked.add(n);
+    drawRecordings(); return;
+  }
   if (act == 'toggle') { const f = sec.dataset.folder; if (open.has(f)) open.delete(f); else open.add(f); drawRecordings(); return; }
   const kind = li.dataset.kind, name = li.dataset.name;
   if (act == 'play') play(t, kind, name);
