@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 
 namespace apotheca {
 
@@ -76,6 +78,19 @@ const char* DrumKit::laneName(int lane) {
 // Drive: pushes a sound into a soft ceiling. The peaks flatten and the body
 // comes up, which is what makes a drum sound loud at the same peak level.
 static float drive(float x, float amount) { return std::tanh(amount * x); }
+
+const DrumKit& DrumKit::builtIn(float sampleRate) {
+    struct Kept { float rate; DrumKit kit; };
+    static std::mutex mutex;
+    // Never taken apart: an engine may still be playing from one as the program ends.
+    static std::vector<std::unique_ptr<Kept>>& kept = *new std::vector<std::unique_ptr<Kept>>;
+    std::lock_guard<std::mutex> lock(mutex);
+    for (const auto& k : kept)
+        if (k->rate == sampleRate) return k->kit;
+    kept.emplace_back(new Kept{sampleRate, {}});
+    kept.back()->kit.buildBuiltIn(sampleRate);
+    return kept.back()->kit;
+}
 
 void DrumKit::buildBuiltIn(float sr) {
     // The kit is built to hit hard: fast pitch drops, a sharp click on the

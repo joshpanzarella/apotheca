@@ -169,9 +169,9 @@ bool Engine::setTrackImage(int track, std::unique_ptr<TrackImage> image) {
 void Engine::prepare(float sampleRate) {
     sampleRate_ = sampleRate;
     samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
-    builtInKit_.buildBuiltIn(sampleRate);
+    const DrumKit& kit = DrumKit::builtIn(sampleRate); // one for every engine at this rate
     for (Track& track : tracks_) {
-        track.drums.setKit(&builtInKit_);
+        track.drums.setKit(&kit);
         track.drums.prepare(sampleRate);
         if (track.synth) track.synth->prepare(sampleRate);
         for (auto& effect : track.effects) {

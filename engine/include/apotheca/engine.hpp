@@ -351,7 +351,6 @@ private:
     std::atomic<bool> quitWorkers_{false};
 
     float sampleRate_ = 48000.f;
-    DrumKit builtInKit_;
     Track tracks_[kNumTracks];
     bool claimed_[kNumTracks] = {};
     bool claimedDrums_[kNumTracks] = {}; // ...and which of those are drums // control thread's view of which tracks have an instrument

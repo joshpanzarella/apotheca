@@ -17,6 +17,12 @@ struct DrumKit {
     // open hat, clap, tom, rim, crash. Allocates, so call it off the audio
     // thread. The same sample rate always gives the same samples.
     void buildBuiltIn(float sampleRate);
+    // The built-in kit at a sample rate: made the first time it is asked for
+    // and kept, unchanged, for as long as the program runs. Every engine at
+    // that rate plays from the same one (building it is a twentieth of a
+    // second of work, and was most of the time the tests took). Any thread
+    // but the audio thread.
+    static const DrumKit& builtIn(float sampleRate);
 
     static const char* laneName(int lane);
 };
