@@ -24,6 +24,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (down == 4) {
             panicking_ = true;
             panicNote_ = true;
+            drums_.dropBrush();
             session_.view = viewBeforeShoulders_;
             session_.panic(true);
             return;
@@ -81,6 +82,19 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (input.held(Button::A) && session_.view == View::Pattern && !panicking_) {
             if (isSynth(project_->current().kind)) notes_.onButton(event, input);
             else drums_.onButton(event, input);
+            return;
+        }
+        // On the drum grid R2 is also the random brush: held or dragged it
+        // paints, and only a quick tap of it turns to the next screen. With
+        // another shoulder button down it is neither (a panic may be coming).
+        const bool onDrums = session_.view == View::Pattern && !isSynth(project_->current().kind);
+        if (event.button == Button::L2 && event.down) drums_.dropBrush();
+        if (event.button == Button::R2 && onDrums && !panicking_ && !input.held(Button::A) && !input.held(Button::Y)) {
+            const bool alone = !input.held(Button::L1) && !input.held(Button::R1) && !input.held(Button::L2);
+            if (event.down && !alone) return;
+            drums_.onButton(event, input);
+            if (event.down || !drums_.takeR2Tap()) return;
+            if (session_.view != View::Effects) session_.view = static_cast<View>(static_cast<int>(session_.view) + 1);
             return;
         }
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;

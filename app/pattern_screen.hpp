@@ -27,7 +27,9 @@
 //
 //   hold R1 and drag   every hit at ONE level: the level of the hit you
 //                      started on, or 80% if you started on an empty step
-//   hold L1 and drag   every hit at a RANDOM level
+//   hold R2 and drag   every hit at a RANDOM level. (R2 is also "next
+//                      screen": a quick tap of it still is. Held for a
+//                      quarter of a second, or dragged, it is the brush.)
 //
 // Dragging over hits that are already there re-levels them and leaves their
 // nudge and chance alone.
@@ -104,6 +106,11 @@ public:
     bool cursorOnTempo() const { return onTempo_; }
     float tempo() const { return project_.tempo; }
     bool painting() const { return paint_ != Paint::None; }
+    // R2 was pressed and let go quickly without painting: the app turns to
+    // the next screen. Asking clears it.
+    bool takeR2Tap() { const bool was = r2Tap_; r2Tap_ = false; return was; }
+    // Put the brush down without a tap (a panic is on its way).
+    void dropBrush() { paint_ = Paint::None; r2Tap_ = false; }
     int diceHits(int lane) const; // how many hits on the lane the dice placed and still own
     bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 
@@ -163,7 +170,11 @@ private:
 
     Paint paint_ = Paint::None;
     float brush_ = 0.8f;              // the level R1 is painting with
-    std::uint32_t dice_ = 0x9E3779B9u; // for L1's random levels
+    std::uint32_t dice_ = 0x9E3779B9u; // for R2's random levels
+    bool randomBegun_ = false; // this hold of R2 has painted (so it is not a tap)
+    bool randomTimed_ = false; // update() has started the hold's clock
+    Uint32 randomSince_ = 0;
+    bool r2Tap_ = false;
 
     Button repeating_ = Button::None; // D-pad direction being held
     Uint32 repeatAt_ = 0;

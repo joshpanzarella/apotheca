@@ -64,6 +64,10 @@ private:
     bool waitingForRelease_ = false;
     int axisRest_[32];
     bool axisOut_[32] = {};
+    bool axisKnown_[32] = {};  // where it rests is known
+    bool axisJumped_[32] = {}; // its first word was hard against an end
+    int axisJump_[32] = {};
+    bool finishedPress_ = false;
     Uint32 now_ = 0, stepBegan_ = 0, began_ = 0;
     const char* complaint_ = "";
     std::string saw_;

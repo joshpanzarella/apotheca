@@ -19,7 +19,8 @@ constexpr float kNewHitLevel = 0.8f;
 constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
 constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
-constexpr float kRandomLow = 0.25f;   // L1 paints levels from here up to full
+constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
+constexpr Uint32 kTapMs = 250;        // R2 let go sooner than this, with nothing painted, was a tap: next screen
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr int kStartSlices = 16;          // the D-pad and the lane roll move a start by sixteenths of the sound
@@ -334,6 +335,12 @@ void PatternScreen::moveCursor(Button direction) {
 }
 
 void PatternScreen::dragCursor(Button direction) {
+    // The random brush waits to see whether R2 is a tap. A drag says it is
+    // not: the step being left gets its hit too.
+    if (paint_ == Paint::Random && !randomBegun_) {
+        randomBegun_ = true;
+        paintHere();
+    }
     moveCursor(direction);
     paintHere(); // does nothing unless a brush is down
 }
@@ -420,7 +427,24 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::L2 || b == Button::R2) {
         // The app sends these here only while A is held: nudge, early or late,
         // a tenth of a step. The same as A with the D-pad sideways.
-        if (event.down && shaping_ && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
+        if (shaping_) {
+            if (event.down && hitHere()) nudgeExact(b == Button::R2 ? Button::Right : Button::Left, false);
+            return;
+        }
+        // R2 alone: the random brush. Nothing is painted yet, in case this
+        // is a quick tap, which means "next screen" (see update and dragCursor).
+        if (b != Button::R2) return;
+        if (event.down) {
+            r2Tap_ = false;
+            if (!dicing_ && paint_ == Paint::None) {
+                paint_ = Paint::Random;
+                randomBegun_ = false;
+                randomTimed_ = false;
+            }
+        } else if (paint_ == Paint::Random) {
+            paint_ = Paint::None;
+            r2Tap_ = !randomBegun_;
+        }
         return;
     }
     if (b == Button::A) {
@@ -453,11 +477,11 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (!event.down && !shaping_) turning_ = Turning::Nothing;
         return;
     }
-    if (b == Button::R1 || b == Button::L1) {
-        const Paint mine = b == Button::R1 ? Paint::OneLevel : Paint::Random;
+    if (b == Button::R1) {
+        const Paint mine = Paint::OneLevel;
         if (!event.down) {
             if (paint_ == mine) paint_ = Paint::None;
-        } else if (!shaping_ && !dicing_) {
+        } else if (!shaping_ && !dicing_ && paint_ == Paint::None) {
             paint_ = mine;
             // The brush takes the level of the hit it starts on, or 80%.
             brush_ = hitHere() ? pat().level[lane_][step_] : kNewHitLevel;
@@ -494,6 +518,12 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number // a stalled frame must not fling anything
     lastMs_ = nowMs;
+
+    // R2 held long enough is the random brush even without a drag.
+    if (paint_ == Paint::Random && !randomBegun_) {
+        if (!randomTimed_) randomTimed_ = true, randomSince_ = nowMs;
+        else if (nowMs - randomSince_ >= kTapMs) randomBegun_ = true, paintHere();
+    }
 
     const float x = input.stickX(), y = input.stickY();
     if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
@@ -759,7 +789,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("Y", hitHere() ? "chance / start" : "maybe");
         if (hitHere()) hint("B", "delete");
         hint("HOLD R1", "paint");
-        hint("HOLD L1", "paint random");
+        hint("HOLD R2", "paint random");
     }
     ui::hints(r, fonts, hints, count);
 }

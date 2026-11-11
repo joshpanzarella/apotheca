@@ -188,6 +188,77 @@ void testATriggerWhoseRestSdlKnows() {
     learner.setAxisRest(99, 5); // no such axis: ignored
 }
 
+// The bug that left L2 "held for ever": triggers that rest at one end, on a
+// device that does not say so beforehand.
+void testTriggersNobodyToldUsAbout() {
+    const auto begin = [](ControlLearner& learner) {
+        learner.update(100);
+        learner.update(1000);
+    };
+    const auto pressed = [](const ControlMap& map, std::vector<SDL_Event> events) {
+        Input input;
+        input.useMap(&map);
+        std::vector<ButtonEvent> all = feed(input, events);
+        return all;
+    };
+    // An analog trigger: it creeps up from the bottom of its travel to the top and back.
+    {
+        ControlLearner learner;
+        begin(learner);
+        for (int v : {-30000, -20000, 0, 20000, 32767, 20000, -10000, -32768}) learner.handle(axis(2, v));
+        CHECK(learner.step() == 1);
+        const RawControl up = learner.map().button[static_cast<int>(Button::Up)];
+        CHECK(up.kind == RawControl::JoyAxis && up.rest == -32768 && up.value == 1);
+        // In use: at rest it is NOT held; pressed it is; let go it is not again.
+        const ControlMap map = learner.map();
+        CHECK(pressed(map, {axis(2, -32768)}).empty());
+        CHECK(is(pressed(map, {axis(2, -32768), axis(2, 32767), axis(2, -32768), axis(2, 32767)}),
+                 {{Button::Up, true}, {Button::Up, false}, {Button::Up, true}}));
+    }
+    // A digital trigger: it jumps straight from one end to the other. Its
+    // first word is the pressed end; where it goes next is where it rests.
+    {
+        ControlLearner learner;
+        begin(learner);
+        learner.handle(axis(5, 32767));
+        CHECK(learner.step() == 0); // not yet: it could rest in the middle or at the other end
+        learner.handle(axis(5, -32768));
+        CHECK(learner.step() == 1);
+        const RawControl up = learner.map().button[static_cast<int>(Button::Up)];
+        CHECK(up.rest == -32768 && up.value == 1);
+        // The press is over, so the very next press of something else is taken.
+        answer(learner, joyButton(1, true), joyButton(1, false));
+        CHECK(learner.step() == 2);
+        const ControlMap map = learner.map();
+        CHECK(is(pressed(map, {axis(5, -32768), axis(5, 32767), axis(5, -32768)}), {{Button::Up, true}, {Button::Up, false}}));
+    }
+    // A D-pad that reports as an axis: jumps to an end, and comes back to the middle.
+    {
+        ControlLearner learner;
+        begin(learner);
+        learner.handle(axis(6, -32768));
+        learner.handle(axis(6, 0));
+        CHECK(learner.step() == 1);
+        const RawControl up = learner.map().button[static_cast<int>(Button::Up)];
+        CHECK(up.rest == 0 && up.value == -1);
+        // The other way on the same axis, now that its rest is known: at once.
+        learner.handle(axis(6, 32767));
+        CHECK(learner.step() == 2 && learner.map().button[static_cast<int>(Button::Down)].value == 1);
+        learner.handle(axis(6, 0));
+        const ControlMap map = learner.map();
+        CHECK(is(pressed(map, {axis(6, -32768), axis(6, 0), axis(6, 32767), axis(6, 0)}),
+                 {{Button::Up, true}, {Button::Up, false}, {Button::Down, true}, {Button::Down, false}}));
+    }
+    // A trigger resting at the TOP of its travel, creeping down: the same, the other way up.
+    {
+        ControlLearner learner;
+        begin(learner);
+        for (int v : {30000, 0, -32768, 0, 32767}) learner.handle(axis(3, v));
+        const RawControl up = learner.map().button[static_cast<int>(Button::Up)];
+        CHECK(learner.step() == 1 && up.rest == 32767 && up.value == -1);
+    }
+}
+
 void testTheSetupDoesNotTakeAWrongAnswer() {
     ControlLearner learner;
     learner.update(1000);
@@ -274,6 +345,7 @@ void testTheSetupDoesNotTakeAWrongAnswer() {
 int main(int, char**) {
     testLearningAndUsingTheHandheld();
     testATriggerWhoseRestSdlKnows();
+    testTriggersNobodyToldUsAbout();
     testTheSetupDoesNotTakeAWrongAnswer();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

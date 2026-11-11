@@ -106,15 +106,54 @@ bool ControlLearner::pressedNow(const SDL_Event& e, RawControl& out) {
     } else if (e.type == SDL_JOYAXISMOTION) {
         const int axis = e.jaxis.axis;
         if (axis < 0 || axis >= 32) return false;
-        // Where an axis rests: the middle, unless it has been told otherwise
-        // (setAxisRest), or it speaks in the first moments, before anything
-        // is asked. A trigger rests at one end of its travel, and many
-        // devices say so as soon as they are opened.
+        const int v = e.jaxis.value;
+        const auto snap = [](int value) { return value < -24000 ? -32768 : (value > 24000 ? 32767 : 0); };
+        // Where does this axis rest? A stick rests in the middle, but a
+        // trigger rests at one end of its travel, and getting that wrong
+        // makes the button read as held for ever. Three ways to know:
+        //   - it was told (setAxisRest), or the axis spoke in the first
+        //     moments, before anything was asked;
+        //   - its first word is part-way along: it is moving away from rest,
+        //     so rest is the nearest of the three places it could be;
+        //   - its first word is hard against an end: it jumped there (a
+        //     digital trigger, or a D-pad reporting as an axis). That end is
+        //     "pressed"; rest is wherever it goes next, when it is let go.
         if (now_ - began_ < kSettleMs) {
-            axisRest_[axis] = e.jaxis.value < -24000 ? -32768 : (e.jaxis.value > 24000 ? 32767 : 0);
+            axisRest_[axis] = snap(v);
+            axisKnown_[axis] = true;
             return false;
         }
-        const int moved = e.jaxis.value - axisRest_[axis];
+        if (!axisKnown_[axis] && step_ >= kButtonSteps) {
+            // The stick is being asked for, and a stick rests in the middle.
+            axisRest_[axis] = 0;
+            axisKnown_[axis] = true;
+        }
+        if (!axisKnown_[axis]) {
+            if (!axisJumped_[axis] && (v <= -32767 || v >= 32767)) {
+                axisJumped_[axis] = true;
+                axisJump_[axis] = v;
+                std::snprintf(text, sizeof text, "axis %d jumped to an end", axis);
+                saw_ = text;
+                return false; // not an answer yet: wait to see where it rests
+            }
+            if (axisJumped_[axis]) {
+                if (std::abs(v - axisJump_[axis]) < kAxisPress) return false; // still at that end
+                // Let go: now it is known. The press it has just finished is the answer.
+                axisRest_[axis] = snap(v);
+                axisKnown_[axis] = true;
+                out.kind = RawControl::JoyAxis;
+                out.index = axis;
+                out.value = axisJump_[axis] > axisRest_[axis] ? 1 : -1;
+                out.rest = axisRest_[axis];
+                std::snprintf(text, sizeof text, "axis %d %s (rests at %d)", axis, out.value > 0 ? "+" : "-", out.rest);
+                saw_ = text;
+                finishedPress_ = true; // already let go: nothing to wait for
+                return true;
+            }
+            axisRest_[axis] = snap(v);
+            axisKnown_[axis] = true;
+        }
+        const int moved = v - axisRest_[axis];
         const bool out_ = std::abs(moved) > kAxisPress;
         if (std::abs(moved) < kAxisRelease) axisOut_[axis] = false;
         pressed = out_ && !axisOut_[axis];
@@ -123,7 +162,7 @@ bool ControlLearner::pressedNow(const SDL_Event& e, RawControl& out) {
         out.index = axis;
         out.value = moved > 0 ? 1 : -1;
         out.rest = axisRest_[axis];
-        if (pressed) std::snprintf(text, sizeof text, "axis %d %s", axis, moved > 0 ? "+" : "-");
+        if (pressed) std::snprintf(text, sizeof text, "axis %d %s (rests at %d)", axis, moved > 0 ? "+" : "-", out.rest);
     } else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
         if (e.key.repeat) return false;
         out.kind = RawControl::Key;
@@ -141,6 +180,7 @@ void ControlLearner::handle(const SDL_Event& event) {
     if (done()) return;
     if (began_ != 0 && now_ - began_ < kSettleMs && event.type != SDL_JOYAXISMOTION) return; // not listening for answers yet
     RawControl got;
+    finishedPress_ = false;
     if (!pressedNow(event, got)) {
         // Something was let go: the next press is a new answer.
         if (event.type == SDL_JOYBUTTONUP || event.type == SDL_KEYUP || (event.type == SDL_JOYHATMOTION && event.jhat.value == SDL_HAT_CENTERED) ||
@@ -169,11 +209,14 @@ void ControlLearner::handle(const SDL_Event& event) {
     complaint_ = "";
     ++step_;
     stepBegan_ = now_;
-    waitingForRelease_ = true;
+    waitingForRelease_ = !finishedPress_;
+    finishedPress_ = false;
 }
 
 void ControlLearner::setAxisRest(int axis, int value) {
-    if (axis >= 0 && axis < 32) axisRest_[axis] = value < -24000 ? -32768 : (value > 24000 ? 32767 : 0);
+    if (axis < 0 || axis >= 32) return;
+    axisRest_[axis] = value < -24000 ? -32768 : (value > 24000 ? 32767 : 0);
+    axisKnown_[axis] = true;
 }
 
 void ControlLearner::update(Uint32 nowMs) {

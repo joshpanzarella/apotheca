@@ -58,7 +58,7 @@ struct Rig {
 
 // Keyboard stand-ins (see app/input.cpp).
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
-const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w;
+const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, R2 = SDLK_2;
 // The one stick.
 const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, STICK_RIGHT = SDLK_l;
 
@@ -686,8 +686,9 @@ void testTheDiceNeverTakeYourHits() {
     int painted = -1;
     for (int step = 0; step < kSteps && painted < 0; ++step) if (rig.screen.fromDice(2, step)) painted = step;
     rig.screen.moveCursorTo(2, painted);
-    rig.key(L1, true);
-    rig.key(L1, false);
+    rig.key(R2, true);
+    rig.frames(20); // held: the random brush, not a tap
+    rig.key(R2, false);
     CHECK(!rig.screen.fromDice(2, painted));
 
     // Drain the dice all the way, then roll: the five that are the player's stay.
@@ -849,11 +850,12 @@ void testTheBrushSkipsNamesAndTempo() {
     CHECK(hits == 3);
 }
 
-void testL1PaintsRandomLevels() {
+void testR2PaintsRandomLevels() {
     Rig rig;
-    rig.key(L1, true);
+    rig.key(R2, true);
     for (int i = 0; i < kSteps - 1; ++i) rig.tap(SDLK_RIGHT);
-    rig.key(L1, false);
+    rig.key(R2, false);
+    CHECK(!rig.screen.takeR2Tap()); // it painted: not a tap
     float low = 1.f, high = 0.f;
     int different = 0;
     for (int step = 0; step < kSteps; ++step) {
@@ -872,9 +874,9 @@ void testL1PaintsRandomLevels() {
     rig.screen.setNudge(0, 3, -0.2f);
     rig.screen.setChance(0, 3, 0.25f);
     rig.screen.moveCursorTo(0, 0);
-    rig.key(L1, true);
+    rig.key(R2, true);
     for (int i = 0; i < kSteps - 1; ++i) rig.tap(SDLK_RIGHT);
-    rig.key(L1, false);
+    rig.key(R2, false);
     int changed = 0;
     for (int step = 0; step < kSteps; ++step) changed += rig.screen.level(0, step) != before[step] ? 1 : 0;
     CHECK(changed >= 13);
@@ -906,19 +908,87 @@ void testPaintWaitsItsTurn() {
     rig.key(R1, false);
     rig.key(A, false);
     rig.key(Y, true);
-    rig.key(L1, true);
+    rig.key(R2, true);
     CHECK(!rig.screen.painting());
-    rig.key(L1, false);
+    rig.key(R2, false);
     rig.key(Y, false);
+    CHECK(!rig.screen.takeR2Tap()); // nor was that a tap
 
-    // With both down, the one pressed last is the brush, and letting go of
-    // the other does not lift it.
+    // With both down, the one pressed first is the brush, and the other
+    // does nothing coming down or going up.
+    rig.screen.moveCursorTo(3, 0);
     rig.key(R1, true);
-    rig.key(L1, true);
+    rig.key(R2, true);
+    rig.tap(SDLK_RIGHT);
+    rig.key(R2, false);
+    CHECK(rig.screen.painting() && !rig.screen.takeR2Tap());
+    CHECK(near(rig.screen.level(3, 0), 0.8f) && near(rig.screen.level(3, 1), 0.8f)); // R1's one level, not random
+    rig.key(R1, false);
+    CHECK(!rig.screen.painting());
+    rig.key(R2, true);
+    rig.key(R1, true);
+    rig.frames(20);
     rig.key(R1, false);
     CHECK(rig.screen.painting());
-    rig.key(L1, false);
+    rig.key(R2, false);
     CHECK(!rig.screen.painting());
+}
+
+// R2 is two things on the drum grid: a quick tap is "next screen" (the app
+// does the turning; the screen says it was a tap), held or dragged it is the
+// random brush.
+void testR2IsATapOrABrush() {
+    Rig rig;
+    rig.screen.moveCursorTo(2, 4);
+    // A quick tap paints nothing and is reported once.
+    rig.key(R2, true);
+    rig.frames(10); // 160 ms
+    CHECK(rig.screen.level(2, 4) == 0.f);
+    rig.key(R2, false);
+    CHECK(rig.screen.level(2, 4) == 0.f && !rig.screen.painting());
+    CHECK(rig.screen.takeR2Tap() && !rig.screen.takeR2Tap());
+    // Held a quarter of a second: a hit where the cursor is, and no tap.
+    rig.key(R2, true);
+    rig.frames(15);
+    CHECK(rig.screen.level(2, 4) == 0.f); // the clock starts on the first frame: 224 ms so far
+    rig.frames(2);
+    CHECK(rig.screen.level(2, 4) >= 0.25f);
+    const float first = rig.screen.level(2, 4);
+    rig.frames(30);
+    CHECK(rig.screen.level(2, 4) == first); // once, not again and again
+    rig.key(R2, false);
+    CHECK(!rig.screen.takeR2Tap());
+    // Dragged at once: the step left behind and the step arrived at, no waiting.
+    rig.screen.moveCursorTo(5, 8);
+    rig.key(R2, true);
+    rig.tap(SDLK_RIGHT);
+    CHECK(rig.screen.level(5, 8) >= 0.25f && rig.screen.level(5, 9) >= 0.25f && rig.screen.level(5, 10) == 0.f);
+    rig.frames(30); // and the wait does not paint the same step again
+    const float there = rig.screen.level(5, 9);
+    rig.frames(30);
+    CHECK(rig.screen.level(5, 9) == there);
+    rig.key(R2, false);
+    CHECK(!rig.screen.takeR2Tap());
+    // A tap that was not asked about is forgotten at the next press.
+    rig.tap(R2);
+    rig.key(R2, true);
+    CHECK(!rig.screen.takeR2Tap());
+    rig.key(R2, false);
+    rig.screen.takeR2Tap();
+    // L1 is no brush any more.
+    rig.screen.moveCursorTo(6, 2);
+    rig.key(L1, true);
+    rig.tap(SDLK_RIGHT);
+    rig.frames(30);
+    rig.key(L1, false);
+    CHECK(!rig.screen.painting() && rig.screen.level(6, 2) == 0.f && rig.screen.level(6, 3) == 0.f);
+    // The brush put down from outside (a panic): no hit, no tap.
+    rig.screen.moveCursorTo(7, 0);
+    rig.key(R2, true);
+    rig.screen.dropBrush();
+    rig.frames(30);
+    rig.key(R2, false);
+    CHECK(rig.screen.level(7, 0) == 0.f && !rig.screen.takeR2Tap());
 }
 
 void testPaintingWhilePlayingIsNotDoubled() {
@@ -968,7 +1038,8 @@ int main(int, char**) {
     testR1CopiesTheLevelItStartsOn();
     testPaintingRunsWithTheStick();
     testTheBrushSkipsNamesAndTempo();
-    testL1PaintsRandomLevels();
+    testR2PaintsRandomLevels();
+    testR2IsATapOrABrush();
     testPaintWaitsItsTurn();
     testPaintingWhilePlayingIsNotDoubled();
     if (failures) {
