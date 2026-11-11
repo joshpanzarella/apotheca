@@ -430,6 +430,44 @@ bool parseSong(const std::string& text, Project& project) {
     return true;
 }
 
+bool renameRecordings(std::string& text, const std::vector<std::pair<std::string, std::string>>& renames) {
+    if (text.compare(0, 13, "apotheca-song") != 0) return false;
+    std::string out;
+    bool changed = false;
+    TrackKind kind = TrackKind::None; // of the track the line belongs to, told the way parseSong tells it
+    int count = 0;
+    for (std::size_t at = 0; at < text.size();) {
+        std::size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(at, end - at);
+        std::istringstream in(line);
+        std::string word, name;
+        double lane = 0, fit = 0;
+        in >> word;
+        if (word == "track") {
+            std::string which;
+            in >> which;
+            kind = trackKindFromWord(which.c_str());
+            if (kind != TrackKind::None && count++ >= kNumTracks) kind = TrackKind::None; // a thirteenth track is not read
+        } else if ((word == "sample" && kind == TrackKind::Drums && (in >> lane >> fit) && lane >= 1 && lane <= kDrumLanes) ||
+                   (word == "sound" && kind == TrackKind::Sampler)) {
+            std::getline(in >> std::ws, name); // the rest of the line, as it is read
+            std::string now = name;
+            for (const auto& rename : renames)
+                if (now == rename.first) now = rename.second;
+            if (now != name) {
+                line.replace(line.size() - name.size(), name.size(), now);
+                changed = true;
+            }
+        }
+        out += line;
+        if (end < text.size()) out += '\n';
+        at = end + 1;
+    }
+    if (changed) text.swap(out);
+    return changed;
+}
+
 bool writeTextFile(const std::string& path, const std::string& text) {
     // Written beside the real file and moved into place, so a crash or a flat
     // battery mid-write cannot leave half a song.
@@ -451,8 +489,9 @@ bool readTextFile(const std::string& path, std::string& text) {
     char block[4096];
     std::size_t got;
     while ((got = std::fread(block, 1, sizeof block, f)) > 0) text.append(block, got);
+    const bool whole = !std::ferror(f); // a card that fails part-way must not pass for a short file: it may be written back
     std::fclose(f);
-    return true;
+    return whole;
 }
 
 } // namespace apotheca

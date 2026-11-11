@@ -1161,14 +1161,20 @@ static void testReverbDoesNotSlowDown() {
     for (float size : {0.f, 0.6f}) {
         std::unique_ptr<Effect> r = fresh(EffectKind::Reverb, size, 0.5f, 1.f);
         Stereo io(kMaxBlock);
+        // The time of a block, as the quickest of five runs of them: a busy machine (other builds
+        // going on) takes the processor away for a moment, and that is not the effect being slow.
         const auto blocks = [&](int count) {
-            const auto t0 = std::chrono::steady_clock::now();
-            for (int i = 0; i < count; ++i) {
-                io.l.assign(kMaxBlock, 0.f);
-                io.r.assign(kMaxBlock, 0.f);
-                r->process(io.l.data(), io.r.data(), kMaxBlock);
+            double best = 1e30;
+            for (int part = 0; part < 5; ++part) {
+                const auto t0 = std::chrono::steady_clock::now();
+                for (int i = 0; i < count / 5; ++i) {
+                    io.l.assign(kMaxBlock, 0.f);
+                    io.r.assign(kMaxBlock, 0.f);
+                    r->process(io.l.data(), io.r.data(), kMaxBlock);
+                }
+                best = std::min(best, std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / (count / 5));
             }
-            return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / count;
+            return best;
         };
         io.l[0] = io.r[0] = 1.f;
         r->process(io.l.data(), io.r.data(), kMaxBlock);

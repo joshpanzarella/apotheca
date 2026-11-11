@@ -69,6 +69,48 @@ void Session::recordingChanged(const std::string& from, const std::string& to) {
             if (!to.empty() && to == name && sounds_[t][lane].missing) read(); // the file it was waiting for is here
         }
     }
+    if (!to.empty()) findMissing(sampleLabel(to)); // or one of its base name, in another folder
+}
+
+int Session::findMissing(const std::string& label) {
+    struct Lost { int track, lane; };
+    std::vector<Lost> lost;
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& track = project.tracks[t];
+        const bool sampler = track.kind == TrackKind::Sampler;
+        if (!sampler && track.kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < (sampler ? 1 : kDrumLanes); ++lane) {
+            const char* name = sampler ? track.sample : track.laneSample[lane];
+            if (sounds_[t][lane].missing && sampleNameOk(name) && (label.empty() || sampleLabel(name) == label)) lost.push_back({t, lane});
+        }
+    }
+    if (lost.empty() || sampleFolder_.empty()) return 0; // nothing missing: the folder is not looked at
+    ++lookups_;
+    const std::vector<std::string> have = wavNames(sampleFolder_); // once, however many are missing
+    int found = 0;
+    for (const Lost& one : lost) {
+        const bool sampler = project.tracks[one.track].kind == TrackKind::Sampler;
+        char* name = sampler ? project.tracks[one.track].sample : project.tracks[one.track].laneSample[one.lane];
+        const auto read = [&] { sampler ? loadTrackSample(one.track) : loadLane(one.track, one.lane); };
+        const std::string was = name, base = sampleLabel(was);
+        std::string at;
+        int count = 0;
+        bool there = false; // a file of its own name that will not read: it is not swapped for another
+        for (const std::string& other : have) {
+            if (other == was) there = true;
+            else if (sampleLabel(other) == base && sampleNameOk(other) && ++count == 1) at = other;
+        }
+        if (there || count != 1) continue; // none, or two: never a guess
+        std::snprintf(name, kSampleNameRoom, "%s", at.c_str());
+        read();
+        if (!sounds_[one.track][one.lane].missing) {
+            ++found;
+            continue;
+        }
+        std::snprintf(name, kSampleNameRoom, "%s", was.c_str()); // it would not read: as it was
+        read();
+    }
+    return found;
 }
 
 void Session::install(int track, int lane, const std::vector<float>& samples) {

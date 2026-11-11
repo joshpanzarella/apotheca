@@ -108,7 +108,23 @@ public:
     // uses the new one, and goes on playing the sound it has: nothing is read again. Deleted
     // (`to` empty): they keep the name and are marked missing, as they would be the next time
     // the song was opened. Sent (`from` empty): one that was missing by that name is read.
+    // A recording of that base name that turns up anywhere (`to` in another folder) is taken by
+    // one that was missing, if it is the only one (findMissing).
     void recordingChanged(const std::string& from, const std::string& to);
+    // Recordings that were renamed or moved while a song was shut. A lane or sampler track whose
+    // recording is not where the song says takes the one of the same base name (the part after
+    // the folder) from the root of the samples folder or one of its folders, if there is EXACTLY
+    // ONE and it reads. None, or two: it stays missing, never a guess. Run when a song or a rev
+    // is opened; the changed name is saved as any change is. `label`: only those of that base
+    // name. Returns how many were found. The folder is listed once, and only if something is missing.
+    int findMissing(const std::string& label = "");
+    int sampleLookups() const { return lookups_; } // how many times findMissing has listed the folder (tests)
+    // The page renamed or moved recordings (`first` to `second`, in order): every saved song and
+    // rev in the song folder that names one names the new one (renameRecordings), written beside
+    // itself and moved into place, with the date it had. Pairs with a name that is no
+    // recording's (one sent or deleted has an empty side) are passed over. The open song's own file is left to
+    // recordingChanged and the autosave. Returns how many files were written.
+    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames);
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
@@ -412,6 +428,7 @@ private:
         std::thread thread;
     };
     std::string sampleFolder_;
+    int lookups_ = 0;
     LaneSound sounds_[kNumTracks][kDrumLanes];
     std::unique_ptr<Job> job_;
     float steadyTempo_ = 0.f;  // the tempo, once it has stopped moving

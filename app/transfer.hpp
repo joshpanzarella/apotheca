@@ -85,6 +85,9 @@ public:
     // one is on the list before `received()` goes up for it.
     struct Change { std::string from, to; };
     std::vector<Change> takeChanges();
+    // Held by the server while it writes or deletes a song file, and by the session while it
+    // goes through the saved songs (Session::savedSongsFollow): neither undoes the other's work.
+    std::mutex& songFiles() { return songFiles_; }
     // For tests: behave as a card does that will not rename a file into another folder, so the
     // long way round (write it again, then take the old one away) is the one that runs.
     static bool renameBroken;
@@ -105,7 +108,7 @@ private:
     std::atomic<bool> stopping_{false};
     std::atomic<unsigned> received_{0};
     void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav"
-    std::mutex changesMutex_;
+    std::mutex changesMutex_, songFiles_;
     std::vector<Change> changes_;
     std::thread thread_;
 };

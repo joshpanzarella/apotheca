@@ -212,6 +212,16 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   `received()` goes up; `Session::update` reads it and calls
   `recordingChanged`. A rename changes the name only: reading the file again
   would cut the sound.
+- **A missing recording is looked for by base name, and taken only if there
+  is exactly one** (`Session::findMissing`, run after a song or a rev opens,
+  not from `applyProject`). It lists the samples folder once, and not at all
+  when nothing is missing. Never guess between two.
+- **A rename on the page rewrites the saved songs and revs** on the app
+  thread (`Session::savedSongsFollow`, `renameRecordings`): only the name on
+  `sample` and `sound` lines, the rest byte for byte, the file's date kept.
+  The open song's own file is left to the autosave. It holds
+  `Transfer::songFiles()`, which the server holds while it writes or deletes
+  a song: anything new that writes songs off the app thread takes it too.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
 

@@ -9,12 +9,16 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utime.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app.hpp"
@@ -641,6 +645,7 @@ static void testTheOpenSongFollows() {
     session.setLaneSample(0, 2, "kicks/snap");
     session.setLaneSample(0, 3, "pad");
     session.setLaneSample(0, 5, "never was");
+    session.setLaneSample(0, kDrumLanes - 1, "thud"); // the last lane there is: a loop that stops one short misses it
     CHECK(session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Phazed));
     session.setTrackSample(1, "pad");
     session.setTrackSample(2, "thud");
@@ -668,6 +673,7 @@ static void testTheOpenSongFollows() {
     frames(1);
     CHECK(lane(0) == "kicks/big boom" && lane(1) == "kicks/big boom" && lane(2) == "kicks/snap" && lane(3) == "pad" && lane(5) == "never was");
     CHECK(std::string(project.tracks[2].sample) == "kicks/big boom" && std::string(project.tracks[1].sample) == "pad");
+    CHECK(lane(kDrumLanes - 1) == "kicks/big boom" && !session.laneSound(0, kDrumLanes - 1).missing && sounds(0, kDrumLanes - 1) == thud);
     CHECK(std::string(project.tracks[3].laneSample[0]) == "thud" && std::string(project.tracks[3].sample) == "thud");
     // Nothing was read again: the very sound that was playing plays on.
     CHECK(version(0, 0) == v0 && version(0, 1) == v1 && version(0, 2) == v2 && version(2, 0) == vs && session.laneSound(0, 0).recording == held);
@@ -775,8 +781,397 @@ static void testTheSpeedTest() {
     CHECK(raw(port, "GET " + door + "/ HTTP/1.1\r\n\r\n").body.find("/bench") != std::string::npos); // the page has the button
 }
 
+// A song's lines that name a recording, changed where they stand and nothing else.
+static void testRenamingInSongText() {
+    typedef std::vector<std::pair<std::string, std::string>> Renames;
+    const Renames one = {{"thud", "kicks/big boom"}};
+    const std::string before = "apotheca-song 1\ntempo 97\nmystery thud\nsound thud\nsample 1 0 thud\ntrack drums\nsample 1 0 thud\nsample 2 16 kicks/snap\n"
+                               "sample 8 4 thud\nsample 9 0 thud\nsample 0 0 thud\nsample 3 0 thudx\nsample 4 0 x/thud\nsample 6 0 thud \nsample 7 thud\nsound thud\n"
+                               "future 1 2 thud\n\n  sample   5   0   thud\ntrack sampler\nsound thud\nsample 1 0 thud\nsampler 60 0 0\ntrack phazed\nsound thud\n"
+                               "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  thud\r\ntrack sampler\nsound\ttwo words/thud\n"
+                               "track sampler\nsound thud";
+    const std::string after = "apotheca-song 1\ntempo 97\nmystery thud\nsound thud\nsample 1 0 thud\ntrack drums\nsample 1 0 kicks/big boom\nsample 2 16 kicks/snap\n"
+                              "sample 8 4 kicks/big boom\nsample 9 0 thud\nsample 0 0 thud\nsample 3 0 thudx\nsample 4 0 x/thud\nsample 6 0 thud \nsample 7 thud\nsound thud\n"
+                              "future 1 2 thud\n\n  sample   5   0   kicks/big boom\ntrack sampler\nsound kicks/big boom\nsample 1 0 thud\nsampler 60 0 0\ntrack phazed\nsound thud\n"
+                              "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  thud\r\ntrack sampler\nsound\ttwo words/thud\n"
+                              "track sampler\nsound kicks/big boom"; // and no line end is added to a file that had none
+    std::string text = before;
+    CHECK(renameRecordings(text, one) && text == after);
+    // What the program reads from it is the same song with the new name.
+    std::unique_ptr<Project> was(new Project), now(new Project);
+    CHECK(parseSong(before, *was) && parseSong(after, *now));
+    CHECK(std::string(was->tracks[0].laneSample[0]) == "thud" && std::string(now->tracks[0].laneSample[0]) == "kicks/big boom");
+    CHECK(std::string(now->tracks[0].laneSample[7]) == "kicks/big boom" && now->tracks[0].laneFit[7] == 4 && std::string(now->tracks[0].laneSample[4]) == "kicks/big boom");
+    CHECK(std::string(now->tracks[1].sample) == "kicks/big boom" && std::string(now->tracks[0].laneSample[1]) == "kicks/snap" && now->tracks[0].laneFit[1] == 16);
+    // Nothing names it: nothing changes, and it says so.
+    text = after;
+    CHECK(!renameRecordings(text, one) && text == after);
+    CHECK(!renameRecordings(text, Renames()) && text == after);
+    // Two in a row are followed in order; one that comes round to where it began is no change.
+    text = "apotheca-song 1\ntrack sampler\nsound pad\ntrack sampler\nsound warm\n";
+    CHECK(renameRecordings(text, Renames{{"pad", "warm"}, {"warm", "pads/warm"}}));
+    CHECK(text == "apotheca-song 1\ntrack sampler\nsound pads/warm\ntrack sampler\nsound pads/warm\n");
+    CHECK(!renameRecordings(text, Renames{{"pads/warm", "x"}, {"x", "pads/warm"}}));
+    // Not a song: left alone.
+    text = "track drums\nsample 1 0 thud\n";
+    CHECK(!renameRecordings(text, one) && text == "track drums\nsample 1 0 thud\n");
+    text = "";
+    CHECK(!renameRecordings(text, one) && text.empty());
+    // A thirteenth track is not read, so it is not changed either.
+    std::string many = "apotheca-song 1\n";
+    for (int t = 0; t < kNumTracks - 1; ++t) many += "track phazed\n";
+    const std::string twelve = many + "track sampler\nsound thud\n", thirteen = many + "track phazed\ntrack sampler\nsound thud\n";
+    text = twelve;
+    CHECK(renameRecordings(text, one) && text == many + "track sampler\nsound kicks/big boom\n");
+    text = thirteen;
+    CHECK(!renameRecordings(text, one) && text == thirteen);
+    // A track of a kind this version does not have takes no place among the twelve.
+    text = "apotheca-song 1\ntrack fromthefuture\n" + twelve.substr(16);
+    CHECK(renameRecordings(text, one) && text.find("sound kicks/big boom\n") != std::string::npos);
+}
+
+namespace {
+ino_t fileId(const std::string& path) {
+    struct stat info;
+    return stat(path.c_str(), &info) == 0 ? info.st_ino : 0;
+}
+time_t fileDate(const std::string& path) {
+    struct stat info;
+    return stat(path.c_str(), &info) == 0 ? info.st_mtime : 0;
+}
+std::string contents(const std::string& path) {
+    std::string text;
+    return readTextFile(path, text) ? text : "<no file>";
+}
+void setDate(const std::string& path, time_t when) {
+    utimbuf times;
+    times.actime = times.modtime = when;
+    utime(path.c_str(), &times);
+}
+} // namespace
+
+// A recording moved while its song was shut is found again when the song is opened: by its base
+// name, and only if exactly one recording has it.
+static void testFoundOnLoad() {
+    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs";
+    mkdir(samples.c_str(), 0755);
+    for (const char* folder : {"kicks", "a", "b", "x", "y", "od..d", "pads", "solo", "dup"}) mkdir((samples + "/" + folder).c_str(), 0755);
+    const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
+    const auto wav = [&](const std::string& name, float seconds) { CHECK(writeWav(samples + "/" + name + ".wav", steady(seconds), 48000)); };
+    const auto move = [&](const std::string& from, const std::string& to) { CHECK(std::rename((samples + "/" + from + ".wav").c_str(), (samples + "/" + to + ".wav").c_str()) == 0); };
+    for (const char* name : {"thud", "snap", "gone", "kicks/deep", "bad", "lone", "pad", "odd", "solo/one", "dup/one", "fine"}) wav(name, 0.5f);
+    std::string song, clean;
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        App app(*engine);
+        Session& session = app.session();
+        session.useSampleFolder(samples);
+        session.useSongFolder(songs, 3);
+        session.setLaneSample(0, 0, "thud");
+        session.setLaneFit(0, 0, 16);
+        session.setLaneSample(0, 1, "snap");
+        session.setLaneSample(0, 2, "gone");
+        session.setLaneSample(0, 3, "kicks/deep");
+        session.setLaneSample(0, 4, "bad");
+        session.setLaneSample(0, 5, "lone");
+        session.setLaneSample(0, 6, "odd");
+        session.setLaneSample(0, kDrumLanes - 1, "thud");
+        CHECK(session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Phazed));
+        session.setTrackSample(1, "pad");
+        session.setTrackSample(2, "snap");
+        session.setLaneSample(3, 0, "solo/one");
+        session.setLaneSample(3, kDrumLanes - 1, "kicks/deep");
+        session.finishStretching();
+        session.saveNow();
+        CHECK(session.saveRev() == 1);
+        song = session.songName();
+        CHECK(session.sampleLookups() == 0); // nothing was missing: the folder was never listed
+        // And a song with every recording where it says.
+        session.newSong();
+        session.setLaneSample(0, 0, "fine");
+        session.saveNow();
+        clean = session.songName();
+        session.newSong();
+    }
+    CHECK(contents(songs + "/" + song + ".song").find("\nsample 1 16 thud\n") != std::string::npos);
+    // While it is shut, on the card:
+    move("thud", "kicks/thud");       // into a folder
+    move("kicks/deep", "deep");       // and out of one
+    move("pad", "pads/pad");
+    move("snap", "a/snap");           // two of this name now: no telling which
+    wav("b/snap", 0.2f);
+    std::remove((samples + "/gone.wav").c_str()); // none of this name
+    CHECK(writeTextFile(samples + "/bad.wav", "not a recording")); // its own file will not read: another of its name is not put in its place
+    wav("x/bad", 0.2f);
+    std::remove((samples + "/lone.wav").c_str());
+    CHECK(writeTextFile(samples + "/y/lone.wav", "not a recording")); // the only one of its name will not read
+    move("odd", "od..d/odd");         // in a folder a song may not name
+    writeTextFile(root + "/songs/last.txt", song + "\n");
+    const std::string asKept = contents(songs + "/" + song + ".song");
+
+    std::unique_ptr<Engine> engine(new Engine);
+    Input input;
+    App app(*engine);
+    Session& session = app.session();
+    Project& project = app.project();
+    Uint32 clock = 1000;
+    const auto frames = [&](int count) {
+        std::vector<float> out(2 * 512);
+        for (int i = 0; i < count; ++i) {
+            app.update(input, clock += 16);
+            engine->render(out.data(), 512);
+        }
+    };
+    const auto lane = [&](int l, int t = 0) { return std::string(project.tracks[t].laneSample[l]); };
+    const auto missing = [&](int l, int t = 0) { return session.laneSound(t, l).missing; };
+    const auto check = [&] {
+        CHECK(lane(0) == "kicks/thud" && !missing(0) && std::abs(session.laneSound(0, 0).seconds - 0.5f) < 0.01f && project.tracks[0].laneFit[0] == 16);
+        CHECK(lane(kDrumLanes - 1) == "kicks/thud" && !missing(kDrumLanes - 1));
+        CHECK(lane(3) == "deep" && !missing(3) && lane(kDrumLanes - 1, 3) == "deep" && !missing(kDrumLanes - 1, 3));
+        CHECK(std::string(project.tracks[1].sample) == "pads/pad" && !session.trackSound(1).missing && std::abs(session.trackSound(1).seconds - 0.5f) < 0.01f);
+        CHECK(lane(1) == "snap" && missing(1) && std::string(project.tracks[2].sample) == "snap" && session.trackSound(2).missing); // two: left as it is
+        CHECK(lane(2) == "gone" && missing(2));  // none
+        CHECK(lane(4) == "bad" && missing(4));   // its own file is there, and bad
+        CHECK(lane(5) == "lone" && missing(5));  // the one found would not read: the name it had
+        CHECK(lane(6) == "odd" && missing(6));   // not into a folder a song cannot name
+        CHECK(lane(0, 3) == "solo/one" && !missing(0, 3)); // one that is where it says is not moved to another of its name
+    };
+    session.useSampleFolder(samples);
+    session.useSongFolder(songs, 3);
+    CHECK(session.songName() == song);
+    check();
+    CHECK(session.sampleLookups() == 1); // the folder was listed once for all of them
+    CHECK(!session.stretching() || (session.finishStretching(), true));
+    // The song is saved with the new names the way any change is: not at once, within a couple of seconds.
+    CHECK(contents(songs + "/" + song + ".song") == asKept);
+    frames(140);
+    const std::string kept = contents(songs + "/" + song + ".song");
+    CHECK(kept.find("\nsample 1 16 kicks/thud\n") != std::string::npos && kept.find("\nsample 8 0 kicks/thud\n") != std::string::npos);
+    CHECK(kept.find("\nsample 4 0 deep\n") != std::string::npos && kept.find("\nsound pads/pad\n") != std::string::npos);
+    CHECK(kept.find("\nsample 2 0 snap\n") != std::string::npos && kept.find("\nsound snap\n") != std::string::npos && kept.find("\nsample 3 0 gone\n") != std::string::npos);
+    CHECK(kept.find("\nsample 5 0 bad\n") != std::string::npos && kept.find("\nsample 6 0 lone\n") != std::string::npos && kept.find("\nsample 7 0 odd\n") != std::string::npos);
+    // A rev kept before the move asks for the old names: opened, it finds them too.
+    CHECK(contents(songs + "/" + song + ".1.rev").find("\nsample 1 16 thud\n") != std::string::npos);
+    CHECK(session.openRev(1));
+    check();
+    CHECK(session.sampleLookups() == 2);
+    frames(2);
+    // A song with nothing missing does not list the folder: opened, made new, or come back to.
+    CHECK(session.openSong(clean) && lane(0) == "fine" && !missing(0));
+    session.newSong();
+    frames(2);
+    CHECK(session.sampleLookups() == 2);
+    // One with something still missing lists it once each time it is opened.
+    CHECK(session.openSong(song));
+    check();
+    CHECK(session.sampleLookups() == 3);
+    frames(2);
+
+    // Asked directly. A name a song may not have is not looked for, whatever is on the card.
+    wav("up", 0.2f);
+    session.setLaneSample(0, 6, "x/../../up"); // however a lane came by such a name
+    CHECK(missing(6) && session.findMissing() == 0 && lane(6) == "x/../../up");
+    session.setLaneSample(0, 6, "odd");
+    // Only those of the base name asked for.
+    wav("x/gone", 0.3f);
+    wav("y/odd", 0.3f);
+    CHECK(session.findMissing("odd") == 1 && lane(6) == "y/odd" && !missing(6) && lane(2) == "gone" && missing(2));
+    CHECK(session.findMissing("nothing of this name") == 0);
+    const int looked = session.sampleLookups();
+    CHECK(session.findMissing("fine") == 0 && session.sampleLookups() == looked); // nothing of that name is missing: no listing
+    CHECK(session.findMissing() == 1 && lane(2) == "x/gone" && !missing(2) && std::abs(session.laneSound(0, 2).seconds - 0.3f) < 0.01f);
+    CHECK(lane(1) == "snap" && missing(1) && session.sampleLookups() == looked + 1);
+    session.setLaneSample(0, 2, "gone");
+    session.setLaneSample(0, 6, "odd");
+    std::remove((samples + "/x/gone.wav").c_str());
+    std::remove((samples + "/y/odd.wav").c_str());
+    frames(2);
+
+    // With the song open: a recording of a missing one's base name that arrives from the page, in
+    // whatever folder, is taken if it is the only one. One of a name that has two is not.
+    CHECK(session.toggleTransfer(9));
+    const std::string address = session.transferAddress();
+    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const std::string door = address.substr(address.find('/'));
+    const unsigned playing = session.laneSound(0, 0).version;
+    // One of another name arriving wakes nothing: a missing one is not looked for each time some file comes.
+    wav("y/odd", 0.3f); // put on the card by hand: nobody said
+    CHECK(put(port, door + "/samples/late/fine.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    CHECK(lane(6) == "odd" && missing(6));
+    std::remove((samples + "/y/odd.wav").c_str());
+    CHECK(put(port, door + "/samples/late/gone.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    CHECK(put(port, door + "/samples/late/snap.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    CHECK(lane(2) == "late/gone" && !missing(2) && std::abs(session.laneSound(0, 2).seconds - 0.1f) < 0.01f);
+    CHECK(lane(1) == "snap" && missing(1) && session.trackSound(2).missing && lane(4) == "bad" && missing(4));
+    CHECK(session.laneSound(0, 0).version == playing); // those that are playing are not read again
+    // Moved on the page under a missing one's base name: taken too.
+    wav("stray", 0.3f);
+    CHECK(post(port, door + "/samples/stray.wav", "late/odd.wav").status == 200);
+    frames(1);
+    CHECK(lane(6) == "late/odd" && !missing(6));
+    // Deleted on the page: the lane keeps the name and is missing. It is not given another of that name.
+    CHECK(del(port, door + "/samples/solo/one.wav").status == 200);
+    frames(1);
+    CHECK(lane(0, 3) == "solo/one" && missing(0, 3));
+    CHECK(lane(1) == "snap" && lane(4) == "bad" && lane(5) == "lone");
+    session.toggleTransfer(9);
+    frames(2);
+}
+
+// A recording renamed or moved on the page: the songs that are shut are rewritten on the card.
+static void testSavedSongsFollow() {
+    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs";
+    mkdir(samples.c_str(), 0755);
+    mkdir((samples + "/kicks").c_str(), 0755);
+    const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
+    for (const char* name : {"thud", "pad", "kicks/snap", "other"}) CHECK(writeWav(samples + "/" + name + ".wav", steady(0.2f), 48000));
+    std::unique_ptr<Engine> engine(new Engine);
+    Input input;
+    App app(*engine);
+    Session& session = app.session();
+    Project& project = app.project();
+    Uint32 clock = 1000;
+    const auto frames = [&](int count) {
+        std::vector<float> out(2 * 512);
+        for (int i = 0; i < count; ++i) {
+            app.update(input, clock += 16);
+            engine->render(out.data(), 512);
+        }
+    };
+    session.useSampleFolder(samples);
+    session.useSongFolder(songs, 3);
+    session.useChordFolder(root + "/chords");
+    // The open song, saved, with a rev.
+    session.setLaneSample(0, 0, "thud");
+    session.setLaneSample(0, 1, "pad");
+    session.saveNow();
+    CHECK(session.saveRev() == 1);
+    const std::string open = session.songName(), openFile = songs + "/" + open + ".song", openRev = songs + "/" + open + ".1.rev";
+    const std::string openText = contents(openFile);
+    CHECK(openText.find("\nsample 1 0 thud\n") != std::string::npos && contents(openRev) == openText);
+    // Songs that are shut. One names the recording among lines this version does not know.
+    const std::string usesBefore = "apotheca-song 1\ntempo 97\nmystery thud\ntrack drums\nlanes 1 1 1\nsample 1 0 thud\nsample 2 16 kicks/snap\nsample 8 4 thud\n"
+                                   "sound thud\nfuture 1 2 thud\nscene 1\nhit 1 1 1 0 1 0\ntrack sampler\nsound thud\nsample 1 0 thud\ntrack sampler\nsound pad\nzz";
+    const std::string usesAfter = "apotheca-song 1\ntempo 97\nmystery thud\ntrack drums\nlanes 1 1 1\nsample 1 0 kicks/big boom\nsample 2 16 kicks/snap\nsample 8 4 kicks/big boom\n"
+                                  "sound thud\nfuture 1 2 thud\nscene 1\nhit 1 1 1 0 1 0\ntrack sampler\nsound kicks/big boom\nsample 1 0 thud\ntrack sampler\nsound pad\nzz";
+    const std::string notText = "apotheca-song 1\ntrack drums\nsample 1 0 other\nsample 2 0 thudd\nname THUD\ntrack sampler\nsound kicks/snap\n";
+    const std::string noSong = "track drums\nsample 1 0 thud\n";
+    const std::string uses = songs + "/uses.song", usesRev = songs + "/uses.3.rev", notUsing = songs + "/not using.song", junk = songs + "/junk.song";
+    const std::string binned = songs + "/deleted/old.song", hidden = songs + "/.hidden.song", aside = songs + "/uses.txt";
+    mkdir((songs + "/deleted").c_str(), 0755);
+    CHECK(writeTextFile(uses, usesBefore) && writeTextFile(usesRev, usesBefore) && writeTextFile(notUsing, notText) && writeTextFile(junk, noSong));
+    CHECK(writeTextFile(binned, usesBefore) && writeTextFile(hidden, usesBefore) && writeTextFile(aside, usesBefore));
+    setDate(uses, 1000000000);
+    setDate(usesRev, 1000000500);
+    const ino_t usesId = fileId(uses), revId = fileId(usesRev), notId = fileId(notUsing), junkId = fileId(junk), openId = fileId(openFile), openRevId = fileId(openRev);
+    const time_t notDate = fileDate(notUsing);
+
+    CHECK(session.toggleTransfer(9));
+    const std::string address = session.transferAddress();
+    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const std::string door = address.substr(address.find('/'));
+    frames(1); // the autosave has had its turn: the next is two seconds off
+    CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
+    CHECK(contents(uses) == usesBefore); // not from the server's thread: when the program next looks
+    frames(1);
+    // The song that names it has the new name on those lines, and is otherwise the same to the byte.
+    CHECK(contents(uses) == usesAfter && contents(usesRev) == usesAfter);
+    CHECK(fileId(uses) != usesId && fileId(usesRev) != revId); // written beside and moved into place: a new file
+    CHECK(fileDate(uses) == 1000000000 && fileDate(usesRev) == 1000000500); // with the date it had: the song list keeps its order, a rev its date
+    CHECK(!exists(uses + ".part") && !exists(usesRev + ".part"));
+    // One that does not use it is not written at all. Nor is anything that is no song, or not in the song folder itself.
+    CHECK(contents(notUsing) == notText && fileId(notUsing) == notId && fileDate(notUsing) == notDate);
+    CHECK(contents(junk) == noSong && fileId(junk) == junkId);
+    CHECK(contents(binned) == usesBefore && contents(hidden) == usesBefore && contents(aside) == usesBefore);
+    // The open song followed in memory, and is written at once by the program's own save (not by
+    // the pass over the others, and not left to the autosave: its revs have the new name already,
+    // and a flat battery in between would leave the song itself with the old one).
+    CHECK(std::string(project.tracks[0].laneSample[0]) == "kicks/big boom");
+    CHECK(contents(openFile) != openText && fileId(openFile) != openId && contents(openFile).find("\nsample 1 0 kicks/big boom\n") != std::string::npos);
+    // Its older rev is a file like any other: it has the new name, and still matches the song as it was.
+    CHECK(fileId(openRev) != openRevId && contents(openRev).find("\nsample 1 0 kicks/big boom\n") != std::string::npos && contents(openRev).find("thud") == std::string::npos);
+    frames(140);
+    CHECK(contents(openFile).find("\nsample 1 0 kicks/big boom\n") != std::string::npos && contents(openFile) == contents(openRev));
+    CHECK(session.revs().size() == 1); // so coming back to the rev needs no new one kept
+
+    // Renamed, then moved, before the program has looked: followed through both.
+    const ino_t usesId2 = fileId(uses);
+    CHECK(post(port, door + "/samples/pad.wav", "warm.wav").status == 200);
+    CHECK(post(port, door + "/samples/warm.wav", "pads/warm.wav").status == 200);
+    frames(1);
+    std::string twice = usesAfter;
+    twice.replace(twice.find("sound pad\n"), 10, "sound pads/warm\n");
+    CHECK(contents(uses) == twice && fileId(uses) != usesId2 && contents(usesRev) == twice);
+    // Refused on the page: nothing on the card changes.
+    const ino_t usesId3 = fileId(uses);
+    CHECK(post(port, door + "/samples/kicks/snap.wav", "other.wav").status == 409);
+    frames(1);
+    CHECK(contents(uses) == twice && fileId(uses) == usesId3);
+    // Deleting a recording does not touch saved songs. Nor does sending one.
+    CHECK(del(port, door + "/samples/kicks/snap.wav").status == 200);
+    CHECK(put(port, door + "/samples/new.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    CHECK(contents(uses) == twice && fileId(uses) == usesId3 && contents(notUsing) == notText && fileId(notUsing) == notId);
+    session.toggleTransfer(9);
+
+    // Asked directly: how many files were written. Names that are no recording's change nothing.
+    typedef std::vector<std::pair<std::string, std::string>> Renames;
+    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "../outside"}}) == 0);
+    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "a/b/c"}}) == 0);
+    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", ""}, {"", "kicks/big boom"}}) == 0);
+    CHECK(writeTextFile(junk, "apotheca-song 1\ntrack sampler\nsound ../x\n"));
+    CHECK(session.savedSongsFollow(Renames{{"../x", "fine"}}) == 0 && contents(junk) == "apotheca-song 1\ntrack sampler\nsound ../x\n");
+    CHECK(session.savedSongsFollow(Renames{{"nothing uses this", "fine"}}) == 0);
+    CHECK(session.savedSongsFollow(Renames{{"other", "other"}}) == 0 && fileId(notUsing) == notId);
+    CHECK(contents(uses) == twice && fileId(uses) == usesId3);
+    // The open song's own file is passed over even when it names the recording: uses.song, its rev, and the open song's rev.
+    CHECK(contents(openFile).find("kicks/big boom") != std::string::npos);
+    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "thud"}}) == 3);
+    CHECK(contents(openFile).find("kicks/big boom") != std::string::npos && contents(uses).find("\nsample 8 4 thud\n") != std::string::npos);
+    // A rewritten song opens, and is the song it was.
+    CHECK(session.openSong("uses"));
+    CHECK(std::string(project.tracks[0].laneSample[0]) == "thud" && std::string(project.tracks[0].laneSample[kDrumLanes - 1]) == "thud" && project.tracks[0].laneFit[kDrumLanes - 1] == 4);
+    CHECK(project.tempo == 97 && std::string(project.tracks[1].sample) == "thud" && std::string(project.tracks[2].sample) == "pads/warm");
+    frames(2);
+}
+
+// While the session goes through the saved songs it holds a lock; the server waits for it before
+// it writes or deletes a song, and for nothing else.
+static void testTheServerWaitsForTheSongs() {
+    const std::string root = tempFolder(), songs = root + "/songs";
+    mkdir(songs.c_str(), 0755);
+    CHECK(writeTextFile(songs + "/old.song", "apotheca-song 1\ntempo 97\n"));
+    Transfer transfer;
+    CHECK(transfer.start(root + "/samples", songs, root + "/chords", 0, 12345));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    std::unique_lock<std::mutex> held(transfer.songFiles());
+    CHECK(put(port, door + "/samples/kick.wav", aWav()).status == 200); // a recording is not held up
+    std::atomic<int> sent{0}, deleted{0};
+    std::thread sender([&] { sent = put(port, door + "/songs/new.song", "apotheca-song 1\ntempo 97\n").status; });
+    usleep(300000);
+    CHECK(sent == 0 && !exists(songs + "/new.song") && !exists(songs + "/new.song.part"));
+    held.unlock();
+    sender.join();
+    CHECK(sent == 200 && exists(songs + "/new.song"));
+    held.lock();
+    std::thread deleter([&] { deleted = del(port, door + "/songs/old.song").status; });
+    usleep(300000);
+    CHECK(deleted == 0 && exists(songs + "/old.song"));
+    held.unlock();
+    deleter.join();
+    CHECK(deleted == 200 && !exists(songs + "/old.song") && exists(songs + "/deleted/old.song"));
+    transfer.stop();
+}
+
 int main(int, char**) {
     testTheSpeedTest();
+    testTheServerWaitsForTheSongs();
+    testRenamingInSongText();
+    testFoundOnLoad();
+    testSavedSongsFollow();
     testTheOpenSongFollows();
     testMovingWhereRenameIsRefused();
     testNames();

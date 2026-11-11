@@ -20,6 +20,8 @@
 // Lanes, steps and scenes are written from 1, as on screen.
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "project.hpp"
 
@@ -31,6 +33,13 @@ std::string songText(const Project& project);
 // lines it does not understand are skipped. False (and `project` untouched)
 // if the text is not a song at all.
 bool parseSong(const std::string& text, Project& project);
+
+// Recordings were renamed or moved (`first` to `second`, in the order it happened): the lines of
+// this song that name one ("sample LANE FIT NAME" on a drum track, "sound NAME" on a sampler)
+// name the new one. Everything else is left byte for byte, lines this version does not know
+// included. True if anything changed; text that is not a song is left alone. The names are the
+// caller's to check (sampleNameOk): Session::savedSongsFollow does.
+bool renameRecordings(std::string& text, const std::vector<std::pair<std::string, std::string>>& renames);
 
 bool writeTextFile(const std::string& path, const std::string& text); // whole or not at all
 bool readTextFile(const std::string& path, std::string& text);
