@@ -3,6 +3,7 @@
 // pattern_screen.cpp, with everything else the grid does.)
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 
 #include "pattern_layout.hpp"
 #include "pattern_screen.hpp"
@@ -24,6 +25,20 @@ void line(SDL_Renderer* r, int x1, int y1, int x2, int y2, SDL_Color c) {
     SDL_RenderDrawLine(r, x1, y1, x2, y2);
 }
 } // namespace
+
+// A hit's step effects, as marks on its block and beside it. Inside: slits
+// for a ratchet (the block in as many slivers as it has hits), a red edge on
+// the right for a cut. Beside it: an arrow on the left for backwards, and on
+// the right a dash that sits above the middle for a higher pitch and below
+// it for a lower one.
+void PatternScreen::drawFxMarks(SDL_Renderer* r, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise) {
+    if (!fx.any()) return;
+    for (int k = 1; k < fx.hits(); ++k) fill(r, x + w * k / fx.hits() - 1, y, 2, h, kBg);
+    if (fx.cut) fill(r, x + w - 3, y, 3, h, kStop);
+    if (fx.reverse)
+        for (int dy = -3; dy <= 3; ++dy) fill(r, x - 5 + std::abs(dy), middleY + dy, 4 - std::abs(dy), 1, kPurple);
+    if (fx.pitch) fill(r, x + w + 1, middleY - static_cast<int>(std::round(fx.pitch * rise)) - 1, 4, 3, kPurple);
+}
 
 void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     char text[32];
@@ -123,6 +138,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
         if (live) outline(r, bx, kStepsY + kStepsH - 4 - kHitFull, kBlockW, kHitFull, kDim);
         fill(r, bx, by, kBlockW, h, body);
         if (chance < 1.f) outline(r, bx, by, kBlockW, h, live ? kTeal : kText);
+        drawFxMarks(r, pat().fx[lane_][s], bx, by, kBlockW, h, kStepsY + 24 + kHitFull / 2, 2.2f);
         // Its slice's number: quiet when it is the step's own, purple when it has been moved.
         std::snprintf(text, sizeof text, "%d", sliceOf(s) + 1);
         fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, kStepsY + 6.f, text, here ? cursorColor : (own ? kDim : kPurple));

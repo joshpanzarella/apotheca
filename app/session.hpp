@@ -36,6 +36,9 @@ struct AudioInput {
     virtual int read(float* out, int most) = 0;   // mono samples at 48 kHz that have come in since last asked
 };
 
+// A hit's step effects, as the engine is told them (Command::SetStepFx).
+Command stepFxCommand(int track, int scene, int bar, int lane, int step, const StepFx& fx);
+
 class Session {
 public:
     Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {}

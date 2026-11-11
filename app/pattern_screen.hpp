@@ -60,6 +60,19 @@
 // is that drum's volume) and on the tempo (up from the top lane; hold A +
 // stick). With A or Y held, the D-pad nudges the same values in exact steps.
 //
+// STEP EFFECTS: what one hit does besides play. Hold X on a hit (X by itself
+// still just hears it) and the stick or D-pad sets them, a click at a time,
+// each heard as it changes:
+//
+//   hold X, up / down        PITCH    a semitone at a time, an octave either way
+//   hold X, left / right     RATCHET  the hit played 2, 3 or 4 times inside its step
+//   hold X, L1               REVERSE  backwards, on and off
+//   hold X, R1               CUT      stopped after a step, half a step, a quarter; off
+//
+// They combine, and each hit has its own. Marks on the block: slits for a
+// ratchet, an arrow for backwards, a red edge for a cut, and a dash beside
+// it that sits higher or lower with the pitch.
+//
 // SLICES, for chopping a break. L1 on a lane that plays a recording zooms the
 // grid into that one lane (L1 again: back). The recording is drawn large, cut
 // into slices: sixteen, or one to a step if it is fitted to more than a bar.
@@ -131,6 +144,10 @@ public:
     bool painting() const { return paint_ != Paint::None; }
     bool paintingRandom() const { return paint_ == Paint::Random; }
     int diceHits(int lane) const; // how many hits on the lane the dice placed and still own
+    // Step effects (see the top of this file).
+    void setFx(int lane, int step, StepFx fx);
+    const StepFx& fx(int lane, int step) const { return pat().fx[lane][step]; }
+    bool effecting() const { return fxHeld_; } // X is held on a hit
     // The slice view (see the top of this file).
     bool slicing() const { return slicing_; }
     void setSlicing(bool on);         // on only if the cursor's lane plays a recording; if not, it says why
@@ -173,8 +190,12 @@ private:
     void nudgeExact(Button direction, bool withY);
     void setLaneLevel(float level);
     void setTempo(float bpm);
-    void audition(int lane, float level, float start = 0.f, float part = 0.f); // part: this much of the sound (0: as the lane is set)
+    void audition(int lane, float level, float start = 0.f, float part = 0.f, const StepFx& fx = StepFx()); // part: this much of the sound (0: as the lane is set)
     void sliceUpDown(int by);        // the slice view's up / down
+    void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
+    void hearHit();                  // the hit under the cursor, as the pattern would play it
+    // The marks a hit's step effects put on its block (pattern_slices.cpp). `rise` is how far the pitch dash moves for a semitone.
+    static void drawFxMarks(SDL_Renderer* renderer, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise);
     void drawSlices(SDL_Renderer* renderer, const Fonts& fonts) const; // pattern_slices.cpp
     void turnStart(float amount);    // with Y, sideways
     const char* laneLabel(int lane) const; // the drum's name, or its recording's
@@ -197,6 +218,9 @@ private:
     Uint32 heardStartAt_ = 0;    // when a sliding start was last played
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
+    bool fxHeld_ = false;  // X is held on a hit: the stick sets its step effects
+    float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
+    bool fxWas_ = false;
     bool slicing_ = false; // the slice view is showing
     char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
     Uint32 saidUntil_ = 0;

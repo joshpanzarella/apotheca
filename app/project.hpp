@@ -15,6 +15,7 @@ struct DrumPattern {
     float chance[kDrumLanes][kSteps];      // 0.05..1
     float start[kDrumLanes][kSteps] = {};  // where in the lane's sound a hit begins, 0..1 of its length
     bool fromDice[kDrumLanes][kSteps] = {}; // hits the dice placed and nobody has touched since
+    StepFx fx[kDrumLanes][kSteps];          // each hit's step effects: pitch, ratchet, backwards, cut (drums.hpp)
     std::uint32_t diceSeed[kDrumLanes];
 
     DrumPattern() {

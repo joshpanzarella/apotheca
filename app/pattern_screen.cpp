@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <string>
 
 namespace apotheca {
 
@@ -20,6 +22,7 @@ constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
+constexpr float kPitchClicksPerSecond = 8.f, kRatchetClicksPerSecond = 4.f; // X held, the stick or D-pad held over
 
 
 float clampTo(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -55,7 +58,41 @@ void PatternScreen::setStep(int lane, int step, float level) {
         setNudge(lane, step, 0.f);
         setChance(lane, step, 1.f);
         setStart(lane, step, 0.f);
+        setFx(lane, step, StepFx());
     }
+}
+
+// A hit's step effects, held to what there is.
+void PatternScreen::setFx(int lane, int step, StepFx fx) {
+    if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
+    fx.pitch = static_cast<std::int8_t>(fx.pitch < -kMaxStepPitch ? -kMaxStepPitch : (fx.pitch > kMaxStepPitch ? kMaxStepPitch : fx.pitch));
+    fx.ratchet = static_cast<std::uint8_t>(fx.ratchet < 2 ? 0 : (fx.ratchet > kMaxRatchet ? kMaxRatchet : fx.ratchet)); // "one hit" is written one way: 0
+    fx.reverse = fx.reverse ? 1 : 0;
+    fx.cut = static_cast<std::uint8_t>(fx.cut < kCutChoices ? fx.cut : 0);
+    StepFx& now = pat().fx[lane][step];
+    if (now.pitch == fx.pitch && now.ratchet == fx.ratchet && now.reverse == fx.reverse && now.cut == fx.cut) return;
+    now = fx;
+    engine_.send(stepFxCommand(project_.track, project_.scene, project_.bar, lane, step, fx));
+}
+
+// With X held on a hit, one click. Up and down: its pitch, a semitone. Left
+// and right: how many times it is played inside its step. Heard at once.
+void PatternScreen::fxTurn(Button direction) {
+    if (!hitHere()) return;
+    StepFx fx = pat().fx[lane_][step_];
+    if (direction == Button::Up && fx.pitch < kMaxStepPitch) ++fx.pitch;
+    if (direction == Button::Down && fx.pitch > -kMaxStepPitch) --fx.pitch;
+    if (direction == Button::Right && fx.hits() < kMaxRatchet) fx.ratchet = static_cast<std::uint8_t>(fx.hits() + 1);
+    if (direction == Button::Left && fx.hits() > 1) fx.ratchet = static_cast<std::uint8_t>(fx.hits() - 1);
+    const StepFx before = pat().fx[lane_][step_];
+    setFx(lane_, step_, fx);
+    const StepFx& after = pat().fx[lane_][step_];
+    if ((after.pitch != before.pitch || after.ratchet != before.ratchet) && !project_.playing) hearHit();
+}
+
+void PatternScreen::hearHit() {
+    if (!hitHere()) return;
+    audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f, pat().fx[lane_][step_]);
 }
 
 void PatternScreen::setNudge(int lane, int step, float nudge) {
@@ -115,13 +152,17 @@ void PatternScreen::setTempo(float bpm) {
     engine_.send(c);
 }
 
-void PatternScreen::audition(int lane, float level, float start, float part) {
+void PatternScreen::audition(int lane, float level, float start, float part, const StepFx& fx) {
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
     c.a = lane;
     c.b = static_cast<int>(std::round(start * 10000.f));
     c.c = static_cast<int>(std::round(part * 10000.f));
+    c.d = fx.pitch; // and its step effects, so it is heard as the pattern will play it
+    c.bar = fx.hits() > 1 ? fx.hits() : 0;
+    c.scene = fx.reverse ? 1 : 0;
+    c.extra = static_cast<float>(fx.cut);
     c.value = level;
     engine_.send(c);
 }
@@ -170,7 +211,7 @@ void PatternScreen::turnStart(float amount) {
     yDidSomething_ = true;
     if (pat().start[lane_][step_] != before && !project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
         heardStartAt_ = lastMs_;
-        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f);
+        hearHit();
     }
 }
 
@@ -225,7 +266,7 @@ void PatternScreen::sliceUpDown(int by) {
     setStart(lane_, step_, static_cast<float>(to) / static_cast<float>(count));
     if (!project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
         heardStartAt_ = lastMs_;
-        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], 1.f / static_cast<float>(count));
+        hearHit();
     }
 }
 
@@ -515,6 +556,29 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    if (fxHeld_ && (b == Button::L1 || b == Button::R1)) {
+        // With X held on a hit: L1 turns it backwards and back, R1 steps its cut round.
+        if (event.down && hitHere()) {
+            StepFx fx = pat().fx[lane_][step_];
+            if (b == Button::L1) fx.reverse = fx.reverse ? 0 : 1;
+            else fx.cut = static_cast<std::uint8_t>((fx.cut + 1) % kCutChoices);
+            setFx(lane_, step_, fx);
+            if (!project_.playing) hearHit();
+        }
+        return;
+    }
+    if (b == Button::X) {
+        // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
+        fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
+        fxSaved_ = 0.f;
+        fxWas_ = false;
+        axis_ = Axis::None;
+        if (!event.down || onTempo_) return;
+        if (hitHere()) hearHit();
+        else if (slicing_ && onStep()) audition(lane_, kNewHitLevel, ownStart(step_), 1.f / static_cast<float>(slices())); // the slice a hit placed here would play
+        else audition(lane_, kNewHitLevel);
+        return;
+    }
     if (b == Button::L1) {
         // Into the cursor's lane, as slices; and back out to the whole grid.
         if (event.down && !shaping_ && !dicing_ && paint_ == Paint::None) setSlicing(!slicing_);
@@ -569,7 +633,8 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (input.held(Button::Y)) nudgeExact(b, true);
+        if (fxHeld_) fxTurn(b);
+        else if (input.held(Button::Y)) nudgeExact(b, true);
         else if (input.held(Button::A)) nudgeExact(b, false);
         else dragCursor(b);
         repeating_ = b;
@@ -582,11 +647,6 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         // Deletes the hit under the cursor and, held, every hit the cursor is dragged over.
         erasing_ = true;
         if (hitHere()) setStep(lane_, step_, 0.f);
-    } else if (b == Button::X && !onTempo_ && slicing_ && onStep()) {
-        // One slice, and no more of the sound: the hit's, or the one a hit placed here would play.
-        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : ownStart(step_), 1.f / static_cast<float>(slices()));
-    } else if (b == Button::X && !onTempo_) {
-        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : 0.f);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false); // loop this scene
     }
@@ -599,6 +659,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::Y)) dicing_ = false;
     if (!input.held(Button::R1)) paint_ = Paint::None;
     if (!input.held(Button::B)) erasing_ = false;
+    if (!input.held(Button::X) || !hitHere()) fxHeld_ = false;
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -617,7 +678,26 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     // The tempo can be set from elsewhere (SELECT + D-pad, or a song opened).
     if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
-    if (shaping_ || dicing_) {
+    if (fxHeld_) {
+        // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
+        // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
+        if (x == 0.f && y == 0.f) {
+            axis_ = Axis::None;
+            fxSaved_ = 0.f;
+            fxWas_ = false;
+        } else {
+            if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
+            const float push = axis_ == Axis::UpDown ? -y : x;
+            if (push != 0.f) {
+                fxSaved_ += fxWas_ ? std::fabs(push) * (axis_ == Axis::UpDown ? kPitchClicksPerSecond : kRatchetClicksPerSecond) * dt : 1.f;
+                fxWas_ = true;
+                for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f)
+                    fxTurn(axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left));
+            }
+        }
+        stickX_ = stickY_ = 0.f;
+        stickWasX_ = stickWasY_ = false;
+    } else if (shaping_ || dicing_) {
         // The stick does one job per push. Whichever way it leaves the centre
         // is the job until it comes back, so setting a level cannot also
         // slide the hit sideways.
@@ -660,7 +740,12 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + feel.repeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + feel.repeatEveryMs;
-        if (input.held(Button::Y)) nudgeExact(repeating_, true);
+        if (fxHeld_) {
+            // Clicks, not a slide: slower than the cursor runs.
+            const bool vertical = repeating_ == Button::Up || repeating_ == Button::Down;
+            repeatAt_ = nowMs + static_cast<Uint32>(1000.f / (vertical ? kPitchClicksPerSecond : kRatchetClicksPerSecond));
+            fxTurn(repeating_);
+        } else if (input.held(Button::Y)) nudgeExact(repeating_, true);
         else if (input.held(Button::A)) nudgeExact(repeating_, false);
         else dragCursor(repeating_);
     }
@@ -763,6 +848,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 fill(r, bx, y + kCellH - 3, kBlockW, 1, kDim);
                 fill(r, bx + static_cast<int>(std::round(start * (kBlockW - 3))), y + kCellH - 5, 3, 4, mark);
             }
+            drawFxMarks(r, pat().fx[lane][s], bx, y + 4 + kBlockFull - h, kBlockW, h, y + kCellH / 2, 1.1f);
         }
     }
     if (onStep()) {
@@ -816,6 +902,16 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(290.f, "NUDGE", "-", kDim);
             field(420.f, "CHANCE", "-", kDim);
             field(520.f, slicing_ ? "SLICE" : "START", "-", kDim);
+        } else if (fxHeld_) {
+            // X is held: the strip is the hit's step effects, and nothing else.
+            const StepFx& fx = pat().fx[lane_][step_];
+            if (fx.pitch == 0) std::snprintf(text, sizeof text, "0");
+            else std::snprintf(text, sizeof text, "%+d", fx.pitch);
+            field(190.f, "PITCH", text, fx.pitch ? kBrass : kText);
+            std::snprintf(text, sizeof text, fx.hits() > 1 ? "x%d" : "OFF", fx.hits());
+            field(290.f, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
+            field(420.f, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
+            field(520.f, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
@@ -837,9 +933,20 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             } else if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
             else std::snprintf(text, sizeof text, "%d%% IN", static_cast<int>(std::round(start * 100.f)));
             field(520.f, slicing_ ? "SLICE" : "START", text, shade(Turning::Start));
+            // Its step effects, in a line: what X held would show in full.
+            const StepFx& fx = pat().fx[lane_][step_];
+            if (fx.any()) {
+                std::string summary;
+                const auto add = [&](const char* word) { summary += (summary.empty() ? "" : "   ") + std::string(word); };
+                if (fx.pitch) std::snprintf(text, sizeof text, "PITCH %+d", fx.pitch), add(text);
+                if (fx.hits() > 1) std::snprintf(text, sizeof text, "RATCHET x%d", fx.hits()), add(text);
+                if (fx.reverse) add("REVERSE");
+                if (fx.cut) add(fx.cut == 1 ? "CUT 1 STEP" : fx.cut == 2 ? "CUT 1/2" : "CUT 1/4");
+                fonts.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
+            }
             const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
             if (!slicing_ && !sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
-                const int wx = 8, wy = stripY + 38, ww = 624, wh = 20;
+                const int wx = 8, wy = stripY + 38, ww = fx.any() ? 300 : 624, wh = 20; // narrower, to leave the effects their room
                 const int count = static_cast<int>(sound.peaks.size());
                 for (int i = 0; i < count; ++i) {
                     const int px = wx + ww * i / count, ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
@@ -860,7 +967,12 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { hints[count].key = key; hints[count].does = does; ++count; };
     char brushText[40];
-    if (slicing_ && paint_ == Paint::OneLevel) {
+    if (fxHeld_) {
+        hint("UP / DOWN", "pitch");
+        hint("LEFT / RIGHT", "ratchet");
+        hint("L1", "reverse");
+        hint("R1", "cut");
+    } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");
         hint("+ R2", "shuffled");
     } else if (slicing_ && paint_ == Paint::Random) {
@@ -879,9 +991,10 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (hitHere()) hint("UP / DOWN", "slice");
         hint("A", hitHere() ? "level / nudge" : "place");
         if (hitHere()) hint("Y", "chance");
+        if (hitHere()) hint("HOLD X", "effects");
         hint("HOLD R1", "in order");
-        hint("R1 + R2", "shuffle");
         hint("L1", "grid");
+        if (!hitHere()) hint("R1 + R2", "shuffle");
     } else if (paint_ == Paint::OneLevel) {
         std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG", brushText);
@@ -914,6 +1027,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         hint("A", hitHere() ? "level / nudge" : "place");
         hint("Y", hitHere() ? "chance / start" : "maybe");
+        if (hitHere()) hint("HOLD X", "effects");
         hint("HOLD B", "erase");
         hint("HOLD R1", "paint");
         if (canSlice(lane_)) hint("L1", "slices"); // on a recording, this is worth more room than the random brush

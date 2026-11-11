@@ -415,6 +415,28 @@ int main(int argc, char** argv) {
         // B held on a track: its head a second into "DELETING TRACK".
         app.session().view = View::Song;
         pushKey(SDLK_z, true);
+    } else if (std::strncmp(view, "effects", 7) == 0) {
+        // Step effects on the drum grid: hits that are pitched, ratcheted, backwards and cut; with X held on one.
+        PatternScreen& drums = app.drums();
+        const auto fx = [&](int lane, int step, int pitch, int ratchet, bool reverse, int cut) {
+            StepFx f;
+            f.pitch = static_cast<std::int8_t>(pitch);
+            f.ratchet = static_cast<std::uint8_t>(ratchet);
+            f.reverse = reverse;
+            f.cut = static_cast<std::uint8_t>(cut);
+            if (drums.level(lane, step) <= 0.f) drums.setStep(lane, step, 0.8f);
+            drums.setFx(lane, step, f);
+        };
+        fx(1, 4, 0, 3, false, 0);
+        fx(1, 12, 5, 0, false, 0);
+        fx(1, 15, 0, 4, false, 2);
+        fx(0, 6, -7, 0, true, 0);
+        fx(2, 2, 0, 2, false, 0);
+        fx(2, 6, 12, 0, false, 3);
+        fx(4, 10, -12, 2, true, 1);
+        fx(5, 3, 0, 0, true, 0);
+        drums.moveCursorTo(1, 4);
+        if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs

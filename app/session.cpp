@@ -230,6 +230,22 @@ void Session::setCellBars(int track, int scene, int bars) {
 
 // A whole cell to the engine: emptied there in one command, then only what
 // is in it. (Every step of eight bars would be four thousand commands.)
+// A hit's step effects, as the engine is told them.
+Command stepFxCommand(int track, int scene, int bar, int lane, int step, const StepFx& fx) {
+    Command c;
+    c.type = Command::SetStepFx;
+    c.track = track;
+    c.scene = scene;
+    c.bar = bar;
+    c.a = lane;
+    c.b = step;
+    c.c = fx.pitch;
+    c.d = fx.ratchet;
+    c.value = fx.reverse ? 1.f : 0.f;
+    c.extra = static_cast<float>(fx.cut);
+    return c;
+}
+
 void Session::sendDrumPattern(int track, int scene) {
     noteEdit();
     Command c;
@@ -260,6 +276,7 @@ void Session::sendDrumPattern(int track, int scene) {
                 c.type = Command::SetStepStart;
                 c.value = p.start[lane][step];
                 engine.send(c);
+                if (p.fx[lane][step].any()) engine.send(stepFxCommand(track, scene, bar, lane, step, p.fx[lane][step]));
             }
         }
     }
@@ -401,6 +418,7 @@ std::uint32_t Session::cellMark() const {
             mix(p.nudge, sizeof p.nudge);
             mix(p.chance, sizeof p.chance);
             mix(p.start, sizeof p.start);
+            mix(p.fx, sizeof p.fx);
         }
     } else if (isSynth(t.kind)) {
         for (int bar = 0; bar < kMaxBars; ++bar) {
@@ -603,6 +621,7 @@ void Session::sendTrackImage(int t) {
                     image->nudge[slot][lane][step] = drums.nudge[lane][step];
                     image->chance[slot][lane][step] = drums.chance[lane][step];
                     image->start[slot][lane][step] = drums.start[lane][step];
+                    image->fx[slot][lane][step] = drums.fx[lane][step];
                 }
             NoteEvent notes[kMaxNotes];
             track.notes[scene][bar].render(notes);
