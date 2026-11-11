@@ -1,4 +1,5 @@
 #include "apotheca/engine.hpp"
+#include "apotheca/denormals.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -180,6 +181,7 @@ void Engine::prepare(float sampleRate) {
                 effect->reset();
             }
         }
+        for (SlotFade& fade : track.fades) fade = SlotFade(); // a setup call: free to free
     }
     for (auto& effect : masterEffects_) {
         if (effect) {
@@ -187,18 +189,89 @@ void Engine::prepare(float sampleRate) {
             effect->reset();
         }
     }
+    for (SlotFade& fade : masterFades_) fade = SlotFade();
 }
 
 void Engine::setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect) {
     if (!validTrack(track) || !validSlot(slot)) return;
     if (effect) effect->prepare(sampleRate_);
     tracks_[track].effects[slot] = std::move(effect);
+    tracks_[track].fades[slot] = SlotFade();
 }
 
 void Engine::setMasterEffect(int slot, std::unique_ptr<Effect> effect) {
     if (!validSlot(slot)) return;
     if (effect) effect->prepare(sampleRate_);
     masterEffects_[slot] = std::move(effect);
+    masterFades_[slot] = SlotFade();
+}
+
+// ---- an effect goes into a slot, or out of it, without a click ----------------------------
+
+// On the audio thread, between chunks. The one in the slot becomes the one
+// that is leaving, and a fade starts. Nothing is freed here: the leaving one
+// is handed to the trash when its fade is done (binLeaving).
+void Engine::swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming) {
+    if (fade.leaving) {
+        // Swapped again inside the 10 ms of the last swap. The one that was
+        // still fading out goes now; the fade starts over from the one in the slot.
+        Trash trash;
+        trash.isEffect = true;
+        trash.pointer = fade.leaving.get();
+        if (trash_.push(trash)) fade.leaving.release(); // if full it stays ours, and is freed below or with the engine
+    }
+    if (fade.leaving) {
+        // Nowhere to hand it: the incoming one cannot wait either, so the one
+        // in the slot goes at once (as every swap did before there was a fade).
+        Trash trash;
+        trash.isEffect = true;
+        trash.pointer = place.release();
+        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
+        place.reset(incoming);
+        return;
+    }
+    if (!place && !incoming) return; // empty, and still empty
+    fade.leaving = std::move(place);
+    place.reset(incoming);
+    fade.total = static_cast<int>(kSwapFadeSeconds * sampleRate_);
+    if (fade.total < 1) fade.total = 1;
+    fade.left = fade.total;
+}
+
+// One slot's work on a chunk. With no fade under way this is the effect's own
+// process() and nothing else, so a song sounds as it always did.
+void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames) {
+    if (fade.left <= 0) {
+        if (place) place->process(left, right, frames);
+        return;
+    }
+    // Both run on the same sound coming in: `was` is the slot as it was.
+    float wasL[kMaxBlock], wasR[kMaxBlock];
+    for (int i = 0; i < frames; ++i) {
+        wasL[i] = left[i];
+        wasR[i] = right[i];
+    }
+    if (fade.leaving) fade.leaving->process(wasL, wasR, frames);
+    if (place) place->process(left, right, frames);
+    // A straight slide: the two are mostly the same sound, so they add in step.
+    const float each = 1.f / static_cast<float>(fade.total);
+    for (int i = 0; i < frames && fade.left > 0; ++i) {
+        --fade.left;
+        const float old = static_cast<float>(fade.left) * each; // 1 down to 0
+        left[i] += old * (wasL[i] - left[i]);
+        right[i] += old * (wasR[i] - right[i]);
+    }
+}
+
+// A fade that has finished: its old effect goes to the trash, to be freed off
+// the audio thread. Only the audio thread calls this and only when no helper
+// is rendering, because the trash queue takes from one thread.
+void Engine::binLeaving(SlotFade& fade) {
+    if (fade.left > 0 || !fade.leaving) return;
+    Trash trash;
+    trash.isEffect = true;
+    trash.pointer = fade.leaving.get();
+    if (trash_.push(trash)) fade.leaving.release(); // if full: kept, and tried again next chunk
 }
 
 bool Engine::addDrumTrack(int track) {
@@ -377,10 +450,8 @@ void Engine::apply(const Command& c) {
                 tracks_[c.track].autoGliding[lane] = false;
             }
         }
-        trash.pointer = place.release();
-        place.reset(static_cast<Effect*>(c.pointer));
+        swapEffect(place, c.track == kMasterTrack ? masterFades_[c.a] : tracks_[c.track].fades[c.a], static_cast<Effect*>(c.pointer));
         if (place) place->setTempo(tempo_);
-        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
         break;
     }
     case Command::SetTrackSample: {
@@ -885,6 +956,7 @@ void Engine::noteLoad(float part, int frames) {
 }
 
 void Engine::render(float* interleaved, int frames) {
+    const FlushDenormals flushed(flush_.load(std::memory_order_relaxed)); // if asked for: on for this call, then the thread is as it was
     const auto began = watchLoad_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
     const int allFrames = frames;
     struct Timed {
@@ -1004,9 +1076,7 @@ void Engine::renderTrack(int t) {
     float* right = trackR_[t];
     if (track.synth) track.synth->render(left, right, frames);
     else track.drums.render(left, right, frames);
-    for (auto& effect : track.effects) {
-        if (effect) effect->process(left, right, frames);
-    }
+    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(track.effects[slot], track.fades[slot], left, right, frames);
     if (t == chunkScope_) {
         unsigned written = scopeWritten_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i) {
@@ -1047,6 +1117,7 @@ void Engine::workerLoop(void (*atStart)()) {
             if (quitWorkers_.load()) return;
             --wakeups_;
         }
+        flushDenormals(flush_.load(std::memory_order_relaxed)); // this thread only renders: as the engine is set, each time
         shareOutTracks();
     }
 }
@@ -1111,9 +1182,12 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         }
     }
 
-    for (auto& effect : masterEffects_) {
-        if (effect) effect->process(mixL, mixR, frames);
-    }
+    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+    // Effects whose fade out has ended go to the trash. Here, not in
+    // renderTrack: the helpers are done, and the trash takes from this thread alone.
+    for (int i = 0; i < count; ++i)
+        for (SlotFade& fade : tracks_[active_[i]].fades) binLeaving(fade);
+    for (SlotFade& fade : masterFades_) binLeaving(fade);
 
     // Remember what goes out, for Catch.
     // The volume: after everything, Catch included. It glides to a new
@@ -1183,9 +1257,13 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             track.drums.reset();
             for (auto& effect : track.effects)
                 if (effect) effect->reset();
+            for (SlotFade& fade : track.fades)
+                if (fade.leaving) fade.leaving->reset();
         }
         for (auto& effect : masterEffects_)
             if (effect) effect->reset();
+        for (SlotFade& fade : masterFades_)
+            if (fade.leaving) fade.leaving->reset();
     }
 }
 
