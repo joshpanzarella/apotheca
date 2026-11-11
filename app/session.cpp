@@ -1145,11 +1145,30 @@ void Session::setEffectParam(int track, int slot, int index, float value) {
 // ---- recordings on drum lanes -------------------------------------------------------
 
 Session::~Session() {
+    cancelBounce();
     if (input_ && rec_ != Rec::Idle && rec_ != Rec::NoInput) input_->stop();
     if (job_ && job_->thread.joinable()) job_->thread.join();
 }
 
 std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
+
+bool Session::deleteSample(const std::string& name) {
+    if (sampleFolder_.empty() || name.empty() || name.find('/') != std::string::npos || name.find("..") != std::string::npos) return false;
+    bool there = false;
+    for (const std::string& have : sampleNames()) there = there || have == name;
+    if (!there) return false;
+    // The file may end .wav or .WAV: whichever is there.
+    bool gone = std::remove((sampleFolder_ + "/" + name + ".wav").c_str()) == 0;
+    gone = std::remove((sampleFolder_ + "/" + name + ".WAV").c_str()) == 0 || gone;
+    if (!gone) return false;
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& track = project.tracks[t];
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            if (track.kind == TrackKind::Drums && name == track.laneSample[lane]) setLaneSample(t, lane, "");
+        if (track.kind == TrackKind::Sampler && name == track.sample) setTrackSample(t, "");
+    }
+    return true;
+}
 
 void Session::install(int track, int lane, const std::vector<float>& samples) {
     std::unique_ptr<SampleData> data(new SampleData);
@@ -1205,6 +1224,7 @@ bool Session::toggleTransfer(unsigned seed) {
     const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
     // 8080 if it is free (easy to type), else whatever is.
     transfer_.setDesk(&designer_);
+    transfer_.setBounceFolder(bounceFolder_);
     const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
     return on;

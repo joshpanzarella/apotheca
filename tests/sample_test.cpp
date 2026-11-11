@@ -1368,6 +1368,52 @@ void testTheSamplePicker() {
     rig.tap(A);
     CHECK(!one.isOpen());
 
+    // Hold Y for a second on a recording: it is deleted from the handheld. A tap is nothing.
+    session.view = View::Device;
+    rig.app.project().track = 0;
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    session.setLaneSample(0, 5, "take 05");
+    session.setLaneSample(0, 6, "take 05"); // another lane playing the same recording
+    rig.tap(A);
+    CHECK(list.isOpen() && list.cursor() == 5 && list.count() == 21);
+    rig.tap(Y);
+    rig.frames(80);
+    CHECK(list.count() == 21 && std::string(track.laneSample[5]) == "take 05");
+    rig.key(Y, true);
+    rig.frames(55); // 0.88 s
+    CHECK(list.count() == 21 && list.deletePart() > 0.7f);
+    rig.frames(10);
+    rig.key(Y, false);
+    CHECK(list.count() == 20 && list.isOpen() && list.cursor() == 5);
+    CHECK(std::string(track.laneSample[5]) == "take 06"); // the next one took its place under the cursor, and is on the lane
+    CHECK(track.laneSample[6][0] == 0);                    // the other lane that had it is back on its drum
+    struct stat info;
+    CHECK(stat((folder + "/take 05.wav").c_str(), &info) != 0 && stat((folder + "/take 06.wav").c_str(), &info) == 0);
+    CHECK(session.sampleNames().size() == 19);
+    // B after a delete cannot bring the deleted one back: the lane keeps what is showing or goes to what was there if that still exists.
+    rig.tap(B);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) != "take 05");
+    // The first row (the built-in drum) cannot be deleted; nor can a name that is not a recording, or one that reaches outside the folder.
+    rig.tap(A);
+    rig.tap(LEFT, 3);
+    CHECK(list.cursor() == 0);
+    rig.key(Y, true);
+    rig.frames(80);
+    rig.key(Y, false);
+    CHECK(list.count() == 20);
+    rig.tap(B);
+    CHECK(!session.deleteSample("no such thing") && !session.deleteSample("") && !session.deleteSample("../take 06") && session.sampleNames().size() == 19);
+    // The last in the list deleted: the cursor goes to the one before.
+    rig.tap(A);
+    rig.tap(RIGHT, 3);
+    CHECK(list.cursor() == 19);
+    rig.key(Y, true);
+    rig.frames(70);
+    rig.key(Y, false);
+    CHECK(list.count() == 19 && list.cursor() == 18 && std::string(track.laneSample[5]) == "take 19");
+    rig.tap(A);
+
     // No recordings at all: the list opens with its one row, and says how to get some.
     Rig empty(tempFolder());
     empty.app.session().view = View::Device;

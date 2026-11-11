@@ -52,6 +52,7 @@ void KitScreen::openPicker() {
     jobs.use = [this, track, lane](const std::string& name) { session_.setLaneSample(track, lane, name); };
     jobs.hear = [this] { hear(); };
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
+    jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
     picker_.open(session_.sampleNames(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
@@ -115,6 +116,10 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void KitScreen::update(const Input& input, Uint32 nowMs) {
+    // A button let go while another screen was showing (a song opened, a tab turned) never told this
+    // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (!input.held(Button::A)) holding_ = false;
+
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number

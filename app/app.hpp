@@ -86,6 +86,9 @@ private:
     FxScreen fx_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
+    int battery_ = -1;         // percent, or -1 if the device has none to read
+    bool charging_ = false;
+    Uint32 batteryReadAt_ = 0;
     char undoSaid_[40] = "";
     Uint32 undoSaidUntil_ = 0;
     bool help_ = false;

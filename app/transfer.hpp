@@ -52,6 +52,8 @@ public:
     void setProgramFolder(const std::string& folder) { program_ = folder; }
     // The sound-designer page is served only when there is one of these.
     void setDesk(DesignDesk* desk) { desk_ = desk; }
+    // Where bounced songs are: listed on the page, to be fetched (and nothing is sent there).
+    void setBounceFolder(const std::string& folder) { bounces_ = folder; }
     // Goes up each time a new program has been set aside for confirming.
     unsigned updatesArrived() const { return updates_.load(); }
     bool running() const { return listening_ >= 0; }
@@ -70,7 +72,7 @@ private:
     void answer(int connection);
     std::string folderFor(const std::string& kind) const;
 
-    std::string samples_, songs_, chords_, pin_, program_;
+    std::string samples_, songs_, chords_, pin_, program_, bounces_;
     std::atomic<unsigned> updates_{0};
     DesignDesk* desk_ = nullptr;
     int port_ = 0;

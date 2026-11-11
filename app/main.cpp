@@ -374,6 +374,7 @@ int main(int argc, char** argv) {
         const std::string folder = samples ? samples : beside.substr(0, beside.size() - 6) + "samples";
         if (!samples && !smoke && !shot) mkdir(folder.c_str(), 0755); // so there is somewhere to copy them to
         // Sounds made on the sound-designer page: a "presets" folder beside the program.
+        if (!smoke && !shot) app.session().useBounceFolder(beside.substr(0, beside.size() - 6) + "bounces");
         if (!smoke && !shot) app.session().usePresetFolder(beside.substr(0, beside.size() - 6) + "presets");
         app.session().useSampleFolder(folder);
         std::printf("samples: %d in %s\n", static_cast<int>(app.session().sampleNames().size()), folder.c_str());

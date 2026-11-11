@@ -56,6 +56,7 @@ void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
     case kPack: session_.choosePack(session_.packIndex() + by); break;
+    case kBounce: bounceWhat_ = ((bounceWhat_ + by) % 3 + 3) % 3; break;
     case kTrackName: {
         // Through the list of names, round and round; the first is "its instrument's own".
         int now = 0;
@@ -90,6 +91,7 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
         holdTimed_ = false;
         holdPart_ = 0.f;
         if (!event.down) return;
+        if (row_ == kBounce && !session_.bouncing()) session_.startBounce(bounceWhat_ == 0 ? Session::Bounce::Song : bounceWhat_ == 1 ? Session::Bounce::EachTrack : Session::Bounce::ThisTrack);
         if (row_ == kTrackName) typing_ = true, typed_ = project_.current().name, key_ = 0;
         if (row_ == kWifi) session_.toggleTransfer(lastMs_ * 2654435761u + 977u);
         if (row_ == kTest) testing_ = true, testTimed_ = false, lastPressed_ = Button::None;
@@ -114,6 +116,10 @@ void SettingsScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void SettingsScreen::update(const Input& input, Uint32 nowMs) {
+    // A button let go while another screen was showing (a song opened, a tab turned) never told this
+    // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (!input.held(Button::A)) holding_ = false, holdPart_ = 0.f;
+
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed;
@@ -252,14 +258,14 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "VOLUME", "STICK SPEED", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
-    const int rowH = 37, top = 52, w = kScreenW - 32;
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const int rowH = 34, top = 50, w = kScreenW - 32;
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // Which Apotheca this is.
     std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
     fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
     for (int row = 0; row < kRows; ++row) {
-        // The first three belong to the song; the rest to the handheld.
+        // The first four belong to the song; the rest to the handheld.
         const int y = top + row * rowH + (row >= kVolume ? 22 : 0);
         if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "HANDHELD", kDim);
         const bool here = row == row_;
@@ -273,6 +279,19 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             trackName(project_, project_.track, full, sizeof full);
             std::snprintf(text, sizeof text, "%s", full);
             note = "left / right: from a list.  A: type one";
+            break;
+        }
+        case kBounce: {
+            static const char* what[3] = {"THE SONG", "EACH TRACK", "THIS TRACK"};
+            if (session_.bouncing()) {
+                std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
+                part = session_.bounceProgress();
+                note = "you can carry on meanwhile";
+            } else {
+                std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
+                if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
+                note = session_.bounceFiles() > 0 ? bounced_ : "A: write it as a WAV file, at best quality";
+            }
             break;
         }
         case kVolume:
@@ -324,6 +343,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
     if (row_ <= kMidi) hint("LEFT / RIGHT", "change");
+    if (row_ == kBounce) hint("A", session_.bouncing() ? "(working)" : "bounce");
     if (row_ == kTrackName) hint("A", "type a name");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");

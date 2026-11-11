@@ -507,6 +507,13 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void PatternScreen::update(const Input& input, Uint32 nowMs) {
+    // A button let go while another screen was showing (a song opened, a tab turned) never told this
+    // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (!input.held(Button::A)) shaping_ = false;
+    if (!input.held(Button::Y)) dicing_ = false;
+    if (!input.held(Button::R1)) paint_ = Paint::None;
+    if (!input.held(Button::B)) erasing_ = false;
+
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number // a stalled frame must not fling anything

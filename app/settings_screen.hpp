@@ -6,6 +6,7 @@
 //   left / right                 change it
 //   A                            on WIFI PAGE: on / off
 //                                on TRACK NAME: type a name (below)
+//                                on BOUNCE: write the song (or its tracks) out as WAV files
 //                                on BUTTONS: the button test
 //   hold A for a second          on CONTROLS: set the controls up again
 //   START                        play / stop
@@ -32,7 +33,7 @@ namespace apotheca {
 
 class SettingsScreen {
 public:
-    enum Row { kTempo, kPack, kTrackName, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
+    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
@@ -58,6 +59,8 @@ private:
     Session& session_;
     Project& project_;
     int row_ = 0;
+    mutable char bounced_[64] = "";
+    int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
     bool typing_ = false;
     std::string typed_;
     int key_ = 0; // which character of the grid the cursor is on

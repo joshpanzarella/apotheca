@@ -1,5 +1,6 @@
 #include "app.hpp"
 
+#include "battery.hpp"
 #include "version.hpp"
 
 #include <cstdio>
@@ -183,6 +184,11 @@ void App::changeVolume(float by) {
 
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
+    // The battery, looked at every ten seconds (and at once, the first time).
+    if (batteryReadAt_ == 0 || nowMs - batteryReadAt_ >= 10000) {
+        batteryReadAt_ = nowMs ? nowMs : 1;
+        battery_ = batteryPercent(&charging_);
+    }
     // The help card: there for as long as MENU is held. On a handheld whose
     // firmware keeps MENU for itself (it was left out of the controls setup),
     // SELECT held by itself for four tenths of a second does it instead; then
@@ -372,6 +378,18 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         char version[48];
         std::snprintf(version, sizeof version, "APOTHECA %s", kVersion);
         fonts.small.drawRight(renderer, x + w - 18.f, y + h - 22.f, version, kDim);
+        if (battery_ >= 0) {
+            // The battery: a small cell that empties, and the number.
+            char level[32];
+            std::snprintf(level, sizeof level, "BATTERY %d%%%s", battery_, charging_ ? "  CHARGING" : "");
+            const float tw = fonts.small.width(level);
+            const int bx = x + w - 18 - static_cast<int>(tw) - 34, by = y + h - 46;
+            const SDL_Color color = battery_ <= 15 && !charging_ ? kStop : kText;
+            outline(renderer, bx, by, 26, 12, color);
+            fill(renderer, bx + 26, by + 3, 2, 6, color);
+            fill(renderer, bx + 2, by + 2, 22 * battery_ / 100, 8, color);
+            fonts.small.drawRight(renderer, x + w - 18.f, y + h - 44.f, level, color);
+        }
     }
 }
 

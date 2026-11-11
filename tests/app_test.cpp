@@ -4,6 +4,10 @@
 // to hear what the screens told it.
 
 #include <SDL.h>
+#include <sys/stat.h>
+#include <algorithm>
+#include <unistd.h>
+#include <dirent.h>
 #include <stdlib.h>
 
 #include <cmath>
@@ -15,6 +19,7 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "battery.hpp"
 #include "controls.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
@@ -1238,6 +1243,232 @@ void testHoldBAndDragErases() {
     rig.project().playing = false;
 }
 
+// A button let go while another screen is showing must not stay "held" on the screen it went down on.
+// (Found on the handheld: after a song was deleted and a new one begun, the grid behaved as if A were held.)
+void testNothingStaysHeld() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Pattern;
+    PatternScreen& drums = rig.app.drums();
+    drums.moveCursorTo(2, 4);
+    rig.frames(1);
+    // A goes down on the grid; the screen changes under it (as when a song is opened); A comes up elsewhere.
+    rig.key(A, true);
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(A, false);
+    session.view = View::Pattern;
+    rig.frames(1);
+    drums.setStep(2, 4, 0.f);
+    drums.setStep(2, 5, 0.f);
+    rig.tap(RIGHT); // with A "held" this would nudge the hit; it must simply move the cursor
+    CHECK(drums.cursorStep() == 5 && drums.level(2, 4) == 0.f && drums.level(2, 5) == 0.f);
+    // The same for the brush (R1) and the eraser (B).
+    rig.key(R1, true);
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(R1, false);
+    session.view = View::Pattern;
+    rig.frames(1);
+    CHECK(!drums.painting());
+    drums.setStep(2, 5, 0.f);
+    rig.tap(RIGHT);
+    CHECK(drums.level(2, 6) == 0.f);
+    drums.setStep(2, 7, 0.9f);
+    rig.key(B, true);
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(B, false);
+    session.view = View::Pattern;
+    rig.frames(1);
+    rig.tap(RIGHT);
+    CHECK(drums.cursorStep() == 7 && drums.level(2, 7) > 0.f); // not rubbed out in passing
+    // And on the piano roll: A, R1, X and B.
+    addPhazed(rig);
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    const NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    rig.project().playing = true;
+    notes.moveCursorTo(60, 0);
+    rig.frames(1);
+    for (SDL_Keycode held : {A, R1, X, B}) {
+        notes.moveCursorTo(60, 0);
+        rig.key(held, true);
+        session.view = View::Song;
+        rig.frames(1);
+        rig.key(held, false);
+        session.view = View::Pattern;
+        rig.frames(1);
+        const int before = static_cast<int>(std::count_if(std::begin(bar.notes), std::end(bar.notes), [](const NoteEvent& n) { return n.velocity > 0.f; }));
+        rig.tap(DOWN, 2);
+        const int after = static_cast<int>(std::count_if(std::begin(bar.notes), std::end(bar.notes), [](const NoteEvent& n) { return n.velocity > 0.f; }));
+        CHECK(notes.cursorStep() == 2 && after == before && !notes.carrying()); // the cursor moved, and nothing was painted, carried or erased
+    }
+    rig.project().playing = false;
+    // A whole new song: the grid is not "holding" anything when it comes up.
+    session.view = View::Pattern;
+    rig.project().track = 0;
+    rig.key(A, true);
+    session.newSong();
+    session.view = View::Song;
+    rig.frames(1);
+    rig.key(A, false);
+    session.view = View::Pattern;
+    rig.frames(1);
+    drums.moveCursorTo(1, 1);
+    rig.tap(RIGHT, 3);
+    CHECK(drums.cursorStep() == 4);
+    for (int step = 0; step < kSteps; ++step) CHECK(drums.level(1, step) == 0.f);
+}
+
+void testTheBattery() {
+    char pattern[] = "/tmp/apotheca-battery-XXXXXX";
+    const std::string root = mkdtemp(pattern);
+    bool charging = true;
+    CHECK(batteryPercent(&charging, root) == -1 && !charging);           // nothing there: a desk computer
+    CHECK(batteryPercent(nullptr, root + "/no-such-folder") == -1);
+    mkdir((root + "/ac").c_str(), 0755);                                  // a supply with no "capacity" is not a battery
+    writeTextFile(root + "/ac/online", "1\n");
+    CHECK(batteryPercent(&charging, root) == -1);
+    mkdir((root + "/battery").c_str(), 0755);
+    writeTextFile(root + "/battery/capacity", "73\n");
+    writeTextFile(root + "/battery/status", "Discharging\n");
+    CHECK(batteryPercent(&charging, root) == 73 && !charging);
+    writeTextFile(root + "/battery/status", "Charging\n");
+    CHECK(batteryPercent(&charging, root) == 73 && charging);
+    writeTextFile(root + "/battery/capacity", "nonsense\n");
+    CHECK(batteryPercent(&charging, root) == -1);
+    writeTextFile(root + "/battery/capacity", "250\n");
+    CHECK(batteryPercent(&charging, root) == -1);
+    writeTextFile(root + "/battery/capacity", "0\n");
+    CHECK(batteryPercent(nullptr, root) == 0);
+}
+
+// Bouncing: the song, or its tracks, written out as WAV files by a second engine.
+void testBouncing() {
+    char pattern[] = "/tmp/apotheca-bounce-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    const auto wavsIn = [&] {
+        std::vector<std::string> names;
+        if (DIR* dir = opendir(folder.c_str())) {
+            while (const dirent* e = readdir(dir)) {
+                const std::string n = e->d_name;
+                if (n.size() > 4 && n.substr(n.size() - 4) == ".wav") names.push_back(n);
+            }
+            closedir(dir);
+        }
+        std::sort(names.begin(), names.end());
+        return names;
+    };
+    struct Wav { int rate = 0, channels = 0, bits = 0; std::vector<float> left; };
+    const auto read = [&](const std::string& name) {
+        Wav w;
+        std::string bytes;
+        if (!readTextFile(folder + "/" + name, bytes) || bytes.size() < 44 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 8, "WAVEfmt ") != 0) return w;
+        const auto u = [&](std::size_t at, int n) { unsigned v = 0; for (int i = 0; i < n; ++i) v |= static_cast<unsigned>(static_cast<unsigned char>(bytes[at + i])) << (8 * i); return v; };
+        w.channels = static_cast<int>(u(22, 2));
+        w.rate = static_cast<int>(u(24, 4));
+        w.bits = static_cast<int>(u(34, 2));
+        const std::size_t data = u(40, 4);
+        if (bytes.compare(36, 4, "data") != 0 || data + 44 != bytes.size()) return w;
+        for (std::size_t at = 44; at + 3 < bytes.size(); at += 4) w.left.push_back(static_cast<float>(static_cast<std::int16_t>(u(at, 2))) / 32767.f);
+        return w;
+    };
+    const auto peakIn = [](const Wav& w, std::size_t from, std::size_t to) { float p = 0.f; for (std::size_t i = from; i < to && i < w.left.size(); ++i) p = std::fmax(p, std::fabs(w.left[i])); return p; };
+
+    Rig rig;
+    Session& session = rig.app.session();
+    // Nowhere to put it: no bounce.
+    CHECK(!session.startBounce(Session::Bounce::Song) && !session.bouncing() && session.bounceFiles() == 0);
+    session.useBounceFolder(folder);
+    // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a Twin track with one long note.
+    for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
+    rig.project().repeats[0] = 2;
+    session.addTrack(TrackKind::Twin);
+    NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    bar.notes[0].step = 8;
+    bar.notes[0].pitch = 57;
+    bar.notes[0].length = 4.f;
+    bar.notes[0].velocity = 0.8f;
+    session.sendNotePattern(1, 0);
+    session.setTrackName(1, "LEAD");
+    const int oversample = rig.project().tracks[1].twin.value[twin::Oversample];
+    rig.frames(2);
+
+    // The whole song: one file, as long as the song and three seconds over, with sound where the song has it.
+    CHECK(session.startBounce(Session::Bounce::Song));
+    CHECK(!session.startBounce(Session::Bounce::Song)); // one at a time
+    session.finishBounce();
+    CHECK(!session.bouncing() && session.bounceProgress() == 1.f && session.bounceFiles() == 1);
+    std::vector<std::string> names = wavsIn();
+    CHECK(names.size() == 1 && names[0] == session.bounceLast());
+    const std::size_t body = static_cast<std::size_t>(2 * kBar), tail = 3 * 48000;
+    Wav song = read(names[0]);
+    CHECK(song.rate == 48000 && song.channels == 2 && song.bits == 16 && song.left.size() == body + tail);
+    CHECK(peakIn(song, 0, 2000) > 0.2f);                                  // the first kick, at the very start
+    CHECK(peakIn(song, kBar, kBar + 2000) > 0.2f);                        // and the scene's second time round
+    CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the Twin note
+    CHECK(peakIn(song, body + 2 * 48000, body + tail) < 0.001f);          // the tail has died away: nothing started again
+    CHECK(peakIn(song, body + 4000, body + 24000) < peakIn(song, 0, 2000)); // no kick after the song's end
+    // The song itself was only read: Twin's own oversampling setting is as it was, and nothing is playing.
+    CHECK(rig.project().tracks[1].twin.value[twin::Oversample] == oversample && !rig.project().playing);
+
+    // Each track: a file apiece, named for its track, and each has only its own sound.
+    sleep(1); // the files are named by the second
+    CHECK(session.startBounce(Session::Bounce::EachTrack));
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 2);
+    names = wavsIn();
+    CHECK(names.size() == 3);
+    std::string drums, lead;
+    for (const std::string& n : names) {
+        if (n.find(" - 1 DRUMS.wav") != std::string::npos) drums = n;
+        if (n.find(" - 2 LEAD.wav") != std::string::npos) lead = n;
+    }
+    CHECK(!drums.empty() && !lead.empty());
+    const Wav d = read(drums), l = read(lead);
+    CHECK(d.left.size() == body + tail && l.left.size() == body + tail);
+    CHECK(peakIn(d, 0, 2000) > 0.2f && peakIn(l, 0, 2000) == 0.f);                 // the kick is in the drums' file only
+    CHECK(peakIn(l, 8 * kStep + 500, 11 * kStep) > 0.01f && peakIn(l, 4 * kStep, 4 * kStep + 2000) == 0.f); // the note is in the lead's file, and no kick on the second beat either
+    // A muted track is left out of a song bounce, and still gets its own file when asked for.
+    session.setMuted(0, true);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    Wav quiet = read(session.bounceLast());
+    CHECK(quiet.left.size() == body + tail && peakIn(quiet, 0, 2000) == 0.f && peakIn(quiet, 8 * kStep + 500, 11 * kStep) > 0.01f);
+    rig.project().track = 0;
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::ThisTrack));
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 1 && session.bounceLast().find(" - 1 DRUMS.wav") != std::string::npos);
+    CHECK(peakIn(read(session.bounceLast()), 0, 2000) > 0.2f && rig.project().tracks[0].muted);
+    // The handheld's own engine was never touched: it is silent, and plays as before when asked.
+    CHECK(rig.listen(4000) == 0.f);
+    // From the SET screen: the row picks what, A starts it, and the row says how far along it is.
+    session.setMuted(0, false);
+    session.view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kBounce);
+    rig.tap(RIGHT, 2);
+    rig.tap(LEFT);
+    sleep(1);
+    rig.tap(A); // EACH TRACK
+    CHECK(session.bouncing() || session.bounceFiles() == 2);
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 2);
+    // Cancelled part-way (as when Apotheca is closed): it stops, and no half-written file is left.
+    const std::size_t before = wavsIn().size();
+    rig.project().repeats[0] = 16;
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.cancelBounce();
+    CHECK(!session.bouncing());
+    for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + tail); // every file there is whole
+    CHECK(wavsIn().size() <= before + 1);
+}
+
 // Automation: with WRITE on and the song playing, a knob moved is written into the pattern.
 void testRecordingAutomation() {
     Rig rig;
@@ -2185,6 +2416,11 @@ void testTheSetupScreen() {
         CHECK(std::string(rig.project().current().name) == kTrackNames[kTrackNameCount - 1]);
         rig.tap(RIGHT);
         CHECK(rig.project().current().name[0] == 0);
+        // BOUNCE: left and right pick what is bounced (A starts it: tested with bouncing itself).
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kBounce);
+        rig.tap(RIGHT);
+        rig.tap(LEFT);
         // VOLUME, a twentieth at a time
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == SettingsScreen::kVolume);
@@ -3308,6 +3544,9 @@ int main(int, char**) {
     testAllFourShoulderButtonsIsPanic();
     testMuteSoloAndNames();
     testHoldBAndDragErases();
+    testNothingStaysHeld();
+    testTheBattery();
+    testBouncing();
     testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();

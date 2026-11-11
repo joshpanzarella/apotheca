@@ -305,6 +305,12 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void SongScreen::update(const Input& input, Uint32 nowMs) {
+    // A button let go while another screen was showing (a song opened, a tab turned) never told this
+    // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (!input.held(Button::A)) holding_ = false;
+    if (!input.held(Button::R1)) copying_ = false;
+    if (!input.held(Button::B)) bHeld_ = false;
+
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
@@ -577,12 +583,16 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 std::snprintf(upper, sizeof upper, "%s", name.c_str());
                 for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
                 fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
-                if (name == session_.songName()) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
+                const bool deleting = bHeld_ && bDownAt_ != 0 && i == bRow_;
+                if (name == session_.songName() && !deleting) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
                 // B held on it: the row fills, and at full the song is deleted.
                 if (bHeld_ && bDownAt_ != 0 && i == bRow_) {
                     const float part = static_cast<float>(lastMs_ - bDownAt_) / static_cast<float>(kDeleteHoldMs);
                     fill(r, x + 13, by + 1, static_cast<int>((w - 26) * (part > 1.f ? 1.f : part)), rowH - 6, faded(kBrass, 120));
-                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "KEEP HOLDING TO DELETE", kBrass);
+                    // On a patch of its own, so it is never written over the song's name.
+                    const float tw = fonts.small.width("HOLD TO DELETE");
+                    fill(r, static_cast<int>(x + w - 22.f - tw - 8.f), by + 3, static_cast<int>(tw + 14.f), rowH - 10, kPanel);
+                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "HOLD TO DELETE", kBrass);
                 }
             }
             if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);

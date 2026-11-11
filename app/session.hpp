@@ -85,6 +85,9 @@ public:
     // worked out again.
     void useSampleFolder(const std::string& folder) { sampleFolder_ = folder; }
     std::vector<std::string> sampleNames() const;
+    // Delete a recording's file from the samples folder. Lanes that were playing it go back to
+    // their built-in drum (a sampler: to none). False if there is no such recording.
+    bool deleteSample(const std::string& name);
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // Catch: the last bar the song played (everything, as it was heard)
@@ -177,6 +180,20 @@ public:
     int octavesShown() const { return octaves_; }
     void setOctavesShown(int octaves);
     void loadSettings();
+
+    // ---- bouncing (bounce.cpp) ---------------------------------------------------------
+    // The song, or its tracks, written out as WAV files in the "bounces"
+    // folder. Worked out off to one side, not recorded as it plays, so it can
+    // use the best quality whatever the handheld could keep up with.
+    enum class Bounce { Song, EachTrack, ThisTrack };
+    void useBounceFolder(const std::string& folder) { bounceFolder_ = folder; }
+    bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
+    bool bouncing() const;
+    float bounceProgress() const;  // 0..1
+    int bounceFiles() const;       // once done: how many files were written
+    std::string bounceLast() const; // ...and the name of the last one
+    void finishBounce();           // wait for it (the tests, and closing down)
+    void cancelBounce();
 
     // ---- automation -------------------------------------------------------------------
     // With WRITE on and the song playing, moving a macro or a track effect's
@@ -287,6 +304,17 @@ private:
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
+    struct BounceJob {
+        std::unique_ptr<Project> song;
+        Bounce what = Bounce::Song;
+        int track = 0, files = 0;
+        std::string sampleFolder, base, last;
+        std::atomic<float> progress{0.f};
+        std::atomic<bool> done{false}, cancel{false};
+        std::thread thread;
+    };
+    std::shared_ptr<BounceJob> bounce_;
+    std::string bounceFolder_;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     void restorePatterns(const std::string& text);
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece

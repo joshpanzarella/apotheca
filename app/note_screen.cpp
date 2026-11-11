@@ -521,6 +521,15 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
 }
 
 void NoteScreen::update(const Input& input, Uint32 nowMs) {
+    // A button let go while another screen was showing (a song opened, a tab turned) never told this
+    // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
+    if (!input.held(Button::A)) shaping_ = false;
+    if (!input.held(Button::R1)) painting_ = false;
+    if (!input.held(Button::B)) erasing_ = false;
+    if (!input.held(Button::X)) carrying_ = Carry::Nothing;
+    if (!input.held(Button::L1)) zooming_ = false;
+    if (!input.held(Button::Y)) picking_ = false; // (let go properly, the chord has landed already)
+
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number

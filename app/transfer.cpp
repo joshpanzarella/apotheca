@@ -45,7 +45,7 @@ li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;m
 <h2>UPDATE APOTHECA</h2>
 <p>Choose the new <b>apotheca</b> program file (inside the apotheca folder of the zip). It is only sent here; you accept it on the handheld by holding A, and it is used the next time Apotheca starts.</p>
 <button id="pickUpdate">Choose the program file</button><input id="update" type="file">
-<h2>RECORDINGS</h2><ul id="samples"></ul><h2>SONGS</h2><ul id="songs"></ul><h2>CHORD PACKS</h2><ul id="chords"></ul>
+<h2>BOUNCES (your songs as sound files: click to download)</h2><ul id="bounces"></ul><h2>RECORDINGS</h2><ul id="samples"></ul><h2>SONGS</h2><ul id="songs"></ul><h2>CHORD PACKS</h2><ul id="chords"></ul>
 <script>
 document.getElementById('design').href = location.pathname.replace(/\/$/, '') + '/design';
 const base = location.pathname.replace(/\/$/, '');
@@ -54,7 +54,8 @@ function line(text, cls) { const li = document.createElement('li'); li.textConte
 async function list() {
   const all = await (await fetch(base + '/list')).json();
   document.getElementById('version').textContent = all.version ? 'version ' + all.version + (all.built ? ', built ' + all.built : '') : '';
-  for (const kind of ['samples', 'songs', 'chords']) {
+  for (const kind of ['bounces', 'samples', 'songs', 'chords']) {
+    if (!all[kind]) continue;
     const ul = document.getElementById(kind); ul.textContent = '';
     for (const name of all[kind]) { const li = document.createElement('li'); const a = document.createElement('a');
       a.href = base + '/' + kind + '/' + encodeURIComponent(name); a.download = name; a.textContent = name; li.append(a); ul.append(li); }
@@ -174,7 +175,7 @@ std::string safeFileName(const std::string& fromAddress, const std::string& endi
     return end == ending ? name : "";
 }
 
-std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : ""; }
+std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : kind == "bounces" ? bounces_ : ""; }
 
 bool Transfer::start(const std::string& sampleFolder, const std::string& songFolder, const std::string& chordFolder, int port, unsigned seed) {
     stop();
@@ -279,7 +280,7 @@ void Transfer::answer(int fd) {
     if (method == "GET" && path == "/list") {
         return reply(fd, "200 OK", "application/json",
                      "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
-                         ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + "}");
+                         ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + ",\"bounces\":" + jsonList(bounces_.empty() ? std::vector<std::string>() : filesEnding(bounces_, ".wav")) + "}");
     }
 
     // The sound-designer page and what it says to the program.
@@ -332,7 +333,7 @@ void Transfer::answer(int fd) {
     // /samples/<name>.wav, /songs/<name>.song, /chords/<name>.json
     const std::size_t slash = path.find('/', 1);
     const std::string kind = slash == std::string::npos ? "" : path.substr(1, slash - 1);
-    const std::string ending = kind == "samples" ? ".wav" : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
+    const std::string ending = kind == "samples" || kind == "bounces" ? ".wav" : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
     const std::string folder = folderFor(kind);
     const std::string name = ending.empty() ? "" : safeFileName(path.substr(slash + 1), ending);
     if (folder.empty() || name.empty()) return reply(fd, "400 Bad Request", "text/plain", "not a file name this takes\n");
@@ -343,7 +344,7 @@ void Transfer::answer(int fd) {
         if (!readTextFile(file, contents)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
         return reply(fd, "200 OK", "application/octet-stream", contents);
     }
-    if (method != "PUT") return reply(fd, "405 Not Allowed", "text/plain", "only GET and PUT\n");
+    if (method != "PUT" || kind == "bounces") return reply(fd, "405 Not Allowed", "text/plain", "only GET and PUT, and bounces are only fetched\n");
 
     // How big it says it is.
     std::string lower = head;

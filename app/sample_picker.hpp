@@ -9,6 +9,8 @@
 //   A              keep the one showing
 //   B              put back what was there before the list was opened
 //   X              hear it again
+//   hold Y         for a second: DELETE the recording under the cursor from the
+//                  handheld (a bad catch, a take not wanted). Not the first row.
 //
 // The list knows nothing of lanes or samplers: it is given the names and
 // three things it can do (use this one, play it, tell me about it).
@@ -31,6 +33,7 @@ public:
         std::function<void(const std::string&)> use;       // put this recording on ("" is the first row: none)
         std::function<void()> hear;                        // play what is on now
         std::function<const Session::LaneSound*()> sound;  // what is on now, for its picture; may be empty
+        std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
     };
     static constexpr int kRows = 9, kPage = 8;
 
@@ -57,6 +60,12 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     bool playing_ = false;
+    bool deleting_ = false, deleteTimed_ = false; // Y is held on a recording
+    Uint32 deleteSince_ = 0;
+    float deletePart_ = 0.f;
+public:
+    static constexpr Uint32 kDeleteHoldMs = 1000;
+    float deletePart() const { return deletePart_; }
 };
 
 } // namespace apotheca

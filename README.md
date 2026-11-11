@@ -86,7 +86,7 @@ and the stick shapes the thing under the cursor:
 **Hold MENU (the small button in the middle) and a help card comes up**: what the buttons do
 on every screen (X hears what is under the cursor, the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, the
-panic). Let go and it closes. On a handheld whose firmware keeps MENU for
+panic), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
 itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
 stick or the D-pad gives is written as the direction alone (UP / DOWN); the
@@ -132,6 +132,7 @@ as a list, with the one showing drawn as a waveform and its length.
 | A | Keep it |
 | B | Put back what was there before the list opened |
 | X | Hear it again |
+| Hold Y | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
 | START | Play / stop, with the list still open |
 
 ### FX
@@ -216,6 +217,25 @@ designer".
 
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
+
+### Bouncing: getting a song out
+
+**SET tab, BOUNCE row.** Left / right picks what, A starts it.
+
+| What | Files written |
+| --- | --- |
+| THE SONG | One WAV of the whole song: every scene as many times as it plays, then three seconds for tails to die away. Muted tracks are left out. |
+| EACH TRACK | One WAV for every track by itself (stems), all the same length, so they line up in any other program |
+| THIS TRACK | The track being worked on, by itself |
+
+A bounce is **not recorded as the song plays**. A second engine works the
+song out again from the start, as fast as the handheld can. So you can
+carry on (even play) while it works, and it does not have to keep up:
+**Twin Analog is always bounced at x8 oversampling**, even where that is more
+than the handheld can play live.
+
+Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
+The WiFi page lists them under BOUNCES; click one to download it.
 
 ### Automation
 
