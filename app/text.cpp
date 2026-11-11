@@ -53,6 +53,7 @@ bool Font::load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, f
         glyphs_[i].offsetX = p.xoff;
         glyphs_[i].offsetY = p.yoff; // from the baseline, negative is up
         glyphs_[i].advance = p.xadvance;
+        if (i == '1' - 32) glyphs_[i].offsetX += 2.f, glyphs_[i].advance += 2.f; // room for its flag (see draw)
     }
     capHeight_ = std::round(em * kCapHeight);
     spacing_ = size * kLetterSpacing;
@@ -79,6 +80,16 @@ void Font::draw(SDL_Renderer* renderer, float x, float y, const char* text, SDL_
         SDL_Rect target = {static_cast<int>(std::round(x + g.offsetX)), static_cast<int>(std::round(baseline + g.offsetY)),
                            g.source.w, g.source.h};
         SDL_RenderCopy(renderer, texture_, &g.source, &target);
+        if (*c == '1') {
+            // This face's 1 is a bare stroke, the same as its capital I and
+            // small l. Give it the flag a 1 has: a short stroke falling away
+            // to the left from the top of the stem. (The glyph was given two
+            // pixels more room for it when the face was loaded.)
+            const int n = capHeight_ >= 12.f ? 3 : 2;
+            const int stem = target.x + (target.w > 2 ? 1 : 0), top = target.y + (target.h > 4 ? 1 : 0);
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+            for (int k = 0; k <= n; ++k) SDL_RenderDrawLine(renderer, stem - k, top + k, stem - k, top + k + 1);
+        }
         x += g.advance + spacing_;
     }
 }
