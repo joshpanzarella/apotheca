@@ -246,7 +246,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
     }
     const int below = top + kDrumLanes * rowH + 4;
-    scope(r, session_.engine, 8, below, 624, kScreenH - kHintsH - below - 6);
+    scope(r, session_.engine, 322, below, 310, kScreenH - kHintsH - below - 6);
 
     Hint list[8];
     int count = 0;

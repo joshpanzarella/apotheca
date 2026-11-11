@@ -318,8 +318,8 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, 174.f, 258.f, text, kDim);
         fonts.small.draw(r, 174.f, 274.f, "The macros above bend the sound and leave it as it was made.", kDim);
 
-        fonts.small.draw(r, 8.f, 306.f, "LIVE OUTPUT", kDim);
-        scope(r, session_.engine, 8, 322, 624, 124);
+        fonts.small.draw(r, 322.f, 306.f, "LIVE OUTPUT", kDim);
+        scope(r, session_.engine, 322, 322, 310, 124);
 
         if (holding_) {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
@@ -351,7 +351,7 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
             valueBox(r, fonts, x, y, 153, 70, it.name, text, part, i == cursor_, holding_);
         }
-        scope(r, session_.engine, 8, 372, 624, 74);
+        scope(r, session_.engine, 322, 372, 310, 74);
     } else {
         // An envelope: eight steps, each a speed and a level to reach.
         const int line = (page_ - 4) / 3, env = (page_ - 4) % 3;

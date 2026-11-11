@@ -256,7 +256,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         valueBox(r, fonts, x, y, 153, 70, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == id + 1,
                  holding_, id == sampler::Tune);
     }
-    scope(r, session_.engine, 8, 300, 624, 146);
+    scope(r, session_.engine, 322, 300, 310, 146);
 
     Hint list[8];
     int count = 0;
