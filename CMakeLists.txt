@@ -33,7 +33,10 @@ math(EXPR APOTHECA_CHANGES "${APOTHECA_CHANGES} + 1")
 string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 # (Given to one small file only, app/version.cpp, so that a new number does not rebuild everything.)
 
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp)
+# The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
+file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp
+    ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
 target_include_directories(apotheca_engine PRIVATE third_party)

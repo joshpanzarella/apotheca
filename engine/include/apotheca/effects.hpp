@@ -11,6 +11,12 @@
 //   CRUSH    BITS, RATE, MIX
 //
 // MIX at 0 is the sound untouched.
+//
+// ONE TABLE. Everything the rest of the program needs to know about an
+// effect is in its EffectInfo: the screen, the song file and the engine read
+// it from there and spell no effect out themselves. Each effect is one file
+// in engine/src/fx/, which holds its row; effects.cpp gives the row its
+// number and its place in the list. How to add one: engine/src/fx/unit.hpp.
 
 #include <memory>
 
@@ -18,17 +24,48 @@
 
 namespace apotheca {
 
+// An effect's number: what a song in memory and a command call it. NEVER
+// reordered, never reused: new ones go at the end, before Count.
 enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
+// What sort of thing it is, for the list a player picks from (the list is in
+// groups, and a whole group can be stepped over at once).
+enum class EffectGroup { None, Filter, Drive, Delay, Reverb, Moving, Level, Dirt, Count };
+const char* effectGroupName(EffectGroup group); // "FILTER", "MOVING"...; "" for None
+
 struct EffectInfo {
-    const char* name;
-    int params;
+    const char* name;                       // on the screen: "FILTER"
+    int params;                             // how many settings it has, up to four
     const char* paramNames[kEffectParams];
     float defaults[kEffectParams];
+    const char* word;                       // in a song file: "filter". One word, and it never changes once it ships
+    EffectGroup group;
+    int choices[kEffectParams];             // a setting that is a choice, not an amount: how many choices (0: an amount)
+    // How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS". `all` is the
+    // effect's settings together, for one whose reading depends on another
+    // (the DJ filter's cutoff), or nullptr. nullptr here: every setting is a
+    // percentage. Use effectParamText(), which knows that.
+    void (*reading)(int index, float value, const float* all, char* out, int size);
+    Effect* (*create)();                    // a new one. Allocates: not for the audio thread. Use makeEffect()
 };
+// The row for a number. Anything that is not an effect gets NONE's row.
 const EffectInfo& effectInfo(EffectKind kind);
+
+// The list a player picks from, in its own order: the number is not the
+// order. Place 0 is NONE.
+int effectListSize();
+EffectKind effectAt(int place);     // None for a place off either end
+int effectPlace(EffectKind kind);   // 0 (NONE's) for anything not in the list
+// "delay" -> EffectKind::Delay. A word this version does not know is None.
+EffectKind effectFromWord(const char* word);
+// How many choices a setting has; 0 if it is an amount (or is not there).
+int effectChoices(EffectKind kind, int index);
+// How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS", "35%".
+// `all` is the effect's settings together, for one whose reading depends on
+// another; without it, each is read by itself.
+void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
 // A new one, prepared and set to its defaults. nullptr for None. Allocates:
 // not for the audio thread.

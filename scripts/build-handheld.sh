@@ -78,7 +78,7 @@ clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
     -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
     -DAPOTHECA_VERSION="\"$version\"" -DAPOTHECA_BUILT="\"$built\"" \
-    "$here"/engine/src/*.cpp "$here"/app/*.cpp \
+    "$here"/engine/src/*.cpp "$here"/engine/src/fx/*.cpp "$here"/app/*.cpp \
     $objects \
     -o "$pack/apotheca/apotheca" \
     -lSDL2 -lpthread -lm -static-libstdc++ -static-libgcc -Wl,--allow-shlib-undefined

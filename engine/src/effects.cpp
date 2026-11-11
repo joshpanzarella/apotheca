@@ -1,362 +1,87 @@
+// The one table of effects. Each effect is a file in fx/ and brings its own
+// row (unit.hpp says how to add one); here a row gets its number and its
+// place in the list a player picks from.
+
 #include "apotheca/effects.hpp"
 
-#include <cmath>
-#include <vector>
+#include <cstring>
+
+#include "fx/unit.hpp"
 
 namespace apotheca {
 
 namespace {
 
-float clamp01(float v) { return v != v ? 0.f : (v < 0.f ? 0.f : (v > 1.f ? 1.f : v)); } // NaN goes to 0
+const EffectInfo kNoneInfo = {"NONE", 0, {"", "", "", ""}, {0.f, 0.f, 0.f, 0.f}, "", EffectGroup::None, {0, 0, 0, 0}, nullptr, nullptr};
 
-// What every one of them shares: four settings, each 0..1.
-class Unit : public Effect {
-public:
-    explicit Unit(EffectKind kind) {
-        const EffectInfo& info = effectInfo(kind);
-        for (int i = 0; i < kEffectParams; ++i) p_[i] = info.defaults[i];
-    }
-    void prepare(float sampleRate) override {
-        sr_ = sampleRate;
-        changed();
-    }
-    void setParam(int index, float value) override {
-        if (index < 0 || index >= kEffectParams) return;
-        p_[index] = clamp01(value);
-        changed();
-    }
-
-protected:
-    virtual void changed() {}
-    float p_[kEffectParams] = {};
-    float sr_ = 48000.f;
+// By number. A row's place here IS its EffectKind: append, never reorder.
+const EffectInfo* const kTable[kEffectKinds] = {
+    &kNoneInfo,       // 0
+    &fx::kFilterInfo, // 1
+    &fx::kDriveInfo,  // 2
+    &fx::kDelayInfo,  // 3
+    &fx::kReverbInfo, // 4
+    &fx::kCrushInfo,  // 5
 };
 
-// ---- FILTER: state-variable filters ----------------------------------------------------
-// Five types (FilterType): a low-pass that falls 12 dB an octave (two poles),
-// one that falls 24 (four poles: two of them in a row), band-pass, high-pass,
-// and the DJ filter.
-class Filter : public Unit {
-public:
-    Filter() : Unit(EffectKind::Filter) {}
-    void reset() override { for (auto& s : state_) s[0] = s[1] = s[2] = s[3] = 0.f; }
-    void process(float* left, float* right, int frames) override {
-        float* io[2] = {left, right};
-        const float mix = p_[3] * amount_;
-        if (mix <= 0.f) {
-            // Nothing of it is heard (the DJ filter in its middle): the sound
-            // goes by untouched, and the filter forgets what it held.
-            reset();
-            return;
-        }
-        for (int c = 0; c < 2; ++c) {
-            float ic1 = state_[c][0], ic2 = state_[c][1], jc1 = state_[c][2], jc2 = state_[c][3];
-            for (int i = 0; i < frames; ++i) {
-                const float in = io[c][i];
-                const float v3 = in - ic2;
-                const float v1 = a1_ * ic1 + a2_ * v3;
-                const float v2 = ic2 + a2_ * ic1 + a3_ * v3;
-                ic1 = 2.f * v1 - ic1;
-                ic2 = 2.f * v2 - ic2;
-                float out = shape_ == 0 ? v2 : (shape_ == 1 ? v1 * k_ : in - k_ * v1 - v2);
-                if (fourPole_) {
-                    // The second pair of poles: the same corner, no peak of its own.
-                    const float w3 = out - jc2;
-                    const float w1 = b1_ * jc1 + b2_ * w3;
-                    const float w2 = jc2 + b2_ * jc1 + b3_ * w3;
-                    jc1 = 2.f * w1 - jc1;
-                    jc2 = 2.f * w2 - jc2;
-                    out = w2;
-                }
-                io[c][i] = in + mix * (out - in);
-            }
-            // Keep a silent filter from grinding on vanishing numbers.
-            state_[c][0] = std::fabs(ic1) < 1e-20f ? 0.f : ic1;
-            state_[c][1] = std::fabs(ic2) < 1e-20f ? 0.f : ic2;
-            state_[c][2] = std::fabs(jc1) < 1e-20f ? 0.f : jc1;
-            state_[c][3] = std::fabs(jc2) < 1e-20f ? 0.f : jc2;
-        }
-    }
-
-protected:
-    void changed() override {
-        const FilterType type = filterType(p_[2]);
-        float hz = 30.f * std::pow(2.f, p_[0] * 9.5f); // 30 Hz to about 21 kHz
-        amount_ = 1.f;
-        fourPole_ = type == FilterType::LowPass4;
-        shape_ = type == FilterType::BandPass ? 1 : type == FilterType::HighPass ? 2 : 0;
-        if (type == FilterType::Dj) {
-            const int side = djFilter(p_[0], hz);
-            shape_ = side > 0 ? 2 : 0;
-            // It comes in over the first little way out of the middle, so
-            // leaving the middle is not a click.
-            const float out = std::fabs(p_[0] - 0.5f) - kDjDead;
-            amount_ = side == 0 ? 0.f : (out > kDjFade ? 1.f : out / kDjFade);
-        }
-        if (hz > 0.45f * sr_) hz = 0.45f * sr_;
-        const float g = std::tan(3.14159265f * hz / sr_);
-        k_ = 1.f / (0.5f + 11.5f * p_[1] * p_[1]); // Q from 0.5 to 12
-        a1_ = 1.f / (1.f + g * (g + k_));
-        a2_ = g * a1_;
-        a3_ = g * a2_;
-        const float flat = 1.41421356f; // the second pair: as flat as can be
-        b1_ = 1.f / (1.f + g * (g + flat));
-        b2_ = g * b1_;
-        b3_ = g * b2_;
-    }
-
-public:
-    static constexpr float kDjDead = 0.02f, kDjFade = 0.03f; // of the knob's travel, each side of the middle
-
-private:
-    float state_[2][4] = {};
-    float k_ = 2.f, a1_ = 0.f, a2_ = 0.f, a3_ = 0.f, b1_ = 0.f, b2_ = 0.f, b3_ = 0.f, amount_ = 1.f;
-    int shape_ = 0; // 0 low, 1 band, 2 high
-    bool fourPole_ = false;
+// The list a player picks from, in groups. This order can change freely;
+// nothing stores it.
+const EffectKind kList[] = {
+    EffectKind::None,
+    EffectKind::Filter,
+    EffectKind::Drive,
+    EffectKind::Delay,
+    EffectKind::Reverb,
+    EffectKind::Crush,
 };
-
-// ---- DRIVE: a soft clipper with a tone control after it -------------------------------
-class Drive : public Unit {
-public:
-    Drive() : Unit(EffectKind::Drive) {}
-    void reset() override { tone_[0] = tone_[1] = 0.f; }
-    void process(float* left, float* right, int frames) override {
-        float* io[2] = {left, right};
-        for (int c = 0; c < 2; ++c) {
-            float tone = tone_[c];
-            for (int i = 0; i < frames; ++i) {
-                const float in = io[c][i];
-                tone += coeff_ * (std::tanh(in * gain_) * makeUp_ - tone);
-                io[c][i] = (in + p_[2] * (tone - in)) * out_;
-            }
-            tone_[c] = std::fabs(tone) < 1e-20f ? 0.f : tone;
-        }
-    }
-
-protected:
-    void changed() override {
-        gain_ = std::pow(40.f, p_[0]); // 1 to 40 times
-        makeUp_ = 1.f / std::sqrt(gain_); // more drive is thicker, not just louder
-        const float hz = 500.f * std::pow(40.f, p_[1]); // 500 Hz to 20 kHz
-        coeff_ = 1.f - std::exp(-6.2831853f * (hz > 0.45f * sr_ ? 0.45f * sr_ : hz) / sr_);
-        out_ = 2.f * p_[3]; // the middle is "as it came in"
-    }
-
-private:
-    float tone_[2] = {};
-    float gain_ = 1.f, makeUp_ = 1.f, coeff_ = 1.f, out_ = 1.f;
-};
-
-// ---- DELAY: echoes in time with the song -------------------------------------------------
-constexpr int kDelaySteps[6] = {1, 2, 3, 4, 6, 8};
-
-class Delay : public Unit {
-public:
-    Delay() : Unit(EffectKind::Delay) {}
-    void prepare(float sampleRate) override {
-        sr_ = sampleRate;
-        // Room for the longest echo at the slowest tempo: half a bar at 40 BPM.
-        size_ = static_cast<int>(8.0 * 15.0 / 40.0 * sampleRate) + 8;
-        for (auto& line : line_) line.assign(static_cast<std::size_t>(size_), 0.f);
-        changed();
-    }
-    void reset() override {
-        for (auto& line : line_) line.assign(line.size(), 0.f);
-        damp_[0] = damp_[1] = 0.f;
-    }
-    void setTempo(float bpm) override {
-        if (bpm >= 20.f && bpm <= 400.f) tempo_ = bpm;
-        changed();
-    }
-    void process(float* left, float* right, int frames) override {
-        if (size_ == 0) return;
-        float* io[2] = {left, right};
-        const float feedback = 0.9f * p_[1], mix = p_[3];
-        for (int c = 0; c < 2; ++c) {
-            std::vector<float>& line = line_[c];
-            int at = at_;
-            float damp = damp_[c];
-            for (int i = 0; i < frames; ++i) {
-                int from = at - delay_;
-                if (from < 0) from += size_;
-                const float echo = line[static_cast<std::size_t>(from)];
-                damp += coeff_ * (echo - damp); // each repeat a little duller
-                line[static_cast<std::size_t>(at)] = io[c][i] + damp * feedback;
-                io[c][i] += mix * echo;
-                if (++at >= size_) at = 0;
-            }
-            damp_[c] = std::fabs(damp) < 1e-20f ? 0.f : damp;
-        }
-        at_ = (at_ + frames) % size_;
-    }
-
-protected:
-    void changed() override {
-        const int steps = delaySteps(p_[0]);
-        int frames = static_cast<int>(std::lround(steps * 15.0 / tempo_ * sr_));
-        delay_ = frames < 1 ? 1 : (frames > size_ - 1 ? size_ - 1 : frames);
-        const float hz = 600.f * std::pow(30.f, p_[2]); // 600 Hz to 18 kHz
-        coeff_ = 1.f - std::exp(-6.2831853f * (hz > 0.45f * sr_ ? 0.45f * sr_ : hz) / sr_);
-    }
-
-private:
-    std::vector<float> line_[2];
-    int size_ = 0, at_ = 0, delay_ = 1;
-    float tempo_ = 120.f, coeff_ = 1.f, damp_[2] = {};
-};
-
-// ---- REVERB: four feedback delays and two smearing stages a side ---------------------------
-class Reverb : public Unit {
-public:
-    Reverb() : Unit(EffectKind::Reverb) {}
-    void prepare(float sampleRate) override {
-        sr_ = sampleRate;
-        // Lengths with no common factors, so the echoes do not line up; the
-        // right side a little longer than the left, for width.
-        static const int combMs[4] = {2973, 3371, 3797, 4219};   // hundredths of a millisecond
-        static const int smearMs[2] = {503, 167};
-        for (int c = 0; c < 2; ++c) {
-            for (int i = 0; i < 4; ++i) comb_[c][i].assign(static_cast<std::size_t>((combMs[i] + c * 53) * 1e-5 * sampleRate) + 1, 0.f);
-            for (int i = 0; i < 2; ++i) smear_[c][i].assign(static_cast<std::size_t>((smearMs[i] + c * 13) * 1e-5 * sampleRate) + 1, 0.f);
-        }
-        changed();
-    }
-    void reset() override {
-        for (auto& side : comb_)
-            for (auto& line : side) line.assign(line.size(), 0.f);
-        for (auto& side : smear_)
-            for (auto& line : side) line.assign(line.size(), 0.f);
-        for (auto& side : damp_)
-            for (float& d : side) d = 0.f;
-        for (auto& side : combAt_)
-            for (int& a : side) a = 0;
-        for (auto& side : smearAt_)
-            for (int& a : side) a = 0;
-    }
-    void process(float* left, float* right, int frames) override {
-        if (comb_[0][0].empty()) return;
-        float* io[2] = {left, right};
-        const float mix = p_[2];
-        for (int c = 0; c < 2; ++c) {
-            for (int i = 0; i < frames; ++i) {
-                const float in = io[c][i];
-                float wet = 0.f;
-                for (int k = 0; k < 4; ++k) {
-                    std::vector<float>& line = comb_[c][k];
-                    int& at = combAt_[c][k];
-                    const float out = line[static_cast<std::size_t>(at)];
-                    float& damp = damp_[c][k];
-                    damp += dampCoeff_ * (out - damp);
-                    if (std::fabs(damp) < 1e-20f) damp = 0.f;
-                    line[static_cast<std::size_t>(at)] = in * 0.25f + damp * feedback_;
-                    if (++at >= static_cast<int>(line.size())) at = 0;
-                    wet += out;
-                }
-                for (int k = 0; k < 2; ++k) {
-                    std::vector<float>& line = smear_[c][k];
-                    int& at = smearAt_[c][k];
-                    const float delayed = line[static_cast<std::size_t>(at)];
-                    const float fed = wet + 0.5f * delayed;
-                    line[static_cast<std::size_t>(at)] = fed;
-                    wet = delayed - 0.5f * fed;
-                    if (++at >= static_cast<int>(line.size())) at = 0;
-                }
-                io[c][i] = in + mix * (wet - in * 0.5f * mix); // the dry sound eases back as the room comes up
-            }
-        }
-    }
-
-protected:
-    void changed() override {
-        feedback_ = 0.7f + 0.28f * p_[0]; // a closet to a hall
-        const float hz = 1200.f * std::pow(14.f, 1.f - p_[1]); // more damping, darker tail
-        dampCoeff_ = 1.f - std::exp(-6.2831853f * (hz > 0.45f * sr_ ? 0.45f * sr_ : hz) / sr_);
-    }
-
-private:
-    std::vector<float> comb_[2][4], smear_[2][2];
-    int combAt_[2][4] = {}, smearAt_[2][2] = {};
-    float damp_[2][4] = {};
-    float feedback_ = 0.8f, dampCoeff_ = 1.f;
-};
-
-// ---- CRUSH: fewer bits, fewer samples ---------------------------------------------------------
-class Crush : public Unit {
-public:
-    Crush() : Unit(EffectKind::Crush) {}
-    void reset() override { held_[0] = held_[1] = 0.f; count_ = 0.f; }
-    void process(float* left, float* right, int frames) override {
-        for (int i = 0; i < frames; ++i) {
-            count_ += 1.f;
-            if (count_ >= every_) {
-                count_ -= every_;
-                held_[0] = std::round(left[i] * levels_) / levels_;
-                held_[1] = std::round(right[i] * levels_) / levels_;
-            }
-            // Written so that MIX at full is the held value exactly, with no
-            // rounding left over from the sound underneath.
-            left[i] = held_[0] * p_[2] + left[i] * (1.f - p_[2]);
-            right[i] = held_[1] * p_[2] + right[i] * (1.f - p_[2]);
-        }
-    }
-
-protected:
-    void changed() override {
-        levels_ = std::pow(2.f, 15.f - 13.f * p_[0]); // 16 bits down to 3
-        every_ = std::pow(40.f, p_[1]);               // every sample, down to one in forty
-    }
-
-private:
-    float held_[2] = {};
-    float count_ = 0.f, levels_ = 32768.f, every_ = 1.f;
-};
+constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
 
 } // namespace
 
-int djFilter(float v, float& hz) {
-    const float dead = 0.02f; // Filter::kDjDead
-    if (v < 0.5f - dead) {
-        // Low-pass: wide open (20 kHz) next to the middle, down to 60 Hz at the bottom.
-        hz = 60.f * std::pow(20000.f / 60.f, v / (0.5f - dead));
-        return -1;
-    }
-    if (v > 0.5f + dead) {
-        // High-pass: from 20 Hz next to the middle up to 8 kHz at the top.
-        hz = 20.f * std::pow(8000.f / 20.f, (v - 0.5f - dead) / (0.5f - dead));
-        return 1;
-    }
-    hz = 0.f;
+const EffectInfo& effectInfo(EffectKind kind) {
+    const int index = static_cast<int>(kind);
+    return *kTable[index < 0 || index >= kEffectKinds ? 0 : index];
+}
+
+const char* effectGroupName(EffectGroup group) {
+    static const char* const names[static_cast<int>(EffectGroup::Count)] = {"", "FILTER", "DRIVE", "DELAY", "REVERB", "MOVING", "LEVEL", "DIRT"};
+    const int index = static_cast<int>(group);
+    return names[index < 0 || index >= static_cast<int>(EffectGroup::Count) ? 0 : index];
+}
+
+int effectListSize() { return kListSize; }
+
+EffectKind effectAt(int place) { return place < 0 || place >= kListSize ? EffectKind::None : kList[place]; }
+
+int effectPlace(EffectKind kind) {
+    for (int i = 0; i < kListSize; ++i)
+        if (kList[i] == kind) return i;
     return 0;
 }
 
-int delaySteps(float time) {
-    int index = static_cast<int>(clamp01(time) * 6.f);
-    return kDelaySteps[index > 5 ? 5 : index];
+EffectKind effectFromWord(const char* word) {
+    if (!word || !word[0]) return EffectKind::None;
+    for (int k = 1; k < kEffectKinds; ++k)
+        if (std::strcmp(kTable[k]->word, word) == 0) return static_cast<EffectKind>(k);
+    return EffectKind::None;
 }
 
-const EffectInfo& effectInfo(EffectKind kind) {
-    static const EffectInfo info[kEffectKinds] = {
-        {"NONE", 0, {"", "", "", ""}, {0.f, 0.f, 0.f, 0.f}},
-        {"FILTER", 4, {"CUTOFF", "RESONANCE", "TYPE", "MIX"}, {0.6f, 0.2f, 0.f, 1.f}},
-        {"DRIVE", 4, {"DRIVE", "TONE", "MIX", "OUTPUT"}, {0.35f, 0.7f, 1.f, 0.5f}},
-        {"DELAY", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5f, 0.45f, 0.6f, 0.35f}},
-        {"REVERB", 3, {"SIZE", "DAMPING", "MIX", ""}, {0.6f, 0.5f, 0.3f, 0.f}},
-        {"CRUSH", 3, {"BITS", "RATE", "MIX", ""}, {0.5f, 0.3f, 1.f, 0.f}},
-    };
-    const int index = static_cast<int>(kind);
-    return info[index < 0 || index >= kEffectKinds ? 0 : index];
+int effectChoices(EffectKind kind, int index) {
+    const EffectInfo& info = effectInfo(kind);
+    return index < 0 || index >= info.params ? 0 : info.choices[index];
+}
+
+void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all) {
+    if (!out || size <= 0) return;
+    const EffectInfo& info = effectInfo(kind);
+    if (info.reading) info.reading(index, value, all, out, size);
+    else fx::readPercent(value, out, size);
 }
 
 std::unique_ptr<Effect> makeEffect(EffectKind kind, float sampleRate, float tempo) {
-    std::unique_ptr<Effect> effect;
-    switch (kind) {
-    case EffectKind::Filter: effect.reset(new Filter); break;
-    case EffectKind::Drive: effect.reset(new Drive); break;
-    case EffectKind::Delay: effect.reset(new Delay); break;
-    case EffectKind::Reverb: effect.reset(new Reverb); break;
-    case EffectKind::Crush: effect.reset(new Crush); break;
-    default: return nullptr;
-    }
+    const int index = static_cast<int>(kind);
+    if (index <= 0 || index >= kEffectKinds || !kTable[index]->create) return nullptr;
+    std::unique_ptr<Effect> effect(kTable[index]->create());
     effect->prepare(sampleRate);
     effect->setTempo(tempo);
     return effect;
