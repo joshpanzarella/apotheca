@@ -63,8 +63,16 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     // Up from the top scene is the track's head: its name. A there types a new one.
     if (onHead_) {
         if (direction == Button::Down) onHead_ = false;
-        if (direction == Button::Left && column_ > 0) --column_;
-        if (direction == Button::Right && column_ + 1 < project_.trackCount()) ++column_;
+        // Along the heads. Off either end is what is drawn beside them: + TRACK on the right
+        // (when there is room for another track), the PLAYS column on the left.
+        if (direction == Button::Left) {
+            if (column_ > 0) --column_;
+            else moveCursorTo(scene_, kRepeatColumn);
+        }
+        if (direction == Button::Right) {
+            if (column_ + 1 < project_.trackCount()) ++column_;
+            else if (addColumn() >= 0) moveCursorTo(scene_, addColumn());
+        }
         return;
     }
     // Only by a press of the D-pad: the stick, or a held D-pad, running up the scenes stops at the top one.

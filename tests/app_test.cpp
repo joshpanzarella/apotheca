@@ -3958,9 +3958,19 @@ void testNamingATrackFromTheSongScreen() {
     // Left and right along the heads, and no further than the tracks; down is back to the cells.
     rig.tap(LEFT);
     CHECK(song.cursorOnHead() && song.cursorColumn() == 0);
+    // Right off the last head is + TRACK, which is drawn beside it; left off the first is the PLAYS column.
+    rig.tap(RIGHT, 2);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == 2); // + TRACK
+    rig.tap(A);
+    rig.tap(B); // the list of instruments came up, and is put away
+    CHECK(rig.project().trackCount() == 2);
     rig.tap(LEFT);
-    CHECK(song.cursorColumn() == 0);
-    rig.tap(RIGHT, 5);
+    CHECK(song.cursorColumn() == 1 && !song.cursorOnHead());
+    rig.tap(UP);
+    rig.tap(LEFT, 2);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == -1);
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
     CHECK(song.cursorOnHead() && song.cursorColumn() == 1);
     rig.tap(DOWN);
     CHECK(!song.cursorOnHead() && song.cursorScene() == 0);
