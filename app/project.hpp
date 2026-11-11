@@ -37,6 +37,10 @@ struct NoteEvent {
     float length = 0.f;   // in steps. Not only whole ones: a note may end part-way through a step.
     float nudge = 0.f;    // early or late: -0.5..0.5 of a step
     float velocity = 0.f; // 0 = empty slot
+    // What the note does besides play (hold X on it):
+    std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step. 0: the one
+    std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
+    std::uint8_t spare[2] = {}; // (so the note has no bytes that are not set: it is compared and hashed whole)
 };
 
 // A chord placed in a bar. It stays one thing: one level, one length, one
@@ -53,6 +57,8 @@ struct ChordEvent {
     int intervals[kChordNotes] = {}; // semitones above the root
     float velocity = 0.f; // 0 = empty slot
     char name[16] = {};
+    std::uint8_t ratchet = 0;   // 2..4: the whole chord that many times, evenly, inside its first step
+    std::uint8_t spare[3] = {};
 
     // The keys it plays, lowest first, with no key twice. Returns how many.
     int pitches(int out[kChordNotes]) const {
@@ -120,6 +126,8 @@ struct NotePattern {
                 out[next].length = c.length;
                 out[next].nudge = c.nudge;
                 out[next].velocity = c.velocity;
+                out[next].ratchet = c.ratchet;
+                out[next].glide = 0;
                 ++count;
             }
         }

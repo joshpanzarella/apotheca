@@ -1,5 +1,7 @@
 #include "transfer.hpp"
 
+#include <cerrno>
+
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <ifaddrs.h>
@@ -623,6 +625,8 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
     return names;
 }
 
+bool Transfer::renameBroken = false;
+
 std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : kind == "bounces" ? bounces_ : ""; }
 
 bool Transfer::start(const std::string& sampleFolder, const std::string& songFolder, const std::string& chordFolder, int port, unsigned seed) {
@@ -826,9 +830,18 @@ void Transfer::answer(int fd) {
             mkdir(inside.c_str(), 0755); // fine if it is already there
             if (lstat(inside.c_str(), &there) != 0 || !S_ISDIR(there.st_mode)) return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
         }
-        if (std::rename(file.c_str(), target.c_str()) != 0) {
-            dropIfEmpty(folder, to); // a folder made for it just now does not linger
-            return reply(fd, "500 Could Not Move", "text/plain", "could not move it\n");
+        // Some cards will not rename a file from one folder into another (it was refused on the
+        // handheld's own card). Then it is moved the long way: written again where it goes, and
+        // the old one taken away only once the new one is safely there.
+        if (renameBroken || std::rename(file.c_str(), target.c_str()) != 0) {
+            const int why = renameBroken ? EXDEV : errno;
+            std::string contents;
+            const bool copied = readTextFile(file, contents) && writeTextFile(target, contents);
+            if (!copied || unlink(file.c_str()) != 0) {
+                if (copied) unlink(target.c_str()); // the old one would not go: do not leave two
+                dropIfEmpty(folder, to);            // a folder made for it just now does not linger
+                return reply(fd, "500 Could Not Move", "text/plain", std::string("could not move it: ") + std::strerror(copied ? errno : why) + "\n");
+            }
         }
         dropIfEmpty(folder, name);
         received_.fetch_add(1);

@@ -561,7 +561,36 @@ void testUpdatingOverWiFi() {
 
 } // namespace
 
+// A card that will not rename a file into another folder: the move still happens, the long way.
+static void testMovingWhereRenameIsRefused() {
+    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
+    mkdir(samples.c_str(), 0755);
+    mkdir((samples + "/kicks").c_str(), 0755);
+    const std::string wav = aWav();
+    writeTextFile(samples + "/thud.wav", wav);
+    writeTextFile(samples + "/kicks/there.wav", wav);
+    Transfer transfer;
+    CHECK(transfer.start(samples, songs, chords, 0, 4242));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    Transfer::renameBroken = true;
+    Answer a = raw(port, "POST " + door + "/samples/thud.wav HTTP/1.1\r\nX-To: kicks/thud.wav\r\nContent-Length: 0\r\n\r\n");
+    std::string kept;
+    CHECK(a.status == 200 && a.body.find("moved") == 0);
+    CHECK(!exists(samples + "/thud.wav") && readTextFile(samples + "/kicks/thud.wav", kept) && kept == wav);
+    // A name that is taken is still refused, and nothing is written over or lost.
+    writeTextFile(samples + "/other.wav", wav + "x");
+    a = raw(port, "POST " + door + "/samples/other.wav HTTP/1.1\r\nX-To: kicks/there.wav\r\nContent-Length: 0\r\n\r\n");
+    CHECK(a.status == 409 && exists(samples + "/other.wav") && readTextFile(samples + "/kicks/there.wav", kept) && kept == wav);
+    // Out of a folder, and into a new one: the emptied folder goes, the new one is made.
+    a = raw(port, "POST " + door + "/samples/kicks/there.wav HTTP/1.1\r\nX-To: fresh/there.wav\r\nContent-Length: 0\r\n\r\n");
+    CHECK(a.status == 200 && exists(samples + "/fresh/there.wav") && !exists(samples + "/kicks/there.wav"));
+    Transfer::renameBroken = false;
+    transfer.stop();
+}
+
 int main(int, char**) {
+    testMovingWhereRenameIsRefused();
     testNames();
     testTheServer();
     testDeletingAndMoving();

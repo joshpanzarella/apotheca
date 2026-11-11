@@ -1862,7 +1862,6 @@ static void testANoteGlides() {
         // From above, it begins over its pitch and comes down.
         const auto fromAbove = second(256, 81);
         if (!(fromAbove.first > 1.15 * plain.first)) std::printf("  from above: %.0f against %.0f; settled %.0f / %.0f\n", fromAbove.first, plain.first, fromAbove.second, plain.second);
-        if (!(std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second)) std::printf("  %s from above settled at %.0f, not %.0f\n", name, fromAbove.second, plain.second);
         // (Twin's two oscillators and the high first note's long tail make "where it settled" unreadable by counting crossings: its start is checked, and its arriving was checked from below.)
         CHECK(fromAbove.first > 1.15 * plain.first && (kind == SynthKind::Twin || std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second));
         // The first note after Play has nothing to glide from: it is plain.

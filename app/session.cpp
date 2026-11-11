@@ -350,6 +350,7 @@ void Session::sendNoteBar(int track, int scene, int bar) {
         c.extra = notes[slot].length - static_cast<float>(c.d);
         c.shift = notes[slot].nudge;
         c.value = notes[slot].velocity;
+        c.e = (notes[slot].ratchet >= 2 ? notes[slot].ratchet : 0) + (notes[slot].glide ? 256 : 0);
         engine.send(c);
     }
 }
@@ -670,6 +671,8 @@ void Session::sendTrackImage(int t) {
                 image->notes[slot][i].length = n.length;
                 image->notes[slot][i].nudge = n.nudge;
                 image->notes[slot][i].velocity = n.velocity;
+                image->notes[slot][i].ratchet = n.ratchet;
+                image->notes[slot][i].glide = n.glide;
             }
         }
     }

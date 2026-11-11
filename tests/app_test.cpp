@@ -2394,13 +2394,13 @@ void testHoldXCarriesANote() {
     bar.notes[slot].nudge = 0.f;
     rig.app.session().sendNotePattern(1, 0);
     CHECK(bar.notes[slot].pitch == 61 && bar.notes[slot].step == 4);
-    // X on a note only hears it now (it used to carry): held, the D-pad moves the cursor and the note stays.
+    // X on a note does not carry it (it used to): held, it is the note's effects, and the note stays where it is.
     notes.moveCursorTo(61, 4);
     rig.key(X, true);
-    CHECK(!notes.carrying());
+    CHECK(!notes.carrying() && notes.effecting());
     rig.tap(DOWN);
     rig.key(X, false);
-    CHECK(notes.cursorStep() == 5 && bar.notes[slot].step == 4);
+    CHECK(notes.cursorStep() == 4 && bar.notes[slot].step == 4 && bar.notes[slot].pitch == 61);
     // R1 on an empty step is the brush, not a carry: it paints where it goes.
     notes.moveCursorTo(70, 0);
     rig.key(R1, true);
@@ -4322,9 +4322,143 @@ void testPresetsEightAtATime() {
     CHECK(std::fabs(t.macro[0] - 0.55f) < 1e-4f && t.preset == last - 1);
 }
 
+// Hold X on a note: a ratchet (left / right) and a glide (up / down).
+void testNoteEffects() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Twin);
+    rig.project().track = 1;
+    rig.frames(2);
+    NoteScreen& roll = rig.app.notes();
+    NotePattern& p = rig.project().tracks[1].notes[0][0];
+    roll.moveCursorTo(60, 4);
+    rig.tap(A);
+    const int slot = p.at(60, 4);
+    CHECK(slot >= 0 && p.notes[slot].ratchet == 0 && p.notes[slot].glide == 0 && !roll.effecting());
+    // X held on it: right is a ratchet of 2, 3, 4 and no more; left back to one, kept as 0. The cursor stays.
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    rig.tap(RIGHT);
+    CHECK(p.notes[slot].ratchet == 2 && roll.cursorPitch() == 60 && roll.cursorStep() == 4);
+    rig.tap(RIGHT, 5);
+    CHECK(p.notes[slot].ratchet == 4);
+    rig.tap(LEFT, 9);
+    CHECK(p.notes[slot].ratchet == 0);
+    // Up: it glides. Down: it does not.
+    rig.tap(UP);
+    CHECK(p.notes[slot].glide == 1 && roll.cursorStep() == 4);
+    rig.tap(UP);
+    CHECK(p.notes[slot].glide == 1);
+    rig.tap(DOWN);
+    CHECK(p.notes[slot].glide == 0);
+    rig.tap(UP);
+    rig.tap(RIGHT, 2);
+    rig.key(X, false);
+    CHECK(!roll.effecting() && p.notes[slot].ratchet == 3 && p.notes[slot].glide == 1);
+    // With X let go the D-pad is the cursor again.
+    rig.tap(RIGHT);
+    CHECK(roll.cursorPitch() == 61 && p.notes[slot].ratchet == 3);
+    rig.tap(LEFT);
+    // The stick clicks too: one at once, and one way per push.
+    rig.key(X, true);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    CHECK(p.notes[slot].ratchet == 2);
+    rig.key(STICK_UP, true); // pushed up as well: still the ratchet's push
+    rig.frames(3);
+    rig.key(STICK_UP, false);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    rig.key(X, false);
+    CHECK(p.notes[slot].glide == 1 && p.notes[slot].ratchet <= 2);
+    p.notes[slot].ratchet = 3;
+    session.sendNoteBar(1, 0, 0);
+    // X on an empty step is only "hear": nothing is held, and the D-pad moves the cursor.
+    roll.moveCursorTo(70, 9);
+    rig.key(X, true);
+    CHECK(!roll.effecting());
+    rig.tap(DOWN);
+    rig.key(X, false);
+    CHECK(roll.cursorStep() == 10);
+    // Nor while a note is being shaped (A held).
+    roll.moveCursorTo(60, 4);
+    rig.key(A, true);
+    rig.key(X, true);
+    CHECK(!roll.effecting());
+    rig.key(X, false);
+    rig.key(A, false);
+
+    // The engine plays it: three starts inside step 5 (each let go before the next), where a plain note is one long sound.
+    rig.frames(30);
+    rig.render(96000);
+    session.setSynthSetting(1, twin::kSettings - 1, 0); // (whatever the last setting is: untouched if it does not exist)
+    rig.tap(START);
+    const std::vector<float> out = rig.render(8 * kStep);
+    rig.tap(START);
+    rig.render(96000);
+    CHECK(Rig::peak(out, 0, 4 * kStep - 10) < 0.002f && Rig::peak(out, 4 * kStep + 200, 4 * kStep + 1500) > 0.005f);
+    CHECK(Rig::peak(out, 4 * kStep + 2200, 4 * kStep + 3500) > 0.005f && Rig::peak(out, 4 * kStep + 4200, 4 * kStep + 5500) > 0.005f);
+
+    // A chord takes a ratchet, and has no glide.
+    p.chords[0] = makeChord(builtInPack().chords[0], 48, 10, 3.f, 0.7f, 0);
+    session.sendNoteBar(1, 0, 0);
+    int keys[kChordNotes];
+    p.chords[0].pitches(keys);
+    roll.moveCursorTo(keys[0], 10);
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    rig.tap(RIGHT);
+    rig.tap(UP);
+    rig.key(X, false);
+    CHECK(p.chords[0].ratchet == 2);
+    NoteEvent made[kMaxNotes];
+    p.render(made);
+    int ratcheted = 0;
+    for (const NoteEvent& n : made) ratcheted += n.velocity > 0.f && n.step == 10 && n.ratchet == 2 && n.glide == 0;
+    CHECK(ratcheted >= 3); // every note of the chord carries it
+
+    // The song keeps them, on lines of their own; a plain note has no such line.
+    roll.moveCursorTo(72, 0);
+    rig.tap(A);
+    std::string text = songText(rig.project());
+    CHECK(text.find("\nnotefx 5 60 3 1\n") != std::string::npos && text.find("\nchordfx 11 2\n") != std::string::npos && text.find("notefx 1 72") == std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    const NotePattern& kept = back->tracks[1].notes[0][0];
+    CHECK(kept.at(60, 4) >= 0 && kept.notes[kept.at(60, 4)].ratchet == 3 && kept.notes[kept.at(60, 4)].glide == 1 && kept.chords[0].ratchet == 2);
+    CHECK(kept.notes[kept.at(72, 0)].ratchet == 0 && kept.notes[kept.at(72, 0)].glide == 0);
+    // Nonsense in a file is held to what there is; a line for a note that is not there is skipped.
+    const std::size_t at = text.find("notefx 5 60 3 1");
+    CHECK(at != std::string::npos);
+    if (at != std::string::npos) text.replace(at, 15, "notefx 5 60 99 7\nnotefx 9 60 3 1\nnotefx 6 60 4 1\nnotefx 5 200 3 1\nnotefx 99 60 3 1");
+    std::unique_ptr<Project> odd(new Project);
+    CHECK(parseSong(text, *odd));
+    const NotePattern& o = odd->tracks[1].notes[0][0];
+    CHECK(o.notes[o.at(60, 4)].ratchet == 4 && o.notes[o.at(60, 4)].glide == 1);
+    int withEffects = 0;
+    for (const NoteEvent& n : o.notes) withEffects += n.velocity > 0.f && (n.ratchet || n.glide);
+    CHECK(withEffects == 1); // only the one note: "step 6" is inside it but is not where it starts
+
+    // Undo takes an effect back, as a step of its own.
+    rig.frames(60);
+    const int before = session.undoSteps();
+    roll.moveCursorTo(60, 4);
+    rig.key(X, true);
+    rig.tap(DOWN);
+    rig.key(X, false);
+    CHECK(p.notes[slot].glide == 0);
+    rig.frames(60);
+    CHECK(session.undoSteps() == before + 1 || before == 20);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(p.at(60, 4) >= 0 && p.notes[p.at(60, 4)].glide == 1);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testNoteEffects();
     testPresetsEightAtATime();
     testALongerCellIsFilledWithItself();
     testASceneOfAnyLength();

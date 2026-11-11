@@ -75,6 +75,9 @@ public:
     std::string address() const;
     // Goes up each time a file is received, deleted or moved, so the screen can look again.
     unsigned received() const { return received_.load(); }
+    // For tests: behave as a card does that will not rename a file into another folder, so the
+    // long way round (write it again, then take the old one away) is the one that runs.
+    static bool renameBroken;
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
 

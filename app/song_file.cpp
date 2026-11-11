@@ -165,6 +165,13 @@ std::string songText(const Project& project) {
                         put(out, " %.6g", n.velocity);
                         if (n.nudge != 0.f) put(out, " %.6g", n.nudge); // early or late, in steps
                         out += "\n";
+                        // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
+                        if (n.ratchet >= 2 || n.glide) {
+                            put(out, "notefx %.0f", n.step + 1);
+                            put(out, " %.0f", n.pitch);
+                            put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
+                            put(out, " %.0f\n", n.glide ? 1 : 0);
+                        }
                     }
                     // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
                     for (const ChordEvent& c : p.chords) {
@@ -178,6 +185,10 @@ std::string songText(const Project& project) {
                         for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
                         if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
                         out += "\n";
+                        if (c.ratchet >= 2) { // chordfx STEP RATCHET
+                            put(out, "chordfx %.0f", c.step + 1);
+                            put(out, " %.0f\n", c.ratchet);
+                        }
                     }
                 }
             }
@@ -361,6 +372,23 @@ bool parseSong(const std::string& text, Project& project) {
             p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - s)); // to the end of the cell: a note may run on over the bar lines
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
+        } else if (word == "notefx" && isSynth(track->kind)) {
+            // For the note of this bar that starts on that step and key (it comes just before this line).
+            double step, pitch, ratchet = 1, glide = 0;
+            if (!(in >> step >> pitch)) continue;
+            in >> ratchet >> glide;
+            if (step < 1 || step > kSteps || pitch < 0 || pitch > 127) continue;
+            const int slot = track->notes[scene][bar].at(static_cast<int>(pitch), static_cast<int>(step) - 1);
+            if (slot < 0) continue;
+            NoteEvent& n = track->notes[scene][bar].notes[slot];
+            if (n.step != static_cast<int>(step) - 1) continue; // the cursor's "at" also finds a note that is held over this step
+            n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+            n.glide = glide != 0 ? 1 : 0;
+        } else if (word == "chordfx" && isSynth(track->kind)) {
+            double step, ratchet = 1;
+            if (!(in >> step >> ratchet) || step < 1 || step > kSteps) continue;
+            for (ChordEvent& c : track->notes[scene][bar].chords)
+                if (c.velocity > 0.f && c.step == static_cast<int>(step) - 1) c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
         } else if (word == "chord" && isSynth(track->kind)) {
             double step, length, level, inversion, root, interval;
             std::string name;

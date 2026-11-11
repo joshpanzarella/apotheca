@@ -20,6 +20,10 @@
 //   B                     delete the note under the cursor
 //   hold B and drag       delete every note the cursor crosses
 //   X                     hear the key under the cursor
+//   hold X on a note      what it does besides play, a click at a time:
+//                           left / right   RATCHET: the note 2, 3 or 4 times inside its first step
+//                           up / down      GLIDE on / off: it slides to its pitch from the note before it
+//                         A chord takes a ratchet too.
 //   hold R1 on a note     carry the note (or the whole chord) under the cursor.
 //                         The D-pad: to another key, or a whole step. The
 //                         stick up / down: it slides freely in time, off
@@ -72,6 +76,7 @@ public:
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
     // A note hidden on the screen by a chord, or a longer note, on the same key at the same time. (It is drawn inside the other.)
     bool isUnderAnother(const NoteEvent& note) const;
+    bool effecting() const { return fxHeld_; } // X is held on a note or a chord: the stick sets what it does
 
     // For tests and stills.
     void moveCursorTo(int pitch, int step);
@@ -149,6 +154,10 @@ private:
     enum class Carry { Nothing, Note, Chord };
     Carry carrying_ = Carry::Nothing;
     int carried_ = 0; // its slot
+    void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down)
+    bool fxHeld_ = false;
+    float fxSaved_ = 0.f;
+    bool fxWas_ = false;
     void carry(Button direction);       // the D-pad: a whole step, or a key
     bool carryBy(int keys, int steps);  // false if it cannot go there
     void carryFree(float steps);        // the stick: any distance in time, off the grid

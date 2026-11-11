@@ -453,6 +453,13 @@ int main(int argc, char** argv) {
         p.notes[2] = NoteEvent{2, 70, 10.f, 0.f, 0.8f};
         p.notes[3] = NoteEvent{6, 70, 2.f, 0.f, 0.8f};
         p.notes[4] = NoteEvent{13, keys[0], 2.f, 0.f, 0.8f}; // after the chord has ended: plain
+        p.notes[5] = NoteEvent{1, 65, 3.f, 0.f, 0.8f};
+        p.notes[5].ratchet = 3;
+        p.notes[6] = NoteEvent{6, 67, 2.f, 0.f, 0.8f};
+        p.notes[6].glide = 1;
+        p.notes[7] = NoteEvent{11, 62, 2.f, 0.f, 0.8f};
+        p.notes[7].ratchet = 2;
+        p.notes[7].glide = 1;
         session.sendNotePattern(2, 0);
         app.notes().moveCursorTo(72, 14);
     } else if (std::strcmp(view, "songs") == 0) {
