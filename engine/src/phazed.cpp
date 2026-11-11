@@ -121,8 +121,23 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus) {
             line.dca.rate[step] = static_cast<uint8_t>(bent(line.dca.rate[step], -100.f * release));
         }
     }
-    // DETUNE: the second line's fine tuning. Only heard when two lines play.
-    t.detune_fine = static_cast<uint8_t>(clampInt(static_cast<int>(std::lround(t.detune_fine + 120.f * detune)), 0, 60));
+    // DETUNE: the second line's tuning, up to a semitone either way from
+    // where the preset has it. Only heard when two lines play. The patch
+    // keeps a direction and a size; they are added up as one signed amount
+    // (60 to a semitone) so that down from "no detune" is flat, not nothing.
+    if (detune != 0.f) {
+        const int perNote = 60, most = 3 * 12 * perNote + 11 * perNote + 60;
+        int amount = (t.detune_sign < 0 ? -1 : 1) * ((t.detune_oct * 12 + t.detune_note) * perNote + t.detune_fine);
+        amount = clampInt(amount + static_cast<int>(std::lround(120.f * detune)), -most, most);
+        t.detune_sign = amount < 0 ? -1 : 1;
+        int size = amount < 0 ? -amount : amount;
+        // Whole notes first; the last sixty can stay as "fine" at the very top.
+        int notes = size / perNote;
+        if (notes > 3 * 12 + 11) notes = 3 * 12 + 11;
+        t.detune_oct = static_cast<uint8_t>(notes / 12);
+        t.detune_note = static_cast<uint8_t>(notes % 12);
+        t.detune_fine = static_cast<uint8_t>(size - notes * perNote);
+    }
     // VIBRATO: depth. Turning it up on a sound with no vibrato gives it a speed too.
     if (vibrato != 0.f) {
         t.vib_depth = static_cast<uint8_t>(bent(t.vib_depth, 160.f * vibrato));

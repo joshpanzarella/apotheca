@@ -4,6 +4,7 @@
 // to hear what the screens told it.
 
 #include <SDL.h>
+#include <stdlib.h>
 
 #include <cmath>
 #include <cstdio>
@@ -92,9 +93,11 @@ void testTabs() {
     rig.tap(R2);
     CHECK(rig.view() == View::Effects);
     rig.tap(R2);
-    CHECK(rig.view() == View::Effects);
+    CHECK(rig.view() == View::Settings);
+    rig.tap(R2);
+    CHECK(rig.view() == View::Settings);
     // Not while shaping something: a slip of the finger must not change screens.
-    rig.tap(L2, 2);
+    rig.tap(L2, 3);
     CHECK(rig.view() == View::Pattern);
     rig.key(A, true);
     rig.tap(L2);
@@ -1080,6 +1083,292 @@ void testAllFourShoulderButtonsIsPanic() {
     CHECK(!rig.project().silenced && rig.listen(4800) < 1e-4f);
 }
 
+// ---- SETUP: the last tab ---------------------------------------------------------------
+
+void testSelectGoesToTheSongScreen() {
+    Rig rig;
+    for (View from : {View::Pattern, View::Device, View::Effects, View::Settings}) {
+        rig.app.session().view = from;
+        rig.tap(SELECT);
+        CHECK(rig.view() == View::Song && !rig.app.song().listingSongs()); // there, and the list is not open
+    }
+    // On the SONG screen the same tap is the list of songs, as before.
+    rig.tap(SELECT);
+    CHECK(rig.view() == View::Song && rig.app.song().listingSongs());
+    rig.tap(SELECT);
+    CHECK(!rig.app.song().listingSongs());
+    // SELECT used with something else is not a tap: the volume, the tempo.
+    rig.app.session().view = View::Pattern;
+    rig.key(SELECT, true);
+    rig.tap(R1);
+    rig.key(SELECT, false);
+    CHECK(rig.view() == View::Pattern);
+    rig.key(SELECT, true);
+    rig.tap(UP);
+    rig.key(SELECT, false);
+    CHECK(rig.view() == View::Pattern);
+    // Nor is it one when it only comes up (it went down somewhere else).
+    rig.app.session().view = View::Song;
+    rig.key(SELECT, true);
+    rig.app.session().view = View::Device;
+    rig.key(A, true);
+    rig.key(A, false);
+    rig.key(SELECT, false);
+    CHECK(rig.view() == View::Device);
+}
+
+void testTheSetupScreen() {
+    char pattern[] = "/tmp/apotheca-setup-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    const float stickBefore = ui::gStickSpeed;
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.useProgramFolder(folder);
+        session.loadSettings(); // nothing kept yet: as built
+        CHECK(session.octavesShown() == 2 && near(session.stickSpeed(), stickBefore));
+        // The last tab, one past FX; the row of tabs still has an end.
+        session.view = View::Effects;
+        rig.tap(R2);
+        CHECK(rig.view() == View::Settings);
+        rig.tap(R2);
+        CHECK(rig.view() == View::Settings);
+        SettingsScreen& setup = rig.app.settings();
+        CHECK(setup.cursorRow() == SettingsScreen::kTempo);
+        rig.tap(UP);
+        CHECK(setup.cursorRow() == SettingsScreen::kTempo); // the list has ends too
+        // TEMPO
+        rig.tap(RIGHT, 3);
+        rig.tap(LEFT);
+        CHECK(rig.project().tempo == 122.f);
+        // CHORD PACK: only with more than the built-in one does it move; it does not crash with one.
+        rig.tap(DOWN);
+        const int pack = session.packIndex();
+        rig.tap(RIGHT);
+        rig.tap(LEFT);
+        CHECK(session.packIndex() == pack);
+        // VOLUME, a twentieth at a time
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kVolume);
+        rig.tap(LEFT, 4);
+        CHECK(near(session.volume(), 0.8f));
+        rig.tap(RIGHT);
+        CHECK(near(session.volume(), 0.85f));
+        // STICK SPEED, a twentieth at a time, between a quarter and one and a half
+        rig.tap(DOWN);
+        ui::gStickSpeed = 0.75f;
+        rig.tap(RIGHT, 2);
+        CHECK(near(session.stickSpeed(), 0.85f) && near(ui::gStickSpeed, 0.85f));
+        rig.tap(LEFT, 30);
+        CHECK(near(session.stickSpeed(), 0.25f));
+        rig.tap(RIGHT, 40);
+        CHECK(near(session.stickSpeed(), 1.5f));
+        rig.tap(LEFT, 14);
+        CHECK(near(session.stickSpeed(), 0.8f));
+        // PIANO ROLL SHOWS: 1, 2 or 3
+        rig.tap(DOWN);
+        rig.tap(RIGHT, 5);
+        CHECK(session.octavesShown() == 3);
+        rig.tap(LEFT, 5);
+        CHECK(session.octavesShown() == 1);
+        // WIFI PAGE: A turns it on and off; left and right do nothing here.
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kWifi && !session.transferOn());
+        rig.tap(RIGHT);
+        CHECK(!session.transferOn() && session.octavesShown() == 1);
+        session.useSongFolder(folder + "/songs", 7u);
+        session.useSampleFolder(folder + "/samples");
+        rig.tap(A);
+        CHECK(session.transferOn());
+        rig.tap(A);
+        CHECK(!session.transferOn());
+        // The stick does the same: down to choose, sideways to change.
+        setup.goTo(SettingsScreen::kTempo);
+        rig.key(STICK_DOWN, true);
+        rig.frames(1);
+        rig.key(STICK_DOWN, false);
+        rig.frames(1);
+        CHECK(setup.cursorRow() == SettingsScreen::kPack);
+        setup.goTo(SettingsScreen::kTempo);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(1);
+        rig.key(STICK_RIGHT, false);
+        rig.frames(1);
+        CHECK(rig.project().tempo == 123.f);
+        // START plays from here too.
+        rig.tap(START);
+        CHECK(rig.project().playing);
+        rig.tap(START);
+    }
+    // Kept beside the program, and there again at the next start.
+    {
+        ui::gStickSpeed = 0.75f;
+        Rig later;
+        later.app.session().useProgramFolder(folder);
+        later.app.session().loadSettings();
+        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1);
+        // Nonsense in the file is not believed.
+        std::string kept;
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\n");
+        writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nrubbish\n");
+        later.app.session().loadSettings();
+        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1);
+        // Loading writes nothing.
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 900\noctaves 7\nrubbish\n");
+    }
+    ui::gStickSpeed = stickBefore;
+}
+
+void testTheButtonTestAndSettingUpAgain() {
+    Rig rig;
+    rig.app.session().view = View::Settings;
+    SettingsScreen& setup = rig.app.settings();
+    setup.goTo(SettingsScreen::kTest);
+    rig.tap(A);
+    CHECK(setup.testing());
+    // Every button is only shown: nothing plays, no tab turns, no row moves, SELECT does not leave.
+    rig.frames(1);
+    rig.tap(START);
+    rig.tap(L2);
+    rig.tap(R2);
+    rig.tap(DOWN);
+    rig.tap(SELECT);
+    rig.tap(A);
+    rig.key(SELECT, true);
+    rig.tap(R1); // not the volume either
+    rig.key(SELECT, false);
+    CHECK(!rig.project().playing && rig.view() == View::Settings && setup.cursorRow() == SettingsScreen::kTest && setup.testing());
+    CHECK(rig.app.session().volume() == 1.f);
+    // It stays open while something is pressed or held, and closes four seconds after.
+    rig.key(X, true);
+    rig.frames(400); // 6.4 s, held all the while
+    CHECK(setup.testing());
+    rig.key(X, false);
+    rig.frames(240); // 3.8 s
+    CHECK(setup.testing());
+    rig.tap(B); // a press starts the wait again
+    rig.frames(240);
+    CHECK(setup.testing());
+    rig.frames(20);
+    CHECK(!setup.testing());
+    // Closed: the buttons are themselves again.
+    rig.tap(UP);
+    CHECK(setup.cursorRow() == SettingsScreen::kWifi);
+    // A panic still works while the test is open.
+    setup.goTo(SettingsScreen::kTest);
+    rig.tap(A);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, true);
+    CHECK(rig.project().silenced);
+    for (SDL_Keycode k : {L1, L2, R1, R2}) rig.key(k, false);
+    rig.frames(300);
+    CHECK(!setup.testing());
+
+    // CONTROLS: A held for a second asks for the setup; a tap does not.
+    setup.goTo(SettingsScreen::kControls);
+    rig.tap(A);
+    rig.frames(100);
+    CHECK(!setup.takeRelearn());
+    rig.key(A, true);
+    rig.frames(60); // 0.96 s from the first frame
+    CHECK(!setup.takeRelearn() && setup.holdPart() > 0.8f);
+    rig.frames(4);
+    CHECK(setup.takeRelearn() && !setup.takeRelearn()); // once
+    rig.frames(100);
+    CHECK(!setup.takeRelearn()); // and not again while A stays down
+    rig.key(A, false);
+    // Moving off the row lets go.
+    rig.key(A, true);
+    rig.frames(30);
+    rig.tap(UP);
+    rig.frames(100);
+    CHECK(!setup.takeRelearn() && setup.holdPart() == 0.f);
+    rig.key(A, false);
+    // Held on another row, nothing.
+    setup.goTo(SettingsScreen::kVolume);
+    rig.key(A, true);
+    rig.frames(100);
+    rig.key(A, false);
+    CHECK(!setup.takeRelearn());
+}
+
+// ---- the piano roll's zoom ---------------------------------------------------------------
+
+void testThePianoRollZooms() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    rig.app.session().view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    Session& session = rig.app.session();
+    // Two octaves to begin with, C3 to B4, with middle C in the middle.
+    CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 48);
+    notes.moveCursorTo(64, 0); // E4
+    // A tap of L1 goes closer: one octave, the cursor's own, from its C.
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 12 && notes.lowestKeyShown() == 60 && notes.cursorPitch() == 64);
+    // Again: round to the widest. The cursor's octave is the middle one.
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 48);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 48); // E is in the lower half of its octave: the octave below shows too
+    notes.moveCursorTo(69, 0); // A4: the upper half
+    rig.tap(L1, 3);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 60);
+    // Held, with up and down: closer and further, stopping at the ends; and that is not also a tap.
+    rig.key(L1, true);
+    rig.tap(UP);
+    CHECK(session.octavesShown() == 1);
+    rig.tap(UP);
+    CHECK(session.octavesShown() == 1 && notes.cursorStep() == 0);
+    rig.tap(DOWN, 2);
+    CHECK(session.octavesShown() == 3);
+    rig.tap(DOWN);
+    CHECK(session.octavesShown() == 3);
+    rig.key(L1, false);
+    CHECK(session.octavesShown() == 3);
+    // The stick with L1 held: one step of zoom for each push.
+    rig.key(L1, true);
+    rig.key(STICK_UP, true);
+    rig.frames(40);
+    CHECK(session.octavesShown() == 2 && notes.cursorPitch() == 69 && notes.cursorStep() == 0);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    rig.key(STICK_UP, true);
+    rig.frames(2);
+    rig.key(STICK_UP, false);
+    rig.key(L1, false);
+    CHECK(session.octavesShown() == 1);
+    // The cursor still scrolls the keys, one octave wide.
+    rig.frames(1);
+    notes.moveCursorTo(72, 0);
+    CHECK(notes.lowestKeyShown() == 61);
+    // At the top of the keyboard the keys stop at the last one.
+    notes.moveCursorTo(108, 0);
+    rig.key(L1, true);
+    rig.tap(DOWN, 2);
+    rig.key(L1, false);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 108 - 35);
+    notes.moveCursorTo(12, 0);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 24 && notes.lowestKeyShown() == 12);
+    // Changed from SETUP, the roll follows.
+    session.setOctavesShown(3);
+    rig.frames(1);
+    CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 12);
+    // L1 while a chord is being picked is still "another pack", not the zoom.
+    rig.key(Y, true);
+    rig.tap(L1);
+    rig.key(Y, false);
+    rig.frames(1);
+    CHECK(session.octavesShown() == 3);
+}
+
 void testTheStickSpeedAndTheVolume() {
     // ---- one number slows everything the stick does -----------------------------------
     const auto travel = [](float speed) {
@@ -1447,13 +1736,13 @@ void testTheKeysShownFollowTheCursor() {
     NoteScreen& notes = rig->app.notes();
     notes.moveCursorTo(60, 0);
     const int low = notes.lowestKeyShown();
-    CHECK(low <= 60 && low + NoteScreen::kVisibleKeys > 60);
-    notes.moveCursorTo(low + NoteScreen::kVisibleKeys - 1, 0); // the last key showing: no scroll
+    CHECK(low <= 60 && low + notes.visibleKeys() > 60);
+    notes.moveCursorTo(low + notes.visibleKeys() - 1, 0); // the last key showing: no scroll
     CHECK(notes.lowestKeyShown() == low);
     rig->tap(RIGHT); // one past it: the keys move one along
     CHECK(notes.lowestKeyShown() == low + 1);
     notes.moveCursorTo(100, 0);
-    CHECK(notes.lowestKeyShown() == 100 - (NoteScreen::kVisibleKeys - 1));
+    CHECK(notes.lowestKeyShown() == 100 - (notes.visibleKeys() - 1));
     notes.moveCursorTo(30, 0);
     CHECK(notes.lowestKeyShown() == 30);
     rig->tap(RIGHT, 5);
@@ -1924,6 +2213,10 @@ int main(int, char**) {
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testSelectGoesToTheSongScreen();
+    testTheSetupScreen();
+    testTheButtonTestAndSettingUpAgain();
+    testThePianoRollZooms();
     testTheStickSpeedAndTheVolume();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();

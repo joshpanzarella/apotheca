@@ -1,6 +1,7 @@
 #pragma once
 // The Pattern screen for a synth track: a piano roll on its side. The keys
-// run across the top, laid out as a keyboard is, three octaves at a time;
+// run across the top, laid out as a keyboard is, two octaves at a time (L1
+// zooms: one, two or three);
 // the bar runs down the screen, step 1 at the top.
 //
 // Holding A shapes a note the way it is drawn: it is as long as it is tall,
@@ -19,6 +20,8 @@
 //   B                     delete the note under the cursor
 //   X                     hear the key under the cursor
 //   hold R1 and drag      paint a note on every step crossed
+//   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3);
+//                         held, up is closer and down is further
 //   START                 play / stop (this scene, looping)
 //
 // A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The roll
@@ -78,7 +81,8 @@ public:
 
     static constexpr int kLowest = 12, kHighest = 108; // C0 to C8
 
-    static constexpr int kVisibleKeys = 36;
+    int visibleKeys() const; // 12, 24 or 36: the zoom (Session::octavesShown)
+    void zoomTo(int octaves);
 
 private:
     enum class Axis { None, UpDown, Sideways };
@@ -111,6 +115,12 @@ private:
     Project& project_;
     int pitch_ = 60; // middle C
     int step_ = 0;
+    int keyW() const;
+    int cellW() const;
+    void keepInView();
+    bool zoomPushed_ = false;
+    bool zooming_ = false, zoomUsed_ = false; // L1 is held; it did something with up / down
+    int shownKeys_ = 24;
     int low_ = 48;   // the lowest key shown: C3, so middle C sits in the middle
 
     bool shaping_ = false; // A is held

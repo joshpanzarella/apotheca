@@ -1,4 +1,5 @@
 #include "session.hpp"
+#include "ui.hpp"
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -6,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <sstream>
 #include <cstdlib>
 #include <ctime>
 #include <memory>
@@ -358,6 +360,41 @@ void Session::setVolume(float volume) {
     c.value = volume_ * volume_; // squared: even steps to the ear
     engine.send(c);
     if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
+}
+
+float Session::ui_stickSpeed() { return ui::gStickSpeed; }
+
+void Session::keepSettings() const {
+    if (programFolder_.empty()) return;
+    writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
+                                                        std::to_string(octaves_) + "\n");
+}
+
+void Session::setStickSpeed(float speed) {
+    if (speed != speed) return;
+    speed = std::round(speed * 20.f) / 20.f; // in twentieths
+    ui::gStickSpeed = speed < kStickSlowest ? kStickSlowest : (speed > kStickFastest ? kStickFastest : speed);
+    keepSettings();
+}
+
+void Session::setOctavesShown(int octaves) {
+    octaves_ = octaves < 1 ? 1 : (octaves > 3 ? 3 : octaves);
+    keepSettings();
+}
+
+void Session::loadSettings() {
+    std::string text;
+    if (programFolder_.empty() || !readTextFile(programFolder_ + "/settings.txt", text)) return;
+    std::istringstream lines(text);
+    std::string name;
+    int value = 0;
+    const std::string folder = programFolder_;
+    programFolder_.clear(); // reading is not a change worth writing down
+    while (lines >> name >> value) {
+        if (name == "stick" && value >= 25 && value <= 150) setStickSpeed(static_cast<float>(value) / 100.f);
+        if (name == "octaves" && value >= 1 && value <= 3) setOctavesShown(value);
+    }
+    programFolder_ = folder;
 }
 
 void Session::loadVolume(float ifNone) {

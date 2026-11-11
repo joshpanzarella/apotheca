@@ -412,6 +412,23 @@ static void testEachMacroDoesItsJob() {
 
     // DETUNE: the second line moves against the first.
     CHECK(playNote(twoLine, {macro(Detune, 1.f)}).held != plain.held);
+    // ...and both ways: down is as much a change as up, and a different one.
+    // (It used to do nothing below the middle on a sound with no detune.)
+    CHECK(playNote(twoLine, {macro(Detune, 0.f)}).held != plain.held);
+    CHECK(playNote(twoLine, {macro(Detune, 0.f)}).held != playNote(twoLine, {macro(Detune, 1.f)}).held);
+    CHECK(playNote(twoLine, {macro(Detune, 0.25f)}).held != plain.held);
+    CHECK(playNote(twoLine, {macro(Detune, 0.25f)}).held != playNote(twoLine, {macro(Detune, 0.f)}).held);
+    CHECK(playNote(twoLine, {macro(Detune, 0.5f)}).held == plain.held); // the middle leaves the preset alone
+    // On every two-line preset, not just this one.
+    int checked = 0;
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        if (Phazed::presetPatch(preset).value[LineSelect] < 2) continue; // one line: there is nothing to detune against
+        ++checked;
+        const auto as = playNote(preset, {}).held;
+        CHECK(playNote(preset, {macro(Detune, 0.f)}).held != as);
+        CHECK(playNote(preset, {macro(Detune, 1.f)}).held != as);
+    }
+    CHECK(checked >= 3);
 
     // VIBRATO: up makes the pitch wobble, even on a sound that had none.
     const int still = firstPresetWhere([](const PhazedPatch& p) { return p.value[VibratoDepth] == 0 && p.value[envSustain(0, AmpEnv)] > 0; });

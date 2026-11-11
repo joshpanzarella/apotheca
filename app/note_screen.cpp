@@ -12,8 +12,8 @@ using namespace ui;
 namespace {
 
 // Keys run across, as on a keyboard; the bar runs down the screen.
-constexpr int kGridLeft = 28, kGridTop = 60, kKeyW = 17, kRowH = 20;
-constexpr int kCellW = kKeyW - 2, kCellH = kRowH - 2;
+constexpr int kGridLeft = 28, kGridTop = 60, kGridW = 612, kRowH = 20;
+constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42, kKeysH = 16, kBlackKeyH = 10;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
@@ -89,7 +89,34 @@ void NoteScreen::moveCursorTo(int pitch, int step) {
     step_ = at % kSteps;
     // The keys scroll to keep the cursor in view.
     if (pitch_ < low_) low_ = pitch_;
-    if (pitch_ > low_ + (kVisibleKeys - 1)) low_ = pitch_ - (kVisibleKeys - 1);
+    if (pitch_ > low_ + (visibleKeys() - 1)) low_ = pitch_ - (visibleKeys() - 1);
+}
+
+int NoteScreen::visibleKeys() const { return session_.octavesShown() * 12; }
+int NoteScreen::keyW() const { return kGridW / visibleKeys(); } // 51, 25 or 17
+int NoteScreen::cellW() const { return keyW() - 2; }
+
+// Show 1, 2 or 3 octaves. The keys start from the C at or below the cursor
+// where that fits, so one octave shows C to B.
+void NoteScreen::zoomTo(int octaves) {
+    session_.setOctavesShown(octaves);
+    keepInView();
+}
+
+void NoteScreen::keepInView() {
+    const int keys = visibleKeys();
+    if (pitch_ >= low_ && pitch_ < low_ + keys && keys == shownKeys_) return;
+    if (keys != shownKeys_) {
+        // A new zoom: the octave the cursor is in comes first; with more than
+        // one showing, the cursor's octave sits in the middle or just above.
+        const int c = pitch_ - pitch_ % 12;
+        low_ = keys == 12 ? c : (keys == 24 ? c - (pitch_ % 12 < 6 ? 12 : 0) : c - 12);
+        shownKeys_ = keys;
+    }
+    if (pitch_ < low_) low_ = pitch_;
+    if (pitch_ > low_ + keys - 1) low_ = pitch_ - (keys - 1);
+    if (low_ < kLowest) low_ = kLowest;
+    if (low_ + keys - 1 > kHighest) low_ = kHighest - (keys - 1);
 }
 
 void NoteScreen::moveCursor(Button direction) {
@@ -210,9 +237,9 @@ void NoteScreen::showChord(const ChordEvent& chord) {
     if (n == 0) return;
     int low = low_;
     if (keys[0] < low) low = keys[0];
-    if (keys[n - 1] > low + (kVisibleKeys - 1)) low = keys[n - 1] - (kVisibleKeys - 1);
+    if (keys[n - 1] > low + (visibleKeys() - 1)) low = keys[n - 1] - (visibleKeys() - 1);
     if (low > pitch_) low = pitch_;
-    if (low < pitch_ - (kVisibleKeys - 1)) low = pitch_ - (kVisibleKeys - 1);
+    if (low < pitch_ - (visibleKeys() - 1)) low = pitch_ - (visibleKeys() - 1);
     low_ = low;
 }
 
@@ -352,6 +379,21 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         axis_ = Axis::None;
         return;
     }
+    if (b == Button::L1) {
+        // Zoom. A tap steps closer (2 octaves, 1, then round to 3). Held, up
+        // and down go closer and further.
+        if (event.down) zooming_ = true, zoomUsed_ = false;
+        else {
+            if (zooming_ && !zoomUsed_) zoomTo(session_.octavesShown() == 1 ? 3 : session_.octavesShown() - 1);
+            zooming_ = false;
+        }
+        return;
+    }
+    if (zooming_ && event.down && (b == Button::Up || b == Button::Down)) {
+        zoomTo(session_.octavesShown() + (b == Button::Up ? -1 : 1));
+        zoomUsed_ = true;
+        return;
+    }
     if (b == Button::R1) {
         painting_ = event.down && !shaping_;
         if (painting_) {
@@ -392,7 +434,15 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
     const float x = input.stickX(), y = input.stickY();
+    keepInView(); // the zoom can be changed from SETUP too
 
+    if (zooming_ && !picking_) {
+        // L1 held: the stick zooms, once for each push up or down.
+        const bool pushed = std::fabs(y) > 0.5f;
+        if (pushed && !zoomPushed_) zoomTo(session_.octavesShown() + (y < 0.f ? -1 : 1)), zoomUsed_ = true;
+        zoomPushed_ = pushed;
+        return;
+    }
     if (picking_) {
         // The stick steps through chords (sideways) or inversions (up and
         // down): at once on the first push, then at a steady rate.
@@ -456,33 +506,33 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const bool held = shaping_ || painting_ || picking_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
 
-    const auto gx = [&](int pitch) { return kGridLeft + (pitch - low_) * kKeyW; };
+    const auto gx = [&](int pitch) { return kGridLeft + (pitch - low_) * keyW(); };
     const auto gy = [](int step) { return kGridTop + step * kRowH; };
-    const auto shows = [&](int pitch) { return pitch >= low_ && pitch <= low_ + (kVisibleKeys - 1); };
+    const auto shows = [&](int pitch) { return pitch >= low_ && pitch <= low_ + (visibleKeys() - 1); };
 
     // ---- the keyboard, across the top ---------------------------------------------
     // Drawn as a keyboard is: the white keys one cream strip with lines
     // between them, the black keys dark bars hanging from the top edge.
-    const int keysW = kVisibleKeys * kKeyW - 2;
+    const int keysW = visibleKeys() * keyW() - 2;
     fill(r, kGridLeft, kKeysTop, keysW, kKeysH, kDim);
-    for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+    for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
         const bool black = isBlackKey(pitch), here = pitch == pitch_;
         const int x = gx(pitch);
         if (black) {
             // The two white keys meet under the middle of a black one.
-            fill(r, x + kCellW / 2, kKeysTop + kBlackKeyH, 1, kKeysH - kBlackKeyH, kBg);
-            fill(r, x + 1, kKeysTop, kCellW - 2, kBlackKeyH, here ? cursorColor : kBg);
+            fill(r, x + cellW() / 2, kKeysTop + kBlackKeyH, 1, kKeysH - kBlackKeyH, kBg);
+            fill(r, x + 1, kKeysTop, cellW() - 2, kBlackKeyH, here ? cursorColor : kBg);
         } else {
-            if (here) fill(r, x, kKeysTop + kBlackKeyH + 1, kCellW, kKeysH - kBlackKeyH - 1, cursorColor);
+            if (here) fill(r, x, kKeysTop + kBlackKeyH + 1, cellW(), kKeysH - kBlackKeyH - 1, cursorColor);
             // Two white keys side by side (E and F, B and C): a line all the way up.
             if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, kKeysH, kBg);
         }
     }
     // ---- which octave: a band over each, from its C ------------------------------------
-    for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+    for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
         if (pitch != low_ && pitch % 12 != 0) continue;
         const int c = pitch - ((pitch % 12) + 12) % 12; // this octave's C, perhaps off to the left
-        int end = c + 12 < low_ + kVisibleKeys ? c + 12 : low_ + kVisibleKeys;
+        int end = c + 12 < low_ + visibleKeys() ? c + 12 : low_ + visibleKeys();
         const int x0 = gx(pitch), x1 = gx(end) - 3;
         const bool mine = pitch_ >= c && pitch_ < c + 12;
         const SDL_Color color = mine ? cursorColor : kDim;
@@ -497,13 +547,13 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", step + 1);
         fonts.small.drawRight(r, kGridLeft - 7.f, gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
-        for (int pitch = low_; pitch < low_ + kVisibleKeys; ++pitch) {
+        for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
             const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
-            box(r, gx(pitch), gy(step), kCellW, kCellH, inside, kLine);
+            box(r, gx(pitch), gy(step), cellW(), kCellH, inside, kLine);
         }
     }
     // A brighter line down the grid where each octave starts.
-    for (int pitch = low_ + 1; pitch < low_ + kVisibleKeys; ++pitch)
+    for (int pitch = low_ + 1; pitch < low_ + visibleKeys(); ++pitch)
         if (pitch % 12 == 0) fill(r, gx(pitch) - 2, kGridTop, 1, kSteps * kRowH - 2, kDim);
 
     // ---- notes --------------------------------------------------------------------------
@@ -514,7 +564,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto block = [&](int pitch, int step, float length, float level, SDL_Color edge, SDL_Color inside, float nudge = 0.f) {
         // A nudged note sits a little up or down from its step line: early is up.
         const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH));
-        const int full = kCellW - 2, bottom = kGridTop + kSteps * kRowH - 3;
+        const int full = cellW() - 2, bottom = kGridTop + kSteps * kRowH - 3;
         int tall = static_cast<int>(std::round(length * kRowH)) - 4;
         if (y + tall > bottom) tall = bottom - y; // it runs on into the next bar
         const int h = tall < 3 ? 3 : tall;
@@ -532,9 +582,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         for (int i = 0; i < n; ++i)
             if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color, c.nudge);
         const int low = keys[0] < low_ ? low_ : keys[0];
-        const int high = keys[n - 1] > low_ + (kVisibleKeys - 1) ? low_ + (kVisibleKeys - 1) : keys[n - 1];
+        const int high = keys[n - 1] > low_ + (visibleKeys() - 1) ? low_ + (visibleKeys() - 1) : keys[n - 1];
         if (high < low) return; // all of it is off the screen
-        const int x0 = gx(low), x1 = gx(high) + kCellW, y = gy(c.step);
+        const int x0 = gx(low), x1 = gx(high) + cellW(), y = gy(c.step);
         fill(r, x0, y - 1, x1 - x0, 2, color);
         const float w = fonts.small.width(c.name) + 6.f;
         float lx = static_cast<float>(x0);
@@ -555,7 +605,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (n.velocity <= 0.f || left <= 0.f || !shows(n.pitch)) continue;
             int tall = static_cast<int>(std::round(left * kRowH)) - 4;
             const int most = kSteps * kRowH - 4;
-            outline(r, gx(n.pitch) + 1, kGridTop + 1, kCellW - 2, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
+            outline(r, gx(n.pitch) + 1, kGridTop + 1, cellW() - 2, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
             fill(r, gx(n.pitch) + 5, kGridTop + 1, 3, tall > most ? most : (tall < 3 ? 3 : tall), kLine);
         }
     }
@@ -570,9 +620,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         drawChord(c, (shaping_ && &c == chordUnder) || (picking_ && i == editing_), false);
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
-    outline(r, gx(pitch_) - 1, gy(step_) - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
+    outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
     const int playStep = session_.engine.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
-    if (playStep >= 0) fill(r, kGridLeft, gy(playStep), kVisibleKeys * kKeyW - 2, kCellH, faded(kPurple, 76));
+    if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
 
     // ---- what is under the cursor ---------------------------------------------------
     const int stripY = kGridTop + kSteps * kRowH + 8;
@@ -667,7 +717,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("X", "hear");
         hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap chord" : "chord");
         hint("HOLD R1", "paint");
-        hint("START", project_.playing ? "stop" : "play");
+        hint("L1", "zoom");
     }
     hints(r, fonts, list, count);
 }

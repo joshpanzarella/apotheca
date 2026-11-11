@@ -10,7 +10,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 }
 
 App::App(Engine& engine)
-    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_),
+    : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_), settings_(session_),
       phazed_(session_, phazedSpec()), twin_(session_, twinSpec()) {}
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
@@ -51,6 +51,26 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     if (panicNote_ && !panicking_ && !shoulder && event.down) {
         panicNote_ = false;
         return;
+    }
+
+    // The button test (SETUP) has every button to itself.
+    if (session_.view == View::Settings && settings_.testing() && !panicking_) {
+        settings_.onButton(event, input);
+        return;
+    }
+
+    // SELECT tapped by itself, away from the SONG screen: go there. (On the
+    // SONG screen the same tap opens the list of songs.) A second way to
+    // SONG, for when L2 cannot be trusted.
+    if (session_.view != View::Song) {
+        if (b == Button::Select) {
+            if (event.down) selectAlone_ = true;
+            else if (selectAlone_) selectAlone_ = false, session_.view = View::Song;
+            return;
+        }
+        if (event.down) selectAlone_ = false;
+    } else {
+        selectAlone_ = false;
     }
 
     // SELECT held with L1 or R1: quieter or louder, from any screen. (The
@@ -94,13 +114,13 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             if (event.down && !alone) return;
             drums_.onButton(event, input);
             if (event.down || !drums_.takeR2Tap()) return;
-            if (session_.view != View::Effects) session_.view = static_cast<View>(static_cast<int>(session_.view) + 1);
+            session_.view = View::Device; // from PATTERN, the next screen
             return;
         }
         if (!event.down || input.held(Button::A) || input.held(Button::Y)) return;
         const int now = static_cast<int>(session_.view);
         const int next = now + (event.button == Button::R2 ? 1 : -1);
-        if (next >= 0 && next <= static_cast<int>(View::Effects)) session_.view = static_cast<View>(next);
+        if (next >= 0 && next <= static_cast<int>(View::Settings)) session_.view = static_cast<View>(next);
         return;
     }
     const TrackKind kind = project_->current().kind;
@@ -125,6 +145,9 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         break;
     case View::Effects:
         fx_.onButton(event, input);
+        break;
+    case View::Settings:
+        settings_.onButton(event, input);
         break;
     }
 }
@@ -167,6 +190,9 @@ void App::update(const Input& input, Uint32 nowMs) {
     case View::Effects:
         fx_.update(input, nowMs);
         break;
+    case View::Settings:
+        settings_.update(input, nowMs);
+        break;
     }
 }
 
@@ -188,6 +214,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         break;
     case View::Effects:
         fx_.draw(renderer, fonts);
+        break;
+    case View::Settings:
+        settings_.draw(renderer, fonts);
         break;
     }
 

@@ -3,7 +3,9 @@
 // moving between them. No SDL window or sound card is needed to drive it, so
 // the tests press its buttons directly.
 //
-//   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE, FX
+//   L2 / R2    previous / next screen: SONG, PATTERN, DEVICE, FX, SETUP
+//   SELECT     tapped by itself, from anywhere: the SONG screen (and on the
+//              SONG screen, the list of songs)
 //              (with A held on a grid: nudge the note or hit early / late)
 //   SELECT + D-pad   the tempo: up / down by 1, left / right by 10
 //   SELECT + L1 / R1 the volume: quieter / louder
@@ -25,6 +27,7 @@
 #include "sampler_screen.hpp"
 #include "phazed_screen.hpp"
 #include "session.hpp"
+#include "settings_screen.hpp"
 #include "song_screen.hpp"
 #include "ui.hpp"
 
@@ -48,6 +51,7 @@ public:
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     SamplerScreen& sampler() { return sampler_; }
+    SettingsScreen& settings() { return settings_; }
     // Quieter or louder, and show the volume for a moment.
     void changeVolume(float by);
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
@@ -74,6 +78,8 @@ private:
     KitScreen kit_;
     FxScreen fx_;
     SamplerScreen sampler_;
+    SettingsScreen settings_;
+    bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;
 };

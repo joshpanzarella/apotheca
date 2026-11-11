@@ -362,6 +362,7 @@ int main(int argc, char** argv) {
         if (!smoke && !shot) app.session().useProgramFolder(beside.substr(0, beside.size() - 7)); // where the program is: updates land here
         // Not full blast on the handheld's little speaker: two fifths, until it is changed.
         app.session().loadVolume(handheld ? 0.4f : 1.f);
+        app.session().loadSettings();
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));
@@ -503,6 +504,14 @@ int main(int argc, char** argv) {
             app.session().view = View::Device;
             app.kit().goTo(5, KitScreen::kSound);
         }
+    } else if (std::strcmp(view, "setup") == 0 || std::strcmp(view, "buttons") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(std::strcmp(view, "buttons") == 0 ? SettingsScreen::kTest : SettingsScreen::kStick);
+        if (std::strcmp(view, "buttons") == 0) {
+            tapKey(SDLK_x);
+            pushKey(SDLK_w, true);
+            pushKey(SDLK_l, true);
+        }
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }
@@ -526,7 +535,7 @@ int main(int argc, char** argv) {
         tapKey(SDLK_UP, 6);
     } else if (paint) {
         drums.moveCursorTo(5, 2);
-        pushKey(paint == 1 ? SDLK_w : SDLK_q, true);
+        pushKey(paint == 1 ? SDLK_w : SDLK_2, true);
         tapKey(SDLK_RIGHT, 10);
     } else if (onName) {
         drums.moveCursorTo(1, -1);
@@ -553,6 +562,24 @@ int main(int argc, char** argv) {
     const Uint32 start = SDL_GetTicks();
 
     int rawLogged = 0;
+    // Start the controls setup again, whatever state the controls are in.
+    RelearnHold relearnHold;
+    const auto learnAgain = [&](const char* why) {
+        std::printf("controls: setting up again (%s)\n", why);
+        if (pad) SDL_GameControllerClose(pad), pad = nullptr;
+        if (opened.empty())
+            for (int i = 0; i < SDL_NumJoysticks(); ++i)
+                if (SDL_Joystick* stick = SDL_JoystickOpen(i)) opened.push_back(stick);
+        learner = ControlLearner();
+        for (SDL_Joystick* stick : opened)
+            for (int axis = 0; axis < SDL_JoystickNumAxes(stick); ++axis) {
+                Sint16 rest = 0;
+                if (SDL_JoystickGetAxisInitialState(stick, axis, &rest)) learner.setAxisRest(axis, rest);
+            }
+        input = Input(); // nothing is held any more
+        rawLogged = 0;
+        learning = true;
+    };
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -564,6 +591,7 @@ int main(int argc, char** argv) {
                 app.changeVolume(event.key.keysym.sym == SDLK_VOLUMEUP ? 0.1f : -0.1f);
                 continue;
             }
+            if (mapped && !learning) relearnHold.handle(event);
             if (learning) {
                 // The setup has the controls to itself until it is done.
                 const std::string before = learner.saw();
@@ -591,6 +619,8 @@ int main(int argc, char** argv) {
             }
         }
         if (!learning) app.update(input, SDL_GetTicks());
+        if (!learning && app.settings().takeRelearn()) learnAgain("asked for on the SETUP screen");
+        if (!learning && mapped && relearnHold.update(SDL_GetTicks())) learnAgain("a button was held at the start");
         // Three seconds in and still going: this start worked. (After an
         // update, that is what tells the launcher to keep the new program.)
         if (!startedFine && SDL_GetTicks() - start > 3000) {
@@ -607,6 +637,14 @@ int main(int argc, char** argv) {
 
         if (learning) learner.draw(renderer, fonts);
         else app.draw(renderer, fonts);
+        if (!learning && mapped && !shot && relearnHold.offering()) {
+            // A few seconds at the start: the way back into the setup.
+            const int y = kScreenH - ui::kHintsH;
+            ui::fill(renderer, 0, y, kScreenW, ui::kHintsH, ui::kPanel2);
+            ui::fill(renderer, 0, y, static_cast<int>(kScreenW * relearnHold.part()), 3, ui::kBrass);
+            fonts.small.drawCentered(renderer, kScreenW / 2.f, y + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f,
+                                     "BUTTONS NOT WORKING? HOLD ANY BUTTON FOR 2 SECONDS NOW TO SET THEM UP AGAIN", ui::kBrass);
+        }
         if ((smoke || shot) && SDL_GetTicks() - start > 1000) running = false;
         if (!running && shot) {
             SDL_Surface* picture = SDL_CreateRGBSurfaceWithFormat(0, kScreenW, kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);

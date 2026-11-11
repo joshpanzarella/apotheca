@@ -19,7 +19,7 @@
 
 namespace apotheca {
 
-enum class View { Song, Pattern, Device, Effects };
+enum class View { Song, Pattern, Device, Effects, Settings };
 
 // Somewhere to record from: a USB microphone or interface. The app gives the
 // session one (main.cpp, through SDL); the tests give it a made-up one.
@@ -166,6 +166,15 @@ public:
     float volume() const { return volume_; }
     void setVolume(float volume);
     void loadVolume(float ifNone); // at start: what was kept, or this
+    // Two more things about the handheld, kept in "settings.txt" beside the
+    // program: how fast the stick is (1 is as first built) and how many
+    // octaves the piano roll shows (1, 2 or 3).
+    static constexpr float kStickSlowest = 0.25f, kStickFastest = 1.5f;
+    float stickSpeed() const { return ui_stickSpeed(); }
+    void setStickSpeed(float speed);
+    int octavesShown() const { return octaves_; }
+    void setOctavesShown(int octaves);
+    void loadSettings();
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
 
@@ -207,6 +216,9 @@ private:
     void loadLane(int track, int lane);
     void finishRecording();
     float volume_ = 1.f;
+    int octaves_ = 2;
+    static float ui_stickSpeed();
+    void keepSettings() const;
     Transfer transfer_;
     std::string programFolder_;
     unsigned seenUpdates_ = 0;
