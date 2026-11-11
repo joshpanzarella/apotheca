@@ -135,7 +135,10 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. Sounds, effects and track deletes are not undone.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
-  that, shorten the words.
+  that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
+  arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.
+- **Hold X + Y is the dice** for what a hit or a note does (`fxRoll` on both
+  grids). **Hold X + A is kept for THROW.**
 - **Sample names from `wavNames` have no `.wav` ending.**
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid

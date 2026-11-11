@@ -102,7 +102,7 @@ void PatternScreen::fxRoll() {
     static const std::int8_t pitches[] = {-12, -7, -5, -3, -2, -1, 1, 2, 3, 5, 7, 12};
     static const std::uint8_t ratchets[] = {2, 2, 3, 4};
     StepFx fx;
-    for (int tries = 0; tries < 16; ++tries) {
+    for (;;) { // (there is always another roll to be had, so this ends)
         fx = StepFx();
         if (roll(100) < 45) fx.ratchet = ratchets[roll(4)];
         if (roll(100) < 40) fx.pitch = pitches[roll(12)];

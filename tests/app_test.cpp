@@ -3925,8 +3925,12 @@ void testStepEffects() {
         bool ratchets = false, pitches = false, reverses = false, cuts = false, two = false;
         for (int i = 0; i < 60; ++i) {
             const StepFx was = drums.fx(0, 4);
-            rig.tap(Y);
+            rig.key(Y, true);
+            rig.frames(2);
             const StepFx now = drums.fx(0, 4);
+            rig.key(Y, false); // one roll a press: letting go is not another
+            rig.frames(2);
+            CHECK(drums.fx(0, 4).pitch == now.pitch && drums.fx(0, 4).hits() == now.hits() && drums.fx(0, 4).reverse == now.reverse && drums.fx(0, 4).cut == now.cut);
             CHECK(now.any());
             CHECK(now.pitch != was.pitch || now.hits() != was.hits() || now.reverse != was.reverse || now.cut != was.cut);
             CHECK(now.pitch >= -12 && now.pitch <= 12 && now.hits() >= 1 && now.hits() <= 4 && now.cut < kCutChoices && now.reverse <= 1);
@@ -3935,7 +3939,7 @@ void testStepEffects() {
             pitches = pitches || now.pitch != 0;
             reverses = reverses || now.reverse;
             cuts = cuts || now.cut;
-            two = two || (now.hits() > 1) + (now.pitch != 0) + (now.reverse != 0) + (now.cut != 0) >= 2;
+            two = two || (now.hits() > 1 && now.pitch != 0);
             rig.render(4800);
         }
         CHECK(ratchets && pitches && reverses && cuts && two);
@@ -4530,9 +4534,17 @@ void testNoteEffects() {
             plainRatchet = plainRatchet || (n.ratchet >= 2 && !n.glide);
         }
         CHECK(ratchets && glides && both && plainRatchet && roll.effecting() && !roll.picking());
+        // The engine is told: what plays is what the roll left. Rolled to a plain ratchet of two,
+        // there is a gap just before the half of the step, where the ratchet of three it had before sounds on.
+        for (int i = 0; i < 400 && !(p.notes[at].ratchet == 2 && p.notes[at].glide == 0); ++i) rig.tap(Y);
+        CHECK(p.notes[at].ratchet == 2 && p.notes[at].glide == 0);
         rig.key(X, false);
-        // The engine is told: what plays is what the roll left.
-        p.notes[at].length = 1.f;
+        rig.tap(START);
+        const std::vector<float> out = rig.render(8 * kStep);
+        rig.tap(START);
+        rig.render(96000);
+        const float sounding = Rig::peak(out, 4 * kStep + 300, 4 * kStep + 1500);
+        CHECK(sounding > 0.005f && Rig::peak(out, 4 * kStep + 2800, 4 * kStep + 2990) < 0.2f * sounding && Rig::peak(out, 4 * kStep + 3300, 4 * kStep + 4500) > 0.5f * sounding);
         const int hits = p.notes[at].ratchet >= 2 ? p.notes[at].ratchet : 1;
         std::string text = songText(rig.project());
         char line[40];

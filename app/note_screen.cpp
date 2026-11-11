@@ -433,12 +433,11 @@ void NoteScreen::fxRoll() {
     };
     static const std::uint8_t ratchets[] = {2, 2, 3, 4};
     int to = 0, glide = 0;
-    for (int tries = 0; tries < 16; ++tries) {
+    for (;;) { // (there is always another roll to be had, so this ends)
         to = roll(100) < 65 ? ratchets[roll(4)] : 0;
         glide = slot >= 0 && roll(100) < 40 ? 1 : 0;
         if ((to || glide) && (to != ratchetWas || glide != glideWas)) break;
     }
-    if (!to && !glide) to = ratchetWas == 2 ? 3 : 2; // (sixteen unlucky rolls: still something else)
     ratchet = static_cast<std::uint8_t>(to);
     if (slot >= 0) pat().notes[slot].glide = static_cast<std::uint8_t>(glide);
     session_.sendNoteBar(project_.track, project_.scene, project_.bar);

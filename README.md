@@ -603,6 +603,7 @@ it changes:
 | Left / right | **RATCHET**: the hit played 2, 3 or 4 times inside its step | Split into that many slivers |
 | L1 | **REVERSE**: backwards, on and off | An arrow on its left |
 | R1 | **CUT**: stopped after a step, half a step, a quarter; off | A red edge |
+| Y | **Dice**: rolls the four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. | |
 
 - They combine, and every hit has its own. The strip under the grid spells
   them out; with X held it shows all four.
@@ -740,6 +741,7 @@ play, one click per push. The strip at the bottom shows both values.
 | --- | --- | --- |
 | **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
 | **GLIDE** (up = on, down = off) | The pitch slides from the last note the track began to this one, over half a step. | No: a chord has no one note to slide from |
+| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. | A ratchet |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
 - The first note after pressing play has nothing to slide from, so it does

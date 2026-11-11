@@ -228,7 +228,8 @@ void keyWords(const char* key, Each each) {
         const char* end = at;
         while (*end && *end != ' ') ++end;
         if (end == at) break;
-        const std::string word(at, end);
+        std::string word(at, end);
+        if (word == "HOLD") word = "HLD"; // shorter, and still read as "hold" (the owner's, 2026-11-11)
         int arrow = -1;
         for (int i = 0; i < 4; ++i)
             if (word == kDirections[i]) arrow = i;
@@ -277,6 +278,18 @@ void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const ch
     });
 }
 
+namespace {
+constexpr int kDie = 13; // a die's face, across
+// "dice" as a picture, the way plugins show it: a die's face, five pips.
+bool isDice(const char* does) { return std::strcmp(does, "dice") == 0; }
+void drawDie(SDL_Renderer* r, int x, int y, SDL_Color color) {
+    fill(r, x + 1, y, kDie - 2, kDie, color);
+    fill(r, x, y + 1, kDie, kDie - 2, color); // (the corners off: a rounded square)
+    static const int at[5][2] = {{3, 3}, {9, 3}, {6, 6}, {3, 9}, {9, 9}};
+    for (const auto& pip : at) fill(r, x + pip[0] - 1, y + pip[1] - 1, 3, 3, kPanel);
+}
+} // namespace
+
 void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
@@ -290,12 +303,15 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
         const float keyW = keyWidth(fonts, list[i].key) + 8.f;
-        if (x + keyW + 5.f + fonts.small.width(list[i].does) > limit) break;
+        const bool die = isDice(list[i].does);
+        const float doesW = die ? static_cast<float>(kDie) : fonts.small.width(list[i].does);
+        if (x + keyW + 5.f + doesW > limit) break;
         fill(r, static_cast<int>(x), y + 5, static_cast<int>(keyW), kHintsH - 9, kText);
         drawKey(r, fonts, x + 4.f, textY, list[i].key, kBg);
         x += keyW + 5.f;
-        fonts.small.draw(r, x, textY, list[i].does, kDim);
-        x += fonts.small.width(list[i].does) + 11.f;
+        if (die) drawDie(r, static_cast<int>(x), y + (kHintsH - kDie) / 2 + 1, kDim);
+        else fonts.small.draw(r, x, textY, list[i].does, kDim);
+        x += doesW + 11.f;
     }
     // In what room is left at the end: how to see the help card.
     const char* help = gHelpHint;
