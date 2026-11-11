@@ -53,7 +53,7 @@ if(APOTHECA_BUILD_APP)
   find_package(SDL2 REQUIRED)
   find_package(Threads REQUIRED)
   set(APOTHECA_SCREENS app/app.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp
-      app/phazed_screen.cpp app/recorder.cpp app/session.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/designer.cpp app/design_page.cpp
+      app/phazed_screen.cpp app/recorder.cpp app/session.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp)
   add_executable(apotheca app/main.cpp app/realtime.cpp ${APOTHECA_SCREENS})
   target_include_directories(apotheca PRIVATE third_party)

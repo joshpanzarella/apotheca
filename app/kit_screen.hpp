@@ -8,8 +8,9 @@
 //
 //   the stick or D-pad moves: up / down through the lanes, left / right
 //   between SOUND and FIT.
-//   SOUND   hold A + up / down: the built-in drum, then each recording. It
-//           is heard as it changes when the song is stopped. B: the drum back.
+//   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
+//           quickly. Or hold A + up / down: the built-in drum, then each
+//           recording, one at a time. B: the drum back.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
 //           B: off.
 //   Y       CATCH: the last bar the song played, all of it as it was
@@ -25,6 +26,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "sample_picker.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -44,6 +46,7 @@ public:
     int cursorColumn() const { return column_; }
     const std::string& said() const { return said_; }
     enum { kSound, kFit };
+    SamplePicker& picker() { return picker_; }
 
 private:
     TrackData& trk() { return project_.current(); }
@@ -57,6 +60,9 @@ private:
     Project& project_;
     int lane_ = 0, column_ = kSound;
     bool holding_ = false; // A is held
+    bool stepped_ = false; // ...and something was changed with it, so letting go is not a tap
+    SamplePicker picker_;
+    void openPicker();
     std::vector<std::string> names_; // the recordings there were when A went down
     std::string said_; // what the last catch came to, shown for a moment
     Uint32 saidUntil_ = 0;

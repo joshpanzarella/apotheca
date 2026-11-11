@@ -53,14 +53,31 @@ void SamplerScreen::press(Button b) {
         return;
     }
     if (b != Button::Up && b != Button::Down) return;
+    stepped_ = true;
     const int by = b == Button::Up ? 1 : -1;
     if (stop_ == 0) stepSound(by);
     else session_.setSamplerSetting(project_.track, stop_ - 1, trk().sampler[stop_ - 1] + by);
 }
 
+void SamplerScreen::openPicker() {
+    const int track = project_.track;
+    SamplePicker::Jobs jobs;
+    jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
+    jobs.hear = [this] { hear(); };
+    jobs.sound = [this, track] { return &session_.trackSound(track); };
+    picker_.open(session_.sampleNames(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
+}
+
 void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (picker_.isOpen()) {
+        if (b == Button::Start && event.down && !input.held(Button::Select)) session_.togglePlay(false);
+        else picker_.onButton(event, project_.playing);
+        return;
+    }
     if (b == Button::A) {
+        if (!event.down && holding_ && !stepped_ && stop_ == 0) openPicker(); // a plain tap on SOUND: the list
+        if (event.down) stepped_ = false;
         holding_ = event.down;
         saved_ = turned_ = 0.f;
         stickWas_ = false;
@@ -101,6 +118,8 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
+    picker_.update(input, nowMs, project_.playing);
+    if (picker_.isOpen()) return;
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();
     if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
@@ -213,6 +232,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count, true);
+    picker_.draw(r, fonts);
 }
 
 } // namespace apotheca

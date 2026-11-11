@@ -485,7 +485,7 @@ int main(int argc, char** argv) {
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
         app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : PhazedScreen::kFirstMacro + 1);
-    } else if (std::strcmp(view, "kit") == 0 || std::strcmp(view, "starts") == 0) {
+    } else if (std::strcmp(view, "kit") == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one
         // bar, with hits on the beat whose starts have been rolled.
         const std::vector<std::string> names = app.session().sampleNames();
@@ -507,6 +507,10 @@ int main(int argc, char** argv) {
         } else {
             app.session().view = View::Device;
             app.kit().goTo(5, KitScreen::kSound);
+            if (std::strcmp(view, "picker") == 0) {
+                tapKey(SDLK_x); // the list
+                tapKey(SDLK_DOWN, 3);
+            }
         }
     } else if (std::strcmp(view, "setup") == 0 || std::strcmp(view, "buttons") == 0) {
         app.session().view = View::Settings;

@@ -46,9 +46,21 @@ void KitScreen::stepFit(int by) {
     session_.setLaneFit(project_.track, lane_, kFits[to]);
 }
 
+void KitScreen::openPicker() {
+    const int track = project_.track, lane = lane_;
+    SamplePicker::Jobs jobs;
+    jobs.use = [this, track, lane](const std::string& name) { session_.setLaneSample(track, lane, name); };
+    jobs.hear = [this] { hear(); };
+    jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
+    char title[48];
+    std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
+    picker_.open(session_.sampleNames(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
+}
+
 void KitScreen::press(Button b) {
     if (holding_) {
         if (b != Button::Up && b != Button::Down) return;
+        stepped_ = true;
         if (column_ == kSound) stepSound(b == Button::Up ? 1 : -1);
         else stepFit(b == Button::Up ? 1 : -1);
         return;
@@ -60,10 +72,17 @@ void KitScreen::press(Button b) {
 
 void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (picker_.isOpen()) {
+        if (b == Button::Start && event.down && !input.held(Button::Select)) session_.togglePlay(false); // to hear it in the beat
+        else picker_.onButton(event, project_.playing);
+        return;
+    }
     if (b == Button::A) {
+        // Held, with up / down: one at a time. A plain tap on SOUND: the list.
+        if (!event.down && holding_ && !stepped_ && column_ == kSound) openPicker();
         holding_ = event.down;
         saved_ = 0.f;
-        if (event.down) names_ = session_.sampleNames();
+        if (event.down) names_ = session_.sampleNames(), stepped_ = false;
         return;
     }
     if (!event.down) {
@@ -100,6 +119,8 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
+    picker_.update(input, nowMs, project_.playing);
+    if (picker_.isOpen()) return;
     // While recording, the line says how it is going.
     const Session::Rec rec = session_.recording();
     if (rec == Session::Rec::Waiting || rec == Session::Rec::Recording) {
@@ -206,13 +227,14 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         hint("STICK UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
     } else {
-        hint("HOLD A + STICK", column_ == kSound ? "pick the sound" : "fit to steps");
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from the list" : "fit to steps");
         hint("B", column_ == kSound ? "the drum back" : "fit off");
         hint("Y", "catch");
         hint("R1", "record");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count, true);
+    picker_.draw(r, fonts); // over everything, when it is open
 }
 
 } // namespace apotheca

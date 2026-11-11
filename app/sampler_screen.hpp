@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "sample_picker.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -45,6 +46,7 @@ public:
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }
     int cursor() const { return stop_; }
     const std::string& said() const { return said_; }
+    SamplePicker& picker() { return picker_; }
 
 private:
     TrackData& trk() { return project_.current(); }
@@ -57,6 +59,9 @@ private:
     Project& project_;
     int stop_ = 0;
     bool holding_ = false;
+    bool stepped_ = false; // A was used to change something: letting go is not a tap
+    SamplePicker picker_;
+    void openPicker();
     std::vector<std::string> names_;
     std::string said_;
     Uint32 saidUntil_ = 0;

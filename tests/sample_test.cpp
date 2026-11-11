@@ -33,7 +33,7 @@ namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, R2 = SDLK_2, R1 = SDLK_w;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
-const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l;
+const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l, STICK_DOWN = SDLK_k;
 const float kTrackLevel = 0.65f;
 const int kStep = 6000; // frames in a step at 120 BPM
 
@@ -1232,7 +1232,156 @@ void testRecordingOntoALane() {
 
 } // namespace
 
+// ---- the list of recordings ---------------------------------------------------------------
+
+void testTheSamplePicker() {
+    const std::string folder = tempFolder();
+    // Twenty recordings, each a different length so that they can be told apart by ear.
+    char name[32];
+    for (int i = 0; i < 20; ++i) {
+        std::snprintf(name, sizeof name, "/take %02d.wav", i + 1);
+        std::vector<float> made(static_cast<std::size_t>(2000 + 500 * i));
+        for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
+        CHECK(writeWav(folder + name, made, 48000));
+    }
+    Rig rig(folder);
+    Session& session = rig.app.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    SamplePicker& list = kit.picker();
+    const TrackData& track = rig.app.project().tracks[0];
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    const int drum = rig.hit(5);
+
+    // A tap of A on SOUND opens it, on the built-in drum, with the lane as it was.
+    rig.tap(A);
+    CHECK(list.isOpen() && list.cursor() == 0 && list.count() == 21 && track.laneSample[5][0] == 0);
+    // Down: the next one is on the lane at once, and (the song being stopped) it is heard.
+    rig.render(96000);
+    rig.tap(DOWN);
+    CHECK(list.cursor() == 1 && std::string(track.laneSample[5]) == "take 01");
+    CHECK(Rig::sounding(rig.render(20000)) > 1500);
+    rig.tap(DOWN, 2);
+    CHECK(std::string(track.laneSample[5]) == "take 03");
+    // Right and left: eight at a time; the ends stop.
+    rig.tap(RIGHT);
+    CHECK(list.cursor() == 11 && std::string(track.laneSample[5]) == "take 11");
+    rig.tap(RIGHT, 3);
+    CHECK(list.cursor() == 20 && std::string(track.laneSample[5]) == "take 20");
+    rig.tap(DOWN);
+    CHECK(list.cursor() == 20);
+    rig.tap(LEFT);
+    CHECK(list.cursor() == 12);
+    // While it is open the kit's own buttons do nothing: Y does not catch, R1 does not record, and the lane cursor stays.
+    rig.tap(Y);
+    rig.tap(R1);
+    CHECK(kit.cursorLane() == 5 && kit.said().empty() && session.recording() == Session::Rec::Idle);
+    // X hears it again.
+    rig.render(96000);
+    rig.tap(X);
+    CHECK(Rig::sounding(rig.render(20000)) > 1500);
+    // A keeps what is showing.
+    rig.tap(A);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 12");
+    CHECK(std::abs(rig.hit(5) - (2000 + 500 * 11)) < 400);
+    // Opened again it is on that one. B puts back what was there when it opened, wherever the cursor went.
+    rig.tap(A);
+    CHECK(list.isOpen() && list.cursor() == 12);
+    rig.tap(LEFT, 2);
+    CHECK(list.cursor() == 0 && track.laneSample[5][0] == 0); // the first row is the drum itself
+    rig.tap(DOWN, 4);
+    CHECK(std::string(track.laneSample[5]) == "take 04");
+    rig.tap(B);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 12");
+    // B with nothing moved changes nothing (and does not load it again).
+    rig.tap(A);
+    rig.tap(B);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 12");
+
+    // The stick scrolls it: the first row at once, then about eight a second.
+    rig.tap(A);
+    rig.tap(LEFT, 2);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    CHECK(list.cursor() == 1);
+    rig.frames(62); // a second at the stick's own speed (three quarters)
+    rig.key(STICK_DOWN, false);
+    CHECK(list.cursor() >= 6 && list.cursor() <= 8);
+    // A D-pad direction held runs too.
+    const int from = list.cursor();
+    rig.key(DOWN, true);
+    rig.frames(40);
+    rig.key(DOWN, false);
+    CHECK(list.cursor() >= from + 3 && list.cursor() <= from + 6);
+    rig.tap(B);
+
+    // With the song playing, moving does not also play the sound by itself: it is heard in the beat.
+    for (int step = 0; step < kSteps; ++step) rig.app.drums().setStep(5, step, 0.f);
+    rig.tap(A);
+    rig.tap(START); // START still plays and stops with the list open
+    CHECK(rig.app.project().playing && list.isOpen());
+    rig.render(3000);
+    rig.frames(1);
+    rig.tap(DOWN);
+    CHECK(rig.engine->trackPeak(0) == 0.f || Rig::sounding(rig.render(6000)) == 0); // lane 6 has no hits: silence
+    rig.tap(START);
+    rig.tap(B);
+    rig.render(96000);
+
+    // Hold A and up / down still steps one at a time, and letting go is then not a tap.
+    kit.goTo(2, KitScreen::kSound);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(!list.isOpen() && std::string(track.laneSample[2]) == "take 01");
+    // On FIT a tap of A is not the list.
+    kit.goTo(2, KitScreen::kFit);
+    rig.tap(A);
+    CHECK(!list.isOpen());
+    CHECK(drum > 0);
+
+    // The sampler has the same list, for its one recording.
+    rig.app.session().view = View::Song;
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(A);
+    rig.tap(DOWN, 2);
+    rig.tap(A); // SAMPLER
+    CHECK(rig.app.project().tracks[1].kind == TrackKind::Sampler);
+    rig.app.project().track = 1;
+    session.view = View::Device;
+    rig.frames(1);
+    SamplePicker& one = rig.app.sampler().picker();
+    rig.tap(A);
+    CHECK(one.isOpen() && one.cursor() == 0 && one.count() == 21);
+    rig.tap(DOWN, 3);
+    CHECK(std::string(rig.app.project().tracks[1].sample) == "take 03");
+    rig.tap(B);
+    CHECK(!one.isOpen() && rig.app.project().tracks[1].sample[0] == 0);
+    rig.tap(A);
+    rig.tap(DOWN, 2);
+    rig.tap(A);
+    CHECK(!one.isOpen() && std::string(rig.app.project().tracks[1].sample) == "take 02");
+    // On one of its settings, a tap of A is not the list.
+    rig.app.sampler().goTo(2);
+    rig.tap(A);
+    CHECK(!one.isOpen());
+
+    // No recordings at all: the list opens with its one row, and says how to get some.
+    Rig empty(tempFolder());
+    empty.app.session().view = View::Device;
+    empty.app.kit().goTo(0, KitScreen::kSound);
+    empty.tap(A);
+    CHECK(empty.app.kit().picker().isOpen() && empty.app.kit().picker().count() == 1);
+    empty.tap(DOWN);
+    empty.tap(RIGHT);
+    CHECK(empty.app.kit().picker().cursor() == 0);
+    empty.tap(A);
+    CHECK(!empty.app.kit().picker().isOpen());
+}
+
 int main(int, char**) {
+    testTheSamplePicker();
     testReadingWavFiles();
     testStretching();
     testFittingWithSignalsmith();
