@@ -177,7 +177,8 @@ struct TrackData {
     DrumPattern drums[kMaxScenes][kMaxBars];
     NotePattern notes[kMaxScenes][kMaxBars];
     int bars[kMaxScenes];
-    EffectData effects[kMasterSlots]; // on this track, one after the other
+    EffectData effects[kTrackSlots]; // on this track, one after the other
+    float send[kBuses] = {};         // how much of it goes to the ECHO and the SPACE bus, 0..1
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
@@ -213,11 +214,17 @@ struct TrackData {
     }
 };
 
+// What the two send buses of a new song hold, ECHO then SPACE. A song file
+// with no `busfx` lines (an old song) gets these too. THE ONE LINE to change
+// when a new song should start with other effects (TAPE and HALL).
+constexpr EffectKind kNewSongBus[kBuses] = {EffectKind::Delay, EffectKind::Reverb};
+
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
     int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
     EffectData masterEffects[kMasterSlots]; // on everything, after the tracks are mixed
+    EffectData busEffects[kBuses];          // what the ECHO and the SPACE bus hold: one effect each, its MIX read as LEVEL
     float tempo = 120.f;
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show
@@ -236,6 +243,12 @@ struct Project {
         for (int& r : repeats) r = 1;
         for (int& n : steps) n = 0;
         tracks[0].kind = TrackKind::Drums; // a new project is one drum track
+        for (int bus = 0; bus < kBuses; ++bus) setBusEffect(bus, kNewSongBus[bus]);
+    }
+    // Put an effect on a bus at its usual settings there (LEVEL at full).
+    void setBusEffect(int bus, EffectKind kind) {
+        busEffects[bus].kind = static_cast<int>(kind);
+        for (int i = 0; i < kEffectParams; ++i) busEffects[bus].param[i] = effectDefault(kind, i, true);
     }
     // Tracks are filled from the left, so the count is also the next free one.
     int trackCount() const {

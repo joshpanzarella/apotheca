@@ -41,7 +41,7 @@ Command stepFxCommand(int track, int scene, int bar, int lane, int step, const S
 
 class Session {
 public:
-    Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {}
+    Session(Engine& engine, Project& project);
     ~Session();
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
@@ -87,10 +87,13 @@ public:
 
     // ---- effects ---------------------------------------------------------------------
     // Two slots on every track and two on the master (track kMasterTrack).
-    EffectData& effectData(int track, int slot) { return track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]; }
-    const EffectData& effectData(int track, int slot) const { return track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]; }
+    // `track` may be kMasterTrack, or kEchoBus / kSpaceBus (one slot each: what the bus holds).
+    EffectData& effectData(int track, int slot) { return busOfTrack(track) >= 0 ? project.busEffects[busOfTrack(track)] : (track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]); }
+    const EffectData& effectData(int track, int slot) const { return busOfTrack(track) >= 0 ? project.busEffects[busOfTrack(track)] : (track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]); }
     void setEffect(int track, int slot, EffectKind kind); // goes in at its usual settings
     void setEffectParam(int track, int slot, int index, float value); // 0..1
+    // How much of a track goes to a bus (0 ECHO, 1 SPACE), 0..1. Written as automation like any setting.
+    void setSend(int track, int bus, float value);
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the
@@ -231,7 +234,7 @@ public:
     // With WRITE on and the song playing, moving a macro or a track effect's
     // setting records it: its value goes into the cell that is playing, on
     // the step that is playing. From then on the pattern moves it. A lane is
-    // one of the track's sixteen (the engine's kAutoLanes).
+    // one of the track's twenty-four (the engine's kAutoLanes).
     void setWriting(bool on) { project.writing = on; }
     bool writing() const { return project.writing; }
     void setAutomation(int track, int scene, int lane, int index, float value); // below 0: nothing there
@@ -264,6 +267,7 @@ public:
     // at most. Empty puts back its instrument's name.
     void setTrackName(int track, const std::string& name);
     void hearTrack(int track); // X on the SONG screen: its kick, or a middle C
+    void sendEffects(int track); // every slot of a track, the master or a bus, to the engine
     void sendMutes(); // tell the engine how things stand (after a song is opened)
 
     // ---- a synth's sound ---------------------------------------------------------------

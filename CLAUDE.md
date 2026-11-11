@@ -133,6 +133,12 @@ effect in those two groups and fails one that does not.
   (0..7 macros, `8 + slot * 4 + setting` effects for slots 1 to 3, 20 and 21
   the ECHO and SPACE sends, 22 and 23 spare). Songs and presets store them by
   number.
+- **A song file with no `busfx` line is an old song.** Its buses get what a
+  new song's do (`kNewSongBus` in `app/project.hpp`: the one line to change
+  when new songs should start with TAPE and HALL), its sends are 0, and it
+  sounds as it did. `songText` always writes both `busfx` lines, an empty bus
+  as `busfx 2 none`, so "none" is never mistaken for "old". A track's send is
+  a `send BUS AMOUNT` line, left out at 0; `fx 3` is its third slot.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -195,6 +201,15 @@ effect in those two groups and fails one that does not.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
+- **Anything below zero is not a track**: -1 the master, -2 and -3 the buses.
+  `Session::effectData`, `setEffect` and `setEffectParam` take all three
+  (`slotsOf(track)` bounds the slot). Test `track >= 0` before touching
+  `project.tracks[track]` or automation, never `track != kMasterTrack`: a bus
+  would then index the array at -2. A bus takes only its own kind
+  (`effectBus`), and nothing on a bus or the master is automated.
+- **A new `Session` tells the engine what the buses hold** (its constructor).
+  The engine starts as a new song in every other way, but with empty buses;
+  without this a handheld with no saved song had sends that did nothing.
 - **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`
   (821 KB). `std::unique_ptr<Project>`.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
