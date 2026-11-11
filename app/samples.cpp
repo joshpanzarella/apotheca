@@ -1,5 +1,7 @@
 #include "samples.hpp"
 
+#include <sys/stat.h>
+
 #include <dirent.h>
 
 #include <algorithm>
@@ -137,21 +139,62 @@ bool writeWav(const std::string& path, const std::vector<float>& samples, int sa
     return writeTextFile(path, wavBytes(samples, sampleRate));
 }
 
-std::vector<std::string> wavNames(const std::string& folder) {
-    std::vector<std::string> names;
-    if (DIR* dir = folder.empty() ? nullptr : opendir(folder.c_str())) {
-        while (const dirent* entry = readdir(dir)) {
-            const std::string file = entry->d_name;
-            if (file.size() <= 4 || file[0] == '.') continue;
-            std::string end = file.substr(file.size() - 4);
-            for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
-            if (end == ".wav") names.push_back(file);
+namespace {
+// The .wav files directly in a folder (no ending), and the folders in it.
+void listFolder(const std::string& folder, std::vector<std::string>& wavs, std::vector<std::string>* folders) {
+    DIR* dir = folder.empty() ? nullptr : opendir(folder.c_str());
+    if (!dir) return;
+    while (const dirent* entry = readdir(dir)) {
+        const std::string file = entry->d_name;
+        if (file.empty() || file[0] == '.') continue; // hidden things, and "." and ".."
+        struct stat info;
+        if (stat((folder + "/" + file).c_str(), &info) != 0) continue;
+        if (S_ISDIR(info.st_mode)) {
+            if (folders) folders->push_back(file);
+            continue;
         }
-        closedir(dir);
+        if (file.size() <= 4) continue;
+        std::string end = file.substr(file.size() - 4);
+        for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        if (end == ".wav") wavs.push_back(file.substr(0, file.size() - 4));
     }
-    std::sort(names.begin(), names.end());
-    for (std::string& name : names) name.resize(name.size() - 4);
+    closedir(dir);
+    std::sort(wavs.begin(), wavs.end());
+    if (folders) std::sort(folders->begin(), folders->end());
+}
+} // namespace
+
+std::vector<std::string> wavNames(const std::string& folder) {
+    std::vector<std::string> names, folders;
+    listFolder(folder, names, &folders);
+    for (const std::string& inside : folders) {
+        std::vector<std::string> theirs;
+        listFolder(folder + "/" + inside, theirs, nullptr); // one level: a folder in a folder is not looked into
+        for (const std::string& name : theirs) names.push_back(inside + "/" + name);
+    }
     return names;
+}
+
+bool sampleNameOk(const std::string& name) {
+    if (name.empty() || name.size() >= static_cast<std::size_t>(kSampleNameRoom)) return false;
+    if (name.find('\\') != std::string::npos || name.find("..") != std::string::npos) return false;
+    const std::size_t slash = name.find('/');
+    if (slash != std::string::npos && name.find('/', slash + 1) != std::string::npos) return false; // one folder deep at most
+    const std::string folder = sampleFolderOf(name), label = sampleLabel(name);
+    if (label.empty() || label[0] == '.' || (slash != std::string::npos && (folder.empty() || folder[0] == '.'))) return false;
+    for (char c : name)
+        if (static_cast<unsigned char>(c) < 32 || c == 127) return false;
+    return true;
+}
+
+std::string sampleFolderOf(const std::string& name) {
+    const std::size_t slash = name.find('/');
+    return slash == std::string::npos ? "" : name.substr(0, slash);
+}
+
+std::string sampleLabel(const std::string& name) {
+    const std::size_t slash = name.rfind('/');
+    return slash == std::string::npos ? name : name.substr(slash + 1);
 }
 
 } // namespace apotheca

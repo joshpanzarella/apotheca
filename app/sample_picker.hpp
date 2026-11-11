@@ -6,6 +6,11 @@
 //                  song playing it is heard in its place in the beat; with
 //                  the song stopped it is played once.
 //   left / right   eight at a time
+//   L1 / R1        the folder before / after. Recordings kept in folders (one
+//                  level inside the samples folder) are listed a folder at a
+//                  time; the loose ones are a folder of their own, UNSORTED.
+//                  Arriving in a folder puts its first recording on, as
+//                  arriving on a row does.
 //   A              keep the one showing
 //   B              put back what was there before the list was opened
 //   X              hear it again
@@ -45,13 +50,21 @@ public:
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
 
     int cursor() const { return cursor_; }                             // 0 is the first row
-    int count() const { return static_cast<int>(names_.size()) + 1; }  // the first row and the recordings
+    int count() const { return static_cast<int>(names_.size()) + 1; }  // the first row and the recordings of the folder showing
+    int folders() const { return static_cast<int>(folders_.size()); }
+    int folder() const { return folder_; }                             // which is showing, from 0
+    const std::string& folderName() const { return folders_[static_cast<std::size_t>(folder_)]; } // "" is the loose ones
 
 private:
     void moveTo(int row, bool playing);
+    void showFolder(int index);          // list its recordings
+    void turnFolder(int by, bool playing);
 
     bool open_ = false;
-    std::vector<std::string> names_;
+    std::vector<std::string> all_;      // every recording, as "name" or "folder/name"
+    std::vector<std::string> folders_;  // the folders there are; "" (the loose ones) first if there are any
+    int folder_ = 0;
+    std::vector<std::string> names_;    // the recordings of the folder showing, by their whole names
     std::string original_, title_, first_;
     Jobs jobs_;
     int cursor_ = 0;

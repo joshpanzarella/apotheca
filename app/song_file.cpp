@@ -1,5 +1,6 @@
 #include "song_file.hpp"
 #include "instruments.hpp"
+#include "samples.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -262,7 +263,7 @@ bool parseSong(const std::string& text, Project& project) {
             std::string name;
             if (!(in >> lane >> fit) || lane < 1 || lane > kDrumLanes) continue;
             std::getline(in >> std::ws, name);
-            if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) continue; // a name, not a path
+            if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
             track->laneFit[l] = clampi(static_cast<int>(fit), 0, 64);
@@ -273,7 +274,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
             std::getline(in >> std::ws, name);
-            if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos) continue; // a name, not a path
+            if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
             std::snprintf(track->sample, sizeof track->sample, "%s", name.c_str());
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
             double v;

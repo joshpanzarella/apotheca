@@ -156,7 +156,22 @@ void testTheServer() {
     CHECK(put(port, door + "/songs/kick.song", wav).status == 400); // a WAV sent as a song
     // Names that are not plain names; folders that are not there to write to.
     CHECK(put(port, door + "/samples/..%2Fescaped.wav", wav).status == 400 && !exists(root + "/escaped.wav"));
-    CHECK(put(port, door + "/samples/a/b.wav", wav).status == 400);
+    // A recording may go in a folder, one level down: the folder is made for it, and it is listed and fetched from there.
+    CHECK(put(port, door + "/samples/kicks/deep%20one.wav", wav).status == 200 && readTextFile(samples + "/kicks/deep one.wav", kept) && kept == wav);
+    CHECK(put(port, door + "/samples/breaks%2Famen.wav", wav).status == 200 && exists(samples + "/breaks/amen.wav")); // the slash as a browser may send it
+    a = get(port, door + "/list");
+    CHECK(a.body.find(",\"samples\":[\"kick one.wav\",\"breaks/amen.wav\",\"kicks/deep one.wav\"],") != std::string::npos);
+    a = get(port, door + "/samples/kicks/deep%20one.wav");
+    CHECK(a.status == 200 && a.body == wav);
+    CHECK(get(port, door + "/samples/kicks/missing.wav").status == 404);
+    // ...and no deeper, and not by a name that is not a plain one, and only recordings.
+    CHECK(put(port, door + "/samples/a/b/c.wav", wav).status == 400 && !exists(samples + "/a"));
+    CHECK(put(port, door + "/samples/../up.wav", wav).status == 400 && put(port, door + "/samples/a/..%2Fup.wav", wav).status == 400 && !exists(root + "/up.wav"));
+    CHECK(put(port, door + "/samples/.hid/x.wav", wav).status == 400 && put(port, door + "/samples/a/.x.wav", wav).status == 400 && put(port, door + "/samples//x.wav", wav).status == 400);
+    CHECK(put(port, door + "/samples/a/.wav", wav).status == 400 && put(port, door + "/samples/a/b.json", wav).status == 400);
+    CHECK(put(port, door + "/samples/a%20folder%20name%20that%20is%20far%20too%20long/b.wav", wav).status == 400);
+    CHECK(put(port, door + "/songs/sub/quiet.song", "x").status == 400 && put(port, door + "/chords/sub/p.json", kPack).status == 400);
+    CHECK(get(port, door + "/songs/sub/quiet%20road.song").status == 400);
     CHECK(put(port, door + "/samples/kick.json", kPack).status == 400 && put(port, door + "/samples/.hidden.wav", wav).status == 400);
     CHECK(put(port, door + "/elsewhere/kick.wav", wav).status == 400 && put(port, door + "/samples", wav).status == 400);
     CHECK(get(port, door + "/songs/quiet%20road.1.rev").status == 400); // only the three kinds
