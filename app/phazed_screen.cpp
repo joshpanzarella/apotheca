@@ -295,14 +295,12 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else if (cursor_ == kPreset) hint("STICK UP / DOWN", "next / previous preset");
             else hint("STICK UP / DOWN", "turn it");
         } else {
-            hint("STICK", "move");
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A + STICK", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
-            hint("X", "hear");
             hint("START", project_.playing ? "stop" : "play");
         }
-        hints(r, fonts, list, count);
+        hints(r, fonts, list, count, true);
         return;
     }
 
@@ -380,14 +378,12 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK UP / DOWN", "change it");
         hint("D-PAD UP / DOWN", "by one");
     } else {
-        hint("STICK", "move");
         hint("HOLD A + STICK", "change");
         hint("L1 R1", "page");
         hint("B", "main");
-        hint("X", "hear");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count);
+    hints(r, fonts, list, count, true);
 }
 
 } // namespace apotheca

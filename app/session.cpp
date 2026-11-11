@@ -366,6 +366,59 @@ void Session::setVolume(float volume) {
     if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
 }
 
+// ---- mute, solo, names ---------------------------------------------------------------------
+
+bool Session::heard(int track) const {
+    if (track < 0 || track >= kNumTracks) return false;
+    bool anySolo = false;
+    for (const TrackData& t : project.tracks) anySolo = anySolo || (t.kind != TrackKind::None && t.solo);
+    return anySolo ? project.tracks[track].solo : !project.tracks[track].muted;
+}
+
+void Session::sendMutes() {
+    Command c;
+    c.type = Command::SetTrackHeard;
+    for (int t = 0; t < kNumTracks; ++t) {
+        c.track = t;
+        c.a = heard(t) ? 1 : 0;
+        engine.send(c);
+    }
+}
+
+void Session::setMuted(int track, bool muted) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    project.tracks[track].muted = muted;
+    sendMutes();
+}
+
+void Session::setSolo(int track, bool solo) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    project.tracks[track].solo = solo;
+    sendMutes();
+}
+
+void Session::hearTrack(int track) {
+    if (track < 0 || track >= kNumTracks) return;
+    const TrackKind kind = project.tracks[track].kind;
+    if (isSynth(kind)) {
+        audition(track, 60, 0.8f);
+    } else if (kind == TrackKind::Drums) {
+        Command c;
+        c.type = Command::Trigger;
+        c.track = track;
+        c.a = 0;
+        c.value = 0.8f;
+        engine.send(c);
+    }
+}
+
+void Session::setTrackName(int track, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    std::string safe = presetNameFrom(name).substr(0, sizeof project.tracks[track].name - 1);
+    while (!safe.empty() && safe.back() == ' ') safe.pop_back(); // the cut may have landed after a space
+    std::snprintf(project.tracks[track].name, sizeof project.tracks[track].name, "%s", safe.c_str());
+}
+
 // ---- a synth's sound, and the sound designer ----------------------------------------------
 
 void Session::setSynthSetting(int track, int id, int value) {
@@ -559,6 +612,7 @@ std::string Session::designState() const {
     }
     std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":", project.track + 1);
     std::string out = text + jsonText(spec->name);
+    out += ",\"called\":" + jsonText(t.name);
     std::snprintf(text, sizeof text, ",\"presets\":%d,\"preset\":%d,\"values\":[", spec->presetCount(), t.preset);
     out += text;
     const int* values = spec->values(const_cast<TrackData&>(t));
@@ -589,6 +643,7 @@ void Session::serveDesigner() {
         case DesignRequest::Macro: setSynthMacro(project.track, r.a, r.value); break;
         case DesignRequest::Preset: chooseSynthPreset(project.track, r.a); break;
         case DesignRequest::Save: savePreset(project.track, r.name); break;
+        case DesignRequest::Name: setTrackName(project.track, r.name); break;
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
@@ -1268,6 +1323,7 @@ void Session::applyProject() {
     c.value = project.tempo;
     engine.send(c);
     syncSong(); // the song's length, if it differs from the last one's
+    sendMutes(); // the song's mutes; nothing is soloed in a song just opened
 }
 
 } // namespace apotheca

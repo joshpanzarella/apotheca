@@ -39,6 +39,12 @@
 
 namespace apotheca {
 
+// Names to give a track, picked on the SETUP screen (the handheld has no
+// keyboard; any other name can be typed on the sound-designer page). The
+// first puts the instrument's own name back.
+extern const char* const kTrackNames[];
+extern const int kTrackNameCount;
+
 class SongScreen {
 public:
     explicit SongScreen(Session& session) : session_(session), project_(session.project) {}

@@ -48,6 +48,7 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
 <header>
   <h1>SOUND DESIGNER</h1><span id="what" class="dim"></span>
   <span class="grow"></span>
+  <label class="dim">TRACK NAME <input id="called" type="text" maxlength="10" size="11" placeholder="ITS INSTRUMENT"></label>
   <label class="dim">PRESET <select id="preset"></select></label>
   <input id="name" type="text" maxlength="24" placeholder="NAME FOR A NEW PRESET" size="24">
   <button id="save">SAVE AS PRESET</button>
@@ -170,6 +171,7 @@ function fill() {
   }
   macroControls.forEach((c, m) => { if (now - (touched['m' + m] || 0) > 1500) c.input.value = Math.round(state.macros[m] * 200); c.show(); });
   if (document.activeElement !== $('preset')) $('preset').value = state.preset;
+  if (document.activeElement !== $('called')) $('called').value = state.called || '';
   $('what').textContent = 'TRACK ' + state.track + ' · ' + state.name;
   drawEnvs();
 }
@@ -182,6 +184,7 @@ async function look() {
   } catch (e) { say('The handheld is not answering. Is the WiFi page still on?', 'no'); }
 }
 $('preset').addEventListener('change', () => { tell('preset', 'preset ' + $('preset').value); touched = {}; setTimeout(look, 250); });
+$('called').addEventListener('change', () => { tell('name', 'name ' + $('called').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '')); });
 $('save').addEventListener('click', () => {
   const name = $('name').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '').trim();
   if (!name) return say('Give it a name first: letters, numbers and spaces.', 'no');

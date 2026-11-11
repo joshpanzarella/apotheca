@@ -24,7 +24,7 @@ namespace apotheca {
 
 class SettingsScreen {
 public:
-    enum Row { kTempo, kPack, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
+    enum Row { kTempo, kPack, kTrackName, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 

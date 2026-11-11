@@ -59,11 +59,16 @@ bool Designer::ask(const std::string& line) {
         std::getline(in, rest);
         r.name = presetNameFrom(rest);
         if (r.name.empty()) return false;
+    } else if (word == "name") {
+        r.kind = DesignRequest::Name;
+        std::string rest;
+        std::getline(in, rest);
+        r.name = presetNameFrom(rest); // may be empty: the instrument's own name again
     } else {
         return false;
     }
     std::string more;
-    if (r.kind != DesignRequest::Save && (in >> more)) return false; // something extra on the line
+    if (r.kind != DesignRequest::Save && r.kind != DesignRequest::Name && (in >> more)) return false; // something extra on the line
     std::lock_guard<std::mutex> lock(mutex_);
     ++looks_; // asking for something shows the page is there, as much as looking does
     if (waiting_.size() >= 512) return false; // nobody is taking them: the program has stalled

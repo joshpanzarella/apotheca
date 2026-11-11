@@ -1,5 +1,9 @@
 #include "settings_screen.hpp"
 
+#include <string>
+
+#include "song_screen.hpp"
+
 #include <cmath>
 #include <cstdio>
 
@@ -19,6 +23,15 @@ void SettingsScreen::change(int by) {
     switch (row_) {
     case kTempo: session_.setTempo(project_.tempo + static_cast<float>(by)); break;
     case kPack: session_.choosePack(session_.packIndex() + by); break;
+    case kTrackName: {
+        // Through the list of names, round and round; the first is "its instrument's own".
+        int now = 0;
+        for (int i = 1; i < kTrackNameCount; ++i)
+            if (std::string(kTrackNames[i]) == project_.current().name) now = i;
+        now = ((now + by) % kTrackNameCount + kTrackNameCount) % kTrackNameCount;
+        session_.setTrackName(project_.track, now == 0 ? "" : kTrackNames[now]);
+        break;
+    }
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kOctaves: session_.setOctavesShown(session_.octavesShown() + by); break;
@@ -154,11 +167,11 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "VOLUME", "STICK SPEED", "PIANO ROLL SHOWS", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
-    const int rowH = 41, top = 52, w = kScreenW - 32;
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "VOLUME", "STICK SPEED", "PIANO ROLL SHOWS", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const int rowH = 37, top = 52, w = kScreenW - 32;
     fonts.small.draw(r, 16.f, 34.f, "THIS SONG", kDim);
     for (int row = 0; row < kRows; ++row) {
-        // The first two belong to the song; the rest to the handheld.
+        // The first three belong to the song; the rest to the handheld.
         const int y = top + row * rowH + (row >= kVolume ? 22 : 0);
         if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "THIS HANDHELD", kDim);
         const bool here = row == row_;
@@ -167,6 +180,13 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         switch (row) {
         case kTempo: std::snprintf(text, sizeof text, "%d BPM", static_cast<int>(project_.tempo)); break;
         case kPack: std::snprintf(text, sizeof text, "%s", session_.packs[session_.packIndex()].name.c_str()); break;
+        case kTrackName: {
+            char full[24];
+            trackName(project_, project_.track, full, sizeof full);
+            std::snprintf(text, sizeof text, "%s", full);
+            note = project_.current().name[0] ? "of the track being worked on" : "any name can be typed on the designer page";
+            break;
+        }
         case kVolume:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.volume() * 100.f)));
             part = session_.volume();

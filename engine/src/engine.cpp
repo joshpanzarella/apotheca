@@ -441,6 +441,9 @@ void Engine::apply(const Command& c) {
     case Command::SetTrackLevel:
         if (validTrack(c.track) && std::isfinite(c.value)) tracks_[c.track].level = c.value;
         break;
+    case Command::SetTrackHeard:
+        if (validTrack(c.track)) tracks_[c.track].heard = c.a != 0;
+        break;
     case Command::SetLaneLevel:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
         break;
@@ -799,9 +802,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         }
 
         float peak = peaks[t];
+        const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
         for (int i = 0; i < frames; ++i) {
-            const float l = left[i] * track.level;
-            const float r = right[i] * track.level;
+            if (track.gate != gateTo) {
+                track.gate += track.gate < gateTo ? gateStep : -gateStep;
+                if ((track.gate > gateTo) == track.heard) track.gate = gateTo; // arrived (or stepped past)
+            }
+            const float l = left[i] * track.level * track.gate;
+            const float r = right[i] * track.level * track.gate;
             mixL[i] += l;
             mixR[i] += r;
             const float a = std::fabs(l) > std::fabs(r) ? std::fabs(l) : std::fabs(r);

@@ -175,6 +175,9 @@ struct TrackData {
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog
     float macro[phazed::kMacros];
+    char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
+    bool muted = false;  // silent until unmuted; kept with the song
+    bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
     char sample[40] = {};           // when it is a sampler: its recording's file name, or empty
     int sampler[sampler::kSettings]; // ...and its settings
 

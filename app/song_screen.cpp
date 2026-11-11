@@ -1,5 +1,7 @@
 #include "song_screen.hpp"
 
+#include <cstring>
+
 #include <cmath>
 #include <cstdio>
 
@@ -20,6 +22,13 @@ bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b ==
 
 // The columns share the width of the screen: few tracks, wide columns. The
 // "+ TRACK" column (there until all twelve are used) is one of them.
+} // namespace
+
+const char* const kTrackNames[] = {"(ITS INSTRUMENT)", "DRUMS", "KICK", "SNARE", "HATS", "PERC", "BREAK", "BASS", "SUB", "LEAD", "MELODY", "CHORDS", "PAD",
+                                   "KEYS",             "PLUCK", "ARP",  "BELL",  "STRINGS", "BRASS", "ORGAN", "VOX", "FX",  "NOISE", "TEXTURE", "DRONE", "HOOK"};
+const int kTrackNameCount = static_cast<int>(sizeof kTrackNames / sizeof kTrackNames[0]);
+
+namespace {
 int columnWidth(int tracks) {
     const int columns = tracks + (tracks < kNumTracks ? 1 : 0);
     return (kScreenW - 8 - kColumnsLeft) / (columns < 1 ? 1 : columns) - 1;
@@ -249,6 +258,13 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    // On a track: Y mutes it, L1 solos it, X hears it. At once, playing or not.
+    if (onCell() && event.down && !holding_ && (b == Button::X || b == Button::Y || b == Button::L1)) {
+        if (b == Button::Y) session_.setMuted(column_, !project_.tracks[column_].muted);
+        if (b == Button::L1) session_.setSolo(column_, !project_.tracks[column_].solo);
+        if (b == Button::X) session_.hearTrack(column_);
+        return;
+    }
     if (b == Button::R1) {
         copying_ = event.down && onCell();
         if (copying_) {
@@ -376,7 +392,22 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
         const TrackKind kind = project_.tracks[t].kind;
         const char* name = kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Sampler ? (colW > 60 ? "SAMPLER" : "SMPL") : (colW > 60 ? "PHAZED" : "PHZD");
-        fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, name, kText);
+        // The player's own name for it, cut to fit a narrow column.
+        char own[12];
+        std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
+        for (std::size_t n = std::strlen(own); n > 0 && fonts.small.width(own) > colW - 6; --n) own[n - 1] = 0;
+        const bool sounding = session_.heard(t);
+        fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
+        // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
+        if (!sounding) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
+        if (project_.tracks[t].solo) {
+            fill(r, x + colW - 13, kGridTop + 2, 11, 11, kTeal);
+            fonts.small.drawCentered(r, x + colW - 7.5f, kGridTop + 3.f, "S", kBg);
+            outline(r, x, kGridTop, colW, kHeadH, kTeal);
+        } else if (project_.tracks[t].muted) {
+            fill(r, x + colW - 13, kGridTop + 2, 11, 11, kBrass);
+            fonts.small.drawCentered(r, x + colW - 7.5f, kGridTop + 3.f, "M", kBg);
+        }
     }
     if (addColumn() >= 0) {
         const int x = kColumnsLeft + tracks * (colW + 1);
@@ -526,8 +557,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 }
                 if (i == revCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
             }
-            const Hint list[] = {{"STICK", "move"}, {"A", revCursor_ == 0 ? "save a rev" : "go back to this rev"}, {"X", "save a rev"}, {"B", "songs"}};
-            hints(r, fonts, list, 4);
+            const Hint list[] = {{"A", revCursor_ == 0 ? "save a rev" : "go back to this rev"}, {"X", "save a rev"}, {"B", "songs"}};
+            hints(r, fonts, list, 3);
             return;
         }
         const int rows = static_cast<int>(songs_.size()) + 1;
@@ -582,13 +613,13 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, x + 24.f, by + 29.f, about[i], kDim);
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
         }
-        const Hint list[] = {{"STICK", "move"}, {"A", "add the track"}, {"B", "cancel"}};
-        hints(r, fonts, list, 3);
+        const Hint list[] = {{"A", "add the track"}, {"B", "cancel"}};
+        hints(r, fonts, list, 2);
         return;
     }
 
     // ---- hints -------------------------------------------------------------------
-    Hint list[6];
+    Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (copying_) {
@@ -599,23 +630,22 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
     } else if (column_ == kRepeatColumn) {
-        hint("STICK", "move");
         hint("HOLD A + STICK", "times it plays");
         hint("TAP A", "1 > 2 > 4 > 8");
         hint("START", project_.playing ? "stop" : "play song");
     } else if (column_ == addColumn()) {
-        hint("STICK", "move");
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");
     } else {
         hint("A", "open");
-        hint("HOLD A + STICK", "bars");
+        hint("HOLD A", "bars");
         hint("B", "empty");
+        hint("Y", project_.tracks[column_].muted ? "unmute" : "mute");
+        hint("L1", project_.tracks[column_].solo ? "unsolo" : "solo");
         hint("HOLD R1", "copy");
-        hint("START", project_.playing ? "stop" : "play song");
         hint("SELECT", "songs");
     }
-    hints(r, fonts, list, count);
+    hints(r, fonts, list, count, onCell());
 }
 
 } // namespace apotheca

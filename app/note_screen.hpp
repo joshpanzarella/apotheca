@@ -18,6 +18,7 @@
 //   hold A, L2 / R2              NUDGE   the note a tenth of a step early
 //                                        (L2) or late (R2), up to half a step
 //   B                     delete the note under the cursor
+//   hold B and drag       delete every note the cursor crosses
 //   X                     hear the key under the cursor
 //   hold R1 and drag      paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3);
@@ -135,6 +136,8 @@ private:
     int inversion_ = 0;
     float handLength_ = 4.f;    // new chords are as long as the last one set
     bool painting_ = false; // R1 is held
+    bool erasing_ = false;  // B is held: the cursor deletes what it crosses
+    void eraseHere();
     float brush_ = 0.8f;
 
     Button repeating_ = Button::None;

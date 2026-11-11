@@ -47,6 +47,8 @@ std::string songText(const Project& project) {
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : "track twin\n";
+        if (track.name[0]) out += std::string("name ") + track.name + "\n";
+        if (track.muted) out += "muted\n";
         putEffects(track.effects);
         if (track.kind == TrackKind::Drums) {
             out += "lanes";
@@ -193,6 +195,18 @@ bool parseSong(const std::string& text, Project& project) {
             if (const SynthSpec* spec = specFor(k)) spec->loadPreset(*track, 0);
         } else if (!track) {
             continue; // nothing else means anything outside a track
+        } else if (word == "name") {
+            std::string rest;
+            std::getline(in, rest);
+            std::string safe;
+            for (char ch : rest) {
+                const bool fine = (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == ' ' || ch == '-' || ch == '_';
+                if (fine && !(ch == ' ' && safe.empty()) && safe.size() < sizeof track->name - 1) safe += ch;
+            }
+            while (!safe.empty() && safe.back() == ' ') safe.pop_back();
+            std::snprintf(track->name, sizeof track->name, "%s", safe.c_str());
+        } else if (word == "muted") {
+            track->muted = true;
         } else if (word == "lanes") {
             double level;
             for (int i = 0; i < kDrumLanes && (in >> level); ++i) track->laneLevel[i] = clampf(static_cast<float>(level), 0.f, 1.f);

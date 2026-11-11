@@ -1080,6 +1080,162 @@ void testAllFourShoulderButtonsIsPanic() {
 
 // ---- SETUP: the last tab ---------------------------------------------------------------
 
+// ---- mute, solo, names; erasing by dragging ---------------------------------------------------
+
+void testMuteSoloAndNames() {
+    Rig rig;
+    addPhazed(rig);
+    Session& session = rig.app.session();
+    for (int s = 0; s < kSteps; s += 4) rig.app.drums().setStep(0, s, 1.f);
+    // The Phazed track holds one long note, so it sounds all through the bar.
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    rig.app.notes().moveCursorTo(60, 0);
+    rig.project().playing = true; // as if playing, so that placing is silent
+    rig.tap(A);
+    rig.project().playing = false;
+    rig.project().tracks[1].notes[0][0].notes[0].length = 16.f;
+    session.sendNotePattern(1, 0);
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(START);
+    rig.render(kBar);
+    const auto levels = [&](float& drums, float& synth) {
+        rig.frames(1);
+        rig.render(4 * kStep);
+        drums = rig.engine->trackPeak(0);
+        synth = rig.engine->trackPeak(1);
+        rig.render(200);
+    };
+    float d = 0.f, p = 0.f;
+    levels(d, p);
+    CHECK(d > 0.05f && p > 0.01f && session.heard(0) && session.heard(1));
+    // Y on a track: muted, at once. Again: back.
+    rig.tap(Y);
+    CHECK(rig.project().tracks[0].muted && !session.heard(0) && session.heard(1));
+    rig.render(2000); // the fade
+    levels(d, p);
+    CHECK(d == 0.f && p > 0.01f);
+    rig.tap(Y);
+    rig.render(2000);
+    levels(d, p);
+    CHECK(d > 0.05f && !rig.project().tracks[0].muted);
+    // L1: soloed. Only it is heard, and a muted track that is soloed is heard too.
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(L1);
+    CHECK(rig.project().tracks[1].solo && session.heard(1) && !session.heard(0));
+    rig.render(2000);
+    levels(d, p);
+    CHECK(d == 0.f && p > 0.01f);
+    rig.tap(Y); // muted as well: solo still wins while it is on
+    CHECK(session.heard(1));
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(L1); // both soloed: both heard
+    CHECK(session.heard(0) && session.heard(1));
+    rig.tap(L1);
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(L1); // no solo left: the mute shows again
+    CHECK(session.heard(0) && !session.heard(1));
+    rig.render(2000);
+    levels(d, p);
+    CHECK(d > 0.05f && p == 0.f);
+    rig.tap(Y);
+    // Not on the repeat counts or + TRACK: nothing to mute there, and nothing breaks.
+    rig.app.song().moveCursorTo(0, -1);
+    rig.tap(Y);
+    rig.tap(L1);
+    rig.tap(X);
+    rig.app.song().moveCursorTo(0, 2);
+    rig.tap(Y);
+    rig.tap(L1);
+    CHECK(session.heard(0) && session.heard(1) && !rig.app.song().listingSongs());
+    rig.tap(START);
+    rig.render(96000);
+    rig.frames(1);
+    // X hears the track under the cursor: its kick, or a note.
+    CHECK(rig.listen(2000) == 0.f);
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(X);
+    CHECK(rig.listen(2000) > 0.05f && !rig.project().tracks[0].muted);
+    rig.render(96000);
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(X);
+    CHECK(rig.listen(4000) > 0.01f);
+
+    // Names: made safe, ten letters at most, shown in place of the instrument's; empty puts that back.
+    char text[24];
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 PHAZED");
+    session.setTrackName(1, "bass line!! and more");
+    CHECK(std::string(rig.project().tracks[1].name) == "BASS LINE");
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 BASS LINE");
+    session.setTrackName(5, "NOBODY"); // no such track yet
+    CHECK(rig.project().tracks[5].name[0] == 0);
+    // The song keeps the name and the mute, and not the solo.
+    rig.project().tracks[0].muted = true;
+    rig.project().tracks[1].solo = true;
+    std::unique_ptr<Project> again(new Project), odd(new Project); // large: not on the stack
+    CHECK(parseSong(songText(rig.project()), *again));
+    CHECK(std::string(again->tracks[1].name) == "BASS LINE" && again->tracks[0].muted && !again->tracks[1].muted && !again->tracks[1].solo && again->tracks[0].name[0] == 0);
+    CHECK(parseSong("apotheca-song 1\ntrack drums\nname   lower ../x  \nmuted\n", *odd));
+    CHECK(odd->tracks[0].muted && odd->tracks[0].name[0] == 0); // nothing in that name is allowed, so there is none
+    session.setTrackName(1, "");
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 PHAZED");
+}
+
+void testHoldBAndDragErases() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    rig.app.session().view = View::Pattern;
+    NoteScreen& notes = rig.app.notes();
+    const NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    rig.project().playing = true;
+    notes.moveCursorTo(60, 0);
+    rig.key(R1, true); // paint a row of eight
+    rig.tap(DOWN, 7);
+    rig.key(R1, false);
+    notes.moveCursorTo(62, 3);
+    rig.tap(A); // one off to the side
+    const auto count = [&] { int n = 0; for (const NoteEvent& e : bar.notes) n += e.velocity > 0.f ? 1 : 0; return n; };
+    CHECK(count() == 9);
+    // A tap of B: the one under the cursor, as before.
+    rig.tap(B);
+    CHECK(count() == 8 && bar.at(62, 3) < 0);
+    // B held and dragged down the row: each one crossed goes; ones not crossed stay.
+    notes.moveCursorTo(60, 1);
+    rig.key(B, true);
+    CHECK(bar.at(60, 1) < 0 && count() == 7);
+    rig.tap(DOWN, 3);
+    CHECK(count() == 4 && bar.at(60, 0) >= 0 && bar.at(60, 4) < 0 && bar.at(60, 5) >= 0);
+    rig.tap(RIGHT); // over empty steps: nothing to do, nothing goes wrong
+    rig.tap(LEFT);
+    CHECK(count() == 4);
+    rig.key(B, false);
+    // Let go: moving deletes nothing more.
+    rig.tap(DOWN);
+    CHECK(count() == 4 && bar.at(60, 5) >= 0);
+    // The stick drags it too.
+    rig.key(B, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(30);
+    rig.key(STICK_DOWN, false);
+    rig.key(B, false);
+    CHECK(bar.at(60, 5) < 0 && bar.at(60, 6) < 0 && bar.at(60, 7) < 0);
+    // With A held, B is not the eraser (A has hold of a note).
+    notes.moveCursorTo(60, 0);
+    rig.key(A, true);
+    rig.key(B, true);
+    rig.key(B, false);
+    rig.key(A, false);
+    CHECK(bar.at(60, 0) >= 0);
+    rig.tap(DOWN);
+    CHECK(bar.at(60, 0) >= 0);
+    rig.project().playing = false;
+}
+
 void testSelectGoesToTheSongScreen() {
     Rig rig;
     for (View from : {View::Pattern, View::Device, View::Effects, View::Settings}) {
@@ -1142,6 +1298,19 @@ void testTheSetupScreen() {
         rig.tap(RIGHT);
         rig.tap(LEFT);
         CHECK(session.packIndex() == pack);
+        // TRACK NAME: through the list, round and round; the first is its instrument's own.
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kTrackName && rig.project().current().name[0] == 0);
+        rig.tap(RIGHT);
+        CHECK(std::string(rig.project().current().name) == kTrackNames[1]);
+        rig.tap(RIGHT);
+        CHECK(std::string(rig.project().current().name) == kTrackNames[2]);
+        rig.tap(LEFT, 2);
+        CHECK(rig.project().current().name[0] == 0);
+        rig.tap(LEFT);
+        CHECK(std::string(rig.project().current().name) == kTrackNames[kTrackNameCount - 1]);
+        rig.tap(RIGHT);
+        CHECK(rig.project().current().name[0] == 0);
         // VOLUME, a twentieth at a time
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == SettingsScreen::kVolume);
@@ -2263,6 +2432,8 @@ int main(int, char**) {
     testNudgingWithTheOuterShoulderButtons();
     testAFreeLengthReachesTheEngine();
     testAllFourShoulderButtonsIsPanic();
+    testMuteSoloAndNames();
+    testHoldBAndDragErases();
     testSelectGoesToTheSongScreen();
     testTheSetupScreen();
     testTheButtonTestAndSettingUpAgain();

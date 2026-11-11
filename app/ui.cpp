@@ -200,15 +200,31 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     return bar;
 }
 
-void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
+void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count, bool hear) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
     fill(r, 0, y, kScreenW, 1, kLine);
+    if (hear) {
+        // X, and a loudspeaker: a box, a cone, two waves.
+        const int sx = kScreenW - 22, cy = y + kHintsH / 2 + 1;
+        const float w = fonts.small.width("X") + 8.f;
+        fill(r, static_cast<int>(sx - 8 - w), y + 5, static_cast<int>(w), kHintsH - 9, kBrass);
+        fonts.small.draw(r, sx - 8 - w + 4.f, y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f, "X", kBg);
+        fill(r, sx, cy - 2, 3, 5, kBrass);
+        for (int i = 0; i < 4; ++i) fill(r, sx + 3 + i, cy - 2 - i, 1, 5 + 2 * i, kBrass);
+        fill(r, sx + 10, cy - 2, 1, 5, kBrass);
+        fill(r, sx + 13, cy - 4, 1, 9, kBrass);
+    }
     const float textY = y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
     float x = 8.f;
+    // Nothing is ever drawn past the right-hand end (or over the X mark): a
+    // hint that does not fit is left out, and so are the ones after it. The
+    // lists are written most useful first.
+    const float limit = hear ? kScreenW - 22.f - 8.f - fonts.small.width("X") - 8.f - 10.f : kScreenW - 6.f;
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
         const float keyW = fonts.small.width(list[i].key) + 8.f;
+        if (x + keyW + 5.f + fonts.small.width(list[i].does) > limit) break;
         fill(r, static_cast<int>(x), y + 5, static_cast<int>(keyW), kHintsH - 9, kText);
         fonts.small.draw(r, x + 4.f, textY, list[i].key, kBg);
         x += keyW + 5.f;
@@ -260,6 +276,10 @@ void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h) {
 
 void trackName(const Project& project, int track, char* out, int size) {
     const TrackKind kind = project.tracks[track].kind;
+    if (project.tracks[track].name[0]) {
+        std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1, project.tracks[track].name);
+        return;
+    }
     std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1,
                   kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Sampler ? "SAMPLER" : "");
 }

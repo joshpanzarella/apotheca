@@ -52,7 +52,11 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
 
 // The bar across the bottom: button names in cream boxes, each with what it does.
 struct Hint { const char* key; const char* does; };
-void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count);
+// `hear`: X plays what is under the cursor here. That is so on every working
+// screen, so it is not spelled out in the list each time: it has its own
+// fixed mark at the right end of the bar, an X and a small loudspeaker.
+// (Moving with the stick or D-pad is not listed at all.)
+void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count, bool hear = false);
 
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).

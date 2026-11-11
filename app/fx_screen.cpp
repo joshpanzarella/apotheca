@@ -208,13 +208,11 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         hint("STICK UP / DOWN", column_ == 0 ? "next / previous effect" : "turn it");
     } else {
-        hint("STICK", "move");
         hint("HOLD A + STICK", column_ == 0 ? "pick the effect" : "turn");
         hint("B", column_ == 0 ? "none" : "default value");
-        hint("X", "hear");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count);
+    hints(r, fonts, list, count, true);
 }
 
 } // namespace apotheca

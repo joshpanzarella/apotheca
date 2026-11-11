@@ -210,10 +210,9 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("B", stop_ == 0 ? "none" : "default value");
         hint("Y", "catch");
         hint("R1", "record");
-        hint("X", "hear");
         hint("START", project_.playing ? "stop" : "play");
     }
-    hints(r, fonts, list, count);
+    hints(r, fonts, list, count, true);
 }
 
 } // namespace apotheca

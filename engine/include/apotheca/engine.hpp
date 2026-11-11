@@ -73,6 +73,7 @@ struct Command {
         SetTempo,       // value = beats per minute
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track, value = linear gain
+        SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
         SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
@@ -260,6 +261,8 @@ private:
         struct Pending { double samplesLeft = 0.0; float velocity = 0.f, start = 0.f; };
         Pending pending[kDrumLanes][2];
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
+        bool heard = true;   // not muted (SetTrackHeard)
+        float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         std::unique_ptr<Effect> effects[kEffectSlots];
         std::atomic<float> peak{0.f};
         bool hasInstrument() const { return hasDrums || synth; }

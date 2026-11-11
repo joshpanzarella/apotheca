@@ -92,6 +92,14 @@ void NoteScreen::moveCursorTo(int pitch, int step) {
     if (pitch_ > low_ + (visibleKeys() - 1)) low_ = pitch_ - (visibleKeys() - 1);
 }
 
+// B: the note under the cursor goes, or the whole chord it is part of.
+void NoteScreen::eraseHere() {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot >= 0) pat().notes[slot] = NoteEvent();
+    else if (chord >= 0) pat().chords[chord] = ChordEvent();
+    if (slot >= 0 || chord >= 0) resend();
+}
+
 int NoteScreen::visibleKeys() const { return session_.octavesShown() * 12; }
 // Wider keys are taller keys, so a keyboard zoomed in still looks like one.
 // The grid starts just under them, lower when they are taller.
@@ -130,6 +138,7 @@ void NoteScreen::moveCursor(Button direction) {
     if (direction == Button::Up) moveCursorTo(pitch_, step_ - 1);
     if (direction == Button::Down) moveCursorTo(pitch_, step_ + 1);
     if (painting_) paintHere();
+    if (erasing_) eraseHere();
 }
 
 // The engine is told the whole bar again: a chord's notes take whichever
@@ -410,6 +419,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
+        if (b == Button::B) erasing_ = false;
         return;
     }
 
@@ -420,10 +430,9 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::B && !input.held(Button::A)) {
-        const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
-        if (slot >= 0) pat().notes[slot] = NoteEvent();
-        else if (chord >= 0) pat().chords[chord] = ChordEvent();
-        if (slot >= 0 || chord >= 0) resend();
+        // Deletes what is under the cursor, and, held, whatever the cursor is dragged over.
+        erasing_ = true;
+        eraseHere();
     } else if (b == Button::X) {
         if (const ChordEvent* chord = chordHere()) hearChord(*chord);
         else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
@@ -707,7 +716,6 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "chord");
         hint("UP / DOWN", "inversion");
         hint("L1 R1", "pack");
-        hint("X", "hear");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
@@ -718,15 +726,14 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("D-PAD ^ v", "length by steps");
         hint("L2 / R2", "nudge early / late");
     } else {
-        hint("STICK", "move");
         hint("A", under || chordUnder ? "level / length" : "place");
         if (under || chordUnder) hint("B", "delete");
-        hint("X", "hear");
         hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap chord" : "chord");
         hint("HOLD R1", "paint");
+        hint("HOLD B", "erase");
         hint("L1", "zoom");
     }
-    hints(r, fonts, list, count);
+    hints(r, fonts, list, count, true);
 }
 
 } // namespace apotheca

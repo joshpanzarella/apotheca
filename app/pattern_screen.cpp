@@ -751,31 +751,27 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("STICK LEFT / RIGHT", "where the sound starts");
         hint("TAP Y", "100 > 75 > 50 > 25");
     } else if (dicing_ && onName) {
-        hint("STICK UP / DOWN", "more / fewer hits");
-        hint("RIGHT", "roll every hit's start");
-        hint("LEFT", "starts back to the top");
+        hint("UP / DOWN", "more / fewer hits");
+        hint("RIGHT", "roll the starts");
+        hint("LEFT", "starts to the top");
         hint("TAP Y", "reshuffle");
     } else if (shaping_) {
         hint("STICK UP / DOWN", onTempo_ ? "tempo" : "drum volume");
     } else if (onTempo_) {
-        hint("STICK", "move");
         hint("HOLD A + STICK", "tempo");
         hint("START", project_.playing ? "stop" : "play");
     } else if (onName) {
-        hint("STICK", "move");
-        hint("A", "play drum");
-        hint("HOLD A + STICK", "volume");
-        hint("HOLD Y + STICK", "dice");
+        hint("HOLD A", "volume");
+        hint("HOLD Y", "dice");
         hint("TAP Y", "roll");
     } else {
-        hint("STICK", "move");
         hint("A", hitHere() ? "level / nudge" : "place");
         hint("Y", hitHere() ? "chance / start" : "maybe");
         if (hitHere()) hint("B", "delete");
         hint("HOLD R1", "paint");
         hint("R1 + R2", "paint random");
     }
-    ui::hints(r, fonts, hints, count);
+    ui::hints(r, fonts, hints, count, !onTempo_);
 }
 
 } // namespace apotheca

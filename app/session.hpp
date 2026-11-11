@@ -178,6 +178,18 @@ public:
     void setOctavesShown(int octaves);
     void loadSettings();
 
+    // ---- mute, solo, names -----------------------------------------------------------
+    // A muted track is silent. While any track is soloed, only soloed ones
+    // are heard, muted or not. Both act at once; the song keeps mutes only.
+    void setMuted(int track, bool muted);
+    void setSolo(int track, bool solo);
+    bool heard(int track) const; // as things stand, does this track sound?
+    // What the player calls a track: capitals, digits, spaces, - and _, ten
+    // at most. Empty puts back its instrument's name.
+    void setTrackName(int track, const std::string& name);
+    void hearTrack(int track); // X on the SONG screen: its kick, or a middle C
+    void sendMutes(); // tell the engine how things stand (after a song is opened)
+
     // ---- a synth's sound ---------------------------------------------------------------
     // One place for changing a synth track's patch, used by the Device screen
     // and by the sound-designer page alike.

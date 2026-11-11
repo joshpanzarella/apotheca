@@ -83,6 +83,12 @@ and the stick shapes the thing under the cursor:
 | A | Turns the value: it fills or drains |
 | Y | Chance, on the drum grid |
 
+**X hears what is under the cursor on every working screen** (a drum, a
+key, a chord, a track). The bottom bar shows an X and a small loudspeaker
+where that is so, and does not list it each time. Moving with the stick or
+D-pad is not listed either. The bar never runs off the screen: a hint that
+does not fit is left out.
+
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
 the list of songs). **START** plays: the song from
@@ -116,7 +122,7 @@ are mixed).
 
 | Effect | Settings |
 | --- | --- |
-| FILTER | Cutoff, resonance, type (low / band / high pass), mix |
+| FILTER | Cutoff, resonance, type, mix. Types: LOW PASS 12 (two poles, gentle), LOW PASS 24 (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | DRIVE | Drive, tone, mix, output |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
 | REVERB | Size, damping, mix |
@@ -146,6 +152,7 @@ else), or it goes by itself after four seconds.
 | --- | --- | --- |
 | TEMPO | A beat a minute | |
 | CHORD PACK | Another pack | |
+| TRACK NAME | A name for the track being worked on, from a list | |
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
@@ -154,8 +161,41 @@ else), or it goes by itself after four seconds.
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
 
-The first two belong to the song. The rest belong to the handheld and are
+The first three belong to the song. The rest belong to the handheld and are
 kept in `settings.txt` and `volume.txt` beside the program.
+
+### The sound designer
+
+A web page for building sounds on a computer's big screen. **The handheld
+makes the sound**: the page is only the controls. Turn the WiFi page on
+(SETUP), open its address in a browser, and follow "Open the sound
+designer".
+
+- It works on **the track being worked on** on the handheld, if that is a
+  PHAZED or TWIN track. Move to another track there and the page follows.
+- Every setting of the synth is on the page, in the same groups as the
+  handheld's pages, with the eight macros at the top. Phazed's envelopes
+  are drawn as lines. Turn something on the handheld and the page shows it.
+- **Play it** by clicking the keys or with the computer's keyboard
+  (A W S E D F T G Y H U J K; Z and X change octave).
+- **SAVE AS PRESET** keeps the sound, macros included, under a name. It
+  appears at once in the handheld's preset list, in a folder called USER,
+  and is kept as a file in `presets` beside the program (`NAME.phazed`,
+  `NAME.twin`). Saving under the same name again replaces it.
+- TRACK NAME on the page can be anything; on the handheld it is picked from
+  a list (SETUP).
+
+A song keeps the whole sound of each track, not only the preset's number,
+so a song still sounds right if a preset is later changed or removed.
+
+### Keeping up
+
+Twin Analog's OVERSAMPLE setting costs a lot: x8 with two chords held is
+more than the handheld can work out in time, and the sound stutters. So
+Apotheca watches how long each block of sound takes. When it is falling
+behind, it turns the oversampling down a notch at a time (the setting
+itself is left alone) and the top bar says BUSY: OVERSAMPLING DOWN. After
+ten seconds with time to spare it goes back up a notch.
 
 ### A USB keyboard
 
@@ -184,6 +224,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
+| A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | + TRACK | Pick DRUMS, PHAZED or TWIN ANALOG | | | |
 
@@ -310,9 +351,9 @@ The stick does one of those per push. A places a hit. Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
-started on, or 80%). Hold **R2** and drag for random levels. R2 is also
-"next screen": a tap shorter than a quarter of a second, with nothing
-painted, still is.
+started on, or 80%). **Add R2 while R1 is held** and the brush paints
+random levels for as long as R2 is down. R2 by itself is "next screen", at
+once.
 
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
 hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
@@ -384,6 +425,7 @@ is loud; holding A shapes it the way it is drawn.
 | B | Delete the note under the cursor |
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
+| Hold B and drag | Delete every note (or chord) the cursor crosses |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
 A note runs at most to the end of the bar, or to the next note on that key.
