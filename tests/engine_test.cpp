@@ -1186,6 +1186,72 @@ static void testEffectsOneByOne() {
         f->reset();
         CHECK(peakOf(through(*f, std::vector<float>(480, 0.f))) == 0.f);
     }
+    // FILTER, the five types.
+    {
+        // Songs kept when there were three types (a third of the range each) open as what they were.
+        CHECK(filterType(0.f) == FilterType::LowPass2 && filterType(1.f / 6.f) == FilterType::LowPass2 && filterType(0.5f) == FilterType::BandPass);
+        CHECK(filterType(5.f / 6.f) == FilterType::HighPass && filterType(1.f) == FilterType::HighPass);
+        CHECK(filterType(0.3f) == FilterType::LowPass4 && filterType(0.7f) == FilterType::Dj && filterType(-1.f) == FilterType::LowPass2);
+        std::unique_ptr<Effect> f = makeEffect(EffectKind::Filter, 48000.f, 120.f);
+        f->setParam(0, 0.5f); // about 800 Hz
+        f->setParam(1, 0.f);
+        const auto kept = [&](float hz) {
+            const std::vector<float> tone = sine(hz, 24000);
+            f->reset();
+            return rmsOf(through(*f, tone), 12000, 24000) / rmsOf(tone, 12000, 24000);
+        };
+        // Four poles fall twice as fast as two: two octaves above the corner,
+        // two poles leave about a sixteenth, four about a 256th. Below it, both let the sound by.
+        f->setParam(2, 0.1f);
+        const float two = kept(3200.f), twoLow = kept(100.f);
+        f->setParam(2, 0.3f);
+        const float four = kept(3200.f), fourLow = kept(100.f);
+        CHECK(two > 0.03f && two < 0.12f && four > 0.002f && four < 0.008f && twoLow > 0.9f && fourLow > 0.9f);
+        // Resonance still lifts the corner on the four-pole one.
+        const float plain = kept(807.f);
+        f->setParam(1, 1.f);
+        CHECK(kept(807.f) > 4.f * plain);
+        f->setParam(1, 0.f);
+
+        // The DJ filter. In the middle: nothing at all, sample for sample.
+        f->setParam(2, 0.7f);
+        f->setParam(0, 0.5f);
+        const std::vector<float> both = sine(100.f, 4800, 0.5f);
+        f->reset();
+        CHECK(through(*f, both) == both);
+        f->setParam(0, 0.515f); // anywhere in the little dead part round the middle
+        CHECK(through(*f, both) == both);
+        f->setParam(0, 0.485f);
+        CHECK(through(*f, both) == both);
+        // Turned down: the top goes, the bottom stays. Turned up: the other way.
+        f->setParam(0, 0.25f);
+        CHECK(kept(8000.f) < 0.05f && kept(100.f) > 0.9f);
+        f->setParam(0, 0.f);
+        CHECK(kept(1000.f) < 0.01f && kept(40.f) > 0.5f);
+        f->setParam(0, 0.75f);
+        CHECK(kept(100.f) < 0.15f && kept(8000.f) > 0.9f);
+        f->setParam(0, 1.f);
+        CHECK(kept(1000.f) < 0.05f && kept(16000.f) > 0.5f);
+        // Just out of the middle it is only beginning: most of the sound is still as it was.
+        f->setParam(0, 0.53f);
+        CHECK(kept(40.f) > 0.6f && kept(8000.f) > 0.95f);
+        f->setParam(0, 0.47f);
+        CHECK(kept(40.f) > 0.95f && kept(15000.f) > 0.5f);
+        // Where its corner is, for the screen.
+        float hz = 1.f;
+        CHECK(djFilter(0.5f, hz) == 0 && hz == 0.f);
+        CHECK(djFilter(0.f, hz) == -1 && std::fabs(hz - 60.f) < 0.5f);
+        CHECK(djFilter(0.479f, hz) == -1 && hz > 18000.f && hz < 20000.f);
+        CHECK(djFilter(0.521f, hz) == 1 && hz > 20.f && hz < 22.f);
+        CHECK(djFilter(1.f, hz) == 1 && std::fabs(hz - 8000.f) < 1.f);
+        // Back from the middle after a loud sound: no burst of what it held.
+        f->setParam(0, 0.2f);
+        through(*f, sine(200.f, 4800, 1.f));
+        f->setParam(0, 0.5f);
+        through(*f, std::vector<float>(64, 0.f));
+        f->setParam(0, 0.2f);
+        CHECK(peakOf(through(*f, std::vector<float>(480, 0.f))) == 0.f);
+    }
     // DRIVE: never louder than its ceiling however hard it is hit, and it bends the wave.
     {
         std::unique_ptr<Effect> d = makeEffect(EffectKind::Drive, 48000.f, 120.f);

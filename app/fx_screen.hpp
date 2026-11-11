@@ -22,7 +22,9 @@
 namespace apotheca {
 
 // How a setting reads: "810 HZ", "1/8.", "8 BITS", "35%".
-void effectParamText(EffectKind kind, int index, float value, char* out, int size);
+// `all` is the effect's settings together, for one whose reading depends on
+// another (the DJ filter's cutoff); without it, each is read by itself.
+void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
 class FxScreen {
 public:

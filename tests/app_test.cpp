@@ -1687,6 +1687,23 @@ void testTheEffectsScreen() {
     CHECK(std::string(text) == "30 HZ");
     effectParamText(EffectKind::Filter, 0, 1.f, text, sizeof text);
     CHECK(std::string(text) == "21.7 KHZ");
+    {
+        // The five filter types, and the DJ filter's cutoff, which reads as what it is doing.
+        const char* names[5] = {"LOW PASS 12", "LOW PASS 24", "BAND PASS", "DJ", "HIGH PASS"};
+        for (int i = 0; i < 5; ++i) {
+            effectParamText(EffectKind::Filter, 2, (i + 0.5f) / 5.f, text, sizeof text);
+            CHECK(std::string(text) == names[i]);
+        }
+        const float dj[4] = {0.f, 0.f, 0.7f, 1.f}, low[4] = {0.f, 0.f, 0.1f, 1.f};
+        effectParamText(EffectKind::Filter, 0, 0.5f, text, sizeof text, dj);
+        CHECK(std::string(text) == "OPEN");
+        effectParamText(EffectKind::Filter, 0, 0.f, text, sizeof text, dj);
+        CHECK(std::string(text) == "LOW 60 HZ");
+        effectParamText(EffectKind::Filter, 0, 1.f, text, sizeof text, dj);
+        CHECK(std::string(text) == "HIGH 8.0 KHZ");
+        effectParamText(EffectKind::Filter, 0, 0.f, text, sizeof text, low); // any other type: the corner itself
+        CHECK(std::string(text) == "30 HZ");
+    }
     effectParamText(EffectKind::Filter, 2, 0.5f, text, sizeof text);
     CHECK(std::string(text) == "BAND PASS");
     effectParamText(EffectKind::Delay, 0, 0.4f, text, sizeof text);

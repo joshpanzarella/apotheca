@@ -14,21 +14,28 @@ bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b ==
 
 // Settings that are a choice, not an amount: how many choices.
 int choices(EffectKind kind, int index) {
-    if (kind == EffectKind::Filter && index == 2) return 3;
+    if (kind == EffectKind::Filter && index == 2) return 5;
     if (kind == EffectKind::Delay && index == 0) return 6;
     return 0;
 }
 }
 
-void effectParamText(EffectKind kind, int index, float v, char* out, int size) {
+void effectParamText(EffectKind kind, int index, float v, char* out, int size, const float* all) {
     const std::size_t n = static_cast<std::size_t>(size);
     const int percent = static_cast<int>(std::round(v * 100.f));
-    if (kind == EffectKind::Filter && index == 0) {
+    if (kind == EffectKind::Filter && index == 0 && all && filterType(all[2]) == FilterType::Dj) {
+        float hz = 0.f;
+        const int side = djFilter(v, hz);
+        if (side == 0) std::snprintf(out, n, "OPEN");
+        else if (hz >= 1000.f) std::snprintf(out, n, "%s %.1f KHZ", side < 0 ? "LOW" : "HIGH", hz / 1000.f);
+        else std::snprintf(out, n, "%s %d HZ", side < 0 ? "LOW" : "HIGH", static_cast<int>(std::round(hz)));
+    } else if (kind == EffectKind::Filter && index == 0) {
         const float hz = 30.f * std::pow(2.f, v * 9.5f);
         if (hz >= 1000.f) std::snprintf(out, n, "%.1f KHZ", hz / 1000.f);
         else std::snprintf(out, n, "%d HZ", static_cast<int>(std::round(hz)));
     } else if (kind == EffectKind::Filter && index == 2) {
-        std::snprintf(out, n, "%s", v < 1.f / 3.f ? "LOW PASS" : v < 2.f / 3.f ? "BAND PASS" : "HIGH PASS");
+        static const char* names[5] = {"LOW PASS 12", "LOW PASS 24", "BAND PASS", "DJ", "HIGH PASS"};
+        std::snprintf(out, n, "%s", names[static_cast<int>(filterType(v))]);
     } else if (kind == EffectKind::Delay && index == 0) {
         static const char* names[9] = {"", "1/16", "1/8", "1/8 DOTTED", "1/4", "", "1/4 DOTTED", "", "1/2"};
         std::snprintf(out, n, "%s", names[delaySteps(v)]);
@@ -188,7 +195,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const bool here = row == row_;
         valueBox(r, fonts, 8, y + 18, colW, boxH, "EFFECT", info.name, -1.f, here && column_ == 0, holding_);
         for (int p = 0; p < info.params; ++p) {
-            effectParamText(kind, p, d.param[p], text, sizeof text);
+            effectParamText(kind, p, d.param[p], text, sizeof text, d.param);
             valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, d.param[p],
                      here && column_ == p + 1, holding_);
         }
