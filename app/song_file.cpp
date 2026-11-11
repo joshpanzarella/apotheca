@@ -113,9 +113,10 @@ std::string songText(const Project& project) {
                             out += p.fromDice[lane][step] ? " 1" : " 0";
                             if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
                             out += "\n";
-                            // fx LANE STEP PITCH RATCHET BACKWARDS CUT: the hit's step effects, if it has any
+                            // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT: the hit's step effects, if it has any
+                            // ("fx" is taken: it is an effect in a slot.)
                             if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
-                                put(out, "fx %.0f", lane + 1);
+                                put(out, "stepfx %.0f", lane + 1);
                                 put(out, " %.0f", step + 1);
                                 put(out, " %.0f", fx.pitch);
                                 put(out, " %.0f", fx.hits());
@@ -324,7 +325,7 @@ bool parseSong(const std::string& text, Project& project) {
             p.chance[l][s] = clampf(static_cast<float>(chance), 0.05f, 1.f);
             p.fromDice[l][s] = dice != 0;
             p.start[l][s] = clampf(static_cast<float>(start), 0.f, 1.f);
-        } else if (word == "fx" && track->kind == TrackKind::Drums) {
+        } else if (word == "stepfx" && track->kind == TrackKind::Drums) {
             double lane, step, pitch = 0, ratchet = 1, reverse = 0, cut = 0;
             if (!(in >> lane >> step)) continue;
             in >> pitch >> ratchet >> reverse >> cut;

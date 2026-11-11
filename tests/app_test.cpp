@@ -3668,9 +3668,255 @@ void testAFullQueueIsRecoveredFrom() {
     CHECK(rig.listen(kStep) > 0.05f); // the kick, on the first step
 }
 
+// ---- step effects: hold X on a drum hit ---------------------------------------------------
+
+// How long whatever is heard next lasts, in frames (from the first sound to the last).
+int soundsFor(Rig& rig, int within = 60000) {
+    const std::vector<float> out = rig.render(within);
+    int first = -1, last = -1;
+    for (int i = 0; i < within; ++i) {
+        if (std::fabs(out[2 * static_cast<std::size_t>(i)]) < 1e-5f) continue;
+        if (first < 0) first = i;
+        last = i;
+    }
+    return first < 0 ? 0 : last - first + 1;
+}
+
+void testStepEffects() {
+    Rig rig;
+    PatternScreen& drums = rig.app.drums();
+    rig.frames(2);
+    drums.moveCursorTo(0, 4);
+    rig.tap(A); // a kick on step 5
+    rig.frames(2);
+    const int plain = (rig.render(60000), rig.tap(X), soundsFor(rig));
+    CHECK(plain > 3000 && !drums.fx(0, 4).any() && !drums.effecting());
+
+    // X held on a hit: up and down are its pitch, a semitone a click. The cursor stays where it is.
+    rig.key(X, true);
+    CHECK(drums.effecting());
+    rig.tap(UP);
+    CHECK(drums.fx(0, 4).pitch == 1 && drums.cursorLane() == 0 && drums.cursorStep() == 4);
+    rig.tap(UP, 20);
+    CHECK(drums.fx(0, 4).pitch == 12); // an octave is the most
+    rig.tap(DOWN, 30);
+    CHECK(drums.fx(0, 4).pitch == -12);
+    rig.tap(UP, 12);
+    CHECK(drums.fx(0, 4).pitch == 0 && !drums.fx(0, 4).any());
+    // Left and right: how many times it is played inside the step.
+    rig.tap(RIGHT);
+    CHECK(drums.fx(0, 4).hits() == 2 && drums.cursorStep() == 4);
+    rig.tap(RIGHT, 5);
+    CHECK(drums.fx(0, 4).hits() == 4 && drums.fx(0, 4).ratchet == 4);
+    rig.tap(LEFT, 9);
+    CHECK(drums.fx(0, 4).hits() == 1 && drums.fx(0, 4).ratchet == 0 && !drums.fx(0, 4).any()); // "one" is kept one way
+    // L1: backwards, and back. It does not open the slices, and R1 does not paint.
+    rig.tap(L1);
+    CHECK(drums.fx(0, 4).reverse == 1 && !drums.slicing());
+    rig.tap(L1);
+    CHECK(drums.fx(0, 4).reverse == 0);
+    // R1: the cut, round: a step, a half, a quarter, off.
+    for (int expected : {1, 2, 3, 0, 1}) {
+        rig.tap(R1);
+        CHECK(drums.fx(0, 4).cut == expected && !drums.painting());
+    }
+    rig.tap(R1, 3);
+    CHECK(!drums.fx(0, 4).any() && drums.level(0, 5) == 0.f && drums.level(0, 3) == 0.f);
+    rig.key(X, false);
+    CHECK(!drums.effecting());
+    // With X let go the D-pad is the cursor again, and L1 and R1 their usual selves.
+    rig.tap(RIGHT);
+    CHECK(drums.cursorStep() == 5 && !drums.fx(0, 4).any());
+    rig.tap(LEFT);
+
+    // Held over, the D-pad runs: clicks, some eight a second up and down, four sideways. Not the cursor's 33.
+    rig.key(X, true);
+    rig.key(UP, true);
+    rig.frames(62); // a second
+    rig.key(UP, false);
+    CHECK(drums.fx(0, 4).pitch >= 5 && drums.fx(0, 4).pitch <= 9);
+    rig.tap(DOWN, 12);
+    rig.key(RIGHT, true);
+    rig.frames(20); // a third of a second: the press, and one more after the wait
+    rig.key(RIGHT, false);
+    CHECK(drums.fx(0, 4).hits() == 3);
+    rig.tap(LEFT, 4);
+    // The stick: a click at once, and then it runs. One way per push.
+    drums.setFx(0, 4, StepFx());
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    CHECK(drums.fx(0, 4).pitch == 1);
+    rig.frames(62);
+    CHECK(drums.fx(0, 4).pitch >= 6 && drums.fx(0, 4).pitch <= 11 && drums.fx(0, 4).hits() == 1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    CHECK(drums.fx(0, 4).hits() == 2);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    rig.key(X, false);
+    const int wasPitch = drums.fx(0, 4).pitch;
+    CHECK(drums.fx(0, 4).hits() == 1 && wasPitch >= 5);
+    // The stick with X let go moves the cursor, as ever.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(drums.cursorStep() == 5 && drums.fx(0, 4).pitch == wasPitch);
+    drums.moveCursorTo(0, 4);
+    drums.setFx(0, 4, StepFx());
+
+    // Each change is heard, as the pattern will play it. An octave up: the kick is over in half the time.
+    rig.render(60000);
+    rig.frames(20);
+    rig.key(X, true);
+    CHECK(std::abs(soundsFor(rig) - plain) < plain / 20); // X itself: the hit as it is
+    rig.tap(UP, 12);
+    int lasted = soundsFor(rig);
+    CHECK(lasted > plain / 2 - plain / 10 && lasted < plain / 2 + plain / 10);
+    // Cut to a quarter of a step: 1500 frames and a fade.
+    rig.tap(DOWN, 12);
+    rig.render(60000);
+    rig.tap(R1, 3);
+    lasted = soundsFor(rig);
+    CHECK(lasted >= 1500 && lasted <= 1560);
+    // A tap of X on it afterwards plays the same.
+    rig.key(X, false);
+    rig.render(60000);
+    rig.tap(X);
+    lasted = soundsFor(rig);
+    CHECK(lasted >= 1500 && lasted <= 1560);
+    // A ratchet of three, heard by hand: three kicks, a third of a step apart (the last ends 4000 frames after the first began).
+    rig.key(X, true);
+    rig.render(60000);
+    rig.tap(RIGHT, 2);
+    lasted = soundsFor(rig);
+    CHECK(lasted >= 4000 + 1500 && lasted <= 4000 + 1560);
+    rig.key(X, false);
+    // Nothing is played over the song while it runs.
+    rig.render(60000);
+    rig.tap(START);
+    rig.key(X, true);  // (X itself hears the hit, playing or not: three short kicks, over inside the first step)
+    rig.render(kStep);
+    rig.tap(UP);
+    CHECK(drums.fx(0, 4).pitch == 1);
+    rig.tap(DOWN);
+    rig.tap(L1);
+    rig.tap(L1);
+    rig.key(X, false);
+    CHECK(soundsFor(rig, 2 * kStep) == 0); // steps 2 and 3 of a bar whose only hit is on step 5: the changes made no sound
+    // ...and the pattern plays the hit with its effects: on step 5, three short kicks.
+    const std::vector<float> bar = rig.render(13 * kStep); // steps 4 to 16
+    CHECK(Rig::peak(bar, 0, kStep - 10) == 0.f && Rig::peak(bar, kStep, kStep + 1400) > 0.05f && Rig::peak(bar, kStep + 1600, kStep + 1950) == 0.f);
+    CHECK(Rig::peak(bar, kStep + 2000, kStep + 3400) > 0.05f && Rig::peak(bar, kStep + 4000, kStep + 5400) > 0.05f && Rig::peak(bar, 2 * kStep + 100, 13 * kStep) == 0.f);
+    rig.tap(START);
+    rig.render(60000);
+
+    // The song keeps them, on a line of their own under the hit; a plain hit has no such line.
+    drums.moveCursorTo(2, 9);
+    rig.tap(A);
+    std::string text = songText(rig.project());
+    CHECK(text.find("\nstepfx 1 5 0 3 0 3\n") != std::string::npos && text.find("stepfx 3 10") == std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    const StepFx& kept = back->tracks[0].drums[0][0].fx[0][4];
+    CHECK(kept.pitch == 0 && kept.ratchet == 3 && kept.reverse == 0 && kept.cut == 3 && !back->tracks[0].drums[0][0].fx[2][9].any());
+    // Nonsense in a file is held to what there is; a line for a step or lane there is not is skipped.
+    const std::size_t at = text.find("stepfx 1 5 0 3 0 3");
+    CHECK(at != std::string::npos);
+    if (at != std::string::npos) text.replace(at, 18, "stepfx 1 5 -40 9 7 5\nstepfx 99 5 3 3 1 1\nstepfx 1 99 3 3 1 1\nstepfx 3 10 2");
+    std::unique_ptr<Project> odd(new Project);
+    CHECK(parseSong(text, *odd));
+    const StepFx& held = odd->tracks[0].drums[0][0].fx[0][4];
+    CHECK(held.pitch == -12 && held.ratchet == 4 && held.reverse == 1 && held.cut == 0);
+    CHECK(odd->tracks[0].drums[0][0].fx[2][9].pitch == 2 && odd->tracks[0].drums[0][0].fx[2][9].hits() == 1); // a short line: the rest as usual
+    // Opened afresh, it plays as it did.
+    Rig opened;
+    opened.project() = *back;
+    opened.app.session().applyProject();
+    opened.frames(2);
+    opened.render(60000);
+    opened.tap(START);
+    const std::vector<float> again = opened.render(6 * kStep);
+    CHECK(Rig::peak(again, 4 * kStep, 4 * kStep + 1400) > 0.05f && Rig::peak(again, 4 * kStep + 1600, 4 * kStep + 1950) == 0.f && Rig::peak(again, 4 * kStep + 2000, 4 * kStep + 3400) > 0.05f);
+
+    // Deleting a hit takes its effects with it: the next hit placed there is plain.
+    drums.moveCursorTo(0, 4);
+    rig.tap(B);
+    CHECK(!drums.fx(0, 4).any());
+    rig.tap(A);
+    CHECK(drums.level(0, 4) > 0.f && !drums.fx(0, 4).any());
+    // Undo takes an effect back.
+    rig.frames(60);
+    rig.key(X, true);
+    rig.tap(L1);
+    rig.key(X, false);
+    CHECK(drums.fx(0, 4).reverse == 1);
+    rig.frames(60);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(drums.fx(0, 4).reverse == 0 && drums.level(0, 4) > 0.f);
+
+    // X is only a hold on a hit. On an empty step, a lane's name or the tempo it just hears, and the D-pad moves the cursor.
+    drums.moveCursorTo(0, 7);
+    rig.key(X, true);
+    CHECK(!drums.effecting());
+    rig.tap(RIGHT);
+    CHECK(drums.cursorStep() == 8);
+    rig.key(X, false);
+    drums.moveCursorTo(0, -1);
+    rig.key(X, true);
+    CHECK(!drums.effecting());
+    rig.key(X, false);
+    // Nor while a hit is being shaped (A) or its chance set (Y), or a brush is down.
+    drums.moveCursorTo(0, 4);
+    for (SDL_Keycode other : {A, Y, R1}) {
+        rig.key(other, true);
+        rig.key(X, true);
+        CHECK(!drums.effecting());
+        rig.key(X, false);
+        rig.key(other, false);
+    }
+    drums.setStep(0, 4, 0.8f);
+    drums.setFx(0, 4, StepFx());
+    // If the hit goes while X is held (deleted), the hold is over.
+    rig.key(X, true);
+    CHECK(drums.effecting());
+    rig.tap(B);
+    rig.frames(1);
+    CHECK(!drums.effecting() && drums.level(0, 4) == 0.f);
+    rig.key(X, false);
+    // Setting them from outside holds them to what there is.
+    drums.setStep(0, 4, 0.8f);
+    StepFx wild;
+    wild.pitch = 90;
+    wild.ratchet = 77;
+    wild.reverse = 9;
+    wild.cut = 40;
+    drums.setFx(0, 4, wild);
+    CHECK(drums.fx(0, 4).pitch == 12 && drums.fx(0, 4).ratchet == 4 && drums.fx(0, 4).reverse == 1 && drums.fx(0, 4).cut == 0);
+    wild.pitch = -90;
+    wild.ratchet = 1;
+    drums.setFx(0, 4, wild);
+    CHECK(drums.fx(0, 4).pitch == -12 && drums.fx(0, 4).ratchet == 0);
+    drums.setFx(-1, 4, wild);
+    drums.setFx(0, 99, wild);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testStepEffects();
     testAFullQueueIsRecoveredFrom();
     testANewProjectIsOneDrumTrack();
     testAddingTracks();
