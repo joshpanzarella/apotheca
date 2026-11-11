@@ -92,6 +92,12 @@ stick or the D-pad gives is written as the direction alone (UP / DOWN); the
 two are named only where they do different things. The bar never runs off
 the screen: a hint that does not fit is left out.
 
+**SELECT + B is undo; SELECT + A puts it back.** Twenty steps deep. One
+step is one burst of editing: a paint stroke, a roll of the dice, a cell
+emptied, a chord placed. It covers what is in the patterns (hits, notes,
+chords, how long each cell is, how often each scene plays); sounds, effects
+and settings are not part of it. The song keeps playing while you undo.
+
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
 the list of songs). **START** plays: the song from
@@ -411,6 +417,8 @@ to again.
 
 The stick does one of those per push. A places a hit. Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
+
+Hold **B** and drag to delete every hit the cursor crosses.
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
 started on, or 80%). **Add R2 while R1 is held** and the brush paints

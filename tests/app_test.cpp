@@ -1437,7 +1437,20 @@ void testUndoAndRedo() {
     int undone = 0;
     while (session.undo()) ++undone;
     CHECK(undone == Session::kUndoLevels);
-    // Another song: nothing of this one to go back to.
+    // On the SONG screen too, SELECT + B is undo and not a tap of SELECT: the list of songs stays shut.
+    drums.moveCursorTo(6, 1);
+    rig.tap(A);
+    settle();
+    drums.moveCursorTo(6, 2);
+    rig.tap(A);
+    settle();
+    session.view = View::Song;
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(drums.level(6, 2) == 0.f && drums.level(6, 1) > 0.f && !rig.app.song().listingSongs() && session.undoSteps() == 1 && session.redoSteps() == 1);
+    // Another song: nothing of this one to go back to, or forward to.
     session.newSong();
     rig.frames(2);
     CHECK(session.undoSteps() == 0 && session.redoSteps() == 0 && !session.undo());
