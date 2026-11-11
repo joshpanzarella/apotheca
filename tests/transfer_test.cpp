@@ -754,7 +754,29 @@ static void testTheOpenSongFollows() {
     frames(2);
 }
 
+// The page's SPEED TEST: what the timing run prints, behind the number like everything else.
+static void testTheSpeedTest() {
+    const std::string root = tempFolder();
+    Transfer transfer;
+    CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 4242));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    const std::string was = Transfer::benchCommand;
+    CHECK(was.find("--bench") != std::string::npos); // the program itself, timing only
+    Transfer::benchCommand = "echo Phazed 4.2; echo Twin 9.9";
+    Answer a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
+    CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nTwin 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
+    CHECK(raw(port, "GET /bench HTTP/1.1\r\n\r\n").status == 403); // not without the number
+    CHECK(raw(port, "POST " + door + "/bench HTTP/1.1\r\nContent-Length: 0\r\n\r\n").body.find("Phazed") == std::string::npos); // only asked for, never sent to
+    Transfer::benchCommand = "echo half; exit 3";
+    a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
+    CHECK(a.status == 200 && a.body.find("half\n") != std::string::npos && a.body.find("did not finish") != std::string::npos);
+    Transfer::benchCommand = was;
+    CHECK(raw(port, "GET " + door + "/ HTTP/1.1\r\n\r\n").body.find("/bench") != std::string::npos); // the page has the button
+}
+
 int main(int, char**) {
+    testTheSpeedTest();
     testTheOpenSongFollows();
     testMovingWhereRenameIsRefused();
     testNames();

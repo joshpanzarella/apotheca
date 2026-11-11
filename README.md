@@ -453,6 +453,9 @@ the same network.
   they go one after another, each with a bar and a result: `saved`, or
   `refused` and why. A recording is on the kit screen at once; a chord pack
   is in the chord button's list on the next frame.
+- **SPEED TEST** (top of the page) times every instrument and effect on the
+  device and shows the numbers in a new tab. Stop the song first; it takes up
+  to a minute.
 - **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
   folder to open or shut it. FIND narrows the list by name.
 - **To send into a folder**: drop the files on it, or press its ADD FILES

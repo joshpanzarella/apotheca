@@ -88,6 +88,7 @@ public:
     // For tests: behave as a card does that will not rename a file into another folder, so the
     // long way round (write it again, then take the old one away) is the one that runs.
     static bool renameBroken;
+    static std::string benchCommand; // what the page's SPEED TEST runs: this program with --bench (tests put something small here)
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
 

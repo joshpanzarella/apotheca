@@ -95,7 +95,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
  #find{width:110px}
 }
 </style></head><body><main>
-<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="design" href="#">Open the sound designer</a></header>
+<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes up to a minute.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
 
 <div id="drop">
 <div class="line"><button class="main" id="pick">Choose files</button><span class="dim">or drop them on the page, or on a folder.</span></div>
@@ -127,6 +127,7 @@ const picked = new Set(); // recordings ticked, to move or delete together
 const open = new Set(), made = new Set(); // folders showing their files; folders named here with nothing in them yet
 let first = true, filter = '', playing = '', audio = null, into = '';
 $('design').href = base + '/design';
+$('bench').href = base + '/bench';
 
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function btn(text, act, cls) { const b = el('button', cls, text); b.dataset.act = act; return b; }
@@ -626,6 +627,7 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
 }
 
 bool Transfer::renameBroken = false;
+std::string Transfer::benchCommand = "/proc/self/exe --bench 2>&1";
 
 void Transfer::noteChange(const std::string& fromFile, const std::string& toFile) {
     const auto bare = [](const std::string& file) { return file.empty() ? file : file.substr(0, file.size() - 4); }; // every one ends ".wav"
@@ -775,6 +777,19 @@ void Transfer::answer(int fd) {
         for (char c : body)
             if (static_cast<unsigned char>(c) < 32 || static_cast<unsigned char>(c) > 126) return reply(fd, "400 Bad Request", "text/plain", "plain letters only\n");
         return desk_->ask(body) ? reply(fd, "200 OK", "text/plain", "ok\n") : reply(fd, "400 Bad Request", "text/plain", "that makes no sense\n");
+    }
+
+    // The speed test: the program run again by itself, only to time things, and what it printed.
+    if (method == "GET" && path == "/bench") {
+        std::string out = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n";
+        if (FILE* run = popen(benchCommand.c_str(), "r")) {
+            char block[1024];
+            for (std::size_t got; out.size() < 65536 && (got = fread(block, 1, sizeof block, run)) > 0;) out.append(block, got);
+            if (pclose(run) != 0) out += "(the speed test did not finish)\n";
+        } else {
+            out += "could not start the speed test\n";
+        }
+        return reply(fd, "200 OK", "text/plain; charset=utf-8", out);
     }
 
     // A new Apotheca: set aside, never installed from here.

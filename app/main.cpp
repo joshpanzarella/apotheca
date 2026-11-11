@@ -39,6 +39,7 @@
 #include "version.hpp"
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "bench_run.hpp"
 #include "controls.hpp"
 #include "input.hpp"
 #include "realtime.hpp"
@@ -232,6 +233,8 @@ int main(int argc, char** argv) {
     const char* batteryFolder = nullptr;
     const char* songs = nullptr;
     const char* samples = nullptr;
+    for (int i = 1; i < argc; ++i)
+        if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--learn") == 0) learn = true;
@@ -351,6 +354,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
+    engine.setFlushDenormals(true); // numbers too small to hear count as nothing, so a long tail never slows the processor (owner, 2026-11-11)
     engine.watchLoad(!smoke && !shot);
     // The handheld has four processor cores: the tracks are worked out across them, one fewer
     // than there are (one is left for the screen and everything else).

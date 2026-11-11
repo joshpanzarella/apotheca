@@ -95,6 +95,7 @@ bool Session::startBounce(Bounce what) {
             // A second engine and a session of its own to load the song into it.
             std::unique_ptr<Engine> engine(new Engine);
             engine->prepare(rate);
+            engine->setFlushDenormals(true); // as the program plays it
             engine->useWorkers(2); // a bounce is quicker for it too
             std::unique_ptr<Project> copy(new Project(song));
             if (stems[n] >= 0)

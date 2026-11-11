@@ -53,7 +53,7 @@ New screens and gestures keep these; do not invent a variant.
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (16) | `cd build && ctest -j8` (about 15 s) |
-| Timings | `./build/bench` |
+| Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
@@ -163,11 +163,11 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   done, never from `renderTrack`: **the trash queue takes from one thread.**
   A test that wants an effect in place at once uses the setup call
   `setTrackEffect`, or renders 10 ms before it listens.
-- **Flush-to-zero is built and OFF** (`Engine::setFlushDenormals`). On, it is
-  set for each `render()` and on the helpers. It is off because it changes the
-  last vanishing samples of a tail (all below 1e-30) and so 1 of the 40 pinned
-  checksums; turning it on is the owner's call. The old five do not need it.
-  **A new effect with many fading states (HALL) does**: settle this before it ships.
+- **Flush-to-zero is ON in the program and in a bounce** (owner, 2026-11-11;
+  `Engine::setFlushDenormals(true)` in `main.cpp` and `bounce.cpp`), set for
+  each `render()` and on the helpers. It changes the last vanishing samples of
+  a tail (all below 1e-30). **The tests leave it off**, which is why the
+  pinned checksums still match: do not turn it on in `effects_test`.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
