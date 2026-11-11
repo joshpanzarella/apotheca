@@ -1,6 +1,8 @@
 #include "synth_spec.hpp"
 
 #include <cmath>
+
+#include "apotheca/envelope.hpp"
 #include <cstdio>
 
 namespace apotheca {
@@ -165,7 +167,7 @@ void settingText(int id, int value, char* out, int size) {
     case Width: std::snprintf(out, n, "%d%%", value * 2); break; // 50 is natural: 100%
     case Oversample: std::snprintf(out, n, "x%d", 1 << value); break;
     case Attack: case Decay: case Release: {
-        const float seconds = 0.001f * std::pow(8000.f, value / 100.f); // as in engine/src/twin.cpp
+        const float seconds = id == Attack ? envelope::attackSeconds(static_cast<float>(value)) : envelope::fallSeconds(static_cast<float>(value));
         if (seconds < 1.f) std::snprintf(out, n, "%d MS", static_cast<int>(std::round(seconds * 1000.f)));
         else std::snprintf(out, n, "%.1f S", seconds);
         break;

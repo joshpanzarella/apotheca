@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/envelope.hpp"
 #include "apotheca/twin.hpp"
 #include "apotheca/rate_converter.hpp"
 
@@ -256,6 +257,99 @@ static void testLaneLevel() {
 }
 
 // When the machine cannot keep up, synths are told to do plainer work.
+// The envelope every synth shares (envelope.hpp).
+static void testTheSharedEnvelope() {
+    using namespace envelope;
+    // The times: attack 1 ms to 8 s; decay and release 2 ms to 20 s; settings out of range are held.
+    CHECK(std::fabs(attackSeconds(0.f) - 0.001f) < 1e-6f && std::fabs(attackSeconds(100.f) - 8.f) < 1e-3f);
+    CHECK(std::fabs(fallSeconds(0.f) - 0.002f) < 1e-6f && std::fabs(fallSeconds(100.f) - 20.f) < 1e-2f);
+    CHECK(attackSeconds(-5.f) == attackSeconds(0.f) && fallSeconds(500.f) == fallSeconds(100.f));
+    CHECK(attackSeconds(50.f) > 0.08f && attackSeconds(50.f) < 0.1f && fallSeconds(50.f) > 0.19f && fallSeconds(50.f) < 0.21f);
+
+    const float sr = 48000.f;
+    Shape shape;
+    shape.set(0.1f, 0.5f, 0.4f, 1.f, sr);
+    Envelope e;
+    CHECK(e.idle() && e.next(shape) == 0.f); // nothing until a note
+    e.on();
+    // The attack arrives at the top in its time, to the sample or nearly, and never goes over.
+    int arrived = -1;
+    float halfAt = -1.f, most = 0.f, biggestStep = 0.f, last = 0.f;
+    for (int i = 0; i < 6000; ++i) {
+        const float v = e.next(shape);
+        biggestStep = std::fmax(biggestStep, v - last);
+        last = v;
+        most = std::fmax(most, v);
+        if (halfAt < 0.f && v >= 0.5f) halfAt = static_cast<float>(i);
+        if (arrived < 0 && v >= 1.f) arrived = i;
+    }
+    CHECK(std::abs(arrived - 4800) <= 2 && most == 1.f);
+    // Snappy: half-way up in well under half the time (a straight ramp takes exactly half).
+    CHECK(halfAt > 0.3f * 4800.f && halfAt < 0.42f * 4800.f);
+    // Never a jump: the largest step is the very first one, and it is small.
+    CHECK(biggestStep < 1.5f * 1.1f / 4800.f * 1.01f);
+    // Decay heads for the sustain level: 60 dB of the way there in its time.
+    for (int i = 0; i < 24000 - (6000 - 4800); ++i) e.next(shape);
+    CHECK(std::fabs(e.level - 0.4f) < 0.6f * 0.0012f && e.level > 0.4f);
+    for (int i = 0; i < 48000; ++i) e.next(shape);
+    CHECK(std::fabs(e.level - 0.4f) < 1e-4f && e.stage == Envelope::Decay); // held there as long as the key is
+    // Release: down 60 dB in its time, silent and finished a little after.
+    e.off();
+    for (int i = 0; i < 48000; ++i) e.next(shape);
+    CHECK(e.level < 0.4f * 0.00105f && e.level > 0.4f * 0.00095f && !e.idle());
+    for (int i = 0; i < 16000; ++i) e.next(shape);
+    CHECK(e.idle() && e.level == 0.f);
+    e.off(); // letting go of nothing is nothing
+    CHECK(e.idle());
+    // A note played again part-way down starts from where the envelope is: no jump back to nothing.
+    e.on();
+    for (int i = 0; i < 4800; ++i) e.next(shape);
+    e.off();
+    for (int i = 0; i < 12000; ++i) e.next(shape);
+    const float before = e.level;
+    CHECK(before > 0.1f && before < 0.3f);
+    e.on();
+    const float after = e.next(shape);
+    CHECK(after > before && after - before < 0.001f);
+    // The shortest attack is still a ramp of many samples, not a step.
+    shape.setFrom(0.f, 0.f, 100.f, 0.f, sr);
+    Envelope quick;
+    quick.on();
+    float first = quick.next(shape);
+    int n = 1;
+    while (quick.stage == Envelope::Attack && n < 1000) quick.next(shape), ++n;
+    CHECK(first < 0.04f && n >= 46 && n <= 50); // 1 ms
+    // The longest release, from the usual settings: twenty seconds to fall 60 dB.
+    shape.setFrom(0.f, 0.f, 100.f, 100.f, sr);
+    quick.off();
+    for (int i = 0; i < 480000; ++i) quick.next(shape); // ten seconds: half-way, 30 dB down
+    CHECK(quick.level > 0.028f && quick.level < 0.036f);
+
+    // Twin Analog and the sampler both use it. A Twin note let go at RELEASE 100 is still
+    // clearly there six seconds later (it used to be gone, to the ear, by then), and one at RELEASE 0 has gone in a blink.
+    const auto twinTail = [](int release, int afterFrames) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Twin));
+        engine->send(make(Command::SetSetting, 1, twin::Release, release));
+        engine->send(make(Command::SetSetting, 1, twin::Sustain, 100));
+        engine->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
+        const float held = peakOf(renderFrames(*engine, 9600));
+        engine->send(make(Command::NoteOff, 1, 57));
+        renderFrames(*engine, afterFrames);
+        return peakOf(renderFrames(*engine, 2400)) / held;
+    };
+    const float long6 = twinTail(100, 6 * 48000);
+    CHECK(long6 > 0.08f && long6 < 0.2f); // 18 dB down after 6 of its 20 seconds
+    CHECK(twinTail(0, 480) < 0.1f); // the note itself has gone; what is left is the output filter settling
+    // And its attack at 0 is up within a millisecond or so, without a step.
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Twin));
+    engine->send(make(Command::SetSetting, 1, twin::Attack, 0));
+    engine->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
+    const std::vector<float> start = renderFrames(*engine, 480);
+    CHECK(std::fabs(start[0]) < 0.02f && peakOf(start) > 0.05f);
+}
+
 static void testFallingBehindLowersTheQuality() {
     const int block = 256;
     {
@@ -1531,7 +1625,7 @@ static void testTheSampler() {
         return frames;
     };
     const int shortTail = tail(0), longTail = tail(60);
-    CHECK(shortTail >= 200 && shortTail <= 260); // five milliseconds
+    CHECK(shortTail >= 100 && shortTail <= 150); // two milliseconds to fall 60 dB, and a little more to silence
     CHECK(longTail > 10 * shortTail && longTail < 43200);
     set(sampler::Release, 20);
     // ATTACK fades it in.
@@ -1927,6 +2021,7 @@ int main() {
     testKitHitsHard();
     testCeiling();
     testLaneLevel();
+    testTheSharedEnvelope();
     testFallingBehindLowersTheQuality();
     testPatternPlaysOnTheExactSample();
     testNudgeMovesAHitOffTheGrid();

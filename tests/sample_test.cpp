@@ -1055,7 +1055,7 @@ void testTheSamplerTrack() {
     samplerSettingText(sampler::Attack, 0, line, sizeof line);
     CHECK(std::string(line) == "1 MS");
     samplerSettingText(sampler::Release, 100, line, sizeof line);
-    CHECK(std::string(line) == "4.0 S");
+    CHECK(std::string(line) == "20.0 S"); // the shared envelope: release runs to twenty seconds
     samplerSettingText(sampler::Loop, 1, line, sizeof line);
     CHECK(std::string(line) == "ON");
     samplerSettingText(sampler::Level, 80, line, sizeof line);

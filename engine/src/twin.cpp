@@ -1,5 +1,7 @@
 #include "apotheca/twin.hpp"
 
+#include "apotheca/envelope.hpp"
+
 #include <cmath>
 #include <vector>
 
@@ -320,8 +322,6 @@ const Preset kPresets[] = {
 #undef END
 const int kPresetCount = static_cast<int>(sizeof kPresets / sizeof kPresets[0]);
 
-// An envelope time for a 0..100 setting: 1 ms to 8 s.
-float secondsFor(float setting) { return 0.001f * std::pow(8000.f, clampf(setting, 0.f, 100.f) / 100.f); }
 
 } // namespace
 
@@ -358,11 +358,9 @@ int settingMax(int id) {
 struct Twin::State {
     struct Copy { float phase = 0.f, dir = 1.f, drift = 0.f, noise = 0.f; };
     struct OscPair { Copy a, b; float revTravel = 1.f; };
-    enum Stage { Idle, Attacking, Decaying, Releasing };
     struct Voice {
         OscPair v, z;
-        Stage stage = Idle;
-        float level = 0.f;    // the envelope, 0..1
+        envelope::Envelope env; // the shared one (envelope.hpp)
         float velocity = 0.f;
         int note = -1;
         std::uint32_t age = 0; // when it was last started; the oldest is taken first
@@ -379,7 +377,8 @@ struct Twin::State {
         WidthCoeffs width;
         float vintage = 1.f, shapedNoise = 0.f;
         int oversample = 2;
-        float attackStep = 1.f, decayCoef = 0.f, releaseCoef = 0.f, sustain = 0.8f, gain = 0.5f;
+        envelope::Shape env;
+        float gain = 0.5f;
     } r;
 
     TwinPatch patch = startingPatch();
@@ -489,13 +488,9 @@ void Twin::apply() {
     }
     r.oversample = oversample;
 
-    const float attack = secondsFor(clampf(p[Attack] + (m[MacroAttack] - 0.5f) * 100.f, 0.f, 100.f));
-    const float release = secondsFor(clampf(p[Release] + (m[MacroRelease] - 0.5f) * 100.f, 0.f, 100.f));
-    r.attackStep = 1.f / (attack * s.sampleRate);
-    // Decay and release fall by a factor of a thousand (60 dB) in their time.
-    r.decayCoef = std::exp(-6.9078f / (secondsFor(static_cast<float>(p[Decay])) * s.sampleRate));
-    r.releaseCoef = std::exp(-6.9078f / (release * s.sampleRate));
-    r.sustain = p[Sustain] / 100.f;
+    // The shared envelope (envelope.hpp): its times and its shape.
+    r.env.setFrom(p[Attack] + (m[MacroAttack] - 0.5f) * 100.f, static_cast<float>(p[Decay]), static_cast<float>(p[Sustain]),
+                  p[Release] + (m[MacroRelease] - 0.5f) * 100.f, s.sampleRate);
     r.gain = std::pow(10.f, p[Level] / 20.f);
 
     // Voice character: small fixed differences between the eight voices.
@@ -547,10 +542,10 @@ void Twin::noteOn(int note, float velocity) {
     // one that has been going longest.
     State::Voice* chosen = nullptr;
     for (State::Voice& v : s.voices)
-        if (v.note == note && v.stage != State::Idle) { chosen = &v; break; }
+        if (v.note == note && !v.env.idle()) { chosen = &v; break; }
     if (!chosen)
         for (State::Voice& v : s.voices)
-            if (v.stage == State::Idle) { chosen = &v; break; }
+            if (v.env.idle()) { chosen = &v; break; }
     if (!chosen) {
         chosen = &s.voices[0];
         for (State::Voice& v : s.voices)
@@ -558,18 +553,18 @@ void Twin::noteOn(int note, float velocity) {
     }
     chosen->note = note;
     chosen->velocity = velocity > 1.f ? 1.f : velocity;
-    chosen->stage = State::Attacking; // from wherever the envelope is, so a stolen voice does not click
+    chosen->env.on(); // from wherever the envelope is, so a stolen voice does not click
     chosen->age = s.clock++;
 }
 
 void Twin::noteOff(int note) {
     for (State::Voice& v : state_->voices)
-        if (v.note == note && v.stage != State::Idle) v.stage = State::Releasing;
+        if (v.note == note && !v.env.idle()) v.env.off();
 }
 
 void Twin::allNotesOff() {
     for (State::Voice& v : state_->voices)
-        if (v.stage != State::Idle) v.stage = State::Releasing;
+        if (!v.env.idle()) v.env.off();
 }
 
 void Twin::render(float* left, float* right, int frames) {
@@ -598,7 +593,7 @@ void Twin::State::renderBlock(float* left, float* right, int frames) {
     bool anySound = false;
 
     for (Voice& voice : voices) {
-        if (voice.stage == Idle) continue;
+        if (voice.env.idle()) continue;
         anySound = true;
 
         // Drift: each copy wanders on its own, with a little shared breathing.
@@ -651,16 +646,7 @@ void Twin::State::renderBlock(float* left, float* right, int frames) {
         int at = 0;
         for (int frame = 0; frame < frames; ++frame) {
             // The volume envelope, once per engine sample.
-            if (voice.stage == Attacking) {
-                voice.level += r.attackStep;
-                if (voice.level >= 1.f) { voice.level = 1.f; voice.stage = Decaying; }
-            } else if (voice.stage == Decaying) {
-                voice.level = r.sustain + (voice.level - r.sustain) * r.decayCoef;
-            } else {
-                voice.level *= r.releaseCoef;
-                if (voice.level < 0.0001f) { voice.level = 0.f; voice.stage = Idle; }
-            }
-            const float amp = voice.level * voice.velocity;
+            const float amp = voice.env.next(r.env) * voice.velocity;
             const float ampL = amp * voice.panLeft, ampR = amp * voice.panRight;
 
             if (noiseScale > 0.f) {

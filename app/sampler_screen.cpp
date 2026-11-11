@@ -1,5 +1,7 @@
 #include "sampler_screen.hpp"
 
+#include "apotheca/envelope.hpp"
+
 #include <cmath>
 #include <cstdio>
 
@@ -19,11 +21,11 @@ void samplerSettingText(int id, int value, char* out, int size) {
     if (id == sampler::Root) noteName(value, out, size);
     else if (id == sampler::Tune) std::snprintf(out, n, "%+d CENTS", value);
     else if (id == sampler::Attack) {
-        const float ms = std::pow(2000.f, static_cast<float>(value) / 100.f);
+        const float ms = 1000.f * envelope::attackSeconds(static_cast<float>(value));
         if (ms >= 1000.f) std::snprintf(out, n, "%.1f S", ms / 1000.f);
         else std::snprintf(out, n, "%d MS", static_cast<int>(std::round(ms)));
     } else if (id == sampler::Release) {
-        const float ms = 5.f * std::pow(800.f, static_cast<float>(value) / 100.f);
+        const float ms = 1000.f * envelope::fallSeconds(static_cast<float>(value));
         if (ms >= 1000.f) std::snprintf(out, n, "%.1f S", ms / 1000.f);
         else std::snprintf(out, n, "%d MS", static_cast<int>(std::round(ms)));
     } else if (id == sampler::Loop) std::snprintf(out, n, "%s", value ? "ON" : "OFF");

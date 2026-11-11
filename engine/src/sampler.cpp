@@ -33,10 +33,8 @@ void Sampler::setSetting(int id, int value) {
     if (id < 0 || id >= kSettings) return;
     value_[id] = value < settingMin(id) ? settingMin(id) : (value > settingMax(id) ? settingMax(id) : value);
     // The fades, as how far the envelope moves each sample.
-    const float attackSeconds = 0.001f * std::pow(2000.f, static_cast<float>(value_[Attack]) / 100.f);
-    const float releaseSeconds = 0.005f * std::pow(800.f, static_cast<float>(value_[Release]) / 100.f);
-    attackStep_ = 1.f / (attackSeconds * sampleRate_);
-    releaseStep_ = 1.f / (releaseSeconds * sampleRate_);
+    // No decay to speak of: a recording is at full level for as long as the key is down.
+    shape_.setFrom(static_cast<float>(value_[Attack]), 0.f, 100.f, static_cast<float>(value_[Release]), sampleRate_);
     level_ = static_cast<float>(value_[Level]) / 100.f;
 }
 
@@ -64,18 +62,18 @@ void Sampler::noteOn(int note, float velocity) {
     if (voice->position > length_ - 1) voice->position = length_ - 1;
     voice->step = std::pow(2.0, (note - value_[Root]) / 12.0 + value_[Tune] / 1200.0);
     voice->gain = velocity > 1.f ? 1.f : velocity;
-    voice->envelope = 0.f;
-    voice->held = true;
+    voice->env.stop();
+    voice->env.on();
     voice->age = ++clock_;
 }
 
 void Sampler::noteOff(int note) {
     for (Voice& v : voices_)
-        if (v.note == note) v.held = false;
+        if (v.note == note) v.env.off();
 }
 
 void Sampler::allNotesOff() {
-    for (Voice& v : voices_) v.held = false;
+    for (Voice& v : voices_) v.env.off();
 }
 
 void Sampler::render(float* left, float* right, int frames) {
@@ -90,15 +88,11 @@ void Sampler::render(float* left, float* right, int frames) {
                     if (!loop) { v.note = -1; break; }
                     v.position = loopFrom + std::fmod(v.position - loopFrom, length_ - 1 - loopFrom);
                 }
-                if (v.held) {
-                    if (v.envelope < 1.f) v.envelope = v.envelope + attackStep_ > 1.f ? 1.f : v.envelope + attackStep_;
-                } else {
-                    v.envelope -= releaseStep_;
-                    if (v.envelope <= 0.f) { v.note = -1; break; }
-                }
+                const float envelope = v.env.next(shape_);
+                if (v.env.idle()) { v.note = -1; break; }
                 const int at = static_cast<int>(v.position);
                 const float part = static_cast<float>(v.position - at);
-                left[i] += (data_[at] + part * (data_[at + 1] - data_[at])) * v.gain * v.envelope * level_ * kVoiceGain;
+                left[i] += (data_[at] + part * (data_[at + 1] - data_[at])) * v.gain * envelope * level_ * kVoiceGain;
                 v.position += v.step;
             }
         }

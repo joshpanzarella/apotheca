@@ -7,6 +7,7 @@
 // on, goes round from START for as long as the key is held). Letting go
 // fades it over RELEASE.
 
+#include "envelope.hpp"
 #include "apotheca/instrument.hpp"
 
 namespace apotheca {
@@ -47,8 +48,7 @@ private:
         int note = -1;       // -1: free
         double position = 0.0, step = 1.0;
         float gain = 0.f;    // velocity
-        float envelope = 0.f;
-        bool held = false;
+        envelope::Envelope env; // the shared one (envelope.hpp): attack, full while held, release
         unsigned age = 0;    // for choosing which to take when all eight are busy
     };
     const float* data_ = nullptr;
@@ -57,7 +57,8 @@ private:
     Voice voices_[sampler::kVoices];
     unsigned clock_ = 0;
     float sampleRate_ = 48000.f;
-    float attackStep_ = 1.f, releaseStep_ = 1.f, level_ = 0.8f;
+    envelope::Shape shape_;
+    float level_ = 0.8f;
 };
 
 } // namespace apotheca
