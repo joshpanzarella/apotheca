@@ -97,6 +97,9 @@ function control(item, label) {
   }
   const show = () => { val.textContent = input.tagName === 'SELECT' ? '' : shown(item, +input.value); };
   input.addEventListener('input', () => { touched[item.id] = Date.now(); show(); tell('set' + item.id, 'set ' + item.id + ' ' + input.value); if (state) state.values[item.id] = +input.value; drawEnvs(); });
+  // Once a choice is made the dropdown lets go of the keyboard, so the next
+  // key pressed is a note again (and not a letter typed into the dropdown).
+  if (input.tagName === 'SELECT') input.addEventListener('change', () => input.blur());
   box.append(input);
   controls[item.id] = {input, show};
   return box;
@@ -183,7 +186,8 @@ async function look() {
     fill();
   } catch (e) { say('The handheld is not answering. Is the WiFi page still on?', 'no'); }
 }
-$('preset').addEventListener('change', () => { tell('preset', 'preset ' + $('preset').value); touched = {}; setTimeout(look, 250); });
+$('preset').addEventListener('change', () => { tell('preset', 'preset ' + $('preset').value); touched = {}; $('preset').blur(); setTimeout(look, 250); });
+for (const box of [$('called'), $('name')]) box.addEventListener('keydown', e => { if (e.key === 'Enter') box.blur(); });
 $('called').addEventListener('change', () => { tell('name', 'name ' + $('called').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '')); });
 $('save').addEventListener('click', () => {
   const name = $('name').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '').trim();
@@ -208,7 +212,8 @@ $('board').addEventListener('pointerdown', e => { if (e.target.dataset.semi === 
 for (const up of ['pointerup', 'pointercancel', 'pointerleave']) window.addEventListener(up, () => { if (pointerKey >= 0) note(pointerKey, false); pointerKey = -1; });
 const letters = 'awsedftgyhujkolp;';
 window.addEventListener('keydown', e => {
-  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || /INPUT|SELECT/.test(e.target.tagName) && e.target.type !== 'range') return;
+  // Only a box being typed in keeps the keys to itself. Sliders and dropdowns do not.
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || (e.target.tagName === 'INPUT' && e.target.type === 'text')) return;
   const k = e.key.toLowerCase();
   if (k === 'z' || k === 'x') { for (const held of [...down]) note(held, false); octave = Math.max(1, Math.min(8, octave + (k === 'x' ? 1 : -1))); board(); return; }
   const i = letters.indexOf(k); if (i >= 0) { note((octave + 1) * 12 + i, true); e.preventDefault(); }
