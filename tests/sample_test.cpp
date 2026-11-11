@@ -919,6 +919,75 @@ void testTheSamplerTrack() {
     rig.frames(60);
     rig.render(100000);
 
+    // X hears the recording at middle C: its own pitch (220 Hz) while ROOT is where it starts, and the
+    // move when ROOT or TUNE is moved. (It used to play the root key, which never changes.)
+    const auto pitchHeard = [&] {
+        rig.render(100000);
+        rig.tap(X);
+        const std::vector<float> out = rig.render(9600); // a fifth of a second
+        int crossings = 0;
+        for (std::size_t i = 2 * 960; i < out.size(); i += 2) crossings += (out[i - 2] < 0.f) != (out[i] < 0.f);
+        return crossings / 2.0 / 0.18; // hertz, near enough
+    };
+    CHECK(std::fabs(pitchHeard() - 220.0) < 8.0);
+    session.setSamplerSetting(1, sampler::Root, 72); // the recording is now "the C above": middle C plays it an octave down
+    CHECK(std::fabs(pitchHeard() - 110.0) < 8.0);
+    session.setSamplerSetting(1, sampler::Root, 48);
+    CHECK(std::fabs(pitchHeard() - 440.0) < 12.0);
+    session.setSamplerSetting(1, sampler::Root, 60);
+    session.setSamplerSetting(1, sampler::Tune, -100); // a semitone flat
+    CHECK(std::fabs(pitchHeard() - 207.65) < 8.0);
+    session.setSamplerSetting(1, sampler::Tune, 0);
+    // A setting is heard as it is changed, with the song stopped: ROOT, a key up.
+    rig.render(100000);
+    rig.frames(20);
+    rig.tap(RIGHT);
+    CHECK(screen.cursor() == 1);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::Root] == 61 && heard() > 3000);
+    // ...once for a run of quick changes, not once each: they would pile up.
+    rig.frames(20);
+    int times = screen.timesHeard();
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(heard(2000) > 0 && screen.timesHeard() == times + 1);
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(screen.timesHeard() == times + 1);
+    rig.frames(12); // a fifth of a second on, the next change is heard again
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(screen.timesHeard() == times + 2);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::Root] == 60);
+    rig.render(100000);
+    // Not while the song plays: it would land on top of the beat.
+    rig.frames(20);
+    times = screen.timesHeard();
+    rig.tap(START);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(screen.timesHeard() == times && track.sampler[sampler::Root] == 60);
+    rig.tap(START);
+    rig.render(100000);
+    // A change that changes nothing (already at the end) is not heard; nor is one while the song plays.
+    session.setSamplerSetting(1, sampler::Tune, 100);
+    rig.frames(20);
+    rig.tap(RIGHT);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::Tune] == 100 && heard(4800) == 0);
+    session.setSamplerSetting(1, sampler::Tune, 0);
+    rig.tap(LEFT);
+    rig.tap(LEFT);
+    rig.frames(20);
+    rig.render(100000);
+
     // The settings: right along the row, down to the second row, up to SOUND.
     rig.tap(RIGHT);
     CHECK(screen.cursor() == 1);

@@ -31,7 +31,24 @@ void samplerSettingText(int id, int value, char* out, int size) {
     else std::snprintf(out, n, "%d%%", value);
 }
 
-void SamplerScreen::hear() { session_.audition(project_.track, trk().sampler[sampler::Root], 0.8f); }
+// Heard at middle C, always: the key ROOT is set to to begin with. So the
+// recording is heard at its own pitch until ROOT or TUNE is moved, and then
+// the move is heard. (It used to be played at the root key, whatever that
+// was, which is the one key where moving ROOT changes nothing.)
+void SamplerScreen::hear() {
+    ++timesHeard_;
+    session_.audition(project_.track, kHearKey, 0.8f);
+}
+
+// A setting, changed: kept, and heard if the song is not playing. Not more
+// often than a few times a second, however fast the stick turns it.
+void SamplerScreen::setSetting(int id, int value) {
+    const int before = trk().sampler[id];
+    session_.setSamplerSetting(project_.track, id, value);
+    if (trk().sampler[id] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
+    heardAt_ = lastMs_;
+    hear();
+}
 
 void SamplerScreen::stepSound(int by) {
     const int count = static_cast<int>(names_.size()) + 1; // "none" first
@@ -57,7 +74,7 @@ void SamplerScreen::press(Button b) {
     stepped_ = true;
     const int by = b == Button::Up ? 1 : -1;
     if (stop_ == 0) stepSound(by);
-    else session_.setSamplerSetting(project_.track, stop_ - 1, trk().sampler[stop_ - 1] + by);
+    else setSetting(stop_ - 1, trk().sampler[stop_ - 1] + by);
 }
 
 void SamplerScreen::openPicker() {
@@ -96,7 +113,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeatAt_ = 0;
     } else if (b == Button::B && !holding_) {
         if (stop_ == 0) session_.setTrackSample(project_.track, "");
-        else session_.setSamplerSetting(project_.track, stop_ - 1, sampler::settingDefault(stop_ - 1));
+        else setSetting(stop_ - 1, sampler::settingDefault(stop_ - 1));
     } else if (b == Button::Y && !holding_) {
         const std::string name = session_.catchLastBar(project_.track, 0);
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
@@ -156,7 +173,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         const int whole = static_cast<int>(turned_);
         if (whole != 0) {
             turned_ -= static_cast<float>(whole);
-            session_.setSamplerSetting(project_.track, id, trk().sampler[id] + whole);
+            setSetting(id, trk().sampler[id] + whole);
         }
         if (y == 0.f) turned_ = 0.f;
     } else {
