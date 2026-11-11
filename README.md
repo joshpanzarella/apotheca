@@ -317,6 +317,16 @@ short attack is snappy, and it starts from wherever the envelope already is,
 so a note played again does not click. Decay and release times are how long
 the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes.
 
+### All four cores
+
+The tracks do not depend on each other until they are mixed, so they are
+worked out side by side: the audio thread and two helpers each take the next
+track not yet done, and the results are mixed in track order. A heavy song
+(six Twin Analog tracks at x4, a chord on each) took 55% of the time it had
+on one core of the build machine and 23% with two helpers: about 2.4 times
+the room. The sound is the same to the last bit, and a test holds it to
+that. One core is left for the screen. Bounces use it too.
+
 ### Keeping up
 
 Twin Analog's OVERSAMPLE setting costs a lot: x8 with two chords held is

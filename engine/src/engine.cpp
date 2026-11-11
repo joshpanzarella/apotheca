@@ -48,6 +48,7 @@ Engine::Engine() {
 }
 
 Engine::~Engine() {
+    useWorkers(0);
     // Anything sent but never taken up (no render() since) is still ours.
     Command command;
     while (commands_.pop(command)) {
@@ -897,46 +898,111 @@ void Engine::settleAutomation() {
         }
 }
 
+// One track's part of the chunk: its instrument, its effects, its level and its mute, into the
+// track's own buffers. It touches nothing but that track, so several can run at once.
+void Engine::renderTrack(int t) {
+    Track& track = tracks_[t];
+    const int frames = chunkFrames_;
+    float* left = trackL_[t];
+    float* right = trackR_[t];
+    if (track.synth) track.synth->render(left, right, frames);
+    else track.drums.render(left, right, frames);
+    for (auto& effect : track.effects) {
+        if (effect) effect->process(left, right, frames);
+    }
+    if (t == chunkScope_) {
+        unsigned written = scopeWritten_.load(std::memory_order_relaxed);
+        for (int i = 0; i < frames; ++i) {
+            scope_[written++ % kScopeSize].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
+        }
+        scopeWritten_.store(written, std::memory_order_relaxed);
+    }
+    float peak = chunkPeaks_[t];
+    const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
+    for (int i = 0; i < frames; ++i) {
+        if (track.gate != gateTo) {
+            track.gate += track.gate < gateTo ? gateStep : -gateStep;
+            if ((track.gate > gateTo) == track.heard) track.gate = gateTo; // arrived (or stepped past)
+        }
+        left[i] *= track.level * track.gate;
+        right[i] *= track.level * track.gate;
+        const float a = std::fabs(left[i]) > std::fabs(right[i]) ? std::fabs(left[i]) : std::fabs(right[i]);
+        if (a > peak) peak = a;
+    }
+    chunkPeaks_[t] = peak;
+}
+
+void Engine::shareOutTracks() {
+    for (;;) {
+        const int i = nextActive_.fetch_add(1, std::memory_order_acq_rel);
+        if (i >= activeCount_.load(std::memory_order_acquire)) return;
+        renderTrack(active_[i]);
+        finished_.fetch_add(1, std::memory_order_release);
+    }
+}
+
+void Engine::workerLoop(void (*atStart)()) {
+    if (atStart) atStart();
+    for (;;) {
+        {
+            std::unique_lock<std::mutex> lock(wakeMutex_);
+            wake_.wait(lock, [this] { return wakeups_ > 0 || quitWorkers_.load(); });
+            if (quitWorkers_.load()) return;
+            --wakeups_;
+        }
+        shareOutTracks();
+    }
+}
+
+void Engine::useWorkers(int count, void (*atStart)()) {
+    // Stop the ones there are.
+    quitWorkers_.store(true);
+    wake_.notify_all();
+    for (std::thread& worker : workers_) worker.join();
+    workers_.clear();
+    quitWorkers_.store(false);
+    {
+        std::lock_guard<std::mutex> lock(wakeMutex_);
+        wakeups_ = 0;
+    }
+    count = count < 0 ? 0 : (count > kNumTracks - 1 ? kNumTracks - 1 : count);
+    for (int i = 0; i < count; ++i) workers_.emplace_back([this, atStart] { workerLoop(atStart); });
+}
+
 void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     if (playing_) glideAutomation(frames);
     float mixL[kMaxBlock] = {};
     float mixR[kMaxBlock] = {};
-    float left[kMaxBlock];
-    float right[kMaxBlock];
-    const int scopeTrack = scopeTrack_.load(std::memory_order_relaxed);
-
-    for (int t = 0; t < kNumTracks; ++t) {
-        Track& track = tracks_[t];
-        if (!track.hasInstrument()) continue; // an empty track costs nothing
-
-        if (track.synth) track.synth->render(left, right, frames);
-        else track.drums.render(left, right, frames);
-        for (auto& effect : track.effects) {
-            if (effect) effect->process(left, right, frames);
+    // Which tracks there are to work out, and what the workers need for this chunk.
+    int count = 0;
+    for (int t = 0; t < kNumTracks; ++t)
+        if (tracks_[t].hasInstrument()) active_[count++] = t; // an empty track costs nothing
+    chunkFrames_ = frames;
+    chunkPeaks_ = peaks;
+    chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
+    if (workers_.empty() || count < 2) {
+        for (int i = 0; i < count; ++i) renderTrack(active_[i]);
+    } else {
+        // Shared out. Everything above is set before the list is opened (nextActive_ = 0), so a
+        // helper arriving late for the chunk before finds nothing, or this chunk whole.
+        finished_.store(0, std::memory_order_relaxed);
+        activeCount_.store(count, std::memory_order_release);
+        nextActive_.store(0, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(wakeMutex_);
+            wakeups_ = static_cast<int>(workers_.size()) < count - 1 ? static_cast<int>(workers_.size()) : count - 1;
         }
-
-        float peak = peaks[t];
-        const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
-        for (int i = 0; i < frames; ++i) {
-            if (track.gate != gateTo) {
-                track.gate += track.gate < gateTo ? gateStep : -gateStep;
-                if ((track.gate > gateTo) == track.heard) track.gate = gateTo; // arrived (or stepped past)
-            }
-            const float l = left[i] * track.level * track.gate;
-            const float r = right[i] * track.level * track.gate;
-            mixL[i] += l;
-            mixR[i] += r;
-            const float a = std::fabs(l) > std::fabs(r) ? std::fabs(l) : std::fabs(r);
-            if (a > peak) peak = a;
-        }
-        peaks[t] = peak;
-
-        if (t == scopeTrack) {
-            unsigned written = scopeWritten_.load(std::memory_order_relaxed);
-            for (int i = 0; i < frames; ++i) {
-                scope_[written++ % kScopeSize].store(0.5f * (left[i] + right[i]) * track.level, std::memory_order_relaxed);
-            }
-            scopeWritten_.store(written, std::memory_order_relaxed);
+        wake_.notify_all();
+        shareOutTracks(); // the audio thread does its share
+        while (finished_.load(std::memory_order_acquire) < count) std::this_thread::yield();
+        nextActive_.store(kNumTracks, std::memory_order_release); // the list is shut again
+    }
+    // Mixed in track order, always, so the sum is the same however the work was shared.
+    for (int i = 0; i < count; ++i) {
+        const int t = active_[i];
+        for (int f = 0; f < frames; ++f) {
+            mixL[f] += trackL_[t][f];
+            mixR[f] += trackR_[t][f];
         }
     }
 

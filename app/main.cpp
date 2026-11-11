@@ -24,6 +24,7 @@
 //   --songs DIR    keep songs in this folder (the default is beside the program)
 //   --samples DIR  look for recordings (WAV files) in this folder
 
+#include <thread>
 #include <SDL.h>
 
 #include <atomic>
@@ -347,7 +348,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
-    engine.watchLoad(!smoke && !shot); // real sound: if it cannot keep up, do plainer work, not stutter
+    engine.watchLoad(!smoke && !shot);
+    // The handheld has four processor cores: the tracks are worked out across them, one fewer
+    // than there are (one is left for the screen and everything else).
+    {
+        const unsigned cores = std::thread::hardware_concurrency();
+        const int helpers = cores >= 4 ? 2 : (cores >= 2 ? 1 : 0);
+        if (!smoke && !shot) engine.useWorkers(helpers, [] { makeThreadRealtime(69); });
+        std::printf("processor cores: %u; tracks shared across %d\n", cores, engine.workers() + 1);
+    } // real sound: if it cannot keep up, do plainer work, not stutter
     std::printf("Apotheca %s, built %s\n", kVersion, kBuilt);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 

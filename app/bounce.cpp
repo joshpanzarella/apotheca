@@ -94,6 +94,7 @@ bool Session::startBounce(Bounce what) {
             // A second engine and a session of its own to load the song into it.
             std::unique_ptr<Engine> engine(new Engine);
             engine->prepare(rate);
+            engine->useWorkers(2); // a bounce is quicker for it too
             std::unique_ptr<Project> copy(new Project(song));
             if (stems[n] >= 0)
                 for (int t = 0; t < kNumTracks; ++t) copy->tracks[t].muted = t != stems[n]; // a stem: that track alone, muted or not

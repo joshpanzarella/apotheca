@@ -257,6 +257,62 @@ static void testLaneLevel() {
 }
 
 // When the machine cannot keep up, synths are told to do plainer work.
+// Tracks worked out on several processor cores at once: the same sound, to the last bit.
+static void testSharingTracksAcrossCores() {
+    // A busy song: drums and five synths of every kind, each with notes, an effect, and automation on one.
+    const auto song = [](int helpers) {
+        std::unique_ptr<Engine> engine(new Engine);
+        engine->useWorkers(helpers);
+        for (int s = 0; s < kSteps; s += 2) engine->send(step(s % 4 == 0 ? KICK : RIM, s, 0.9f));
+        const SynthKind kinds[5] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod, SynthKind::Twin, SynthKind::Qmod};
+        for (int t = 1; t <= 5; ++t) {
+            CHECK(engine->addSynthTrack(t, kinds[t - 1]));
+            for (int n = 0; n < 4; ++n) {
+                Command note = make(Command::SetNote, t, n, n * 4 + (t % 3), 0.7f);
+                note.c = 40 + 5 * t + 3 * n;
+                note.d = 3;
+                engine->send(note);
+            }
+            if (t % 2) CHECK(engine->setEffect(t, 0, EffectKind::Delay));
+        }
+        Command sweep = make(Command::SetAutomation, 3, 1, 4, 0.9f);
+        engine->send(sweep);
+        engine->send(make(Command::Play, 0, 0, 1));
+        std::vector<float> all;
+        // In blocks of odd sizes, as a sound card might ask, for three bars.
+        for (int done = 0, size = 37; done < 3 * 16 * kStep; done += size, size = size % 301 + 64) {
+            const std::vector<float> got = renderFrames(*engine, size);
+            all.insert(all.end(), got.begin(), got.end());
+        }
+        float peaks = 0.f;
+        for (int t = 0; t <= 5; ++t) peaks += engine->trackPeak(t);
+        all.push_back(peaks); // the meters agree too
+        return all;
+    };
+    const std::vector<float> alone = song(0);
+    float loudest = 0.f;
+    for (float v : alone) loudest = std::fmax(loudest, std::fabs(v));
+    CHECK(loudest > 0.1f && alone.size() > 100000);
+    for (int helpers : {1, 2, 3, 7}) CHECK(song(helpers) == alone);
+    CHECK(song(2) == song(2)); // and the same again each time
+    // Helpers can be taken on and let go while the song plays, and asking for none, or too many, is safe.
+    Engine engine;
+    engine.send(step(KICK, 0, 1.f));
+    CHECK(engine.addSynthTrack(1, SynthKind::Qmod));
+    engine.send(make(Command::Play, 0, 0, 1));
+    CHECK(engine.workers() == 0);
+    for (int n : {3, 0, 1, -5, 99, 2}) {
+        engine.useWorkers(n);
+        CHECK(engine.workers() == (n < 0 ? 0 : (n > kNumTracks - 1 ? kNumTracks - 1 : n)));
+        CHECK(peakOf(renderFrames(engine, 16 * kStep)) > 0.1f);
+    }
+    // One track, or none: nothing to share, and it still plays.
+    Engine one;
+    one.useWorkers(3);
+    one.send(trigger(KICK));
+    CHECK(peakOf(renderFrames(one, 2000)) > 0.1f);
+}
+
 // A scene whose bars are shorter than sixteen steps: the bar comes round early.
 static void testOddStepCounts() {
     const auto onsets = [](Engine& engine, int steps) {
@@ -2265,6 +2321,7 @@ int main() {
     testKitHitsHard();
     testCeiling();
     testLaneLevel();
+    testSharingTracksAcrossCores();
     testOddStepCounts();
     testAutomation();
     testTheSharedEnvelope();

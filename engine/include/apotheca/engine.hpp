@@ -28,6 +28,9 @@
 //   - setTrackEffect()/setMasterEffect()/prepare() are setup calls. Make them
 //     before the audio device starts.
 
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -222,6 +225,18 @@ public:
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
 
+    // ---- more than one processor core ---------------------------------------------------
+    // The tracks do not depend on each other until they are mixed, so they
+    // can be worked out side by side. With helpers, each chunk of sound is
+    // shared out: the helpers and the audio thread each take the next track
+    // not yet done, until none is left, and only then are they mixed. The
+    // sound is the same to the last bit as without (a test holds it to that).
+    // `count` is how many helpers besides the audio thread; 0 turns it off.
+    // `atStart` runs once on each helper as it begins (to ask for realtime
+    // priority, which only the program knows how to do). Not for the audio thread.
+    void useWorkers(int count, void (*atStart)() = nullptr);
+    int workers() const { return static_cast<int>(workers_.size()); }
+
     // ---- keeping up ---------------------------------------------------------------
     // A sound that takes longer to work out than it lasts cannot be played:
     // the output stutters. With the watch on, render() times itself, and
@@ -310,6 +325,20 @@ private:
     void clearPending();
     void letGoOfNotes();
     void renderChunk(float* interleaved, int frames, float* peaks);
+    void renderTrack(int t);   // one track's chunk into trackL_ / trackR_, with its effects, level and mute
+    void shareOutTracks();     // take tracks from the list until none is left
+    void workerLoop(void (*atStart)());
+    // A chunk being worked on: what the helpers need to know.
+    float trackL_[kNumTracks][kMaxBlock], trackR_[kNumTracks][kMaxBlock];
+    int chunkFrames_ = 0, chunkScope_ = -1;
+    float* chunkPeaks_ = nullptr;
+    int active_[kNumTracks] = {};
+    std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};
+    std::vector<std::thread> workers_;
+    std::mutex wakeMutex_;
+    std::condition_variable wake_;
+    int wakeups_ = 0;          // chunks the helpers have been called to and not yet come for
+    std::atomic<bool> quitWorkers_{false};
 
     float sampleRate_ = 48000.f;
     DrumKit builtInKit_;
