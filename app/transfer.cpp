@@ -18,6 +18,7 @@
 #include "chords.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
+#include "version.hpp"
 
 namespace apotheca {
 
@@ -37,7 +38,7 @@ p{color:#8f8370;margin:0 0 16px} a{color:#6fbfa3}
 li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;margin:0}
 .ok{color:#6fbfa3}.no{color:#c9a15a} input{display:none}
 </style></head><body>
-<h1>APOTHECA</h1><p>Files to and from the handheld. <a id="design" href="#">Open the sound designer</a></p>
+<h1>APOTHECA <span id="version" style="font-size:12px;color:#8f8370;letter-spacing:.08em"></span></h1><p>Files to and from the handheld. <a id="design" href="#">Open the sound designer</a></p>
 <div id="drop"><p>Drop files here: recordings (.wav), chord packs (.json), songs (.song).</p>
 <button id="pick">Choose files</button><input id="files" type="file" multiple accept=".wav,.json,.song"></div>
 <ul id="log"></ul>
@@ -52,6 +53,7 @@ const kinds = {wav: 'samples', json: 'chords', song: 'songs'};
 function line(text, cls) { const li = document.createElement('li'); li.textContent = text; li.className = cls; document.getElementById('log').prepend(li); }
 async function list() {
   const all = await (await fetch(base + '/list')).json();
+  document.getElementById('version').textContent = all.version ? 'version ' + all.version + (all.built ? ', built ' + all.built : '') : '';
   for (const kind of ['samples', 'songs', 'chords']) {
     const ul = document.getElementById(kind); ul.textContent = '';
     for (const name of all[kind]) { const li = document.createElement('li'); const a = document.createElement('a');
@@ -276,7 +278,7 @@ void Transfer::answer(int fd) {
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
     if (method == "GET" && path == "/list") {
         return reply(fd, "200 OK", "application/json",
-                     "{\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
+                     "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
                          ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + "}");
     }
 

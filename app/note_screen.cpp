@@ -21,6 +21,7 @@ constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPe
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
 constexpr float kChordsPerSecond = 7.f, kInversionsPerSecond = 5.f; // the stick with Y held
+constexpr float kCarryKeysPerSecond = 10.f, kCarryStepsPerSecond = 6.f; // the stick with X held on a note
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 bool isBlackKey(int pitch) {
@@ -135,48 +136,71 @@ void NoteScreen::keepInView() {
 // X held on a note or chord: it goes one key or one step that way, and the
 // cursor with it. It does not leave the bar, go off the keyboard, or land
 // on top of another note (a chord: on steps another chord has).
-void NoteScreen::carry(Button direction) {
-    const int dp = direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0;
-    const int ds = direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0;
+bool NoteScreen::carryBy(int dp, int ds) {
     NotePattern& p = pat();
-    if (step_ + ds < 0 || step_ + ds >= kSteps) return; // the cursor has hold of it somewhere along its length, and stays in the bar too
+    if (step_ + ds < 0 || step_ + ds >= kSteps) return false; // the cursor has hold of it somewhere along its length, and stays in the bar too
     if (carrying_ == Carry::Note) {
         NoteEvent& n = p.notes[carried_];
         const int pitch = n.pitch + dp, step = n.step + ds;
-        if (n.velocity <= 0.f || pitch < kLowest || pitch > kHighest || step < 0 || step >= kSteps) return;
+        if (n.velocity <= 0.f || pitch < kLowest || pitch > kHighest || step < 0 || step >= kSteps) return false;
         // Is the place it would start on taken by another note of that key?
         const float v = n.velocity;
         n.velocity = 0.f; // out of the way while looking
         const bool taken = p.at(pitch, step) >= 0;
         n.velocity = v;
-        if (taken) return;
+        if (taken) return false;
         n.pitch = pitch;
         n.step = step;
         if (dp != 0 && !project_.playing) session_.audition(project_.track, pitch, v);
     } else {
         ChordEvent& c = p.chords[carried_];
         const int step = c.step + ds;
-        if (c.velocity <= 0.f || step < 0 || step >= kSteps) return;
+        if (c.velocity <= 0.f || step < 0 || step >= kSteps) return false;
         ChordEvent moved = c;
         moved.root += dp;
         moved.step = step;
         int was[kChordNotes], now[kChordNotes];
         const int n = c.pitches(was);
-        if (moved.pitches(now) != n) return; // a note of it would fall off the keyboard
+        if (moved.pitches(now) != n) return false; // a note of it would fall off the keyboard
         for (int i = 0; i < n; ++i)
-            if (now[i] < kLowest || now[i] > kHighest) return;
+            if (now[i] < kLowest || now[i] > kHighest) return false;
         // Chords do not overlap in time.
         const float v = c.velocity;
         c.velocity = 0.f;
         bool taken = false;
         for (int at = step; at < step + static_cast<int>(std::ceil(moved.length)) && at < kSteps; ++at) taken = taken || p.chordAt(at) >= 0;
         c.velocity = v;
-        if (taken) return;
+        if (taken) return false;
         c = moved;
         if (dp != 0) hearChord(c);
     }
     resend();
     moveCursorTo(pitch_ + dp, step_ + ds);
+    return true;
+}
+
+void NoteScreen::carry(Button direction) {
+    carryBy(direction == Button::Right ? 1 : direction == Button::Left ? -1 : 0, direction == Button::Down ? 1 : direction == Button::Up ? -1 : 0);
+}
+
+// The stick, up and down, with X held: the note slides freely in time, off
+// the grid. It sits early or late of its step by up to half a step, and
+// passes on to the next step when it goes further. Where it cannot go on
+// (the end of the bar, another note in the way) it stops at the half step.
+void NoteScreen::carryFree(float steps) {
+    if (steps == 0.f || carrying_ == Carry::Nothing) return;
+    const auto nudgeOf = [&]() -> float& { return carrying_ == Carry::Note ? pat().notes[carried_].nudge : pat().chords[carried_].nudge; };
+    float t = nudgeOf() + steps;
+    while (t > kMostNudge) {
+        if (!carryBy(0, 1)) { t = kMostNudge; break; }
+        t -= 1.f;
+    }
+    while (t < -kMostNudge) {
+        if (!carryBy(0, -1)) { t = -kMostNudge; break; }
+        t += 1.f;
+    }
+    nudgeOf() = t;
+    resend();
 }
 
 void NoteScreen::moveCursor(Button direction) {
@@ -543,6 +567,19 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
         }
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
+    } else if (carrying_ != Carry::Nothing) {
+        // X has hold of a note. Sideways it goes key by key (a key is a key);
+        // up and down it slides freely in time. Squared: a small push is a fine move.
+        axis_ = Axis::None;
+        if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
+        else {
+            stickX_ += stickWasX_ ? std::fabs(x) * kCarryKeysPerSecond * dt : 1.f;
+            stickWasX_ = true;
+            for (; stickX_ >= 1.f; stickX_ -= 1.f) carryBy(x > 0.f ? 1 : -1, 0);
+        }
+        if (std::fabs(y) > std::fabs(x)) carryFree(y * std::fabs(y) * kCarryStepsPerSecond * dt);
+        stickY_ = 0.f;
+        stickWasY_ = false;
     } else {
         axis_ = Axis::None;
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
@@ -773,7 +810,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (carrying_ != Carry::Nothing) {
-        hint("UP / DOWN", "to another step");
+        hint("STICK UP / DOWN", "slide in time, freely");
+        hint("D-PAD", "by whole steps");
         hint("LEFT / RIGHT", "to another key");
     } else if (painting_) {
         std::snprintf(brushText, sizeof brushText, "paint notes at %d%%", static_cast<int>(std::round(brush_ * 100.f)));

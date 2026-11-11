@@ -20,9 +20,11 @@
 //   B                     delete the note under the cursor
 //   hold B and drag       delete every note the cursor crosses
 //   X                     hear the key under the cursor
-//   hold X and move       carry the note (or the whole chord) under the cursor
-//                         to another key or another step. It stops at the
-//                         ends of the bar and will not land on another note.
+//   hold X and move       carry the note (or the whole chord) under the cursor.
+//                         The D-pad: to another key, or a whole step. The
+//                         stick up / down: it slides freely in time, off
+//                         the grid. It stops at the ends of the bar and
+//                         will not land on another note.
 //   hold R1 and drag      paint a note on every step crossed
 //   L1                    zoom: a tap goes closer (2 octaves, 1, round to 3);
 //                         held, up is closer and down is further
@@ -144,7 +146,9 @@ private:
     enum class Carry { Nothing, Note, Chord };
     Carry carrying_ = Carry::Nothing;
     int carried_ = 0; // its slot
-    void carry(Button direction);
+    void carry(Button direction);       // the D-pad: a whole step, or a key
+    bool carryBy(int keys, int steps);  // false if it cannot go there
+    void carryFree(float steps);        // the stick: any distance in time, off the grid
     bool erasing_ = false;  // B is held: the cursor deletes what it crosses
     void eraseHere();
     float brush_ = 0.8f;

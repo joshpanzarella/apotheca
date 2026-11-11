@@ -172,6 +172,10 @@ else), or it goes by itself after four seconds.
 
 ### SETUP (the SET tab)
 
+**Which version this is** shows at the top right of the SET tab (and on the
+help card, the WiFi page, and the first line of `apotheca.log`): `0.104`
+and the day it was built. The number goes up by one with every build.
+
 | Row | Left / right | A |
 | --- | --- | --- |
 | TEMPO | A beat a minute | |
@@ -497,7 +501,7 @@ is loud; holding A shapes it the way it is drawn.
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
-| Hold X and move | Carry the note (or the whole chord) under the cursor to another key or step. It stops at the ends of the bar and will not land on another note. |
+| Hold X and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
 A note runs at most to the end of the bar, or to the next note on that key.

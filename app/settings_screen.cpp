@@ -3,6 +3,7 @@
 #include <string>
 
 #include "song_screen.hpp"
+#include "version.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -254,6 +255,9 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "VOLUME", "STICK SPEED", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = 37, top = 52, w = kScreenW - 32;
     fonts.small.draw(r, 16.f, 34.f, "THIS SONG", kDim);
+    // Which Apotheca this is.
+    std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
+    fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
     for (int row = 0; row < kRows; ++row) {
         // The first three belong to the song; the rest to the handheld.
         const int y = top + row * rowH + (row >= kVolume ? 22 : 0);

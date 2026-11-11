@@ -62,7 +62,10 @@ pack="$out/port"
 rm -rf "$pack"
 mkdir -p "$pack/apotheca"
 
-echo "building..."
+# The version: 0.N, N being the number of changes kept so far plus this one.
+version="0.$(( $(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))"
+built=$(date +%Y-%m-%d)
+echo "building $version..."
 flags="--target=aarch64-linux-gnu --sysroot=$sysroot -O2 -mcpu=cortex-a53"
 # Phazed's engine is C.
 objects=""
@@ -74,6 +77,7 @@ done
 clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
     -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
+    -DAPOTHECA_VERSION="\"$version\"" -DAPOTHECA_BUILT="\"$built\"" \
     "$here"/engine/src/*.cpp "$here"/app/*.cpp \
     $objects \
     -o "$pack/apotheca/apotheca" \
@@ -98,4 +102,5 @@ chmod +x "$pack/Apotheca.sh" "$pack/apotheca/apotheca"
 
 rm -f "$out/Apotheca-port.zip"
 (cd "$pack" && zip -qr "$out/Apotheca-port.zip" Apotheca.sh apotheca)
+printf '%s\n' "$version" > "$out/VERSION"
 echo "wrote $out/Apotheca-port.zip"

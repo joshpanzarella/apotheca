@@ -34,6 +34,7 @@
 #include <ctime>
 #include <string>
 
+#include "version.hpp"
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "controls.hpp"
@@ -347,6 +348,7 @@ int main(int argc, char** argv) {
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
     engine.watchLoad(!smoke && !shot); // real sound: if it cannot keep up, do plainer work, not stutter
+    std::printf("Apotheca %s, built %s\n", kVersion, kBuilt);
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     Input input;

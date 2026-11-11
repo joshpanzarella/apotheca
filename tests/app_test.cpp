@@ -1814,15 +1814,54 @@ void testHoldXCarriesANote() {
     CHECK(!notes.carrying());
     rig.tap(LEFT);
     CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 60);
-    // The stick carries too.
+    // The stick, up and down, slides it FREELY in time, off the grid: a short push is a small move...
+    // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
+    const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
     notes.moveCursorTo(61, 5);
     rig.key(X, true);
     rig.key(STICK_UP, true);
-    rig.frames(1);
+    hold(3);
     rig.key(STICK_UP, false);
     rig.frames(1);
+    CHECK(bar.notes[slot].step == 5 && bar.notes[slot].nudge < -0.01f && bar.notes[slot].nudge > -0.4f && notes.cursorStep() == 5);
+    // ...and a longer one carries it on through the steps, the cursor with it, still between the lines.
+    rig.key(STICK_DOWN, true);
+    hold(40); // about four tenths of a second at the stick's speed: a few steps
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(bar.notes[slot].step >= 7 && bar.notes[slot].step <= 9 && notes.cursorStep() == bar.notes[slot].step);
+    CHECK(std::fabs(bar.notes[slot].nudge) <= 0.5f && bar.notes[slot].pitch == 61);
+    const float where = bar.notes[slot].step + bar.notes[slot].nudge;
+    CHECK(std::fabs(where - std::round(where)) > 0.001f); // not on a line
+    // The D-pad, with the same hold: a whole step, and what it had off the grid it keeps.
+    const float off = bar.notes[slot].nudge;
+    const int at = bar.notes[slot].step;
+    rig.tap(UP);
+    CHECK(bar.notes[slot].step == at - 1 && bar.notes[slot].nudge == off);
+    // At the end of the bar it stops half a step late and goes no further; at the top, half a step early.
+    rig.key(STICK_DOWN, true);
+    hold(300);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(bar.notes[slot].step == 15 && near(bar.notes[slot].nudge, 0.5f) && notes.cursorStep() == 15);
+    rig.key(STICK_UP, true);
+    hold(300);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(bar.notes[slot].step == 0 && near(bar.notes[slot].nudge, -0.5f));
+    // The stick sideways with X held is still key by key.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(bar.notes[slot].pitch == 62 && notes.cursorPitch() == 62 && bar.notes[slot].step == 0);
+    rig.tap(LEFT);
     rig.key(X, false);
-    CHECK(bar.notes[slot].step == 4);
+    // Back on the grid at step 5 of key 61, for what follows.
+    bar.notes[slot].step = 4;
+    bar.notes[slot].nudge = 0.f;
+    rig.app.session().sendNotePattern(1, 0);
+    CHECK(bar.notes[slot].pitch == 61 && bar.notes[slot].step == 4);
     // X held on an empty step is only "hear": nothing is carried.
     notes.moveCursorTo(70, 0);
     rig.key(X, true);
@@ -1848,6 +1887,8 @@ void testHoldXCarriesANote() {
     rig.key(X, false);
     CHECK(bar.notes[slot].step == 10);
     rig.project().playing = false;
+    rig.frames(200); // the keys X played along the way are let go
+    rig.render(96000);
     rig.tap(START);
     const std::vector<float> early = rig.render(10 * kStep - 200);
     const std::vector<float> then = rig.render(2 * kStep);

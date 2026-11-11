@@ -1,5 +1,7 @@
 #include "app.hpp"
 
+#include "version.hpp"
+
 #include <cstdio>
 
 namespace apotheca {
@@ -354,6 +356,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         line({"L1 + L2 + R1 + R2", ""});
         fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once: silence, now", kText);
         fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO TO CLOSE", kDim);
+        char version[48];
+        std::snprintf(version, sizeof version, "APOTHECA %s", kVersion);
+        fonts.small.drawRight(renderer, x + w - 18.f, y + h - 22.f, version, kDim);
     }
 }
 

@@ -136,7 +136,7 @@ void testTheServer() {
     std::string kept;
     CHECK(readTextFile(samples + "/kick one.wav", kept) && kept == wav); // the folder was made for it
     a = get(port, door + "/list");
-    CHECK(a.status == 200 && a.body == "{\"samples\":[\"kick one.wav\"],\"songs\":[\"quiet road.song\"],\"chords\":[]}");
+    CHECK(a.status == 200 && a.body.find("{\"version\":\"") == 0 && a.body.find(",\"samples\":[\"kick one.wav\"],\"songs\":[\"quiet road.song\"],\"chords\":[]}") != std::string::npos);
     a = get(port, door + "/samples/kick%20one.wav");
     CHECK(a.status == 200 && a.body == wav);
     CHECK(get(port, door + "/songs/quiet%20road.song").body == "apotheca-song 1\ntempo 97\n");

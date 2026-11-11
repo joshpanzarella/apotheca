@@ -24,6 +24,15 @@ if(MATH_LIBRARY)
   target_link_libraries(easycz PUBLIC ${MATH_LIBRARY})
 endif()
 
+# The version shown on screen: 0.N, N being the number of changes kept so far plus this one.
+execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE APOTHECA_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT APOTHECA_CHANGES)
+  set(APOTHECA_CHANGES 0)
+endif()
+math(EXPR APOTHECA_CHANGES "${APOTHECA_CHANGES} + 1")
+string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
+add_compile_definitions(APOTHECA_VERSION="0.${APOTHECA_CHANGES}" APOTHECA_BUILT="${APOTHECA_BUILT}")
+
 add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp)
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
