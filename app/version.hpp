@@ -3,15 +3,11 @@
 // counts the changes made to the program so far (one more with every build
 // that is kept), and the day it was built. Shown on the SET screen, on the
 // help card, on the WiFi page and at the top of the log.
-
-#ifndef APOTHECA_VERSION
-#define APOTHECA_VERSION "dev"
-#endif
-#ifndef APOTHECA_BUILT
-#define APOTHECA_BUILT ""
-#endif
+//
+// The values live in version.cpp, the only file the build hands them to, so
+// a new number recompiles that one file and not the whole program.
 
 namespace apotheca {
-constexpr const char* kVersion = APOTHECA_VERSION;
-constexpr const char* kBuilt = APOTHECA_BUILT;
+extern const char* const kVersion; // "0.111", or "dev" when the build did not say
+extern const char* const kBuilt;   // "2026-11-11", or ""
 } // namespace apotheca
