@@ -1112,6 +1112,13 @@ void testTheStickSpeedAndTheVolume() {
     rig.tap(R1, 30);
     rig.key(SELECT, false);
     CHECK(session.volume() == 1.f && std::fabs(kick() / loud - 1.f) < 0.01f);
+    // On the Song screen too, where a tap of SELECT would open the song list.
+    session.view = View::Song;
+    rig.key(SELECT, true);
+    rig.tap(L1);
+    rig.key(SELECT, false);
+    CHECK(!rig.app.song().listingSongs() && near(session.volume(), 0.9f));
+    session.view = View::Pattern;
     // What Catch takes is the sound before the volume: a quiet handheld still catches at full level.
     session.setVolume(0.2f);
     rig.render(100000);
