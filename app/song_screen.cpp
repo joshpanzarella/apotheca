@@ -299,6 +299,10 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::B && !input.held(Button::A)) {
+        // A tap empties the cell. Kept held on a track, it goes on to delete the whole track (update()).
+        trackHold_ = onCell();
+        trackHoldTimed_ = false;
+        trackHoldPart_ = 0.f;
         if (onCell()) clearCell(column_, scene_);
         else if (column_ == kRepeatColumn) setRepeats(1);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -313,6 +317,18 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) holding_ = false;
     if (!input.held(Button::R1)) copying_ = false;
     if (!input.held(Button::B)) bHeld_ = false;
+    // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
+    if (!input.held(Button::B) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
+    if (trackHold_) {
+        if (!trackHoldTimed_) trackHoldTimed_ = true, trackHoldSince_ = nowMs;
+        const Uint32 held = nowMs - trackHoldSince_;
+        trackHoldPart_ = held < kTrackHoldWaitMs ? 0.f : static_cast<float>(held - kTrackHoldWaitMs) / static_cast<float>(kTrackHoldMs - kTrackHoldWaitMs);
+        if (held >= kTrackHoldMs) {
+            trackHold_ = false;
+            trackHoldPart_ = 0.f;
+            if (session_.removeTrack(column_)) moveCursorTo(scene_, column_ >= project_.trackCount() ? project_.trackCount() - 1 : column_);
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -408,6 +424,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         for (std::size_t n = std::strlen(own); n > 0 && fonts.small.width(own) > colW - 6; --n) own[n - 1] = 0;
         const bool sounding = session_.heard(t);
         fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
+        // B held on this track: its head fills red, and says what is coming.
+        if (trackHoldPart_ > 0.f && t == column_) {
+            fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * (trackHoldPart_ > 1.f ? 1.f : trackHoldPart_)), kHeadH - 2, faded(kStop, 170));
+            fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 90 ? "DELETING TRACK" : "DELETE", kText);
+        }
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
         if (!sounding) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
         if (project_.tracks[t].solo) {
@@ -661,6 +682,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "open");
         hint("HOLD A", "bars");
         hint("B", "empty");
+        hint("HOLD B", "delete track");
         hint("Y", project_.tracks[column_].muted ? "unmute" : "mute");
         hint("L1", project_.tracks[column_].solo ? "unsolo" : "solo");
         hint("HOLD R1", "copy");

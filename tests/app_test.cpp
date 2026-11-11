@@ -1322,6 +1322,69 @@ void testNothingStaysHeld() {
     for (int step = 0; step < kSteps; ++step) CHECK(drums.level(1, step) == 0.f);
 }
 
+void testDeletingATrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    // Four tracks, each with something of its own: drums, Phazed (named), Twin, QMOD.
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.addTrack(TrackKind::Phazed);
+    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Qmod);
+    session.setTrackName(1, "BASS");
+    rig.project().tracks[2].notes[0][0].notes[0] = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
+    rig.project().tracks[3].notes[1][0].notes[0] = NoteEvent{0, 50, 1.f, 0.f, 0.7f};
+    session.setSynthSetting(3, qmod::Sound, 4321);
+    session.setAutomation(2, 0, 3, 5, 0.25f);
+    session.setMuted(3, true);
+    rig.project().track = 3;
+    CHECK(rig.project().trackCount() == 4);
+    // A tap of B on a cell empties the cell and no more.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(B);
+    rig.frames(200);
+    CHECK(rig.project().trackCount() == 4 && rig.app.song().trackDeletePart() == 0.f);
+    // Held: nothing for half a second, then the warning fills; let go before it is full and the track stays.
+    rig.key(B, true);
+    rig.frames(25);
+    CHECK(rig.app.song().trackDeletePart() == 0.f);
+    rig.frames(60);
+    CHECK(rig.app.song().trackDeletePart() > 0.4f && rig.project().trackCount() == 4);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 4 && rig.app.song().trackDeletePart() == 0.f);
+    // Held for the whole two seconds: the track goes, and the ones after it move down with everything they had.
+    rig.key(B, true);
+    rig.frames(130);
+    rig.key(B, false);
+    CHECK(rig.project().trackCount() == 3);
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Twin && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
+    CHECK(rig.project().tracks[1].name[0] == 0 && rig.project().tracks[1].notes[0][0].at(62, 4) >= 0 && near(rig.project().tracks[1].automation[0][3][5], 0.25f));
+    CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].qmod.value[qmod::Sound] == 4321 && rig.project().tracks[2].muted);
+    CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 1.f && rig.project().track == 2 && !rig.project().playing);
+    for (float v : rig.project().tracks[3].automation[0][3]) CHECK(v < 0.f); // the freed place is clean
+    // The engine has them in their new places: the Twin note sounds from track 2, and the kick still plays.
+    rig.render(96000);
+    session.setMuted(2, false);
+    session.view = View::Pattern;
+    rig.project().track = 0;
+    rig.tap(START);
+    rig.render(4 * kStep);
+    CHECK(rig.engine->trackPeak(0) > 0.05f);
+    rig.render(3 * kStep);
+    CHECK(rig.engine->trackPeak(1) > 0.005f && rig.engine->trackPeak(3) == 0.f);
+    rig.tap(START);
+    rig.render(96000);
+    // Not the last one left, and not one that is not there.
+    CHECK(session.removeTrack(2) && session.removeTrack(1) && rig.project().trackCount() == 1);
+    CHECK(!session.removeTrack(0) && !session.removeTrack(1) && !session.removeTrack(-1) && rig.project().trackCount() == 1);
+    CHECK(rig.project().track == 0 && rig.project().tracks[0].kind == TrackKind::Drums);
+    // A new track can be added in the freed place and plays.
+    CHECK(session.addTrack(TrackKind::Phazed));
+    session.audition(1, 60, 0.8f);
+    CHECK(rig.listen(4000) > 0.01f);
+}
+
 void testStepsInAScene() {
     Rig rig;
     Session& session = rig.app.session();
@@ -3590,6 +3653,7 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testNothingStaysHeld();
+    testDeletingATrack();
     testStepsInAScene();
     testTheBattery();
     testBouncing();

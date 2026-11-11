@@ -47,6 +47,9 @@ extern const int kTrackNameCount;
 
 class SongScreen {
 public:
+    // B held this long on a track deletes it; the warning bar starts after the wait.
+    static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
+    float trackDeletePart() const { return trackHoldPart_; }
     explicit SongScreen(Session& session) : session_(session), project_(session.project) {}
 
     void onButton(const ButtonEvent& event, const Input& input);
@@ -104,6 +107,9 @@ private:
     void openRevList();
     bool selectAlone_ = false; // SELECT went down and nothing else has since
 
+    bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
+    Uint32 trackHoldSince_ = 0;
+    float trackHoldPart_ = 0.f;
     bool copying_ = false;  // R1 is held: the brush carries a cell
     int copyTrack_ = 0, copyScene_ = 0;
 

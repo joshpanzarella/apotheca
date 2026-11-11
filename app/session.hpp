@@ -61,6 +61,9 @@ public:
 
     // Give the next free track an instrument. False when all twelve are used.
     bool addTrack(TrackKind kind);
+    // Take a track out of the song, with everything on it; the tracks after it move down one.
+    // The song stops. It cannot be undone, and the last track cannot be removed.
+    bool removeTrack(int track);
 
     // Hear a synth note for a moment. update() lets go of it.
     void audition(int track, int pitch, float velocity);

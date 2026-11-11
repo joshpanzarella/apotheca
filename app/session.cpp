@@ -70,6 +70,20 @@ void Session::syncSong() {
     engine.send(c);
 }
 
+bool Session::removeTrack(int track) {
+    const int count = project.trackCount();
+    if (track < 0 || track >= count || count <= 1) return false;
+    for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
+    {
+        std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
+        project.tracks[kNumTracks - 1] = *blank;
+    }
+    if (project.track > track || project.track >= count - 1) project.track = project.track > 0 ? project.track - 1 : 0;
+    project.bar = 0;
+    applyProject(); // every track told to the engine afresh, in its new place
+    return true;
+}
+
 bool Session::addTrack(TrackKind kind) {
     const int track = project.trackCount();
     if (track >= kNumTracks || kind == TrackKind::None) return false;
