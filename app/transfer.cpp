@@ -185,7 +185,7 @@ function row(kind, name, label, size) {
   acts.append(get);
   if (kind == 'samples') { li.draggable = true; acts.append(btn('rename', 'rename'), btn('move', 'move')); }
   acts.append(btn('delete', 'delete', 'del'));
-  li.append(el('span', 'name', label), el('span', 'size', sizeText(size)), acts);
+  li.append(el('span', 'name', label.replace(/\.(wav|song|json)$/i, '')), el('span', 'size', sizeText(size)), acts); // the title, without its ending
   return li;
 }
 function drawRecordings() {
