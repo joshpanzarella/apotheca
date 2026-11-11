@@ -1471,10 +1471,36 @@ void testTheSliceView() {
     rig.tap(L1);
     CHECK(drums.slicing());
 
-    // A places a hit that plays its step's own slice.
+    // Not from the tempo (there is no lane there), nor a lane whose file is missing.
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    drums.moveCursorTo(0, 0);
+    rig.tap(UP);
+    CHECK(drums.cursorOnTempo());
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    rig.tap(DOWN);
+    session.setLaneSample(0, 6, "not here");
+    CHECK(!drums.canSlice(6) && !drums.canSlice(-1) && !drums.canSlice(8));
+    session.setLaneSample(0, 6, "");
+    session.setLaneFit(0, 2, 8); // fitted to less than a bar: still sixteen slices
+    CHECK(rig.settle() && drums.slices() == 16);
+    session.setLaneFit(0, 2, 0);
+    rig.frames(2);
+    drums.moveCursorTo(2, 0);
+    rig.tap(L1);
+    CHECK(drums.slicing());
+
+    // A places a hit that plays its step's own slice, and that slice alone is heard.
     drums.moveCursorTo(2, 4);
+    rig.render(120000);
     rig.tap(A);
     CHECK(drums.level(2, 4) > 0.f && drums.start(2, 4) == 4.f / 16.f && drums.sliceOf(4) == 4);
+    {
+        float placed = 0.f;
+        const int rang = Rig::sounding(rig.render(120000), &placed);
+        CHECK(rang >= kStep && rang <= kStep + 60 && near(placed, 0.8f * levelOfSlice(4)));
+    }
     // Up and down: the next slice, the one before; round the ends. The lane does not change.
     rig.tap(UP);
     CHECK(drums.sliceOf(4) == 5 && drums.start(2, 4) == 5.f / 16.f && drums.cursorLane() == 2 && drums.cursorStep() == 4);
@@ -1495,7 +1521,7 @@ void testTheSliceView() {
     drums.moveCursorTo(2, 9);
     rig.tap(UP);
     rig.tap(DOWN);
-    CHECK(drums.level(2, 9) == 0.f && drums.cursorStep() == 9 && drums.cursorLane() == 2);
+    CHECK(drums.level(2, 9) == 0.f && drums.start(2, 9) == 0.f && drums.cursorStep() == 9 && drums.cursorLane() == 2);
     // The stick does the same, and runs.
     drums.moveCursorTo(2, 4);
     rig.key(STICK_UP, true);
@@ -1546,6 +1572,12 @@ void testTheSliceView() {
     for (int step = 0; step < 4; ++step) CHECK(drums.level(2, step) > 0.f && drums.start(2, step) == step / 16.f);
     CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.8f);
     CHECK(drums.level(2, 5) == 0.f); // only where the cursor went
+    // Up with the brush down picks a slice; the brush does not put it straight back.
+    rig.key(R1, true);
+    rig.tap(UP);
+    rig.key(R1, false);
+    CHECK(drums.cursorStep() == 3 && drums.sliceOf(3) == 4);
+    rig.tap(DOWN);
     // With R2 as well: a slice picked at random for each, always on a cut.
     rig.key(R1, true);
     rig.key(R2, true);
@@ -1628,6 +1660,19 @@ void testTheSliceView() {
     rig.project().bar = 1;
     rig.frames(1);
     CHECK(drums.ownStart(0) == 16.f / 32.f && drums.ownStart(15) == 31.f / 32.f);
+    rig.key(Y, true); // a roll there lands on the thirty-seconds
+    drums.moveCursorTo(2, -1);
+    int odd = 0;
+    for (int roll = 0; roll < 6; ++roll) {
+        rig.tap(RIGHT);
+        for (int step = 0; step < 16; ++step) {
+            const float start = drums.start(2, step) * 32.f;
+            CHECK(start == std::floor(start) && start <= 31.f);
+            odd += static_cast<int>(start) % 2;
+        }
+    }
+    CHECK(odd > 0); // not only the sixteenths
+    rig.key(Y, false);
     drums.moveCursorTo(2, 15);
     rig.tap(A);
     CHECK(drums.start(2, 15) == 31.f / 32.f && drums.sliceOf(15) == 31); // the last slice can be reached
@@ -1637,10 +1682,11 @@ void testTheSliceView() {
     CHECK(drums.sliceOf(15) == 30);
     frames = rig.hit(2); // and a hit plays a thirty-second of the longer sound: still one step
     CHECK(frames >= kStep - 20 && frames <= kStep + 80);
-    rig.project().bar = 0;
     session.setLaneFit(0, 2, 0);
     rig.frames(2);
     CHECK(drums.slices() == 16);
+    CHECK(drums.ownStart(0) == 0.f && drums.ownStart(5) == 5.f / 16.f); // bar 2 of a one-bar recording: round again
+    rig.project().bar = 0;
     frames = rig.hit(2);
     CHECK(frames >= kStep && frames <= kStep + 60);
 
