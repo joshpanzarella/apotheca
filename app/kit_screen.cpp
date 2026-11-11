@@ -1,4 +1,5 @@
 #include "kit_screen.hpp"
+#include "samples.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -198,10 +199,15 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", lane + 1);
         fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
         if (file[0]) {
-            char upper[40];
-            std::snprintf(upper, sizeof upper, "%.24s", file);
-            for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-            fonts.medium.draw(r, soundX + 26.f, textY, upper, sound.missing ? kDim : kText);
+            // Its own name, and the folder it is in (if any) small on the right.
+            std::string upper = sampleLabel(file), folder = sampleFolderOf(file);
+            for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+            for (char& c : folder) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+            while (!folder.empty() && fonts.small.width(folder.c_str()) > 70) folder.pop_back();
+            const float room = soundW - 34.f - (folder.empty() ? 0.f : fonts.small.width(folder.c_str()) + 14.f);
+            while (!upper.empty() && fonts.medium.width(upper.c_str()) > room) upper.pop_back();
+            fonts.medium.draw(r, soundX + 26.f, textY, upper.c_str(), sound.missing ? kDim : kText);
+            if (!folder.empty()) fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, folder.c_str(), kDim);
         } else {
             fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
             fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);

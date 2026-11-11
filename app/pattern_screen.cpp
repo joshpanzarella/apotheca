@@ -274,6 +274,7 @@ const char* PatternScreen::laneLabel(int lane) const {
     const char* file = trk().laneSample[lane];
     if (!file[0]) return DrumKit::laneName(lane);
     static char labels[kDrumLanes][12];
+    if (const char* slash = std::strrchr(file, '/')) file = slash + 1; // its own name, not the folder it is in
     int n = 0;
     for (; file[n] && n < 9; ++n) labels[lane][n] = static_cast<char>(file[n] >= 'a' && file[n] <= 'z' ? file[n] - 32 : file[n]);
     labels[lane][n] = 0;

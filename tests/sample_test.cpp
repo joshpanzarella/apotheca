@@ -228,6 +228,23 @@ void testReadingWavFiles() {
     writeTextFile(folder + "/wav", "x");
     CHECK(wavNames(folder) == std::vector<std::string>({"a two", "b one"}));
     CHECK(wavNames("/no/such/folder").empty() && wavNames("").empty());
+    // Recordings in a folder inside it are listed after the loose ones, a folder at a time, as "folder/name".
+    // One level: a folder inside a folder is not looked into, nor a hidden one.
+    mkdir((folder + "/kicks").c_str(), 0755);
+    mkdir((folder + "/breaks").c_str(), 0755);
+    mkdir((folder + "/breaks/deeper").c_str(), 0755);
+    mkdir((folder + "/.trash").c_str(), 0755);
+    mkdir((folder + "/empty").c_str(), 0755);
+    CHECK(writeWav(folder + "/kicks/808.wav", made, 48000) && writeWav(folder + "/kicks/909.WAV", made, 48000) && writeWav(folder + "/breaks/amen.wav", made, 48000));
+    CHECK(writeWav(folder + "/breaks/deeper/lost.wav", made, 48000) && writeWav(folder + "/.trash/gone.wav", made, 48000));
+    writeTextFile(folder + "/kicks/readme.txt", "x");
+    CHECK(wavNames(folder) == std::vector<std::string>({"a two", "b one", "breaks/amen", "kicks/808", "kicks/909"}));
+    // A name's two parts.
+    CHECK(sampleFolderOf("kicks/808") == "kicks" && sampleLabel("kicks/808") == "808" && sampleFolderOf("b one").empty() && sampleLabel("b one") == "b one");
+    // What is a recording's name, and what is a way out of the samples folder.
+    for (const char* good : {"kick", "b one", "kicks/808", "a.b/c.d", "catches/catch 12"}) CHECK(sampleNameOk(good));
+    for (const char* bad : {"", "../up", "a/../b", "a/b/c", "/abs", "a/", ".hidden", "a/.hidden", ".a/b", "a\\b", "a\nb", "..", "a/.."}) CHECK(!sampleNameOk(bad));
+    CHECK(!sampleNameOk(std::string(64, 'x')) && sampleNameOk(std::string(63, 'x')));
 }
 
 // Four bursts of a tone, a quarter of the way apart.
@@ -818,10 +835,10 @@ void testCatch() {
     rig.tap(START);
     const std::vector<float> played = rig.render(16 * kStep + 8 * kStep);
     rig.tap(Y);
-    CHECK(std::strcmp(track.laneSample[5], "catch 1") == 0 && track.laneFit[5] == 16);
+    CHECK(std::strcmp(track.laneSample[5], "catches/catch 1") == 0 && track.laneFit[5] == 16);
     CHECK(kit.said().find("CATCH 1") != std::string::npos);
     std::vector<float> file;
-    CHECK(readWav(folder + "/catch 1.wav", file) && file.size() == 16u * kStep);
+    CHECK(readWav(folder + "/catches/catch 1.wav", file) && file.size() == 16u * kStep);
     bool same = file.size() == 16u * kStep;
     for (int i = 0; same && i < 16 * kStep; i += 7) same = std::fabs(file[static_cast<std::size_t>(i)] - played[2 * static_cast<std::size_t>(i)]) < 1e-3f; // what was heard, to 16 bits
     CHECK(same);
@@ -860,14 +877,14 @@ void testCatch() {
         rig.session().setLaneSample(0, 1, "");
         std::remove((folder + "/nearly.wav").c_str());
     }
-    // The next catch is "catch 2", on whichever lane the cursor is on; the first is left alone.
+    // The next catch is "catch 2" (in the catches folder, with the first), on whichever lane the cursor is on; the first is left alone.
     rig.render(200000);
     rig.tap(X); // something to catch: the lane, played by hand
     rig.render(4000);
     rig.tap(DOWN);
     rig.tap(Y);
-    CHECK(std::strcmp(track.laneSample[6], "catch 2") == 0 && std::strcmp(track.laneSample[5], "catch 1") == 0);
-    CHECK(wavNames(folder) == std::vector<std::string>({"catch 1", "catch 2"}));
+    CHECK(std::strcmp(track.laneSample[6], "catches/catch 2") == 0 && std::strcmp(track.laneSample[5], "catches/catch 1") == 0);
+    CHECK(wavNames(folder) == std::vector<std::string>({"catches/catch 1", "catches/catch 2"}));
     // Not while A is held (that is for stepping through sounds).
     rig.tap(X);
     rig.render(4000);
@@ -1102,7 +1119,7 @@ void testTheSamplerTrack() {
     rig.project().track = 1;
     session.view = View::Device;
     rig.tap(Y);
-    CHECK(std::strcmp(track.sample, "catch 1") == 0 && screen.said().find("CATCH 1") != std::string::npos);
+    CHECK(std::strcmp(track.sample, "catches/catch 1") == 0 && screen.said().find("CATCH 1") != std::string::npos);
     CHECK(session.trackSound(1).peaks.size() > 100);
     rig.frames(170);
     CHECK(screen.said().empty());
@@ -1235,11 +1252,11 @@ void testRecordingOntoALane() {
     // R1 again: stopped, saved, and on the lane.
     rig.tap(R1);
     CHECK(session.recording() == Session::Rec::Idle && !input.open);
-    CHECK(session.lastRecorded() == "rec 1" && std::strcmp(track.laneSample[3], "rec 1") == 0 && track.laneFit[3] == 0);
+    CHECK(session.lastRecorded() == "recorded/rec 1" && std::strcmp(track.laneSample[3], "recorded/rec 1") == 0 && track.laneFit[3] == 0);
     rig.frames(1);
     CHECK(kit.said().find("REC 1") != std::string::npos);
     std::vector<float> file;
-    CHECK(readWav(folder + "/rec 1.wav", file) && std::abs(static_cast<int>(file.size()) - (960 + 24000)) <= 300);
+    CHECK(readWav(folder + "/recorded/rec 1.wav", file) && std::abs(static_cast<int>(file.size()) - (960 + 24000)) <= 300);
     const int played = rig.hit(3); // the lane plays it: all but the silent 20 ms on its front and the last faded sample
     CHECK(played > static_cast<int>(file.size()) - 1000 && played <= static_cast<int>(file.size()));
     rig.frames(200);
@@ -1250,7 +1267,7 @@ void testRecordingOntoALane() {
     input.add(std::vector<float>(4800, 0.f));
     rig.frames(3);
     rig.tap(R1);
-    CHECK(session.lastRecorded().empty() && std::strcmp(track.laneSample[3], "rec 1") == 0 && wavNames(folder).size() == 1);
+    CHECK(session.lastRecorded().empty() && std::strcmp(track.laneSample[3], "recorded/rec 1") == 0 && wavNames(folder).size() == 1);
     rig.frames(1);
     CHECK(kit.said().find("NOTHING RECORDED") != std::string::npos);
 
@@ -1261,9 +1278,9 @@ void testRecordingOntoALane() {
     kit.goTo(6, KitScreen::kSound);
     for (int i = 0; i < 11; ++i) input.add(tone(1.f, 0.5f));
     for (int i = 0; i < 400 && session.recording() != Session::Rec::Idle; ++i) rig.frames(1);
-    CHECK(session.recording() == Session::Rec::Idle && !input.open && session.lastRecorded() == "rec 2");
-    CHECK(std::strcmp(track.laneSample[5], "rec 2") == 0 && track.laneSample[6][0] == 0);
-    CHECK(readWav(folder + "/rec 2.wav", file) && file.size() == 480000);
+    CHECK(session.recording() == Session::Rec::Idle && !input.open && session.lastRecorded() == "recorded/rec 2");
+    CHECK(std::strcmp(track.laneSample[5], "recorded/rec 2") == 0 && track.laneSample[6][0] == 0);
+    CHECK(readWav(folder + "/recorded/rec 2.wav", file) && file.size() == 480000);
     rig.frames(1);
     CHECK(kit.said().find("REC 2") != std::string::npos);
     // Not while A is held.
@@ -1280,7 +1297,7 @@ void testRecordingOntoALane() {
     input.add(tone(0.3f, 0.25f));
     rig.frames(3);
     rig.tap(R1);
-    CHECK(std::strcmp(rig.project().tracks[1].sample, "rec 3") == 0 && session.trackSound(1).peaks.size() > 100);
+    CHECK(std::strcmp(rig.project().tracks[1].sample, "recorded/rec 3") == 0 && session.trackSound(1).peaks.size() > 100);
     rig.frames(1);
     CHECK(rig.app.sampler().said().find("REC 3") != std::string::npos);
     // A synth track has nowhere to put one. Nor has a session with no sample folder.
@@ -1829,8 +1846,146 @@ void testOneSliceIsKeptInTheSong() {
     CHECK(opened.hit(3) > 2000);
 }
 
+// Recordings kept in folders: the list shows a folder at a time, L1 and R1 turn them.
+void testFoldersInTheSamplePicker() {
+    const std::string folder = tempFolder();
+    const auto make = [&](const std::string& name, int frames) {
+        std::vector<float> made(static_cast<std::size_t>(frames));
+        for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
+        CHECK(writeWav(folder + "/" + name + ".wav", made, 48000));
+    };
+    mkdir((folder + "/kicks").c_str(), 0755);
+    mkdir((folder + "/breaks").c_str(), 0755);
+    make("loose a", 2000);
+    make("loose b", 2500);
+    make("kicks/808", 3000);
+    make("kicks/909", 3500);
+    make("kicks/linn", 4000);
+    make("breaks/amen", 5000);
+    Rig rig(folder);
+    Session& session = rig.app.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    SamplePicker& list = kit.picker();
+    const TrackData& track = rig.app.project().tracks[0];
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    const SDL_Keycode L1 = SDLK_q;
+
+    // Opened with the built-in drum on: the loose ones first (UNSORTED), three folders in all.
+    rig.tap(A);
+    CHECK(list.isOpen() && list.folders() == 3 && list.folder() == 0 && list.folderName().empty() && list.count() == 3 && list.cursor() == 0);
+    rig.tap(DOWN);
+    CHECK(std::string(track.laneSample[5]) == "loose a");
+    rig.tap(DOWN, 5);
+    CHECK(list.cursor() == 2 && std::string(track.laneSample[5]) == "loose b"); // the end of this folder, not on into the next
+    // R1: the next folder, and its first recording is on at once and heard.
+    rig.render(96000);
+    rig.tap(R1);
+    CHECK(list.folder() == 1 && list.folderName() == "breaks" && list.count() == 2 && list.cursor() == 1 && std::string(track.laneSample[5]) == "breaks/amen");
+    CHECK(Rig::sounding(rig.render(20000)) > 4000);
+    CHECK(session.recording() == Session::Rec::Idle); // R1 did not start a recording under the list
+    rig.tap(R1);
+    CHECK(list.folderName() == "kicks" && list.count() == 4 && std::string(track.laneSample[5]) == "kicks/808");
+    rig.tap(DOWN, 2);
+    CHECK(std::string(track.laneSample[5]) == "kicks/linn" && list.cursor() == 3);
+    // Round the end to the first, and L1 back the other way.
+    rig.tap(R1);
+    CHECK(list.folder() == 0 && std::string(track.laneSample[5]) == "loose a");
+    rig.tap(L1);
+    CHECK(list.folderName() == "kicks" && std::string(track.laneSample[5]) == "kicks/808");
+    rig.tap(L1);
+    CHECK(list.folderName() == "breaks");
+    // A keeps it. The lane shows the recording by its own name, not its folder's.
+    rig.tap(A);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "breaks/amen" && session.laneSound(0, 5).recording);
+    // The song keeps the folder with the name, and brings it back.
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nsample 6 0 breaks/amen\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && std::string(back->tracks[0].laneSample[5]) == "breaks/amen");
+    // A song that names a way out of the samples folder is not believed.
+    std::string bad = text;
+    bad.replace(bad.find("breaks/amen"), 11, "../../etc/x");
+    std::unique_ptr<Project> other(new Project);
+    CHECK(parseSong(bad, *other) && other->tracks[0].laneSample[5][0] == 0);
+
+    // Opened again: on the folder its recording is in, with the cursor on it.
+    rig.tap(A);
+    CHECK(list.isOpen() && list.folderName() == "breaks" && list.cursor() == 1);
+    // B puts back what was there, from whatever folder the list had got to.
+    rig.tap(R1);
+    rig.tap(DOWN);
+    CHECK(std::string(track.laneSample[5]) == "kicks/909");
+    rig.tap(B);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "breaks/amen");
+
+    // Hold Y deletes one in a folder: the file goes, from the folder. The last of a folder takes the folder off the list.
+    rig.tap(A);
+    rig.key(Y, true);
+    rig.frames(70);
+    rig.key(Y, false);
+    struct stat info;
+    CHECK(stat((folder + "/breaks/amen.wav").c_str(), &info) != 0 && stat((folder + "/kicks/808.wav").c_str(), &info) == 0);
+    CHECK(list.folders() == 2 && list.isOpen() && std::string(track.laneSample[5]) != "breaks/amen");
+    rig.tap(B); // what was there is gone: there is nothing to put back
+    CHECK(track.laneSample[5][0] != 0 || !session.laneSound(0, 5).recording);
+    // The session will not delete by a name that reaches out of the folder.
+    writeTextFile(folder + "/../outside.wav", "x");
+    CHECK(!session.deleteSample("../outside") && !session.deleteSample("kicks/../../outside") && !session.deleteSample("a/b/c") && !session.deleteSample("kicks/nothing"));
+    CHECK(session.deleteSample("kicks/linn") && stat((folder + "/kicks/linn.wav").c_str(), &info) != 0);
+
+    // With no folders at all the list is as it always was: one list, and L1 / R1 do nothing.
+    const std::string plain = tempFolder();
+    {
+        std::vector<float> made(2000, 0.3f);
+        CHECK(writeWav(plain + "/one.wav", made, 48000) && writeWav(plain + "/two.wav", made, 48000));
+    }
+    Rig flat(plain);
+    flat.app.session().view = View::Device;
+    flat.app.kit().goTo(2, KitScreen::kSound);
+    flat.frames(1);
+    flat.tap(A);
+    SamplePicker& simple = flat.app.kit().picker();
+    CHECK(simple.isOpen() && simple.folders() == 1 && simple.count() == 3);
+    flat.tap(DOWN);
+    flat.tap(R1);
+    flat.tap(L1);
+    CHECK(simple.cursor() == 1 && std::string(flat.app.project().tracks[0].laneSample[2]) == "one" && flat.app.session().recording() == Session::Rec::Idle);
+    // Only folders, nothing loose: the first folder is the first shown, and there is no UNSORTED.
+    const std::string sorted = tempFolder();
+    mkdir((sorted + "/hats").c_str(), 0755);
+    {
+        std::vector<float> made(2000, 0.3f);
+        CHECK(writeWav(sorted + "/hats/closed.wav", made, 48000));
+    }
+    Rig tidy(sorted);
+    tidy.app.session().view = View::Device;
+    tidy.app.kit().goTo(2, KitScreen::kSound);
+    tidy.frames(1);
+    tidy.tap(A);
+    CHECK(tidy.app.kit().picker().folders() == 1 && tidy.app.kit().picker().folderName() == "hats" && tidy.app.kit().picker().count() == 2);
+
+    // A catch goes into the catches folder (made for it), and is found there by the list.
+    CHECK(!list.isOpen());
+    rig.frames(2);
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.view = View::Pattern;
+    rig.tap(START);
+    rig.render(17 * kStep);
+    rig.tap(START);
+    session.view = View::Device;
+    kit.goTo(6, KitScreen::kSound);
+    rig.frames(1);
+    rig.tap(Y);
+    CHECK(std::string(track.laneSample[6]) == "catches/catch 1" && stat((folder + "/catches/catch 1.wav").c_str(), &info) == 0);
+    rig.tap(A);
+    CHECK(list.isOpen() && list.folderName() == "catches" && list.cursor() == 1);
+}
+
 int main(int, char**) {
     testTheSamplePicker();
+    testFoldersInTheSamplePicker();
     testTheSliceView();
     testOneSliceIsKeptInTheSong();
     testReadingWavFiles();

@@ -26,12 +26,14 @@ namespace apotheca {
 namespace {
 constexpr int kPeaks = 512;      // points in a recording's outline (the slice view draws it 512 wide)
 constexpr int kMaxFitSteps = 64; // four bars
+const char* const kCatchFolder = "catches";    // where a caught bar is kept, inside the samples folder
+const char* const kRecordedFolder = "recorded"; // and a take from a microphone
 }
 
 std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
 
 bool Session::deleteSample(const std::string& name) {
-    if (sampleFolder_.empty() || name.empty() || name.find('/') != std::string::npos || name.find("..") != std::string::npos) return false;
+    if (sampleFolder_.empty() || !sampleNameOk(name)) return false;
     bool there = false;
     for (const std::string& have : sampleNames()) there = there || have == name;
     if (!there) return false;
@@ -158,10 +160,12 @@ void Session::finishRecording() {
     lastRecorded_.clear();
     const std::vector<float> take = recorder_.finish();
     if (take.empty()) return; // no sound came
+    // Takes go in a folder of their own, so they do not pile up among everything else.
     mkdir(sampleFolder_.c_str(), 0755);
+    mkdir((sampleFolder_ + "/" + kRecordedFolder).c_str(), 0755);
     std::string name;
     for (int number = 1; number < 10000; ++number) {
-        name = "rec " + std::to_string(number);
+        name = std::string(kRecordedFolder) + "/rec " + std::to_string(number);
         if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", take, static_cast<int>(kSampleRate))) return;
@@ -224,10 +228,12 @@ std::string Session::catchLastBar(int track, int lane) {
     float peak = 0.f;
     for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
     if (peak < 1e-4f) return ""; // nothing was playing
+    // Catches go in a folder of their own, so they do not pile up among everything else.
     mkdir(sampleFolder_.c_str(), 0755); // fine if it is already there
+    mkdir((sampleFolder_ + "/" + kCatchFolder).c_str(), 0755);
     std::string name;
     for (int number = 1; number < 10000; ++number) {
-        name = "catch " + std::to_string(number);
+        name = std::string(kCatchFolder) + "/catch " + std::to_string(number);
         if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", bar, static_cast<int>(kSampleRate))) return "";

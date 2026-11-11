@@ -40,7 +40,8 @@ li{list-style:none;padding:6px 0;border-bottom:1px solid #2a231d} ul{padding:0;m
 </style></head><body>
 <h1>APOTHECA <span id="version" style="font-size:12px;color:#8f8370;letter-spacing:.08em"></span></h1><p>Files to and from the handheld. <a id="design" href="#">Open the sound designer</a></p>
 <div id="drop"><p>Drop files here: recordings (.wav), chord packs (.json), songs (.song).</p>
-<button id="pick">Choose files</button><input id="files" type="file" multiple accept=".wav,.json,.song"></div>
+<button id="pick">Choose files</button><input id="files" type="file" multiple accept=".wav,.json,.song">
+<p style="margin:14px 0 0">Put recordings in the folder <input id="folder" type="text" maxlength="24" placeholder="none" style="display:inline;background:#14110e;color:#e0d5bf;border:1px solid #43392f;padding:6px 8px;font:inherit;width:11em"> (kicks, breaks, vocals... On the handheld, L1 and R1 turn the folders.)</p></div>
 <ul id="log"></ul>
 <h2>UPDATE APOTHECA</h2>
 <p>Choose the new <b>apotheca</b> program file (inside the apotheca folder of the zip). It is only sent here; you accept it on the handheld by holding A, and it is used the next time Apotheca starts.</p>
@@ -58,7 +59,7 @@ async function list() {
     if (!all[kind]) continue;
     const ul = document.getElementById(kind); ul.textContent = '';
     for (const name of all[kind]) { const li = document.createElement('li'); const a = document.createElement('a');
-      a.href = base + '/' + kind + '/' + encodeURIComponent(name); a.download = name; a.textContent = name; li.append(a); ul.append(li); }
+      a.href = base + '/' + kind + '/' + name.split('/').map(encodeURIComponent).join('/'); a.download = name.split('/').pop(); a.textContent = name; li.append(a); ul.append(li); }
     if (!all[kind].length) { const li = document.createElement('li'); li.textContent = 'none yet'; li.className = 'no'; ul.append(li); }
   }
 }
@@ -66,8 +67,10 @@ async function send(files) {
   for (const file of files) {
     const kind = kinds[file.name.split('.').pop().toLowerCase()];
     if (!kind) { line(file.name + ': not a .wav, .json or .song', 'no'); continue; }
-    const answer = await fetch(base + '/' + kind + '/' + encodeURIComponent(file.name), {method: 'PUT', body: file});
-    line(file.name + ': ' + (await answer.text()), answer.ok ? 'ok' : 'no');
+    const folder = kind == 'samples' ? document.getElementById('folder').value.trim() : '';
+    const where = (folder ? encodeURIComponent(folder) + '/' : '') + encodeURIComponent(file.name);
+    const answer = await fetch(base + '/' + kind + '/' + where, {method: 'PUT', body: file});
+    line((folder ? folder + '/' : '') + file.name + ': ' + (await answer.text()), answer.ok ? 'ok' : 'no');
   }
   list();
 }
@@ -164,15 +167,51 @@ bool isProgramForThisMachine(const std::string& b) {
     return machine != 0 && made == machine && (type == 2 || type == 3);            // a program, for this processor
 }
 
+// A name with nothing in it that could reach outside its folder or upset a card's file system.
+bool plainName(const std::string& name, std::size_t longest) {
+    if (name.empty() || name.size() > longest || name[0] == '.' || name[0] == ' ') return false;
+    for (char c : name)
+        if (static_cast<unsigned char>(c) < 32 || c == 127 || c == '/' || c == '\\' || c == ':' || c == '"' || c == '<' || c == '>' || c == '|' || c == '?' || c == '*') return false;
+    return name.find("..") == std::string::npos;
+}
+
 std::string safeFileName(const std::string& fromAddress, const std::string& ending) {
     const std::string name = unescape(fromAddress);
-    if (name.size() <= ending.size() || name.size() > 60 || name[0] == '.' || name[0] == ' ') return "";
-    for (char c : name)
-        if (static_cast<unsigned char>(c) < 32 || c == 127 || c == '/' || c == '\\' || c == ':' || c == '"' || c == '<' || c == '>' || c == '|' || c == '?' || c == '*') return "";
-    if (name.find("..") != std::string::npos) return "";
+    if (name.size() <= ending.size() || !plainName(name, 60)) return "";
     std::string end = name.substr(name.size() - ending.size());
     for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
     return end == ending ? name : "";
+}
+
+// A recording may be in a folder, one level down: "kicks/808.wav". The folder
+// and the file are each held to the same rules. "" if it is not such a name.
+std::string safeSamplePath(const std::string& fromAddress) {
+    const std::string name = unescape(fromAddress);
+    const std::size_t slash = name.find('/');
+    if (slash == std::string::npos) return safeFileName(fromAddress, ".wav");
+    const std::string folder = name.substr(0, slash), file = name.substr(slash + 1);
+    if (!plainName(folder, 24) || file.size() <= 4 || !plainName(file, 36)) return "";
+    std::string end = file.substr(file.size() - 4);
+    for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+    return end == ".wav" ? name : "";
+}
+
+// The recordings: the loose ones, then those in each folder as "folder/name.wav".
+std::vector<std::string> recordingsIn(const std::string& folder) {
+    std::vector<std::string> names = filesEnding(folder, ".wav"), folders;
+    if (DIR* dir = folder.empty() ? nullptr : opendir(folder.c_str())) {
+        while (const dirent* entry = readdir(dir)) {
+            struct stat info;
+            const std::string name = entry->d_name;
+            if (plainName(name, 24) && stat((folder + "/" + name).c_str(), &info) == 0 && S_ISDIR(info.st_mode)) folders.push_back(name);
+        }
+        closedir(dir);
+    }
+    std::sort(folders.begin(), folders.end());
+    for (const std::string& inside : folders)
+        for (const std::string& file : filesEnding(folder + "/" + inside, ".wav"))
+            if (file.size() <= 36) names.push_back(inside + "/" + file);
+    return names;
 }
 
 std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : kind == "bounces" ? bounces_ : ""; }
@@ -279,7 +318,7 @@ void Transfer::answer(int fd) {
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
     if (method == "GET" && path == "/list") {
         return reply(fd, "200 OK", "application/json",
-                     "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"samples\":" + jsonList(filesEnding(samples_, ".wav")) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
+                     "{\"version\":\"" + std::string(kVersion) + "\",\"built\":\"" + std::string(kBuilt) + "\",\"samples\":" + jsonList(recordingsIn(samples_)) + ",\"songs\":" + jsonList(filesEnding(songs_, ".song")) +
                          ",\"chords\":" + jsonList(filesEnding(chords_, ".json")) + ",\"bounces\":" + jsonList(bounces_.empty() ? std::vector<std::string>() : filesEnding(bounces_, ".wav")) + "}");
     }
 
@@ -335,7 +374,8 @@ void Transfer::answer(int fd) {
     const std::string kind = slash == std::string::npos ? "" : path.substr(1, slash - 1);
     const std::string ending = kind == "samples" || kind == "bounces" ? ".wav" : kind == "songs" ? ".song" : kind == "chords" ? ".json" : "";
     const std::string folder = folderFor(kind);
-    const std::string name = ending.empty() ? "" : safeFileName(path.substr(slash + 1), ending);
+    // A recording may be in a folder ("samples/kicks/808.wav"); nothing else may.
+    const std::string name = ending.empty() ? "" : kind == "samples" ? safeSamplePath(path.substr(slash + 1)) : safeFileName(path.substr(slash + 1), ending);
     if (folder.empty() || name.empty()) return reply(fd, "400 Bad Request", "text/plain", "not a file name this takes\n");
     const std::string file = folder + "/" + name;
 
@@ -378,6 +418,7 @@ void Transfer::answer(int fd) {
                      kind == "samples" ? "not a WAV file this can read\n" : kind == "chords" ? "not a chord pack\n" : "not an Apotheca song\n");
     }
     mkdir(folder.c_str(), 0755); // fine if it is already there
+    if (const std::size_t in = name.find('/'); in != std::string::npos) mkdir((folder + "/" + name.substr(0, in)).c_str(), 0755); // and the folder inside it
     if (!writeTextFile(file, body)) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
     received_.fetch_add(1);
     reply(fd, "200 OK", "text/plain", "saved\n");

@@ -171,7 +171,7 @@ struct TrackData {
     int bars[kMaxScenes];
     EffectData effects[kEffectSlots]; // on this track, one after the other
     float laneLevel[kDrumLanes]; // each drum's volume
-    char laneSample[kDrumLanes][40] = {}; // a recording on the lane in place of the built-in drum: its file's name, or empty
+    char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
     int preset = 0;              // a synth's preset, patch and macros
@@ -184,7 +184,7 @@ struct TrackData {
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
     bool muted = false;  // silent until unmuted; kept with the song
     bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
-    char sample[40] = {};           // when it is a sampler: its recording's file name, or empty
+    char sample[64] = {};           // when it is a sampler: its recording's file name (as a lane's), or empty
     int sampler[sampler::kSettings]; // ...and its settings
 
     TrackData() {
