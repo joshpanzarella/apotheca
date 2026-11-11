@@ -420,6 +420,30 @@ void NoteScreen::fxTurn(Button direction) {
     if (changed) session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
+// With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide (a note only),
+// or both. Each roll is something, and something else than it was.
+void NoteScreen::fxRoll() {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot < 0 && chord < 0) return;
+    std::uint8_t& ratchet = slot >= 0 ? pat().notes[slot].ratchet : pat().chords[chord].ratchet;
+    const int ratchetWas = ratchet < 2 ? 0 : ratchet, glideWas = slot >= 0 ? pat().notes[slot].glide : 0;
+    const auto roll = [&](std::uint32_t outOf) {
+        dice_ = dice_ * 1664525u + 1013904223u;
+        return (dice_ >> 12) % outOf;
+    };
+    static const std::uint8_t ratchets[] = {2, 2, 3, 4};
+    int to = 0, glide = 0;
+    for (int tries = 0; tries < 16; ++tries) {
+        to = roll(100) < 65 ? ratchets[roll(4)] : 0;
+        glide = slot >= 0 && roll(100) < 40 ? 1 : 0;
+        if ((to || glide) && (to != ratchetWas || glide != glideWas)) break;
+    }
+    if (!to && !glide) to = ratchetWas == 2 ? 3 : 2; // (sixteen unlucky rolls: still something else)
+    ratchet = static_cast<std::uint8_t>(to);
+    if (slot >= 0) pat().notes[slot].glide = static_cast<std::uint8_t>(glide);
+    session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+}
+
 void NoteScreen::press(Button b) {
     if (fxHeld_) return fxTurn(b);
     if (picking_) {
@@ -451,6 +475,10 @@ void NoteScreen::paintHere() {
 void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
 
+    if (fxHeld_ && b == Button::Y) {
+        if (event.down) fxRoll(); // the dice, for what this note does. (Chords wait until X is let go.)
+        return;
+    }
     if (b == Button::Y) {
         if (event.down && !shaping_ && !painting_) beginPick();
         else if (!event.down) endPick();
@@ -949,6 +977,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (fxHeld_) {
         hint("LEFT / RIGHT", "ratchet");
         if (under) hint("UP / DOWN", "glide on / off");
+        hint("Y", "dice");
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time, freely");
         hint("D-PAD", "by whole steps");

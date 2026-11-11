@@ -90,6 +90,31 @@ void PatternScreen::fxTurn(Button direction) {
     if ((after.pitch != before.pitch || after.ratchet != before.ratchet) && !project_.playing) hearHit();
 }
 
+// With X held on a hit, Y rolls the dice for what it does: each roll is something, and
+// something else than it was. Mostly one effect, sometimes two; small pitches more often than big.
+void PatternScreen::fxRoll() {
+    if (!hitHere()) return;
+    const StepFx before = pat().fx[lane_][step_];
+    const auto roll = [&](std::uint32_t outOf) {
+        dice_ = dice_ * 1664525u + 1013904223u;
+        return (dice_ >> 12) % outOf;
+    };
+    static const std::int8_t pitches[] = {-12, -7, -5, -3, -2, -1, 1, 2, 3, 5, 7, 12};
+    static const std::uint8_t ratchets[] = {2, 2, 3, 4};
+    StepFx fx;
+    for (int tries = 0; tries < 16; ++tries) {
+        fx = StepFx();
+        if (roll(100) < 45) fx.ratchet = ratchets[roll(4)];
+        if (roll(100) < 40) fx.pitch = pitches[roll(12)];
+        if (roll(100) < 15) fx.reverse = 1;
+        if (roll(100) < 25) fx.cut = static_cast<std::uint8_t>(1 + roll(kCutChoices - 1));
+        const bool same = fx.pitch == before.pitch && fx.hits() == before.hits() && fx.reverse == before.reverse && fx.cut == before.cut;
+        if (fx.any() && !same) break;
+    }
+    setFx(lane_, step_, fx);
+    if (!project_.playing) hearHit();
+}
+
 void PatternScreen::hearHit() {
     if (!hitHere()) return;
     audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f, pat().fx[lane_][step_]);
@@ -568,6 +593,10 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
+    if (fxHeld_ && b == Button::Y) {
+        if (event.down) fxRoll(); // the dice, for what this hit does. (Y's own jobs wait until X is let go.)
+        return;
+    }
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
@@ -975,6 +1004,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "ratchet");
         hint("L1", "reverse");
         hint("R1", "cut");
+        hint("Y", "dice");
     } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");
         hint("+ R2", "shuffled");

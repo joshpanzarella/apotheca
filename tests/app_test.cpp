@@ -3913,6 +3913,54 @@ void testStepEffects() {
     rig.key(SELECT, false);
     CHECK(drums.fx(0, 4).reverse == 0 && drums.level(0, 4) > 0.f);
 
+    // X held, Y: the dice, for what the hit does. Every roll is something, and something else than
+    // it was; the hit is heard as it now is; the hit's chance (Y's job without X) is left alone.
+    {
+        drums.moveCursorTo(0, 4);
+        drums.setFx(0, 4, StepFx());
+        const float chanceWas = drums.chance(0, 4), levelWas = drums.level(0, 4);
+        rig.render(60000);
+        rig.key(X, true);
+        rig.render(60000); // X's own hearing of the hit, gone by
+        bool ratchets = false, pitches = false, reverses = false, cuts = false, two = false;
+        for (int i = 0; i < 60; ++i) {
+            const StepFx was = drums.fx(0, 4);
+            rig.tap(Y);
+            const StepFx now = drums.fx(0, 4);
+            CHECK(now.any());
+            CHECK(now.pitch != was.pitch || now.hits() != was.hits() || now.reverse != was.reverse || now.cut != was.cut);
+            CHECK(now.pitch >= -12 && now.pitch <= 12 && now.hits() >= 1 && now.hits() <= 4 && now.cut < kCutChoices && now.reverse <= 1);
+            if (i == 0) CHECK(soundsFor(rig, 6000) > 0); // heard
+            ratchets = ratchets || now.hits() > 1;
+            pitches = pitches || now.pitch != 0;
+            reverses = reverses || now.reverse;
+            cuts = cuts || now.cut;
+            two = two || (now.hits() > 1) + (now.pitch != 0) + (now.reverse != 0) + (now.cut != 0) >= 2;
+            rig.render(4800);
+        }
+        CHECK(ratchets && pitches && reverses && cuts && two);
+        CHECK(drums.chance(0, 4) == chanceWas && drums.level(0, 4) == levelWas && drums.effecting());
+        // A roll is undone like any other change.
+        rig.frames(60);
+        const StepFx settled = drums.fx(0, 4);
+        rig.tap(Y);
+        const StepFx rolled = drums.fx(0, 4);
+        rig.key(X, false);
+        rig.frames(60);
+        rig.key(SELECT, true);
+        rig.tap(B);
+        rig.key(SELECT, false);
+        CHECK(drums.fx(0, 4).pitch == settled.pitch && drums.fx(0, 4).hits() == settled.hits() && drums.fx(0, 4).reverse == settled.reverse && drums.fx(0, 4).cut == settled.cut);
+        CHECK(rolled.any());
+        // With X let go, Y is the chance again.
+        rig.tap(Y);
+        CHECK(drums.chance(0, 4) < chanceWas);
+        drums.setChance(0, 4, chanceWas);
+        drums.setFx(0, 4, StepFx());
+        rig.frames(60);
+        rig.render(60000);
+    }
+
     // X is only a hold on a hit. On an empty step, a lane's name or the tempo it just hears, and the D-pad moves the cursor.
     drums.moveCursorTo(0, 7);
     rig.key(X, true);
@@ -4463,6 +4511,56 @@ void testNoteEffects() {
     rig.tap(B);
     rig.key(SELECT, false);
     CHECK(p.at(60, 4) >= 0 && p.notes[p.at(60, 4)].glide == 1);
+
+    // X held, Y: the dice. A note gets a ratchet, a glide or both: always something, and something else.
+    {
+        const int at = p.at(60, 4);
+        rig.key(X, true);
+        bool ratchets = false, glides = false, both = false, plainRatchet = false;
+        for (int i = 0; i < 40; ++i) {
+            const int ratchetWas = p.notes[at].ratchet, glideWas = p.notes[at].glide;
+            rig.tap(Y);
+            const NoteEvent& n = p.notes[at];
+            CHECK(n.ratchet >= 2 || n.glide == 1);
+            CHECK(n.ratchet != ratchetWas || n.glide != glideWas);
+            CHECK((n.ratchet == 0 || (n.ratchet >= 2 && n.ratchet <= 4)) && n.glide <= 1);
+            ratchets = ratchets || n.ratchet >= 2;
+            glides = glides || n.glide;
+            both = both || (n.ratchet >= 2 && n.glide);
+            plainRatchet = plainRatchet || (n.ratchet >= 2 && !n.glide);
+        }
+        CHECK(ratchets && glides && both && plainRatchet && roll.effecting() && !roll.picking());
+        rig.key(X, false);
+        // The engine is told: what plays is what the roll left.
+        p.notes[at].length = 1.f;
+        const int hits = p.notes[at].ratchet >= 2 ? p.notes[at].ratchet : 1;
+        std::string text = songText(rig.project());
+        char line[40];
+        std::snprintf(line, sizeof line, "\nnotefx 5 60 %d %d\n", hits, p.notes[at].glide);
+        CHECK(text.find(line) != std::string::npos);
+        // A chord: a ratchet, never a glide, and never nothing.
+        roll.moveCursorTo(48, 10);
+        rig.key(X, true);
+        CHECK(roll.effecting());
+        for (int i = 0; i < 12; ++i) {
+            const int was = p.chords[0].ratchet;
+            rig.tap(Y);
+            CHECK(p.chords[0].ratchet >= 2 && p.chords[0].ratchet <= 4 && p.chords[0].ratchet != was);
+        }
+        rig.key(X, false);
+        // A roll is undone like any other change.
+        rig.frames(60);
+        const int kept = p.chords[0].ratchet;
+        rig.key(X, true);
+        rig.tap(Y);
+        rig.key(X, false);
+        CHECK(p.chords[0].ratchet != kept);
+        rig.frames(60);
+        rig.key(SELECT, true);
+        rig.tap(B);
+        rig.key(SELECT, false);
+        CHECK(p.chords[0].ratchet == kept);
+    }
 }
 
 int main(int, char**) {
