@@ -1,5 +1,7 @@
 #include "note_screen.hpp"
 
+#include "note_marks.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -12,9 +14,13 @@ using namespace ui;
 namespace {
 
 // Keys run across, as on a keyboard; the bar runs down the screen.
-constexpr int kGridLeft = 28, kGridW = 612, kRowH = 20;
+// All sixteen steps show at once. 21 is the tallest a row can be with one
+// octave showing (the tallest keys) and the chord tiles under the grid: at
+// 22 the tiles reach the hints bar.
+constexpr int kGridLeft = 28, kGridW = 612, kRowH = 21;
 constexpr int kCellH = kRowH - 2;
-constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42;
+constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 41;
+constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
@@ -103,7 +109,7 @@ void NoteScreen::eraseHere() {
 int NoteScreen::visibleKeys() const { return session_.octavesShown() * 12; }
 // Wider keys are taller keys, so a keyboard zoomed in still looks like one.
 // The grid starts just under them, lower when they are taller.
-int NoteScreen::keysH() const { return session_.octavesShown() == 1 ? 30 : session_.octavesShown() == 2 ? 22 : 16; }
+int NoteScreen::keysH() const { return session_.octavesShown() == 1 ? 24 : session_.octavesShown() == 2 ? 22 : 16; }
 int NoteScreen::blackKeyH() const { return keysH() * 5 / 8; }
 int NoteScreen::gridTop() const { return kKeysTop + keysH() + 2; }
 int NoteScreen::keyW() const { return kGridW / visibleKeys(); } // 51, 25 or 17
@@ -843,18 +849,28 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // What a note does besides play, as marks on its block. A ratchet: dark lines across its first
     // step, cutting it into as many pieces as it has notes. A glide: a purple corner at its top,
     // on the side of the key it comes from... (the side it slides in from is not known here; the corner is on the left).
-    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide) {
+    // A note drawn inside another (below) is narrower by `inset` each side, and its marks with it.
+    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide, int inset = 0) {
         if (!shows(pitch)) return;
-        const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH)), full = cellW() - 2;
-        const int first = static_cast<int>(std::round((length < 1.f ? length : 1.f) * kRowH)) - 4; // the part of it in its first step
-        const int line = ratchet >= 4 ? 2 : 3;
-        for (int k = 1; k < ratchet && first > 2 * ratchet; ++k) fill(r, x, y + first * k / ratchet - line / 2, full, line, kBg);
+        const int pad = inset ? 1 : 0; // the dark edge it has above and below
+        const int x = gx(pitch) + 1 + inset, y = gy(step) + 1 + pad + static_cast<int>(std::round(nudge * kRowH)), full = cellW() - 2 - 2 * inset;
+        const int first = static_cast<int>(std::round((length < 1.f ? length : 1.f) * kRowH)) - 4 - 2 * pad; // the part of it in its first step
+        int tops[3];
+        const int line = ratchetLines(first, ratchet, tops);
+        for (int k = 0; line > 0 && k < ratchet - 1; ++k) fill(r, x, y + tops[k], full, line, kBg);
         if (ratchet >= 2 && first > 2) fill(r, x + full - 4, y, 4, first, kPurple); // and a purple edge, so it is not taken for a few short notes
-        if (glide)
-            for (int d = 0; d < 10; ++d) fill(r, x, y + d, 10 - d, 1, kPurple);
+        if (glide) {
+            // Ten across where there is room. On narrow keys it stops short of a ratchet's purple edge.
+            const int room = ratchet >= 2 ? full - 6 : full - 2;
+            const int corner = room > 10 ? 10 : (room < 3 ? 3 : room);
+            for (int d = 0; d < corner; ++d) {
+                fill(r, x, y + d, corner - d, 1, kPurple);
+                fill(r, x + corner - d, y + d, 1, 1, kBg); // a dark edge, so it stands clear of the note and of a ratchet's lines
+            }
+        }
     };
     for (const NoteEvent& n : pat().notes)
-        if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0);
+        if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0);
     for (const ChordEvent& c : pat().chords) {
         if (c.velocity <= 0.f || c.ratchet < 2) continue;
         int keys[kChordNotes];
@@ -875,6 +891,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         h = h < 3 ? 3 : h;
         fill(r, x - 1, y, w + 2, h, kBg);
         fill(r, x, y + 1, w, h - 2, live ? kTeal : kText);
+        if (n.ratchet >= 2 || n.glide) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, inset);
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
@@ -885,10 +902,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, 0, gy(steps) - 1, kGridLeft + visibleKeys() * keyW(), (kSteps - steps) * kRowH, faded(kBg, 185));
 
     // ---- what is under the cursor ---------------------------------------------------
-    const int stripY = gridTop() + kSteps * kRowH + 8;
+    const int stripY = gridTop() + kSteps * kRowH + kStripGap;
     const auto field = [&](float fx, const char* label, const char* value, SDL_Color color) {
-        fonts.small.draw(r, fx, stripY + 12.f, label, kDim);
-        fonts.large.draw(r, fx, stripY + 30.f, value, color);
+        fonts.small.draw(r, fx, stripY + 8.f, label, kDim);
+        fonts.large.draw(r, fx, stripY + 26.f, value, color);
     };
     if (picking_) {
         // The pack laid out: seven chords at a time, the one in hand lit.
@@ -909,7 +926,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, 380.f, static_cast<float>(stripY), text, kBrass);
         }
         fonts.small.drawRight(r, kScreenW - 8.f, static_cast<float>(stripY), editing_ >= 0 ? "SWAPPING THIS CHORD" : "LET GO OF Y TO PLACE", kDim);
-        const int shown = count < 7 ? count : 7, tileW = 88, tileH = 30, tileY = stripY + 17;
+        const int shown = count < 7 ? count : 7, tileW = 88, tileH = 30, tileY = stripY + 15;
         int first = hand_ - 3;
         if (first > count - shown) first = count - shown;
         if (first < 0) first = 0;
