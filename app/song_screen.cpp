@@ -418,24 +418,28 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (int t = 0; t < tracks; ++t) {
         const int x = kColumnsLeft + t * (colW + 1);
         box(r, x, kGridTop, colW, kHeadH, kPanel2, kLine);
-        std::snprintf(text, sizeof text, "%d", t + 1);
-        fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
-        const TrackKind kind = project_.tracks[t].kind;
-        const InstrumentInfo* info = instrument(kind);
-        const char* name = !info ? "" : colW > 60 ? info->name : info->shortName;
-        // The player's own name for it, cut to fit a narrow column.
-        char own[12];
-        std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
-        for (std::size_t n = std::strlen(own); n > 0 && fonts.small.width(own) > colW - 6; --n) own[n - 1] = 0;
         const bool sounding = session_.heard(t);
-        fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
-        // B held on this track: its head fills red, and says what is coming.
-        if (trackHoldPart_ > 0.f && t == column_) {
-            fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * (trackHoldPart_ > 1.f ? 1.f : trackHoldPart_)), kHeadH - 2, faded(kStop, 170));
-            fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 90 ? "DELETING TRACK" : "DELETE", kText);
+        // B held on this track: its head fills red and says what is coming, and
+        // nothing else: the number and the name come back if B is let go. The
+        // words flash slowly, three times in the two seconds.
+        const bool deleting = trackHoldPart_ > 0.f && t == column_;
+        if (deleting) {
+            const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
+            fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
+            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 90 ? "DELETING TRACK" : "DELETE", kText);
+        } else {
+            std::snprintf(text, sizeof text, "%d", t + 1);
+            fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
+            const InstrumentInfo* info = instrument(project_.tracks[t].kind);
+            const char* name = !info ? "" : colW > 60 ? info->name : info->shortName;
+            // The player's own name for it, cut to fit a narrow column.
+            char own[12];
+            std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
+            for (std::size_t n = std::strlen(own); n > 0 && fonts.small.width(own) > colW - 6; --n) own[n - 1] = 0;
+            fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
         }
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
-        if (!sounding) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
+        if (!sounding && !deleting) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
         if (project_.tracks[t].solo) {
             fill(r, x + colW - 13, kGridTop + 2, 11, 11, kTeal);
             fonts.small.drawCentered(r, x + colW - 7.5f, kGridTop + 3.f, "S", kBg);

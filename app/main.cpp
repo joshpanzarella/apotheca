@@ -411,6 +411,10 @@ int main(int argc, char** argv) {
     // ---- what to show, for stills ---------------------------------------------------
     if (std::strcmp(view, "song") == 0) {
         app.session().view = View::Song;
+    } else if (std::strcmp(view, "deleting") == 0) {
+        // B held on a track: its head a second into "DELETING TRACK".
+        app.session().view = View::Song;
+        pushKey(SDLK_z, true);
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
