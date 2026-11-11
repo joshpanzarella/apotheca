@@ -283,7 +283,7 @@ static void testNudgeMovesAHitOffTheGrid() {
     CHECK(a >= 4 * kStep + quarter && a <= 4 * kStep + quarter + 2);
     const int b = onsetOf(renderFrames(early, 16 * kStep));
     CHECK(b >= 4 * kStep - quarter && b <= 4 * kStep - quarter + 2);
-    const std::vector<float> round = renderFrames(wrapped, 16 * kStep);
+    const std::vector<float> round = renderFrames(wrapped, 17 * kStep); // a bar and a step, to see over the bar line
     CHECK(onsetOf(round) >= 0 && onsetOf(round) <= 2);
     // ...and from then on just before each bar line, once: louder there than a moment before it.
     const auto loudest = [&](int from, int to) { float p = 0.f; for (int i = 2 * from; i < 2 * to; ++i) p = std::fmax(p, std::fabs(round[i])); return p; };
