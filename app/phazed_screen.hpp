@@ -72,6 +72,7 @@ private:
     const SynthSpec& spec_;
     int page_ = 0;
     int cursor_ = kPreset;
+    unsigned rolls_ = 0; // how many times Y has rolled, so two in one frame differ
     bool holding_ = false; // A is held
     float saved_ = 0.f;    // part-steps saved up while the stick turns
 

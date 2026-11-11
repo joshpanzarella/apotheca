@@ -75,7 +75,7 @@ bool Session::addTrack(TrackKind kind) {
     if (kind == TrackKind::Drums) {
         if (!engine.addDrumTrack(track)) return false;
     } else {
-        const SynthKind synth = kind == TrackKind::Twin ? SynthKind::Twin : kind == TrackKind::Sampler ? SynthKind::Sampler : SynthKind::Phazed;
+        const SynthKind synth = kind == TrackKind::Twin ? SynthKind::Twin : kind == TrackKind::Sampler ? SynthKind::Sampler : kind == TrackKind::Qmod ? SynthKind::Qmod : SynthKind::Phazed;
         if (!engine.addSynthTrack(track, synth)) return false;
         project.tracks[track].preset = 0;
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
@@ -472,6 +472,27 @@ void Session::chooseSynthPreset(int track, int index) {
     // One of the player's own: the engine is told every setting, and the macros it was saved with.
     const std::vector<float>& macros = userPresets(t.kind)[own].macros;
     for (int m = 0; m < phazed::kMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
+    sendSynthPatch(track);
+}
+
+// A new sound from the dice, for a synth that generates its sounds (QMOD).
+bool Session::rollSynth(int track, unsigned seed) {
+    if (track < 0 || track >= kNumTracks) return false;
+    TrackData& t = project.tracks[track];
+    const SynthSpec* spec = specFor(t.kind);
+    if (!spec || !spec->roll) return false;
+    spec->roll(t, seed);
+    sendSynthPatch(track);
+    return true;
+}
+
+// Tell the engine every setting and macro of a synth track, as the project has them.
+void Session::sendSynthPatch(int track) {
+    TrackData& t = project.tracks[track];
+    const SynthSpec* spec = specFor(t.kind);
+    if (!spec) return;
+    Command c;
+    c.track = track;
     const int* values = spec->values(t);
     c.type = Command::SetSetting;
     for (int id = 0; id < settingCount(t.kind); ++id) {
@@ -488,7 +509,7 @@ void Session::chooseSynthPreset(int track, int index) {
 }
 
 namespace {
-const char* presetEnding(TrackKind kind) { return kind == TrackKind::Twin ? ".twin" : ".phazed"; }
+const char* presetEnding(TrackKind kind) { return kind == TrackKind::Twin ? ".twin" : kind == TrackKind::Qmod ? ".qmod" : ".phazed"; }
 
 // A preset file: "apotheca-preset 1", then "macros" and "settings" lines.
 bool readPreset(const std::string& text, UserPreset& out) {
@@ -519,7 +540,7 @@ std::string jsonText(const char* text) {
 void Session::usePresetFolder(const std::string& folder) {
     presetFolder_ = folder;
     mkdir(folder.c_str(), 0755);
-    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Twin}) {
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod}) {
         const std::string ending = presetEnding(kind);
         std::vector<std::string> names;
         if (DIR* dir = opendir(folder.c_str())) {
@@ -548,7 +569,7 @@ bool Session::savePreset(int track, const std::string& typed) {
     const std::string name = presetNameFrom(typed);
     if (!spec || name.empty()) return false;
     std::string text = "apotheca-preset 1\nsynth ";
-    text += t.kind == TrackKind::Twin ? "twin" : "phazed";
+    text += t.kind == TrackKind::Twin ? "twin" : t.kind == TrackKind::Qmod ? "qmod" : "phazed";
     text += "\nmacros";
     char number[32];
     for (float m : t.macro) std::snprintf(number, sizeof number, " %.6g", m), text += number;
@@ -570,7 +591,7 @@ bool Session::savePreset(int track, const std::string& typed) {
 std::string Session::designSpec(TrackKind kind) const {
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
-    std::string out = "{\"name\":" + jsonText(spec->name) + ",\"macros\":[";
+    std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
     for (int m = 0; m < phazed::kMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
     out += "],\"pages\":[";
     char text[48];
@@ -644,6 +665,7 @@ void Session::serveDesigner() {
         case DesignRequest::Preset: chooseSynthPreset(project.track, r.a); break;
         case DesignRequest::Save: savePreset(project.track, r.name); break;
         case DesignRequest::Name: setTrackName(project.track, r.name); break;
+        case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
@@ -1227,7 +1249,7 @@ void Session::applyProject() {
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
         if (track.kind == TrackKind::Drums) engine.addDrumTrack(t);
-        else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : track.kind == TrackKind::Sampler ? SynthKind::Sampler : SynthKind::Phazed);
+        else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : track.kind == TrackKind::Sampler ? SynthKind::Sampler : track.kind == TrackKind::Qmod ? SynthKind::Qmod : SynthKind::Phazed);
 
         // Every pattern on the track, in one piece.
         std::unique_ptr<TrackImage> image(new TrackImage);
@@ -1279,7 +1301,7 @@ void Session::applyProject() {
             c.a = track.preset;
             engine.send(c);
             const int* values = spec->values(const_cast<TrackData&>(track));
-            const int count = track.kind == TrackKind::Twin ? static_cast<int>(twin::kSettings) : static_cast<int>(phazed::kSettings);
+            const int count = settingCount(track.kind);
             c.type = Command::SetSetting;
             for (int id = 0; id < count; ++id) {
                 c.a = id;

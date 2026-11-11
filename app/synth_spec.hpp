@@ -27,10 +27,13 @@ struct SynthSpec {
     int (*itemCount)(int page);
     void (*item)(int page, int index, int& id, const char*& name);
     bool (*envelopePage)(int page); // an eight-step envelope, drawn out
+    // For a synth whose sounds are generated from a number: a new sound from `seed`. Null for the others.
+    void (*roll)(TrackData& track, unsigned seed);
 };
 
 const SynthSpec& phazedSpec();
 const SynthSpec& twinSpec();
+const SynthSpec& qmodSpec();
 
 // Presets the player has made (on the sound-designer page) and saved. They
 // come after the built-in ones, in a folder called USER. The spec's preset

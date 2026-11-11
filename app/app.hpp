@@ -48,6 +48,7 @@ public:
     NoteScreen& notes() { return notes_; }
     PhazedScreen& phazed() { return phazed_; }
     PhazedScreen& twin() { return twin_; }
+    PhazedScreen& qmod() { return qmod_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     SamplerScreen& sampler() { return sampler_; }
@@ -86,6 +87,7 @@ private:
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
     PhazedScreen phazed_; // the same screen, once for each synth
     PhazedScreen twin_;
+    PhazedScreen qmod_;
 };
 
 } // namespace apotheca

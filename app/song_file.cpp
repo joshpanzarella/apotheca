@@ -46,7 +46,7 @@ std::string songText(const Project& project) {
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
-        out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : "track twin\n";
+        out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : track.kind == TrackKind::Qmod ? "track qmod\n" : "track twin\n";
         if (track.name[0]) out += std::string("name ") + track.name + "\n";
         if (track.muted) out += "muted\n";
         putEffects(track.effects);
@@ -185,7 +185,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "track") {
             std::string kind;
             in >> kind;
-            const TrackKind k = kind == "drums" ? TrackKind::Drums : kind == "phazed" ? TrackKind::Phazed : kind == "twin" ? TrackKind::Twin : kind == "sampler" ? TrackKind::Sampler : TrackKind::None;
+            const TrackKind k = kind == "drums" ? TrackKind::Drums : kind == "phazed" ? TrackKind::Phazed : kind == "twin" ? TrackKind::Twin : kind == "sampler" ? TrackKind::Sampler : kind == "qmod" ? TrackKind::Qmod : TrackKind::None;
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track

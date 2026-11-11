@@ -10,8 +10,8 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, twinOnes;
-    return kind == TrackKind::Twin ? twinOnes : phazedOnes;
+    static std::vector<UserPreset> phazedOnes, twinOnes, qmodOnes;
+    return kind == TrackKind::Twin ? twinOnes : kind == TrackKind::Qmod ? qmodOnes : phazedOnes;
 }
 
 // The preset functions every spec uses: the built-in presets first, then the
@@ -187,13 +187,74 @@ void item(int page, int index, int& id, const char*& name) {
 }
 } // namespace tw
 
+// ---- QMOD -----------------------------------------------------------------------------
+
+namespace qm {
+using namespace qmod;
+const char* const kPages[4] = {"MAIN", "SOUND", "CHARACTER", "ENVELOPE"};
+const int kSoundItems[] = {Sound, Variation, Mutation, Entangle, Family, Octave};
+const char* const kSoundNames[] = {"SOUND NUMBER", "VARIATION", "MUTATION", "ENTANGLE", "FAMILY", "OCTAVE"};
+const int kCharacterItems[] = {Tension, Evolve, Affinity, Symmetry, Width};
+const char* const kCharacterNames[] = {"TENSION", "EVOLVE", "AFFINITY", "SYMMETRY", "WIDTH"};
+const int kEnvelopeItems[] = {Attack, Decay, Sustain, Release, Level};
+const char* const kEnvelopeNames[] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE", "LEVEL"};
+
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Qmod, TrackKind::Qmod>::own(index)) {
+        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) {
+            const int v = (*own)[id];
+            t.qmod.value[id] = v < settingMin(id) ? settingMin(id) : (v > settingMax(id) ? settingMax(id) : v);
+        }
+    } else {
+        t.qmod = Qmod::presetPatch(index);
+    }
+}
+int* values(TrackData& t) { return t.qmod.value; }
+void settingText(int id, int value, char* out, int size) {
+    const std::size_t n = static_cast<std::size_t>(size);
+    switch (id) {
+    case Sound: case Variation: std::snprintf(out, n, "%d", value); break;
+    case Family: std::snprintf(out, n, "%s", value == 0 ? "BY ITS NUMBER" : familyName(value)); break;
+    case Octave: std::snprintf(out, n, "%+d", value); break;
+    case Attack: case Decay: case Release: {
+        const float seconds = id == Attack ? envelope::attackSeconds(static_cast<float>(value)) : envelope::fallSeconds(static_cast<float>(value));
+        if (seconds < 1.f) std::snprintf(out, n, "%d MS", static_cast<int>(std::round(seconds * 1000.f)));
+        else std::snprintf(out, n, "%.1f S", seconds);
+        break;
+    }
+    case Level: std::snprintf(out, n, "%+d dB", value); break;
+    default: std::snprintf(out, n, "%d%%", value); break;
+    }
+}
+void macroText(int macro, float v, char* out, int size) {
+    if (macro == MacroOctave) std::snprintf(out, static_cast<std::size_t>(size), "%s", v < 0.25f ? "DOWN" : v > 0.75f ? "UP" : "AS PRESET");
+    else if (macro == MacroVariation) std::snprintf(out, static_cast<std::size_t>(size), "%+d", static_cast<int>(std::lround((v - 0.5f) * 32.f)));
+    else plusMinus(v, out, size);
+}
+bool envelopePage(int) { return false; }
+int itemCount(int page) { return page == 1 ? 6 : 5; }
+void item(int page, int index, int& id, const char*& name) {
+    if (page == 1) { id = kSoundItems[index]; name = kSoundNames[index]; }
+    else if (page == 2) { id = kCharacterItems[index]; name = kCharacterNames[index]; }
+    else { id = kEnvelopeItems[index]; name = kEnvelopeNames[index]; }
+}
+// ROLL: a new sound number and a new cousin. Everything else (how bright, the envelope) is left as it is set.
+void roll(TrackData& t, unsigned seed) {
+    seed = seed * 1664525u + 1013904223u;
+    t.qmod.value[Sound] = 1 + static_cast<int>((seed >> 8) % 9999u);
+    seed = seed * 1664525u + 1013904223u;
+    t.qmod.value[Variation] = static_cast<int>((seed >> 8) % 100u);
+    t.qmod.value[Family] = 0;
+}
+} // namespace qm
+
 } // namespace
 
 const SynthSpec& phazedSpec() {
     static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
-                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage};
+                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr};
     return spec;
 }
 
@@ -201,19 +262,29 @@ const SynthSpec& twinSpec() {
     static const SynthSpec spec = {"TWIN", Presets<Twin, TrackKind::Twin>::count, Presets<Twin, TrackKind::Twin>::name, Presets<Twin, TrackKind::Twin>::category, tw::loadPreset, tw::values,
                                    twin::settingMin, twin::settingMax, tw::settingText,
                                    {"SHAPE", "BLEND", "FORMANT", "WIDTH", "DETUNE", "VINTAGE", "ATTACK", "RELEASE"}, tw::macroText,
-                                   4, tw::kPages, tw::itemCount, tw::item, tw::envelopePage};
+                                   4, tw::kPages, tw::itemCount, tw::item, tw::envelopePage, nullptr};
     return spec;
 }
 
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(kind) = std::move(presets); }
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
-int builtInPresets(TrackKind kind) { return kind == TrackKind::Twin ? Twin::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : 0; }
+int builtInPresets(TrackKind kind) {
+    return kind == TrackKind::Twin ? Twin::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Qmod ? Qmod::presetCount() : 0;
+}
 int settingCount(TrackKind kind) {
-    return kind == TrackKind::Twin ? static_cast<int>(twin::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : 0;
+    return kind == TrackKind::Twin ? static_cast<int>(twin::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Qmod ? static_cast<int>(qmod::kSettings) : 0;
+}
+
+const SynthSpec& qmodSpec() {
+    static const SynthSpec spec = {"QMOD", Presets<Qmod, TrackKind::Qmod>::count, Presets<Qmod, TrackKind::Qmod>::name, Presets<Qmod, TrackKind::Qmod>::category, qm::loadPreset, qm::values,
+                                   qmod::settingMin, qmod::settingMax, qm::settingText,
+                                   {"ENTANGLE", "TENSION", "EVOLVE", "VARIATION", "ATTACK", "RELEASE", "WIDTH", "OCTAVE"}, qm::macroText,
+                                   4, qm::kPages, qm::itemCount, qm::item, qm::envelopePage, qm::roll};
+    return spec;
 }
 
 const SynthSpec* specFor(TrackKind kind) {
-    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Twin ? &twinSpec() : nullptr;
+    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Twin ? &twinSpec() : kind == TrackKind::Qmod ? &qmodSpec() : nullptr;
 }
 
 } // namespace apotheca

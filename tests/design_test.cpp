@@ -107,6 +107,7 @@ struct Rig {
     ~Rig() {
         setUserPresets(TrackKind::Phazed, {});
         setUserPresets(TrackKind::Twin, {});
+        setUserPresets(TrackKind::Qmod, {});
     }
     void frames(int n) { for (int i = 0; i < n; ++i) app.update(input, clock += 16); }
     Answer get(const std::string& path) { return raw(port, "GET " + door + path + " HTTP/1.1\r\nHost: x\r\n\r\n"); }
@@ -436,6 +437,39 @@ void testSavingAPreset() {
     CHECK(rig.app.project().current().kind == TrackKind::Phazed && asMade());
 }
 
+void testQmodFromThePage() {
+    Rig rig;
+    // A QMOD track, added as the SONG screen adds one.
+    rig.app.session().addTrack(TrackKind::Qmod);
+    rig.app.project().track = rig.app.project().trackCount() - 1;
+    rig.frames(1);
+    CHECK(rig.track().kind == TrackKind::Qmod);
+    const std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"QMOD\",\"roll\":true") && has(spec, "\"macros\":[\"ENTANGLE\",\"TENSION\"") && count(spec, "\"id\":") == qmod::kSettings);
+    CHECK(has(spec, "{\"name\":\"SOUND NUMBER\",\"id\":0,\"min\":1,\"max\":9999}")); // a slider through every sound there is
+    // The page's ROLL button: a new sound; twice, two different ones.
+    const int before = rig.track().qmod.value[qmod::Sound];
+    CHECK(rig.tell("roll 12345"));
+    const int once = rig.track().qmod.value[qmod::Sound];
+    CHECK(rig.tell("roll 999"));
+    CHECK(once != before && rig.track().qmod.value[qmod::Sound] != once);
+    CHECK(rig.post("roll").status == 400 && rig.post("roll x").status == 400);
+    // Saved, it is a ".qmod" preset, in QMOD's list only, and comes back as it was.
+    const QmodPatch made = rig.track().qmod;
+    CHECK(rig.tell("save rolled one"));
+    CHECK(exists(rig.root + "/presets/ROLLED ONE.qmod") && qmodSpec().presetCount() == Qmod::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount());
+    rig.tell("preset 2");
+    CHECK(rig.track().qmod.value[qmod::Sound] != made.value[qmod::Sound]);
+    rig.tell("preset " + std::to_string(Qmod::presetCount()));
+    CHECK(std::equal(made.value, made.value + qmod::kSettings, rig.track().qmod.value));
+    // On a synth that is not rolled the request is taken and does nothing; the page is not offered the button.
+    rig.addSynth();
+    CHECK(!has(rig.get("/design/spec").body, "\"roll\""));
+    const PhazedPatch phazed = rig.track().patch;
+    rig.tell("roll 5");
+    CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.track().patch.value));
+}
+
 void testTwinFromThePage() {
     Rig rig;
     rig.addSynth(true);
@@ -477,6 +511,7 @@ int main() {
     testPhazedFromThePage();
     testKeysFromThePage();
     testSavingAPreset();
+    testQmodFromThePage();
     testTwinFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;

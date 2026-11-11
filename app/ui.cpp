@@ -273,7 +273,7 @@ void trackName(const Project& project, int track, char* out, int size) {
         return;
     }
     std::snprintf(out, static_cast<std::size_t>(size), "%d %s", track + 1,
-                  kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Sampler ? "SAMPLER" : "");
+                  kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Phazed ? "PHAZED" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Qmod ? "QMOD" : kind == TrackKind::Sampler ? "SAMPLER" : "");
 }
 
 void noteName(int pitch, char* out, int size) {

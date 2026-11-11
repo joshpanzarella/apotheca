@@ -156,9 +156,9 @@ struct EffectData {
     float param[kEffectParams] = {};
 };
 
-enum class TrackKind { None, Drums, Phazed, Twin, Sampler };
+enum class TrackKind { None, Drums, Phazed, Twin, Sampler, Qmod };
 // Played from the piano roll: the two synths and the sampler.
-inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin || kind == TrackKind::Sampler; }
+inline bool isSynth(TrackKind kind) { return kind == TrackKind::Phazed || kind == TrackKind::Twin || kind == TrackKind::Sampler || kind == TrackKind::Qmod; }
 
 struct TrackData {
     TrackKind kind = TrackKind::None;
@@ -174,6 +174,7 @@ struct TrackData {
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog
+    QmodPatch qmod;              // when it is QMOD
     float macro[phazed::kMacros];
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
     bool muted = false;  // silent until unmuted; kept with the song

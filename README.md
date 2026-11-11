@@ -205,6 +205,36 @@ designer".
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
 
+### QMOD
+
+An FM synth that is **rolled, not programmed**. FM is sine waves
+("operators") bending each other's pitch very fast; which bends which is the
+wiring, and it decides the sound. QMOD never asks you to wire anything: a
+number generates a whole wiring of eight operators, from one of thirty-two
+families. A second wiring, a cousin of the first, is generated beside it,
+and ENTANGLE morphs from one to the other.
+
+The generator is the one in the Entanglement module of the Shapetaker VCV
+Rack plugin (`third_party/shapetaker`, unchanged). QMOD's voice is its own
+and much lighter: eight notes at once cost about half what Twin Analog does.
+
+| Control | Does |
+| --- | --- |
+| **Y** (on its DEVICE screen) | **ROLL**: a new sound, at once, and it is heard. Only the sound's numbers change; how bright it is and its envelope stay as set. |
+| ENTANGLE | All the first wiring, to all the second |
+| TENSION | How hard the operators bend each other: mellow to metallic |
+| EVOLVE | How long that brightness lasts in each note: a quick pluck of it, or all the way through |
+| VARIATION | Which cousin the second wiring is. Turning it flips through them. |
+| SOUND NUMBER | 1 to 9999: every one is a playable sound (tested) |
+| MUTATION | How far a cousin strays |
+| AFFINITY | How much the generator likes feedback: rougher |
+| SYMMETRY | Plain harmonic tunings, or bell-like ones |
+| FAMILY | BY ITS NUMBER, or one of the 32 by name |
+
+The same number is always the same sound, so a rolled sound saved in a song
+or as a preset comes back exactly. The sound designer page shows QMOD like
+any other synth, with a ROLL A NEW SOUND button.
+
 ### The envelope
 
 Twin Analog and the sampler share one volume envelope (and any synth added
@@ -258,7 +288,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
-| + TRACK | Pick DRUMS, PHAZED or TWIN ANALOG | | | |
+| + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
 
 The song runs to the last scene with anything in it, then comes round.
 

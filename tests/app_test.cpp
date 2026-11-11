@@ -16,6 +16,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "song_file.hpp"
+#include "synth_spec.hpp"
 
 using namespace apotheca;
 
@@ -1300,6 +1301,112 @@ void testHoldingSelectShowsTheHelp() {
     rig.key(SELECT, false);
 }
 
+void testQmodOnATrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    // + TRACK: QMOD is the fifth instrument, after the sampler.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, rig.project().trackCount());
+    rig.tap(A);
+    rig.tap(DOWN, 3);
+    rig.tap(A);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Qmod);
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    char text[24];
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 QMOD" && isSynth(track.kind));
+    // It starts on its first preset, and plays.
+    const QmodPatch first = Qmod::presetPatch(0);
+    CHECK(track.preset == 0 && std::equal(first.value, first.value + qmod::kSettings, track.qmod.value));
+    session.audition(1, 60, 0.8f);
+    CHECK(rig.listen(4000) > 0.02f);
+    rig.render(96000);
+    // The device screen: Y rolls a new sound, at once, and it is heard. Only the sound's numbers change.
+    session.view = View::Device;
+    rig.frames(2);
+    const int before = track.qmod.value[qmod::Sound];
+    rig.tap(Y);
+    CHECK(track.qmod.value[qmod::Sound] != before && track.qmod.value[qmod::Sound] >= 1 && track.qmod.value[qmod::Sound] <= 9999);
+    CHECK(track.qmod.value[qmod::Tension] == first.value[qmod::Tension] && track.qmod.value[qmod::Release] == first.value[qmod::Release]);
+    CHECK(rig.listen(4000) > 0.02f);
+    rig.render(96000);
+    const int second = track.qmod.value[qmod::Sound];
+    rig.tap(Y);
+    CHECK(track.qmod.value[qmod::Sound] != second); // each roll is another
+    // The engine has the rolled sound: it is what a fresh QMOD given the same numbers plays.
+    {
+        Qmod same;
+        same.prepare(48000.f);
+        for (int id = 0; id < qmod::kSettings; ++id) same.setSetting(id, track.qmod.value[id]);
+        same.noteOn(60, 0.8f);
+        std::vector<float> l(4000), r(4000);
+        for (int at = 0; at < 4000; at += 64) same.render(l.data() + at, r.data() + at, 4000 - at < 64 ? 4000 - at : 64);
+        rig.frames(200); // long enough for the note the roll played to be let go
+        rig.render(96000);
+        rig.render(96000);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 60;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        const std::vector<float> heard = rig.render(4000);
+        // The same wave, at whatever level the engine's own mix gives it: the two keep one ratio throughout.
+        float top = 0.f, scale = 0.f, worst = 0.f;
+        for (int i = 0; i < 4000; ++i)
+            if (std::fabs(l[i]) > top) top = std::fabs(l[i]), scale = heard[2 * i] / l[i];
+        for (int i = 0; i < 4000; ++i) worst = std::fmax(worst, std::fabs(heard[2 * i] - scale * l[i]));
+        CHECK(top > 0.02f && scale > 0.2f && scale < 1.f && worst < 0.02f * top * scale);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(96000);
+    }
+    // Y does not roll on a synth that is not rolled (Phazed), nor while A has hold of something.
+    addPhazed(rig);
+    rig.project().track = 2;
+    session.view = View::Device;
+    const PhazedPatch phazed = rig.project().tracks[2].patch;
+    rig.tap(Y);
+    CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.project().tracks[2].patch.value));
+    CHECK(!session.rollSynth(2, 5) && !session.rollSynth(0, 5) && !session.rollSynth(99, 5));
+    rig.project().track = 1;
+    rig.frames(1);
+    const int kept = track.qmod.value[qmod::Sound];
+    rig.key(A, true);
+    rig.tap(Y);
+    rig.key(A, false);
+    CHECK(track.qmod.value[qmod::Sound] == kept);
+    // Its settings read as what they are.
+    const SynthSpec& spec = qmodSpec();
+    spec.settingText(qmod::Family, 0, text, sizeof text);
+    CHECK(std::string(text) == "BY ITS NUMBER");
+    spec.settingText(qmod::Family, 1, text, sizeof text);
+    CHECK(std::string(text) == qmod::familyName(1) && text[0]);
+    spec.settingText(qmod::Release, 100, text, sizeof text);
+    CHECK(std::string(text) == "20.0 S");
+    spec.macroText(qmod::MacroVariation, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "+16");
+    // Every setting is on some page, once.
+    int seen[qmod::kSettings] = {};
+    for (int page = 1; page < spec.pages; ++page)
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = -1;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            CHECK(id >= 0 && id < qmod::kSettings && name[0]);
+            if (id >= 0 && id < qmod::kSettings) ++seen[id];
+        }
+    for (int count : seen) CHECK(count == 1);
+    // A song keeps a QMOD track: its kind and every number of its sound.
+    track.qmod.value[qmod::Tension] = 77;
+    track.macro[qmod::MacroEvolve] = 0.9f;
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(songText(rig.project()), *again));
+    CHECK(again->tracks[1].kind == TrackKind::Qmod && std::equal(track.qmod.value, track.qmod.value + qmod::kSettings, again->tracks[1].qmod.value));
+    CHECK(near(again->tracks[1].macro[qmod::MacroEvolve], 0.9f) && again->tracks[2].kind == TrackKind::Phazed);
+}
+
 void testTypingATrackName() {
     Rig rig;
     rig.app.session().view = View::Settings;
@@ -2557,16 +2664,16 @@ void testAddingTwinAnalog() {
     // Its first preset is loaded into the project, as the engine has it.
     const TwinPatch first = Twin::presetPatch(0);
     for (int id = 0; id < twin::kSettings; ++id) CHECK(rig->project().tracks[1].twin.value[id] == first.value[id]);
-    // The chooser goes round all four.
+    // The chooser goes round all five.
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 3); // PHAZED > TWIN > SAMPLER > DRUMS
+    rig->tap(DOWN, 4); // PHAZED > TWIN > SAMPLER > QMOD > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
     rig->tap(A);
-    rig->tap(UP, 2); // PHAZED > DRUMS > SAMPLER
+    rig->tap(UP, 3); // PHAZED > DRUMS > QMOD > SAMPLER
     rig->tap(A);
     CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
@@ -2693,6 +2800,7 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testHoldingSelectShowsTheHelp();
+    testQmodOnATrack();
     testTypingATrackName();
     testHoldXCarriesANote();
     testSelectGoesToTheSongScreen();

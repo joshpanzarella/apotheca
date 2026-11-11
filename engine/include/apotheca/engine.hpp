@@ -39,6 +39,7 @@
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
+#include "apotheca/qmod.hpp"
 #include "apotheca/twin.hpp"
 #include "apotheca/spsc_queue.hpp"
 

@@ -12,7 +12,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 
 App::App(Engine& engine)
     : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_), settings_(session_),
-      phazed_(session_, phazedSpec()), twin_(session_, twinSpec()) {}
+      phazed_(session_, phazedSpec()), twin_(session_, twinSpec()), qmod_(session_, qmodSpec()) {}
 
 void App::onButton(const ButtonEvent& event, const Input& input) {
     // All four shoulder buttons at once: panic. Silence now, whatever screen
@@ -131,6 +131,8 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
             phazed_.onButton(event, input);
         } else if (kind == TrackKind::Twin) {
             twin_.onButton(event, input);
+        } else if (kind == TrackKind::Qmod) {
+            qmod_.onButton(event, input);
         } else if (kind == TrackKind::Sampler) {
             sampler_.onButton(event, input);
         } else {
@@ -191,6 +193,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     case View::Device:
         if (kind == TrackKind::Phazed) phazed_.update(input, nowMs);
         else if (kind == TrackKind::Twin) twin_.update(input, nowMs);
+        else if (kind == TrackKind::Qmod) qmod_.update(input, nowMs);
         else if (kind == TrackKind::Sampler) sampler_.update(input, nowMs);
         else kit_.update(input, nowMs);
         break;
@@ -216,6 +219,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
     case View::Device:
         if (kind == TrackKind::Phazed) phazed_.draw(renderer, fonts);
         else if (kind == TrackKind::Twin) twin_.draw(renderer, fonts);
+        else if (kind == TrackKind::Qmod) qmod_.draw(renderer, fonts);
         else if (kind == TrackKind::Sampler) sampler_.draw(renderer, fonts);
         else kit_.draw(renderer, fonts);
         break;

@@ -51,6 +51,7 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
   <label class="dim">TRACK NAME <input id="called" type="text" maxlength="10" size="11" placeholder="ITS INSTRUMENT"></label>
   <label class="dim">PRESET <select id="preset"></select></label>
   <input id="name" type="text" maxlength="24" placeholder="NAME FOR A NEW PRESET" size="24">
+  <button id="roll" class="quiet" hidden>ROLL A NEW SOUND</button>
   <button id="save">SAVE AS PRESET</button>
   <a id="files" href="#">files</a>
 </header>
@@ -107,7 +108,7 @@ function control(item, label) {
 function build() {
   const all = $('all'); all.textContent = ''; controls = {}; macroControls = []; envs = [];
   const none = !spec || !spec.name;
-  $('nothing').hidden = !none; $('keys').hidden = none;
+  $('nothing').hidden = !none; $('keys').hidden = none; $('roll').hidden = none || !spec.roll;
   if (none) return;
   // presets, in their folders
   const sel = $('preset'); sel.textContent = ''; let group = null, folder = null;
@@ -189,6 +190,7 @@ async function look() {
 $('preset').addEventListener('change', () => { tell('preset', 'preset ' + $('preset').value); touched = {}; $('preset').blur(); setTimeout(look, 250); });
 for (const box of [$('called'), $('name')]) box.addEventListener('keydown', e => { if (e.key === 'Enter') box.blur(); });
 $('called').addEventListener('change', () => { tell('name', 'name ' + $('called').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '')); });
+$('roll').addEventListener('click', () => { tell('roll', 'roll ' + Math.floor(Math.random() * 1e6)); touched = {}; setTimeout(look, 250); });
 $('save').addEventListener('click', () => {
   const name = $('name').value.toUpperCase().replace(/[^A-Z0-9 _-]/g, '').trim();
   if (!name) return say('Give it a name first: letters, numbers and spaces.', 'no');

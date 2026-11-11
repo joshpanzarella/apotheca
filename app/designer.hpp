@@ -16,6 +16,7 @@
 //   preset N          choose a preset (built-in or the player's own)
 //   note KEY 1 | 0    a key down or up
 //   save NAME         keep the sound as a preset called NAME
+//   roll N            a new generated sound (QMOD); N is any number, to vary the dice
 //   name NAME         what the track is called ("name" alone: its instrument's name again)
 
 #include <mutex>
@@ -27,7 +28,7 @@
 namespace apotheca {
 
 struct DesignRequest {
-    enum Kind { Set, Macro, Preset, Note, Save, Name } kind = Set;
+    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll } kind = Set;
     int a = 0, b = 0;
     float value = 0.f;
     std::string name;

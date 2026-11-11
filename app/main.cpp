@@ -525,6 +525,11 @@ int main(int argc, char** argv) {
         app.settings().goTo(SettingsScreen::kTrackName);
         tapKey(SDLK_x);
         for (const char* k = "\x01\x01x\x02x\x02\x02x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : SDLK_x);
+    } else if (std::strncmp(view, "qmod", 4) == 0) {
+        app.session().addTrack(TrackKind::Qmod);
+        app.project().track = app.project().trackCount() - 1;
+        app.session().view = View::Device;
+        if (view[4]) app.qmod().goTo(std::atoi(view + 4), 0);
     } else if (std::strcmp(view, "help") == 0) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {

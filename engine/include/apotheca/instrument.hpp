@@ -31,6 +31,6 @@ public:
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Twin, Sampler };
+enum class SynthKind { Phazed, Twin, Sampler, Qmod };
 
 } // namespace apotheca

@@ -187,6 +187,11 @@ void PhazedScreen::onButton(const ButtonEvent& event, const Input& input) {
         saved_ = 0.f;
         return;
     }
+    // Y: ROLL, on a synth whose sounds are generated (QMOD). A new sound at once, and it is heard.
+    if (b == Button::Y && event.down && spec_.roll && !holding_) {
+        if (session_.rollSynth(project_.track, lastMs_ * 2654435761u + (++rolls_) * 40503u)) hear();
+        return;
+    }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         return;
@@ -298,6 +303,7 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
+            if (spec_.roll) hint("Y", "roll a new sound");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);

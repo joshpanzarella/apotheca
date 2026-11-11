@@ -52,8 +52,8 @@ void SongScreen::moveCursor(Button direction) {
         return;
     }
     if (choosing_) {
-        if (direction == Button::Up) choice_ = (choice_ + 3) % 4;
-        if (direction == Button::Down) choice_ = (choice_ + 1) % 4;
+        if (direction == Button::Up) choice_ = (choice_ + 4) % 5;
+        if (direction == Button::Down) choice_ = (choice_ + 1) % 5;
         return;
     }
     if (direction == Button::Up) moveCursorTo(scene_ - 1, column_);
@@ -220,7 +220,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
             choosing_ = false;
-            if (session_.addTrack(choice_ == 0 ? TrackKind::Drums : choice_ == 1 ? TrackKind::Phazed : choice_ == 2 ? TrackKind::Twin : TrackKind::Sampler)) {
+            if (session_.addTrack(choice_ == 0 ? TrackKind::Drums : choice_ == 1 ? TrackKind::Phazed : choice_ == 2 ? TrackKind::Twin : choice_ == 3 ? TrackKind::Sampler : TrackKind::Qmod)) {
                 moveCursorTo(scene_, project_.trackCount() - 1); // onto the new track
             }
         }
@@ -391,7 +391,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", t + 1);
         fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
         const TrackKind kind = project_.tracks[t].kind;
-        const char* name = kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Sampler ? (colW > 60 ? "SAMPLER" : "SMPL") : (colW > 60 ? "PHAZED" : "PHZD");
+        const char* name = kind == TrackKind::Drums ? "DRUMS" : kind == TrackKind::Twin ? "TWIN" : kind == TrackKind::Qmod ? "QMOD" : kind == TrackKind::Sampler ? (colW > 60 ? "SAMPLER" : "SMPL") : (colW > 60 ? "PHAZED" : "PHZD");
         // The player's own name for it, cut to fit a narrow column.
         char own[12];
         std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
@@ -595,18 +595,19 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the instrument list -----------------------------------------------------
     if (choosing_) {
-        const int w = 320, h = 254, x = (kScreenW - w) / 2, y = 100;
+        const int w = 340, h = 306, x = (kScreenW - w) / 2, y = 70;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, h, kPanel, kLine);
         std::snprintf(text, sizeof text, "TRACK %d: PICK AN INSTRUMENT", tracks + 1);
         fonts.small.draw(r, x + 12.f, y + 12.f, text, kDim);
-        const char* names[4] = {"DRUMS", "PHAZED", "TWIN ANALOG", "SAMPLER"};
+        const char* names[5] = {"DRUMS", "PHAZED", "TWIN ANALOG", "SAMPLER", "QMOD"};
         char synthAbout[40];
         std::snprintf(synthAbout, sizeof synthAbout, "the synth, %d presets", Phazed::presetCount());
         char twinAbout[48];
         std::snprintf(twinAbout, sizeof twinAbout, "two morphing oscillators, %d presets", Twin::presetCount());
-        const char* about[4] = {"8 lanes: built-in drums or your recordings", synthAbout, twinAbout, "one recording, played from the keys"};
-        for (int i = 0; i < 4; ++i) {
+        const char* about[5] = {"8 lanes: built-in drums or your recordings", synthAbout, twinAbout, "one recording, played from the keys",
+                                "FM you roll like dice, not program"};
+        for (int i = 0; i < 5; ++i) {
             const int by = y + 36 + i * 52;
             box(r, x + 12, by, w - 24, 46, kPanel2, kLine);
             fonts.large.draw(r, x + 24.f, by + 9.f, names[i], i == choice_ ? kTeal : kText);

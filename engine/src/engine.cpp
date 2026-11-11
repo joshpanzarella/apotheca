@@ -196,6 +196,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     std::unique_ptr<Instrument> synth;
     if (kind == SynthKind::Twin) synth.reset(new Twin);
     else if (kind == SynthKind::Sampler) synth.reset(new Sampler);
+    else if (kind == SynthKind::Qmod) synth.reset(new Qmod);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);

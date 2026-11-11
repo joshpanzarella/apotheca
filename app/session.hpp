@@ -197,6 +197,9 @@ public:
     void setSynthMacro(int track, int macro, float value);
     // A built-in preset or one of the player's own. The macros go back to the middle.
     void chooseSynthPreset(int track, int index);
+    // ROLL: a new generated sound, on a synth that has such a thing (QMOD). False on the others.
+    bool rollSynth(int track, unsigned seed);
+    void sendSynthPatch(int track);
     // The player's own presets: files in this folder, "NAME.phazed" and "NAME.twin".
     void usePresetFolder(const std::string& folder);
     // Keep the track's sound, as it is now with its macros, under a name.
