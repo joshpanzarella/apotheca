@@ -1474,17 +1474,20 @@ void testTheSliceView() {
     // Not from the tempo (there is no lane there), nor a lane whose file is missing.
     rig.tap(L1);
     CHECK(!drums.slicing());
+    session.setLaneSample(0, 0, "break"); // (the lane under the tempo has a recording: that is not why)
     drums.moveCursorTo(0, 0);
     rig.tap(UP);
-    CHECK(drums.cursorOnTempo());
+    CHECK(drums.cursorOnTempo() && drums.canSlice(0));
     rig.tap(L1);
     CHECK(!drums.slicing());
     rig.tap(DOWN);
+    session.setLaneSample(0, 0, "");
     session.setLaneSample(0, 6, "not here");
     CHECK(!drums.canSlice(6) && !drums.canSlice(-1) && !drums.canSlice(8));
     session.setLaneSample(0, 6, "");
+    drums.moveCursorTo(2, 0);
     session.setLaneFit(0, 2, 8); // fitted to less than a bar: still sixteen slices
-    CHECK(rig.settle() && drums.slices() == 16);
+    CHECK(rig.settle() && drums.slices() == 16 && session.laneSlices(0, 2) == 16);
     session.setLaneFit(0, 2, 0);
     rig.frames(2);
     drums.moveCursorTo(2, 0);
@@ -1520,7 +1523,8 @@ void testTheSliceView() {
     // On an empty step up and down do nothing: no hit appears.
     drums.moveCursorTo(2, 9);
     rig.tap(UP);
-    rig.tap(DOWN);
+    CHECK(drums.level(2, 9) == 0.f && drums.start(2, 9) == 0.f); // nor is a start left behind for the next hit placed
+    rig.tap(DOWN, 2);
     CHECK(drums.level(2, 9) == 0.f && drums.start(2, 9) == 0.f && drums.cursorStep() == 9 && drums.cursorLane() == 2);
     // The stick does the same, and runs.
     drums.moveCursorTo(2, 4);
@@ -1729,8 +1733,10 @@ void testOneSliceIsKeptInTheSong() {
     rig.session().setLaneOneSlice(0, 2, true);
     rig.session().setLaneOneSlice(0, 6, true);
     rig.session().setLaneOneSlice(0, 6, false);
-    rig.session().setLaneOneSlice(0, 99, true);  // no such lane
-    rig.session().setLaneOneSlice(77, 1, true);  // no such track
+    rig.session().setLaneOneSlice(0, kDrumLanes, true); // no such lane: nothing beside the lanes is written over
+    rig.session().setLaneOneSlice(0, -1, true);
+    rig.session().setLaneOneSlice(77, 1, true);         // no such track
+    CHECK(rig.project().tracks[0].preset == 0 && rig.project().tracks[0].laneFit[kDrumLanes - 1] == 0);
     const std::string text = songText(rig.project());
     CHECK(text.find("\noneslice 3\n") != std::string::npos);
     std::unique_ptr<Project> back(new Project);
@@ -1738,9 +1744,12 @@ void testOneSliceIsKeptInTheSong() {
     CHECK(back->tracks[0].laneOneSlice[2] && !back->tracks[0].laneOneSlice[6] && !back->tracks[0].laneOneSlice[1]);
     // Nonsense lanes in a file are skipped.
     std::string odd = text;
-    odd.replace(odd.find("oneslice 3"), 10, "oneslice 0 9 5 x 2");
+    const std::size_t at = odd.find("oneslice 3");
+    CHECK(at != std::string::npos);
+    if (at != std::string::npos) odd.replace(at, 10, "oneslice 0 9 5 x 2");
     std::unique_ptr<Project> other(new Project);
     CHECK(parseSong(odd, *other) && other->tracks[0].laneOneSlice[4] && !other->tracks[0].laneOneSlice[2] && !other->tracks[0].laneOneSlice[0]);
+    CHECK(other->tracks[0].preset == 0); // lane 9 did not land on whatever comes after the lanes
 
     // Opened afresh, the lane's hits play one slice: the setting reached the engine with the song.
     Rig opened(folder);

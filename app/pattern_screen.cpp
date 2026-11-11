@@ -204,7 +204,7 @@ float PatternScreen::ownStart(int step) const {
 
 int PatternScreen::sliceOf(int step) const {
     const int count = slices();
-    const int slice = static_cast<int>(pat().start[lane_][step] * static_cast<float>(count) + 0.001f);
+    const int slice = static_cast<int>(pat().start[lane_][step] * static_cast<float>(count)); // exact: there are 16, 32 or 64
     return slice < 0 ? 0 : (slice >= count ? count - 1 : slice);
 }
 
