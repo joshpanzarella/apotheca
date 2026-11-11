@@ -13,7 +13,7 @@ and they cost about 2.5% of one handheld core.
 | First set | **TAPE** (dub delay), **HALL** (reverb), **CHORUS** (with vibrato and flange), **COMP**, **SATURATE**, **DUCK** |
 | Later set | PING, BLOOM, PHASER, TREMOLO, LIMITER, WEAR, EQ, SNAP, STUTTER |
 | Sends | **Yes, two.** ECHO holds a delay, SPACE holds a reverb. Every track has an amount to each |
-| THROW | A hit or a note opens its send for itself alone. Hold X, press **Y** |
+| THROW | A hit or a note opens its send for itself alone. Hold X, press **A** |
 | Insert slots | Tracks go from 2 to **3**. The master stays at 2 |
 | Settings per effect | **Stay at 4.** One knob that moves several things (AGE, SPEED) is faster on a handheld than a fifth knob |
 | Cost | Every first-set effect is **under 1% of a handheld core** (estimated). A full song's effects cost less than one Twin Analog track |
@@ -314,18 +314,19 @@ No new part on the screen.
 ### THROW on a drum hit
 
 Hold X on a hit, as now. Up / down, left / right, L1 and R1 are taken.
-**Y steps THROW round: OFF, ECHO, SPACE, BOTH.**
+**A steps THROW round: OFF, ECHO, SPACE, BOTH.** (Owner, 2026-11-11: A, not
+Y. X and A sit side by side under one thumb; X + Y felt odd.)
 
 Hints while X is held: `UP / DOWN pitch  LEFT / RIGHT ratchet  L1 reverse
-R1 cut  Y throw`. Five; check it fits with a still. Y alone starts the dice on
-this screen, so the check for X held must come first.
+R1 cut  A throw`. Five; check it fits with a still. A alone places a hit on
+this screen, so the check for X held must come first. Hold X + Y stays free.
 
 A thrown hit is marked on the grid the way the other step effects are.
 
 ### THROW on a note
 
-Hold X on a note is kept free for note effects. **Y is THROW there too**, so
-the directions stay free for GLIDE and ratchets when those are built.
+Hold X on a note sets its ratchet and glide with the directions. **A is THROW
+there too.**
 
 ## 6. Testing without ears
 
