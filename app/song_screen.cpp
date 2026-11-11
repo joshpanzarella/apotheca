@@ -338,8 +338,8 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (b == Button::Up) setRepeats(project_.repeats[scene_] + 1), turned_ = true;
             if (b == Button::Down) setRepeats(project_.repeats[scene_] - 1), turned_ = true;
             // ...and left and right, how many steps the scene's bars have: 16, or fewer.
-            if (b == Button::Right) session_.setSceneSteps(scene_, project_.steps[scene_] + 1), turned_ = true;
-            if (b == Button::Left) session_.setSceneSteps(scene_, project_.steps[scene_] - 1), turned_ = true;
+            if (b == Button::Right) session_.setSceneSteps(scene_, project_.sceneSteps(scene_) + 1), turned_ = true;
+            if (b == Button::Left) session_.setSceneSteps(scene_, project_.sceneSteps(scene_) - 1), turned_ = true;
         } else {
             moveCursor(b, true);
         }
@@ -518,16 +518,16 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, rx, y, kRepeatW - 4, kRowH - 4, kBg, inSong ? kLine : kPanel);
         const int repeats = project_.repeats[scene];
         std::snprintf(text, sizeof text, "x%d", repeats);
-        const bool odd = project_.steps[scene] != kSteps; // a scene of fewer than sixteen steps says how many, under its count
+        const bool odd = project_.sceneSteps(scene) != project_.sceneBars(scene) * kSteps; // a scene cut short says how many steps it lasts, under its count
         fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere || odd ? 6.f : 15.f), text, inSong ? kText : kDim);
         if (odd && !playingHere) {
-            std::snprintf(text, sizeof text, "%d", project_.steps[scene]);
+            std::snprintf(text, sizeof text, "%d", project_.sceneSteps(scene));
             fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + 22.f, text, kBrass);
         }
         if (playingHere) {
             // One block per pass, filling as the bar goes by.
                 sceneProgress(r, rx + 4, y + kRowH - 14, kRepeatW - 12, 6, project_.playLoop ? 1 : repeats, session_.engine.playRepeat(),
-                          session_.engine.playBar() * project_.steps[scene] + playStep, project_.sceneBars(scene) * project_.steps[scene]);
+                          session_.engine.playBar() * kSteps + playStep, project_.sceneSteps(scene));
         }
         if (column_ == kRepeatColumn && scene == scene_) {
             if (holding_) fill(r, rx + 1, y + 1, (kRepeatW - 6) * repeats / kMaxRepeats, kRowH - 6, faded(kBrass, 110));

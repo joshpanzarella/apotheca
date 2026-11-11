@@ -30,7 +30,7 @@ Engine::Engine() {
             for (auto& lane : track.drumScenes[slot].chance)
                 for (float& c : lane) c = 1.f;
     for (int& r : repeats_) r = 1;
-    for (int& n : steps_) n = kSteps;
+    for (int& n : steps_) n = 0;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
@@ -423,7 +423,7 @@ void Engine::apply(const Command& c) {
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
     case Command::SetSceneSteps:
-        if (validScene(c.scene)) steps_[c.scene] = c.a < 1 ? 1 : (c.a > kSteps ? kSteps : c.a);
+        if (validScene(c.scene)) steps_[c.scene] = c.a < 0 ? 0 : (c.a > kMaxBars * kSteps ? kMaxBars * kSteps : c.a);
         break;
     case Command::ClearCell:
         if (validTrack(c.track) && validScene(c.scene)) {
@@ -728,8 +728,14 @@ int Engine::sceneBars(int scene) const {
     return bars;
 }
 
+// How many steps a scene lasts: every step of its longest cell, or fewer if it has been cut short.
+int Engine::sceneSteps(int scene) const {
+    const int whole = sceneBars(scene) * kSteps;
+    return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
+}
+
 Engine::Position Engine::afterThisBar() const {
-    if (bar_ + 1 < sceneBars(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
+    if ((bar_ + 1) * kSteps < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
     if (loopScene_) return {scene_, repeat_, 0};
     if (repeat_ + 1 < repeats_[scene_]) return {scene_, repeat_ + 1, 0};
     return {(scene_ + 1) % sceneCount_, 0, 0};
@@ -762,8 +768,9 @@ void Engine::fireStep() {
     const bool veryFirst = firstStep_; // (only ever set for step 1)
     firstStep_ = false;
 
-    // A scene's bars may be shorter than sixteen steps: the bar comes round after as many as it has.
-    const int following = (nextStep_ + 1) % steps_[scene_];
+    // A scene may be cut short, to any number of steps: its last bar then ends early.
+    const int left = sceneSteps(scene_) - bar_ * kSteps; // steps this bar has (at least one: the bar would not have begun otherwise)
+    const int following = (nextStep_ + 1) % (left >= kSteps ? kSteps : (left < 1 ? 1 : left));
     // An early hit on step 1 belongs to whichever scene the next bar plays.
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;

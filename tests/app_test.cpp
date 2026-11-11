@@ -1390,15 +1390,15 @@ void testDeletingATrack() {
 void testStepsInAScene() {
     Rig rig;
     Session& session = rig.app.session();
-    CHECK(rig.project().steps[0] == kSteps);
-    // On a scene's repeat count, with A held: left and right are how many steps its bars have.
+    CHECK(rig.project().steps[0] == 0 && rig.project().sceneSteps(0) == kSteps); // 0 is "all of them"
+    // On a scene's repeat count, with A held: left and right are how many steps it lasts.
     session.view = View::Song;
     rig.app.song().moveCursorTo(0, -1);
     rig.key(A, true);
     rig.tap(LEFT, 3);
     CHECK(rig.project().steps[0] == 13 && rig.project().repeats[0] == 1);
     rig.tap(RIGHT, 9);
-    CHECK(rig.project().steps[0] == 16); // sixteen is the most
+    CHECK(rig.project().sceneSteps(0) == 16 && rig.project().steps[0] == 0); // every step of its one bar is the most
     rig.tap(LEFT, 40);
     CHECK(rig.project().steps[0] == 1);  // and one the fewest
     rig.tap(RIGHT, 12);
@@ -1417,10 +1417,16 @@ void testStepsInAScene() {
     // The song keeps it; undo takes it back; a bounce is as long as the scene really is.
     std::unique_ptr<Project> again(new Project);
     CHECK(parseSong(songText(rig.project()), *again));
-    CHECK(again->steps[0] == 13 && again->steps[1] == kSteps);
+    CHECK(again->steps[0] == 13 && again->steps[1] == 0 && songText(rig.project()).find("\nlength 13 0 ") != std::string::npos);
+    // A song kept before a scene had a length said "steps", to a bar: its bars but the last are whole.
     std::unique_ptr<Project> odd(new Project);
-    CHECK(parseSong("apotheca-song 1\nsteps 0 99 7\ntrack drums\n", *odd));
-    CHECK(odd->steps[0] == 1 && odd->steps[1] == kSteps && odd->steps[2] == 7 && odd->steps[3] == kSteps);
+    CHECK(parseSong("apotheca-song 1\nsteps 0 99 7\ntrack drums\nscene 3\nbars 2\n", *odd));
+    CHECK(odd->steps[0] == 1 && odd->steps[1] == 0 && odd->steps[2] == 16 + 7 && odd->steps[3] == 0);
+    // A length of every step, or nonsense, is "all of them".
+    std::unique_ptr<Project> whole(new Project);
+    CHECK(parseSong("apotheca-song 1\nlength 16 999 -4 5\ntrack drums\n", *whole));
+    CHECK(whole->steps[0] == 0 && whole->steps[1] == 0 && whole->steps[2] == 0 && whole->steps[3] == 5);
+    CHECK(songText(*odd).find("steps") == std::string::npos);
     CHECK(songFrames(rig.project(), 48000.f) == 2 * 13 * kStep);
     rig.frames(60);
     const int stepsBefore = session.undoSteps();
@@ -4148,9 +4154,77 @@ void testANoteUnderAChordIsKnown() {
     CHECK(!under(6, 70, 2.f));
 }
 
+// A scene's length is any number of steps, set from the PATTERN screen with SELECT + L2 / R2.
+void testASceneOfAnyLength() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Phazed);
+    session.setCellBars(1, 0, 2); // the scene is two bars: 32 steps
+    rig.frames(2);
+    CHECK(rig.view() == View::Pattern && rig.project().sceneSteps(0) == 32 && rig.project().barSteps(0, 0) == 16 && rig.project().barSteps(0, 1) == 16);
+    // SELECT + L2: a step shorter each press. The tab does not turn.
+    rig.key(SELECT, true);
+    rig.tap(L2, 9);
+    CHECK(rig.project().sceneSteps(0) == 23 && rig.view() == View::Pattern && std::strstr(rig.app.undoSaid(), "23 STEPS OF 32") != nullptr);
+    CHECK(rig.project().barSteps(0, 0) == 16 && rig.project().barSteps(0, 1) == 7 && rig.project().barSteps(0, 2) == 0);
+    // SELECT + R2: longer, as far as every step, and no further.
+    rig.tap(R2, 2);
+    CHECK(rig.project().sceneSteps(0) == 25);
+    rig.tap(R2, 40);
+    CHECK(rig.project().sceneSteps(0) == 32 && rig.project().steps[0] == 0 && std::strstr(rig.app.undoSaid(), "ALL 32 STEPS") != nullptr);
+    rig.tap(L2, 60);
+    CHECK(rig.project().sceneSteps(0) == 1); // one step is the fewest
+    rig.tap(R2, 22);
+    rig.key(SELECT, false);
+    CHECK(rig.project().sceneSteps(0) == 23);
+    // Without SELECT they are the tabs, as ever.
+    rig.tap(R2);
+    CHECK(rig.view() == View::Device && rig.project().sceneSteps(0) == 23);
+    rig.tap(L2);
+    // On other tabs SELECT + L2 / R2 leaves the length alone.
+    rig.tap(L2);
+    rig.key(SELECT, true);
+    rig.tap(R2);
+    rig.key(SELECT, false);
+    CHECK(rig.project().sceneSteps(0) == 23);
+    session.view = View::Pattern;
+    // It plays 23 steps: a kick on step 1 comes round every 23.
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.frames(2);
+    rig.render(48000);
+    rig.tap(START);
+    const std::vector<float> out = rig.render(50 * kStep);
+    const auto starts = [&](int s) { float p = 0.f; for (int i = 0; i < 400; ++i) p = std::fmax(p, std::fabs(out[2 * (s * kStep + i)])); return p > 0.3f; };
+    CHECK(starts(0) && starts(16) && starts(23) && starts(39) && starts(46) && !starts(32));
+    rig.tap(START);
+    rig.render(48000);
+    // The SONG screen's way does the same, by the same numbers.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, -1);
+    rig.key(A, true);
+    rig.tap(LEFT);
+    CHECK(rig.project().sceneSteps(0) == 22);
+    rig.tap(RIGHT, 2);
+    rig.key(A, false);
+    CHECK(rig.project().sceneSteps(0) == 24);
+    // A cell made longer: a scene that was "all of it" grows with it; one cut short keeps its number.
+    session.setSceneSteps(0, 999);
+    session.setCellBars(1, 0, 4);
+    CHECK(rig.project().sceneSteps(0) == 64);
+    session.setSceneSteps(0, 40);
+    session.setCellBars(1, 0, 2); // shorter than its number now: every step of what there is
+    CHECK(rig.project().sceneSteps(0) == 32);
+    // The file keeps the number, and a bounce is as long as the scene really is.
+    session.setSceneSteps(0, 23);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(songText(rig.project()), *back) && back->steps[0] == 23 && back->sceneSteps(0) == 23);
+    CHECK(songFrames(rig.project(), 48000.f) == 23 * kStep);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testASceneOfAnyLength();
     testANoteUnderAChordIsKnown();
     testChangingATracksInstrument();
     testNamingATrackFromTheSongScreen();

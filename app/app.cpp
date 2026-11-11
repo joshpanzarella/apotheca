@@ -151,6 +151,22 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // SELECT held with L2 or R2, on the PATTERN screen: the scene a step shorter or longer. Any number
+    // of steps, up to every step of its longest cell; the steps past its end are shaded on the grids.
+    if ((b == Button::L2 || b == Button::R2) && input.held(Button::Select) && session_.view == View::Pattern && !panicking_) {
+        if (event.down) {
+            const int scene = project_->scene;
+            session_.setSceneSteps(scene, project_->sceneSteps(scene) + (b == Button::R2 ? 1 : -1));
+            const int steps = project_->sceneSteps(scene), whole = project_->sceneBars(scene) * kSteps;
+            if (steps == whole) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: ALL %d STEPS", scene + 1, steps);
+            else std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: %d STEPS OF %d", scene + 1, steps, whole);
+            undoSaidUntil_ = now_ + 1500;
+            selectAlone_ = false;
+            song_.selectWasUsed();
+        }
+        return;
+    }
+
     // The shoulder triggers walk along the tabs. Nothing else uses them.
     if (event.button == Button::L2 || event.button == Button::R2) {
         // With A held on a grid they nudge what A has hold of, early or late.
@@ -306,6 +322,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"A", "put it back again"},
             {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},
+            {"L2  R2", "on PATTERN: the scene a step shorter / longer"},
             {"UP  DOWN", "tempo, a beat a minute"},
             {"LEFT  RIGHT", "tempo, ten at a time"},
             {"START", "quit Apotheca"},

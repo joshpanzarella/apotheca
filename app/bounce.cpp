@@ -59,7 +59,7 @@ bool writeStereoWav(const std::string& path, const std::vector<float>& interleav
 // How many frames the song lasts, start to finish, once through.
 long long songFrames(const Project& project, float sampleRate) {
     long long steps = 0;
-    for (int scene = 0; scene < project.sceneCount(); ++scene) steps += static_cast<long long>(project.repeats[scene]) * project.sceneBars(scene) * project.steps[scene];
+    for (int scene = 0; scene < project.sceneCount(); ++scene) steps += static_cast<long long>(project.repeats[scene]) * project.sceneSteps(scene);
     const double perStep = sampleRate * 60.0 / (project.tempo > 0.f ? project.tempo : 120.f) / 4.0;
     return static_cast<long long>(std::llround(steps * perStep));
 }

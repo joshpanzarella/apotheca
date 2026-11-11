@@ -97,7 +97,7 @@ private:
     int battery_ = -1;         // percent, or -1 if the device has none to read
     bool charging_ = false;
     Uint32 batteryReadAt_ = 0;
-    char undoSaid_[48] = "";
+    char undoSaid_[64] = "";
     int resyncsSeen_ = 0;
     Uint32 undoSaidUntil_ = 0;
     bool help_ = false;

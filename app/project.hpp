@@ -208,7 +208,7 @@ struct TrackData {
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
-    int steps[kMaxScenes]; // steps to a bar in each scene: 16, or fewer for an odd-length loop
+    int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
     EffectData masterEffects[kEffectSlots]; // on everything, after the tracks are mixed
     float tempo = 120.f;
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
@@ -226,7 +226,7 @@ struct Project {
 
     Project() {
         for (int& r : repeats) r = 1;
-        for (int& n : steps) n = kSteps;
+        for (int& n : steps) n = 0;
         tracks[0].kind = TrackKind::Drums; // a new project is one drum track
     }
     // Tracks are filled from the left, so the count is also the next free one.
@@ -249,6 +249,15 @@ struct Project {
         for (const TrackData& t : tracks)
             if (t.kind != TrackKind::None && t.bars[s] > most) most = t.bars[s];
         return most;
+    }
+    // How many steps a scene lasts, and how many of them fall in one of its bars (16, fewer in the bar it ends in, none after).
+    int sceneSteps(int s) const {
+        const int whole = sceneBars(s) * kSteps;
+        return steps[s] > 0 && steps[s] < whole ? steps[s] : whole;
+    }
+    int barSteps(int s, int barIndex) const {
+        const int left = sceneSteps(s) - barIndex * kSteps;
+        return left > kSteps ? kSteps : (left < 0 ? 0 : left);
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

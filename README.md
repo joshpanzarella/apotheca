@@ -235,17 +235,23 @@ designer".
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
 
-### Odd step counts
+### A scene of any length
 
-A scene's bars need not be sixteen steps. On the SONG screen, put the cursor
-on a scene's repeat count (the `x2` box), **hold A and press left**: 15, 14,
-13... down to 1. Right goes back up to 16. The count shows in brass under
-the repeat count, and the steps past the end are shaded on both grids.
+A scene lasts as many steps as its longest cell has: 16 for a bar, 32 for
+two. **It can be cut to any number**: 13, or 23 (a bar and seven steps).
 
-It is one length for the whole scene: every track's bars in that scene are
-that many steps. Hits and notes past the end are kept, not played, and come
-back if the scene is made longer again. Up and down, with A held, are still
-how many times the scene plays.
+- **On the piano roll or the drum grid: hold SELECT and press L2 (a step
+  shorter) or R2 (a step longer).** A line says "SCENE 1: 23 STEPS OF 32".
+- On the SONG screen: on the scene's `x2` box, hold A and press left / right.
+  Up / down there is still how many times it plays.
+
+The number is the whole scene, for every track in it. Steps past the end are
+shaded on both grids and kept: lengthen it and they are back. A scene that is
+cut short shows its number in its box on the SONG screen. If a cell is later
+made longer, a scene that was never cut grows with it.
+
+(Songs kept before this said "steps to a bar"; they open with the same
+length they had for one-bar scenes.)
 
 ### Bouncing: getting a song out
 

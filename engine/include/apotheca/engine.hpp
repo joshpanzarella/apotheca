@@ -80,7 +80,8 @@ struct Command {
         SetTempo,       // value = beats per minute
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track, value = linear gain
-        SetSceneSteps,  // how many steps a bar of the scene has: scene, a = 1..16 (16: a whole bar)
+        SetSceneSteps,  // how many steps the scene lasts: scene, a = that many (23 is one bar and seven steps
+                        //   of the next); 0, or as many as its longest cell has: all of them
         SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
         ClearAutomation,// a whole lane of a cell: track, scene, a = lane (-1: every lane)
         SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
@@ -334,6 +335,7 @@ private:
     };
     struct Position { int scene, repeat, bar; };
     int sceneBars(int scene) const;                 // the longest cell in it
+    int sceneSteps(int scene) const;                // how many steps it lasts
     int slotOf(const Track& track, int scene, int bar) const { return scene * kMaxBars + bar % track.bars[scene]; }
     void fireNoteOffs();
     void firePendingNotes();
@@ -386,7 +388,7 @@ private:
     int bar_ = 0;    // the bar of the scene now playing
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
-    int steps_[kMaxScenes]; // steps to a bar in each scene (16 unless made shorter)
+    int steps_[kMaxScenes]; // how many steps each scene lasts, if it has been cut short (0: every step of its longest cell)
     std::atomic<int> playStep_{-1};
     std::atomic<int> playScene_{-1};
     std::atomic<int> playRepeat_{0};

@@ -31,8 +31,13 @@ std::string songText(const Project& project) {
     put(out, "tempo %.6g\n", project.tempo);
     out += "repeats";
     for (int r : project.repeats) put(out, " %.0f", r);
-    out += "\nsteps";
-    for (int n : project.steps) put(out, " %.0f", n);
+    // length: how many steps each scene lasts, where one is cut short (0: all of them). Only if any is.
+    bool cut = false;
+    for (int n : project.steps) cut = cut || n > 0;
+    if (cut) {
+        out += "\nlength";
+        for (int n : project.steps) put(out, " %.0f", n);
+    }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
     // fx SLOT NAME and its settings. Before any track: the master's.
@@ -189,6 +194,8 @@ bool parseSong(const std::string& text, Project& project) {
     std::unique_ptr<Project> song(new Project);
     song->tracks[0] = TrackData(); // no tracks until the file names them
     int count = 0, scene = -1, bar = 0;
+    int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
+    for (int& n : oldSteps) n = kSteps;
     TrackData* track = nullptr;
 
     while (std::getline(lines, line)) {
@@ -199,9 +206,13 @@ bool parseSong(const std::string& text, Project& project) {
         if (word == "tempo") {
             double tempo = 120;
             if (in >> tempo) song->tempo = clampf(static_cast<float>(tempo), kMinTempo, kMaxTempo);
-        } else if (word == "steps") {
+        } else if (word == "length") {
             double n;
-            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = clampi(static_cast<int>(n), 1, kSteps);
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = clampi(static_cast<int>(n), 0, kMaxBars * kSteps);
+        } else if (word == "steps") {
+            // As songs were kept before: steps to a BAR, 1..16. Turned into a length once the cells' bars are known (below).
+            double n;
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) oldSteps[i] = clampi(static_cast<int>(n), 1, kSteps);
         } else if (word == "repeats") {
             double r;
             for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = clampi(static_cast<int>(r), 1, kMaxRepeats);
@@ -383,6 +394,11 @@ bool parseSong(const std::string& text, Project& project) {
         }
     }
     if (count == 0) song->tracks[0].kind = TrackKind::Drums; // a song always has its drum track
+    for (int s = 0; s < kMaxScenes; ++s) {
+        // An old song's "13 steps to a bar": its bars but the last whole, and thirteen steps of the last.
+        if (song->steps[s] == 0 && oldSteps[s] < kSteps) song->steps[s] = (song->sceneBars(s) - 1) * kSteps + oldSteps[s];
+        if (song->steps[s] >= song->sceneBars(s) * kSteps) song->steps[s] = 0; // every step: kept as "all of them"
+    }
     project = *song;
     return true;
 }

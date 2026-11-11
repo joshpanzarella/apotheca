@@ -377,16 +377,53 @@ static void testOddStepCounts() {
         const std::vector<float> out = renderFrames(engine, 30 * kStep);
         const auto starts = [&](int s) { return out[2 * (s * kStep + 1)] != 0.f && (s == 0 || out[2 * (s * kStep - 1)] == 0.f); };
         CHECK(starts(0) && starts(5) && starts(10) && starts(26) && !starts(15) && !starts(16) && !starts(21));
-        // Out of range is held to 1..16, and a scene that does not exist is nothing.
+        // One step long: the rim on every step. A scene that does not exist is nothing.
         Engine odd;
         odd.send(step(RIM, 0, 1.f));
-        odd.send(make(Command::SetSceneSteps, 0, 0));
+        odd.send(make(Command::SetSceneSteps, 0, 1));
         Command stray = make(Command::SetSceneSteps, 0, 4);
         stray.scene = kMaxScenes;
         odd.send(stray);
         odd.send(make(Command::Play, 0, 0, 1));
         const std::vector<float> one = renderFrames(odd, 3 * kStep);
         CHECK(one[2 * (kStep + 1)] != 0.f && one[2 * (2 * kStep + 1)] != 0.f); // one step long: the rim on every step
+        // Any number of steps, across bars: a two-bar cell cut to 23 is one whole bar and seven steps of
+        // the second. A rim on step 1 of each bar: at 0, at 16, then round again at 23 and 39.
+        {
+            Engine two;
+            two.send(make(Command::SetCellBars, 0, 2));
+            two.send(step(RIM, 0, 1.f));
+            Command second = step(RIM, 0, 1.f);
+            second.bar = 1;
+            two.send(second);
+            Command late = step(RIM, 9, 1.f); // step 10 of bar 2: past the end, never played
+            late.bar = 1;
+            two.send(late);
+            two.send(make(Command::SetSceneSteps, 0, 23));
+            two.send(make(Command::Play, 0, 0, 1));
+            const std::vector<float> o = renderFrames(two, 48 * kStep);
+            const auto at = [&](int st) { return o[2 * (st * kStep + 1)] != 0.f && (st == 0 || o[2 * (st * kStep - 1)] == 0.f); };
+            CHECK(at(0) && at(16) && at(23) && at(39) && at(46) && !at(25) && !at(32));
+            // Cut to less than its first bar, the second bar is never reached: twelve steps, round and round.
+            two.send(make(Command::Stop));
+            renderFrames(two, 4 * kStep);
+            two.send(make(Command::SetSceneSteps, 0, 12));
+            two.send(make(Command::Play, 0, 0, 1));
+            const std::vector<float> s12 = renderFrames(two, 30 * kStep);
+            const auto on = [&](int st) { return s12[2 * (st * kStep + 1)] != 0.f && (st == 0 || s12[2 * (st * kStep - 1)] == 0.f); };
+            CHECK(on(0) && on(12) && on(24) && !on(16));
+            // Nothing (0), or more than it has: every step of both bars.
+            for (int all : {0, 32, 99, -5}) {
+                two.send(make(Command::Stop));
+                renderFrames(two, 4 * kStep);
+                two.send(make(Command::SetSceneSteps, 0, all));
+                two.send(make(Command::Play, 0, 0, 1));
+                const std::vector<float> w = renderFrames(two, 104 * kStep);
+                const auto in = [&](int st) { return w[2 * (st * kStep + 1)] != 0.f && (st == 0 || w[2 * (st * kStep - 1)] == 0.f); };
+                CHECK(in(0) && in(16) && in(25) && in(32) && !in(23));
+                CHECK(in(96) && !in(99)); // a number bigger than the scene does not make it longer: still 32, round and round
+            }
+        }
         Engine big;
         big.send(step(RIM, 0, 1.f));
         big.send(make(Command::SetSceneSteps, 0, 99));

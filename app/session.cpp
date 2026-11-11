@@ -217,7 +217,10 @@ void Session::update(Uint32 nowMs) {
 
 void Session::setSceneSteps(int scene, int steps) {
     if (scene < 0 || scene >= kMaxScenes) return;
-    steps = steps < 1 ? 1 : (steps > kSteps ? kSteps : steps);
+    // Any number from one step to every step of its longest cell; "all of them" is kept as 0,
+    // so the scene grows again if a cell in it is made longer.
+    const int whole = project.sceneBars(scene) * kSteps;
+    steps = steps < 1 ? 1 : (steps >= whole ? 0 : steps);
     if (project.steps[scene] == steps) return;
     project.steps[scene] = steps;
     noteEdit();

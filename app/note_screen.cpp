@@ -779,7 +779,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int playStep = session_.engine.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.steps[project_.scene]; steps < kSteps)
+    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
         fill(r, 0, gy(steps) - 1, kGridLeft + visibleKeys() * keyW(), (kSteps - steps) * kRowH, faded(kBg, 185));
 
     // ---- what is under the cursor ---------------------------------------------------

@@ -146,7 +146,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     if (!onName) outline(r, kGridLeft + step_ * kStepW - 1, kStepsY - 1, kCellW + 2, kStepsH + 2, cursorColor, 2);
     if (playStep >= 0) fill(r, kGridLeft + playStep * kStepW, kStepsY, kCellW, kStepsH, faded(kPurple, 76));
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.steps[project_.scene]; steps < kSteps)
+    if (const int steps = project_.barSteps(project_.scene, project_.bar); steps < kSteps)
         fill(r, kGridLeft + steps * kStepW - 1, kStepsY - 2, (kSteps - steps) * kStepW, kStepsH + 22, faded(kBg, 185));
 }
 
