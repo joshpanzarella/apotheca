@@ -203,4 +203,7 @@ there is a change to the sound, and needs the owner's ears.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
-step-editor, a picture of QMOD's wiring.
+step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
+2026-11-11): it has more features than it needs and is the costly synth; cut
+it down rather than tune it. The engine stays at 48 kHz: 44.1 would save about
+8%, which the owner judged not worth it.
