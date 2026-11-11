@@ -56,6 +56,7 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(song_test tests/song_test.cpp)
   target_link_libraries(song_test PRIVATE apotheca_engine)
   add_test(NAME song COMMAND song_test)
+  set_tests_properties(engine phazed twin qmod song PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -98,6 +99,8 @@ if(APOTHECA_BUILD_APP)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
+    # A test that hangs is a failed test in two minutes, not a run that never ends.
+    set_tests_properties(ui app save chord sample transfer design midi controls PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)

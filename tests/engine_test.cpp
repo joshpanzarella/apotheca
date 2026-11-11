@@ -256,6 +256,23 @@ static void testLaneLevel() {
     CHECK(renderFrames(odd, 3000) == a);
 }
 
+// Helpers are started and stopped many times over, at once and after some work.
+// A helper that misses the word to stop sleeps for good, and stopping waits for
+// it for good: this check does not fail then, it never comes back. (ctest gives
+// it a time limit.)
+static void testHelpersAlwaysStop() {
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->addSynthTrack(1, SynthKind::Phazed);
+    engine->addSynthTrack(2, SynthKind::Phazed);
+    std::vector<float> out(2 * 64);
+    for (int round = 0; round < 3000; ++round) {
+        engine->useWorkers(1 + round % 3);
+        if (round % 2) engine->render(out.data(), 64);
+        engine->useWorkers(0);
+    }
+    CHECK(engine->workers() == 0);
+}
+
 // When the machine cannot keep up, synths are told to do plainer work.
 // Tracks worked out on several processor cores at once: the same sound, to the last bit.
 static void testSharingTracksAcrossCores() {
@@ -2322,6 +2339,7 @@ int main() {
     testCeiling();
     testLaneLevel();
     testSharingTracksAcrossCores();
+    testHelpersAlwaysStop();
     testOddStepCounts();
     testAutomation();
     testTheSharedEnvelope();

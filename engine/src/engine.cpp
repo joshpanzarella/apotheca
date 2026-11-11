@@ -955,8 +955,16 @@ void Engine::workerLoop(void (*atStart)()) {
 }
 
 void Engine::useWorkers(int count, void (*atStart)()) {
-    // Stop the ones there are.
-    quitWorkers_.store(true);
+    // Stop the ones there are. The flag is set with the lock held: a helper
+    // checks it with the lock held and then goes to sleep, and a flag set in
+    // between (with no lock) is a wake-up it never hears. It then sleeps for
+    // good, and join() below waits for it for good. (That happened: about one
+    // run in a few hundred of the test below, and it would have been a quit
+    // that hangs on the handheld.)
+    {
+        std::lock_guard<std::mutex> lock(wakeMutex_);
+        quitWorkers_.store(true);
+    }
     wake_.notify_all();
     for (std::thread& worker : workers_) worker.join();
     workers_.clear();
