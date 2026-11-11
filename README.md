@@ -103,11 +103,25 @@ ROOT key the recording plays as it was made; an octave up, twice as fast.
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| SOUND | Each recording in the `samples` folder, heard as it changes | None |
+| SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
 | ROOT, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
 
 **Y is Catch** here too: the last bar the song played becomes this track's
 recording. Eight notes at a time.
+
+### The list of recordings
+
+**Tap A on SOUND** (a kit lane, or the sampler) and the recordings come up
+as a list, with the one showing drawn as a waveform and its length.
+
+| Button | Does |
+| --- | --- |
+| Up / down | The next one. It goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. The stick runs through about eight a second. |
+| Left / right | Eight at a time |
+| A | Keep it |
+| B | Put back what was there before the list opened |
+| X | Hear it again |
+| START | Play / stop, with the list still open |
 
 ### FX
 

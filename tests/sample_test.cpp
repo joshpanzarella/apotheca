@@ -1269,8 +1269,9 @@ void testTheSamplePicker() {
     CHECK(list.cursor() == 11 && std::string(track.laneSample[5]) == "take 11");
     rig.tap(RIGHT, 3);
     CHECK(list.cursor() == 20 && std::string(track.laneSample[5]) == "take 20");
-    rig.tap(DOWN);
-    CHECK(list.cursor() == 20);
+    rig.render(96000);
+    rig.tap(DOWN); // at the end: nothing moves, so nothing is loaded or played again
+    CHECK(list.cursor() == 20 && Rig::sounding(rig.render(20000)) == 0);
     rig.tap(LEFT);
     CHECK(list.cursor() == 12);
     // While it is open the kit's own buttons do nothing: Y does not catch, R1 does not record, and the lane cursor stays.
@@ -1324,7 +1325,7 @@ void testTheSamplePicker() {
     rig.render(3000);
     rig.frames(1);
     rig.tap(DOWN);
-    CHECK(rig.engine->trackPeak(0) == 0.f || Rig::sounding(rig.render(6000)) == 0); // lane 6 has no hits: silence
+    CHECK(Rig::sounding(rig.render(6000)) == 0); // lane 6 has no hits, and moving does not play it: silence
     rig.tap(START);
     rig.tap(B);
     rig.render(96000);
