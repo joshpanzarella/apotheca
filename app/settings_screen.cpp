@@ -266,7 +266,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawCentered(r, sx + size / 2.f, sy - 18.f, "THE STICK", kDim);
         std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonName(lastPressed_));
         fonts.medium.draw(r, 24.f, 360.f, text, kText);
-        fonts.small.draw(r, 24.f, 386.f, "Buttons do nothing else while this is open. To leave: take your hands off for four seconds.", kDim);
+        fonts.small.draw(r, 24.f, 386.f, "Nothing else works while this is open. To leave: hands off for four seconds.", kDim);
         hints(r, fonts, nullptr, 0);
         return;
     }

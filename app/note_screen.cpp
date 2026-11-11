@@ -733,7 +733,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x0, kOctaveTop + kOctaveH - 2, x1 - x0, 1, color);
         if (pitch % 12 == 0) fill(r, x0, kOctaveTop + 2, 1, kOctaveH - 3, color); // the C end
         std::snprintf(text, sizeof text, x1 - x0 > 70 ? "OCTAVE %d" : "%d", c / 12 - 1);
-        if (x1 - x0 > 14) fonts.small.draw(r, x0 + 5.f, kOctaveTop - 1.f, text, mine ? cursorColor : kText);
+        if (x1 - x0 > 14) fonts.small.draw(r, x0 + 5.f, kOctaveTop - 3.f, text, mine ? cursorColor : kText);
     }
 
     // ---- the empty grid: a column for each key, a row for each step ------------------
@@ -820,9 +820,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!shows(pitch)) return;
         const int x = gx(pitch) + 1, y = gy(step) + 1 + static_cast<int>(std::round(nudge * kRowH)), full = cellW() - 2;
         const int first = static_cast<int>(std::round((length < 1.f ? length : 1.f) * kRowH)) - 4; // the part of it in its first step
-        for (int k = 1; k < ratchet && first > 2 * ratchet; ++k) fill(r, x, y + first * k / ratchet, full, 2, kBg);
+        const int line = ratchet >= 4 ? 2 : 3;
+        for (int k = 1; k < ratchet && first > 2 * ratchet; ++k) fill(r, x, y + first * k / ratchet - line / 2, full, line, kBg);
+        if (ratchet >= 2 && first > 2) fill(r, x + full - 4, y, 4, first, kPurple); // and a purple edge, so it is not taken for a few short notes
         if (glide)
-            for (int d = 0; d < 6; ++d) fill(r, x, y + d, 6 - d, 1, kPurple);
+            for (int d = 0; d < 10; ++d) fill(r, x, y + d, 10 - d, 1, kPurple);
     };
     for (const NoteEvent& n : pat().notes)
         if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0);
@@ -900,37 +902,37 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(8.f, "KEY", text, kText);
         }
         std::snprintf(text, sizeof text, "%d", step_ + 1);
-        field(120.f, "STEP", text, kText);
+        field(100.f, "STEP", text, kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const bool glideHere = under && under->glide;
         if (fxHeld_ && (under || chordUnder)) {
             // X is held: the strip is what the note does besides play.
             std::snprintf(text, sizeof text, ratchetHere >= 2 ? "x%d" : "OFF", ratchetHere);
-            field(190.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
-            field(330.f, "GLIDE", !under ? "-" : glideHere ? "ON" : "OFF", !under ? kDim : glideHere ? kBrass : kText);
+            field(160.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
+            field(250.f, "GLIDE", !under ? "-" : glideHere ? "ON" : "OFF", !under ? kDim : glideHere ? kBrass : kText);
         } else if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));
-            field(190.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
+            field(160.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
             const float length = lengthNow();
             if (length == std::floor(length)) std::snprintf(text, sizeof text, "%d STEP%s", static_cast<int>(length), length == 1.f ? "" : "S");
             else std::snprintf(text, sizeof text, "%.2f STEPS", length);
-            field(330.f, "LENGTH", text, shaping_ && turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
+            field(250.f, "LENGTH", text, shaping_ && turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
         } else {
-            field(190.f, "LEVEL", "-", kDim);
-            field(330.f, "LENGTH", "-", kDim);
+            field(160.f, "LEVEL", "-", kDim);
+            field(250.f, "LENGTH", "-", kDim);
         }
         const float nudge = under ? under->nudge : (chordUnder ? chordUnder->nudge : 0.f);
         if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
-            std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "RATCHET x2" : ratchetHere == 3 ? "RATCHET x3" : "RATCHET x4") : "", ratchetHere >= 2 && glideHere ? "   " : "", glideHere ? "GLIDE" : "");
-            fonts.small.drawRight(r, 632.f, stripY + 12.f, text, kPurple);
+            std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", glideHere ? "GLIDE" : "");
+            field(510.f, ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
         }
         if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
-            field(470.f, "NUDGE", text, shaping_ ? kText : kTeal);
-        } else {
+            field(390.f, "NUDGE", text, shaping_ ? kText : kTeal);
+        } else if (!fxHeld_) {
             std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
-            field(470.f, "NOTES", text, kDim);
+            field(390.f, "NOTES", text, kDim);
         }
     }
 

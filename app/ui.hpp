@@ -12,9 +12,11 @@
 namespace apotheca {
 
 struct Fonts {
-    Font small;  // 12: labels, hints, tabs
-    Font medium; // 14: names
-    Font large;  // 16: values
+    Font small;  // labels, hints, tabs
+    Font medium; // names
+    Font large;  // values
+    // The largest of them that a text fits a width in: for a name that may be long.
+    const Font& fit(const char* text, float room) const { return large.width(text) <= room ? large : medium.width(text) <= room ? medium : small; }
 };
 
 namespace ui {

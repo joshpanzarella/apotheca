@@ -884,7 +884,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         field(134.f, "BPM", text, cursorColor);
         bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
     } else if (onName) {
-        field(8.f, "LANE", laneLabel(lane_), kText);
+        fonts.small.draw(r, 8.f, stripY, "LANE", kDim);
+        fonts.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
@@ -895,7 +896,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
         }
     } else {
-        field(8.f, "LANE", laneLabel(lane_), kText);
+        fonts.small.draw(r, 8.f, stripY, "LANE", kDim);
+        fonts.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d", step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {

@@ -33,11 +33,11 @@ void line(SDL_Renderer* r, int x1, int y1, int x2, int y2, SDL_Color c) {
 // it for a lower one.
 void PatternScreen::drawFxMarks(SDL_Renderer* r, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise) {
     if (!fx.any()) return;
-    for (int k = 1; k < fx.hits(); ++k) fill(r, x + w * k / fx.hits() - 1, y, 2, h, kBg);
-    if (fx.cut) fill(r, x + w - 3, y, 3, h, kStop);
+    for (int k = 1; k < fx.hits(); ++k) fill(r, x + w * k / fx.hits() - 1, y, 3, h, kBg);
+    if (fx.cut) fill(r, x + w - 4, y, 4, h, kStop);
     if (fx.reverse)
-        for (int dy = -3; dy <= 3; ++dy) fill(r, x - 5 + std::abs(dy), middleY + dy, 4 - std::abs(dy), 1, kPurple);
-    if (fx.pitch) fill(r, x + w + 1, middleY - static_cast<int>(std::round(fx.pitch * rise)) - 1, 4, 3, kPurple);
+        for (int dy = -5; dy <= 5; ++dy) fill(r, x - 6 + std::abs(dy), middleY + dy, 6 - std::abs(dy), 1, kPurple);
+    if (fx.pitch) fill(r, x + w + 1, middleY - static_cast<int>(std::round(fx.pitch * rise)) - 2, 5, 5, kPurple);
 }
 
 void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
@@ -55,7 +55,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     const int filled = static_cast<int>(std::round((kNameW - 2) * trk().laneLevel[lane_]));
     fill(r, kNameX + 1, kWaveY + 1, filled, kWaveH - 2, onName && shaping_ ? faded(kBrass, 110) : kPanel);
     if (onName) outline(r, kNameX - 1, kWaveY - 1, kNameW + 2, kWaveH + 2, cursorColor, 2);
-    fonts.medium.draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
+    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 12 ? fonts.medium : fonts.small).draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
     fonts.small.draw(r, 15.f, kWaveY + 44.f, "EACH HIT", kDim);
     fonts.small.draw(r, 15.f, kWaveY + 60.f, "PLAYS", kDim);
     fonts.medium.draw(r, 15.f, kWaveY + 78.f, trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON", trk().laneOneSlice[lane_] ? kPurple : kText);

@@ -620,7 +620,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (address[0] == ':') fonts.small.draw(r, x + 12.f, ty + 16.f, "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST.", kBrass);
                 else fonts.small.draw(r, x + 12.f, ty + 16.f, ("OPEN IN A BROWSER:  " + address).c_str(), kBrass);
             } else {
-                fonts.small.draw(r, x + 12.f, ty + 16.f, "Recordings, chord packs and songs, from a browser.", kDim);
+                fonts.small.draw(r, x + 12.f, ty + 16.f, "Recordings, chord packs, songs: from a browser.", kDim);
             }
         }
         char saved[32] = "";

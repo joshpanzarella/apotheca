@@ -270,8 +270,8 @@ int main(int argc, char** argv) {
     Fonts fonts;
     {
         const std::vector<unsigned char> ttf = loadFontFile();
-        if (!fonts.small.load(renderer, ttf, 13.5f) || !fonts.medium.load(renderer, ttf, 16.f) ||
-            !fonts.large.load(renderer, ttf, 18.5f)) {
+        if (!fonts.small.load(renderer, ttf, 14.5f) || !fonts.medium.load(renderer, ttf, 17.f) ||
+            !fonts.large.load(renderer, ttf, 20.f)) {
             std::fprintf(stderr, "could not load the lettering (routed-gothic-narrow.ttf)\n");
             SDL_Quit();
             return 1;
@@ -437,6 +437,27 @@ int main(int argc, char** argv) {
         fx(5, 3, 0, 0, true, 0);
         drums.moveCursorTo(1, 4);
         if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
+    } else if (std::strncmp(view, "notefx", 6) == 0) {
+        // Note effects on the piano roll: ratchets of two, three and four, a glide, both, and a short one.
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const auto note = [&](int slot, int step, int pitch, float length, int ratchet, int glide) {
+            p.notes[slot] = NoteEvent{step, pitch, length, 0.f, 0.8f};
+            p.notes[slot].ratchet = static_cast<std::uint8_t>(ratchet);
+            p.notes[slot].glide = static_cast<std::uint8_t>(glide);
+        };
+        note(0, 0, 60, 1.f, 0, 0);
+        note(1, 2, 62, 1.f, 2, 0);
+        note(2, 4, 64, 2.f, 3, 0);
+        note(3, 7, 65, 1.f, 4, 0);
+        note(4, 9, 67, 3.f, 0, 1);
+        note(5, 12, 64, 2.f, 3, 1);
+        note(6, 14, 60, 0.5f, 2, 0);
+        app.session().sendNoteBar(2, 0, 0);
+        app.notes().moveCursorTo(64, 12);
+        if (std::strcmp(view, "notefx-held") == 0) pushKey(SDLK_s, true); // X held
     } else if (std::strcmp(view, "under") == 0) {
         // A held chord with notes written under it, and a short note under a long one.
         Session& session = app.session();
