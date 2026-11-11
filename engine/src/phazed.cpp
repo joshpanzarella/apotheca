@@ -95,11 +95,13 @@ PhazedPatch fromPreset(const cz_preset_t& preset) {
     return p;
 }
 
+constexpr int kTwinTrim = -3; // dB, when DETUNE gives a one-line sound its twin
+
 // ---- the macros: bend a copy of the patch ---------------------------------------
 
 int bent(int value, float by) { return clampInt(static_cast<int>(std::lround(value + by)), 0, 99); }
 
-void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus) {
+void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& levelTrim) {
     using namespace phazed;
     const float tone = macro[Tone] - 0.5f, motion = macro[Motion] - 0.5f, attack = macro[Attack] - 0.5f,
                 release = macro[Release] - 0.5f, detune = macro[Detune] - 0.5f, vibrato = macro[Vibrato] - 0.5f;
@@ -126,6 +128,20 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus) {
     // keeps a direction and a size; they are added up as one signed amount
     // (60 to a semitone) so that down from "no detune" is flat, not nothing.
     if (detune != 0.f) {
+        // A sound with one line has nothing to detune against, and the
+        // macro would do nothing at all. So off the middle, such a sound
+        // gets a twin of its line to tune (the machine's own "1 + 1'"
+        // mode), a little quieter so that two lines are about as loud as
+        // one was. Any ring or noise setting is left out: it was not being
+        // heard with one line, and must not arrive with the twin.
+        if (t.line_select == CZ_LINE_1 || t.line_select == CZ_LINE_2) {
+            if (t.line_select == CZ_LINE_2) t.line[0] = t.line[1];
+            t.line_select = CZ_LINE_1_1;
+            t.mod = CZ_MOD_NONE;
+            t.detune_sign = 1;
+            t.detune_oct = t.detune_note = t.detune_fine = 0;
+            levelTrim = kTwinTrim;
+        }
         const int perNote = 60, most = 3 * 12 * perNote + 11 * perNote + 60;
         int amount = (t.detune_sign < 0 ? -1 : 1) * ((t.detune_oct * 12 + t.detune_note) * perNote + t.detune_fine);
         amount = clampInt(amount + static_cast<int>(std::lround(120.f * detune)), -most, most);
@@ -247,13 +263,14 @@ void Phazed::apply(bool newSound) {
     cz_panel_tone_t panel;
     toPanel(patch_, panel);
     int chorus = patch_.value[phazed::ChorusOn];
-    applyMacros(macro_, panel, chorus);
+    int levelTrim = 0;
+    applyMacros(macro_, panel, chorus, levelTrim);
     cz_tone_t tone;
     cz_tone_from_panel(&panel, &tone);
     if (newSound) cz_synth_select_tone(&state_->synth, &tone);
     else cz_synth_edit_tone(&state_->synth, &tone);
     cz_chorus_enable(&state_->synth.chorus, chorus);
-    cz_synth_set_volume(&state_->synth, patch_.value[phazed::Level]);
+    cz_synth_set_volume(&state_->synth, patch_.value[phazed::Level] + levelTrim);
 }
 
 void Phazed::selectPreset(int index) {

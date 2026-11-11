@@ -413,6 +413,13 @@ movement and width; cream: time), and stays dim until it is turned. Macros bend 
 leave the preset as it was made. A new preset is played at once when the
 song is stopped.
 
+Phazed's DETUNE tunes the sound's second line (oscillator) up to a semitone
+sharp or flat. A sound with only one line is given a twin of that line as
+soon as DETUNE leaves the middle, so the macro does something on every
+preset. Two things follow from the twin: notes that are sounding at that
+moment fade out once, and such a sound then plays four notes at a time
+instead of eight.
+
 ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
 each line's volume, wave and pitch envelopes drawn out). Twin Analog has
 three (oscillators, formant and character, envelope). L1 and R1 turn the pages; B

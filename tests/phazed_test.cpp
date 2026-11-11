@@ -430,6 +430,26 @@ static void testEachMacroDoesItsJob() {
         CHECK(playNote(preset, {macro(Detune, 0.f)}).held != playNote(preset, {macro(Detune, 1.f)}).held); // flat is not sharp
     }
     CHECK(checked >= 3);
+    // A sound with ONE line has nothing to detune against. Off the middle it
+    // is given a twin of its line, so the macro does something there too:
+    // both ways, differently, and at about the loudness it had.
+    int ones = 0;
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        if (Phazed::presetPatch(preset).value[LineSelect] >= 2) continue;
+        ++ones;
+        const auto as = playNote(preset, {}).held;
+        const auto down = playNote(preset, {macro(Detune, 0.f)}).held, up = playNote(preset, {macro(Detune, 1.f)}).held;
+        CHECK(down != as && up != as && down != up);
+        CHECK(playNote(preset, {macro(Detune, 0.5f)}).held == as); // the middle: the preset, untouched
+        const double before = energyOf(as, 0, static_cast<int>(as.size() / 2));
+        for (float at : {0.4f, 0.75f, 1.f}) {
+            const auto bent = playNote(preset, {macro(Detune, at)}).held;
+            const double after = energyOf(bent, 0, static_cast<int>(bent.size() / 2));
+            if (before > 1e-9 && (after < 0.4 * before || after > 2.5 * before)) std::printf("preset %d at %.2f: %.2f times the energy\n", preset, at, after / before);
+            CHECK(before <= 1e-9 || (after > 0.4 * before && after < 2.5 * before)); // within 4 dB
+        }
+    }
+    CHECK(ones >= 10);
 
     // VIBRATO: up makes the pitch wobble, even on a sound that had none.
     const int still = firstPresetWhere([](const PhazedPatch& p) { return p.value[VibratoDepth] == 0 && p.value[envSustain(0, AmpEnv)] > 0; });
