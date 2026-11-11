@@ -64,6 +64,11 @@ public:
 
     // Give the next free track an instrument. False when all twelve are used.
     bool addTrack(TrackKind kind);
+    // Another instrument on a track that is there. Its patterns stay: notes carry over between the
+    // instruments played from the keys, and a drum pattern waits untouched under a synth (and the
+    // other way about). The new instrument starts on its first sound; the track's effects, name and
+    // mute stay; its automation goes (the knobs it moved are not the new instrument's). The song stops.
+    bool setTrackKind(int track, TrackKind kind);
     // Take a track out of the song, with everything on it; the tracks after it move down one.
     // The song stops. It cannot be undone, and the last track cannot be removed.
     bool removeTrack(int track);

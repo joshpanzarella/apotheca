@@ -87,6 +87,20 @@ bool Session::addTrack(TrackKind kind) {
     return true;
 }
 
+bool Session::setTrackKind(int track, TrackKind kind) {
+    if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
+    TrackData& t = project.tracks[track];
+    t.kind = kind;
+    t.preset = 0;
+    for (float& m : t.macro) m = 0.5f;
+    if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(t, 0);
+    for (auto& scene : t.automation)
+        for (int lane = 0; lane < kSynthMacros; ++lane) // the macros' lanes; the effects' are still the same effects
+            for (float& v : scene[lane]) v = kAutoNone;
+    applyProject(); // the engine is given the song afresh, with the new instrument in its place
+    return true;
+}
+
 void Session::audition(int track, int pitch, float velocity) {
     // Reuse the slot already holding this key, else the one that ends soonest.
     Sounding* slot = &sounding_[0];

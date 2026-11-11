@@ -85,6 +85,7 @@ private:
 
     Session& session_;
     Project& project_;
+    int changing_ = -1;   // the instrument list is up to change this track's (-1: to add a track)
     bool onHead_ = false; // the cursor is on a track's head (its name), above the top scene
     int scene_ = 0;
     int column_ = 0;

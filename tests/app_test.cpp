@@ -3991,8 +3991,7 @@ void testNamingATrackFromTheSongScreen() {
     rig.app.session().setTrackName(1, "");
     rig.app.drums().setStep(0, 0, 0.9f); // something in the top cell of track 1, to see it left alone
     rig.tap(LEFT);
-    rig.tap(B);
-    rig.tap(R1);
+    rig.tap(B); // a tap of B there empties nothing
     CHECK(song.cursorOnHead() && rig.view() == View::Song && rig.app.drums().level(0, 0) == 0.9f);
     rig.tap(RIGHT);
     // A: the keyboard, for that track. Type, keep, and the SONG screen is back with the name on the head.
@@ -4026,9 +4025,99 @@ void testNamingATrackFromTheSongScreen() {
     CHECK(!song.cursorOnHead());
 }
 
+// On a track's head, R1 changes its instrument.
+void testChangingATracksInstrument() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Phazed);
+    rig.frames(2);
+    // Notes on track 2, a hit on track 1, a name, a mute, an effect and some automation of a macro and of the effect.
+    rig.project().tracks[1].notes[0][0].notes[0] = NoteEvent{0, 60, 4.f, 0.f, 0.8f};
+    session.sendNotePattern(1, 0);
+    rig.app.drums().setStep(0, 0, 0.9f);
+    session.setTrackName(1, "LEAD");
+    session.setEffect(1, 0, EffectKind::Delay);
+    session.setAutomation(1, 0, 2, 0, 0.9f);
+    session.setAutomation(1, 0, autoLaneOfEffect(0, 1), 0, 0.7f);
+    session.setSynthMacro(1, 3, 0.9f);
+    rig.frames(2);
+    rig.render(4000);
+    rig.tap(L2);
+    SongScreen& song = rig.app.song();
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    CHECK(song.cursorOnHead());
+    // R1: the list, on the instrument the track has. B puts it away with nothing changed.
+    rig.tap(R1);
+    rig.tap(B);
+    CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().trackCount() == 2);
+    // A on the same one: nothing changes either (the sound is not put back to its first).
+    rig.tap(R1);
+    rig.tap(A);
+    CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[1].macro[3] == 0.9f);
+    // Down one and A: it is a Twin Analog now. No track was added.
+    rig.tap(R1);
+    rig.tap(DOWN);
+    rig.tap(A);
+    TrackData& t = rig.project().tracks[1];
+    CHECK(t.kind == TrackKind::Twin && rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
+    // Its notes, name and effect stay; it is on its first sound, with its macros in the middle.
+    CHECK(t.notes[0][0].notes[0].velocity == 0.8f && std::string(t.name) == "LEAD" && t.effects[0].kind == static_cast<int>(EffectKind::Delay));
+    CHECK(t.preset == 0 && t.macro[3] == 0.5f);
+    // The macro's automation went (it is another instrument's knob now); the effect's stayed.
+    CHECK(t.automation[0][2][0] < 0.f && t.automation[0][autoLaneOfEffect(0, 1)][0] == 0.7f);
+    // The other track is untouched, and the song plays: the drum, and the new instrument's note.
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.app.drums().level(0, 0) == 0.9f);
+    rig.frames(2);
+    rig.render(4000);
+    session.setMuted(0, true);
+    rig.frames(1);
+    rig.tap(START);
+    CHECK(rig.listen(kStep) > 0.01f);
+    rig.tap(START);
+    session.setMuted(0, false);
+    // To drums and back to a synth: the notes were kept all along.
+    CHECK(session.setTrackKind(1, TrackKind::Drums) && t.kind == TrackKind::Drums);
+    // The engine has drums there now, with no hits: the synth that was there is gone, and its note with it.
+    rig.frames(2);
+    rig.render(48000);
+    session.setMuted(0, true);
+    rig.frames(1);
+    rig.render(2000); // the mute fades over a few milliseconds: let it finish before the first hit
+    rig.tap(START);
+    CHECK(rig.listen(4 * kStep) == 0.f);
+    rig.tap(START);
+    session.setMuted(0, false);
+    rig.frames(1);
+    CHECK(session.setTrackKind(1, TrackKind::Qmod) && t.notes[0][0].notes[0].velocity == 0.8f);
+    // Nonsense is refused.
+    CHECK(!session.setTrackKind(1, TrackKind::None) && !session.setTrackKind(1, TrackKind::Qmod) && !session.setTrackKind(5, TrackKind::Drums) && !session.setTrackKind(-1, TrackKind::Drums));
+    // B held on the head deletes the track, as on a cell: two seconds, and let go sooner it does nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(rig.project().trackCount() == 2 && song.trackDeletePart() == 0.f);
+    session.addTrack(TrackKind::Phazed);
+    rig.frames(1);
+    rig.key(B, true);
+    rig.frames(130);
+    rig.key(B, false);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[0].kind == TrackKind::Drums); // the Qmod went; the one after it moved up
+    rig.frames(2);
+    // + TRACK still adds one (the list is not left thinking it is changing a track).
+    song.moveCursorTo(0, 2);
+    rig.tap(A);
+    rig.tap(A);
+    CHECK(rig.project().trackCount() == 3 && rig.project().tracks[1].kind == TrackKind::Phazed);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testChangingATracksInstrument();
     testNamingATrackFromTheSongScreen();
     testStepEffects();
     testAFullQueueIsRecoveredFrom();

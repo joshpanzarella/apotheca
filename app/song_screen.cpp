@@ -245,7 +245,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == Button::B) choosing_ = false;
         if (b == Button::A) {
             choosing_ = false;
-            if (session_.addTrack(kInstruments[choice_].kind)) {
+            if (changing_ >= 0) {
+                session_.setTrackKind(changing_, kInstruments[choice_].kind); // another instrument for a track that is there
+            } else if (session_.addTrack(kInstruments[choice_].kind)) {
                 moveCursorTo(scene_, project_.trackCount() - 1); // onto the new track
             }
         }
@@ -253,11 +255,24 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (onHead_ && (b == Button::A || b == Button::B || b == Button::R1)) {
-        // On a track's head: A opens the keyboard for its name (on the SET tab; it comes back here). B and the copy brush do nothing.
+        // On a track's head: A opens the keyboard for its name (on the SET tab; it comes back here).
+        // B held deletes the track, as it does on a cell; a tap of it empties nothing here.
+        if (b == Button::B && event.down && !input.held(Button::A)) {
+            trackHold_ = true;
+            trackHoldTimed_ = false;
+            trackHoldPart_ = 0.f;
+        }
         if (b == Button::A && event.down) {
             project_.track = column_;
             session_.wantTrackName = true;
             session_.view = View::Settings;
+        }
+        // R1: the list of instruments, to change this track's. It opens on the one it has.
+        if (b == Button::R1 && event.down) {
+            choosing_ = true;
+            changing_ = column_;
+            for (int i = 0; i < kInstrumentCount; ++i)
+                if (kInstruments[i].kind == project_.tracks[column_].kind) choice_ = i;
         }
         return;
     }
@@ -271,6 +286,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 saved_ = 0.f;
             } else if (column_ == addColumn()) {
                 choosing_ = true;
+                changing_ = -1;
                 choice_ = 1; // Phazed: the likelier second track
             } else if (column_ == kRepeatColumn) {
                 holding_ = true;
@@ -676,7 +692,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int w = 340, h = 46 + kInstrumentCount * 52, x = (kScreenW - w) / 2, y = 70;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, h, kPanel, kLine);
-        std::snprintf(text, sizeof text, "TRACK %d: PICK AN INSTRUMENT", tracks + 1);
+        if (changing_ >= 0) std::snprintf(text, sizeof text, "TRACK %d: CHANGE ITS INSTRUMENT", changing_ + 1);
+        else std::snprintf(text, sizeof text, "TRACK %d: PICK AN INSTRUMENT", tracks + 1);
         fonts.small.draw(r, x + 12.f, y + 12.f, text, kDim);
         for (int i = 0; i < kInstrumentCount; ++i) {
             const InstrumentInfo& info = kInstruments[i];
@@ -689,7 +706,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, x + 24.f, by + 29.f, about, kDim);
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
         }
-        const Hint list[] = {{"A", "add the track"}, {"B", "cancel"}};
+        const Hint list[] = {{"A", changing_ >= 0 ? "change to it" : "add the track"}, {"B", "cancel"}};
         hints(r, fonts, list, 2);
         return;
     }
@@ -699,7 +716,9 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (onHead_) {
-        hint("A", "name the track");
+        hint("A", "name");
+        hint("R1", "instrument");
+        hint("HOLD B", "delete");
         hint("Y", "mute");
         hint("L1", "solo");
         hint("X", "hear");
