@@ -105,7 +105,18 @@ int main() {
     session.view = View::Pattern;
     std::printf("  %-28s %7.3f ms\n", "one frame, nothing changing", ms([&] { app.update(input, clock += 16); drain(); }, 300));
     std::printf("  %-28s %7.3f ms\n", "a frame that ends an edit", ms([&] { session.noteEdit(); app.update(input, clock += 800); drain(); }, 20));
-    std::printf("  %-28s %7.3f ms\n", "undo, then redo", ms([&] { session.noteEdit(); app.update(input, clock += 800); session.undo(); session.redo(); for (int i = 0; i < 300; ++i) drain(); }, 5));
+    {
+        // Only the two calls are timed: the frames and the audio between them are not undo's cost.
+        double spent = 0.0;
+        const int rounds = 10;
+        for (int i = 0; i < rounds; ++i) {
+            session.noteEdit();
+            app.update(input, clock += 800);
+            spent += ms([&] { session.undo(); session.redo(); }, 1);
+            for (int k = 0; k < 300; ++k) drain();
+        }
+        std::printf("  %-28s %7.3f ms\n", "undo, then redo", spent / rounds);
+    }
     std::printf("  %-28s %7.3f ms\n", "a bar of notes to the engine", ms([&] { session.sendNoteBar(1, 0, 0); drain(); }, 200));
     std::printf("sizes: Project %zu KB, TrackData %zu KB, Engine %zu KB, a Command %zu bytes\n", sizeof(Project) / 1024, sizeof(TrackData) / 1024, sizeof(Engine) / 1024, sizeof(Command));
     return 0;

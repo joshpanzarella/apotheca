@@ -437,6 +437,12 @@ void Session::restorePatterns(const std::string& text) {
         TrackData& now = project.tracks[t];
         const TrackData& then = was->tracks[t];
         if (now.kind == TrackKind::None || now.kind != then.kind) continue; // a track added since stays as it is
+        // A track that is the same then as now is left alone. Most are: an edit is
+        // to one track, and sending a track's every pattern again is the costly part.
+        if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && std::memcmp(now.drums, then.drums, sizeof now.drums) == 0 &&
+            std::memcmp(now.notes, then.notes, sizeof now.notes) == 0 && std::memcmp(now.automation, then.automation, sizeof now.automation) == 0) {
+            continue;
+        }
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             now.bars[scene] = then.bars[scene];
             for (int bar = 0; bar < kMaxBars; ++bar) {
