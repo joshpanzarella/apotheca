@@ -30,6 +30,7 @@ Engine::Engine() {
             for (auto& lane : track.drumScenes[slot].chance)
                 for (float& c : lane) c = 1.f;
     for (int& r : repeats_) r = 1;
+    for (int& n : steps_) n = kSteps;
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
@@ -404,6 +405,9 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
+    case Command::SetSceneSteps:
+        if (validScene(c.scene)) steps_[c.scene] = c.a < 1 ? 1 : (c.a > kSteps ? kSteps : c.a);
+        break;
     case Command::ClearCell:
         if (validTrack(c.track) && validScene(c.scene)) {
             Track& track = tracks_[c.track];
@@ -703,7 +707,8 @@ void Engine::fireStep() {
     const bool veryFirst = firstStep_; // (only ever set for step 1)
     firstStep_ = false;
 
-    const int following = (nextStep_ + 1) % kSteps;
+    // A scene's bars may be shorter than sixteen steps: the bar comes round after as many as it has.
+    const int following = (nextStep_ + 1) % steps_[scene_];
     // An early hit on step 1 belongs to whichever scene the next bar plays.
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;

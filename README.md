@@ -218,6 +218,18 @@ designer".
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
 
+### Odd step counts
+
+A scene's bars need not be sixteen steps. On the SONG screen, put the cursor
+on a scene's repeat count (the `x2` box), **hold A and press left**: 15, 14,
+13... down to 1. Right goes back up to 16. The count shows in brass under
+the repeat count, and the steps past the end are shaded on both grids.
+
+It is one length for the whole scene: every track's bars in that scene are
+that many steps. Hits and notes past the end are kept, not played, and come
+back if the scene is made longer again. Up and down, with A held, are still
+how many times the scene plays.
+
 ### Bouncing: getting a song out
 
 **SET tab, BOUNCE row.** Left / right picks what, A starts it.

@@ -74,6 +74,7 @@ struct Command {
         SetTempo,       // value = beats per minute
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track, value = linear gain
+        SetSceneSteps,  // how many steps a bar of the scene has: scene, a = 1..16 (16: a whole bar)
         SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
         ClearAutomation,// a whole lane of a cell: track, scene, a = lane (-1: every lane)
         SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
@@ -330,6 +331,7 @@ private:
     int bar_ = 0;    // the bar of the scene now playing
     int sceneCount_ = 1;
     int repeats_[kMaxScenes];
+    int steps_[kMaxScenes]; // steps to a bar in each scene (16 unless made shorter)
     std::atomic<int> playStep_{-1};
     std::atomic<int> playScene_{-1};
     std::atomic<int> playRepeat_{0};

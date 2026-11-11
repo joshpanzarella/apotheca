@@ -617,13 +617,21 @@ void testAnOpenedSongPlaysItsChords() {
     CHECK(a == b);
 }
 
-void testNothingIsHeardWhileTheSongPlays() {
+// Choosing a chord is heard even while the song plays: hearing it is how it is chosen.
+// (It used to be silent then, on the grounds that the song would play it soon enough.)
+void testAChordIsHeardWhileChoosingEvenWhenPlaying() {
     Rig rig;
     rig.tap(START); // an empty bar, playing
-    rig.key(Y, true);
-    rig.tap(SDLK_RIGHT);
-    rig.tap(X);
-    CHECK(rig.listen(2000) < 1e-4f); // choosing is silent; the song will play the chord
+    rig.render(100);
+    CHECK(rig.listen(2000) < 1e-4f);
+    rig.key(Y, true); // the chord in hand sounds at once
+    CHECK(rig.listen(2000) > 0.005f);
+    rig.render(96000);
+    rig.tap(SDLK_RIGHT); // and each one flicked to
+    CHECK(rig.listen(2000) > 0.005f);
+    rig.render(96000);
+    rig.tap(X); // and again when asked
+    CHECK(rig.listen(2000) > 0.005f);
     rig.tap(B);
     rig.key(Y, false);
 }
@@ -645,7 +653,7 @@ int main(int, char**) {
     testWhereAChordCannotGo();
     testPacksAndTheSongFile();
     testAnOpenedSongPlaysItsChords();
-    testNothingIsHeardWhileTheSongPlays();
+    testAChordIsHeardWhileChoosingEvenWhenPlaying();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

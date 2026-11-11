@@ -257,6 +257,73 @@ static void testLaneLevel() {
 }
 
 // When the machine cannot keep up, synths are told to do plainer work.
+// A scene whose bars are shorter than sixteen steps: the bar comes round early.
+static void testOddStepCounts() {
+    const auto onsets = [](Engine& engine, int steps) {
+        std::vector<int> at;
+        const std::vector<float> out = renderFrames(engine, steps * kStep);
+        for (int s = 0; s < steps; ++s) {
+            bool silentBefore = s == 0 || out[2 * (s * kStep - 1)] == 0.f;
+            if (out[2 * (s * kStep)] != 0.f || out[2 * (s * kStep + 2)] != 0.f) { if (silentBefore || true) at.push_back(s); }
+        }
+        return at;
+    };
+    // A rim on step 1 only: with sixteen steps it comes every sixteen; with thirteen, every thirteen.
+    {
+        Engine engine;
+        engine.send(step(RIM, 0, 1.f));
+        engine.send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(engine, 40 * kStep);
+        const auto starts = [&](int s) { return out[2 * (s * kStep + 1)] != 0.f && (s == 0 || out[2 * (s * kStep - 1)] == 0.f); };
+        CHECK(starts(0) && starts(16) && starts(32) && !starts(13) && !starts(26));
+    }
+    {
+        Engine engine;
+        engine.send(step(RIM, 0, 1.f));
+        engine.send(step(RIM, 14, 1.f)); // past the end of a thirteen-step bar: never played
+        Command steps = make(Command::SetSceneSteps, 0, 13);
+        engine.send(steps);
+        engine.send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(engine, 40 * kStep);
+        const auto starts = [&](int s) { return out[2 * (s * kStep + 1)] != 0.f && (s == 0 || out[2 * (s * kStep - 1)] == 0.f); };
+        CHECK(starts(0) && starts(13) && starts(26) && starts(39) && !starts(14) && !starts(16) && !starts(32));
+        CHECK(engine.playStep() >= 0 && engine.playStep() < 13);
+    }
+    {
+        // The song counts bars by the scene's own length: scene 1 (five steps, twice) then scene 2 (sixteen).
+        Engine engine;
+        engine.send(step(RIM, 0, 1.f));
+        Command second = step(RIM, 0, 1.f);
+        second.scene = 1;
+        engine.send(second);
+        engine.send(make(Command::SetSceneCount, 0, 2));
+        Command twice = make(Command::SetSceneRepeats, 0, 2);
+        engine.send(twice);
+        engine.send(make(Command::SetSceneSteps, 0, 5));
+        engine.send(make(Command::Play));
+        const std::vector<float> out = renderFrames(engine, 30 * kStep);
+        const auto starts = [&](int s) { return out[2 * (s * kStep + 1)] != 0.f && (s == 0 || out[2 * (s * kStep - 1)] == 0.f); };
+        CHECK(starts(0) && starts(5) && starts(10) && starts(26) && !starts(15) && !starts(16) && !starts(21));
+        // Out of range is held to 1..16, and a scene that does not exist is nothing.
+        Engine odd;
+        odd.send(step(RIM, 0, 1.f));
+        odd.send(make(Command::SetSceneSteps, 0, 0));
+        Command stray = make(Command::SetSceneSteps, 0, 4);
+        stray.scene = kMaxScenes;
+        odd.send(stray);
+        odd.send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> one = renderFrames(odd, 3 * kStep);
+        CHECK(one[2 * (kStep + 1)] != 0.f && one[2 * (2 * kStep + 1)] != 0.f); // one step long: the rim on every step
+        Engine big;
+        big.send(step(RIM, 0, 1.f));
+        big.send(make(Command::SetSceneSteps, 0, 99));
+        big.send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> full = renderFrames(big, 17 * kStep);
+        CHECK(full[2 * (16 * kStep + 1)] != 0.f && full[2 * (16 * kStep - 1)] == 0.f);
+    }
+    (void)onsets;
+}
+
 // Automation: a macro or an effect's setting moved by the pattern.
 static void testAutomation() {
     // A QMOD track holding one plain note right through the bar; its OCTAVE macro (lane 7) is what gets automated,
@@ -2198,6 +2265,7 @@ int main() {
     testKitHitsHard();
     testCeiling();
     testLaneLevel();
+    testOddStepCounts();
     testAutomation();
     testTheSharedEnvelope();
     testFallingBehindLowersTheQuality();

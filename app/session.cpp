@@ -188,6 +188,19 @@ void Session::update(Uint32 nowMs) {
     syncSong();
 }
 
+void Session::setSceneSteps(int scene, int steps) {
+    if (scene < 0 || scene >= kMaxScenes) return;
+    steps = steps < 1 ? 1 : (steps > kSteps ? kSteps : steps);
+    if (project.steps[scene] == steps) return;
+    project.steps[scene] = steps;
+    noteEdit();
+    Command c;
+    c.type = Command::SetSceneSteps;
+    c.scene = scene;
+    c.a = steps;
+    engine.send(c);
+}
+
 void Session::setCellBars(int track, int scene, int bars) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return;
     bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
@@ -518,6 +531,13 @@ void Session::restorePatterns(const std::string& text) {
         project.repeats[scene] = was->repeats[scene];
         c.scene = scene;
         c.a = project.repeats[scene];
+        engine.send(c);
+    }
+    c.type = Command::SetSceneSteps;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        project.steps[scene] = was->steps[scene];
+        c.scene = scene;
+        c.a = project.steps[scene];
         engine.send(c);
     }
     if (project.bar >= project.current().bars[project.scene]) project.bar = 0;
@@ -1556,6 +1576,9 @@ void Session::applyProject() {
         c.type = Command::SetSceneRepeats;
         c.scene = scene;
         c.a = project.repeats[scene];
+        engine.send(c);
+        c.type = Command::SetSceneSteps;
+        c.a = project.steps[scene];
         engine.send(c);
     }
     c = Command();

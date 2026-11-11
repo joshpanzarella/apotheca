@@ -310,7 +310,9 @@ ChordEvent NoteScreen::inHand() const {
 }
 
 void NoteScreen::hearChord(const ChordEvent& chord) {
-    if (project_.playing) return; // the song will play it soon enough
+    // While choosing a chord (Y held) it is always heard, playing or not: that is how it is chosen.
+    // Otherwise, with the song playing, the song will play it soon enough.
+    if (project_.playing && !picking_) return;
     int keys[kChordNotes];
     const int n = chord.pitches(keys);
     for (int i = 0; i < n; ++i) session_.audition(project_.track, keys[i], chord.velocity);
@@ -740,6 +742,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
     const int playStep = session_.engine.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
     if (playStep >= 0) fill(r, kGridLeft, gy(playStep), visibleKeys() * keyW() - 2, kCellH, faded(kPurple, 76));
+    // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
+    if (const int steps = project_.steps[project_.scene]; steps < kSteps)
+        fill(r, 0, gy(steps) - 1, kGridLeft + visibleKeys() * keyW(), (kSteps - steps) * kRowH, faded(kBg, 185));
 
     // ---- what is under the cursor ---------------------------------------------------
     const int stripY = gridTop() + kSteps * kRowH + 8;

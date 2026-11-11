@@ -205,6 +205,7 @@ struct TrackData {
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
+    int steps[kMaxScenes]; // steps to a bar in each scene: 16, or fewer for an odd-length loop
     EffectData masterEffects[kEffectSlots]; // on everything, after the tracks are mixed
     float tempo = 120.f;
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
@@ -222,6 +223,7 @@ struct Project {
 
     Project() {
         for (int& r : repeats) r = 1;
+        for (int& n : steps) n = kSteps;
         tracks[0].kind = TrackKind::Drums; // a new project is one drum track
     }
     // Tracks are filled from the left, so the count is also the next free one.

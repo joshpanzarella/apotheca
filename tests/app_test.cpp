@@ -1322,6 +1322,51 @@ void testNothingStaysHeld() {
     for (int step = 0; step < kSteps; ++step) CHECK(drums.level(1, step) == 0.f);
 }
 
+void testStepsInAScene() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(rig.project().steps[0] == kSteps);
+    // On a scene's repeat count, with A held: left and right are how many steps its bars have.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, -1);
+    rig.key(A, true);
+    rig.tap(LEFT, 3);
+    CHECK(rig.project().steps[0] == 13 && rig.project().repeats[0] == 1);
+    rig.tap(RIGHT, 9);
+    CHECK(rig.project().steps[0] == 16); // sixteen is the most
+    rig.tap(LEFT, 40);
+    CHECK(rig.project().steps[0] == 1);  // and one the fewest
+    rig.tap(RIGHT, 12);
+    rig.tap(UP); // up and down are still the repeat count
+    rig.key(A, false);
+    CHECK(rig.project().steps[0] == 13 && rig.project().repeats[0] == 2);
+    // The engine has it: a kick on step 1 comes round every thirteen steps.
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.view = View::Pattern;
+    rig.tap(START);
+    const std::vector<float> out = rig.render(28 * kStep);
+    const auto starts = [&](int s) { float p = 0.f; for (int i = 0; i < 400; ++i) p = std::fmax(p, std::fabs(out[2 * (s * kStep + i)])); return p > 0.3f; };
+    CHECK(starts(0) && starts(13) && starts(26) && !starts(16));
+    rig.tap(START);
+    rig.render(96000);
+    // The song keeps it; undo takes it back; a bounce is as long as the scene really is.
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(songText(rig.project()), *again));
+    CHECK(again->steps[0] == 13 && again->steps[1] == kSteps);
+    std::unique_ptr<Project> odd(new Project);
+    CHECK(parseSong("apotheca-song 1\nsteps 0 99 7\ntrack drums\n", *odd));
+    CHECK(odd->steps[0] == 1 && odd->steps[1] == kSteps && odd->steps[2] == 7 && odd->steps[3] == kSteps);
+    CHECK(songFrames(rig.project(), 48000.f) == 2 * 13 * kStep);
+    rig.frames(60);
+    const int stepsBefore = session.undoSteps();
+    session.setSceneSteps(0, 9);
+    rig.frames(60);
+    CHECK(session.undoSteps() == stepsBefore + 1 && session.undo() && rig.project().steps[0] == 13);
+    session.setSceneSteps(kMaxScenes, 4);
+    session.setSceneSteps(-1, 4);
+    CHECK(rig.project().steps[0] == 13);
+}
+
 void testTheBattery() {
     char pattern[] = "/tmp/apotheca-battery-XXXXXX";
     const std::string root = mkdtemp(pattern);
@@ -3545,6 +3590,7 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testNothingStaysHeld();
+    testStepsInAScene();
     testTheBattery();
     testBouncing();
     testRecordingAutomation();

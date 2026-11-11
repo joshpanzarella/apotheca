@@ -21,6 +21,10 @@
 
 namespace apotheca {
 
+struct Project;
+// How many frames the song lasts once through, at this sample rate (bounce.cpp).
+long long songFrames(const Project& project, float sampleRate);
+
 enum class View { Song, Pattern, Device, Effects, Settings };
 
 // Somewhere to record from: a USB microphone or interface. The app gives the
@@ -285,6 +289,8 @@ public:
     void sendNotePattern(int track, int scene);
     void sendNoteBar(int track, int scene, int bar); // one bar of it: what the piano roll changes
     // How long a track's cell is in a scene: 1, 2, 4 or 8 bars.
+    // How many steps a bar of a scene has, 1 to 16, for every track. Thirteen makes a thirteen-step loop.
+    void setSceneSteps(int scene, int steps);
     void setCellBars(int track, int scene, int bars);
 
 private:

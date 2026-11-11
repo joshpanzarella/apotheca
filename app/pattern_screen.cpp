@@ -681,6 +681,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // ---- what is under the cursor, spelled out -----------------------------------
+    // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
+    if (const int steps = project_.steps[project_.scene]; steps < kSteps)
+        fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
     const int stripY = kGridTop + kDrumLanes * kLaneH + 6;
     const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
         fonts.small.draw(r, fx, stripY, name, kDim);

@@ -29,6 +29,8 @@ std::string songText(const Project& project) {
     put(out, "tempo %.6g\n", project.tempo);
     out += "repeats";
     for (int r : project.repeats) put(out, " %.0f", r);
+    out += "\nsteps";
+    for (int n : project.steps) put(out, " %.0f", n);
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
     // fx SLOT NAME and its settings. Before any track: the master's.
@@ -176,6 +178,9 @@ bool parseSong(const std::string& text, Project& project) {
         if (word == "tempo") {
             double tempo = 120;
             if (in >> tempo) song->tempo = clampf(static_cast<float>(tempo), kMinTempo, kMaxTempo);
+        } else if (word == "steps") {
+            double n;
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = clampi(static_cast<int>(n), 1, kSteps);
         } else if (word == "repeats") {
             double r;
             for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = clampi(static_cast<int>(r), 1, kMaxRepeats);
