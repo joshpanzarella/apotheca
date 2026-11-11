@@ -169,6 +169,11 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     if (project.silenced) {
         fonts.small.drawRight(r, room - 6.f, textY, "SILENCED", kBrass);
         room -= fonts.small.width("SILENCED") + 16.f;
+    } else if (project.busy) {
+        // The handheld could not keep up with the sound asked of it, and has
+        // turned Twin Analog's oversampling down to stop the stutter.
+        fonts.small.drawRight(r, room - 6.f, textY, "BUSY: OVERSAMPLING DOWN", kBrass);
+        room -= fonts.small.width("BUSY: OVERSAMPLING DOWN") + 16.f;
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(room) - 6, w = 60;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];

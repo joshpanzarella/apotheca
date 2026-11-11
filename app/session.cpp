@@ -114,6 +114,7 @@ void Session::update(Uint32 nowMs) {
     project.playRepeat = engine.playRepeat();
     project.playBar = engine.playBar();
     project.silenced = engine.silenced();
+    project.busy = engine.qualityLimit() < 3;
 
     hearMidi();
     serveDesigner();

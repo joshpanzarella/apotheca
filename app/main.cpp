@@ -346,6 +346,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
+    engine.watchLoad(!smoke && !shot); // real sound: if it cannot keep up, do plainer work, not stutter
     std::printf("audio: %d Hz, %d frames per buffer\n", have.freq, have.samples);
 
     Input input;
@@ -631,6 +632,11 @@ int main(int argc, char** argv) {
             app.session().startedFine();
         }
 
+        static int lastLimit = 3;
+        if (engine.qualityLimit() != lastLimit) {
+            lastLimit = engine.qualityLimit();
+            std::printf("keeping up: oversampling held to x%d at most (the last block took %.0f%% of its time)\n", 1 << lastLimit, 100.f * engine.load());
+        }
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;
             std::printf("realtime priority: %s\n", audio.realtime.load() == 1 ? "granted" : "not granted");

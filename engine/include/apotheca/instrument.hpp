@@ -22,6 +22,11 @@ public:
     // none). The samples stay alive until replaced. Realtime safe.
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }
 
+    // The machine is falling behind: do no better than this (0 plainest ..
+    // 3 best) until told otherwise. For a synth with a costly "quality"
+    // setting; the setting itself is left as the player has it.
+    virtual void setQualityLimit(int limit) { (void)limit; }
+
     // Writes `frames` samples (replacing what was there).
     virtual void render(float* left, float* right, int frames) = 0;
 };

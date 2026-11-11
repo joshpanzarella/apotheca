@@ -392,6 +392,7 @@ struct Twin::State {
     std::uint32_t sharedRng = 0x1234567u;
     Decimator downL, downR;
     int preparedOversample = 0;
+    int qualityLimit = 3; // the most oversampling allowed just now (Engine: the machine was falling behind)
     float dcInL = 0.f, dcOutL = 0.f, dcInR = 0.f, dcOutR = 0.f, dcCoeff = 0.995f;
     std::uint32_t noiseRng = 0x2468ACE1u;
     float mixL[kBlock * kMaxOversample], mixR[kBlock * kMaxOversample];
@@ -478,7 +479,7 @@ void Twin::apply() {
     r.vintage = vintage <= 0.5f ? vintage * 2.f : 1.f + (vintage - 0.5f) * 6.f;
     r.shapedNoise = std::pow(p[Noise] / 100.f, kNoiseShapeExp);
 
-    const int oversample = 1 << clampi(p[Oversample], 0, 3);
+    const int oversample = 1 << clampi(p[Oversample] < s.qualityLimit ? p[Oversample] : s.qualityLimit, 0, 3);
     if (oversample != s.preparedOversample) {
         // prepare() sized the filters for the largest factor, so this only
         // rewrites numbers already allocated.
@@ -521,6 +522,13 @@ void Twin::setSetting(int id, int value) {
     value = clampi(value, settingMin(id), settingMax(id));
     if (state_->patch.value[id] == value) return;
     state_->patch.value[id] = value;
+    apply();
+}
+
+void Twin::setQualityLimit(int limit) {
+    limit = clampi(limit, 0, 3);
+    if (limit == state_->qualityLimit) return;
+    state_->qualityLimit = limit;
     apply();
 }
 

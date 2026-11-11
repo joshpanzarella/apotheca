@@ -204,6 +204,22 @@ public:
     // True from a Panic until the output has opened again.
     bool silenced() const { return silenced_.load(std::memory_order_relaxed); }
 
+    // ---- keeping up ---------------------------------------------------------------
+    // A sound that takes longer to work out than it lasts cannot be played:
+    // the output stutters. With the watch on, render() times itself, and
+    // when it is falling behind it tells the synths to do plainer work
+    // (Twin Analog's oversampling, a notch at a time) until it keeps up.
+    // The player's settings are not changed. It is off unless turned on, so
+    // that tests and renders that do not run in real time are never touched.
+    void watchLoad(bool on) { watchLoad_ = on; }
+    // 3: nothing held back. 0: plainest. Lower than 3 means "it could not keep up".
+    int qualityLimit() const { return qualityLimit_.load(std::memory_order_relaxed); }
+    // How long the last render() took, as a part of the time it had (1 = all of it).
+    float load() const { return load_.load(std::memory_order_relaxed); }
+    // What render() does with each timing. Public for the tests: `part` is
+    // time taken over time available, for a block of `frames`.
+    void noteLoad(float part, int frames);
+
 private:
     struct DrumScene {
         float level[kDrumLanes][kSteps] = {}; // 0 = no hit
@@ -296,6 +312,11 @@ private:
     bool cutEverything_ = false; // the gate has just shut: cut the drums and clear the effects
     int shutFrames_ = 0, quietFrames_ = 0;
     std::atomic<bool> silenced_{false};
+    bool watchLoad_ = false;
+    std::atomic<int> qualityLimit_{3};
+    std::atomic<float> load_{0.f};
+    int busyBlocks_ = 0;      // blocks in a row that took nearly all their time
+    long long calmFrames_ = 0; // frames in a row with time to spare
 
     float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
     std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames

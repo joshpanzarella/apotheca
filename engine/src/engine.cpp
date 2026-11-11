@@ -1,5 +1,6 @@
 #include "apotheca/engine.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -462,6 +463,7 @@ void Engine::apply(const Command& c) {
         // addSynthTrack() only sends this for a track it found empty.
         if (validTrack(c.track) && !tracks_[c.track].hasInstrument()) {
             tracks_[c.track].synth.reset(static_cast<Instrument*>(c.pointer));
+            tracks_[c.track].synth->setQualityLimit(qualityLimit_.load(std::memory_order_relaxed)); // a new synth joins under the same limit
         }
         break;
     case Command::InstallDrums:
@@ -686,7 +688,44 @@ void Engine::fireStep() {
     nextStep_ = following;
 }
 
+// Falling behind: two blocks in a row that took more than 85% of their time.
+// Then every synth is told to do plainer work, one notch. It is let back up a
+// notch only after ten seconds with plenty to spare (under 35%: a notch up
+// about doubles the cost, and it must fit), so it does not swing to and fro.
+void Engine::noteLoad(float part, int frames) {
+    if (!(part >= 0.f)) return;
+    load_.store(part, std::memory_order_relaxed);
+    int limit = qualityLimit_.load(std::memory_order_relaxed);
+    const int before = limit;
+    busyBlocks_ = part > 0.85f ? busyBlocks_ + 1 : 0;
+    calmFrames_ = part < 0.35f ? calmFrames_ + frames : 0;
+    if (busyBlocks_ >= 2 && limit > 0) {
+        --limit;
+        busyBlocks_ = 0;
+        calmFrames_ = 0;
+    } else if (calmFrames_ >= static_cast<long long>(10.f * sampleRate_) && limit < 3) {
+        ++limit;
+        calmFrames_ = 0;
+    }
+    if (limit == before) return;
+    qualityLimit_.store(limit, std::memory_order_relaxed);
+    for (Track& track : tracks_)
+        if (track.synth) track.synth->setQualityLimit(limit);
+}
+
 void Engine::render(float* interleaved, int frames) {
+    const auto began = watchLoad_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    const int allFrames = frames;
+    struct Timed {
+        Engine& engine;
+        std::chrono::steady_clock::time_point began;
+        int frames;
+        ~Timed() {
+            if (!engine.watchLoad_ || frames <= 0) return;
+            const double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+            engine.noteLoad(static_cast<float>(took * engine.sampleRate_ / frames), frames);
+        }
+    } timed{*this, began, allFrames};
     Command command;
     while (commands_.pop(command)) apply(command);
     while (live_.pop(command)) apply(command);

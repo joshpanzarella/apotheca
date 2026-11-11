@@ -89,6 +89,7 @@ public:
     void noteOn(int note, float velocity) override;
     void noteOff(int note) override;
     void allNotesOff() override;
+    void setQualityLimit(int limit) override; // caps OVERSAMPLE: 0 is x1, 3 is x8
     void render(float* left, float* right, int frames) override;
 
 private:
