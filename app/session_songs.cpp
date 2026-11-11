@@ -5,6 +5,7 @@
 
 #include <dirent.h>
 #include <sys/stat.h>
+#include <utime.h>
 
 #include <algorithm>
 #include <cmath>
@@ -56,6 +57,7 @@ void Session::useSongFolder(const std::string& folder, std::uint32_t seed) {
             songName_ = last;
             savedText_ = songText(project);
             applyProject();
+            findMissing(); // a recording moved since: the new name is saved with the next autosave
             return;
         }
     }
@@ -115,7 +117,42 @@ bool Session::openSong(const std::string& name) {
     savedText_ = songText(project);
     writeTextFile(folder_ + "/last.txt", songName_ + "\n");
     applyProject();
+    findMissing(); // a recording moved while this song was shut: the new name is saved with the next autosave
     return true;
+}
+
+int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames) {
+    std::vector<std::pair<std::string, std::string>> good;
+    for (const auto& rename : renames)
+        if (sampleNameOk(rename.first) && sampleNameOk(rename.second)) good.push_back(rename);
+    if (folder_.empty() || good.empty()) return 0;
+    // The server writes and deletes songs on its own thread: not while this is half-way through one.
+    std::lock_guard<std::mutex> hold(transfer_.songFiles());
+    std::vector<std::string> files;
+    if (DIR* dir = opendir(folder_.c_str())) {
+        while (const dirent* entry = readdir(dir)) {
+            const std::string file = entry->d_name;
+            const bool song = file.size() > 5 && file.compare(file.size() - 5, 5, ".song") == 0;
+            const bool rev = file.size() > 4 && file.compare(file.size() - 4, 4, ".rev") == 0;
+            // The open song is in memory and has followed already; the autosave writes it.
+            if (file[0] != '.' && (song || rev) && file != songName_ + ".song") files.push_back(file);
+        }
+        closedir(dir);
+    }
+    int written = 0;
+    for (const std::string& file : files) {
+        const std::string path = folder_ + "/" + file;
+        struct stat info;
+        std::string text;
+        if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || !readTextFile(path, text)) continue;
+        if (!renameRecordings(text, good) || !writeTextFile(path, text)) continue; // only one that names it is written
+        utimbuf times;
+        times.actime = info.st_atime;
+        times.modtime = info.st_mtime; // the song list is in order of date, and a rev shows its own: neither moves
+        utime(path.c_str(), &times);
+        ++written;
+    }
+    return written;
 }
 
 
@@ -285,6 +322,7 @@ bool Session::openRev(int rev) {
     if (!kept && saveRev() == 0) return false; // could not keep it: do not throw it away
     project = *back;
     applyProject();
+    findMissing(); // a rev may ask for a recording that has moved since
     saveNow();
     return true;
 }

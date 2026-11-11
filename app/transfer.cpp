@@ -819,7 +819,10 @@ void Transfer::answer(int fd) {
     // Deleting: only a file that is there, by a name that passed the same rules as one sent.
     if (method == "DELETE") {
         if (!realFile(folder, name)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
+        std::unique_lock<std::mutex> songs(songFiles_, std::defer_lock);
+        if (kind == "songs") songs.lock(); // not while the session is going through them
         const bool gone = kind == "songs" ? binSong(folder, name) : unlink(file.c_str()) == 0;
+        if (kind == "songs") songs.unlock();
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
         if (kind == "samples") {
             dropIfEmpty(folder, name);
@@ -900,7 +903,11 @@ void Transfer::answer(int fd) {
     }
     mkdir(folder.c_str(), 0755); // fine if it is already there
     if (const std::size_t in = name.find('/'); in != std::string::npos) mkdir((folder + "/" + name.substr(0, in)).c_str(), 0755); // and the folder inside it
-    if (!writeTextFile(file, body)) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
+    std::unique_lock<std::mutex> songs(songFiles_, std::defer_lock);
+    if (kind == "songs") songs.lock(); // not while the session is going through them
+    const bool written = writeTextFile(file, body);
+    if (kind == "songs") songs.unlock();
+    if (!written) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
     if (kind == "samples") noteChange("", name);
     received_.fetch_add(1);
     reply(fd, "200 OK", "text/plain", "saved\n");

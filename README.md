@@ -148,6 +148,16 @@ folder are in one called UNSORTED. One level of folders: a folder inside a
 folder is not looked into. Catches go in `catches`, takes from a microphone
 in `recorded`, by themselves. A song keeps a recording as `folder/name`.
 
+**A recording that has moved is found again.** When a song is opened and a
+recording is not where the song says, Apotheca looks through `samples` and
+its folders for one of the same name (the part after the folder). If there is
+exactly one, the lane or sampler track takes it and the song is saved with the
+new place. If there are two of that name, or none, it does not guess: the lane
+says NOT IN THE SAMPLES FOLDER and its built-in drum plays; a sampler track is
+silent. So files can be sorted into folders on a computer, with the card out,
+and the songs still find them. Renaming a file that way does break the link
+(rename on the WiFi page instead: see Files over WiFi).
+
 **A line runs across the picture while a recording is heard**, here and on
 the kit's rows and the sampler's own picture. It is timed, not measured:
 right for a recording played as it is, near enough for one tuned up or down.
@@ -469,16 +479,19 @@ the same network.
   Nothing is written over: a name that is taken is refused. **The song that
   is open follows**: every lane and sampler track that used the old name uses
   the new one, the sound plays on without a gap, and the song is saved with
-  it. Other songs on the card, and the open song's older revs, are not
-  changed: they still ask for the old name and will not find it.
+  it. **Every other song on the card follows too**, and every rev: each file
+  that names the recording is rewritten with the new name and nothing else in
+  it changes. It keeps its date, so the song list stays in the same order.
+  Songs in `deleted` are left alone.
 - **DELETE** asks once more in the row (DELETE IT / KEEP). A recording, chord
   pack or bounce is gone for good. A song goes to `deleted` in the song
   folder with its revs, the same as one deleted on the handheld. A folder
   goes with its last recording.
 - **Deleting a recording the open song uses**: the song keeps the name. The
   lane says NOT IN THE SAMPLES FOLDER at once and its built-in drum plays; a
-  sampler track is silent. Send a recording of that name again and it is
-  back on the next frame.
+  sampler track is silent. Send a recording of that name again (into any
+  folder, if it is the only one of that name) and it is back on the next
+  frame. Deleting a recording changes no saved song.
 - The top line shows the version and the room left on the card.
 - The four digits on the end are made up each time it is turned on. A
   request without them is refused, so someone on the network who has not

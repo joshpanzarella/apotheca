@@ -177,7 +177,13 @@ void Session::update(Uint32 nowMs) {
         seenReceived_ = transfer_.received();
         if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
         // And a recording renamed, moved, deleted or sent from the page: the open song follows.
-        for (const Transfer::Change& change : transfer_.takeChanges()) recordingChanged(change.from, change.to);
+        // The songs that are shut follow a rename or a move too, on this thread: the one that autosaves.
+        std::vector<std::pair<std::string, std::string>> renames;
+        for (const Transfer::Change& change : transfer_.takeChanges()) {
+            recordingChanged(change.from, change.to);
+            renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
+        }
+        savedSongsFollow(renames);
     }
 
     // What has come in from the input goes to the recorder.
