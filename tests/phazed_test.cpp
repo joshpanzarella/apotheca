@@ -3,19 +3,22 @@
 // it is in tune at the engine's sample rate, that every preset plays, and
 // that the engine's commands reach it.
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cctype>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "apotheca/engine.hpp"
 
 using namespace apotheca;
 
-static int failures = 0;
+static std::atomic<int> failures{0}; // checks run on several threads (forEachPreset)
 #define CHECK(cond)                                                        \
     do {                                                                   \
         if (!(cond)) {                                                     \
@@ -383,6 +386,22 @@ static void testMacrosInTheMiddleChangeNothing() {
     }
 }
 
+// A check made on every preset, shared out over the machine's cores: each
+// note played is its own engine, so they do not get in each other's way.
+// (One after the other this was 23 of the test's 25 seconds.)
+template <typename Body>
+static void forEachPreset(Body body) {
+    std::atomic<int> next{0};
+    std::vector<std::thread> crew;
+    const unsigned count = std::max(1u, std::min(8u, std::thread::hardware_concurrency()));
+    for (unsigned i = 0; i < count; ++i) {
+        crew.emplace_back([&] {
+            for (int preset = next.fetch_add(1); preset < Phazed::presetCount(); preset = next.fetch_add(1)) body(preset);
+        });
+    }
+    for (std::thread& worker : crew) worker.join();
+}
+
 static void testEachMacroDoesItsJob() {
     using namespace phazed;
     // A preset that holds its note, with two lines, and one with a moving tone.
@@ -420,22 +439,23 @@ static void testEachMacroDoesItsJob() {
     CHECK(playNote(twoLine, {macro(Detune, 0.25f)}).held != playNote(twoLine, {macro(Detune, 0.f)}).held);
     CHECK(playNote(twoLine, {macro(Detune, 0.5f)}).held == plain.held); // the middle leaves the preset alone
     // On every two-line preset, not just this one.
-    int checked = 0;
-    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
-        if (Phazed::presetPatch(preset).value[LineSelect] < 2) continue; // one line: there is nothing to detune against
+    std::atomic<int> checked{0};
+    forEachPreset([&](int preset) {
+        if (Phazed::presetPatch(preset).value[LineSelect] < 2) return; // one line: there is nothing to detune against
         ++checked;
         const auto as = playNote(preset, {}).held;
-        CHECK(playNote(preset, {macro(Detune, 0.f)}).held != as);
-        CHECK(playNote(preset, {macro(Detune, 1.f)}).held != as);
-        CHECK(playNote(preset, {macro(Detune, 0.f)}).held != playNote(preset, {macro(Detune, 1.f)}).held); // flat is not sharp
-    }
+        const auto down = playNote(preset, {macro(Detune, 0.f)}).held, up = playNote(preset, {macro(Detune, 1.f)}).held;
+        CHECK(down != as);
+        CHECK(up != as);
+        CHECK(down != up); // flat is not sharp
+    });
     CHECK(checked >= 3);
     // A sound with ONE line has nothing to detune against. Off the middle it
     // is given a twin of its line, so the macro does something there too:
     // both ways, differently, and at about the loudness it had.
-    int ones = 0;
-    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
-        if (Phazed::presetPatch(preset).value[LineSelect] >= 2) continue;
+    std::atomic<int> ones{0};
+    forEachPreset([&](int preset) {
+        if (Phazed::presetPatch(preset).value[LineSelect] >= 2) return;
         ++ones;
         const auto as = playNote(preset, {}).held;
         const auto down = playNote(preset, {macro(Detune, 0.f)}).held, up = playNote(preset, {macro(Detune, 1.f)}).held;
@@ -443,12 +463,12 @@ static void testEachMacroDoesItsJob() {
         CHECK(playNote(preset, {macro(Detune, 0.5f)}).held == as); // the middle: the preset, untouched
         const double before = energyOf(as, 0, static_cast<int>(as.size() / 2));
         for (float at : {0.4f, 0.75f, 1.f}) {
-            const auto bent = playNote(preset, {macro(Detune, at)}).held;
+            const auto bent = at == 1.f ? up : playNote(preset, {macro(Detune, at)}).held;
             const double after = energyOf(bent, 0, static_cast<int>(bent.size() / 2));
             if (before > 1e-9 && (after < 0.4 * before || after > 2.5 * before)) std::printf("preset %d at %.2f: %.2f times the energy\n", preset, at, after / before);
             CHECK(before <= 1e-9 || (after > 0.4 * before && after < 2.5 * before)); // within 4 dB
         }
-    }
+    });
     CHECK(ones >= 10);
 
     // VIBRATO: up makes the pitch wobble, even on a sound that had none.
@@ -537,7 +557,7 @@ int main(int argc, char** argv) {
     testChoosingAPresetClearsTheMacros();
     if (argc > 1 && std::strcmp(argv[1], "--cost") == 0) reportCost();
     if (failures) {
-        std::printf("%d check(s) failed\n", failures);
+        std::printf("%d check(s) failed\n", failures.load());
         return 1;
     }
     std::printf("phazed tests passed\n");
