@@ -1983,7 +1983,80 @@ void testFoldersInTheSamplePicker() {
     CHECK(list.isOpen() && list.folderName() == "catches" && list.cursor() == 1);
 }
 
+// A line runs across a recording's picture while it is heard.
+void testThePlayhead() {
+    // The timing by itself.
+    ui::Playhead head;
+    CHECK(head.at(5000) < 0.f); // never started
+    head.start(1000, 2.f);
+    CHECK(head.at(1000) == 0.f && std::fabs(head.at(2000) - 0.5f) < 1e-4f && std::fabs(head.at(2900) - 0.95f) < 1e-4f && head.at(3100) < 0.f && head.at(900) < 0.f);
+    head.start(1000, 2.f, 0.25f, 2.f); // from a quarter in, twice as fast
+    CHECK(head.at(1000) == 0.25f && std::fabs(head.at(1500) - 0.75f) < 1e-4f && head.at(1800) < 0.f);
+    head.start(1000, 2.f, 0.f, 1.f, 0.4f); // let go after 0.4 s
+    CHECK(head.at(1300) > 0.f && head.at(1500) < 0.f);
+    head.start(1000, 0.f);
+    CHECK(head.at(1000) < 0.f); // nothing to run across
+
+    const std::string folder = tempFolder();
+    writeWav(folder + "/half.wav", tone(0.5f, 0.25f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    session.setLaneSample(0, 3, "half");
+    kit.goTo(3, KitScreen::kSound);
+    rig.frames(2);
+    CHECK(kit.playhead().at(rig.clock) < 0.f);
+    // X on the kit: it runs for the half second the recording lasts, then goes.
+    rig.tap(X);
+    CHECK(kit.playhead().at(rig.clock) == 0.f);
+    rig.frames(15); // 240 ms
+    CHECK(std::fabs(kit.playhead().at(rig.clock) - 0.48f) < 0.01f);
+    rig.frames(20);
+    CHECK(kit.playhead().at(rig.clock) < 0.f);
+    // A fitted recording lasts its steps at the tempo: 8 steps at 120 is a second.
+    session.setLaneFit(0, 3, 8);
+    CHECK(rig.settle());
+    rig.tap(X);
+    rig.frames(25); // 400 ms
+    CHECK(std::fabs(kit.playhead().at(rig.clock) - 0.4f) < 0.01f);
+    // In the list it is the same line: picking a recording starts it.
+    session.setLaneFit(0, 3, 0);
+    rig.frames(80);
+    rig.tap(A);
+    CHECK(kit.picker().isOpen());
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(kit.playhead().at(rig.clock) == 0.f);
+    rig.tap(A);
+
+    // The sampler: from START, at the speed middle C plays it, for as long as the key is down and the release runs.
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    session.setTrackSample(1, "half");
+    session.setSamplerSetting(1, sampler::Release, 0);
+    rig.frames(2);
+    SamplerScreen& screen = rig.app.sampler();
+    rig.tap(X);
+    rig.frames(10); // 160 ms of a half-second recording
+    CHECK(std::fabs(screen.playhead().at(rig.clock) - 0.32f) < 0.01f);
+    rig.frames(15); // the key was let go at 350 ms
+    CHECK(screen.playhead().at(rig.clock) < 0.f);
+    session.setSamplerSetting(1, sampler::Root, 72);  // middle C now plays it an octave down: half as fast
+    session.setSamplerSetting(1, sampler::Start, 50); // and from half-way
+    rig.frames(2);
+    rig.tap(X);
+    rig.frames(10);
+    CHECK(std::fabs(screen.playhead().at(rig.clock) - (0.5f + 0.16f)) < 0.01f);
+    session.setSamplerSetting(1, sampler::Release, 60); // a longer release: the line runs on after the key is let go
+    rig.frames(40);
+    rig.tap(X);
+    rig.frames(25);
+    CHECK(screen.playhead().at(rig.clock) > 0.5f);
+}
+
 int main(int, char**) {
+    testThePlayhead();
     testTheSamplePicker();
     testFoldersInTheSamplePicker();
     testTheSliceView();

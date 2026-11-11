@@ -17,6 +17,12 @@ constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to 
 }
 
 void KitScreen::hear() {
+    // A line runs across the lane's picture while it sounds: for as long as the recording lasts
+    // (a fitted one lasts its steps at the tempo).
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
+    const int fit = trk().laneFit[lane_];
+    head_.start(lastMs_, fit > 0 && !sound.waiting ? static_cast<float>(fit) * 15.f / project_.tempo : sound.seconds);
+    headLane_ = lane_;
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
@@ -53,6 +59,7 @@ void KitScreen::openPicker() {
     jobs.hear = [this] { hear(); };
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
+    jobs.playhead = [this] { return &head_; };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
     picker_.open(session_.sampleNames(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
@@ -232,6 +239,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (h - 3));
                 fill(r, waveX + ww * i / count, y + (h - ph) / 2, 1, ph, here ? kText : kDim);
             }
+            if (lane == headLane_) drawPlayhead(r, head_, lastMs_, waveX, y + 1, ww, h - 2);
             if (sound.waiting) std::snprintf(text, sizeof text, "FITTING");
             else std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
             fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : kDim);

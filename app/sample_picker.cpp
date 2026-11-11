@@ -194,6 +194,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int half = static_cast<int>(std::round((p > 1.f ? 1.f : p) * (wh - 8) / 2.f));
             fill(r, wx + 2 + px, wy + wh / 2 - half, 1, 2 * half + 1, kTeal);
         }
+        if (const Playhead* head = jobs_.playhead ? jobs_.playhead() : nullptr) drawPlayhead(r, *head, lastMs_, wx + 2, wy + 2, ww - 4, wh - 4);
         std::snprintf(text, sizeof text, "%.2f S", static_cast<double>(sound->seconds));
         fonts.small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText);
     } else {

@@ -48,6 +48,7 @@ public:
     int cursorLane() const { return lane_; }
     int cursorColumn() const { return column_; }
     const std::string& said() const { return said_; }
+    const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit };
     SamplePicker& picker() { return picker_; }
 
@@ -67,6 +68,8 @@ private:
     SamplePicker picker_;
     void openPicker();
     std::vector<std::string> names_; // the recordings there were when A went down
+    ui::Playhead head_; // where the lane last heard has got to
+    int headLane_ = -1;
     std::string said_; // what the last catch came to, shown for a moment
     Uint32 saidUntil_ = 0;
     bool wasRecording_ = false;

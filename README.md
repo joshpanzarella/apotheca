@@ -117,6 +117,12 @@ ROOT key the recording plays as it was made; an octave up, twice as fast.
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
 | ROOT, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
 
+**X hears it at middle C**: its own pitch while ROOT is where it starts (C4),
+and the change when ROOT or TUNE is moved. A setting is also heard as it is
+changed, when the song is stopped. **ROOT is the key that plays the recording
+as it was made**, so moving ROOT *up* makes every key, middle C included,
+sound *lower*.
+
 **Y is Catch** here too: the last bar the song played becomes this track's
 recording. Eight notes at a time.
 
@@ -129,11 +135,23 @@ as a list, with the one showing drawn as a waveform and its length.
 | --- | --- |
 | Up / down | The next one. It goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. The stick runs through about eight a second. |
 | Left / right | Eight at a time |
+| **L1 / R1** | The folder before / after (when there are folders) |
 | A | Keep it |
 | B | Put back what was there before the list opened |
 | X | Hear it again |
 | Hold Y | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
 | START | Play / stop, with the list still open |
+
+**Folders.** Make folders inside `samples` (kicks, breaks, vocals...) and the
+list shows one folder at a time, its name on a bar at the top. L1 and R1 turn
+them; arriving in a folder puts its first recording on. Recordings not in a
+folder are in one called UNSORTED. One level of folders: a folder inside a
+folder is not looked into. Catches go in `catches`, takes from a microphone
+in `recorded`, by themselves. A song keeps a recording as `folder/name`.
+
+**A line runs across the picture while a recording is heard**, here and on
+the kit's rows and the sampler's own picture. It is timed, not measured:
+right for a recording played as it is, near enough for one tuned up or down.
 
 ### FX
 
@@ -507,6 +525,32 @@ hit on the lane, on the sixteenths of the sound. **Left** puts them all back
 at the top. On a loop fitted to one bar, that rearranges the beat and keeps
 it in time.
 
+### Step effects
+
+What one hit does besides play. **Hold X on a hit** (a tap of X still just
+hears it) and the stick or D-pad sets them, a click at a time, each heard as
+it changes:
+
+| Hold X and | Sets | On the block |
+| --- | --- | --- |
+| Up / down | **PITCH**: a semitone a click, an octave either way | A dash beside it, higher or lower |
+| Left / right | **RATCHET**: the hit played 2, 3 or 4 times inside its step | Split into that many slivers |
+| L1 | **REVERSE**: backwards, on and off | An arrow on its left |
+| R1 | **CUT**: stopped after a step, half a step, a quarter; off | A red edge |
+
+- They combine, and every hit has its own. The strip under the grid spells
+  them out; with X held it shows all four.
+- A ratchet is rolled for once: with a chance below 100% it plays all its
+  hits or none.
+- Backwards plays what the hit would have played (its slice, or the sound
+  from its start to the end) from the end to the start.
+- A cut hit lasts its time whatever its pitch. In a ratchet each hit also
+  stops when the next one comes.
+- Kept in the song, undone by SELECT + B, and gone with the hit when it is
+  deleted.
+- Drum hits only, for now. Not yet: GLIDE and THROW, and ratchets on a
+  synth's notes.
+
 ### Slices: chopping a break
 
 **L1 on a lane that plays a recording** zooms the grid into that one lane.
@@ -559,7 +603,7 @@ into slices (see "Slices: chopping a break").
 
 **Y is Catch.** The engine remembers the last ten seconds it played. Y on a
 lane takes the last whole bar the song played, everything as it was heard,
-saves it as `catch 1.wav`, `catch 2.wav`... in the `samples` folder, and puts
+saves it as `catch 1.wav`, `catch 2.wav`... in `samples/catches`, and puts
 it on that lane fitted to one bar. It works just after stopping too. With no
 whole bar to take (the first bar, or after playing by hand), it takes the
 last bar's worth of sound.
@@ -568,7 +612,7 @@ last bar's worth of sound.
 USB-C port: R1 on a lane starts it waiting for sound, so there is no silence
 on the front. R1 again stops it; it stops by itself at ten seconds. Silence
 on the end is trimmed, a quiet take is brought up, and it is saved as
-`rec 1.wav`, `rec 2.wav`... and put on the lane. The sampler has the same
+`rec 1.wav`, `rec 2.wav`... in `samples/recorded` and put on the lane. The sampler has the same
 button. Not tried on the handheld yet: it depends on the firmware seeing the
 USB device, which `apotheca.log` reports at startup ("audio inputs").
 

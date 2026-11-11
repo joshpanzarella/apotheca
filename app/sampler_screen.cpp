@@ -38,6 +38,12 @@ void samplerSettingText(int id, int value, char* out, int size) {
 // was, which is the one key where moving ROOT changes nothing.)
 void SamplerScreen::hear() {
     ++timesHeard_;
+    // A line runs across the recording's picture while it sounds: from START, at the speed ROOT and
+    // TUNE give middle C, until the key is let go and the release has run.
+    const TrackData& t = trk();
+    const float speed = std::pow(2.f, static_cast<float>(kHearKey - t.sampler[sampler::Root]) / 12.f + static_cast<float>(t.sampler[sampler::Tune]) / 1200.f);
+    const float release = 0.002f * std::pow(10000.f, static_cast<float>(t.sampler[sampler::Release]) / 100.f);
+    head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed, 0.35f + release);
     session_.audition(project_.track, kHearKey, 0.8f);
 }
 
@@ -83,6 +89,7 @@ void SamplerScreen::openPicker() {
     SamplePicker::Jobs jobs;
     jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
     jobs.hear = [this] { hear(); };
+    jobs.playhead = [this] { return &head_; };
     jobs.sound = [this, track] { return &session_.trackSound(track); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
     picker_.open(session_.sampleNames(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
@@ -230,6 +237,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fill(r, wx + ww * i / count, wy + (wh - ph) / 2, ww / count, ph, static_cast<float>(i) / count >= start ? kText : kLine);
         }
         fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, kPurple); // where a note begins
+        drawPlayhead(r, head_, lastMs_, wx, wy - 2, ww, wh + 4);
         std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, kDim);
     }

@@ -55,6 +55,34 @@ SDL_Color faded(SDL_Color c, int alpha);
 struct TopBar { float tempoNumberRight, tempoRight; };
 TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project);
 
+// A line that runs across a recording's picture while it is heard. It is
+// timed here, from when the sound was asked for (the engine does not say
+// where a sound has got to): right for a recording played as it is, near
+// enough for one played faster or slower.
+struct Playhead {
+    Uint32 since = 0;       // when it was started; 0: never
+    float seconds = 0.f;    // how long the whole recording lasts, played as it is
+    float from = 0.f;       // where in it the sound began, 0..1
+    float rate = 1.f;       // how fast it moves: 2 is an octave up
+    float lasts = 0.f;      // it is over after this many seconds, wherever it has got to (0: only at the end)
+    void start(Uint32 nowMs, float wholeSeconds, float fromPart = 0.f, float speed = 1.f, float forSeconds = 0.f) {
+        since = nowMs ? nowMs : 1;
+        seconds = wholeSeconds;
+        from = fromPart;
+        rate = speed;
+        lasts = forSeconds;
+    }
+    // Where it is, 0..1 of the recording; below zero when nothing is being heard.
+    float at(Uint32 nowMs) const {
+        if (since == 0 || seconds <= 0.f || nowMs < since) return -1.f;
+        const float gone = static_cast<float>(nowMs - since) / 1000.f;
+        const float where = from + gone * rate / seconds;
+        return where > 1.f || (lasts > 0.f && gone > lasts) ? -1.f : where;
+    }
+};
+// Draws it over a picture `w` wide that starts at `x`.
+void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, int y, int w, int h);
+
 // The bar across the bottom: button names in cream boxes, each with what it does.
 struct Hint { const char* key; const char* does; };
 // What is true everywhere (X hears what is under the cursor; the stick or

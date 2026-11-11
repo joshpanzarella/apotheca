@@ -130,6 +130,13 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
 - **A drum hit that starts where the lane's sound has just got to carries it
   on** (`DrumMachine::trigger`, within 1.5 ms, never from the very top). That
   is what makes slices in order seamless. Do not "simplify" it away.
+- **Step effects are four small values on each drum hit** (`StepFx`, drums.hpp):
+  pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
+  are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
+  A ratchet waits in one `Pending` slot that re-arms itself.
+- **A recording's name may carry one folder**: `kicks/808`. Everything that
+  takes a name from outside (a song file, the WiFi page, delete) checks it
+  with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
@@ -165,7 +172,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. Step effects, tracker style (ratchet, reverse, pitch, cut, glide, throw).
+1. The rest of step effects: GLIDE and THROW, and ratchets on synth notes.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

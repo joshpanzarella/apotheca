@@ -49,6 +49,7 @@ public:
     // For tests and stills. Stop 0 is SOUND; 1.. are the settings in order.
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }
     int cursor() const { return stop_; }
+    const ui::Playhead& playhead() const { return head_; }
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
     const std::string& said() const { return said_; }
     SamplePicker& picker() { return picker_; }
@@ -77,6 +78,7 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     Uint32 heardAt_ = 0; // when a changed setting was last heard
+    ui::Playhead head_;  // where the recording has got to while it is heard
     int timesHeard_ = 0;
 };
 

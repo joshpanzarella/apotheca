@@ -39,6 +39,7 @@ public:
         std::function<void()> hear;                        // play what is on now
         std::function<const Session::LaneSound*()> sound;  // what is on now, for its picture; may be empty
         std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
+        std::function<const ui::Playhead*()> playhead;     // where the sound being heard has got to, for a line across its picture
     };
     static constexpr int kRows = 9, kPage = 8;
 

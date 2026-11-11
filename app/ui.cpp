@@ -209,6 +209,11 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     return bar;
 }
 
+void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, int y, int w, int h) {
+    const float at = head.at(nowMs);
+    if (at >= 0.f) fill(r, x + static_cast<int>(at * static_cast<float>(w - 2)), y, 2, h, kBrass);
+}
+
 void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
