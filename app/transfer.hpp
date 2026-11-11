@@ -23,9 +23,12 @@
 // there: not a link, and not through one. A move writes over nothing. A
 // deleted song goes to "deleted" in the song folder with its revs, as on the
 // handheld; bounces are fetched and deleted, never sent. A folder inside the
-// recordings goes with its last file. The Session is not told beyond
-// `received()`: a lane using a deleted recording finds it missing, which the
-// program already copes with.
+// recordings goes with its last file.
+//
+// The Session is told through `received()`, and for a recording through
+// `takeChanges()`: which one arrived, went, or was renamed or moved. The
+// server never touches the song. The session reads the list on its own thread
+// and makes the open song follow (Session::recordingChanged).
 //
 // Updating Apotheca itself the same way: the page takes a new program file.
 // It must be a program for this kind of processor, and it is only SET ASIDE
@@ -36,6 +39,7 @@
 // It runs on its own thread and only ever touches files. No SDL, no engine.
 
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -75,6 +79,12 @@ public:
     std::string address() const;
     // Goes up each time a file is received, deleted or moved, so the screen can look again.
     unsigned received() const { return received_.load(); }
+    // What has happened to recordings since this was last asked, oldest first. Names are as a
+    // song keeps them: no ".wav", and "kicks/808" in a folder. Sent: only `to`. Deleted: only
+    // `from`. Renamed or moved: both. Safe to call from another thread than the server's; each
+    // one is on the list before `received()` goes up for it.
+    struct Change { std::string from, to; };
+    std::vector<Change> takeChanges();
     // For tests: behave as a card does that will not rename a file into another folder, so the
     // long way round (write it again, then take the old one away) is the one that runs.
     static bool renameBroken;
@@ -93,6 +103,9 @@ private:
     int listening_ = -1;
     std::atomic<bool> stopping_{false};
     std::atomic<unsigned> received_{0};
+    void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav"
+    std::mutex changesMutex_;
+    std::vector<Change> changes_;
     std::thread thread_;
 };
 

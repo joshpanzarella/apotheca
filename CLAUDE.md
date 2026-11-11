@@ -162,6 +162,11 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
+- **The WiFi server's thread never touches the `Project`.** What it did to a
+  recording goes on a list (`Transfer::takeChanges`), put there BEFORE
+  `received()` goes up; `Session::update` reads it and calls
+  `recordingChanged`. A rename changes the name only: reading the file again
+  would cut the sound.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
 

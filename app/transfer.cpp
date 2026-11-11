@@ -627,6 +627,19 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
 
 bool Transfer::renameBroken = false;
 
+void Transfer::noteChange(const std::string& fromFile, const std::string& toFile) {
+    const auto bare = [](const std::string& file) { return file.empty() ? file : file.substr(0, file.size() - 4); }; // every one ends ".wav"
+    std::lock_guard<std::mutex> lock(changesMutex_);
+    if (changes_.size() < 4096) changes_.push_back({bare(fromFile), bare(toFile)}); // nobody is reading (it cannot happen while the program runs): do not grow for ever
+}
+
+std::vector<Transfer::Change> Transfer::takeChanges() {
+    std::lock_guard<std::mutex> lock(changesMutex_);
+    std::vector<Change> taken;
+    taken.swap(changes_);
+    return taken;
+}
+
 std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : kind == "bounces" ? bounces_ : ""; }
 
 bool Transfer::start(const std::string& sampleFolder, const std::string& songFolder, const std::string& chordFolder, int port, unsigned seed) {
@@ -808,7 +821,10 @@ void Transfer::answer(int fd) {
         if (!realFile(folder, name)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
         const bool gone = kind == "songs" ? binSong(folder, name) : unlink(file.c_str()) == 0;
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
-        if (kind == "samples") dropIfEmpty(folder, name);
+        if (kind == "samples") {
+            dropIfEmpty(folder, name);
+            noteChange(name, "");
+        }
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "deleted\n");
     }
@@ -844,6 +860,7 @@ void Transfer::answer(int fd) {
             }
         }
         dropIfEmpty(folder, name);
+        noteChange(name, to);
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "moved\n");
     }
@@ -884,6 +901,7 @@ void Transfer::answer(int fd) {
     mkdir(folder.c_str(), 0755); // fine if it is already there
     if (const std::size_t in = name.find('/'); in != std::string::npos) mkdir((folder + "/" + name.substr(0, in)).c_str(), 0755); // and the folder inside it
     if (!writeTextFile(file, body)) return reply(fd, "500 Could Not Save", "text/plain", "could not save it: is the card full?\n");
+    if (kind == "samples") noteChange("", name);
     received_.fetch_add(1);
     reply(fd, "200 OK", "text/plain", "saved\n");
 }

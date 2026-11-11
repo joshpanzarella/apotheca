@@ -176,6 +176,8 @@ void Session::update(Uint32 nowMs) {
     if (transfer_.received() != seenReceived_) {
         seenReceived_ = transfer_.received();
         if (!chordFolder_.empty()) packs = loadChordPacks(chordFolder_);
+        // And a recording renamed, moved, deleted or sent from the page: the open song follows.
+        for (const Transfer::Change& change : transfer_.takeChanges()) recordingChanged(change.from, change.to);
     }
 
     // What has come in from the input goes to the recorder.

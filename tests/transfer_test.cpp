@@ -589,7 +589,173 @@ static void testMovingWhereRenameIsRefused() {
     transfer.stop();
 }
 
+
+// A recording renamed, moved or deleted from the page while a song that uses it is open.
+static void testTheOpenSongFollows() {
+    const std::string root = tempFolder(), samples = root + "/samples";
+    mkdir(samples.c_str(), 0755);
+    mkdir((samples + "/kicks").c_str(), 0755);
+    const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
+    writeWav(samples + "/thud.wav", steady(0.5f), 48000);
+    writeWav(samples + "/kicks/snap.wav", steady(0.2f), 48000);
+    writeWav(samples + "/pad.wav", steady(0.3f), 48000);
+    std::unique_ptr<Engine> engine(new Engine);
+    Input input;
+    App app(*engine);
+    Session& session = app.session();
+    Project& project = app.project();
+    Uint32 clock = 1000;
+    // A frame of the screen and some sound with it: a test that never renders never empties the queue.
+    const auto frames = [&](int count) {
+        std::vector<float> out(2 * 512);
+        for (int i = 0; i < count; ++i) {
+            app.update(input, clock += 16);
+            engine->render(out.data(), 512);
+        }
+    };
+    // How long a lane (or, with a key, a sampler track's note) sounds for, in frames of sound.
+    const auto sounds = [&](int track, int lane, int key = -1) {
+        std::vector<float> out(2 * 100000);
+        engine->render(out.data(), 100000); // let anything before die away
+        Command c;
+        c.type = key < 0 ? Command::Trigger : Command::NoteOn;
+        c.track = track;
+        c.a = key < 0 ? lane : key;
+        c.value = 1.f;
+        engine->send(c);
+        engine->render(out.data(), 100000);
+        int first = -1, last = -1;
+        for (int i = 0; i < 100000; ++i) {
+            if (out[2 * static_cast<std::size_t>(i)] == 0.f) continue;
+            if (first < 0) first = i;
+            last = i;
+        }
+        return first < 0 ? 0 : last - first + 1;
+    };
+    session.useSongFolder(root + "/songs", 3);
+    session.useSampleFolder(samples);
+    session.useChordFolder(root + "/chords");
+    const int drum0 = sounds(0, 0), drum2 = sounds(0, 2); // the built-in drums on those lanes
+    session.setLaneSample(0, 0, "thud");
+    session.setLaneSample(0, 1, "thud");
+    session.setLaneSample(0, 2, "kicks/snap");
+    session.setLaneSample(0, 3, "pad");
+    session.setLaneSample(0, 5, "never was");
+    CHECK(session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Phazed));
+    session.setTrackSample(1, "pad");
+    session.setTrackSample(2, "thud");
+    std::snprintf(project.tracks[3].laneSample[0], sizeof project.tracks[3].laneSample[0], "thud"); // left over on a track that is no drum machine: not a lane
+    std::snprintf(project.tracks[3].sample, sizeof project.tracks[3].sample, "thud");
+    frames(4);
+    const int thud = sounds(0, 0), snap = sounds(0, 2), pad = sounds(0, 3), padNote = sounds(1, 0, 60);
+    CHECK(std::abs(thud - 24000) < 600 && std::abs(snap - 9600) < 600 && std::abs(pad - 14400) < 600 && padNote > 4800);
+    CHECK(thud != drum0 && snap != drum2);
+    CHECK(session.laneSound(0, 5).missing && !session.laneSound(0, 0).missing);
+    const auto lane = [&](int l) { return std::string(project.tracks[0].laneSample[l]); };
+    const auto version = [&](int t, int l) { return session.laneSound(t, l).version; };
+
+    CHECK(session.toggleTransfer(9));
+    const std::string address = session.transferAddress();
+    const int port = std::atoi(address.c_str() + address.find(':') + 1);
+    const std::string door = address.substr(address.find('/'));
+
+    // Moved into a folder under a new name: both lanes and the sampler track that used it use the
+    // new name on the next frame. The others are as they were.
+    const unsigned v0 = version(0, 0), v1 = version(0, 1), v2 = version(0, 2), vs = version(2, 0);
+    const std::shared_ptr<const std::vector<float>> held = session.laneSound(0, 0).recording;
+    CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
+    CHECK(lane(0) == "thud"); // not from the server's thread: when the program next looks
+    frames(1);
+    CHECK(lane(0) == "kicks/big boom" && lane(1) == "kicks/big boom" && lane(2) == "kicks/snap" && lane(3) == "pad" && lane(5) == "never was");
+    CHECK(std::string(project.tracks[2].sample) == "kicks/big boom" && std::string(project.tracks[1].sample) == "pad");
+    CHECK(std::string(project.tracks[3].laneSample[0]) == "thud" && std::string(project.tracks[3].sample) == "thud");
+    // Nothing was read again: the very sound that was playing plays on.
+    CHECK(version(0, 0) == v0 && version(0, 1) == v1 && version(0, 2) == v2 && version(2, 0) == vs && session.laneSound(0, 0).recording == held);
+    CHECK(!session.laneSound(0, 0).missing && !session.laneSound(0, 1).missing && !session.trackSound(2).missing);
+    CHECK(sounds(0, 0) == thud && sounds(0, 1) == thud && sounds(0, 2) == snap && std::abs(sounds(2, 0, 60) - sounds(1, 0, 60) * 5 / 3) < 2400);
+    // The song is kept with the new name, as any change is: within a couple of seconds.
+    frames(140);
+    std::string kept;
+    CHECK(readTextFile(root + "/songs/" + session.songName() + ".song", kept));
+    CHECK(kept.find("\nsample 1 0 kicks/big boom\n") != std::string::npos && kept.find("\nsample 2 0 kicks/big boom\n") != std::string::npos);
+    CHECK(kept.find("thud") == std::string::npos && kept.find("\nsample 6 0 never was\n") != std::string::npos);
+    {
+        // Opened afresh, it finds its recordings.
+        std::unique_ptr<Engine> otherEngine(new Engine);
+        App other(*otherEngine);
+        other.session().useSampleFolder(samples);
+        other.session().useSongFolder(root + "/songs", 3);
+        CHECK(std::string(other.project().tracks[0].laneSample[1]) == "kicks/big boom");
+        CHECK(!other.session().laneSound(0, 0).missing && !other.session().laneSound(0, 1).missing && !other.session().trackSound(2).missing);
+        CHECK(other.session().laneSound(0, 5).missing);
+    }
+    // Renamed where it is, then again before the program has looked: it follows both, in order.
+    CHECK(post(port, door + "/samples/pad.wav", "warm.wav").status == 200);
+    CHECK(post(port, door + "/samples/warm.wav", "pads/warm.wav").status == 200);
+    frames(1);
+    CHECK(lane(3) == "pads/warm" && std::string(project.tracks[1].sample) == "pads/warm" && lane(0) == "kicks/big boom");
+    CHECK(sounds(0, 3) == pad && sounds(1, 0, 60) == padNote && !session.trackSound(1).missing);
+    // One that was refused changes nothing.
+    CHECK(post(port, door + "/samples/kicks/snap.wav", "pads/warm.wav").status == 409);
+    CHECK(post(port, door + "/samples/nothing.wav", "kicks/snap2.wav").status == 404);
+    frames(1);
+    CHECK(lane(2) == "kicks/snap" && lane(3) == "pads/warm");
+
+    // Deleted from the page: the lane keeps the name and says the file is missing, now and not
+    // only when the song is next opened. The built-in drum plays. The sampler track is silent.
+    CHECK(del(port, door + "/samples/kicks/snap.wav").status == 200 && del(port, door + "/samples/pads/warm.wav").status == 200);
+    frames(1);
+    CHECK(lane(2) == "kicks/snap" && session.laneSound(0, 2).missing && sounds(0, 2) == drum2);
+    CHECK(lane(3) == "pads/warm" && session.laneSound(0, 3).missing);
+    CHECK(std::string(project.tracks[1].sample) == "pads/warm" && session.trackSound(1).missing && sounds(1, 0, 60) == 0);
+    CHECK(!session.laneSound(0, 0).missing && sounds(0, 0) == thud && !session.trackSound(2).missing); // the others are untouched
+    // Sent again by that name, it is back on the next frame. One sent by another name wakes nothing.
+    const unsigned before = version(0, 0), waiting = version(0, 3);
+    CHECK(put(port, door + "/samples/kicks/snap.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    CHECK(put(port, door + "/samples/kicks/big%20boom.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    CHECK(!session.laneSound(0, 2).missing && std::abs(sounds(0, 2) - 4800) < 600);
+    CHECK(session.laneSound(0, 3).missing && session.trackSound(1).missing && session.laneSound(0, 5).missing);
+    CHECK(version(0, 3) == waiting); // and one still missing is not looked for each time some other file arrives
+    CHECK(version(0, 0) == before && sounds(0, 0) == thud); // one that is playing is not read again when its file is sent over
+    // A missing one whose file turns up under its name by a rename is read too.
+    CHECK(put(port, door + "/samples/stray.wav", wavBytes(steady(0.4f), 48000)).status == 200);
+    CHECK(post(port, door + "/samples/stray.wav", "never%20was.wav").status == 200);
+    frames(1);
+    CHECK(lane(5) == "never was" && !session.laneSound(0, 5).missing && std::abs(sounds(0, 5) - 19200) < 600);
+    // Each change is followed once. A lane put back on the old name by hand stays there when the next thing happens.
+    CHECK(put(port, door + "/samples/thud.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    session.setLaneSample(0, 4, "thud");
+    CHECK(put(port, door + "/samples/other.wav", wavBytes(steady(0.1f), 48000)).status == 200);
+    frames(1);
+    CHECK(lane(4) == "thud" && lane(0) == "kicks/big boom");
+    session.setLaneSample(0, 4, "");
+    // A file ending .WAV is known by the same name.
+    CHECK(post(port, door + "/samples/never%20was.wav", "LOUD.WAV").status == 200);
+    frames(1);
+    CHECK(lane(5) == "LOUD" && !session.laneSound(0, 5).missing);
+    session.toggleTransfer(9);
+
+    // Told directly: names that are no recording's change nothing, and an empty lane is not "sent" one.
+    session.recordingChanged("LOUD", "../outside");
+    session.recordingChanged("LOUD", "a/b/c");
+    session.recordingChanged("", "");
+    session.recordingChanged("kicks/../x", "fine");
+    CHECK(lane(5) == "LOUD" && lane(4).empty() && lane(0) == "kicks/big boom");
+    session.setLaneSample(0, 4, "../x"); // however a lane came by such a name, it is not followed out of the folder
+    session.recordingChanged("../x", "fine");
+    CHECK(lane(4) == "../x");
+    session.setLaneSample(0, 4, "");
+    const unsigned v4 = version(0, 4);
+    session.recordingChanged("", "LOUD");
+    session.recordingChanged("", "something");
+    CHECK(lane(4).empty() && version(0, 4) == v4 && !session.laneSound(0, 4).missing);
+    frames(2);
+}
+
 int main(int, char**) {
+    testTheOpenSongFollows();
     testMovingWhereRenameIsRefused();
     testNames();
     testTheServer();
