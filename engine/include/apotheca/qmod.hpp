@@ -54,6 +54,7 @@ int settingMax(int id);
 const char* familyName(int family); // 1..32: "ORBIT", "FURNACE"...; 0: ""
 
 enum Macro { MacroEntangle, MacroTension, MacroEvolve, MacroVariation, MacroAttack, MacroRelease, MacroWidth, MacroOctave, kMacros };
+static_assert(kMacros == kSynthMacros, "every synth has the same number of macros");
 
 constexpr int kVoices = 8;
 

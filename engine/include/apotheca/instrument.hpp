@@ -33,4 +33,9 @@ public:
 
 enum class SynthKind { Phazed, Twin, Sampler, Qmod };
 
+// Every synth has this many macros (the eight knobs on its DEVICE screen).
+// Songs, presets and automation lanes 0..7 all count on it; each synth's
+// header checks its own list against it.
+constexpr int kSynthMacros = 8;
+
 } // namespace apotheca

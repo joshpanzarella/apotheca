@@ -652,7 +652,7 @@ void Session::setSynthSetting(int track, int id, int value) {
 }
 
 void Session::setSynthMacro(int track, int macro, float value) {
-    if (track < 0 || track >= kNumTracks || macro < 0 || macro >= phazed::kMacros || value != value) return;
+    if (track < 0 || track >= kNumTracks || macro < 0 || macro >= kSynthMacros || value != value) return;
     TrackData& t = project.tracks[track];
     if (!specFor(t.kind)) return;
     value = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
@@ -686,7 +686,7 @@ void Session::chooseSynthPreset(int track, int index) {
     }
     // One of the player's own: the engine is told every setting, and the macros it was saved with.
     const std::vector<float>& macros = userPresets(t.kind)[own].macros;
-    for (int m = 0; m < phazed::kMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
+    for (int m = 0; m < kSynthMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
     sendSynthPatch(track);
 }
 
@@ -716,7 +716,7 @@ void Session::sendSynthPatch(int track) {
         engine.send(c);
     }
     c.type = Command::SetMacro;
-    for (int m = 0; m < phazed::kMacros; ++m) {
+    for (int m = 0; m < kSynthMacros; ++m) {
         c.a = m;
         c.value = t.macro[m];
         engine.send(c);
@@ -808,7 +808,7 @@ std::string Session::designSpec(TrackKind kind) const {
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
     std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
-    for (int m = 0; m < phazed::kMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
+    for (int m = 0; m < kSynthMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
     out += "],\"pages\":[";
     char text[48];
     for (int page = 1; page < spec->pages; ++page) {
@@ -855,7 +855,7 @@ std::string Session::designState() const {
     const int* values = spec->values(const_cast<TrackData&>(t));
     for (int id = 0; id < settingCount(t.kind); ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", values[id]), out += text;
     out += "],\"macros\":[";
-    for (int m = 0; m < phazed::kMacros; ++m) std::snprintf(text, sizeof text, m ? ",%.4g" : "%.4g", t.macro[m]), out += text;
+    for (int m = 0; m < kSynthMacros; ++m) std::snprintf(text, sizeof text, m ? ",%.4g" : "%.4g", t.macro[m]), out += text;
     return out + "]}";
 }
 
@@ -1562,7 +1562,7 @@ void Session::applyProject() {
                 engine.send(c);
             }
             c.type = Command::SetMacro;
-            for (int m = 0; m < phazed::kMacros; ++m) {
+            for (int m = 0; m < kSynthMacros; ++m) {
                 c.a = m;
                 c.value = track.macro[m];
                 engine.send(c);

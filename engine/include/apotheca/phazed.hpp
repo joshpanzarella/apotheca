@@ -58,6 +58,7 @@ int settingMax(int id);
 
 // ---- the macros on the main panel -----------------------------------------------
 enum Macro { Tone, Motion, Attack, Release, Detune, Vibrato, Chorus, MacroOctave, kMacros };
+static_assert(kMacros == kSynthMacros, "every synth has the same number of macros");
 
 } // namespace phazed
 

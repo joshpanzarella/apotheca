@@ -46,7 +46,7 @@ public:
     int settingHere() const;
 
     // Cursor stops on MAIN.
-    enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + phazed::kMacros, kMainStops };
+    enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
 private:
     struct Item { int id; const char* name; };

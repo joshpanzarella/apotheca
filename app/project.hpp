@@ -176,7 +176,7 @@ struct TrackData {
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog
     QmodPatch qmod;              // when it is QMOD
-    float macro[phazed::kMacros];
+    float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name

@@ -62,6 +62,7 @@ int settingMin(int id);
 int settingMax(int id);
 
 enum Macro { Shape, Blend, Formant, MacroWidth, Detune, MacroVintage, MacroAttack, MacroRelease, kMacros };
+static_assert(kMacros == kSynthMacros, "every synth has the same number of macros");
 
 constexpr int kVoices = 8;
 

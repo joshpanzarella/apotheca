@@ -264,7 +264,7 @@ bool parseSong(const std::string& text, Project& project) {
             }
         } else if (word == "macros") {
             double m;
-            for (int i = 0; i < phazed::kMacros && (in >> m); ++i) track->macro[i] = clampf(static_cast<float>(m), 0.f, 1.f);
+            for (int i = 0; i < kSynthMacros && (in >> m); ++i) track->macro[i] = clampf(static_cast<float>(m), 0.f, 1.f);
         } else if (word == "settings") {
             const SynthSpec* spec = specFor(track->kind);
             if (!spec) continue;
