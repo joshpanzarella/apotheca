@@ -3206,6 +3206,10 @@ void testEffectsThroughTheSession() {
         CHECK(text.find("fx 2 tape 0.9 0.5 0.25 0.125") != std::string::npos);
         CHECK(parseSong(text, *back) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape) && back->masterEffects[1].param[2] == 0.25f);
         CHECK(back->tracks[0].effects[0].kind == static_cast<int>(EffectKind::Tape));
+        CHECK(parseSong("apotheca-song 1\nfx 1 hall 0.75 0.5 0.25 0.125\ntrack drums\nfx 2 hall 1\n", *made));
+        CHECK(made->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && made->masterEffects[0].param[1] == 0.5f && made->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Hall));
+        CHECK(made->tracks[0].effects[1].param[0] == 1.f && made->tracks[0].effects[1].param[1] == effectInfo(EffectKind::Hall).defaults[1]);
+        CHECK(songText(*made).find("fx 1 hall 0.75 0.5 0.25 0.125") != std::string::npos && parseSong(songText(*made), *back) && back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[0].param[3] == 0.125f);
     }
     CHECK(parseSong("apotheca-song 1\nfx 1 reverb 0.9\nfx 3 delay\nfx 0 delay\nfx 2 warble 1 1\ntrack drums\nfx 2 crush 5 -5 nonsense\nfx 1\n", *song));
     CHECK(song->masterEffects[0].kind == static_cast<int>(EffectKind::Reverb) && song->masterEffects[0].param[0] == 0.9f);

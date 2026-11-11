@@ -23,6 +23,7 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kReverbInfo, // 4
     &fx::kCrushInfo,  // 5
     &fx::kTapeInfo,   // 6
+    &fx::kHallInfo,   // 7
 };
 
 // The list a player picks from, in groups. This order can change freely;
@@ -33,6 +34,7 @@ const EffectKind kList[] = {
     EffectKind::Drive,
     EffectKind::Tape,
     EffectKind::Delay,
+    EffectKind::Hall,
     EffectKind::Reverb,
     EffectKind::Crush,
 };

@@ -160,20 +160,25 @@ are mixed).
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, DRIVE, TAPE, DELAY, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
+| The effect | NONE, FILTER, DRIVE, TAPE, DELAY, HALL, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
 
 | Effect | Settings |
 | --- | --- |
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | DRIVE | Drive, tone, mix, output |
-| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
+| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
-| REVERB | Size, damping, mix |
+| HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
+| REVERB | The older, plainer reverb. Size, damping, mix |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
+
+TAPE and HALL are new. Their settings slide to where they are turned instead
+of jumping, so they can be turned while sounding without a click. A song that
+uses them, opened by an older version of the program, loads without them.
 
 ### Stop all sound
 

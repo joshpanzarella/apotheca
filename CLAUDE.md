@@ -167,16 +167,22 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 - **Flush-to-zero is built and OFF** (`Engine::setFlushDenormals`). On, it is
   set for each `render()` and on the helpers. It is off because it changes the
   last vanishing samples of a tail (all below 1e-30) and so 1 of the 40 pinned
-  checksums; turning it on is the owner's call. The old five do not need it.
-  **A new effect with many fading states (HALL) does**: settle this before it ships.
+  checksums; turning it on is the owner's call. The old five do not need it,
+  and **TAPE and HALL look after themselves** (next rule), so nothing waits on it.
 - **A new effect glides its settings and looks after its own small numbers**
-  (`fx/glide.hpp`; TAPE is the pattern). Every setting goes through a `Glide`
-  (20 ms, and it lands exactly). Anything that fades is fed a floor of 1e-18
-  or gated at `kQuiet`, and the effect goes to sleep (exact zeros, no work)
-  when its memory is empty: it must make **no number too small to hold with
-  flush-to-zero off**, and `TooSmall` in `effects_test` checks that without a
-  clock. A new effect also keeps a `wetOnly_` flag read in one place, ready
-  for the bus call.
+  (`fx/glide.hpp`; TAPE and HALL are the pattern). Every setting goes through
+  a `Glide` (20 to 30 ms, and it lands exactly); anything worked out from a
+  setting (HALL's eight gains) slides sample by sample too, never a step a
+  block. Anything that fades is fed a floor of 1e-18 or gated at `kQuiet`, and
+  the effect goes to sleep (exact zeros, no work) when its memory is empty: it
+  must make **no number too small to hold with flush-to-zero off**, and
+  `TooSmall` in `effects_test` checks that without a clock. HALL with its
+  floor taken out ran 10 times slower two seconds into a tail and 40 times
+  slower for good. A new effect also keeps a `wetOnly_` flag read in one
+  place, ready for the bus call.
+- **A sleeping effect that wakes starts as a fresh one** (settings snap, the
+  wow and the bend start again), so a render does not depend on how long ago
+  the last sound was.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
@@ -253,6 +259,7 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
+| TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

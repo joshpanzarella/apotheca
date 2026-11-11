@@ -40,7 +40,7 @@ namespace {
 // TIME in thirds of a step (a step is a sixteenth), so that triplets are whole.
 constexpr int kTimes = 8;
 constexpr int kThirds[kTimes] = {3, 4, 6, 8, 9, 12, 18, 24};
-const char* const kTimeNames[kTimes] = {"1/16", "1/8 TRIPLET", "1/8", "1/4 TRIPLET", "1/8 DOTTED", "1/4", "1/4 DOTTED", "1/2"};
+const char* const kTimeNames[kTimes] = {"1/16", "1/8 TRIP", "1/8", "1/4 TRIP", "1/8 DOTTED", "1/4", "1/4 DOTTED", "1/2"};
 int timeChoice(float v) {
     const int index = static_cast<int>(clamp01(v) * kTimes);
     return index > kTimes - 1 ? kTimes - 1 : index;
@@ -106,7 +106,8 @@ public:
             }
             asleep_ = false;
             quiet_ = 0;
-            arrive(); // nothing is sounding: whatever was turned meanwhile is simply there
+            phase_ = 0.0, wow_ = 0.f; // an empty tape starts as one fresh from the box does, wow and all
+            arrive();                 // nothing is sounding: whatever was turned meanwhile is simply there
         }
         const float k = glideK(frames, kSettle, sr_);
         const float dFeedback = feedback_.begin(frames, k), dPush = push_.begin(frames, k), dCeiling = ceiling_.begin(frames, k);

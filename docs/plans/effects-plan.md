@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Step 0 (groundwork) is built; nothing else is.
+Written 2026-11-11. Step 0 (groundwork), step 4 (TAPE) and step 5 (HALL) are built; see "as built" under the order of work.
 
 ## The recommendation
 
@@ -393,8 +393,8 @@ metallic is for ears.
 | 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
 | 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
 | 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
-| 4 | TAPE | medium | 0 | `fx/tape.cpp` |
-| 5 | HALL | medium | 0 | `fx/hall.cpp` |
+| 4 | **DONE 2026-11-11.** TAPE | medium | 0 | `fx/tape.cpp` |
+| 5 | **DONE 2026-11-11.** HALL | medium | 0 | `fx/hall.cpp` |
 | 6 | CHORUS | small | 0 | `fx/chorus.cpp` |
 | 7 | COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
 | 8 | SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
@@ -418,7 +418,7 @@ it; nobody has heard it.
 
 | Thing | Result |
 | --- | --- |
-| TIME | Eight choices: 1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2. The step length **to the sample** at 90, 120 and 174 BPM, all eight |
+| TIME | Eight choices: 1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2 (a triplet reads `1/8 TRIP`: `1/8 TRIPLET` ran over the edge of its box in a still). The step length **to the sample** at 90, 120 and 174 BPM, all eight |
 | TIME turned, or a new tempo | The tape runs between half and double speed until it is there: a 1 kHz sine on it reads 500.0 Hz slowing, 2000.0 Hz catching up. The largest step is 0.99 of the sines' own: no click |
 | FEEDBACK | 0 to **120%**. At AGE 0 and 1 kHz each echo is FEEDBACK times the last within 0.05 dB (plan: 0.5) |
 | Tone lost each repeat | A high cut (12 kHz at AGE 0, 4.2 kHz at 50%, 1.5 kHz at full) and a low cut (40 / 126 / 400 Hz), 6 dB an octave. Per repeat at 100 Hz / 1 kHz / 6 kHz: -0.6 / 0.0 / -0.8 dB at AGE 0; -3.9 / -0.1 / -4.4 at 50%; -10.5 / -0.4 / -10.4 at full |
@@ -429,6 +429,28 @@ it; nobody has heard it.
 | Cost | **0.13%** of a desk core (plan: 0.16), so about 0.65% of a handheld core by the times-5 guess |
 | MIX | The echoes' level; the dry sound stays whole (as the old DELAY). On a bus: `wetOnly_` in `tape.cpp`, read in one line; the bus call sets it |
 | Departed from the plan | FEEDBACK tops out at 120%, a number the plan did not give. The clip is a cubic soft ceiling, not `tanh` (cheaper, and flat above 1.5) |
+| Not done | The bus call itself (step 1a). Not heard; `bench` not run on the handheld |
+
+**Step 5 (HALL) as built, 2026-11-11.** `engine/src/fx/hall.cpp`, number 7,
+word `hall`, in the list before REVERB. Only tests and measurements have seen
+it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Build | Eight delay lines (37.1 to 101.9 ms at SIZE full, a quarter of that at SIZE 0) mixed into each other, four smearing stages a side before them, two lines bent (0.4 ms either way at 0.37 and 0.53 Hz, about 2 cents) |
+| DECAY | Reads in seconds, 0.3 to 20, and is one: RT60 around 500 Hz is 0.93 to 1.02 of the reading at 15 settings (five DECAYs at three SIZEs), but for 0.3 s in the largest room (1.14). At 80 Hz it is within 5%. Plan: within 10% |
+| The same DECAY at two SIZEs | The same time within 5% |
+| TONE | DECAY 2.0 s: at TONE 0% the tail lasts 1.9 s at 80 Hz, 0.85 s at 1 kHz, 0.6 s at 8 kHz. At 50%: 2.0 / 1.7 / 0.74. At 100%: 0.9 / 1.85 / 1.5 (the lows thinned). Above its corner (600 Hz to 12 kHz) the tail lasts 0.3 as long |
+| Pre-delay | Follows SIZE: 2 ms to 30 ms, to the sample (96, 768, 902, 1440 samples at SIZE 0, 50, 60, 100%) |
+| Density | 1250 / 900 / 650 separate echoes in the first 100 ms at SIZE 0 / 50 / 100% (old REVERB: 200; plan: over 400) |
+| Stereo | Left and right are unrelated: 0.03 or less (1 is the same). A sound on one side fills both, 0.5 to 6.5 dB more on its own side |
+| Level | Held noise comes out 1.6 to 4.2 dB under itself at every corner of SIZE and DECAY |
+| MIX | Equal power: the sound's share is cos, the room's sin; MIX 0 is the sound to the bit, MIX full the room alone. (The old REVERB only eases the dry sound to half.) On a bus: `wetOnly_` in `hall.cpp`, read in `changed()`; the bus call sets it and calls `changed()` |
+| Settings glide | 30 ms (SIZE's lines 100 ms), and every gain that follows slides sample by sample. Turned end to end at once under a held sine, DECAY, TONE and MIX are no rougher than the sound standing still. SIZE bends the room's pitch on the way: a step 2.5 times the steady one going small. A sweep: 1.4 / 1.0 / 0.8 / 1.0 of the sine's step |
+| Silence in, silence out | Exact zeros 6.7 s after a click at DECAY 2.0 s (1.3 s at 0.3 s, 60 s at 20 s): the room is asleep once it has held nothing over 240 dB down for a quarter of a second |
+| **Flush-to-zero** | **Not needed, and not switched on.** HALL rests on a floor 360 dB down, so it makes no number too small to hold (checked by the processor's own mark, three DECAYs and with vanishing sound coming in), and is the same to the bit with flush-to-zero on or off. By the clock, flush-to-zero OFF: a block of 64 takes **2.7 us early, 2.8 us at its slowest in 40 s, 0.13 us asleep**. With the floor and the sleep taken out: 2.7 us, then 11 us in the second second, 30 us from the third, **100 to 130 us from the 22nd, for good** (10% of a desk core for one silent reverb). The other effects are not touched |
+| Cost | **0.18%** of a desk core, 0.21% with TONE above 50% (the low trim runs only then). REVERB reads 0.09% in the same run against the plan's 0.07%, so on the plan's scale about 0.14% and 0.16%, against its 0.15%. By the times-5 guess, about 0.9 to 1% of a handheld core |
+| Departed from the plan | MIX is a true swap-over, not the old REVERB's. Pre-delay is tied to SIZE (the plan gives no fifth setting). The cost is a little over the plan's with TONE up |
 | Not done | The bus call itself (step 1a). Not heard; `bench` not run on the handheld |
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
