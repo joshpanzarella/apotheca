@@ -319,7 +319,7 @@ Y. X and A sit side by side under one thumb; X + Y felt odd.)
 
 Hints while X is held: `UP / DOWN pitch  LEFT / RIGHT ratchet  L1 reverse
 R1 cut  A throw`. Five; check it fits with a still. A alone places a hit on
-this screen, so the check for X held must come first. Hold X + Y stays free.
+this screen, so the check for X held must come first. Hold X + Y is the dice (built).
 
 A thrown hit is marked on the grid the way the other step effects are.
 

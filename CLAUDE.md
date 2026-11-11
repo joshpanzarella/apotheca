@@ -171,8 +171,8 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
-- **`Project` is 8.6 MB. Never put one on the stack**, nor a `TrackData`
-  (717 KB). `std::unique_ptr<Project>`.
+- **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`
+  (821 KB). `std::unique_ptr<Project>`.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
