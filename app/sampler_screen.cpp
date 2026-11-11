@@ -13,12 +13,17 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 40;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
-const char* const kNames[sampler::kSettings] = {"ROOT", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
+const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
 }
 
 void samplerSettingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
-    if (id == sampler::Root) noteName(value, out, size);
+    // Shown as a pitch: semitones above or below the recording as it was made. Kept as the "root key"
+    // it always was (the key that plays it as made: middle C less the pitch), so old songs are unchanged.
+    if (id == sampler::Root) {
+        if (value == kHearKey) std::snprintf(out, n, "0");
+        else std::snprintf(out, n, "%+d", kHearKey - value);
+    }
     else if (id == sampler::Tune) std::snprintf(out, n, "%+d CENTS", value);
     else if (id == sampler::Attack) {
         const float ms = 1000.f * envelope::attackSeconds(static_cast<float>(value));
@@ -81,7 +86,7 @@ void SamplerScreen::press(Button b) {
     stepped_ = true;
     const int by = b == Button::Up ? 1 : -1;
     if (stop_ == 0) stepSound(by);
-    else setSetting(stop_ - 1, trk().sampler[stop_ - 1] + by);
+    else setSetting(stop_ - 1, trk().sampler[stop_ - 1] + (stop_ - 1 == sampler::Root ? -by : by)); // PITCH up is the root key down
 }
 
 void SamplerScreen::openPicker() {
@@ -181,7 +186,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
         const int whole = static_cast<int>(turned_);
         if (whole != 0) {
             turned_ -= static_cast<float>(whole);
-            setSetting(id, trk().sampler[id] + whole);
+            setSetting(id, trk().sampler[id] + (id == sampler::Root ? -whole : whole));
         }
         if (y == 0.f) turned_ = 0.f;
     } else {
@@ -248,7 +253,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int x = 8 + (id % 4) * 157, y = 142 + (id / 4) * 76;
         samplerSettingText(id, t.sampler[id], text, sizeof text);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
-        valueBox(r, fonts, x, y, 153, 70, kNames[id], text, static_cast<float>(t.sampler[id] - sampler::settingMin(id)) / range, stop_ == id + 1,
+        valueBox(r, fonts, x, y, 153, 70, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == id + 1,
                  holding_, id == sampler::Tune);
     }
     scope(r, session_.engine, 8, 300, 624, 146);

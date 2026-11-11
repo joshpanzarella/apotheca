@@ -109,19 +109,18 @@ quits.
 ### DEVICE, the sampler
 
 A fourth instrument in the + TRACK list. **One recording, played from the
-keys**: the piano roll and the chord button work on it as on a synth. At its
-ROOT key the recording plays as it was made; an octave up, twice as fast.
+keys**: the piano roll and the chord button work on it as on a synth. Middle C
+plays the recording as it was made; an octave up, twice as fast.
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
 | SOUND | **Tap A: the list of recordings.** Or hold A + up / down: one at a time | None |
-| ROOT, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
+| PITCH, TUNE, START, ATTACK, RELEASE, LOOP, LEVEL | The stick turns it; the D-pad moves it by one | Its usual value |
 
-**X hears it at middle C**: its own pitch while ROOT is where it starts (C4),
-and the change when ROOT or TUNE is moved. A setting is also heard as it is
-changed, when the song is stopped. **ROOT is the key that plays the recording
-as it was made**, so moving ROOT *up* makes every key, middle C included,
-sound *lower*.
+**PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
+key, which ran the other way. Old songs open as they were.) **X hears it at
+middle C**: its own pitch at PITCH 0, and the change when PITCH or TUNE is
+moved. A setting is also heard as it is changed, when the song is stopped.
 
 **Y is Catch** here too: the last bar the song played becomes this track's
 recording. Eight notes at a time.

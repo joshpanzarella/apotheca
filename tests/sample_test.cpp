@@ -963,7 +963,7 @@ void testTheSamplerTrack() {
     rig.key(A, true);
     rig.tap(UP);
     rig.key(A, false);
-    CHECK(track.sampler[sampler::Root] == 61 && heard() > 3000);
+    CHECK(track.sampler[sampler::Root] == 59 && heard() > 3000); // PITCH +1: the root key a semitone down
     // ...once for a run of quick changes, not once each: they would pile up.
     rig.frames(20);
     int times = screen.timesHeard();
@@ -1022,15 +1022,29 @@ void testTheSamplerTrack() {
     CHECK(screen.cursor() == 0);
     rig.tap(DOWN);
     CHECK(screen.cursor() == 1);
-    // ROOT: hold A, the D-pad moves it a key at a time; the stick turns it.
+    // PITCH: hold A, the D-pad moves it a semitone at a time; the stick turns it. Up is higher:
+    // an octave up is the root key an octave down (48), and it reads +12.
     rig.key(A, true);
     rig.tap(UP, 12);
-    CHECK(track.sampler[sampler::Root] == 72);
+    char shown[24];
+    samplerSettingText(sampler::Root, track.sampler[sampler::Root], shown, sizeof shown);
+    CHECK(track.sampler[sampler::Root] == 48 && std::string(shown) == "+12");
+    {
+        rig.render(100000);
+        rig.tap(X);
+        const std::vector<float> up = rig.render(9600);
+        int crossings = 0;
+        for (std::size_t i = 2 * 960; i < up.size(); i += 2) crossings += (up[i - 2] < 0.f) != (up[i] < 0.f);
+        CHECK(std::fabs(crossings / 2.0 / 0.18 - 440.0) < 12.0); // and it sounds an octave up
+    }
     rig.tap(DOWN, 24);
-    CHECK(track.sampler[sampler::Root] == 48);
-    rig.key(STICK_UP, true);
+    samplerSettingText(sampler::Root, track.sampler[sampler::Root], shown, sizeof shown);
+    CHECK(track.sampler[sampler::Root] == 72 && std::string(shown) == "-12");
+    samplerSettingText(sampler::Root, 60, shown, sizeof shown);
+    CHECK(std::string(shown) == "0");
+    rig.key(STICK_DOWN, true);
     rig.frames(200);
-    rig.key(STICK_UP, false);
+    rig.key(STICK_DOWN, false);
     rig.frames(1);
     CHECK(track.sampler[sampler::Root] == 127);
     rig.key(A, false);
@@ -1135,7 +1149,7 @@ void testTheSamplerTrack() {
     // How settings read.
     char line[32];
     samplerSettingText(sampler::Root, 60, line, sizeof line);
-    CHECK(std::string(line) == "C4");
+    CHECK(std::string(line) == "0");
     samplerSettingText(sampler::Tune, -7, line, sizeof line);
     CHECK(std::string(line) == "-7 CENTS");
     samplerSettingText(sampler::Attack, 0, line, sizeof line);

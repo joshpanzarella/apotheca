@@ -7,7 +7,8 @@
 //              heard as it changes. B: none.
 //   a setting  hold A + stick up / down turns it; the D-pad moves it by one.
 //              B: its usual value.
-//                ROOT     the key that plays the recording at its own pitch
+//                PITCH    semitones up or down: up is higher. (Kept in the song
+//                         as the old "root key": middle C less the pitch.)
 //                TUNE     cents
 //                START    where in the recording a note begins
 //                ATTACK   fade in
