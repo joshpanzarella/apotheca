@@ -288,8 +288,19 @@ static void testNudgeMovesAHitOffTheGrid() {
     // ...and from then on just before each bar line, once: louder there than a moment before it.
     const auto loudest = [&](int from, int to) { float p = 0.f; for (int i = 2 * from; i < 2 * to; ++i) p = std::fmax(p, std::fabs(round[i])); return p; };
     CHECK(loudest(16 * kStep - quarter, 16 * kStep - quarter + 200) > 10.f * loudest(16 * kStep - quarter - 2000, 16 * kStep - quarter - 2) + 0.01f);
-    // ...and not again ON the bar line a moment later: by then the hit has died away.
-    CHECK(loudest(16 * kStep + 2, 16 * kStep + 200) == 0.f);
+    {
+        // The same sound as one hit played by itself, sample for sample, on
+        // past the bar line: nothing starts it again there.
+        Engine lone;
+        lone.send(trigger(RIM));
+        const std::vector<float> one = renderFrames(lone, 4000);
+        int at = 8 * kStep;
+        while (at < 17 * kStep && round[2 * at] == 0.f) ++at;
+        CHECK(at >= 16 * kStep - quarter && at <= 16 * kStep - quarter + 2);
+        bool same = true;
+        for (int i = 0; i < 4000 && same; ++i) same = round[2 * (at + i)] == one[2 * (onsetOf(one) + i)];
+        CHECK(same);
+    }
     // It is not played twice at the top: the same as a hit that is simply on step 1.
     {
         Engine plain, nudged;
