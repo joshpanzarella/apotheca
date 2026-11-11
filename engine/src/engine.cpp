@@ -1257,13 +1257,11 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             track.drums.reset();
             for (auto& effect : track.effects)
                 if (effect) effect->reset();
-            for (SlotFade& fade : track.fades)
-                if (fade.leaving) fade.leaving->reset();
         }
         for (auto& effect : masterEffects_)
             if (effect) effect->reset();
-        for (SlotFade& fade : masterFades_)
-            if (fade.leaving) fade.leaving->reset();
+        // (An effect part way through its 10 ms fade out is left alone: the
+        // gate stays shut far longer than that, so it is never heard again.)
     }
 }
 

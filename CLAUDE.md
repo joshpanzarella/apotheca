@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (15) | `cd build && ctest -j8` (about 10 s) |
+| All tests (16) | `cd build && ctest -j8` (about 15 s) |
 | Timings | `./build/bench` |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -95,6 +95,29 @@ Where things are in the app:
 `instruments.cpp`, a `SynthKind` and class in the engine, a `SynthSpec` if it
 has presets and macros, and its DEVICE screen in `App::screenNow()`.
 
+Where effects are, in the engine:
+
+| File | Holds |
+| --- | --- |
+| `engine/include/apotheca/effects.hpp` | `EffectKind` (the numbers), `EffectInfo` (a row), and everything that reads the table |
+| `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
+| `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
+| `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
+| `engine/include/apotheca/denormals.hpp` | flush-to-zero |
+| `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
+
+**Adding an effect**:
+1. an `EffectKind` at the **end** of the list in `effects.hpp`;
+2. a file `engine/src/fx/NAME.cpp` with its class and its `const EffectInfo kNameInfo`
+   (name, settings, defaults, song-file `word`, group, which settings are
+   choices, how a setting reads, how to make one);
+3. its `extern` line at the bottom of `fx/unit.hpp`;
+4. its row in `kTable` in `effects.cpp` and its place in `kList` there;
+5. its checks in `tests/effects_test.cpp`, with the tools there.
+
+The screen, the song file and `bench` pick it up from the table; the build
+takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
+
 ## Rules that bite
 
 ### Files and compatibility
@@ -107,6 +130,16 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
+- **The five old effects are pinned to the bit** (FILTER, DRIVE, DELAY,
+  REVERB, CRUSH): `effects_test` holds 40 renders and one whole song to
+  checksums taken before they were moved. Old songs depend on them. Do not
+  touch their arithmetic, not even to fix it; make a new effect instead. The
+  checksums are remade (`effects_test --print`) only from code known to be right.
+- **An effect has a number, a word and a place, and they are three things.**
+  The number (`EffectKind`) is in memory and commands: appended, never
+  reordered. The `word` is in song files: never changed. The place in the
+  list (`kList`) is only what the player sees: change it freely. Never use
+  one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 
 ### The engine and its threads
 - **The audio thread never allocates, locks for long, or frees.** Things it
@@ -123,6 +156,18 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
   held.** Setting the stop flag without it hung the quit.
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
+- **An effect going into or out of a slot fades for 10 ms**
+  (`Engine::swapEffect`, `runSlot`): the old one and the new both run, and
+  the sound slides between them. Outside a fade a slot runs exactly as it did.
+  The old effect goes to the trash from `renderChunk` after the helpers are
+  done, never from `renderTrack`: **the trash queue takes from one thread.**
+  A test that wants an effect in place at once uses the setup call
+  `setTrackEffect`, or renders 10 ms before it listens.
+- **Flush-to-zero is built and OFF** (`Engine::setFlushDenormals`). On, it is
+  set for each `render()` and on the helpers. It is off because it changes the
+  last vanishing samples of a tail (all below 1e-30) and so 1 of the 40 pinned
+  checksums; turning it on is the owner's call. The old five do not need it.
+  **A new effect with many fading states (HALL) does**: settle this before it ships.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
@@ -165,6 +210,15 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
   engine is fresh; compare loudness, attack, or zero crossings. Let auditions
   end before listening.
 - **Every test has a two-minute limit**, so a hang is a failure.
+- **Checksums of sound only hold on the machine's own maths library**
+  (`tanh`, `pow`, `exp` differ in the last bit elsewhere, and compilers join
+  a multiply and an add differently on ARM). `effects_test` checks which it is
+  on (`mathsPrint`) and falls back to loudness and peak, saying so. To prove a
+  change is bit-exact on another machine, run `--print` before and after and
+  compare.
+- **Numbers measured from today's effects are written in `effects_test` as
+  comments and checked** (`--measure` prints them). A new effect's row in the
+  plan's testing table is checked with the same tools.
 - When replacing a function by text range, bound it by **the next function in
   the file**, then count the functions before and after.
 
@@ -176,6 +230,7 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`.
 | QMOD, 8 notes | 2.6% |
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
 | Drums, 8 lanes | 0.1% |
+| FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

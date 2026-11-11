@@ -481,6 +481,7 @@ static void testTheTable() {
     CHECK(reads(EffectKind::Delay, 0, 0.f) == "1/16" && reads(EffectKind::Delay, 0, 0.2f) == "1/8" && reads(EffectKind::Delay, 0, 0.4f) == "1/8 DOTTED");
     CHECK(reads(EffectKind::Delay, 0, 0.5f) == "1/4" && reads(EffectKind::Delay, 0, 0.7f) == "1/4 DOTTED" && reads(EffectKind::Delay, 0, 1.f) == "1/2" && reads(EffectKind::Delay, 1, 0.45f) == "45%");
     CHECK(reads(EffectKind::Reverb, 0, 0.6f) == "60%" && reads(EffectKind::Reverb, 2, 0.3f) == "30%");
+    CHECK(reads(EffectKind::Reverb, 0, 0.29f) == "29%" && reads(EffectKind::Reverb, 0, 0.996f) == "100%"); // to the nearest, not cut short (0.29 is stored as 0.28999...)
     CHECK(reads(EffectKind::Crush, 0, 0.f) == "16 BITS" && reads(EffectKind::Crush, 0, 1.f) == "3 BITS" && reads(EffectKind::Crush, 1, 0.f) == "FULL");
     CHECK(reads(EffectKind::Crush, 1, 1.f) == "1 IN 40" && reads(EffectKind::Crush, 2, 1.f) == "100%");
     CHECK(reads(EffectKind::None, 0, 0.5f) == "50%" && reads(static_cast<EffectKind>(99), 0, 0.5f) == "50%");
@@ -751,6 +752,26 @@ static void testEveryEffect() {
         //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0
         SAY("bounded  %-7s loudest %.2f\n", info.name, static_cast<double>(loudest));
         CHECK(loudest < 8.f);
+        // A setting past either end is the end; one that is not a number is 0;
+        // a setting that is not there is nothing. To the bit.
+        {
+            const auto sumWith = [&](int index, float value, bool set) {
+                std::unique_ptr<Effect> effect = makeEffect(kind, 48000.f, 120.f);
+                if (set) effect->setParam(index, value);
+                Stereo io = pinInput(48000.f);
+                through(*effect, io);
+                Sum sum;
+                sum.add(io.l);
+                sum.add(io.r);
+                return sum.h;
+            };
+            const std::uint64_t untouched = sumWith(0, 0.f, false);
+            CHECK(sumWith(-1, 0.9f, true) == untouched && sumWith(kEffectParams, 0.9f, true) == untouched && sumWith(kEffectParams + 1, 0.9f, true) == untouched);
+            for (int p = 0; p < info.params; ++p) {
+                CHECK(sumWith(p, 7.f, true) == sumWith(p, 1.f, true) && sumWith(p, -7.f, true) == sumWith(p, 0.f, true) && sumWith(p, std::nanf(""), true) == sumWith(p, 0.f, true));
+                CHECK(sumWith(p, 0.f, true) != sumWith(p, 1.f, true)); // and the setting does do something
+            }
+        }
         // Repeats: twice from fresh, the same to the last bit.
         {
             Stereo a = pinInput(48000.f), b = a;
@@ -962,6 +983,21 @@ static void testReverbTail() {
 static bool tinyIsZero() {
     volatile float small = 1e-30f, smaller = 1e-10f;
     volatile float product = small * smaller; // 1e-40: a denormal, or zero when flushed
+    // Its bits, not `product == 0`: where a vanishing number coming in counts
+    // as zero, that comparison says yes to one that was never flushed.
+    const float got = product;
+    std::uint32_t bits;
+    std::memcpy(&bits, &got, sizeof bits);
+    return bits == 0u;
+}
+
+// Whether a number that small coming IN counts as nothing.
+static bool tinyInIsZero() {
+    volatile float small = 1e-30f, smaller = 1e-10f, big = 1e30f;
+    const bool was = flushDenormals(false);
+    volatile float vanishing = small * smaller; // made with it off: 1e-40, a real vanishing number
+    flushDenormals(was);
+    volatile float product = vanishing * big;   // 1e-10 as plain arithmetic; nothing if `vanishing` reads as zero
     return product == 0.f;
 }
 
@@ -992,7 +1028,8 @@ static void testFlushToZero() {
     }
     // The switch itself.
     CHECK(!was && !denormalsFlushed() && !tinyIsZero()); // a thread starts with it off
-    CHECK(flushDenormals(true) == false && denormalsFlushed() && tinyIsZero());
+    CHECK(!tinyInIsZero());
+    CHECK(flushDenormals(true) == false && denormalsFlushed() && tinyIsZero() && tinyInIsZero());
     CHECK(flushDenormals(true) == true && denormalsFlushed());
     CHECK(flushDenormals(false) == true && !denormalsFlushed() && !tinyIsZero());
     CHECK(flushDenormals(false) == false);
@@ -1176,7 +1213,7 @@ struct Counted : Effect {
     }
     void setParam(int, float) override {}
     void process(float* left, float* right, int n) override {
-        frames->fetch_add(n);
+        if (frames) frames->fetch_add(n);
         for (int i = 0; i < n; ++i) left[i] = right[i] = 0.f; // it silences the track: easy to see in the output
     }
 };
@@ -1224,7 +1261,8 @@ static void testSwapFade() {
     }
     // Every effect in, out, and for every other, on a track and on the master.
     // Counted in the sine's own largest step: 1.0 is no click at all.
-    // BEFORE_FADE
+    // Before there was a fade (measured by taking it out): a REVERB coming
+    // out of a slot jumped by 21, its tail cut off mid-air.
     // With the fade, today: nothing over 1.9 (DRIVE, which steepens the sine
     // that much by itself), and with CRUSH 4.2 (it steps by that much by
     // itself once it is in).
@@ -1315,6 +1353,7 @@ static void testSwapFade() {
         const int before = ran.load();
         const std::vector<float> out = leftOf(*engine, 1920), dry = leftOf(*plain, 1920);
         CHECK(ran.load() == before); // the one that was fading out went at the second swap
+        CHECK(Counted::alive.load() == 1 && Counted::freed.load() == 0); // ...to the trash, not freed on the audio thread
         engine->collectGarbage();
         CHECK(Counted::alive.load() == 0 && Counted::freed.load() == 1);
         bool same = true;
@@ -1343,17 +1382,65 @@ static void testSwapFade() {
         CHECK(engine->setEffect(0, 1, EffectKind::None) && engine->setEffect(kMasterTrack, 0, EffectKind::None));
         CHECK(leftOf(*engine, 1000) == leftOf(*plain, 1000));
     }
-    // A panic while one fades out silences that one too.
+    // A panic part way through a fade: nothing breaks, and silence follows.
     {
         std::unique_ptr<Engine> engine = sineEngine();
         CHECK(engine->setEffect(kMasterTrack, 0, EffectKind::Delay));
         engine->send(make(Command::SetEffectParam, kMasterTrack, 0, 0, 0.05f));
         leftOf(*engine, 48000);
         CHECK(engine->setEffect(kMasterTrack, 0, EffectKind::None));
+        leftOf(*engine, 100);
         engine->send(make(Command::Panic, 0, 1));
-        for (float v : leftOf(*engine, 4800)) CHECK(v == v);
-        engine->send(make(Command::Panic, 0, 0));
-        leftOf(*engine, 48000);
+        const std::vector<float> shut = leftOf(*engine, 4800);
+        for (float v : shut) CHECK(v == v);
+        CHECK(shut.back() == 0.f);
+    }
+    // Both sides fade. (Everything above listened to the left.)
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        engine->setTrackEffect(0, 1, std::unique_ptr<Effect>(new Counted(nullptr)));
+        std::vector<float> both(2 * 640);
+        engine->render(both.data(), 640);
+        CHECK(engine->setEffect(0, 1, EffectKind::None));
+        engine->render(both.data(), 640);
+        bool same = true;
+        for (int i = 0; i < 640; ++i) same = same && both[static_cast<std::size_t>(2 * i)] == both[static_cast<std::size_t>(2 * i + 1)];
+        CHECK(same && both[2 * 100] != 0.f && std::fabs(both[2 * 100 + 1]) < 0.1f); // part way up from silence, on the right as on the left
+        engine->collectGarbage();
+    }
+    // The setup calls are not swaps: prepare() and setTrackEffect() end a
+    // fade that is under way, and free what was fading there and then.
+    for (int which = 0; which < 4; ++which) { // 0: prepare, a track's slot; 1: setTrackEffect; 2: setMasterEffect; 3: prepare, the master's slot
+        Counted::alive = 0;
+        std::unique_ptr<Engine> engine = sineEngine(), plain = sineEngine();
+        if (which >= 2) engine->setMasterEffect(0, std::unique_ptr<Effect>(new Counted(nullptr)));
+        else engine->setTrackEffect(0, 1, std::unique_ptr<Effect>(new Counted(nullptr)));
+        leftOf(*engine, 640);
+        leftOf(*plain, 640);
+        CHECK(engine->setEffect(which >= 2 ? kMasterTrack : 0, which >= 2 ? 0 : 1, EffectKind::None));
+        leftOf(*engine, 64);
+        leftOf(*plain, 64);
+        CHECK(Counted::alive.load() == 1);
+        if (which == 0 || which == 3) engine->prepare(48000.f);
+        if (which == 1) engine->setTrackEffect(0, 1, nullptr);
+        if (which == 2) engine->setMasterEffect(0, nullptr);
+        CHECK(Counted::alive.load() == 0);
+        if (which == 0 || which == 3) plain->prepare(48000.f);
+        CHECK(leftOf(*engine, 640) == leftOf(*plain, 640)); // and the slot is simply empty: no fade left over
+    }
+    // The master's slots hand their old effects back the same way.
+    {
+        Counted::alive = 0;
+        Counted::freed = 0;
+        std::atomic<int> ran{0};
+        std::unique_ptr<Engine> engine = sineEngine();
+        engine->setMasterEffect(1, std::unique_ptr<Effect>(new Counted(&ran)));
+        leftOf(*engine, 640);
+        CHECK(engine->setEffect(kMasterTrack, 1, EffectKind::Filter));
+        leftOf(*engine, 640);
+        CHECK(Counted::alive.load() == 1 && ran.load() == 640 + 512); // its fade, to the end of the chunk it ended in
+        engine->collectGarbage();
+        CHECK(Counted::alive.load() == 0 && Counted::freed.load() == 1);
     }
 }
 
