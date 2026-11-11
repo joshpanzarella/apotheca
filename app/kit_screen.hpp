@@ -17,6 +17,8 @@
 //           heard, becomes a recording on this lane, fitted to one bar.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
 //           to start (it waits for sound), again to stop. Ten seconds at most.
+//   L1      SLICES: the PATTERN tab, zoomed into this lane's recording cut
+//           into slices, for chopping a break (pattern_screen.hpp)
 //   X       hear the lane
 //   START   play / stop
 

@@ -68,6 +68,7 @@ struct Command {
     enum Type {
         Trigger,        // play a drum lane now:      track, a = lane, value = velocity,
                         //   b = where in the sound to start, in ten-thousandths of its length
+                        //   c = how much of the sound to play, in ten-thousandths (0: as the lane is set)
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
         Stop,           // stop; drums ring out, synth notes are let go
@@ -104,7 +105,9 @@ struct Command {
         SetTrackImage,  // internal: sent by setTrackImage()
         SetLaneSample,  // internal: sent by setLaneSample()
         InstallEffect,  // internal: sent by setEffect()
-        SetTrackSample  // internal: sent by setTrackSample()
+        SetTrackSample, // internal: sent by setTrackSample()
+        SetLanePart     // how much of its sound each hit on a drum lane plays: track, a = lane,
+                        //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
     };
     Type type = Trigger;
     int track = 0;
@@ -145,6 +148,7 @@ struct TrackImage {
     // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
     std::unique_ptr<float[]> automation;
     float laneLevel[kDrumLanes];
+    float lanePart[kDrumLanes] = {}; // how much of its sound each hit on a lane plays (0: all); see Command::SetLanePart
     TrackImage() {
         for (auto& scene : chance)
             for (auto& lane : scene)

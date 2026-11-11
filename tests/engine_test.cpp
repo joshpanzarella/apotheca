@@ -1270,6 +1270,139 @@ static void testWhereAHitStarts() {
     CHECK(soundingFrames(renderFrames(*engine, 8 * kStep)) == 1000);
 }
 
+// ---- slices: a recording cut into pieces, a piece to a hit ------------------------------
+
+// A recording one bar long whose every sixteenth is a different, steady value: slice n (from 0) is (n + 1) / 20.
+static std::unique_ptr<SampleData> sixteenSlices() {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.resize(static_cast<std::size_t>(16 * kStep));
+    for (int i = 0; i < 16 * kStep; ++i) s->data[static_cast<std::size_t>(i)] = static_cast<float>(i / kStep + 1) / 20.f;
+    return s;
+}
+static float sliceValue(int slice) { return static_cast<float>(slice + 1) / 20.f * kTrackLevel; }
+static Command part(int lane, float value) { return make(Command::SetLanePart, 0, lane, 0, value); }
+static Command startOf(int stepIndex, float value) { return make(Command::SetStepStart, 0, 0, stepIndex, value); }
+
+static void testAHitPlaysOnlyItsSlice() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, sixteenSlices()));
+    // As it was: a hit part-way in plays on to the end of the sound.
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    CHECK(soundingFrames(renderFrames(*engine, 17 * kStep)) >= 8 * kStep - 2);
+    // The lane set to a sixteenth: a hit plays one slice, and fades in a millisecond.
+    engine->send(part(0, 1.f / 16.f));
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    std::vector<float> out = renderFrames(*engine, 17 * kStep);
+    CHECK(soundingFrames(out) >= kStep && soundingFrames(out) <= kStep + 50);
+    CHECK(about(out[2 * (kStep / 2)], sliceValue(8)));
+    CHECK(about(out[2 * (kStep - 10)], sliceValue(8))); // at full level to the very end of the slice
+    CHECK(out[2 * (kStep + 60)] == 0.f);
+    // From the top likewise.
+    engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
+    out = renderFrames(*engine, 17 * kStep);
+    CHECK(soundingFrames(out) >= kStep && soundingFrames(out) <= kStep + 50 && about(out[0], sliceValue(0)));
+    // One hit can ask for its own length whatever the lane says (hearing a slice): an eighth, here.
+    Command hear = make(Command::Trigger, 0, 0, 2500, 1.f);
+    hear.c = 1250;
+    engine->send(hear);
+    out = renderFrames(*engine, 17 * kStep);
+    CHECK(soundingFrames(out) >= 2 * kStep && soundingFrames(out) <= 2 * kStep + 50);
+    // Nonsense is "all of it". Another lane is not touched.
+    for (float bad : {0.f, -1.f, 1.f, 7.f, std::nanf("")}) {
+        engine->send(part(0, bad));
+        engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+        CHECK(soundingFrames(renderFrames(*engine, 17 * kStep)) >= 8 * kStep - 2);
+    }
+    engine->send(part(1, 1.f / 16.f));
+    engine->send(part(-1, 0.5f));
+    engine->send(part(kDrumLanes, 0.5f));
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    CHECK(soundingFrames(renderFrames(*engine, 17 * kStep)) >= 8 * kStep - 2);
+
+    // A whole song loaded at once brings each lane's part.
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->lanePart[0] = 1.f / 16.f;
+    CHECK(engine->setTrackImage(0, std::move(image)));
+    engine->send(make(Command::Trigger, 0, 0, 5000, 1.f));
+    out = renderFrames(*engine, 17 * kStep);
+    CHECK(soundingFrames(out) >= kStep && soundingFrames(out) <= kStep + 50);
+}
+
+// The break laid out a slice to a step, in order, is the break: no seam where one slice hands over to the next.
+static void testSlicesInOrderHaveNoSeams() {
+    const auto bar = [](float lanePart, bool everyStep, int swapStep = -1, int swapSlice = 0, int gapStep = -1, float level9 = 1.f, bool steady = false) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->setLaneSample(0, 0, steady ? twoHalves(16 * kStep, 0.5f, 0.5f) : sixteenSlices()));
+        engine->send(part(0, lanePart));
+        for (int s = 0; s < (everyStep ? kSteps : 1); ++s) {
+            if (s == gapStep) continue;
+            engine->send(step(0, s, s == 9 ? level9 : 1.f));
+            engine->send(startOf(s, static_cast<float>(s == swapStep ? swapSlice : s) / 16.f));
+        }
+        engine->send(make(Command::Play));
+        return renderFrames(*engine, 16 * kStep);
+    };
+    const std::vector<float> whole = bar(0.f, false); // one hit, the whole recording
+    CHECK(about(whole[2 * (5 * kStep + 100)], sliceValue(5)));
+    // Sixteen hits in order, each playing on: the same, to the sample.
+    CHECK(bar(0.f, true) == whole);
+    // ...and each playing only its own slice: still the same.
+    CHECK(bar(1.f / 16.f, true) == whole);
+
+    // A slice out of order is a cut: step 5 plays slice 12, and step 6 goes back to its own.
+    const std::vector<float> swapped = bar(1.f / 16.f, true, 5, 12);
+    CHECK(about(swapped[2 * (5 * kStep + 200)], sliceValue(12)));
+    CHECK(about(swapped[2 * (6 * kStep + 200)], sliceValue(6)));
+    CHECK(about(swapped[2 * (4 * kStep + 200)], sliceValue(4)));
+    // A step with no hit: silence when hits play one slice, the recording running on when they do not.
+    const std::vector<float> gapped = bar(1.f / 16.f, true, -1, 0, 7);
+    CHECK(gapped[2 * (7 * kStep + 200)] == 0.f && about(gapped[2 * (8 * kStep + 200)], sliceValue(8)));
+    CHECK(about(gapped[2 * (7 * kStep - 5)], sliceValue(6))); // slice 7 (from 0: 6) plays right up to its end
+    const std::vector<float> ranOn = bar(0.f, true, -1, 0, 7);
+    CHECK(about(ranOn[2 * (7 * kStep + 200)], sliceValue(7)));
+
+    // A quieter hit in the run: the level moves there over a millisecond, with no jump and no dip.
+    // (A recording that is one steady value, so any step in the output is the level's doing.)
+    const std::vector<float> soft = bar(1.f / 16.f, true, -1, 0, -1, 0.5f, true);
+    const float full = 0.5f * kTrackLevel;
+    CHECK(about(soft[2 * (9 * kStep - 5)], full) && about(soft[2 * (9 * kStep + 200)], 0.5f * full) && about(soft[2 * (10 * kStep + 200)], full));
+    float lowest = 1.f, jump = 0.f;
+    for (int i = 8 * kStep + 100; i < 11 * kStep; ++i) {
+        lowest = soft[2 * i] < lowest ? soft[2 * i] : lowest;
+        jump = std::fabs(soft[2 * i] - soft[2 * (i - 1)]) > jump ? std::fabs(soft[2 * i] - soft[2 * (i - 1)]) : jump;
+    }
+    CHECK(lowest > 0.49f * full); // never below where it was going
+    CHECK(jump < 0.01f);          // and never a step: at the slice's line it would be a click
+
+    // A next hit that comes a few samples late finds its slice just beginning to fade: it comes back up,
+    // and carries on from where the sound is (not from the slice's start again).
+    {
+        std::unique_ptr<Engine> late(new Engine);
+        std::unique_ptr<SampleData> ramp(new SampleData);
+        ramp->data.resize(static_cast<std::size_t>(16 * kStep));
+        for (int i = 0; i < 16 * kStep; ++i) ramp->data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / (16 * kStep);
+        CHECK(late->setLaneSample(0, 0, std::move(ramp)));
+        late->send(part(0, 1.f / 16.f));
+        late->send(make(Command::Trigger, 0, 0, 1875, 1.f)); // slice 3
+        renderFrames(*late, kStep + 12);                      // twelve samples into its fade
+        late->send(make(Command::Trigger, 0, 0, 2500, 1.f)); // slice 4, twelve samples late
+        const std::vector<float> on = renderFrames(*late, 400);
+        const auto rampAt = [](int i) { return (0.25f + 0.5f * static_cast<float>(i) / (16 * kStep)) * kTrackLevel; };
+        CHECK(on[0] > 0.6f * rampAt(4 * kStep + 12) && on[0] < 0.9f * rampAt(4 * kStep + 12)); // part-way down, not gone
+        for (int i = 1; i < 100; ++i) CHECK(on[2 * i] >= on[2 * (i - 1)]);                       // and only up from there
+        CHECK(about(on[2 * 100], rampAt(4 * kStep + 12 + 100)));                                 // the sound where it had got to
+    }
+
+    // A hit from the very top always starts the sound again, even if the sound is at the top (two taps are two hits).
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
+    engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
+    renderFrames(*engine, 20);
+    engine->send(make(Command::Trigger, 0, 0, 0, 1.f));
+    const std::vector<float> twice = renderFrames(*engine, 4000);
+    CHECK(twice[2 * 10] > 0.2f * kTrackLevel * 1.5f); // the first is still fading under the second
+}
+
 // A note may be any length, and is let go on its own sample.
 static void testANoteEndsPartWayThroughAStep() {
     // The same note at three lengths. Each plays exactly like a longer one
@@ -2328,6 +2461,8 @@ int main() {
     testANoteEndsPartWayThroughAStep();
     testARecordingOnALane();
     testWhereAHitStarts();
+    testAHitPlaysOnlyItsSlice();
+    testSlicesInOrderHaveNoSeams();
     testQueue();
     testBuiltInKit();
     testSilentUntilPlayed();

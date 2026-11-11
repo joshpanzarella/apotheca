@@ -24,7 +24,7 @@
 namespace apotheca {
 
 namespace {
-constexpr int kPeaks = 240;      // points in a recording's outline
+constexpr int kPeaks = 512;      // points in a recording's outline (the slice view draws it 512 wide)
 constexpr int kMaxFitSteps = 64; // four bars
 }
 
@@ -240,11 +240,33 @@ std::string Session::catchLastBar(int track, int lane) {
     return name;
 }
 
+int Session::laneSlices(int track, int lane) const {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return kSteps;
+    const int fit = project.tracks[track].laneFit[lane];
+    return fit > kSteps ? fit : kSteps;
+}
+
+void Session::sendLanePart(int track, int lane) {
+    Command c;
+    c.type = Command::SetLanePart;
+    c.track = track;
+    c.a = lane;
+    c.value = project.tracks[track].laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(track, lane)) : 0.f;
+    engine.send(c);
+}
+
+void Session::setLaneOneSlice(int track, int lane, bool on) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    project.tracks[track].laneOneSlice[lane] = on;
+    sendLanePart(track, lane);
+}
+
 void Session::setLaneFit(int track, int lane, int steps) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return;
     steps = steps < 0 ? 0 : (steps > kMaxFitSteps ? kMaxFitSteps : steps);
     if (project.tracks[track].laneFit[lane] == steps) return;
     project.tracks[track].laneFit[lane] = steps;
+    sendLanePart(track, lane); // a slice is a different share of a recording fitted to a different length
     LaneSound& sound = sounds_[track][lane];
     if (!sound.recording) return;
     ++sound.version; // a stretch on its way is for the old length

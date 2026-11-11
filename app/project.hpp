@@ -172,6 +172,7 @@ struct TrackData {
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][40] = {}; // a recording on the lane in place of the built-in drum: its file's name, or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
+    bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     TwinPatch twin;              // when it is Twin Analog

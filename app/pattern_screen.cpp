@@ -1,4 +1,5 @@
 #include "pattern_screen.hpp"
+#include "pattern_layout.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -9,11 +10,7 @@ namespace {
 
 using namespace ui;
 
-// The layout from the same file, in pixels on the 640x480 screen.
-constexpr int kGridLeft = 116, kGridTop = 54, kStepW = 32, kLaneH = 41;
-constexpr int kCellW = kStepW - 2, kCellH = kLaneH - 3;
-constexpr int kNameX = 8, kNameW = 104;
-constexpr int kBlockW = kCellW - 8, kBlockFull = kCellH - 8;
+using namespace pattern_layout;
 
 constexpr float kNewHitLevel = 0.8f;
 constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
@@ -22,8 +19,6 @@ constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
 constexpr float kRandomLow = 0.25f;   // R2 paints levels from here up to full
 constexpr int kFirstRoll = 4;         // hits a tap of Y gives an empty lane
 constexpr float kDiceHitsPerSecond = 24.f; // stick fully over
-constexpr int kStartSlices = 16;          // the D-pad and the lane roll move a start by sixteenths of the sound
-constexpr float kMaxStart = 15.f / 16.f;  // the last sixteenth is always left to hear
 constexpr Uint32 kHearStartEveryMs = 90;  // a sliding start is played this often
 
 
@@ -120,12 +115,13 @@ void PatternScreen::setTempo(float bpm) {
     engine_.send(c);
 }
 
-void PatternScreen::audition(int lane, float level, float start) {
+void PatternScreen::audition(int lane, float level, float start, float part) {
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
     c.a = lane;
     c.b = static_cast<int>(std::round(start * 10000.f));
+    c.c = static_cast<int>(std::round(part * 10000.f));
     c.value = level;
     engine_.send(c);
 }
@@ -133,7 +129,9 @@ void PatternScreen::audition(int lane, float level, float start) {
 // Where in the lane's sound a hit begins. Never so late that nothing is left.
 void PatternScreen::setStart(int lane, int step, float start) {
     if (lane < 0 || lane >= kDrumLanes || step < 0 || step >= kSteps) return;
-    start = clampTo(start, 0.f, kMaxStart);
+    // The last slice is always left to hear: a sixteenth, or less of a recording cut finer.
+    const float slices = static_cast<float>(session_.laneSlices(project_.track, lane));
+    start = clampTo(start, 0.f, (slices - 1.f) / slices);
     if (start == pat().start[lane][step]) return;
     pat().start[lane][step] = start;
     Command c;
@@ -149,7 +147,8 @@ void PatternScreen::setStart(int lane, int step, float start) {
 
 // With Y, sideways. On a hit: slide its start, hearing it on the way. On a
 // lane's name: right rolls a new start for every hit on the lane, on the
-// sixteenths of the sound; left puts them all back at the beginning.
+// slices of the sound; left puts them all back at the beginning (in the
+// slice view: back in order, each on its own slice).
 void PatternScreen::turnStart(float amount) {
     if (amount == 0.f || onTempo_) return;
     if (step_ == kLaneName) {
@@ -159,7 +158,8 @@ void PatternScreen::turnStart(float amount) {
         for (int step = 0; step < kSteps; ++step) {
             if (pat().level[lane_][step] <= 0.f) continue;
             dice_ = dice_ * 1664525u + 1013904223u;
-            setStart(lane_, step, amount > 0.f ? static_cast<float>((dice_ >> 12) % kStartSlices) / kStartSlices : 0.f);
+            const std::uint32_t count = static_cast<std::uint32_t>(slices());
+            setStart(lane_, step, amount > 0.f ? static_cast<float>((dice_ >> 12) % count) / static_cast<float>(count) : slicing_ ? ownStart(step) : 0.f);
         }
         return;
     }
@@ -170,7 +170,62 @@ void PatternScreen::turnStart(float amount) {
     yDidSomething_ = true;
     if (pat().start[lane_][step_] != before && !project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
         heardStartAt_ = lastMs_;
-        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_]);
+        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f);
+    }
+}
+
+// ---- the slice view --------------------------------------------------------------
+
+bool PatternScreen::canSlice(int lane) const {
+    if (lane < 0 || lane >= kDrumLanes || trk().kind != TrackKind::Drums) return false;
+    const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
+    return trk().laneSample[lane][0] && !sound.missing && !sound.peaks.empty();
+}
+
+void PatternScreen::setSlicing(bool on) {
+    if (!on) {
+        slicing_ = false;
+        return;
+    }
+    if (onTempo_) return;
+    if (canSlice(lane_)) {
+        slicing_ = true;
+        said_[0] = 0;
+        return;
+    }
+    std::snprintf(said_, sizeof said_, "LANE %d IS A BUILT-IN DRUM. PUT A RECORDING ON IT TO SLICE IT.", lane_ + 1);
+    saidUntil_ = lastMs_ + 3000;
+}
+
+float PatternScreen::ownStart(int step) const {
+    const int count = slices();
+    return static_cast<float>((project_.bar * kSteps + step) % count) / static_cast<float>(count);
+}
+
+int PatternScreen::sliceOf(int step) const {
+    const int count = slices();
+    const int slice = static_cast<int>(pat().start[lane_][step] * static_cast<float>(count) + 0.001f);
+    return slice < 0 ? 0 : (slice >= count ? count - 1 : slice);
+}
+
+// Up and down in the slice view. On a hit: the next slice, or the one before,
+// round and round, heard as it goes. On the lane's name: whether a hit plays
+// one slice and stops, or runs on.
+void PatternScreen::sliceUpDown(int by) {
+    if (step_ == kLaneName) {
+        session_.setLaneOneSlice(project_.track, lane_, !trk().laneOneSlice[lane_]);
+        return;
+    }
+    if (!hitHere()) return;
+    const int count = slices();
+    const float now = pat().start[lane_][step_] * static_cast<float>(count);
+    // From between two lines, up is the next line and down is the one just passed.
+    int to = static_cast<int>(by > 0 ? std::floor(now + 1.001f) : std::ceil(now - 1.001f));
+    to = (to % count + count) % count;
+    setStart(lane_, step_, static_cast<float>(to) / static_cast<float>(count));
+    if (!project_.playing && lastMs_ - heardStartAt_ >= kHearStartEveryMs) {
+        heardStartAt_ = lastMs_;
+        audition(lane_, pat().level[lane_][step_], pat().start[lane_][step_], 1.f / static_cast<float>(count));
     }
 }
 
@@ -187,7 +242,9 @@ const char* PatternScreen::laneLabel(int lane) const {
 void PatternScreen::placeHit(float chance) {
     setStep(lane_, step_, kNewHitLevel);
     setChance(lane_, step_, chance);
-    if (!project_.playing) audition(lane_, kNewHitLevel);
+    // In the slice view a new hit plays its step's own slice: step 5, slice 5.
+    if (slicing_) setStart(lane_, step_, ownStart(step_));
+    if (!project_.playing) audition(lane_, kNewHitLevel, pat().start[lane_][step_], slicing_ ? 1.f / static_cast<float>(slices()) : 0.f);
 }
 
 // ---- painting ----------------------------------------------------------------
@@ -201,6 +258,19 @@ float PatternScreen::randomLevel() {
 // Put a hit under the cursor, or re-level the one that is there.
 void PatternScreen::paintHere() {
     if (paint_ == Paint::None || !onStep()) return; // the brush skips the lane names and the tempo
+    if (slicing_) {
+        // The slice view's brushes: every step crossed gets a hit on its own slice
+        // (the break, in order), or with R2 on a slice picked at random (the break,
+        // shuffled). A hit that is there keeps its level.
+        const float level = hitHere() ? pat().level[lane_][step_] : brush_;
+        const float count = static_cast<float>(slices());
+        dice_ = dice_ * 1664525u + 1013904223u;
+        const float start = paint_ == Paint::OneLevel ? ownStart(step_) : static_cast<float>((dice_ >> 12) % static_cast<std::uint32_t>(slices())) / count;
+        if (!hitHere()) setStep(lane_, step_, level);
+        setStart(lane_, step_, start);
+        if (!project_.playing) audition(lane_, level, pat().start[lane_][step_], 1.f / count);
+        return;
+    }
     const float level = paint_ == Paint::OneLevel ? brush_ : randomLevel();
     setStep(lane_, step_, level);
     if (!project_.playing) audition(lane_, level);
@@ -306,6 +376,10 @@ void PatternScreen::moveCursorTo(int lane, int step) {
 }
 
 void PatternScreen::moveCursor(Button direction) {
+    if (slicing_ && (direction == Button::Up || direction == Button::Down)) {
+        sliceUpDown(direction == Button::Up ? 1 : -1); // one lane is showing: up and down are the slice
+        return;
+    }
     if (onTempo_) {
         // The tempo sits above the top lane; up from it comes round to the bottom.
         if (direction == Button::Down) onTempo_ = false, lane_ = 0;
@@ -333,6 +407,10 @@ void PatternScreen::moveCursor(Button direction) {
 }
 
 void PatternScreen::dragCursor(Button direction) {
+    if (slicing_ && (direction == Button::Up || direction == Button::Down)) {
+        moveCursor(direction); // a slice picked: nothing is painted or deleted by that
+        return;
+    }
     moveCursor(direction);
     if (erasing_ && hitHere()) setStep(lane_, step_, 0.f); // B is held: the cursor rubs hits away
     paintHere(); // does nothing unless a brush is down
@@ -390,11 +468,12 @@ void PatternScreen::nudgeExact(Button direction, bool withY) {
             turnStart(sign); // roll the lane's starts, or put them back
             rolled_ = false; // each press of the D-pad is its own roll
         } else if (!vertical && hitHere()) {
-            // Sideways: the next sixteenth of the sound, exactly.
-            const float now = pat().start[lane_][step_] * kStartSlices;
+            // Sideways: the next slice of the sound, exactly.
+            const float count = static_cast<float>(slices());
+            const float now = pat().start[lane_][step_] * count;
             const float to = sign > 0.f ? std::floor(now + 1.001f) : std::ceil(now - 1.001f);
             heardStartAt_ = 0;
-            turnStart(to / kStartSlices - pat().start[lane_][step_]);
+            turnStart(to / count - pat().start[lane_][step_]);
         }
     } else if (onTempo_) {
         setTempo(project_.tempo + sign * (vertical ? 1.f : 10.f));
@@ -434,6 +513,11 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         } else if (!event.down && paint_ == Paint::Random) {
             paint_ = Paint::OneLevel;
         }
+        return;
+    }
+    if (b == Button::L1) {
+        // Into the cursor's lane, as slices; and back out to the whole grid.
+        if (event.down && !shaping_ && !dicing_ && paint_ == Paint::None) setSlicing(!slicing_);
         return;
     }
     if (b == Button::A) {
@@ -498,6 +582,9 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         // Deletes the hit under the cursor and, held, every hit the cursor is dragged over.
         erasing_ = true;
         if (hitHere()) setStep(lane_, step_, 0.f);
+    } else if (b == Button::X && !onTempo_ && slicing_ && onStep()) {
+        // One slice, and no more of the sound: the hit's, or the one a hit placed here would play.
+        audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : ownStart(step_), 1.f / static_cast<float>(slices()));
     } else if (b == Button::X && !onTempo_) {
         audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : 0.f);
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -520,6 +607,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
 
     const float x = input.stickX(), y = input.stickY();
     if (project_.bar >= trk().bars[project_.scene]) project_.bar = 0; // the cell was shortened, or it is another cell
+    // Another screen (the kit's) asked for a lane's slices.
+    if (session_.wantSlices >= 0) {
+        moveCursorTo(session_.wantSlices, step_ < 0 ? 0 : step_);
+        session_.wantSlices = -1;
+        setSlicing(true);
+    }
+    if (slicing_ && !canSlice(lane_)) slicing_ = false; // the recording went, or this is another track
     // The tempo can be set from elsewhere (SELECT + D-pad, or a song opened).
     if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
@@ -583,8 +677,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- top bar -----------------------------------------------------------
     char context[96], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / BAR %d OF %d / SCENE %d", name, project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
-    else std::snprintf(context, sizeof context, "%s / SCENE %d", name, project_.scene + 1);
+    if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / %sBAR %d OF %d / SCENE %d", name, slicing_ ? "SLICES / " : "", project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
+    else std::snprintf(context, sizeof context, "%s / %sSCENE %d", name, slicing_ ? "SLICES / " : "", project_.scene + 1);
     const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
     if (onTempo_) {
         // The tempo fills too: its box is a bar from the slowest to the fastest.
@@ -600,6 +694,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
     }
 
+    if (slicing_) {
+        drawSlices(r, fonts); // one lane, with its recording cut into slices (pattern_slices.cpp)
+    } else {
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
         std::snprintf(text, sizeof text, "%d", s + 1);
@@ -679,11 +776,13 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, kGridLeft + playStep * kStepW, kGridTop, kCellW, kDrumLanes * kLaneH - 3, glow);
     }
 
+    }
+
     // ---- what is under the cursor, spelled out -----------------------------------
     // A scene of fewer than sixteen steps: the steps past its end are never played, and are shaded.
-    if (const int steps = project_.steps[project_.scene]; steps < kSteps)
+    if (const int steps = project_.steps[project_.scene]; steps < kSteps && !slicing_)
         fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
-    const int stripY = kGridTop + kDrumLanes * kLaneH + 6;
+    const int stripY = kStripY;
     const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
         fonts.small.draw(r, fx, stripY, name, kDim);
         fonts.large.draw(r, fx, stripY + 16.f, value, color);
@@ -702,8 +801,12 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
-        std::snprintf(text, sizeof text, "%d", diceHits(lane_));
-        field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
+        if (slicing_) {
+            field(430.f, "EACH HIT PLAYS", trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON", trk().laneOneSlice[lane_] ? kPurple : kText);
+        } else {
+            std::snprintf(text, sizeof text, "%d", diceHits(lane_));
+            field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
+        }
     } else {
         field(8.f, "LANE", laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d", step_ + 1);
@@ -712,7 +815,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(190.f, "LEVEL", "-", kDim);
             field(290.f, "NUDGE", "-", kDim);
             field(420.f, "CHANCE", "-", kDim);
-            field(520.f, "START", "-", kDim);
+            field(520.f, slicing_ ? "SLICE" : "START", "-", kDim);
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
@@ -726,11 +829,16 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(420.f, "CHANCE", text, shade(Turning::Chance));
             // Where in the sound it begins, with a picture of the sound when there is one.
             const float start = pat().start[lane_][step_];
-            if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
+            if (slicing_) {
+                // Which slice, and how far past its cut if the start has been slid off it.
+                const float into = start * slices() - sliceOf(step_);
+                if (into > 0.01f) std::snprintf(text, sizeof text, "%d + %d%%", sliceOf(step_) + 1, static_cast<int>(std::round(into * 100.f)));
+                else std::snprintf(text, sizeof text, "%d OF %d", sliceOf(step_) + 1, slices());
+            } else if (start <= 0.f) std::snprintf(text, sizeof text, "THE TOP");
             else std::snprintf(text, sizeof text, "%d%% IN", static_cast<int>(std::round(start * 100.f)));
-            field(520.f, "START", text, shade(Turning::Start));
+            field(520.f, slicing_ ? "SLICE" : "START", text, shade(Turning::Start));
             const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
-            if (!sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
+            if (!slicing_ && !sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
                 const int wx = 8, wy = stripY + 38, ww = 624, wh = 20;
                 const int count = static_cast<int>(sound.peaks.size());
                 for (int i = 0; i < count; ++i) {
@@ -743,13 +851,38 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
     }
 
+    // Something said for a moment (why L1 did not open the slices).
+    if (said()[0]) fonts.small.draw(r, 8.f, stripY + 44.f, said(), kBrass);
+
     // ---- hints -------------------------------------------------------------------
     // Only what does something here, and what the ONE stick does right now.
     Hint hints[7];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { hints[count].key = key; hints[count].does = does; ++count; };
     char brushText[40];
-    if (paint_ == Paint::OneLevel) {
+    if (slicing_ && paint_ == Paint::OneLevel) {
+        hint("DRAG", "lay the break out in order");
+        hint("+ R2", "shuffled");
+    } else if (slicing_ && paint_ == Paint::Random) {
+        hint("DRAG", "a random slice on every step");
+    } else if (slicing_ && dicing_ && onName) {
+        hint("UP / DOWN", "more / fewer hits");
+        hint("RIGHT", "roll the slices");
+        hint("LEFT", "back in order");
+        hint("TAP Y", "reshuffle");
+    } else if (slicing_ && !held && onName) {
+        hint("UP / DOWN", "one slice / runs on");
+        hint("HOLD A", "volume");
+        hint("HOLD Y", "dice");
+        hint("L1", "grid");
+    } else if (slicing_ && !held) {
+        if (hitHere()) hint("UP / DOWN", "slice");
+        hint("A", hitHere() ? "level / nudge" : "place");
+        if (hitHere()) hint("Y", "chance");
+        hint("HOLD R1", "in order");
+        hint("R1 + R2", "shuffle");
+        hint("L1", "grid");
+    } else if (paint_ == Paint::OneLevel) {
         std::snprintf(brushText, sizeof brushText, "paint hits at %d%%", static_cast<int>(std::round(brush_ * 100.f)));
         hint("DRAG", brushText);
         hint("+ R2", "random levels");
@@ -777,12 +910,14 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD A", "volume");
         hint("HOLD Y", "dice");
         hint("TAP Y", "roll");
+        if (canSlice(lane_)) hint("L1", "slices");
     } else {
         hint("A", hitHere() ? "level / nudge" : "place");
         hint("Y", hitHere() ? "chance / start" : "maybe");
         hint("HOLD B", "erase");
         hint("HOLD R1", "paint");
-        hint("R1 + R2", "paint random");
+        if (canSlice(lane_)) hint("L1", "slices"); // on a recording, this is worth more room than the random brush
+        else hint("R1 + R2", "paint random");
     }
     ui::hints(r, fonts, hints, count);
 }

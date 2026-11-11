@@ -107,6 +107,15 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (now == Session::Rec::NoInput) said_ = "NO INPUT FOUND: PLUG IN A USB MICROPHONE OR INTERFACE";
         else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
         saidUntil_ = lastMs_ + 3000;
+    } else if (b == Button::L1 && !holding_ && !input.held(Button::Select)) {
+        // Straight to this lane cut into slices, on the PATTERN tab (pattern_screen.hpp).
+        if (trk().laneSample[lane_][0] && !session_.laneSound(project_.track, lane_).missing) {
+            session_.wantSlices = lane_;
+            session_.view = View::Pattern;
+        } else {
+            said_ = "SLICES ARE FOR A RECORDING: PUT ONE ON THIS LANE FIRST";
+            saidUntil_ = lastMs_ + 2500;
+        }
     } else if (b == Button::X) {
         hear();
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -235,6 +244,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("B", column_ == kSound ? "the drum back" : "fit off");
         hint("Y", "catch");
         hint("R1", "record");
+        if (trk().laneSample[lane_][0]) hint("L1", "slices");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);

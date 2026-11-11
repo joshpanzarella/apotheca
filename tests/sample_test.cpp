@@ -1427,8 +1427,288 @@ void testTheSamplePicker() {
     CHECK(!empty.app.kit().picker().isOpen());
 }
 
+// ---- the slice view: a recording cut into slices, a slice to a hit ----------------------
+
+// One bar at 120 BPM whose every sixteenth is a different steady level: slice n (from 0) is (n + 1) / 40.
+std::vector<float> sixteenLevels() {
+    std::vector<float> out(16 * kStep);
+    for (int i = 0; i < 16 * kStep; ++i) out[static_cast<std::size_t>(i)] = static_cast<float>(i / kStep + 1) / 40.f;
+    return out;
+}
+float levelOfSlice(int slice) { return static_cast<float>(slice + 1) / 40.f * kTrackLevel; }
+bool near(float a, float b) { return std::fabs(a - b) < 0.002f; }
+const SDL_Keycode L1 = SDLK_q, L2 = SDLK_1, SELECT = SDLK_BACKSPACE;
+
+void testTheSliceView() {
+    const std::string folder = tempFolder();
+    writeWav(folder + "/break.wav", sixteenLevels(), 48000);
+    Rig rig(folder);
+    PatternScreen& drums = rig.app.drums();
+    Session& session = rig.session();
+    rig.session().view = View::Pattern;
+    rig.frames(2);
+
+    // L1 on a built-in drum does not open it, and says why for a moment.
+    drums.moveCursorTo(2, 0);
+    CHECK(!drums.canSlice(2));
+    rig.tap(L1);
+    CHECK(!drums.slicing() && std::strstr(drums.said(), "BUILT-IN") != nullptr);
+    rig.frames(250);
+    CHECK(drums.said()[0] == 0);
+
+    // On a lane that plays a recording: in, and out again.
+    session.setLaneSample(0, 2, "break");
+    CHECK(drums.canSlice(2) && drums.slices() == 16);
+    rig.tap(L1);
+    CHECK(drums.slicing() && drums.said()[0] == 0);
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    // A hit placed on the grid plays the sound from the top, as it always has.
+    drums.moveCursorTo(2, 7);
+    rig.tap(A);
+    CHECK(drums.level(2, 7) > 0.f && drums.start(2, 7) == 0.f);
+    rig.tap(B);
+    rig.tap(L1);
+    CHECK(drums.slicing());
+
+    // A places a hit that plays its step's own slice.
+    drums.moveCursorTo(2, 4);
+    rig.tap(A);
+    CHECK(drums.level(2, 4) > 0.f && drums.start(2, 4) == 4.f / 16.f && drums.sliceOf(4) == 4);
+    // Up and down: the next slice, the one before; round the ends. The lane does not change.
+    rig.tap(UP);
+    CHECK(drums.sliceOf(4) == 5 && drums.start(2, 4) == 5.f / 16.f && drums.cursorLane() == 2 && drums.cursorStep() == 4);
+    rig.tap(DOWN, 2);
+    CHECK(drums.sliceOf(4) == 3);
+    rig.tap(DOWN, 4);
+    CHECK(drums.sliceOf(4) == 15);
+    rig.tap(UP);
+    CHECK(drums.sliceOf(4) == 0 && drums.cursorLane() == 2 && !drums.cursorOnTempo());
+    // From between two cuts (the start slid off one), up is the next cut and down the one just passed.
+    drums.setStart(2, 4, 0.40f); // slice 6 and a bit
+    rig.tap(UP);
+    CHECK(drums.start(2, 4) == 7.f / 16.f);
+    drums.setStart(2, 4, 0.40f);
+    rig.tap(DOWN);
+    CHECK(drums.start(2, 4) == 6.f / 16.f);
+    // On an empty step up and down do nothing: no hit appears.
+    drums.moveCursorTo(2, 9);
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(drums.level(2, 9) == 0.f && drums.cursorStep() == 9 && drums.cursorLane() == 2);
+    // The stick does the same, and runs.
+    drums.moveCursorTo(2, 4);
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    CHECK(drums.sliceOf(4) == 7);
+    rig.frames(40);
+    CHECK(drums.sliceOf(4) != 7 && drums.cursorLane() == 2);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    drums.setStart(2, 4, 6.f / 16.f);
+
+    // X: one slice and no more. The hit's on a hit; on an empty step, the one a hit placed there would play.
+    const auto heard = [&](float* level) {
+        rig.render(120000);
+        rig.tap(X);
+        return Rig::sounding(rig.render(120000), level);
+    };
+    float level = 0.f;
+    int frames = heard(&level);
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(6)));
+    drums.moveCursorTo(2, 9);
+    frames = heard(&level);
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(9)));
+    // A slice picked with up / down is heard at once, alone.
+    drums.moveCursorTo(2, 4);
+    rig.render(120000);
+    rig.frames(10);
+    rig.tap(UP);
+    frames = Rig::sounding(rig.render(120000), &level);
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(7)));
+    // ...but not over the song while it plays.
+    rig.tap(START);
+    rig.render(100);
+    rig.frames(10);
+    const float before = drums.start(2, 4);
+    rig.tap(UP);
+    CHECK(drums.start(2, 4) != before);
+    rig.tap(START);
+    rig.render(200000);
+
+    // R1 held and dragged: the break laid out in order. A hit that was there goes back to its own slice, at its own level.
+    drums.setStep(2, 1, 0.4f);
+    drums.setStart(2, 1, 11.f / 16.f);
+    drums.moveCursorTo(2, 0);
+    rig.key(R1, true);
+    rig.tap(RIGHT, 3);
+    rig.key(R1, false);
+    for (int step = 0; step < 4; ++step) CHECK(drums.level(2, step) > 0.f && drums.start(2, step) == step / 16.f);
+    CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.8f);
+    CHECK(drums.level(2, 5) == 0.f); // only where the cursor went
+    // With R2 as well: a slice picked at random for each, always on a cut.
+    rig.key(R1, true);
+    rig.key(R2, true);
+    for (int i = 0; i < 12; ++i) rig.tap(RIGHT);
+    rig.key(R2, false);
+    rig.key(R1, false);
+    int moved = 0;
+    for (int step = 3; step < 16; ++step) {
+        const float start = drums.start(2, step);
+        CHECK(drums.level(2, step) > 0.f && start >= 0.f && start <= 15.f / 16.f && start * 16.f == std::floor(start * 16.f));
+        moved += start != step / 16.f;
+    }
+    CHECK(moved >= 6); // shuffled, not in order
+    CHECK(rig.session().view == View::Pattern); // R2 did not turn the tab
+
+    // The lane's name: up / down is whether a hit plays one slice or runs on.
+    drums.moveCursorTo(2, -1);
+    CHECK(!rig.project().tracks[0].laneOneSlice[2]);
+    CHECK(rig.hit(2) >= 16 * kStep - 2); // a hit from the top plays the whole recording
+    rig.tap(UP);
+    CHECK(rig.project().tracks[0].laneOneSlice[2] && drums.cursorLane() == 2 && drums.cursorStep() == -1);
+    frames = rig.hit(2);
+    CHECK(frames >= kStep && frames <= kStep + 60);
+    CHECK(rig.hit(3) > 2000); // the other lanes are not cut short
+    rig.tap(DOWN);
+    CHECK(!rig.project().tracks[0].laneOneSlice[2] && rig.hit(2) >= 16 * kStep - 2);
+    rig.tap(DOWN);
+    CHECK(rig.project().tracks[0].laneOneSlice[2]);
+    // Hold Y there: right rolls every hit's slice, left puts them back in order (not all to the top).
+    rig.key(Y, true);
+    rig.tap(LEFT);
+    for (int step = 0; step < 16; ++step) CHECK(drums.start(2, step) == step / 16.f);
+    rig.tap(RIGHT);
+    moved = 0;
+    for (int step = 0; step < 16; ++step) moved += drums.start(2, step) != step / 16.f;
+    CHECK(moved >= 6);
+    rig.tap(LEFT);
+    for (int step = 0; step < 16; ++step) CHECK(drums.start(2, step) == step / 16.f);
+    rig.key(Y, false);
+
+    // In order, the sixteen hits are the recording: played, each step is its own slice's level.
+    drums.setStep(2, 1, 0.8f); // (the quiet one from before, back with the rest)
+    rig.render(200000);
+    rig.tap(START);
+    const std::vector<float> bar = rig.render(16 * kStep);
+    rig.tap(START);
+    for (int step = 0; step < 16; ++step) CHECK(near(bar[2 * static_cast<std::size_t>(step * kStep + kStep / 2)], 0.8f * levelOfSlice(step)));
+    // ...with no dip where one hands over to the next.
+    for (int step = 1; step < 16; ++step)
+        for (int i = -40; i < 40; ++i) CHECK(bar[2 * static_cast<std::size_t>(step * kStep + i)] > 0.79f * levelOfSlice(step - 1));
+    rig.render(200000);
+
+    // Undo takes a slice back.
+    rig.frames(60);
+    drums.moveCursorTo(2, 4);
+    rig.tap(UP);
+    CHECK(drums.sliceOf(4) == 5);
+    rig.frames(60);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(drums.sliceOf(4) == 4);
+
+    // All four shoulder buttons are a panic, and leave the view as it was, L1 first or not.
+    CHECK(drums.slicing());
+    rig.key(L1, true);
+    rig.key(L2, true);
+    rig.key(R2, true);
+    rig.key(R1, true);
+    CHECK(drums.slicing() && rig.session().view == View::Pattern);
+    for (SDL_Keycode k : {L1, L2, R2, R1}) rig.key(k, false);
+    rig.tap(A); // puts the notice away
+    rig.frames(2);
+
+    // A recording fitted to two bars has thirty-two slices, one to a step; bar 2's own slices are the second half.
+    session.setCellBars(0, 0, 2);
+    session.setLaneFit(0, 2, 32);
+    CHECK(rig.settle());
+    CHECK(drums.slices() == 32 && drums.slicing());
+    rig.project().bar = 1;
+    rig.frames(1);
+    CHECK(drums.ownStart(0) == 16.f / 32.f && drums.ownStart(15) == 31.f / 32.f);
+    drums.moveCursorTo(2, 15);
+    rig.tap(A);
+    CHECK(drums.start(2, 15) == 31.f / 32.f && drums.sliceOf(15) == 31); // the last slice can be reached
+    rig.tap(UP);
+    CHECK(drums.sliceOf(15) == 0);
+    rig.tap(DOWN, 2);
+    CHECK(drums.sliceOf(15) == 30);
+    frames = rig.hit(2); // and a hit plays a thirty-second of the longer sound: still one step
+    CHECK(frames >= kStep - 20 && frames <= kStep + 80);
+    rig.project().bar = 0;
+    session.setLaneFit(0, 2, 0);
+    rig.frames(2);
+    CHECK(drums.slices() == 16);
+    frames = rig.hit(2);
+    CHECK(frames >= kStep && frames <= kStep + 60);
+
+    // The view shuts itself when there is nothing left to slice.
+    session.setLaneSample(0, 2, "");
+    rig.frames(1);
+    CHECK(!drums.slicing());
+    session.setLaneSample(0, 2, "break");
+    rig.tap(L1);
+    CHECK(drums.slicing());
+    rig.key(A, true); // not while a hit is being shaped
+    rig.tap(L1);
+    rig.key(A, false);
+    CHECK(drums.slicing());
+
+    // From the kit screen: L1 on a lane with a recording goes straight to its slices.
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    drums.moveCursorTo(6, 3);
+    rig.session().view = View::Device;
+    rig.app.kit().goTo(2, KitScreen::kSound);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(rig.session().view == View::Pattern && drums.slicing() && drums.cursorLane() == 2 && drums.cursorStep() == 3);
+    // ...and on a built-in drum it stays where it is and says why.
+    rig.session().view = View::Device;
+    rig.app.kit().goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(rig.session().view == View::Device && !rig.app.kit().said().empty());
+}
+
+void testOneSliceIsKeptInTheSong() {
+    const std::string folder = tempFolder();
+    writeWav(folder + "/break.wav", sixteenLevels(), 48000);
+    Rig rig(folder);
+    rig.session().setLaneSample(0, 2, "break");
+    CHECK(songText(rig.project()).find("oneslice") == std::string::npos); // nothing written until it is used
+    rig.session().setLaneOneSlice(0, 2, true);
+    rig.session().setLaneOneSlice(0, 6, true);
+    rig.session().setLaneOneSlice(0, 6, false);
+    rig.session().setLaneOneSlice(0, 99, true);  // no such lane
+    rig.session().setLaneOneSlice(77, 1, true);  // no such track
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\noneslice 3\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    CHECK(back->tracks[0].laneOneSlice[2] && !back->tracks[0].laneOneSlice[6] && !back->tracks[0].laneOneSlice[1]);
+    // Nonsense lanes in a file are skipped.
+    std::string odd = text;
+    odd.replace(odd.find("oneslice 3"), 10, "oneslice 0 9 5 x 2");
+    std::unique_ptr<Project> other(new Project);
+    CHECK(parseSong(odd, *other) && other->tracks[0].laneOneSlice[4] && !other->tracks[0].laneOneSlice[2] && !other->tracks[0].laneOneSlice[0]);
+
+    // Opened afresh, the lane's hits play one slice: the setting reached the engine with the song.
+    Rig opened(folder);
+    opened.project() = *back;
+    opened.session().applyProject();
+    int frames = opened.hit(2);
+    CHECK(frames >= kStep && frames <= kStep + 60);
+    CHECK(opened.hit(3) > 2000);
+}
+
 int main(int, char**) {
     testTheSamplePicker();
+    testTheSliceView();
+    testOneSliceIsKeptInTheSong();
     testReadingWavFiles();
     testStretching();
     testFittingWithSignalsmith();

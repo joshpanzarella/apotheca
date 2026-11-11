@@ -312,7 +312,7 @@ void Engine::apply(const Command& c) {
     }
     switch (c.type) {
     case Command::Trigger:
-        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f);
+        if (validTrack(c.track) && tracks_[c.track].hasDrums) tracks_[c.track].drums.trigger(c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f);
         break;
     case Command::SetStepStart:
         if (validTrack(c.track) && slotFor(c) >= 0 && validCell(c.a, c.b) && std::isfinite(c.value)) {
@@ -481,6 +481,9 @@ void Engine::apply(const Command& c) {
     case Command::SetLaneLevel:
         if (validTrack(c.track)) tracks_[c.track].drums.setLaneLevel(c.a, c.value);
         break;
+    case Command::SetLanePart:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLanePart(c.a, c.value);
+        break;
     case Command::NoteOn:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
         break;
@@ -595,7 +598,10 @@ void Engine::apply(const Command& c) {
                     }
                 }
                 for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = image.automation ? image.automation[i] : kAutoNone;
-                for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, image.laneLevel[lane]);
+                for (int lane = 0; lane < kDrumLanes; ++lane) {
+                    track.drums.setLaneLevel(lane, image.laneLevel[lane]);
+                    track.drums.setLanePart(lane, image.lanePart[lane]);
+                }
             }
             Trash trash;
             trash.isImage = true;

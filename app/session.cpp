@@ -625,7 +625,10 @@ void Session::sendTrackImage(int t) {
         image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
         std::memcpy(image->automation.get(), track.automation, sizeof track.automation);
     }
-    for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        image->laneLevel[lane] = track.laneLevel[lane];
+        image->lanePart[lane] = track.laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(t, lane)) : 0.f;
+    }
     engine.setTrackImage(t, std::move(image));
 }
 

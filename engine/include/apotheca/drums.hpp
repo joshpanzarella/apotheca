@@ -46,7 +46,21 @@ public:
     // `start` is where in the sound to begin, 0..1 of its length (0: the
     // beginning). Starting part-way in fades up over a millisecond, so a cut
     // into the middle of a sound does not click.
-    void trigger(int lane, float velocity, float start = 0.f);
+    //
+    // `part` is how much of the sound the hit plays, 0..1 of its length, before
+    // it is faded out: a slice of a longer recording. 0: to the end. Below
+    // zero: whatever the lane is set to (setLanePart).
+    //
+    // A hit that starts where the lane's sound has just got to (within a
+    // millisecond and a half) does not start it again: the sound carries
+    // straight on, at the new hit's level. So a recording cut into slices
+    // and played back in order has no seams, and only a slice that is out
+    // of order is heard as a cut.
+    void trigger(int lane, float velocity, float start = 0.f, float part = -1.f);
+
+    // How much of the sound every hit on a lane plays (see trigger). 0, the
+    // default: all of it. Survives reset().
+    void setLanePart(int lane, float part);
 
     // Play this recording on a lane in place of the kit's drum; nullptr goes
     // back to the kit's. What was ringing on the lane stops. The samples
@@ -63,7 +77,9 @@ public:
 private:
     struct Voice {
         int position = -1; // -1: silent
-        float gain = 0.f;
+        int end = 0;       // where its part of the sound stops (then it fades); past the sound's end: it plays out
+        float gain = 0.f;     // the hit's level...
+        float gainTo = 0.f;   // ...and where it is heading (a hit that carries the sound on may change it)
         float fade = 1.f;     // multiplies the gain; falls while choking
         float fadeStep = 0.f; // 0: not choking
         float rise = 1.f;     // multiplies the gain; climbs after a start part-way in
@@ -76,7 +92,9 @@ private:
     const float* own_[kDrumLanes] = {}; // a lane's recording, or nullptr for the kit's drum
     int ownLength_[kDrumLanes] = {};
     float laneLevel_[kDrumLanes] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
+    float lanePart_[kDrumLanes] = {};
     float chokeStep_ = 1.f / 144.f; // 3 ms at 48 kHz
+    int joinFrames_ = 72;           // 1.5 ms: a hit this close to where the sound is carries it on
 };
 
 } // namespace apotheca

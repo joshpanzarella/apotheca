@@ -59,6 +59,27 @@
 // The cursor can also sit on a lane's name (A plays the drum, hold A + stick
 // is that drum's volume) and on the tempo (up from the top lane; hold A +
 // stick). With A or Y held, the D-pad nudges the same values in exact steps.
+//
+// SLICES, for chopping a break. L1 on a lane that plays a recording zooms the
+// grid into that one lane (L1 again: back). The recording is drawn large, cut
+// into slices: sixteen, or one to a step if it is fitted to more than a bar.
+// Under it are the bar's sixteen steps, and a line from every hit to the
+// slice it plays. Everything above works the same there, and:
+//
+//   up / down           on a hit: the next / previous slice, heard as it goes
+//   A                   places a hit that plays the step's OWN slice (step 5:
+//                       slice 5), so hits placed in a row are the break as it was
+//   hold R1 and drag    lays the break out in order: a hit on every step
+//                       crossed, each on its own slice
+//   ...and R2 as well   each on a RANDOM slice: the break, shuffled
+//   X                   hears one slice: the hit's, or the step's own
+//   on the lane's name  up / down: whether a hit plays ONE SLICE and stops, or
+//                       RUNS ON through the recording until the next hit.
+//                       Hold Y + right rolls every hit's slice; left puts
+//                       them back in order.
+//
+// Slices that follow each other in order play as one unbroken sound; only a
+// slice out of order is heard as a cut (drums.hpp).
 
 #include "screen.hpp"
 #include <SDL.h>
@@ -110,6 +131,14 @@ public:
     bool painting() const { return paint_ != Paint::None; }
     bool paintingRandom() const { return paint_ == Paint::Random; }
     int diceHits(int lane) const; // how many hits on the lane the dice placed and still own
+    // The slice view (see the top of this file).
+    bool slicing() const { return slicing_; }
+    void setSlicing(bool on);         // on only if the cursor's lane plays a recording; if not, it says why
+    bool canSlice(int lane) const;    // the lane plays a recording that is there
+    int slices() const { return session_.laneSlices(project_.track, lane_); } // the cursor's lane
+    int sliceOf(int step) const;      // the slice a hit plays, from 0: the one its start falls in
+    float ownStart(int step) const;   // where a step's own slice begins: step 5 of bar 1 is slice 5
+    const char* said() const { return lastMs_ < saidUntil_ ? said_ : ""; }
     bool fromDice(int lane, int step) const { return pat().fromDice[lane][step]; }
 
     Feel feel;
@@ -144,7 +173,9 @@ private:
     void nudgeExact(Button direction, bool withY);
     void setLaneLevel(float level);
     void setTempo(float bpm);
-    void audition(int lane, float level, float start = 0.f);
+    void audition(int lane, float level, float start = 0.f, float part = 0.f); // part: this much of the sound (0: as the lane is set)
+    void sliceUpDown(int by);        // the slice view's up / down
+    void drawSlices(SDL_Renderer* renderer, const Fonts& fonts) const; // pattern_slices.cpp
     void turnStart(float amount);    // with Y, sideways
     const char* laneLabel(int lane) const; // the drum's name, or its recording's
 
@@ -165,6 +196,10 @@ private:
     bool rolled_ = false;        // this push of the stick has already rolled the lane's starts
     Uint32 heardStartAt_ = 0;    // when a sliding start was last played
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
+
+    bool slicing_ = false; // the slice view is showing
+    char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
+    Uint32 saidUntil_ = 0;
 
     bool erasing_ = false; // B is held: hits the cursor crosses are deleted
     Paint paint_ = Paint::None;

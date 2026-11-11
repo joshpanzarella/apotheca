@@ -80,6 +80,15 @@ std::string songText(const Project& project) {
                 out += track.laneSample[lane];
                 out += "\n";
             }
+            // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
+            bool anySliced = false;
+            for (bool on : track.laneOneSlice) anySliced = anySliced || on;
+            if (anySliced) {
+                out += "oneslice";
+                for (int lane = 0; lane < kDrumLanes; ++lane)
+                    if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
+                out += "\n";
+            }
             // scene N, then "bars B" if the cell is longer than one, then each
             // bar's hits; "bar K" comes before those of the second bar on.
             for (int scene = 0; scene < kMaxScenes; ++scene) {
@@ -247,6 +256,10 @@ bool parseSong(const std::string& text, Project& project) {
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
             track->laneFit[l] = clampi(static_cast<int>(fit), 0, 64);
+        } else if (word == "oneslice" && track->kind == TrackKind::Drums) {
+            double lane;
+            while (in >> lane)
+                if (lane >= 1 && lane <= kDrumLanes) track->laneOneSlice[static_cast<int>(lane) - 1] = true;
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
             std::getline(in >> std::ws, name);

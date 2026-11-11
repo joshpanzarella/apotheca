@@ -45,11 +45,16 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     const bool shoulder = b == Button::L1 || b == Button::R1 || b == Button::L2 || b == Button::R2;
     if (shoulder && event.down) {
         const int down = input.held(Button::L1) + input.held(Button::R1) + input.held(Button::L2) + input.held(Button::R2);
-        if (down == 1) viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
+        if (down == 1) {
+            viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
+            slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
+        }
         if (down == 4) {
             panicking_ = true;
             panicNote_ = true;
             session_.view = viewBeforeShoulders_;
+            if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
+            session_.wantSlices = -1;
             session_.panic(true);
             return;
         }

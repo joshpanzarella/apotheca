@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 
@@ -178,12 +179,18 @@ void DrumKit::buildBuiltIn(float sr) {
 
 void DrumMachine::prepare(float sampleRate) {
     chokeStep_ = 1.f / (0.003f * sampleRate);
+    joinFrames_ = static_cast<int>(0.0015f * sampleRate);
     reset();
 }
 
 void DrumMachine::setLaneLevel(int lane, float level) {
     if (lane < 0 || lane >= kDrumLanes || !(level >= 0.f)) return; // also drops NaN
     laneLevel_[lane] = level > 1.f ? 1.f : level;
+}
+
+void DrumMachine::setLanePart(int lane, float part) {
+    if (lane < 0 || lane >= kDrumLanes) return;
+    lanePart_[lane] = part; // trigger() takes anything that is not a share of the sound as "all of it"
 }
 
 void DrumMachine::reset() {
@@ -202,7 +209,7 @@ void DrumMachine::setLaneSample(int lane, const float* data, int length) {
     voices_[lane][1] = Voice();
 }
 
-void DrumMachine::trigger(int lane, float velocity, float start) {
+void DrumMachine::trigger(int lane, float velocity, float start, float part) {
     if (!kit_ || lane < 0 || lane >= kDrumLanes) return;
     if (!(velocity > 0.f)) return; // also drops NaN
     if (velocity > 1.f) velocity = 1.f;
@@ -210,14 +217,29 @@ void DrumMachine::trigger(int lane, float velocity, float start) {
     if (length == 0) return;
     if (!(start > 0.f)) start = 0.f; // also NaN
     const int from = static_cast<int>(start * static_cast<float>(length)); // at or past the end: nothing plays
+    if (!(part >= 0.f)) part = lanePart_[lane]; // below zero (or NaN): as the lane is set
+    const int end = part > 0.f && part < 1.f ? from + static_cast<int>(part * static_cast<float>(length)) : length;
 
     Voice& fresh = voices_[lane][next_[lane]];
     Voice& old = voices_[lane][1 - next_[lane]];
-    if (old.position >= 0) old.fadeStep = chokeStep_;
+    // The sound is already at this very place: it carries on. (If it had just
+    // begun to fade at the end of its own part, it comes back up.)
+    if (old.position >= 0 && from > 0 && std::abs(old.position - from) <= joinFrames_) {
+        old.end = end;
+        old.gainTo = velocity;
+        old.fadeStep = 0.f;
+        if (old.fade < 1.f) { // back up from where the fade had got to
+            old.rise *= old.fade;
+            old.riseStep = chokeStep_ * 3.f;
+            old.fade = 1.f;
+        }
+        return;
+    }
+    if (old.position >= 0 && old.fadeStep == 0.f) old.fadeStep = chokeStep_;
+    fresh = Voice();
     fresh.position = from;
-    fresh.gain = velocity;
-    fresh.fade = 1.f;
-    fresh.fadeStep = 0.f;
+    fresh.end = end;
+    fresh.gain = fresh.gainTo = velocity;
     fresh.rise = from > 0 ? 0.f : 1.f;
     fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
     next_[lane] = 1 - next_[lane];
@@ -234,7 +256,13 @@ void DrumMachine::render(float* left, float* right, int frames) {
                 if (v.position < 0) continue;
                 for (int i = 0; i < frames; ++i) {
                     if (v.position >= length) { v.position = -1; break; }
+                    // The end of its part: a quick fade (a millisecond), so the next slice's first moment is not heard as a tick.
+                    if (v.position >= v.end && v.fadeStep == 0.f) v.fadeStep = chokeStep_ * 3.f;
                     left[i] += sample[v.position++] * v.gain * v.fade * v.rise * laneLevel;
+                    if (v.gain != v.gainTo) { // a level that changes mid-sound moves there over a millisecond
+                        const float step = chokeStep_ * 3.f;
+                        v.gain = v.gain < v.gainTo ? (v.gain + step > v.gainTo ? v.gainTo : v.gain + step) : (v.gain - step < v.gainTo ? v.gainTo : v.gain - step);
+                    }
                     if (v.rise < 1.f) {
                         v.rise += v.riseStep;
                         if (v.rise > 1.f) v.rise = 1.f;

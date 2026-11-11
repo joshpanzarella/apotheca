@@ -505,7 +505,7 @@ int main(int argc, char** argv) {
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
         app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : SynthScreen::kFirstMacro + 1);
-    } else if (std::strcmp(view, "kit") == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
+    } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one
         // bar, with hits on the beat whose starts have been rolled.
         const std::vector<std::string> names = app.session().sampleNames();
@@ -520,7 +520,21 @@ int main(int argc, char** argv) {
                 app.drums().setStart(5, i * 2, starts[i]);
             }
         }
-        if (std::strcmp(view, "starts") == 0) {
+        if (std::strncmp(view, "slices", 6) == 0) {
+            // The slice view: the break laid out in order, four of its slices moved, one hit taken out.
+            for (int step = 0; step < kSteps; ++step) {
+                app.drums().setStep(5, step, step % 4 == 0 ? 1.f : 0.75f);
+                app.drums().setStart(5, step, step / 16.f);
+            }
+            app.drums().setStart(5, 5, 12.f / 16.f);
+            app.drums().setStart(5, 6, 2.f / 16.f);
+            app.drums().setStart(5, 10, 3.f / 16.f);
+            app.drums().setStart(5, 13, 9.f / 16.f);
+            app.drums().setStep(5, 11, 0.f);
+            app.session().setLaneOneSlice(0, 5, true);
+            app.drums().moveCursorTo(5, std::strcmp(view, "slices-name") == 0 ? -1 : 5);
+            app.drums().setSlicing(true);
+        } else if (std::strcmp(view, "starts") == 0) {
             app.drums().moveCursorTo(5, 6);
             pushKey(SDLK_a, true); // Y held
             pushKey(SDLK_l, true); // the stick, to the right

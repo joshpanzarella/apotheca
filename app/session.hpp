@@ -97,6 +97,14 @@ public:
     bool deleteSample(const std::string& name);
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
+    // A lane's sound as slices, for chopping a break. How many there are: sixteen,
+    // or one to a step if the recording is fitted to more than a bar (32 for two
+    // bars, 64 for four). And whether a hit plays just its slice and stops, or
+    // runs on until the next hit on the lane.
+    int laneSlices(int track, int lane) const;
+    void setLaneOneSlice(int track, int lane, bool on);
+    // Asked for from another screen (the kit's): the drum grid opens on this lane's slices.
+    int wantSlices = -1; // a lane, or -1
     // Catch: the last bar the song played (everything, as it was heard)
     // becomes a recording, "catch 1", "catch 2"..., and goes on this lane
     // fitted to one bar. Returns its name, or "" if there was only silence
@@ -314,6 +322,7 @@ private:
     Uint32 nextSaveAt_ = 0;
 
     void loadLane(int track, int lane);
+    void sendLanePart(int track, int lane); // tell the engine how much of its sound a hit on the lane plays
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
