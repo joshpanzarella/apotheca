@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. A plan only: no code has changed.
+Written 2026-11-11. Step 0 (groundwork) is built; nothing else is.
 
 ## The recommendation
 
@@ -387,7 +387,7 @@ metallic is for ears.
 
 | Step | What | Size | Needs | Mostly touches |
 | --- | --- | --- | --- | --- |
-| 0 | **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
+| 0 | **DONE 2026-11-11, but for one switch (see below).** **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
 | 1a | **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
 | 1b | Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
 | 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
@@ -400,6 +400,17 @@ metallic is for ears.
 | 8 | SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
 | 9 | DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
 | 10+ | The later set, one at a time | small each (BLOOM, STUTTER medium) | 0; BLOOM needs 5, PING needs 4 | one file each |
+
+**Step 0 as built:**
+
+| Thing | Result |
+| --- | --- |
+| The old five | The same to the last bit after the move: 40 pinned renders and one whole song, on this machine and as ARM programs under emulation |
+| Adding an effect | One new file, one `extern` line, one number, one row, one place in the list (`engine/src/fx/unit.hpp` lists the steps) |
+| The fade on a swap | In. 10 ms, both effects running. No swap of the old five is rougher than the effect is by itself |
+| Flush-to-zero | **Built, tested, and left OFF.** On, it changes 1 of the 40 pinned renders (25 samples, all under 1e-38) and the end of any long tail (under 1e-30, 600 dB down). Nothing anyone could hear, but not "the same to the last bit". **The owner decides**; it is one call, `Engine::setFlushDenormals(true)`, in `app/main.cpp` and `app/bounce.cpp`. The old five do not slow down without it (measured). HALL will need it |
+| Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
+| Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

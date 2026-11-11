@@ -46,7 +46,7 @@ std::string songText(const Project& project) {
             const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
             if (kind == EffectKind::None) continue;
             put(out, "fx %.0f ", slot + 1);
-            for (const char* c = effectInfo(kind).name; *c; ++c) out += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c + 32 : *c);
+            out += effectInfo(kind).word; // its own word, not its screen name: the name may change, the word never
             for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", effects[slot].param[i]);
             out += "\n";
         }
@@ -236,15 +236,12 @@ bool parseSong(const std::string& text, Project& project) {
             std::string name;
             if (!(in >> slot >> name) || slot < 1 || slot > kEffectSlots) continue;
             EffectData& data = (track ? track->effects : song->masterEffects)[static_cast<int>(slot) - 1];
-            for (int k = 1; k < kEffectKinds; ++k) {
-                const EffectInfo& info = effectInfo(static_cast<EffectKind>(k));
-                std::string lower;
-                for (const char* c = info.name; *c; ++c) lower += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c + 32 : *c);
-                if (lower != name) continue;
-                data.kind = k;
-                for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
-                for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
-            }
+            const EffectKind kind = effectFromWord(name.c_str());
+            if (kind == EffectKind::None) continue; // an effect this version does not have: the slot is left as it was
+            const EffectInfo& info = effectInfo(kind);
+            data.kind = static_cast<int>(kind);
+            for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
+            for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
         } else if (word == "track") {
             std::string kind;
             in >> kind;

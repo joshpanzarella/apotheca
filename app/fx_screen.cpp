@@ -10,46 +10,10 @@ using namespace ui;
 namespace {
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
-
-// Settings that are a choice, not an amount: how many choices.
-int choices(EffectKind kind, int index) {
-    if (kind == EffectKind::Filter && index == 2) return 5;
-    if (kind == EffectKind::Delay && index == 0) return 6;
-    return 0;
-}
 }
 
-void effectParamText(EffectKind kind, int index, float v, char* out, int size, const float* all) {
-    const std::size_t n = static_cast<std::size_t>(size);
-    const int percent = static_cast<int>(std::round(v * 100.f));
-    if (kind == EffectKind::Filter && index == 0 && all && filterType(all[2]) == FilterType::Dj) {
-        float hz = 0.f;
-        const int side = djFilter(v, hz);
-        if (side == 0) std::snprintf(out, n, "OPEN");
-        else if (hz >= 1000.f) std::snprintf(out, n, "%s %.1f KHZ", side < 0 ? "LOW" : "HIGH", hz / 1000.f);
-        else std::snprintf(out, n, "%s %d HZ", side < 0 ? "LOW" : "HIGH", static_cast<int>(std::round(hz)));
-    } else if (kind == EffectKind::Filter && index == 0) {
-        const float hz = 30.f * std::pow(2.f, v * 9.5f);
-        if (hz >= 1000.f) std::snprintf(out, n, "%.1f KHZ", hz / 1000.f);
-        else std::snprintf(out, n, "%d HZ", static_cast<int>(std::round(hz)));
-    } else if (kind == EffectKind::Filter && index == 2) {
-        static const char* names[5] = {"LOW 12 DB", "LOW 24 DB", "BAND PASS", "DJ", "HIGH PASS"};
-        std::snprintf(out, n, "%s", names[static_cast<int>(filterType(v))]);
-    } else if (kind == EffectKind::Delay && index == 0) {
-        static const char* names[9] = {"", "1/16", "1/8", "1/8 DOTTED", "1/4", "", "1/4 DOTTED", "", "1/2"};
-        std::snprintf(out, n, "%s", names[delaySteps(v)]);
-    } else if (kind == EffectKind::Crush && index == 0) {
-        std::snprintf(out, n, "%d BITS", static_cast<int>(std::round(16.f - 13.f * v)));
-    } else if (kind == EffectKind::Crush && index == 1) {
-        const int every = static_cast<int>(std::round(std::pow(40.f, v)));
-        if (every <= 1) std::snprintf(out, n, "FULL");
-        else std::snprintf(out, n, "1 IN %d", every);
-    } else if (kind == EffectKind::Drive && index == 3) {
-        std::snprintf(out, n, "%d%%", percent * 2); // the middle is 100%: as it came in
-    } else {
-        std::snprintf(out, n, "%d%%", percent);
-    }
-}
+// Nothing here spells an effect out: its name, its settings, which of them are
+// choices and how each reads all come from the one table (apotheca/effects.hpp).
 
 void FxScreen::goTo(int row, int column) {
     row_ = ((row % kRows) + kRows) % kRows;
@@ -83,15 +47,16 @@ void FxScreen::press(Button b) {
     const int by = b == Button::Up ? 1 : -1;
     const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
     if (column_ == 0) {
-        const int to = data(row_).kind + by;
-        if (to < 0 || to >= kEffectKinds) return; // the ends stop
-        session_.setEffect(trackOf(row_), slotOf(row_), static_cast<EffectKind>(to));
+        // The next one in the list, which has its own order: an effect's number is not its place.
+        const int to = effectPlace(kind) + by;
+        if (to < 0 || to >= effectListSize()) return; // the ends stop
+        session_.setEffect(trackOf(row_), slotOf(row_), effectAt(to));
         if (!project_.playing) hear();
         return;
     }
     const int index = column_ - 1;
     const float now = data(row_).param[index];
-    if (const int count = choices(kind, index)) {
+    if (const int count = effectChoices(kind, index)) {
         // The next choice: the middle of its part of the range.
         int which = static_cast<int>(now * static_cast<float>(count));
         which = (which >= count ? count - 1 : which) + by;
@@ -160,7 +125,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
 
     // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: it clicks
     // from one choice to the next, a push at a time, with the stick as with the D-pad.
-    const bool choice = column_ > 0 && choices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
+    const bool choice = column_ > 0 && effectChoices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
     if (holding_ && column_ > 0 && !choice) {
         // A setting: the stick turns it. Squared, so a small push is fine.
         turn(-y * std::fabs(y) * kTurnPerSecond * dt);
@@ -213,7 +178,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             for (int i = 0; i < kEffectParams; ++i) shown[i] = onTrack ? session_.automated(trackOf(row), autoLaneOfEffect(slotOf(row), i), d.param[i]) : d.param[i];
             effectParamText(kind, p, shown[p], text, sizeof text, shown);
             // A choice has no bar: it is not somewhere along a range.
-            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, choices(kind, p) > 0 ? -1.f : shown[p],
+            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, effectChoices(kind, p) > 0 ? -1.f : shown[p],
                      here && column_ == p + 1, holding_);
             if (onTrack && session_.hasAutomation(trackOf(row), project_.scene, lane)) fill(r, 8 + (p + 1) * (colW + colGap) + 1, y + 18 + boxH - 3, colW - 2, 2, kPurple);
         }

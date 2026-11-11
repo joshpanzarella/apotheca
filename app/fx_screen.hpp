@@ -5,8 +5,9 @@
 // Four rows, one to a slot. In each: the effect, then its settings.
 //
 //   the stick or D-pad moves the cursor
-//   on an effect     hold A + up / down: NONE, FILTER, DRIVE, DELAY, REVERB,
-//                    CRUSH. It goes in at once, at its usual settings. B: none.
+//   on an effect     hold A + up / down: the next or the one before in the
+//                    list (NONE, FILTER, DRIVE, DELAY, REVERB, CRUSH). It goes
+//                    in at its usual settings. B: none.
 //   on a setting     hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice (the filter's type, the
 //                    delay's time). B: back to its usual value.
@@ -22,10 +23,7 @@
 
 namespace apotheca {
 
-// How a setting reads: "810 HZ", "1/8.", "8 BITS", "35%".
-// `all` is the effect's settings together, for one whose reading depends on
-// another (the DJ filter's cutoff); without it, each is read by itself.
-void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
+// (How a setting reads, effectParamText(), is in apotheca/effects.hpp with the rest of the effect table.)
 
 class FxScreen : public Screen {
 public:

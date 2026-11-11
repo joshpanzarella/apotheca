@@ -2983,6 +2983,12 @@ void testTheEffectsScreen() {
     CHECK(first.kind == static_cast<int>(EffectKind::Crush)); // the last one: it stops
     rig.tap(DOWN, 2);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    rig.tap(DOWN, 3);
+    CHECK(first.kind == static_cast<int>(EffectKind::None)); // down past the first effect: none
+    rig.tap(DOWN, 2);
+    CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
+    rig.tap(UP, 3);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(LEFT); // sideways does nothing while A is held
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 0);
@@ -3180,6 +3186,13 @@ void testEffectsThroughTheSession() {
 
     // Lines in a song file that make no sense are left out.
     std::unique_ptr<Project> song(new Project);
+    {
+        // An effect this version does not have (a song from a newer one): the line is skipped, and what the slot held stays.
+        std::unique_ptr<Project> newer(new Project);
+        CHECK(parseSong("apotheca-song 1\nfx 1 delay 0.2\nfx 1 tape 0.9 0.9 0.9 0.9\ntrack drums\nfx 2 crush 0.25\nfx 2 hall 1 1\n", *newer));
+        CHECK(newer->masterEffects[0].kind == static_cast<int>(EffectKind::Delay) && newer->masterEffects[0].param[0] == 0.2f);
+        CHECK(newer->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Crush) && newer->tracks[0].effects[1].param[0] == 0.25f);
+    }
     CHECK(parseSong("apotheca-song 1\nfx 1 reverb 0.9\nfx 3 delay\nfx 0 delay\nfx 2 warble 1 1\ntrack drums\nfx 2 crush 5 -5 nonsense\nfx 1\n", *song));
     CHECK(song->masterEffects[0].kind == static_cast<int>(EffectKind::Reverb) && song->masterEffects[0].param[0] == 0.9f);
     CHECK(song->masterEffects[0].param[1] == effectInfo(EffectKind::Reverb).defaults[1]); // not given: its usual value

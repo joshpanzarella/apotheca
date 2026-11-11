@@ -52,6 +52,7 @@ constexpr int kNumTracks = 12;
 constexpr int kEffectSlots = 2;   // per track, and on the master
 constexpr int kMasterTrack = -1;  // "track" index that addresses the master
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
+constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
 constexpr float kMinTempo = 40.f;
 constexpr float kMaxTempo = 240.f;
 constexpr int kMaxScenes = 16;
@@ -190,6 +191,8 @@ public:
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
     // From the control thread, at any time: put an effect in a slot (None
     // empties it), at its default settings. `track` may be kMasterTrack.
+    // It does not click: the sound slides from what was in the slot to what
+    // is there now over kSwapFadeSeconds, and the old one's tail goes with it.
     // Its settings are then SetEffectParam, each 0..1 (see effects.hpp).
     bool setEffect(int track, int slot, EffectKind kind);
     // Put a recording on one lane of a drum track in place of the built-in
@@ -258,6 +261,14 @@ public:
     // `atStart` runs once on each helper as it begins (to ask for realtime
     // priority, which only the program knows how to do). Not for the audio thread.
     void useWorkers(int count, void (*atStart)() = nullptr);
+
+    // Flush-to-zero (denormals.hpp) while rendering, on the audio thread and
+    // every helper: a fading tail cannot slow the processor down. OFF unless
+    // asked for, because it moves the last vanishing samples of a tail to
+    // zero (all of it below 1e-30; see denormals.hpp), and a song must come out the
+    // same to the last bit until the owner says otherwise. From any thread.
+    void setFlushDenormals(bool on) { flush_.store(on, std::memory_order_relaxed); }
+    bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
 
     // ---- keeping up ---------------------------------------------------------------
@@ -294,6 +305,19 @@ private:
                                   // Inside the engine also: 2..4, the first of a ratchet of that many (the slide
                                   // is over by the second); kLaterPiece, one of the rest of a ratchet.
     };
+    // An effect going into a slot, or coming out of one, is faded: for
+    // kSwapFadeSeconds the one that was there (or the plain sound, if the slot
+    // was empty) and the one that is there now both run, and the sound slides
+    // from the first to the second. Outside a fade a slot costs what it did.
+    struct SlotFade {
+        std::unique_ptr<Effect> leaving; // what was in the slot; nullptr: it was empty
+        int left = 0;                    // frames of the fade still to go; 0: no fade
+        int total = 1;
+    };
+    void swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming);
+    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames);
+    void binLeaving(SlotFade& fade); // the audio thread only, with no helper at work
+
     struct Track {
         bool hasDrums = false;
         DrumMachine drums;
@@ -340,6 +364,7 @@ private:
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         std::unique_ptr<Effect> effects[kEffectSlots];
+        SlotFade fades[kEffectSlots];
         std::atomic<float> peak{0.f};
         bool hasInstrument() const { return hasDrums || synth; }
     };
@@ -378,12 +403,14 @@ private:
     std::condition_variable wake_;
     int wakeups_ = 0;          // chunks the helpers have been called to and not yet come for
     std::atomic<bool> quitWorkers_{false};
+    std::atomic<bool> flush_{false};
 
     float sampleRate_ = 48000.f;
     Track tracks_[kNumTracks];
     bool claimed_[kNumTracks] = {};
     bool claimedDrums_[kNumTracks] = {}; // ...and which of those are drums // control thread's view of which tracks have an instrument
     std::unique_ptr<Effect> masterEffects_[kEffectSlots];
+    SlotFade masterFades_[kEffectSlots];
 
     // The step clock. Steps are sixteenth notes.
     bool playing_ = false;
