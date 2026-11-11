@@ -216,6 +216,36 @@ void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, in
 
 namespace {
 constexpr float kArrowW = 11.f; // an arrow and the room after it
+constexpr float kStrokeGap = 2.f; // either side of the "/" between two words: close, to save room (the owner's, 2026-11-11)
+
+// What a hint does, with every " / " drawn close: "level/nudge", a hair apart.
+template <typename Each>
+void strokeParts(const char* text, Each each) {
+    const char* at = text;
+    for (;;) {
+        const char* cut = std::strstr(at, " / ");
+        each(cut ? std::string(at, cut) : std::string(at), cut != nullptr);
+        if (!cut) break;
+        at = cut + 3;
+    }
+}
+float doesWidth(const Fonts& fonts, const char* text) {
+    float w = 0.f;
+    strokeParts(text, [&](const std::string& part, bool stroke) {
+        w += fonts.small.width(part.c_str());
+        if (stroke) w += 2.f * kStrokeGap + fonts.small.width("/");
+    });
+    return w;
+}
+void drawDoes(SDL_Renderer* r, const Fonts& fonts, float x, float y, const char* text, SDL_Color color) {
+    strokeParts(text, [&](const std::string& part, bool stroke) {
+        fonts.small.draw(r, x, y, part.c_str(), color);
+        x += fonts.small.width(part.c_str());
+        if (!stroke) return;
+        fonts.small.draw(r, x + kStrokeGap, y, "/", color);
+        x += 2.f * kStrokeGap + fonts.small.width("/");
+    });
+}
 
 // A key's name a word at a time: `arrow` is 0..3 (up, down, left, right) for a direction, -1 for letters.
 template <typename Each>
@@ -244,9 +274,11 @@ void keyWords(const char* key, Each each) {
 
 float keyWidth(const Fonts& fonts, const char* key) {
     float w = 0.f;
-    bool first = true, lastArrow = false;
+    bool first = true, lastArrow = false, lastStroke = false;
     keyWords(key, [&](const std::string& word, int arrow) {
-        if (!first && !(arrow >= 0 && lastArrow)) w += fonts.small.width(" ");
+        const bool stroke = word == "/";
+        if (!first && !(arrow >= 0 && lastArrow)) w += stroke || lastStroke ? kStrokeGap : fonts.small.width(" ");
+        lastStroke = stroke;
         w += arrow >= 0 ? kArrowW : fonts.small.width(word.c_str());
         first = false;
         lastArrow = arrow >= 0;
@@ -255,10 +287,12 @@ float keyWidth(const Fonts& fonts, const char* key) {
 }
 
 void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key, SDL_Color color) {
-    bool first = true, lastArrow = false;
+    bool first = true, lastArrow = false, lastStroke = false;
     const int midY = static_cast<int>(textY + fonts.small.capHeight() / 2.f);
     keyWords(key, [&](const std::string& word, int arrow) {
-        if (!first && !(arrow >= 0 && lastArrow)) x += fonts.small.width(" ");
+        const bool stroke = word == "/";
+        if (!first && !(arrow >= 0 && lastArrow)) x += stroke || lastStroke ? kStrokeGap : fonts.small.width(" ");
+        lastStroke = stroke;
         if (arrow < 0) {
             fonts.small.draw(r, x, textY, word.c_str(), color);
             x += fonts.small.width(word.c_str());
@@ -304,13 +338,13 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
         if (!list[i].key || !list[i].does) continue;
         const float keyW = keyWidth(fonts, list[i].key) + 8.f;
         const bool die = isDice(list[i].does);
-        const float doesW = die ? static_cast<float>(kDie) : fonts.small.width(list[i].does);
+        const float doesW = die ? static_cast<float>(kDie) : doesWidth(fonts, list[i].does);
         if (x + keyW + 5.f + doesW > limit) break;
         fill(r, static_cast<int>(x), y + 5, static_cast<int>(keyW), kHintsH - 9, kText);
         drawKey(r, fonts, x + 4.f, textY, list[i].key, kBg);
         x += keyW + 5.f;
         if (die) drawDie(r, static_cast<int>(x), y + (kHintsH - kDie) / 2 + 1, kDim);
-        else fonts.small.draw(r, x, textY, list[i].does, kDim);
+        else drawDoes(r, fonts, x, textY, list[i].does, kDim);
         x += doesW + 11.f;
     }
     // In what room is left at the end: how to see the help card.
