@@ -1,4 +1,6 @@
 #include "song_screen.hpp"
+
+#include <algorithm>
 #include "instruments.hpp"
 #include "synth_spec.hpp"
 
@@ -488,49 +490,47 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (empty) outline(r, x, y, colW, kRowH - 4, inSong ? kLine : kPanel);
             else box(r, x, y, colW, kRowH - 4, kPanel, playingHere ? kPurple : kLine);
 
-            // A small picture of the cell: all its bars, as wide as its share of
-            // the scene. A cell shorter than the scene is drawn once, and the
-            // room after it says how many times it goes round.
+            // A small picture of the cell across the whole scene. A cell shorter than
+            // the scene goes round, so it is drawn again for each pass, a little
+            // dimmer, with a line where it starts over.
             const int cellBars = track.bars[scene], sceneBars = project_.sceneBars(scene);
-            const int pictureW = (colW - 6) * cellBars / sceneBars;
-            const float stepW = static_cast<float>(pictureW) / (16.f * cellBars);
-            if (track.kind == TrackKind::Drums) {
-                for (int bar = 0; bar < cellBars; ++bar) {
-                    const DrumPattern& p = track.drums[scene][bar];
-                    for (int lane = 0; lane < kDrumLanes; ++lane)
-                        for (int step = 0; step < kSteps; ++step)
-                            if (p.level[lane][step] > 0.f) {
-                                fill(r, x + 3 + static_cast<int>((bar * kSteps + step) * stepW), y + 4 + lane * 4, 2, 2,
-                                     faded(kText, 90 + static_cast<int>(165 * p.level[lane][step])));
-                            }
-                }
-            } else {
-                int low = 127, high = 0;
+            const float stepW = static_cast<float>(colW - 6) / (16.f * sceneBars);
+            int low = 127, high = 0; // the notes' range, for the piano-roll kind
+            if (track.kind != TrackKind::Drums) {
                 for (int bar = 0; bar < cellBars; ++bar) {
                     NoteEvent notes[kMaxNotes]; // chords drawn as their notes
                     track.notes[scene][bar].render(notes);
                     for (const NoteEvent& n : notes)
                         if (n.velocity > 0.f) { low = n.pitch < low ? n.pitch : low; high = n.pitch > high ? n.pitch : high; }
                 }
-                const int span = high - low < 7 ? 7 : high - low;
-                for (int bar = 0; bar < cellBars; ++bar) {
+            }
+            const int span = high - low < 7 ? 7 : high - low;
+            for (int at = 0; at < sceneBars && !empty; ++at) {
+                const int bar = at % cellBars;
+                const bool again = at >= cellBars; // a later pass
+                // This pass ends where the cell starts over, or where the scene ends.
+                const int passEnd = static_cast<int>(16.f * stepW * std::min(sceneBars, (at / cellBars + 1) * cellBars));
+                if (again && bar == 0) fill(r, x + 3 + static_cast<int>(at * kSteps * stepW), y + 3, 1, kRowH - 10, faded(kPurple, 150)); // fainter than the line that shows where it is playing
+                if (track.kind == TrackKind::Drums) {
+                    const DrumPattern& p = track.drums[scene][bar];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int step = 0; step < kSteps; ++step)
+                            if (p.level[lane][step] > 0.f) {
+                                const int alpha = 90 + static_cast<int>(165 * p.level[lane][step]);
+                                fill(r, x + 3 + static_cast<int>((at * kSteps + step) * stepW), y + 4 + lane * 4, 2, 2, faded(kText, again ? alpha * 6 / 10 : alpha));
+                            }
+                } else {
                     NoteEvent notes[kMaxNotes];
                     track.notes[scene][bar].render(notes);
                     for (const NoteEvent& n : notes) {
                         if (n.velocity <= 0.f) continue;
                         const int ny = y + 4 + (kRowH - 14) * (high - n.pitch) / span;
-                        const int from = static_cast<int>((bar * kSteps + n.step) * stepW);
+                        const int from = static_cast<int>((at * kSteps + n.step) * stepW);
                         int w = static_cast<int>(n.length * stepW) - 1;
-                        if (from + w > pictureW) w = pictureW - from; // it runs to the end of the cell at most
-                        fill(r, x + 3 + from, ny, w < 2 ? 2 : w, 2, kText);
+                        if (from + w > passEnd) w = passEnd - from; // it runs to the end of the pass at most
+                        fill(r, x + 3 + from, ny, w < 2 ? 2 : w, 2, again ? faded(kText, 150) : kText);
                     }
                 }
-            }
-            if (!empty && cellBars < sceneBars) {
-                // The loops mark: where the cell ends, and how many times it plays in the scene.
-                fill(r, x + 3 + pictureW, y + 3, 1, kRowH - 10, kPurple);
-                std::snprintf(text, sizeof text, colW - 6 - pictureW >= 60 ? "LOOPS x%d" : "x%d", sceneBars / cellBars);
-                fonts.small.drawCentered(r, x + 3 + pictureW + (colW - 6 - pictureW) / 2.f, y + (kRowH - 4 - fonts.small.capHeight()) / 2.f, text, kPurple);
             }
             if (cellBars > 1) { // how long it is, in the corner
                 std::snprintf(text, sizeof text, "%d", cellBars);
@@ -538,7 +538,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             }
             // Where the cell has got to: a short one goes round under a long scene.
             if (playingHere && playStep >= 0) {
-                const int at = (session_.engine.playBar() % cellBars) * kSteps + playStep;
+                const int at = session_.engine.playBar() * kSteps + playStep;
                 fill(r, x + 3 + static_cast<int>(at * stepW), y + 2, 2, kRowH - 8, kPurple);
             }
             if (copying_ && t == copyTrack_ && scene == copyScene_) outline(r, x + 1, y + 1, colW - 2, kRowH - 6, kBrass);

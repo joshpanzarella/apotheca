@@ -378,8 +378,8 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
   tap of A still opens it.
 - **The scene lasts as long as its longest cell.** A shorter cell goes round
   under it: a one-bar drum loop plays four times under a four-bar part.
-- A shorter cell is drawn once, as wide as its share of the scene, with
-  **LOOPS x4** in the room after it. A long cell shows its length in the corner.
+- A shorter cell is drawn again for each time it goes round, a little dimmer,
+  with a thin line where it starts over. A long cell shows its length in the corner.
 - **The repeat count is whole passes of the scene.** A four-bar scene at x2
   is eight bars.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end
