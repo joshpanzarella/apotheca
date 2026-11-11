@@ -1361,10 +1361,26 @@ void testHoldXCarriesANote() {
     rig.tap(DOWN);
     rig.key(X, false);
     CHECK(notes.cursorStep() == 1);
-    // The engine is told: the bar plays the note where it now is.
+    // Off the bottom of the keyboard it stops at the lowest key (and comes back).
+    notes.moveCursorTo(61, 4);
+    rig.key(X, true);
+    rig.tap(LEFT, 200);
+    CHECK(bar.notes[slot].pitch == NoteScreen::kLowest && notes.cursorPitch() == NoteScreen::kLowest);
+    rig.tap(RIGHT, 49);
+    CHECK(bar.notes[slot].pitch == 61);
+    rig.key(X, false);
+    // The engine is told of each move. The other note is taken away first, and
+    // carrying is the last thing done: the bar then plays the note where it was put.
+    notes.moveCursorTo(62, 5);
+    rig.tap(B);
+    notes.moveCursorTo(61, 4);
+    rig.key(X, true);
+    rig.tap(DOWN, 6);
+    rig.key(X, false);
+    CHECK(bar.notes[slot].step == 10);
     rig.project().playing = false;
     rig.tap(START);
-    const std::vector<float> early = rig.render(4 * kStep - 200);
+    const std::vector<float> early = rig.render(10 * kStep - 200);
     const std::vector<float> then = rig.render(2 * kStep);
     CHECK(Rig::peak(early) < 0.002f && Rig::peak(then) > 0.005f);
     rig.tap(START);

@@ -28,6 +28,7 @@ constexpr SDL_Color kDim = {143, 131, 112, 255};
 constexpr SDL_Color kTeal = {111, 191, 163, 255};
 constexpr SDL_Color kPurple = {154, 118, 176, 255};
 constexpr SDL_Color kBrass = {201, 161, 90, 255};
+constexpr SDL_Color kStop = {196, 84, 70, 255}; // the stop square in the top bar: red, so it reads as "stopped"
 
 constexpr int kScreenW = 640, kScreenH = 480;
 constexpr int kTopBarH = 26, kHintsH = 24;

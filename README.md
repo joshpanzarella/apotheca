@@ -205,6 +205,21 @@ designer".
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
 
+### The envelope
+
+Twin Analog and the sampler share one volume envelope (and any synth added
+later can use it), so a setting means the same on each:
+
+| Setting | 0 | 50 | 100 |
+| --- | --- | --- | --- |
+| ATTACK | 1 ms | 89 ms | 8 s |
+| DECAY, RELEASE | 2 ms | 200 ms | 20 s |
+
+The attack is curved like an analog one: most of the rise comes early, so a
+short attack is snappy, and it starts from wherever the envelope already is,
+so a note played again does not click. Decay and release times are how long
+the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes.
+
 ### Keeping up
 
 Twin Analog's OVERSAMPLE setting costs a lot: x8 with two chords held is
@@ -443,6 +458,7 @@ is loud; holding A shapes it the way it is drawn.
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
+| Hold X and move | Carry the note (or the whole chord) under the cursor to another key or step. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
 A note runs at most to the end of the bar, or to the next note on that key.

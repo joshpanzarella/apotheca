@@ -151,7 +151,7 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     if (project.playing) {
         for (int i = 0; i <= 12; ++i) SDL_RenderDrawLine(r, markX, 7 + i, markX + (i <= 6 ? i : 12 - i) * 2, 7 + i);
     } else {
-        fill(r, markX, 8, 10, 10, kDim);
+        fill(r, markX, 8, 10, 10, kStop);
     }
     char text[16];
     std::snprintf(text, sizeof text, "%d", static_cast<int>(project.tempo));
