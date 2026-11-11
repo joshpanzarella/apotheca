@@ -212,6 +212,11 @@ void App::update(const Input& input, Uint32 nowMs) {
     }
     if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
     session_.update(nowMs);
+    if (session_.resyncs() != resyncsSeen_) { // the engine fell behind and was sent the song again; that stops it
+        resyncsSeen_ = session_.resyncs();
+        std::snprintf(undoSaid_, sizeof undoSaid_, "SOUND FELL BEHIND AND WAS RESET: PRESS START");
+        undoSaidUntil_ = nowMs + 4000;
+    }
     session_.engine.setScopeTrack(project_->track);
     screenNow().update(input, nowMs);
 }

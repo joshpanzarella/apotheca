@@ -190,7 +190,17 @@ public:
     void collectGarbage();
 
     // From the control thread. Returns false if the queue is full.
-    bool send(const Command& command) { return commands_.push(command); }
+    bool send(const Command& command) {
+        if (commands_.push(command)) return true;
+        dropped_.fetch_add(1, std::memory_order_relaxed);
+        return false;
+    }
+    // How many commands found the queue full and were lost, ever. The queue is
+    // emptied at the start of every render(), so this only moves when the audio
+    // thread has stood still for seconds. When it does move, the engine no longer
+    // matches what was sent: the caller sends everything again once caughtUp().
+    unsigned dropped() const { return dropped_.load(std::memory_order_relaxed); }
+    bool caughtUp() const { return commands_.empty(); }
     // A second way in, for ONE other thread (the one reading a USB keyboard):
     // notes and drum hits to play now, and nothing else. They are taken up
     // at the start of the next render(), after everything sent with send().
@@ -395,6 +405,7 @@ private:
 
     SpscQueue<Command, 16384> commands_; // room for whole cells sent at once
     SpscQueue<Command, 1024> live_;      // from the keyboard's thread (sendLive)
+    std::atomic<unsigned> dropped_{0};   // commands lost to a full queue
 
     // Things the audio thread no longer needs and must not free itself.
     struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; };

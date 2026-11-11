@@ -131,6 +131,17 @@ void Session::update(Uint32 nowMs) {
     project.silenced = engine.silenced();
     project.busy = engine.qualityLimit() < 3;
 
+    // A full queue loses commands, and then the engine and the song no longer
+    // agree (a note on the screen that never plays). It takes the audio thread
+    // standing still for seconds, so it is rare; when it has happened, wait
+    // for the queue to empty and send the whole song again. If that overflows
+    // too, dropped() moves again and this comes round once more.
+    if (const unsigned lost = engine.dropped(); lost != droppedSeen_ && engine.caughtUp()) {
+        droppedSeen_ = lost;
+        applyProject();
+        ++resyncs_;
+    }
+
     hearMidi();
     serveDesigner();
 

@@ -3629,9 +3629,49 @@ void testTheEngineHearsTwinsSettings() {
 
 } // namespace
 
+// A full command queue loses commands (it takes the audio thread standing
+// still for seconds). The app notices, waits for the queue to empty, and
+// sends the whole song again: what is on the screen is what plays.
+void testAFullQueueIsRecoveredFrom() {
+    Rig rig;
+    rig.frames(2);
+    rig.listen(512);
+    Session& session = rig.app.session();
+    CHECK(session.resyncs() == 0 && session.engine.dropped() == 0 && session.engine.caughtUp());
+
+    // Nothing is rendered, and the queue is filled to the brim.
+    Command tempo;
+    tempo.type = Command::SetTempo;
+    tempo.value = 120.f;
+    int sent = 0;
+    while (session.engine.send(tempo)) ++sent;
+    CHECK(sent > 1000 && session.engine.dropped() == 1 && !session.engine.caughtUp());
+
+    // A kick placed now is on the screen and never reaches the engine.
+    rig.tap(A);
+    CHECK(rig.project().tracks[0].drums[0][0].level[0][0] > 0.f);
+    const unsigned lost = session.engine.dropped();
+    CHECK(lost > 1);
+    rig.frames(3);
+    CHECK(session.resyncs() == 0); // not while the queue is still full: sending more would only lose more
+
+    // The audio thread comes back and empties the queue. The next frame sends the song again.
+    rig.listen(512);
+    CHECK(session.engine.caughtUp());
+    rig.frames(1);
+    CHECK(session.resyncs() == 1 && session.engine.dropped() == lost);
+    CHECK(std::strlen(rig.app.undoSaid()) > 0); // and says so
+    rig.frames(3);
+    CHECK(session.resyncs() == 1); // once
+
+    rig.tap(START);
+    CHECK(rig.listen(kStep) > 0.05f); // the kick, on the first step
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testAFullQueueIsRecoveredFrom();
     testANewProjectIsOneDrumTrack();
     testAddingTracks();
     testOpeningACellWorksOnThatScene();

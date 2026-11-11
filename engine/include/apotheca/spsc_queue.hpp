@@ -26,6 +26,10 @@ public:
         return true;
     }
 
+    // Any thread: nothing waiting, as far as can be seen from here. (A moment
+    // out of date by the time it is read, which is all a caller should need.)
+    bool empty() const { return tail_.load(std::memory_order_acquire) == head_.load(std::memory_order_acquire); }
+
     // Consumer thread only. Returns false when empty.
     bool pop(T& out) {
         const std::size_t tail = tail_.load(std::memory_order_relaxed);

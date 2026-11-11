@@ -285,6 +285,8 @@ public:
 
     // Tell the engine everything in the project, from nothing.
     void applyProject();
+    // How many times the engine fell behind (a full command queue) and was sent the whole song again.
+    int resyncs() const { return resyncs_; }
 
     // Write a whole cell to the engine (every bar of it, and its length),
     // replacing what it had.
@@ -300,6 +302,8 @@ private:
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     Uint32 now_ = 0;
+    unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
+    int resyncs_ = 0;
     int sentSceneCount_ = 1;
 
     std::string pathOf(const std::string& name) const;
