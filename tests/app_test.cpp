@@ -1250,11 +1250,28 @@ void testTheButtonTestAndSettingUpAgain() {
     rig.key(SELECT, false);
     CHECK(!rig.project().playing && rig.view() == View::Settings && setup.cursorRow() == SettingsScreen::kTest && setup.testing());
     CHECK(rig.app.session().volume() == 1.f);
-    // It stays open while something is pressed or held, and closes four seconds after.
+    // It closes four seconds after the last press or let-go. A button held
+    // (or stuck) all the while does not keep it open: that would be a trap.
     rig.key(X, true);
-    rig.frames(400); // 6.4 s, held all the while
+    rig.frames(240); // 3.8 s
     CHECK(setup.testing());
+    rig.frames(20);
+    CHECK(!setup.testing());
     rig.key(X, false);
+    rig.tap(A); // open again
+    CHECK(setup.testing());
+    rig.key(STICK_LEFT, true); // the stick moving counts; the stick leaning does not
+    rig.frames(240);
+    CHECK(setup.testing());
+    rig.frames(20);
+    CHECK(!setup.testing());
+    rig.key(STICK_LEFT, false);
+    rig.tap(A);
+    rig.frames(200);
+    rig.key(X, true);
+    rig.frames(200); // a press part-way starts the wait again
+    CHECK(setup.testing());
+    rig.key(X, false); // and so does letting go
     rig.frames(240); // 3.8 s
     CHECK(setup.testing());
     rig.tap(B); // a press starts the wait again

@@ -67,12 +67,19 @@ void SettingsScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
     stickX_ = input.stickX();
     stickY_ = input.stickY();
-    for (int i = 0; i < static_cast<int>(Button::Count); ++i) held_[i] = input.held(static_cast<Button>(i));
+    // Did anything change since the last frame? (A button that is stuck
+    // down, or a stick that leans, changes nothing: the test must still
+    // close, or the very fault it is there to show would trap you in it.)
+    bool changed = std::fabs(stickX_ - testStickX_) > 0.2f || std::fabs(stickY_ - testStickY_) > 0.2f;
+    if (changed) testStickX_ = stickX_, testStickY_ = stickY_;
+    for (int i = 0; i < static_cast<int>(Button::Count); ++i) {
+        const bool now = input.held(static_cast<Button>(i));
+        changed = changed || now != held_[i];
+        held_[i] = now;
+    }
 
     if (testing_) {
-        bool any = stickX_ != 0.f || stickY_ != 0.f;
-        for (bool h : held_) any = any || h;
-        if (!testTimed_ || any) testTimed_ = true, testUntil_ = nowMs + kTestQuietMs;
+        if (!testTimed_ || changed) testTimed_ = true, testUntil_ = nowMs + kTestQuietMs;
         else if (nowMs >= testUntil_) testing_ = false;
         saved_ = 0.f;
         stickWas_ = false;
@@ -141,7 +148,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.drawCentered(r, sx + size / 2.f, sy - 18.f, "THE STICK", kDim);
         std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonName(lastPressed_));
         fonts.medium.draw(r, 24.f, 360.f, text, kText);
-        fonts.small.draw(r, 24.f, 386.f, "Buttons do nothing else while this is open. It closes four seconds after you stop pressing.", kDim);
+        fonts.small.draw(r, 24.f, 386.f, "Buttons do nothing else while this is open. To leave: take your hands off for four seconds.", kDim);
         hints(r, fonts, nullptr, 0);
         return;
     }

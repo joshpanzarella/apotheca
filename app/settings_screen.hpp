@@ -11,7 +11,8 @@
 //
 // The button test shows what Apotheca hears from each button and the stick.
 // While it is open every button goes to it and does nothing else. It closes
-// by itself four seconds after the last press.
+// by itself four seconds after the last press or let-go, even if a button
+// is stuck down.
 
 #include <SDL.h>
 
@@ -57,6 +58,7 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f; // for the test's picture
+    float testStickX_ = 0.f, testStickY_ = 0.f; // where the stick was when it last counted as moved
     bool held_[static_cast<int>(Button::Count)] = {};
 };
 
