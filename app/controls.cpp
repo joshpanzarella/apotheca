@@ -72,7 +72,6 @@ void RelearnHold::handle(const SDL_Event& e) {
     if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP) kind = 1, index = e.jbutton.button, down = e.type == SDL_JOYBUTTONDOWN;
     else if (e.type == SDL_JOYHATMOTION) kind = 2, index = e.jhat.hat, down = e.jhat.value != SDL_HAT_CENTERED;
     else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
-        if (e.type == SDL_KEYDOWN && e.key.repeat) return;
         kind = 3, index = e.key.keysym.sym, down = e.type == SDL_KEYDOWN;
     } else return;
     if (down && !holding_) {

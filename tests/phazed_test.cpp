@@ -427,6 +427,7 @@ static void testEachMacroDoesItsJob() {
         const auto as = playNote(preset, {}).held;
         CHECK(playNote(preset, {macro(Detune, 0.f)}).held != as);
         CHECK(playNote(preset, {macro(Detune, 1.f)}).held != as);
+        CHECK(playNote(preset, {macro(Detune, 0.f)}).held != playNote(preset, {macro(Detune, 1.f)}).held); // flat is not sharp
     }
     CHECK(checked >= 3);
 

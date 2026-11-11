@@ -18,7 +18,12 @@ constexpr float kRepeatsPerSecond = 20.f;
 
 bool isDirection(Button b) { return b == Button::Up || b == Button::Down || b == Button::Left || b == Button::Right; }
 
-int columnWidth(int tracks) { return tracks <= 4 ? 96 : 46; }
+// The columns share the width of the screen: few tracks, wide columns. The
+// "+ TRACK" column (there until all twelve are used) is one of them.
+int columnWidth(int tracks) {
+    const int columns = tracks + (tracks < kNumTracks ? 1 : 0);
+    return (kScreenW - 8 - kColumnsLeft) / (columns < 1 ? 1 : columns) - 1;
+}
 
 } // namespace
 

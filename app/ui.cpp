@@ -114,9 +114,25 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
 
     // L2 < SONG PATTERN DEVICE > R2
-    float x = 6.f;
-    fonts.small.draw(r, x, textY, "L2", kDim);
-    x += fonts.small.width("L2") + 6.f;
+    // L2 and R2 are buttons, not tabs: cream chips like the ones in the hint
+    // bar, each with an arrow pointing the way it goes.
+    const auto arrow = [&](float ax, bool left) {
+        SDL_SetRenderDrawColor(r, kBrass.r, kBrass.g, kBrass.b, 255);
+        for (int i = 0; i < 5; ++i) {
+            const int px = static_cast<int>(ax) + (left ? i : 4 - i);
+            SDL_RenderDrawLine(r, px, kTopBarH / 2 - i, px, kTopBarH / 2 + i);
+        }
+    };
+    const auto chip = [&](float cx, const char* name) {
+        const float w = fonts.small.width(name) + 8.f;
+        fill(r, static_cast<int>(cx), 5, static_cast<int>(w), kTopBarH - 10, kBrass);
+        fonts.small.draw(r, cx + 4.f, textY, name, kBg);
+        return w;
+    };
+    float x = 4.f;
+    arrow(x, true);
+    x += 8.f;
+    x += chip(x, "L2") + 4.f;
     const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX", "SET"};
     for (int i = 0; i < 5; ++i) {
         const float w = fonts.small.width(tabs[i]) + 14.f;
@@ -125,9 +141,10 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
         fonts.small.draw(r, x + 7.f, textY, tabs[i], here ? kBg : kDim);
         x += w + 2.f;
     }
-    x += 4.f;
-    fonts.small.draw(r, x, textY, "R2", kDim);
-    x += fonts.small.width("R2") + 12.f;
+    x += 2.f;
+    x += chip(x, "R2") + 3.f;
+    arrow(x, false);
+    x += 5.f + 10.f;
     // Tempo, then a triangle while playing or a square when stopped.
     const int markX = kScreenW - 20;
     SDL_SetRenderDrawColor(r, kPurple.r, kPurple.g, kPurple.b, 255);
@@ -166,6 +183,13 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     // The screen's own words, cut short if they would run into that.
     char shown[64];
     std::snprintf(shown, sizeof shown, "%s", context);
+    // Whole parts first ("2 PHAZED / SCENE 1" loses " / SCENE 1"), then letters.
+    while (x + fonts.small.width(shown) > room) {
+        char* cut = std::strrchr(shown, '/');
+        if (!cut || cut == shown) break;
+        while (cut > shown && cut[-1] == ' ') --cut;
+        *cut = 0;
+    }
     for (std::size_t n = std::strlen(shown); n > 0 && x + fonts.small.width(shown) > room; --n) shown[n - 1] = 0;
     fonts.small.draw(r, x, textY, shown, kText);
     return bar;

@@ -49,7 +49,21 @@ each button in turn ("PRESS A", "PRESS B"...) and learns what this handheld
 sends for it, whatever the firmware calls it. It takes about twenty seconds,
 once. MENU and the stick may be left out by waiting eight seconds, for a
 device that has none or keeps MENU for itself. The answers are kept in
-`controls.txt` in the `apotheca` folder; delete that file to be asked again.
+`controls.txt` in the `apotheca` folder.
+
+**To set them up again** (another handheld, or a button learned wrongly),
+any of three ways:
+
+- **SETUP screen, CONTROLS row:** hold A for a second.
+- **Just after Apotheca starts,** hold any button for two seconds. A brass
+  line at the bottom of the screen says so for the first five seconds. This
+  reads the buttons raw, so it works even when none of them is understood.
+- Delete `controls.txt`.
+
+The setup learns triggers that rest at one end of their travel (many L2 / R2
+do) as well as ones that rest in the middle. SETUP also has a **button
+test**: it lights each button while Apotheca hears it held. One that stays
+lit, or never lights, was learned wrongly.
 The bottom of the setup screen shows what the handheld last sent: if it
 stays at "nothing yet" while you press buttons, the firmware is not passing
 them on, and `apotheca.log` and `device-info.log` will say what it has.
@@ -69,7 +83,9 @@ and the stick shapes the thing under the cursor:
 | A | Turns the value: it fills or drains |
 | Y | Chance, on the drum grid |
 
-**L2 and R2** walk along the three screens. **START** plays: the song from
+**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
+**SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
+the list of songs). **START** plays: the song from
 the SONG screen, the scene being worked on from the others. **SELECT + START**
 quits.
 
@@ -124,7 +140,25 @@ A notice comes up saying a panic happened, in case it was an accident. Once
 the buttons are let go, any button puts it away (that press does nothing
 else), or it goes by itself after four seconds.
 
+### SETUP (the SET tab)
+
+| Row | Left / right | A |
+| --- | --- | --- |
+| TEMPO | A beat a minute | |
+| CHORD PACK | Another pack | |
+| VOLUME | A twentieth | |
+| STICK SPEED | 25% to 150%, kept for next time | |
+| PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
+| WIFI PAGE | | On / off |
+| BUTTONS | | The button test |
+| CONTROLS | | Hold a second: set the controls up again |
+
+The first two belong to the song. The rest belong to the handheld and are
+kept in `settings.txt` and `volume.txt` beside the program.
+
 ### SONG
+
+The track columns share the width of the screen: with few tracks they are wide.
 
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
@@ -255,7 +289,9 @@ The stick does one of those per push. A places a hit. Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
-started on, or 80%). Hold **L1** and drag for random levels.
+started on, or 80%). Hold **R2** and drag for random levels. R2 is also
+"next screen": a tap shorter than a quarter of a second, with nothing
+painted, still is.
 
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
 hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
@@ -311,7 +347,7 @@ anything while playing. Until it is ready the lane plays what it had.
 ### PATTERN, a synth
 
 A piano roll on its side. The keys run across the top, laid out as a
-keyboard is, three octaves at a time. The bar runs down the screen, step 1
+keyboard is, two octaves at a time (L1 zooms: one, two or three). The bar runs down the screen, step 1
 at the top. A note is as tall as it is long, and filled across as far as it
 is loud; holding A shapes it the way it is drawn.
 
@@ -327,6 +363,7 @@ is loud; holding A shapes it the way it is drawn.
 | B | Delete the note under the cursor |
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
+| L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
 A note runs at most to the end of the bar, or to the next note on that key.
 It can be as short as a tenth of a step. The engine lets go of each note on

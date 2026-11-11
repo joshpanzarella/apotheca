@@ -627,8 +627,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- what is under the cursor ---------------------------------------------------
     const int stripY = kGridTop + kSteps * kRowH + 8;
     const auto field = [&](float fx, const char* label, const char* value, SDL_Color color) {
-        fonts.small.draw(r, fx, static_cast<float>(stripY), label, kDim);
-        fonts.large.draw(r, fx, stripY + 16.f, value, color);
+        fonts.small.draw(r, fx, stripY + 12.f, label, kDim);
+        fonts.large.draw(r, fx, stripY + 30.f, value, color);
     };
     if (picking_) {
         // The pack laid out: seven chords at a time, the one in hand lit.

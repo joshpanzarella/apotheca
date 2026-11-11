@@ -222,6 +222,9 @@ void testTriggersNobodyToldUsAbout() {
         begin(learner);
         learner.handle(axis(5, 32767));
         CHECK(learner.step() == 0); // not yet: it could rest in the middle or at the other end
+        learner.handle(axis(5, 32767)); // said twice, as some devices do: still pressed, not let go
+        learner.handle(axis(5, 30000));
+        CHECK(learner.step() == 0);
         learner.handle(axis(5, -32768));
         CHECK(learner.step() == 1);
         const RawControl up = learner.map().button[static_cast<int>(Button::Up)];
@@ -268,7 +271,10 @@ void testHoldingAnyButtonAtTheStart() {
         CHECK(!hold.update(1500)); // the hold's clock starts here
         CHECK(!hold.update(3400) && hold.part() > 0.9f);
         CHECK(hold.update(3500));
-        CHECK(!hold.update(3600) && !hold.update(9000)); // once
+        CHECK(!hold.update(3600)); // once: a second hold, still inside the first seconds, is nothing
+        hold.handle(joyButton(13, false));
+        hold.handle(joyButton(14, true));
+        CHECK(!hold.update(3700) && !hold.update(5900) && !hold.update(9000));
         hold.handle(joyButton(13, false));
         hold.handle(joyButton(13, true));
         CHECK(!hold.update(9100) && !hold.update(12000));

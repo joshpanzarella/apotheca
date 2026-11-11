@@ -128,6 +128,13 @@ void testTabs() {
     rig.key(R2, false);
     rig.key(R1, false);
     CHECK(rig.view() == View::Pattern && near(rig.app.drums().level(3, 9), 0.8f)); // R1's own hit only
+    rig.app.drums().moveCursorTo(5, 3);
+    rig.key(L1, true); // L1 does nothing by itself here, but R2 after it is still not the brush
+    rig.key(R2, true);
+    rig.frames(20);
+    rig.key(R2, false);
+    rig.key(L1, false);
+    CHECK(rig.view() == View::Pattern && rig.app.drums().level(5, 3) == 0.f);
     rig.app.drums().moveCursorTo(3, 12);
     rig.key(R2, true);
     rig.key(L2, true); // L2 arriving puts the brush down (and turns back a screen, as ever)
@@ -1215,6 +1222,10 @@ void testTheSetupScreen() {
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1);
         // Loading writes nothing.
         CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 900\noctaves 7\nrubbish\n");
+        writeTextFile(folder + "/settings.txt", "octaves 3\nstick 60\nlater 5\n");
+        later.app.session().loadSettings();
+        CHECK(near(later.app.session().stickSpeed(), 0.6f) && later.app.session().octavesShown() == 3);
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "octaves 3\nstick 60\nlater 5\n");
     }
     ui::gStickSpeed = stickBefore;
 }
@@ -1361,6 +1372,13 @@ void testThePianoRollZooms() {
     session.setOctavesShown(3);
     rig.frames(1);
     CHECK(notes.visibleKeys() == 36 && notes.lowestKeyShown() == 12);
+    session.setOctavesShown(1);
+    rig.frames(1);
+    notes.moveCursorTo(108, 0);
+    CHECK(notes.lowestKeyShown() == 97);
+    session.setOctavesShown(3); // as SETUP does it: the keys must be moved to fit
+    rig.frames(1);
+    CHECK(notes.lowestKeyShown() == 73);
     // L1 while a chord is being picked is still "another pack", not the zoom.
     rig.key(Y, true);
     rig.tap(L1);
