@@ -316,9 +316,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             ly += 20.f;
         };
         const auto line = [&](const Line& l) {
-            const float kw = fonts.small.width(l.key) + 8.f;
+            const float kw = keyWidth(fonts, l.key) + 8.f;
             fill(renderer, x + 18, static_cast<int>(ly) - 3, static_cast<int>(kw), 17, kText);
-            fonts.small.draw(renderer, x + 22.f, ly, l.key, kBg);
+            drawKey(renderer, fonts, x + 22.f, ly, l.key, kBg);
             fonts.small.draw(renderer, x + 150.f, ly, l.does, kText);
             ly += 22.f;
         };

@@ -83,6 +83,12 @@ struct Playhead {
 // Draws it over a picture `w` wide that starts at `x`.
 void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, int y, int w, int h);
 
+// A button's name as it is written in a cream box. The four directions are
+// drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same
+// thing in a third of the room. Everything else is its letters.
+float keyWidth(const Fonts& fonts, const char* key);
+void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key, SDL_Color color);
+
 // The bar across the bottom: button names in cream boxes, each with what it does.
 struct Hint { const char* key; const char* does; };
 // What is true everywhere (X hears what is under the cursor; the stick or

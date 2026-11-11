@@ -214,6 +214,69 @@ void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, in
     if (at >= 0.f) fill(r, x + static_cast<int>(at * static_cast<float>(w - 2)), y, 2, h, kBrass);
 }
 
+namespace {
+constexpr float kArrowW = 11.f; // an arrow and the room after it
+
+// A key's name a word at a time: `arrow` is 0..3 (up, down, left, right) for a direction, -1 for letters.
+template <typename Each>
+void keyWords(const char* key, Each each) {
+    static const char* const kDirections[4] = {"UP", "DOWN", "LEFT", "RIGHT"};
+    const char* at = key;
+    bool afterArrow = false;
+    while (*at) {
+        while (*at == ' ') ++at;
+        const char* end = at;
+        while (*end && *end != ' ') ++end;
+        if (end == at) break;
+        const std::string word(at, end);
+        int arrow = -1;
+        for (int i = 0; i < 4; ++i)
+            if (word == kDirections[i]) arrow = i;
+        // The stroke between two directions ("UP / DOWN") goes: the arrows stand side by side.
+        const bool stroke = word == "/" && afterArrow;
+        if (!stroke) each(word, arrow);
+        if (!stroke) afterArrow = arrow >= 0;
+        at = end;
+    }
+}
+} // namespace
+
+float keyWidth(const Fonts& fonts, const char* key) {
+    float w = 0.f;
+    bool first = true, lastArrow = false;
+    keyWords(key, [&](const std::string& word, int arrow) {
+        if (!first && !(arrow >= 0 && lastArrow)) w += fonts.small.width(" ");
+        w += arrow >= 0 ? kArrowW : fonts.small.width(word.c_str());
+        first = false;
+        lastArrow = arrow >= 0;
+    });
+    return w;
+}
+
+void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key, SDL_Color color) {
+    bool first = true, lastArrow = false;
+    const int midY = static_cast<int>(textY + fonts.small.capHeight() / 2.f);
+    keyWords(key, [&](const std::string& word, int arrow) {
+        if (!first && !(arrow >= 0 && lastArrow)) x += fonts.small.width(" ");
+        if (arrow < 0) {
+            fonts.small.draw(r, x, textY, word.c_str(), color);
+            x += fonts.small.width(word.c_str());
+        } else {
+            // A solid triangle, nine across, pointing the way.
+            const int cx = static_cast<int>(x) + 4;
+            for (int d = 0; d <= 4; ++d) {
+                if (arrow == 0) fill(r, cx - d, midY - 2 + d, 2 * d + 1, 1, color);      // up
+                else if (arrow == 1) fill(r, cx - d, midY + 2 - d, 2 * d + 1, 1, color); // down
+                else if (arrow == 2) fill(r, cx - 2 + d, midY - d, 1, 2 * d + 1, color); // left
+                else fill(r, cx + 2 - d, midY - d, 1, 2 * d + 1, color);                 // right
+            }
+            x += kArrowW;
+        }
+        first = false;
+        lastArrow = arrow >= 0;
+    });
+}
+
 void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
@@ -226,10 +289,10 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     const float limit = kScreenW - 6.f;
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
-        const float keyW = fonts.small.width(list[i].key) + 8.f;
+        const float keyW = keyWidth(fonts, list[i].key) + 8.f;
         if (x + keyW + 5.f + fonts.small.width(list[i].does) > limit) break;
         fill(r, static_cast<int>(x), y + 5, static_cast<int>(keyW), kHintsH - 9, kText);
-        fonts.small.draw(r, x + 4.f, textY, list[i].key, kBg);
+        drawKey(r, fonts, x + 4.f, textY, list[i].key, kBg);
         x += keyW + 5.f;
         fonts.small.draw(r, x, textY, list[i].does, kDim);
         x += fonts.small.width(list[i].does) + 11.f;
