@@ -2197,6 +2197,37 @@ static void testSendsOnAnyHelperCount() {
     CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.01);
 }
 
+// Hold A + left / right on the FX screen: the first effect of the next group, or of the one before.
+static void testTheGroupJump() {
+    const EffectGroup F = EffectGroup::Filter, D = EffectGroup::Drive, E = EffectGroup::Delay, R = EffectGroup::Reverb, N = EffectGroup::None;
+    const EffectGroup row[] = {N, F, D, D, E, E, E, R, R};
+    const int n = 9;
+    const int right[] = {1, 2, 4, 4, 7, 7, 7, 7, 8}, left[] = {0, 0, 1, 1, 2, 2, 2, 4, 4};
+    for (int i = 0; i < n; ++i) {
+        CHECK(groupJump(row, n, i, 1) == right[i]);
+        CHECK(groupJump(row, n, i, -1) == left[i]);
+        CHECK(groupJump(row, n, i, 0) == i && groupJump(row, n, i, 5) == right[i] && groupJump(row, n, i, -5) == left[i]);
+    }
+    CHECK(groupJump(row, n, -1, 1) == -1 && groupJump(row, n, n, -1) == n && groupJump(nullptr, n, 3, 1) == 3 && groupJump(row, 0, 0, 1) == 0);
+    // A list whose first group has more than one in it: left from inside it goes nowhere.
+    const EffectGroup two[] = {F, F, D};
+    CHECK(groupJump(two, 3, 1, -1) == 1 && groupJump(two, 3, 0, -1) == 0 && groupJump(two, 3, 2, -1) == 0 && groupJump(two, 3, 0, 1) == 2);
+    // The real list: every jump lands on the first of another group, or stays.
+    for (int place = 0; place < effectListSize(); ++place)
+        for (int by = -1; by <= 1; by += 2) {
+            const int to = effectGroupJump(place, by);
+            CHECK(to >= 0 && to < effectListSize() && (by > 0 ? to >= place : to <= place));
+            if (to == place) continue;
+            CHECK(effectInfo(effectAt(to)).group != effectInfo(effectAt(place)).group);
+            CHECK(to == 0 || effectInfo(effectAt(to - 1)).group != effectInfo(effectAt(to)).group);
+            // ...and the nearest such: nothing of a third group lies between.
+            for (int i = (by > 0 ? place : to) + 1; i < (by > 0 ? to : place); ++i)
+                CHECK(effectInfo(effectAt(i)).group == effectInfo(effectAt(by > 0 ? place : to)).group || (by < 0 && effectInfo(effectAt(i)).group == effectInfo(effectAt(place)).group));
+        }
+    CHECK(effectGroupJump(0, -1) == 0 && effectGroupJump(0, 1) == 1 && effectGroupJump(effectListSize() - 1, 1) == effectListSize() - 1);
+    CHECK(effectGroupJump(-3, 1) == -3 && effectGroupJump(effectListSize(), -1) == effectListSize());
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -2226,6 +2257,7 @@ int main(int argc, char** argv) {
     testBusEffectsInTheEngine();
     testThirdSlot();
     testSendsOnAnyHelperCount();
+    testTheGroupJump();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

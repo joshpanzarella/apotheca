@@ -3047,7 +3047,7 @@ void testTheEffectsScreen() {
     rig.tap(LEFT, 9);
     CHECK(fx.cursorColumn() == 0);
 
-    // Down through the slots: the track's second, then the master's two, and round.
+    // Down through the slots: the track's second and third, its sends, then (the other page) the buses and the master's two, and round.
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 1);
     rig.key(A, true);
@@ -3058,6 +3058,8 @@ void testTheEffectsScreen() {
     CHECK(fx.cursorColumn() == 3); // the reverb has three
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
+    rig.tap(DOWN, 4);
+    CHECK(fx.cursorRow() == FxScreen::kMasterRow && fx.cursorColumn() == 0);
     rig.key(A, true);
     rig.tap(UP, 5);
     rig.key(A, false);
@@ -3065,7 +3067,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN, 2);
     CHECK(fx.cursorRow() == 0);
     rig.tap(UP);
-    CHECK(fx.cursorRow() == 3);
+    CHECK(fx.cursorRow() == FxScreen::kRows - 1);
     // The stick moves the cursor too.
     rig.key(STICK_DOWN, true);
     rig.frames(1);
@@ -3075,7 +3077,7 @@ void testTheEffectsScreen() {
     rig.tap(B);
     CHECK(first.kind == 0 && first.param[0] == 0.f);
 
-    // The top two rows are whichever track is being worked on; the master's stay.
+    // The first page is whichever track is being worked on; the master's stay.
     session.addTrack(TrackKind::Phazed);
     session.setEffect(0, 0, EffectKind::Delay);
     fx.goTo(0, 4);
@@ -3482,6 +3484,273 @@ void testSendsThroughTheSession() {
         const std::vector<float> x = rig.render(48000), y = same.render(48000);
         CHECK(Rig::peak(x) > 0.01f && x == y && rig.engine->busAwake(0) && !rig.engine->busAwake(1));
     }
+}
+
+// The FX screen: two pages of four rows, the sends, the buses and the group jump.
+void testTheFxScreensTwoPages() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    rig.frames(1);
+    const int delay = static_cast<int>(EffectKind::Delay), reverb = static_cast<int>(EffectKind::Reverb), filter = static_cast<int>(EffectKind::Filter);
+    CHECK(FxScreen::kRows == 8 && FxScreen::kSendsRow == 3 && FxScreen::kBusRow == 4 && FxScreen::kMasterRow == 6);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0 && fx.page() == 0);
+
+    // Down the track's page: three slots, the sends, and on to the other page; up comes back.
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 4 && fx.page() == 1);
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 0 && fx.page() == 0);
+    rig.tap(UP);
+    CHECK(fx.cursorRow() == 7);
+    rig.tap(UP, 4);
+    CHECK(fx.cursorRow() == 3);
+    // Y: the other page, the same row of it; and back.
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
+    fx.goTo(1, 0);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 5);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 1);
+    // Not while A is held: A is turning something.
+    rig.key(A, true);
+    rig.tap(Y);
+    rig.key(A, false);
+    CHECK(fx.cursorRow() == 1);
+    // The cursor keeps to what the row has: two sends; an effect and its settings; nothing beside an empty slot.
+    fx.goTo(3, 0);
+    rig.tap(RIGHT, 3);
+    CHECK(fx.cursorColumn() == 1);
+    rig.tap(DOWN); // ECHO's row: DELAY and its four settings
+    CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 1);
+    rig.tap(RIGHT, 9);
+    CHECK(fx.cursorColumn() == 4);
+    rig.tap(DOWN); // SPACE's: REVERB has three
+    CHECK(fx.cursorColumn() == 3);
+    rig.tap(DOWN); // the master's first slot: empty
+    CHECK(fx.cursorRow() == 6 && fx.cursorColumn() == 0);
+
+    // The sends. Hold A + the D-pad: a twentieth at a push, stopping at the ends.
+    fx.goTo(3, 0);
+    rig.key(A, true);
+    rig.tap(UP, 3);
+    CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
+    rig.tap(DOWN);
+    CHECK(near(project.tracks[0].send[0], 0.10f));
+    rig.tap(DOWN, 5);
+    CHECK(project.tracks[0].send[0] == 0.f);
+    rig.tap(LEFT);
+    rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 0);
+    rig.key(A, false);
+    rig.tap(RIGHT);
+    rig.key(A, true);
+    rig.tap(UP, 25);
+    CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
+    rig.tap(DOWN, 2);
+    CHECK(near(project.tracks[0].send[1], 0.9f));
+    // The stick turns it smoothly.
+    rig.key(STICK_DOWN, true);
+    rig.frames(10);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    const float turned = 0.9f - project.tracks[0].send[1];
+    CHECK(turned > 0.02f && turned < 0.3f && project.tracks[0].send[0] == 0.f);
+    CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
+    // ...the first send as the second.
+    rig.key(A, false);
+    rig.tap(LEFT);
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    const float echo = project.tracks[0].send[0];
+    CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
+    rig.key(A, false);
+    session.setSend(0, 0, 0.f);
+    rig.tap(RIGHT);
+    // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    rig.engine->send(hit);
+    rig.render(4800);
+    CHECK(rig.engine->busAwake(1) && !rig.engine->busAwake(0));
+    // B: nothing sent, and its automation in this cell goes; the other send's stays, and so does another scene's.
+    session.setSend(0, 0, 0.4f);
+    session.setAutomation(0, 0, autoLaneOfSend(0), 3, 0.5f);
+    session.setAutomation(0, 0, autoLaneOfSend(1), 3, 0.5f);
+    session.setAutomation(0, 2, autoLaneOfSend(1), 3, 0.5f);
+    rig.tap(B);
+    CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f);
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
+    rig.tap(LEFT);
+    rig.tap(B);
+    CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
+    // With WRITE on and the song playing, B's reset is not itself written down.
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    rig.tap(START);
+    rig.render(kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(session.writing() && project.playing);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(session.hasAutomation(0, 0, autoLaneOfSend(0)) && near(project.tracks[0].automation[0][20][1], 0.05f));
+    rig.tap(B);
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.writing());
+    rig.tap(START);
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(!session.writing() && !project.playing);
+    // The sends are the track's being worked on.
+    addPhazed(rig);
+    project.track = 1;
+    session.view = View::Effects;
+    fx.goTo(3, 0);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(near(project.tracks[1].send[0], 0.1f) && project.tracks[0].send[0] == 0.f);
+    project.track = 0;
+
+    // The third slot is a slot like the others.
+    fx.goTo(2, 0);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(project.tracks[0].effects[2].kind == filter && project.tracks[0].effects[0].kind == 0 && project.tracks[0].effects[1].kind == 0);
+    rig.tap(B);
+    CHECK(project.tracks[0].effects[2].kind == 0);
+
+    // A bus offers its own kind only: NONE and the delays on ECHO, NONE and the reverbs on SPACE.
+    fx.goTo(4, 0);
+    rig.key(A, true);
+    for (int i = 0; i < 7; ++i) {
+        rig.tap(UP);
+        CHECK(project.busEffects[0].kind != 0 && effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
+    }
+    CHECK(project.busEffects[0].kind == static_cast<int>(busEffectAt(0, busListSize(0) - 1))); // the end of its list stops
+    rig.tap(DOWN, 8);
+    CHECK(project.busEffects[0].kind == 0 && project.busEffects[1].kind == reverb);
+    rig.tap(RIGHT); // no groups to jump on a bus
+    CHECK(project.busEffects[0].kind == 0 && fx.cursorRow() == 4 && fx.cursorColumn() == 0);
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(project.busEffects[0].kind == delay && fx.cursorColumn() == 0);
+    rig.tap(DOWN);
+    CHECK(project.busEffects[0].kind == 0);
+    rig.tap(UP);
+    CHECK(project.busEffects[0].kind == delay && project.busEffects[0].param[3] == 1.f); // in at its usual settings, LEVEL full
+    rig.key(A, false);
+    fx.goTo(5, 0);
+    rig.tap(B);
+    CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == delay);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
+    rig.tap(UP, 4);
+    CHECK(effectBus(static_cast<EffectKind>(project.busEffects[1].kind)) == 1);
+    rig.key(A, false);
+    // LEVEL (the delay's MIX): turned like any setting; B puts it back to full, not to the MIX an effect on a track starts at.
+    fx.goTo(4, 4);
+    rig.key(A, true);
+    rig.tap(DOWN, 4);
+    rig.key(A, false);
+    CHECK(near(project.busEffects[0].param[3], 0.8f));
+    rig.tap(B);
+    CHECK(project.busEffects[0].param[3] == 1.f);
+    fx.goTo(4, 2);
+    session.setEffectParam(kEchoBus, 0, 1, 0.9f);
+    rig.tap(B);
+    CHECK(project.busEffects[0].param[1] == effectInfo(EffectKind::Delay).defaults[1]);
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 3, 0.9f);
+    fx.goTo(0, 4);
+    rig.tap(B);
+    CHECK(project.tracks[0].effects[0].param[3] == effectInfo(EffectKind::Delay).defaults[3]);
+    session.setEffect(0, 0, EffectKind::None);
+
+    // The master's two slots are the last two rows.
+    fx.goTo(6, 0);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(project.masterEffects[0].kind == filter && project.masterEffects[1].kind == 0);
+    fx.goTo(7, 0);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(project.masterEffects[1].kind == static_cast<int>(effectAt(2)) && project.masterEffects[0].kind == filter);
+    fx.goTo(6, 0);
+    rig.tap(B);
+    fx.goTo(7, 0);
+    rig.tap(B);
+    CHECK(project.masterEffects[0].kind == 0 && project.masterEffects[1].kind == 0);
+
+    // Hold A + left / right on an effect: a whole group of the list at once.
+    fx.goTo(0, 0);
+    const auto kindNow = [&] { return static_cast<EffectKind>(project.tracks[0].effects[0].kind); };
+    rig.key(A, true);
+    int place = 0;
+    for (int i = 0; i < effectListSize() + 2; ++i) {
+        const int to = effectGroupJump(place, 1);
+        rig.tap(RIGHT);
+        CHECK(effectPlace(kindNow()) == to && (to == place || effectInfo(effectAt(to)).group != effectInfo(effectAt(place)).group));
+        place = to;
+    }
+    CHECK(place > 0 && effectInfo(effectAt(place)).group == effectInfo(effectAt(effectListSize() - 1)).group); // the last group: it stops
+    // ...and stopping is doing nothing: the effect there is not put in afresh, so its settings stay as they were turned.
+    if (effectInfo(kindNow()).params > 0) {
+        session.setEffectParam(0, 0, 0, 0.123f);
+        rig.tap(RIGHT);
+        CHECK(project.tracks[0].effects[0].param[0] == 0.123f);
+    }
+    for (int i = 0; i < effectListSize() + 2; ++i) {
+        const int to = effectGroupJump(place, -1);
+        rig.tap(LEFT);
+        CHECK(effectPlace(kindNow()) == to && to <= place);
+        place = to;
+    }
+    CHECK(place == 0 && kindNow() == EffectKind::None && fx.cursorColumn() == 0);
+    // The stick: one push, one jump.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(effectPlace(kindNow()) == effectGroupJump(0, 1) && kindNow() != EffectKind::None);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(kindNow() == EffectKind::None);
+    // On a setting, left and right with A held do nothing at all.
+    session.setEffect(0, 0, EffectKind::Filter);
+    fx.goTo(0, 1);
+    const float cutoff = project.tracks[0].effects[0].param[0];
+    rig.tap(RIGHT);
+    CHECK(project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
+    rig.tap(LEFT);
+    CHECK(project.tracks[0].effects[0].kind == filter && project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
+    rig.key(A, false);
+    // Without A they move the cursor, as ever.
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 0 && project.tracks[0].effects[0].kind == filter);
 }
 
 void testTheKeysShownFollowTheCursor() {
@@ -5045,6 +5314,7 @@ int main(int, char**) {
     testTheEffectsScreen();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
+    testTheFxScreensTwoPages();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

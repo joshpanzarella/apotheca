@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Steps 0, 1a and 1b are built (see "as built" in section 7); nothing else is.
+Written 2026-11-11. Steps 0, 1a, 1b and 1c are built (see "as built" in section 7); nothing else is.
 
 ## The recommendation
 
@@ -390,7 +390,7 @@ metallic is for ears.
 | 0 | **DONE 2026-11-11, but for one switch (see below).** **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
 | 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
 | 1b | **DONE 2026-11-11 (see below).** Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
-| 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
+| 1c | **DONE 2026-11-11 (see below).** The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
 | 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
 | 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | TAPE | medium | 0 | `fx/tape.cpp` |
@@ -440,6 +440,17 @@ metallic is for ears.
 | Old songs | A five-track song with effects on tracks and master, opened through the Session and played for 12 s: **the same to the last bit** in the program before this step and after it, with 0, 1 and 3 helpers (checked once by hand, both programs built side by side). In the tests: an old song is the same to the bit with the buses emptied, and saves as it was plus the two `busfx` lines |
 | Found on the way | A handheld with no saved song never told the engine its buses, so sends did nothing until a song was opened. The Session's constructor now does it |
 | Not undone | Sends and what the buses hold are not part of undo, like effects. Send automation is, like all automation |
+
+**Step 1c as built** (2026-11-11; seen in stills and tests, not on the handheld):
+
+| Thing | Result |
+| --- | --- |
+| The pages | As drawn in section 5. TRACK: three slots, then SENDS (two boxes, ECHO and SPACE). ALL: the ECHO bus, the SPACE bus, the master's two slots. Y flips; moving down off the last row or up off the first goes to the other page too |
+| A bus's row | Picks from NONE and its own kind only. MIX reads LEVEL. B on LEVEL gives 100% |
+| A send | Hold A + stick turns it, the D-pad moves it a twentieth, B puts it at 0 and clears its automation in the cell. The purple line and the moving value show as on any setting |
+| The group jump | Hold A + left / right (D-pad, or one push of the stick) on an effect: the first effect of the next group in the list, or of the one before. `effectGroupJump` reads the groups from the list. **With today's five effects every group has one effect, so a jump is the same as a step**; it starts to matter when TAPE joins DELAY. The rule is tested on made-up lists |
+| Hints | All fit, with room, in nine stills (`fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, three with `--hold-a`). The longest: `HLD A turn  B default value  Y buses  START stop` |
+| Left out | COMP's gain reduction on the THRESHOLD bar (step 7). Nothing marks which page is up except the title, the rows and the Y hint |
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

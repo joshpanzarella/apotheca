@@ -67,6 +67,14 @@ int effectChoices(EffectKind kind, int index);
 // another; without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
+// Hold A + left / right on an effect: a whole group at once. From a place in
+// the list, `by` > 0 gives the first effect of the next group and `by` < 0
+// the first of the group before; the same place back when there is none
+// that way. (NONE, at place 0, is a group of its own.)
+int effectGroupJump(int place, int by);
+// The rule itself, over any row of groups: what effectGroupJump does with the list's.
+int groupJump(const EffectGroup* groups, int count, int place, int by);
+
 // Which send bus an effect may sit on, by its group: 0 (ECHO) for a delay, 1
 // (SPACE) for a reverb, -1 for anything else. A new delay or reverb is
 // offered on its bus without being added anywhere.

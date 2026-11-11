@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (16) | `cd build && ctest -j8` (about 15 s) |
 | Timings | `./build/bench` |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -207,6 +207,14 @@ effect in those two groups and fails one that does not.
   `project.tracks[track]` or automation, never `track != kMasterTrack`: a bus
   would then index the array at -2. A bus takes only its own kind
   (`effectBus`), and nothing on a bus or the master is automated.
+- **The FX screen is two pages of four rows, and its rows are numbered
+  through both** (`FxScreen::goTo`): 0 to 2 the track's slots, 3 its SENDS
+  (`kSendsRow`: two columns, not a slot, so `data(row)` is not for it), 4 and
+  5 the buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). Y adds four. A
+  bus's row picks from its own list (`busEffectAt`), shows its MIX as LEVEL,
+  and B there gives `effectDefault(kind, i, true)`. Hold A + left / right is
+  `effectGroupJump`: it reads the groups from the list, so a new effect needs
+  nothing done for it.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
