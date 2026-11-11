@@ -50,6 +50,27 @@ bool Session::deleteSample(const std::string& name) {
     return true;
 }
 
+void Session::recordingChanged(const std::string& from, const std::string& to) {
+    if ((from.empty() && to.empty()) || (!from.empty() && !sampleNameOk(from)) || (!to.empty() && !sampleNameOk(to))) return;
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& track = project.tracks[t];
+        const bool sampler = track.kind == TrackKind::Sampler;
+        if (!sampler && track.kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < (sampler ? 1 : kDrumLanes); ++lane) { // a sampler has one recording, kept where lane 0's sound is
+            char* name = sampler ? track.sample : track.laneSample[lane];
+            const auto read = [&] { sampler ? loadTrackSample(t) : loadLane(t, lane); };
+            if (!from.empty() && from == name) {
+                if (to.empty()) {
+                    read(); // its file has gone: it is missing from now on, not from the next time the song is opened
+                    continue;
+                }
+                std::snprintf(name, kSampleNameRoom, "%s", to.c_str()); // the sound in the engine is the same one: it plays on
+            }
+            if (!to.empty() && to == name && sounds_[t][lane].missing) read(); // the file it was waiting for is here
+        }
+    }
+}
+
 void Session::install(int track, int lane, const std::vector<float>& samples) {
     std::unique_ptr<SampleData> data(new SampleData);
     data->data = samples;

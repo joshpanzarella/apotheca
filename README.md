@@ -466,12 +466,19 @@ the same network.
   go one after another, each with its own line in the list at the top.
 - **RENAME and MOVE** (recordings only) open a small form: the name, and the
   folder. On a computer a recording can also be dragged onto a folder.
-  Nothing is written over: a name that is taken is refused. A song that uses
-  the recording by its old name will not find it.
+  Nothing is written over: a name that is taken is refused. **The song that
+  is open follows**: every lane and sampler track that used the old name uses
+  the new one, the sound plays on without a gap, and the song is saved with
+  it. Other songs on the card, and the open song's older revs, are not
+  changed: they still ask for the old name and will not find it.
 - **DELETE** asks once more in the row (DELETE IT / KEEP). A recording, chord
   pack or bounce is gone for good. A song goes to `deleted` in the song
   folder with its revs, the same as one deleted on the handheld. A folder
   goes with its last recording.
+- **Deleting a recording the open song uses**: the song keeps the name. The
+  lane says NOT IN THE SAMPLES FOLDER at once and its built-in drum plays; a
+  sampler track is silent. Send a recording of that name again and it is
+  back on the next frame.
 - The top line shows the version and the room left on the card.
 - The four digits on the end are made up each time it is turned on. A
   request without them is refused, so someone on the network who has not

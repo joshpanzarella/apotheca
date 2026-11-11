@@ -103,6 +103,12 @@ public:
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
     bool deleteSample(const std::string& name);
+    // A recording's file was changed from outside (the WiFi page), and the open song follows.
+    // Renamed or moved (`from` and `to`): every lane and sampler track that used the old name
+    // uses the new one, and goes on playing the sound it has: nothing is read again. Deleted
+    // (`to` empty): they keep the name and are marked missing, as they would be the next time
+    // the song was opened. Sent (`from` empty): one that was missing by that name is read.
+    void recordingChanged(const std::string& from, const std::string& to);
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
