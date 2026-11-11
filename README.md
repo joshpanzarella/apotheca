@@ -149,12 +149,33 @@ else), or it goes by itself after four seconds.
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
+| USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | WIFI PAGE | | On / off |
 | BUTTONS | | The button test |
 | CONTROLS | | Hold a second: set the controls up again |
 
 The first two belong to the song. The rest belong to the handheld and are
 kept in `settings.txt` and `volume.txt` beside the program.
+
+### A USB keyboard
+
+Plug a MIDI keyboard into the handheld's USB-C socket (through an adapter
+if its plug is the big kind). Nothing to set up: Apotheca looks for one a
+few times a second, and SETUP's USB KEYBOARD row says when it has found one.
+
+- **It plays the track being worked on.** A synth track: the keys. A drum
+  track: C2 upward is the eight drums, lane 1 first, round again every eight
+  keys. How hard a key is hit is how loud.
+- **On the piano roll the cursor goes to the last key played**, so A places
+  a note there.
+- **PLAY + RECORD:** while the song plays, what is played is also written
+  into the cell that is playing: on the step it was played in, as long as
+  it was held (whole steps, to the end of the bar at most).
+
+The keys are read on a thread of their own and go straight to the sound, so
+a note does not wait for the screen. Not tested on a real keyboard yet: the
+tests use made-up ones. The handheld's log (`device-info.log`) lists any
+MIDI device it sees.
 
 ### SONG
 

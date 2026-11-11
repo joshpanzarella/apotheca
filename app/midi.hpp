@@ -43,7 +43,6 @@ public:
 private:
     int status_ = 0, need_ = 0, have_ = 0;
     unsigned char data_[2] = {};
-    bool sysex_ = false;
 };
 
 // Which drum a key plays: C2 is the first lane.

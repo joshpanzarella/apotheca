@@ -642,7 +642,7 @@ void Engine::fireStep() {
     // The very first step after Play. A hit or note on step 1 that is pushed
     // EARLY would have started just before the bar, and there was no
     // "before": so it starts now, at the top, and is not missed.
-    const bool veryFirst = firstStep_ && nextStep_ == 0;
+    const bool veryFirst = firstStep_; // (only ever set for step 1)
     firstStep_ = false;
 
     const int following = (nextStep_ + 1) % kSteps;

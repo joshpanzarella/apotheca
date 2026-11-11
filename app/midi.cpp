@@ -14,7 +14,6 @@ namespace apotheca {
 bool MidiParser::feed(unsigned char byte, MidiEvent& out) {
     if (byte >= 0xF8) return false; // clock and the like may arrive in the middle of anything
     if (byte & 0x80) {
-        sysex_ = byte == 0xF0;
         have_ = 0;
         if (byte >= 0xF0) {
             status_ = 0; // a system message: no notes, and it ends "running status"
@@ -26,7 +25,7 @@ bool MidiParser::feed(unsigned char byte, MidiEvent& out) {
         need_ = kind == 0xC0 || kind == 0xD0 ? 1 : 2;
         return false;
     }
-    if (sysex_ || status_ == 0) return false; // data nobody asked for
+    if (status_ == 0) return false; // data nobody asked for: before any first byte, or inside a dump
     data_[have_++] = byte;
     if (have_ < need_) return false;
     have_ = 0; // "running status": the next data bytes are another message of the same kind

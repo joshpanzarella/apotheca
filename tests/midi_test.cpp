@@ -151,7 +151,13 @@ void testOnlyNotesComeInLive() {
 void testAKeyboardPlaysTheTrack() {
     const std::string folder = tempFolder();
     // Other things live in /dev/snd too; they are left alone.
-    { int other = open((folder + "/pcmC0D0p").c_str(), O_CREAT | O_WRONLY, 0600); close(other); }
+    // (This one even holds bytes that would be a note, if it were read.)
+    {
+        const int other = open((folder + "/pcmC0D0p").c_str(), O_CREAT | O_WRONLY, 0600);
+        const unsigned char note[3] = {0x90, 99, 100};
+        CHECK(write(other, note, 3) == 3);
+        close(other);
+    }
     Engine engine;
     engine.addSynthTrack(1);
     peak(engine, 100);
@@ -284,9 +290,11 @@ void testTheCursorFollowsTheKey() {
     CHECK(rig.heard([&] { return notes.cursorPitch() == 79; }));
     CHECK(notes.cursorStep() == 5); // the key only; the step stays
     CHECK(notes.lowestKeyShown() <= 79 && notes.lowestKeyShown() + notes.visibleKeys() > 79); // and it is in view
+    notes.moveCursorTo(60, 5);
     rig.keys.off(79);
+    usleep(150000);
     rig.frames(3);
-    CHECK(notes.cursorPitch() == 79); // letting go moves nothing
+    CHECK(notes.cursorPitch() == 60); // letting go moves nothing
     // Nothing is written by playing with the song stopped, recording on or not.
     rig.app.session().setMidiRecording(true);
     rig.keys.on(50);
@@ -336,6 +344,21 @@ void testRecordingASynth() {
     rig.keys.off(67);
     CHECK(rig.heard([&] { return bar.notes[slot].length != 1.f; }));
     CHECK(bar.notes[slot].length == 3.f);
+    // The engine has the length too: a bar played from the top sounds through
+    // the note's third step, where a one-step note would have died away.
+    {
+        rig.tap(SDLK_RETURN);
+        rig.render(96000);
+        rig.tap(SDLK_RETURN);
+        std::vector<float> out(2 * 5 * kStep);
+        rig.engine->render(out.data(), 5 * kStep);
+        float third = 0.f;
+        for (int i = 2 * (4 * kStep + kStep / 2); i < 2 * 5 * kStep; ++i) third = std::fmax(third, std::fabs(out[i]));
+        CHECK(third > 0.02f);
+        rig.render(kStep / 2);
+        rig.frames(1);
+        CHECK(rig.project().playStep == 5);
+    }
     // A chord: three keys at once are three notes.
     rig.keys.on(60);
     rig.keys.on(64);
