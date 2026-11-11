@@ -85,8 +85,8 @@ and the stick shapes the thing under the cursor:
 
 **Hold MENU (the small button in the middle) and a help card comes up**: what the buttons do
 on every screen (X hears what is under the cursor, the stick and D-pad
-move, A, B, START, L2 / R2, what SELECT does with other buttons, the
-panic), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
+move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
+stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
 itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
 stick or the D-pad gives is written as the direction alone (UP / DOWN); the
@@ -154,10 +154,10 @@ are mixed).
 | REVERB | Size, damping, mix |
 | CRUSH | Bits, rate, mix |
 
-Effects are kept in the song. They can be changed while it plays. A panic
-empties their tails.
+Effects are kept in the song. They can be changed while it plays. Stopping
+all sound empties their tails.
 
-### Panic
+### Stop all sound
 
 **Hold all four shoulder buttons (L1, L2, R1, R2).** The sound is shut off
 within 5 milliseconds and stays off for as long as they are held. The song
@@ -168,7 +168,7 @@ Let go, and the sound opens again once whatever was left has died away, or
 at the next thing you play, or after three seconds at the latest. The top
 bar says SILENCED until it has.
 
-A notice comes up saying a panic happened, in case it was an accident. Once
+A notice comes up (ALL SOUND STOPPED), in case it was an accident. Once
 the buttons are let go, any button puts it away (that press does nothing
 else), or it goes by itself after four seconds.
 

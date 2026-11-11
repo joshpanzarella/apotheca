@@ -276,15 +276,14 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         }
     } else if (panicNote_) {
         using namespace ui;
-        const int w = 440, h = 132, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;
+        const int w = 440, h = 124, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 170));
         box(renderer, x, y, w, h, kPanel, kBrass);
         outline(renderer, x, y, w, h, kBrass, 2);
-        fonts.large.draw(renderer, x + 18.f, y + 16.f, "PANIC", kBrass);
-        fonts.medium.draw(renderer, x + 18.f, y + 44.f, "The sound was shut off and the song stopped.", kText);
-        fonts.small.draw(renderer, x + 18.f, y + 70.f, "All four shoulder buttons were held: L1, L2, R1 and R2.", kDim);
-        fonts.small.draw(renderer, x + 18.f, y + 88.f, "Nothing in the song was changed.", kDim);
-        fonts.small.draw(renderer, x + 18.f, y + 108.f, panicking_ ? "Let go to carry on." : "Press any button to carry on.", kText);
+        // Few words, large: it comes up when things are loud and someone is in a hurry.
+        fonts.large.draw(renderer, x + 20.f, y + 18.f, "ALL SOUND STOPPED", kBrass);
+        fonts.large.draw(renderer, x + 20.f, y + 54.f, "You held all four shoulder buttons.", kText);
+        fonts.large.draw(renderer, x + 20.f, y + 84.f, panicking_ ? "Let go to carry on." : "Press any button to carry on.", kText);
     } else if (help_) {
         // What is true on every screen, so the bar at the bottom need not say it each time.
         using namespace ui;
@@ -329,9 +328,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         title("WITH SELECT HELD");
         for (const Line& l : held) line(l);
         ly += 6.f;
-        title("IF IT IS TOO LOUD TO THINK");
+        title("STOP ALL SOUND");
         line({"L1 + L2 + R1 + R2", ""});
-        fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once: silence, now", kText);
+        fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once", kText);
         fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO TO CLOSE", kDim);
         char version[48];
         std::snprintf(version, sizeof version, "APOTHECA %s", kVersion);
