@@ -1,0 +1,318 @@
+// Session: recordings. The lanes' sounds, recording, catching, fitting to tempo, the WiFi page and updates.
+#include "session.hpp"
+#include "instruments.hpp"
+#include "ui.hpp"
+
+#include <dirent.h>
+#include <sys/stat.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+#include <cstdlib>
+#include <ctime>
+#include <memory>
+
+#include "samples.hpp"
+#include "session_parts.hpp"
+#include "song_file.hpp"
+#include "stretch.hpp"
+#include "synth_spec.hpp"
+
+namespace apotheca {
+
+namespace {
+constexpr int kPeaks = 240;      // points in a recording's outline
+constexpr int kMaxFitSteps = 64; // four bars
+}
+
+std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
+
+bool Session::deleteSample(const std::string& name) {
+    if (sampleFolder_.empty() || name.empty() || name.find('/') != std::string::npos || name.find("..") != std::string::npos) return false;
+    bool there = false;
+    for (const std::string& have : sampleNames()) there = there || have == name;
+    if (!there) return false;
+    // The file may end .wav or .WAV: whichever is there.
+    bool gone = std::remove((sampleFolder_ + "/" + name + ".wav").c_str()) == 0;
+    gone = std::remove((sampleFolder_ + "/" + name + ".WAV").c_str()) == 0 || gone;
+    if (!gone) return false;
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& track = project.tracks[t];
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            if (track.kind == TrackKind::Drums && name == track.laneSample[lane]) setLaneSample(t, lane, "");
+        if (track.kind == TrackKind::Sampler && name == track.sample) setTrackSample(t, "");
+    }
+    return true;
+}
+
+void Session::install(int track, int lane, const std::vector<float>& samples) {
+    std::unique_ptr<SampleData> data(new SampleData);
+    data->data = samples;
+    engine.setLaneSample(track, lane, std::move(data));
+}
+
+// Read the lane's file and put it in the engine as recorded. If the lane is
+// fitted, update() will follow with the stretched version.
+void Session::loadLane(int track, int lane) {
+    LaneSound& sound = sounds_[track][lane];
+    const unsigned version = sound.version + 1;
+    sound = LaneSound();
+    sound.version = version;
+    const char* name = project.tracks[track].laneSample[lane];
+    if (!name[0]) {
+        engine.setLaneSample(track, lane, nullptr);
+        return;
+    }
+    std::shared_ptr<std::vector<float>> recording(new std::vector<float>);
+    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", *recording) || recording->empty()) {
+        sound.missing = true; // the drum plays in its place, and the song keeps the name
+        engine.setLaneSample(track, lane, nullptr);
+        return;
+    }
+    sound.seconds = static_cast<float>(recording->size()) / kSampleRate;
+    sound.peaks.assign(kPeaks, 0.f);
+    for (std::size_t i = 0; i < recording->size(); ++i) {
+        float& peak = sound.peaks[i * kPeaks / recording->size()];
+        const float v = std::fabs((*recording)[i]);
+        if (v > peak) peak = v;
+    }
+    sound.recording = recording;
+    sound.waiting = project.tracks[track].laneFit[lane] > 0;
+    install(track, lane, *recording);
+}
+
+void Session::setLaneSample(int track, int lane, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    std::snprintf(project.tracks[track].laneSample[lane], sizeof project.tracks[track].laneSample[lane], "%s", name.c_str());
+    loadLane(track, lane);
+}
+
+// ---- files over WiFi --------------------------------------------------------------------
+
+bool Session::toggleTransfer(unsigned seed) {
+    if (transfer_.running()) {
+        transfer_.stop();
+        discardUpdate(); // an update nobody answered goes when WiFi is turned off
+        return false;
+    }
+    if (folder_.empty() || sampleFolder_.empty()) return false; // nowhere for files to go
+    const std::string chords = chordFolder_.empty() ? folder_ + "/../chords" : chordFolder_;
+    // 8080 if it is free (easy to type), else whatever is.
+    transfer_.setDesk(&designer_);
+    transfer_.setBounceFolder(bounceFolder_);
+    const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
+    if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
+    return on;
+}
+
+// ---- updating Apotheca over WiFi ---------------------------------------------------------
+
+void Session::useProgramFolder(const std::string& folder) {
+    programFolder_ = folder;
+    transfer_.setProgramFolder(folder);
+    // One that was sent but never answered, last time: it does not linger.
+    std::remove((folder + "/apotheca.pending").c_str());
+}
+
+bool Session::acceptUpdate() {
+    if (!updateWaiting_) return false;
+    updateWaiting_ = false;
+    return std::rename((programFolder_ + "/apotheca.pending").c_str(), (programFolder_ + "/apotheca.new").c_str()) == 0;
+}
+
+void Session::discardUpdate() {
+    if (!updateWaiting_) return;
+    updateWaiting_ = false;
+    std::remove((programFolder_ + "/apotheca.pending").c_str());
+}
+
+void Session::startedFine() {
+    if (!programFolder_.empty()) std::remove((programFolder_ + "/update-trying").c_str());
+}
+
+// ---- recording ------------------------------------------------------------------------
+
+Session::Rec Session::toggleRecording(int track, int lane) {
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
+        finishRecording();
+        return rec_;
+    }
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return rec_;
+    const TrackKind kind = project.tracks[track].kind;
+    if (kind != TrackKind::Drums && kind != TrackKind::Sampler) return rec_;
+    if (sampleFolder_.empty() || !input_ || !input_->start()) return rec_ = Rec::NoInput;
+    recTrack_ = track;
+    recLane_ = lane;
+    recorder_.arm(kSampleRate);
+    return rec_ = Rec::Waiting;
+}
+
+void Session::finishRecording() {
+    if (input_) input_->stop();
+    rec_ = Rec::Idle;
+    lastRecorded_.clear();
+    const std::vector<float> take = recorder_.finish();
+    if (take.empty()) return; // no sound came
+    mkdir(sampleFolder_.c_str(), 0755);
+    std::string name;
+    for (int number = 1; number < 10000; ++number) {
+        name = "rec " + std::to_string(number);
+        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+    }
+    if (!writeWav(sampleFolder_ + "/" + name + ".wav", take, static_cast<int>(kSampleRate))) return;
+    lastRecorded_ = name;
+    if (project.tracks[recTrack_].kind == TrackKind::Sampler) setTrackSample(recTrack_, name);
+    else if (project.tracks[recTrack_].kind == TrackKind::Drums) setLaneSample(recTrack_, recLane_, name);
+}
+
+// A sampler track's recording, read from its file and handed to the engine.
+void Session::loadTrackSample(int track) {
+    LaneSound& sound = sounds_[track][0];
+    const unsigned version = sound.version + 1;
+    sound = LaneSound();
+    sound.version = version;
+    const char* name = project.tracks[track].sample;
+    if (!name[0]) {
+        engine.setTrackSample(track, nullptr);
+        return;
+    }
+    std::unique_ptr<SampleData> data(new SampleData);
+    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", data->data) || data->data.empty()) {
+        sound.missing = true;
+        engine.setTrackSample(track, nullptr);
+        return;
+    }
+    sound.seconds = static_cast<float>(data->data.size()) / kSampleRate;
+    sound.peaks.assign(kPeaks, 0.f);
+    for (std::size_t i = 0; i < data->data.size(); ++i) {
+        float& peak = sound.peaks[i * kPeaks / data->data.size()];
+        const float v = std::fabs(data->data[i]);
+        if (v > peak) peak = v;
+    }
+    engine.setTrackSample(track, std::move(data));
+}
+
+void Session::setTrackSample(int track, const std::string& name) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind != TrackKind::Sampler) return;
+    std::snprintf(project.tracks[track].sample, sizeof project.tracks[track].sample, "%s", name.c_str());
+    loadTrackSample(track);
+}
+
+void Session::setSamplerSetting(int track, int id, int value) {
+    if (track < 0 || track >= kNumTracks || id < 0 || id >= sampler::kSettings || project.tracks[track].kind != TrackKind::Sampler) return;
+    value = value < sampler::settingMin(id) ? sampler::settingMin(id) : (value > sampler::settingMax(id) ? sampler::settingMax(id) : value);
+    if (value == project.tracks[track].sampler[id]) return;
+    project.tracks[track].sampler[id] = value;
+    Command c;
+    c.type = Command::SetSetting;
+    c.track = track;
+    c.a = id;
+    c.b = value;
+    engine.send(c);
+}
+
+std::string Session::catchLastBar(int track, int lane) {
+    if (sampleFolder_.empty() || track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return "";
+    const bool sampler = project.tracks[track].kind == TrackKind::Sampler; // its one recording; the lane does not matter
+    if (!sampler && project.tracks[track].kind != TrackKind::Drums) return "";
+    const std::vector<float> bar = engine.lastBar();
+    float peak = 0.f;
+    for (float v : bar) peak = std::fabs(v) > peak ? std::fabs(v) : peak;
+    if (peak < 1e-4f) return ""; // nothing was playing
+    mkdir(sampleFolder_.c_str(), 0755); // fine if it is already there
+    std::string name;
+    for (int number = 1; number < 10000; ++number) {
+        name = "catch " + std::to_string(number);
+        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+    }
+    if (!writeWav(sampleFolder_ + "/" + name + ".wav", bar, static_cast<int>(kSampleRate))) return "";
+    if (sampler) {
+        setTrackSample(track, name);
+    } else {
+        setLaneSample(track, lane, name);
+        setLaneFit(track, lane, kSteps); // it is a bar long now, and stays one when the tempo moves
+    }
+    return name;
+}
+
+void Session::setLaneFit(int track, int lane, int steps) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return;
+    steps = steps < 0 ? 0 : (steps > kMaxFitSteps ? kMaxFitSteps : steps);
+    if (project.tracks[track].laneFit[lane] == steps) return;
+    project.tracks[track].laneFit[lane] = steps;
+    LaneSound& sound = sounds_[track][lane];
+    if (!sound.recording) return;
+    ++sound.version; // a stretch on its way is for the old length
+    sound.waiting = steps > 0;
+    if (steps == 0) {
+        sound.fittedTempo = 0.f;
+        sound.fittedSteps = 0;
+        install(track, lane, *sound.recording); // back to as recorded
+    }
+}
+
+bool Session::wantsFitting(int track, int lane) const {
+    const LaneSound& sound = sounds_[track][lane];
+    const int steps = project.tracks[track].laneFit[lane];
+    return sound.recording && steps > 0 && (sound.fittedTempo != steadyTempo_ || sound.fittedSteps != steps);
+}
+
+void Session::startJob(int track, int lane) {
+    LaneSound& sound = sounds_[track][lane];
+    sound.waiting = true;
+    job_.reset(new Job);
+    Job* job = job_.get();
+    job->track = track;
+    job->lane = lane;
+    job->version = sound.version;
+    job->tempo = steadyTempo_;
+    job->in = sound.recording;
+    // A step is a sixteenth note: a quarter of a beat.
+    job->frames = static_cast<int>(std::lround(project.tracks[track].laneFit[lane] * 15.0 / steadyTempo_ * kSampleRate));
+    job->thread = std::thread([job] {
+        // As good as the right length already (a bar caught at this tempo): leave it be.
+        const int have = static_cast<int>(job->in->size());
+        job->out = std::abs(have - job->frames) <= 8 ? *job->in : fitTo(*job->in, job->frames, kSampleRate);
+        job->done.store(true);
+    });
+}
+
+void Session::collectJob(bool wait) {
+    if (!job_ || (!wait && !job_->done.load())) return;
+    job_->thread.join();
+    LaneSound& sound = sounds_[job_->track][job_->lane];
+    if (sound.version == job_->version && sound.recording == job_->in) { // else the lane has moved on
+        sound.fittedTempo = job_->tempo;
+        sound.fittedSteps = project.tracks[job_->track].laneFit[job_->lane];
+        sound.waiting = false;
+        install(job_->track, job_->lane, job_->out);
+    }
+    job_.reset();
+}
+
+bool Session::stretching() const {
+    if (job_) return true;
+    for (const auto& track : sounds_)
+        for (const LaneSound& sound : track)
+            if (sound.waiting) return true;
+    return false;
+}
+
+void Session::finishStretching() {
+    steadyTempo_ = seenTempo_ = project.tempo; // no waiting for it to settle
+    for (;;) {
+        collectJob(true);
+        bool started = false;
+        for (int track = 0; track < kNumTracks && !started; ++track)
+            for (int lane = 0; lane < kDrumLanes && !started; ++lane)
+                if (wantsFitting(track, lane)) { startJob(track, lane); started = true; }
+        if (!started) return;
+    }
+}
+
+} // namespace apotheca
