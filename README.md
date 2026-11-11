@@ -247,7 +247,7 @@ carry on (even play) while it works, and it does not have to keep up:
 than the handheld can play live.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
-The WiFi page lists them under BOUNCES; click one to download it.
+The WiFi page lists them under BOUNCES, to play, download or delete.
 
 ### Automation
 
@@ -419,18 +419,48 @@ number: `gStickSpeed` in `app/ui.hpp` (0.75: a quarter slower than first built).
 `192.168.1.23:8080/4821`. Open it in a browser on any computer or phone on
 the same network.
 
-- **Drop files on the page** to send them: recordings (`.wav`), chord packs
-  (`.json`), songs (`.song`). A recording is on the kit screen at once; a
-  chord pack is in the chord button's list on the next frame.
-- **Click a file on the page** to fetch it back: a catch, a recording, a song.
+- **Send files**: CHOOSE FILES, or drop them on the page: recordings
+  (`.wav`), chord packs (`.json`), songs (`.song`). Many at once is fine;
+  they go one after another, each with a bar and a result: `saved`, or
+  `refused` and why. A recording is on the kit screen at once; a chord pack
+  is in the chord button's list on the next frame.
+- **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
+  folder to open or shut it. FIND narrows the list by name.
+- **To send into a folder**: drop the files on it, or press its ADD FILES
+  (the way on a phone), or pick it under RECORDINGS GO IN. NEW FOLDER there
+  takes a name; the folder is made when the first file lands in it.
+- **PLAY** plays a recording or a bounce in the browser.
+- **DOWNLOAD** fetches a file back: a catch, a recording, a song, a bounce.
+- **RENAME and MOVE** (recordings only) open a small form: the name, and the
+  folder. On a computer a recording can also be dragged onto a folder.
+  Nothing is written over: a name that is taken is refused. A song that uses
+  the recording by its old name will not find it.
+- **DELETE** asks once more in the row (DELETE IT / KEEP). A recording, chord
+  pack or bounce is gone for good. A song goes to `deleted` in the song
+  folder with its revs, the same as one deleted on the handheld. A folder
+  goes with its last recording.
+- The top line shows the version and the room left on the card.
 - The four digits on the end are made up each time it is turned on. A
   request without them is refused, so someone on the network who has not
   seen the handheld's screen cannot get in. It is not encryption: use it on
   a network you trust.
 - Every file is checked before it is kept: a plain name of the right kind
-  (no folders, no `..`), 30 MB at most, and really a WAV, a chord pack or a
-  song. Anything else is refused and nothing is written.
+  (no `..`, nothing hidden; a recording may be one folder down, nothing
+  else may), 30 MB at most, and really a WAV, a chord pack or a song.
+  Anything else is refused and nothing is written. Deleting, renaming and
+  moving hold names to the same rules, and only touch a file that is there.
 - It is off until turned on, and off again when Apotheca closes.
+- The page is all in the handheld: it needs no internet.
+
+For a script, the same things by hand (`ADDRESS` is what the screen shows):
+
+| Job | Request |
+| --- | --- |
+| What is there | `GET ADDRESS/list` |
+| Fetch | `GET ADDRESS/samples/kicks/808.wav` (also `songs`, `chords`, `bounces`) |
+| Send | `PUT` to the same kind of address, the file as the body (not `bounces`) |
+| Delete | `DELETE` the same address |
+| Rename or move a recording | `POST` its address with a header `X-To: breaks/808.wav` (spaces as `%20`) |
 
 **Updating Apotheca the same way.** The page has an UPDATE APOTHECA button:
 choose the new `apotheca` program file (inside the `apotheca` folder of the
