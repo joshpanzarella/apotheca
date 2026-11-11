@@ -133,7 +133,12 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.setEffect(trackOf(row_), slotOf(row_), EffectKind::None);
         } else {
             const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
+            // Its default value, and whatever automation it had in this cell goes.
+            const bool writing = session_.writing();
+            session_.setWriting(false);
+            if (trackOf(row_) != kMasterTrack) session_.clearAutomation(trackOf(row_), project_.scene, autoLaneOfEffect(slotOf(row_), column_ - 1));
             session_.setEffectParam(trackOf(row_), slotOf(row_), column_ - 1, effectInfo(kind).defaults[column_ - 1]);
+            session_.setWriting(writing);
         }
     } else if (b == Button::X) {
         hear();
@@ -198,10 +203,16 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const bool here = row == row_;
         valueBox(r, fonts, 8, y + 18, colW, boxH, "EFFECT", info.name, -1.f, here && column_ == 0, holding_);
         for (int p = 0; p < info.params; ++p) {
-            effectParamText(kind, p, d.param[p], text, sizeof text, d.param);
+            const bool onTrack = trackOf(row) != kMasterTrack;
+            const int lane = autoLaneOfEffect(slotOf(row), p);
+            // While the song plays an automated setting shows where the pattern has it.
+            float shown[kEffectParams];
+            for (int i = 0; i < kEffectParams; ++i) shown[i] = onTrack ? session_.automated(trackOf(row), autoLaneOfEffect(slotOf(row), i), d.param[i]) : d.param[i];
+            effectParamText(kind, p, shown[p], text, sizeof text, shown);
             // A choice has no bar: it is not somewhere along a range.
-            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, choices(kind, p) > 0 ? -1.f : d.param[p],
+            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, choices(kind, p) > 0 ? -1.f : shown[p],
                      here && column_ == p + 1, holding_);
+            if (onTrack && session_.hasAutomation(trackOf(row), project_.scene, lane)) fill(r, 8 + (p + 1) * (colW + colGap) + 1, y + 18 + boxH - 3, colW - 2, 2, kPurple);
         }
         if (kind == EffectKind::None) fonts.small.draw(r, 8.f + colW + 14.f, y + 18.f + 24.f, "Nothing here. Hold A and push up to put an effect in.", kDim);
     }

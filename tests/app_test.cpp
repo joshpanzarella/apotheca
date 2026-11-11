@@ -1238,6 +1238,157 @@ void testHoldBAndDragErases() {
     rig.project().playing = false;
 }
 
+// Automation: with WRITE on and the song playing, a knob moved is written into the pattern.
+void testRecordingAutomation() {
+    Rig rig;
+    addPhazed(rig);
+    rig.project().track = 1;
+    Session& session = rig.app.session();
+    TrackData& track = rig.project().tracks[1];
+    session.view = View::Device;
+    rig.frames(1);
+    const auto written = [&](int lane, int scene = 0) { int n = 0; for (float v : track.automation[scene][lane]) n += v >= 0.f ? 1 : 0; return n; };
+    // SELECT + X turns WRITE on and off, and says so.
+    CHECK(!session.writing());
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(session.writing() && rig.project().writing && std::string(rig.app.undoSaid()) == "WRITE ON: MOVES ARE RECORDED" && rig.view() == View::Device);
+    // Stopped, a move is only a move: nothing is written, however WRITE stands.
+    session.setSynthMacro(1, 0, 0.8f);
+    CHECK(near(track.macro[0], 0.8f) && written(0) == 0 && !session.hasAutomation(1, 0, 0));
+    session.setSynthMacro(1, 0, 0.5f);
+    // Playing: the value lands on the step that is playing, in the cell that is playing.
+    rig.tap(START);
+    rig.render(3 * kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(rig.project().playStep == 3);
+    session.setSynthMacro(1, 0, 0.9f);
+    CHECK(written(0) == 1 && near(track.automation[0][0][3], 0.9f) && session.hasAutomation(1, 0, 0) && !session.hasAutomation(1, 0, 1));
+    rig.render(kStep);
+    rig.frames(1);
+    session.setSynthMacro(1, 0, 0.7f);
+    session.setSynthMacro(1, 0, 0.6f); // twice in one step: the last word stands
+    CHECK(written(0) == 2 && near(track.automation[0][0][4], 0.6f));
+    // The screen's own way of turning a macro records too (hold A, D-pad up, on a macro).
+    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro + 2);
+    rig.render(kStep);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(written(2) == 1 && track.automation[0][2][5] > 0.5f);
+    // While it plays, an automated macro reads as the pattern has it on this step; one that is not reads as its knob.
+    CHECK(near(session.automated(1, 2, 0.123f), track.automation[0][2][5]) && near(session.automated(1, 4, 0.123f), 0.123f));
+    // WRITE off: moves are only moves again, even while playing.
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    CHECK(!session.writing() && std::string(rig.app.undoSaid()) == "WRITE OFF");
+    rig.render(kStep);
+    rig.frames(1);
+    session.setSynthMacro(1, 0, 0.2f);
+    CHECK(written(0) == 2 && near(track.macro[0], 0.2f));
+    // An effect's setting on the track is recorded the same way; the master's effects are not automated.
+    session.setWriting(true);
+    session.setEffect(1, 0, EffectKind::Filter);
+    session.setEffect(kMasterTrack, 0, EffectKind::Filter);
+    rig.render(kStep);
+    rig.frames(1);
+    const int step = rig.project().playStep;
+    session.setEffectParam(1, 0, 0, 0.33f);
+    session.setEffectParam(kMasterTrack, 0, 0, 0.33f);
+    const int cutoff = autoLaneOfEffect(0, 0);
+    CHECK(written(cutoff) == 1 && near(track.automation[0][cutoff][step], 0.33f));
+    for (int t = 0; t < kNumTracks; ++t)
+        if (t != 1)
+            for (int lane = 0; lane < kAutoLanes; ++lane)
+                for (float v : rig.project().tracks[t].automation[0][lane]) CHECK(v < 0.f);
+    rig.tap(START);
+    rig.render(96000);
+    rig.frames(1);
+    CHECK(near(session.automated(1, 0, 0.5f), 0.5f)); // stopped: every reading is the knob's
+
+    // B on a macro: back to the middle, and its automation in this cell goes (and that reset is not itself recorded).
+    rig.app.phazed().goTo(0, PhazedScreen::kFirstMacro);
+    rig.tap(B);
+    CHECK(written(0) == 0 && near(track.macro[0], 0.5f) && written(2) == 1 && session.writing());
+    // B on an effect's setting: its default, and its automation goes.
+    session.view = View::Effects;
+    rig.app.fx().goTo(0, 1);
+    rig.frames(1);
+    rig.tap(B);
+    CHECK(written(cutoff) == 0 && near(session.effectData(1, 0).param[0], effectInfo(EffectKind::Filter).defaults[0]));
+    // Another effect put in the slot: what was written for the old one's settings is dropped, in every scene.
+    session.setAutomation(1, 0, autoLaneOfEffect(0, 1), 2, 0.5f);
+    session.setAutomation(1, 5, autoLaneOfEffect(0, 2), 9, 0.5f);
+    session.setAutomation(1, 5, autoLaneOfEffect(1, 2), 9, 0.5f); // the other slot's: kept
+    session.setEffect(1, 0, EffectKind::Delay);
+    CHECK(written(autoLaneOfEffect(0, 1)) == 0 && written(autoLaneOfEffect(0, 2), 5) == 0 && written(autoLaneOfEffect(1, 2), 5) == 1);
+
+    // Out of range is nothing; values are held to 0..1; below zero unwrites.
+    session.setAutomation(1, 0, kAutoLanes, 0, 0.5f);
+    session.setAutomation(1, 0, 3, kAutoSteps, 0.5f);
+    session.setAutomation(99, 0, 3, 0, 0.5f);
+    session.setAutomation(1, kMaxScenes, 3, 0, 0.5f);
+    session.setAutomation(1, 0, 3, 0, std::nanf(""));
+    CHECK(written(3) == 0);
+    session.setAutomation(1, 0, 3, 0, 7.f);
+    CHECK(track.automation[0][3][0] == 1.f);
+    session.setAutomation(1, 0, 3, 0, -3.f);
+    CHECK(written(3) == 0);
+
+    // The song keeps it, and a song without any is none.
+    session.setAutomation(1, 2, 7, 40, 0.25f);
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(songText(rig.project()), *again));
+    CHECK(near(again->tracks[1].automation[0][2][5], track.automation[0][2][5]) && near(again->tracks[1].automation[2][7][40], 0.25f));
+    int kept = 0, here = 0;
+    for (const auto& scene : again->tracks[1].automation) for (const auto& lane : scene) for (float v : lane) kept += v >= 0.f ? 1 : 0;
+    for (const auto& scene : track.automation) for (const auto& lane : scene) for (float v : lane) here += v >= 0.f ? 1 : 0;
+    CHECK(kept == here && kept >= 3);
+    for (const auto& scene : again->tracks[0].automation) for (const auto& lane : scene) for (float v : lane) CHECK(v < 0.f);
+    std::unique_ptr<Project> odd(new Project);
+    CHECK(parseSong("apotheca-song 1\ntrack phazed\nauto 1 2 3 0.5 999 0.5 4 nonsense\nauto 99 2 3 0.5\nauto 1 99 3 0.5\nauto\n", *odd));
+    CHECK(near(odd->tracks[0].automation[0][2][3], 0.5f));
+    int oddOnes = 0;
+    for (const auto& scene : odd->tracks[0].automation) for (const auto& lane : scene) for (float v : lane) oddOnes += v >= 0.f ? 1 : 0;
+    CHECK(oddOnes == 1);
+
+    // Undo covers it: a recorded pass is a step, and comes back.
+    rig.frames(60);
+    const int steps = session.undoSteps();
+    session.clearAutomation(1, 0, 2);
+    rig.frames(60);
+    CHECK(written(2) == 0 && session.undoSteps() == steps + 1);
+    CHECK(session.undo() && written(2) == 1);
+
+    // And the engine plays it: OCTAVE (macro 7) written up for steps 9 to 12 is heard there and not before.
+    // (Phazed's octave macro jumps at three quarters; a long plain note makes it countable.)
+    Rig heard;
+    heard.app.session().addTrack(TrackKind::Qmod);
+    heard.project().track = 1;
+    Session& hs = heard.app.session();
+    hs.setSynthSetting(1, qmod::Tension, 0);
+    hs.setSynthSetting(1, qmod::Sustain, 100);
+    NotePattern& bar = heard.project().tracks[1].notes[0][0];
+    bar.notes[0].step = 0;
+    bar.notes[0].pitch = 45;
+    bar.notes[0].length = 16.f;
+    bar.notes[0].velocity = 0.8f;
+    hs.sendNotePattern(1, 0);
+    for (int i = 8; i < 12; ++i) hs.setAutomation(1, 0, qmod::MacroOctave, i, 1.f);
+    hs.view = View::Pattern;
+    heard.tap(START);
+    const auto count = [&] { const std::vector<float> got = heard.render(kStep); int n = 0; for (int i = 1; i < kStep; ++i) n += got[2 * (i - 1)] < 0.f && got[2 * i] >= 0.f ? 1 : 0; return n; };
+    std::vector<int> waves;
+    for (int i = 0; i < 16; ++i) waves.push_back(count());
+    CHECK(waves[4] >= 12 && std::abs(waves[10] - 2 * waves[4]) <= 2 && std::abs(waves[14] - waves[4]) <= 1);
+    // A song opened carries it to the engine too.
+    hs.saveNow();
+}
+
 // A setting that is a choice clicks from one to the next: one per push of the stick, as with the D-pad.
 void testChoicesClick() {
     Rig rig;
@@ -3123,6 +3274,7 @@ int main(int, char**) {
     testAllFourShoulderButtonsIsPanic();
     testMuteSoloAndNames();
     testHoldBAndDragErases();
+    testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();
     testUndoAndRedo();

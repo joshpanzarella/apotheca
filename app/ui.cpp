@@ -166,6 +166,13 @@ TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* contex
     // to the next scene can be seen coming. Then the bar of the scene, if
     // it has more than one.
     float room = bar.tempoNumberRight - 34.f; // where the screen's own words must stop
+    if (project.writing) {
+        // Automation WRITE is on: a red chip, so it cannot be left on by mistake.
+        const float w = fonts.small.width("WRITE") + 8.f;
+        fill(r, static_cast<int>(room - w), 5, static_cast<int>(w), kTopBarH - 10, kStop);
+        fonts.small.draw(r, room - w + 4.f, textY, "WRITE", kBg);
+        room -= w + 8.f;
+    }
     if (project.silenced) {
         fonts.small.drawRight(r, room - 6.f, textY, "SILENCED", kBrass);
         room -= fonts.small.width("SILENCED") + 16.f;

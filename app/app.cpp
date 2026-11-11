@@ -78,6 +78,18 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // SELECT held with L1 or R1: quieter or louder, from any screen. (The
     // handheld's own volume buttons belong to its firmware and may not
     // reach a running program.)
+    // SELECT held with X: automation WRITE, on and off.
+    if (b == Button::X && input.held(Button::Select) && !panicking_) {
+        if (event.down) {
+            session_.setWriting(!session_.writing());
+            std::snprintf(undoSaid_, sizeof undoSaid_, "%s", session_.writing() ? "WRITE ON: MOVES ARE RECORDED" : "WRITE OFF");
+            undoSaidUntil_ = now_ + 1500;
+            selectAlone_ = false;
+            song_.selectWasUsed();
+        }
+        return;
+    }
+
     // SELECT held with B: undo. With A: redo. From any screen, playing or not.
     if ((b == Button::B || b == Button::A) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
@@ -312,7 +324,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
     } else if (help_) {
         // What is true on every screen, so the bar at the bottom need not say it each time.
         using namespace ui;
-        const int w = 560, h = 416, x = (kScreenW - w) / 2, y = kTopBarH + 6;
+        const int w = 560, h = 440, x = (kScreenW - w) / 2, y = kTopBarH + 4;
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 215));
         box(renderer, x, y, w, h, kPanel, kTeal);
         outline(renderer, x, y, w, h, kTeal, 2);
@@ -329,6 +341,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         const Line held[] = {
             {"B", "UNDO the last change to the patterns (20 deep)"},
             {"A", "put it back again"},
+            {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},
             {"UP  DOWN", "tempo, a beat a minute"},
             {"LEFT  RIGHT", "tempo, ten at a time"},

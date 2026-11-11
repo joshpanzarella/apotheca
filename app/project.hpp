@@ -176,6 +176,8 @@ struct TrackData {
     TwinPatch twin;              // when it is Twin Analog
     QmodPatch qmod;              // when it is QMOD
     float macro[phazed::kMacros];
+    // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
+    float automation[kMaxScenes][kAutoLanes][kAutoSteps];
     char name[11] = {};  // what the player calls the track ("BASS"); empty: its instrument's name
     bool muted = false;  // silent until unmuted; kept with the song
     bool solo = false;   // only soloed tracks are heard while any is; not kept with the song
@@ -187,6 +189,9 @@ struct TrackData {
         for (float& m : macro) m = 0.5f;
         for (int& b : bars) b = 1;
         for (int i = 0; i < sampler::kSettings; ++i) sampler[i] = sampler::settingDefault(i);
+        for (auto& scene : automation)
+            for (auto& lane : scene)
+                for (float& v : lane) v = kAutoNone;
     }
     bool sceneEmpty(int scene) const {
         for (int bar = 0; bar < bars[scene]; ++bar) {
@@ -211,6 +216,7 @@ struct Project {
     // Not part of the song.
     int playScene = -1, playStep = -1, playRepeat = 0, playBar = 0;
     bool playLoop = false; // one scene going round, not the song
+    bool writing = false;  // automation WRITE is on: a macro or effect setting moved while playing is recorded
     bool busy = false;     // the handheld cannot keep up: synths are doing plainer work (Engine::qualityLimit)
     bool silenced = false; // a panic has shut the output and it has not opened again yet
 

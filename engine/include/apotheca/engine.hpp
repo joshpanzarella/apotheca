@@ -74,6 +74,8 @@ struct Command {
         SetTempo,       // value = beats per minute
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
         SetTrackLevel,  // track, value = linear gain
+        SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
+        ClearAutomation,// a whole lane of a cell: track, scene, a = lane (-1: every lane)
         SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
         SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
@@ -116,6 +118,17 @@ struct Command {
 
 // Everything a track plays, in one piece: for loading a whole song in a
 // handful of commands instead of thousands.
+// Automation: a setting that moves by itself as the pattern plays. Each
+// track has sixteen "lanes" of it: its synth's eight macros, and the four
+// settings of each of its two effects. A lane holds one value for every step
+// of every bar of a cell, or "nothing here" (below zero), and where there is
+// a value the setting glides to it over the first half of that step. Where
+// there is none the setting is wherever its knob was left.
+constexpr int kAutoLanes = 16;                     // 0..7 macros; 8 + slot * 4 + setting: effects
+constexpr int kAutoSteps = kMaxBars * kSteps;      // a cell at its longest
+constexpr float kAutoNone = -1.f;
+inline int autoLaneOfEffect(int slot, int param) { return 8 + slot * 4 + param; }
+
 struct TrackImage {
     // Indexed by pattern slot: scene * kMaxBars + bar. Slot 0 is scene 1, bar 1.
     float level[kPatternSlots][kDrumLanes][kSteps] = {};
@@ -125,6 +138,8 @@ struct TrackImage {
     int bars[kMaxScenes]; // how long the track's cell is in each scene
     struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; }; // length in steps, not only whole ones
     Note notes[kPatternSlots][kMaxNotes];
+    // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
+    std::unique_ptr<float[]> automation;
     float laneLevel[kDrumLanes];
     TrackImage() {
         for (auto& scene : chance)
@@ -246,6 +261,13 @@ private:
         std::unique_ptr<DrumScene[]> drumScenes{new DrumScene[kPatternSlots]};
         std::unique_ptr<Note[][kMaxNotes]> notes{new Note[kPatternSlots][kMaxNotes]};
         std::uint8_t bars[kMaxScenes]; // the cell's length in each scene
+        // Automation (see kAutoLanes). `automation` is [scene][lane][step of the cell].
+        std::unique_ptr<float[]> automation{new float[kMaxScenes * kAutoLanes * kAutoSteps]};
+        float autoBase[kAutoLanes]; // where each knob was left; below zero: not known (an effect not yet told)
+        float autoNow[kAutoLanes];  // what the synth or effect has been given
+        float autoFrom[kAutoLanes], autoTo[kAutoLanes];
+        bool autoGliding[kAutoLanes] = {};
+        float* autoAt(int scene, int lane) { return automation.get() + (scene * kAutoLanes + lane) * kAutoSteps; }
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
@@ -278,6 +300,10 @@ private:
     void apply(const Command& command);
     Position afterThisBar() const;
     void fireStep();
+    void applyAuto(Track& track, int lane, float value);
+    void glideAutomation(int frames);
+    void settleAutomation();
+    double autoPhase_ = 0.0; // how far through the present step, 0..1
     void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
     void firePending();
     void clearPending();

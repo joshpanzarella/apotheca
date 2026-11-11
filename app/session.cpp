@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
@@ -388,6 +389,63 @@ void Session::setVolume(float volume) {
     if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
 }
 
+// ---- automation ---------------------------------------------------------------------------
+
+void Session::setAutomation(int track, int scene, int lane, int index, float value) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || lane < 0 || lane >= kAutoLanes || index < 0 || index >= kAutoSteps || value != value) return;
+    value = value < 0.f ? kAutoNone : (value > 1.f ? 1.f : value);
+    float& now = project.tracks[track].automation[scene][lane][index];
+    if (now == value) return;
+    now = value;
+    noteEdit(); // a step of undo
+    Command c;
+    c.type = Command::SetAutomation;
+    c.track = track;
+    c.scene = scene;
+    c.a = lane;
+    c.b = index;
+    c.value = value;
+    engine.send(c);
+}
+
+void Session::clearAutomation(int track, int scene, int lane) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || lane >= kAutoLanes) return;
+    bool any = false;
+    for (int l = 0; l < kAutoLanes; ++l)
+        if (lane < 0 || lane == l)
+            for (float& v : project.tracks[track].automation[scene][l]) any = any || v >= 0.f, v = kAutoNone;
+    if (!any) return;
+    noteEdit();
+    Command c;
+    c.type = Command::ClearAutomation;
+    c.track = track;
+    c.scene = scene;
+    c.a = lane < 0 ? -1 : lane;
+    engine.send(c);
+}
+
+bool Session::hasAutomation(int track, int scene, int lane) const {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || lane < 0 || lane >= kAutoLanes) return false;
+    for (float v : project.tracks[track].automation[scene][lane])
+        if (v >= 0.f) return true;
+    return false;
+}
+
+float Session::automated(int track, int lane, float resting) const {
+    const int scene = engine.playScene(), step = engine.playStep();
+    if (!project.playing || scene < 0 || step < 0 || track < 0 || track >= kNumTracks || lane < 0 || lane >= kAutoLanes) return resting;
+    const TrackData& t = project.tracks[track];
+    const float written = t.automation[scene][lane][(engine.playBar() % t.bars[scene]) * kSteps + step];
+    return written >= 0.f ? written : resting;
+}
+
+// A knob was moved. With WRITE on and the song playing, that is written into the pattern where the song is.
+void Session::recordAutomation(int track, int lane, float value) {
+    const int scene = engine.playScene(), step = engine.playStep();
+    if (!project.writing || !project.playing || scene < 0 || step < 0) return;
+    setAutomation(track, scene, lane, (engine.playBar() % project.tracks[track].bars[scene]) * kSteps + step, value);
+}
+
 // ---- undo -----------------------------------------------------------------------------------
 
 // The patterns, as the song file writes them. (The whole song's text: only
@@ -451,6 +509,7 @@ void Session::restorePatterns(const std::string& text) {
                 now.notes[scene][bar] = then.notes[scene][bar];
             }
         }
+        std::memcpy(now.automation, then.automation, sizeof now.automation);
         sendTrackImage(t);
     }
     Command c;
@@ -563,6 +622,7 @@ void Session::setSynthMacro(int track, int macro, float value) {
     TrackData& t = project.tracks[track];
     if (!specFor(t.kind)) return;
     value = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
+    recordAutomation(track, macro, value); // with WRITE on and the song playing: into the pattern too
     if (t.macro[macro] == value) return;
     t.macro[macro] = value;
     Command c;
@@ -1056,6 +1116,10 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
     if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
     if (static_cast<int>(kind) < 0 || static_cast<int>(kind) >= kEffectKinds) kind = EffectKind::None;
     if (!engine.setEffect(track, slot, kind)) return;
+    // Another effect in the slot: automation written for the old one's settings means nothing now.
+    if (track != kMasterTrack)
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            for (int p = 0; p < 4; ++p) clearAutomation(track, scene, autoLaneOfEffect(slot, p));
     EffectData& data = effectData(track, slot);
     data.kind = static_cast<int>(kind);
     for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectInfo(kind).defaults[i];
@@ -1066,6 +1130,7 @@ void Session::setEffectParam(int track, int slot, int index, float value) {
     EffectData& data = effectData(track, slot);
     if (index < 0 || index >= effectInfo(static_cast<EffectKind>(data.kind)).params) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
+    if (track != kMasterTrack) recordAutomation(track, autoLaneOfEffect(slot, index), value);
     if (value == data.param[index]) return;
     data.param[index] = value;
     Command c;
@@ -1379,6 +1444,14 @@ void Session::sendTrackImage(int t) {
                 image->notes[slot][i].velocity = n.velocity;
             }
         }
+    }
+    bool automated = false;
+    for (const auto& scene : track.automation)
+        for (const auto& lane : scene)
+            for (float v : lane) automated = automated || v >= 0.f;
+    if (automated) {
+        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
+        std::memcpy(image->automation.get(), track.automation, sizeof track.automation);
     }
     for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];
     engine.setTrackImage(t, std::move(image));

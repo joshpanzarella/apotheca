@@ -257,6 +257,183 @@ static void testLaneLevel() {
 }
 
 // When the machine cannot keep up, synths are told to do plainer work.
+// Automation: a macro or an effect's setting moved by the pattern.
+static void testAutomation() {
+    // A QMOD track holding one plain note right through the bar; its OCTAVE macro (lane 7) is what gets automated,
+    // because an octave up is easy to hear and to count: twice as many waves.
+    const auto rig = [] {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
+        engine->send(make(Command::SetSetting, 1, qmod::Tension, 0));
+        engine->send(make(Command::SetSetting, 1, qmod::Sustain, 100));
+        engine->send(make(Command::SetSetting, 1, qmod::Attack, 0));
+        Command note = make(Command::SetNote, 1, 0, 0, 0.8f);
+        note.c = 45;
+        note.d = 16;
+        engine->send(note);
+        return engine;
+    };
+    const auto automate = [](Engine& engine, int lane, int index, float value, int scene = 0) {
+        Command c = make(Command::SetAutomation, 1, lane, index, value);
+        c.scene = scene;
+        engine.send(c);
+    };
+    // How many times the wave goes up through zero in each step of what is rendered next.
+    const auto waves = [](Engine& engine, int steps) {
+        std::vector<int> out;
+        for (int s = 0; s < steps; ++s) {
+            const std::vector<float> got = renderFrames(engine, kStep);
+            int n = 0;
+            for (int i = 1; i < kStep; ++i) n += got[2 * (i - 1)] < 0.f && got[2 * i] >= 0.f ? 1 : 0;
+            out.push_back(n);
+        }
+        return out;
+    };
+    const int lane = qmod::MacroOctave;
+    {
+        // Nothing written: the macro stays where its knob is, all bar long.
+        std::unique_ptr<Engine> engine = rig();
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<int> plain = waves(*engine, 16);
+        for (int s = 1; s < 16; ++s) CHECK(std::abs(plain[s] - plain[1]) <= 1);
+        const int low = plain[4];
+        CHECK(low >= 12 && low <= 15); // A2 is 110 Hz: 13.75 waves a step
+
+        // Steps 5 to 8 written "up an octave": twice the waves there, and back down after, with no key touched.
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        for (int i = 4; i < 8; ++i) automate(*engine, lane, i, 1.f);
+        engine->send(make(Command::Play, 0, 0, 1));
+        std::vector<int> got = waves(*engine, 32);
+        for (int bar = 0; bar < 2; ++bar) { // and the same the second time round
+            CHECK(std::abs(got[bar * 16 + 2] - low) <= 1 && std::abs(got[bar * 16 + 3] - low) <= 1);
+            CHECK(std::abs(got[bar * 16 + 5] - 2 * low) <= 2 && std::abs(got[bar * 16 + 7] - 2 * low) <= 2);
+            CHECK(std::abs(got[bar * 16 + 9] - low) <= 1 && std::abs(got[bar * 16 + 15] - low) <= 1);
+        }
+        // It glides there over the first half of the step: the step it arrives in is between the two.
+        CHECK(got[4] > low + 2 && got[4] < 2 * low - 1);
+        // Stopped: the macro is back where its knob rests, at once. (Stopped mid-way through the high steps.)
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        engine->send(make(Command::Play, 0, 0, 1));
+        waves(*engine, 6);
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        engine->send(make(Command::NoteOn, 1, 45, 0, 0.8f));
+        const std::vector<int> held = waves(*engine, 2);
+        CHECK(std::abs(held[1] - low) <= 1);
+        engine->send(make(Command::NoteOff, 1, 45));
+        renderFrames(*engine, 48000);
+        // The knob moved (a plain SetMacro): the steps with nothing written follow the knob; the written ones stay written.
+        engine->send(make(Command::SetMacro, 1, lane, 0, 0.f)); // OCTAVE down
+        engine->send(make(Command::Play, 0, 0, 1));
+        got = waves(*engine, 16);
+        CHECK(got[2] < low - 4 && std::abs(got[6] - 2 * low) <= 2 && got[12] < low - 4);
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        engine->send(make(Command::SetMacro, 1, lane, 0, 0.5f));
+        // One step unwritten (a value below zero): that step rests again.
+        automate(*engine, lane, 6, -1.f);
+        automate(*engine, lane, 7, -1.f);
+        engine->send(make(Command::Play, 0, 0, 1));
+        got = waves(*engine, 16);
+        CHECK(std::abs(got[5] - 2 * low) <= 2 && std::abs(got[7] - low) <= 1);
+        // The whole lane cleared: plain again. Clearing "every lane" does the same.
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        Command clear = make(Command::ClearAutomation, 1, lane);
+        engine->send(clear);
+        engine->send(make(Command::Play, 0, 0, 1));
+        got = waves(*engine, 16);
+        for (int s2 = 1; s2 < 16; ++s2) CHECK(std::abs(got[s2] - low) <= 1);
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        automate(*engine, lane, 2, 1.f);
+        automate(*engine, 3, 2, 1.f);
+        engine->send(make(Command::ClearAutomation, 1, -1));
+        engine->send(make(Command::Play, 0, 0, 1));
+        got = waves(*engine, 8);
+        CHECK(std::abs(got[2] - low) <= 1 && std::abs(got[3] - low) <= 1);
+        // Nonsense is ignored: no such lane, step, scene or track; not a number.
+        automate(*engine, kAutoLanes, 0, 1.f);
+        automate(*engine, -1, 0, 1.f);
+        automate(*engine, lane, kAutoSteps, 1.f);
+        automate(*engine, lane, -1, 1.f);
+        automate(*engine, lane, 0, 1.f, kMaxScenes);
+        automate(*engine, lane, 1, std::nanf(""));
+        Command stray = make(Command::SetAutomation, kNumTracks, lane, 0, 1.f);
+        engine->send(stray);
+        got = waves(*engine, 16);
+        CHECK(std::abs(got[9] - low) <= 1 && std::abs(got[10] - low) <= 1);
+    }
+    {
+        // A cell of two bars: the second bar's steps are 17 to 32 of the lane.
+        std::unique_ptr<Engine> engine = rig();
+        Command bars = make(Command::SetCellBars, 1, 2);
+        engine->send(bars);
+        Command note = make(Command::SetNote, 1, 0, 0, 0.8f);
+        note.c = 45;
+        note.d = 16;
+        note.bar = 1;
+        engine->send(note);
+        for (int i = 16 + 8; i < 16 + 12; ++i) automate(*engine, lane, i, 1.f);
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<int> got = waves(*engine, 32);
+        const int low = got[2];
+        CHECK(std::abs(got[9] - low) <= 1 && std::abs(got[16 + 9] - 2 * low) <= 2 && std::abs(got[16 + 14] - low) <= 1);
+    }
+    {
+        // A whole track sent at once (a song opened) brings its automation; one sent without any clears what was there.
+        std::unique_ptr<Engine> engine = rig();
+        for (int i = 0; i < 4; ++i) automate(*engine, lane, i, 1.f);
+        std::unique_ptr<TrackImage> image(new TrackImage);
+        image->notes[0][0].step = 0;
+        image->notes[0][0].pitch = 45;
+        image->notes[0][0].length = 16.f;
+        image->notes[0][0].velocity = 0.8f;
+        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
+        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) image->automation[i] = kAutoNone;
+        for (int i = 8; i < 12; ++i) image->automation[(0 * kAutoLanes + lane) * kAutoSteps + i] = 1.f;
+        CHECK(engine->setTrackImage(1, std::move(image)));
+        engine->send(make(Command::Play, 0, 0, 1));
+        std::vector<int> got = waves(*engine, 16);
+        const int low = got[5];
+        CHECK(std::abs(got[1] - low) <= 2 && std::abs(got[9] - 2 * low) <= 2 && std::abs(got[14] - low) <= 1);
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        std::unique_ptr<TrackImage> bare(new TrackImage);
+        bare->notes[0][0].step = 0;
+        bare->notes[0][0].pitch = 45;
+        bare->notes[0][0].length = 16.f;
+        bare->notes[0][0].velocity = 0.8f;
+        CHECK(engine->setTrackImage(1, std::move(bare)));
+        engine->send(make(Command::Play, 0, 0, 1));
+        got = waves(*engine, 16);
+        CHECK(std::abs(got[9] - low) <= 1);
+    }
+    {
+        // An effect's setting: a filter shut right down, its MIX automated. Where MIX is written full the
+        // sound is the filtered one (far quieter); elsewhere it rests where the knob is (none of it).
+        std::unique_ptr<Engine> engine = rig();
+        CHECK(engine->setEffect(1, 0, EffectKind::Filter));
+        engine->send(effectParam(1, 0, 0, 0.f)); // cutoff: 30 Hz
+        engine->send(effectParam(1, 0, 3, 0.f)); // mix: none
+        const int mix = autoLaneOfEffect(0, 3);
+        for (int i = 8; i < 12; ++i) automate(*engine, mix, i, 1.f);
+        engine->send(make(Command::Play, 0, 0, 1));
+        std::vector<float> loud;
+        for (int s2 = 0; s2 < 16; ++s2) loud.push_back(peakOf(renderFrames(*engine, kStep)));
+        CHECK(loud[4] > 0.05f && loud[10] < 0.4f * loud[4] && loud[14] > 0.8f * loud[4]);
+        // Another effect put in the slot: its settings rest at their own defaults, and the old lane does not drive it wrongly when stopped.
+        engine->send(make(Command::Stop));
+        renderFrames(*engine, 48000);
+        CHECK(engine->setEffect(1, 0, EffectKind::Drive));
+        renderFrames(*engine, 4800);
+        engine->send(make(Command::NoteOn, 1, 45, 0, 0.8f));
+        CHECK(peakOf(renderFrames(*engine, 9600)) > 0.02f);
+    }
+}
+
 // The envelope every synth shares (envelope.hpp).
 static void testTheSharedEnvelope() {
     using namespace envelope;
@@ -2021,6 +2198,7 @@ int main() {
     testKitHitsHard();
     testCeiling();
     testLaneLevel();
+    testAutomation();
     testTheSharedEnvelope();
     testFallingBehindLowersTheQuality();
     testPatternPlaysOnTheExactSample();

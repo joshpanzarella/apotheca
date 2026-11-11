@@ -178,6 +178,19 @@ public:
     void setOctavesShown(int octaves);
     void loadSettings();
 
+    // ---- automation -------------------------------------------------------------------
+    // With WRITE on and the song playing, moving a macro or a track effect's
+    // setting records it: its value goes into the cell that is playing, on
+    // the step that is playing. From then on the pattern moves it. A lane is
+    // one of the track's sixteen (the engine's kAutoLanes).
+    void setWriting(bool on) { project.writing = on; }
+    bool writing() const { return project.writing; }
+    void setAutomation(int track, int scene, int lane, int index, float value); // below 0: nothing there
+    void clearAutomation(int track, int scene, int lane);                       // -1: every lane of the cell
+    bool hasAutomation(int track, int scene, int lane) const;
+    // What the lane's setting is just now: the value written on the step that is playing, or `resting`.
+    float automated(int track, int lane, float resting) const;
+
     // ---- undo ---------------------------------------------------------------------------
     // What is in the patterns (hits, notes, chords, how long each cell is,
     // how often each scene plays) can be taken back, twenty steps deep, and
@@ -295,6 +308,7 @@ private:
     TrackKind designSpecKind_ = TrackKind::None;
     int designSpecPresets_ = -1;
     std::string designSpecText_ = "{}";
+    void recordAutomation(int track, int lane, float value);
     void hearMidi();
     MidiInput midi_;
     bool midiRecord_ = false;

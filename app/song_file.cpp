@@ -48,6 +48,21 @@ std::string songText(const Project& project) {
         const TrackData& track = project.tracks[t];
         out += track.kind == TrackKind::Drums ? "track drums\n" : track.kind == TrackKind::Phazed ? "track phazed\n" : track.kind == TrackKind::Sampler ? "track sampler\n" : track.kind == TrackKind::Qmod ? "track qmod\n" : "track twin\n";
         if (track.name[0]) out += std::string("name ") + track.name + "\n";
+        // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            for (int lane = 0; lane < kAutoLanes; ++lane) {
+                std::string line;
+                for (int i = 0; i < kAutoSteps; ++i) {
+                    const float v = track.automation[scene][lane][i];
+                    if (v < 0.f) continue;
+                    put(line, " %.0f", i);
+                    put(line, " %.4g", v);
+                }
+                if (line.empty()) continue;
+                put(out, "auto %.0f", scene + 1);
+                put(out, " %.0f", lane);
+                out += line + "\n";
+            }
         if (track.muted) out += "muted\n";
         putEffects(track.effects);
         if (track.kind == TrackKind::Drums) {
@@ -205,6 +220,13 @@ bool parseSong(const std::string& text, Project& project) {
             }
             while (!safe.empty() && safe.back() == ' ') safe.pop_back();
             std::snprintf(track->name, sizeof track->name, "%s", safe.c_str());
+        } else if (word == "auto") {
+            double sceneNumber = 0, lane = -1, index = 0, value = 0;
+            if (!(in >> sceneNumber >> lane) || sceneNumber < 1 || sceneNumber > kMaxScenes || lane < 0 || lane >= kAutoLanes) continue;
+            while (in >> index >> value) {
+                if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
+                track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
+            }
         } else if (word == "muted") {
             track->muted = true;
         } else if (word == "lanes") {

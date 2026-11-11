@@ -34,6 +34,13 @@ Engine::Engine() {
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
+    for (Track& track : tracks_) {
+        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            track.autoBase[lane] = lane < 8 ? 0.5f : kAutoNone; // macros start in the middle; an effect says when it arrives
+            track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = track.autoBase[lane];
+        }
+    }
     claimed_[0] = true;
     claimedDrums_[0] = true;
     prepare(48000.f);
@@ -77,6 +84,18 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.pointer = effect.get();
     if (!commands_.push(c)) return false;
     effect.release(); // the audio thread hands the old one back through the trash
+    // Its settings as it starts, said out loud: automation needs to know where each knob rests.
+    if (track != kMasterTrack && kind != EffectKind::None) {
+        Command p;
+        p.type = Command::SetEffectParam;
+        p.track = track;
+        p.a = slot;
+        for (int i = 0; i < effectInfo(kind).params; ++i) {
+            p.b = i;
+            p.value = effectInfo(kind).defaults[i];
+            commands_.push(p);
+        }
+    }
     return true;
 }
 
@@ -307,6 +326,14 @@ void Engine::apply(const Command& c) {
             break;
         }
         std::unique_ptr<Effect>& place = c.track == kMasterTrack ? masterEffects_[c.a] : tracks_[c.track].effects[c.a];
+        if (c.track != kMasterTrack) {
+            // Another effect in the slot: where its knobs rest is not known until it says.
+            for (int i = 0; i < 4; ++i) {
+                const int lane = autoLaneOfEffect(c.a, i);
+                tracks_[c.track].autoBase[lane] = tracks_[c.track].autoNow[lane] = kAutoNone;
+                tracks_[c.track].autoGliding[lane] = false;
+            }
+        }
         trash.pointer = place.release();
         place.reset(static_cast<Effect*>(c.pointer));
         if (place) place->setTempo(tempo_);
@@ -410,6 +437,7 @@ void Engine::apply(const Command& c) {
     case Command::Stop:
         playing_ = false; // waiting hits only play while playing, and Play clears them
         letGoOfNotes();
+        settleAutomation(); // every automated setting back to where its knob was left
         playStep_.store(-1, std::memory_order_relaxed);
         playScene_.store(-1, std::memory_order_relaxed);
         break;
@@ -458,7 +486,24 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
         break;
     case Command::SetMacro:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setMacro(c.a, c.value);
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            track.synth->setMacro(c.a, c.value);
+            if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
+                track.autoBase[c.a] = track.autoNow[c.a] = c.value;
+                track.autoGliding[c.a] = false;
+            }
+        }
+        break;
+    case Command::SetAutomation:
+        if (validTrack(c.track) && validScene(c.scene) && c.a >= 0 && c.a < kAutoLanes && c.b >= 0 && c.b < kAutoSteps && c.value == c.value)
+            tracks_[c.track].autoAt(c.scene, c.a)[c.b] = c.value < 0.f ? kAutoNone : (c.value > 1.f ? 1.f : c.value);
+        break;
+    case Command::ClearAutomation:
+        if (validTrack(c.track) && validScene(c.scene))
+            for (int lane = 0; lane < kAutoLanes; ++lane)
+                if (c.a < 0 || c.a == lane)
+                    for (int i = 0; i < kAutoSteps; ++i) tracks_[c.track].autoAt(c.scene, lane)[i] = kAutoNone;
         break;
     case Command::SetSetting:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->setSetting(c.a, c.b);
@@ -544,6 +589,7 @@ void Engine::apply(const Command& c) {
                         to.velocity = from.velocity;
                     }
                 }
+                for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = image.automation ? image.automation[i] : kAutoNone;
                 for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, image.laneLevel[lane]);
             }
             Trash trash;
@@ -557,7 +603,13 @@ void Engine::apply(const Command& c) {
         if (c.track == kMasterTrack) {
             if (masterEffects_[c.a]) masterEffects_[c.a]->setParam(c.b, c.value);
         } else if (validTrack(c.track)) {
-            if (tracks_[c.track].effects[c.a]) tracks_[c.track].effects[c.a]->setParam(c.b, c.value);
+            Track& track = tracks_[c.track];
+            if (track.effects[c.a]) track.effects[c.a]->setParam(c.b, c.value);
+            if (c.b >= 0 && c.b < 4) {
+                const int lane = autoLaneOfEffect(c.a, c.b);
+                track.autoBase[lane] = track.autoNow[lane] = c.value;
+                track.autoGliding[lane] = false;
+            }
         }
         break;
     }
@@ -685,6 +737,23 @@ void Engine::fireStep() {
             }
         }
     }
+    // Automation: where each lane is to be by the middle of this step.
+    autoPhase_ = 0.0;
+    for (Track& track : tracks_) {
+        if (!track.hasInstrument()) continue;
+        const int at = (slotOf(track, scene_, bar_) % kMaxBars) * kSteps + nextStep_;
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            const float written = track.autoAt(scene_, lane)[at];
+            const float to = written >= 0.f ? written : track.autoBase[lane];
+            if (to < 0.f || to == track.autoNow[lane]) {
+                track.autoGliding[lane] = false;
+                continue;
+            }
+            track.autoFrom[lane] = track.autoNow[lane] < 0.f ? to : track.autoNow[lane];
+            track.autoTo[lane] = to;
+            track.autoGliding[lane] = true;
+        }
+    }
     playStep_.store(nextStep_, std::memory_order_relaxed);
     playScene_.store(scene_, std::memory_order_relaxed);
     playRepeat_.store(repeat_, std::memory_order_relaxed);
@@ -785,7 +854,46 @@ void Engine::render(float* interleaved, int frames) {
     for (int t = 0; t < kNumTracks; ++t) tracks_[t].peak.store(peaks[t], std::memory_order_relaxed);
 }
 
+// Give a lane's value to what it belongs to: a macro of the synth, or a setting of an effect.
+void Engine::applyAuto(Track& track, int lane, float value) {
+    track.autoNow[lane] = value;
+    if (lane < 8) {
+        if (track.synth) track.synth->setMacro(lane, value);
+    } else if (track.effects[(lane - 8) / 4]) {
+        track.effects[(lane - 8) / 4]->setParam((lane - 8) % 4, value);
+    }
+}
+
+// Move every gliding lane on. The glide takes the first half of a step, in
+// eight moves: smooth to the ear, and few enough that a synth which works a
+// lot out again at each change (Phazed) is not asked to too often.
+void Engine::glideAutomation(int frames) {
+    const double before = autoPhase_;
+    autoPhase_ += frames / samplesPerStep_;
+    const int was = static_cast<int>(before * 16.0), now = static_cast<int>(autoPhase_ * 16.0);
+    if (now == was && before > 0.0) return;
+    const float part = autoPhase_ >= 0.5 ? 1.f : static_cast<float>((now < 8 ? now : 8)) / 8.f;
+    for (Track& track : tracks_) {
+        if (!track.hasInstrument()) continue;
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (!track.autoGliding[lane]) continue;
+            applyAuto(track, lane, track.autoFrom[lane] + (track.autoTo[lane] - track.autoFrom[lane]) * part);
+            if (part >= 1.f) track.autoGliding[lane] = false;
+        }
+    }
+}
+
+// Stopped: every setting that automation had moved goes back to its knob.
+void Engine::settleAutomation() {
+    for (Track& track : tracks_)
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            track.autoGliding[lane] = false;
+            if (track.autoBase[lane] >= 0.f && track.autoNow[lane] != track.autoBase[lane]) applyAuto(track, lane, track.autoBase[lane]);
+        }
+}
+
 void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
+    if (playing_) glideAutomation(frames);
     float mixL[kMaxBlock] = {};
     float mixR[kMaxBlock] = {};
     float left[kMaxBlock];

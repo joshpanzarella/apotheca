@@ -112,17 +112,8 @@ void PhazedScreen::stepFolder(int by) {
     choosePreset(i);
 }
 
-void PhazedScreen::setMacro(int macro, float value) {
-    value = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
-    if (value == trk().macro[macro]) return;
-    trk().macro[macro] = value;
-    Command c;
-    c.type = Command::SetMacro;
-    c.track = project_.track;
-    c.a = macro;
-    c.value = value;
-    session_.engine.send(c);
-}
+// Through the session, so that with WRITE on and the song playing the move is recorded into the pattern.
+void PhazedScreen::setMacro(int macro, float value) { session_.setSynthMacro(project_.track, macro, value); }
 
 void PhazedScreen::setSetting(int id, int value) {
     value = value < spec_.settingMin(id) ? spec_.settingMin(id) : (value > spec_.settingMax(id) ? spec_.settingMax(id) : value);
@@ -229,7 +220,14 @@ void PhazedScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (b == Button::B && !holding_) {
         if (page_ > 0) goTo(0, kAdvanced); // back to MAIN, on the way in
-        else if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) setMacro(cursor_ - kFirstMacro, 0.5f);
+        else if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) {
+            // Back to the middle, and whatever automation it had in this cell goes.
+            const bool writing = session_.writing();
+            session_.setWriting(false); // this is a reset, not a move to record
+            session_.clearAutomation(project_.track, project_.scene, cursor_ - kFirstMacro);
+            setMacro(cursor_ - kFirstMacro, 0.5f);
+            session_.setWriting(writing);
+        }
     } else if (b == Button::R1 && page_ > 0) {
         goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
@@ -303,9 +301,12 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
         for (int m = 0; m < kMacros; ++m) {
             const int x = 8 + (m % 4) * 157, y = 98 + (m / 4) * 76;
-            const float v = t.macro[m];
+            // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
+            const float v = session_.automated(project_.track, m, t.macro[m]);
             spec_.macroText(m, v, text, sizeof text);
             macroBox(r, fonts, x, y, 153, 70, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
+            // A purple bar along the bottom: this macro has automation in the cell being worked on.
+            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + 70 - 3, 151, 2, kPurple);
         }
         box(r, 8, 252, 153, 40, kPanel2, kLine);
         fonts.medium.draw(r, 20.f, 252.f + (40 - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
