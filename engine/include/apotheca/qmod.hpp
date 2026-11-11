@@ -82,6 +82,7 @@ public:
     void setSetting(int id, int value) override;
     void setMacro(int macro, float value) override;
     void noteOn(int note, float velocity) override;
+    void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
     void allNotesOff() override;
     void render(float* left, float* right, int frames) override;

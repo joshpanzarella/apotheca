@@ -1,3 +1,4 @@
+#include "apotheca/slide.hpp"
 #include "apotheca/qmod.hpp"
 
 #include <cmath>
@@ -95,6 +96,7 @@ struct Qmod::State {
         float phase[2][kOps] = {}, last[2][kOps] = {}, bend[2][kOps] = {}; // bend: how much of the FM is left in this note, per wiring and operator
         float velocity = 0.f, step = 0.f;
         int note = -1;
+        Slide slide; // a glide still on its way to this voice's pitch
         std::uint32_t age = 0;
     };
     QmodPatch patch;
@@ -237,10 +239,17 @@ void Qmod::noteOn(int note, float velocity) {
     for (auto& wiring : chosen->bend)
         for (float& b : wiring) b = 1.f; // the FM starts at full and falls away
     chosen->note = note;
+    chosen->slide.stop();
     chosen->velocity = velocity > 1.f ? 1.f : (velocity < 0.f ? 0.f : velocity);
     chosen->step = 440.f * std::pow(2.f, (note - 69) / 12.f) / s.sampleRate;
     chosen->env.on();
     chosen->age = s.clock++;
+}
+
+void Qmod::noteOnFrom(int note, float velocity, int from, float seconds) {
+    noteOn(note, velocity);
+    for (State::Voice& v : state_->voices)
+        if (v.note == note && !v.env.idle()) v.slide.start(from, note, seconds, state_->sampleRate);
 }
 
 void Qmod::noteOff(int note) {
@@ -261,7 +270,8 @@ void Qmod::render(float* left, float* right, int frames) {
     const ent::SineTable& sine = *s.sine;
     for (State::Voice& v : s.voices) {
         if (v.env.idle()) continue;
-        const float step = v.step * s.octave;
+        const float off = v.slide.take(frames); // a glide: semitones from its own pitch, for this block
+        const float step = v.step * s.octave * (off == 0.f ? 1.f : std::exp2(off / 12.f));
         // Louder keys are brighter too, a little.
         const float index = s.index * (0.55f + 0.45f * v.velocity);
         for (int i = 0; i < frames; ++i) {

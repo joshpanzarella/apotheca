@@ -304,6 +304,18 @@ void Phazed::noteOn(int note, float velocity) {
     cz_synth_note_on(&state_->synth, note, v);
 }
 
+// GLIDE on Phazed is the CZ's own portamento, switched on for this one note: it slides from the
+// last note the engine played, in the CZ's own time. (The engine is not ours to change; its
+// switch is, and it is only read as the note starts.)
+void Phazed::noteOnFrom(int note, float velocity, int from, float seconds) {
+    (void)from;
+    (void)seconds;
+    if (!ok_) return;
+    state_->synth.porta = 1;
+    noteOn(note, velocity);
+    state_->synth.porta = 0;
+}
+
 void Phazed::noteOff(int note) {
     if (ok_ && note >= 0 && note <= 127) cz_synth_note_off(&state_->synth, note);
 }

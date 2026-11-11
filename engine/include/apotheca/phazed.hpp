@@ -87,6 +87,7 @@ public:
     void setSetting(int id, int value) override;     // edit the patch
     void setMacro(int macro, float value) override;  // 0..1, 0.5 = as the patch says
     void noteOn(int note, float velocity) override;  // MIDI note number; velocity 0..1
+    void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
     void allNotesOff() override;
 

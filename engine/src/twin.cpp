@@ -1,4 +1,5 @@
 #include "apotheca/twin.hpp"
+#include "apotheca/slide.hpp"
 
 #include "apotheca/envelope.hpp"
 
@@ -361,6 +362,7 @@ struct Twin::State {
     struct Voice {
         OscPair v, z;
         envelope::Envelope env; // the shared one (envelope.hpp)
+        Slide slide;            // a glide still on its way to this voice's pitch
         float velocity = 0.f;
         int note = -1;
         std::uint32_t age = 0; // when it was last started; the oldest is taken first
@@ -552,9 +554,16 @@ void Twin::noteOn(int note, float velocity) {
             if (s.clock - v.age > s.clock - chosen->age) chosen = &v;
     }
     chosen->note = note;
+    chosen->slide.stop();
     chosen->velocity = velocity > 1.f ? 1.f : velocity;
     chosen->env.on(); // from wherever the envelope is, so a stolen voice does not click
     chosen->age = s.clock++;
+}
+
+void Twin::noteOnFrom(int note, float velocity, int from, float seconds) {
+    noteOn(note, velocity);
+    for (State::Voice& v : state_->voices)
+        if (v.note == note && !v.env.idle()) v.slide.start(from, note, seconds, state_->sampleRate);
 }
 
 void Twin::noteOff(int note) {
@@ -607,7 +616,7 @@ void Twin::State::renderBlock(float* left, float* right, int frames) {
         for (int i = 0; i < 4; ++i) drift[i] = drift[i] * 0.6f + sharedDrift[i] * 0.4f;
 
         // Middle C is note 60. Z follows V's key, offset by its own setting.
-        const float key = (voice.note - 60) / 12.f;
+        const float key = (voice.note - 60 + voice.slide.take(frames)) / 12.f; // (a glide: not at its own pitch yet)
         const float pitchV = r.pitchV + key + voice.pitchOffset[0] * kVoicePitchOct * r.vintage;
         const float pitchZ = r.pitchZ + key + voice.pitchOffset[1] * kVoicePitchOct * r.vintage;
         const float shapeV = clampf(r.shapeV + voice.shapeOffset[0] * kVoiceShape * r.vintage, 0.f, 1.f);

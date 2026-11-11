@@ -88,6 +88,7 @@ public:
     void setSetting(int id, int value) override;
     void setMacro(int macro, float value) override;
     void noteOn(int note, float velocity) override;
+    void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
     void allNotesOff() override;
     void setQualityLimit(int limit) override; // caps OVERSAMPLE: 0 is x1, 3 is x8

@@ -16,6 +16,13 @@ public:
     virtual void setSetting(int id, int value) = 0; // edit the patch
     virtual void setMacro(int macro, float value) = 0; // 0..1, 0.5 = as the patch says
     virtual void noteOn(int note, float velocity) = 0; // MIDI note number; velocity 0..1
+    // The same, but the note slides to its pitch from the key `from`, taking `seconds` (GLIDE).
+    // A synth that cannot slide just plays the note.
+    virtual void noteOnFrom(int note, float velocity, int from, float seconds) {
+        (void)from;
+        (void)seconds;
+        noteOn(note, velocity);
+    }
     virtual void noteOff(int note) = 0;
     virtual void allNotesOff() = 0;
     // For an instrument that plays a recording: here it is (or nullptr for

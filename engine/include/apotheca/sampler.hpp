@@ -8,6 +8,7 @@
 // fades it over RELEASE.
 
 #include "envelope.hpp"
+#include "apotheca/slide.hpp"
 #include "apotheca/instrument.hpp"
 
 namespace apotheca {
@@ -38,6 +39,7 @@ public:
     void setMacro(int, float) override {}
     void setSetting(int id, int value) override;
     void noteOn(int note, float velocity) override;
+    void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
     void allNotesOff() override;
     void setSample(const float* data, int length) override;
@@ -49,6 +51,7 @@ private:
         double position = 0.0, step = 1.0;
         float gain = 0.f;    // velocity
         envelope::Envelope env; // the shared one (envelope.hpp): attack, full while held, release
+        Slide slide;         // a glide still on its way to this voice's pitch
         unsigned age = 0;    // for choosing which to take when all eight are busy
     };
     const float* data_ = nullptr;

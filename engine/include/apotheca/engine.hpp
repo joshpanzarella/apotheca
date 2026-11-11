@@ -125,6 +125,9 @@ struct Command {
     float value = 0.f;
     float extra = 0.f;       // SetNote only
     float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step
+    int e = 0;               // SetNote only: what the note does besides play. Its low byte: a ratchet (2..4:
+                             //   that many notes, evenly, inside its first step). 256 added: it glides to its
+                             //   pitch from the note before it.
     void* pointer = nullptr; // InstallSynth only
 };
 
@@ -148,7 +151,7 @@ struct TrackImage {
     float chance[kPatternSlots][kDrumLanes][kSteps];
     float start[kPatternSlots][kDrumLanes][kSteps] = {};
     int bars[kMaxScenes]; // how long the track's cell is in each scene
-    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; }; // length in steps, not only whole ones
+    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0; }; // length in steps, not only whole ones
     Note notes[kPatternSlots][kMaxNotes];
     // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
     std::unique_ptr<float[]> automation;
@@ -286,6 +289,8 @@ private:
         float length = 0.f;   // in steps; a note may end part-way through one
         float nudge = 0.f;    // early or late, -0.5..0.5 of a step
         float velocity = 0.f; // 0 = empty slot
+        std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step
+        std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
     };
     struct Track {
         bool hasDrums = false;
@@ -309,7 +314,8 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0; float velocity = 0.f, length = 0.f; };
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0; float velocity = 0.f, length = 0.f; };
+        int lastPitch = -1; // the key of the note the track last began, for a glide to start from (-1: none since Play)
         PendingNote pendingNotes[24];
         double offIn[128];
         Track() {

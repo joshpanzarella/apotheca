@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
 #include "apotheca/twin.hpp"
 #include "apotheca/rate_converter.hpp"
@@ -1740,6 +1741,153 @@ static void testStepEffectsTravel() {
     CHECK(about(out[2 * (2 * kStep + 3000)], slopeAt(3000)) && out[2 * (4 * kStep)] != 0.f);
 }
 
+// ---- note effects: a ratchet and a glide ------------------------------------------------
+
+// A note written into scene 1, bar 1 of track 1.
+static Command noteAt(int slot, int stepIndex, int pitch, float length, int effects = 0, float velocity = 0.9f) {
+    Command c = make(Command::SetNote, 1, slot, stepIndex, velocity);
+    c.c = pitch;
+    c.d = static_cast<int>(length);
+    c.extra = length - static_cast<float>(c.d);
+    c.e = effects;
+    return c;
+}
+// How many times a second the sound crosses zero going up, over a stretch of it: its pitch, near enough.
+static double pitchOver(const std::vector<float>& out, int from, int frames) {
+    int ups = 0;
+    for (int i = from + 1; i < from + frames; ++i) ups += out[2 * (i - 1)] <= 0.f && out[2 * i] > 0.f;
+    return ups * 48000.0 / frames;
+}
+
+// A short burst a hundred samples into a recording (after a sampler's fade-in is over): where it
+// comes out, less the hundred, is when a note began.
+static std::unique_ptr<SampleData> burst() {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.assign(1000, 0.f);
+    for (int i = 100; i < 140; ++i) s->data[static_cast<std::size_t>(i)] = 0.8f;
+    return s;
+}
+
+static void testANoteRatchets() {
+    // A sampler whose recording is that burst.
+    const auto play = [](int effects, float length, int steps = 4) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+        CHECK(engine->setTrackSample(1, burst()));
+        engine->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+        engine->send(make(Command::SetSetting, 1, sampler::Level, 100));
+        engine->send(noteAt(0, 1, 60, length, effects));
+        engine->send(make(Command::Play, 0, 0, 1));
+        std::vector<int> at;
+        const std::vector<float> out = renderFrames(*engine, steps * kStep);
+        int quietFor = 1000;
+        for (int i = 0; i < steps * kStep; ++i) {
+            const bool loud = out[2 * i] > 0.05f;
+            if (loud && quietFor > 200) at.push_back(i - 100); // the start of a burst
+            quietFor = loud ? 0 : quietFor + 1;
+        }
+        return at;
+    };
+    // (To the sample, or one off it where a third of a step is not a whole number of samples' worth of rounding.)
+    const auto near = [](const std::vector<int>& got, const std::vector<int>& want) {
+        if (got.size() != want.size()) return false;
+        for (std::size_t i = 0; i < got.size(); ++i)
+            if (std::abs(got[i] - want[i]) > 1) return false;
+        return true;
+    };
+    CHECK((play(0, 1.f) == std::vector<int>{kStep}));
+    CHECK((play(2, 1.f) == std::vector<int>{kStep, kStep + 3000}));
+    CHECK(near(play(3, 1.f), {kStep, kStep + 2000, kStep + 4000}));
+    CHECK((play(4, 2.f) == std::vector<int>{kStep, kStep + 1500, kStep + 3000, kStep + 4500})); // inside its first step, however long it is
+    CHECK(play(9, 1.f).size() == 4 && play(1, 1.f).size() == 1);                                    // four at most; "one" is one
+    CHECK(play(4, 0.5f).size() == 2);                                                              // a note shorter than its ratchet: as many as fit
+    CHECK(near(play(3 + 256, 1.f), {kStep, kStep + 2000, kStep + 4000}));                         // with a glide as well: still three
+
+    // Each is let go before the next, and the last is held for what is left of the note. A steady
+    // recording shows it: sound, a gap, sound, a gap, then sound to the note's end.
+    std::unique_ptr<Engine> held(new Engine);
+    CHECK(held->addSynthTrack(1, SynthKind::Sampler));
+    CHECK(held->setTrackSample(1, twoHalves(40 * kStep, 0.5f, 0.5f)));
+    held->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+    held->send(make(Command::SetSetting, 1, sampler::Release, 0));
+    held->send(noteAt(0, 0, 60, 3.f, 3));
+    held->send(make(Command::Play, 0, 0, 1));
+    const std::vector<float> out = renderFrames(*held, 5 * kStep);
+    const auto loud = [&](int i) { return std::fabs(out[2 * i]) > 0.05f; };
+    CHECK(loud(800) && !loud(1950) && loud(2800) && !loud(3950) && loud(4800) && loud(kStep + 3000) && loud(3 * kStep - 300) && !loud(3 * kStep + 600));
+
+    // A whole song loaded at once brings a note's ratchet.
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+    CHECK(engine->setTrackSample(1, burst()));
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    image->notes[0][0].step = 2;
+    image->notes[0][0].pitch = 60;
+    image->notes[0][0].length = 1.f;
+    image->notes[0][0].velocity = 0.9f;
+    image->notes[0][0].ratchet = 2;
+    CHECK(engine->setTrackImage(1, std::move(image)));
+    engine->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+    engine->send(make(Command::Play, 0, 0, 1));
+    const std::vector<float> two = renderFrames(*engine, 4 * kStep);
+    CHECK(two[2 * (2 * kStep + 110)] > 0.05f && two[2 * (2 * kStep + 3110)] > 0.05f && two[2 * (2 * kStep + 1500)] < 0.05f);
+}
+
+// A note that glides starts at the pitch of the note before it and slides to its own.
+static void testANoteGlides() {
+    for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
+        const auto second = [&](int effects, int firstKey = 57, bool onlyOne = false) {
+            std::unique_ptr<Engine> engine(new Engine);
+            CHECK(engine->addSynthTrack(1, kind));
+            if (kind == SynthKind::Sampler) {
+                std::unique_ptr<SampleData> tone(new SampleData); // 220 Hz, long
+                tone->data.resize(96000);
+                for (std::size_t i = 0; i < tone->data.size(); ++i) tone->data[i] = 0.5f * std::sin(6.2831853f * 220.f * static_cast<float>(i) / 48000.f);
+                CHECK(engine->setTrackSample(1, std::move(tone)));
+                engine->send(make(Command::SetSetting, 1, sampler::Loop, 1));
+            }
+            if (!onlyOne) engine->send(noteAt(0, 0, firstKey, 1.f, 0, 0.02f)); // very quiet, and over long before: only where it was matters
+            engine->send(noteAt(1, 4, 69, 8.f, effects));
+            engine->send(make(Command::Play, 0, 0, 1));
+            const std::vector<float> out = renderFrames(*engine, 12 * kStep);
+            // The second note: its pitch in its first 30 ms (half-way through the slide), and once it has settled.
+            return std::make_pair(pitchOver(out, 4 * kStep + 96, 1440), pitchOver(out, 8 * kStep, 9600));
+        };
+        const auto plain = second(0), slid = second(256);
+        const char* name = kind == SynthKind::Twin ? "twin" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
+        if (!(slid.first < 0.85 * plain.first)) std::printf("  %s: began at %.0f Hz plain, %.0f Hz with a glide; settled at %.0f / %.0f\n", name, plain.first, slid.first, plain.second, slid.second);
+        CHECK(slid.first < 0.85 * plain.first);                           // it begins well under its own pitch (the note before was an octave lower)
+        CHECK(std::fabs(slid.second - plain.second) < 0.02 * plain.second); // and arrives at it
+        if (kind == SynthKind::Phazed) continue; // the CZ's own portamento: its time and its start are its own
+        // From above, it begins over its pitch and comes down.
+        const auto fromAbove = second(256, 81);
+        if (!(fromAbove.first > 1.15 * plain.first)) std::printf("  from above: %.0f against %.0f; settled %.0f / %.0f\n", fromAbove.first, plain.first, fromAbove.second, plain.second);
+        if (!(std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second)) std::printf("  %s from above settled at %.0f, not %.0f\n", name, fromAbove.second, plain.second);
+        // (Twin's two oscillators and the high first note's long tail make "where it settled" unreadable by counting crossings: its start is checked, and its arriving was checked from below.)
+        CHECK(fromAbove.first > 1.15 * plain.first && (kind == SynthKind::Twin || std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second));
+        // The first note after Play has nothing to glide from: it is plain.
+        const auto alone = second(256, 57, true), aloneAsItIs = second(0, 57, true);
+        CHECK(std::fabs(alone.first - aloneAsItIs.first) < 0.03 * aloneAsItIs.first);
+        // From the same key there is nowhere to slide.
+        const auto same = second(256, 69);
+        if (!(std::fabs(same.first - plain.first) < 0.12 * plain.first)) std::printf("  same key: %.0f against %.0f\n", same.first, plain.first);
+        CHECK(std::fabs(same.first - plain.first) < 0.12 * plain.first);
+    }
+    // The slide by itself: semitones off, closing at a steady rate, from either side, and nonsense is no slide.
+    Slide s;
+    s.start(57, 69, 0.1f, 48000.f);
+    CHECK(s.take(0) == -12.f && s.take(2400) == -12.f && std::fabs(s.take(0) + 6.f) < 1e-3f);
+    s.take(2400);
+    CHECK(s.take(100) == 0.f && s.take(100) == 0.f);
+    s.start(81, 69, 0.1f, 48000.f);
+    s.take(1200);
+    CHECK(std::fabs(s.take(0) - 9.f) < 1e-3f);
+    for (int bad = 0; bad < 4; ++bad) {
+        s.start(bad == 0 ? 69 : bad == 1 ? -1 : 60, 69, bad == 2 ? 0.f : 0.1f, bad == 3 ? 0.f : 48000.f);
+        CHECK(s.take(64) == 0.f);
+    }
+}
+
 // A note may be any length, and is let go on its own sample.
 static void testANoteEndsPartWayThroughAStep() {
     // The same note at three lengths. Each plays exactly like a longer one
@@ -2805,6 +2953,8 @@ int main() {
     testStepEffectCut();
     testStepEffectRatchet();
     testStepEffectsTravel();
+    testANoteRatchets();
+    testANoteGlides();
     testQueue();
     testBuiltInKit();
     testSilentUntilPlayed();

@@ -61,6 +61,7 @@ void Sampler::noteOn(int note, float velocity) {
     voice->position = static_cast<double>(value_[Start]) / 100.0 * length_;
     if (voice->position > length_ - 1) voice->position = length_ - 1;
     voice->step = std::pow(2.0, (note - value_[Root]) / 12.0 + value_[Tune] / 1200.0);
+    voice->slide.stop();
     voice->gain = velocity > 1.f ? 1.f : velocity;
     voice->env.stop();
     voice->env.on();
@@ -76,6 +77,12 @@ void Sampler::allNotesOff() {
     for (Voice& v : voices_) v.env.off();
 }
 
+void Sampler::noteOnFrom(int note, float velocity, int from, float seconds) {
+    noteOn(note, velocity);
+    for (Voice& v : voices_)
+        if (v.note == note) v.slide.start(from, note, seconds, sampleRate_);
+}
+
 void Sampler::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     if (data_) {
@@ -83,6 +90,8 @@ void Sampler::render(float* left, float* right, int frames) {
         const bool loop = value_[Loop] != 0 && loopFrom < length_ - 2;
         for (Voice& v : voices_) {
             if (v.note < 0) continue;
+            const float off = v.slide.take(frames); // a glide: semitones from its own pitch, for this block
+            const double step = off == 0.f ? v.step : v.step * std::exp2(static_cast<double>(off) / 12.0);
             for (int i = 0; i < frames; ++i) {
                 if (v.position >= length_ - 1) {
                     if (!loop) { v.note = -1; break; }
@@ -93,7 +102,7 @@ void Sampler::render(float* left, float* right, int frames) {
                 const int at = static_cast<int>(v.position);
                 const float part = static_cast<float>(v.position - at);
                 left[i] += (data_[at] + part * (data_[at + 1] - data_[at])) * v.gain * envelope * level_ * kVoiceGain;
-                v.position += v.step;
+                v.position += step;
             }
         }
     }

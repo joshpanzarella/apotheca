@@ -253,9 +253,32 @@ void Engine::letGoOfNotes() {
 
 // Play a pattern's note now, or set it waiting.
 void Engine::startNote(Track& track, const Note& note, double delaySamples) {
+    // A ratchet: the note several times over, evenly, inside its first step. Each is let go just
+    // before the next, so it is heard to start again; the last is held for what is left of the
+    // note. Only the first of them glides.
+    if (note.ratchet >= 2) {
+        const int hits = note.ratchet > kMaxRatchet ? kMaxRatchet : note.ratchet;
+        const float apart = 1.f / static_cast<float>(hits); // in steps
+        for (int k = 0; k < hits; ++k) {
+            Note one = note;
+            one.ratchet = 0;
+            if (k > 0) one.glide = 0;
+            const float left = note.length - static_cast<float>(k) * apart;
+            if (left < kShortestNote) break; // a note shorter than its ratchet: as many as fit
+            one.length = k + 1 < hits && left > apart * 0.85f ? apart * 0.85f : left;
+            startNote(track, one, delaySamples + static_cast<double>(k) * apart * samplesPerStep_);
+        }
+        return;
+    }
     if (delaySamples < 1.0) {
         if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
-        track.synth->noteOn(note.pitch, note.velocity);
+        // A glide: from the key the track last began, over half a step. (The first note after Play has none to come from.)
+        if (note.glide && track.lastPitch >= 0 && track.lastPitch != note.pitch) {
+            track.synth->noteOnFrom(note.pitch, note.velocity, track.lastPitch, static_cast<float>(0.5 * samplesPerStep_ / sampleRate_));
+        } else {
+            track.synth->noteOn(note.pitch, note.velocity);
+        }
+        track.lastPitch = note.pitch;
         track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
         return;
     }
@@ -263,6 +286,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         if (p.velocity > 0.f) continue;
         p.samplesLeft = delaySamples;
         p.pitch = note.pitch;
+        p.glide = note.glide;
         p.velocity = note.velocity;
         p.length = note.length;
         return;
@@ -278,6 +302,7 @@ void Engine::firePendingNotes() {
             note.pitch = p.pitch;
             note.velocity = p.velocity;
             note.length = p.length;
+            note.glide = p.glide;
             p = Track::PendingNote();
             startNote(track, note, 0.0);
         }
@@ -414,6 +439,9 @@ void Engine::apply(const Command& c) {
             note.pitch = static_cast<std::uint8_t>(sound ? c.c : 0);
             note.length = sound ? length : 0.f;
             note.nudge = sound && std::isfinite(c.shift) ? (c.shift < -0.5f ? -0.5f : (c.shift > 0.5f ? 0.5f : c.shift)) : 0.f;
+            const int hits = c.e & 0xFF;
+            note.ratchet = static_cast<std::uint8_t>(sound && hits >= 2 ? (hits > kMaxRatchet ? kMaxRatchet : hits) : 0);
+            note.glide = sound && (c.e & 256) != 0 ? 1 : 0;
         }
         break;
     case Command::SetSceneCount:
@@ -455,6 +483,7 @@ void Engine::apply(const Command& c) {
         firstStep_ = true;
         clearPending();
         letGoOfNotes();
+        for (Track& track : tracks_) track.lastPitch = -1; // the song's first note has nothing to glide from
         break;
     case Command::Stop:
         playing_ = false;
@@ -615,6 +644,8 @@ void Engine::apply(const Command& c) {
                         to.length = from.length;
                         to.nudge = from.nudge;
                         to.velocity = from.velocity;
+                        to.ratchet = from.ratchet;
+                        to.glide = from.glide;
                     }
                 }
                 for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = image.automation ? image.automation[i] : kAutoNone;
