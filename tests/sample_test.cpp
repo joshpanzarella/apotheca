@@ -1778,6 +1778,7 @@ void testTheSliceView() {
     CHECK(odd > 0); // not only the sixteenths
     rig.key(Y, false);
     drums.moveCursorTo(2, 15);
+    rig.tap(B); // (the second bar came filled with the first's hits: this one out, to place it afresh)
     rig.tap(A);
     CHECK(drums.start(2, 15) == 31.f / 32.f && drums.sliceOf(15) == 31); // the last slice can be reached
     rig.tap(UP);

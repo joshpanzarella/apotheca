@@ -4221,9 +4221,67 @@ void testASceneOfAnyLength() {
     CHECK(songFrames(rig.project(), 48000.f) == 23 * kStep);
 }
 
+// A cell made longer is filled with what it already plays, so the loop is there twice to be changed.
+void testALongerCellIsFilledWithItself() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Phazed);
+    rig.frames(2);
+    TrackData& drums = rig.project().tracks[0];
+    TrackData& synth = rig.project().tracks[1];
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.app.drums().setStep(1, 4, 0.7f);
+    StepFx fx;
+    fx.ratchet = 3;
+    rig.app.drums().setFx(1, 4, fx);
+    synth.notes[0][0].notes[0] = NoteEvent{2, 64, 3.f, 0.f, 0.8f};
+    session.sendNotePattern(1, 0);
+    session.setAutomation(1, 0, 2, 5, 0.9f);
+    // One bar to two: bar 2 is bar 1 again, hits, effects, notes and automation.
+    session.setCellBars(0, 0, 2);
+    session.setCellBars(1, 0, 2);
+    CHECK(drums.drums[0][1].level[0][0] == 1.f && drums.drums[0][1].level[1][4] == 0.7f && drums.drums[0][1].fx[1][4].ratchet == 3);
+    CHECK(synth.notes[0][1].notes[0].velocity == 0.8f && synth.notes[0][1].notes[0].pitch == 64 && synth.automation[0][2][16 + 5] == 0.9f);
+    CHECK(drums.drums[0][2].empty()); // and no further than it was made
+    // The engine has them: played, the kick is on step 1 of both bars.
+    rig.frames(2);
+    rig.render(48000);
+    session.setMuted(1, true);
+    rig.frames(1);
+    rig.render(2000);
+    rig.tap(START);
+    const std::vector<float> out = rig.render(32 * kStep);
+    rig.tap(START);
+    session.setMuted(1, false);
+    CHECK(Rig::peak(out, 0, 400) > 0.3f && Rig::peak(out, 16 * kStep, 16 * kStep + 400) > 0.3f);
+    // Change bar 2, then two bars to four: bars 3 and 4 are bars 1 and 2.
+    drums.drums[0][1].level[0][8] = 0.5f;
+    session.setCellBars(0, 0, 4);
+    CHECK(drums.drums[0][2].level[0][0] == 1.f && drums.drums[0][2].level[0][8] == 0.f && drums.drums[0][3].level[0][8] == 0.5f);
+    // Shortened and made long again: what was written in the hidden bars is still there, not written over.
+    drums.drums[0][2].level[3][3] = 0.6f;
+    session.setCellBars(0, 0, 1);
+    drums.drums[0][0].level[5][5] = 0.9f; // bar 1 changed meanwhile
+    session.setCellBars(0, 0, 4);
+    CHECK(drums.drums[0][2].level[3][3] == 0.6f && drums.drums[0][2].level[5][5] == 0.f && drums.drums[0][1].level[5][5] == 0.f);
+    // Shorter never copies anything; an empty cell made longer stays empty.
+    session.setCellBars(1, 1, 2);
+    CHECK(synth.notes[1][1].empty() && synth.notes[1][0].empty());
+    // From the SONG screen: hold A on the cell and press right.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(2, 0);
+    rig.app.session().view = View::Song;
+    drums.drums[2][0].level[2][2] = 0.8f;
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(drums.bars[2] == 2 && drums.drums[2][1].level[2][2] == 0.8f);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testALongerCellIsFilledWithItself();
     testASceneOfAnyLength();
     testANoteUnderAChordIsKnown();
     testChangingATracksInstrument();

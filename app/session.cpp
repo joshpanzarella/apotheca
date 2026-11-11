@@ -234,8 +234,28 @@ void Session::setSceneSteps(int scene, int steps) {
 void Session::setCellBars(int track, int scene, int bars) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return;
     bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
-    project.tracks[track].bars[scene] = bars;
+    TrackData& t = project.tracks[track];
+    const int was = t.bars[scene] < 1 ? 1 : t.bars[scene];
+    t.bars[scene] = bars;
+    // Made longer: the new bars are filled with what the cell already plays, round and round, so a
+    // one-bar loop made two bars long is the loop twice, ready to be changed in its second half.
+    // Only bars with nothing in them: a bar that was written, then hidden by shortening the cell,
+    // comes back as it was.
+    bool filled = false;
+    for (int bar = was; bar < bars && t.kind != TrackKind::None; ++bar) {
+        const int from = bar % was;
+        bool automated = false;
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) automated = automated || t.automation[scene][lane][bar * kSteps + step] >= 0.f;
+        if (!t.drums[scene][bar].empty() || !t.notes[scene][bar].empty() || automated) continue;
+        t.drums[scene][bar] = t.drums[scene][from];
+        t.notes[scene][bar] = t.notes[scene][from];
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) t.automation[scene][lane][bar * kSteps + step] = t.automation[scene][lane][from * kSteps + step];
+        filled = true;
+    }
     noteEdit();
+    if (filled) sendTrackImage(track); // every bar of it, in one piece
     if (track == project.track && scene == project.scene && project.bar >= bars) project.bar = bars - 1;
     Command c;
     c.type = Command::SetCellBars;

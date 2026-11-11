@@ -400,6 +400,11 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 
 - **Hold A on a cell and push the stick left / right** to set its length. A
   tap of A still opens it.
+- **A cell made longer is filled with itself.** One bar to two: the second
+  bar is the first again, hits, notes, step effects and automation, ready to
+  be changed. Two to four: bars 3 and 4 are bars 1 and 2. Only empty bars are
+  filled: a bar you wrote and then hid by shortening the cell comes back as
+  it was. It is one step of undo.
 - **The scene lasts as long as its longest cell.** A shorter cell goes round
   under it: a one-bar drum loop plays four times under a four-bar part.
 - A shorter cell is drawn again for each time it goes round, a little dimmer,
