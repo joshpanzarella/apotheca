@@ -334,9 +334,15 @@ static Command make(Command::Type type, int track = 0, int a = 0, int b = 0, flo
 // master, settings off their defaults, one effect setting automated. Three
 // bars, asked for in blocks of odd sizes as a sound card might. Everything is
 // in place and has had a moment before the song starts (as a bounce does it).
-static std::vector<float> effectsSong(int helpers) {
+// `buses`: an effect on each send bus as a new song has, and nothing sent to
+// them (sendSong() is the one whose sends sound).
+static std::vector<float> effectsSong(int helpers, bool buses = false) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
+    if (buses) {
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay) && engine->setEffect(kSpaceBus, 0, EffectKind::Reverb));
+        engine->send(make(Command::SetEffectParam, kSpaceBus, 0, 0, 0.9f));
+    }
     const int step = 6000; // frames in one step at 120 BPM and 48 kHz
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
     const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
@@ -401,6 +407,9 @@ static void testWholeSong() {
     CHECK(std::fabs(rms - kSongRms) <= 1e-3 * kSongRms);
     // The same to the last bit however many processor cores share the tracks out.
     for (int helpers : {1, 2, 3}) CHECK(effectsSong(helpers) == alone);
+    // And the same to the last bit with an effect waiting on each send bus and
+    // nothing sent: the buses are at rest, and add nothing, not even zeros.
+    CHECK(effectsSong(0, true) == alone && effectsSong(2, true) == alone);
 }
 
 // ---- 2. the table ----------------------------------------------------------------------------
@@ -1491,6 +1500,703 @@ static void testSwapsOnAnyHelperCount() {
     for (int helpers : {1, 2, 3}) CHECK(swapSong(helpers) == alone);
 }
 
+// ---- 6. the send buses ------------------------------------------------------------------------
+
+// Stands on a bus (or in a slot) and writes down what it is given. What it
+// gives back: the same times `gain`; then, once nothing comes in, a steady
+// `ringLevel` for `ring` frames (a tail of a known length).
+struct Probe : Effect {
+    std::vector<float> fed;
+    int resets = 0, ringLeft = 0, ring = 0, onBus = -1, runs = 0;
+    float gain = 1.f, ringLevel = 1e-3f, lastParam = -1.f, tempo = 0.f;
+    int lastIndex = -1;
+    Probe() { fed.reserve(48000 * 60); } // room up front: process() must not allocate
+    void reset() override {
+        ++resets;
+        ringLeft = 0;
+    }
+    void setOnBus(bool on) override { onBus = on ? 1 : 0; }
+    void setTempo(float bpm) override { tempo = bpm; }
+    void setParam(int index, float value) override {
+        lastIndex = index;
+        lastParam = value;
+    }
+    void process(float* left, float* right, int frames) override {
+        ++runs;
+        for (int i = 0; i < frames; ++i) {
+            if (fed.size() < fed.capacity()) fed.push_back(left[i]);
+            if (left[i] != 0.f || right[i] != 0.f) {
+                ringLeft = ring;
+                left[i] *= gain;
+                right[i] *= gain;
+            } else if (ringLeft > 0) {
+                --ringLeft;
+                left[i] = right[i] = ringLevel;
+            }
+        }
+    }
+};
+
+// A sine engine with a probe on each bus. The probes are the engine's: they live as long as it does.
+struct SendRig {
+    std::unique_ptr<Engine> engine = sineEngine();
+    Probe* echo = new Probe;
+    Probe* space = new Probe;
+    SendRig() {
+        engine->setBusEffect(0, std::unique_ptr<Effect>(echo));
+        engine->setBusEffect(1, std::unique_ptr<Effect>(space));
+    }
+    void send(int bus, float amount, int track = 0) { engine->send(make(Command::SetSend, track, bus, 0, amount)); }
+};
+static const int kSendGlide = 240; // 5 ms at 48 kHz: a send from nothing to full
+
+// EVERY DELAY AND REVERB, ON A BUS. It gives back what it adds and none of
+// what came in; MIX is how loud. And the engine's rest rule suits it.
+static void testEffectsOnABus() {
+    CHECK(static_cast<int>(kSendGlideSeconds * 48000.f) == kSendGlide);
+    CHECK(effectBus(EffectKind::Delay) == 0 && effectBus(EffectKind::Reverb) == 1);
+    CHECK(effectBus(EffectKind::None) == -1 && effectBus(EffectKind::Filter) == -1 && effectBus(EffectKind::Drive) == -1 && effectBus(EffectKind::Crush) == -1);
+    CHECK(effectMixParam(EffectKind::Delay) == 3 && effectMixParam(EffectKind::Reverb) == 2 && effectMixParam(EffectKind::Filter) == 3);
+    CHECK(effectMixParam(EffectKind::Drive) == 2 && effectMixParam(EffectKind::None) == -1);
+    // The list each bus picks from: NONE, then its own kind, in the main list's order.
+    for (int bus = 0; bus < kBuses; ++bus) {
+        CHECK(busListSize(bus) >= 2 && busEffectAt(bus, 0) == EffectKind::None);
+        CHECK(busEffectAt(bus, -1) == EffectKind::None && busEffectAt(bus, busListSize(bus)) == EffectKind::None);
+        int lastPlace = 0;
+        for (int place = 1; place < busListSize(bus); ++place) {
+            const EffectKind kind = busEffectAt(bus, place);
+            CHECK(kind != EffectKind::None && effectBus(kind) == bus && busEffectPlace(bus, kind) == place);
+            CHECK(effectPlace(kind) > lastPlace);
+            lastPlace = effectPlace(kind);
+        }
+        CHECK(busEffectPlace(bus, EffectKind::Filter) == 0 && busEffectPlace(bus, EffectKind::None) == 0);
+    }
+    CHECK(busEffectAt(0, 1) == EffectKind::Delay && busEffectAt(1, 1) == EffectKind::Reverb);
+    CHECK(busEffectPlace(0, EffectKind::Reverb) == 0 && busEffectPlace(1, EffectKind::Delay) == 0);
+    CHECK(busListSize(-1) == 1 && busListSize(kBuses) == 1 && busEffectAt(-1, 1) == EffectKind::None);
+    int found = 0;
+    for (int place = 1; place < effectListSize(); ++place) {
+        const EffectKind kind = effectAt(place);
+        if (effectBus(kind) < 0) continue;
+        ++found;
+        const int mix = effectMixParam(kind);
+        CHECK(mix >= 0); // it needs a LEVEL
+        if (mix < 0) continue;
+        // LEVEL at nothing: silence. (Off a bus, MIX at nothing is the sound untouched.)
+        {
+            std::unique_ptr<Effect> effect = makeEffect(kind, 48000.f, 120.f);
+            effect->setOnBus(true);
+            effect->setParam(mix, 0.f);
+            Stereo io = pinInput(48000.f);
+            through(*effect, io);
+            CHECK(peakOf(io.l) == 0.f && peakOf(io.r) == 0.f);
+        }
+        // LEVEL is a plain volume on what comes back: half is half.
+        Stereo full = pinInput(48000.f), half = full, off = full;
+        {
+            std::unique_ptr<Effect> effect = makeEffect(kind, 48000.f, 120.f);
+            effect->setOnBus(true);
+            effect->setParam(mix, 1.f);
+            through(*effect, full);
+            effect = makeEffect(kind, 48000.f, 120.f);
+            effect->setOnBus(true);
+            effect->setParam(mix, 0.5f);
+            through(*effect, half);
+            double worst = 0.0;
+            for (std::size_t i = 0; i < full.frames(); ++i) {
+                worst = std::fmax(worst, std::fabs(static_cast<double>(half.l[i]) - 0.5 * full.l[i]));
+                worst = std::fmax(worst, std::fabs(static_cast<double>(half.r[i]) - 0.5 * full.r[i]));
+            }
+            CHECK(peakOf(full.l) > 0.05f && peakOf(full.r) > 0.05f && worst < 1e-6);
+            // Told it is off the bus again, it is as it was made.
+            effect = makeEffect(kind, 48000.f, 120.f);
+            effect->setOnBus(true);
+            effect->setOnBus(false);
+            through(*effect, off);
+            Stereo plain = pinInput(48000.f);
+            through(*makeEffect(kind, 48000.f, 120.f), plain);
+            CHECK(off.l == plain.l && off.r == plain.r);
+        }
+        // The rest rule (kBusRestSeconds): once it has been quiet that long with
+        // nothing going in, it has nothing more to say. Every setting at each
+        // end, at the slowest tempo (the longest echoes), a full-scale click.
+        const int rest = static_cast<int>(kBusRestSeconds * 48000.f);
+        double longestGap = 0.0;
+        for (int corner = 0; corner < 16; ++corner) {
+            std::unique_ptr<Effect> effect = makeEffect(kind, 48000.f, kMinTempo);
+            effect->setOnBus(true);
+            for (int i = 0; i < effectInfo(kind).params; ++i) effect->setParam(i, i == mix ? 1.f : ((corner >> i) & 1 ? 1.f : 0.f));
+            Stereo io(48000 * 45);
+            io.l[0] = io.r[0] = 1.f;
+            through(*effect, io);
+            int quiet = 0;
+            bool begun = false, late = false;
+            for (std::size_t i = 0; i < io.frames(); ++i) {
+                const bool loud = !(std::fabs(io.l[i]) < kBusQuiet && std::fabs(io.r[i]) < kBusQuiet);
+                if (loud) {
+                    if (begun && quiet >= rest) late = true;
+                    if (begun) longestGap = std::fmax(longestGap, quiet / 48000.0);
+                    begun = true;
+                    quiet = 0;
+                } else {
+                    ++quiet;
+                }
+            }
+            CHECK(begun && !late);
+        }
+        SAY("%s on a bus: the longest silence between two sounds %.2f s (the rest rule waits %.0f)\n", effectInfo(kind).name, longestGap, static_cast<double>(kBusRestSeconds));
+        CHECK(longestGap < 0.8 * kBusRestSeconds);
+    }
+    CHECK(found >= 2);
+    // DELAY on a bus: a click in, its echoes out, and no click. Each echo is LEVEL times FEEDBACK's share.
+    {
+        std::unique_ptr<Effect> delay = fresh(EffectKind::Delay, 0.f, 0.5f, 1.f, 0.8f); // a sixteenth: 6000 frames
+        delay->setOnBus(true);
+        const std::vector<float> ir = impulseOf(*delay, 0.5);
+        CHECK(ir[0] == 0.f && echoAt(ir, 0) == 6000 && std::fabs(ir[6000] - 0.8f) < 1e-6f);
+        CHECK(std::fabs(echoGain(ir, 6000) - 0.45) < 0.01 && peakOf(std::vector<float>(ir.begin(), ir.begin() + 6000)) == 0.f);
+    }
+    // REVERB on a bus: no click at the front, and the same room (the tail's time is as it is in a slot).
+    {
+        std::unique_ptr<Effect> on = fresh(EffectKind::Reverb, 0.6f, 0.5f, 1.f), in = fresh(EffectKind::Reverb, 0.6f, 0.5f, 1.f);
+        on->setOnBus(true);
+        const std::vector<float> wet = impulseOf(*on, 4.0), both = impulseOf(*in, 4.0);
+        CHECK(wet[0] == 0.f && both[0] != 0.f);
+        CHECK(std::fabs(rt60(wet) - rt60(both)) < 0.02 && rt60(wet) > 1.0);
+        double worst = 0.0;
+        for (std::size_t i = 1; i < wet.size(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(wet[i]) - both[i]));
+        CHECK(worst < 1e-6); // after the click itself, the two are the same sound
+    }
+}
+
+// SENDS: one track, its send at half: the bus gets half. After the track's
+// level and its mute. Nonsense is ignored.
+static void testSends() {
+    const std::vector<float> plain = leftOf(*sineEngine(), 48000);
+    {
+        SendRig rig;
+        rig.send(0, 0.5f);
+        const std::vector<float> out = leftOf(*rig.engine, 48000);
+        CHECK(rig.echo->onBus == 1 && rig.space->onBus == 1);
+        CHECK(rig.echo->fed.size() == 48000 && rig.space->fed.empty() && rig.space->runs == 0);
+        CHECK(rig.engine->busAwake(0) && !rig.engine->busAwake(1) && !rig.engine->busAwake(2) && !rig.engine->busAwake(-1));
+        // It opens over 2.5 ms (half of the 5 ms that nothing to full takes), smoothly...
+        bool rising = true, exact = true, mixed = true;
+        for (int i = 2; i < kSendGlide / 2; ++i) rising = rising && std::fabs(rig.echo->fed[i] - plain[i] * (i + 1) / static_cast<float>(kSendGlide)) < 1e-5f;
+        CHECK(rising && rig.echo->fed[60] != 0.f && std::fabs(rig.echo->fed[60]) < std::fabs(plain[60]) * 0.26f);
+        // ...and from then on the bus is given exactly half, and what it gives back is added to the mix.
+        for (int i = kSendGlide / 2; i < 48000; ++i) {
+            exact = exact && rig.echo->fed[i] == plain[i] * 0.5f;
+            mixed = mixed && out[i] == plain[i] + rig.echo->fed[i];
+        }
+        CHECK(exact && mixed);
+        CHECK(largestJump(out) / sineStep(100.0, kEngineSine * 1.5) < 1.02);
+        // The other bus, the same; the first is not touched by it.
+        rig.send(1, 0.25f);
+        const std::vector<float> two = leftOf(*rig.engine, 4800);
+        CHECK(rig.space->fed.size() == 4800 && std::fabs(rig.space->fed[4700] - rig.echo->fed[48000 + 4700] * 0.5f) < 1e-7f);
+        CHECK(std::fabs(peakOf(two) - kEngineSine * 1.75) < 1e-3);
+        // Down again: it closes as smoothly, and to nothing exactly.
+        rig.send(0, 0.f);
+        rig.send(1, 0.f);
+        const std::vector<float> closing = leftOf(*rig.engine, 4800);
+        CHECK(largestJump(closing) / sineStep(100.0, kEngineSine * 1.75) < 1.02);
+        CHECK(rig.echo->fed.back() == 0.f && rig.space->fed.back() == 0.f);
+        const std::vector<float> shut = leftOf(*rig.engine, 480);
+        const std::vector<float> same = leftOf(*sineEngine(), 48000 + 4800 + 4800 + 480);
+        CHECK(std::equal(shut.begin(), shut.end(), same.end() - 480));
+    }
+    // After the track's level...
+    {
+        SendRig rig;
+        rig.send(0, 1.f);
+        rig.engine->send(make(Command::SetTrackLevel, 0, 0, 0, 0.2f));
+        leftOf(*rig.engine, 4800);
+        CHECK(std::fabs(peakOf(std::vector<float>(rig.echo->fed.end() - 960, rig.echo->fed.end())) - 0.5f * 0.2f) < 1e-4f);
+    }
+    // ...and after its mute: a muted track sends nothing (once the 5 ms the mute takes are over).
+    {
+        SendRig rig;
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        const std::vector<float> muted = leftOf(*rig.engine, 4800);
+        CHECK(peakOf(std::vector<float>(rig.echo->fed.begin() + 4800, rig.echo->fed.begin() + 4800 + 200)) > 0.05f);
+        CHECK(peakOf(std::vector<float>(rig.echo->fed.begin() + 4800 + 245, rig.echo->fed.end())) == 0.f);
+        CHECK(peakOf(std::vector<float>(muted.begin() + 245, muted.end())) == 0.f);
+    }
+    // Full is full, more than full is full, less than nothing is nothing.
+    {
+        SendRig rig;
+        rig.send(0, 7.f);
+        rig.send(1, -3.f);
+        leftOf(*rig.engine, 4800);
+        bool full = true;
+        for (int i = kSendGlide; i < 4800; ++i) full = full && rig.echo->fed[i] == plain[i];
+        CHECK(full && rig.space->runs == 0);
+    }
+    // Nonsense: no such bus, no such track, not a number. Nothing is sent anywhere.
+    {
+        SendRig rig;
+        rig.send(2, 1.f);
+        rig.send(-1, 1.f);
+        rig.send(0, 1.f, kNumTracks);
+        rig.send(0, 1.f, -1);
+        rig.send(0, 1.f, kEchoBus);
+        rig.send(0, std::nanf(""));
+        const std::vector<float> out = leftOf(*rig.engine, 4800);
+        CHECK(rig.echo->runs == 0 && rig.space->runs == 0 && std::equal(out.begin(), out.end(), plain.begin()));
+        // A track with no instrument sends nothing, whatever its send says.
+        rig.send(1, 1.f, 5);
+        leftOf(*rig.engine, 4800);
+        CHECK(rig.space->runs == 0);
+    }
+    // Two tracks into one bus: it gets the sum, each at its own amount.
+    {
+        SendRig rig;
+        CHECK(rig.engine->addDrumTrack(3));
+        rig.engine->setTrackEffect(3, 0, std::unique_ptr<Effect>(new SineSource));
+        rig.send(0, 0.5f, 0);
+        rig.send(0, 0.25f, 3);
+        leftOf(*rig.engine, 4800);
+        bool sum = true;
+        for (int i = kSendGlide; i < 4800; ++i) sum = sum && rig.echo->fed[i] == plain[i] * 0.5f + plain[i] * 0.25f;
+        CHECK(sum);
+    }
+    // A bus with no effect gives nothing back: the sound is not there twice.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        engine->send(make(Command::SetSend, 0, 1, 0, 1.f));
+        const std::vector<float> out = leftOf(*engine, 4800);
+        CHECK(std::equal(out.begin(), out.end(), plain.begin()) && !engine->busAwake(0) && !engine->busAwake(1));
+    }
+    // The buses join the mix BEFORE the master's slots: a master effect works on them too.
+    {
+        SendRig rig;
+        rig.send(0, 1.f);
+        std::unique_ptr<Effect> gain(new GainEffect);
+        gain->setParam(0, 0.25f);
+        rig.engine->setMasterEffect(1, std::move(gain));
+        const std::vector<float> out = leftOf(*rig.engine, 4800);
+        bool quarter = true;
+        for (int i = kSendGlide; i < 4800; ++i) quarter = quarter && out[i] == (plain[i] + plain[i]) * 0.25f;
+        CHECK(quarter);
+    }
+}
+
+// A send is automated like any setting: lane 20 is ECHO's, lane 21 SPACE's.
+static void testSendLanes() {
+    CHECK(autoLaneOfSend(0) == 20 && autoLaneOfSend(1) == 21 && kAutoLanes == 24 && autoLaneOfEffect(2, 3) == 19);
+    const int step = 6000;
+    for (int bus = 0; bus < kBuses; ++bus) {
+        SendRig rig;
+        Probe* mine = bus == 0 ? rig.echo : rig.space;
+        Probe* other = bus == 0 ? rig.space : rig.echo;
+        rig.send(bus, 0.25f); // where the knob rests
+        rig.engine->send(make(Command::SetAutomation, 0, autoLaneOfSend(bus), 4, 1.f));
+        rig.engine->send(make(Command::SetAutomation, 0, autoLaneOfSend(bus), 8, 0.f));
+        rig.engine->send(make(Command::Play, 0, 0, 1));
+        leftOf(*rig.engine, 16 * step);
+        const auto peakIn = [&](int from, int to) { return static_cast<double>(peakOf(std::vector<float>(mine->fed.begin() + from, mine->fed.begin() + to))) / kEngineSine; };
+        CHECK(std::fabs(peakIn(2 * step, 4 * step) - 0.25) < 1e-3);                  // at rest
+        CHECK(std::fabs(peakIn(4 * step + step / 2 + 300, 5 * step) - 1.0) < 1e-3);  // by the middle of step 5: full
+        CHECK(std::fabs(peakIn(5 * step + step / 2 + 300, 8 * step) - 0.25) < 1e-3); // back to the knob
+        CHECK(peakIn(8 * step + step / 2 + 300, 9 * step) == 0.0);                   // written as nothing: nothing
+        CHECK(std::fabs(peakIn(10 * step, 16 * step) - 0.25) < 1e-3);
+        // It glides there: no step in what the bus is given beyond the sine's own, with a margin for the eight moves.
+        CHECK(largestJump(mine->fed) / sineStep(100.0, kEngineSine) < 1.5);
+        CHECK(other->runs == 0);
+        // Stopped part way through the automated step: back to the knob.
+        leftOf(*rig.engine, 4 * step + step * 3 / 4);
+        rig.engine->send(make(Command::Stop));
+        leftOf(*rig.engine, 4800);
+        CHECK(std::fabs(static_cast<double>(peakOf(std::vector<float>(mine->fed.end() - 960, mine->fed.end()))) / kEngineSine - 0.25) < 1e-3);
+        // The knob moved while stopped: that is where it rests, and automation starts from there.
+        rig.send(bus, 0.5f);
+        leftOf(*rig.engine, 4800);
+        CHECK(std::fabs(static_cast<double>(peakOf(std::vector<float>(mine->fed.end() - 960, mine->fed.end()))) / kEngineSine - 0.5) < 1e-3);
+    }
+    // The knob moved while automation is moving it: the knob wins, at once, for the rest of the step.
+    {
+        SendRig rig;
+        rig.engine->send(make(Command::SetAutomation, 0, autoLaneOfSend(0), 4, 1.f));
+        rig.engine->send(make(Command::Play, 0, 0, 1));
+        leftOf(*rig.engine, 4 * step + step / 8); // an eighth of the way into the step whose glide takes half of it
+        rig.send(0, 0.3f);
+        leftOf(*rig.engine, step - step / 8);
+        CHECK(std::fabs(static_cast<double>(peakOf(std::vector<float>(rig.echo->fed.end() - step / 2, rig.echo->fed.end()))) / kEngineSine - 0.3) < 1e-3);
+    }
+    // A send whose knob was never touched rests at nothing, and automation comes back to that.
+    {
+        SendRig rig;
+        rig.engine->send(make(Command::SetAutomation, 0, autoLaneOfSend(0), 4, 1.f));
+        rig.engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = leftOf(*rig.engine, 8 * step);
+        const std::vector<float> plain = leftOf(*sineEngine(), 8 * step);
+        CHECK(std::fabs(peakOf(std::vector<float>(out.begin() + 4 * step + step / 2 + 300, out.begin() + 5 * step)) - 2.0 * kEngineSine) < 1e-3);
+        CHECK(std::equal(out.begin() + 5 * step + step / 2 + 300, out.end(), plain.begin() + 5 * step + step / 2 + 300));
+    }
+    // The two spare lanes do nothing at all.
+    {
+        SendRig rig;
+        rig.engine->send(make(Command::SetAutomation, 0, 22, 0, 1.f));
+        rig.engine->send(make(Command::SetAutomation, 0, 23, 0, 1.f));
+        rig.engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = leftOf(*rig.engine, 2 * step);
+        const std::vector<float> plain = leftOf(*sineEngine(), 2 * step);
+        CHECK(out == plain && rig.echo->runs == 0 && rig.space->runs == 0);
+    }
+}
+
+// A bus that has been sent nothing for longer than its tail is put to rest,
+// and costs nothing until something is sent again.
+static void testBusRests() {
+    const int rest = static_cast<int>(kBusRestSeconds * 48000.f);
+    CHECK(rest == 480000);
+    // Never sent to: never run.
+    {
+        SendRig rig;
+        leftOf(*rig.engine, 48000);
+        CHECK(rig.echo->runs == 0 && rig.space->runs == 0 && !rig.engine->busAwake(0) && !rig.engine->busAwake(1));
+    }
+    for (int ring : {0, 96000}) {
+        SendRig rig;
+        rig.echo->ring = ring;
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        CHECK(rig.engine->busAwake(0) && rig.echo->resets == 0);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0)); // the track goes quiet: 240 frames, and then nothing is sent
+        const std::size_t before = rig.echo->fed.size();
+        leftOf(*rig.engine, 240 + ring + rest - 2000);
+        CHECK(rig.engine->busAwake(0)); // still listening for its tail...
+        const std::vector<float> last = leftOf(*rig.engine, 2000 + 64);
+        CHECK(!rig.engine->busAwake(0)); // ...and now at rest
+        const std::size_t ran = rig.echo->fed.size() - before;
+        // It ran for its tail and the rest time after it, to the chunk.
+        CHECK(ran >= static_cast<std::size_t>(ring + rest) && ran <= static_cast<std::size_t>(240 + ring + rest + 2 * kMaxBlock));
+        CHECK(rig.echo->resets == 1); // cleared as it goes to rest, so it wakes clean
+        const int runs = rig.echo->runs;
+        const std::vector<float> resting = leftOf(*rig.engine, 48000);
+        CHECK(rig.echo->runs == runs && peakOf(resting) == 0.f);
+        // Something is sent again: it is awake from that chunk on.
+        rig.engine->send(make(Command::SetTrackHeard, 0, 1));
+        leftOf(*rig.engine, 4800);
+        CHECK(rig.engine->busAwake(0) && rig.echo->fed.size() == before + ran + 4800 && rig.echo->resets == 1);
+        // And a tail that keeps on sounding keeps it awake (it is the quiet that counts, not the time).
+        rig.echo->ring = 3 * rest;
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*rig.engine, 2 * rest);
+        CHECK(rig.engine->busAwake(0));
+    }
+    // The quiet is counted from when it was last sent anything: sent to again half way, it starts over.
+    {
+        SendRig rig;
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*rig.engine, rest * 3 / 4);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 1));
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*rig.engine, rest * 3 / 4);
+        CHECK(rig.engine->busAwake(0) && rig.echo->resets == 0);
+        leftOf(*rig.engine, rest / 4 + 1000);
+        CHECK(!rig.engine->busAwake(0) && rig.echo->resets == 1);
+    }
+    // A tail under the quiet line does not keep it awake; one just over it does.
+    for (int loud = 0; loud < 2; ++loud) {
+        SendRig rig;
+        rig.echo->ring = 3 * rest;
+        rig.echo->ringLevel = loud ? kBusQuiet * 1.01f : kBusQuiet * 0.99f;
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*rig.engine, rest + 1000);
+        CHECK(rig.engine->busAwake(0) == (loud == 1));
+    }
+    // An effect that has gone wrong (not a number) is not hidden by resting it.
+    {
+        SendRig rig;
+        rig.echo->ring = 3 * rest;
+        rig.echo->ringLevel = std::nanf("");
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*rig.engine, rest + 1000);
+        CHECK(rig.engine->busAwake(0));
+    }
+    // A send that is up on a track making no sound wakes nothing.
+    {
+        std::unique_ptr<Engine> engine(new Engine); // drums, and no hits
+        Probe* probe = new Probe;
+        engine->setBusEffect(0, std::unique_ptr<Effect>(probe));
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        leftOf(*engine, 4800);
+        CHECK(probe->runs == 0 && !engine->busAwake(0));
+    }
+    // An effect changed on a bus at rest: no fade to run, and the old one is freed.
+    {
+        std::atomic<int> ran{0};
+        std::unique_ptr<Engine> engine = sineEngine();
+        const int before = Counted::alive.load();
+        engine->setBusEffect(0, std::unique_ptr<Effect>(new Counted(&ran)));
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay));
+        const std::vector<float> out = leftOf(*engine, 4800);
+        engine->collectGarbage();
+        CHECK(ran.load() == 0 && Counted::alive.load() == before && !engine->busAwake(0));
+        const std::vector<float> plain = leftOf(*sineEngine(), 4800);
+        CHECK(out == plain);
+    }
+    // ...and the same when something is sent to it in that very moment: the old one never runs.
+    {
+        std::atomic<int> ran{0};
+        std::unique_ptr<Engine> engine = sineEngine();
+        const int before = Counted::alive.load();
+        engine->setBusEffect(0, std::unique_ptr<Effect>(new Counted(&ran)));
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay));
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        leftOf(*engine, 4800);
+        engine->collectGarbage();
+        CHECK(ran.load() == 0 && Counted::alive.load() == before && engine->busAwake(0));
+    }
+    // Panic clears the buses and puts them to rest.
+    {
+        SendRig rig;
+        rig.echo->ring = 480000;
+        rig.send(0, 1.f);
+        leftOf(*rig.engine, 4800);
+        rig.engine->send(make(Command::SetSend, 0, 0, 0, 0.f));
+        rig.engine->send(make(Command::Panic, 0, 1));
+        leftOf(*rig.engine, 4800);
+        CHECK(rig.echo->resets == 1 && !rig.engine->busAwake(0));
+        const int runs = rig.echo->runs;
+        rig.engine->send(make(Command::Panic, 0, 0));
+        leftOf(*rig.engine, 48000);
+        CHECK(rig.echo->runs == runs);
+    }
+}
+
+// The real effects on a bus, through the engine's own calls.
+static void testBusEffectsInTheEngine() {
+    const std::vector<float> plain = leftOf(*sineEngine(), 48000);
+    // DELAY on ECHO, a sixteenth (6000 frames at 120): for the first 6000
+    // frames nothing comes back, so the sound is there once and not twice.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay));
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.f));
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 0.f)); // one echo
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, 3, 0.5f)); // LEVEL
+        leftOf(*engine, 4800); // (the 10 ms a new effect takes to come in)
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        const std::vector<float> out = leftOf(*engine, 12000);
+        CHECK(std::equal(out.begin(), out.begin() + 6000, plain.begin() + 4800));
+        // Then the echo: the track, 6000 frames late, at LEVEL. (100 Hz: 6000 frames is 12.5 cycles, so it comes back upside down.)
+        bool echo = true;
+        for (int i = 6000 + kSendGlide; i < 12000; ++i) echo = echo && std::fabs(out[i] - (plain[4800 + i] + 0.5f * plain[4800 + i - 6000])) < 1e-6f;
+        CHECK(echo && std::fabs(peakOf(std::vector<float>(out.begin() + 7000, out.end())) - kEngineSine * 0.5) < 1e-3);
+        // The tempo reaches it: at 60 the sixteenth is 12000 frames.
+        engine->send(make(Command::SetTempo, 0, 0, 0, 60.f));
+        engine->send(make(Command::SetSend, 0, 0, 0, 0.f));
+        engine->send(make(Command::SetTrackHeard, 0, 0));
+        const std::vector<float> tail = leftOf(*engine, 24000);
+        CHECK(peakOf(std::vector<float>(tail.begin() + 6000, tail.begin() + 11900)) > 0.1f); // still echoing what it was sent
+        CHECK(peakOf(std::vector<float>(tail.begin() + 12300, tail.end())) < 1e-6f);        // and 12000 after the send shut, nothing
+    }
+    // An effect put on a bus starts with its LEVEL at full: the echo comes back as loud as what was sent.
+    {
+        CHECK(effectDefault(EffectKind::Delay, 3) == 0.35f && effectDefault(EffectKind::Delay, 3, true) == 1.f && effectDefault(EffectKind::Reverb, 2, true) == 1.f);
+        CHECK(effectDefault(EffectKind::Delay, 1, true) == 0.45f && effectDefault(EffectKind::Delay, 0, true) == 0.5f && effectDefault(EffectKind::Filter, 3, true) == 1.f);
+        CHECK(effectDefault(EffectKind::Delay, 4, true) == 0.f && effectDefault(EffectKind::Delay, -1) == 0.f && effectDefault(EffectKind::Reverb, 3, true) == 0.f && effectDefault(EffectKind::None, 0, true) == 0.f);
+        std::unique_ptr<Engine> engine = sineEngine();
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay)); // a quarter note: 24000 frames
+        engine->send(make(Command::SetSend, 0, 0, 0, 0.5f));
+        const std::vector<float> out = leftOf(*engine, 48000);
+        bool echo = true;
+        for (int i = 24000 + kSendGlide; i < 47000; ++i) echo = echo && std::fabs(out[i] - (plain[i] + 0.5f * plain[i - 24000])) < 1e-6f;
+        CHECK(echo && std::equal(out.begin(), out.begin() + 24000, plain.begin()));
+    }
+    // Its LEVEL at nothing: nothing comes back.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay) && engine->setEffect(kSpaceBus, 0, EffectKind::Reverb));
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, 3, 0.f));
+        engine->send(make(Command::SetEffectParam, kSpaceBus, 0, 2, 0.f));
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        engine->send(make(Command::SetSend, 0, 1, 0, 1.f));
+        const std::vector<float> out = leftOf(*engine, 48000);
+        CHECK(out == plain && engine->busAwake(0) && engine->busAwake(1));
+        // A bus has one slot; a setting for another is not for the master or a track by mistake.
+        engine->send(make(Command::SetEffectParam, kEchoBus, 1, 3, 1.f));
+        engine->send(make(Command::SetEffectParam, kSpaceBus - 1, 0, 2, 1.f));
+        CHECK(!engine->setEffect(kEchoBus, 1, EffectKind::Reverb) && !engine->setEffect(kSpaceBus, -1, EffectKind::Reverb) && !engine->setEffect(kSpaceBus - 1, 0, EffectKind::Reverb));
+        const std::vector<float> still = leftOf(*engine, 4800), longer = leftOf(*sineEngine(), 48000 + 4800);
+        CHECK(std::equal(still.begin(), still.end(), longer.begin() + 48000));
+    }
+    // REVERB on SPACE: the room comes back, the sound is not doubled at the front.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        CHECK(engine->setEffect(kSpaceBus, 0, EffectKind::Reverb));
+        engine->send(make(Command::SetEffectParam, kSpaceBus, 0, 2, 1.f));
+        leftOf(*engine, 4800);
+        engine->send(make(Command::SetSend, 0, 1, 0, 1.f));
+        const std::vector<float> out = leftOf(*engine, 48000);
+        CHECK(std::equal(out.begin(), out.begin() + 1000, plain.begin() + 4800)); // its first echo is 29 ms on
+        double differs = 0.0;
+        for (int i = 24000; i < 48000; ++i) differs = std::fmax(differs, std::fabs(static_cast<double>(out[i]) - plain[4800 + i]));
+        CHECK(differs > 0.05);
+    }
+    // An effect put on a bus that is sounding fades in and out like any other: no click.
+    {
+        SendRig rig;
+        rig.send(0, 1.f);
+        std::vector<float> all = leftOf(*rig.engine, 48000);
+        CHECK(rig.engine->setEffect(kEchoBus, 0, EffectKind::None)); // the probe (which gave the sound back whole) goes
+        std::vector<float> after = leftOf(*rig.engine, 2400);
+        all.insert(all.end(), after.begin(), after.end());
+        CHECK(largestJump(all, 48000 - 2, 48000 + 2400) / sineStep(100.0, kEngineSine * 2.0) < 1.05);
+        // Part way through the fade it is part way; after it, the bus gives nothing (it holds no effect).
+        CHECK(std::fabs(peakOf(std::vector<float>(all.begin() + 48000 + kFade, all.end())) - kEngineSine) < 1e-3);
+        CHECK(peakOf(std::vector<float>(all.begin() + 48000 + 100, all.begin() + 48000 + 340)) > kEngineSine * 1.3);
+        // And in again, from nothing.
+        CHECK(rig.engine->setEffect(kEchoBus, 0, EffectKind::Delay));
+        rig.engine->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.f));
+        after = leftOf(*rig.engine, 12000);
+        CHECK(largestJump(after) / sineStep(100.0, kEngineSine * 1.35) < 1.05);
+        rig.engine->collectGarbage();
+    }
+    // The setup call tells the effect where it is; an effect put there by setEffect is told too.
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        Probe* probe = new Probe;
+        engine->setBusEffect(1, std::unique_ptr<Effect>(probe));
+        CHECK(probe->onBus == 1);
+        engine->send(make(Command::SetEffectParam, kSpaceBus, 0, 2, 0.4f));
+        engine->send(make(Command::SetTempo, 0, 0, 0, 90.f));
+        leftOf(*engine, 64);
+        CHECK(probe->lastIndex == 2 && probe->lastParam == 0.4f && probe->tempo == 90.f);
+        engine->setBusEffect(2, std::unique_ptr<Effect>(new Probe)); // no such bus: freed, nothing put anywhere
+        engine->setBusEffect(-1, std::unique_ptr<Effect>(new Probe));
+        engine->prepare(48000.f);
+        CHECK(probe->resets == 1);
+    }
+}
+
+// Tracks have a third slot: it runs after the second, and lanes 16 to 19 are its settings.
+static void testThirdSlot() {
+    CHECK(kTrackSlots == 3 && kMasterSlots == 2 && slotsOf(0) == 3 && slotsOf(kMasterTrack) == 2 && slotsOf(kEchoBus) == 1 && slotsOf(kSpaceBus) == 1);
+    CHECK(slotsOf(kNumTracks) == 0 && slotsOf(kSpaceBus - 1) == 0 && busTrack(0) == kEchoBus && busTrack(1) == kSpaceBus);
+    CHECK(busOfTrack(kEchoBus) == 0 && busOfTrack(kSpaceBus) == 1 && busOfTrack(kMasterTrack) == -1 && busOfTrack(0) == -1);
+    const std::vector<float> plain = leftOf(*sineEngine(), 9600);
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        Probe* second = new Probe;
+        Probe* third = new Probe;
+        second->gain = 0.5f;
+        third->gain = 0.25f;
+        engine->setTrackEffect(0, 1, std::unique_ptr<Effect>(second));
+        engine->setTrackEffect(0, 2, std::unique_ptr<Effect>(third));
+        engine->setTrackEffect(0, 3, std::unique_ptr<Effect>(new Probe)); // no such slot: freed
+        const std::vector<float> out = leftOf(*engine, 4800);
+        bool series = true;
+        for (int i = 1; i < 4800; ++i) series = series && third->fed[i] == second->fed[i] * 0.5f && out[i] == third->fed[i] * 0.25f * 0.65f;
+        CHECK(series && second->onBus == -1);
+        // Its settings by command and by automation (lane 8 + 2 * 4 + setting).
+        engine->send(make(Command::SetEffectParam, 0, 2, 1, 0.3f));
+        leftOf(*engine, 64);
+        CHECK(third->lastIndex == 1 && third->lastParam == 0.3f && second->lastIndex == -1);
+        engine->send(make(Command::SetAutomation, 0, autoLaneOfEffect(2, 3), 1, 0.9f));
+        engine->send(make(Command::Play, 0, 0, 1));
+        leftOf(*engine, 2 * 6000);
+        CHECK(third->lastIndex == 3 && third->lastParam == 0.9f && second->lastIndex == -1);
+        engine->send(make(Command::Stop));
+        leftOf(*engine, 64);
+        CHECK(third->lastIndex == 3); // (its knob for that setting was never said: it stays)
+    }
+    // A real effect in it, by the usual call, and out again.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        CHECK(engine->setEffect(0, 2, EffectKind::Crush));
+        const std::vector<float> crushed = leftOf(*engine, 9600);
+        CHECK(!std::equal(crushed.begin() + 4800, crushed.end(), plain.begin() + 4800));
+        CHECK(engine->setEffect(0, 2, EffectKind::None));
+        leftOf(*engine, 4800);
+        const std::vector<float> clean = leftOf(*engine, 4800), same = leftOf(*sineEngine(), 9600 + 9600);
+        CHECK(std::equal(clean.begin(), clean.end(), same.end() - 4800));
+        engine->collectGarbage();
+    }
+}
+
+// A song with everything this step added: sends from every track, one
+// automated, real effects on both buses, a third slot, a mute and a change of
+// bus effect part way. The same to the last bit however many helpers share
+// the tracks out, and the same twice from fresh.
+static std::vector<float> sendSong(int helpers, bool sends = true) {
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->useWorkers(helpers);
+    for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
+    for (int t = 1; t <= 3; ++t) {
+        CHECK(engine->addSynthTrack(t, kinds[t - 1]));
+        for (int n = 0; n < 4; ++n) {
+            Command note = make(Command::SetNote, t, n, n * 4 + (t % 3), 0.7f);
+            note.c = 40 + 5 * t + 3 * n;
+            note.d = 3;
+            engine->send(note);
+        }
+    }
+    CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay) && engine->setEffect(kSpaceBus, 0, EffectKind::Reverb));
+    engine->send(make(Command::SetEffectParam, kEchoBus, 0, 3, 0.8f));
+    engine->send(make(Command::SetEffectParam, kSpaceBus, 0, 2, 0.7f));
+    CHECK(engine->setEffect(0, 2, EffectKind::Crush) && engine->setEffect(2, 2, EffectKind::Filter) && engine->setEffect(kMasterTrack, 1, EffectKind::Drive));
+    if (sends) {
+        for (int t = 0; t < 4; ++t) {
+            engine->send(make(Command::SetSend, t, 0, 0, 0.2f + 0.2f * static_cast<float>(t)));
+            engine->send(make(Command::SetSend, t, 1, 0, 0.9f - 0.2f * static_cast<float>(t)));
+        }
+        for (int s = 0; s < kSteps; s += 4) engine->send(make(Command::SetAutomation, 1, autoLaneOfSend(0), s, s % 8 == 0 ? 1.f : 0.f));
+        for (int s = 2; s < kSteps; s += 4) engine->send(make(Command::SetAutomation, 0, autoLaneOfSend(1), s, 0.1f));
+    }
+    engine->send(make(Command::SetAutomation, 2, autoLaneOfEffect(2, 0), 4, 0.3f));
+    std::vector<float> all(2 * 1024);
+    engine->render(all.data(), 1024);
+    engine->send(make(Command::Play, 0, 0, 1));
+    int round = 0;
+    for (int done = 0, size = 37; done < 3 * 16 * 6000; done += size, size = size % 301 + 64, ++round) {
+        if (round == 300) engine->send(make(Command::SetTrackHeard, 3, 0));
+        if (round == 500) CHECK(engine->setEffect(kEchoBus, 0, EffectKind::None));
+        if (round == 501) CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay)); // inside the last one's fade
+        if (round == 700) engine->send(make(Command::SetTrackHeard, 3, 1));
+        std::vector<float> got(static_cast<std::size_t>(2 * size), 99.f);
+        engine->render(got.data(), size);
+        all.insert(all.end(), got.begin(), got.end());
+        engine->collectGarbage();
+    }
+    all.push_back(engine->busAwake(0) ? 1.f : 0.f);
+    all.push_back(engine->busAwake(1) ? 1.f : 0.f);
+    return all;
+}
+
+static void testSendsOnAnyHelperCount() {
+    const std::vector<float> alone = sendSong(0);
+    CHECK(peakOf(alone) > 0.1f && alone.size() > 500000 && alone[alone.size() - 1] == 1.f && alone[alone.size() - 2] == 1.f);
+    for (float v : alone) {
+        if (v != v || v == 99.f) {
+            CHECK(!"a sample that is not a number, or was never written");
+            break;
+        }
+    }
+    CHECK(sendSong(0) == alone); // twice from fresh
+    for (int helpers : {1, 2, 3}) CHECK(sendSong(helpers) == alone);
+    // The sends are heard (it is not the same song without them), and without them the buses rest.
+    const std::vector<float> dry = sendSong(0, false);
+    CHECK(dry != alone && dry[dry.size() - 1] == 0.f && dry[dry.size() - 2] == 0.f);
+    double apart = 0.0;
+    for (std::size_t i = 0; i + 2 < alone.size(); ++i) apart += (static_cast<double>(alone[i]) - dry[i]) * (static_cast<double>(alone[i]) - dry[i]);
+    CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.01);
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -1513,6 +2219,13 @@ int main(int argc, char** argv) {
     testReverbDoesNotSlowDown();
     testSwapFade();
     testSwapsOnAnyHelperCount();
+    testEffectsOnABus();
+    testSends();
+    testSendLanes();
+    testBusRests();
+    testBusEffectsInTheEngine();
+    testThirdSlot();
+    testSendsOnAnyHelperCount();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

@@ -1,6 +1,7 @@
 #pragma once
-// An effect processes a stereo block in place. Every track has two slots and
-// the master has two; an empty slot passes the sound through untouched.
+// An effect processes a stereo block in place. Every track has three slots and
+// the master has two; an empty slot passes the sound through untouched. Each
+// of the two send buses holds one, which is told so (setOnBus).
 //
 // Rules for anything that implements Effect:
 //   - process() runs on the realtime audio thread: no allocation, no locks,
@@ -17,6 +18,12 @@ public:
     virtual void prepare(float sampleRate) { (void)sampleRate; }
     virtual void reset() {}
     virtual void setTempo(float bpm) { (void)bpm; } // for effects that keep time. Realtime safe.
+    // "You are on a send bus": give back only what you add (the echoes, the
+    // room), none of the sound that came in, and read MIX as how loud that is.
+    // Every delay and reverb must honour it (effects_test checks each one in
+    // those groups); the engine puts nothing else on a bus. Not realtime: it
+    // is said once, before the effect goes in.
+    virtual void setOnBus(bool on) { (void)on; }
     virtual void setParam(int index, float value) = 0;
     virtual void process(float* left, float* right, int frames) = 0;
 };

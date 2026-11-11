@@ -84,6 +84,44 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
     std::printf("  %-28s %6.2f%% of one core\n", name, 100.0 * best / (64.0 / 48.0));
 }
 
+// The send buses: twelve drum tracks, every lane busy, and what the sends add
+// to that. `sends`: every track sends to both buses. `effects`: the buses hold
+// a DELAY and a REVERB (without, they are fed and give nothing back, which is
+// the cost of the feeding alone). The best of five runs of ten seconds.
+static double busSong(bool sends, bool effects) {
+    std::unique_ptr<Engine> engine(new Engine);
+    for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
+    Command c;
+    for (int t = 0; t < kNumTracks; ++t) {
+        c = Command();
+        c.type = Command::SetStep;
+        c.track = t;
+        c.value = 1.f;
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int step = (t + lane) % 2; step < kSteps; step += 2) c.a = lane, c.b = step, engine->send(c);
+        c = Command();
+        c.type = Command::SetSend;
+        c.track = t;
+        c.value = sends ? 0.5f : 0.f;
+        for (int bus = 0; bus < kBuses; ++bus) c.a = bus, engine->send(c);
+    }
+    if (effects) {
+        engine->setEffect(kEchoBus, 0, EffectKind::Delay);
+        engine->setEffect(kSpaceBus, 0, EffectKind::Reverb);
+    }
+    c = Command();
+    c.type = Command::Play;
+    engine->send(c);
+    std::vector<float> out(512);
+    for (int i = 0; i < 400; ++i) engine->render(out.data(), 256);
+    double best = 1e30;
+    for (int run = 0; run < 5; ++run) {
+        const double block = ms([&] { engine->render(out.data(), 256); }, 1875);
+        best = block < best ? block : best;
+    }
+    return 100.0 * best / (256.0 / 48.0);
+}
+
 int main() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
@@ -119,6 +157,14 @@ int main() {
         const EffectKind kind = effectAt(place);
         effect(effectInfo(kind).name, kind);
         if (kind == EffectKind::Filter) effect("FILTER, LOW 24 DB", kind, 2, 0.3f);
+    }
+
+    // The send buses, as what they add to a song of twelve busy drum tracks.
+    {
+        const double dry = busSong(false, false), fed = busSong(true, false), both = busSong(true, true);
+        std::printf("the send buses (twelve drum tracks, %.2f%% of one core by themselves):\n", dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "feeding both from 12 tracks", fed - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "...and DELAY and REVERB on them", both - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

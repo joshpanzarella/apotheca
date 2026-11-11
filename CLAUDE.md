@@ -118,6 +118,11 @@ Where effects are, in the engine:
 The screen, the song file and `bench` pick it up from the table; the build
 takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 
+**A delay or a reverb also goes on a send bus** (by its group: `effectBus`).
+Its `process()` must look at `Unit::bus_` and, when set, put out only what it
+adds (wet times MIX) and none of what came in. `effects_test` checks every
+effect in those two groups and fails one that does not.
+
 ## Rules that bite
 
 ### Files and compatibility
@@ -125,8 +130,9 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   `auto`, `steps`, `name`) never change meaning. Unknown lines are skipped.
 - **Ids are appended, never reordered or reused**: `Command::Type`, every
   synth's settings and macros, effect kinds, effect settings, automation lanes
-  (0..7 macros, `8 + slot * 4 + setting` effects). Songs and presets store
-  them by number.
+  (0..7 macros, `8 + slot * 4 + setting` effects for slots 1 to 3, 20 and 21
+  the ECHO and SPACE sends, 22 and 23 spare). Songs and presets store them by
+  number.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -163,6 +169,24 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   done, never from `renderTrack`: **the trash queue takes from one thread.**
   A test that wants an effect in place at once uses the setup call
   `setTrackEffect`, or renders 10 ms before it listens.
+- **Two send buses, ECHO and SPACE** (`kEchoBus` -2, `kSpaceBus` -3: "track"
+  numbers beside `kMasterTrack`, one slot each; `slotsOf(track)` says how many
+  slots anything has: tracks 3, master 2, a bus 1). A track's send is taken
+  after its level and mute and glides for 5 ms. The buses are fed and run on
+  the audio thread **after the helpers are done, in track order**
+  (`feedBuses`, `runBuses`), and join the mix before the master's slots. Keep
+  it there: that is what holds the output to the bit on any helper count.
+- **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
+  why a song with no sends is the same to the last bit as before there were
+  buses (`effects_test` holds the old song's checksum with an effect waiting
+  on each bus). A bus rests when it has been sent nothing and has put out
+  nothing above `kBusQuiet` (1e-6) for `kBusRestSeconds` (10 s); its effect is
+  then `reset()`. Ten seconds must stay longer than the longest silence
+  between two echoes of anything a bus can hold (`effects_test` measures each
+  delay and reverb at 40 BPM: DELAY 3.0 s). A bus with no effect is not run.
+- **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
+  and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
+  reads LEVEL there, at full (`effectDefault(kind, i, true)`).
 - **Flush-to-zero is built and OFF** (`Engine::setFlushDenormals`). On, it is
   set for each `render()` and on the helpers. It is off because it changes the
   last vanishing samples of a tail (all below 1e-30) and so 1 of the 40 pinned
@@ -244,6 +268,8 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
+| Feeding both send buses from 12 tracks | 0.03% |
+| ...and a DELAY and a REVERB on them | 0.12% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

@@ -42,7 +42,7 @@ std::string songText(const Project& project) {
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
     // fx SLOT NAME and its settings. Before any track: the master's.
     const auto putEffects = [&](const EffectData* effects) {
-        for (int slot = 0; slot < kEffectSlots; ++slot) {
+        for (int slot = 0; slot < kMasterSlots; ++slot) {
             const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
             if (kind == EffectKind::None) continue;
             put(out, "fx %.0f ", slot + 1);
@@ -234,7 +234,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "fx") {
             double slot, value;
             std::string name;
-            if (!(in >> slot >> name) || slot < 1 || slot > kEffectSlots) continue;
+            if (!(in >> slot >> name) || slot < 1 || slot > kMasterSlots) continue;
             EffectData& data = (track ? track->effects : song->masterEffects)[static_cast<int>(slot) - 1];
             const EffectKind kind = effectFromWord(name.c_str());
             if (kind == EffectKind::None) continue; // an effect this version does not have: the slot is left as it was

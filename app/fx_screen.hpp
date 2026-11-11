@@ -38,11 +38,11 @@ public:
     void goTo(int row, int column);
     int cursorRow() const { return row_; }
     int cursorColumn() const { return column_; }
-    static constexpr int kRows = 2 * kEffectSlots;
+    static constexpr int kRows = 2 * kMasterSlots;
 
 private:
-    int trackOf(int row) const { return row < kEffectSlots ? project_.track : kMasterTrack; }
-    int slotOf(int row) const { return row % kEffectSlots; }
+    int trackOf(int row) const { return row < kMasterSlots ? project_.track : kMasterTrack; }
+    int slotOf(int row) const { return row % kMasterSlots; }
     const EffectData& data(int row) const { return session_.effectData(trackOf(row), slotOf(row)); }
     void press(Button direction);
     void turn(float amount);

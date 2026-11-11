@@ -67,7 +67,8 @@ public:
                     wet = delayed - 0.5f * fed;
                     if (++at >= static_cast<int>(line.size())) at = 0;
                 }
-                io[c][i] = in + mix * (wet - in * 0.5f * mix); // the dry sound eases back as the room comes up
+                if (bus_) io[c][i] = mix * wet; // on a bus: the room alone
+                else io[c][i] = in + mix * (wet - in * 0.5f * mix); // the dry sound eases back as the room comes up
             }
         }
     }

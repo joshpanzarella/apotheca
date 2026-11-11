@@ -609,7 +609,7 @@ void Session::setTrackName(int track, const std::string& name) {
 // ---- effects ------------------------------------------------------------------------
 
 void Session::setEffect(int track, int slot, EffectKind kind) {
-    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kMasterSlots) return;
     if (static_cast<int>(kind) < 0 || static_cast<int>(kind) >= kEffectKinds) kind = EffectKind::None;
     if (!engine.setEffect(track, slot, kind)) return;
     // Another effect in the slot: automation written for the old one's settings means nothing now.
@@ -622,7 +622,7 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
 }
 
 void Session::setEffectParam(int track, int slot, int index, float value) {
-    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kMasterSlots) return;
     EffectData& data = effectData(track, slot);
     if (index < 0 || index >= effectInfo(static_cast<EffectKind>(data.kind)).params) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
@@ -752,7 +752,7 @@ void Session::applyProject() {
     }
     // Every slot, the empty ones too: what the last song left there goes.
     for (int track = kMasterTrack; track < kNumTracks; ++track) {
-        for (int slot = 0; slot < kEffectSlots; ++slot) {
+        for (int slot = 0; slot < kMasterSlots; ++slot) {
             const EffectData data = effectData(track, slot);
             const EffectKind kind = static_cast<EffectKind>(data.kind);
             engine.setEffect(track, slot, kind);

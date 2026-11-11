@@ -177,7 +177,7 @@ struct TrackData {
     DrumPattern drums[kMaxScenes][kMaxBars];
     NotePattern notes[kMaxScenes][kMaxBars];
     int bars[kMaxScenes];
-    EffectData effects[kEffectSlots]; // on this track, one after the other
+    EffectData effects[kMasterSlots]; // on this track, one after the other
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
@@ -217,7 +217,7 @@ struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
     int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
-    EffectData masterEffects[kEffectSlots]; // on everything, after the tracks are mixed
+    EffectData masterEffects[kMasterSlots]; // on everything, after the tracks are mixed
     float tempo = 120.f;
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show

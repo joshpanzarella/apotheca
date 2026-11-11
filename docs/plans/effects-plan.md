@@ -388,7 +388,7 @@ metallic is for ears.
 | Step | What | Size | Needs | Mostly touches |
 | --- | --- | --- | --- | --- |
 | 0 | **DONE 2026-11-11, but for one switch (see below).** **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
-| 1a | **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
+| 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
 | 1b | Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
 | 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
 | 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
@@ -411,6 +411,22 @@ metallic is for ears.
 | Flush-to-zero | **Built, tested, and left OFF.** On, it changes 1 of the 40 pinned renders (25 samples, all under 1e-38) and the end of any long tail (under 1e-30, 600 dB down). Nothing anyone could hear, but not "the same to the last bit". **The owner decides**; it is one call, `Engine::setFlushDenormals(true)`, in `app/main.cpp` and `app/bounce.cpp`. The old five do not slow down without it (measured). HALL will need it |
 | Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
 | Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
+
+**Step 1a as built** (2026-11-11; only tests and measurements have seen it, nobody has heard it):
+
+| Thing | Result |
+| --- | --- |
+| The buses | `kEchoBus` (-2) and `kSpaceBus` (-3), one slot each, addressed like the master. `Command::SetSend` appended. Sends are taken after level and mute and glide over 5 ms |
+| Wet only | `Effect::setOnBus`. DELAY and REVERB honour it: one changed line each, off a bus their sound is still the pinned one. A new delay or reverb must do the same (`Unit::bus_`); a test fails one that does not |
+| LEVEL | An effect put on a bus starts with its MIX at 100%. A send of 35% into DELAY at LEVEL 100% is then the echo an insert DELAY gives at MIX 35% |
+| The rest rule | A bus sent nothing, and quieter than 120 dB under full scale, for **10 s** is cleared and skipped. Measured longest silence between echoes: DELAY 3.0 s (a half note at 40 BPM), REVERB 0.26 s. A bus never sent to is never run |
+| No sends, same bits | The step 0 song's checksum holds, also with an effect waiting on each bus, also with helpers |
+| Helpers | A song with sends from four tracks, send automation, both buses, a third slot, a mute and a bus effect swapped mid-song: the same to the last bit with 0, 1, 2 and 3 helpers, and twice from fresh |
+| Lanes | 24. 16 to 19 are slot 3, 20 ECHO send, 21 SPACE send, 22 and 23 do nothing |
+| Slots | `kTrackSlots` 3, `kMasterSlots` 2; `kEffectSlots` is gone |
+| A swap on a bus | Fades like any slot when the bus is sounding (to and from silence, not the dry sound). On a bus at rest the new effect is simply there |
+| Cost (desk, `bench`) | Feeding both buses from 12 tracks **0.03%** of a core (plan: 0.09). With DELAY and REVERB on them 0.12% in all. Handheld, times 5: 0.15% and 0.6%, against the plan's 2.5% for buses with TAPE and HALL |
+| Departed from the plan | "Skipped after its tail" is measured, not declared: no effect says how long its tail is. A tail that never falls under the line (DELAY at full FEEDBACK is 90%, so it does fall) would keep its bus awake |
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

@@ -159,14 +159,14 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     const int colW = 122, colGap = 4, boxH = 62, rowH = 100, top = 34;
     for (int row = 0; row < kRows; ++row) {
-        const int y = top + row * rowH + (row >= kEffectSlots ? 6 : 0);
+        const int y = top + row * rowH + (row >= kMasterSlots ? 6 : 0);
         const EffectData& d = data(row);
         const EffectKind kind = static_cast<EffectKind>(d.kind);
         const EffectInfo& info = effectInfo(kind);
-        if (row < kEffectSlots) std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slotOf(row) + 1);
+        if (row < kMasterSlots) std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slotOf(row) + 1);
         else std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slotOf(row) + 1);
         fonts.small.draw(r, 8.f, y + 2.f, text, row == row_ ? kText : kDim);
-        if (row == kEffectSlots) fill(r, 8, y - 6, kScreenW - 16, 1, kLine);
+        if (row == kMasterSlots) fill(r, 8, y - 6, kScreenW - 16, 1, kLine);
 
         const bool here = row == row_;
         valueBox(r, fonts, 8, y + 18, colW, boxH, "EFFECT", info.name, -1.f, here && column_ == 0, holding_);
