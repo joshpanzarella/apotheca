@@ -12,7 +12,7 @@ using namespace ui;
 namespace {
 const int kFits[] = {0, 1, 2, 4, 8, 16, 32, 64};
 constexpr int kFitCount = sizeof kFits / sizeof kFits[0];
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 110;
+constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs; // eight rows, and sounds stepped through
 constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to hear each sound
 }
 

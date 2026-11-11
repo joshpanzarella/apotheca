@@ -109,8 +109,8 @@ namespace apotheca {
 // How fast the controls feel. One place, so it can become a setting later.
 // The owner's rule: faster is better; nobody has ever asked for slower.
 struct Feel {
-    Uint32 repeatDelayMs = 170;   // hold the D-pad this long before it runs
-    Uint32 repeatEveryMs = 30;    // then one move this often (33 a second)
+    Uint32 repeatDelayMs = ui::kCursorDelayMs; // hold the D-pad this long before it runs
+    Uint32 repeatEveryMs = ui::kCursorEveryMs; // then one move this often (33 a second)
     float stickCellsPerSecond = 36.f; // stick held fully over, moving the cursor
     float fillPerSecond = 3.f;    // stick fully over: empty to full in a third of a second
     float tempoPerSecond = 90.f;  // stick fully over, in BPM

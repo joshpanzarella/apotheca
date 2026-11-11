@@ -12,7 +12,7 @@ using namespace phazed;
 namespace {
 
 constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30;
+constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
 constexpr float kPresetsPerSecond = 10.f;
@@ -169,6 +169,19 @@ void SynthScreen::turn(float amount) {
     }
 }
 
+// The D-pad with A held. Up and down: one. Left and right: one as well, but on PRESET eight at
+// a time, as in the list of recordings: there are dozens of presets and one at a time is slow.
+void SynthScreen::stepHeld(Button direction) {
+    const int way = direction == Button::Up || direction == Button::Right ? 1 : -1;
+    const bool sideways = direction == Button::Left || direction == Button::Right;
+    if (page_ == 0 && cursor_ == kPreset && sideways) {
+        const int to = trk().preset + way * kPresetJump, last = spec_.presetCount() - 1;
+        choosePreset(to < 0 ? 0 : (to > last ? last : to)); // the ends stop
+    } else {
+        stepExact(way);
+    }
+}
+
 void SynthScreen::stepExact(int by) {
     if (page_ == 0) {
         if (cursor_ == kFolder) stepFolder(by);
@@ -208,8 +221,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (isDirection(b)) {
         if (holding_) {
-            if (b == Button::Up || b == Button::Right) stepExact(1);
-            else stepExact(-1);
+            stepHeld(b);
         } else {
             moveCursor(b);
         }
@@ -275,7 +287,7 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + kRepeatEveryMs;
-        if (holding_) stepExact(repeating_ == Button::Up || repeating_ == Button::Right ? 1 : -1);
+        if (holding_) stepHeld(repeating_);
         else moveCursor(repeating_);
     }
 }
@@ -323,7 +335,7 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
         if (holding_) {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
-            else if (cursor_ == kPreset) hint("UP / DOWN", "next / previous preset");
+            else if (cursor_ == kPreset) { hint("UP / DOWN", "next / previous preset"); hint("LEFT / RIGHT", "8 at a time"); }
             else hint("UP / DOWN", "turn it");
         } else {
             if (cursor_ == kAdvanced) hint("A", "open");

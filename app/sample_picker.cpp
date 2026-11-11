@@ -11,7 +11,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = 220, kRepeatEveryMs = 110;
+constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs;
 constexpr float kRowsPerSecond = 8.f; // the stick: slow enough to hear each one go by
 }
 
@@ -38,6 +38,7 @@ void SamplePicker::open(std::vector<std::string> names, const std::string& curre
     saved_ = 0.f;
     stickWas_ = false;
     repeating_ = Button::None;
+    bDown_ = false;
     open_ = true;
 }
 
@@ -69,11 +70,23 @@ void SamplePicker::moveTo(int row, bool playing) {
 void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     if (!open_) return;
     const Button b = event.button;
-    if (b == Button::Y) {
-        // Held for a second on a recording: it is deleted. Let go sooner: nothing.
-        deleting_ = event.down && cursor_ > 0;
-        deleteTimed_ = false;
-        deletePart_ = 0.f;
+    if (b == Button::B) {
+        // Held for a second on a recording: it is deleted, for good (hold B deletes for good on every
+        // screen). Let go sooner: a tap, which puts back what was there before the list was opened.
+        if (event.down) {
+            bDown_ = true;
+            deleting_ = cursor_ > 0;
+            deleteTimed_ = false;
+            deletePart_ = 0.f;
+        } else if (bDown_) {
+            bDown_ = false;
+            deleting_ = false;
+            deletePart_ = 0.f;
+            // As it was. (Nothing to do if the cursor is back where it began.)
+            const std::string now = cursor_ == 0 ? "" : names_[static_cast<std::size_t>(cursor_ - 1)];
+            if (now != original_ && jobs_.use) jobs_.use(original_);
+            open_ = false;
+        }
         return;
     }
     if (!event.down) {
@@ -90,11 +103,6 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
         turnFolder(b == Button::R1 ? 1 : -1, playing);
     } else if (b == Button::A) {
         open_ = false; // what is showing is already on
-    } else if (b == Button::B) {
-        // As it was. (Nothing to do if the cursor is back where it began.)
-        const std::string now = cursor_ == 0 ? "" : names_[static_cast<std::size_t>(cursor_ - 1)];
-        if (now != original_ && jobs_.use) jobs_.use(original_);
-        open_ = false;
     } else if (b == Button::X) {
         if (jobs_.hear) jobs_.hear();
     }
@@ -107,12 +115,13 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
     lastMs_ = nowMs;
     playing_ = playing;
     if (!open_) return;
-    if (!input.held(Button::Y)) deleting_ = false, deletePart_ = 0.f;
+    if (!input.held(Button::B)) deleting_ = false, deletePart_ = 0.f;
     if (deleting_) {
         if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
         deletePart_ = static_cast<float>(nowMs - deleteSince_) / static_cast<float>(kDeleteHoldMs);
         if (deletePart_ >= 1.f && cursor_ > 0) {
             deleting_ = false;
+            bDown_ = false; // this hold was a delete: letting go is not a tap
             deletePart_ = 0.f;
             const std::string gone = names_[static_cast<std::size_t>(cursor_ - 1)];
             if (jobs_.remove && jobs_.remove(gone)) {
@@ -216,7 +225,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.medium.draw(r, x + 24.f, by + (rowH - 4 - fonts.medium.capHeight()) / 2.f, name.c_str(), here ? kTeal : (i == 0 ? kDim : kText));
         if (here && deletePart_ > 0.f) {
             fill(r, x + 13, by + 1, static_cast<int>((w - 26) * (deletePart_ > 1.f ? 1.f : deletePart_)), rowH - 6, faded(kStop, 150));
-            fonts.small.drawRight(r, x + w - 24.f, by + (rowH - 4 - fonts.small.capHeight()) / 2.f, "HOLD TO DELETE", kText);
+            fonts.small.drawRight(r, x + w - 24.f, by + (rowH - 4 - fonts.small.capHeight()) / 2.f, "DELETING: CANNOT BE UNDONE", kText);
         }
         if (here) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
     }
@@ -231,7 +240,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x + w - 8, ly + (track - bar) * first / (count() - kRows), 3, bar, kTeal);
     }
     const Hint list[] = {{"A", "keep it"}, {"B", "as it was"}, {"UP / DOWN", playing_ ? "next, in the beat" : "next"}, {foldered ? "L1 / R1" : "LEFT / RIGHT", foldered ? "folder" : "8 at a time"},
-                         {"HOLD Y", cursor_ > 0 ? "delete it" : nullptr}, {foldered ? "LEFT / RIGHT" : nullptr, "8 at a time"}};
+                         {"HOLD B", cursor_ > 0 ? "delete it" : nullptr}, {foldered ? "LEFT / RIGHT" : nullptr, "8 at a time"}};
     hints(r, fonts, list, 6);
 }
 

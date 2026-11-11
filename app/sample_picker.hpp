@@ -12,10 +12,11 @@
 //                  Arriving in a folder puts its first recording on, as
 //                  arriving on a row does.
 //   A              keep the one showing
-//   B              put back what was there before the list was opened
+//   B              a tap: put back what was there before the list was opened
+//   hold B         for a second: DELETE the recording under the cursor from the
+//                  handheld, for good (a bad catch, a take not wanted). Not the
+//                  first row. Hold B is "delete for good" on every screen.
 //   X              hear it again
-//   hold Y         for a second: DELETE the recording under the cursor from the
-//                  handheld (a bad catch, a take not wanted). Not the first row.
 //
 // The list knows nothing of lanes or samplers: it is given the names and
 // three things it can do (use this one, play it, tell me about it).
@@ -74,7 +75,8 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     bool playing_ = false;
-    bool deleting_ = false, deleteTimed_ = false; // Y is held on a recording
+    bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's)
+    bool deleting_ = false, deleteTimed_ = false; // B is held on a recording
     Uint32 deleteSince_ = 0;
     float deletePart_ = 0.f;
 public:

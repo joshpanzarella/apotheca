@@ -8,7 +8,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 60;
+constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 0.9f, kNotch = 0.05f;
 
 // Settings that are a choice, not an amount: how many choices.

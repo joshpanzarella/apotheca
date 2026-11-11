@@ -83,6 +83,12 @@ struct Playhead {
 // Draws it over a picture `w` wide that starts at `x`.
 void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, int y, int w, int h);
 
+// How a held D-pad runs, the same on every screen. Two speeds: a cursor (grids, and a
+// cursor among boxes) runs fast; a list, or a choice being stepped through, runs slowly
+// enough to see or hear each one go by.
+constexpr Uint32 kCursorDelayMs = 170, kCursorEveryMs = 30;
+constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
+
 // A button's name as it is written in a cream box. The four directions are
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same
 // thing in a third of the room. Everything else is its letters.

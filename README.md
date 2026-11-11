@@ -136,9 +136,9 @@ as a list, with the one showing drawn as a waveform and its length.
 | Left / right | Eight at a time |
 | **L1 / R1** | The folder before / after (when there are folders) |
 | A | Keep it |
-| B | Put back what was there before the list opened |
+| B | A tap: put back what was there before the list opened |
 | X | Hear it again |
-| Hold Y | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
+| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
 | START | Play / stop, with the list still open |
 
 **Folders.** Make folders inside `samples` (kicks, breaks, vocals...) and the
@@ -570,6 +570,27 @@ hit on the lane, on the sixteenths of the sound. **Left** puts them all back
 at the top. On a loop fitted to one bar, that rearranges the beat and keeps
 it in time.
 
+### The same on every screen
+
+A few things mean one thing everywhere:
+
+| | Means |
+| --- | --- |
+| A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
+| B | Delete, empty, go back |
+| **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
+| X | Hear it. Held on a drum hit: its step effects |
+| Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
+| L2 / R2 | The tabs |
+| SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length |
+
+A held D-pad runs at one of two speeds on every screen: fast for a cursor
+(33 moves a second), slow for a list or a choice (9 a second), so each one
+can be seen or heard as it goes by.
+
+On PRESET with A held, **left / right go eight presets at a time**, as in the
+list of recordings.
+
 ### Step effects
 
 What one hit does besides play. **Hold X on a hit** (a tap of X still just
@@ -697,7 +718,7 @@ is loud; holding A shapes it the way it is drawn.
 | X | Hear the key |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
-| Hold X and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
+| **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
 A note runs at most to the end of the bar, or to the next note on that key.

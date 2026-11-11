@@ -33,6 +33,20 @@ never "rub out".
 - **I cannot hear.** Nothing is "verified" on the handheld unless the owner
   says so. Say which things only the tests and stills have seen.
 
+## The buttons' standards (from the UI audit)
+
+New screens and gestures keep these; do not invent a variant.
+
+- **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
+- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button.
+- **X** hears. **Hold X** is "what it does": step effects on a drum hit, and kept free for note effects.
+- **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
+- **Y** is the screen's special (chance, chord, mute, catch, roll).
+- **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
+- **A held D-pad has two speeds**, in `ui.hpp`: `kCursor...` for cursors, `kList...` for lists and choices.
+- **One word: "delete".** Not erase, remove or rub out. A cell is "emptied".
+- **What cannot be undone says so** where it is confirmed.
+
 ## Build, test, ship
 
 | Job | Command |

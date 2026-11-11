@@ -582,7 +582,7 @@ void testPaintingNotes() {
     CHECK(rig->project().tracks[1].notes[0][0].at(61, 3) >= 0 && rig->project().tracks[1].notes[0][0].at(61, 4) >= 0);
     rig->tap(DOWN);
     CHECK(notes.noteCount() == 6); // the brush is up
-    // The brush copies the level of the note it starts on.
+    // Started on a note, R1 is not the brush: it takes hold of the note, and the note goes with the cursor.
     rig->app.notes().moveCursorTo(72, 0);
     rig->tap(A);
     rig->key(A, true);
@@ -591,9 +591,9 @@ void testPaintingNotes() {
     rig->key(R1, true);
     rig->tap(DOWN, 2);
     rig->key(R1, false);
-    for (int step = 0; step <= 2; ++step) {
-        const int slot = rig->project().tracks[1].notes[0][0].at(72, step);
-        CHECK(slot >= 0 && near(rig->project().tracks[1].notes[0][0].notes[slot].velocity, 0.3f));
+    {
+        const NotePattern& p = rig->project().tracks[1].notes[0][0];
+        CHECK(p.at(72, 0) < 0 && p.at(72, 1) < 0 && p.at(72, 2) >= 0 && near(p.notes[p.at(72, 2)].velocity, 0.3f));
     }
 }
 
@@ -2323,7 +2323,7 @@ void testHoldXCarriesANote() {
     CHECK(bar.at(60, 4) >= 0 && bar.at(61, 4) < 0 && notes.cursorPitch() == 61 && !notes.carrying());
     // Held on a note: it goes where the cursor goes, whole, with its length and level.
     notes.moveCursorTo(60, 5);
-    rig.key(X, true);
+    rig.key(R1, true);
     CHECK(notes.carrying());
     rig.tap(LEFT, 2); // two keys down
     CHECK(bar.at(60, 4) < 0 && bar.at(58, 4) >= 0 && notes.cursorPitch() == 58 && notes.cursorStep() == 5);
@@ -2342,7 +2342,7 @@ void testHoldXCarriesANote() {
     rig.tap(RIGHT, 10);
     CHECK(bar.notes[slot].pitch == 61 && bar.at(62, 5) >= 0 && bar.at(62, 5) != slot);
     // Let go: the cursor moves alone again.
-    rig.key(X, false);
+    rig.key(R1, false);
     CHECK(!notes.carrying());
     rig.tap(LEFT);
     CHECK(bar.notes[slot].pitch == 61 && notes.cursorPitch() == 60);
@@ -2350,7 +2350,7 @@ void testHoldXCarriesANote() {
     // (The engine is run as the frames go by, as the sound card runs it: each frame of sliding tells it the bar again.)
     const auto hold = [&](int count) { for (int f = 0; f < count; ++f) { rig.frames(1); rig.render(16); } };
     notes.moveCursorTo(61, 5);
-    rig.key(X, true);
+    rig.key(R1, true);
     rig.key(STICK_UP, true);
     hold(3);
     rig.key(STICK_UP, false);
@@ -2388,35 +2388,46 @@ void testHoldXCarriesANote() {
     rig.frames(1);
     CHECK(bar.notes[slot].pitch == 62 && notes.cursorPitch() == 62 && bar.notes[slot].step == 0);
     rig.tap(LEFT);
-    rig.key(X, false);
+    rig.key(R1, false);
     // Back on the grid at step 5 of key 61, for what follows.
     bar.notes[slot].step = 4;
     bar.notes[slot].nudge = 0.f;
     rig.app.session().sendNotePattern(1, 0);
     CHECK(bar.notes[slot].pitch == 61 && bar.notes[slot].step == 4);
-    // X held on an empty step is only "hear": nothing is carried.
-    notes.moveCursorTo(70, 0);
+    // X on a note only hears it now (it used to carry): held, the D-pad moves the cursor and the note stays.
+    notes.moveCursorTo(61, 4);
     rig.key(X, true);
     CHECK(!notes.carrying());
     rig.tap(DOWN);
     rig.key(X, false);
-    CHECK(notes.cursorStep() == 1);
+    CHECK(notes.cursorStep() == 5 && bar.notes[slot].step == 4);
+    // R1 on an empty step is the brush, not a carry: it paints where it goes.
+    notes.moveCursorTo(70, 0);
+    rig.key(R1, true);
+    CHECK(!notes.carrying());
+    rig.tap(DOWN);
+    rig.key(R1, false);
+    CHECK(notes.cursorStep() == 1 && bar.at(70, 0) >= 0 && bar.at(70, 1) >= 0);
+    rig.tap(B);
+    rig.tap(UP);
+    rig.tap(B);
+    CHECK(bar.at(70, 0) < 0 && bar.at(70, 1) < 0);
     // Off the bottom of the keyboard it stops at the lowest key (and comes back).
     notes.moveCursorTo(61, 4);
-    rig.key(X, true);
+    rig.key(R1, true);
     rig.tap(LEFT, 200);
     CHECK(bar.notes[slot].pitch == NoteScreen::kLowest && notes.cursorPitch() == NoteScreen::kLowest);
     rig.tap(RIGHT, 49);
     CHECK(bar.notes[slot].pitch == 61);
-    rig.key(X, false);
+    rig.key(R1, false);
     // The engine is told of each move. The other note is taken away first, and
     // carrying is the last thing done: the bar then plays the note where it was put.
     notes.moveCursorTo(62, 5);
     rig.tap(B);
     notes.moveCursorTo(61, 4);
-    rig.key(X, true);
+    rig.key(R1, true);
     rig.tap(DOWN, 6);
-    rig.key(X, false);
+    rig.key(R1, false);
     CHECK(bar.notes[slot].step == 10);
     rig.project().playing = false;
     rig.frames(200); // the keys X played along the way are let go
@@ -2442,7 +2453,7 @@ void testHoldXCarriesANote() {
     two = one;
     two.step = 12;
     notes.moveCursorTo(52, 9); // on its middle note, second step
-    rig.key(X, true);
+    rig.key(R1, true);
     CHECK(notes.carrying());
     rig.tap(RIGHT, 2);
     CHECK(one.root == 50 && notes.cursorPitch() == 54);
@@ -2452,7 +2463,7 @@ void testHoldXCarriesANote() {
     CHECK(one.step == 0);
     rig.tap(LEFT, 200); // down the keyboard until its lowest note is the lowest key
     CHECK(one.root == NoteScreen::kLowest);
-    rig.key(X, false);
+    rig.key(R1, false);
     CHECK(one.count == 3 && near(one.velocity, 0.7f) && one.length == 2.f);
     rig.project().playing = false;
 }
@@ -4278,9 +4289,43 @@ void testALongerCellIsFilledWithItself() {
     CHECK(drums.bars[2] == 2 && drums.drums[2][1].level[2][2] == 0.8f);
 }
 
+// On PRESET with A held, left and right go eight at a time, as in the list of recordings; the ends stop.
+void testPresetsEightAtATime() {
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Phazed);
+    rig.project().track = 1;
+    rig.app.session().view = View::Device;
+    rig.app.phazed().goTo(0, SynthScreen::kPreset);
+    rig.frames(1);
+    const TrackData& t = rig.project().tracks[1];
+    const int last = Phazed::presetCount() - 1;
+    CHECK(t.preset == 0 && last > 20);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    CHECK(t.preset == 8);
+    rig.tap(UP);
+    CHECK(t.preset == 9); // up and down are still one
+    rig.tap(LEFT);
+    CHECK(t.preset == 1);
+    rig.tap(LEFT);
+    CHECK(t.preset == 0); // the end stops: it does not go round to the last
+    rig.tap(RIGHT, 40);
+    CHECK(t.preset == last);
+    rig.tap(DOWN);
+    CHECK(t.preset == last - 1);
+    rig.key(A, false);
+    // On a macro, left and right are one click as before, not eight.
+    rig.app.phazed().goTo(0, SynthScreen::kFirstMacro);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(std::fabs(t.macro[0] - 0.55f) < 1e-4f && t.preset == last - 1);
+}
+
 int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
+    testPresetsEightAtATime();
     testALongerCellIsFilledWithItself();
     testASceneOfAnyLength();
     testANoteUnderAChordIsKnown();

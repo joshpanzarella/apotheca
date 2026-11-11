@@ -16,7 +16,7 @@ constexpr int kGridLeft = 28, kGridW = 612, kRowH = 20;
 constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 42;
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30, kPickRepeatEveryMs = 140;
+constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step
 constexpr float kMostNudge = 0.5f;      // half a step early or late
@@ -482,10 +482,17 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     if (b == Button::R1) {
-        painting_ = event.down && !shaping_;
-        if (painting_) {
-            const NoteEvent* here = noteHere();
-            brush_ = here ? here->velocity : kNewLevel;
+        // On a note or a chord, R1 takes hold of it: moving now carries it. On an empty step it is the
+        // brush: every step crossed gets a note. (Hold X used to carry; X is kept for what a note does.)
+        const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+        carrying_ = Carry::Nothing;
+        painting_ = false;
+        if (event.down && !shaping_ && !erasing_ && (slot >= 0 || chord >= 0)) {
+            carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
+            carried_ = slot >= 0 ? slot : chord;
+        } else if (event.down && !shaping_) {
+            painting_ = true;
+            brush_ = kNewLevel;
             paintHere();
         }
         return;
@@ -493,7 +500,6 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
         if (b == Button::B) erasing_ = false;
-        if (b == Button::X) carrying_ = Carry::Nothing;
         return;
     }
 
@@ -510,12 +516,6 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (b == Button::X) {
         if (const ChordEvent* chord = chordHere()) hearChord(*chord);
         else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
-        // Held, it has hold of what it heard: moving now carries it.
-        const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
-        if (!shaping_ && !painting_ && !erasing_ && (slot >= 0 || chord >= 0)) {
-            carrying_ = slot >= 0 ? Carry::Note : Carry::Chord;
-            carried_ = slot >= 0 ? slot : chord;
-        }
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -527,7 +527,7 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::A)) shaping_ = false;
     if (!input.held(Button::R1)) painting_ = false;
     if (!input.held(Button::B)) erasing_ = false;
-    if (!input.held(Button::X)) carrying_ = Carry::Nothing;
+    if (!input.held(Button::R1)) carrying_ = Carry::Nothing;
     if (!input.held(Button::L1)) zooming_ = false;
     if (!input.held(Button::Y)) picking_ = false; // (let go properly, the chord has landed already)
 
@@ -875,9 +875,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", under || chordUnder ? "level / length" : "place");
         if (under || chordUnder) hint("B", "delete");
         hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap chord" : "chord");
-        hint("HOLD R1", "paint");
-        if (under || chordUnder) hint("HOLD X", "move it");
-        hint("HOLD B", "erase");
+        hint("HOLD R1", under || chordUnder ? "move it" : "paint");
+        hint("HOLD B", "delete");
         hint("L1", "zoom");
     }
     hints(r, fonts, list, count);

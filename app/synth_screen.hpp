@@ -65,7 +65,9 @@ private:
     void setMacro(int macro, float value);
     void setSetting(int id, int value);
     void turn(float amount); // the stick with A held: -1..1 of "full range a second"
-    void stepExact(int by);  // the D-pad with A held
+    void stepExact(int by);
+    void stepHeld(Button direction); // the D-pad with A held
+    static constexpr int kPresetJump = 8;  // the D-pad with A held
     void hear();
 
     Session& session_;

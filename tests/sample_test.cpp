@@ -1468,7 +1468,8 @@ void testTheSamplePicker() {
     rig.tap(A);
     CHECK(!one.isOpen());
 
-    // Hold Y for a second on a recording: it is deleted from the handheld. A tap is nothing.
+    // Hold B for a second on a recording: it is deleted from the handheld (hold B is "delete for good" on
+    // every screen). A tap of B is still "as it was", and Y does nothing here.
     session.view = View::Device;
     rig.app.project().track = 0;
     kit.goTo(5, KitScreen::kSound);
@@ -1477,15 +1478,27 @@ void testTheSamplePicker() {
     session.setLaneSample(0, 6, "take 05"); // another lane playing the same recording
     rig.tap(A);
     CHECK(list.isOpen() && list.cursor() == 5 && list.count() == 21);
-    rig.tap(Y);
-    rig.frames(80);
-    CHECK(list.count() == 21 && std::string(track.laneSample[5]) == "take 05");
     rig.key(Y, true);
+    rig.frames(80);
+    rig.key(Y, false);
+    CHECK(list.count() == 21 && list.isOpen() && std::string(track.laneSample[5]) == "take 05");
+    // B let go before the second is up: a tap. The list shuts with the lane as it was, and nothing is deleted.
+    rig.tap(DOWN);
+    rig.key(B, true);
+    rig.frames(30);
+    CHECK(list.isOpen() && list.deletePart() > 0.3f);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 05" && session.sampleNames().size() == 20);
+    rig.tap(A);
+    CHECK(list.isOpen() && list.cursor() == 5 && list.deletePart() == 0.f);
+    rig.key(B, true);
     rig.frames(55); // 0.88 s
     CHECK(list.count() == 21 && list.deletePart() > 0.7f);
     rig.frames(10);
-    rig.key(Y, false);
-    CHECK(list.count() == 20 && list.isOpen() && list.cursor() == 5);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(list.count() == 20 && list.isOpen() && list.cursor() == 5); // letting go after the delete is not a tap: the list stays
     CHECK(std::string(track.laneSample[5]) == "take 06"); // the next one took its place under the cursor, and is on the lane
     CHECK(track.laneSample[6][0] == 0);                    // the other lane that had it is back on its drum
     struct stat info;
@@ -1498,19 +1511,19 @@ void testTheSamplePicker() {
     rig.tap(A);
     rig.tap(LEFT, 3);
     CHECK(list.cursor() == 0);
-    rig.key(Y, true);
+    rig.key(B, true);
     rig.frames(80);
-    rig.key(Y, false);
-    CHECK(list.count() == 20);
-    rig.tap(B);
+    CHECK(list.count() == 20 && list.isOpen());
+    rig.key(B, false); // however long it was held there, it is B's tap: the list shuts
+    CHECK(!list.isOpen() && session.sampleNames().size() == 19);
     CHECK(!session.deleteSample("no such thing") && !session.deleteSample("") && !session.deleteSample("../take 06") && session.sampleNames().size() == 19);
     // The last in the list deleted: the cursor goes to the one before.
     rig.tap(A);
     rig.tap(RIGHT, 3);
     CHECK(list.cursor() == 19);
-    rig.key(Y, true);
+    rig.key(B, true);
     rig.frames(70);
-    rig.key(Y, false);
+    rig.key(B, false);
     CHECK(list.count() == 19 && list.cursor() == 18 && std::string(track.laneSample[5]) == "take 19");
     rig.tap(A);
 
@@ -1935,11 +1948,11 @@ void testFoldersInTheSamplePicker() {
     rig.tap(B);
     CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "breaks/amen");
 
-    // Hold Y deletes one in a folder: the file goes, from the folder. The last of a folder takes the folder off the list.
+    // Hold B deletes one in a folder: the file goes, from the folder. The last of a folder takes the folder off the list.
     rig.tap(A);
-    rig.key(Y, true);
+    rig.key(B, true);
     rig.frames(70);
-    rig.key(Y, false);
+    rig.key(B, false);
     struct stat info;
     CHECK(stat((folder + "/breaks/amen.wav").c_str(), &info) != 0 && stat((folder + "/kicks/808.wav").c_str(), &info) == 0);
     CHECK(list.folders() == 2 && list.isOpen() && std::string(track.laneSample[5]) != "breaks/amen");

@@ -18,7 +18,7 @@ constexpr Uint32 kDeleteHoldMs = 1000; // B held this long on a song deletes it
 
 constexpr int kGridTop = 34, kHeadH = 40, kRowH = 44, kRowsTop = kGridTop + kHeadH + 6;
 constexpr int kNumberW = 26, kRepeatW = 34, kColumnsLeft = 8 + kNumberW + kRepeatW;
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30;
+constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kStickCellsPerSecond = 24.f;
 constexpr float kRepeatsPerSecond = 20.f;
 
@@ -472,7 +472,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (deleting) {
             const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
             fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
-            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 90 ? "DELETING TRACK" : "DELETE", kText);
+            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 150 ? "DELETING: NO UNDO" : colW > 90 ? "DELETING TRACK" : "DELETE", kText);
         } else {
             std::snprintf(text, sizeof text, "%d", t + 1);
             fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);

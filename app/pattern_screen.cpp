@@ -1029,7 +1029,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", hitHere() ? "level / nudge" : "place");
         hint("Y", hitHere() ? "chance / start" : "maybe");
         if (hitHere()) hint("HOLD X", "effects");
-        hint("HOLD B", "erase");
+        hint("HOLD B", "delete");
         hint("HOLD R1", "paint");
         if (canSlice(lane_)) hint("L1", "slices"); // on a recording, this is worth more room than the random brush
         else hint("R1 + R2", "paint random");

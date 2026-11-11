@@ -11,7 +11,7 @@ namespace apotheca {
 using namespace ui;
 
 namespace {
-constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 40;
+constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kSoundsPerSecond = 8.f;
 const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
 }
@@ -205,7 +205,7 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (holding_ && stop_ == 0 ? 120u : kRepeatEveryMs);
+        repeatAt_ = nowMs + (holding_ && stop_ == 0 ? ui::kListEveryMs : kRepeatEveryMs);
         press(repeating_);
     }
 }
