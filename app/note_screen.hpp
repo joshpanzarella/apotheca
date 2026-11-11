@@ -160,6 +160,7 @@ private:
     bool fxHeld_ = false;
     float fxSaved_ = 0.f;
     bool fxWas_ = false;
+    bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
     void carry(Button direction);       // the D-pad: a whole step, or a key
     bool carryBy(int keys, int steps);  // false if it cannot go there
     void carryFree(float steps);        // the stick: any distance in time, off the grid

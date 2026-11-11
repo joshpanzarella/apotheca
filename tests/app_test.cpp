@@ -4374,6 +4374,124 @@ void testPresetsEightAtATime() {
     CHECK(std::fabs(t.macro[0] - 0.55f) < 1e-4f && t.preset == last - 1);
 }
 
+// What a review of the note effects found, each pinned.
+void testNoteEffectsHoldUp() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Qmod);
+    rig.project().track = 1;
+    rig.frames(2);
+    NoteScreen& roll = rig.app.notes();
+    NotePattern& p = rig.project().tracks[1].notes[0][0];
+
+    // 1. X tapped to hear a note while the stick is still over (the cursor was on its way): the
+    //    note's effects do not change. The stick must be let go and pushed again.
+    roll.moveCursorTo(60, 4);
+    rig.tap(A);
+    const int slot = p.at(60, 4);
+    for (SDL_Keycode way : {STICK_RIGHT, STICK_UP}) {
+        roll.moveCursorTo(60, 4);
+        rig.key(way, true); // (the cursor moves: put it back on the note with the stick still over)
+        rig.frames(1);
+        roll.moveCursorTo(60, 4);
+        const int ratchetWas = p.notes[slot].ratchet, glideWas = p.notes[slot].glide;
+        rig.key(X, true);
+        rig.frames(40);
+        CHECK(roll.effecting() && p.notes[slot].ratchet == ratchetWas && p.notes[slot].glide == glideWas);
+        rig.key(way, false);
+        rig.frames(2);
+        rig.key(way, true); // let go and pushed again: now it is a turn
+        rig.frames(1);
+        rig.key(way, false);
+        rig.frames(2);
+        CHECK(way == STICK_RIGHT ? p.notes[slot].ratchet == 2 : p.notes[slot].glide == 1);
+        rig.key(X, false);
+        rig.frames(2);
+    }
+    // The D-pad the same: held from a run of the cursor, it does not turn the effect when X goes down.
+    p.notes[slot].ratchet = 0;
+    roll.moveCursorTo(59, 4);
+    rig.key(RIGHT, true); // onto the note
+    rig.frames(1);
+    CHECK(roll.cursorPitch() == 60);
+    rig.key(X, true);
+    rig.frames(40);
+    CHECK(p.notes[slot].ratchet == 0 && roll.cursorPitch() == 60);
+    rig.key(RIGHT, false);
+    rig.key(X, false);
+    rig.frames(2);
+    // On the drum grid as well.
+    {
+        rig.project().track = 0;
+        rig.frames(2);
+        PatternScreen& drums = rig.app.drums();
+        drums.moveCursorTo(0, 4);
+        rig.tap(A);
+        drums.setFx(0, 4, StepFx());
+        rig.key(STICK_UP, true);
+        rig.frames(1);
+        drums.moveCursorTo(0, 4);
+        rig.key(X, true);
+        rig.frames(40);
+        CHECK(drums.effecting() && !drums.fx(0, 4).any());
+        rig.key(STICK_UP, false);
+        rig.frames(2);
+        rig.key(STICK_UP, true);
+        rig.frames(1);
+        rig.key(STICK_UP, false);
+        rig.frames(2);
+        CHECK(drums.fx(0, 4).pitch == 1);
+        rig.key(X, false);
+        rig.frames(2);
+        rig.project().track = 1;
+        rig.frames(2);
+    }
+
+    // 2. A chord swapped for another, or turned over, keeps its ratchet and its nudge.
+    p = NotePattern();
+    p.chords[0] = makeChord(builtInPack().chords[0], 48, 8, 3.f, 0.7f, 0);
+    p.chords[0].ratchet = 3;
+    p.chords[0].nudge = 0.2f;
+    session.sendNoteBar(1, 0, 0);
+    roll.moveCursorTo(48, 8);
+    const std::string nameWas = p.chords[0].name;
+    rig.key(Y, true);
+    rig.frames(2);
+    rig.tap(RIGHT);
+    rig.tap(UP);
+    rig.key(Y, false);
+    rig.frames(2);
+    CHECK(nameWas != p.chords[0].name && p.chords[0].ratchet == 3 && p.chords[0].nudge == 0.2f);
+    // 3. Broken into notes, each note plays as the chord did: the ratchet and the nudge go with them.
+    int keys[kChordNotes];
+    const int count = p.chords[0].pitches(keys);
+    rig.key(Y, true);
+    rig.frames(2);
+    rig.tap(B);
+    rig.key(Y, false);
+    rig.frames(2);
+    CHECK(p.chords[0].velocity <= 0.f && count >= 3);
+    for (int i = 0; i < count; ++i) {
+        const int at = p.at(keys[i], 8);
+        CHECK(at >= 0 && p.notes[at].ratchet == 3 && p.notes[at].nudge == 0.2f && p.notes[at].glide == 0);
+    }
+
+    // 4. A note with an effect that lies under a longer note on the same key (the longer one in a
+    //    lower slot) keeps its effect through the file, and so through undo.
+    p = NotePattern();
+    p.notes[0] = NoteEvent{4, 60, 6.f, 0.f, 0.8f}; // steps 5 to 10
+    p.notes[1] = NoteEvent{6, 60, 1.f, 0.f, 0.8f}; // step 7, inside it
+    p.notes[1].ratchet = 3;
+    p.notes[1].glide = 1;
+    const std::string text = songText(rig.project());
+    CHECK(text.find("\nnotefx 7 60 3 1\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back));
+    const NotePattern& kept = back->tracks[1].notes[0][0];
+    CHECK(kept.notes[1].step == 6 && kept.notes[1].ratchet == 3 && kept.notes[1].glide == 1);
+    CHECK(kept.notes[0].ratchet == 0 && kept.notes[0].glide == 0); // and the long one did not take it
+}
+
 // Hold X on a note: a ratchet (left / right) and a glide (up / down).
 void testNoteEffects() {
     Rig rig;
@@ -4579,6 +4697,7 @@ int main(int, char**) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testTabs();
     testNoteEffects();
+    testNoteEffectsHoldUp();
     testPresetsEightAtATime();
     testALongerCellIsFilledWithItself();
     testASceneOfAnyLength();

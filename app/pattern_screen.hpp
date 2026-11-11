@@ -222,6 +222,7 @@ private:
     bool fxHeld_ = false;  // X is held on a hit: the stick sets its step effects
     float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
     bool fxWas_ = false;
+    bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go
     bool slicing_ = false; // the slice view is showing
     char said_[96] = "";   // a line said for a moment (why a lane cannot be sliced)
     Uint32 saidUntil_ = 0;

@@ -290,7 +290,9 @@ private:
         float nudge = 0.f;    // early or late, -0.5..0.5 of a step
         float velocity = 0.f; // 0 = empty slot
         std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step
-        std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
+        std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track.
+                                  // Inside the engine also: 2..4, the first of a ratchet of that many (the slide
+                                  // is over by the second); kLaterPiece, one of the rest of a ratchet.
     };
     struct Track {
         bool hasDrums = false;
@@ -316,7 +318,9 @@ private:
         // began, early ones that belong to the next.
         struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0; float velocity = 0.f, length = 0.f; };
         int lastPitch = -1; // the key of the note the track last began, for a glide to start from (-1: none since Play)
-        PendingNote pendingNotes[24];
+        // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
+        // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
+        PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
         double offIn[128];
         Track() {
             for (double& off : offIn) off = kNoNote;

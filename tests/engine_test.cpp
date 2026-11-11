@@ -1833,6 +1833,76 @@ static void testANoteRatchets() {
     CHECK(two[2 * (2 * kStep + 110)] > 0.05f && two[2 * (2 * kStep + 3110)] > 0.05f && two[2 * (2 * kStep + 1500)] < 0.05f);
 }
 
+// Three ways a ratchet went wrong (found in review), each pinned.
+static void testRatchetsHoldUp() {
+    // 1. Seven notes on one step, each a ratchet of four and pushed late: twenty-eight notes wait
+    //    their moment. There is room for all of them (there was for twenty-four: the seventh was lost).
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+        CHECK(engine->setTrackSample(1, burst()));
+        engine->send(make(Command::SetSetting, 1, sampler::Attack, 0));
+        engine->send(make(Command::SetSetting, 1, sampler::Level, 100));
+        for (int i = 0; i < 7; ++i) {
+            Command c = noteAt(i, 1, i < 6 ? 61 + i : 60, 1.f, 4, i < 6 ? 0.002f : 0.9f); // six too quiet to count, then the one that is listened for
+            c.shift = 0.5f;
+            engine->send(c);
+        }
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(*engine, 4 * kStep);
+        std::vector<int> at;
+        int quietFor = 1000;
+        for (int i = 0; i < 4 * kStep; ++i) {
+            const bool loud = out[2 * i] > 0.05f;
+            if (loud && quietFor > 200) at.push_back(i - 100);
+            quietFor = loud ? 0 : quietFor + 1;
+        }
+        CHECK((at == std::vector<int>{kStep + 3000, kStep + 4500, kStep + 6000, kStep + 7500}));
+        if (at.size() != 4) std::printf("  seven late ratchets: the seventh was heard %d times\n", static_cast<int>(at.size()));
+    }
+    // 2. A late ratchet's last piece lands after the next note on the same key has begun. That note
+    //    keeps the key for its whole length (the piece cut it off at its own short end).
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+        std::unique_ptr<SampleData> tone(new SampleData);
+        tone->data.resize(96000);
+        for (std::size_t i = 0; i < tone->data.size(); ++i) tone->data[i] = 0.5f * std::sin(6.2831853f * 220.f * static_cast<float>(i) / 48000.f);
+        CHECK(engine->setTrackSample(1, std::move(tone)));
+        engine->send(make(Command::SetSetting, 1, sampler::Loop, 1));
+        engine->send(make(Command::SetSetting, 1, sampler::Release, 0));
+        Command late = noteAt(0, 1, 60, 1.f, 4);
+        late.shift = 0.5f; // its pieces: 1.5, 1.75, 2.0 and 2.25 steps in
+        engine->send(late);
+        engine->send(noteAt(1, 2, 60, 6.f)); // steps 3 to 8
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> out = renderFrames(*engine, 10 * kStep);
+        float held = 0.f, after = 0.f;
+        for (int i = 5 * kStep; i < 7 * kStep; ++i) held = std::max(held, std::fabs(out[2 * i]));
+        for (int i = 9 * kStep; i < 10 * kStep; ++i) after = std::max(after, std::fabs(out[2 * i]));
+        CHECK(held > 0.1f);   // still sounding in its sixth and seventh steps
+        CHECK(after < 0.01f); // and let go at its own end
+    }
+    // 3. A ratchet that glides is at its pitch before its second note: the slide takes the first
+    //    piece, not half a step (it was cut short and the pitch jumped).
+    {
+        const auto pitchIn = [](int effects) {
+            std::unique_ptr<Engine> engine(new Engine);
+            CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
+            engine->send(noteAt(0, 0, 81, 1.f, 0, 0.02f));
+            engine->send(noteAt(1, 4, 93, 4.f, effects));
+            engine->send(make(Command::Play, 0, 0, 1));
+            const std::vector<float> out = renderFrames(*engine, 8 * kStep);
+            return pitchOver(out, 4 * kStep + 1500, 1000); // the second half of a ratchet of two's first piece
+        };
+        const double plain = pitchIn(2), slid = pitchIn(2 + 256), half = pitchIn(256);
+        CHECK(slid < 0.98 * plain); // it is sliding
+        CHECK(slid > 0.83 * plain); // and nearly there (over half a step it would be a fifth of the way off still)
+        CHECK(half < slid);         // a plain glide is slower: half a step
+        if (failures) std::printf("  ratchet and glide: plain %.0f Hz, sliding %.0f, a glide alone %.0f\n", plain, slid, half);
+    }
+}
+
 // A note that glides starts at the pitch of the note before it and slides to its own.
 static void testANoteGlides() {
     for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
@@ -2988,6 +3058,7 @@ int main() {
     testStepEffectRatchet();
     testStepEffectsTravel();
     testANoteRatchets();
+    testRatchetsHoldUp();
     testANoteGlides();
     testQueue();
     testBuiltInKit();

@@ -251,6 +251,10 @@ void Engine::letGoOfNotes() {
     }
 }
 
+namespace {
+constexpr std::uint8_t kLaterPiece = 255; // Note::glide of a ratchet's second, third or fourth note
+}
+
 // Play a pattern's note now, or set it waiting.
 void Engine::startNote(Track& track, const Note& note, double delaySamples) {
     // A ratchet: the note several times over, evenly, inside its first step. Each is let go just
@@ -262,7 +266,8 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         for (int k = 0; k < hits; ++k) {
             Note one = note;
             one.ratchet = 0;
-            if (k > 0) one.glide = 0;
+            // The first glides, and is there before the second begins. The rest are marked as pieces.
+            one.glide = k > 0 ? kLaterPiece : note.glide ? static_cast<std::uint8_t>(hits) : 0;
             const float left = note.length - static_cast<float>(k) * apart;
             if (left < kShortestNote) break; // a note shorter than its ratchet: as many as fit
             one.length = k + 1 < hits && left > apart * 0.85f ? apart * 0.85f : left;
@@ -271,10 +276,16 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         return;
     }
     if (delaySamples < 1.0) {
+        // A ratchet's later piece finds its key held: another note has begun there since (the one
+        // before it of the ratchet was let go in time). That note keeps the key, whole.
+        if (note.glide == kLaterPiece && track.offIn[note.pitch] < kNoNote) return;
         if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
-        // A glide: from the key the track last began, over half a step. (The first note after Play has none to come from.)
-        if (note.glide && track.lastPitch >= 0 && track.lastPitch != note.pitch) {
-            track.synth->noteOnFrom(note.pitch, note.velocity, track.lastPitch, static_cast<float>(0.5 * samplesPerStep_ / sampleRate_));
+        // A glide: from the key the track last began, over half a step, or over the first piece of
+        // a ratchet. (The first note after Play has none to come from.)
+        const bool glides = note.glide != 0 && note.glide != kLaterPiece;
+        if (glides && track.lastPitch >= 0 && track.lastPitch != note.pitch) {
+            const double steps = note.glide >= 2 ? 0.85 / note.glide : 0.5;
+            track.synth->noteOnFrom(note.pitch, note.velocity, track.lastPitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
         } else {
             track.synth->noteOn(note.pitch, note.velocity);
         }

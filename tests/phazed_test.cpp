@@ -521,6 +521,86 @@ static void testChoosingAPresetClearsTheMacros() {
     CHECK(playNote(preset, {macro(-1, 1.f), macro(phazed::kMacros, 1.f), macro(phazed::Tone, std::nanf(""))}).held == playNote(preset, {}).held);
 }
 
+// ---- GLIDE on Phazed (the CZ's own portamento, switched on a note at a time) -------------------
+// How often the sound crosses zero going up, in a stretch of it: its pitch, near enough.
+static int crossings(const std::vector<float>& left, int from, int frames) {
+    int ups = 0;
+    for (int i = from + 1; i < from + frames; ++i) ups += left[static_cast<std::size_t>(i - 1)] <= 0.f && left[static_cast<std::size_t>(i)] > 0.f;
+    return ups;
+}
+static std::vector<float> renderSynth(Phazed& synth, int frames) {
+    std::vector<float> left(static_cast<std::size_t>(frames)), right(static_cast<std::size_t>(frames));
+    synth.render(left.data(), right.data(), frames);
+    return left;
+}
+static int presetNamed(const char* name) {
+    for (int i = 0; i < Phazed::presetCount(); ++i)
+        if (std::strcmp(Phazed::presetName(i), name) == 0) return i;
+    return -1;
+}
+
+// The glide comes from the key the engine names, not from whatever key was last played by hand.
+static void testAGlideComesFromTheKeyItIsGiven() {
+    const auto early = [](int handKey) { // crossings from 10 to 40 ms into a note gliding up from A3 to A4
+        Phazed synth;
+        synth.prepare(44100.f);
+        synth.selectPreset(organPreset());
+        synth.noteOn(57, 1.f);
+        renderSynth(synth, 13230);
+        synth.noteOff(57);
+        renderSynth(synth, 4410);
+        if (handKey >= 0) {
+            synth.noteOn(handKey, 1.f); // a key on the USB keyboard, or X on the piano roll
+            renderSynth(synth, 2205);
+            synth.noteOff(handKey);
+            renderSynth(synth, 8820);
+        }
+        synth.noteOnFrom(69, 1.f, 57, 0.06f);
+        const std::vector<float> out = renderSynth(synth, 13230);
+        return std::pair<int, int>(crossings(out, 441, 1323), crossings(out, 8820, 1323));
+    };
+    const std::pair<int, int> alone = early(-1), afterHigh = early(93), afterSame = early(69);
+    CHECK(alone.second > 20);                       // A4, settled: some 26 in 30 ms
+    CHECK(alone.first < 0.9 * alone.second);        // it comes up from below
+    CHECK(afterHigh.first < 0.9 * afterHigh.second); // and still from below after a high key by hand: not down from that key
+    CHECK(afterSame.first < 0.9 * afterSame.second); // and after its own key by hand (the CZ would not have glided at all)
+    if (failures) std::printf("  glide from: alone %d/%d, after a high key %d/%d, after its own %d/%d\n", alone.first, alone.second, afterHigh.first, afterHigh.second, afterSame.first, afterSame.second);
+}
+
+// A gliding note that is given a slot which is still ringing starts a moment later, from the
+// CZ's render. It still glides: on a sound with a long tail, every note of a run, not the first seven.
+// And a plain note that starts late in the same way stays plain.
+static void testAGlideSurvivesAWaitForItsSlot() {
+    const int harp = presetNamed("Harp");
+    CHECK(harp >= 0);
+    if (harp < 0) return;
+    const int kNotes = 24, kApart = 5512; // sixteenths at 120
+    const auto run = [&](bool glide, bool lastPlain) {
+        Phazed synth;
+        synth.prepare(44100.f);
+        synth.selectPreset(harp);
+        std::vector<int> early;
+        for (int n = 0; n < kNotes; ++n) {
+            const int key = n % 2 ? 81 : 57, before = n % 2 ? 57 : 81;
+            if (glide && n > 0 && !(lastPlain && n >= kNotes - 4)) synth.noteOnFrom(key, 1.f, before, 0.06f);
+            else synth.noteOn(key, 1.f);
+            const std::vector<float> a = renderSynth(synth, kApart * 95 / 100);
+            synth.noteOff(key);
+            renderSynth(synth, kApart - kApart * 95 / 100);
+            early.push_back(crossings(a, 441, 1764));
+        }
+        return early;
+    };
+    const std::vector<int> plain = run(false, false), glided = run(true, false), mixed = run(true, true);
+    int slid = 0;
+    for (int n = kNotes - 12; n < kNotes - 4; ++n) slid += std::abs(glided[static_cast<std::size_t>(n)] - plain[static_cast<std::size_t>(n)]) >= 3;
+    CHECK(slid == 8); // every one of them, long after the silent slots ran out
+    for (int n = kNotes - 3; n < kNotes; ++n) CHECK(std::abs(mixed[static_cast<std::size_t>(n)] - plain[static_cast<std::size_t>(n)]) < 8 && std::abs(mixed[static_cast<std::size_t>(n)] - glided[static_cast<std::size_t>(n)]) > 12); // plain notes after gliding ones: plain
+    if (failures) {
+        for (int n = 0; n < kNotes; ++n) std::printf("  note %d: plain %d, glided %d, mixed %d\n", n, plain[static_cast<std::size_t>(n)], glided[static_cast<std::size_t>(n)], mixed[static_cast<std::size_t>(n)]);
+    }
+}
+
 // Not a pass or fail: how much processor the synth takes, on this machine.
 static void reportCost() {
     for (int notes : {1, 4, 8}) {
@@ -555,6 +635,8 @@ int main(int argc, char** argv) {
     testMacrosInTheMiddleChangeNothing();
     testEachMacroDoesItsJob();
     testChoosingAPresetClearsTheMacros();
+    testAGlideComesFromTheKeyItIsGiven();
+    testAGlideSurvivesAWaitForItsSlot();
     if (argc > 1 && std::strcmp(argv[1], "--cost") == 0) reportCost();
     if (failures) {
         std::printf("%d check(s) failed\n", failures.load());

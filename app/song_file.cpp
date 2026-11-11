@@ -378,12 +378,14 @@ bool parseSong(const std::string& text, Project& project) {
             if (!(in >> step >> pitch)) continue;
             in >> ratchet >> glide;
             if (step < 1 || step > kSteps || pitch < 0 || pitch > 127) continue;
-            const int slot = track->notes[scene][bar].at(static_cast<int>(pitch), static_cast<int>(step) - 1);
-            if (slot < 0) continue;
-            NoteEvent& n = track->notes[scene][bar].notes[slot];
-            if (n.step != static_cast<int>(step) - 1) continue; // the cursor's "at" also finds a note that is held over this step
-            n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
-            n.glide = glide != 0 ? 1 : 0;
+            // The note that STARTS there. (Not the cursor's "at": that finds whichever note sounds
+            // there first, and a longer note held over this one hid it, so its effect was lost.)
+            for (NoteEvent& n : track->notes[scene][bar].notes) {
+                if (n.velocity <= 0.f || n.pitch != static_cast<int>(pitch) || n.step != static_cast<int>(step) - 1) continue;
+                n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+                n.glide = glide != 0 ? 1 : 0;
+                break;
+            }
         } else if (word == "chordfx" && isSynth(track->kind)) {
             double step, ratchet = 1;
             if (!(in >> step >> ratchet) || step < 1 || step > kSteps) continue;

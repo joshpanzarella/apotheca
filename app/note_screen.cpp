@@ -363,9 +363,11 @@ void NoteScreen::pickChanged() {
         showChord(inHand());
         return;
     }
-    // Swap it in place: the same steps, level and octave.
+    // Swap it in place: the same steps, level, octave, nudge and ratchet.
     ChordEvent& c = pat().chords[editing_];
     ChordEvent swapped = makeChord(pack().chords[static_cast<std::size_t>(hand_)], c.root, c.step, c.length, c.velocity, inversion_);
+    swapped.nudge = c.nudge;
+    swapped.ratchet = c.ratchet;
     int keys[kChordNotes];
     if (pat().used() - c.pitches(keys) + swapped.pitches(keys) > kMaxNotes) return; // no room for a bigger chord
     c = swapped;
@@ -396,10 +398,13 @@ void NoteScreen::breakUp(int chord) {
         const int slot = pat().freeSlot();
         if (slot < 0) break;
         NoteEvent& note = pat().notes[slot];
+        note = NoteEvent(); // the notes play as the chord did: its nudge and its ratchet too
         note.step = c.step;
         note.pitch = keys[i];
         note.length = c.length;
+        note.nudge = c.nudge;
         note.velocity = c.velocity;
+        note.ratchet = c.ratchet;
     }
     resend();
 }
@@ -576,6 +581,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         fxHeld_ = (noteHere() || chordHere()) && !shaping_ && !painting_ && !picking_ && carrying_ == Carry::Nothing;
         fxSaved_ = 0.f;
         fxWas_ = false;
+        // A direction that was already held (the cursor was on its way here) is not a turn of the
+        // effect: X only heard the note. It must be let go and pushed again.
+        fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+        if (fxHeld_) repeating_ = Button::None;
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -608,7 +617,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
             fxWas_ = false;
-        } else {
+            fxWait_ = false;
+        } else if (!fxWait_) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
@@ -1009,10 +1019,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         hint("A", under || chordUnder ? "level / length" : "place");
         if (under || chordUnder) hint("B", "delete");
-        hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap chord" : "chord");
-        hint("HOLD R1", under || chordUnder ? "move it" : "paint");
+        hint("HOLD Y", pat().chordAt(step_) >= 0 ? "swap" : "chord");
+        hint("HOLD R1", under || chordUnder ? "move" : "paint");
         if (under || chordUnder) hint("HOLD X", "effects");
-        hint("HOLD B", "delete");
+        if (!under && !chordUnder) hint("HOLD B", "delete"); // (on a note, B's own hint says it)
         hint("L1", "zoom");
     }
     hints(r, fonts, list, count);

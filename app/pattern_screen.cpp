@@ -602,6 +602,10 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
         fxSaved_ = 0.f;
         fxWas_ = false;
+        // A direction that was already held (the cursor was on its way here) is not a turn of the
+        // effect: X only heard the hit. It must be let go and pushed again.
+        fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+        if (fxHeld_) repeating_ = Button::None;
         axis_ = Axis::None;
         if (!event.down || onTempo_) return;
         if (hitHere()) hearHit();
@@ -715,7 +719,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
             fxWas_ = false;
-        } else {
+            fxWait_ = false;
+        } else if (!fxWait_) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
