@@ -222,7 +222,7 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
         x += fonts.small.width(list[i].does) + 11.f;
     }
     // In what room is left at the end: how to see the help card.
-    const char* help = "HOLD SELECT: HELP";
+    const char* help = gHelpHint;
     if (x + 6.f + fonts.small.width(help) <= limit) fonts.small.drawRight(r, limit, textY, help, faded(kDim, 170));
 }
 

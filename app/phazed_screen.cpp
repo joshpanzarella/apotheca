@@ -11,6 +11,7 @@ using namespace phazed;
 
 namespace {
 
+constexpr float kChoicesPerSecond = 5.f; // the stick held over on a choice
 constexpr Uint32 kRepeatDelayMs = 170, kRepeatEveryMs = 30;
 constexpr float kStickStopsPerSecond = 16.f;
 constexpr float kMacroPerSecond = 2.f;    // stick fully over: bottom to top in half a second
@@ -135,6 +136,8 @@ void PhazedScreen::setSetting(int id, int value) {
     session_.engine.send(c);
 }
 
+bool PhazedScreen::isChoice(int id) const { return spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
+
 void PhazedScreen::turn(float amount) {
     if (amount == 0.f) return;
     if (page_ == 0) {
@@ -149,8 +152,25 @@ void PhazedScreen::turn(float amount) {
         for (; saved_ <= -1.f; saved_ += 1.f) cursor_ == kFolder ? stepFolder(-1) : stepPreset(-1);
         return;
     }
-    // A setting: its whole range in about two thirds of a second.
     const int id = item(cursor_).id;
+    // A setting with a handful of values (a wave, a type, on / off) is a choice: it clicks to the
+    // next one at each push of the stick, and then steadily while the stick is held over.
+    if (isChoice(id)) {
+        if (!choicePushed_) {
+            choicePushed_ = true;
+            saved_ = 0.f;
+            setSetting(id, values()[id] + (amount > 0.f ? 1 : -1));
+            return;
+        }
+        saved_ += amount * kChoicesPerSecond;
+        const int steps = static_cast<int>(saved_);
+        if (steps != 0) {
+            saved_ -= static_cast<float>(steps);
+            setSetting(id, values()[id] + steps);
+        }
+        return;
+    }
+    // Any other setting: its whole range in about two thirds of a second.
     saved_ += amount * 1.5f * static_cast<float>(spec_.settingMax(id) - spec_.settingMin(id) + 1);
     const int whole = static_cast<int>(saved_);
     if (whole != 0) {
@@ -231,9 +251,11 @@ void PhazedScreen::update(const Input& input, Uint32 nowMs) {
     if (holding_) {
         const float push = -y;
         turn(push * std::fabs(push) * dt);
+        if (push == 0.f) choicePushed_ = false; // back in the middle: the next push is a new click
         stickX_ = stickY_ = 0.f;
         stickWasX_ = stickWasY_ = false;
     } else {
+        choicePushed_ = false;
         if (x == 0.f) stickX_ = 0.f, stickWasX_ = false;
         else {
             stickX_ += stickWasX_ ? std::fabs(x) * kStickStopsPerSecond * dt : 1.f;
@@ -322,7 +344,7 @@ void PhazedScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int value = values()[it.id];
             spec_.settingText(it.id, value, text, sizeof text);
             const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
-            const float part = range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f;
+            const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
             valueBox(r, fonts, x, y, 153, 70, it.name, text, part, i == cursor_, holding_);
         }
         scope(r, session_.engine, 8, 372, 624, 74);

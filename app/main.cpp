@@ -531,7 +531,7 @@ int main(int argc, char** argv) {
         app.session().view = View::Device;
         if (view[4]) app.qmod().goTo(std::atoi(view + 4), 0);
     } else if (std::strcmp(view, "help") == 0) {
-        pushKey(SDLK_BACKSPACE, true); // SELECT, held
+        pushKey(SDLK_TAB, true); // MENU, held
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }

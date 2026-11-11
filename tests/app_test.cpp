@@ -15,6 +15,7 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "controls.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 
@@ -1237,68 +1238,156 @@ void testHoldBAndDragErases() {
     rig.project().playing = false;
 }
 
-void testHoldingSelectShowsTheHelp() {
+// A setting that is a choice clicks from one to the next: one per push of the stick, as with the D-pad.
+void testChoicesClick() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.setEffect(0, 0, EffectKind::Filter);
+    session.view = View::Effects;
+    rig.app.fx().goTo(0, 3); // the filter's TYPE
+    rig.frames(1);
+    const auto type = [&] { return filterType(session.effectData(0, 0).param[2]); };
+    CHECK(type() == FilterType::LowPass2);
+    // One push of the stick, however brief: the next type, exactly.
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(type() == FilterType::LowPass4);
+    rig.key(STICK_UP, true);
+    rig.frames(1);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    CHECK(type() == FilterType::BandPass);
+    // Held over: on through them steadily, a few a second, and it stops at the end.
+    rig.key(STICK_UP, true);
+    rig.frames(12); // a fifth of a second: not yet a second click
+    CHECK(type() == FilterType::Dj);
+    rig.frames(120);
+    CHECK(type() == FilterType::HighPass);
+    rig.key(STICK_UP, false);
+    rig.frames(1); // the stick passes through the middle on its way down
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(type() == FilterType::Dj);
+    rig.tap(DOWN); // the D-pad: the same click
+    CHECK(type() == FilterType::BandPass);
+    // A setting that is an amount still turns smoothly under the stick.
+    rig.app.fx().goTo(0, 1); // CUTOFF
+    const float before = session.effectData(0, 0).param[0];
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    const float moved = session.effectData(0, 0).param[0] - before;
+    CHECK(moved > 0.02f && moved < 0.3f);
+    rig.key(A, false);
+
+    // On a synth's pages: a wave is a choice, a level is a range.
+    addPhazed(rig);
+    rig.project().track = 1;
+    session.view = View::Device;
+    PhazedScreen& device = rig.app.phazed();
+    const SynthSpec& spec = phazedSpec();
+    int wavePage = -1, waveItem = -1, waveId = -1;
+    for (int page = 1; page < spec.pages && wavePage < 0; ++page)
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = 0;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            if (std::string(name) == "WAVE") { wavePage = page; waveItem = i; waveId = id; break; }
+        }
+    CHECK(wavePage > 0);
+    device.goTo(wavePage, waveItem);
+    rig.frames(1);
+    const int wave = rig.project().tracks[1].patch.value[waveId];
+    const int next = wave < spec.settingMax(waveId) ? 1 : -1;
+    rig.key(A, true);
+    rig.key(next > 0 ? STICK_UP : STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(next > 0 ? STICK_UP : STICK_DOWN, false);
+    rig.frames(1);
+    CHECK(rig.project().tracks[1].patch.value[waveId] == wave + next); // one, not a sweep
+    rig.key(next > 0 ? STICK_UP : STICK_DOWN, true);
+    rig.frames(8);
+    rig.key(next > 0 ? STICK_UP : STICK_DOWN, false);
+    rig.frames(1);
+    const int after = rig.project().tracks[1].patch.value[waveId];
+    CHECK(std::abs(after - (wave + next)) <= 1); // an eighth of a second more is one click at most
+    rig.key(A, false);
+    // Letting go of A and taking hold again: the next push is a click again, at once.
+    rig.key(A, true);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.key(A, false);
+    CHECK(rig.project().tracks[1].patch.value[waveId] == after - 1 || after == spec.settingMin(waveId));
+}
+
+void testTheHelpCard() {
+    const SDL_Keycode MENU = SDLK_TAB;
     Rig rig;
     rig.app.session().view = View::Pattern;
     rig.frames(2);
-    CHECK(!rig.app.helpShowing());
-    // A tap is too quick for it, and still goes to SONG.
+    CHECK(!rig.app.helpShowing() && std::string(ui::gHelpHint) == "MENU: HELP");
+    // MENU held: the card, at once, for as long as it is held. Nothing else happens.
+    rig.key(MENU, true);
+    rig.frames(1);
+    CHECK(rig.app.helpShowing());
+    rig.frames(200);
+    CHECK(rig.app.helpShowing() && rig.view() == View::Pattern && !rig.project().playing);
+    rig.key(MENU, false);
+    rig.frames(1);
+    CHECK(!rig.app.helpShowing() && rig.view() == View::Pattern);
+    // SELECT is left to its other jobs: held however long, no card, and let go it is still a tap.
     rig.key(SELECT, true);
-    rig.frames(20); // 0.32 s
+    rig.frames(100);
     CHECK(!rig.app.helpShowing());
     rig.key(SELECT, false);
     rig.frames(1);
     CHECK(rig.view() == View::Song && !rig.app.helpShowing());
-    // Held four tenths of a second: the card. Letting go closes it and does nothing else.
-    rig.app.session().view = View::Device;
-    rig.key(SELECT, true);
-    rig.frames(24);
-    CHECK(!rig.app.helpShowing());
-    rig.frames(3);
-    CHECK(rig.app.helpShowing());
-    rig.frames(200);
-    CHECK(rig.app.helpShowing());
-    rig.key(SELECT, false);
-    rig.frames(1);
-    CHECK(!rig.app.helpShowing() && rig.view() == View::Device);
-    // The same on SONG: the list of songs does not open behind it.
-    rig.app.session().view = View::Song;
-    rig.key(SELECT, true);
-    rig.frames(30);
-    rig.key(SELECT, false);
-    rig.frames(1);
-    CHECK(!rig.app.helpShowing() && rig.view() == View::Song && !rig.app.song().listingSongs());
-    rig.tap(SELECT); // and a tap after it is a tap again
-    CHECK(rig.app.song().listingSongs());
-    rig.tap(SELECT);
-    // What SELECT does with other buttons still works with the card up.
+    // The buttons go on working under the card (it only covers the screen).
     rig.app.session().view = View::Pattern;
+    rig.key(MENU, true);
+    rig.frames(1);
     rig.key(SELECT, true);
-    rig.frames(30);
-    CHECK(rig.app.helpShowing() && rig.app.session().volume() == 1.f);
     rig.tap(L1);
-    rig.tap(UP);
-    CHECK(near(rig.app.session().volume(), 0.9f) && rig.project().tempo == 121.f);
     rig.key(SELECT, false);
+    CHECK(near(rig.app.session().volume(), 0.9f) && rig.app.helpShowing());
+    rig.key(MENU, false);
     rig.frames(1);
-    CHECK(rig.view() == View::Pattern);
-    // Each hold starts its own count.
-    rig.key(SELECT, true);
-    rig.frames(15);
-    rig.key(SELECT, false);
-    rig.frames(1);
-    rig.key(SELECT, true);
-    rig.frames(15);
-    CHECK(!rig.app.helpShowing());
-    rig.key(SELECT, false);
-    // Not over the button test, which has every button to itself.
+    // Not over the button test or the name keys, which have every button to themselves.
     rig.app.session().view = View::Settings;
     rig.app.settings().goTo(SettingsScreen::kTest);
     rig.tap(A);
-    rig.key(SELECT, true);
-    rig.frames(40);
+    rig.key(MENU, true);
+    rig.frames(5);
     CHECK(!rig.app.helpShowing() && rig.app.settings().testing());
-    rig.key(SELECT, false);
+    rig.key(MENU, false);
+
+    // A handheld whose firmware keeps MENU: it was left out of the controls setup. There,
+    // SELECT held for four tenths of a second is the card, and the hint bar says so.
+    Rig other;
+    ControlMap map; // every button unset: only the keyboard stand-ins work, and there is no MENU
+    other.input.useMap(&map);
+    CHECK(!other.input.has(Button::Menu) && rig.input.has(Button::Menu));
+    other.app.session().view = View::Device;
+    other.frames(2);
+    CHECK(std::string(ui::gHelpHint) == "HOLD SELECT: HELP");
+    other.key(SELECT, true);
+    other.frames(24);
+    CHECK(!other.app.helpShowing());
+    other.frames(3);
+    CHECK(other.app.helpShowing());
+    other.key(SELECT, false);
+    other.frames(1);
+    CHECK(!other.app.helpShowing() && other.view() == View::Device); // having shown it, letting go is not a tap
+    other.tap(SELECT); // a quick tap still is
+    CHECK(other.view() == View::Song);
+    rig.frames(1); // back to a handheld with MENU, for the tests after this one
+    CHECK(std::string(ui::gHelpHint) == "MENU: HELP");
 }
 
 void testUndoAndRedo() {
@@ -2993,7 +3082,8 @@ int main(int, char**) {
     testAllFourShoulderButtonsIsPanic();
     testMuteSoloAndNames();
     testHoldBAndDragErases();
-    testHoldingSelectShowsTheHelp();
+    testChoicesClick();
+    testTheHelpCard();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
     testQmodOnATrack();

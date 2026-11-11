@@ -36,6 +36,8 @@ public:
     void useMap(const struct ControlMap* map) { map_ = map; }
 
     bool held(Button button) const { return held_[static_cast<int>(button)]; }
+    // Does this device have the button at all? (MENU is kept by some firmwares, and then it was left out of the setup.)
+    bool has(Button button) const;
 
     // THE stick. The RG40XXV has one. Each axis is -1..1 with a dead zone
     // already taken out; up and left are negative. Firmwares differ on

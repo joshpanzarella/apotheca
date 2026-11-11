@@ -83,10 +83,11 @@ and the stick shapes the thing under the cursor:
 | A | Turns the value: it fills or drains |
 | Y | Chance, on the drum grid |
 
-**Hold SELECT for a moment and a help card comes up**: what the buttons do
+**Hold MENU (the small button in the middle) and a help card comes up**: what the buttons do
 on every screen (X hears what is under the cursor, the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, the
-panic). Let go and it closes. The bar at the bottom of each screen lists
+panic). Let go and it closes. On a handheld whose firmware keeps MENU for
+itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
 only what is particular to where the cursor is. A direction that either the
 stick or the D-pad gives is written as the direction alone (UP / DOWN); the
 two are named only where they do different things. The bar never runs off

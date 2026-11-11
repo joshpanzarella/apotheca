@@ -39,6 +39,10 @@ constexpr int kTopBarH = 26, kHintsH = 24;
 // the screens at their own speeds.
 inline float gStickSpeed = 0.75f;
 
+// What the end of the hint bar says about the help card: "MENU: HELP", or
+// "HOLD SELECT: HELP" on a handheld whose MENU button the firmware keeps.
+inline const char* gHelpHint = "MENU: HELP";
+
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c);
 void outline(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c, int thickness = 1);
 void box(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color inside, SDL_Color edge);

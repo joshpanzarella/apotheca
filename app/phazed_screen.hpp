@@ -72,6 +72,9 @@ private:
     const SynthSpec& spec_;
     int page_ = 0;
     int cursor_ = kPreset;
+    static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
+    bool isChoice(int id) const;
+    bool choicePushed_ = false; // the stick is over, and has already clicked a choice once
     unsigned rolls_ = 0; // how many times Y has rolled, so two in one frame differ
     bool holding_ = false; // A is held
     float saved_ = 0.f;    // part-steps saved up while the stick turns

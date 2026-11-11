@@ -6,7 +6,7 @@ namespace apotheca {
 
 namespace {
 constexpr Uint32 kUpdateHoldMs = 1000; // A held this long accepts an update
-constexpr Uint32 kHelpAfterMs = 400;   // SELECT held this long shows the help card
+constexpr Uint32 kHelpAfterMs = 400;   // with no MENU button: SELECT held this long shows the help card
 constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the buttons are let go
 }
 
@@ -169,15 +169,21 @@ void App::changeVolume(float by) {
 
 void App::update(const Input& input, Uint32 nowMs) {
     now_ = nowMs;
-    // SELECT held by itself for four tenths of a second: the help card. Having
-    // shown it, letting go of SELECT is not a tap (it does not go to SONG or
-    // open the list of songs).
-    if (!input.held(Button::Select)) {
+    // The help card: there for as long as MENU is held. On a handheld whose
+    // firmware keeps MENU for itself (it was left out of the controls setup),
+    // SELECT held by itself for four tenths of a second does it instead; then
+    // letting go of SELECT is not a tap.
+    const bool busy = session_.view == View::Settings && (settings_.testing() || settings_.typing());
+    const bool menu = input.has(Button::Menu);
+    ui::gHelpHint = menu ? "MENU: HELP" : "HOLD SELECT: HELP";
+    if (menu) {
+        help_ = input.held(Button::Menu) && !busy;
+    } else if (!input.held(Button::Select)) {
         selectHeldSince_ = 0;
         help_ = false;
     } else if (selectHeldSince_ == 0) {
         selectHeldSince_ = nowMs;
-    } else if (!help_ && nowMs - selectHeldSince_ >= kHelpAfterMs && !(session_.view == View::Settings && (settings_.testing() || settings_.typing()))) {
+    } else if (!help_ && nowMs - selectHeldSince_ >= kHelpAfterMs && !busy) {
         help_ = true;
         selectAlone_ = false;
         song_.selectWasUsed();
@@ -347,7 +353,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         title("IF IT IS TOO LOUD TO THINK");
         line({"L1 + L2 + R1 + R2", ""});
         fonts.small.draw(renderer, x + 150.f, ly - 22.f, "all four at once: silence, now", kText);
-        fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO OF SELECT TO CLOSE", kDim);
+        fonts.small.drawRight(renderer, x + w - 18.f, y + 14.f, "LET GO TO CLOSE", kDim);
     }
 }
 

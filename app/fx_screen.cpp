@@ -150,7 +150,10 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     goTo(row_, column_); // the track may have changed under the cursor
     const float x = input.stickX(), y = input.stickY();
 
-    if (holding_ && column_ > 0) {
+    // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: it clicks
+    // from one choice to the next, a push at a time, with the stick as with the D-pad.
+    const bool choice = column_ > 0 && choices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
+    if (holding_ && column_ > 0 && !choice) {
         // A setting: the stick turns it. Squared, so a small push is fine.
         turn(-y * std::fabs(y) * kTurnPerSecond * dt);
     } else {
@@ -196,7 +199,8 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         valueBox(r, fonts, 8, y + 18, colW, boxH, "EFFECT", info.name, -1.f, here && column_ == 0, holding_);
         for (int p = 0; p < info.params; ++p) {
             effectParamText(kind, p, d.param[p], text, sizeof text, d.param);
-            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, d.param[p],
+            // A choice has no bar: it is not somewhere along a range.
+            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, choices(kind, p) > 0 ? -1.f : d.param[p],
                      here && column_ == p + 1, holding_);
         }
         if (kind == EffectKind::None) fonts.small.draw(r, 8.f + colW + 14.f, y + 18.f + 24.f, "Nothing here. Hold A and push up to put an effect in.", kDim);

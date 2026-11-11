@@ -178,6 +178,11 @@ bool Input::handle(const SDL_Event& event, ButtonEvent& out) {
     }
 }
 
+bool Input::has(Button button) const {
+    if (!map_) return true; // SDL's own gamepad reading and the keyboard stand-ins have them all
+    return map_->button[static_cast<int>(button)].kind != RawControl::None;
+}
+
 const char* buttonName(Button button) {
     switch (button) {
     case Button::Up: return "UP";

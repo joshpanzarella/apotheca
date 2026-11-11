@@ -56,7 +56,8 @@ public:
     // Quieter or louder, and show the volume for a moment.
     void changeVolume(float by);
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
-    // SELECT held for a moment: a card of what the buttons do everywhere. It goes when SELECT is let go.
+    // MENU held: a card of what the buttons do everywhere. It goes when MENU is let go.
+    // (With no MENU button on the device: SELECT, held for a moment.)
     bool helpShowing() const { return help_; }
     // SELECT + B takes back the last change to the patterns; SELECT + A puts it forward again.
     // What it said about that, for a moment: "UNDONE", "NOTHING TO UNDO"...
