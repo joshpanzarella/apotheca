@@ -251,7 +251,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "VOLUME", "STICK SPEED", "PIANO ROLL SHOWS", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "VOLUME", "STICK SPEED", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
     const int rowH = 37, top = 52, w = kScreenW - 32;
     fonts.small.draw(r, 16.f, 34.f, "THIS SONG", kDim);
     for (int row = 0; row < kRows; ++row) {
@@ -274,12 +274,12 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kVolume:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.volume() * 100.f)));
             part = session_.volume();
-            note = "also SELECT + L1 / R1, anywhere";
+            note = "also SELECT + L1 / R1";
             break;
         case kStick:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));
             part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);
-            note = "how fast the stick moves and turns things";
+            note = "how fast the stick moves things";
             break;
         case kOctaves:
             std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");

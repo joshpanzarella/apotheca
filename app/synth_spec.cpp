@@ -214,7 +214,7 @@ void settingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
     switch (id) {
     case Sound: case Variation: std::snprintf(out, n, "%d", value); break;
-    case Family: std::snprintf(out, n, "%s", value == 0 ? "BY ITS NUMBER" : familyName(value)); break;
+    case Family: std::snprintf(out, n, "%s", value == 0 ? "AUTO" : familyName(value)); break;
     case Octave: std::snprintf(out, n, "%+d", value); break;
     case Attack: case Decay: case Release: {
         const float seconds = id == Attack ? envelope::attackSeconds(static_cast<float>(value)) : envelope::fallSeconds(static_cast<float>(value));

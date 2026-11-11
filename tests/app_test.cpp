@@ -1574,7 +1574,7 @@ void testQmodOnATrack() {
     // Its settings read as what they are.
     const SynthSpec& spec = qmodSpec();
     spec.settingText(qmod::Family, 0, text, sizeof text);
-    CHECK(std::string(text) == "BY ITS NUMBER");
+    CHECK(std::string(text) == "AUTO");
     spec.settingText(qmod::Family, 1, text, sizeof text);
     CHECK(std::string(text) == qmod::familyName(1) && text[0]);
     spec.settingText(qmod::Release, 100, text, sizeof text);
@@ -2417,7 +2417,7 @@ void testTheEffectsScreen() {
     CHECK(std::string(text) == "21.7 KHZ");
     {
         // The five filter types, and the DJ filter's cutoff, which reads as what it is doing.
-        const char* names[5] = {"LOW PASS 12", "LOW PASS 24", "BAND PASS", "DJ", "HIGH PASS"};
+        const char* names[5] = {"LOW 12 DB", "LOW 24 DB", "BAND PASS", "DJ", "HIGH PASS"};
         for (int i = 0; i < 5; ++i) {
             effectParamText(EffectKind::Filter, 2, (i + 0.5f) / 5.f, text, sizeof text);
             CHECK(std::string(text) == names[i]);

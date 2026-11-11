@@ -34,7 +34,7 @@ void effectParamText(EffectKind kind, int index, float v, char* out, int size, c
         if (hz >= 1000.f) std::snprintf(out, n, "%.1f KHZ", hz / 1000.f);
         else std::snprintf(out, n, "%d HZ", static_cast<int>(std::round(hz)));
     } else if (kind == EffectKind::Filter && index == 2) {
-        static const char* names[5] = {"LOW PASS 12", "LOW PASS 24", "BAND PASS", "DJ", "HIGH PASS"};
+        static const char* names[5] = {"LOW 12 DB", "LOW 24 DB", "BAND PASS", "DJ", "HIGH PASS"};
         std::snprintf(out, n, "%s", names[static_cast<int>(filterType(v))]);
     } else if (kind == EffectKind::Delay && index == 0) {
         static const char* names[9] = {"", "1/16", "1/8", "1/8 DOTTED", "1/4", "", "1/4 DOTTED", "", "1/2"};

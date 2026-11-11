@@ -145,7 +145,7 @@ are mixed).
 
 | Effect | Settings |
 | --- | --- |
-| FILTER | Cutoff, resonance, type, mix. Types: LOW PASS 12 (two poles, gentle), LOW PASS 24 (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
+| FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | DRIVE | Drive, tone, mix, output |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
 | REVERB | Size, damping, mix |
@@ -235,7 +235,7 @@ and much lighter: eight notes at once cost about half what Twin Analog does.
 | MUTATION | How far a cousin strays |
 | AFFINITY | How much the generator likes feedback: rougher |
 | SYMMETRY | Plain harmonic tunings, or bell-like ones |
-| FAMILY | BY ITS NUMBER, or one of the 32 by name |
+| FAMILY | AUTO (whichever the sound's number gives), or one of the 32 by name |
 
 The same number is always the same sound, so a rolled sound saved in a song
 or as a preset comes back exactly. The sound designer page shows QMOD like

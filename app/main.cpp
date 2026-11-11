@@ -265,8 +265,8 @@ int main(int argc, char** argv) {
     Fonts fonts;
     {
         const std::vector<unsigned char> ttf = loadFontFile();
-        if (!fonts.small.load(renderer, ttf, 12.f) || !fonts.medium.load(renderer, ttf, 14.f) ||
-            !fonts.large.load(renderer, ttf, 16.f)) {
+        if (!fonts.small.load(renderer, ttf, 13.5f) || !fonts.medium.load(renderer, ttf, 16.f) ||
+            !fonts.large.load(renderer, ttf, 18.5f)) {
             std::fprintf(stderr, "could not load the lettering (routed-gothic-narrow.ttf)\n");
             SDL_Quit();
             return 1;
