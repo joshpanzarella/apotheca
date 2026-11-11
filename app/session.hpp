@@ -15,6 +15,7 @@
 #include "chords.hpp"
 #include "recorder.hpp"
 #include "transfer.hpp"
+#include "midi.hpp"
 #include "project.hpp"
 
 namespace apotheca {
@@ -175,6 +176,17 @@ public:
     int octavesShown() const { return octaves_; }
     void setOctavesShown(int octaves);
     void loadSettings();
+
+    // ---- a USB keyboard ---------------------------------------------------------------
+    // Keys play the track being worked on (midi.hpp). With recording on, and
+    // the song playing, what is played is also written into the cell that is
+    // playing: on the step it was played in, as long as it was held.
+    void startMidi(const std::string& folder = "/dev/snd") { midi_.start(&engine, folder); }
+    int midiKeyboards() const { return midi_.devices(); }
+    bool midiRecording() const { return midiRecord_; }
+    void setMidiRecording(bool on);
+    // The last key played and not yet asked about, or -1. The piano roll's cursor goes to it.
+    int takeMidiKey() { const int key = midiKey_; midiKey_ = -1; return key; }
     // The tempo, from anywhere. Held to what the engine can play.
     void setTempo(float bpm);
 
@@ -217,6 +229,13 @@ private:
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
+    void hearMidi();
+    MidiInput midi_;
+    bool midiRecord_ = false;
+    int midiKey_ = -1;
+    // Notes being recorded: where each was written, until its key is let go.
+    struct Recording { bool on = false; int track = 0, scene = 0, bar = 0, slot = 0, startedAt = 0; };
+    Recording recordingNote_[128];
     static float ui_stickSpeed();
     void keepSettings() const;
     Transfer transfer_;

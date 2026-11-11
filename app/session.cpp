@@ -115,6 +115,8 @@ void Session::update(Uint32 nowMs) {
     project.playBar = engine.playBar();
     project.silenced = engine.silenced();
 
+    hearMidi();
+
     // A new program has arrived: ask whoever is holding the handheld.
     if (transfer_.updatesArrived() != seenUpdates_) {
         seenUpdates_ = transfer_.updatesArrived();
@@ -362,12 +364,75 @@ void Session::setVolume(float volume) {
     if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
 }
 
+void Session::setMidiRecording(bool on) {
+    midiRecord_ = on;
+    keepSettings();
+}
+
+// What the USB keyboard played since the last frame. The sound has already
+// been made (the keyboard's own thread saw to that); this is for the cursor
+// and for recording.
+void Session::hearMidi() {
+    const TrackKind kind = project.current().kind;
+    midi_.setTarget(project.track, kind == TrackKind::Drums ? MidiInput::Drums : isSynth(kind) ? MidiInput::Synth : MidiInput::Nothing);
+    MidiEvent event;
+    while (midi_.poll(event)) {
+        if (event.kind == MidiEvent::NoteOn) midiKey_ = event.note;
+        const int scene = engine.playScene(), step = engine.playStep();
+        // Let go: the recorded note is as long as it was held, in whole steps, to the end of its bar at most.
+        Recording& rec = recordingNote_[event.note];
+        if (event.kind == MidiEvent::NoteOff && rec.on) {
+            rec.on = false;
+            TrackData& track = project.tracks[rec.track];
+            NoteEvent& note = track.notes[rec.scene][rec.bar].notes[rec.slot];
+            if (note.velocity > 0.f && note.pitch == event.note) {
+                const int bars = track.bars[rec.scene];
+                const int all = bars * kSteps, now = scene == rec.scene && step >= 0 ? (engine.playBar() % bars) * kSteps + step : rec.startedAt;
+                int held = ((now - rec.startedAt) % all + all) % all;
+                if (held < 1) held = 1;
+                if (held > kSteps - note.step) held = kSteps - note.step;
+                note.length = static_cast<float>(held);
+                sendNoteBar(rec.track, rec.scene, rec.bar);
+            }
+            continue;
+        }
+        if (event.kind != MidiEvent::NoteOn || !midiRecord_ || !project.playing || scene < 0 || step < 0) continue;
+        TrackData& track = project.current();
+        const int bar = engine.playBar() % track.bars[scene];
+        if (kind == TrackKind::Drums) {
+            DrumPattern& pattern = track.drums[scene][bar];
+            const int lane = midiDrumLane(event.note);
+            pattern.level[lane][step] = event.velocity < 0.05f ? 0.05f : event.velocity;
+            pattern.fromDice[lane][step] = false; // played by hand: the player's own
+            sendDrumPattern(project.track, scene);
+        } else if (isSynth(kind)) {
+            NotePattern& pattern = track.notes[scene][bar];
+            int slot = pattern.at(event.note, step);
+            if (slot < 0) slot = pattern.used() < kMaxNotes ? pattern.freeSlot() : -1;
+            if (slot < 0) continue; // the bar is full
+            NoteEvent& note = pattern.notes[slot];
+            note.step = step;
+            note.pitch = event.note;
+            note.length = 1.f;
+            note.nudge = 0.f;
+            note.velocity = event.velocity < 0.05f ? 0.05f : event.velocity;
+            rec.on = true;
+            rec.track = project.track;
+            rec.scene = scene;
+            rec.bar = bar;
+            rec.slot = slot;
+            rec.startedAt = bar * kSteps + step;
+            sendNoteBar(project.track, scene, bar);
+        }
+    }
+}
+
 float Session::ui_stickSpeed() { return ui::gStickSpeed; }
 
 void Session::keepSettings() const {
     if (programFolder_.empty()) return;
     writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
-                                                        std::to_string(octaves_) + "\n");
+                                                        std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\n");
 }
 
 void Session::setStickSpeed(float speed) {
@@ -393,6 +458,7 @@ void Session::loadSettings() {
     while (lines >> name >> value) {
         if (name == "stick" && value >= 25 && value <= 150) setStickSpeed(static_cast<float>(value) / 100.f);
         if (name == "octaves" && value >= 1 && value <= 3) setOctavesShown(value);
+        if (name == "midirec" && (value == 0 || value == 1)) setMidiRecording(value == 1);
     }
     programFolder_ = folder;
 }

@@ -271,7 +271,10 @@ static void testNudgeMovesAHitOffTheGrid() {
     late.send(make(Command::SetStepNudge, 0, RIM, 4, 0.25f));
     early.send(step(RIM, 4, 1.f));
     early.send(make(Command::SetStepNudge, 0, RIM, 4, -0.25f));
-    // An early hit on step 1 belongs to the end of the bar before.
+    // An early hit on step 1 belongs to the end of the bar before. On the very
+    // first bar there is no "before", so it plays at the top instead of
+    // being missed (the owner put a recording on step 1, a touch early, and
+    // heard nothing until the bar came round).
     wrapped.send(step(RIM, 0, 1.f));
     wrapped.send(make(Command::SetStepNudge, 0, RIM, 0, -0.25f));
     for (Engine* e : {&late, &early, &wrapped}) e->send(make(Command::Play));
@@ -280,8 +283,28 @@ static void testNudgeMovesAHitOffTheGrid() {
     CHECK(a >= 4 * kStep + quarter && a <= 4 * kStep + quarter + 2);
     const int b = onsetOf(renderFrames(early, 16 * kStep));
     CHECK(b >= 4 * kStep - quarter && b <= 4 * kStep - quarter + 2);
-    const int c = onsetOf(renderFrames(wrapped, 16 * kStep));
-    CHECK(c >= 16 * kStep - quarter && c <= 16 * kStep - quarter + 2);
+    const std::vector<float> round = renderFrames(wrapped, 16 * kStep);
+    CHECK(onsetOf(round) >= 0 && onsetOf(round) <= 2);
+    // ...and from then on just before each bar line, once: louder there than a moment before it.
+    const auto loudest = [&](int from, int to) { float p = 0.f; for (int i = 2 * from; i < 2 * to; ++i) p = std::fmax(p, std::fabs(round[i])); return p; };
+    CHECK(loudest(16 * kStep - quarter, 16 * kStep - quarter + 200) > 10.f * loudest(16 * kStep - quarter - 2000, 16 * kStep - quarter - 2) + 0.01f);
+    // It is not played twice at the top: the same as a hit that is simply on step 1.
+    {
+        Engine plain, nudged;
+        plain.send(step(RIM, 0, 1.f));
+        nudged.send(step(RIM, 0, 1.f));
+        nudged.send(make(Command::SetStepNudge, 0, RIM, 0, -0.02f));
+        plain.send(make(Command::Play));
+        nudged.send(make(Command::Play));
+        CHECK(renderFrames(plain, 8 * kStep) == renderFrames(nudged, 8 * kStep));
+        // Only on the first step after Play: a hit on another step that is early is not moved.
+        Engine other;
+        other.send(step(RIM, 1, 1.f));
+        other.send(make(Command::SetStepNudge, 0, RIM, 1, -0.25f));
+        other.send(make(Command::Play));
+        const int at = onsetOf(renderFrames(other, 4 * kStep));
+        CHECK(at >= kStep - quarter && at <= kStep - quarter + 2);
+    }
 
     // The limits are half a step either way, and nonsense is ignored.
     Engine far;
@@ -1479,10 +1502,13 @@ static void testANoteNudgedOffItsStep() {
     CHECK(std::abs(onsetOf(bar(3.f)) - (4 * kStep + kStep / 2)) <= 1);
     CHECK(std::abs(onsetOf(bar(-3.f)) - (4 * kStep - kStep / 2)) <= 1);
     CHECK(onsetOf(bar(std::nanf(""))) == 4 * kStep);
-    // An early note on step 1 belongs to the end of the bar before: nothing
-    // the first time round, then just before each bar line.
+    // An early note on step 1 belongs to the end of the bar before. The
+    // first time round there is no "before": it starts at the top, the same
+    // as a note that is on time. After that, just before each bar line.
     out = bar(-0.25f, 0, 2);
-    CHECK(std::abs(onsetOf(out) - (16 * kStep - kStep / 4)) <= 1);
+    CHECK(onsetOf(out) == onsetOf(bar(0.f, 0, 2)) && onsetOf(out) <= 1);
+    CHECK(out[2 * (8 * kStep)] == 0.f); // two steps long: silent by the middle of the bar
+    CHECK(out[2 * (16 * kStep - kStep / 4 - 50)] == 0.f && out[2 * (16 * kStep - kStep / 4 + 50)] != 0.f);
     // A late note on step 16 runs on over the bar line and is not cut there.
     out = bar(0.25f, 15, 2);
     CHECK(std::abs(onsetOf(out) - (15 * kStep + kStep / 4)) <= 1);

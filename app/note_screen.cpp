@@ -434,6 +434,8 @@ void NoteScreen::update(const Input& input, Uint32 nowMs) {
     lastMs_ = nowMs;
     if (project_.bar >= cellBars()) project_.bar = 0; // the cell was shortened, or it is another cell
     const float x = input.stickX(), y = input.stickY();
+    // A key played on a USB keyboard: the cursor goes to it, so A places there.
+    if (const int key = session_.takeMidiKey(); key >= 0 && !shaping_ && !picking_ && !painting_) moveCursorTo(key, step_);
     keepInView(); // the zoom can be changed from SETUP too
 
     if (zooming_ && !picking_) {

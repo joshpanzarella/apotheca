@@ -170,6 +170,13 @@ public:
 
     // From the control thread. Returns false if the queue is full.
     bool send(const Command& command) { return commands_.push(command); }
+    // A second way in, for ONE other thread (the one reading a USB keyboard):
+    // notes and drum hits to play now, and nothing else. They are taken up
+    // at the start of the next render(), after everything sent with send().
+    bool sendLive(const Command& command) {
+        if (command.type != Command::NoteOn && command.type != Command::NoteOff && command.type != Command::Trigger) return false;
+        return live_.push(command);
+    }
 
     // From the audio thread. Writes `frames` interleaved stereo frames (L R L R ...).
     void render(float* interleaved, int frames);
@@ -305,6 +312,7 @@ private:
     std::atomic<unsigned> scopeWritten_{0};
 
     SpscQueue<Command, 16384> commands_; // room for whole cells sent at once
+    SpscQueue<Command, 1024> live_;      // from the keyboard's thread (sendLive)
 
     // Things the audio thread no longer needs and must not free itself.
     struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; };

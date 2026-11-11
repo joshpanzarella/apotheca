@@ -22,6 +22,7 @@ void SettingsScreen::change(int by) {
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kOctaves: session_.setOctavesShown(session_.octavesShown() + by); break;
+    case kMidi: session_.setMidiRecording(by > 0); break;
     default: break;
     }
 }
@@ -153,8 +154,8 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "VOLUME", "STICK SPEED", "PIANO ROLL SHOWS", "WIFI PAGE", "BUTTONS", "CONTROLS"};
-    const int rowH = 46, top = 52, w = kScreenW - 32;
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "VOLUME", "STICK SPEED", "PIANO ROLL SHOWS", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const int rowH = 41, top = 52, w = kScreenW - 32;
     fonts.small.draw(r, 16.f, 34.f, "THIS SONG", kDim);
     for (int row = 0; row < kRows; ++row) {
         // The first two belong to the song; the rest to the handheld.
@@ -179,6 +180,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kOctaves:
             std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");
             note = "L1 on the piano roll does the same";
+            break;
+        case kMidi:
+            std::snprintf(text, sizeof text, "%s", session_.midiRecording() ? "PLAY + RECORD" : "PLAY ONLY");
+            note = session_.midiKeyboards() > 0 ? "a keyboard is plugged in" : "none plugged in just now";
             break;
         case kWifi:
             if (session_.transferOn()) std::snprintf(text, sizeof text, "ON   %s", session_.transferAddress().c_str());
@@ -210,7 +215,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     hint("UP / DOWN", "choose");
-    if (row_ <= kOctaves) hint("LEFT / RIGHT", "change");
+    if (row_ <= kMidi) hint("LEFT / RIGHT", "change");
     if (row_ == kWifi) hint("A", session_.transferOn() ? "turn off" : "turn on");
     if (row_ == kTest) hint("A", "open the test");
     if (row_ == kControls) hint("HOLD A", "set up again");

@@ -639,6 +639,10 @@ void Engine::fireStep() {
         repeat_ = next.repeat;
         bar_ = next.bar;
     }
+    // The very first step after Play. A hit or note on step 1 that is pushed
+    // EARLY would have started just before the bar, and there was no
+    // "before": so it starts now, at the top, and is not missed.
+    const bool veryFirst = firstStep_ && nextStep_ == 0;
     firstStep_ = false;
 
     const int following = (nextStep_ + 1) % kSteps;
@@ -654,6 +658,8 @@ void Engine::fireStep() {
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (now.level[lane][nextStep_] > 0.f && now.nudge[lane][nextStep_] >= 0.f) {
                     schedule(track, lane, now, nextStep_, now.nudge[lane][nextStep_] * samplesPerStep_);
+                } else if (veryFirst && now.level[lane][0] > 0.f) {
+                    schedule(track, lane, now, 0, 0.0);
                 }
                 if (then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
                     schedule(track, lane, then, following, (1.0 + then.nudge[lane][following]) * samplesPerStep_);
@@ -666,6 +672,7 @@ void Engine::fireStep() {
             // this and is set waiting now, as a drum hit is.
             for (const Note& note : track.notes[slotOf(track, scene_, bar_)]) {
                 if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_);
+                else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0);
             }
             for (const Note& note : track.notes[slotOf(track, followingScene, followingBar)]) {
                 if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_);
@@ -682,6 +689,7 @@ void Engine::fireStep() {
 void Engine::render(float* interleaved, int frames) {
     Command command;
     while (commands_.pop(command)) apply(command);
+    while (live_.pop(command)) apply(command);
 
     float peaks[kNumTracks] = {};
     while (frames > 0) {

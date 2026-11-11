@@ -363,6 +363,7 @@ int main(int argc, char** argv) {
         // Not full blast on the handheld's little speaker: two fifths, until it is changed.
         app.session().loadVolume(handheld ? 0.4f : 1.f);
         app.session().loadSettings();
+        if (!smoke && !shot) app.session().startMidi(); // USB keyboards, whenever one is plugged in
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
         std::printf("chord packs: %d\n", static_cast<int>(app.session().packs.size()));

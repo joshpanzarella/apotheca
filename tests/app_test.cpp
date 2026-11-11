@@ -1178,6 +1178,16 @@ void testTheSetupScreen() {
         CHECK(session.octavesShown() == 3);
         rig.tap(LEFT, 5);
         CHECK(session.octavesShown() == 1);
+        // USB KEYBOARD: play only, or play and record
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kMidi && !session.midiRecording() && session.midiKeyboards() == 0);
+        rig.tap(RIGHT);
+        CHECK(session.midiRecording());
+        rig.tap(RIGHT);
+        CHECK(session.midiRecording());
+        rig.tap(LEFT);
+        CHECK(!session.midiRecording());
+        rig.tap(RIGHT);
         // WIFI PAGE: A turns it on and off; left and right do nothing here.
         rig.tap(DOWN);
         CHECK(setup.cursorRow() == SettingsScreen::kWifi && !session.transferOn());
@@ -1213,19 +1223,19 @@ void testTheSetupScreen() {
         Rig later;
         later.app.session().useProgramFolder(folder);
         later.app.session().loadSettings();
-        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1);
+        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());
         // Nonsense in the file is not believed.
         std::string kept;
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\n");
-        writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nrubbish\n");
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\n");
+        writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nmidirec 5\nrubbish\n");
         later.app.session().loadSettings();
-        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1);
+        CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());
         // Loading writes nothing.
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 900\noctaves 7\nrubbish\n");
-        writeTextFile(folder + "/settings.txt", "octaves 3\nstick 60\nlater 5\n");
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 900\noctaves 7\nmidirec 5\nrubbish\n");
+        writeTextFile(folder + "/settings.txt", "octaves 3\nstick 60\nmidirec 0\nlater 5\n");
         later.app.session().loadSettings();
-        CHECK(near(later.app.session().stickSpeed(), 0.6f) && later.app.session().octavesShown() == 3);
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "octaves 3\nstick 60\nlater 5\n");
+        CHECK(near(later.app.session().stickSpeed(), 0.6f) && later.app.session().octavesShown() == 3 && !later.app.session().midiRecording());
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "octaves 3\nstick 60\nmidirec 0\nlater 5\n");
     }
     ui::gStickSpeed = stickBefore;
 }
