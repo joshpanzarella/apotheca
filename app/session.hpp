@@ -178,6 +178,20 @@ public:
     void setOctavesShown(int octaves);
     void loadSettings();
 
+    // ---- undo ---------------------------------------------------------------------------
+    // What is in the patterns (hits, notes, chords, how long each cell is,
+    // how often each scene plays) can be taken back, twenty steps deep, and
+    // put forward again. One step is one burst of editing: everything
+    // changed until nothing has changed for seven tenths of a second (a
+    // whole paint stroke, a roll of the dice, a cell emptied). The song
+    // keeps playing. Sounds, effects and settings are not part of it.
+    static constexpr int kUndoLevels = 20;
+    bool undo();
+    bool redo();
+    int undoSteps() const;
+    int redoSteps() const { return static_cast<int>(redo_.size()); }
+    void noteEdit(); // something in a pattern has just changed
+
     // ---- mute, solo, names -----------------------------------------------------------
     // A muted track is silent. While any track is soloed, only soloed ones
     // are heard, muted or not. Both act at once; the song keeps mutes only.
@@ -260,6 +274,15 @@ private:
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
+    std::string patternsNow() const;                 // the patterns as text: a step of undo
+    void restorePatterns(const std::string& text);
+    void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
+    std::uint32_t cellMark() const;                  // changes when the cell being worked on does
+    std::vector<std::string> undo_, redo_;
+    std::string settled_;                            // the patterns when things were last still
+    bool editing_ = false, restoring_ = false, undoReady_ = false;
+    Uint32 editedAt_ = 0;
+    std::uint32_t cellMark_ = 0;
     void serveDesigner();
     std::string designSpec(TrackKind kind) const;
     std::string designState() const;

@@ -1301,6 +1301,187 @@ void testHoldingSelectShowsTheHelp() {
     rig.key(SELECT, false);
 }
 
+void testUndoAndRedo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Pattern;
+    PatternScreen& drums = rig.app.drums();
+    rig.frames(2);
+    CHECK(session.undoSteps() == 0 && !session.undo() && !session.redo());
+    // Nothing to undo says so, and changes nothing.
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    CHECK(std::string(rig.app.undoSaid()) == "NOTHING TO UNDO" && rig.view() == View::Pattern);
+    const auto hits = [&] { int n = 0; for (int l = 0; l < kDrumLanes; ++l) for (int s = 0; s < kSteps; ++s) n += drums.level(l, s) > 0.f ? 1 : 0; return n; };
+    const auto settle = [&] { rig.frames(50); }; // 0.8 s with nothing changing: the burst is over
+
+    // One burst of editing is one step: a painted row of eight.
+    drums.moveCursorTo(0, 0);
+    rig.key(R1, true);
+    rig.tap(RIGHT, 7);
+    rig.key(R1, false);
+    settle();
+    CHECK(hits() == 8 && session.undoSteps() == 1);
+    // A second burst: three hits on another lane, each a moment apart but inside the same burst.
+    drums.moveCursorTo(2, 4);
+    rig.tap(A);
+    rig.frames(10);
+    drums.moveCursorTo(2, 8);
+    rig.tap(A);
+    rig.frames(10);
+    drums.moveCursorTo(2, 12);
+    rig.tap(A);
+    settle();
+    CHECK(hits() == 11 && session.undoSteps() == 2);
+    // Then the accident: the whole cell emptied from the SONG screen.
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(B);
+    settle();
+    CHECK(hits() == 0 && session.undoSteps() == 3);
+    session.view = View::Pattern;
+
+    // SELECT + B: the beat is back, with every level as it was.
+    rig.key(SELECT, true);
+    rig.tap(B);
+    CHECK(hits() == 11 && near(drums.level(0, 3), 0.8f) && drums.level(2, 8) > 0.f);
+    CHECK(std::string(rig.app.undoSaid()) == "UNDONE  (2 MORE)");
+    // Again: the three hits go. Again: the painted row goes.
+    rig.tap(B);
+    CHECK(hits() == 8);
+    rig.tap(B);
+    CHECK(hits() == 0 && session.undoSteps() == 0 && session.redoSteps() == 3);
+    rig.tap(B);
+    CHECK(std::string(rig.app.undoSaid()) == "NOTHING TO UNDO" && hits() == 0);
+    // SELECT + A puts them forward again, one at a time.
+    rig.tap(A);
+    CHECK(hits() == 8 && std::string(rig.app.undoSaid()) == "PUT BACK  (2 MORE)");
+    rig.tap(A);
+    CHECK(hits() == 11);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(rig.view() == View::Pattern && !rig.app.song().listingSongs()); // it was not a tap of SELECT
+    // The notice goes after a moment.
+    rig.frames(120);
+    CHECK(rig.app.undoSaid()[0] == 0);
+    // A new change after going back: there is no "forward" any more.
+    CHECK(session.redoSteps() == 1);
+    drums.moveCursorTo(5, 5);
+    rig.tap(A);
+    settle();
+    CHECK(session.redoSteps() == 0 && hits() == 12);
+
+    // The engine is told, and the song is not stopped: playing, undo takes a hit out of the bar that is going round.
+    rig.tap(START);
+    rig.render(100);
+    rig.frames(1);
+    CHECK(rig.project().playing);
+    CHECK(session.undo());
+    CHECK(rig.project().playing && hits() == 11 && drums.level(5, 5) == 0.f);
+    rig.tap(START);
+    rig.render(96000);
+    rig.frames(1);
+    // What plays is what is shown: lane 6 is silent now, lane 1 still has its row.
+    for (int l = 0; l < kDrumLanes; ++l)
+        for (int s = 0; s < kSteps; ++s)
+            if (l != 2) drums.setStep(l, s, 0.f);
+    settle();
+    rig.tap(START);
+    const std::vector<float> early = rig.render(4 * kStep - 100), then = rig.render(kStep);
+    CHECK(Rig::peak(early) == 0.f && Rig::peak(then) > 0.05f); // lane 3's first hit is on step 5
+    rig.tap(START);
+    rig.render(96000);
+
+    // Notes and chords, cell lengths and repeat counts come back too.
+    addPhazed(rig);
+    rig.project().track = 1;
+    session.view = View::Pattern;
+    rig.frames(1);
+    settle();
+    const int before = session.undoSteps();
+    NoteScreen& notes = rig.app.notes();
+    rig.project().playing = true;
+    notes.moveCursorTo(60, 0);
+    rig.key(R1, true);
+    rig.tap(DOWN, 3);
+    rig.key(R1, false);
+    rig.project().playing = false;
+    settle();
+    session.setCellBars(1, 0, 4);
+    settle();
+    rig.project().repeats[0] = 3;
+    session.noteEdit();
+    settle();
+    const NotePattern& bar = rig.project().tracks[1].notes[0][0];
+    CHECK(session.undoSteps() == before + 3 && !bar.empty() && rig.project().tracks[1].bars[0] == 4);
+    CHECK(session.undo() && rig.project().repeats[0] == 1);
+    CHECK(session.undo() && rig.project().tracks[1].bars[0] == 1);
+    CHECK(session.undo() && bar.empty());
+    CHECK(session.redo() && bar.at(60, 2) >= 0 && bar.at(60, 3) >= 0);
+    // Sounds and settings are not part of it: a preset chosen since stays chosen.
+    rig.app.session().chooseSynthPreset(1, 4);
+    CHECK(session.undo() && rig.project().tracks[1].preset == 4 && bar.empty());
+
+    // Twenty deep and no deeper: the oldest steps fall off the end.
+    session.view = View::Pattern;
+    rig.project().track = 0;
+    rig.frames(1);
+    settle();
+    for (int i = 0; i < 30; ++i) {
+        drums.moveCursorTo(7, i % kSteps);
+        rig.tap(A);
+        settle();
+    }
+    CHECK(session.undoSteps() == Session::kUndoLevels);
+    int undone = 0;
+    while (session.undo()) ++undone;
+    CHECK(undone == Session::kUndoLevels);
+    // Another song: nothing of this one to go back to.
+    session.newSong();
+    rig.frames(2);
+    CHECK(session.undoSteps() == 0 && session.redoSteps() == 0 && !session.undo());
+}
+
+void testHoldBErasesDrumHits() {
+    Rig rig;
+    rig.app.session().view = View::Pattern;
+    PatternScreen& drums = rig.app.drums();
+    for (int s = 0; s < kSteps; ++s) drums.setStep(3, s, 0.7f);
+    drums.setStep(4, 5, 0.7f);
+    // A tap: the one under the cursor.
+    drums.moveCursorTo(3, 2);
+    rig.tap(B);
+    CHECK(drums.level(3, 2) == 0.f && drums.level(3, 3) > 0.f);
+    // Held and dragged: every hit crossed, on whichever lane.
+    drums.moveCursorTo(3, 4);
+    rig.key(B, true);
+    rig.tap(RIGHT, 3);
+    CHECK(drums.level(3, 4) == 0.f && drums.level(3, 5) == 0.f && drums.level(3, 7) == 0.f && drums.level(3, 8) > 0.f);
+    rig.tap(LEFT, 2); // back over the gap: nothing to do
+    rig.tap(DOWN);    // onto the lane below, step 6: empty there
+    rig.tap(LEFT);    // step 5 on that lane: its hit goes
+    CHECK(drums.level(4, 5) == 0.f);
+    rig.key(B, false);
+    // Let go: moving deletes nothing.
+    drums.moveCursorTo(3, 8);
+    rig.tap(RIGHT, 3);
+    CHECK(drums.level(3, 9) > 0.f && drums.level(3, 11) > 0.f);
+    // The stick drags it too.
+    rig.key(B, true);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(20);
+    rig.key(STICK_RIGHT, false);
+    rig.key(B, false);
+    CHECK(drums.level(3, 12) == 0.f && drums.level(3, 13) == 0.f);
+    // With A or Y held, B is not the eraser.
+    drums.moveCursorTo(3, 0);
+    rig.key(A, true);
+    rig.tap(B);
+    rig.key(A, false);
+    CHECK(drums.level(3, 0) > 0.f);
+}
+
 void testQmodOnATrack() {
     Rig rig;
     Session& session = rig.app.session();
@@ -2800,6 +2981,8 @@ int main(int, char**) {
     testMuteSoloAndNames();
     testHoldBAndDragErases();
     testHoldingSelectShowsTheHelp();
+    testUndoAndRedo();
+    testHoldBErasesDrumHits();
     testQmodOnATrack();
     testTypingATrackName();
     testHoldXCarriesANote();

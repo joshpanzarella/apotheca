@@ -78,6 +78,7 @@ void SongScreen::setRepeats(int count) {
     count = count < 1 ? 1 : (count > kMaxRepeats ? kMaxRepeats : count);
     if (count == project_.repeats[scene_]) return;
     project_.repeats[scene_] = count;
+    session_.noteEdit(); // a step of undo
     Command c;
     c.type = Command::SetSceneRepeats;
     c.scene = scene_;

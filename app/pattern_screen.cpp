@@ -335,6 +335,7 @@ void PatternScreen::moveCursor(Button direction) {
 
 void PatternScreen::dragCursor(Button direction) {
     moveCursor(direction);
+    if (erasing_ && hitHere()) setStep(lane_, step_, 0.f); // B is held: the cursor rubs hits away
     paintHere(); // does nothing unless a brush is down
 }
 
@@ -480,6 +481,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
+        if (b == Button::B) erasing_ = false;
         return;
     }
 
@@ -494,6 +496,8 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     const bool busy = input.held(Button::A) || input.held(Button::Y);
     if (b == Button::B && !busy) {
+        // Deletes the hit under the cursor and, held, every hit the cursor is dragged over.
+        erasing_ = true;
         if (hitHere()) setStep(lane_, step_, 0.f);
     } else if (b == Button::X && !onTempo_) {
         audition(lane_, hitHere() ? pat().level[lane_][step_] : kNewHitLevel, hitHere() ? pat().start[lane_][step_] : 0.f);
@@ -767,7 +771,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         hint("A", hitHere() ? "level / nudge" : "place");
         hint("Y", hitHere() ? "chance / start" : "maybe");
-        if (hitHere()) hint("B", "delete");
+        hint("HOLD B", "erase");
         hint("HOLD R1", "paint");
         hint("R1 + R2", "paint random");
     }

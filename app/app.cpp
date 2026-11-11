@@ -76,6 +76,20 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // SELECT held with L1 or R1: quieter or louder, from any screen. (The
     // handheld's own volume buttons belong to its firmware and may not
     // reach a running program.)
+    // SELECT held with B: undo. With A: redo. From any screen, playing or not.
+    if ((b == Button::B || b == Button::A) && input.held(Button::Select) && !panicking_) {
+        if (event.down) {
+            const bool back = b == Button::B;
+            const bool done = back ? session_.undo() : session_.redo();
+            if (done) std::snprintf(undoSaid_, sizeof undoSaid_, back ? "UNDONE  (%d MORE)" : "PUT BACK  (%d MORE)", back ? session_.undoSteps() : session_.redoSteps());
+            else std::snprintf(undoSaid_, sizeof undoSaid_, "%s", back ? "NOTHING TO UNDO" : "NOTHING TO PUT BACK");
+            undoSaidUntil_ = now_ + 1500;
+            selectAlone_ = false;
+            song_.selectWasUsed();
+        }
+        return;
+    }
+
     if ((b == Button::L1 || b == Button::R1) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
             changeVolume(b == Button::R1 ? 0.1f : -0.1f);
@@ -242,6 +256,12 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fill(renderer, x + 12, y + 28, w - 24, 8, kLine);
         fill(renderer, x + 12, y + 28, static_cast<int>((w - 24) * session_.volume()), 8, kTeal);
     }
+    if (undoSaid()[0]) {
+        using namespace ui;
+        const int w = 260, h = 34, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
+        box(renderer, x, y, w, h, kPanel, kTeal);
+        fonts.medium.drawCentered(renderer, kScreenW / 2.f, y + (h - fonts.medium.capHeight()) / 2.f, undoSaid(), kText);
+    }
     if (session_.updateWaiting() || updateSaid_ != 0) {
         using namespace ui;
         const int w = 470, h = 150, x = (kScreenW - w) / 2, y = (kScreenH - h) / 2;
@@ -284,7 +304,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
     } else if (help_) {
         // What is true on every screen, so the bar at the bottom need not say it each time.
         using namespace ui;
-        const int w = 560, h = 372, x = (kScreenW - w) / 2, y = kTopBarH + 14;
+        const int w = 560, h = 416, x = (kScreenW - w) / 2, y = kTopBarH + 6;
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 215));
         box(renderer, x, y, w, h, kPanel, kTeal);
         outline(renderer, x, y, w, h, kTeal, 2);
@@ -299,6 +319,8 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"SELECT, tapped", "the SONG screen. On SONG: the list of songs"},
         };
         const Line held[] = {
+            {"B", "UNDO the last change to the patterns (20 deep)"},
+            {"A", "put it back again"},
             {"L1  R1", "quieter / louder"},
             {"UP  DOWN", "tempo, a beat a minute"},
             {"LEFT  RIGHT", "tempo, ten at a time"},

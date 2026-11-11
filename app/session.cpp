@@ -119,6 +119,24 @@ void Session::update(Uint32 nowMs) {
     hearMidi();
     serveDesigner();
 
+    // Undo's bookkeeping. The cell being worked on is watched directly (the
+    // grids change it hit by hit); everything else that changes a pattern
+    // says so itself (noteEdit). When things have been still for a while,
+    // that stillness is what the next step of undo will return to.
+    if (!undoReady_) {
+        undoReady_ = true;
+        settled_ = patternsNow();
+        cellMark_ = cellMark();
+    }
+    if (const std::uint32_t mark = cellMark(); mark != cellMark_) {
+        cellMark_ = mark;
+        noteEdit();
+    }
+    if (editing_ && nowMs - editedAt_ >= 700) {
+        editing_ = false;
+        settled_ = patternsNow();
+    }
+
     // A new program has arrived: ask whoever is holding the handheld.
     if (transfer_.updatesArrived() != seenUpdates_) {
         seenUpdates_ = transfer_.updatesArrived();
@@ -173,6 +191,7 @@ void Session::setCellBars(int track, int scene, int bars) {
     if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes) return;
     bars = bars < 2 ? 1 : (bars < 4 ? 2 : (bars < 8 ? 4 : 8));
     project.tracks[track].bars[scene] = bars;
+    noteEdit();
     if (track == project.track && scene == project.scene && project.bar >= bars) project.bar = bars - 1;
     Command c;
     c.type = Command::SetCellBars;
@@ -185,6 +204,7 @@ void Session::setCellBars(int track, int scene, int bars) {
 // A whole cell to the engine: emptied there in one command, then only what
 // is in it. (Every step of eight bars would be four thousand commands.)
 void Session::sendDrumPattern(int track, int scene) {
+    noteEdit();
     Command c;
     c.track = track;
     c.scene = scene;
@@ -219,6 +239,7 @@ void Session::sendDrumPattern(int track, int scene) {
 }
 
 void Session::sendNotePattern(int track, int scene) {
+    noteEdit();
     Command c;
     c.track = track;
     c.scene = scene;
@@ -232,6 +253,7 @@ void Session::sendNotePattern(int track, int scene) {
 }
 
 void Session::sendNoteBar(int track, int scene, int bar) {
+    noteEdit();
     NoteEvent notes[kMaxNotes]; // chords written out as their notes
     project.tracks[track].notes[scene][bar].render(notes);
     Command c;
@@ -364,6 +386,105 @@ void Session::setVolume(float volume) {
     c.value = volume_ * volume_; // squared: even steps to the ear
     engine.send(c);
     if (!programFolder_.empty()) writeTextFile(programFolder_ + "/volume.txt", std::to_string(static_cast<int>(std::round(volume_ * 100.f))) + "\n");
+}
+
+// ---- undo -----------------------------------------------------------------------------------
+
+// The patterns, as the song file writes them. (The whole song's text: only
+// the patterns are taken back out of it.)
+std::string Session::patternsNow() const { return songText(project); }
+
+std::uint32_t Session::cellMark() const {
+    const TrackData& t = project.current();
+    std::uint32_t h = 2166136261u + static_cast<std::uint32_t>(project.track * 131 + project.scene);
+    const auto mix = [&](const void* data, std::size_t size) {
+        const unsigned char* bytes = static_cast<const unsigned char*>(data);
+        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
+    };
+    if (t.kind == TrackKind::Drums) {
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const DrumPattern& p = t.drums[project.scene][bar];
+            mix(p.level, sizeof p.level);
+            mix(p.nudge, sizeof p.nudge);
+            mix(p.chance, sizeof p.chance);
+            mix(p.start, sizeof p.start);
+        }
+    } else if (isSynth(t.kind)) {
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const NotePattern& p = t.notes[project.scene][bar];
+            for (const NoteEvent& n : p.notes)
+                if (n.velocity > 0.f) mix(&n, sizeof n);
+            for (const ChordEvent& c : p.chords)
+                if (c.velocity > 0.f) mix(&c, sizeof c);
+        }
+    }
+    return h;
+}
+
+// Called when a pattern has just changed. The first change after a still
+// moment begins a step: what there was at that still moment goes on the pile.
+void Session::noteEdit() {
+    if (restoring_ || !undoReady_) return;
+    if (!editing_) {
+        editing_ = true;
+        undo_.push_back(settled_);
+        if (static_cast<int>(undo_.size()) > kUndoLevels) undo_.erase(undo_.begin());
+        redo_.clear(); // a new change: there is no "forward" any more
+    }
+    editedAt_ = now_;
+}
+
+int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
+
+void Session::restorePatterns(const std::string& text) {
+    std::unique_ptr<Project> was(new Project);
+    if (!parseSong(text, *was)) return;
+    restoring_ = true;
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& now = project.tracks[t];
+        const TrackData& then = was->tracks[t];
+        if (now.kind == TrackKind::None || now.kind != then.kind) continue; // a track added since stays as it is
+        for (int scene = 0; scene < kMaxScenes; ++scene) {
+            now.bars[scene] = then.bars[scene];
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                now.drums[scene][bar] = then.drums[scene][bar];
+                now.notes[scene][bar] = then.notes[scene][bar];
+            }
+        }
+        sendTrackImage(t);
+    }
+    Command c;
+    c.type = Command::SetSceneRepeats;
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        project.repeats[scene] = was->repeats[scene];
+        c.scene = scene;
+        c.a = project.repeats[scene];
+        engine.send(c);
+    }
+    if (project.bar >= project.current().bars[project.scene]) project.bar = 0;
+    syncSong();
+    restoring_ = false;
+    settled_ = text;
+    editing_ = false;
+    cellMark_ = cellMark();
+}
+
+bool Session::undo() {
+    if (undo_.empty()) return false;
+    redo_.push_back(patternsNow()); // as things are, to come forward to again
+    const std::string back = undo_.back();
+    undo_.pop_back();
+    restorePatterns(back);
+    return true;
+}
+
+bool Session::redo() {
+    if (redo_.empty()) return false;
+    undo_.push_back(patternsNow());
+    const std::string forward = redo_.back();
+    redo_.pop_back();
+    restorePatterns(forward);
+    return true;
 }
 
 // ---- mute, solo, names ---------------------------------------------------------------------
@@ -1231,6 +1352,38 @@ void Session::finishStretching() {
     }
 }
 
+void Session::sendTrackImage(int t) {
+    const TrackData& track = project.tracks[t];
+    std::unique_ptr<TrackImage> image(new TrackImage);
+    for (int scene = 0; scene < kMaxScenes; ++scene) {
+        image->bars[scene] = track.bars[scene];
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            const int slot = scene * kMaxBars + bar;
+            const DrumPattern& drums = track.drums[scene][bar];
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                for (int step = 0; step < kSteps; ++step) {
+                    image->level[slot][lane][step] = drums.level[lane][step];
+                    image->nudge[slot][lane][step] = drums.nudge[lane][step];
+                    image->chance[slot][lane][step] = drums.chance[lane][step];
+                    image->start[slot][lane][step] = drums.start[lane][step];
+                }
+            NoteEvent notes[kMaxNotes];
+            track.notes[scene][bar].render(notes);
+            for (int i = 0; i < kMaxNotes; ++i) {
+                const NoteEvent& n = notes[i];
+                if (n.velocity <= 0.f) continue;
+                image->notes[slot][i].step = static_cast<std::uint8_t>(n.step);
+                image->notes[slot][i].pitch = static_cast<std::uint8_t>(n.pitch);
+                image->notes[slot][i].length = n.length;
+                image->notes[slot][i].nudge = n.nudge;
+                image->notes[slot][i].velocity = n.velocity;
+            }
+        }
+    }
+    for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];
+    engine.setTrackImage(t, std::move(image));
+}
+
 void Session::applyProject() {
     collectJob(true); // nothing half-made carries over
     Command c;
@@ -1251,35 +1404,7 @@ void Session::applyProject() {
         if (track.kind == TrackKind::Drums) engine.addDrumTrack(t);
         else engine.addSynthTrack(t, track.kind == TrackKind::Twin ? SynthKind::Twin : track.kind == TrackKind::Sampler ? SynthKind::Sampler : track.kind == TrackKind::Qmod ? SynthKind::Qmod : SynthKind::Phazed);
 
-        // Every pattern on the track, in one piece.
-        std::unique_ptr<TrackImage> image(new TrackImage);
-        for (int scene = 0; scene < kMaxScenes; ++scene) {
-            image->bars[scene] = track.bars[scene];
-            for (int bar = 0; bar < kMaxBars; ++bar) {
-                const int slot = scene * kMaxBars + bar;
-                const DrumPattern& drums = track.drums[scene][bar];
-                for (int lane = 0; lane < kDrumLanes; ++lane)
-                    for (int step = 0; step < kSteps; ++step) {
-                        image->level[slot][lane][step] = drums.level[lane][step];
-                        image->nudge[slot][lane][step] = drums.nudge[lane][step];
-                        image->chance[slot][lane][step] = drums.chance[lane][step];
-                        image->start[slot][lane][step] = drums.start[lane][step];
-                    }
-                NoteEvent notes[kMaxNotes];
-                track.notes[scene][bar].render(notes);
-                for (int i = 0; i < kMaxNotes; ++i) {
-                    const NoteEvent& n = notes[i];
-                    if (n.velocity <= 0.f) continue;
-                    image->notes[slot][i].step = static_cast<std::uint8_t>(n.step);
-                    image->notes[slot][i].pitch = static_cast<std::uint8_t>(n.pitch);
-                    image->notes[slot][i].length = n.length;
-                    image->notes[slot][i].nudge = n.nudge;
-                    image->notes[slot][i].velocity = n.velocity;
-                }
-            }
-        }
-        for (int lane = 0; lane < kDrumLanes; ++lane) image->laneLevel[lane] = track.laneLevel[lane];
-        engine.setTrackImage(t, std::move(image));
+        sendTrackImage(t); // every pattern on the track, in one piece
         if (track.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane) loadLane(t, lane);
         if (track.kind == TrackKind::Sampler) {
@@ -1346,6 +1471,11 @@ void Session::applyProject() {
     engine.send(c);
     syncSong(); // the song's length, if it differs from the last one's
     sendMutes(); // the song's mutes; nothing is soloed in a song just opened
+    // Another song: nothing of the last one to go back to.
+    undo_.clear();
+    redo_.clear();
+    editing_ = false;
+    undoReady_ = false;
 }
 
 } // namespace apotheca

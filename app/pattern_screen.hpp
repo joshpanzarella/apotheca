@@ -30,6 +30,8 @@
 //   ...and R2 as well  every hit at a RANDOM level, for as long as R2 is
 //                      held too. (R2 by itself is "next screen", at once.)
 //
+// Hold B and drag: every hit the cursor crosses is deleted.
+//
 // Dragging over hits that are already there re-levels them and leaves their
 // nudge and chance alone.
 //
@@ -163,6 +165,7 @@ private:
     Uint32 heardStartAt_ = 0;    // when a sliding start was last played
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
+    bool erasing_ = false; // B is held: hits the cursor crosses are deleted
     Paint paint_ = Paint::None;
     float brush_ = 0.8f;              // the level R1 is painting with
     std::uint32_t dice_ = 0x9E3779B9u; // for R2's random levels

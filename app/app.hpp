@@ -58,6 +58,9 @@ public:
     bool volumeShowing() const { return now_ < volumeShownUntil_; }
     // SELECT held for a moment: a card of what the buttons do everywhere. It goes when SELECT is let go.
     bool helpShowing() const { return help_; }
+    // SELECT + B takes back the last change to the patterns; SELECT + A puts it forward again.
+    // What it said about that, for a moment: "UNDONE", "NOTHING TO UNDO"...
+    const char* undoSaid() const { return now_ < undoSaidUntil_ ? undoSaid_ : ""; }
     // The notice that says a panic happened. It stays while the buttons are
     // held, and after that until any button is pressed (that press does
     // nothing else) or four seconds have gone by.
@@ -82,6 +85,8 @@ private:
     FxScreen fx_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
+    char undoSaid_[40] = "";
+    Uint32 undoSaidUntil_ = 0;
     bool help_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
