@@ -1323,7 +1323,7 @@ void testTypingATrackName() {
     rig.tap(DOWN); // off the bottom: round to the top
     rig.tap(A);
     CHECK(setup.typed() == "ABJ J");
-    // B rubs out the last one.
+    // B deletes the last one.
     rig.tap(B, 2);
     CHECK(setup.typed() == "ABJ" && setup.typing());
     // Ten at most.

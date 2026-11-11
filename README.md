@@ -169,7 +169,7 @@ else), or it goes by itself after four seconds.
 | --- | --- | --- |
 | TEMPO | A beat a minute | |
 | CHORD PACK | Another pack | |
-| TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, B rubs out, Y keeps. Ten characters. |
+| TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, B deletes, Y keeps. Ten characters. |
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |

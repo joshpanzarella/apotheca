@@ -220,7 +220,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const Font& font = kKeys[i] == ' ' ? fonts.small : fonts.large;
             font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
         }
-        const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "rub out"}, {"Y", "keep"}};
+        const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "delete"}, {"Y", "keep"}};
         hints(r, fonts, list, 3);
         return;
     }

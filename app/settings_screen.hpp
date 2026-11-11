@@ -11,7 +11,7 @@
 //   START                        play / stop
 //
 // Typing a track's name: a grid of letters and numbers. The stick or D-pad
-// moves, A types the one under the cursor, B rubs out the last (B with
+// moves, A types the one under the cursor, B deletes the last (B with
 // nothing typed leaves without changing the name), Y or START keeps it.
 // Ten characters at most. While it is open every button belongs to it.
 //
