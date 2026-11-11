@@ -559,6 +559,23 @@ static void testAGlideComesFromTheKeyItIsGiven() {
         const std::vector<float> out = renderSynth(synth, 13230);
         return std::pair<int, int>(crossings(out, 441, 1323), crossings(out, 8820, 1323));
     };
+    // A plain note after a gliding one is plain, at once at its pitch.
+    {
+        Phazed synth;
+        synth.prepare(44100.f);
+        synth.selectPreset(organPreset());
+        synth.noteOn(45, 1.f);
+        renderSynth(synth, 8820);
+        synth.noteOff(45);
+        renderSynth(synth, 8820);
+        synth.noteOnFrom(57, 1.f, 45, 0.06f);
+        renderSynth(synth, 13230);
+        synth.noteOff(57);
+        renderSynth(synth, 22050);
+        synth.noteOn(69, 1.f);
+        const std::vector<float> out = renderSynth(synth, 13230);
+        CHECK(crossings(out, 441, 1323) > 0.9 * crossings(out, 8820, 1323));
+    }
     const std::pair<int, int> alone = early(-1), afterHigh = early(93), afterSame = early(69);
     CHECK(alone.second > 20);                       // A4, settled: some 26 in 30 ms
     CHECK(alone.first < 0.9 * alone.second);        // it comes up from below

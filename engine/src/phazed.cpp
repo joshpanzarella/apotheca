@@ -209,7 +209,6 @@ int settingMax(int id) {
 
 struct Phazed::State {
     cz_synth_t synth;
-    int glideWaiting = -1; // the slot of a gliding note that has not started yet, or -1
 
     // Rate conversion, used only when the engine is not at 44100 Hz.
     float engineRate = kSynthRate;
@@ -302,8 +301,9 @@ void Phazed::noteOn(int note, float velocity) {
     if (!ok_ || note < 0 || note > 127 || !(velocity > 0.f)) return; // also drops NaN
     int v = static_cast<int>(std::lround(velocity * 127.f));
     v = v < 1 ? 1 : (v > 127 ? 127 : v);
-    // A plain note never glides, though the CZ's portamento may be on just now for a gliding note
-    // that is waiting for its slot to fade (see noteOnFrom).
+    // A plain note never glides, though the CZ's portamento is left on once a note has glided
+    // (see noteOnFrom): it is off while this note is handed over, and if the note has to wait
+    // for its slot to fade, its own glide flag is cleared.
     cz_synth_t& s = state_->synth;
     const int porta = s.porta;
     s.porta = 0;
@@ -316,8 +316,9 @@ void Phazed::noteOn(int note, float velocity) {
 // GLIDE on Phazed is the CZ's own portamento, switched on for this one note, in the CZ's own
 // time. The CZ slides from the last note it started, whoever played it; the key the track came
 // from is put there first. (The engine is not ours to change; these two fields are its own.)
-// A note given a slot that is still sounding starts a moment later, from render: the switch stays
-// on until it has (render turns it off).
+// A note given a slot that is still sounding starts a moment later, from the CZ's render, and
+// reads the switch again then: so the switch is left on, and it is the plain notes that turn
+// it off for themselves (noteOn).
 void Phazed::noteOnFrom(int note, float velocity, int from, float seconds) {
     (void)seconds;
     if (!ok_ || note < 0 || note > 127 || !(velocity > 0.f)) return;
@@ -327,9 +328,6 @@ void Phazed::noteOnFrom(int note, float velocity, int from, float seconds) {
     if (from >= 0 && from <= 127) s.last_word = (from - 7) * 256 + s.tone.octave * 12 * 256 + (s.master_tune - 64) * 4; // the CZ's own note_word
     s.porta = 1;
     cz_synth_note_on(&s, note, v);
-    const int at = s.solo ? 0 : s.last_slot;
-    if (s.slot[at].state == SLOT_STEALING) state_->glideWaiting = at;
-    else if (state_->glideWaiting < 0) s.porta = 0;
 }
 
 void Phazed::noteOff(int note) {
@@ -346,10 +344,6 @@ void Phazed::render(float* left, float* right, int frames) {
         return;
     }
     State& s = *state_;
-    if (s.glideWaiting >= 0 && s.synth.slot[s.glideWaiting].state != SLOT_STEALING) {
-        s.glideWaiting = -1; // the gliding note has its slot and has begun
-        s.synth.porta = 0;
-    }
     if (s.engineRate == kSynthRate) {
         cz_synth_render_stereo(&s.synth, left, right, frames);
         return;
