@@ -10,11 +10,22 @@
 // seen the device's screen. It is not encryption: use it on a network you trust.
 //
 // What is checked before a file is kept:
-//   - its name is a plain name with the right ending: no folders, no "..",
-//     nothing hidden, 60 characters at most
+//   - its name is a plain name with the right ending: no "..", nothing
+//     hidden, 60 characters at most. A recording may be one folder down
+//     ("kicks/808.wav": folder 24, name 36 at most); nothing else may.
 //   - it is 30 MB at most
 //   - it is what it says: a WAV this can read, a chord pack with chords in
 //     it, a song this can open. Anything else is refused and not written.
+//
+// From the page a file can also be deleted (DELETE to its address) and a
+// recording renamed or moved (POST to its address, "X-To: <where it goes>").
+// Both hold names to the rules above and only touch a real file that is
+// there: not a link, and not through one. A move writes over nothing. A
+// deleted song goes to "deleted" in the song folder with its revs, as on the
+// handheld; bounces are fetched and deleted, never sent. A folder inside the
+// recordings goes with its last file. The Session is not told beyond
+// `received()`: a lane using a deleted recording finds it missing, which the
+// program already copes with.
 //
 // Updating Apotheca itself the same way: the page takes a new program file.
 // It must be a program for this kind of processor, and it is only SET ASIDE
@@ -62,7 +73,7 @@ public:
     // "192.168.1.23:8080/4821": what to type into a browser. Without the
     // numbers before the colon if the device is on no network.
     std::string address() const;
-    // Goes up each time a file is received, so the screen can look again.
+    // Goes up each time a file is received, deleted or moved, so the screen can look again.
     unsigned received() const { return received_.load(); }
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
