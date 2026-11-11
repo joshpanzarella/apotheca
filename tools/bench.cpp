@@ -5,11 +5,13 @@
 //
 // The engine figures are how much of real time one core needs for each
 // instrument at full polyphony (lower is better; the handheld is roughly a
-// fifth as fast as a desk machine). The app figures are per call.
+// fifth as fast as a desk machine). The effect figures are the same for one
+// effect in one slot. The app figures are per call.
 
 #include <SDL.h>
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <memory>
@@ -50,6 +52,38 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
     std::printf("  %-28s %5.1f%% of one core\n", name, 100.0 * block / (256.0 / 48.0));
 }
 
+// One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
+// noise going in so that nothing in it can rest. `setting` >= 0: that setting
+// at `value` first (the filter's TYPE). The best of five runs, each ten
+// seconds of sound: a busy machine only ever makes a run slower.
+static void effect(const char* name, EffectKind kind, int setting = -1, float value = 0.f) {
+    std::unique_ptr<Effect> fx = makeEffect(kind, 48000.f, 120.f);
+    if (setting >= 0) fx->setParam(setting, value);
+    const int blocks = 7500;
+    std::vector<float> noise(64 * 64);
+    std::uint32_t seed = 12345u;
+    for (float& v : noise) {
+        seed = seed * 1664525u + 1013904223u;
+        v = 0.5f * (static_cast<float>(static_cast<std::int32_t>(seed >> 8) - 8388608) / 8388608.f);
+    }
+    float left[64], right[64];
+    double best = 1e30;
+    for (int run = 0; run < 5; ++run) {
+        const auto t0 = std::chrono::steady_clock::now();
+        for (int b = 0; b < blocks; ++b) {
+            const float* in = noise.data() + 64 * (b % 63);
+            for (int i = 0; i < 64; ++i) {
+                left[i] = in[i];
+                right[i] = in[i + 64];
+            }
+            fx->process(left, right, 64);
+        }
+        const double block = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / blocks;
+        best = block < best ? block : best;
+    }
+    std::printf("  %-28s %6.2f%% of one core\n", name, 100.0 * best / (64.0 / 48.0));
+}
+
 int main() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
@@ -77,6 +111,14 @@ int main() {
         std::vector<float> out(512);
         const double block = ms([&] { engine->render(out.data(), 256); }, 2000);
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
+    }
+
+    // Every effect in the table, in the order of the list: a new one is here without being added.
+    std::printf("effects, one each, stereo, at their usual settings:\n");
+    for (int place = 1; place < effectListSize(); ++place) {
+        const EffectKind kind = effectAt(place);
+        effect(effectInfo(kind).name, kind);
+        if (kind == EffectKind::Filter) effect("FILTER, LOW 24 DB", kind, 2, 0.3f);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");
