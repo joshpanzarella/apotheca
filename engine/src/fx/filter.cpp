@@ -92,15 +92,15 @@ private:
     bool fourPole_ = false;
 };
 
-// "810 HZ", "LOW 24 DB", and for the DJ filter "LOW 2.1 KHZ" / "OPEN" / "HIGH 300 HZ".
+// "810 HZ", "LOW 24 DB", and for the DJ filter "LOW 2.1K" / "OPEN" / "HIGH 300" (with HZ it ran out of its box).
 void reading(int index, float v, const float* all, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
     if (index == 0 && all && filterType(all[2]) == FilterType::Dj) {
         float hz = 0.f;
         const int side = djFilter(v, hz);
         if (side == 0) std::snprintf(out, n, "OPEN");
-        else if (hz >= 1000.f) std::snprintf(out, n, "%s %.1f KHZ", side < 0 ? "LOW" : "HIGH", hz / 1000.f);
-        else std::snprintf(out, n, "%s %d HZ", side < 0 ? "LOW" : "HIGH", static_cast<int>(std::round(hz)));
+        else if (hz >= 1000.f) std::snprintf(out, n, "%s %.1fK", side < 0 ? "LOW" : "HIGH", hz / 1000.f);
+        else std::snprintf(out, n, "%s %d", side < 0 ? "LOW" : "HIGH", static_cast<int>(std::round(hz)));
     } else if (index == 0) {
         const float hz = 30.f * std::pow(2.f, v * 9.5f);
         if (hz >= 1000.f) std::snprintf(out, n, "%.1f KHZ", hz / 1000.f);

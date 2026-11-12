@@ -3119,9 +3119,9 @@ void testTheEffectsScreen() {
         effectParamText(EffectKind::Filter, 0, 0.5f, text, sizeof text, dj);
         CHECK(std::string(text) == "OPEN");
         effectParamText(EffectKind::Filter, 0, 0.f, text, sizeof text, dj);
-        CHECK(std::string(text) == "LOW 60 HZ");
+        CHECK(std::string(text) == "LOW 60");
         effectParamText(EffectKind::Filter, 0, 1.f, text, sizeof text, dj);
-        CHECK(std::string(text) == "HIGH 8.0 KHZ");
+        CHECK(std::string(text) == "HIGH 8.0K");
         effectParamText(EffectKind::Filter, 0, 0.f, text, sizeof text, low); // any other type: the corner itself
         CHECK(std::string(text) == "30 HZ");
     }

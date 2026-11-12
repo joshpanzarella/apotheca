@@ -207,7 +207,7 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 - **A new song has TAPE on ECHO and HALL on SPACE.** So does a song made
   before there were sends: nothing in it is sent, so it sounds as it did, and
   the first send turned up in it gives what it gives in a new song. DELAY and
-  REVERB, the older two, are one push away (hold A + down on the effect).
+  REVERB, the older two, are one push away (hold A + up on the effect).
 - **A song saved here and then opened by an older version of the program
   loses its sends, its third effects and what ECHO and SPACE hold.** The rest
   of it opens.

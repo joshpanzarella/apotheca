@@ -1129,7 +1129,7 @@ void Engine::applyAuto(Track& track, int lane, float value) {
     } else if (lane < 8 + kTrackSlots * 4) {
         if (track.effects[(lane - 8) / 4]) track.effects[(lane - 8) / 4]->setParam((lane - 8) % 4, value);
     } else if (lane < kAutoSendLane + kBuses) {
-        track.send[lane - kAutoSendLane] = value; // it glides from there by itself (feedBuses)
+        track.send[lane - kAutoSendLane] = value < 0.f ? 0.f : (value > 1.f ? 1.f : value); // it glides from there by itself (feedBuses)
     } // (the last two lanes are spare)
 }
 
