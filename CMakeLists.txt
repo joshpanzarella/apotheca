@@ -103,13 +103,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls)
+    foreach(name ui app save chord sample transfer design midi controls throwapp)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)

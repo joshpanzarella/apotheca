@@ -30,13 +30,17 @@ void line(SDL_Renderer* r, int x1, int y1, int x2, int y2, SDL_Color c) {
 // for a ratchet (the block in as many slivers as it has hits), a red edge on
 // the right for a cut. Beside it: an arrow on the left for backwards, and on
 // the right a dash that sits above the middle for a higher pitch and below
-// it for a lower one.
+// it for a lower one. Above it: a short bar for a THROW, over its left half
+// for ECHO, over its right for SPACE, one over each for both (the order the
+// two sends have on the FX screen).
 void PatternScreen::drawFxMarks(SDL_Renderer* r, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise) {
     if (!fx.any()) return;
     for (int k = 1; k < fx.hits(); ++k) fill(r, x + w * k / fx.hits() - 1, y, 3, h, kBg);
     if (fx.cut) fill(r, x + w - 4, y, 4, h, kStop);
     if (fx.reverse)
         for (int dy = -5; dy <= 5; ++dy) fill(r, x - 6 + std::abs(dy), middleY + dy, 6 - std::abs(dy), 1, kPurple);
+    if (fx.throwTo & kThrowEcho) fill(r, x, y - 3, w / 2 - 1, 2, kPurple);
+    if (fx.throwTo & kThrowSpace) fill(r, x + w - (w / 2 - 1), y - 3, w / 2 - 1, 2, kPurple);
     if (fx.pitch) fill(r, x + w + 1, middleY - static_cast<int>(std::round(fx.pitch * rise)) - 2, 5, 5, kPurple);
 }
 

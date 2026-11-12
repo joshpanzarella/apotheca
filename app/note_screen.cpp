@@ -368,6 +368,7 @@ void NoteScreen::pickChanged() {
     ChordEvent swapped = makeChord(pack().chords[static_cast<std::size_t>(hand_)], c.root, c.step, c.length, c.velocity, inversion_);
     swapped.nudge = c.nudge;
     swapped.ratchet = c.ratchet;
+    swapped.throwTo = c.throwTo;
     int keys[kChordNotes];
     if (pat().used() - c.pitches(keys) + swapped.pitches(keys) > kMaxNotes) return; // no room for a bigger chord
     c = swapped;
@@ -405,6 +406,7 @@ void NoteScreen::breakUp(int chord) {
         note.nudge = c.nudge;
         note.velocity = c.velocity;
         note.ratchet = c.ratchet;
+        note.throwTo = c.throwTo;
     }
     resend();
 }
@@ -431,8 +433,20 @@ void NoteScreen::fxTurn(Button direction) {
     if (changed) session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
+// With X held on a note or a chord, A steps its THROW round: OFF, ECHO, SPACE, BOTH. While the
+// note sounds, the track's send to that bus is full, whatever its knob says. (A chord is thrown
+// as a note is: every key of it.)
+void NoteScreen::fxThrow() {
+    const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
+    if (slot < 0 && chord < 0) return;
+    std::uint8_t& throwTo = slot >= 0 ? pat().notes[slot].throwTo : pat().chords[chord].throwTo;
+    throwTo = static_cast<std::uint8_t>((throwTo + 1) % kThrowChoices);
+    session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+}
+
 // With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide (a note only),
-// or both. Each roll is something, and something else than it was.
+// or both. Each roll is something, and something else than it was. The dice do not throw: a
+// THROW is left as the player set it.
 void NoteScreen::fxRoll() {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
     if (slot < 0 && chord < 0) return;
@@ -487,6 +501,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
 
     if (fxHeld_ && b == Button::Y) {
         if (event.down) fxRoll(); // the dice, for what this note does. (Chords wait until X is let go.)
+        return;
+    }
+    if (fxHeld_ && b == Button::A) {
+        if (event.down) fxThrow(); // THROW, a step round. (Placing and shaping wait until X is let go.)
         return;
     }
     if (b == Button::Y) {
@@ -860,7 +878,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // step, cutting it into as many pieces as it has notes. A glide: a purple corner at its top,
     // on the side of the key it comes from... (the side it slides in from is not known here; the corner is on the left).
     // A note drawn inside another (below) is narrower by `inset` each side, and its marks with it.
-    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide, int inset = 0) {
+    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide, int throwTo, int inset = 0, bool chord = false) {
         if (!shows(pitch)) return;
         const int pad = inset ? 1 : 0; // the dark edge it has above and below
         const int x = gx(pitch) + 1 + inset, y = gy(step) + 1 + pad + static_cast<int>(std::round(nudge * kRowH)), full = cellW() - 2 - 2 * inset;
@@ -878,14 +896,29 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 fill(r, x + corner - d, y + d, 1, 1, kBg); // a dark edge, so it stands clear of the note and of a ratchet's lines
             }
         }
+        if (throwTo) {
+            // THROW: a foot at the note's end, where its send shuts. On the left for ECHO, on
+            // the right for SPACE, one on each side for both (the order the sends have on the FX screen).
+            const int bottom = gridTop() + kSteps * kRowH - 3;
+            int tall = static_cast<int>(std::round(length * kRowH)) - 4 - 2 * pad;
+            tall = y + tall > bottom ? bottom - y : tall;
+            tall = tall < 3 ? 3 : tall;
+            const int foot = tall >= 8 ? 4 : (tall >= 5 ? 3 : 2), wide = full / 2 - 1;
+            for (int side = 0; side < 2; ++side) {
+                if (!((throwTo >> side) & 1)) continue;
+                const int fx = side == 0 ? x : x + full - wide;
+                fill(r, fx, y + tall - foot - 1, wide, 1, kBg); // a dark edge above it, as the glide's corner has
+                fill(r, fx, y + tall - foot, wide, foot, chord ? kText : kPurple); // (a chord is purple already)
+            }
+        }
     };
     for (const NoteEvent& n : pat().notes)
-        if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0);
+        if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide || n.throwTo) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo);
     for (const ChordEvent& c : pat().chords) {
-        if (c.velocity <= 0.f || c.ratchet < 2) continue;
+        if (c.velocity <= 0.f || (c.ratchet < 2 && !c.throwTo)) continue;
         int keys[kChordNotes];
         const int count = c.pitches(keys);
-        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, c.ratchet, false);
+        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, c.ratchet, false, c.throwTo, 0, true);
     }
     // A note written where something longer is already sounding on the same key (a held chord, or
     // a long note) would be hidden under it. It is drawn again on top, narrower, with a dark edge:
@@ -901,7 +934,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         h = h < 3 ? 3 : h;
         fill(r, x - 1, y, w + 2, h, kBg);
         fill(r, x, y + 1, w, h - 2, live ? kTeal : kText);
-        if (n.ratchet >= 2 || n.glide) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, inset);
+        if (n.ratchet >= 2 || n.glide || n.throwTo) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo, inset);
     }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
@@ -959,11 +992,13 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         field(100.f, "STEP", text, kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const bool glideHere = under && under->glide;
+        const int throwHere = under ? under->throwTo : (chordUnder ? chordUnder->throwTo : 0);
         if (fxHeld_ && (under || chordUnder)) {
             // X is held: the strip is what the note does besides play.
             std::snprintf(text, sizeof text, ratchetHere >= 2 ? "x%d" : "OFF", ratchetHere);
             field(160.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
             field(250.f, "GLIDE", !under ? "-" : glideHere ? "ON" : "OFF", !under ? kDim : glideHere ? kBrass : kText);
+            field(320.f, "THROW", throwName(throwHere), throwHere ? kBrass : kText);
         } else if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));
             field(160.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
@@ -979,8 +1014,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
             std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", glideHere ? "GLIDE" : "");
-            field(510.f, ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
+            field(throwHere ? 480.f : 510.f, ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
         }
+        if (!fxHeld_ && throwHere) field(575.f, "THROW", throwName(throwHere), kPurple);
         if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
             field(390.f, "NUDGE", text, shaping_ ? kText : kTeal);
@@ -1003,6 +1039,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (fxHeld_) {
         hint("LEFT / RIGHT", "ratchet");
         if (under) hint("UP / DOWN", "glide on / off");
+        hint("A", "throw");
         hint("Y", "dice");
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time, freely");

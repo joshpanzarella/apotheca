@@ -194,6 +194,7 @@ private:
     void sliceUpDown(int by);        // the slice view's up / down
     void fxTurn(Button direction);   // with X held: one click of pitch (up / down) or ratchet (left / right)
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
+    void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)
     void hearHit();                  // the hit under the cursor, as the pattern would play it
     // The marks a hit's step effects put on its block (pattern_slices.cpp). `rise` is how far the pitch dash moves for a semitone.
     static void drawFxMarks(SDL_Renderer* renderer, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise);
