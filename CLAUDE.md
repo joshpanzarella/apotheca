@@ -396,7 +396,17 @@ effect in those two groups and fails one that does not.
   average and 1.3 at worst with one a frame) against a usual 0.21; now 0.30
   to 0.37 against a usual 0.24, **which is what any block costs straight after
   the program has been busy** (0.30 to 0.35 with nothing sent). The command
-  by itself is 0.3 millionths of a second for twelve tracks.
+  by itself is 0.1 to 0.3 millionths of a second for twelve tracks. (Again
+  later on a busy desk: 0.28 to 0.33 against a usual 0.22 to 0.24, and 0.28 to
+  0.30 with nothing sent; a worst of several ms there is the machine taking
+  the thread away, and shows as often in a block with no move in it.) The
+  key itself is the program's thread: 1.3 ms, and 11 to 12 ms for its undo or
+  redo (the song read back from text), **not timed on the handheld**.
+- **`nextscene_test` runs a real audio thread** beside 200 press and undo
+  pairs, held to twelve blocks past the last key (a busy machine made minutes
+  of sound otherwise). It is clean under the thread sanitizer
+  (`-fsanitize=thread`, about nine minutes); run that again after a change to
+  what a scene move hands over.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
   `tellScenesMoved`). It then asks whether the PATTERNS, written as text, are
