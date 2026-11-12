@@ -80,7 +80,9 @@ constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or n
 // A TAIL ALWAYS ENDS. From the last sound a bus is sent to the bus at rest is
 // never longer than this, whatever effect it holds and however it is set, at
 // any tempo (effects_test measures every one: testATailAlwaysEnds). A bounce's
-// cap is longer than this, so only something that is broken runs into it.
+// cap is longer than this, so no ONE effect runs into it. Effects in a row can
+// (a howling TAPE in a slot keeps a TAPE on a bus fed: about 710 s at 40 BPM),
+// and so can anything broken: the cap is what ends those.
 // Measured 2026-11-12, at 40 BPM, a full-scale burst sent: TAPE 418 s (a half
 // note, FEEDBACK full: 30 s of holding, then DELAY's own fall), DELAY 388 s,
 // HALL 44 s, REVERB 36 s. At 120 BPM the two delays take a third as long.

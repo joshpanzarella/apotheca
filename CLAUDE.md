@@ -216,7 +216,11 @@ effect in those two groups and fails one that does not.
   delay or reverb whose loop can hold at 1 or over needs its own way down**.
   TAPE's: left alone 30 s (nothing over `kFedLevel` coming in), a FEEDBACK
   over 90% eases to 90% (`tire_`); at 90% or under it is multiplied by exactly
-  1. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
+  1 (`tapeTire` compares the SETTING, 0.75 and a hair, not what it reads:
+  `1.2f * 0.75f` is a float over `0.9f`). **The promise is for one effect.**
+  Effects in a row (two TAPEs: a slot into a bus, or two slots) each count
+  from the last sound coming IN, so one keeps the next fed and the tail can
+  pass 450 s; the bounce's cap is what ends that one. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
   loop) and are not capped from outside.
 - **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
   and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
@@ -372,7 +376,9 @@ effect in those two groups and fails one that does not.
   `kLongestTailSeconds` in the engine; both are checked.
 - **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
   is whole: a tail of minutes never sits in memory, and a cancelled bounce
-  leaves nothing. The tracks of an EACH TRACK bounce are padded with silence
+  leaves nothing. One that is KILLED (power, a crash) leaves its `.wav.part`:
+  `removeHalfBounces` takes those away when the program opens
+  (`useBounceFolder`) and when a bounce starts, never while one is under way. The tracks of an EACH TRACK bounce are padded with silence
   to the longest. Its percentage counts the song's own playing only; in a
   tail `bounceTail()` gives the seconds so far and the row says that instead.
 - **Do not pipe the app's output into `head`** when making a still; it dies

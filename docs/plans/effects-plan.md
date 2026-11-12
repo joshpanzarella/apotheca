@@ -622,6 +622,14 @@ For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and 
 | Cost | TAPE 0.11% of a desk core with it, 0.10% just before, in runs where DRIVE read 0.12% both times: one more multiply a sample |
 | Tests | `testTapeAlwaysEnds`, `testATailAlwaysEnds` in `effects_test`; a real bounce of TAPE at 120% in `app_test` (it ends by itself, 36 to 60 s after the last step). 25 mutants, 24 killed; the one left only guards a counter against running over |
 
+**After the review of that work** (2026-11-12). Three things it found, all small, all reproduced.
+
+| Thing | Result |
+| --- | --- |
+| FEEDBACK reading exactly 90% was touched | `1.2f * 0.75f` is one float over `0.9f`, so the test "reads over 90%" was true at 90% itself and the loop's gain was multiplied by 0.99999994 after 30 s (6 parts in 100 million: not to be heard, but not "to the bit"). Now the SETTING is compared, 0.75 and a hair of room (`tapeTire` in `tape.cpp`, a function the test calls). 75% reached by the D-pad's notches, or by sums that land a float off, is multiplied by exactly 1; 76% (reads 91%) is brought down |
+| Two TAPEs in a row outlast the cap | Each counts its 30 s from the last sound coming IN, and a howling one upstream keeps the next fed: a slot into ECHO, both at a half note, FEEDBACK full, 40 BPM, is about 710 s by the numbers (the reviewer's bounce ran into the 480 s cap and was faded, as the cap is there to do). `kLongestTailSeconds` is a promise for one effect; the manual and the comments now say so. **Not changed**: whether effects in a row should tire together is the owner's call |
+| A killed bounce left its `.wav.part` | The file is written as it goes, so a bounce killed part-way (power, a crash) left up to 90 MB that nothing listed or removed. `removeHalfBounces` takes away every `*.wav.part` in the bounces folder when the program opens and when a bounce starts, never while one is under way |
+
 For the owner's ears: 30 seconds of hold (is that "a long while"); the two seconds of easing down, which is the moment a held howl starts to go; 90% as where it settles (lower would end sooner and sound more like a fade); whether a howl should ever be allowed to hold for good when a hand is on the knob (today it does as long as anything is played into it).
 
 **Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.

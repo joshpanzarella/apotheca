@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <ctime>
 
+#include <dirent.h>
 #include <sys/stat.h>
 
 #include "instruments.hpp"
@@ -119,6 +120,22 @@ bool padWav(const std::string& path, long long had, long long frames, int sample
     return std::fclose(file) == 0 && ok;
 }
 
+// What a bounce that was killed part-way left behind (the power went, the program was killed):
+// its "NAME.wav.part". Nothing lists one and nothing else removes one, and with a tail of
+// minutes it can be 90 MB. Only called when no bounce is under way: one that is has its own.
+void removeHalfBounces(const std::string& folder) {
+    const std::string ending = ".wav.part";
+    std::vector<std::string> names;
+    if (DIR* dir = opendir(folder.c_str())) {
+        while (const dirent* e = readdir(dir)) {
+            const std::string n = e->d_name;
+            if (n.size() > ending.size() && n.compare(n.size() - ending.size(), ending.size(), ending) == 0) names.push_back(n);
+        }
+        closedir(dir);
+    }
+    for (const std::string& n : names) std::remove((folder + "/" + n).c_str());
+}
+
 } // namespace
 
 // How many frames the song lasts, start to finish, once through.
@@ -129,7 +146,7 @@ long long songFrames(const Project& project, float sampleRate) {
     return static_cast<long long>(std::llround(steps * perStep));
 }
 
-// The cap is for what is broken, not for a long tail: it is past the longest any delay or reverb takes.
+// The cap is for what is broken and for effects in a row, not for a long tail: it is past the longest any one delay or reverb takes.
 static_assert(kBounceCapSeconds > kLongestTailSeconds, "a bounce's cap must be longer than the longest tail a bus can hold");
 static_assert(kBounceQuietSeconds > 8.f * 15.f / kMinTempo, "the quiet that ends a bounce must be longer than the longest gap between two echoes");
 
@@ -166,11 +183,17 @@ long long BounceTail::keep() const {
     return lastSound_ + after_ < most ? lastSound_ + after_ : most;
 }
 
+void Session::useBounceFolder(const std::string& folder) {
+    bounceFolder_ = folder;
+    if (!folder.empty() && !bouncing()) removeHalfBounces(folder);
+}
+
 bool Session::startBounce(Bounce what) {
     if (bounce_ && !bounce_->done.load()) return false; // one at a time
     finishBounce();
     if (bounceFolder_.empty()) return false;
     mkdir(bounceFolder_.c_str(), 0755);
+    removeHalfBounces(bounceFolder_);
     std::shared_ptr<BounceJob> job(new BounceJob);
     job->song.reset(new Project(project)); // as the song is this moment
     job->what = what;

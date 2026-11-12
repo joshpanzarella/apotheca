@@ -276,7 +276,7 @@ public:
     // folder. Worked out off to one side, not recorded as it plays, so it can
     // use the best quality whatever the handheld could keep up with.
     enum class Bounce { Song, EachTrack, ThisTrack };
-    void useBounceFolder(const std::string& folder) { bounceFolder_ = folder; }
+    void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
     float bounceProgress() const;  // 0..1: how much of the playing of the song is done (the tails are not counted: nobody knows how long they will be)

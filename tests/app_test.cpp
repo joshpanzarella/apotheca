@@ -1520,7 +1520,15 @@ void testBouncing() {
     Session& session = rig.app.session();
     // Nowhere to put it: no bounce.
     CHECK(!session.startBounce(Session::Bounce::Song) && !session.bouncing() && session.bounceFiles() == 0);
+    // WHAT A KILLED BOUNCE LEFT (the power went, or the program was killed: nothing was there to
+    // remove its half-written file, and nothing lists one). It goes when the program opens...
+    const auto plant = [&](const char* name) { std::FILE* f = std::fopen((folder + "/" + name).c_str(), "wb"); std::fputs("half", f); std::fclose(f); };
+    const auto there = [&](const char* name) { struct stat st; return stat((folder + "/" + name).c_str(), &st) == 0; };
+    plant("old 261112-104548.wav.part");
+    plant("notes.part"); // not a bounce's: left alone
     session.useBounceFolder(folder);
+    CHECK(!there("old 261112-104548.wav.part") && there("notes.part"));
+    plant("old 261112-104549.wav.part"); // ...and when the next bounce starts
     // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a Twin track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
     rig.project().repeats[0] = 2;
@@ -1541,7 +1549,7 @@ void testBouncing() {
     session.finishBounce();
     CHECK(!session.bouncing() && session.bounceProgress() == 1.f && session.bounceFiles() == 1 && session.bounceTail() < 0.f);
     std::vector<std::string> names = wavsIn();
-    CHECK(names.size() == 1 && names[0] == session.bounceLast() && filesEnding(folder, ".part").empty());
+    CHECK(names.size() == 1 && names[0] == session.bounceLast() && filesEnding(folder, ".wav.part").empty() && there("notes.part"));
     const std::size_t body = static_cast<std::size_t>(2 * kBar);
     Wav song = read(names[0]);
     CHECK(song.rate == 48000 && song.channels == 2 && song.bits == 16);
@@ -1607,11 +1615,23 @@ void testBouncing() {
     sleep(1);
     CHECK(session.startBounce(Session::Bounce::Song));
     while (session.bouncing() && session.bounceProgress() <= 0.f) usleep(200); // its file is open and filling
-    CHECK(session.bouncing() && session.bounceProgress() < 1.f && filesEnding(folder, ".part").size() == 1 && wavsIn().size() == before);
+    CHECK(session.bouncing() && session.bounceProgress() < 1.f && filesEnding(folder, ".wav.part").size() == 1 && wavsIn().size() == before);
+    // Asking for another while it works is refused, and does not take the working one's file away.
+    CHECK(!session.startBounce(Session::Bounce::Song) && (!session.bouncing() || filesEnding(folder, ".wav.part").size() == 1));
+    // Nor does naming the folder again.
+    session.useBounceFolder(folder);
+    CHECK(!session.bouncing() || filesEnding(folder, ".wav.part").size() == 1);
     session.cancelBounce();
     CHECK(!session.bouncing() && wavsIn().size() == before);
     for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + kAfter); // every file there is whole
-    CHECK(wavsIn().size() <= before + 1 && filesEnding(folder, ".part").empty());
+    CHECK(wavsIn().size() <= before + 1 && filesEnding(folder, ".wav.part").empty());
+    // Whole files are never taken for half-written ones: every bounce made is still there after one more starts.
+    const std::size_t whole = wavsIn().size();
+    rig.project().repeats[0] = 1;
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    CHECK(wavsIn().size() == whole + 1);
 }
 
 // WHERE A BOUNCE ENDS, by itself: made-up tails, no engine and no file.

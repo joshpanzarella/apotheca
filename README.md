@@ -217,7 +217,7 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
-| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK of 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
+| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
 | REVERB | The older, plainer reverb. Size, damping, mix |
@@ -337,10 +337,16 @@ TAPE with its FEEDBACK up is all there, however long it takes. Echoes far
 apart (a half note at 40 BPM is three seconds) count as one tail.
 
 There is a cap: **a tail is never longer than eight minutes**. One that would
-be is faded out over its last second. No delay or reverb rings that long:
-at its most extreme settings and the slowest tempo (40 BPM) the longest takes
-seven minutes to die away (TAPE or DELAY at a half note with FEEDBACK full),
-and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB 36.
+be is faded out over its last second. No one delay or reverb rings that
+long: at its most extreme settings and the slowest tempo (40 BPM) the longest
+takes seven minutes to die away (TAPE or DELAY at a half note with FEEDBACK
+full), and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB
+36. **Two in a row can**: a TAPE with FEEDBACK full in a track's slot feeding
+another on the ECHO bus, at 40 BPM, would ring for about twelve minutes, since
+the first keeps the second fed. That bounce stops at eight minutes, faded.
+
+If the handheld loses power in the middle of a bounce, the half-written file
+is removed the next time Apotheca opens, or the next time a bounce starts.
 
 While it works the row says `WORKING 37%`: how much of the song's own playing
 is done. In a tail it says `TAIL 12 S` instead: how many seconds of tail so
