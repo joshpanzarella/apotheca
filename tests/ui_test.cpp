@@ -1065,6 +1065,19 @@ static void testNoteStripNudgeFits() {
 
 // THROW's value at the strip's right end stops at the margin (632), as every other field does.
 // "SPACE" at 575 in the large size ran to pixel 638 of 640.
+// Hints are written in full; the bar draws two words shorter: HOLD as HLD, SELECT as SEL.
+static void testTheBarDrawsSelForSelect() {
+    CHECK(ui::keyShown("SELECT") == "SEL");
+    CHECK(ui::keyShown("SELECT + Y") == "SEL + Y");
+    CHECK(ui::keyShown("HOLD SELECT") == "HLD SEL");
+    CHECK(ui::keyShown("SELECT, tapped") == "SEL, tapped"); // the help card: what follows the word stays
+    CHECK(ui::keyShown("SELECT+X") == "SEL+X");
+    CHECK(ui::keyShown("SELECTED") == "SELECTED" && ui::keyShown("SELECTS A") == "SELECTS A"); // another word is left alone
+    CHECK(ui::keyShown("RESELECT") == "RESELECT" && ui::keyShown("SELLER") == "SELLER" && ui::keyShown("SEL") == "SEL");
+    CHECK(ui::keyShown("HOLD A") == "HLD A" && ui::keyShown("L2  R2") == "L2 R2" && ui::keyShown("START") == "START");
+    CHECK(ui::keyShown("UP / DOWN") == "UP DOWN" && ui::keyShown("A / B") == "A / B"); // arrows stand side by side
+}
+
 static void testNoteStripThrowFits() {
     const float space[3] = {63.f, 53.5f, 46.f}, both[3] = {51.f, 43.f, 37.f}; // about as the fonts measure them
     float x = 0.f;
@@ -1093,6 +1106,7 @@ static void testNoteStripThrowFits() {
 int main(int, char**) {
     testNoteStripNudgeFits();
     testNoteStripThrowFits();
+    testTheBarDrawsSelForSelect();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();

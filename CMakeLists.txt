@@ -113,5 +113,7 @@ if(APOTHECA_BUILD_APP)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
+    # SELECT is drawn as SEL: no text the device shows spells it out.
+    add_test(NAME words COMMAND sh ${CMAKE_SOURCE_DIR}/tests/words_test.sh ${CMAKE_SOURCE_DIR}/app)
   endif()
 endif()

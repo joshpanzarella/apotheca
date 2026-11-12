@@ -254,7 +254,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int x = 24 + (i % 4) * 112, y = 112 + (i / 4) * 58;
             const bool on = held_[static_cast<int>(order[i])];
             box(r, x, y, 104, 48, on ? kTeal : kPanel, on ? kTeal : kLine);
-            fonts.medium.drawCentered(r, x + 52.f, y + (48.f - fonts.medium.capHeight()) / 2.f, buttonName(order[i]), on ? kBg : kDim);
+            fonts.medium.drawCentered(r, x + 52.f, y + (48.f - fonts.medium.capHeight()) / 2.f, buttonLabel(order[i]), on ? kBg : kDim);
         }
         // The stick: a dot in a square.
         const int sx = 500, sy = 140, size = 110;
@@ -264,7 +264,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int dx = sx + size / 2 + static_cast<int>(stickX_ * (size / 2 - 8)), dy = sy + size / 2 + static_cast<int>(stickY_ * (size / 2 - 8));
         fill(r, dx - 5, dy - 5, 10, 10, stickX_ != 0.f || stickY_ != 0.f ? kTeal : kDim);
         fonts.small.drawCentered(r, sx + size / 2.f, sy - 18.f, "THE STICK", kDim);
-        std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonName(lastPressed_));
+        std::snprintf(text, sizeof text, "LAST PRESSED: %s", lastPressed_ == Button::None ? "nothing yet" : buttonLabel(lastPressed_));
         fonts.medium.draw(r, 24.f, 360.f, text, kText);
         fonts.small.draw(r, 24.f, 386.f, "Nothing else works while this is open. To leave: hands off for four seconds.", kDim);
         hints(r, fonts, nullptr, 0);
@@ -314,7 +314,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kVolume:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.volume() * 100.f)));
             part = session_.volume();
-            note = "also SELECT + L1 / R1";
+            note = "also SEL + L1 / R1";
             break;
         case kStick:
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(session_.stickSpeed() * 100.f)));

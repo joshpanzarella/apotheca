@@ -2195,7 +2195,7 @@ void testTheHelpCard() {
     CHECK(!other.input.has(Button::Menu) && rig.input.has(Button::Menu));
     other.app.session().view = View::Device;
     other.frames(2);
-    CHECK(std::string(ui::gHelpHint) == "HOLD SELECT: HELP");
+    CHECK(std::string(ui::gHelpHint) == "HOLD SEL: HELP");
     other.key(SELECT, true);
     other.frames(24);
     CHECK(!other.app.helpShowing());

@@ -63,5 +63,9 @@ private:
 
 // What is printed on the handheld for a button, for hints on screen.
 const char* buttonName(Button button);
+// The same as the screen writes it: SELECT is "SEL" there, everywhere (the
+// owner's, 2026-11-12). buttonName is also the word in controls.txt, which
+// does not change.
+const char* buttonLabel(Button button);
 
 } // namespace apotheca

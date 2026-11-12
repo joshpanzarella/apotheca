@@ -183,6 +183,9 @@ bool Input::has(Button button) const {
     return map_->button[static_cast<int>(button)].kind != RawControl::None;
 }
 
+// The one place a button's name is shortened for the screen.
+const char* buttonLabel(Button button) { return button == Button::Select ? "SEL" : buttonName(button); }
+
 const char* buttonName(Button button) {
     switch (button) {
     case Button::Up: return "UP";
