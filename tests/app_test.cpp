@@ -1719,7 +1719,7 @@ void testWhereABounceEnds() {
     }
     // Left alone the cap is eight minutes: longer than any delay or reverb takes to die away (the engine's own number).
     {
-        CHECK(kBounceCapSeconds == 480.f && kBounceFadeSeconds == 1.f);
+        CHECK(kBounceCapSeconds == 480.f && kBounceFadeSeconds == 1.f && kBounceCapSeconds > kLongestTailSeconds && kLongestTailSeconds == 450.f);
         BounceTail tail(48000.f);
         std::vector<float> io(2 * 4096);
         long long blocks = 0;
@@ -1789,6 +1789,22 @@ void testABounceRunsUntilTheTailEnds() {
     CHECK(wavPeak(cut, body + 5 * second - 24000 - 2400, body + 5 * second - 24000 + 2400) < 0.6f * wavPeak(hall, body + 5 * second - 24000 - 2400, body + 5 * second - 24000 + 2400));
     CHECK(wavPeak(cut, body + 5 * second - 48, body + 5 * second) <= kWavStep);
     session.useBounceCap(kBounceCapSeconds);
+    // TAPE HOWLING, its FEEDBACK at 120%: this never ended. It sings for thirty seconds after the
+    // last sound, then falls, and the bounce ends by itself, far short of the cap.
+    session.setSend(0, 1, 0.f);
+    session.setSend(0, 0, 1.f);
+    CHECK(static_cast<EffectKind>(session.effectData(kEchoBus, 0).kind) == EffectKind::Tape);
+    session.setEffectParam(kEchoBus, 0, 0, 0.f); // a sixteenth
+    session.setEffectParam(kEchoBus, 0, 1, 1.f);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const Wav howl = readWav(folder + "/" + session.bounceLast());
+    CHECK(howl.left.size() > body + 36 * second && howl.left.size() < body + 60 * second && endsOnItsLastSound(howl, body));
+    CHECK(wavPeak(howl, body + 25 * second, body + 26 * second) > 0.1f && wavPeak(howl, body + 25 * second, body + 26 * second) > 0.8f * wavPeak(howl, body + 5 * second, body + 6 * second));
+    session.setSend(0, 0, 0.f);
+    session.setEffectParam(kEchoBus, 0, 1, 0.4f);
     // ECHOES FAR APART: at the slowest tempo a DELAY set to a half note repeats every three seconds.
     // Every echo that is in a 16-bit file at all is in the bounce.
     session.setSend(0, 1, 0.f);

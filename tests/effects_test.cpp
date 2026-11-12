@@ -5425,6 +5425,198 @@ static void testDuck() {
     }
 }
 
+// ---- A TAIL ALWAYS ENDS -------------------------------------------------------------------------
+
+// A track's sound for these: full-scale noise for `frames`, then nothing at all.
+struct Burst : Effect {
+    long left;
+    Noise noise{4242u};
+    explicit Burst(long frames) : left(frames) {}
+    void setParam(int, float) override {}
+    void process(float* l, float* r, int n) override {
+        for (int i = 0; i < n; ++i) {
+            l[i] = r[i] = left > 0 ? noise.next() : 0.f;
+            if (left > 0) --left;
+        }
+    }
+};
+// A quarter of a second of full-scale noise is sent to a bus that holds `kind`, set as `settings`
+// say (its LEVEL full). From the last sample sent: how many seconds until the bus is at rest (its
+// tail under kBusQuiet for kBusRestSeconds, and the effect cleared). `most`: give up there.
+static double secondsToRest(EffectKind kind, const float* settings, float tempo, double most) {
+    const int bus = effectBus(kind), sent = 12000;
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(new Burst(sent)));
+    engine->send(make(Command::SetTempo, 0, 0, 0, tempo));
+    engine->send(make(Command::SetTrackLevel, 0, 0, 0, 1.f));
+    CHECK(bus >= 0 && engine->setEffect(busTrack(bus), 0, kind));
+    for (int i = 0; i < effectInfo(kind).params; ++i)
+        if (i != effectMixParam(kind)) engine->send(make(Command::SetEffectParam, busTrack(bus), 0, i, settings[i]));
+    engine->send(make(Command::SetSend, 0, bus, 0, 1.f));
+    std::vector<float> out(2 * 4800);
+    engine->render(out.data(), 4800);
+    engine->render(out.data(), 4800);
+    engine->render(out.data(), 2400);
+    CHECK(engine->busAwake(bus));
+    double seconds = 0.0;
+    while (engine->busAwake(bus) && seconds < most) {
+        engine->render(out.data(), 4800);
+        seconds += 0.1;
+    }
+    return seconds;
+}
+
+// EVERY EFFECT A BUS CAN HOLD DIES AWAY, at every setting, at the slowest tempo (where echoes are
+// furthest apart): a bus always comes to rest, and a bounce always ends. kLongestTailSeconds is
+// the promise; these are the times behind it, the worst of each effect's settings at 0, 50% and
+// 100% each, in seconds from the last sound sent to the bus at rest (which is ten seconds after
+// its tail has fallen 120 dB under full):
+static void testATailAlwaysEnds() {
+    double longest = 0.0;
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        if (effectBus(kind) < 0) continue;
+        const EffectInfo& info = effectInfo(kind);
+        const int mix = effectMixParam(kind);
+        int free = 0;
+        for (int i = 0; i < info.params; ++i) free += i != mix ? 1 : 0;
+        double worst = 0.0;
+        float worstAt[kEffectParams] = {};
+        int cases = 1;
+        for (int i = 0; i < free; ++i) cases *= 3;
+        for (int c = 0; c < cases; ++c) {
+            float settings[kEffectParams] = {};
+            for (int i = 0, digit = c; i < info.params; ++i) {
+                if (i == mix) continue;
+                settings[i] = 0.5f * static_cast<float>(digit % 3);
+                digit /= 3;
+            }
+            const double seconds = secondsToRest(kind, settings, kMinTempo, kLongestTailSeconds + 60.0);
+            CHECK(seconds < kLongestTailSeconds);
+            if (seconds > worst) {
+                worst = seconds;
+                for (int i = 0; i < kEffectParams; ++i) worstAt[i] = settings[i];
+            }
+        }
+        SAY("tail     %-7s at rest %.1f s after the last sound, at its worst (settings %.0f%% %.0f%% %.0f%% %.0f%%, %g BPM)\n", info.name, worst, worstAt[0] * 100.0, worstAt[1] * 100.0, worstAt[2] * 100.0, worstAt[3] * 100.0, static_cast<double>(kMinTempo));
+        longest = std::fmax(longest, worst);
+    }
+    SAY("tail     the longest of all: %.1f s (kLongestTailSeconds is %.0f)\n", longest, static_cast<double>(kLongestTailSeconds));
+    CHECK(longest > 0.8 * kLongestTailSeconds); // and the promise is not far over what is measured
+}
+
+// TAPE ALWAYS ENDS, and until it is left alone it is as it was. (The hold is 30 s, the tired
+// FEEDBACK 90%, sound coming in is anything over 80 dB under full: tape.cpp, "IT ALWAYS ENDS".)
+static void testTapeAlwaysEnds() {
+    const EffectKind tape = EffectKind::Tape;
+    const std::size_t second = 48000;
+    const auto level = [&](const std::vector<float>& v, double from, double to) { return rmsOf(v, static_cast<std::size_t>(from * 48000.0), static_cast<std::size_t>(to * 48000.0)); };
+    const auto burst = [&](std::size_t seconds, std::size_t at = 0) {
+        std::vector<float> in(seconds * second, 0.f);
+        Noise noise(31u);
+        for (std::size_t i = 0; i < 12000; ++i) in[at + i] = 0.5f * noise.next();
+        return in;
+    };
+    CHECK(reads(tape, 1, 1.f) == "120%" && reads(tape, 1, 0.75f) == "90%"); // FEEDBACK reads what it does while sound comes in
+
+    // ---- FEEDBACK at 120%, a sixteenth, a burst and then nothing: it howls at one level for thirty
+    // seconds (as it always did), and then falls, each echo nine tenths of the last (7.3 dB a second
+    // at a sixteenth), smoothly, to nothing at all.
+    //   AGE     10 to 20 s   28 to 30 s   32 to 33 s   a second on from 40 s   silent from
+    //   0%        0.79         0.80         0.46         -7.7 dB                 68.7 s
+    //   35%       0.43         0.44         0.24         -7.9 dB                 67.0 s
+    //   100%      0.18         0.18         0.09         -9.2 dB                 61.5 s
+    // (Silent is the exact zero: the tape asleep, 240 dB down and a tape's length more. It is 120 dB down, where a bus rests, by 48 s.)
+    for (float age : {0.f, 0.35f, 1.f}) {
+        const std::vector<float> in = burst(90);
+        const std::vector<float> wet = wetOf(*fresh(tape, 0.f, 1.f, age, 1.f), in);
+        const double early = level(wet, 10, 20), held = level(wet, 28, 30), falling = level(wet, 32, 33), later = dB(level(wet, 41, 42) / level(wet, 40, 41));
+        std::size_t last = 0;
+        for (std::size_t i = 0; i < wet.size(); ++i) last = wet[i] != 0.f ? i : last;
+        SAY("tape     ends: age %3.0f%%: level %.3f from 10 to 20 s, %.3f from 28 to 30 s, %.3f from 32 to 33 s; %.2f dB a second from 40 s; silent from %.1f s\n", age * 100.0, early, held, falling, later,
+            static_cast<double>(last) / 48000.0);
+        CHECK(std::fabs(dB(held / early)) < 0.2);                       // thirty seconds of singing, at one level
+        CHECK(falling < 0.9 * held && falling > 0.4 * held);            // then it eases down: not a cut
+        CHECK(later < -7.3 && later > (age < 0.5f ? -8.1 : -9.6));      // and falls at nine tenths an echo (-7.32 dB a second), and more off the notes the cuts take
+        CHECK(level(wet, 47, 48) < 1e-5 * held && level(wet, 44, 45) > 1e-6); // 120 dB under full by 48 s, and not cut short on the way
+        CHECK(level(wet, 80, 90) == 0.0 && last > 58 * second && last < 74 * second); // gone, to the exact zero (asleep)
+        // No click where the fall starts: no step larger than the howl's own.
+        CHECK(largestJump(wet, 30 * second, 40 * second) <= 1.02f * largestJump(wet, 20 * second, 30 * second));
+        float smallest = 1.f;
+        for (float v : wet) smallest = v != 0.f ? std::fmin(smallest, std::fabs(v)) : smallest;
+        CHECK(smallest > 1e-30f); // and nothing on the way was near too small to hold
+    }
+    // ---- As long as sound keeps coming in it never tires: a click every 20 seconds (40 dB down)
+    // and it is howling as loud after 100 seconds as after 10. Clicks too faint to be "sound
+    // coming in" (86 dB down) do not hold it: it is left alone, and ends.
+    for (float click : {0.01f, 5e-5f}) {
+        std::vector<float> in = burst(110);
+        for (std::size_t at = 20 * second; at < in.size(); at += 20 * second) in[at] = click;
+        const std::vector<float> wet = wetOf(*fresh(tape, 0.f, 1.f, 0.f, 1.f), in);
+        if (click > 1e-4f) CHECK(std::fabs(dB(level(wet, 90, 100) / level(wet, 10, 20))) < 0.2 && std::fabs(dB(level(wet, 50, 60) / level(wet, 10, 20))) < 0.2);
+        else CHECK(level(wet, 60, 70) < 1e-4 && level(wet, 28, 30) > 0.5);
+    }
+    // ...and just over the line it is held: 78 dB down is sound, 82 dB down is not.
+    for (float click : {1.26e-4f, 0.8e-4f}) {
+        std::vector<float> in = burst(60);
+        for (std::size_t at = 20 * second; at < in.size(); at += 5 * second) in[at] = in[at + 1] = click;
+        const std::vector<float> wet = wetOf(*fresh(tape, 0.f, 1.f, 0.f, 1.f), in);
+        CHECK(click > 1e-4f ? std::fabs(dB(level(wet, 50, 60) / level(wet, 10, 20))) < 0.2 : level(wet, 55, 60) < 1e-3);
+    }
+    // ---- Sound coming in again wakes a tired loop: FEEDBACK is back at what it reads, and it builds again.
+    {
+        std::vector<float> in = burst(80);
+        in[37 * second] = 0.01f; // falling by now (30 s of hold, and 7 more)
+        const std::vector<float> wet = wetOf(*fresh(tape, 0.f, 1.f, 0.f, 1.f), in);
+        const double howl = level(wet, 10, 20);
+        CHECK(level(wet, 36, 37) < 0.3 * howl && std::fabs(dB(level(wet, 50, 60) / howl)) < 0.3); // down, then all the way back up
+        CHECK(level(wet, 64, 67) > 0.5 * howl && level(wet, 76, 80) < 0.1 * howl);               // held thirty seconds from THAT click, and then it tires again
+        CHECK(largestJump(wet, 37 * second, 40 * second) <= 1.02f * largestJump(wet, 20 * second, 30 * second));
+        CHECK(level(wet, 38.0, 38.5) > 1.5 * level(wet, 37.0, 37.5)); // at once (20 ms), not as slowly as it tired: a second on it is well up again
+    }
+    // A tired loop that has gone to sleep wakes as one fresh from the box, whatever wakes it: a click
+    // too faint to count as "sound coming in" gets its thirty seconds of full FEEDBACK all the same.
+    {
+        std::unique_ptr<Effect> slept = fresh(tape, 0.f, 1.f, 0.f, 1.f), box = fresh(tape, 0.f, 1.f, 0.f, 1.f);
+        const std::vector<float> first = wetOf(*slept, burst(90));
+        CHECK(first.back() == 0.f && level(first, 10, 20) > 0.5);
+        std::vector<float> faint(20 * second, 0.f);
+        faint[0] = 2e-5f;
+        const std::vector<float> a = wetOf(*slept, faint), b = wetOf(*box, faint);
+        float apart = 0.f;
+        for (std::size_t i = 0; i < a.size(); ++i) apart = std::fmax(apart, std::fabs(a[i] - b[i]));
+        CHECK(apart < 1e-9f && level(a, 10, 11) > 10.0 * level(a, 1, 2) && level(a, 10, 11) > 1e-5); // and it is building
+    }
+    // ---- What each echo is of the last, at 1 kHz, before the hold is up and long after. A half
+    // note at 40 BPM: an echo every three seconds, a small click (far under the ceiling), AGE 0.
+    //   FEEDBACK   reads    3 to 9 s    66 to 72 s
+    //   75%         90%      0.900       0.900     never touched: the same to five places
+    //   50%         60%      0.600       (gone)
+    //   79%         95%      0.950       0.900
+    //   100%       120%      1.200       0.900
+    {
+        const std::size_t every = 144000;
+        struct Row { float feedback; double reads; bool touched; };
+        for (const Row& row : {Row{0.75f, 0.9, false}, Row{0.5f, 0.6, false}, Row{0.95f / 1.2f, 0.95, true}, Row{1.f, 1.2, true}}) {
+            const std::vector<float> ir = clickOf(*fresh(tape, 1.f, row.feedback, 0.f, 1.f, 40.f), 78.0, 0.002f);
+            const double before = echoGainAt(ir, every, 1000.0, 1), after = echoGainAt(ir, every, 1000.0, 22), between = echoGainAt(ir, every, 1000.0, 9);
+            SAY("tape     ends: FEEDBACK %3.0f%%: each echo x %.4f at 6 s, x %.4f at 27 s, x %.4f at 69 s\n", row.reads * 100.0, before, between, after);
+            CHECK(std::fabs(dB(before / row.reads)) < 0.05 && std::fabs(dB(between / before)) < 0.01); // as it reads, right up to the hold's end
+            if (row.reads >= 0.9) CHECK(std::fabs(dB(after / 0.9)) < 0.05);                            // and after it: 90%, or what it was if that is less
+            if (!row.touched && row.reads >= 0.9) CHECK(std::fabs(after / before - 1.0) < 2e-5);
+            // A FEEDBACK under 90% is not brought UP to it either: at 60% the thirteenth echo is still 0.6 of the twelfth (at 39 s).
+            if (row.reads < 0.9) CHECK(std::fabs(dB(echoGainAt(ir, every, 1000.0, 12) / before)) < 0.05);
+        }
+    }
+    // ---- On a bus it is the same loop: the bus comes to rest (testATailAlwaysEnds has every setting; this is the howl by itself).
+    {
+        const float howl[4] = {0.f, 1.f, 0.f, 1.f};
+        const double seconds = secondsToRest(tape, howl, 120.f, 200.0);
+        SAY("tape     ends: on a bus, a sixteenth at 120 BPM, FEEDBACK 120%%: at rest %.1f s after the last sound\n", seconds);
+        CHECK(seconds > 40.0 && seconds < 70.0); // 30 s held, about 2 s easing, 16 s falling 120 dB, 10 s of quiet before the bus rests: 58.6
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -5436,6 +5628,7 @@ int main(int argc, char** argv) {
     }
     gMeasure = argc > 1 && std::string(argv[1]) == "--measure";
     // `effects_test --only testDuck testTape`: just those (for trying a change quickly; ctest runs them all).
+    // `effects_test --measure --only testTape`: their numbers.
     struct Named {
         const char* name;
         void (*run)();
@@ -5473,12 +5666,15 @@ int main(int argc, char** argv) {
         {"testBusLevel", testBusLevel},
         {"testBusRestNumbers", testBusRestNumbers},
         {"testDuck", testDuck},
+        {"testATailAlwaysEnds", testATailAlwaysEnds},
+        {"testTapeAlwaysEnds", testTapeAlwaysEnds},
     };
-    const bool only = argc > 2 && std::string(argv[1]) == "--only";
+    const int first = gMeasure ? 2 : 1; // where "--only" would be
+    const bool only = argc > first + 1 && std::string(argv[first]) == "--only";
     int ran = 0;
     for (const Named& test : tests) {
         bool wanted = !only;
-        for (int a = 2; a < argc && !wanted; ++a) wanted = std::string(argv[a]) == test.name;
+        for (int a = first + 1; a < argc && !wanted; ++a) wanted = std::string(argv[a]) == test.name;
         if (wanted) test.run(), ++ran;
     }
     if (ran == 0) {

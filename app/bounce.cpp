@@ -129,6 +129,10 @@ long long songFrames(const Project& project, float sampleRate) {
     return static_cast<long long>(std::llround(steps * perStep));
 }
 
+// The cap is for what is broken, not for a long tail: it is past the longest any delay or reverb takes.
+static_assert(kBounceCapSeconds > kLongestTailSeconds, "a bounce's cap must be longer than the longest tail a bus can hold");
+static_assert(kBounceQuietSeconds > 8.f * 15.f / kMinTempo, "the quiet that ends a bounce must be longer than the longest gap between two echoes");
+
 BounceTail::BounceTail(float sampleRate, float capSeconds) {
     const double rate = sampleRate > 0.f ? sampleRate : 48000.0;
     cap_ = static_cast<long long>(std::llround((capSeconds > 0.f ? capSeconds : 0.f) * rate));

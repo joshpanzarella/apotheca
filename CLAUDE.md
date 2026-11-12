@@ -208,6 +208,16 @@ effect in those two groups and fails one that does not.
 - **What is sent to a bus is sound or it is silence**: not-a-number, infinity
   and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
   DELAY and REVERB cannot look after themselves and would hold it for good.
+- **A tail always ends** (owner, 2026-11-12). `kLongestTailSeconds` (450) is
+  the promise: from the last sound a bus is sent to the bus at rest, at every
+  setting of every effect a bus can hold, at 40 BPM. `effects_test`
+  (`testATailAlwaysEnds`) measures every delay and reverb in the table at 0,
+  50% and 100% of each setting and fails one that takes longer, so **a new
+  delay or reverb whose loop can hold at 1 or over needs its own way down**.
+  TAPE's: left alone 30 s (nothing over `kFedLevel` coming in), a FEEDBACK
+  over 90% eases to 90% (`tire_`); at 90% or under it is multiplied by exactly
+  1. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
+  loop) and are not capped from outside.
 - **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
   and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
   reads LEVEL there, at full (`effectDefault(kind, i, true)`).
@@ -407,6 +417,7 @@ effect in those two groups and fails one that does not.
 | ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
+| TAPE with its way down, the same run (0.10% just before it) | 0.11% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

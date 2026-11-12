@@ -603,6 +603,27 @@ For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and 
 | Code | `BounceTail` (`app/session.hpp`, `app/bounce.cpp`): fed blocks, it says "another" or "stop" and how many frames to keep. No engine and no file in it |
 | Tests | `testWhereABounceEnds` (made-up tails: silence, long, sparse echoes, what counts as sound, the cap and its fade), `testABounceRunsUntilTheTailEnds` (real bounces: HALL at 20 s, the cap set short, echoes three seconds apart at 40 BPM, two tracks of different tails), `testBouncing` (a dry song ends on its last sound; cancelled part-way, nothing is left). 30 mutants, all killed. The row's words are seen in the still only |
 
+**A cap so a tail always ends** (owner, 2026-11-12: "there should be a cap"), as built the same day. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| What was wrong | TAPE with FEEDBACK at 100% never died away, and past it the howl held for good. A send bus holding it never came to rest and cost TAPE's time for good; a bounce that runs until the tail ends would never have ended |
+| TAPE: what changed | **Only a loop left alone for more than 30 seconds with FEEDBACK reading over 90%.** While sound comes in (anything over 80 dB under full, `kFedLevel`), and for 30 s after the last of it (`kHoldSeconds`), FEEDBACK is what it reads: it builds, howls and holds exactly as it did. Then FEEDBACK eases down to 90% (`kTiredFeedback`: the most the old DELAY has) over about 2 s, and each echo is nine tenths of the last. Sound coming in again puts FEEDBACK back within 20 ms and starts the 30 s again |
+| TAPE: what did not | FEEDBACK at 90% or under: nothing, ever, to the bit (the loop's gain is multiplied by exactly 1). Over 90%: nothing while it is played into or for 30 s after. The measurement from step 4 stands: 120% holds one level from 10 to 30 s within 0.2 dB |
+| Measured, 120% at a sixteenth, 120 BPM | Level 0.79 until 30 s; 0.46 by 32 to 33 s; then 7.7 dB a second; 120 dB down by 48 s; the exact zero (asleep) at 68.7 s. No step larger than the howl's own where the fall starts. At AGE full it falls faster (9.2 dB a second) |
+| Measured, each echo of the last at 1 kHz, a half note at 40 BPM | FEEDBACK 90%: 0.8974 before and 0.8974 at 69 s (the same to five places). 95%: 0.9472, then 0.8974. 120%: 1.1965, then 0.8974 |
+| The reading | Still `120%`: it is true whenever sound is going in, which is when it is being set. The manual says what happens when it is left alone |
+| In a track's slot | The same code, the same cap |
+| DELAY, REVERB (pinned) | **Not touched, and not capped from outside: neither can ring for good.** DELAY's loop is at most 0.9 times a low-pass that never adds; REVERB's four loops are at most 0.98 times the same, and its smearing stages pass everything at one level. Measured below |
+| HALL | Not touched: DECAY is a real time, 20 s at most |
+| **How long a bus takes to come to rest** | From the last sound sent (a quarter second of full-scale noise) to the bus at rest (120 dB down, then its 10 s), the worst of every setting at 0, 50% and 100%, at 40 BPM: **TAPE 418 s** (a half note, FEEDBACK full, AGE 0), **DELAY 388 s** (a half note, FEEDBACK and TONE full), **HALL 44 s**, **REVERB 36 s**. At 120 BPM the two delays take a third as long. `kLongestTailSeconds` = 450 in `engine.hpp` is the promise; `testATailAlwaysEnds` holds every case under it and the worst within 20% of it |
+| The bounce's cap | 480 s, checked to be over `kLongestTailSeconds` (a compile-time check in `bounce.cpp`, and in `app_test`). A bounce stops listening at -90 dB, not -120, so it ends well before a bus rests |
+| Louder than full scale | DELAY's tail grows by its echo time for each 0.9 dB the sound sent is over full scale (it is a straight line: +12 dB is 40 s more at 40 BPM). TAPE's does not: its ceiling sets where the fall starts |
+| Cost | TAPE 0.11% of a desk core with it, 0.10% just before, in runs where DRIVE read 0.12% both times: one more multiply a sample |
+| Tests | `testTapeAlwaysEnds`, `testATailAlwaysEnds` in `effects_test`; a real bounce of TAPE at 120% in `app_test` (it ends by itself, 36 to 60 s after the last step). 25 mutants, 24 killed; the one left only guards a counter against running over |
+
+For the owner's ears: 30 seconds of hold (is that "a long while"); the two seconds of easing down, which is the moment a held howl starts to go; 90% as where it settles (lower would end sooner and sound more like a fade); whether a howl should ever be allowed to hold for good when a hand is on the knob (today it does as long as anything is played into it).
+
 **Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.
 
 | Thing | Result |

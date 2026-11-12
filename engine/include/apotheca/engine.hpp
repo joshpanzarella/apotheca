@@ -77,6 +77,14 @@ inline int slotsOf(int track) { return track == kMasterTrack ? kMasterSlots : (b
 constexpr float kBusRestSeconds = 10.f;
 constexpr float kBusQuiet = 1e-6f; // 120 dB under full scale
 constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or not a number) is taken as silence
+// A TAIL ALWAYS ENDS. From the last sound a bus is sent to the bus at rest is
+// never longer than this, whatever effect it holds and however it is set, at
+// any tempo (effects_test measures every one: testATailAlwaysEnds). A bounce's
+// cap is longer than this, so only something that is broken runs into it.
+// Measured 2026-11-12, at 40 BPM, a full-scale burst sent: TAPE 418 s (a half
+// note, FEEDBACK full: 30 s of holding, then DELAY's own fall), DELAY 388 s,
+// HALL 44 s, REVERB 36 s. At 120 BPM the two delays take a third as long.
+constexpr float kLongestTailSeconds = 450.f;
 constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
