@@ -505,8 +505,8 @@ static void testTheTable() {
     CHECK(reads(EffectKind::Filter, 0, 0.5f, dj) == "OPEN" && reads(EffectKind::Filter, 0, 0.f, dj) == "LOW 60 HZ" && reads(EffectKind::Filter, 0, 1.f, dj) == "HIGH 8.0 KHZ");
     CHECK(reads(EffectKind::Filter, 0, 0.f, low) == "30 HZ");
     CHECK(reads(EffectKind::Drive, 0, 0.35f) == "35%" && reads(EffectKind::Drive, 3, 0.5f) == "100%" && reads(EffectKind::Drive, 3, 1.f) == "200%" && reads(EffectKind::Drive, 3, 0.333f) == "66%");
-    CHECK(reads(EffectKind::Delay, 0, 0.f) == "1/16" && reads(EffectKind::Delay, 0, 0.2f) == "1/8" && reads(EffectKind::Delay, 0, 0.4f) == "1/8 DOTTED");
-    CHECK(reads(EffectKind::Delay, 0, 0.5f) == "1/4" && reads(EffectKind::Delay, 0, 0.7f) == "1/4 DOTTED" && reads(EffectKind::Delay, 0, 1.f) == "1/2" && reads(EffectKind::Delay, 1, 0.45f) == "45%");
+    CHECK(reads(EffectKind::Delay, 0, 0.f) == "1/16" && reads(EffectKind::Delay, 0, 0.2f) == "1/8" && reads(EffectKind::Delay, 0, 0.4f) == "1/8 DOT");
+    CHECK(reads(EffectKind::Delay, 0, 0.5f) == "1/4" && reads(EffectKind::Delay, 0, 0.7f) == "1/4 DOT" && reads(EffectKind::Delay, 0, 1.f) == "1/2" && reads(EffectKind::Delay, 1, 0.45f) == "45%");
     CHECK(reads(EffectKind::Reverb, 0, 0.6f) == "60%" && reads(EffectKind::Reverb, 2, 0.3f) == "30%");
     CHECK(reads(EffectKind::Reverb, 0, 0.29f) == "29%" && reads(EffectKind::Reverb, 0, 0.996f) == "100%"); // to the nearest, not cut short (0.29 is stored as 0.28999...)
     CHECK(reads(EffectKind::Crush, 0, 0.f) == "16 BITS" && reads(EffectKind::Crush, 0, 1.f) == "3 BITS" && reads(EffectKind::Crush, 1, 0.f) == "FULL");
@@ -1581,9 +1581,9 @@ static void testTape() {
     CHECK(std::string(info.paramNames[2]) == "AGE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.5625f && info.defaults[1] == 0.4f && info.defaults[2] == 0.35f && info.defaults[3] == 0.35f);
     // How it reads.
-    const char* names[8] = {"1/16", "1/8 TRIP", "1/8", "1/4 TRIP", "1/8 DOTTED", "1/4", "1/4 DOTTED", "1/2"};
+    const char* names[8] = {"1/16", "1/8 TRIP", "1/8", "1/4 TRIP", "1/8 DOT", "1/4", "1/4 DOT", "1/2"};
     for (int i = 0; i < 8; ++i) CHECK(reads(tape, 0, tapeTime(i)) == names[i]);
-    CHECK(reads(tape, 0, 0.f) == "1/16" && reads(tape, 0, 1.f) == "1/2" && reads(tape, 0, info.defaults[0]) == "1/8 DOTTED" && reads(tape, 0, 0.125f) == "1/8 TRIP");
+    CHECK(reads(tape, 0, 0.f) == "1/16" && reads(tape, 0, 1.f) == "1/2" && reads(tape, 0, info.defaults[0]) == "1/8 DOT" && reads(tape, 0, 0.125f) == "1/8 TRIP");
     CHECK(reads(tape, 1, 0.f) == "0%" && reads(tape, 1, 1.f) == "120%" && reads(tape, 1, 0.4f) == "48%" && reads(tape, 2, 0.35f) == "35%" && reads(tape, 3, 1.f) == "100%");
 
     // WHEN EACH ECHO LANDS: the step length to the nearest sample, at three

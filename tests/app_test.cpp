@@ -3128,7 +3128,7 @@ void testTheEffectsScreen() {
     effectParamText(EffectKind::Filter, 2, 0.5f, text, sizeof text);
     CHECK(std::string(text) == "BAND PASS");
     effectParamText(EffectKind::Delay, 0, 0.4f, text, sizeof text);
-    CHECK(std::string(text) == "1/8 DOTTED");
+    CHECK(std::string(text) == "1/8 DOT");
     effectParamText(EffectKind::Crush, 0, 1.f, text, sizeof text);
     CHECK(std::string(text) == "3 BITS");
     effectParamText(EffectKind::Crush, 1, 0.f, text, sizeof text);

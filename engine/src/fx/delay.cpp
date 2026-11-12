@@ -72,7 +72,7 @@ private:
 
 void reading(int index, float v, const float*, char* out, int size) {
     if (index == 0) {
-        static const char* names[9] = {"", "1/16", "1/8", "1/8 DOTTED", "1/4", "", "1/4 DOTTED", "", "1/2"};
+        static const char* names[9] = {"", "1/16", "1/8", "1/8 DOT", "1/4", "", "1/4 DOT", "", "1/2"};
         std::snprintf(out, static_cast<std::size_t>(size), "%s", names[delaySteps(v)]);
     } else {
         readPercent(v, out, size);

@@ -49,7 +49,7 @@ struct EffectInfo {
     const char* word;                       // in a song file: "filter". One word, and it never changes once it ships
     EffectGroup group;
     int choices[kEffectParams];             // a setting that is a choice, not an amount: how many choices (0: an amount)
-    // How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS". `all` is the
+    // How a setting reads: "810 HZ", "1/8 DOT", "8 BITS". `all` is the
     // effect's settings together, for one whose reading depends on another
     // (the DJ filter's cutoff), or nullptr. nullptr here: every setting is a
     // percentage. Use effectParamText(), which knows that.
@@ -68,7 +68,7 @@ int effectPlace(EffectKind kind);   // 0 (NONE's) for anything not in the list
 EffectKind effectFromWord(const char* word);
 // How many choices a setting has; 0 if it is an amount (or is not there).
 int effectChoices(EffectKind kind, int index);
-// How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS", "35%".
+// How a setting reads: "810 HZ", "1/8 DOT", "8 BITS", "35%".
 // `all` is the effect's settings together, for one whose reading depends on
 // another; without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
