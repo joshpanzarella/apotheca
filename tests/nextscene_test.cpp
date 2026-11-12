@@ -1360,9 +1360,14 @@ void testARealAudioThread() {
         std::atomic<bool> stop{false};
         std::atomic<long> blocks{0};
         const int limit = kind == 2 ? 190 * kStep / 256 : 1 << 30; // blocks: (kind 2) the song does not reach its end with a copy still in it
+        // Back to back, but no more than kAhead blocks past the last thing the program did: on a
+        // busy machine a key takes long, and the sound to make and to compare grew without end.
+        const long kAhead = 12;
+        std::atomic<long> until{kAhead};
+        const auto go = [&] { until.store(blocks.load() + kAhead); };
         std::thread audio([&] {
             while (!stop.load()) {
-                if (blocks.load() >= limit) {
+                if (blocks.load() >= limit || blocks.load() >= until.load()) {
                     std::this_thread::yield();
                     continue;
                 }
@@ -1373,16 +1378,19 @@ void testARealAudioThread() {
         const auto wait = [&](int some) { // nothing, or a frame and that many blocks
             if (some == 0) return;
             const long from = blocks.load();
+            go();
             rig.frames(1);
             while (blocks.load() < from + some && blocks.load() < limit) std::this_thread::yield();
             rig.frames(1);
         };
         int moved = 0;
-        const int pairs = kind == 2 ? 40 : 200;
+        const int pairs = kind == 0 ? 200 : (kind == 1 ? 100 : 40); // (200: the case that was once up to 1.0 out)
         for (int i = 0; i < pairs; ++i) {
+            go();
             rig.nextScene();
             wait(i % 4);
             moved += rig.project().scene == 1;
+            go();
             rig.undo();
             wait((i / 4) % 3);
             moved += rig.project().scene == 0;
