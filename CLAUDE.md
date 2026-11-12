@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (18) | `cd build && ctest -j8` (about 40 s) |
+| All tests (20) | `cd build && ctest -j8` (about 50 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -392,9 +392,35 @@ effect in those two groups and fails one that does not.
   A ratchet waits in one `Pending` slot that re-arms itself.
 - **Note effects are two bytes on a note** (`NoteEvent::ratchet`, `glide`; a
   chord has `ratchet` only). They reach the engine in `Command::e` (low byte
-  the ratchet, +256 a glide). In a song file: `notefx STEP KEY RATCHET GLIDE`
-  and `chordfx STEP RATCHET`, each after its note. A glide comes from
-  `track.lastPitch`, which Play resets, through `Instrument::noteOnFrom`.
+  the ratchet, +256 a glide, and `glide << 11` for a length other than half a
+  step, above THROW's two bits). In a song file: `notefx STEP KEY RATCHET
+  GLIDE` and `chordfx STEP RATCHET`, each after its note.
+- **A glide is a length, and its number is not its place** (owner,
+  2026-11-12; `engine/include/apotheca/glide_rule.hpp`). The numbers are in
+  songs, appended: 0 off, **1 half a step (what ON was, so old songs sound as
+  they did)**, 2 a quarter, 3 one step, 4 two, 5 FULL. The order a player
+  steps through is `kGlideOrder` (`glideAt` / `glidePlace`). A number nobody
+  knows reads as half a step (`glideKind`).
+- **Which note a glide comes from, and for how long, is one rule in that
+  header, and the engine and the roll both ask it** (`GlideTrail`,
+  `glideSteps`, `glideLines`). Do not work either out anywhere else.
+  The rule: the last note the track began (Play clears it); a ratchet's later
+  pieces are not notes beginning; notes that begin within 1/256 of a step are
+  one moment (none slides from another, what follows slides from the highest);
+  FULL is the time since that note began; on a ratchet never more than 85% of
+  the first piece. The engine counts time in steps since Play (`stepsFired_`
+  plus the nudge), not in samples, so both sides get the same numbers.
+  `glide_test` holds the rule to the engine with a listening synth;
+  `glideapp_test` holds `Project::glideLines` (what the roll draws) to the
+  engine through the Session, chords included.
+- **The roll's glide line ends at the note's start** (the owner's picture);
+  the slide is heard FROM the note's start. A line that begins before the
+  bar's top is drawn at the foot of the bar played before
+  (`barPlayedNext`, `glideSpan` in `note_marks.hpp`).
+- **Phazed's glide is the CZ's portamento given a rate**
+  (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
+  tick. A note waiting for its slot keeps the rate and the key it was played
+  with.
 - **A recording's name may carry one folder**: `kicks/808`. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
