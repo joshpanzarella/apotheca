@@ -74,7 +74,7 @@ engine/   the sound engine: a static library, no SDL. Instruments, effects, the 
 app/      the SDL2 app: screens, the Session, files, WiFi page, MIDI.
 tests/    one program per area. CHECK macros, no framework.
 tools/    bench.cpp (timings), render_demo.cpp
-third_party/  easycz (Phazed's engine), shapetaker/entanglement (QMOD's generator), signalsmith (stretch). Copied unchanged; do not edit.
+third_party/  easycz (Phazed's engine), shapetaker/entanglement (QMOD's generator), signalsmith (stretch). Copied in, and OPEN TO CHANGE (see the rule below).
 dist/     the built handheld program, kept in git so the owner can fetch it
 ```
 
@@ -126,6 +126,16 @@ adds (wet times MIX) and none of what came in. `effects_test` checks every
 effect in those two groups and fails one that does not.
 
 ## Rules that bite
+
+### Nothing is closed to change (owner, 2026-11-12)
+- **Any instrument may be improved, ported ones too** (Phazed's engine in
+  `third_party/easycz`, QMOD's generator). There was a "copied unchanged; do
+  not edit" rule; the owner did not ask for it and it is gone. Never give
+  "that code is not ours" as a reason a feature cannot be done.
+- What still holds is the usual care: a change to a synth is a change to the
+  sound (old songs and presets, the owner's ears), and a file changed under
+  `third_party/` gets a line in `third_party/CHANGES.md` (what and why), so a
+  fresh copy from where it came from does not lose it without anyone knowing.
 
 ### Files and compatibility
 - **Song files must keep loading.** Words in a song file (`track phazed`,
