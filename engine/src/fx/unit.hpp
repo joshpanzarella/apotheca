@@ -80,6 +80,8 @@ Effect* makeSaturatePlain();
 float saturateCurve(int type, float x);
 // What TAPE's FEEDBACK is multiplied by once the loop has been left alone, for a FEEDBACK setting (0 to 1): exactly 1 when it reads 90% or under.
 float tapeTire(float setting);
+// One sample of TAPE's multiplier on its way to `to` (down gently, up at once): it lands exactly.
+float tapeTireStep(float tire, float to, float sampleRate);
 
 } // namespace fx
 } // namespace apotheca

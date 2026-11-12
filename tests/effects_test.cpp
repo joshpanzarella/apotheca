@@ -5621,6 +5621,76 @@ static void testTapeAlwaysEnds() {
         CHECK(fx::tapeTire(1.f) == 0.9f / 1.2f && fx::tapeTire(0.95f / 1.2f) < 0.95f && fx::tapeTire(0.95f / 1.2f) > 0.94f);
         CHECK(reads(tape, 1, 0.76f) == "91%" && fx::tapeTire(0.76f) < 0.99f && fx::tapeTire(0.76f) > 0.98f); // the first setting that reads over 90% is brought down to it
     }
+    // The way there, a sample at a time: down gently (most of the way in two seconds), up at once
+    // (20 ms), and it LANDS both ways. A fraction of what is left only ever creeps closer: it stood
+    // still a hair short, and a loop fed again was then never quite the FEEDBACK it reads.
+    {
+        const float tired = fx::tapeTire(1.f);
+        float down = 1.f, up = tired;
+        long downAt = 0, upAt = 0, halfDown = 0, halfUp = 0;
+        for (long i = 1; i <= 40 * 48000 && down != tired; ++i) {
+            down = fx::tapeTireStep(down, tired, 48000.f), downAt = i;
+            if (!halfDown && down < 0.5f * (1.f + tired)) halfDown = i;
+        }
+        for (long i = 1; i <= 40 * 48000 && up != 1.f; ++i) {
+            up = fx::tapeTireStep(up, 1.f, 48000.f), upAt = i;
+            if (!halfUp && up > 0.5f * (1.f + tired)) halfUp = i;
+        }
+        SAY("tape     ends: the multiplier is half way down after %.2f s and there after %.1f s; half way up after %.1f ms and there after %.2f s\n", halfDown / 48000.0, downAt / 48000.0, halfUp / 48.0, upAt / 48000.0);
+        CHECK(down == tired && up == 1.f);                                   // exactly
+        CHECK(downAt < 30 * 48000 && upAt < 48000);                          // and soon: 7.4 s down (the last of it far too small to hear), 0.17 s up
+        CHECK(std::labs(halfDown - 66542) < 500 && std::labs(halfUp - 665) < 10); // half way in 1.39 s (2 s x ln 2) and in 13.9 ms
+        CHECK(fx::tapeTireStep(1.f, 1.f, 48000.f) == 1.f && fx::tapeTireStep(tired, tired, 48000.f) == tired); // at rest it stays
+    }
+    // Sound on one side only is sound coming in.
+    for (int side = 0; side < 2; ++side) {
+        Stereo io(110 * second);
+        io.l = io.r = burst(110);
+        for (std::size_t at = 20 * second; at < io.frames(); at += 20 * second) (side ? io.r : io.l)[at] = 0.01f;
+        through(*fresh(tape, 0.f, 1.f, 0.f, 1.f), io);
+        CHECK(std::fabs(dB(level(side ? io.l : io.r, 90, 100) / level(side ? io.l : io.r, 10, 20))) < 0.2); // (listened to on the other side)
+        // ...and it wakes a sleeping tape by itself: its echoes are there, on its side only.
+        Stereo one(4 * second);
+        const std::vector<float> sound = burst(4);
+        (side ? one.r : one.l) = sound;
+        through(*fresh(tape, 0.f, 0.5f, 0.f, 1.f), one);
+        std::vector<float>& heard = side ? one.r : one.l;
+        for (std::size_t i = 0; i < heard.size(); ++i) heard[i] -= sound[i];
+        CHECK(level(heard, 0.5, 2) > 0.01 && level(side ? one.l : one.r, 0, 4) == 0.0);
+    }
+    // ---- However it is cut into blocks, the same to the last bit: through the hold, the tiring,
+    // the fall and into sleep. (The count of time left alone went up a block at a time and the ease
+    // down was a glide a block: blocks of 64 and of 48 were the same for 30.47 s and then up to
+    // 5.8e-5 apart, so a bounce and live play differed in a tired TAPE's tail.) AGE 0: no wow.
+    // The second sound is too faint to be "coming in" and wakes the sleeping tape part way through
+    // a block: the thirty seconds count from that sample, not from the block's first.
+    for (float feedback : {1.f, 0.8f}) {
+        std::vector<float> in(150 * second, 0.f);
+        Noise noise(31u);
+        for (std::size_t i = 0; i < 4800; ++i) in[1000 + i] = 0.5f * noise.next();
+        in[75 * second + 1237] = 5e-5f;
+        std::vector<float> ways[4];
+        const std::size_t sizes[4] = {64, 48, 0, 256}; // 0: odd sizes, 1 to 61 in turn
+        for (int way = 0; way < 4; ++way) {
+            std::unique_ptr<Effect> t = fresh(tape, 0.f, feedback, 0.f, 1.f);
+            Stereo io(in.size());
+            io.l = io.r = in;
+            for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
+                if (at + n > io.frames()) n = io.frames() - at;
+                t->process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
+            }
+            ways[way] = io.l;
+        }
+        std::size_t firstApart = in.size();
+        float apart = 0.f;
+        for (int way = 1; way < 4; ++way)
+            for (std::size_t i = 0; i < in.size(); ++i)
+                if (ways[way][i] != ways[0][i]) firstApart = std::min(firstApart, i), apart = std::fmax(apart, std::fabs(ways[way][i] - ways[0][i]));
+        SAY("tape     ends: FEEDBACK %3.0f%%: cut into blocks four ways, first apart at %.2f s, by %g at most\n", feedback * 120.0, static_cast<double>(firstApart) / 48000.0, static_cast<double>(apart));
+        CHECK(firstApart == in.size());
+        // (And it did all of it: howled, tired, slept, was woken by the faint sound and built again, tired again.)
+        if (feedback == 1.f) CHECK(level(ways[0], 20, 30) > 0.5 && level(ways[0], 70, 75) == 0.0 && level(ways[0], 100, 105) > 0.5 && level(ways[0], 140, 150) < 1e-6);
+    }
     // ---- On a bus it is the same loop: the bus comes to rest (testATailAlwaysEnds has every setting; this is the howl by itself).
     {
         const float howl[4] = {0.f, 1.f, 0.f, 1.f};
