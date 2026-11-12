@@ -1116,7 +1116,44 @@ static void testNoteStripGlideFits() {
     CHECK(kStripHeldGlideX == 250.f && kStripHeldThrowX > 320.f); // (THROW stood at 320 when a glide read ON or OFF)
 }
 
+// Where a glide's line is on the roll: it ends at its note's start and begins that long before.
+static void testGlideLineSpan() {
+    // A step-5 note, two steps of slide: from step 3 to step 5 of the bar shown.
+    GlideSpan span = glideSpan(4.0, 2.0, 0, 16);
+    CHECK(span.seen && span.from == 2.0 && span.to == 4.0);
+    // Nudged early, a quarter step.
+    span = glideSpan(4.0 - 0.45, 0.25, 0, 16);
+    CHECK(span.seen && std::fabs(span.to - 3.55) < 1e-9 && std::fabs(span.from - 3.3) < 1e-9);
+    // Into step 1: all of it is in the bar before, and none is seen here...
+    span = glideSpan(0.0, 4.0, 0, 16);
+    CHECK(!span.seen);
+    // ...it is seen at the foot of the bar played before, moved down by that bar's length.
+    span = glideSpan(0.0, 4.0, 16, 16);
+    CHECK(span.seen && span.from == 12.0 && span.to == 16.0);
+    span = glideSpan(0.0, 4.0, 12, 12); // (a bar cut to twelve steps)
+    CHECK(span.seen && span.from == 8.0 && span.to == 12.0);
+    // A note of the next bar whose line does not reach back into this one: not seen.
+    CHECK(!glideSpan(4.0, 4.0, 16, 16).seen && glideSpan(4.0, 4.5, 16, 16).seen);
+    // Late on step 1, a short slide: partly here.
+    span = glideSpan(0.2, 0.5, 0, 16);
+    CHECK(span.seen && span.from < 0.0 && span.to == 0.2);
+    // No length: nothing to draw.
+    CHECK(!glideSpan(4.0, 0.0, 0, 16).seen);
+    // A note past the end of a cut bar is never played; its line would start past the end too.
+    CHECK(!glideSpan(14.0, 1.0, 0, 12).seen && glideSpan(12.5, 1.0, 0, 12).seen);
+
+    // The bar played after the one shown.
+    CHECK(barPlayedNext(0, 1, 16) == 0);                                // one bar: itself
+    CHECK(barPlayedNext(0, 2, 32) == 1 && barPlayedNext(1, 2, 32) == 0); // two: the other
+    CHECK(barPlayedNext(0, 1, 32) == 0);                                // a cell of one bar in a scene of two: itself again
+    CHECK(barPlayedNext(1, 2, 64) == 0 && barPlayedNext(0, 2, 64) == 1); // of two in a scene of four
+    CHECK(barPlayedNext(0, 2, 16) == 0 && barPlayedNext(0, 2, 17) == 1); // a scene cut to one bar, and to one step more
+    CHECK(barPlayedNext(2, 4, 40) == 0 && barPlayedNext(1, 4, 40) == 2); // cut in its third bar: round to the first
+    CHECK(barPlayedNext(0, 0, 16) == 0);
+}
+
 int main(int, char**) {
+    testGlideLineSpan();
     testNoteStripGlideFits();
     testNoteStripNudgeFits();
     testNoteStripThrowFits();
