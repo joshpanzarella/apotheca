@@ -1227,6 +1227,20 @@ void Engine::renderTrack(int t) {
     }
     float peak = chunkPeaks_[t];
     const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
+    if (thrown) {
+        // A thrown hit goes to the bus at the track's level, and not at all from a muted track:
+        // the same level and the same gate as the loop below gives the track, sample for sample.
+        // (A loop of its own, so that a track that throws nothing runs the one below as it was.)
+        float gate = track.gate;
+        for (int i = 0; i < frames; ++i) {
+            if (gate != gateTo) {
+                gate += gate < gateTo ? gateStep : -gateStep;
+                if ((gate > gateTo) == track.heard) gate = gateTo;
+            }
+            if (thrown & 1) thrown_[t][0][i] *= track.level * gate;
+            if (thrown & 2) thrown_[t][1][i] *= track.level * gate;
+        }
+    }
     for (int i = 0; i < frames; ++i) {
         if (track.gate != gateTo) {
             track.gate += track.gate < gateTo ? gateStep : -gateStep;
@@ -1234,9 +1248,6 @@ void Engine::renderTrack(int t) {
         }
         left[i] *= track.level * track.gate;
         right[i] *= track.level * track.gate;
-        // A thrown hit goes to the bus at the track's level, and not at all from a muted track.
-        if (thrown & 1) thrown_[t][0][i] *= track.level * track.gate;
-        if (thrown & 2) thrown_[t][1][i] *= track.level * track.gate;
         const float a = std::fabs(left[i]) > std::fabs(right[i]) ? std::fabs(left[i]) : std::fabs(right[i]);
         if (a > peak) peak = a;
     }

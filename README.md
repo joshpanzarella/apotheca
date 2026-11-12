@@ -204,12 +204,14 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   nothing, and the echoes it already made ring on.
 - The master's effects come after, so they act on the echoes and the room too.
 - A send can be **automated** like any setting (see Automation).
+- **THROW** sends one drum hit or one note in full, whatever the SENDS row
+  says: hold X on it and press A. See "THROW" under PATTERN.
 - **A new song has TAPE on ECHO and HALL on SPACE.** So does a song made
   before there were sends: nothing in it is sent, so it sounds as it did, and
   the first send turned up in it gives what it gives in a new song. DELAY and
   REVERB, the older two, are one push away (hold A + up on the effect).
 - **A song saved here and then opened by an older version of the program
-  loses its sends, its third effects and what ECHO and SPACE hold.** The rest
+  loses its sends, its throws, its third effects and what ECHO and SPACE hold.** The rest
   of it opens.
 
 | Effect | Settings |
@@ -686,10 +688,11 @@ it changes:
 | Left / right | **RATCHET**: the hit played 2, 3 or 4 times inside its step | Split into that many slivers |
 | L1 | **REVERSE**: backwards, on and off | An arrow on its left |
 | R1 | **CUT**: stopped after a step, half a step, a quarter; off | A red edge |
-| Y | **Dice**: rolls the four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. | |
+| A | **THROW**: this hit alone goes to ECHO, to SPACE, to both; off (see below) | A short bar above it: over its left half for ECHO, its right for SPACE |
+| Y | **Dice**: rolls the first four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. The dice leave THROW as it is. | |
 
 - They combine, and every hit has its own. The strip under the grid spells
-  them out; with X held it shows all four.
+  them out; with X held it shows all five.
 - A ratchet is rolled for once: with a chance below 100% it plays all its
   hits or none.
 - Backwards plays what the hit would have played (its slice, or the sound
@@ -698,8 +701,35 @@ it changes:
   stops when the next one comes.
 - Kept in the song, undone by SELECT + B, and gone with the hit when it is
   deleted.
-- A synth's notes have their own two: see "Note effects" under PATTERN, a
-  synth. Not yet: THROW.
+- A synth's notes have their own: see "Note effects" under PATTERN, a
+  synth.
+
+### THROW
+
+**One hit, or one note, sent in full to ECHO or SPACE.** The snare on beat
+four gets the long echo; the rest of the bar stays dry. Hold **X** on the hit
+or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
+
+| | A thrown drum hit | A thrown note or chord |
+| --- | --- | --- |
+| What goes to the bus | That hit alone. The other drums of the track do not | The whole track, for as long as the note lasts. Other notes sounding then go with it |
+| How | The drum is played a second time, straight into the bus | The track's send is opened for the note, and shut after it |
+| The track's own effects | **Not on the thrown copy**: it is the plain drum | On it, as on any send |
+| A ratchet | Every hit of it is thrown | The send stays open through all of them |
+| Starts and stops | With the hit | Over 5 ms each way, so it does not click |
+
+- **How loud is the bus's LEVEL** (FX, the other page). THROW has no amount
+  of its own: it is a send at 100% for that hit or note.
+- If the track's send is already up, THROW tops it up to 100%. It never adds
+  on top.
+- A muted track throws nothing. Stop and panic shut every send.
+- A note's echoes ring on after the send has shut; what is cut is only the
+  feed. The note's own fade (its release) after it is let go is not sent.
+- In the slice view a thrown slice slides into the bus over a millisecond
+  when the break is running on through it, so it does not tick.
+- Kept in the song, undone by SELECT + B, copied with its bar, and in a
+  bounce. Gone with the hit or the note.
+- The dice do not throw.
 
 ### Slices: chopping a break
 
@@ -804,6 +834,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
 | **Hold X on a note**, up / down | **GLIDE** on / off: the note slides in from the note before it |
+| **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
@@ -818,13 +849,14 @@ narrower, with a dark edge: a note inside a note.
 ### Note effects
 
 Hold **X** on a note. The D-pad or the stick sets what the note does besides
-play, one click per push. The strip at the bottom shows both values.
+play, one click per push. The strip at the bottom shows the values.
 
 | Effect | Does | On a chord |
 | --- | --- | --- |
 | **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
 | **GLIDE** (up = on, down = off) | The pitch slides from the last note the track began to this one, over half a step. | No: a chord has no one note to slide from |
-| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. | A ratchet |
+| **THROW** (A) | The track is sent in full to ECHO, SPACE or both for as long as the note lasts (see "THROW" under PATTERN, drums). A foot at the note's end: on the left for ECHO, the right for SPACE. | Yes: the whole chord |
+| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. THROW is left as it is. | A ratchet |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
 - The first note after pressing play has nothing to slide from, so it does

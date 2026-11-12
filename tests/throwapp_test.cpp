@@ -187,15 +187,35 @@ void testTheDrumGrid() {
     rig.app.session().setMuted(0, false);
     CHECK(rig.thrownTo() == 3);
 
-    // Heard by hand while X is held (the song stopped): the hit is thrown as the pattern would throw it.
+    // Heard by hand (the song stopped): X on a hit plays it as the pattern would, thrown; and each
+    // step of THROW with X held is heard at once, where it now goes.
+    drums.setFx(1, 4, StepFx());
     rig.frames(2);
     rig.render(2048);
     rig.engine->prepare(48000.f);
     rig.key(X, true);
     rig.frames(1);
     rig.render(4096);
+    CHECK(!rig.engine->busAwake(0) && !rig.engine->busAwake(1));
+    rig.tap(A); // ECHO
+    rig.frames(1);
+    rig.render(4096);
+    CHECK(rig.engine->busAwake(0) && !rig.engine->busAwake(1));
     rig.key(X, false);
-    CHECK(rig.engine->busAwake(0) && rig.engine->busAwake(1));
+    rig.tap(B);
+    rig.tap(A); // a plain hit again
+    rig.frames(1);
+    rig.render(2048);
+    rig.engine->prepare(48000.f);
+    StepFx space;
+    space.throwTo = 2;
+    space.cut = 1;
+    drums.setFx(1, 4, space);
+    rig.key(X, true); // X alone: heard, thrown to SPACE
+    rig.frames(1);
+    rig.render(4096);
+    rig.key(X, false);
+    CHECK(!rig.engine->busAwake(0) && rig.engine->busAwake(1));
 }
 
 // ---- the piano roll ----------------------------------------------------------------------------
@@ -407,7 +427,7 @@ void testTheSongFile() {
         swap("stepfx 2 9 0 1 0 0 2", "stepfx 2 9 0 1 0 0 -1");
         swap("stepfx 2 13 0 3 0 2 3", "stepfx 2 13 0 3 0 2 x");
         swap("note 5 64 2 0.8 0 1", "note 5 64 2 0.8 0 9");
-        swap("note 8 65 1 0.8 -0.125 3", "note 8 65 1 0.8 -0.125 0.5");
+        swap("note 8 65 1 0.8 -0.125 3", "note 8 65 1 0.8 -0.125 -2");
         swap("chordfx 10 1 2", "chordfx 10 1 77");
         swap("chordfx 14 2 1", "chordfx 14 2 -3");
         std::unique_ptr<Project> held(new Project);

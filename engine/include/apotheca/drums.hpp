@@ -138,6 +138,9 @@ private:
         float thrownTo[2] = {}; // ...and where that is heading: 1 thrown, 0 not
     };
 
+    template <bool kThrown>
+    int renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote);
+
     const DrumKit* kit_ = nullptr;
     Voice voices_[kDrumLanes][2];
     int next_[kDrumLanes] = {};

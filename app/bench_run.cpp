@@ -91,8 +91,10 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // The send buses: twelve drum tracks, every lane busy, and what the sends add
 // to that. `sends`: every track sends to both buses. `echo` and `space`: what
 // the buses hold (None: they are fed and give nothing back, which is the cost
-// of the feeding alone). The best of five runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space) {
+// of the feeding alone). `throws`: every hit of every track is thrown to both
+// buses (THROW), which is the most throwing a song can do. The best of five
+// runs of ten seconds.
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -103,6 +105,16 @@ static double busSong(bool sends, EffectKind echo, EffectKind space) {
         c.value = 1.f;
         for (int lane = 0; lane < kDrumLanes; ++lane)
             for (int step = (t + lane) % 2; step < kSteps; step += 2) c.a = lane, c.b = step, engine->send(c);
+        if (throws) {
+            StepFx fx;
+            fx.throwTo = kThrowEcho | kThrowSpace;
+            c = Command();
+            c.type = Command::SetStepFx;
+            c.track = t;
+            c.extra = fx.cutAndThrow();
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                for (int step = (t + lane) % 2; step < kSteps; step += 2) c.a = lane, c.b = step, engine->send(c);
+        }
         c = Command();
         c.type = Command::SetSend;
         c.track = t;
@@ -172,6 +184,8 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "feeding both from 12 tracks", fed - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "...and TAPE and HALL on them", now - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "...or DELAY and REVERB", old - dry);
+        const double thrown = busSong(false, none, none, true);
+        std::printf("  %-28s %6.2f%% of one core\n", "every hit thrown to both", thrown - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");
