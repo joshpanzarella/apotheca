@@ -33,4 +33,17 @@ inline int ratchetLines(int tall, int pieces, int lineTops[3]) {
     return 0;
 }
 
+// The right end of the piano roll's strip, in pixels: NUDGE, then what the note
+// does besides play (RATCHET / EFFECT), then THROW. The effect moves left when
+// the note is thrown, to leave THROW its room.
+constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f, kStripSpace = 10.f;
+inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
+// How wide NUDGE's value may be: up to a gap before whatever comes after it.
+inline float stripNudgeRoom(bool effect, bool thrown) {
+    return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;
+}
+// The largest size a value fits its room in: 0 large, 1 medium, 2 small. `widths`
+// is the text's width in each. ("45% EARLY" beside an effect and a THROW is small.)
+inline int stripFont(const float widths[3], float room) { return widths[0] <= room ? 0 : widths[1] <= room ? 1 : 2; }
+
 } // namespace apotheca

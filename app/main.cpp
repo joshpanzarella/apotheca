@@ -470,6 +470,12 @@ int main(int argc, char** argv) {
             p.chords[0].throwTo = 3;
             p.chords[0].ratchet = 2;
         }
+        if (std::strstr(view, "worst")) { // notefx-worst: the strip's longest line, everything on one note
+            p.notes[5].ratchet = 4;
+            p.notes[5].throwTo = kThrowSpace;
+            p.notes[5].nudge = -0.45f;
+            p.notes[5].length = 2.25f;
+        }
         app.session().sendNoteBar(2, 0, 0);
         app.notes().moveCursorTo(64, 12);
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);

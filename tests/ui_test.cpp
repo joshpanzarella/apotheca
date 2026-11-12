@@ -1033,7 +1033,38 @@ void testRatchetLinesCutEvenPieces() {
     }
 }
 
+// The right end of the piano roll's strip: NUDGE, then what the note does (RATCHET / EFFECT),
+// then THROW. A nudged, ratcheted, thrown note had its NUDGE drawn over its RATCHET.
+static void testNoteStripNudgeFits() {
+    // "45% EARLY" in the three sizes, about as the fonts measure it.
+    const float widths[3] = {110.f, 93.5f, 80.f};
+    // Nothing after it: the value is as large as ever, whatever its width.
+    CHECK(stripNudgeRoom(false, false) > 200.f && stripNudgeRoom(false, true) > 150.f);
+    CHECK(stripFont(widths, stripNudgeRoom(false, false)) == 0);
+    // THROW alone stands at 575 and is not in NUDGE's way.
+    CHECK(stripFont(widths, stripNudgeRoom(false, true)) == 0);
+    // An effect after it, not thrown: the field is at 510, as it always was, and NUDGE ends before it.
+    CHECK(stripEffectX(false) == 510.f && stripEffectX(true) == 480.f && kStripThrowX == 575.f && kStripNudgeX == 390.f);
+    CHECK(stripNudgeRoom(true, false) == 110.f);
+    CHECK(stripFont(widths, stripNudgeRoom(true, false)) == 0);
+    // Thrown as well: the effect moves left to make room for THROW, and NUDGE is drawn smaller.
+    CHECK(stripNudgeRoom(true, true) == 80.f);
+    const int font = stripFont(widths, stripNudgeRoom(true, true));
+    CHECK(font == 2);
+    CHECK(kStripNudgeX + widths[font] + kStripSpace <= stripEffectX(true));
+    // A short one ("5% LATE") stays large there.
+    const float small[3] = {78.f, 66.f, 57.f};
+    CHECK(stripFont(small, stripNudgeRoom(true, true)) == 0);
+    // The middle size is taken when it fits and the large does not; exactly fitting is fitting.
+    const float mid[3] = {95.f, 80.f, 69.f};
+    CHECK(stripFont(mid, stripNudgeRoom(true, true)) == 1);
+    CHECK(stripFont(mid, 95.f) == 0 && stripFont(mid, 94.9f) == 1 && stripFont(mid, 79.9f) == 2);
+    // Nothing fits: the smallest there is.
+    CHECK(stripFont(widths, 10.f) == 2);
+}
+
 int main(int, char**) {
+    testNoteStripNudgeFits();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();

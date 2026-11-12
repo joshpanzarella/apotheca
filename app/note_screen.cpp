@@ -1014,15 +1014,21 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
             std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", glideHere ? "GLIDE" : "");
-            field(throwHere ? 480.f : 510.f, ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
+            field(stripEffectX(throwHere != 0), ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
         }
-        if (!fxHeld_ && throwHere) field(575.f, "THROW", throwName(throwHere), kPurple);
+        if (!fxHeld_ && throwHere) field(kStripThrowX, "THROW", throwName(throwHere), kPurple);
         if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
-            field(390.f, "NUDGE", text, shaping_ ? kText : kTeal);
+            // Beside an effect and a THROW there is less room: the value is drawn smaller, never over them.
+            const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere);
+            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
+            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const Font& font = *sizes[stripFont(widths, stripNudgeRoom(effectHere, !fxHeld_ && throwHere != 0))];
+            fonts.small.draw(r, kStripNudgeX, stripY + 8.f, "NUDGE", kDim);
+            font.draw(r, kStripNudgeX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
         } else if (!fxHeld_) {
             std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
-            field(390.f, "NOTES", text, kDim);
+            field(kStripNudgeX, "NOTES", text, kDim);
         }
     }
 
