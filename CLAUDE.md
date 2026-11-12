@@ -401,8 +401,21 @@ effect in those two groups and fails one that does not.
 - **The SONG screen's cursor is a scene's number too** (`SongScreen::scenesMoved`,
   called by `App` after the gesture, an undo or a redo).
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
-  that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
-  arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.
+  that, shorten the words. The bar draws `HOLD` as `HLD`, `SELECT` as `SEL`,
+  directions as arrows, and the one word `dice` as a die (`ui.cpp`): write
+  hints in full.
+- **The device writes SEL, never SELECT** (owner, 2026-11-12). A hint's key
+  and a help-card key are written in full and drawn short (`keyWords`); any
+  other text on the screen is written `SEL` ("also SEL + L1 / R1"); a button's
+  name goes through `buttonLabel`, never `buttonName` (that is the word in
+  controls.txt, which stays SELECT). The web pages and README keep the full
+  word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
+  on a string that would show it spelled out; it plants its own faults at the
+  end and must catch each (add a plant with a new rule).
+- **A check of what is DRAWN uses `tests/canvas.hpp`**: a 640x480 screen in
+  memory with the program's lettering. `ui_test` looks at the hints bar's
+  pixels and `app_test` at the help card's boxes; a check of the text alone
+  passed with the bar drawing the key as written.
 - **Hold X + Y is the dice** for what a hit or a note does (`fxRoll` on both
   grids). **Hold X + A is THROW** (`fxThrow` on both): OFF, ECHO, SPACE, BOTH.
   The check for X held comes before A's own jobs, so A alone still places.

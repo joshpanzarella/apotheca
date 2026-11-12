@@ -1,9 +1,11 @@
 #include "ui.hpp"
 #include "instruments.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 namespace apotheca {
 namespace ui {
@@ -260,6 +262,8 @@ void keyWords(const char* key, Each each) {
         if (end == at) break;
         std::string word(at, end);
         if (word == "HOLD") word = "HLD"; // shorter, and still read as "hold" (the owner's, 2026-11-11)
+        // SELECT is drawn as SEL (the owner's, 2026-11-12), with whatever follows it ("SELECT," on the help card).
+        if (word.compare(0, 6, "SELECT") == 0 && (word.size() == 6 || !std::isalpha(static_cast<unsigned char>(word[6])))) word.erase(3, 3);
         int arrow = -1;
         for (int i = 0; i < 4; ++i)
             if (word == kDirections[i]) arrow = i;
@@ -271,6 +275,16 @@ void keyWords(const char* key, Each each) {
     }
 }
 } // namespace
+
+std::string keyShown(const char* key) {
+    static const char* const kNames[4] = {"UP", "DOWN", "LEFT", "RIGHT"};
+    std::string shown;
+    keyWords(key, [&](const std::string& word, int arrow) {
+        if (!shown.empty()) shown += ' ';
+        shown += arrow >= 0 ? kNames[arrow] : word;
+    });
+    return shown;
+}
 
 float keyWidth(const Fonts& fonts, const char* key) {
     float w = 0.f;

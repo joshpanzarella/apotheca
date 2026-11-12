@@ -91,7 +91,12 @@ ControlMap learnTheHandheld() {
     answer(learner, axis(5, 32767), axis(5, -32768));
     CHECK(std::string(learner.asking()) == "START");
     answer(learner, joyButton(10, true), joyButton(10, false));
+    // On screen it is SEL, as everywhere. In controls.txt the word stays SELECT: files already saved must read.
+    CHECK(std::string(learner.asking()) == "SEL");
+    CHECK(std::string(buttonLabel(Button::Select)) == "SEL" && std::string(buttonName(Button::Select)) == "SELECT");
+    CHECK(std::string(buttonLabel(Button::Start)) == "START" && std::string(buttonLabel(Button::L1)) == "L1");
     answer(learner, joyButton(9, true), joyButton(9, false));
+    CHECK(learner.map().text().find("SELECT") != std::string::npos);
     CHECK(std::string(learner.asking()) == "MENU" && learner.canSkip());
     answer(learner, joyButton(11, true), joyButton(11, false));
     CHECK(std::string(learner.asking()) == "THE STICK, TO THE RIGHT");

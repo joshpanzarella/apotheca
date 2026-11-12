@@ -14,6 +14,8 @@
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
 //                  add-track, page1 .. page9 (Phazed's advanced pages), or
 //                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
+//                  help, volume (the SET page, on VOLUME), nomenu and help-nomenu
+//                  (a handheld with no MENU button: its hint, and its help card)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --shot FILE    save the last frame drawn as a BMP picture
@@ -716,6 +718,14 @@ int main(int argc, char** argv) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
         tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
         pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strcmp(view, "volume") == 0) {
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kVolume);
+    } else if (std::strcmp(view, "nomenu") == 0 || std::strcmp(view, "help-nomenu") == 0) {
+        // A handheld whose firmware keeps MENU: the hint bar says how the card is opened there.
+        input.useMap(&controlMap); // nothing learned: the keyboard stand-ins, and no MENU
+        app.session().view = View::Settings; // a screen whose hints leave room for it
+        if (std::strcmp(view, "help-nomenu") == 0) pushKey(SDLK_BACKSPACE, true); // SELECT, held
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }
@@ -728,6 +738,8 @@ int main(int argc, char** argv) {
         tapKey(SDLK_RETURN);
     } else if (demo && std::strcmp(view, "panic") == 0) {
         // nothing more: any press would put the notice away
+    } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
+        // nothing more: START with SELECT held is "quit"
     } else if (demo && std::strcmp(view, "add-track") != 0) {
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }

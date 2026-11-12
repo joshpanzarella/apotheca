@@ -4,6 +4,7 @@
 // docs/screens/screens.html.
 
 #include <SDL.h>
+#include <string>
 
 #include "apotheca/engine.hpp"
 #include "session.hpp"
@@ -42,7 +43,7 @@ constexpr int kTopBarH = 26, kHintsH = 24;
 inline float gStickSpeed = 0.75f;
 
 // What the end of the hint bar says about the help card: "MENU: HELP", or
-// "HOLD SELECT: HELP" on a handheld whose MENU button the firmware keeps.
+// "HLD SEL: HELP" on a handheld whose MENU button the firmware keeps.
 inline const char* gHelpHint = "MENU: HELP";
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c);
@@ -94,7 +95,11 @@ constexpr Uint32 kListDelayMs = 200, kListEveryMs = 110;
 // A button's name as it is written in a cream box. The four directions are
 // drawn as arrows, not spelled out ("UP / DOWN" is two small arrows): the same
 // thing in a third of the room. Everything else is its letters.
+// Two words are drawn shorter than they are written: HOLD as HLD, SELECT as
+// SEL. Hints are written in full.
 float keyWidth(const Fonts& fonts, const char* key);
+// The words drawKey draws, with a space between (a direction by its name).
+std::string keyShown(const char* key);
 void drawKey(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key, SDL_Color color);
 
 // The bar across the bottom: button names in cream boxes, each with what it does.

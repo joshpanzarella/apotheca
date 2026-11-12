@@ -21,6 +21,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "battery.hpp"
+#include "canvas.hpp"
 #include "controls.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
@@ -2146,6 +2147,45 @@ void testChoicesClick() {
     CHECK(rig.project().tracks[1].patch.value[waveId] == after - 1 || after == spec.settingMin(waveId));
 }
 
+// The help card, looked at: its boxes hold the buttons' names, and SELECT's reads SEL
+// (the card writes "SELECT, tapped" in full and draws it through the bar's rule).
+void testTheHelpCardDrawsSel() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    rig.app.session().view = View::Pattern;
+    rig.frames(2);
+    rig.key(SDLK_TAB, true); // MENU held: the card
+    rig.frames(1);
+    CHECK(rig.app.helpShowing());
+    rig.app.draw(canvas.r, fonts);
+    rig.key(SDLK_TAB, false);
+    // The boxes stand in one column, cream, 17 high. Find each one's top.
+    const int left = 58;
+    std::vector<int> tops;
+    for (int y = 1; y < ui::kScreenH; ++y)
+        if (canvas.is(left, y, ui::kText) && !canvas.is(left, y - 1, ui::kText) && !canvas.is(left - 1, y, ui::kText)) tops.push_back(y);
+    CHECK(tops.size() == 16); // seven on every screen, eight with it held, one to stop all sound
+    if (tops.size() != 16) return;
+    // (A box's words are drawn one at a time, a space apart, as the bar draws them.)
+    const auto holds = [&](int box, const char* first, const char* second) {
+        const float gap = fonts.small.width(first) + (second ? fonts.small.width(" ") : 0.f);
+        const int top = tops[box], w = canvas.run(left, top, ui::kText);
+        if (w != static_cast<int>(gap + (second ? fonts.small.width(second) : 0.f) + 8.f)) return false; // as wide as its words
+        const std::vector<Uint32> seen = canvas.part(left, top, w, 17);
+        Canvas plain;
+        ui::fill(plain.r, left, top, w, 17, ui::kText);
+        plain.fonts->small.draw(plain.r, left + 4.f, top + 3.f, first, ui::kBg);
+        if (second) plain.fonts->small.draw(plain.r, left + 4.f + gap, top + 3.f, second, ui::kBg);
+        return seen == plain.part(left, top, w, 17);
+    };
+    CHECK(holds(0, "X", nullptr) && holds(4, "START", nullptr));
+    CHECK(holds(6, "SEL,", "tapped"));
+    CHECK(!holds(6, "SELECT,", "tapped") && !holds(6, "SEL,", "tappee") && !holds(6, "SEL", "tapped"));
+}
+
 void testTheHelpCard() {
     const SDL_Keycode MENU = SDLK_TAB;
     Rig rig;
@@ -2195,7 +2235,7 @@ void testTheHelpCard() {
     CHECK(!other.input.has(Button::Menu) && rig.input.has(Button::Menu));
     other.app.session().view = View::Device;
     other.frames(2);
-    CHECK(std::string(ui::gHelpHint) == "HOLD SELECT: HELP");
+    CHECK(std::string(ui::gHelpHint) == "HLD SEL: HELP");
     other.key(SELECT, true);
     other.frames(24);
     CHECK(!other.app.helpShowing());
@@ -5723,6 +5763,7 @@ int main(int argc, char** argv) {
     testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();
+    testTheHelpCardDrawsSel();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
     testQmodOnATrack();

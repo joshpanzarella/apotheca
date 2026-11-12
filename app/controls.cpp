@@ -110,7 +110,7 @@ RawControl* ControlLearner::target() {
 }
 
 const char* ControlLearner::asking() const {
-    if (step_ < kButtonSteps) return buttonName(kOrder[step_]);
+    if (step_ < kButtonSteps) return buttonLabel(kOrder[step_]);
     return step_ == kButtonSteps ? "THE STICK, TO THE RIGHT" : step_ == kButtonSteps + 1 ? "THE STICK, DOWN" : "";
 }
 

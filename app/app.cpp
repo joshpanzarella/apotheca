@@ -231,7 +231,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // letting go of SELECT is not a tap.
     const bool busy = session_.view == View::Settings && (settings_.testing() || settings_.typing());
     const bool menu = input.has(Button::Menu);
-    ui::gHelpHint = menu ? "MENU: HELP" : "HOLD SELECT: HELP";
+    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
     if (menu) {
         help_ = input.held(Button::Menu) && !busy;
     } else if (!input.held(Button::Select)) {
@@ -365,7 +365,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         title("ON EVERY SCREEN");
         for (const Line& l : everywhere) line(l);
         ly += 6.f;
-        title("WITH SELECT HELD");
+        title("WITH SEL HELD");
         for (const Line& l : held) line(l);
         ly += 6.f;
         title("STOP ALL SOUND");
