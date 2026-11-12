@@ -40,7 +40,8 @@ struct NoteEvent {
     // What the note does besides play (hold X on it):
     std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step. 0: the one
     std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
-    std::uint8_t spare[2] = {}; // (so the note has no bytes that are not set: it is compared and hashed whole)
+    std::uint8_t throwTo = 0; // THROW: 1 ECHO, 2 SPACE, 3 both. The track's send to that bus is full while the note lasts
+    std::uint8_t spare = 0;   // (so the note has no bytes that are not set: it is compared and hashed whole)
 };
 
 // A chord placed in a bar. It stays one thing: one level, one length, one
@@ -58,7 +59,8 @@ struct ChordEvent {
     float velocity = 0.f; // 0 = empty slot
     char name[16] = {};
     std::uint8_t ratchet = 0;   // 2..4: the whole chord that many times, evenly, inside its first step
-    std::uint8_t spare[3] = {};
+    std::uint8_t throwTo = 0;   // THROW, as a note's: every key of the chord is thrown
+    std::uint8_t spare[2] = {};
 
     // The keys it plays, lowest first, with no key twice. Returns how many.
     int pitches(int out[kChordNotes]) const {
@@ -128,6 +130,7 @@ struct NotePattern {
                 out[next].velocity = c.velocity;
                 out[next].ratchet = c.ratchet;
                 out[next].glide = 0;
+                out[next].throwTo = c.throwTo;
                 ++count;
             }
         }

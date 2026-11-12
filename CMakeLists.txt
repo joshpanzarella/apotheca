@@ -62,7 +62,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(effects_test tests/effects_test.cpp)
   target_link_libraries(effects_test PRIVATE apotheca_engine)
   add_test(NAME effects COMMAND effects_test)
-  set_tests_properties(engine phazed twin qmod song effects PROPERTIES TIMEOUT 120)
+  add_executable(throw_test tests/throw_test.cpp)
+  target_link_libraries(throw_test PRIVATE apotheca_engine)
+  add_test(NAME throw COMMAND throw_test)
+  set_tests_properties(engine phazed twin qmod song effects throw PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

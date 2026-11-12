@@ -291,7 +291,7 @@ Command stepFxCommand(int track, int scene, int bar, int lane, int step, const S
     c.c = fx.pitch;
     c.d = fx.ratchet;
     c.value = fx.reverse ? 1.f : 0.f;
-    c.extra = static_cast<float>(fx.cut);
+    c.extra = fx.cutAndThrow();
     return c;
 }
 
@@ -362,7 +362,7 @@ void Session::sendNoteBar(int track, int scene, int bar) {
         c.extra = notes[slot].length - static_cast<float>(c.d);
         c.shift = notes[slot].nudge;
         c.value = notes[slot].velocity;
-        c.e = (notes[slot].ratchet >= 2 ? notes[slot].ratchet : 0) + (notes[slot].glide ? 256 : 0);
+        c.e = (notes[slot].ratchet >= 2 ? notes[slot].ratchet : 0) + (notes[slot].glide ? 256 : 0) + ((notes[slot].throwTo & 3) << 9);
         engine.send(c);
     }
 }
@@ -702,6 +702,7 @@ void Session::sendTrackImage(int t) {
                 image->notes[slot][i].velocity = n.velocity;
                 image->notes[slot][i].ratchet = n.ratchet;
                 image->notes[slot][i].glide = n.glide;
+                image->notes[slot][i].throwTo = n.throwTo;
             }
         }
     }

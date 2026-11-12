@@ -234,6 +234,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         old.life = how.life;
         old.gainTo = velocity;
         old.fadeStep = 0.f;
+        for (int bus = 0; bus < 2; ++bus) old.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f; // it slides there (render)
         if (old.fade < 1.f) { // back up from where the fade had got to
             old.rise *= old.fade;
             old.riseStep = chokeStep_ * 3.f;
@@ -246,6 +247,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     fresh.end = end;
     fresh.life = how.life > 0 ? how.life : 0;
     fresh.gain = fresh.gainTo = velocity;
+    for (int bus = 0; bus < 2; ++bus) fresh.thrown[bus] = fresh.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f;
     if (how.reverse) {
         // From the last sample it would have played, back to the first.
         const int last = (end < length ? end : length) - 1;
@@ -264,8 +266,10 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     next_[lane] = 1 - next_[lane];
 }
 
-void DrumMachine::render(float* left, float* right, int frames) {
+int DrumMachine::render(float* left, float* right, int frames, float* echo, float* space) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
+    float* const thrownOut[2] = {echo, space};
+    int wrote = 0;
     if (kit_) {
         const float quick = chokeStep_ * 3.f; // a fade of a millisecond
         for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -291,6 +295,19 @@ void DrumMachine::render(float* left, float* right, int frames) {
                     }
                     v.position += v.rate;
                     left[i] += value * v.gain * v.fade * v.rise * laneLevel;
+                    // THROW: the same sample a second time, for the bus. (Worked out again, not kept
+                    // from the line above: that line stays as it was, to the bit.)
+                    for (int bus = 0; bus < 2; ++bus) {
+                        if (v.thrown[bus] == 0.f && v.thrownTo[bus] == 0.f) continue;
+                        if (!thrownOut[bus]) continue;
+                        if (!(wrote & (1 << bus))) {
+                            for (int k = 0; k < frames; ++k) thrownOut[bus][k] = 0.f;
+                            wrote |= 1 << bus;
+                        }
+                        thrownOut[bus][i] += value * v.gain * v.fade * v.rise * laneLevel * v.thrown[bus];
+                        if (v.thrown[bus] != v.thrownTo[bus]) // a hit that carried the sound on changed it: a millisecond
+                            v.thrown[bus] = v.thrown[bus] < v.thrownTo[bus] ? (v.thrown[bus] + quick > 1.f ? 1.f : v.thrown[bus] + quick) : (v.thrown[bus] - quick < 0.f ? 0.f : v.thrown[bus] - quick);
+                    }
                     if (v.gain != v.gainTo) { // a level that changes mid-sound moves there over a millisecond
                         v.gain = v.gain < v.gainTo ? (v.gain + quick > v.gainTo ? v.gainTo : v.gain + quick) : (v.gain - quick < v.gainTo ? v.gainTo : v.gain - quick);
                     }
@@ -307,6 +324,7 @@ void DrumMachine::render(float* left, float* right, int frames) {
         }
     }
     for (int i = 0; i < frames; ++i) right[i] = left[i];
+    return wrote;
 }
 
 } // namespace apotheca
