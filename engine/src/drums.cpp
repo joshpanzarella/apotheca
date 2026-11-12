@@ -234,6 +234,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         old.life = how.life;
         old.gainTo = velocity;
         old.fadeStep = 0.f;
+        for (int bus = 0; bus < 2; ++bus) old.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f; // it slides there (render)
         if (old.fade < 1.f) { // back up from where the fade had got to
             old.rise *= old.fade;
             old.riseStep = chokeStep_ * 3.f;
@@ -246,6 +247,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     fresh.end = end;
     fresh.life = how.life > 0 ? how.life : 0;
     fresh.gain = fresh.gainTo = velocity;
+    for (int bus = 0; bus < 2; ++bus) fresh.thrown[bus] = fresh.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f;
     if (how.reverse) {
         // From the last sample it would have played, back to the first.
         const int last = (end < length ? end : length) - 1;
@@ -264,49 +266,81 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     next_[lane] = 1 - next_[lane];
 }
 
-void DrumMachine::render(float* left, float* right, int frames) {
+// One voice's part of a block, added to `left`. Written once and built twice: `kThrown` false is
+// a hit as it always was, with nothing of THROW in its loop, so a hit that is not thrown costs
+// what it did; true also writes the voice out for the buses. Returns `wrote` with the bits of
+// the ways out it wrote added.
+template <bool kThrown>
+int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote) {
+    const float quick = chokeStep_ * 3.f; // a fade of a millisecond
+    // Backwards, the fade must be over when it reaches its start (the front of a drum is its
+    // loudest part): it begins this far short of it.
+    const double fadeRoom = v.rate < 0.0 ? -v.rate / static_cast<double>(quick) : 0.0;
+    for (int i = 0; i < frames; ++i) {
+        if (v.position >= length || (v.rate < 0.0 && v.position < v.stop)) { v.position = -1.0; break; }
+        // The end of its part: a quick fade, so the next slice's first moment is not heard as a tick.
+        if (v.fadeStep == 0.f && (v.rate > 0.0 ? v.position >= v.end : v.position <= v.stop + fadeRoom)) v.fadeStep = quick;
+        // Cut: its time is up.
+        if (v.life > 0 && --v.life == 0 && v.fadeStep == 0.f) v.fadeStep = quick;
+        const int at = static_cast<int>(v.position);
+        float value = sample[at];
+        if (v.rate != 1.0) { // between two samples: a straight line from one to the next
+            const float part = static_cast<float>(v.position - at);
+            value += part * ((at + 1 < length ? sample[at + 1] : 0.f) - value);
+        }
+        v.position += v.rate;
+        left[i] += value * v.gain * v.fade * v.rise * laneLevel;
+        if constexpr (kThrown) {
+            // THROW: the same sample a second time, for the bus. (Worked out again, not kept
+            // from the line above: that line stays as it was, to the bit.)
+            for (int bus = 0; bus < 2; ++bus) {
+                if (v.thrown[bus] == 0.f && v.thrownTo[bus] == 0.f) continue;
+                if (!thrownOut[bus]) continue;
+                if (!(wrote & (1 << bus))) {
+                    for (int k = 0; k < frames; ++k) thrownOut[bus][k] = 0.f;
+                    wrote |= 1 << bus;
+                }
+                thrownOut[bus][i] += value * v.gain * v.fade * v.rise * laneLevel * v.thrown[bus];
+                if (v.thrown[bus] != v.thrownTo[bus]) // a hit that carried the sound on changed it: a millisecond
+                    v.thrown[bus] = v.thrown[bus] < v.thrownTo[bus] ? (v.thrown[bus] + quick > 1.f ? 1.f : v.thrown[bus] + quick) : (v.thrown[bus] - quick < 0.f ? 0.f : v.thrown[bus] - quick);
+            }
+        }
+        if (v.gain != v.gainTo) { // a level that changes mid-sound moves there over a millisecond
+            v.gain = v.gain < v.gainTo ? (v.gain + quick > v.gainTo ? v.gainTo : v.gain + quick) : (v.gain - quick < v.gainTo ? v.gainTo : v.gain - quick);
+        }
+        if (v.rise < 1.f) {
+            v.rise += v.riseStep;
+            if (v.rise > 1.f) v.rise = 1.f;
+        }
+        if (v.fadeStep > 0.f) {
+            v.fade -= v.fadeStep;
+            if (v.fade <= 0.f) { v.position = -1.0; break; }
+        }
+    }
+    return wrote;
+}
+
+int DrumMachine::render(float* left, float* right, int frames, float* echo, float* space) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
+    float* const thrownOut[2] = {echo, space};
+    int wrote = 0;
     if (kit_) {
-        const float quick = chokeStep_ * 3.f; // a fade of a millisecond
         for (int lane = 0; lane < kDrumLanes; ++lane) {
             const float* sample = own_[lane] ? own_[lane] : kit_->samples[lane].data();
             const int length = own_[lane] ? ownLength_[lane] : static_cast<int>(kit_->samples[lane].size());
             const float laneLevel = laneLevel_[lane];
             for (Voice& v : voices_[lane]) {
                 if (v.position < 0.0) continue;
-                // Backwards, the fade must be over when it reaches its start (the front of a drum is its
-                // loudest part): it begins this far short of it.
-                const double fadeRoom = v.rate < 0.0 ? -v.rate / static_cast<double>(quick) : 0.0;
-                for (int i = 0; i < frames; ++i) {
-                    if (v.position >= length || (v.rate < 0.0 && v.position < v.stop)) { v.position = -1.0; break; }
-                    // The end of its part: a quick fade, so the next slice's first moment is not heard as a tick.
-                    if (v.fadeStep == 0.f && (v.rate > 0.0 ? v.position >= v.end : v.position <= v.stop + fadeRoom)) v.fadeStep = quick;
-                    // Cut: its time is up.
-                    if (v.life > 0 && --v.life == 0 && v.fadeStep == 0.f) v.fadeStep = quick;
-                    const int at = static_cast<int>(v.position);
-                    float value = sample[at];
-                    if (v.rate != 1.0) { // between two samples: a straight line from one to the next
-                        const float part = static_cast<float>(v.position - at);
-                        value += part * ((at + 1 < length ? sample[at + 1] : 0.f) - value);
-                    }
-                    v.position += v.rate;
-                    left[i] += value * v.gain * v.fade * v.rise * laneLevel;
-                    if (v.gain != v.gainTo) { // a level that changes mid-sound moves there over a millisecond
-                        v.gain = v.gain < v.gainTo ? (v.gain + quick > v.gainTo ? v.gainTo : v.gain + quick) : (v.gain - quick < v.gainTo ? v.gainTo : v.gain - quick);
-                    }
-                    if (v.rise < 1.f) {
-                        v.rise += v.riseStep;
-                        if (v.rise > 1.f) v.rise = 1.f;
-                    }
-                    if (v.fadeStep > 0.f) {
-                        v.fade -= v.fadeStep;
-                        if (v.fade <= 0.f) { v.position = -1.0; break; }
-                    }
-                }
+                // THROW: is this voice written out for a bus as well? Asked once for the block, not
+                // on every sample. (Nothing sets a voice's THROW while this runs.)
+                const bool throwing = (echo || space) && (v.thrown[0] != 0.f || v.thrownTo[0] != 0.f || v.thrown[1] != 0.f || v.thrownTo[1] != 0.f);
+                if (throwing) wrote = renderVoice<true>(v, sample, length, laneLevel, left, frames, thrownOut, wrote);
+                else renderVoice<false>(v, sample, length, laneLevel, left, frames, thrownOut, wrote);
             }
         }
     }
     for (int i = 0; i < frames; ++i) right[i] = left[i];
+    return wrote;
 }
 
 } // namespace apotheca

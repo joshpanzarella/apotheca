@@ -174,7 +174,7 @@ page**, and so does moving down off the last row.
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
+| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, DUCK, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
 | A send | The same: the stick turns it, the D-pad moves it a twentieth. | Nothing sent |
 
@@ -204,12 +204,14 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   nothing, and the echoes it already made ring on.
 - The master's effects come after, so they act on the echoes and the room too.
 - A send can be **automated** like any setting (see Automation).
+- **THROW** sends one drum hit or one note in full, whatever the SENDS row
+  says: hold X on it and press A. See "THROW" under PATTERN.
 - **A new song has TAPE on ECHO and HALL on SPACE.** So does a song made
   before there were sends: nothing in it is sent, so it sounds as it did, and
   the first send turned up in it gives what it gives in a new song. DELAY and
   REVERB, the older two, are one push away (hold A + up on the effect).
 - **A song saved here and then opened by an older version of the program
-  loses its sends, its third effects and what ECHO and SPACE hold.** The rest
+  loses its sends, its throws, its third effects and what ECHO and SPACE hold.** The rest
   of it opens.
 
 | Effect | Settings |
@@ -217,18 +219,19 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
-| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
+| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
 | REVERB | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line over the THRESHOLD bar shows how far it is turning the sound down**: it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
+| DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line over the AMOUNT bar shows how far it is dipping**, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
 
-TAPE, HALL, CHORUS, COMP and SATURATE are new. Their settings slide to where
+TAPE, HALL, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
 they are turned instead of jumping, so they can be turned while sounding
 without a click. A song that uses one, opened by an older version of the
 program, loads without that effect: the slot is left as it was.
@@ -318,8 +321,8 @@ length they had for one-bar scenes.)
 
 | What | Files written |
 | --- | --- |
-| THE SONG | One WAV of the whole song: every scene as many times as it plays, then three seconds for tails to die away. Muted tracks are left out. |
-| EACH TRACK | One WAV for every track by itself (stems), all the same length, so they line up in any other program |
+| THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
+| EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -327,6 +330,30 @@ song out again from the start, as fast as the handheld can. So you can
 carry on (even play) while it works, and it does not have to keep up:
 **Twin Analog is always bounced at x8 oversampling**, even where that is more
 than the handheld can play live.
+
+**Where a bounce ends.** After the song's last step it runs on until there has
+been no sound for four seconds, and the file ends half a second after the last
+sound. "Sound" is anything a 16-bit file can hold (90 dB under full). So a
+dry song ends just after its last drum has rung out, and a long HALL or a
+TAPE with its FEEDBACK up is all there, however long it takes. Echoes far
+apart (a half note at 40 BPM is three seconds) count as one tail.
+
+There is a cap: **a tail is never longer than eight minutes**. One that would
+be is faded out over its last second. No one delay or reverb rings that
+long: at its most extreme settings and the slowest tempo (40 BPM) the longest
+takes seven minutes to die away (TAPE or DELAY at a half note with FEEDBACK
+full), and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB
+36. **Two in a row can**: a TAPE with FEEDBACK full in a track's slot feeding
+another on the ECHO bus, at 40 BPM, would ring for about twelve minutes, since
+the first keeps the second fed. That bounce stops at eight minutes, faded.
+
+If the handheld loses power in the middle of a bounce, the half-written file
+is removed the next time Apotheca opens, or the next time a bounce starts.
+
+While it works the row says `WORKING 37%`: how much of the song's own playing
+is done. In a tail it says `TAIL 12 S` instead: how many seconds of tail so
+far. Nobody knows how long a tail will be until it ends, so there is no
+percentage to give.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
 The WiFi page lists them under BOUNCES, to play, download or delete.
@@ -686,10 +713,11 @@ it changes:
 | Left / right | **RATCHET**: the hit played 2, 3 or 4 times inside its step | Split into that many slivers |
 | L1 | **REVERSE**: backwards, on and off | An arrow on its left |
 | R1 | **CUT**: stopped after a step, half a step, a quarter; off | A red edge |
-| Y | **Dice**: rolls the four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. | |
+| A | **THROW**: this hit alone goes to ECHO, to SPACE, to both; off (see below) | A short bar above it: over its left half for ECHO, its right for SPACE |
+| Y | **Dice**: rolls the first four for this hit. Mostly one effect, sometimes two. Always something, and never what it was. The dice leave THROW as it is. | |
 
 - They combine, and every hit has its own. The strip under the grid spells
-  them out; with X held it shows all four.
+  them out; with X held it shows all five.
 - A ratchet is rolled for once: with a chance below 100% it plays all its
   hits or none.
 - Backwards plays what the hit would have played (its slice, or the sound
@@ -698,8 +726,42 @@ it changes:
   stops when the next one comes.
 - Kept in the song, undone by SELECT + B, and gone with the hit when it is
   deleted.
-- A synth's notes have their own two: see "Note effects" under PATTERN, a
-  synth. Not yet: THROW.
+- A synth's notes have their own: see "Note effects" under PATTERN, a
+  synth.
+
+### THROW
+
+**One hit, or one note, sent in full to ECHO or SPACE.** The snare on beat
+four gets the long echo; the rest of the bar stays dry. Hold **X** on the hit
+or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
+
+| | A thrown drum hit | A thrown note or chord |
+| --- | --- | --- |
+| What goes to the bus | That hit alone. The other drums of the track do not | The whole track, for as long as the note lasts. Other notes sounding then go with it |
+| How | The drum is played a second time, straight into the bus | The track's send is opened for the note, and shut after it |
+| The track's own effects | **Not on the thrown copy**: it is the plain drum | On it, as on any send |
+| A ratchet | Every hit of it is thrown | The send stays open through all of them |
+| A DUCK on the track | **Does not dip the thrown copy**: the bus gets the whole hit while the track dips | Dips what the bus gets, as it dips the track |
+| Starts and stops | With the hit | Over 5 ms each way, so it does not click |
+
+- **How loud is the bus's LEVEL** (FX, the other page). THROW has no amount
+  of its own: it is a send at 100% for that hit or note.
+- If the track's send is already up, THROW tops it up to 100%. It never adds
+  on top.
+- A muted track throws nothing. Stop and panic shut every send.
+- A note's echoes ring on after the send has shut; what is cut is only the
+  feed. The note's own fade (its release) after it is let go is not sent.
+- In the slice view a thrown slice slides into the bus over a millisecond
+  when the break is running on through it, so it does not tick.
+- Kept in the song, undone by SELECT + B, copied with its bar, and in a
+  bounce. Gone with the hit or the note.
+- **A throw on the song's last step is whole in a bounce**: the bounce runs
+  on until the echoes have died away (see BOUNCE). A thrown note there is
+  stopped by the song's end like any note, so the bus gets what there was of
+  it, and its echoes are kept.
+- A DUCK on the master dips what comes back from ECHO and SPACE with the
+  rest of the song.
+- The dice do not throw.
 
 ### Slices: chopping a break
 
@@ -804,6 +866,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
 | **Hold X on a note**, up / down | **GLIDE** on / off: the note slides in from the note before it |
+| **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
@@ -818,13 +881,14 @@ narrower, with a dark edge: a note inside a note.
 ### Note effects
 
 Hold **X** on a note. The D-pad or the stick sets what the note does besides
-play, one click per push. The strip at the bottom shows both values.
+play, one click per push. The strip at the bottom shows the values.
 
 | Effect | Does | On a chord |
 | --- | --- | --- |
 | **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
 | **GLIDE** (up = on, down = off) | The pitch slides from the last note the track began to this one, over half a step. | No: a chord has no one note to slide from |
-| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. | A ratchet |
+| **THROW** (A) | The track is sent in full to ECHO, SPACE or both for as long as the note lasts (see "THROW" under PATTERN, drums). A foot at the note's end: on the left for ECHO, the right for SPACE. | Yes: the whole chord |
+| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. THROW is left as it is. | A ratchet |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
 - The first note after pressing play has nothing to slide from, so it does

@@ -203,6 +203,10 @@ void Engine::prepare(float sampleRate) {
             }
         }
         for (SlotFade& fade : track.fades) fade = SlotFade(); // a setup call: free to free
+        for (int bus = 0; bus < kBuses; ++bus) {
+            track.throwLeft[bus] = 0.0;
+            track.throwNow[bus] = 0.f;
+        }
     }
     for (auto& effect : masterEffects_) {
         if (effect) {
@@ -283,7 +287,11 @@ void Engine::swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* 
 
 // One slot's work on a chunk. With no fade under way this is the effect's own
 // process() and nothing else, so a song sounds as it always did.
-void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus) {
+void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus, unsigned hits) {
+    if (hits) {
+        if (place) place->drumHits(hits);
+        if (fade.leaving) fade.leaving->drumHits(hits);
+    }
     const auto silence = [&](float* l, float* r) {
         for (int i = 0; i < frames; ++i) l[i] = r[i] = 0.f;
     };
@@ -375,6 +383,14 @@ void Engine::letGoOfNotes() {
         track.synth->allNotesOff();
         for (double& off : track.offIn) off = kNoNote;
     }
+    closeThrows();
+}
+
+// The notes are let go, so the sends their THROWs held open shut too: each slides down over
+// kSendGlideSeconds from here (feedBuses). Nothing is left open by a Stop or a panic.
+void Engine::closeThrows() {
+    for (Track& track : tracks_)
+        for (double& left : track.throwLeft) left = 0.0;
 }
 
 namespace {
@@ -392,6 +408,10 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         for (int k = 0; k < hits; ++k) {
             Note one = note;
             one.ratchet = 0;
+            // THROW: the first piece opens the send for the whole note, so it does not shut
+            // and open again in the gaps between the pieces.
+            one.throwTo = k == 0 ? note.throwTo : 0;
+            one.hold = note.length;
             // The first glides, and is there before the second begins. The rest are marked as pieces.
             one.glide = k > 0 ? kLaterPiece : note.glide ? static_cast<std::uint8_t>(hits) : 0;
             const float left = note.length - static_cast<float>(k) * apart;
@@ -417,6 +437,12 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         }
         track.lastPitch = note.pitch;
         track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
+        // THROW: the track's send to the bus is held open from here for as long as the note lasts.
+        for (int bus = 0; bus < kBuses; ++bus) {
+            if (!((note.throwTo >> bus) & 1)) continue;
+            const double open = static_cast<double>(note.hold > 0.f ? note.hold : note.length) * samplesPerStep_;
+            if (open > track.throwLeft[bus]) track.throwLeft[bus] = open;
+        }
         return;
     }
     for (auto& p : track.pendingNotes) {
@@ -426,6 +452,8 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         p.glide = note.glide;
         p.velocity = note.velocity;
         p.length = note.length;
+        p.throwTo = note.throwTo;
+        p.hold = note.hold;
         return;
     }
 }
@@ -440,6 +468,8 @@ void Engine::firePendingNotes() {
             note.velocity = p.velocity;
             note.length = p.length;
             note.glide = p.glide;
+            note.throwTo = p.throwTo;
+            note.hold = p.hold;
             p = Track::PendingNote();
             startNote(track, note, 0.0);
         }
@@ -457,6 +487,15 @@ void Engine::fireNoteOffs() {
             }
         }
     }
+}
+
+namespace {
+// A hit's cut and its THROW come in one number: the cut (0..3) plus 4 times the THROW (0..3).
+void setCutAndThrow(StepFx& fx, float packed) {
+    const int both = packed >= 0.f && packed < static_cast<float>(kCutChoices * kThrowChoices) ? static_cast<int>(packed) : 0; // nonsense (NaN too): neither
+    fx.cut = static_cast<std::uint8_t>(both % kCutChoices);
+    fx.throwTo = static_cast<std::uint8_t>(both / kCutChoices);
+}
 }
 
 void Engine::apply(const Command& c) {
@@ -479,7 +518,7 @@ void Engine::apply(const Command& c) {
             fx.pitch = static_cast<std::int8_t>(c.d < -kMaxStepPitch ? -kMaxStepPitch : (c.d > kMaxStepPitch ? kMaxStepPitch : c.d));
             fx.ratchet = static_cast<std::uint8_t>(c.bar < 0 ? 0 : (c.bar > kMaxRatchet ? kMaxRatchet : c.bar));
             fx.reverse = c.scene == 1;
-            fx.cut = static_cast<std::uint8_t>(c.extra >= 1.f && c.extra < kCutChoices ? c.extra : 0.f);
+            setCutAndThrow(fx, c.extra);
             playHit(tracks_[c.track], c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f, fx, 0.0);
         }
         break;
@@ -489,7 +528,7 @@ void Engine::apply(const Command& c) {
             fx.pitch = static_cast<std::int8_t>(c.c < -kMaxStepPitch ? -kMaxStepPitch : (c.c > kMaxStepPitch ? kMaxStepPitch : c.c));
             fx.ratchet = static_cast<std::uint8_t>(c.d < 0 ? 0 : (c.d > kMaxRatchet ? kMaxRatchet : c.d));
             fx.reverse = c.value == 1.f;
-            fx.cut = static_cast<std::uint8_t>(c.extra >= 1.f && c.extra < kCutChoices ? c.extra : 0.f);
+            setCutAndThrow(fx, c.extra);
         }
         break;
     case Command::SetStepStart:
@@ -588,6 +627,7 @@ void Engine::apply(const Command& c) {
             const int hits = c.e & 0xFF;
             note.ratchet = static_cast<std::uint8_t>(sound && hits >= 2 ? (hits > kMaxRatchet ? kMaxRatchet : hits) : 0);
             note.glide = sound && (c.e & 256) != 0 ? 1 : 0;
+            note.throwTo = static_cast<std::uint8_t>(sound ? (c.e >> 9) & 3 : 0);
         }
         break;
     case Command::SetSceneCount:
@@ -776,6 +816,10 @@ void Engine::apply(const Command& c) {
             for (auto& p : track.pendingNotes) p = Track::PendingNote();
             for (auto& lane : track.pending)
                 for (auto& p : lane) p = Track::Pending();
+            for (int bus = 0; bus < kBuses; ++bus) { // the next instrument here starts with its sends as they are set
+                track.throwLeft[bus] = 0.0;
+                track.throwNow[bus] = 0.f;
+            }
         }
         break;
     case Command::SetTrackImage:
@@ -803,6 +847,7 @@ void Engine::apply(const Command& c) {
                         to.velocity = from.velocity;
                         to.ratchet = from.ratchet;
                         to.glide = from.glide;
+                        to.throwTo = from.throwTo & 3;
                     }
                 }
                 for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = image.automation ? image.automation[i] : kAutoNone;
@@ -868,6 +913,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
     HitPlay how;
     how.rate = fx.pitch == 0 ? 1.f : std::exp2(static_cast<float>(fx.pitch) / 12.f);
     how.reverse = fx.reverse != 0;
+    how.throwTo = fx.throwTo & 3; // every hit of a ratchet is thrown: they are all this one hit
     if (fx.cut != 0) {
         const double life = static_cast<double>(fx.cutSteps()) * samplesPerStep_;
         how.life = static_cast<int>(life < gap ? life : gap);
@@ -876,6 +922,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
     int more = hits - 1;
     if (delaySamples < 1.0) {
         track.drums.trigger(lane, velocity, start, part, how);
+        track.hitsNow |= 1u << lane;
         if (more == 0) return;
         delaySamples += gap; // the rest of the ratchet waits its turn
         --more;
@@ -901,6 +948,7 @@ void Engine::firePending() {
             for (auto& p : track.pending[lane]) {
                 if (p.velocity > 0.f && p.samplesLeft < 1.0) {
                     track.drums.trigger(lane, p.velocity, p.start, p.part, p.how);
+                    track.hitsNow |= 1u << lane;
                     if (p.more > 0) { // a ratchet: the same again, a part of a step on
                         --p.more;
                         p.samplesLeft += p.gap;
@@ -1168,10 +1216,12 @@ void Engine::renderTrack(int t) {
     const int frames = chunkFrames_;
     float* left = trackL_[t];
     float* right = trackR_[t];
+    int thrown = 0; // THROW: which buses a drum hit was written out for, this chunk
     if (track.synth) track.synth->render(left, right, frames);
-    else track.drums.render(left, right, frames);
+    else thrown = track.drums.render(left, right, frames, thrown_[t][0], thrown_[t][1]);
+    thrownMask_[t] = thrown;
     for (int slot = 0; slot < kTrackSlots; ++slot) {
-        runSlot(track.effects[slot], track.fades[slot], left, right, frames);
+        runSlot(track.effects[slot], track.fades[slot], left, right, frames, false, chunkHits_);
         track.meters[slot].store(track.effects[slot] ? track.effects[slot]->meter() : 0.f, std::memory_order_relaxed);
     }
     if (t == chunkScope_) {
@@ -1183,6 +1233,20 @@ void Engine::renderTrack(int t) {
     }
     float peak = chunkPeaks_[t];
     const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
+    if (thrown) {
+        // A thrown hit goes to the bus at the track's level, and not at all from a muted track:
+        // the same level and the same gate as the loop below gives the track, sample for sample.
+        // (A loop of its own, so that a track that throws nothing runs the one below as it was.)
+        float gate = track.gate;
+        for (int i = 0; i < frames; ++i) {
+            if (gate != gateTo) {
+                gate += gate < gateTo ? gateStep : -gateStep;
+                if ((gate > gateTo) == track.heard) gate = gateTo;
+            }
+            if (thrown & 1) thrown_[t][0][i] *= track.level * gate;
+            if (thrown & 2) thrown_[t][1][i] *= track.level * gate;
+        }
+    }
     for (int i = 0; i < frames; ++i) {
         if (track.gate != gateTo) {
             track.gate += track.gate < gateTo ? gateStep : -gateStep;
@@ -1253,7 +1317,10 @@ void Engine::feedBuses(const int* active, int count, int frames, float busL[][kM
         for (int i = 0; i < count; ++i) {
             Track& track = tracks_[active[i]];
             const float to = track.send[bus];
-            if (to == 0.f && track.sendNow[bus] == 0.f) continue;
+            // THROW: a drum hit written out for this bus, or a note holding the send open.
+            const float* hit = (thrownMask_[active[i]] >> bus) & 1 ? thrown_[active[i]][bus] : nullptr;
+            const bool held = track.throwLeft[bus] > 0.0 || track.throwNow[bus] != 0.f;
+            if (to == 0.f && track.sendNow[bus] == 0.f && !hit && !held) continue;
             if (!fed[bus]) {
                 for (int f = 0; f < frames; ++f) busL[bus][f] = busR[bus][f] = 0.f;
                 fed[bus] = true;
@@ -1261,6 +1328,39 @@ void Engine::feedBuses(const int* active, int count, int frames, float busL[][kM
             const float* left = trackL_[active[i]];
             const float* right = trackR_[active[i]];
             float now = track.sendNow[bus];
+            if (hit || held) {
+                // With a THROW. "In full" is a send of 1: what the knob already sends is topped
+                // up to that, never added to. So a thrown note gets now + open * (1 - now) of
+                // the track, and a thrown hit, which is in the track's own sound as well, the
+                // (1 - now) the knob leaves.
+                float open = track.throwNow[bus];
+                double holdLeft = track.throwLeft[bus];
+                for (int f = 0; f < frames; ++f) {
+                    if (now != to) {
+                        now += now < to ? glide : -glide;
+                        if ((now > to) == (track.sendNow[bus] < to)) now = to; // arrived (or stepped past)
+                    }
+                    const float openTo = holdLeft > 0.0 ? 1.f : 0.f;
+                    if (holdLeft > 0.0) holdLeft -= 1.0;
+                    if (open != openTo) {
+                        open += open < openTo ? glide : -glide;
+                        if (open > 1.f) open = 1.f;
+                        if (open < 0.f) open = 0.f;
+                    }
+                    const float amount = now + open * (1.f - now);
+                    busL[bus][f] += left[f] * amount;
+                    busR[bus][f] += right[f] * amount;
+                    if (hit) {
+                        const float more = hit[f] * (1.f - now);
+                        busL[bus][f] += more;
+                        busR[bus][f] += more;
+                    }
+                }
+                track.throwNow[bus] = open;
+                track.throwLeft[bus] = holdLeft > 0.0 ? holdLeft : 0.0;
+                track.sendNow[bus] = now;
+                continue;
+            }
             for (int f = 0; f < frames; ++f) {
                 if (now != to) {
                     now += now < to ? glide : -glide;
@@ -1356,6 +1456,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             for (auto& m : tracks_[t].meters) m.store(0.f, std::memory_order_relaxed); // and its effects, not run, show nothing
     chunkFrames_ = frames;
     chunkPeaks_ = peaks;
+    // DUCK's key: what was hit on the first drum track, on this chunk's first
+    // sample. Taken here, on the audio thread, before any track is worked on;
+    // the hits themselves were all made before this chunk began (render()).
+    chunkHits_ = 0;
+    for (int t = kNumTracks - 1; t >= 0; --t) {
+        if (tracks_[t].hasDrums) chunkHits_ = tracks_[t].hitsNow;
+        tracks_[t].hitsNow = 0;
+    }
     chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
     if (workers_.empty() || count < 2) {
         for (int i = 0; i < count; ++i) renderTrack(active_[i]);
@@ -1391,7 +1499,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     runBuses(frames, busL, busR, fed, mixL, mixR);
 
     for (int slot = 0; slot < kMasterSlots; ++slot) {
-        runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+        runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames, false, chunkHits_);
         masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);
     }
     // Effects whose fade out has ended go to the trash. Here, not in

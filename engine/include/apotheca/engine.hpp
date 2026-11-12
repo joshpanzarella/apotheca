@@ -77,6 +77,16 @@ inline int slotsOf(int track) { return track == kMasterTrack ? kMasterSlots : (b
 constexpr float kBusRestSeconds = 10.f;
 constexpr float kBusQuiet = 1e-6f; // 120 dB under full scale
 constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or not a number) is taken as silence
+// A TAIL ALWAYS ENDS. From the last sound a bus is sent to the bus at rest is
+// never longer than this, whatever effect it holds and however it is set, at
+// any tempo (effects_test measures every one: testATailAlwaysEnds). A bounce's
+// cap is longer than this, so no ONE effect runs into it. Effects in a row can
+// (a howling TAPE in a slot keeps a TAPE on a bus fed: about 710 s at 40 BPM),
+// and so can anything broken: the cap is what ends those.
+// Measured 2026-11-12, at 40 BPM, a full-scale burst sent: TAPE 418 s (a half
+// note, FEEDBACK full: 30 s of holding, then DELAY's own fall), DELAY 388 s,
+// HALL 44 s, REVERB 36 s. At 120 BPM the two delays take a third as long.
+constexpr float kLongestTailSeconds = 450.f;
 constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
@@ -99,6 +109,7 @@ struct Command {
                         //   c = how much of the sound to play, in ten-thousandths (0: as the lane is set)
                         //   and the step effects, to hear a hit as the pattern would play it: d = pitch in
                         //   semitones, bar = ratchet (2..4), scene = 1 for backwards, extra = cut (1, 2, 3)
+                        //   and, as in SetStepFx, 4 times its THROW added to `extra`
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
         Stop,           // stop; drums ring out, synth notes are let go
@@ -141,6 +152,8 @@ struct Command {
                         //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
         SetStepFx,      // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
                         //   c = pitch in semitones, d = ratchet, value = 1 for backwards, extra = cut (0..3)
+                        //   plus 4 times its THROW (0..3: off, ECHO, SPACE, both; drums.hpp). THROW rides with
+                        //   the cut because the command has no field to spare.
         SetSend         // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
                         //   Taken after the track's level and mute. It glides, so it does not click.
     };
@@ -157,7 +170,8 @@ struct Command {
     float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step
     int e = 0;               // SetNote only: what the note does besides play. Its low byte: a ratchet (2..4:
                              //   that many notes, evenly, inside its first step). 256 added: it glides to its
-                             //   pitch from the note before it.
+                             //   pitch from the note before it. 512 added: it is thrown to ECHO; 1024: to
+                             //   SPACE (THROW: the track's send to that bus is full for as long as the note lasts).
     void* pointer = nullptr; // InstallSynth only
 };
 
@@ -184,7 +198,7 @@ struct TrackImage {
     float chance[kPatternSlots][kDrumLanes][kSteps];
     float start[kPatternSlots][kDrumLanes][kSteps] = {};
     int bars[kMaxScenes]; // how long the track's cell is in each scene
-    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0; }; // length in steps, not only whole ones
+    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0, throwTo = 0; }; // length in steps, not only whole ones
     Note notes[kPatternSlots][kMaxNotes];
     // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
     std::unique_ptr<float[]> automation;
@@ -345,6 +359,9 @@ private:
         std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track.
                                   // Inside the engine also: 2..4, the first of a ratchet of that many (the slide
                                   // is over by the second); kLaterPiece, one of the rest of a ratchet.
+        std::uint8_t throwTo = 0; // THROW: the buses the track's send is opened to while it sounds (kThrowEcho, kThrowSpace)
+        float hold = 0.f;         // inside the engine: how long that send stays open, in steps (the whole note, also
+                                  // when it is the first piece of a ratchet). 0: for its own length.
     };
     // An effect going into a slot, or coming out of one, is faded: for
     // kSwapFadeSeconds the one that was there (or the plain sound, if the slot
@@ -357,7 +374,8 @@ private:
     };
     void swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming);
     // `bus`: the slot is a bus's, where "no effect" is silence and not the sound passing through.
-    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false);
+    // `hits`: the lanes of the first drum track hit on this chunk's first sample (chunkHits_), for a DUCK.
+    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false, unsigned hits = 0);
     void binLeaving(SlotFade& fade); // the audio thread only, with no helper at work
 
     struct Track {
@@ -382,7 +400,7 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0; float velocity = 0.f, length = 0.f; };
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; };
         int lastPitch = -1; // the key of the note the track last began, for a glide to start from (-1: none since Play)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
@@ -402,11 +420,18 @@ private:
             int more = 0;
         };
         Pending pending[kDrumLanes][3];
+        // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
+        // always lands on a chunk's first sample (render() ends a chunk where the
+        // next one is due), so "which lanes" is all there is to say.
+        unsigned hitsNow = 0;
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
         float sendNow[kBuses] = {}; // ...as it is this sample: moving toward `send`
+        // THROW on a note: the send to a bus is full for the note's length, whatever `send` says.
+        double throwLeft[kBuses] = {}; // samples the send is still held open for (0: not)
+        float throwNow[kBuses] = {};   // how far open it is this sample, 0..1: it moves over kSendGlideSeconds
         std::unique_ptr<Effect> effects[kTrackSlots];
         SlotFade fades[kTrackSlots];
         std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
@@ -439,7 +464,18 @@ private:
     void workerLoop(void (*atStart)());
     // A chunk being worked on: what the helpers need to know.
     float trackL_[kNumTracks][kMaxBlock], trackR_[kNumTracks][kMaxBlock];
+    // THROW on a drum hit: what each drum track's thrown hits put out this chunk, for each bus,
+    // after the track's level and mute (and before its effect slots: it is taken inside the
+    // drum machine). thrownMask_ says which were written (bit = bus); the rest hold nothing.
+    float thrown_[kNumTracks][kBuses][kMaxBlock];
+    int thrownMask_[kNumTracks] = {};
+    void closeThrows(); // every note's THROW is over: the sends shut (in 5 ms)
     int chunkFrames_ = 0, chunkScope_ = -1;
+    // DUCK: the lanes of the first drum track hit on this chunk's first sample.
+    // Written by the audio thread before the tracks are shared out, only read
+    // after that: a helper working on the drums changes nothing a helper
+    // working on a ducked track looks at.
+    unsigned chunkHits_ = 0;
     float* chunkPeaks_ = nullptr;
     int active_[kNumTracks] = {};
     std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};

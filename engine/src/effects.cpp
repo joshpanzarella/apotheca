@@ -27,6 +27,7 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kChorusInfo, // 8
     &fx::kCompInfo,   // 9
     &fx::kSaturateInfo, // 10
+    &fx::kDuckInfo,   // 11
 };
 
 // The list a player picks from, in groups. This order can change freely;
@@ -42,6 +43,7 @@ const EffectKind kList[] = {
     EffectKind::Reverb,
     EffectKind::Chorus,
     EffectKind::Comp,
+    EffectKind::Duck,
     EffectKind::Crush,
 };
 constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
@@ -101,7 +103,7 @@ int effectBus(EffectKind kind) {
     return group == EffectGroup::Delay ? 0 : (group == EffectGroup::Reverb ? 1 : -1);
 }
 
-int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp ? 0 : -1; }
+int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck ? 0 : -1; }
 
 int effectMixParam(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);

@@ -155,6 +155,7 @@ private:
     Carry carrying_ = Carry::Nothing;
     int carried_ = 0; // its slot
     void fxRoll();                      // with X held, Y: the dice set the ratchet and the glide
+    void fxThrow();                     // with X held, A: the note's or the chord's THROW a step round
     std::uint32_t dice_ = 0x9E3779B9u;
     void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down)
     bool fxHeld_ = false;

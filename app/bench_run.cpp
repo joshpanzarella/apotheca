@@ -59,7 +59,9 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
 // noise going in so that nothing in it can rest. `setting` >= 0: that setting
 // at `value` first (the filter's TYPE). The best of five runs, each ten
-// seconds of sound: a busy machine only ever makes a run slower.
+// seconds of sound: a busy machine only ever makes a run slower. A drum is
+// hit eight times a second meanwhile (a sixteenth at 120 BPM), for DUCK,
+// which does nothing until one is; no other effect hears it.
 static void effect(const char* name, EffectKind kind, int setting = -1, float value = 0.f) {
     std::unique_ptr<Effect> fx = makeEffect(kind, 48000.f, 120.f);
     if (setting >= 0) fx->setParam(setting, value);
@@ -80,6 +82,7 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
                 left[i] = in[i];
                 right[i] = in[i + 64];
             }
+            if (b % 94 == 0) fx->drumHits(1u);
             fx->process(left, right, 64);
         }
         const double block = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / blocks;
@@ -91,8 +94,10 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // The send buses: twelve drum tracks, every lane busy, and what the sends add
 // to that. `sends`: every track sends to both buses. `echo` and `space`: what
 // the buses hold (None: they are fed and give nothing back, which is the cost
-// of the feeding alone). The best of five runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space) {
+// of the feeding alone). `throws`: every hit of every track is thrown to both
+// buses (THROW), which is the most throwing a song can do. `ducks`: a DUCK in
+// a slot of every track as well. The best of five runs of ten seconds.
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -103,12 +108,24 @@ static double busSong(bool sends, EffectKind echo, EffectKind space) {
         c.value = 1.f;
         for (int lane = 0; lane < kDrumLanes; ++lane)
             for (int step = (t + lane) % 2; step < kSteps; step += 2) c.a = lane, c.b = step, engine->send(c);
+        if (throws) {
+            StepFx fx;
+            fx.throwTo = kThrowEcho | kThrowSpace;
+            c = Command();
+            c.type = Command::SetStepFx;
+            c.track = t;
+            c.extra = fx.cutAndThrow();
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                for (int step = (t + lane) % 2; step < kSteps; step += 2) c.a = lane, c.b = step, engine->send(c);
+        }
         c = Command();
         c.type = Command::SetSend;
         c.track = t;
         c.value = sends ? 0.5f : 0.f;
         for (int bus = 0; bus < kBuses; ++bus) c.a = bus, engine->send(c);
     }
+    if (ducks)
+        for (int t = 0; t < kNumTracks; ++t) engine->setEffect(t, 0, EffectKind::Duck);
     if (echo != EffectKind::None) engine->setEffect(kEchoBus, 0, echo);
     if (space != EffectKind::None) engine->setEffect(kSpaceBus, 0, space);
     c = Command();
@@ -172,6 +189,11 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "feeding both from 12 tracks", fed - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "...and TAPE and HALL on them", now - dry);
         std::printf("  %-28s %6.2f%% of one core\n", "...or DELAY and REVERB", old - dry);
+        const double thrown = busSong(false, none, none, true);
+        std::printf("  %-28s %6.2f%% of one core\n", "every hit thrown to both", thrown - dry);
+        // Where THROW, DUCK and the buses' own effects meet: all of it at once.
+        const double all = busSong(true, EffectKind::Tape, EffectKind::Hall, true, true);
+        std::printf("  %-28s %6.2f%% of one core\n", "...thrown, TAPE, HALL, 12 DUCKs", all - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

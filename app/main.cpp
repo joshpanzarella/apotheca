@@ -420,10 +420,11 @@ int main(int argc, char** argv) {
         app.session().view = View::Song;
         pushKey(SDLK_z, true);
     } else if (std::strncmp(view, "effects", 7) == 0) {
-        // Step effects on the drum grid: hits that are pitched, ratcheted, backwards and cut; with X held on one.
+        // Step effects on the drum grid: hits that are pitched, ratcheted, backwards, cut and thrown; with X held on one.
         PatternScreen& drums = app.drums();
-        const auto fx = [&](int lane, int step, int pitch, int ratchet, bool reverse, int cut) {
+        const auto fx = [&](int lane, int step, int pitch, int ratchet, bool reverse, int cut, int throwTo = 0) {
             StepFx f;
+            f.throwTo = static_cast<std::uint8_t>(throwTo);
             f.pitch = static_cast<std::int8_t>(pitch);
             f.ratchet = static_cast<std::uint8_t>(ratchet);
             f.reverse = reverse;
@@ -431,14 +432,17 @@ int main(int argc, char** argv) {
             if (drums.level(lane, step) <= 0.f) drums.setStep(lane, step, 0.8f);
             drums.setFx(lane, step, f);
         };
-        fx(1, 4, 0, 3, false, 0);
+        fx(1, 4, 0, 3, false, 0, kThrowEcho);
         fx(1, 12, 5, 0, false, 0);
-        fx(1, 15, 0, 4, false, 2);
+        fx(1, 15, 0, 4, false, 2, kThrowSpace);
         fx(0, 6, -7, 0, true, 0);
         fx(2, 2, 0, 2, false, 0);
-        fx(2, 6, 12, 0, false, 3);
+        fx(2, 6, 12, 0, false, 3, 3);
         fx(4, 10, -12, 2, true, 1);
         fx(5, 3, 0, 0, true, 0);
+        fx(0, 0, 0, 0, false, 0, 3);           // a hit at full height, thrown to both
+        fx(3, 14, 0, 0, false, 0, kThrowSpace);
+        fx(6, 3, 0, 0, false, 0, kThrowEcho);  // a quiet one
         drums.moveCursorTo(1, 4);
         if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
     } else if (std::strncmp(view, "notefx", 6) == 0) {
@@ -447,21 +451,36 @@ int main(int argc, char** argv) {
         project.track = 2;
         NotePattern& p = project.tracks[2].notes[0][0];
         p = NotePattern();
-        const auto note = [&](int slot, int step, int pitch, float length, int ratchet, int glide) {
+        const auto note = [&](int slot, int step, int pitch, float length, int ratchet, int glide, int throwTo = 0) {
             p.notes[slot] = NoteEvent{step, pitch, length, 0.f, 0.8f};
             p.notes[slot].ratchet = static_cast<std::uint8_t>(ratchet);
             p.notes[slot].glide = static_cast<std::uint8_t>(glide);
+            p.notes[slot].throwTo = static_cast<std::uint8_t>(throwTo);
         };
-        note(0, 0, 60, 1.f, 0, 0);
+        note(0, 0, 60, 1.f, 0, 0, kThrowEcho);
         note(1, 2, 62, 1.f, 2, 0);
-        note(2, 4, 64, 2.f, 3, 0);
+        note(2, 4, 64, 2.f, 3, 0, kThrowSpace);
         note(3, 7, 65, 1.f, 4, 0);
-        note(4, 9, 67, 3.f, 0, 1);
-        note(5, 12, 64, 2.f, 3, 1);
-        note(6, 14, 60, 0.5f, 2, 0);
+        note(4, 9, 67, 3.f, 0, 1, 3);
+        note(5, 12, 64, 2.f, 3, 1, 3);
+        note(6, 14, 60, 0.5f, 2, 0, kThrowEcho);
+        note(7, 5, 69, 2.f, 0, 0, kThrowSpace);
+        if (std::strstr(view, "chord")) { // notefx-chord, notefx-chord-held: a thrown chord under the cursor
+            p.chords[0] = makeChord(builtInPack().chords[0], 48, 1, 3.f, .7f, 0);
+            p.chords[0].throwTo = 3;
+            p.chords[0].ratchet = 2;
+        }
+        if (std::strstr(view, "worst")) { // notefx-worst: the strip's longest line, everything on one note
+            p.notes[5].ratchet = 4;
+            p.notes[5].throwTo = kThrowSpace;
+            p.notes[5].nudge = -0.45f;
+            p.notes[5].length = 2.25f;
+        }
         app.session().sendNoteBar(2, 0, 0);
         app.notes().moveCursorTo(64, 12);
-        if (std::strcmp(view, "notefx-held") == 0) pushKey(SDLK_s, true); // X held
+        if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
+        if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
+        if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held
     } else if (std::strcmp(view, "under") == 0) {
         // A held chord with notes written under it, and a short note under a long one.
         Session& session = app.session();
@@ -529,6 +548,7 @@ int main(int argc, char** argv) {
         // fx: the track's page. fx-sends: on a send. fx-pick: on an effect (with --hold-a, the picking hints).
         // fx-all: the buses and the master. fx-bus: on a bus's effect. fx-level: on a bus's LEVEL.
         // fx-comp, fx-comp-all: COMP on the track and on the master, with its meter.
+        // fx-duck: DUCK on the track, on its SOURCE.
         app.session().setEffect(0, 0, EffectKind::Delay);
         app.session().setEffect(0, 1, EffectKind::Filter);
         app.session().setEffectParam(0, 1, 0, 0.45f);
@@ -550,8 +570,19 @@ int main(int argc, char** argv) {
             app.session().setEffectParam(kMasterTrack, 1, 0, 0.45f);
             if (view[7] == 0) app.fx().goTo(2, 1);
             else app.fx().goTo(FxScreen::kMasterRow + 1, 1);
+        } else if (std::strcmp(view, "fx-duck") == 0) {
+            // DUCK at work: the strip on AMOUNT is how far it is dipping.
+            app.session().setEffect(0, 2, EffectKind::Duck);
+            app.session().setEffectParam(0, 2, 1, 0.9f);
+            app.fx().goTo(2, 3);
         }
         else app.fx().goTo(0, 2);
+    } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
+        // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kBounce);
+        if (view[6] == 0) app.session().pretendBounce(0.37f, -1.f);
+        else app.session().pretendBounce(1.f, 12.4f);
     } else if (std::strcmp(view, "panic") == 0) {
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);
@@ -632,6 +663,17 @@ int main(int argc, char** argv) {
             if (std::strcmp(view, "slices-32") == 0) app.drums().setStart(5, 5, 25.f / 32.f + 0.012f); // on a finer cut, and slid a little off it
             app.drums().moveCursorTo(5, std::strcmp(view, "slices-name") == 0 ? -1 : 5);
             app.drums().setSlicing(true);
+            if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
+                StepFx f;
+                f.throwTo = kThrowSpace;
+                app.drums().setFx(5, 5, f);
+                f.throwTo = kThrowEcho;
+                app.drums().setFx(5, 0, f);
+                f.throwTo = 3;
+                f.ratchet = 2;
+                app.drums().setFx(5, 9, f);
+                pushKey(SDLK_s, true); // X held
+            }
         } else if (std::strcmp(view, "starts") == 0) {
             app.drums().moveCursorTo(5, 6);
             pushKey(SDLK_a, true); // Y held

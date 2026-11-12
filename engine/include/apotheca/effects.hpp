@@ -15,6 +15,8 @@
 //   SATURATE DRIVE, TYPE (tape / tube / fold / hard), TONE, MIX
 //   COMP     THRESHOLD, RATIO (six choices), SPEED, MIX
 //   CHORUS   RATE, DEPTH, TYPE (chorus / ensemble / vibrato / flange), MIX
+//   DUCK     AMOUNT, RELEASE (20 ms to 1 second), SOURCE (a lane of the
+//            first drum track, 1 to 8): it dips when that lane is hit
 //
 // MIX at 0 is the sound untouched.
 //
@@ -32,7 +34,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
@@ -76,6 +78,7 @@ void effectParamText(EffectKind kind, int index, float value, char* out, int siz
 // What an effect shows while sound passes (Engine::effectMeter): the setting
 // whose box on the FX screen draws it, or -1 for an effect that shows nothing.
 // COMP: how many dB it is turning the sound down, on its THRESHOLD box.
+// DUCK: how many dB it is dipping, on its AMOUNT box.
 int effectMeterParam(EffectKind kind);
 constexpr float kMeterFullDb = 24.f; // what fills the box's width
 

@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) and DUCK (9) are not.
+Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) and DUCK (9) are built and joined too (2026-11-12; "Steps 2 and 3 as built", "Step 9 as built", and "THROW and DUCK joined" for where they meet).
 
 ## The recommendation
 
@@ -391,14 +391,14 @@ metallic is for ears.
 | 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
 | 1b | **DONE 2026-11-11 (see below).** Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
 | 1c | **DONE 2026-11-11 (see below).** The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
-| 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
-| 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
+| 2 | **DONE 2026-11-12 (see below).** **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
+| 3 | **DONE 2026-11-12 (see below).** THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | **DONE 2026-11-11.** TAPE | medium | 0 | `fx/tape.cpp` |
 | 5 | **DONE 2026-11-11.** HALL | medium | 0 | `fx/hall.cpp` |
 | 6 | **DONE 2026-11-12.** CHORUS | small | 0 | `fx/chorus.cpp` |
 | 7 | **DONE 2026-11-12** (the meter went on the screen at the join). COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
 | 8 | **DONE 2026-11-12.** SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
-| 9 | DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
+| 9 | **DONE 2026-11-12.** DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
 | 10+ | The later set, one at a time | small each (BLOOM, STUTTER medium) | 0; BLOOM needs 5, PING needs 4 | one file each |
 
 **Step 0 as built:**
@@ -570,6 +570,68 @@ lopsided enough (0.5 off centre) or too much; is FOLD's range right; is
 holding a half-scale sine level the right "level" (quiet tails and noise come
 up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 
+**Step 9 (DUCK) as built**, 2026-11-12. Only tests, measurements and one still have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Where | `engine/src/fx/duck.cpp`, number 11, word `duck`, group LEVEL (after COMP in the list). Three settings: AMOUNT, RELEASE, SOURCE (8 choices, reads `LANE 1` to `LANE 8`). As it comes: 60%, 209 ms, lane 1 |
+| The hook | `Effect::drumHits(lanes)`: "these lanes of the first drum track are hit on the first sample of the block you are about to get". Only DUCK listens. The engine marks a hit where it triggers the drum (`Track::hitsNow`, two places: `playHit` and `firePending`) |
+| When it is written and read | **Written on the audio thread before the tracks are shared out; only read after.** `render()` already ends a chunk where the next hit is due, so every hit lands on a chunk's first sample and "which lanes" is all there is to say (no sample offsets). `renderChunk` copies the first drum track's marks to `chunkHits_` and clears them before any helper is woken; `runSlot` hands them to the effect. A helper working on the drums changes nothing a ducked track looks at. The same to the last bit on 0 to 3 helpers and twice from fresh (a song with DUCK on the drums themselves, three synths, the master, and one swapped out and in) |
+| The first drum track | The lowest-numbered track that is drums, worked out each chunk. Remove it and the next one is the source |
+| Which hits count | **Every trigger of the lane, whatever made it** (the plan was silent): a pattern's hit, each hit of a ratchet, a hit pushed early or late (on its own sample), a drum played by hand or from a keyboard, song stopped or not. A step its chance leaves out is no hit. The hit's level does not matter (a ghost dips as far as an accent) |
+| The shape | A straight fall to `1 - AMOUNT` in **3 ms** (`kFall`), not at once: a step in level is a click, and a muted drum is not there to hide it. Then back over RELEASE, `(1 - t)^2` of the dip left at `t` of the way: quick at first, easing in, and **it arrives exactly** (from then on the sound passes untouched to the sample). A hit before it is back falls again from where the level is. RELEASE is 20 ms to 1 s (`20 * 50^v` ms) |
+| Where it may go | Track slots and **the master (allowed: the plan was silent; it dips the whole mix)**. Not a bus: its group is LEVEL, so the picker does not offer it there and `Engine::setEffect` refuses it; a bus's slot is not told the hits |
+| The rules for new effects | `soundOnly` first; AMOUNT and the speed of the way back glide (20 ms) and at rest a turned setting is simply there; the same to the bit in blocks of 1, 7, 35, 64 and 4480; no number too small to hold (`TooSmall`); the same with flush-to-zero on or off; at rest it does no work. No MIX: AMOUNT at 0 is the sound untouched |
+| The meter | `meter()` is the dB it is dipping (60 for "right down"); `effectMeterParam` puts it on the AMOUNT box, the same strip as COMP's. Still `fx-duck` |
+| Tests | `testDuck` in `effects_test` (the plan's row: dip of AMOUNT at the hit's sample, back up in RELEASE, nothing from other lanes; then the engine: what each slot is told and when, muted drums, the master, a DUCK fading out of its slot). `through()` there now hits a drum five times a second so the checks for every effect reach DUCK. 53 mutants, 50 killed; the 3 left change nothing that can be seen (a second clearing of state on reset, a shortcut for speed, the block the glide is worked out in) |
+| Cost | 0.02% of a desk core, dipping eight times a second (a run where DRIVE read 0.12%). The plan guessed 0.01 |
+
+For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and it is one number); the shape of the way back; whether a ghost hit should dip less than an accent; whether a drum played by hand should dip at all; 60% and 209 ms as the place to start.
+
+**A bounce runs until its tail ends** (owner, 2026-11-12), as built the same day. Tests and two stills have seen it; nobody has listened to a bounce.
+
+| Thing | Result |
+| --- | --- |
+| Before | Three seconds after the song's last step, always. A long HALL or TAPE tail was cut |
+| What is sound | Anything at or over **-90 dB** (`kBounceFloor`, 3.1e-5: one step of a 16-bit file; less is not in the file anyway), on either side |
+| When it is over | **No sound for 4 seconds** (`kBounceQuietSeconds`). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and a gap would have been taken for the end. Four is longer than that, as the bus's ten are |
+| Where the file ends | **Half a second after the last sound** (`kBounceAfterSeconds`). A dry song is now shorter than it was: its last drum rings out, half a second, done (it had three seconds whatever was in them). Nothing a dry song plays is cut: the end is measured, not guessed |
+| The cap | `kBounceCapSeconds`. A tail that reaches it is faded out in a straight line over its last second (`kBounceFadeSeconds`) |
+| Each track | The files of an EACH TRACK bounce are padded with silence to the longest, so they still line up and are the same length |
+| Memory | Written as it is worked out (16-bit, to `NAME.wav.part`, renamed when whole) instead of held as floats until the end: eight minutes of tail would have been 180 MB in memory on a 1 GB handheld. A cancelled bounce leaves no file, as before |
+| Progress | The percentage counts the song's own playing only, since that length is known. In a tail the row reads `TAIL 12 S` (seconds of tail so far) and "until the echoes have died away". For EACH TRACK the percentage stands still during each track's tail. Stills `bounce`, `bounce-tail` |
+| Code | `BounceTail` (`app/session.hpp`, `app/bounce.cpp`): fed blocks, it says "another" or "stop" and how many frames to keep. No engine and no file in it |
+| Tests | `testWhereABounceEnds` (made-up tails: silence, long, sparse echoes, what counts as sound, the cap and its fade), `testABounceRunsUntilTheTailEnds` (real bounces: HALL at 20 s, the cap set short, echoes three seconds apart at 40 BPM, two tracks of different tails), `testBouncing` (a dry song ends on its last sound; cancelled part-way, nothing is left). 30 mutants, all killed. The row's words are seen in the still only |
+
+**A cap so a tail always ends** (owner, 2026-11-12: "there should be a cap"), as built the same day. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| What was wrong | TAPE with FEEDBACK at 100% never died away, and past it the howl held for good. A send bus holding it never came to rest and cost TAPE's time for good; a bounce that runs until the tail ends would never have ended |
+| TAPE: what changed | **Only a loop left alone for more than 30 seconds with FEEDBACK reading over 90%.** While sound comes in (anything over 80 dB under full, `kFedLevel`), and for 30 s after the last of it (`kHoldSeconds`), FEEDBACK is what it reads: it builds, howls and holds exactly as it did. Then FEEDBACK eases down to 90% (`kTiredFeedback`: the most the old DELAY has) over about 2 s, and each echo is nine tenths of the last. Sound coming in again puts FEEDBACK back within 20 ms and starts the 30 s again |
+| TAPE: what did not | FEEDBACK at 90% or under: nothing, ever, to the bit (the loop's gain is multiplied by exactly 1). Over 90%: nothing while it is played into or for 30 s after. The measurement from step 4 stands: 120% holds one level from 10 to 30 s within 0.2 dB |
+| Measured, 120% at a sixteenth, 120 BPM | Level 0.79 until 30 s; 0.46 by 32 to 33 s; then 7.7 dB a second; 120 dB down by 48 s; the exact zero (asleep) at 68.7 s. No step larger than the howl's own where the fall starts. At AGE full it falls faster (9.2 dB a second) |
+| Measured, each echo of the last at 1 kHz, a half note at 40 BPM | FEEDBACK 90%: 0.8974 before and 0.8974 at 69 s (the same to five places). 95%: 0.9472, then 0.8974. 120%: 1.1965, then 0.8974 |
+| The reading | Still `120%`: it is true whenever sound is going in, which is when it is being set. The manual says what happens when it is left alone |
+| In a track's slot | The same code, the same cap |
+| DELAY, REVERB (pinned) | **Not touched, and not capped from outside: neither can ring for good.** DELAY's loop is at most 0.9 times a low-pass that never adds; REVERB's four loops are at most 0.98 times the same, and its smearing stages pass everything at one level. Measured below |
+| HALL | Not touched: DECAY is a real time, 20 s at most |
+| **How long a bus takes to come to rest** | From the last sound sent (a quarter second of full-scale noise) to the bus at rest (120 dB down, then its 10 s), the worst of every setting at 0, 50% and 100%, at 40 BPM: **TAPE 418 s** (a half note, FEEDBACK full, AGE 0), **DELAY 388 s** (a half note, FEEDBACK and TONE full), **HALL 44 s**, **REVERB 36 s**. At 120 BPM the two delays take a third as long. `kLongestTailSeconds` = 450 in `engine.hpp` is the promise; `testATailAlwaysEnds` holds every case under it and the worst within 20% of it |
+| The bounce's cap | 480 s, checked to be over `kLongestTailSeconds` (a compile-time check in `bounce.cpp`, and in `app_test`). A bounce stops listening at -90 dB, not -120, so it ends well before a bus rests |
+| Louder than full scale | DELAY's tail grows by its echo time for each 0.9 dB the sound sent is over full scale (it is a straight line: +12 dB is 40 s more at 40 BPM). TAPE's does not: its ceiling sets where the fall starts |
+| Cost | TAPE 0.11% of a desk core with it, 0.10% just before, in runs where DRIVE read 0.12% both times: one more multiply a sample |
+| Tests | `testTapeAlwaysEnds`, `testATailAlwaysEnds` in `effects_test`; a real bounce of TAPE at 120% in `app_test` (it ends by itself, 36 to 60 s after the last step). 25 mutants, 24 killed; the one left only guards a counter against running over |
+
+**After the review of that work** (2026-11-12). Three things it found, all small, all reproduced.
+
+| Thing | Result |
+| --- | --- |
+| FEEDBACK reading exactly 90% was touched | `1.2f * 0.75f` is one float over `0.9f`, so the test "reads over 90%" was true at 90% itself and the loop's gain was multiplied by 0.99999994 after 30 s (6 parts in 100 million: not to be heard, but not "to the bit"). Now the SETTING is compared, 0.75 and a hair of room (`tapeTire` in `tape.cpp`, a function the test calls). 75% reached by the D-pad's notches, or by sums that land a float off, is multiplied by exactly 1; 76% (reads 91%) is brought down |
+| Two TAPEs in a row outlast the cap | Each counts its 30 s from the last sound coming IN, and a howling one upstream keeps the next fed: a slot into ECHO, both at a half note, FEEDBACK full, 40 BPM, is about 710 s by the numbers (the reviewer's bounce ran into the 480 s cap and was faded, as the cap is there to do). `kLongestTailSeconds` is a promise for one effect; the manual and the comments now say so. **Not changed**: whether effects in a row should tire together is the owner's call |
+| A killed bounce left its `.wav.part` | The file is written as it goes, so a bounce killed part-way (power, a crash) left up to 90 MB that nothing listed or removed. `removeHalfBounces` takes away every `*.wav.part` in the bounces folder when the program opens and when a bounce starts, never while one is under way |
+
+For the owner's ears: 30 seconds of hold (is that "a long while"); the two seconds of easing down, which is the moment a held howl starts to go; 90% as where it settles (lower would end sooner and sound more like a fade); whether a howl should ever be allowed to hold for good when a hand is on the knob (today it does as long as anything is played into it).
+
 **Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.
 
 | Thing | Result |
@@ -589,12 +651,92 @@ up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 | A read past the end in a test | `testBusEffectsInTheEngine` read 4800 floats past a vector. Fixed; `effects_test` built with the address and undefined-behaviour sanitizers runs clean (the version before fails there) |
 | Readings that did not fit | `1/8 DOTTED` ran out of TAPE's and DELAY's TIME box (now seen on every new song's ALL page). They read `1/8 DOT` and `1/4 DOT`, beside `1/8 TRIP` |
 | Cost (desk, `bench`) | One each, in a run where DRIVE read 0.18%: FILTER 0.05, SATURATE 0.21, DRIVE 0.18, TAPE 0.15, DELAY 0.03, HALL 0.20 (0.23 with TONE above 50%), REVERB 0.09, CHORUS 0.20 (0.10 as VIBRATO or FLANGE), COMP 0.13, CRUSH 0.02. The way-in check costs each new effect about 0.01 (the build before the join read TAPE 0.16, HALL 0.19, CHORUS 0.19, COMP 0.12, SATURATE 0.21 back to back). **The buses, as what they add to twelve busy drum tracks (2.0% by themselves): feeding both 0.05 to 0.12; with TAPE and HALL 0.41 to 0.50; with DELAY and REVERB 0.09 to 0.18** (a small difference of two large numbers: it moves that much from run to run). Handheld, times 5: about 2.5% of a core for both buses with TAPE and HALL, which is the plan's figure |
-| Not done | THROW, DUCK. The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
+| Not done | (THROW and DUCK were built after this join: "Steps 2 and 3 as built", "Step 9 as built".) The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
 
 For the owner's ears, new at the join: TAPE and HALL as the first thing a send
 gives (against DELAY and REVERB); a LEVEL turned while echoes ring (it glides
 5 ms: is that slow enough not to click, fast enough to feel direct); whether
 the meter's 24 dB width suits how hard COMP gets used.
+
+**Steps 2 and 3 (THROW) as built**, 2026-11-12. Only tests, measurements and
+stills have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| The value | `throwTo` on a hit (`StepFx`), a note (`NoteEvent`) and a chord: 0 OFF, 1 ECHO, 2 SPACE, 3 BOTH |
+| A thrown drum hit | The drum machine writes that voice a second time, into a buffer for each bus (`DrumMachine::render`'s two extra ways out). The bus is given **the hit as it sounds alone, to the sample**, with kick and hat around it and the same lane a step before and a step after. It skips the track's slots; it takes the track's level and mute |
+| Its ratchet | Every piece is thrown: they are the one hit. A cut hit is thrown cut |
+| A thrown note | The track's send is held open for the note's length and slides open and shut over 5 ms (240 samples). The steepest it makes a 100 Hz sine is the sine's own step plus 1/240 of its height. Other notes sounding on the track then go with it, as the plan said |
+| A ratcheted note | The first piece opens the send for the whole note, so it does not shut in the gaps between the pieces (5 ms at 120 BPM, x4: it would have dipped every piece) |
+| Two thrown notes that overlap | Open from the first's start to the last one's end |
+| A chord | **Takes THROW as a note does** (the plan was silent): every key of it. Kept when the chord is swapped or broken into notes |
+| With the send knob up | "In full" is a send of 1. The knob's share is topped up to 1, never added to: a note gets `knob + open * (1 - knob)`, a thrown hit the `1 - knob` the knob leaves. At 100% a THROW changes nothing, to the bit |
+| A resting bus | Woken on the hit's or the note's own sample |
+| A muted track | Throws nothing and wakes nothing. Muted while a thrown hit rings, the bus's share fades with the track's (5 ms) |
+| Stop, Play, panic | Every send a THROW held shuts (5 ms; behind a shut panic gate). So do `prepare` and a track taken away. A thrown drum hit rings out after Stop as any drum does |
+| Slices (a hit that carries the lane's sound on) | It hands on its own THROW: the running sound slides into the bus over a millisecond, and out again at the next slice that is not thrown. No step, and the lane's own sound is the same to the bit as with no THROW |
+| No throws, same bits | The pinned song and the 40 renders still match. A track that throws nothing takes the loop it always took in `feedBuses`, and an unthrown voice the loop it always took in the drum machine. **On ARM too**: `effects_test --print` built as the handheld's program (clang, aarch64, `-O2 -mcpu=cortex-a53`) and run under an emulator gives the same 40 renders and the same whole song, to the last bit, before THROW (main) and after |
+| Helpers | A song with thrown hits (ratcheted, cut, pitched, backwards) on two drum tracks, thrown notes (ratcheted, nudged) on three synths, TAPE and HALL on the buses, two send knobs up and two mutes part way: **the same to the last bit with 0, 1, 2 and 3 helpers**, and twice from fresh |
+| In a command | With the cut, as planned: `extra` is the cut plus 4 times THROW (`SetStepFx`, and `Trigger` so that X on a hit is heard thrown). A note's: 512 and 1024 added to `SetNote`'s `e` |
+| In a song file | The seventh number of `stepfx`; the sixth of `note`, with the nudge written before it even at 0; the third of `chordfx`, with the ratchet written before it even at 1. Each left off at 0: **a song with no throws is written as it always was**, and an older program reads a thrown song without its throws |
+| The gesture | Hold X + A, on the drum grid, in the slice view and on the piano roll: OFF, ECHO, SPACE, BOTH, round. Heard at once on a drum hit (song stopped). A alone still places; with X held it neither places nor shapes |
+| The dice | Hold X + Y neither throws nor takes a THROW away |
+| On the grid | A drum hit: a short purple bar above its block, over the left half for ECHO, the right for SPACE, one each for both (the order the sends have on the FX screen). A note: a foot at its end, the same way round (cream on a chord, which is purple already) |
+| The strip, X held | Drums: PITCH, RATCHET, REVERSE, CUT, THROW. Five fields, so they sit closer than the four did. Notes: RATCHET, GLIDE, THROW. With X not held a thrown hit or note says so in its line of effects. On the piano roll a note that is nudged, has an effect and is thrown has no room for all three at full size: its NUDGE value is drawn in the largest size that fits before the effect (`stripFont` in `app/note_marks.hpp`; the small one for 10% and over), where it used to be drawn over the RATCHET. Still: `--view notefx-worst` |
+| Hints | `UP / DOWN pitch  LEFT / RIGHT ratchet  L1 reverse  R1 cut  A throw  Y dice` fits with room (still `effects-held`); the piano roll's too |
+| Undo, copies | Undone and redone by SELECT + B (it is in the patterns' text). Copied with its bar on SONG; carried with its note (hold R1) |
+| A bounce | Has the thrown hit's echoes (tested: the first echo three steps on, as loud as the hit); none from a muted track. As built the bounce stopped three seconds after the song and cut a late throw's tail; **since the join it runs until the tail ends** ("THROW and DUCK joined") |
+| Cost (desk, `bench`) | Twelve busy drum tracks with nothing thrown: 1.45% of a core, as before THROW (1.46). With THROW's check inside the one voice loop it was 2.18%, so the loop is built twice. **Every hit of all twelve thrown to both buses: 1.2% more**, the most a song can throw. A thrown note costs one more multiply a sample on its track while its send is open |
+| Tests | `throw_test` (the engine, 2 s) and `throwapp_test` (the gesture, the song file, undo, a bounce; 5 s). Mutation: 68 breaks of the engine's part, 67 caught, and the one left changes nothing (an empty note slot's THROW bits); 37 of the app's, all caught. The drawing of the marks is seen in stills only |
+| Departed from the plan | Nothing in the design. Added: the chord; `Trigger` carries THROW; the top-up rule with the knob |
+| Not done | The dice do not scatter throws (the owner's "later"). A hit or a key played by hand from a USB keyboard is never thrown. The thrown copy of a drum hit is mono like the drums. Nothing draws which bus a held note's send is open to while the song plays |
+
+For the owner's ears: a thrown hit's echo comes back **as loud as the hit**
+with the bus's LEVEL at 100% (measured 0.71 against 0.62 through TAPE): is
+full too much as the only amount? Does a thrown drum hit want the track's
+filter and drive on it (question 6)? Is 5 ms the right ramp on a thrown note,
+which softens the note's own attack in the bus? Other notes on the track
+going with a thrown note: wanted or not? A thrown slice inside a running
+break: does the 1 ms slide tick?
+
+**THROW and DUCK joined**, 2026-11-12 (`fx-duck` merged into `fx-throw`). The
+code joined by itself; the one conflict was this file's first paragraph. No
+line of the engine or the app was changed for the join: what is below is how
+the two behave together, each held by a test. Only tests, measurements and
+stills have seen it; nobody has heard it.
+
+| Where they meet | What happens | Held by |
+| --- | --- | --- |
+| A thrown drum hit, a DUCK on its track | **The thrown copy is not ducked.** It is written out inside the drum machine, before the slots, as the plan says. The bus is given the same to the sample with the DUCK and without, while the track itself dips | `throw_test`, `testWithDuck` |
+| A thrown note, a DUCK on its track | **The thrown note is ducked.** A note's THROW is the track's send held open, and a send is taken after the slots: the bus gets the track as it sounds, dips and all. At AMOUNT 100% the bus is given nothing 3 ms after the kick | the same |
+| A DUCK on the master | Dips the whole mix, which the buses have joined by then: a throw's echoes dip with the song. What the bus is GIVEN does not change | the same |
+| A thrown hit is a hit | It marks its lane for DUCK like any other (the mark is made where the drum is triggered, thrown or not) | a mutant that leaves thrown hits unmarked fails `throw_test` |
+| A hit thrown into a TAPE with FEEDBACK at 120% | The tape is fed by the throw, sings for thirty seconds after it, tires, and **the bus rests 58 s after the hit**. A second hit thrown at 25 s starts the thirty seconds again (83 s). Both far inside `kLongestTailSeconds` | `throw_test`, `testThrownIntoAHowl` |
+| A bounce whose LAST step throws a drum hit | The hit is in the song and every echo of it is in the tail: all kept. The file is exactly as long as with the hit on step 1, fifteen steps later (7.63 s against 5.76), and ends half a second after the last sound | `throwapp_test`, `testABounce` |
+| A bounce whose last step throws a note | The song's end stops the note and shuts its send (5 ms), as Stop always does. The bus has had the one step of the note there was; its echoes are kept (the file runs 4.9 s past the song against 0.7 s unthrown) | the same |
+| The last step thrown into a howling TAPE, bounced | The bounce ends by itself, 64 s after the song. With the cap set to 5 s it ends there, faded | the same |
+| Helpers | A song with thrown hits, thrown notes, sends, TAPE and HALL on the buses, DUCKs on both drum tracks, two synths and the master: the same to the last bit on 0, 1, 2 and 3 helpers and twice from fresh | `throw_test`, `testOnAnyHelperCount` |
+| Old songs | The pinned 40 renders and the whole song match; `effects_test --print` gives the same as main's | `effects_test` |
+| Cost (desk, `bench`) | In one run (DRIVE 0.12%): DUCK 0.02%, TAPE 0.11%; twelve busy drum tracks 1.44%; every hit thrown to both buses 1.19% more; **all of it at once (every hit thrown, sends up, TAPE and HALL on the buses, a DUCK on each of the twelve tracks) 1.70% more** | |
+| Changed for the join | `throwapp_test`'s bounce expected the old fixed three seconds; it now expects the file to end half a second after the last sound. 18 tests | |
+| Mutants | 15 at the meeting points, 14 caught. The one left (no cap on how long the bounce WORKS) writes the same file: the tape tires by itself and the file is cut at the cap either way | |
+| Not done | No handheld build, nothing run on the device. A thrown note's own release, after the song's end, is not sent to the bus (as for any thrown note that is let go) |
+
+After the second review (2026-11-12):
+
+| Thing | Result |
+| --- | --- |
+| A tired TAPE depended on its blocks | The count of time left alone went up a block at a time, the ease down was a glide a block, and it fell asleep at the end of the call it was in. Blocks of 64 and of 48 came apart 30.2 s into a tired tail (by up to 0.002 in the test here), and by 1e-23 where it fell asleep: a bounce and live play were not the same. **Now each is on its own sample**: the count, the ease (`tapeTireStep`: a fraction of what is left a sample, 2 s down and 20 ms up, never slower than 2e-7, so it lands), falling asleep, and waking (at the first sample of sound, not the block's first). The numbers are as they were: 0.46 by 32 to 33 s, asleep at 68.7 s |
+| TAPE's wow took its shape from the blocks (on `main` too) | The sine was worked out at each end of a call and joined by a straight line. With AGE up (the default is 35%) blocks of 64 and of 48 were apart from 0.15 s, by 0.05 once it howled. Now a point every 64 samples the tape has run (`kWowEvery`), whatever the calls. Rate and depth as measured before. **A song with TAPE and AGE up is no longer the same to the bit as before this**, which it never was from one block size to another |
+| TAPE's test | `testTapeAlwaysEnds`: 150 s (howl, tire, sleep, a faint sound waking it part way through a block, tire again) cut four ways (64, 48, 256, and 1 to 61 in turn) at AGE 0, 35% and 100%: the same to the bit. TAPE had no such test before |
+| **HALL depends on its blocks too. Not changed** | Found while testing TAPE: HALL (SIZE 50%, DECAY 50%, MIX full) in blocks of 64 and of 48 is apart from 0.02 s, by 0.06. It is the same on `main`; it is not this step's code and a change there is a change to the sound. For its own piece of work |
+| THROW's value on the piano roll's strip | "SPACE" at 575 in the large size ran to pixel 638 of 640 (the margin is 632). `stripThrowFont` (`app/note_marks.hpp`): the value moves left to end at the margin (SPACE alone: at 569), and beside an effect too long to leave it room ("x4 GLIDE") it is drawn in the middle size where it was. ECHO and BOTH are where they were. Stills: `--view notefx-space`, `notefx-worst` |
+| Cost | TAPE 0.09 to 0.13% over six runs (DRIVE 0.11 to 0.13% in them; 0.11% before) |
+| Mutants | 26, 24 caught. The two left change nothing that can be seen: `reset()` no longer clearing the wow's count (waking clears it too), and falling asleep with sound under 240 dB down still coming in (it wakes on the next sample) |
+
+For the owner's ears, new at the join: a thrown kick on a track that ducks
+itself goes to the bus at full while the track dips. Is that right, or should
+the echo dip too? A thrown note under a DUCK sends a dipped note: wanted?
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (16) | `cd build && ctest -j8` (about 25 s) |
+| All tests (18) | `cd build && ctest -j8` (about 40 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, each also with `--hold-a`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -194,6 +194,40 @@ effect in those two groups and fails one that does not.
   the audio thread **after the helpers are done, in track order**
   (`feedBuses`, `runBuses`), and join the mix before the master's slots. Keep
   it there: that is what holds the output to the bit on any helper count.
+- **THROW: a thrown drum hit is written twice, a thrown note opens the
+  track's send.** The drum machine writes a thrown voice a second time into
+  `thrown_[track][bus]` (`DrumMachine::render`'s two extra ways out), so the
+  bus gets that hit alone, before the track's slots, at the track's level and
+  mute. A thrown note holds `Track::throwLeft` for its length and
+  `feedBuses` slides `throwNow` open and shut over 5 ms; a ratchet's first
+  piece holds it for the whole note (`Note::hold`). "In full" is a send of 1:
+  the knob's share is topped up, never added to (`now + open * (1 - now)`;
+  a thrown hit gets the `1 - now` the knob leaves).
+  - **The voice loop is built twice** (`renderVoice<true / false>`): with
+    THROW's check inside the one loop, twelve unthrown drum tracks cost half
+    as much again (1.46% to 2.18%). The line that adds to `left` is as it
+    was; the thrown copy is worked out again beside it, not taken from it.
+  - **A track that throws nothing takes the old loop in `feedBuses`**, which
+    is why a song without throws is the same to the bit (the pinned song).
+  - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do
+    `prepare` and a track taken away. Anything new that lets notes go in
+    another way calls `closeThrows`.
+  - In a command THROW rides with the cut (`StepFx::cutAndThrow`: cut plus 4
+    times THROW, in `extra` of `SetStepFx` and `Trigger`); a note's is 512
+    (ECHO) and 1024 (SPACE) added to `SetNote`'s `e`.
+  - A hit that carries a lane's sound on hands on its own THROW, and the
+    sound slides into the bus or out of it over a millisecond.
+  - Its tests are their own two programs, each a few seconds:
+    `tests/throw_test.cpp` (the engine) and `tests/throwapp_test.cpp` (the
+    gesture, the song file, undo, a bounce).
+  - **A thrown drum hit is not ducked, a thrown note is.** The hit's copy
+    leaves before the slots; a note's THROW is a send, taken after them. A
+    DUCK on the master dips what the buses give back. `throw_test` holds all
+    three; do not move the thrown copy after the slots.
+  - **A bounce ends the song with Stop, and Stop shuts a thrown note's send**
+    but not a thrown drum hit, which rings out into its bus. The tail after
+    a last-step throw is kept by the bounce's own rule (four seconds of
+    quiet); `throwapp_test` bounces a hit, a note and a howling TAPE there.
 - **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
   why a song with no sends is the same to the last bit as before there were
   buses (`effects_test` holds the old song's checksum with an effect waiting
@@ -218,6 +252,22 @@ effect in those two groups and fails one that does not.
 - **What is sent to a bus is sound or it is silence**: not-a-number, infinity
   and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
   DELAY and REVERB cannot look after themselves and would hold it for good.
+- **A tail always ends** (owner, 2026-11-12). `kLongestTailSeconds` (450) is
+  the promise: from the last sound a bus is sent to the bus at rest, at every
+  setting of every effect a bus can hold, at 40 BPM. `effects_test`
+  (`testATailAlwaysEnds`) measures every delay and reverb in the table at 0,
+  50% and 100% of each setting and fails one that takes longer, so **a new
+  delay or reverb whose loop can hold at 1 or over needs its own way down**.
+  TAPE's: left alone 30 s (nothing over `kFedLevel` coming in), a FEEDBACK
+  over 90% eases to 90% (`tire_`); at 90% or under it is multiplied by exactly
+  1 (`tapeTire` compares the SETTING, 0.75 and a hair, not what it reads:
+  `1.2f * 0.75f` is a float over `0.9f`). The count, the ease down
+  (`tapeTireStep`), falling asleep and waking are each on their own SAMPLE,
+  never a block's edge. **The promise is for one effect.**
+  Effects in a row (two TAPEs: a slot into a bus, or two slots) each count
+  from the last sound coming IN, so one keeps the next fed and the tail can
+  pass 450 s; the bounce's cap is what ends that one. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
+  loop) and are not capped from outside.
 - **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
   and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
   reads LEVEL there, at full (`effectDefault(kind, i, true)`).
@@ -253,19 +303,34 @@ effect in those two groups and fails one that does not.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
   the last sound was.
+- **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
+  lane 1). A hit always lands on a chunk's first sample (`render()` ends a
+  chunk where the next is due), so the engine marks it where it triggers the
+  drum (`Track::hitsNow`), and `renderChunk` copies the first drum track's
+  marks to `chunkHits_` and clears them **before the tracks are shared out**;
+  helpers only read it. Keep it that way: written during the chunk, a ducked
+  track would depend on which helper got to the drums first. A new way to
+  trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
+  hits by hand); a bus's slot is not told.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **What an effect shows goes through `Engine::effectMeter(track, slot)`**
   (COMP: the dB it is turning down). The audio thread reads the effect's
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD), as a thin
+  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a thin
   strip over the bar from the right, full at `kMeterFullDb` (24).
 - **A new effect's sound does not depend on how it is cut into blocks**, to
   the bit, once its settings are at rest (each has a test). So what an effect
   does "between blocks" (snapping vanishing numbers to zero) is done sample by
   sample, or on a fixed count of samples (SATURATE: every 64th it has been
-  given), never "at the end of this call".
+  given), never "at the end of this call". The same goes for anything slow
+  that moves by itself: TAPE's wow was a sine worked out at each end of a
+  call, and its count of time left alone went up a block at a time; both
+  made a bounce differ from live play. **TAPE's test cuts 150 s four ways**
+  (`testTapeAlwaysEnds`); a new effect with a tail gets the same, through its
+  sleep and its waking. **HALL does not pass it yet** (apart from 0.02 s in
+  blocks of 64 and of 48; as on `main`, not changed).
 - **A filter state does not reach zero by itself**: with a coefficient over a
   half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
   "silence in, silence out" fails and a processor without flush-to-zero crawls.
@@ -310,7 +375,9 @@ effect in those two groups and fails one that does not.
   that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
   arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.
 - **Hold X + Y is the dice** for what a hit or a note does (`fxRoll` on both
-  grids). **Hold X + A is kept for THROW.**
+  grids). **Hold X + A is THROW** (`fxThrow` on both): OFF, ECHO, SPACE, BOTH.
+  The check for X held comes before A's own jobs, so A alone still places.
+  **The dice do not throw**, and do not take a THROW away (owner's decision).
 - **Sample names from `wavNames` have no `.wav` ending.**
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
@@ -331,6 +398,12 @@ effect in those two groups and fails one that does not.
 - **A recording's name may carry one folder**: `kicks/808`. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
+- **THROW is a value on a hit, a note or a chord** (`throwTo`: 1 ECHO, 2
+  SPACE, 3 both; `kThrowEcho`, `kThrowSpace` in drums.hpp). In a song file it
+  is one more number at the end of a line, **left off at 0**, so an unthrown
+  song is written as it always was: the seventh of `stepfx`, the sixth of
+  `note` (the nudge is then written even at 0), the third of `chordfx` (the
+  ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
@@ -353,6 +426,21 @@ effect in those two groups and fails one that does not.
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes
   a song: anything new that writes songs off the app thread takes it too.
+- **A bounce runs until its tail ends** (owner, 2026-11-12; `BounceTail` in
+  `session.hpp`, no engine and no file in it, tested with made-up tails).
+  Sound is `kBounceFloor` (one step of a 16-bit file) or more; it is over
+  after `kBounceQuietSeconds` (4) without any, and the file ends half a second
+  after the last sound. **Four seconds must stay longer than the longest gap
+  between two echoes** (3 s: a half note at 40 BPM), as the bus rest time
+  must. The cap (`kBounceCapSeconds`, 480) must stay longer than
+  `kLongestTailSeconds` in the engine; both are checked.
+- **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
+  is whole: a tail of minutes never sits in memory, and a cancelled bounce
+  leaves nothing. One that is KILLED (power, a crash) leaves its `.wav.part`:
+  `removeHalfBounces` takes those away when the program opens
+  (`useBounceFolder`) and when a bounce starts, never while one is under way. The tracks of an EACH TRACK bounce are padded with silence
+  to the longest. Its percentage counts the song's own playing only; in a
+  tail `bounceTail()` gives the seconds so far and the row says that instead.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
 
@@ -370,6 +458,10 @@ effect in those two groups and fails one that does not.
   on (`mathsPrint`) and falls back to loudness and peak, saying so. To prove a
   change is bit-exact on another machine, run `--print` before and after and
   compare.
+- **`effects_test --only testDuck testTape`** runs just those (a second or
+  two, for trying a change); `ctest` runs them all. `through()` there hits a
+  drum five times a second, lanes 1 and 8, so the checks for every effect
+  reach DUCK; no other effect hears it.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -389,7 +481,11 @@ effect in those two groups and fails one that does not.
 | Feeding both send buses from 12 tracks | 0.03% |
 | ...and a DELAY and a REVERB on them | 0.12% |
 | ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
+| Every hit of twelve busy drum tracks thrown to both buses, nothing on them (2026-11-12; the tracks themselves 1.45%, as before THROW) | 1.2% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
+| DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
+| TAPE with its way down, the same run (0.10% just before it) | 0.11% |
+| Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |
@@ -400,7 +496,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW, then the new effects.
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; the later set is next.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

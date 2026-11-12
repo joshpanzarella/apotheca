@@ -134,7 +134,8 @@ std::string songText(const Project& project) {
                             out += p.fromDice[lane][step] ? " 1" : " 0";
                             if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
                             out += "\n";
-                            // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT: the hit's step effects, if it has any
+                            // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
+                            // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
                             // ("fx" is taken: it is an effect in a slot.)
                             if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
                                 put(out, "stepfx %.0f", lane + 1);
@@ -142,7 +143,9 @@ std::string songText(const Project& project) {
                                 put(out, " %.0f", fx.pitch);
                                 put(out, " %.0f", fx.hits());
                                 put(out, " %.0f", fx.reverse ? 1 : 0);
-                                put(out, " %.0f\n", fx.cut);
+                                put(out, " %.0f", fx.cut);
+                                if (fx.throwTo) put(out, " %.0f", fx.throwTo);
+                                out += "\n";
                             }
                         }
                     }
@@ -178,7 +181,10 @@ std::string songText(const Project& project) {
                         put(out, " %.0f", n.pitch);
                         put(out, " %.6g", n.length);
                         put(out, " %.6g", n.velocity);
-                        if (n.nudge != 0.f) put(out, " %.6g", n.nudge); // early or late, in steps
+                        // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
+                        // has the nudge written before it even at 0, so that it is the sixth number
+                        if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
+                        if (n.throwTo) put(out, " %.0f", n.throwTo);
                         out += "\n";
                         // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
                         if (n.ratchet >= 2 || n.glide) {
@@ -200,9 +206,11 @@ std::string songText(const Project& project) {
                         for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
                         if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
                         out += "\n";
-                        if (c.ratchet >= 2) { // chordfx STEP RATCHET
+                        if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
                             put(out, "chordfx %.0f", c.step + 1);
-                            put(out, " %.0f\n", c.ratchet);
+                            put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
+                            if (c.throwTo) put(out, " %.0f", c.throwTo);
+                            out += "\n";
                         }
                     }
                 }
@@ -375,19 +383,20 @@ bool parseSong(const std::string& text, Project& project) {
             p.fromDice[l][s] = dice != 0;
             p.start[l][s] = clampf(static_cast<float>(start), 0.f, 1.f);
         } else if (word == "stepfx" && track->kind == TrackKind::Drums) {
-            double lane, step, pitch = 0, ratchet = 1, reverse = 0, cut = 0;
+            double lane, step, pitch = 0, ratchet = 1, reverse = 0, cut = 0, thrown = 0;
             if (!(in >> lane >> step)) continue;
-            in >> pitch >> ratchet >> reverse >> cut;
+            in >> pitch >> ratchet >> reverse >> cut >> thrown;
             if (lane < 1 || lane > kDrumLanes || step < 1 || step > kSteps) continue;
             StepFx& fx = track->drums[scene][bar].fx[static_cast<int>(lane) - 1][static_cast<int>(step) - 1];
             fx.pitch = static_cast<std::int8_t>(clampi(static_cast<int>(pitch), -kMaxStepPitch, kMaxStepPitch));
             fx.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
             fx.reverse = reverse != 0 ? 1 : 0;
             fx.cut = static_cast<std::uint8_t>(cut >= 1 && cut < kCutChoices ? cut : 0);
+            fx.throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
         } else if (word == "note" && isSynth(track->kind)) {
-            double step, pitch, length, level, nudge = 0;
+            double step, pitch, length, level, nudge = 0, thrown = 0;
             if (!(in >> step >> pitch >> length >> level)) continue;
-            in >> nudge;
+            in >> nudge >> thrown;
             if (step < 1 || step > kSteps || pitch < 0 || pitch > 127 || !(level > 0)) continue;
             NotePattern& p = track->notes[scene][bar];
             const int slot = p.freeSlot();
@@ -398,6 +407,7 @@ bool parseSong(const std::string& text, Project& project) {
             p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - s)); // to the end of the cell: a note may run on over the bar lines
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
+            p.notes[slot].throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
         } else if (word == "notefx" && isSynth(track->kind)) {
             // For the note of this bar that starts on that step and key (it comes just before this line).
             double step, pitch, ratchet = 1, glide = 0;
@@ -413,10 +423,14 @@ bool parseSong(const std::string& text, Project& project) {
                 break;
             }
         } else if (word == "chordfx" && isSynth(track->kind)) {
-            double step, ratchet = 1;
+            double step, ratchet = 1, thrown = 0;
             if (!(in >> step >> ratchet) || step < 1 || step > kSteps) continue;
-            for (ChordEvent& c : track->notes[scene][bar].chords)
-                if (c.velocity > 0.f && c.step == static_cast<int>(step) - 1) c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+            in >> thrown;
+            for (ChordEvent& c : track->notes[scene][bar].chords) {
+                if (c.velocity <= 0.f || c.step != static_cast<int>(step) - 1) continue;
+                c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+                c.throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
+            }
         } else if (word == "chord" && isSynth(track->kind)) {
             double step, length, level, inversion, root, interval;
             std::string name;

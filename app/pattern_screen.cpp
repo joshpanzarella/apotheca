@@ -69,8 +69,9 @@ void PatternScreen::setFx(int lane, int step, StepFx fx) {
     fx.ratchet = static_cast<std::uint8_t>(fx.ratchet < 2 ? 0 : (fx.ratchet > kMaxRatchet ? kMaxRatchet : fx.ratchet)); // "one hit" is written one way: 0
     fx.reverse = fx.reverse ? 1 : 0;
     fx.cut = static_cast<std::uint8_t>(fx.cut < kCutChoices ? fx.cut : 0);
+    fx.throwTo = static_cast<std::uint8_t>(fx.throwTo < kThrowChoices ? fx.throwTo : 0);
     StepFx& now = pat().fx[lane][step];
-    if (now.pitch == fx.pitch && now.ratchet == fx.ratchet && now.reverse == fx.reverse && now.cut == fx.cut) return;
+    if (now.pitch == fx.pitch && now.ratchet == fx.ratchet && now.reverse == fx.reverse && now.cut == fx.cut && now.throwTo == fx.throwTo) return;
     now = fx;
     engine_.send(stepFxCommand(project_.track, project_.scene, project_.bar, lane, step, fx));
 }
@@ -90,8 +91,19 @@ void PatternScreen::fxTurn(Button direction) {
     if ((after.pitch != before.pitch || after.ratchet != before.ratchet) && !project_.playing) hearHit();
 }
 
+// With X held on a hit, A steps its THROW round: OFF, ECHO, SPACE, BOTH. That hit alone is then
+// sent in full to the bus, whatever the track's sends say. Heard at once.
+void PatternScreen::fxThrow() {
+    if (!hitHere()) return;
+    StepFx fx = pat().fx[lane_][step_];
+    fx.throwTo = static_cast<std::uint8_t>(fx.throwTo + 1); // past the last, setFx makes it "off" again
+    setFx(lane_, step_, fx);
+    if (!project_.playing) hearHit();
+}
+
 // With X held on a hit, Y rolls the dice for what it does: each roll is something, and
 // something else than it was. Mostly one effect, sometimes two; small pitches more often than big.
+// The dice do not throw: a hit's THROW is left as the player set it.
 void PatternScreen::fxRoll() {
     if (!hitHere()) return;
     const StepFx before = pat().fx[lane_][step_];
@@ -111,6 +123,7 @@ void PatternScreen::fxRoll() {
         const bool same = fx.pitch == before.pitch && fx.hits() == before.hits() && fx.reverse == before.reverse && fx.cut == before.cut;
         if (fx.any() && !same) break;
     }
+    fx.throwTo = before.throwTo;
     setFx(lane_, step_, fx);
     if (!project_.playing) hearHit();
 }
@@ -187,7 +200,7 @@ void PatternScreen::audition(int lane, float level, float start, float part, con
     c.d = fx.pitch; // and its step effects, so it is heard as the pattern will play it
     c.bar = fx.hits() > 1 ? fx.hits() : 0;
     c.scene = fx.reverse ? 1 : 0;
-    c.extra = static_cast<float>(fx.cut);
+    c.extra = fx.cutAndThrow();
     c.value = level;
     engine_.send(c);
 }
@@ -597,6 +610,10 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) fxRoll(); // the dice, for what this hit does. (Y's own jobs wait until X is let go.)
         return;
     }
+    if (fxHeld_ && b == Button::A) {
+        if (event.down) fxThrow(); // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go.)
+        return;
+    }
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
@@ -944,11 +961,13 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const StepFx& fx = pat().fx[lane_][step_];
             if (fx.pitch == 0) std::snprintf(text, sizeof text, "0");
             else std::snprintf(text, sizeof text, "%+d", fx.pitch);
+            // (Five of them: closer together than the four a hit has when X is not held.)
             field(190.f, "PITCH", text, fx.pitch ? kBrass : kText);
             std::snprintf(text, sizeof text, fx.hits() > 1 ? "x%d" : "OFF", fx.hits());
-            field(290.f, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
-            field(420.f, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
-            field(520.f, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
+            field(260.f, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
+            field(355.f, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
+            field(450.f, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
+            field(555.f, "THROW", throwName(fx.throwTo), fx.throwTo ? kBrass : kText);
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
@@ -979,6 +998,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (fx.hits() > 1) std::snprintf(text, sizeof text, "RATCHET x%d", fx.hits()), add(text);
                 if (fx.reverse) add("REVERSE");
                 if (fx.cut) add(fx.cut == 1 ? "CUT 1 STEP" : fx.cut == 2 ? "CUT 1/2" : "CUT 1/4");
+                if (fx.throwTo) std::snprintf(text, sizeof text, "THROW %s", throwName(fx.throwTo)), add(text);
                 fonts.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
             }
             const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
@@ -1009,6 +1029,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT / RIGHT", "ratchet");
         hint("L1", "reverse");
         hint("R1", "cut");
+        hint("A", "throw");
         hint("Y", "dice");
     } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");

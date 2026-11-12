@@ -36,12 +36,21 @@ struct StepFx {
     std::uint8_t ratchet = 0; // 2, 3 or 4: that many hits, evenly, inside the step. 0 or 1: the one
     std::uint8_t reverse = 0; // 1: backwards, from the end of what it would have played to its start
     std::uint8_t cut = 0;     // 1, 2, 3: stopped after a step, half a step, a quarter. 0: it rings on
-    bool any() const { return pitch != 0 || ratchet > 1 || reverse != 0 || cut != 0; }
+    std::uint8_t throwTo = 0; // THROW: this hit alone is sent in full to a bus. kThrowEcho, kThrowSpace, or both (3)
+    bool any() const { return pitch != 0 || ratchet > 1 || reverse != 0 || cut != 0 || throwTo != 0; }
     int hits() const { return ratchet < 2 ? 1 : (ratchet > 4 ? 4 : ratchet); }
     // How long a cut hit sounds, in steps (0: not cut).
     float cutSteps() const { return cut == 1 ? 1.f : cut == 2 ? 0.5f : cut == 3 ? 0.25f : 0.f; }
+    // The cut and the THROW as the one number a command carries them in (Command::SetStepFx).
+    float cutAndThrow() const { return static_cast<float>((cut & 3) + 4 * (throwTo & 3)); }
 };
 constexpr int kMaxStepPitch = 12, kMaxRatchet = 4, kCutChoices = 4;
+// THROW, on a drum hit or a note: 0 OFF, 1 ECHO, 2 SPACE, 3 BOTH. Bit `bus` is "to that bus".
+constexpr int kThrowEcho = 1, kThrowSpace = 2, kThrowChoices = 4;
+// The name of a THROW value, as the screens show it.
+inline const char* throwName(int value) {
+    return value == 1 ? "ECHO" : value == 2 ? "SPACE" : value == 3 ? "BOTH" : "OFF";
+}
 
 // How one hit is played (the drum machine's own terms; the engine works them
 // out from a StepFx and the tempo).
@@ -49,6 +58,7 @@ struct HitPlay {
     float rate = 1.f;     // speed: 2 is an octave up, 0.5 an octave down
     bool reverse = false;
     int life = 0;         // frames it may sound before it is faded out. 0: as long as it lasts
+    int throwTo = 0;      // THROW: which buses this hit is also written out for (kThrowEcho, kThrowSpace)
 };
 
 // A recording to play on a lane in place of the kit's drum: mono, at the
@@ -100,7 +110,16 @@ public:
     void setLaneLevel(int lane, float level);
 
     // Writes `frames` samples (replacing what was there).
-    void render(float* left, float* right, int frames);
+    //
+    // THROW: `echo` and `space`, if given, are a second way out, one for each
+    // bus. A hit that is thrown (HitPlay::throwTo) is written there as well as
+    // to `left` and `right`: that hit alone, whatever else sounds on the lane
+    // or beside it. Returns which of the two were written (bit 0 `echo`, bit 1
+    // `space`); one that was not is left as it was found, not zeroed.
+    //
+    // A hit that carries the lane's sound on (see trigger) hands on its own
+    // THROW: the sound slides into the bus, or out of it, over a millisecond.
+    int render(float* left, float* right, int frames, float* echo = nullptr, float* space = nullptr);
 
 private:
     struct Voice {
@@ -115,7 +134,12 @@ private:
         float fadeStep = 0.f; // 0: not choking
         float rise = 1.f;     // multiplies the gain; climbs after a start part-way in
         float riseStep = 0.f;
+        float thrown[2] = {};   // THROW: how much of it goes to each bus, as it is this sample...
+        float thrownTo[2] = {}; // ...and where that is heading: 1 thrown, 0 not
     };
+
+    template <bool kThrown>
+    int renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote);
 
     const DrumKit* kit_ = nullptr;
     Voice voices_[kDrumLanes][2];
