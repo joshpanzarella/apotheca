@@ -373,28 +373,52 @@ effect in those two groups and fails one that does not.
   `noteEdit()`. Sounds, effects and track deletes are not undone.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
-  scene's number must follow: the engine's playing (`Command::ScenesMoved`,
-  which changes the scene number and nothing else), `project.playScene`, a
+  scene's number must follow: the engine's playing and its patterns (`Command::ScenesMoved`,
+  next rule), `project.playScene`, a
   keyboard note being recorded (`Session::scenesMoved` does all three), and
   the player (`UndoStep::nextScene` is how undo and redo know to move them).
-  **The order is what keeps a playing song unbroken**: making the copy, the
-  patterns go first and the word that the playing moved last; taking it
-  back, the word first and the patterns last. In between the scene playing
-  is the same either way. Its tests: `tests/nextscene_test.cpp`.
-- **After a scene move the tracks' patterns go to the engine one a frame**
-  (`Session::imagesDue_`, sent from `update()`), not all in one block: the
-  audio thread copies a megabyte a track, and twelve at once measured 2.6 to
-  3.8 ms on the desk against 0.7 to 0.9 for one (`nextscene_test --measure`;
-  a block is 5.33 ms and the handheld a fifth as fast). Only while it cannot
-  be heard (`oneAFrame`): nothing playing, or one scene going round that the
-  move leaves as it is. A later scene going round, or the song playing
-  through (it could go on to the next scene half-way): all at once, as near
-  together as can be. `togglePlay`, `nextScene` and `redo` send what is left
-  first (`finishMove`); a copy taken back before its word has gone sends
-  neither word.
+  Its tests: `tests/nextscene_test.cpp`.
+- **A scene move is ONE command, and the audio thread copies nothing**
+  (`Engine::moveScenes`, which sends `Command::ScenesMoved`). The engine keeps
+  each scene of each track as a piece of its own (`Track::scenes`: sixteen
+  pointers to a `SceneStore`; `drumScenes`, `notes`, `bars` and `automation`
+  read them as the one run they used to be). The command moves the pointers,
+  takes in the one scene that is new for each track (made on the app thread:
+  `Session::sceneImage`), sets that scene's repeats and steps and the song's
+  length, moves the playing, and hands the scene that fell off the end back
+  through the trash. **It is all in one block of sound or none of it is**, so
+  there is no order to keep and no case that plays a wrong cell. Sending a
+  track's patterns one a frame, and "all at once when it must be", are gone:
+  do not bring them back. **Anything new the engine keeps for a scene goes in
+  `SceneStore`, or is moved by that command** (`repeats_`, `steps_`).
+  Measured with 12 tracks (`nextscene_test --measure`, the desk): before, the
+  block after the gesture took 2.1 to 3.8 ms with every track at once (0.5 on
+  average and 1.3 at worst with one a frame) against a usual 0.21; now 0.30
+  to 0.37 against a usual 0.24, **which is what any block costs straight after
+  the program has been busy** (0.30 to 0.35 with nothing sent). The command
+  by itself is 0.3 millionths of a second for twelve tracks.
+- **Taking a NEXT SCENE back, or putting it back, sends no track whole**
+  (`Session::restorePatterns` with a move: `moveScenesHere`, then
+  `tellScenesMoved`). It then asks whether the song's TEXT is the step's text
+  (`patternsNow() == text`), not whether the numbers match: automation read
+  back from text is not the same float to the last bit, and a track found
+  different for that alone had all its patterns sent (a megabyte the audio
+  thread copies). `Session::imagesSent()` is how the tests see that none went.
+- **Where a scene move cannot be "the song played straight through"**: the
+  copy is playing in its own turn (the scene it was made from has had its
+  plays this time round) and is taken back. The playing goes to the scene it
+  was copied from, same step, bar and time round, so that scene is heard for
+  longer than its plays. Nothing is cut and no other scene's cell is played.
+  Everywhere else the tests hold the sound to 0 difference: beside the song
+  left alone while one scene goes round, and beside a song built with the
+  copy in it while the song plays through (press, undo, redo; also with a
+  later scene playing, and with a real audio thread making blocks back to back).
+- **`sceneIn` (engine.cpp) is the one place a pattern is read into the
+  engine**, for a whole track (`SetTrackImage`) and for one scene. A new
+  field of a note or a hit is copied there, once.
 - **Ask `Session::playScene()`, never `engine.playScene()`, for the scene
-  that is playing.** Until the engine has heard a scene move (a block, or
-  the frames its tracks take to go) it still says the old number: the
+  that is playing.** Until the engine has heard a scene move (its next
+  block) it still says the old number: the
   playhead left the grid and WRITE went into the scene left behind. The
   engine counts the moves it has taken in the same atomic as the scene
   (`Engine::playScene(&heard)`), so the two are never from different moments.
