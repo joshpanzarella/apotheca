@@ -2043,6 +2043,45 @@ static void testHalfband() {
         if (hz >= 28800) CHECK(folded < -69.0);
         else CHECK(folded < -5.0 && folded > -25.0); // between "passed" and "stopped": this is where it is, written down
     }
+    // late() is up and then down with nothing between, without going up: the
+    // same samples, to a few parts in ten million. (That is what lets the
+    // plain sound be mixed with what was bent at the 2x rate.)
+    {
+        fx::Halfband up, down, line;
+        Noise noise(11u);
+        std::vector<float> in(4800), twice(9600), out(4800), late(4800);
+        for (float& v : in) v = noise.next();
+        up.up(in.data(), twice.data(), 4800);
+        down.down(twice.data(), out.data(), 4800);
+        line.late(in.data(), late.data(), 4800);
+        float apart = 0.f;
+        for (std::size_t i = 0; i < 4800; ++i) apart = std::fmax(apart, std::fabs(out[i] - late[i]));
+        SAY("halfband late() against up and down, noise at %.2f: at most %.2g apart\n", static_cast<double>(peakOf(in)), static_cast<double>(apart));
+        CHECK(apart < 2e-6f && peakOf(out) > 0.5f);
+    }
+    // How late: a sine up and back against the one that went in, in samples.
+    //   Today: 100 Hz 1.79, 1 kHz 1.80, 5 kHz 1.83, 10 kHz 1.95, 12 kHz 2.03 (half a wave: mixed with the plain sound, gone), 16 kHz 2.26
+    {
+        double at12k = 0.0;
+        for (int hz : {100, 1000, 5000, 10000, 12000, 16000}) {
+            fx::Halfband line;
+            const std::vector<float> in = sineOf(hz, 0.5, 96000);
+            std::vector<float> out(96000);
+            line.late(in.data(), out.data(), 96000);
+            double s = 0.0, c = 0.0, s0 = 0.0, c0 = 0.0;
+            for (std::size_t i = 48000; i < 96000; ++i) {
+                const double w = 2.0 * kPi * hz * static_cast<double>(i) / 48000.0;
+                s += out[i] * std::sin(w), c += out[i] * std::cos(w), s0 += in[i] * std::sin(w), c0 += in[i] * std::cos(w);
+            }
+            double turn = (std::atan2(c0, s0) - std::atan2(c, s)) / (2.0 * kPi);
+            turn -= std::floor(turn);
+            const double samples = turn * 48000.0 / hz;
+            SAY("halfband late, %5d Hz: %.2f samples (%.2f of a wave)\n", hz, samples, turn);
+            if (hz == 12000) at12k = turn;
+            if (hz <= 1000) CHECK(std::fabs(samples - 1.8) < 0.05);
+        }
+        CHECK(std::fabs(at12k - 0.5) < 0.02);
+    }
     // It is hardly late: a click up and back comes out whole (its samples add
     // to 1) and centred 1.8 samples on. And reset() empties it.
     {
@@ -2286,9 +2325,10 @@ static void testSaturate() {
     // Silence in, silence out, to exact zeros, in every type and with TONE
     // right down (where its filter would otherwise ring on for ever, far too
     // small to hear but never nothing).
+    // (And at a part-way MIX, where the plain sound made late is heard too.)
     for (int type = 0; type < 4; ++type)
-        for (float tone : {0.f, 1.f}) {
-            std::unique_ptr<Effect> e = saturate(true, 1.f, type, tone);
+        for (float tone : {0.f, 1.f, 2.f}) {
+            std::unique_ptr<Effect> e = saturate(true, 1.f, type, tone > 1.f ? 1.f : tone, tone > 1.f ? 0.5f : 1.f);
             Stereo io(48000 * 20);
             Noise noise(5u);
             for (std::size_t i = 0; i < 4800; ++i) io.l[i] = io.r[i] = noise.next();
@@ -2331,7 +2371,8 @@ static void testSaturate() {
         CHECK(std::fabs(got[0] + 0.2) < 0.1 && std::fabs(got[1] + 3.0) < 0.15 && std::fabs(got[2] + 18.0) < 0.4 && std::fabs(got[3] + 3.0) < 0.3 && got[4] < 0.0 && got[4] > -1.0);
     }
     // MIX at 0 is the sound untouched, to the sample, in every type; and
-    // half way it is half of each, sample for sample.
+    // half way it is half of each, sample for sample: half the bent sound,
+    // and half the plain one made as late as the 2x stage makes the bent one.
     for (int type = 0; type < 4; ++type) {
         const Stereo in = pinInput(48000.f);
         Stereo dry = in, half = in, full = in;
@@ -2339,14 +2380,68 @@ static void testSaturate() {
         through(*saturate(true, 0.7f, type, 0.6f, 0.5f), half);
         through(*saturate(true, 0.7f, type, 0.6f, 1.f), full);
         CHECK(dry.l == in.l && dry.r == in.r);
-        float worst = 0.f;
-        for (std::size_t i = 0; i < in.frames(); ++i) worst = std::fmax(worst, std::fabs(half.l[i] - 0.5f * (in.l[i] + full.l[i])));
-        CHECK(worst < 1e-6f && peakOf(full.l) > 0.3f);
+        fx::Halfband line;
+        std::vector<float> late(in.frames());
+        line.late(in.l.data(), late.data(), static_cast<int>(in.frames()));
+        float worst = 0.f, asItCame = 0.f;
+        for (std::size_t i = 0; i < in.frames(); ++i) {
+            worst = std::fmax(worst, std::fabs(half.l[i] - 0.5f * (late[i] + full.l[i])));
+            asItCame = std::fmax(asItCame, std::fabs(half.l[i] - 0.5f * (in.l[i] + full.l[i])));
+        }
+        CHECK(worst < 1e-6f && asItCame > 0.01f && peakOf(full.l) > 0.3f);
         // Each side is its own.
         Stereo one = in;
         one.r.assign(one.frames(), 0.f);
         through(*saturate(true, 0.7f, type, 0.6f, 1.f), one);
         CHECK(peakOf(one.r) == 0.f && one.l == full.l);
+    }
+    // MIX PART WAY HAS NO HOLE IN THE TREBLE. What comes out of the 2x stage is
+    // about 2 samples late, and up high 2 samples is half a wave: added to the
+    // sound as it came in, the two cancel (a comb filter). So the plain sound
+    // is made late by the same amount before the two are mixed. Read with a
+    // sine too quiet to bend, where the wet sound is the plain one times a
+    // gain: part way, the level is then part way between the two.
+    //   Before this was mended, DRIVE 0, MIX 50%: 5 kHz -1.6 dB, 8 kHz -5.6, 10 kHz -11.8, 12 kHz -24.9, 14 kHz -8.1.
+    //   Today, DRIVE 0, MIX 50%: 5 kHz +0.2 dB, 8 kHz +0.1, 10 kHz -0.0, 12 kHz -0.1, 14 kHz -0.2, 18 kHz -0.3: each within 0.1 dB of part way.
+    for (float drive : {0.f, 0.4f})
+        for (int type : {0, 2}) {
+            const auto level = [&](float mix, double hz) {
+                std::unique_ptr<Effect> e = saturate(true, drive, type, 1.f, mix);
+                Stereo io(96000);
+                io.l = io.r = sineOf(hz, 0.01, 96000);
+                through(*e, io);
+                return partAt(io.l.data() + 48000, 48000, hz) / 0.01;
+            };
+            for (double hz : {1000.0, 5000.0, 8000.0, 10000.0, 12000.0, 14000.0, 16000.0, 18000.0}) {
+                const double full = level(1.f, hz);
+                for (float mix : {0.25f, 0.5f, 0.75f}) {
+                    const double got = level(mix, hz), partWay = (1.0 - mix) + mix * full;
+                    SAY("saturate %s DRIVE %2.0f%% MIX %2.0f%%, %5.0f Hz: %+.1f dB (all wet %+.1f; part way between would be %+.1f)\n", kSatName[type], drive * 100.0, mix * 100.0, hz, dB(got), dB(full), dB(partWay));
+                    CHECK(std::fabs(dB(got / partWay)) < 0.2);
+                }
+            }
+        }
+    // MIX leaving 0, and coming back to it: the plain sound slides from "as
+    // it came in" to "late", it does not jump. Under a 100 Hz sine the late
+    // one is 1.8 of the sine's steps behind, so a jump would be a corner:
+    // one sample standing off the line between its neighbours. The sharpest
+    // corner, in the sine's own steepest steps:
+    //   Today: leaving 0 for 50%: 0.013. Coming back: 0.013. (Jumping instead: 1.6 and 0.8.)
+    for (int back = 0; back < 2; ++back) {
+        std::unique_ptr<Effect> e = saturate(true, 0.f, 0, 1.f, back ? 0.5f : 0.f);
+        Stereo io(48000);
+        const std::vector<float> in = sineOf(100.0, 0.5, 48000);
+        io.l = io.r = in;
+        through(*e, io, 0, 24037);
+        e->setParam(3, back ? 0.f : 0.5f);
+        through(*e, io, 24037, 48000);
+        const double corner = largestBend(io.l, 24000, 48000) / sineStep(100.0, 0.5);
+        SAY("saturate MIX %s under a 100 Hz sine: the sharpest corner is %.4f of the sine's steepest step\n", back ? "back to 0" : "leaving 0 for 50%", corner);
+        CHECK(corner < 0.02);
+        // And it gets there: back at 0 it is the sound untouched again; away from 0 it is not.
+        bool same = true;
+        for (std::size_t i = 36000; i < 48000; ++i) same = same && io.l[i] == in[i];
+        CHECK(same == (back == 1));
     }
     // NO CLICKS. A turned setting slides, and a change of TYPE fades from one
     // curve to the other over 10 ms. Under a 100 Hz sine, nothing is steeper

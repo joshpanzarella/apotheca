@@ -188,6 +188,11 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 - **A filter state does not reach zero by itself**: with a coefficient over a
   half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
   "silence in, silence out" fails and a processor without flush-to-zero crawls.
+- **A wet sound that comes out late is never mixed with the plain sound as it
+  came in.** Two samples late is half a wave at 12 kHz, and the two cancel (a
+  comb filter). SATURATE's 2x stage does this; its plain sound goes through
+  `Halfband::late` first, except at MIX 0 exactly. Test a new effect's
+  response at MIX 50%, not only at 0 and 100%.
 - **A new effect glides every setting** (`fx::Glide` in `fx/unit.hpp`): a
   turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
   is still the sound untouched to the sample. The first block after it is
@@ -268,7 +273,7 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
-| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.15% |
+| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

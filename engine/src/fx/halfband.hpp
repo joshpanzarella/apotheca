@@ -11,11 +11,21 @@
 //   down.down(twice, out, frames);     2 * frames in, `frames` out
 //   up.settle(); down.settle();        now and then: see settle()
 //
+//   Halfband late;                     and one more, if the plain sound is mixed in beside it
+//   late.late(in, plain, frames);      the plain sound, as late as up and down make it
+//
 // What it is: a half-band filter made of two short chains of all-pass stages
 // (four stages in all), which is the cheapest kind: eight multiplies for a
-// sample up and back. It adds no delay worth the name (2.3 samples for up
-// and down together, low down), so the plain sound can still be mixed in
-// beside what comes out.
+// sample up and back.
+//
+// IT MAKES THE SOUND LATE, and by more the higher the note: 1.8 samples low
+// down, 2.0 at 12 kHz (half a wave there), more above. So the plain sound
+// must NOT be mixed in beside what comes out as it stands: up high the two
+// cancel (a comb filter: 25 dB gone at 12 kHz at an even mix; SATURATE
+// shipped a day like that). Mix in `late()` of the plain sound instead. Up
+// and down with nothing between come to the four stages one after another at
+// the plain rate, and that is what `late()` is: the same lateness at every
+// frequency, for four multiplies.
 //
 // Measured (tests/effects_test.cpp, testHalfband):
 //   up to 19.2 kHz at 48 kHz        passed whole (within 0.01 dB)
@@ -55,6 +65,13 @@ public:
     void settle() {
         for (float& v : y_)
             if (std::fabs(v) < 1e-20f) v = 0.f;
+    }
+    // `frames` in, `frames` out: what up() and then down() would give with
+    // nothing done between (to the last bit or two). For the plain sound, so
+    // that it lines up with the bent one. Its own Halfband, not one that
+    // also goes up or down.
+    void late(const float* in, float* out, int frames) {
+        for (int i = 0; i < frames; ++i) out[i] = stage(3, stage(2, stage(1, stage(0, in[i]))));
     }
     // 2 * frames in, `frames` out.
     void down(const float* in, float* out, int frames) {

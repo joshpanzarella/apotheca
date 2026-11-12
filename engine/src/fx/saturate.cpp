@@ -6,7 +6,7 @@
 //           FOLD   past the top the wave folds back down (a wavefolder)
 //           HARD   straight, then flat: a clipper with a small round corner
 //   TONE    a low-pass after it: 500 Hz to 20 kHz
-//   MIX     0 is the sound untouched
+//   MIX     0 is the sound untouched, to the sample
 //
 // It is worked out at twice the sample rate (halfband.hpp), so the harsh
 // fold-back the old DRIVE has up high is far lower: tests/effects_test.cpp
@@ -17,6 +17,13 @@
 // The loudness is held level as DRIVE rises: for each DRIVE and TYPE the
 // output is scaled so that a sine at half scale comes out as loud as it went
 // in. Quieter sounds come up and louder ones come down, which is what drive is.
+//
+// The 2x stage makes the bent sound about 2 samples late, so at a part-way
+// MIX the plain sound is made late to match (Halfband::late) before the two
+// are added: mixed as it came in, they cancelled up high (25 dB gone at
+// 12 kHz at MIX 50%). At MIX 0 exactly the plain sound is not made late: it
+// is the sound untouched. Leaving 0, or coming back to it, the plain sound
+// slides from the one to the other in about 20 ms, like any setting.
 //
 // Every setting glides, and a change of TYPE is a 10 ms fade from one curve
 // to the other: turning one is not a click.
@@ -97,6 +104,7 @@ public:
         for (int c = 0; c < 2; ++c) {
             up_[c].reset();
             down_[c].reset();
+            late_[c].reset();
             dcIn_[c] = dcOut_[c] = tone_[c] = 0.f;
         }
         fade_ = 0;
@@ -139,6 +147,7 @@ protected:
         const float hz = 500.f * std::pow(40.f, p_[2]); // 500 Hz to 20 kHz
         toneCoeff_.set(1.f - std::exp(-6.2831853f * (hz > 0.45f * sr_ ? 0.45f * sr_ : hz) / sr_));
         mix_.set(p_[3]);
+        lateAmount_.set(p_[3] > 0.f && twice_ ? 1.f : 0.f); // at MIX 0 the plain sound is as it came in
         dcKeep_ = 1.f - 6.2831853f * kDcHz / sr_;
     }
 
@@ -146,7 +155,7 @@ private:
     static constexpr int kBlock = 64;
 
     void block(float* left, float* right, int frames) {
-        Glide* const all[] = {&drive_, &toneCoeff_, &mix_};
+        Glide* const all[] = {&drive_, &toneCoeff_, &mix_, &lateAmount_};
         if (!settled_) {
             for (Glide* g : all) g->snap();
             push_ = pushOf(type_, drive_.now);
@@ -166,13 +175,14 @@ private:
             levelStep = (levelEnd - level_) / static_cast<float>(frames);
         }
         // The same for both sides: how hard, how loud, and how much of the old curve, sample by sample.
-        float push[kBlock], level[kBlock], old[kBlock], coeff[kBlock], mix[kBlock];
+        float push[kBlock], level[kBlock], old[kBlock], coeff[kBlock], mix[kBlock], late[kBlock];
         const bool fading = fade_ > 0;
         for (int i = 0; i < frames; ++i) {
             push[i] = push_ + pushStep * static_cast<float>(i + 1);
             level[i] = level_ + levelStep * static_cast<float>(i + 1);
             coeff[i] = toneCoeff_.next();
             mix[i] = mix_.next();
+            late[i] = lateAmount_.next();
             old[i] = fade_ > 0 ? static_cast<float>(--fade_) / static_cast<float>(fadeLength_) : 0.f;
         }
         const int n = twice_ ? 2 : 1; // samples worked out for each one that goes by
@@ -208,13 +218,19 @@ private:
             if (twice_) down_[c].down(work, wet, frames);
             else
                 for (int i = 0; i < frames; ++i) wet[i] = work[i];
+            // The plain sound, as late as the 2x stage has made the bent one.
+            float plain[kBlock];
+            if (twice_) late_[c].late(io[c], plain, frames);
+            else
+                for (int i = 0; i < frames; ++i) plain[i] = io[c][i];
             float dcIn = dcIn_[c], dcOut = dcOut_[c], tone = tone_[c];
             for (int i = 0; i < frames; ++i) {
                 dcOut = wet[i] - dcIn + dcKeep_ * dcOut; // back on centre
                 dcIn = wet[i];
                 tone += coeff[i] * (dcOut - tone);
                 const float in = io[c][i];
-                io[c][i] = in + mix[i] * (tone - in);
+                const float dry = in + late[i] * (plain[i] - in); // `in` itself while MIX rests at 0
+                io[c][i] = dry + mix[i] * (tone - dry);
             }
             dcIn_[c] = dcIn;
             dcOut_[c] = dcOut;
@@ -230,14 +246,15 @@ private:
         for (int c = 0; c < 2; ++c) {
             up_[c].settle();
             down_[c].settle();
+            late_[c].settle();
             if (std::fabs(dcOut_[c]) < 1e-20f) dcOut_[c] = 0.f;
             if (std::fabs(tone_[c]) < 1e-20f) tone_[c] = 0.f;
         }
     }
 
     const bool twice_;
-    Halfband up_[2], down_[2];
-    Glide drive_, toneCoeff_, mix_;
+    Halfband up_[2], down_[2], late_[2];
+    Glide drive_, toneCoeff_, mix_, lateAmount_; // lateAmount_: 0 the plain sound as it came in (MIX 0), 1 made late to match the bent one
     float push_ = 1.f, level_ = 1.f; // how hard into the curve and how loud out of it, as of the end of the last block
     float dcIn_[2] = {}, dcOut_[2] = {}, tone_[2] = {}, dcKeep_ = 1.f;
     int type_ = 0, oldType_ = 0, fade_ = 0, fadeLength_ = 1, sinceSettle_ = 0;
