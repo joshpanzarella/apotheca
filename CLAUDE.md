@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (18) | `cd build && ctest -j8` (about 40 s) |
+| All tests (19) | `cd build && ctest -j8` (about 40 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -353,6 +353,16 @@ effect in those two groups and fails one that does not.
 - **Undo is a text snapshot of the patterns** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. Sounds, effects and track deletes are not undone.
+- **Scenes are numbered by their place, so a scene put in moves the ones
+  after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
+  scene's number must follow: the engine's playing (`Command::ScenesMoved`,
+  which changes the scene number and nothing else), `project.playScene`, a
+  keyboard note being recorded (`Session::scenesMoved` does all three), and
+  the player (`UndoStep::nextScene` is how undo and redo know to move them).
+  **The order is what keeps a playing song unbroken**: making the copy, the
+  patterns go first and the word that the playing moved last; taking it
+  back, the word first and the patterns last. In between the scene playing
+  is the same either way. Its tests: `tests/nextscene_test.cpp`.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
   that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
   arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.

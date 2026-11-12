@@ -315,6 +315,24 @@ made longer, a scene that was never cut grows with it.
 (Songs kept before this said "steps to a bar"; they open with the same
 length they had for one-bar scenes.)
 
+### Next scene: carry on from a copy
+
+You have a loop going and want the next part of the song to start from it.
+
+- **On the piano roll or the drum grid (its slices too): hold SELECT and
+  press Y.** A line says "SCENE 2: COPY OF 1".
+- The scene you are on is copied whole into a **new scene right after it**:
+  every track's cell, how long the scene is, how many times it plays, its
+  automation. The scenes after it move down one. Nothing is written over.
+- **You are put on the new scene**, on the same screen, track, bar and
+  cursor. Carry on adding; the scene before stays as it was.
+- **A song that is playing does not miss a step.** The two scenes are the
+  same, so it goes on from where it was, now in the new one.
+- One press, nothing asked. **SELECT + B takes it back** (and puts you, and
+  the playing, back on the scene you came from); SELECT + A does it again.
+- A song holds 16 scenes. With the sixteenth in use it says "NO ROOM: 16
+  SCENES" and changes nothing.
+
 ### Bouncing: getting a song out
 
 **SET tab, BOUNCE row.** Left / right picks what, A starts it.
@@ -692,7 +710,7 @@ A few things mean one thing everywhere:
 | X | Hear it. Held on a drum hit: its step effects |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
 | L2 / R2 | The tabs |
-| SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length |
+| SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
 
 A held D-pad runs at one of two speeds on every screen: fast for a cursor
 (33 moves a second), slow for a list or a choice (9 a second), so each one

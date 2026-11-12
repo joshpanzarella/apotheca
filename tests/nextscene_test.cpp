@@ -299,6 +299,13 @@ void testOnlyOnTheGrids() {
     drums.moveCursorTo(6, 9); // nothing there
     rig.nextScene();
     CHECK(p.scene == 2 && p.tracks[0].drums[2][0].level[6][9] == 0.f && p.tracks[0].drums[1][0].level[6][9] == 0.f);
+    // Y first and SELECT after is not the gesture: not when SELECT goes down, not when Y comes up.
+    rig.key(Y, true);
+    rig.key(SELECT, true);
+    rig.key(Y, false);
+    rig.key(SELECT, false);
+    CHECK(p.scene == 2 && p.sceneCount() == 5);
+    rig.session().view = View::Pattern; // (SELECT, let go with nothing pressed since, is its tap: the SONG screen)
     // Y by itself afterwards is Y again.
     drums.moveCursorTo(0, 4);
     rig.tap(Y);
@@ -432,6 +439,31 @@ void testUndo() {
     CHECK(songText(p) == was && p.scene == 0 && p.bar == 0);
 }
 
+// The player is somewhere else in the song, on the third bar of a long cell, when the next scene is
+// taken back or put forward: the cell they are put on has two bars, so they are on its first.
+void testUndoPutsThePlayerOnABarThatIsThere() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    for (int scene : {8, 9, 10}) rig.session().setCellBars(0, scene, 4); // four bars each, before and after one moves down
+    rig.settle();
+    rig.nextScene();
+    CHECK(p.scene == 1 && p.tracks[0].bars[0] == 2 && p.tracks[0].bars[1] == 2 && p.tracks[0].bars[9] == 4 && p.tracks[0].bars[10] == 4);
+    p.scene = 9;
+    p.bar = 2;
+    rig.undo();
+    CHECK(p.scene == 0 && p.bar == 0);
+    p.scene = 9;
+    p.bar = 2;
+    rig.redo();
+    CHECK(p.scene == 1 && p.bar == 0);
+    // A bar the cell does have is kept.
+    p.scene = 9;
+    p.bar = 1;
+    rig.undo();
+    CHECK(p.scene == 0 && p.bar == 1);
+}
+
 // The step is its own: what was being edited just before is a step already, and stays one.
 void testUndoIsOneStep() {
     {
@@ -482,6 +514,8 @@ void testUndoIsOneStep() {
         Rig rig;
         fill(rig);
         Project& p = rig.project();
+        rig.settle();
+        p.tracks[0].drums[0][0].level[7][7] = 0.6f; // (so what undo last saw is not the song as it is now)
         const std::string was = songText(p);
         rig.session().applyProject(); // a song just opened: undo starts again
         rig.session().view = View::Pattern;
@@ -642,6 +676,72 @@ void testAnotherSceneIsPlaying() {
     }
 }
 
+// The scene the copy was made from is the one going round when the copy is taken back (the player
+// went back to it and pressed START): it is not one of those that move, and the playing stays on it.
+void testUndoWhileTheFirstOfTheTwoPlays() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    p.scene = 1;
+    rig.settle();
+    const std::string was = songText(p);
+    const int steps = rig.session().undoSteps();
+    rig.nextScene();
+    CHECK(p.scene == 2);
+    p.scene = 1;
+    rig.session().togglePlay(false);
+    p.scene = 2; // (back before a frame is drawn: going to another scene is itself a step of undo)
+    rig.frames(1);
+    rig.render(3 * kStep);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 1 && rig.session().undoSteps() == steps + 1);
+    rig.undo();
+    CHECK(songText(p) == was && p.scene == 1 && p.playScene == 1);
+    rig.render(kStep);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 1 && p.playScene == 1);
+}
+
+// The sixteenth scene, with nothing in it, is going round, and a copy is made further up: there is
+// no seventeenth to move to. The playing stays, and so does what the screens are told.
+void testTheLastSceneIsPlaying() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    p.scene = 15;
+    rig.session().togglePlay(false);
+    p.scene = 0;
+    rig.frames(1);
+    rig.render(3 * kStep);
+    rig.frames(1);
+    CHECK(p.playScene == 15);
+    rig.nextScene();
+    CHECK(p.scene == 1 && p.playScene == 15);
+    rig.render(kStep);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 15 && p.playScene == 15);
+}
+
+// The song's last scene is playing, the copy is made, and the bar ends before another frame is
+// drawn: the engine already knows the song is a scene longer, plays the copy out, and goes round to the top.
+void testTheSongIsLongerAtOnce() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    p.scene = 2;
+    rig.frames(1);
+    rig.session().togglePlay(true);
+    rig.frames(1);
+    rig.render(2 * 13 * kStep + 5 * kStep + 50); // its third and last time round
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 2 && rig.engine->playRepeat() == 2);
+    rig.nextScene();
+    rig.render(6 * kStep); // no frame in between
+    CHECK(rig.engine->playScene() == 3 && rig.engine->playRepeat() == 2 && rig.engine->playStep() == 11);
+    rig.render(3 * kStep);
+    CHECK(rig.engine->playScene() == 0 && rig.engine->playRepeat() == 0 && rig.engine->playStep() == 1);
+}
+
 // Stopped: nothing starts playing, and the engine is not left thinking it is somewhere.
 void testStopped() {
     Rig rig;
@@ -753,10 +853,14 @@ int main() {
     testOnlyOnTheGrids();
     testNoRoom();
     testUndo();
+    testUndoPutsThePlayerOnABarThatIsThere();
     testUndoIsOneStep();
     testPlayingGoesOnUnbroken();
     testTheSongGoesOnUnbroken();
     testAnotherSceneIsPlaying();
+    testUndoWhileTheFirstOfTheTwoPlays();
+    testTheLastSceneIsPlaying();
+    testTheSongIsLongerAtOnce();
     testStopped();
     testTheEngineHasTheWholeSong();
     testWriteGoesToTheNewScene();

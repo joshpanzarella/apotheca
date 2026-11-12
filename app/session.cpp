@@ -506,8 +506,8 @@ void Session::scenesMoved(int from, int by) {
     c.a = from;
     c.b = by;
     engine.send(c);
-    const auto moved = [&](int scene) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; };
-    if (project.playing) project.playScene = moved(project.playScene);
+    const auto moved = [&](int scene) { return scene >= from && scene + by < kMaxScenes ? scene + by : scene; };
+    project.playScene = moved(project.playScene); // (-1 when nothing is playing: no scene, and it stays so)
     for (Recording& rec : recordingNote_)
         if (rec.on) rec.scene = moved(rec.scene);
 }
@@ -517,8 +517,7 @@ int Session::nextScene() {
     if (from < 0 || to >= kMaxScenes || project.sceneCount() >= kMaxScenes) return -1; // no room: the last scene would fall off the end
     // A step of undo of its own. Whatever was being edited just before is a step already; it ends here.
     if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one
-    if (editing_ || !undoReady_) settled_ = patternsNow();
-    undoReady_ = true;
+    if (editing_ || !undoReady_) settled_ = patternsNow(); // (not ready: before the first frame of a song just opened)
     editing_ = false;
     undo_.push_back({settled_, from});
     if (static_cast<int>(undo_.size()) > kUndoLevels) undo_.erase(undo_.begin());

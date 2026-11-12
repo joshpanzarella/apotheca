@@ -134,17 +134,14 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // SELECT held with Y, on the PATTERN screen (the drum grid, its slices, the piano roll): NEXT
     // SCENE. The scene being worked on is copied into a new one right after it and the player is
     // put there, on the same screen with the cursor where it was, to carry on adding. One press,
-    // nothing asked: SELECT + B takes it back. Y let go afterwards is not the screen's Y.
+    // nothing asked: SELECT + B takes it back. Y let go afterwards is not the screen's Y. (SELECT let
+    // go is not its tap either: any button pressed while it is held has seen to that, above.)
     if (b == Button::Y && nextSceneY_ && !event.down) {
         nextSceneY_ = false;
         return;
     }
     if (b == Button::Y && input.held(Button::Select) && session_.view == View::Pattern) {
-        if (event.down) {
-            nextSceneY_ = true;
-            selectAlone_ = false;
-            song_.selectWasUsed();
-        }
+        if (event.down) nextSceneY_ = true;
         if (event.down && !panicking_) { // (not in a panic: all four shoulder buttons are down, and nothing is to change)
             const int to = session_.nextScene();
             if (to >= 0) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: COPY OF %d", to + 1, to);
@@ -347,8 +344,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"L1  R1", "quieter / louder"},
             {"L2  R2", "on PATTERN: the scene a step shorter / longer"},
             {"Y", "on PATTERN: NEXT SCENE, a copy of this one to add to"},
-            {"UP  DOWN", "tempo, a beat a minute"},
-            {"LEFT  RIGHT", "tempo, ten at a time"},
+            {"UP  DOWN  LEFT  RIGHT", "tempo: a beat a minute / ten at a time"}, // (one line: the card is full)
             {"START", "quit Apotheca"},
         };
         float ly = y + 14.f;
