@@ -514,6 +514,8 @@ int movedScene(int scene, int from, int by) { return scene >= from && scene + by
 } // namespace
 
 void Session::scenesMoved(int from, int by, bool tellNow) {
+    lastMove_ = {from, by};
+    ++sceneMoves_;
     if (wordDue_) {
         // A copy taken back before its word had gone (its tracks were still going, one a frame;
         // nothing but undo gets here with a word waiting): neither word is sent. The engine

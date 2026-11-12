@@ -1156,6 +1156,96 @@ void testTheFramesBeforeTheEngineHears() {
     CHECK(rig.session().sceneMovesUnheard() == 0 && p.playScene == 0 && rig.engine->playScene() == 0 && rig.engine->playStep() == 1);
 }
 
+// The SONG screen's cursor is on a scene by its number, so it goes with the scenes too: after the
+// gesture a tap of SELECT shows SONG with its cursor on the new scene, not on the one just left.
+void testTheSongScreensCursorFollows() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    SongScreen& song = rig.app.song();
+    const auto goTo = [&](int scene) { // the player, to a scene, with things at rest again
+        rig.session().view = View::Pattern;
+        p.scene = scene;
+        rig.frames(1);
+        rig.settle();
+    };
+    song.moveCursorTo(0, 1);
+    rig.nextScene();
+    CHECK(song.cursorScene() == 1 && song.cursorColumn() == 1 && !song.cursorOnHead());
+    rig.frames(1);
+    rig.tap(SELECT);
+    CHECK(rig.session().view == View::Song);
+    rig.undo(); // (from any screen)
+    CHECK(song.cursorScene() == 0 && p.scene == 0);
+    rig.redo();
+    CHECK(song.cursorScene() == 1);
+    rig.undo();
+
+    // On a later scene: it goes down with that scene. On an earlier one: it stays.
+    goTo(0);
+    song.moveCursorTo(2, 0);
+    rig.nextScene(); // (of scene 1)
+    CHECK(song.cursorScene() == 3);
+    rig.undo();
+    CHECK(song.cursorScene() == 2);
+    goTo(1);
+    song.moveCursorTo(0, 0);
+    rig.nextScene(); // (of scene 2)
+    CHECK(song.cursorScene() == 0 && p.scene == 2);
+    rig.undo();
+    CHECK(song.cursorScene() == 0);
+    song.moveCursorTo(1, 0);
+    rig.redo();
+    CHECK(song.cursorScene() == 2 && p.scene == 2); // on the scene copied: it goes to the copy, with the player
+    rig.undo();
+    CHECK(song.cursorScene() == 1);
+    song.moveCursorTo(2, 0);
+    rig.redo();
+    CHECK(song.cursorScene() == 3);
+    rig.undo();
+    CHECK(song.cursorScene() == 2 && p.sceneCount() == 3);
+
+    // No room: nothing moved, the cursor neither. An ordinary undo: neither.
+    goTo(15);
+    song.moveCursorTo(15, 0);
+    rig.nextScene();
+    CHECK(song.cursorScene() == 15 && rig.said() == "NO ROOM: 16 SCENES");
+    goTo(0);
+    song.moveCursorTo(15, 0);
+    rig.nextScene(); // the cursor on the sixteenth scene, which is empty and falls off the end: there is no seventeenth
+    CHECK(song.cursorScene() == 15 && p.scene == 1);
+    rig.undo();
+    CHECK(song.cursorScene() == 14); // (it was on the last row; the row it is on now was that one's neighbour)
+    p.tracks[0].drums[15][0].level[0][0] = 1.f; // the sixteenth in use
+    goTo(0);
+    song.moveCursorTo(4, 0);
+    rig.nextScene();
+    CHECK(song.cursorScene() == 4 && p.scene == 0 && rig.said() == "NO ROOM: 16 SCENES");
+    p.tracks[0].drums[15][0].level[0][0] = 0.f;
+    goTo(0);
+    song.moveCursorTo(4, 0);
+    rig.app.drums().moveCursorTo(6, 9);
+    rig.tap(A);
+    rig.frames(1);
+    rig.settle();
+    rig.undo();
+    CHECK(song.cursorScene() == 4 && p.tracks[0].drums[0][0].level[6][9] == 0.f);
+    rig.redo();
+    CHECK(song.cursorScene() == 4 && p.tracks[0].drums[0][0].level[6][9] > 0.f);
+
+    // The list of scenes follows the cursor off its last row and off its first.
+    goTo(0);
+    song.moveCursorTo(0, 0);
+    song.moveCursorTo(7, 0);
+    CHECK(song.topScene() == 0);
+    rig.nextScene();
+    CHECK(song.cursorScene() == 8 && song.topScene() == 1);
+    song.moveCursorTo(1, 0);
+    CHECK(song.topScene() == 1);
+    rig.undo();
+    CHECK(song.cursorScene() == 0 && song.topScene() == 0);
+}
+
 // The engine's command, by itself: it moves the playing only for a scene that has moved, only by one, and never off the song.
 void testTheCommand() {
     const auto at = [](int scene, int from, int by, bool play = true) {
@@ -1211,6 +1301,7 @@ int main() {
     testWriteGoesToTheNewScene();
     testTheFramesBeforeTheEngineHears();
     testTheCommand();
+    testTheSongScreensCursorFollows();
     testOneTrackAFrame();
     testAllAtOnceWhenItMustBe();
     testStartBeforeTheLastTrackHasGone();

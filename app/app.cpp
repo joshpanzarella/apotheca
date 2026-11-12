@@ -121,7 +121,9 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     if ((b == Button::B || b == Button::A) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
             const bool back = b == Button::B;
+            const unsigned moves = session_.sceneMoves();
             const bool done = back ? session_.undo() : session_.redo();
+            if (session_.sceneMoves() != moves) song_.scenesMoved(session_.sceneMoveFrom(), session_.sceneMoveBy()); // a NEXT SCENE taken back or put back
             if (done) std::snprintf(undoSaid_, sizeof undoSaid_, back ? "UNDONE  (%d MORE)" : "PUT BACK  (%d MORE)", back ? session_.undoSteps() : session_.redoSteps());
             else std::snprintf(undoSaid_, sizeof undoSaid_, "%s", back ? "NOTHING TO UNDO" : "NOTHING TO PUT BACK");
             undoSaidUntil_ = now_ + 1500;
@@ -144,6 +146,7 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) nextSceneY_ = true;
         if (event.down && !panicking_) { // (not in a panic: all four shoulder buttons are down, and nothing is to change)
             const int to = session_.nextScene();
+            if (to >= 0) song_.scenesMoved(to - 1, 1); // the SONG screen's cursor goes with its scene
             if (to >= 0) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: COPY OF %d", to + 1, to);
             else std::snprintf(undoSaid_, sizeof undoSaid_, "NO ROOM: %d SCENES", kMaxScenes);
             undoSaidUntil_ = now_ + 1500;

@@ -333,6 +333,11 @@ public:
     // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)
     int playScene() const;
     int imagesWaiting() const; // tracks whose patterns have yet to go to the engine after a scene move (they go one a frame)
+    // For a screen that holds a scene's number: how many times scenes have moved, and the last time
+    // (the scenes from `from` on went `by` places: 1 or -1). One call here moves them once at most.
+    unsigned sceneMoves() const { return sceneMoves_; }
+    int sceneMoveFrom() const { return lastMove_.from; }
+    int sceneMoveBy() const { return lastMove_.by; }
     int sceneMovesUnheard() const { return static_cast<int>(moves_.size()) + (wordDue_ ? 1 : 0); } // as of the last frame (for tests)
 
     // ---- mute, solo, names -----------------------------------------------------------
@@ -460,7 +465,8 @@ private:
     // And the one move whose word has yet to be sent (it waits for its tracks' patterns to go).
     struct SceneMove { int from = 0, by = 0; };
     std::vector<SceneMove> moves_;
-    SceneMove move_;
+    SceneMove move_, lastMove_;
+    unsigned sceneMoves_ = 0;
     bool wordDue_ = false;
     unsigned movesSent_ = 0;
     std::size_t movesUnheard(unsigned heard) const;

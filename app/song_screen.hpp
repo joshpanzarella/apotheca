@@ -60,6 +60,7 @@ public:
     // For tests and stills.
     void moveCursorTo(int scene, int column); // column -1 is the repeat count; trackCount() is + TRACK
     int cursorScene() const { return scene_; }
+    int topScene() const { return top_; } // the first scene shown
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool choosing() const { return choosing_; }
@@ -67,6 +68,7 @@ public:
     bool listingRevs() const { return listing_ && revsOpen_; }
     int listCursor() const { return revsOpen_ ? revCursor_ : listCursor_; }
     const std::vector<std::string>& listedSongs() const { return songs_; }
+    void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
 
 private:
