@@ -14,15 +14,25 @@ namespace fx {
 // `step = g.begin(frames, k)`; then, for each sample, either add `step` to a
 // local copy or call `g.next()` (one or the other, not both); then
 // `g.done()`. It moves a fraction `k` of what is left each block, and lands
-// EXACTLY on `to` when it is close: a value that only ever crept closer would
-// become a number too small to hold, which is slow.
+// EXACTLY on `to`: a value that only ever crept closer would become a number
+// too small to hold, which is slow.
+// IT ALWAYS LANDS, whatever the block length. A fraction of what is left gets
+// smaller for ever, and in short blocks (8 frames and under) it used to fall
+// below the smallest amount a float can be moved by: the value then stood
+// still a hair short of `to` and `moving()` stayed true for good (HALL and
+// SATURATE do their costly work while it is). So it never moves slower than
+// kLeast a sample: the last stretch is a straight line, and it arrives.
 struct Glide {
     float now = 0.f, to = 0.f, end = 0.f, step = 0.f;
+    static constexpr float kLeast = 1e-7f; // a sample, for a value near 1; in proportion for a larger one
     void snap() { now = end = to, step = 0.f; } // there at once: before the first sound, and on a reset
     bool moving() const { return now != to; }
     float begin(int frames, float k) {
-        end = now + k * (to - now);
-        if (std::fabs(to - end) < 1e-5f) end = to;
+        const float left = to - now, least = static_cast<float>(frames) * kLeast * (1.f + std::fabs(to));
+        float move = k * left;
+        if (std::fabs(move) < least) move = left < 0.f ? -least : least;
+        end = std::fabs(move) >= std::fabs(left) ? to : now + move;
+        if (end == now) end = to; // (cannot happen while kLeast is more than a float's grain; kept as the last word)
         return step = (end - now) / static_cast<float>(frames);
     }
     float next() { return now += step; }

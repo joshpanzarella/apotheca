@@ -51,6 +51,7 @@
 #include "apotheca/denormals.hpp"
 #include "apotheca/engine.hpp"
 
+#include "../engine/src/fx/glide.hpp"    // Glide, by itself
 #include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
 #include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
 
@@ -4435,6 +4436,62 @@ static void testTheGroupJump() {
     CHECK(effectGroupJump(-3, 1) == -3 && effectGroupJump(effectListSize(), -1) == effectListSize());
 }
 
+// ---- 7. found in review, 2026-11-12 -----------------------------------------------------------
+
+// A GLIDE ALWAYS LANDS, whatever the block length. It used not to in blocks
+// of 8 frames and under: the fraction of what is left fell below what a float
+// can be moved by, and the value stood a hair short for good, "moving".
+static void testGlideLands() {
+    struct Case {
+        float from, to;
+    };
+    static const Case cases[] = {{0.f, 1.f}, {1.f, 0.f}, {0.2f, 0.6f}, {0.6f, 0.61f}, {0.3f, 0.30001f}, {1.f, 0.999f}, {0.f, 4800.37f}, {4891.2f, 1222.8f}, {4800.f, 4800.4f}, {-0.5f, 0.5f}, {0.f, 1e-4f}};
+    for (const Case& c : cases) {
+        for (int frames : {1, 2, 3, 5, 8, 16, 64}) {
+            for (float seconds : {0.02f, 0.1f}) {
+                fx::Glide g;
+                g.to = c.from;
+                g.snap();
+                CHECK(!g.moving() && g.now == c.from);
+                g.to = c.to;
+                const float k = fx::glideK(frames, seconds, 48000.f);
+                int samples = 0;
+                bool straight = true; // never past where it is going, never backwards
+                float fastest = 0.f;
+                const float span = std::fabs(c.to - c.from);
+                while (g.moving() && samples < 48000 * 3) {
+                    const float before = g.now, step = g.begin(frames, k);
+                    float at = before;
+                    for (int i = 0; i < frames; ++i) at += step;
+                    g.done();
+                    samples += frames;
+                    straight = straight && (c.to > c.from ? g.now >= before && g.now <= c.to : g.now <= before && g.now >= c.to);
+                    straight = straight && std::fabs(at - g.now) <= 1e-4f * (1.f + std::fabs(c.to)); // the steps add up to where it says it got to
+                    fastest = std::fmax(fastest, std::fabs(step));
+                }
+                // There, exactly, within twelve times its settling time.
+                CHECK(!g.moving() && g.now == c.to && g.end == c.to);
+                CHECK(samples <= static_cast<int>(12.f * seconds * 48000.f));
+                CHECK(straight);
+                // And it is a glide, not a jump: no sample moves it by more than its share of the way.
+                CHECK(fastest <= span / (seconds * 48000.f) * 1.001f + 2e-7f * (1.f + std::fabs(c.to)));
+                // Standing still, it stays: no step, and done() changes nothing.
+                CHECK(g.begin(frames, k) == 0.f && g.next() == c.to);
+                g.done();
+                CHECK(g.now == c.to);
+            }
+        }
+    }
+    // Most of the way in the time it is given, at any block length: after `seconds`, between 60 and 70% there.
+    for (int frames : {1, 8, 64}) {
+        fx::Glide g;
+        g.to = 1.f;
+        const float k = fx::glideK(frames, 0.02f, 48000.f);
+        for (int done = 0; done < 960; done += frames) g.begin(frames, k), g.done();
+        CHECK(g.now > 0.6f && g.now < 0.7f);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -4471,6 +4528,7 @@ int main(int argc, char** argv) {
     testThirdSlot();
     testSendsOnAnyHelperCount();
     testTheGroupJump();
+    testGlideLands();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }
