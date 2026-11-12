@@ -169,6 +169,16 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   checksums; turning it on is the owner's call. The old five do not need it.
   **A new effect with many fading states (HALL) does**: settle this before it ships.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
+- **Some effect numbers are kept for effects not built yet** (`EffectKind`
+  6 TAPE, 7 HALL, 9 COMP, 10 SATURATE, 11 DUCK were given out so three people
+  could work at once). A kept number has NONE's row in `kTable` and is not in
+  `kList`. **A loop over `1..kEffectKinds` must skip what `effectExists()`
+  says is not there.**
+- **A new effect glides every setting** (`fx::Glide` in `fx/unit.hpp`): a
+  turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
+  is still the sound untouched to the sample. The first block after it is
+  made or reset starts where the settings are (`snap`), with no slide. The
+  old five do not glide and must not start to.
 
 ### The app
 - **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`

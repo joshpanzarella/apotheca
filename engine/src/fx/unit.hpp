@@ -46,6 +46,27 @@ protected:
     float sr_ = 48000.f;
 };
 
+// A value on its way to where a setting was turned to, so that a turn is a
+// slide and not a click. It goes most of the way in `seconds` and then
+// arrives exactly, so a setting at rest costs nothing and MIX at 0 is 0.
+//     begin(frames, part)   once a block; part = glidePart(frames, seconds, rate)
+//     next()                once a sample
+//     finish()              at the end of the block
+struct Glide {
+    float now = 0.f, to = 0.f, step = 0.f, end = 0.f;
+    void set(float target) { to = target; }
+    void snap() { now = end = to; step = 0.f; } // there at once: before the first sound, and on a reset
+    void begin(int frames, float part) {
+        end = now + (to - now) * part;
+        if (std::fabs(to - end) < 1e-5f * (1.f + std::fabs(to))) end = to; // near enough: arrive
+        step = (end - now) / static_cast<float>(frames);
+    }
+    float next() { return now += step; }
+    void finish() { now = end; }
+    bool still() const { return now == to; }
+};
+inline float glidePart(int frames, float seconds, float rate) { return 1.f - std::exp(-static_cast<float>(frames) / (seconds * rate)); }
+
 // How a plain amount reads: "35%".
 inline void readPercent(float value, char* out, int size) {
     std::snprintf(out, static_cast<std::size_t>(size), "%d%%", static_cast<int>(std::round(value * 100.f)));
@@ -57,6 +78,7 @@ extern const EffectInfo kDriveInfo;  // drive.cpp
 extern const EffectInfo kDelayInfo;  // delay.cpp
 extern const EffectInfo kReverbInfo; // reverb.cpp
 extern const EffectInfo kCrushInfo;  // crush.cpp
+extern const EffectInfo kChorusInfo; // chorus.cpp
 
 } // namespace fx
 } // namespace apotheca

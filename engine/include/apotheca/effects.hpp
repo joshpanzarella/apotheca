@@ -9,6 +9,7 @@
 //            quarter, a half: it follows the tempo), FEEDBACK, TONE, MIX
 //   REVERB   SIZE, DAMPING, MIX
 //   CRUSH    BITS, RATE, MIX
+//   CHORUS   RATE, DEPTH, TYPE (chorus / ensemble / vibrato / flange), MIX
 //
 // MIX at 0 is the sound untouched.
 //
@@ -26,7 +27,21 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Count };
+enum class EffectKind {
+    None,
+    Filter,
+    Drive,
+    Delay,
+    Reverb,
+    Crush,
+    // Tape = 6,  (kept for TAPE: built on another branch)
+    // Hall = 7,  (kept for HALL: likewise)
+    Chorus = 8,
+    // Comp = 9,
+    // Saturate = 10,
+    // Duck = 11,
+    Count
+};
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
@@ -52,6 +67,9 @@ struct EffectInfo {
 };
 // The row for a number. Anything that is not an effect gets NONE's row.
 const EffectInfo& effectInfo(EffectKind kind);
+// Is this number an effect this version has? (NONE is not; nor is a number
+// kept for an effect that is not built yet.)
+inline bool effectExists(EffectKind kind) { return effectInfo(kind).create != nullptr; }
 
 // The list a player picks from, in its own order: the number is not the
 // order. Place 0 is NONE.

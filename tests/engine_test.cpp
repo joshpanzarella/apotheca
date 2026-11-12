@@ -2250,6 +2250,7 @@ static void testEffectsOneByOne() {
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
+        if (!effectExists(kind)) continue; // a number kept for an effect not built yet
         CHECK(info.params >= 3 && info.params <= kEffectParams && info.name[0]);
         int mix = -1;
         for (int p = 0; p < info.params; ++p)

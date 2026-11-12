@@ -160,7 +160,7 @@ are mixed).
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, DRIVE, DELAY, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
+| The effect | NONE, FILTER, DRIVE, DELAY, REVERB, CHORUS, CRUSH. It goes in at once, at its usual settings. | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
 
 | Effect | Settings |
@@ -169,10 +169,14 @@ are mixed).
 | DRIVE | Drive, tone, mix, output |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
 | REVERB | Size, damping, mix |
+| CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
+
+A song that uses a newer effect, opened by an older version of the program,
+loads without that effect: the slot is left as it was.
 
 ### Stop all sound
 

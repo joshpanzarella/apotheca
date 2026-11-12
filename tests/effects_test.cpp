@@ -316,6 +316,8 @@ static void testPinnedSound() {
     // And their numbers, which songs in memory and commands use.
     CHECK(static_cast<int>(EffectKind::None) == 0 && static_cast<int>(EffectKind::Filter) == 1 && static_cast<int>(EffectKind::Drive) == 2);
     CHECK(static_cast<int>(EffectKind::Delay) == 3 && static_cast<int>(EffectKind::Reverb) == 4 && static_cast<int>(EffectKind::Crush) == 5);
+    // The new ones' numbers were given out before they were built (6 TAPE, 7 HALL, 8 CHORUS, 9 COMP, 10 SATURATE, 11 DUCK).
+    CHECK(static_cast<int>(EffectKind::Chorus) == 8);
 }
 
 // ---- a whole song, with an effect in every slot ------------------------------------------------
@@ -421,11 +423,19 @@ static void testTheTable() {
     CHECK(effectFromWord("") == EffectKind::None && effectFromWord(nullptr) == EffectKind::None && effectFromWord("FILTER") == EffectKind::None);
     CHECK(effectFromWord("tape") == EffectKind::None && effectFromWord("filte") == EffectKind::None && effectFromWord("filters") == EffectKind::None);
     // Every effect: a word of its own, one word, lower case; in a group; in the list once.
-    CHECK(effectListSize() == kEffectKinds && effectAt(0) == EffectKind::None && effectPlace(EffectKind::None) == 0);
+    int built = 0;
+    for (int k = 1; k < kEffectKinds; ++k) built += effectExists(static_cast<EffectKind>(k)) ? 1 : 0;
+    CHECK(effectListSize() == built + 1 && effectAt(0) == EffectKind::None && effectPlace(EffectKind::None) == 0);
+    CHECK(!effectExists(EffectKind::None) && !effectExists(EffectKind::Count) && effectExists(EffectKind::Filter));
     CHECK(effectAt(-1) == EffectKind::None && effectAt(effectListSize()) == EffectKind::None && effectPlace(EffectKind::Count) == 0 && effectPlace(static_cast<EffectKind>(-3)) == 0);
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
+        if (!effectExists(kind)) {
+            // A number kept for an effect that is not built yet: it is nothing, everywhere.
+            CHECK(std::string(info.name) == "NONE" && effectPlace(kind) == 0 && makeEffect(kind, 48000.f, 120.f) == nullptr && effectChoices(kind, 0) == 0);
+            continue;
+        }
         const std::string word = info.word;
         CHECK(!word.empty() && effectFromWord(info.word) == kind);
         for (char c : word) CHECK((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
@@ -456,8 +466,13 @@ static void testTheTable() {
     }
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
-    // The list as it is today: the same order as before there was a list.
-    CHECK(effectAt(1) == EffectKind::Filter && effectAt(2) == EffectKind::Drive && effectAt(3) == EffectKind::Delay && effectAt(4) == EffectKind::Reverb && effectAt(5) == EffectKind::Crush);
+    // The list as it is today, in its groups: FILTER; DRIVE; DELAY; REVERB; MOVING; DIRT.
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Crush};
+    CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
+    for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
+    // ...and a group is never in two pieces (a whole group is stepped over at once).
+    for (int i = 2; i < effectListSize(); ++i)
+        for (int j = 1; j < i - 1; ++j) CHECK(effectInfo(effectAt(i)).group != effectInfo(effectAt(j)).group || effectInfo(effectAt(i - 1)).group == effectInfo(effectAt(i)).group);
     // Which settings are choices today, and the groups.
     CHECK(effectChoices(EffectKind::Filter, 2) == 5 && effectChoices(EffectKind::Delay, 0) == 6);
     CHECK(effectChoices(EffectKind::Filter, 0) == 0 && effectChoices(EffectKind::Delay, 1) == 0 && effectChoices(EffectKind::Drive, 0) == 0);
@@ -494,7 +509,7 @@ static void testTheTable() {
     CHECK(std::string(small) == "BAN");
     // makeEffect goes by the table too.
     CHECK(makeEffect(EffectKind::None, 48000.f, 120.f) == nullptr && makeEffect(EffectKind::Count, 48000.f, 120.f) == nullptr && makeEffect(static_cast<EffectKind>(-1), 48000.f, 120.f) == nullptr);
-    for (int k = 1; k < kEffectKinds; ++k) CHECK(makeEffect(static_cast<EffectKind>(k), 48000.f, 120.f) != nullptr);
+    for (int k = 1; k < kEffectKinds; ++k) CHECK((makeEffect(static_cast<EffectKind>(k), 48000.f, 120.f) != nullptr) == effectExists(static_cast<EffectKind>(k)));
 }
 
 // ---- 3. the measuring tools ------------------------------------------------------------------
@@ -719,6 +734,7 @@ static void testEveryEffect() {
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
+        if (!effectExists(kind)) continue;
         const int mix = mixOf(kind);
         // MIX at 0: the sound untouched, to the sample. (DRIVE has an OUTPUT
         // after its MIX: at its middle, which is "as it came in".)
@@ -728,7 +744,7 @@ static void testEveryEffect() {
             const Stereo in = pinInput(48000.f);
             Stereo out = in;
             through(*effect, out);
-            if (kind == EffectKind::Reverb || kind == EffectKind::Crush || kind == EffectKind::Delay || kind == EffectKind::Filter) CHECK(out.l == in.l && out.r == in.r);
+            if (kind != EffectKind::Drive) CHECK(out.l == in.l && out.r == in.r);
             float worst = 0.f;
             for (std::size_t i = 0; i < in.frames(); ++i) worst = std::fmax(worst, std::fabs(out.l[i] - in.l[i]));
             CHECK(worst < 1e-6f);
@@ -802,8 +818,14 @@ static void testEveryEffect() {
         //   CRUSH   BITS 38       RATE 39         MIX 3.8                    4.2  (it is steps by design)
         // The choices (TYPE, TIME) jump from one to the next, and CRUSH is
         // all jumps; the tool shows both as it should.
+        // The new ones glide every setting. Their numbers are over 1 only
+        // because they come out louder or steeper than the sine went in
+        // ("held still" says by how much), not because anything jumps:
+        //   CHORUS  RATE 1.3      DEPTH 1.7       TYPE 0.7    MIX 1.3        1.3
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0}, {1.15, 1.01, 18.1, 1.00, 1.00}, {5.87, 1.91, 1.90, 3.80, 1.91}, {33.5, 1.51, 1.55, 2.57, 1.55}, {0.94, 0.90, 1.09, 0, 0.83}, {38.2, 38.8, 3.79, 0, 4.22},
+            {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, // kept for TAPE and HALL
+            {1.26, 1.67, 0.71, 1.25, 1.25},   // CHORUS
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -812,6 +834,360 @@ static void testEveryEffect() {
             CHECK(std::fabs(jump - today[k][p]) < 0.1 * today[k][p] + 0.05);
             CHECK(std::fabs(steady - today[k][kEffectParams]) < 0.05 * today[k][kEffectParams] + 0.02);
         }
+    }
+}
+
+// ---- CHORUS ---------------------------------------------------------------------------------
+
+// A MOVING DELAY'S TIMES. Clicks go in, `every` samples apart; each comes
+// back as a copy, and where the copy's weight is centred is how late it was
+// just then (a cubic read keeps a click's centre exact, to a hundredth of a
+// sample). One number for each click: the delay, in samples, of the copy
+// found between `fromMs` and `toMs` after it. `sums` gets each copy's size.
+static std::vector<double> delaysOf(const std::vector<float>& out, std::size_t every, double fromMs, double toMs, std::vector<double>* sums = nullptr, double rate = 48000.0) {
+    std::vector<double> delays;
+    const std::size_t from = static_cast<std::size_t>(fromMs * rate / 1000.0), to = static_cast<std::size_t>(toMs * rate / 1000.0);
+    for (std::size_t click = 0; click + every <= out.size(); click += every) {
+        double sum = 0.0, moment = 0.0;
+        for (std::size_t i = from; i < to && i < every; ++i) {
+            sum += out[click + i];
+            moment += static_cast<double>(i) * out[click + i];
+        }
+        delays.push_back(sum != 0.0 ? moment / sum : 0.0);
+        if (sums) sums->push_back(sum);
+    }
+    return delays;
+}
+// A run of clicks through an effect: both sides out.
+static Stereo clicksThrough(Effect& effect, std::size_t every, double seconds, double rate = 48000.0) {
+    Stereo io(static_cast<std::size_t>(seconds * rate) / every * every);
+    for (std::size_t i = 0; i < io.frames(); i += every) io.l[i] = io.r[i] = 1.f;
+    through(effect, io);
+    return io;
+}
+// A WAVER: something read `dt` seconds apart that goes up and down. Its
+// middle, how long one turn takes (from where it rises through its middle),
+// and how far it swings each way and where in its turn it started (by
+// laying a sine of that length against it).
+struct Waver {
+    double middle = 0.0, period = 0.0, swing = 0.0, phase = 0.0; // phase in turns, 0..1
+};
+static Waver waverOf(const std::vector<double>& v, double dt) {
+    Waver w;
+    if (v.size() < 8) return w;
+    double low = v[0], high = v[0];
+    for (double x : v) low = x < low ? x : low, high = x > high ? x : high;
+    w.middle = 0.5 * (low + high);
+    double first = -1.0, last = -1.0;
+    int rises = 0;
+    for (std::size_t i = 1; i < v.size(); ++i) {
+        if (v[i - 1] < w.middle && v[i] >= w.middle) {
+            const double at = (static_cast<double>(i - 1) + (w.middle - v[i - 1]) / (v[i] - v[i - 1])) * dt;
+            if (first < 0.0) first = at;
+            last = at;
+            ++rises;
+        }
+    }
+    if (rises < 2) return w;
+    w.period = (last - first) / (rises - 1);
+    // Over a whole number of turns, so the sine laid against it comes out exact.
+    const std::size_t from = static_cast<std::size_t>(first / dt), to = static_cast<std::size_t>(last / dt);
+    double re = 0.0, im = 0.0, mean = 0.0;
+    for (std::size_t i = from; i < to; ++i) mean += v[i];
+    mean /= static_cast<double>(to - from);
+    for (std::size_t i = from; i < to; ++i) {
+        const double a = 2.0 * kPi * static_cast<double>(i) * dt / w.period;
+        re += (v[i] - mean) * std::sin(a);
+        im += (v[i] - mean) * std::cos(a);
+    }
+    w.middle = mean;
+    w.swing = 2.0 * std::sqrt(re * re + im * im) / static_cast<double>(to - from);
+    w.phase = std::atan2(im, re) / (2.0 * kPi);
+    if (w.phase < 0.0) w.phase += 1.0;
+    return w;
+}
+// How far one waver is behind another, in turns, 0..1.
+static double turnsBehind(const Waver& a, const Waver& b) {
+    double d = a.phase - b.phase;
+    while (d < 0.0) d += 1.0;
+    while (d >= 1.0) d -= 1.0;
+    return d;
+}
+// HOW ALIKE LEFT AND RIGHT ARE: 1 the same (no width), 0 unrelated.
+static double alike(const std::vector<float>& a, const std::vector<float>& b, std::size_t from = 0) {
+    double ab = 0.0, aa = 0.0, bb = 0.0;
+    for (std::size_t i = from; i < a.size(); ++i) {
+        ab += static_cast<double>(a[i]) * b[i];
+        aa += static_cast<double>(a[i]) * a[i];
+        bb += static_cast<double>(b[i]) * b[i];
+    }
+    return aa > 0.0 && bb > 0.0 ? ab / std::sqrt(aa * bb) : 1.0;
+}
+// A SINE'S PITCH AS IT GOES: its frequency over each run of `cycles` cycles, from where it rises through zero.
+static std::vector<double> pitchOf(const std::vector<float>& v, std::size_t from, int cycles, std::vector<double>* when = nullptr, double rate = 48000.0) {
+    std::vector<double> rises, hz;
+    for (std::size_t i = from + 1; i < v.size(); ++i)
+        if (v[i - 1] < 0.f && v[i] >= 0.f) rises.push_back(static_cast<double>(i - 1) + static_cast<double>(-v[i - 1]) / static_cast<double>(v[i] - v[i - 1]));
+    for (std::size_t i = static_cast<std::size_t>(cycles); i < rises.size(); ++i) {
+        hz.push_back(cycles * rate / (rises[i] - rises[i - static_cast<std::size_t>(cycles)]));
+        if (when) when->push_back(0.5 * (rises[i] + rises[i - static_cast<std::size_t>(cycles)]) / rate);
+    }
+    return hz;
+}
+
+static const float kChorusType[4] = {0.1f, 0.3f, 0.6f, 0.9f}; // CHORUS, ENSEMBLE, VIBRATO, FLANGE
+static float chorusRate(double hz) { return static_cast<float>(std::log(hz / 0.1) / std::log(80.0)); } // the RATE setting for a speed
+
+static void testChorus() {
+    const EffectKind kind = EffectKind::Chorus;
+    // Its row: what a song stores.
+    const EffectInfo& info = effectInfo(kind);
+    CHECK(std::string(info.name) == "CHORUS" && std::string(info.word) == "chorus" && info.params == 4 && info.group == EffectGroup::Moving);
+    CHECK(std::string(info.paramNames[0]) == "RATE" && std::string(info.paramNames[1]) == "DEPTH" && std::string(info.paramNames[2]) == "TYPE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(info.defaults[0] == 0.4f && info.defaults[1] == 0.5f && info.defaults[2] == 0.f && info.defaults[3] == 0.8f);
+    CHECK(effectChoices(kind, 2) == 4 && effectChoices(kind, 0) == 0 && effectChoices(kind, 1) == 0 && effectChoices(kind, 3) == 0);
+    CHECK(reads(kind, 2, 0.f) == "CHORUS" && reads(kind, 2, 0.25f) == "ENSEMBLE" && reads(kind, 2, 0.5f) == "VIBRATO" && reads(kind, 2, 0.75f) == "FLANGE" && reads(kind, 2, 1.f) == "FLANGE");
+    CHECK(reads(kind, 2, 0.24f) == "CHORUS" && reads(kind, 2, 0.49f) == "ENSEMBLE" && reads(kind, 2, 0.74f) == "VIBRATO");
+    CHECK(reads(kind, 0, 0.f) == "0.10 HZ" && reads(kind, 0, 1.f) == "8.0 HZ" && reads(kind, 0, 0.4f) == "0.58 HZ" && reads(kind, 0, chorusRate(1.0)) == "1.0 HZ");
+    CHECK(reads(kind, 1, 0.5f) == "50%" && reads(kind, 3, 0.8f) == "80%");
+
+    const std::size_t every = 960; // a click every 20 ms: longer than the longest copy is late
+    const double dt = every / 48000.0, ms = 48.0;
+    // CHORUS. Three copies a side, at rest 7, 10.5 and 14 ms late, each
+    // swinging 3 ms each way at DEPTH 100% (so 1.5 at 50%), at the speed RATE
+    // reads, a third of a turn after one another; the right side a quarter
+    // turn after the left. Today, RATE 0.58 HZ, DEPTH 50%:
+    //   copy   at rest    swing     one turn    behind the first   right behind left
+    //   1      7.00 ms    1.50 ms   1.733 s     0                  0.25 of a turn
+    //   2     10.50       1.50      1.733       0.667              0.25
+    //   3     14.00       1.50      1.733       0.333              0.25
+    {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 0.5f, kChorusType[0], 1.f);
+        const Stereo out = clicksThrough(*c, every, 12.0);
+        const double read = std::atof(reads(kind, 0, 0.4f).c_str()); // "0.58 HZ"
+        const double windows[4] = {5.0, 8.75, 12.25, 16.0}, rest[3] = {7.0, 10.5, 14.0};
+        Waver first;
+        for (int v = 0; v < 3; ++v) {
+            std::vector<double> sums;
+            const Waver l = waverOf(delaysOf(out.l, every, windows[v], windows[v + 1], &sums), dt), r = waverOf(delaysOf(out.r, every, windows[v], windows[v + 1]), dt);
+            if (v == 0) first = l;
+            SAY("chorus   copy %d: at rest %.2f ms, swing %.2f ms, one turn %.3f s, %.3f of a turn behind the first; right %.3f behind left; each click comes back x %.3f\n", v + 1, l.middle / ms,
+                l.swing / ms, l.period, turnsBehind(first, l), turnsBehind(l, r), sums[5]);
+            CHECK(std::fabs(l.middle / ms - rest[v]) < 0.05 && std::fabs(r.middle / ms - rest[v]) < 0.05);
+            CHECK(std::fabs(l.swing / ms - 1.5) < 0.03 && std::fabs(r.swing / ms - 1.5) < 0.03);
+            CHECK(std::fabs(l.period * read - 1.0) < 0.05 && std::fabs(r.period * read - 1.0) < 0.05); // the speed on the screen, within a twentieth
+            CHECK(std::fabs(l.period - 1.0 / (0.1 * std::pow(80.0, 0.4))) < 0.01);
+            static const double behind[3] = {0.0, 2.0 / 3.0, 1.0 / 3.0};
+            CHECK(std::fabs(turnsBehind(first, l) - behind[v]) < 0.01 || std::fabs(turnsBehind(first, l) - 1.0) < 0.01);
+            CHECK(std::fabs(turnsBehind(l, r) - 0.25) < 0.01);
+            // Each copy is a third of the power: the dry and the three together are as loud as the dry alone was.
+            // (A copy whose delay is moving is squeezed or stretched by half a percent: the pitch bend.)
+            bool third = true;
+            for (double sum : sums) third = third && std::fabs(sum - std::sin(kPi / 4.0) / std::sqrt(3.0)) < 0.004;
+            CHECK(third);
+        }
+        CHECK(std::fabs(out.l[0] - std::cos(kPi / 4.0)) < 1e-6 && out.l[1] == 0.f && out.l[200] == 0.f); // the dry click, and nothing till the first copy
+    }
+    // DEPTH is how far: nothing at 0 (the copies stand still), 3 ms at full.
+    {
+        std::unique_ptr<Effect> still = fresh(kind, 0.4f, 0.f, kChorusType[0], 1.f), full = fresh(kind, 0.4f, 1.f, kChorusType[0], 1.f);
+        const Stereo a = clicksThrough(*still, every, 4.0);
+        for (double d : delaysOf(a.l, every, 5.0, 8.75)) CHECK(std::fabs(d / ms - 7.0) < 0.001);
+        CHECK(a.l == a.r); // and with nothing wavering there is no width
+        // At full the copies' ranges cross, so only the first is read, on its early side: 7 - 3 = 4 ms.
+        const Stereo b = clicksThrough(*full, every, 4.0);
+        double earliest = 1e9;
+        for (std::size_t click = 0; click < b.frames(); click += every)
+            for (std::size_t i = 1; i < every; ++i)
+                if (b.l[click + i] != 0.f) {
+                    earliest = i < earliest ? static_cast<double>(i) : earliest;
+                    break;
+                }
+        SAY("chorus   DEPTH 100%%: the earliest a copy comes back is %.2f ms\n", earliest / ms);
+        CHECK(earliest / ms > 3.9 && earliest / ms < 4.1);
+    }
+    // Above 1 Hz the swing shrinks as the speed rises, so the pitch bends
+    // by the same amount: swing x speed stays what it is at 1 Hz.
+    //   Today, DEPTH 100%: 1 Hz 3.00 ms; 2 Hz 1.50; 4 Hz 0.75; 8 Hz 0.375.
+    for (double hz : {0.25, 1.0, 2.0, 4.0, 8.0}) {
+        std::unique_ptr<Effect> c = fresh(kind, chorusRate(hz), 1.f, kChorusType[2], 1.f); // VIBRATO: one copy, easy to read
+        const std::size_t close = 480;
+        const Stereo out = clicksThrough(*c, close, hz < 1.0 ? 14.0 : 5.0);
+        const Waver w = waverOf(delaysOf(out.l, close, 0.5, 9.9), close / 48000.0);
+        const double want = 4.0 * (hz > 1.0 ? 1.0 / hz : 1.0);
+        SAY("vibrato  RATE %.2f Hz: one turn %.4f s, at rest %.2f ms, swing %.3f ms\n", hz, w.period, w.middle / ms, w.swing / ms);
+        CHECK(std::fabs(w.period * hz - 1.0) < 0.02 && std::fabs(w.swing / ms - want) < 0.03 * want && std::fabs(w.middle / ms - 5.0) < 0.05);
+        const double read = std::atof(reads(kind, 0, chorusRate(hz)).c_str());
+        CHECK(std::fabs(w.period * read - 1.0) < 0.05);
+    }
+    // ENSEMBLE: the three copies each at a speed of its own (1, 1.29 and 0.77 times RATE), 2.5 ms at full.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, chorusRate(1.0), 0.5f, kChorusType[1], 1.f);
+        const Stereo out = clicksThrough(*c, every, 12.0);
+        const double windows[4] = {5.0, 8.75, 12.25, 16.0}, speeds[3] = {1.0, 1.29, 0.77};
+        for (int v = 0; v < 3; ++v) {
+            const Waver l = waverOf(delaysOf(out.l, every, windows[v], windows[v + 1]), dt), r = waverOf(delaysOf(out.r, every, windows[v], windows[v + 1]), dt);
+            SAY("ensemble copy %d: one turn %.3f s (%.3f Hz), swing %.2f ms, right %.3f of a turn behind left\n", v + 1, l.period, 1.0 / l.period, l.swing / ms, turnsBehind(l, r));
+            CHECK(std::fabs(l.period * speeds[v] - 1.0) < 0.02 && std::fabs(l.swing / ms - 1.25) < 0.04 && std::fabs(turnsBehind(l, r) - 0.25) < 0.01);
+        }
+    }
+    // VIBRATO: one copy, and at full MIX no dry sound at all; left and right in
+    // step (it is one pitch). A 1 kHz sine comes out wavering in pitch, at the
+    // speed RATE reads, by 2 pi x speed x swing: at 5 Hz and DEPTH 50% the swing
+    // is 0.4 ms, so 1.26% each way (22 cents). Today: 987.4 to 1012.6 Hz, 5.00 Hz.
+    {
+        std::unique_ptr<Effect> v = fresh(kind, chorusRate(5.0), 0.5f, kChorusType[2], 1.f);
+        const std::vector<float> click = impulseOf(*v, 0.1);
+        CHECK(click[0] == 0.f && echoAt(click, 0) > 200); // no dry sound
+        Stereo io(48000 * 3);
+        io.l = io.r = sineOf(1000.0, 0.5, io.frames());
+        v->reset();
+        through(*v, io);
+        CHECK(io.l == io.r);
+        std::vector<double> when;
+        const std::vector<double> hz = pitchOf(io.l, 4800, 4, &when);
+        const Waver w = waverOf(hz, when[1] - when[0]);
+        double low = 1e9, high = 0.0;
+        for (double f : hz) low = f < low ? f : low, high = f > high ? f : high;
+        SAY("vibrato  a 1 kHz sine at 5 Hz, DEPTH 50%%: %.1f to %.1f Hz, wavering at %.2f Hz\n", low, high, 1.0 / w.period);
+        const double bend = 2.0 * kPi * 5.0 * 0.0004 * 1000.0; // 12.6 Hz
+        CHECK(std::fabs((high - 1000.0) - bend) < 0.05 * bend && std::fabs((1000.0 - low) - bend) < 0.05 * bend);
+        CHECK(std::fabs(w.period * std::atof(reads(kind, 0, chorusRate(5.0)).c_str()) - 1.0) < 0.05);
+        // Half way up MIX it is half dry and half the copy.
+        std::unique_ptr<Effect> half = fresh(kind, chorusRate(5.0), 0.f, kChorusType[2], 0.5f);
+        const std::vector<float> both = impulseOf(*half, 0.1);
+        CHECK(both[0] == 0.5f && std::fabs(both[240] - 0.5f) < 1e-6f);
+    }
+    // FLANGE: one very short copy, 2.2 ms at rest, swinging 1.9 ms each way at
+    // full, and fed back into itself: each time round is 0.6 of the last.
+    {
+        std::unique_ptr<Effect> still = fresh(kind, 0.4f, 0.f, kChorusType[3], 1.f);
+        const std::vector<float> ir = impulseOf(*still, 0.1);
+        const std::size_t round = static_cast<std::size_t>(2.2 * ms + 0.5); // 106 samples
+        std::vector<double> size;
+        for (int n = 1; n <= 4; ++n) {
+            double sum = 0.0;
+            for (std::size_t i = n * round - round / 2; i < n * round + round / 2; ++i) sum += ir[i];
+            size.push_back(sum);
+        }
+        SAY("flange   at rest: copies %.4f, %.4f, %.4f, %.4f (each x %.3f of the last)\n", size[0], size[1], size[2], size[3], size[1] / size[0]);
+        CHECK(std::fabs(size[0] - std::sin(kPi / 4.0)) < 0.002);
+        for (int n = 1; n < 4; ++n) CHECK(std::fabs(size[static_cast<std::size_t>(n)] / size[static_cast<std::size_t>(n - 1)] - 0.6) < 0.005);
+        std::unique_ptr<Effect> moving = fresh(kind, 0.4f, 0.25f, kChorusType[3], 1.f);
+        const Stereo out = clicksThrough(*moving, every, 12.0);
+        const Waver l = waverOf(delaysOf(out.l, every, 1.0, 3.2), dt), r = waverOf(delaysOf(out.r, every, 1.0, 3.2), dt);
+        SAY("flange   DEPTH 25%%: at rest %.2f ms, swing %.3f ms, right %.3f of a turn behind left\n", l.middle / ms, l.swing / ms, turnsBehind(l, r));
+        CHECK(std::fabs(l.middle / ms - 2.2) < 0.03 && std::fabs(l.swing / ms - 0.475) < 0.02 && std::fabs(turnsBehind(l, r) - 0.25) < 0.01);
+    }
+    // WIDTH and LOUDNESS, with the same noise on both sides going in.
+    // "Alike" is 1 when left and right are the same and 0 when unrelated. Today, MIX 100%:
+    //             alike    louder than it went in
+    //   CHORUS     0.55    -0.4 dB
+    //   ENSEMBLE   0.55    -0.4
+    //   VIBRATO    1.00    -0.9   (in step: no width)
+    //   FLANGE     0.46    +0.4   (the feedback)
+    // The dry sound and the copies together are as loud as the dry alone, but
+    // for this: a copy read between samples loses a little of the very top
+    // (noise is all top, so it shows here: 0.9 dB for a copy by itself; a
+    // sine at 1 kHz loses nothing).
+    {
+        static const double wantAlike[4] = {0.55, 0.55, 1.0, 0.46}, wantLouder[4] = {-0.4, -0.4, -0.9, 0.4};
+        for (int type = 0; type < 4; ++type) {
+            std::unique_ptr<Effect> c = fresh(kind, 0.4f, 0.5f, kChorusType[type], 1.f);
+            Stereo io(48000 * 6);
+            Noise noise(77u);
+            for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+            const double in = rmsOf(io.l);
+            through(*c, io);
+            const double same = alike(io.l, io.r, 4800), louder = dB(rmsOf(io.l, 4800) / in);
+            SAY("chorus   type %d: left and right alike %.2f, %.1f dB louder than it went in\n", type, same, louder);
+            CHECK(std::fabs(same - wantAlike[type]) < 0.04 && std::fabs(louder - wantLouder[type]) < 0.4);
+            if (type == 2) CHECK(io.l == io.r);
+        }
+    }
+    // MIX at 0 is the sound untouched, to the sample, in every type; and it
+    // has been listening all the while (turned up, the copies are already there).
+    for (int type = 0; type < 4; ++type) {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 1.f, kChorusType[type], 0.f);
+        const Stereo in = pinInput(48000.f);
+        Stereo out = in;
+        through(*c, out);
+        CHECK(out.l == in.l && out.r == in.r);
+    }
+    // Turned down to 0 while it sounds, MIX gets there, exactly, and soon.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 1.f, kChorusType[0], 1.f);
+        Noise noise(31u);
+        Stereo in(96000);
+        for (std::size_t i = 0; i < in.frames(); ++i) in.l[i] = in.r[i] = 0.3f * noise.next();
+        Stereo out = in;
+        through(*c, out, 0, 24000);
+        c->setParam(3, 0.f);
+        through(*c, out, 24000, 96000);
+        bool same = true;
+        for (std::size_t i = 48000; i < 96000; ++i) same = same && out.l[i] == in.l[i] && out.r[i] == in.r[i];
+        CHECK(same && out.l[24100] != in.l[24100]);
+    }
+    // MIX part way: at 50% the dry sound is cos(pi/8) = 0.924 and the copies sin(pi/8) = 0.383 between them.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 0.f, kChorusType[0], 0.5f);
+        const std::vector<float> ir = impulseOf(*c, 0.05);
+        CHECK(std::fabs(ir[0] - std::cos(kPi / 8.0)) < 1e-6 && std::fabs(ir[336] - std::sin(kPi / 8.0) / std::sqrt(3.0)) < 1e-6 && std::fabs(ir[504] - ir[336]) < 1e-6 && std::fabs(ir[672] - ir[336]) < 1e-6);
+    }
+    // Each side is its own: a sound on the left only leaves the right silent, FLANGE's feedback included.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 1.f, kChorusType[3], 1.f);
+        Stereo io(48000);
+        Noise noise(32u);
+        for (std::size_t i = 0; i < 24000; ++i) io.l[i] = 0.3f * noise.next();
+        through(*c, io);
+        CHECK(peakOf(io.r) == 0.f && peakOf(io.l) > 0.2f);
+    }
+    // A setting thrown from one end to the other in one go is a slide too:
+    // nothing steeper than the sound is anyway. (With the glide taken out, MIX
+    // thrown open steps by 40 of the sine's own; TYPE by 60.)
+    for (int p = 0; p < 4; ++p) {
+        std::unique_ptr<Effect> c = fresh(kind, 0.4f, 0.5f, 0.f, p == 3 ? 0.f : 1.f);
+        Stereo io(48000);
+        io.l = io.r = sineOf(100.0, 0.5, 48000);
+        through(*c, io, 0, 24000);
+        c->setParam(p, 1.f);
+        through(*c, io, 24000, 48000);
+        const double jump = largestJump(io.l, 23999, 48000) / sineStep(100.0, 0.5);
+        SAY("chorus   %s thrown to the top at once: %.2f\n", info.paramNames[p], jump);
+        CHECK(jump < 2.0);
+    }
+    // The same at any sample rate: 7 ms is 7 ms.
+    {
+        std::unique_ptr<Effect> c = makeEffect(kind, 96000.f, 120.f);
+        c->setParam(1, 0.f);
+        c->setParam(3, 1.f);
+        Stereo io(9600);
+        io.l[0] = io.r[0] = 1.f;
+        through(*c, io);
+        CHECK(echoAt(io.l, 0) >= 671 && echoAt(io.l, 0) <= 672 && io.l[672] > 0.3f);
+    }
+    // However the sound is cut into blocks, the same to the last bit.
+    {
+        Stereo whole = pinInput(48000.f), cut = whole, big = whole;
+        through(*fresh(kind, 0.7f, 0.8f, kChorusType[3], 1.f), whole);
+        std::unique_ptr<Effect> c = fresh(kind, 0.7f, 0.8f, kChorusType[3], 1.f), d = fresh(kind, 0.7f, 0.8f, kChorusType[3], 1.f);
+        for (std::size_t at = 0, n = 1; at < cut.frames(); at += n, n = n % 61 + 1) {
+            if (at + n > cut.frames()) n = cut.frames() - at;
+            c->process(cut.l.data() + at, cut.r.data() + at, static_cast<int>(n));
+        }
+        d->process(big.l.data(), big.r.data(), static_cast<int>(big.frames()));
+        CHECK(cut.l == whole.l && cut.r == whole.r && big.l == whole.l && big.r == whole.r);
+    }
+    // A reset is a fresh start: the same sound again, to the bit.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, 0.7f, 0.8f, kChorusType[3], 1.f);
+        Stereo a = pinInput(48000.f), b = a, cut = a;
+        through(*c, a);
+        through(*c, cut, 0, 12000); // reset in the middle of a sound: nothing of it is left over
+        c->reset();
+        through(*c, b);
+        CHECK(a.l == b.l && a.r == b.r);
     }
 }
 
@@ -1270,11 +1646,12 @@ static void testSwapFade() {
     for (int master = 0; master < 2; ++master)
         for (int a = 0; a < kEffectKinds; ++a)
             for (int b = 0; b < kEffectKinds; ++b) {
-                if (a == b) continue;
+                if (a == b || (a && !effectExists(static_cast<EffectKind>(a))) || (b && !effectExists(static_cast<EffectKind>(b)))) continue;
                 const double jump = swapJump(static_cast<EffectKind>(a), static_cast<EffectKind>(b), master == 1);
                 SAY("swap     %-6s to %-6s %s %5.2f\n", effectInfo(static_cast<EffectKind>(a)).name, effectInfo(static_cast<EffectKind>(b)).name, master ? "master" : "track ", jump);
                 const bool crush = a == static_cast<int>(EffectKind::Crush) || b == static_cast<int>(EffectKind::Crush);
                 CHECK(jump < (crush ? 4.5 : 2.1));
+                if (jump >= (crush ? 4.5 : 2.1)) std::printf("     swap %s to %s: %.2f\n", effectInfo(static_cast<EffectKind>(a)).name, effectInfo(static_cast<EffectKind>(b)).name, jump);
                 if (!crush) worst = jump > worst ? jump : worst;
             }
     SAY("swap     the worst without CRUSH: %.2f\n", worst);
@@ -1507,6 +1884,7 @@ int main(int argc, char** argv) {
     testEveryEffect();
     testFilterLevels();
     testDriveHarmonics();
+    testChorus();
     testDelayEchoes();
     testReverbTail();
     testFlushToZero();

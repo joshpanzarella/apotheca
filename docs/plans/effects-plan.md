@@ -412,6 +412,27 @@ metallic is for ears.
 | Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
 | Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
 
+**Step 6 (CHORUS) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| File, number, word | `engine/src/fx/chorus.cpp`; `EffectKind::Chorus` = 8; `chorus`. Numbers 6 and 7 are kept for TAPE and HALL (NONE's row until they are built) |
+| RATE | 0.1 to 8 Hz (`0.1 x 80^v`), read in HZ. Measured within 2% of the reading at 0.25, 1, 2, 4, 8 Hz |
+| DEPTH | A percentage of the type's swing. Above 1 Hz the swing shrinks as 1 / RATE, so the pitch bend stays the same however fast it goes. Measured: VIBRATO at full 4.0 ms at 1 Hz, 2.0 at 2, 1.0 at 4, 0.5 at 8 |
+| CHORUS | Three copies a side, at rest 7, 10.5 and 14 ms late, swinging 3 ms each way at full, a third of a turn apart; right a quarter turn behind left. All measured to 0.05 ms and 0.01 of a turn |
+| ENSEMBLE | The same three, 2.5 ms, at 1, 1.29 and 0.77 times RATE |
+| VIBRATO | One copy, 5 ms, swing 4 ms. No dry sound at full MIX (the click's own sample is exactly 0). Left and right in step. A 1 kHz sine at 5 Hz, DEPTH 50%: 987.4 to 1012.6 Hz (22 cents each way), as worked out |
+| FLANGE | One copy, 2.2 ms, swing 1.9 ms, fed back at 0.6 (each time round measured x 0.600) |
+| Width | The same noise on both sides in, MIX full: left and right 0.55 alike for CHORUS and ENSEMBLE, 0.46 for FLANGE, 1.00 for VIBRATO (1 is no width, 0 unrelated). With DEPTH 0 there is no width |
+| Loudness | Dry and copies add to the same power. Noise comes out 0.4 dB quieter (CHORUS), 0.9 (VIBRATO), 0.4 louder (FLANGE): a copy read between samples loses a little of the very top |
+| MIX 0 | The sound untouched, to the sample, in all four types; and turned down to 0 while sounding it gets there exactly |
+| Clicks | Every setting glides (about 20 ms), TYPE included: the copies slide to their new places. Swept or thrown end to end under a 100 Hz sine, nothing steeper than 1.7 of the sine's own step, which is the louder output and not a jump |
+| Cost | 0.18% of a desk core (this run; DRIVE reads 0.17 beside the plan's 0.08, so the machine is slower than the plan's). VIBRATO or FLANGE 0.08%. The plan said 0.13 and 0.05 |
+| Departed from the plan | DEPTH's shrink above 1 Hz (not in the plan: at 8 Hz a full 3 ms swing bends the pitch by 15%). VIBRATO keeps left and right in step, against "left and right waver out of step", because out of step it is a chorus when heard in mono |
+
+For the owner's ears: is ENSEMBLE different enough from CHORUS; is FLANGE's
+fixed feedback (0.6) right; is DEPTH at full too much; VIBRATO in step.
+
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.
 

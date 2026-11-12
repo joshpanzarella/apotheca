@@ -119,6 +119,7 @@ int main() {
         const EffectKind kind = effectAt(place);
         effect(effectInfo(kind).name, kind);
         if (kind == EffectKind::Filter) effect("FILTER, LOW 24 DB", kind, 2, 0.3f);
+        if (kind == EffectKind::Chorus) effect("CHORUS, VIBRATO or FLANGE", kind, 2, 0.9f);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

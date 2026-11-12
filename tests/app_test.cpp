@@ -2977,17 +2977,20 @@ void testTheEffectsScreen() {
     rig.tap(UP);
     CHECK(first.kind == static_cast<int>(EffectKind::Filter) && first.param[0] == effectInfo(EffectKind::Filter).defaults[0] && first.param[3] == 1.f);
     CHECK(rig.listen(4000) > 0.05f);
-    rig.tap(UP, 2);
+    // (Counted from the list, which has its own order and grows: an effect's place is not its number.)
+    const int last = effectListSize() - 1, delayAt = effectPlace(EffectKind::Delay);
+    CHECK(effectPlace(EffectKind::Filter) == 1 && delayAt > 1 && effectAt(last) == EffectKind::Crush);
+    rig.tap(UP, delayAt - 1);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(UP, 9);
+    rig.tap(UP, last + 3);
     CHECK(first.kind == static_cast<int>(EffectKind::Crush)); // the last one: it stops
-    rig.tap(DOWN, 2);
+    rig.tap(DOWN, last - delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(DOWN, 3);
+    rig.tap(DOWN, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::None)); // down past the first effect: none
     rig.tap(DOWN, 2);
     CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
-    rig.tap(UP, 3);
+    rig.tap(UP, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(LEFT); // sideways does nothing while A is held
     rig.tap(RIGHT);
@@ -3050,7 +3053,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 1);
     rig.key(A, true);
-    rig.tap(UP, 4);
+    rig.tap(UP, effectPlace(EffectKind::Reverb));
     rig.key(A, false);
     CHECK(rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Reverb) && first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(RIGHT, 9);
@@ -3058,7 +3061,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
     rig.key(A, true);
-    rig.tap(UP, 5);
+    rig.tap(UP, last);
     rig.key(A, false);
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
     rig.tap(DOWN, 2);
@@ -3084,7 +3087,7 @@ void testTheEffectsScreen() {
     CHECK(fx.cursorColumn() == 0); // the new track's slot is empty: there is no fourth setting to be on
     session.setEffect(0, 0, EffectKind::None);
     rig.key(A, true);
-    rig.tap(UP, 2);
+    rig.tap(UP, effectPlace(EffectKind::Drive));
     rig.key(A, false);
     CHECK(rig.project().tracks[1].effects[0].kind == static_cast<int>(EffectKind::Drive) && first.kind == 0);
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
@@ -3198,6 +3201,19 @@ void testEffectsThroughTheSession() {
     CHECK(song->masterEffects[0].param[1] == effectInfo(EffectKind::Reverb).defaults[1]); // not given: its usual value
     CHECK(song->masterEffects[1].kind == 0 && song->tracks[0].effects[0].kind == 0);
     CHECK(song->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Crush) && song->tracks[0].effects[1].param[0] == 1.f && song->tracks[0].effects[1].param[1] == 0.f);
+    // Every effect there is goes into a song file by its word and comes back, settings and all.
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        if (!effectExists(kind)) continue;
+        std::unique_ptr<Project> out(new Project), back(new Project);
+        out->masterEffects[1].kind = k;
+        out->tracks[0].effects[0].kind = k;
+        for (int i = 0; i < kEffectParams; ++i) out->masterEffects[1].param[i] = out->tracks[0].effects[0].param[i] = i < effectInfo(kind).params ? 0.125f * (i + 1) : 0.f;
+        const std::string text = songText(*out);
+        CHECK(text.find(std::string("fx 2 ") + effectInfo(kind).word + " ") != std::string::npos && text.find(std::string("fx 1 ") + effectInfo(kind).word + " ") != std::string::npos);
+        CHECK(parseSong(text, *back) && back->masterEffects[1].kind == k && back->tracks[0].effects[0].kind == k);
+        for (int i = 0; i < effectInfo(kind).params; ++i) CHECK(back->masterEffects[1].param[i] == 0.125f * (i + 1) && back->tracks[0].effects[0].param[i] == 0.125f * (i + 1));
+    }
 }
 
 void testTheKeysShownFollowTheCursor() {
