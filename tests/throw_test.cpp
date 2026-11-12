@@ -84,7 +84,8 @@ struct SineSource : Effect {
     void setParam(int, float) override {}
     void process(float* left, float* right, int frames) override {
         for (int i = 0; i < frames; ++i) {
-            left[i] = right[i] = static_cast<float>(0.5 * std::sin(phase));
+            left[i] = static_cast<float>(0.5 * std::sin(phase));
+            right[i] = 0.5f * left[i]; // half as loud on the right, so the two sides can be told apart
             phase += 2.0 * kPi * 100.0 / 48000.0;
         }
     }
@@ -125,6 +126,10 @@ struct Rig {
     float fedAt(const Probe* p, long i) const {
         const long at = i - woke(p);
         return at < 0 || at >= static_cast<long>(p->fed.size()) ? 0.f : p->fed[static_cast<std::size_t>(at)];
+    }
+    float fedRightAt(const Probe* p, long i) const {
+        const long at = i - woke(p);
+        return at < 0 || at >= static_cast<long>(p->fedRight.size()) ? 0.f : p->fedRight[static_cast<std::size_t>(at)];
     }
     void hit(int lane, int step, float level = 0.9f, int throwTo = 0, int ratchet = 0, int cut = 0, int track = 0) {
         send(make(Command::SetStep, track, lane, step, level));
@@ -476,6 +481,11 @@ static bool gated(const Rig& rig, const Probe* p, const std::vector<float>& plai
         const bool steady = (open == 0.f || open == 1.f) && i != from + kGlide - 1 && i != to + kGlide - 1 && i != from + kGlide && i != to + kGlide;
         if (steady ? rig.fedAt(p, i) != want : std::fabs(rig.fedAt(p, i) - want) > 2e-5f) {
             std::printf("  frame %ld: fed %g, wanted %g\n", i, rig.fedAt(p, i), want);
+            return false;
+        }
+        // The right side goes the same way: the sine is half as loud there, and half is exact.
+        if (rig.fedRightAt(p, i) != 0.5f * rig.fedAt(p, i)) {
+            std::printf("  frame %ld: fed %g on the right, wanted %g\n", i, rig.fedRightAt(p, i), 0.5f * rig.fedAt(p, i));
             return false;
         }
     }
