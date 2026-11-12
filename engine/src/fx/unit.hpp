@@ -78,6 +78,8 @@ extern const EffectInfo kDuckInfo;   // duck.cpp
 Effect* makeSaturatePlain();
 // SATURATE's curves by themselves: what comes out for `x` going in (after DRIVE, before the level is evened out). 0 TAPE, 1 TUBE, 2 FOLD, 3 HARD.
 float saturateCurve(int type, float x);
+// What TAPE's FEEDBACK is multiplied by once the loop has been left alone, for a FEEDBACK setting (0 to 1): exactly 1 when it reads 90% or under.
+float tapeTire(float setting);
 
 } // namespace fx
 } // namespace apotheca

@@ -5608,6 +5608,19 @@ static void testTapeAlwaysEnds() {
             if (row.reads < 0.9) CHECK(std::fabs(dB(echoGainAt(ir, every, 1000.0, 12) / before)) < 0.05);
         }
     }
+    // ---- The line itself. A FEEDBACK that reads 90% is multiplied by exactly 1 (not by a hair
+    // under it: 1.2f * 0.75f is 0.90000004 and 0.9f is 0.89999998, so comparing what it READS
+    // touched 90% itself). Whatever way the setting gets to 75%, by the D-pad's notches of 5% too.
+    {
+        float byNotches = 0.4f; // the default, and seven pushes up
+        for (int i = 0; i < 7; ++i) byNotches = std::floor(byNotches / 0.05f + 1.001f) * 0.05f;
+        float bySums = 0.4f;
+        for (int i = 0; i < 7; ++i) bySums += 0.05f; // 0.75000006: it still reads 90%
+        CHECK(reads(tape, 1, byNotches) == "90%" && reads(tape, 1, bySums) == "90%");
+        for (float at : {0.f, 0.4f, 0.5f, 0.74f, 0.75f, byNotches, bySums}) CHECK(fx::tapeTire(at) == 1.f);
+        CHECK(fx::tapeTire(1.f) == 0.9f / 1.2f && fx::tapeTire(0.95f / 1.2f) < 0.95f && fx::tapeTire(0.95f / 1.2f) > 0.94f);
+        CHECK(reads(tape, 1, 0.76f) == "91%" && fx::tapeTire(0.76f) < 0.99f && fx::tapeTire(0.76f) > 0.98f); // the first setting that reads over 90% is brought down to it
+    }
     // ---- On a bus it is the same loop: the bus comes to rest (testATailAlwaysEnds has every setting; this is the howl by itself).
     {
         const float howl[4] = {0.f, 1.f, 0.f, 1.f};

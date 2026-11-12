@@ -35,7 +35,9 @@
 //     has), if it was set higher. From there each echo is under nine tenths
 //     of the last and the tail dies away. Sound coming in again wakes it:
 //     FEEDBACK is back where it reads within kSettle.
-//   - A FEEDBACK of 90% or less is never touched.
+//   - A FEEDBACK that reads 90% or less is never touched, to the bit (tapeTire).
+//   - That is one TAPE. Two in a row each count from the last sound coming IN,
+//     so a howling one keeps the next fed; a bounce's cap is what ends that.
 //
 // ON A BUS (the plan's sends): the dry sound is dropped and MIX is the level.
 // That is Unit's `bus_`, set by the "you are on a bus" call (setOnBus, which
@@ -64,6 +66,8 @@ constexpr float kMaxFeedback = 1.2f;
 constexpr float kFedLevel = 1e-4f;      // sound coming in under this is not feeding the loop
 constexpr float kHoldSeconds = 30.f;    // how long after the last sound came in FEEDBACK stays what it reads
 constexpr float kTiredFeedback = 0.9f;  // ...and what it is held to after that (as FEEDBACK reads: 90%)
+constexpr float kTiredSetting = 0.75f;  // where FEEDBACK reads that 90%: at this or under, the loop is never touched
+constexpr float kTiredRoom = 1e-4f;     // (a setting got to by sums can be a float off: it still reads 90%)
 constexpr float kTireSeconds = 2.f;     // how gently it gets there
 constexpr float kWowHz = 0.8f;
 constexpr float kWowSeconds = 0.0015f; // either way, at AGE full
@@ -133,9 +137,8 @@ public:
         // Fed, or left alone? Alone for longer than the hold, a FEEDBACK over kTiredFeedback is eased down to it.
         const long hold = static_cast<long>(kHoldSeconds * sr_);
         starved_ = coming >= kFedLevel ? 0 : (starved_ < hold ? starved_ + frames : hold);
-        const float reads = kMaxFeedback * p_[1];
         const bool tired = starved_ >= hold;
-        tire_.to = tired && reads > kTiredFeedback ? kTiredFeedback / reads : 1.f;
+        tire_.to = tired ? tapeTire(p_[1]) : 1.f;
         const float dTire = tire_.begin(frames, tired ? glideK(frames, kTireSeconds, sr_) : k);
         const float dFeedback = feedback_.begin(frames, k), dPush = push_.begin(frames, k), dCeiling = ceiling_.begin(frames, k);
         const float dHigh = highCut_.begin(frames, k), dLow = lowCut_.begin(frames, k), dDepth = depth_.begin(frames, k), dMix = mix_.begin(frames, k);
@@ -257,6 +260,13 @@ void reading(int index, float v, const float*, char* out, int size) {
 Effect* create() { return new Tape; }
 
 } // namespace
+
+float tapeTire(float setting) {
+    // The SETTING is compared, with a hair of room, not what it reads: 1.2f * 0.75f comes out a
+    // float above 0.9f, and a FEEDBACK of exactly 90% was then multiplied by 0.99999994.
+    if (!(setting > kTiredSetting + kTiredRoom)) return 1.f;
+    return kTiredFeedback / (kMaxFeedback * setting);
+}
 
 const EffectInfo kTapeInfo = {
     "TAPE", 4, {"TIME", "FEEDBACK", "AGE", "MIX"}, {0.5625f, 0.4f, 0.35f, 0.35f}, // a dotted eighth, 48%
