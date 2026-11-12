@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Step 0 (groundwork) is built; nothing else is.
+Written 2026-11-11. Step 0 (groundwork) is built. Steps 6, 7 and 8 (CHORUS, COMP, SATURATE) are built on the branch `fx-colour` (2026-11-12): see "as built" under the order of work.
 
 ## The recommendation
 
@@ -395,9 +395,9 @@ metallic is for ears.
 | 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | TAPE | medium | 0 | `fx/tape.cpp` |
 | 5 | HALL | medium | 0 | `fx/hall.cpp` |
-| 6 | CHORUS | small | 0 | `fx/chorus.cpp` |
-| 7 | COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
-| 8 | SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
+| 6 | **DONE 2026-11-12.** CHORUS | small | 0 | `fx/chorus.cpp` |
+| 7 | **DONE 2026-11-12, but for the meter on the screen** (it is in the engine). COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
+| 8 | **DONE 2026-11-12.** SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
 | 9 | DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
 | 10+ | The later set, one at a time | small each (BLOOM, STUTTER medium) | 0; BLOOM needs 5, PING needs 4 | one file each |
 
@@ -462,6 +462,32 @@ box's bar shows it): each frame, `engine.effectMeter(track, slot)` with the
 track and slot of the row (`kMasterTrack` for the master's rows). It returns
 dB turned down, 0 or more. 0 means draw nothing. A full bar at 24 dB would fit
 most uses. It is not smoothed: the engine reports the last chunk.
+
+**Step 8 (SATURATE and the 2x stage) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Files, number, word | `engine/src/fx/saturate.cpp`, `engine/src/fx/halfband.hpp`; `EffectKind::Saturate` = 10; `saturate`. Group DRIVE, listed before the old DRIVE |
+| The 2x stage | A half-band filter of four all-pass stages (two chains of two): eight multiplies a sample for up and back. Up and back with nothing between: 0.000 dB at every frequency tried to 23 kHz. What would fold back from above 28.8 kHz: **70 dB down or more**. Between 24 and 28.8 kHz it is part way shut (10 dB down at 25 kHz, 21 at 26), so a note folding back to above 19.2 kHz is only partly removed. 1.8 samples late, which is why the plain sound can still be mixed in beside it |
+| DRIVE | Up to **24 dB** (16 times); FOLD up to 6 times. 20 dB of drive is 83% |
+| Curves | TAPE: `x (27 + x^2) / (27 + 9 x^2)`, flat beyond 3 (tanh, nearly). TUBE: the same curve 0.5 off centre, brought back on centre afterwards (5 Hz). FOLD: a sine, by polynomial. HARD: straight to 0.75, flat from 1.25, a curve between |
+| Fold-back, 4186 Hz sine at half scale, 20 dB of drive | Against the sine going in. **TAPE: loudest fold-back 59 dB down, all of it together 57** (48 under its third harmonic). FOLD 84 and 84. HARD 43 and 38. TUBE 38 at 22884 Hz (its sixth harmonic, folding into the part-way band; too high to hear) and **63 under 19 kHz** |
+| The same, 2x stage left out | TAPE 24 dB down, TUBE 27, FOLD 30, HARD 22. **The stage buys 35 dB on TAPE**, 54 on FOLD, 21 on HARD, 36 on TUBE under 19 kHz |
+| Against the old DRIVE | At its 81%, the same sine: loudest fold-back 20 dB under the sine going in (9 under its third harmonic), all of it together 16. TAPE without the 2x stage is where DRIVE is |
+| The plan's 50 dB line | "Everything that is not a harmonic at least 50 dB under the harmonics": TAPE 57 and FOLD 84, yes. TUBE yes under 19 kHz (63), no above. **HARD no (38)**: a corner makes high harmonics, and twice the rate is not enough for them. The plan measured one soft curve |
+| At full DRIVE (24 dB) | Worse, as any drive is when it squares the wave: TAPE 43 dB down, TUBE 39, HARD 39, FOLD 78 |
+| Harmonics | TAPE, FOLD, HARD: odd only (even ones under -100 dB). TUBE: second harmonic 15 to 25 dB down. FOLD at 83%: the third harmonic 13 dB over the sine itself |
+| Loudness | For each DRIVE and TYPE the output is scaled so a sine at half scale comes out as loud as it went in: **within 0.03 dB over the whole of DRIVE, all four types** (the old DRIVE: +1.4 to -7.1 dB). A quieter sound comes up as DRIVE rises (a sine at -20 dB: +4.4 dB at 50%, +11.8 at 100%) and a full-scale one comes down (-5.0, -5.9) |
+| TONE | One-pole low-pass after the curve, 500 Hz to 20 kHz: 3.0 dB down at the corner, measured at 48 and 96 kHz |
+| MIX 0 | The sound untouched, to the sample. Half way: half of each, sample for sample |
+| Clicks | DRIVE slides and its level goes with it; TYPE fades from the old curve to the new over 10 ms. Swept, thrown end to end, or one TYPE to another: nothing steeper than the wave is when held still |
+| Cost | **0.15% of a desk core**, under the old DRIVE's 0.16 in the same run (the plan: 0.18 at 2x with a cheap curve) |
+| Departed from the plan | DRIVE stops at 24 dB, not more: past that every type is a square wave and the fold-back climbs. FOLD has its own, shorter range. A second change of TYPE inside the first one's 10 ms fade can click (a choice clicks once a push, so it does not happen by hand) |
+
+For the owner's ears: do the four types differ enough to keep four; is TUBE
+lopsided enough (0.5 off centre) or too much; is FOLD's range right; is
+holding a half-scale sine level the right "level" (quiet tails and noise come
+up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

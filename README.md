@@ -160,13 +160,14 @@ are mixed).
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, DRIVE, DELAY, REVERB, CHORUS, COMP, CRUSH. It goes in at once, at its usual settings. | None |
+| The effect | NONE, FILTER, SATURATE, DRIVE, DELAY, REVERB, CHORUS, COMP, CRUSH. It goes in at once, at its usual settings. | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
 
 | Effect | Settings |
 | --- | --- |
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
-| DRIVE | Drive, tone, mix, output |
+| SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
+| DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
 | DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
 | REVERB | Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |

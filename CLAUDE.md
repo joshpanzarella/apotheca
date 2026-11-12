@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (16) | `cd build && ctest -j8` (about 15 s) |
+| All tests (16) | `cd build && ctest -j8` (about 25 s) |
 | Timings | `./build/bench` |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -103,6 +103,7 @@ Where effects are, in the engine:
 | `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
 | `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
+| `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -170,7 +171,7 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   **A new effect with many fading states (HALL) does**: settle this before it ships.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **Some effect numbers are kept for effects not built yet** (`EffectKind`
-  6 TAPE, 7 HALL, 10 SATURATE, 11 DUCK were given out so three people
+  6 TAPE, 7 HALL, 11 DUCK were given out so three people
   could work at once). A kept number has NONE's row in `kTable` and is not in
   `kList`. **A loop over `1..kEffectKinds` must skip what `effectExists()`
   says is not there.**
@@ -179,6 +180,14 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk.
+- **A new effect's sound does not depend on how it is cut into blocks**, to
+  the bit, once its settings are at rest (each has a test). So what an effect
+  does "between blocks" (snapping vanishing numbers to zero) is done sample by
+  sample, or on a fixed count of samples (SATURATE: every 64th it has been
+  given), never "at the end of this call".
+- **A filter state does not reach zero by itself**: with a coefficient over a
+  half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
+  "silence in, silence out" fails and a processor without flush-to-zero crawls.
 - **A new effect glides every setting** (`fx::Glide` in `fx/unit.hpp`): a
   turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
   is still the sound untouched to the sample. The first block after it is
@@ -259,6 +268,7 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
+| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.15% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

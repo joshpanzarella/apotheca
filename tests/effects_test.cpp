@@ -50,6 +50,9 @@
 #include "apotheca/denormals.hpp"
 #include "apotheca/engine.hpp"
 
+#include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
+#include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
+
 using namespace apotheca;
 
 static int failures = 0;
@@ -317,7 +320,7 @@ static void testPinnedSound() {
     CHECK(static_cast<int>(EffectKind::None) == 0 && static_cast<int>(EffectKind::Filter) == 1 && static_cast<int>(EffectKind::Drive) == 2);
     CHECK(static_cast<int>(EffectKind::Delay) == 3 && static_cast<int>(EffectKind::Reverb) == 4 && static_cast<int>(EffectKind::Crush) == 5);
     // The new ones' numbers were given out before they were built (6 TAPE, 7 HALL, 8 CHORUS, 9 COMP, 10 SATURATE, 11 DUCK).
-    CHECK(static_cast<int>(EffectKind::Chorus) == 8 && static_cast<int>(EffectKind::Comp) == 9);
+    CHECK(static_cast<int>(EffectKind::Chorus) == 8 && static_cast<int>(EffectKind::Comp) == 9 && static_cast<int>(EffectKind::Saturate) == 10);
 }
 
 // ---- a whole song, with an effect in every slot ------------------------------------------------
@@ -467,7 +470,7 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its groups: FILTER; DRIVE; DELAY; REVERB; MOVING; LEVEL; DIRT.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Crush};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Saturate, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Crush};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and a group is never in two pieces (a whole group is stepped over at once).
@@ -642,6 +645,9 @@ struct Harmonics {
     double alias = -600.0;     // the loudest fold-back
     double aliasHz = 0.0;
     double rest = -600.0;      // everything that is neither the sine nor a harmonic, added up
+    double aliasLow = -600.0;  // the loudest fold-back that lands under 19 kHz (above it a 2x stage is only part way shut, and nobody hears)
+    double aliasLowHz = 0.0;
+    double level = -600.0;     // all of it together, harmonics and the rest, against the sine that went in
 };
 static Harmonics harmonicsOf(Effect& effect, int hz, double amp) {
     const std::size_t n = 48000;
@@ -672,7 +678,12 @@ static Harmonics harmonicsOf(Effect& effect, int hz, double amp) {
             h.alias = a;
             h.aliasHz = folded;
         }
+        if (folded < 19000 && a > h.aliasLow) {
+            h.aliasLow = a;
+            h.aliasLowHz = folded;
+        }
     }
+    h.level = 10.0 * std::log10(total / (0.5 * amp * amp) + 1e-60);
     const double rest = total - harmonic;
     h.rest = rest > 0.0 ? 10.0 * std::log10(rest / (0.5 * amp * amp)) : -600.0;
     return h;
@@ -823,11 +834,14 @@ static void testEveryEffect() {
         // ("held still" says by how much), not because anything jumps:
         //   CHORUS  RATE 1.3      DEPTH 1.7       TYPE 0.7    MIX 1.3        1.3
         //   COMP    THRESHOLD 1.1 RATIO 0.9       SPEED 0.8   MIX 1.0        0.8  (it turns this sine down)
+        //   SATURATE DRIVE 5.4    TYPE 2.1        TONE 1.4    MIX 1.4        1.4  (it squares the sine: at full DRIVE
+        //                                                 held still it is 5.8, and FOLD held still 2.1. testSaturate)
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0}, {1.15, 1.01, 18.1, 1.00, 1.00}, {5.87, 1.91, 1.90, 3.80, 1.91}, {33.5, 1.51, 1.55, 2.57, 1.55}, {0.94, 0.90, 1.09, 0, 0.83}, {38.2, 38.8, 3.79, 0, 4.22},
             {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, // kept for TAPE and HALL
             {1.26, 1.67, 0.71, 1.25, 1.25},   // CHORUS
             {1.05, 0.91, 0.83, 1.00, 0.82},   // COMP
+            {5.42, 2.10, 1.44, 1.43, 1.44},   // SATURATE
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -1986,6 +2000,452 @@ static void testComp() {
     }
 }
 
+// ---- SATURATE, and the 2x stage -------------------------------------------------------------
+
+// The 2x stage by itself (engine/src/fx/halfband.hpp).
+static void testHalfband() {
+    // Up and back down with nothing done between, a sine comes through
+    // whole, right to the top: 0.000 dB at every one of these. (Near the top
+    // each way loses a little, and the two losses make each other good.)
+    for (int hz : {100, 1000, 10000, 19000, 21000, 22000, 23000}) {
+        fx::Halfband up, down;
+        const std::vector<float> in = sineOf(hz, 0.5, 96000);
+        std::vector<float> twice(2 * 64), out(96000);
+        for (std::size_t at = 0; at < 96000; at += 64) {
+            up.up(in.data() + at, twice.data(), 64);
+            down.down(twice.data(), out.data() + at, 64);
+        }
+        const double level = dB(partAt(out.data() + 48000, 48000, hz) / 0.5);
+        SAY("halfband up and down, %5d Hz: %.3f dB\n", hz, level);
+        CHECK(std::fabs(level) < 0.01);
+    }
+    // Going up, the copy of the sound an octave above (its "image") is taken
+    // out: a sine at 1, 10 and 19 kHz leaves under a thousandth (70 dB down) at 47, 38 and 29 kHz.
+    for (int hz : {1000, 10000, 19000}) {
+        fx::Halfband up;
+        const std::vector<float> in = sineOf(hz, 0.5, 48000);
+        std::vector<float> twice(96000);
+        up.up(in.data(), twice.data(), 48000);
+        const double kept = dB(partAt(twice.data() + 48000, 48000, hz, 96000.0) / 0.5), image = dB(partAt(twice.data() + 48000, 48000, 48000 - hz, 96000.0) / 0.5);
+        SAY("halfband up, %5d Hz: the sine %.3f dB, its image at %d Hz %.1f dB\n", hz, kept, 48000 - hz, image);
+        CHECK(std::fabs(kept) < 0.01 && image < -69.0);
+    }
+    // Coming down, what is above half the 48 kHz rate would fold back; it is
+    // taken out first. A sine at the 2x rate, and what is left of it folded:
+    //   29 kHz -97 dB (at 19 kHz)   36 kHz -71   47 kHz -79   26 kHz -21 (at 22 kHz: part way shut)   25 kHz -10
+    for (int hz : {29000, 36000, 47000, 26000, 25000}) {
+        fx::Halfband down;
+        std::vector<float> twice(96000), out(48000);
+        for (std::size_t i = 0; i < 96000; ++i) twice[i] = static_cast<float>(0.5 * std::sin(2.0 * kPi * hz * static_cast<double>(i) / 96000.0));
+        down.down(twice.data(), out.data(), 48000);
+        const double folded = dB(partAt(out.data() + 24000, 24000, 48000 - hz) / 0.5);
+        SAY("halfband down, %5d Hz at the 2x rate: %.1f dB left, at %d Hz\n", hz, folded, 48000 - hz);
+        if (hz >= 28800) CHECK(folded < -69.0);
+        else CHECK(folded < -5.0 && folded > -25.0); // between "passed" and "stopped": this is where it is, written down
+    }
+    // It is hardly late: a click up and back comes out whole (its samples add
+    // to 1) and centred 1.8 samples on. And reset() empties it.
+    {
+        fx::Halfband up, down;
+        std::vector<float> in(256, 0.f), twice(512), out(256);
+        in[0] = 1.f;
+        up.up(in.data(), twice.data(), 256);
+        down.down(twice.data(), out.data(), 256);
+        double sum = 0.0, moment = 0.0;
+        for (std::size_t i = 0; i < 256; ++i) sum += out[i], moment += static_cast<double>(i) * out[i];
+        SAY("halfband a click up and down: adds to %.5f, centred %.2f samples late\n", sum, moment / sum);
+        CHECK(std::fabs(sum - 1.0) < 1e-4 && std::fabs(moment / sum - 1.8) < 0.1);
+        up.reset();
+        down.reset();
+        std::vector<float> none(256, 0.f);
+        up.up(none.data(), twice.data(), 256);
+        down.down(twice.data(), out.data(), 256);
+        CHECK(peakOf(out) == 0.f && peakOf(twice) == 0.f);
+    }
+}
+
+static const float kSatType[4] = {0.1f, 0.3f, 0.6f, 0.9f}; // TAPE, TUBE, FOLD, HARD
+static const char* const kSatName[4] = {"TAPE", "TUBE", "FOLD", "HARD"};
+static const float kDrive20dB = 20.f / 24.f; // DRIVE is 24 dB at full: 20 dB is 83%
+
+// SATURATE as it ships, or with the 2x stage left out.
+static std::unique_ptr<Effect> saturate(bool twice, float drive, int type, float tone = 1.f, float mix = 1.f, float rate = 48000.f) {
+    std::unique_ptr<Effect> e = twice ? makeEffect(EffectKind::Saturate, rate, 120.f) : std::unique_ptr<Effect>(fx::makeSaturatePlain());
+    if (!twice) e->prepare(rate);
+    e->setParam(0, drive);
+    e->setParam(1, kSatType[type]);
+    e->setParam(2, tone);
+    e->setParam(3, mix);
+    return e;
+}
+// How steep the steepest step is when a 100 Hz sine at half scale goes through, settled, in the sine's own steps.
+static double steepness(Effect& effect) {
+    Stereo io(48000);
+    io.l = io.r = sineOf(100.0, 0.5, 48000);
+    through(effect, io);
+    return largestJump(io.l, 24000, 48000) / sineStep(100.0, 0.5);
+}
+
+// The sharpest corner in a run of samples: how far one sample stands off the line between its neighbours.
+static double largestBend(const std::vector<float>& v, std::size_t from, std::size_t to) {
+    double bend = 0.0;
+    for (std::size_t i = from + 1; i + 1 < to; ++i) bend = std::fmax(bend, std::fabs(static_cast<double>(v[i + 1]) - 2.0 * v[i] + v[i - 1]));
+    return bend;
+}
+
+static void testSaturate() {
+    const EffectKind kind = EffectKind::Saturate;
+    // Its row: what a song stores.
+    const EffectInfo& info = effectInfo(kind);
+    CHECK(std::string(info.name) == "SATURATE" && std::string(info.word) == "saturate" && info.params == 4 && info.group == EffectGroup::Drive);
+    CHECK(std::string(info.paramNames[0]) == "DRIVE" && std::string(info.paramNames[1]) == "TYPE" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(info.defaults[0] == 0.4f && info.defaults[1] == 0.f && info.defaults[2] == 0.8f && info.defaults[3] == 1.f);
+    CHECK(effectChoices(kind, 1) == 4 && effectChoices(kind, 0) == 0 && effectChoices(kind, 2) == 0 && effectChoices(kind, 3) == 0);
+    for (int t = 0; t < 4; ++t) CHECK(reads(kind, 1, kSatType[t]) == kSatName[t]);
+    CHECK(reads(kind, 1, 0.f) == "TAPE" && reads(kind, 1, 0.25f) == "TUBE" && reads(kind, 1, 0.5f) == "FOLD" && reads(kind, 1, 0.75f) == "HARD" && reads(kind, 1, 1.f) == "HARD");
+    CHECK(reads(kind, 0, 0.4f) == "40%" && reads(kind, 2, 0.8f) == "80%" && reads(kind, 3, 1.f) == "100%");
+
+    // THE FOUR CURVES, by themselves: what comes out for what goes in.
+    //   in      0     0.25    0.5     0.75    1       1.5     2       3       5
+    //   TAPE    0     0.245   0.466   0.645   0.778   0.929   0.984   1       1
+    //   TUBE    0     0.179   0.312   0.404   0.463   0.518   0.533   0.534   0.534    (and -0.711 for -0.5, -1.244 for -1.5, -1.466 for -5)
+    //   FOLD    0     0.383   0.707   0.924   1       0.707   0      -1       1        (a sine: back to 0 at 2, 4, 6...)
+    //   HARD    0     0.25    0.5     0.75    0.938   1       1       1       1
+    {
+        const auto at = [](int type, double x) { return static_cast<double>(fx::saturateCurve(type, static_cast<float>(x))); };
+        const double in[9] = {0, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5};
+        static const double want[4][9] = {
+            {0, 0.24546, 0.46581, 0.64474, 0.77778, 0.92857, 0.98413, 1, 1},
+            {0, 0.17892, 0.31197, 0.40367, 0.46276, 0.51832, 0.53269, 0.53419, 0.53419},
+            {0, 0.38268, 0.70711, 0.92388, 1, 0.70711, 0, -1, 1},
+            {0, 0.25, 0.5, 0.75, 0.9375, 1, 1, 1, 1},
+        };
+        for (int type = 0; type < 4; ++type) {
+            if (gMeasure) {
+                std::printf("saturate %s curve:", kSatName[type]);
+                for (double x : in) std::printf(" %.5f", at(type, x));
+                std::printf("\n");
+            }
+            for (int i = 0; i < 9; ++i) CHECK(std::fabs(at(type, in[i]) - want[type][i]) < 2e-5);
+        }
+        CHECK(std::fabs(at(1, -0.5) + 0.46581) < 2e-5 && std::fabs(at(1, -1.5) + 1.24359) < 2e-5 && std::fabs(at(1, -5.0) + 1.46581) < 2e-5);
+        // TAPE is tanh, nearly: within 0.025 of it everywhere.
+        // Every curve is one unbroken line with no corner in it: walked in
+        // steps of a thousandth from -6 to 6, it never jumps, and its slope
+        // never jumps either. TAPE, FOLD and HARD are the same both ways
+        // round (odd harmonics only); TUBE is not. Through zero the slope is
+        // 1 (FOLD: pi / 2; TUBE: 0.80, being off centre). Nothing is over 1
+        // but TUBE's far side (-1.47).
+        for (int type = 0; type < 4; ++type) {
+            double jump = 0.0, bend = 0.0, top = 0.0, lopsided = 0.0, fromTanh = 0.0;
+            for (int i = -6000; i < 6000; ++i) {
+                const double x = 0.001 * i, a = at(type, x - 0.001), b = at(type, x), c = at(type, x + 0.001);
+                jump = std::fmax(jump, std::fabs(c - b));
+                bend = std::fmax(bend, std::fabs(c - 2.0 * b + a));
+                top = std::fmax(top, std::fabs(b));
+                lopsided = std::fmax(lopsided, std::fabs(b + at(type, -x)));
+                fromTanh = std::fmax(fromTanh, std::fabs(b - std::tanh(x)));
+            }
+            const double slope = (at(type, 0.001) - at(type, -0.001)) / 0.002;
+            SAY("saturate %s curve: largest step %.5f, largest bend %.7f, top %.3f, lopsided by %.3f, slope through zero %.3f, from tanh %.3f\n", kSatName[type], jump, bend, top, lopsided, slope, fromTanh);
+            // A step of 0.001 in cannot move it more than its steepest slope allows; a corner would show as a bend a thousand times the rest.
+            CHECK(jump < 0.0017 && bend < 1e-5);
+            CHECK(type == 1 ? (std::fabs(top - 1.46581) < 1e-4 && lopsided > 0.9) : (std::fabs(top - 1.0) < 1e-5 && lopsided < 1e-6));
+            CHECK(std::fabs(slope - (type == 2 ? kPi / 2.0 : type == 1 ? 0.805 : 1.0)) < 2e-3);
+            if (type == 0) CHECK(fromTanh < 0.025);
+            // TAPE, TUBE and HARD only ever flatten: more in is never less out. FOLD folds.
+            bool rising = true;
+            for (int i = -6000; i < 6000; ++i) rising = rising && at(type, 0.001 * (i + 1)) >= at(type, 0.001 * i) - 1e-6;
+            CHECK(rising == (type != 2));
+        }
+    }
+    // ITS HARMONICS, AND ITS FOLD-BACK, the way DRIVE was measured above: a
+    // 4186 Hz sine at half scale, TONE fully up, MIX full; dB against the
+    // sine going in. "Fold-back" is the loudest note that was never played;
+    // "under 19 kHz" the loudest of those low enough to matter (above it the
+    // 2x stage is only part way shut); "rest" is all of it added up.
+    //
+    // With the 2x stage, as it ships. Today:
+    //   TYPE  DRIVE   sine    2nd     3rd     5th    fold-back         under 19 kHz    rest
+    //   TAPE   25%    -0.1    none   -24.9   -48.3   -125 at 18698     -125           -122
+    //   TAPE   50%    -0.2    none   -16.4   -30.5    -98 at 18698      -98            -98
+    //   TAPE   83%    -0.6    none   -11.7   -18.6    -59 at 16466      -59            -57     (83% is 20 dB of drive)
+    //   TAPE  100%    -0.7    none   -11.3   -17.0    -43 at 16466      -43            -40
+    //   TUBE   25%    -0.2   -16.4   -29.5   -67.0    -72 at 22884     -135            -72
+    //   TUBE   50%    -0.3   -15.4   -18.6   -37.1    -50 at 22884     -103            -50
+    //   TUBE   83%    -0.6   -21.1   -12.1   -19.7    -38 at 22884      -63            -38
+    //   TUBE  100%    -0.7   -25.1   -11.4   -17.4    -39 at 22884      -45            -36
+    //   FOLD   25%    -0.2    none   -16.6   -44.7   -133 at 18698     -133           -123
+    //   FOLD   50%    -1.5    none    -6.3   -25.8   -106 at 18698     -106           -106
+    //   FOLD   83%   -14.5    none    -1.3   -11.7    -84 at 18698      -84            -84
+    //   FOLD  100%    -5.8    none    -3.3    -9.0    -78 at 18698      -78            -78
+    //   HARD   25%    -0.1    none   -34.0   -40.5    -77 at 16466      -77            -75
+    //   HARD   50%    -0.3    none   -14.1   -29.1    -69 at 17022      -69            -64
+    //   HARD   83%    -0.6    none   -11.3   -17.3    -43 at  8094      -43            -38
+    //   HARD  100%    -0.8    none   -11.2   -16.5    -39 at 16466      -39            -36
+    //
+    // The same curves with the 2x stage left out (what the stage buys), at 20 dB of drive:
+    //   TAPE   83%    fold-back -24 at 18698    rest -23        the stage buys 35 dB
+    //   TUBE   83%              -27 at 22884         -22        11 dB anywhere, 36 dB under 19 kHz
+    //   FOLD   83%              -30 at 18698         -30        54 dB
+    //   HARD   83%              -22 at 18698         -20        21 dB
+    //
+    // Against the old DRIVE (above), at its 81%: its loudest fold-back is 20 dB
+    // under the sine going in and 9 under its third harmonic, and all of it
+    // together 16 under the sine. SATURATE on TAPE at 20 dB of drive: 59, 48 and
+    // 56. TUBE's sixth harmonic (25116 Hz) folds to 22884 Hz, where the stage is
+    // part way shut: 38 dB down, and too high to hear; under 19 kHz TUBE is 63 down.
+    struct Row { int type; float drive; double sine, second, third, fifth, alias, aliasLow, rest; };
+    static const Row rows[16] = {
+        {0, 0.25f, -0.1, -600, -24.9, -48.3, -125, -125, -122}, {0, 0.5f, -0.2, -600, -16.4, -30.5, -98, -98, -98},  {0, kDrive20dB, -0.6, -600, -11.7, -18.6, -59.3, -59.3, -56.7}, {0, 1.f, -0.7, -600, -11.3, -17.0, -43.2, -43.2, -40.0},
+        {1, 0.25f, -0.2, -16.4, -29.5, -67.0, -71.9, -135, -71.9},  {1, 0.5f, -0.3, -15.4, -18.6, -37.1, -49.6, -103, -49.6}, {1, kDrive20dB, -0.6, -21.1, -12.1, -19.7, -38.0, -62.8, -37.9}, {1, 1.f, -0.7, -25.1, -11.4, -17.4, -39.2, -45.3, -36.1},
+        {2, 0.25f, -0.2, -600, -16.6, -44.7, -133, -133, -123},     {2, 0.5f, -1.5, -600, -6.3, -25.8, -106, -106, -106},     {2, kDrive20dB, -14.5, -600, -1.3, -11.7, -84.3, -84.3, -84.3},        {2, 1.f, -5.8, -600, -3.3, -9.0, -78.3, -78.3, -78.2},
+        {3, 0.25f, -0.1, -600, -34.0, -40.5, -76.8, -76.8, -74.8},  {3, 0.5f, -0.3, -600, -14.1, -29.1, -68.8, -68.8, -64.3}, {3, kDrive20dB, -0.6, -600, -11.3, -17.3, -42.7, -42.7, -37.6}, {3, 1.f, -0.8, -600, -11.2, -16.5, -38.8, -38.8, -36.1},
+    };
+    for (const Row& row : rows) {
+        const Harmonics h = harmonicsOf(*saturate(true, row.drive, row.type), 4186, 0.5);
+        SAY("saturate %s %3.0f%%  sine %6.1f  2nd %6.1f  3rd %6.1f  5th %6.1f  fold-back %6.1f at %5.0f  under 19 kHz %6.1f  rest %6.1f  level %5.2f\n", kSatName[row.type], row.drive * 100.0, h.part[1],
+            h.part[2], h.part[3], h.part[5], h.alias, h.aliasHz, h.aliasLow, h.rest, h.level);
+        CHECK(std::fabs(h.part[1] - row.sine) < 0.3 && std::fabs(h.part[3] - row.third) < 0.5 && std::fabs(h.part[5] - row.fifth) < 0.5);
+        // Even harmonics: TUBE has them (it is lopsided), the others none at all.
+        if (row.type == 1) CHECK(std::fabs(h.part[2] - row.second) < 0.5 && h.part[4] > -40.0);
+        else CHECK(h.part[2] < -100.0 && h.part[4] < -100.0);
+        // Fold-back: no worse than written down (2 dB of room), and far down is far down.
+        CHECK(h.alias < row.alias + 2.0 && h.aliasLow < row.aliasLow + 2.0 && h.rest < row.rest + 2.0);
+        if (row.alias > -90.0) CHECK(std::fabs(h.alias - row.alias) < 2.0 && std::fabs(h.rest - row.rest) < 2.0);
+    }
+    // The plan's line: at 20 dB of drive, everything that is not a harmonic
+    // at least 50 dB under the sine. TAPE and FOLD do it anywhere; TUBE under
+    // 19 kHz (see above); HARD does not (38 dB: a corner is a corner).
+    {
+        const Harmonics tape = harmonicsOf(*saturate(true, kDrive20dB, 0), 4186, 0.5), tube = harmonicsOf(*saturate(true, kDrive20dB, 1), 4186, 0.5);
+        const Harmonics fold = harmonicsOf(*saturate(true, kDrive20dB, 2), 4186, 0.5), hard = harmonicsOf(*saturate(true, kDrive20dB, 3), 4186, 0.5);
+        CHECK(tape.rest - tape.part[1] < -50.0 && fold.rest - fold.part[1] < -50.0 && tube.aliasLow - tube.part[1] < -50.0);
+        CHECK(tube.aliasHz == 22884.0 && hard.rest - hard.part[1] > -45.0 && hard.rest - hard.part[1] < -35.0);
+        CHECK(tape.alias - tape.strongest < -45.0); // 48 dB under its third harmonic; DRIVE's is 9
+        // And what the 2x stage buys: the same with it left out.
+        const double buys[4] = {35.0, 11.0, 54.0, 21.0};
+        const Harmonics* with[4] = {&tape, &tube, &fold, &hard};
+        for (int type = 0; type < 4; ++type) {
+            const Harmonics plain = harmonicsOf(*saturate(false, kDrive20dB, type), 4186, 0.5);
+            SAY("saturate %s  83%%, no 2x stage: fold-back %6.1f at %5.0f  under 19 kHz %6.1f  rest %6.1f  (the stage buys %.1f dB; under 19 kHz %.1f)\n", kSatName[type], plain.alias, plain.aliasHz,
+                plain.aliasLow, plain.rest, plain.alias - with[type]->alias, plain.aliasLow - with[type]->aliasLow);
+            CHECK(std::fabs((plain.alias - with[type]->alias) - buys[type]) < 3.0);
+            CHECK(plain.aliasLow - with[type]->aliasLow > 20.0);
+            // The harmonics themselves are the same either way: the stage changes what folds, not the curve.
+            CHECK(std::fabs(plain.part[1] - with[type]->part[1]) < 0.1 && std::fabs(plain.part[3] - with[type]->part[3]) < 0.2);
+        }
+        // Left out, TAPE is where the old DRIVE is: 24 dB.
+        CHECK(std::fabs(harmonicsOf(*saturate(false, kDrive20dB, 0), 4186, 0.5).alias + 24.2) < 1.5);
+    }
+    // FOLD folds: past the top the wave comes back down, so as DRIVE rises
+    // the sine itself falls away under its own harmonics (at 83% the third is
+    // 13 dB over it). The others only flatten: the sine stays on top.
+    {
+        const Harmonics folded = harmonicsOf(*saturate(true, kDrive20dB, 2), 4186, 0.5), flat = harmonicsOf(*saturate(true, kDrive20dB, 0), 4186, 0.5);
+        CHECK(folded.part[3] > folded.part[1] + 5.0 && flat.part[3] < flat.part[1] - 8.0);
+    }
+    // THE LOUDNESS IS HELD LEVEL AS DRIVE RISES: a sine at half scale comes
+    // out as loud as it went in (everything it has become, added up), at
+    // every DRIVE, in every TYPE. Today the worst is 0.03 dB, with TONE fully
+    // up, at 100 Hz, where nothing is lost off the top (at 4186 Hz, above:
+    // 0.1 to 0.75 dB quieter, the harmonics the sample rate has no room
+    // for). The old DRIVE over its range, the same way: +1.4 dB down to -7.1.
+    //   A quieter sine (a tenth of full scale) comes UP as DRIVE rises, and
+    //   a full-scale one comes DOWN: that is what drive is. Today, TAPE:
+    //     DRIVE        0%     50%    100%
+    //     in  -20 dB   +0.4   +4.4   +11.8 dB
+    //     in   -6 dB    0.0    0.0     0.0
+    //     in    0 dB   -1.2   -5.0    -5.9
+    {
+        for (int type = 0; type < 4; ++type) {
+            double low = 1e9, high = -1e9;
+            for (int step = 0; step <= 10; ++step) {
+                const Harmonics h = harmonicsOf(*saturate(true, 0.1f * step, type), 100, 0.5);
+                low = h.level < low ? h.level : low, high = h.level > high ? h.level : high;
+            }
+            SAY("saturate %s: a sine at half scale comes out %.2f to %.2f dB louder over the whole of DRIVE\n", kSatName[type], low, high);
+            CHECK(low > -0.1 && high < 0.1);
+        }
+        double low = 1e9, high = -1e9;
+        for (int step = 0; step <= 10; ++step) {
+            const Harmonics h = harmonicsOf(*fresh(EffectKind::Drive, 0.1f * step, 1.f, 1.f, 0.5f), 100, 0.5);
+            low = h.level < low ? h.level : low, high = h.level > high ? h.level : high;
+        }
+        SAY("drive    the same: %.2f to %.2f dB\n", low, high);
+        CHECK(high - low > 4.0);
+        static const double want[3][3] = {{0.4, 4.4, 11.8}, {0.0, 0.0, 0.0}, {-1.2, -5.0, -5.9}};
+        const double amps[3] = {0.1, 0.5, 1.0};
+        for (int a = 0; a < 3; ++a)
+            for (int d = 0; d < 3; ++d) {
+                const Harmonics h = harmonicsOf(*saturate(true, 0.5f * d, 0), 100, amps[a]);
+                SAY("saturate TAPE, a sine at %.1f, DRIVE %3d%%: %+.1f dB\n", amps[a], 50 * d, h.level);
+                CHECK(std::fabs(h.level - want[a][d]) < 0.5);
+            }
+    }
+    // Silence in, silence out, to exact zeros, in every type and with TONE
+    // right down (where its filter would otherwise ring on for ever, far too
+    // small to hear but never nothing).
+    for (int type = 0; type < 4; ++type)
+        for (float tone : {0.f, 1.f}) {
+            std::unique_ptr<Effect> e = saturate(true, 1.f, type, tone);
+            Stereo io(48000 * 20);
+            Noise noise(5u);
+            for (std::size_t i = 0; i < 4800; ++i) io.l[i] = io.r[i] = noise.next();
+            through(*e, io);
+            bool silent = true;
+            for (std::size_t i = io.frames() - 4800; i < io.frames(); ++i) silent = silent && io.l[i] == 0.f && io.r[i] == 0.f;
+            CHECK(silent);
+        }
+    // TUBE bends one way before the other, which leaves the wave off centre;
+    // it is brought back. What comes out sits on zero.
+    {
+        std::unique_ptr<Effect> e = saturate(true, 0.5f, 1);
+        Stereo io(96000);
+        io.l = io.r = sineOf(1000.0, 0.5, 96000);
+        through(*e, io);
+        double mean = 0.0;
+        for (std::size_t i = 48000; i < 96000; ++i) mean += io.l[i];
+        SAY("saturate TUBE: what comes out is off centre by %.6f\n", mean / 48000.0);
+        CHECK(std::fabs(mean / 48000.0) < 1e-4); // (before it is brought back: 0.1)
+    }
+    // TONE is a low-pass after the curve: 500 Hz at the bottom, 20 kHz at the
+    // top, 3 dB down at the corner. Read with a sine too quiet to bend.
+    //   Today: TONE 0%: 100 Hz -0.2 dB, 500 Hz -3.0, 4 kHz -18.0.  TONE 50% (3.2 kHz): 3162 Hz -3.0.  TONE 100%: 10 kHz -0.5.
+    for (float rate : {48000.f, 96000.f}) {
+        const auto level = [&](float tone, double hz) {
+            std::unique_ptr<Effect> e = saturate(true, 0.f, 0, tone, 1.f, rate);
+            const std::size_t n = static_cast<std::size_t>(rate);
+            Stereo io(2 * n), ref(2 * n);
+            io.l = io.r = sineOf(hz, 0.01, 2 * n, rate);
+            through(*e, io);
+            return dB(partAt(io.l.data() + n, n, hz, rate) / 0.01);
+        };
+        const double flat = level(1.f, 100.0); // a quiet sound's own gain at DRIVE 0 (+0.4 dB)
+        // And at the bottom, what brings TUBE back on centre: 3 dB down at 5 Hz, so 1.0 dB at 10 Hz.
+        const double bottom = level(1.f, 10.0) - flat;
+        SAY("saturate at %.0f Hz, a 10 Hz sine: %.2f dB\n", static_cast<double>(rate), bottom);
+        CHECK(std::fabs(bottom + 1.0) < 0.15);
+        const double got[5] = {level(0.f, 100.0) - flat, level(0.f, 500.0) - flat, level(0.f, 4000.0) - flat, level(0.5f, 3162.0) - flat, level(1.f, 10000.0) - flat};
+        SAY("saturate TONE at %.0f Hz: 0%%: %.1f, %.1f, %.1f dB at 100, 500, 4000 Hz; 50%%: %.1f at 3162 Hz; 100%%: %.1f at 10 kHz\n", static_cast<double>(rate), got[0], got[1], got[2], got[3], got[4]);
+        CHECK(std::fabs(got[0] + 0.2) < 0.1 && std::fabs(got[1] + 3.0) < 0.15 && std::fabs(got[2] + 18.0) < 0.4 && std::fabs(got[3] + 3.0) < 0.3 && got[4] < 0.0 && got[4] > -1.0);
+    }
+    // MIX at 0 is the sound untouched, to the sample, in every type; and
+    // half way it is half of each, sample for sample.
+    for (int type = 0; type < 4; ++type) {
+        const Stereo in = pinInput(48000.f);
+        Stereo dry = in, half = in, full = in;
+        through(*saturate(true, 0.7f, type, 0.6f, 0.f), dry);
+        through(*saturate(true, 0.7f, type, 0.6f, 0.5f), half);
+        through(*saturate(true, 0.7f, type, 0.6f, 1.f), full);
+        CHECK(dry.l == in.l && dry.r == in.r);
+        float worst = 0.f;
+        for (std::size_t i = 0; i < in.frames(); ++i) worst = std::fmax(worst, std::fabs(half.l[i] - 0.5f * (in.l[i] + full.l[i])));
+        CHECK(worst < 1e-6f && peakOf(full.l) > 0.3f);
+        // Each side is its own.
+        Stereo one = in;
+        one.r.assign(one.frames(), 0.f);
+        through(*saturate(true, 0.7f, type, 0.6f, 1.f), one);
+        CHECK(peakOf(one.r) == 0.f && one.l == full.l);
+    }
+    // NO CLICKS. A turned setting slides, and a change of TYPE fades from one
+    // curve to the other over 10 ms. Under a 100 Hz sine, nothing is steeper
+    // than the wave is anyway when held still (DRIVE at full squares it: 5.8
+    // of the sine's own steps; FOLD at 40%: 2.1). Thrown from one end to the
+    // other at once, the same.
+    {
+        double steepest[4], steepestOfAll = 0.0;
+        for (int type = 0; type < 4; ++type) {
+            steepest[type] = steepness(*saturate(true, 0.4f, type, 0.8f));
+            steepestOfAll = steepest[type] > steepestOfAll ? steepest[type] : steepestOfAll;
+        }
+        const double squared = steepness(*saturate(true, 1.f, 0, 0.8f));
+        SAY("saturate held still: TAPE %.2f, TUBE %.2f, FOLD %.2f, HARD %.2f; TAPE at full DRIVE %.2f\n", steepest[0], steepest[1], steepest[2], steepest[3], squared);
+        CHECK(sweepJump(kind, 0) < 1.05 * squared && sweepJump(kind, 1) < 1.05 * steepestOfAll && sweepJump(kind, 2) < 1.05 * steepest[0] && sweepJump(kind, 3) < 1.05 * steepest[0]);
+        const double limits[4] = {squared, steepestOfAll, steepest[0], steepest[0]};
+        for (int p = 0; p < 4; ++p) {
+            std::unique_ptr<Effect> e = fresh(kind, 0.4f, 0.f, p == 2 ? 0.f : 0.8f, p == 3 ? 0.f : 1.f);
+            if (p == 0) e->setParam(0, 0.f);
+            Stereo io(48000);
+            io.l = io.r = sineOf(100.0, 0.5, 48000);
+            through(*e, io, 0, 24037);
+            e->setParam(p, 1.f);
+            through(*e, io, 24037, 48000);
+            const double jump = largestJump(io.l, 24000, 48000) / sineStep(100.0, 0.5);
+            SAY("saturate %s thrown to the top at once: %.2f\n", info.paramNames[p], jump);
+            CHECK(jump < 1.1 * limits[p]);
+        }
+        // DRIVE thrown part of the way, where the wave is not yet square and a step would show.
+        {
+            std::unique_ptr<Effect> e = saturate(true, 0.f, 0, 0.8f);
+            Stereo io(48000);
+            io.l = io.r = sineOf(100.0, 0.5, 48000);
+            through(*e, io, 0, 24100);
+            e->setParam(0, 0.5f);
+            through(*e, io, 24100, 48000);
+            const double jump = largestJump(io.l, 24000, 48000) / sineStep(100.0, 0.5), still = steepness(*saturate(true, 0.5f, 0, 0.8f));
+            SAY("saturate DRIVE thrown from 0 to 50%%: %.2f (held still at 50%%: %.2f)\n", jump, still);
+            CHECK(jump < 1.1 * still);
+            // A small step hides in a slope; it cannot hide as a corner. The
+            // sharpest corner while DRIVE slides is no sharper than the wave's
+            // own at 50%. (Moved a block at a time it is far sharper: this was seen to fail that way.)
+            Stereo held(48000);
+            held.l = held.r = sineOf(100.0, 0.5, 48000);
+            through(*saturate(true, 0.5f, 0, 0.8f), held);
+            const double sliding = largestBend(io.l, 24000, 48000), own = largestBend(held.l, 24000, 48000);
+            SAY("saturate the sharpest corner while DRIVE slides: %.5f (the wave's own at 50%%: %.5f)\n", sliding, own);
+            CHECK(sliding < 1.5 * own);
+        }
+        // Each TYPE to each other, at a DRIVE where they differ a lot.
+        double worst = 0.0;
+        for (int a = 0; a < 4; ++a)
+            for (int b = 0; b < 4; ++b) {
+                if (a == b) continue;
+                std::unique_ptr<Effect> e = saturate(true, 0.7f, a, 0.8f);
+                Stereo io(48000);
+                io.l = io.r = sineOf(100.0, 0.5, 48000);
+                through(*e, io, 0, 24037);
+                e->setParam(1, kSatType[b]);
+                through(*e, io, 24037, 48000);
+                const double jump = largestJump(io.l, 24000, 48000) / sineStep(100.0, 0.5);
+                const double still = std::fmax(steepness(*saturate(true, 0.7f, a, 0.8f)), steepness(*saturate(true, 0.7f, b, 0.8f)));
+                worst = jump / still > worst ? jump / still : worst;
+                CHECK(jump < 1.1 * still);
+            }
+        SAY("saturate TYPE to TYPE at DRIVE 70%%: the worst is %.2f of the steeper wave's own steepest step\n", worst);
+    }
+    // Turned down to 0 while it sounds, MIX gets there, exactly.
+    {
+        std::unique_ptr<Effect> e = saturate(true, 0.7f, 1);
+        Stereo in(96000);
+        in.l = in.r = sineOf(1000.0, 0.5, 96000);
+        Stereo out = in;
+        through(*e, out, 0, 24000);
+        e->setParam(3, 0.f);
+        through(*e, out, 24000, 96000);
+        bool same = true;
+        for (std::size_t i = 48000; i < 96000; ++i) same = same && out.l[i] == in.l[i] && out.r[i] == in.r[i];
+        CHECK(same && out.l[24100] != in.l[24100]);
+    }
+    // However the sound is cut into blocks, the same to the last bit; and a reset is a fresh start.
+    for (int type = 0; type < 4; ++type) {
+        Stereo whole = pinInput(48000.f), cut = whole, big = whole, twice = whole;
+        through(*saturate(true, 0.6f, type, 0.5f, 0.9f), whole);
+        std::unique_ptr<Effect> c = saturate(true, 0.6f, type, 0.5f, 0.9f), d = saturate(true, 0.6f, type, 0.5f, 0.9f);
+        for (std::size_t at = 0, n = 1; at < cut.frames(); at += n, n = n % 61 + 1) {
+            if (at + n > cut.frames()) n = cut.frames() - at;
+            c->process(cut.l.data() + at, cut.r.data() + at, static_cast<int>(n));
+        }
+        d->process(big.l.data(), big.r.data(), static_cast<int>(big.frames()));
+        CHECK(cut.l == whole.l && cut.r == whole.r && big.l == whole.l && big.r == whole.r);
+        Stereo part = twice;
+        through(*d, part, 0, 12000);
+        d->reset();
+        through(*d, twice);
+        CHECK(twice.l == whole.l && twice.r == whole.r);
+    }
+}
+
 static void testSwapFade() {
     CHECK(static_cast<int>(kSwapFadeSeconds * 48000.f) == kFade);
     // The sine comes out as made, and the click finder agrees it is smooth.
@@ -2250,6 +2710,8 @@ int main(int argc, char** argv) {
     testReverbDoesNotSlowDown();
     testSwapFade();
     testComp();
+    testHalfband();
+    testSaturate();
     testSwapsOnAnyHelperCount();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
