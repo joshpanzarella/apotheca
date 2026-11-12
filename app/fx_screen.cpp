@@ -17,7 +17,7 @@ constexpr float kMovesPerSecond = 14.f, kKindsPerSecond = 5.f, kTurnPerSecond = 
 
 void FxScreen::goTo(int row, int column) {
     row_ = ((row % kRows) + kRows) % kRows;
-    const int last = effectInfo(static_cast<EffectKind>(data(row_).kind)).params;
+    const int last = columns(row_) - 1;
     column_ = column < 0 ? 0 : (column > last ? last : column);
 }
 
@@ -43,17 +43,35 @@ void FxScreen::press(Button b) {
         if (b == Button::Right) goTo(row_, column_ + 1);
         return;
     }
-    if (b != Button::Up && b != Button::Down) return;
-    const int by = b == Button::Up ? 1 : -1;
+    const bool upDown = b == Button::Up || b == Button::Down;
+    const int by = b == Button::Up || b == Button::Right ? 1 : -1;
+    if (sends(row_)) {
+        // A send: a twentieth at a push.
+        if (!upDown) return;
+        const float notches = send(column_) / kNotch;
+        session_.setSend(project_.track, column_, (by > 0 ? std::floor(notches + 1.001f) : std::ceil(notches - 1.001f)) * kNotch);
+        return;
+    }
     const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
     if (column_ == 0) {
         // The next one in the list, which has its own order: an effect's number is not its place.
-        const int to = effectPlace(kind) + by;
-        if (to < 0 || to >= effectListSize()) return; // the ends stop
-        session_.setEffect(trackOf(row_), slotOf(row_), effectAt(to));
+        // Left and right go a whole group at once. A bus has its own short list, all of one group.
+        const int bus = busOf(row_);
+        EffectKind next = kind;
+        if (bus >= 0) {
+            const int to = busEffectPlace(bus, kind) + by;
+            if (!upDown || to < 0 || to >= busListSize(bus)) return; // the ends stop
+            next = busEffectAt(bus, to);
+        } else {
+            const int from = effectPlace(kind), to = upDown ? from + by : effectGroupJump(from, by);
+            if (to == from || to < 0 || to >= effectListSize()) return;
+            next = effectAt(to);
+        }
+        session_.setEffect(trackOf(row_), slotOf(row_), next);
         if (!project_.playing) hear();
         return;
     }
+    if (!upDown) return;
     const int index = column_ - 1;
     const float now = data(row_).param[index];
     if (const int count = effectChoices(kind, index)) {
@@ -71,7 +89,12 @@ void FxScreen::press(Button b) {
 
 // The stick with A held on a setting: turn it smoothly.
 void FxScreen::turn(float amount) {
-    if (column_ == 0 || amount == 0.f) return;
+    if (amount == 0.f) return;
+    if (sends(row_)) {
+        session_.setSend(project_.track, column_, send(column_) + amount);
+        return;
+    }
+    if (column_ == 0) return;
     const int index = column_ - 1;
     session_.setEffectParam(trackOf(row_), slotOf(row_), index, data(row_).param[index] + amount);
 }
@@ -93,17 +116,26 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeating_ = b;
         repeatAt_ = 0;
     } else if (b == Button::B && !holding_) {
-        if (column_ == 0) {
+        if (sends(row_)) {
+            // Nothing sent, and whatever automation the send had in this cell goes.
+            const bool writing = session_.writing();
+            session_.setWriting(false);
+            session_.clearAutomation(project_.track, project_.scene, autoLaneOfSend(column_));
+            session_.setSend(project_.track, column_, 0.f);
+            session_.setWriting(writing);
+        } else if (column_ == 0) {
             session_.setEffect(trackOf(row_), slotOf(row_), EffectKind::None);
         } else {
             const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
-            // Its default value, and whatever automation it had in this cell goes.
+            // Its default value (on a bus, LEVEL's is full), and whatever automation it had in this cell goes.
             const bool writing = session_.writing();
             session_.setWriting(false);
-            if (trackOf(row_) != kMasterTrack) session_.clearAutomation(trackOf(row_), project_.scene, autoLaneOfEffect(slotOf(row_), column_ - 1));
-            session_.setEffectParam(trackOf(row_), slotOf(row_), column_ - 1, effectInfo(kind).defaults[column_ - 1]);
+            if (trackOf(row_) >= 0) session_.clearAutomation(trackOf(row_), project_.scene, autoLaneOfEffect(slotOf(row_), column_ - 1));
+            session_.setEffectParam(trackOf(row_), slotOf(row_), column_ - 1, effectDefault(kind, column_ - 1, busOf(row_) >= 0));
             session_.setWriting(writing);
         }
+    } else if (b == Button::Y && !holding_) {
+        goTo(row_ + kPageRows, column_); // the other page, on the same row of it
     } else if (b == Button::X) {
         hear();
     } else if (b == Button::Start && !input.held(Button::Select)) {
@@ -125,13 +157,15 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
 
     // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: it clicks
     // from one choice to the next, a push at a time, with the stick as with the D-pad.
-    const bool choice = column_ > 0 && effectChoices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
-    if (holding_ && column_ > 0 && !choice) {
-        // A setting: the stick turns it. Squared, so a small push is fine.
+    const bool onSend = sends(row_);
+    const bool choice = !onSend && column_ > 0 && effectChoices(static_cast<EffectKind>(data(row_).kind), column_ - 1) > 0;
+    const bool picking = holding_ && !onSend && column_ == 0; // an effect: up / down steps, left / right jumps a group
+    if (holding_ && (onSend || (column_ > 0 && !choice))) {
+        // A setting or a send: the stick turns it. Squared, so a small push is fine.
         turn(-y * std::fabs(y) * kTurnPerSecond * dt);
     } else {
         // Moving, or stepping through the effects: one at once, then steadily.
-        const bool sideways = !holding_ && std::fabs(x) > std::fabs(y);
+        const bool sideways = (!holding_ || picking) && std::fabs(x) > std::fabs(y);
         const float push = sideways ? x : y;
         if (push == 0.f) {
             saved_ = 0.f;
@@ -146,7 +180,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (holding_ && column_ == 0 ? 200u : kRepeatEveryMs);
+        repeatAt_ = nowMs + (holding_ && column_ == 0 && !sends(row_) ? 200u : kRepeatEveryMs);
         press(repeating_);
     }
 }
@@ -154,31 +188,54 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
 void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64], name[24];
     trackName(project_, project_.track, name, sizeof name);
-    std::snprintf(text, sizeof text, "%s / EFFECTS", name);
+    const bool all = page() == 1;
+    if (all) std::snprintf(text, sizeof text, "EVERYTHING / EFFECTS");
+    else std::snprintf(text, sizeof text, "%s / EFFECTS", name);
     topBar(r, fonts, View::Effects, text, project_);
 
     const int colW = 122, colGap = 4, boxH = 62, rowH = 100, top = 34;
-    for (int row = 0; row < kRows; ++row) {
-        const int y = top + row * rowH + (row >= kEffectSlots ? 6 : 0);
+    // A line and a little room before the rows that are another kind of thing: the sends, the master.
+    const int apart = all ? kMasterRow : kSendsRow;
+    for (int row = page() * kPageRows; row < (page() + 1) * kPageRows; ++row) {
+        const int y = top + (row % kPageRows) * rowH + (row >= apart ? 6 : 0);
+        const bool here = row == row_;
+        const int bus = busOf(row);
+        if (row == apart) fill(r, 8, y - 6, kScreenW - 16, 1, kLine);
+
+        if (sends(row)) {
+            std::snprintf(text, sizeof text, "%s, SENDS", name);
+            fonts.small.draw(r, 8.f, y + 2.f, text, here ? kText : kDim);
+            for (int b = 0; b < kBuses; ++b) {
+                const int lane = autoLaneOfSend(b), x = 8 + b * (colW + colGap);
+                // While the song plays an automated send shows where the pattern has it.
+                const float shown = session_.automated(project_.track, lane, send(b));
+                std::snprintf(text, sizeof text, "%d%%", static_cast<int>(shown * 100.f + 0.5f));
+                valueBox(r, fonts, x, y + 18, colW, boxH, b == 0 ? "ECHO" : "SPACE", text, shown, here && column_ == b, holding_);
+                if (session_.hasAutomation(project_.track, project_.scene, lane)) fill(r, x + 1, y + 18 + boxH - 3, colW - 2, 2, kPurple);
+            }
+            continue;
+        }
+
         const EffectData& d = data(row);
         const EffectKind kind = static_cast<EffectKind>(d.kind);
         const EffectInfo& info = effectInfo(kind);
-        if (row < kEffectSlots) std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slotOf(row) + 1);
-        else std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slotOf(row) + 1);
-        fonts.small.draw(r, 8.f, y + 2.f, text, row == row_ ? kText : kDim);
-        if (row == kEffectSlots) fill(r, 8, y - 6, kScreenW - 16, 1, kLine);
+        if (bus >= 0) std::snprintf(text, sizeof text, "%s (WHAT THE TRACKS SEND)", bus == 0 ? "ECHO" : "SPACE");
+        else if (all) std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slotOf(row) + 1);
+        else std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slotOf(row) + 1);
+        fonts.small.draw(r, 8.f, y + 2.f, text, here ? kText : kDim);
 
-        const bool here = row == row_;
         valueBox(r, fonts, 8, y + 18, colW, boxH, "EFFECT", info.name, -1.f, here && column_ == 0, holding_);
+        const bool onTrack = trackOf(row) >= 0;
         for (int p = 0; p < info.params; ++p) {
-            const bool onTrack = trackOf(row) != kMasterTrack;
             const int lane = autoLaneOfEffect(slotOf(row), p);
             // While the song plays an automated setting shows where the pattern has it.
             float shown[kEffectParams];
             for (int i = 0; i < kEffectParams; ++i) shown[i] = onTrack ? session_.automated(trackOf(row), autoLaneOfEffect(slotOf(row), i), d.param[i]) : d.param[i];
             effectParamText(kind, p, shown[p], text, sizeof text, shown);
+            // On a bus the MIX is how loud the bus comes back: it reads LEVEL.
+            const char* label = bus >= 0 && p == effectMixParam(kind) ? "LEVEL" : info.paramNames[p];
             // A choice has no bar: it is not somewhere along a range.
-            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, info.paramNames[p], text, effectChoices(kind, p) > 0 ? -1.f : shown[p],
+            valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, label, text, effectChoices(kind, p) > 0 ? -1.f : shown[p],
                      here && column_ == p + 1, holding_);
             if (onTrack && session_.hasAutomation(trackOf(row), project_.scene, lane)) fill(r, 8 + (p + 1) * (colW + colGap) + 1, y + 18 + boxH - 3, colW - 2, 2, kPurple);
         }
@@ -188,11 +245,14 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     Hint list[6];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
+    const bool effect = !sends(row_) && column_ == 0;
     if (holding_) {
-        hint("UP / DOWN", column_ == 0 ? "next / previous effect" : "turn it");
+        hint("UP / DOWN", effect ? "next / previous effect" : "turn it");
+        if (effect && busOf(row_) < 0) hint("LEFT / RIGHT", "next / previous group");
     } else {
-        hint("HOLD A", column_ == 0 ? "pick the effect" : "turn");
-        hint("B", column_ == 0 ? "none" : "default value");
+        hint("HOLD A", effect ? "pick the effect" : "turn");
+        hint("B", effect || sends(row_) ? "none" : "default value");
+        hint("Y", all ? "track" : "buses");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);

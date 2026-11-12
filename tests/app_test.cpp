@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -2992,9 +2993,12 @@ void testTheEffectsScreen() {
     CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
     rig.tap(UP, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(LEFT); // sideways does nothing while A is held
+    rig.tap(LEFT); // sideways with A held jumps a group of the list: the cursor stays on the effect
+    CHECK(effectPlace(static_cast<EffectKind>(first.kind)) == effectGroupJump(delayAt, -1) && fx.cursorColumn() == 0);
     rig.tap(RIGHT);
-    CHECK(fx.cursorColumn() == 0);
+    CHECK(effectInfo(static_cast<EffectKind>(first.kind)).group == EffectGroup::Delay && fx.cursorColumn() == 0);
+    rig.tap(UP, delayAt - effectPlace(static_cast<EffectKind>(first.kind))); // the first of the delays need not be DELAY
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
     rig.key(A, false);
 
     // The delay is on the track: a rim shot comes back a quarter note later.
@@ -3049,7 +3053,7 @@ void testTheEffectsScreen() {
     rig.tap(LEFT, 9);
     CHECK(fx.cursorColumn() == 0);
 
-    // Down through the slots: the track's second, then the master's two, and round.
+    // Down through the slots: the track's second and third, its sends, then (the other page) the buses and the master's two, and round.
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 1);
     rig.key(A, true);
@@ -3060,6 +3064,8 @@ void testTheEffectsScreen() {
     CHECK(fx.cursorColumn() == 3); // the reverb has three
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
+    rig.tap(DOWN, 4);
+    CHECK(fx.cursorRow() == FxScreen::kMasterRow && fx.cursorColumn() == 0);
     rig.key(A, true);
     rig.tap(UP, effectPlace(EffectKind::Crush));
     rig.key(A, false);
@@ -3067,7 +3073,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN, 2);
     CHECK(fx.cursorRow() == 0);
     rig.tap(UP);
-    CHECK(fx.cursorRow() == 3);
+    CHECK(fx.cursorRow() == FxScreen::kRows - 1);
     // The stick moves the cursor too.
     rig.key(STICK_DOWN, true);
     rig.frames(1);
@@ -3077,7 +3083,7 @@ void testTheEffectsScreen() {
     rig.tap(B);
     CHECK(first.kind == 0 && first.param[0] == 0.f);
 
-    // The top two rows are whichever track is being worked on; the master's stay.
+    // The first page is whichever track is being worked on; the master's stay.
     session.addTrack(TrackKind::Phazed);
     session.setEffect(0, 0, EffectKind::Delay);
     fx.goTo(0, 4);
@@ -3150,7 +3156,8 @@ void testEffectsThroughTheSession() {
     session.setEffectParam(0, 1, 0, 7.f);
     CHECK(made.project().tracks[0].effects[1].param[0] == 1.f);
     session.setEffectParam(0, 1, 0, 0.4f);
-    session.setEffect(0, 2, EffectKind::Delay);
+    session.setEffect(0, 3, EffectKind::Delay); // a track has three slots
+    session.setEffect(kMasterTrack, 2, EffectKind::Delay); // ...and the master two
     session.setEffect(12, 0, EffectKind::Delay);
     session.setEffect(3, 0, static_cast<EffectKind>(42));
     CHECK(made.project().tracks[3].effects[0].kind == 0);
@@ -3158,7 +3165,9 @@ void testEffectsThroughTheSession() {
     CHECK(made.project().tracks[3].effects[0].param[0] == 0.f);
 
     const std::string text = songText(made.project());
-    CHECK(text.find("\nfx 2 drive 0.9 0.7 1 0.5\ntrack drums\nfx 1 delay 0.5 0.2 0.6 0.35\nfx 2 filter 0.4 0.2 0 1\n") != std::string::npos);
+    CHECK(text.find("\nfx 2 drive 0.9 0.7 1 0.5\nbusfx 1 ") != std::string::npos); // the master's, then the two buses'
+    CHECK(text.find("\ntrack drums\nfx 1 delay 0.5 0.2 0.6 0.35\nfx 2 filter 0.4 0.2 0 1\n") != std::string::npos);
+    CHECK(text.find("fx 3") == std::string::npos && text.find("send") == std::string::npos);
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back) && songText(*back) == text);
     opened.project() = *back;
@@ -3216,6 +3225,558 @@ void testEffectsThroughTheSession() {
     CHECK(song->masterEffects[0].param[1] == effectInfo(EffectKind::Reverb).defaults[1]); // not given: its usual value
     CHECK(song->masterEffects[1].kind == 0 && song->tracks[0].effects[0].kind == 0);
     CHECK(song->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Crush) && song->tracks[0].effects[1].param[0] == 1.f && song->tracks[0].effects[1].param[1] == 0.f);
+}
+
+// The two send buses, the sends and a track's third slot: through the Session and the song file.
+void testSendsThroughTheSession() {
+    const int delay = static_cast<int>(EffectKind::Delay), reverb = static_cast<int>(EffectKind::Reverb);
+    // A new song: the buses hold what kNewSongBus says, at their usual settings but for LEVEL (the MIX), which is full.
+    {
+        std::unique_ptr<Project> fresh(new Project);
+        for (int bus = 0; bus < kBuses; ++bus) {
+            const EffectKind kind = kNewSongBus[bus];
+            CHECK(kind != EffectKind::None && effectBus(kind) == bus && fresh->busEffects[bus].kind == static_cast<int>(kind));
+            const int mix = effectMixParam(kind);
+            CHECK(mix >= 0);
+            for (int i = 0; i < effectInfo(kind).params; ++i)
+                CHECK(fresh->busEffects[bus].param[i] == (i == mix ? 1.f : effectInfo(kind).defaults[i]));
+            for (const TrackData& t : fresh->tracks) CHECK(t.send[bus] == 0.f);
+        }
+        const std::string text = songText(*fresh);
+        CHECK(text.find("\nbusfx 1 delay 0.5 0.45 0.6 1\nbusfx 2 reverb 0.6 0.5 1\n") != std::string::npos && text.find("send") == std::string::npos);
+    }
+
+    Rig made, opened, plain;
+    Session& session = made.app.session();
+    Project& project = made.project();
+    // A send: held in range, nonsense refused.
+    session.setSend(0, 0, 0.35f);
+    session.setSend(0, 1, 7.f);
+    CHECK(project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 1.f);
+    session.setSend(0, 1, -3.f);
+    CHECK(project.tracks[0].send[1] == 0.f);
+    session.setSend(0, 1, 0.6f);
+    session.setSend(0, 1, std::nanf(""));
+    CHECK(project.tracks[0].send[1] == 0.f);
+    session.setSend(0, 1, 0.25f);
+    session.setSend(0, 2, 0.9f);
+    session.setSend(0, -1, 0.9f);
+    session.setSend(12, 0, 0.9f);
+    session.setSend(-1, 0, 0.9f);
+    CHECK(project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.25f && project.tracks[1].send[0] == 0.f);
+    CHECK(project.tracks[0].laneLevel[0] == 1.f); // (what lies after the two sends: a third bus would have written there)
+    // A bus holds one effect, of its own kind: a delay on ECHO, a reverb on SPACE.
+    CHECK(session.effectData(kEchoBus, 0).kind == delay && session.effectData(kSpaceBus, 0).kind == reverb);
+    CHECK(&session.effectData(kEchoBus, 0) == &project.busEffects[0] && &session.effectData(kSpaceBus, 0) == &project.busEffects[1]);
+    session.setEffect(kEchoBus, 0, EffectKind::Reverb);
+    session.setEffect(kEchoBus, 0, EffectKind::Filter);
+    session.setEffect(kSpaceBus, 0, EffectKind::Delay);
+    session.setEffect(kEchoBus, 1, EffectKind::None);
+    CHECK(project.busEffects[0].kind == delay && project.busEffects[1].kind == reverb);
+    session.setEffectParam(kEchoBus, 0, 1, 0.7f);
+    session.setEffectParam(kEchoBus, 0, 3, 0.5f); // LEVEL
+    session.setEffectParam(kEchoBus, 1, 1, 0.1f);
+    session.setEffectParam(kEchoBus, 0, 4, 0.1f);
+    CHECK(project.busEffects[0].param[1] == 0.7f && project.busEffects[0].param[3] == 0.5f);
+    // Put in afresh, it is at its usual settings again, LEVEL at full.
+    session.setEffect(kEchoBus, 0, EffectKind::None);
+    CHECK(project.busEffects[0].kind == 0 && project.busEffects[0].param[3] == 0.f);
+    session.setEffect(kEchoBus, 0, EffectKind::Delay);
+    CHECK(project.busEffects[0].param[1] == effectInfo(EffectKind::Delay).defaults[1] && project.busEffects[0].param[3] == 1.f);
+    session.setEffectParam(kEchoBus, 0, 1, 0.7f);
+    session.setEffectParam(kSpaceBus, 0, 0, 0.3f);
+    // The third slot.
+    session.setEffect(0, 2, EffectKind::Crush);
+    session.setEffectParam(0, 2, 0, 0.3f);
+    CHECK(project.tracks[0].effects[2].kind == static_cast<int>(EffectKind::Crush) && project.tracks[0].effects[2].param[0] == 0.3f);
+
+    // In the song file, and back the same.
+    const std::string text = songText(project);
+    CHECK(text.find("\nbusfx 1 delay 0.5 0.7 0.6 1\nbusfx 2 reverb 0.3 ") != std::string::npos);
+    CHECK(text.find("\nfx 3 crush 0.3") != std::string::npos);
+    CHECK(text.find("\nsend 1 0.35\nsend 2 0.25\n") != std::string::npos);
+    CHECK(text.find("busfx") < text.find("track "));
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && songText(*back) == text);
+    CHECK(back->tracks[0].send[0] == 0.35f && back->tracks[0].send[1] == 0.25f && back->busEffects[0].param[1] == 0.7f);
+    CHECK(back->tracks[0].effects[2].kind == static_cast<int>(EffectKind::Crush));
+
+    // One handheld set up by hand, one that opened the song: a hit sounds the same on both, tail and all...
+    opened.project() = *back;
+    opened.app.session().applyProject();
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    made.engine->send(hit);
+    opened.engine->send(hit);
+    plain.engine->send(hit);
+    const std::vector<float> a = made.render(96000), b = opened.render(96000), dry = plain.render(96000);
+    CHECK(Rig::peak(a) > 0.02f && a == b && a != dry);
+    CHECK(made.engine->busAwake(0) && made.engine->busAwake(1) && opened.engine->busAwake(0) && !plain.engine->busAwake(0) && !plain.engine->busAwake(1));
+    // ...and each part of it is heard: either send, the bus's settings, the third slot.
+    const auto heardWithout = [&](void (*change)(Session&)) {
+        Rig other;
+        other.project() = *back;
+        change(other.app.session());
+        other.app.session().applyProject();
+        other.engine->send(hit);
+        return other.render(96000);
+    };
+    CHECK(heardWithout([](Session&) {}) == a);
+    CHECK(heardWithout([](Session& s) { s.project.tracks[0].send[0] = 0.f; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.tracks[0].send[1] = 0.f; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.busEffects[0].param[1] = 0.2f; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.busEffects[1].param[0] = 0.9f; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.busEffects[0].kind = 0; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.busEffects[1].kind = 0; }) != a);
+    CHECK(heardWithout([](Session& s) { s.project.tracks[0].effects[2].kind = 0; }) != a);
+    // The same to the bit with helper threads rendering the tracks.
+    for (int helpers = 1; helpers <= 3; helpers += 2) {
+        Rig other;
+        other.engine->useWorkers(helpers);
+        other.project() = *back;
+        other.app.session().applyProject();
+        other.engine->send(hit);
+        CHECK(other.render(96000) == a);
+    }
+    // A send turned by hand reaches the engine at once, and so does a bus's setting.
+    {
+        Rig one, two;
+        one.app.session().setSend(0, 0, 0.5f);
+        one.engine->send(hit);
+        two.engine->send(hit);
+        const std::vector<float> wet = one.render(96000);
+        CHECK(wet != two.render(96000));
+        Rig three;
+        three.app.session().setSend(0, 0, 0.5f);
+        three.app.session().setEffectParam(kEchoBus, 0, 3, 0.2f);
+        three.engine->send(hit);
+        CHECK(three.render(96000) != wet);
+        // Sends at nothing and the buses emptied: the same to the bit as sends at nothing alone. A bus not sent to adds nothing.
+        Rig bare;
+        bare.app.session().setEffect(kEchoBus, 0, EffectKind::None);
+        bare.app.session().setEffect(kSpaceBus, 0, EffectKind::None);
+        CHECK(bare.project().busEffects[0].kind == 0 && songText(bare.project()).find("\nbusfx 1 none\nbusfx 2 none\n") != std::string::npos);
+        Rig usual;
+        bare.engine->send(hit);
+        usual.engine->send(hit);
+        CHECK(bare.render(96000) == usual.render(96000));
+    }
+    // A new song after it: the sends and the third slot are gone from the engine too.
+    {
+        std::unique_ptr<Project> fresh(new Project);
+        opened.project() = *fresh;
+    }
+    opened.app.session().applyProject();
+    opened.render(1200000); // the buses ring out and go to rest
+    plain.render(1200000);
+    CHECK(!opened.engine->busAwake(0) && !opened.engine->busAwake(1));
+    opened.engine->send(hit);
+    plain.engine->send(hit);
+    CHECK(opened.render(60000) == plain.render(60000));
+
+    // An old song: no busfx, no send. Its buses are the usual two and nothing is sent, and it is the
+    // same to the bit as with no buses at all.
+    {
+        const std::string old = "apotheca-song 1\ntempo 120\nfx 1 drive 0.6 0.7 1 0.5\ntrack drums\nfx 1 delay 0.5 0.2 0.6 0.35\nfx 2 filter 0.4 0.2 0 1\n"
+                                "scene 1\nhit 1 1 1\nhit 3 5 0.8\nhit 7 9 1\n";
+        std::unique_ptr<Project> song(new Project);
+        CHECK(parseSong(old, *song));
+        CHECK(song->busEffects[0].kind == static_cast<int>(kNewSongBus[0]) && song->busEffects[1].kind == static_cast<int>(kNewSongBus[1]));
+        CHECK(song->busEffects[0].param[effectMixParam(kNewSongBus[0])] == 1.f && song->tracks[0].send[0] == 0.f && song->tracks[0].send[1] == 0.f);
+        // Saved by this program, it is what it was, plus the two busfx lines.
+        const std::string saved = songText(*song);
+        std::string without;
+        std::istringstream in(saved);
+        int busLines = 0;
+        for (std::string l; std::getline(in, l);) {
+            if (l.compare(0, 6, "busfx ") == 0) ++busLines;
+            else without += l + "\n";
+        }
+        std::unique_ptr<Project> emptied(new Project);
+        *emptied = *song;
+        emptied->busEffects[0] = EffectData();
+        emptied->busEffects[1] = EffectData();
+        std::string withoutToo;
+        std::istringstream in2(songText(*emptied));
+        for (std::string l; std::getline(in2, l);)
+            if (l.compare(0, 6, "busfx ") != 0) withoutToo += l + "\n";
+        CHECK(busLines == 2 && without == withoutToo && without.find("send") == std::string::npos && without.find("fx 3") == std::string::npos);
+        Rig with, none;
+        with.project() = *song;
+        with.app.session().applyProject();
+        none.project() = *emptied;
+        none.app.session().applyProject();
+        Command go;
+        go.type = Command::Play;
+        with.engine->send(go);
+        none.engine->send(go);
+        const std::vector<float> x = with.render(2 * kBar), y = none.render(2 * kBar);
+        CHECK(Rig::peak(x) > 0.02f && x == y && !with.engine->busAwake(0) && !with.engine->busAwake(1));
+    }
+
+    // Lines that make no sense are left out; what is given is held in range.
+    {
+        std::unique_ptr<Project> song(new Project);
+        CHECK(parseSong("apotheca-song 1\nsend 1 0.9\nbusfx 1 reverb 0.1 0.1 0.1 0.1\nbusfx 2 delay 0.1\nbusfx 3 delay 0.1\nbusfx 0 delay 0.1\nbusfx 1 warble 1 1\n"
+                        "busfx 2\nbusfx 1 filter 0.2\nfx 3 delay\ntrack drums\nsend 0 0.5\nsend 3 0.5\nsend 1 -0.5\nsend 2 nonsense\nsend\nfx 4 crush 0.5\nfx 3 crush 0.25\n", *song));
+        CHECK(song->busEffects[0].kind == delay && song->busEffects[0].param[0] == effectInfo(EffectKind::Delay).defaults[0]);
+        CHECK(song->busEffects[0].param[3] == 1.f && song->busEffects[1].param[2] == 1.f);
+        CHECK(song->busEffects[1].kind == reverb && song->busEffects[1].param[0] == effectInfo(EffectKind::Reverb).defaults[0]);
+        CHECK(song->masterEffects[0].kind == 0 && song->masterEffects[1].kind == 0);
+        CHECK(song->tracks[0].send[0] == 0.f && song->tracks[0].send[1] == 0.f && song->tracks[1].send[0] == 0.f);
+        CHECK(song->tracks[0].effects[2].kind == static_cast<int>(EffectKind::Crush) && song->tracks[0].effects[2].param[0] == 0.25f);
+        CHECK(song->tracks[0].effects[0].kind == 0 && song->tracks[0].effects[1].kind == 0);
+        // Given: the bus's effect with only some settings (the rest at their usual, LEVEL full), "none", sends over the top.
+        CHECK(parseSong("apotheca-song 1\nbusfx 1 delay 0.25 5\nbusfx 2 none\ntrack drums\nsend 1 7\nsend 2 0.125\ntrack drums\nsend 2 1\n", *song));
+        CHECK(song->busEffects[0].kind == delay && song->busEffects[0].param[0] == 0.25f && song->busEffects[0].param[1] == 1.f);
+        CHECK(song->busEffects[0].param[2] == effectInfo(EffectKind::Delay).defaults[2] && song->busEffects[0].param[3] == 1.f);
+        CHECK(song->busEffects[1].kind == 0);
+        CHECK(song->tracks[0].send[0] == 1.f && song->tracks[0].send[1] == 0.125f && song->tracks[1].send[0] == 0.f && song->tracks[1].send[1] == 1.f);
+        // A bus line after the tracks is still the song's (an older program wrote none; a hand-edited file may put it anywhere).
+        CHECK(parseSong("apotheca-song 1\ntrack drums\nbusfx 2 reverb 0.75\n", *song) && song->busEffects[1].param[0] == 0.75f);
+        // Automation on the new lanes loads and is written back: slot 3's (16 to 19), the sends' (20, 21), the spare two.
+        CHECK(parseSong("apotheca-song 1\ntrack drums\nauto 1 16 0 0.5\nauto 1 19 3 0.25\nauto 2 20 1 0.75\nauto 1 21 2 1\nauto 1 23 0 0.5\nauto 1 24 0 0.5\n", *song));
+        const TrackData& t = song->tracks[0];
+        CHECK(t.automation[0][16][0] == 0.5f && t.automation[0][19][3] == 0.25f && t.automation[1][20][1] == 0.75f && t.automation[0][21][2] == 1.f && t.automation[0][23][0] == 0.5f);
+        const std::string again = songText(*song);
+        CHECK(again.find("auto 1 16 0 0.5\n") != std::string::npos && again.find("auto 2 20 1 0.75\n") != std::string::npos && again.find("auto 1 24") == std::string::npos);
+    }
+
+    // WRITE: a send moved while the song plays is written on its lane (20 ECHO, 21 SPACE), and the pattern then moves it.
+    {
+        Rig rig;
+        Session& s = rig.app.session();
+        TrackData& track = rig.project().tracks[0];
+        const auto written = [&](int lane) { int n = 0; for (float v : track.automation[0][lane]) n += v >= 0.f ? 1 : 0; return n; };
+        s.setSend(0, 1, 0.4f);
+        CHECK(written(21) == 0);
+        rig.key(SELECT, true);
+        rig.tap(X);
+        rig.key(SELECT, false);
+        rig.frames(1);
+        CHECK(s.writing());
+        rig.tap(START);
+        rig.render(2 * kStep + kStep / 2);
+        rig.frames(1);
+        CHECK(rig.project().playStep == 2);
+        s.setSend(0, 0, 0.8f);
+        s.setSend(0, 1, 0.4f); // not a change, but a move all the same: it is written
+        CHECK(written(20) == 1 && track.automation[0][20][2] == 0.8f && written(21) == 1 && track.automation[0][21][2] == 0.4f);
+        CHECK(s.hasAutomation(0, 0, autoLaneOfSend(0)) && autoLaneOfSend(0) == 20 && autoLaneOfSend(1) == 21);
+        // The third slot's settings are lanes 16 to 19; another effect in the slot clears them, and only them.
+        s.setEffect(0, 2, EffectKind::Filter);
+        rig.render(kStep);
+        rig.frames(1);
+        s.setEffectParam(0, 2, 1, 0.9f);
+        CHECK(written(17) == 1 && track.automation[0][17][3] == 0.9f && autoLaneOfEffect(2, 1) == 17);
+        // A bus's setting and the master's are not automated: nothing is written anywhere.
+        int before = 0;
+        for (int lane = 0; lane < kAutoLanes; ++lane) before += written(lane);
+        s.setEffectParam(kEchoBus, 0, 1, 0.3f);
+        s.setEffectParam(kSpaceBus, 0, 1, 0.3f);
+        int after = 0;
+        for (int lane = 0; lane < kAutoLanes; ++lane) after += written(lane);
+        CHECK(before == after && before == 3);
+        s.setEffect(0, 2, EffectKind::Crush);
+        CHECK(written(17) == 0 && written(20) == 1 && written(21) == 1);
+        // Changing what a bus holds leaves every track's automation alone.
+        s.setEffect(kEchoBus, 0, EffectKind::None);
+        s.setEffect(kSpaceBus, 0, EffectKind::None);
+        CHECK(written(20) == 1 && written(21) == 1);
+    }
+
+    // Deleting a track: the sends go with their tracks, in the song and in the engine.
+    {
+        Rig rig, same;
+        addPhazed(rig);
+        addPhazed(same);
+        rig.app.session().setSend(1, 0, 0.6f);
+        rig.app.session().setSend(0, 1, 0.9f);
+        CHECK(rig.app.session().removeTrack(0));
+        CHECK(rig.project().tracks[0].send[0] == 0.6f && rig.project().tracks[0].send[1] == 0.f && rig.project().tracks[1].send[0] == 0.f);
+        CHECK(same.app.session().removeTrack(0));
+        same.app.session().setSend(0, 0, 0.6f);
+        rig.render(1200000);
+        same.render(1200000);
+        rig.app.session().audition(0, 60, 0.8f);
+        same.app.session().audition(0, 60, 0.8f);
+        const std::vector<float> x = rig.render(48000), y = same.render(48000);
+        CHECK(Rig::peak(x) > 0.01f && x == y && rig.engine->busAwake(0) && !rig.engine->busAwake(1));
+    }
+}
+
+// The FX screen: two pages of four rows, the sends, the buses and the group jump.
+void testTheFxScreensTwoPages() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    rig.frames(1);
+    const int delay = static_cast<int>(EffectKind::Delay), reverb = static_cast<int>(EffectKind::Reverb), filter = static_cast<int>(EffectKind::Filter);
+    CHECK(FxScreen::kRows == 8 && FxScreen::kSendsRow == 3 && FxScreen::kBusRow == 4 && FxScreen::kMasterRow == 6);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0 && fx.page() == 0);
+
+    // Down the track's page: three slots, the sends, and on to the other page; up comes back.
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 4 && fx.page() == 1);
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 0 && fx.page() == 0);
+    rig.tap(UP);
+    CHECK(fx.cursorRow() == 7);
+    rig.tap(UP, 4);
+    CHECK(fx.cursorRow() == 3);
+    // Y: the other page, the same row of it; and back.
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
+    fx.goTo(1, 0);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 5);
+    rig.tap(Y);
+    CHECK(fx.cursorRow() == 1);
+    // Not while A is held: A is turning something.
+    rig.key(A, true);
+    rig.tap(Y);
+    rig.key(A, false);
+    CHECK(fx.cursorRow() == 1);
+    // The cursor keeps to what the row has: two sends; an effect and its settings; nothing beside an empty slot.
+    fx.goTo(3, 0);
+    rig.tap(RIGHT, 3);
+    CHECK(fx.cursorColumn() == 1);
+    rig.tap(DOWN); // ECHO's row: DELAY and its four settings
+    CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 1);
+    rig.tap(RIGHT, 9);
+    CHECK(fx.cursorColumn() == 4);
+    rig.tap(DOWN); // SPACE's: REVERB has three
+    CHECK(fx.cursorColumn() == 3);
+    rig.tap(DOWN); // the master's first slot: empty
+    CHECK(fx.cursorRow() == 6 && fx.cursorColumn() == 0);
+
+    // The sends. Hold A + the D-pad: a twentieth at a push, stopping at the ends.
+    fx.goTo(3, 0);
+    rig.key(A, true);
+    rig.tap(UP, 3);
+    CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
+    rig.tap(DOWN);
+    CHECK(near(project.tracks[0].send[0], 0.10f));
+    rig.tap(DOWN, 5);
+    CHECK(project.tracks[0].send[0] == 0.f);
+    rig.tap(LEFT);
+    rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 0);
+    rig.key(A, false);
+    rig.tap(RIGHT);
+    rig.key(A, true);
+    rig.tap(UP, 25);
+    CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
+    rig.tap(DOWN, 2);
+    CHECK(near(project.tracks[0].send[1], 0.9f));
+    // The stick turns it smoothly.
+    rig.key(STICK_DOWN, true);
+    rig.frames(10);
+    rig.key(STICK_DOWN, false);
+    rig.frames(1);
+    const float turned = 0.9f - project.tracks[0].send[1];
+    CHECK(turned > 0.02f && turned < 0.3f && project.tracks[0].send[0] == 0.f);
+    CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
+    // ...the first send as the second.
+    rig.key(A, false);
+    rig.tap(LEFT);
+    rig.key(A, true);
+    rig.key(STICK_UP, true);
+    rig.frames(10);
+    rig.key(STICK_UP, false);
+    rig.frames(1);
+    const float echo = project.tracks[0].send[0];
+    CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
+    rig.key(A, false);
+    session.setSend(0, 0, 0.f);
+    rig.tap(RIGHT);
+    // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    rig.engine->send(hit);
+    rig.render(4800);
+    CHECK(rig.engine->busAwake(1) && !rig.engine->busAwake(0));
+    // B: nothing sent, and its automation in this cell goes; the other send's stays, and so does another scene's.
+    session.setSend(0, 0, 0.4f);
+    session.setAutomation(0, 0, autoLaneOfSend(0), 3, 0.5f);
+    session.setAutomation(0, 0, autoLaneOfSend(1), 3, 0.5f);
+    session.setAutomation(0, 2, autoLaneOfSend(1), 3, 0.5f);
+    rig.tap(B);
+    CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f);
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
+    rig.tap(LEFT);
+    rig.tap(B);
+    CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
+    // With WRITE on and the song playing, B's reset is not itself written down.
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    rig.tap(START);
+    rig.render(kStep + kStep / 2);
+    rig.frames(1);
+    CHECK(session.writing() && project.playing);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(session.hasAutomation(0, 0, autoLaneOfSend(0)) && near(project.tracks[0].automation[0][20][1], 0.05f));
+    rig.tap(B);
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.writing());
+    rig.tap(START);
+    rig.key(SELECT, true);
+    rig.tap(X);
+    rig.key(SELECT, false);
+    rig.frames(1);
+    CHECK(!session.writing() && !project.playing);
+    // The sends are the track's being worked on.
+    addPhazed(rig);
+    project.track = 1;
+    session.view = View::Effects;
+    fx.goTo(3, 0);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(near(project.tracks[1].send[0], 0.1f) && project.tracks[0].send[0] == 0.f);
+    project.track = 0;
+
+    // The third slot is a slot like the others.
+    fx.goTo(2, 0);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(project.tracks[0].effects[2].kind == filter && project.tracks[0].effects[0].kind == 0 && project.tracks[0].effects[1].kind == 0);
+    rig.tap(B);
+    CHECK(project.tracks[0].effects[2].kind == 0);
+
+    // A bus offers its own kind only: NONE and the delays on ECHO, NONE and the reverbs on SPACE.
+    // (Which delay and which reverb come first is the list's business.)
+    const EffectKind echoKind = busEffectAt(0, 1), spaceKind = busEffectAt(1, 1);
+    const int echo1 = static_cast<int>(echoKind), space1 = static_cast<int>(spaceKind);
+    const int echoMix = effectMixParam(echoKind), spaceMix = effectMixParam(spaceKind);
+    CHECK(echo1 != 0 && space1 != 0 && echoMix == 3 && spaceMix >= 0);
+    fx.goTo(4, 0);
+    rig.key(A, true);
+    for (int i = 0; i < 7; ++i) {
+        rig.tap(UP);
+        CHECK(project.busEffects[0].kind != 0 && effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
+    }
+    CHECK(project.busEffects[0].kind == static_cast<int>(busEffectAt(0, busListSize(0) - 1))); // the end of its list stops
+    rig.tap(DOWN, 8);
+    CHECK(project.busEffects[0].kind == 0 && project.busEffects[1].kind == static_cast<int>(kNewSongBus[1]));
+    rig.tap(RIGHT); // no groups to jump on a bus
+    CHECK(project.busEffects[0].kind == 0 && fx.cursorRow() == 4 && fx.cursorColumn() == 0);
+    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(project.busEffects[0].kind == echo1 && fx.cursorColumn() == 0);
+    rig.tap(DOWN);
+    CHECK(project.busEffects[0].kind == 0);
+    rig.tap(UP);
+    CHECK(project.busEffects[0].kind == echo1 && project.busEffects[0].param[echoMix] == 1.f); // in at its usual settings, LEVEL full
+    rig.key(A, false);
+    fx.goTo(5, 0);
+    rig.tap(B);
+    CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == echo1);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(project.busEffects[1].kind == space1 && project.busEffects[1].param[spaceMix] == 1.f);
+    rig.tap(UP, 4);
+    CHECK(effectBus(static_cast<EffectKind>(project.busEffects[1].kind)) == 1);
+    rig.key(A, false);
+    // LEVEL (the echo's MIX, its fourth setting): turned like any setting; B puts it back to full, not to the MIX an effect on a track starts at.
+    fx.goTo(4, 4);
+    rig.key(A, true);
+    rig.tap(DOWN, 4);
+    rig.key(A, false);
+    CHECK(near(project.busEffects[0].param[3], 0.8f));
+    rig.tap(B);
+    CHECK(project.busEffects[0].param[3] == 1.f);
+    fx.goTo(4, 2);
+    session.setEffectParam(kEchoBus, 0, 1, 0.9f);
+    rig.tap(B);
+    CHECK(project.busEffects[0].param[1] == effectInfo(echoKind).defaults[1]);
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 3, 0.9f);
+    fx.goTo(0, 4);
+    rig.tap(B);
+    CHECK(project.tracks[0].effects[0].param[3] == effectInfo(EffectKind::Delay).defaults[3]);
+    session.setEffect(0, 0, EffectKind::None);
+
+    // The master's two slots are the last two rows.
+    fx.goTo(6, 0);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(project.masterEffects[0].kind == filter && project.masterEffects[1].kind == 0);
+    fx.goTo(7, 0);
+    rig.key(A, true);
+    rig.tap(UP, 2);
+    rig.key(A, false);
+    CHECK(project.masterEffects[1].kind == static_cast<int>(effectAt(2)) && project.masterEffects[0].kind == filter);
+    fx.goTo(6, 0);
+    rig.tap(B);
+    fx.goTo(7, 0);
+    rig.tap(B);
+    CHECK(project.masterEffects[0].kind == 0 && project.masterEffects[1].kind == 0);
+
+    // Hold A + left / right on an effect: a whole group of the list at once.
+    fx.goTo(0, 0);
+    const auto kindNow = [&] { return static_cast<EffectKind>(project.tracks[0].effects[0].kind); };
+    rig.key(A, true);
+    int place = 0;
+    for (int i = 0; i < effectListSize() + 2; ++i) {
+        const int to = effectGroupJump(place, 1);
+        rig.tap(RIGHT);
+        CHECK(effectPlace(kindNow()) == to && (to == place || effectInfo(effectAt(to)).group != effectInfo(effectAt(place)).group));
+        place = to;
+    }
+    CHECK(place > 0 && effectInfo(effectAt(place)).group == effectInfo(effectAt(effectListSize() - 1)).group); // the last group: it stops
+    // ...and stopping is doing nothing: the effect there is not put in afresh, so its settings stay as they were turned.
+    if (effectInfo(kindNow()).params > 0) {
+        session.setEffectParam(0, 0, 0, 0.123f);
+        rig.tap(RIGHT);
+        CHECK(project.tracks[0].effects[0].param[0] == 0.123f);
+    }
+    for (int i = 0; i < effectListSize() + 2; ++i) {
+        const int to = effectGroupJump(place, -1);
+        rig.tap(LEFT);
+        CHECK(effectPlace(kindNow()) == to && to <= place);
+        place = to;
+    }
+    CHECK(place == 0 && kindNow() == EffectKind::None && fx.cursorColumn() == 0);
+    // The stick: one push, one jump.
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(effectPlace(kindNow()) == effectGroupJump(0, 1) && kindNow() != EffectKind::None);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(kindNow() == EffectKind::None);
+    // On a setting, left and right with A held do nothing at all.
+    session.setEffect(0, 0, EffectKind::Filter);
+    fx.goTo(0, 1);
+    const float cutoff = project.tracks[0].effects[0].param[0];
+    rig.tap(RIGHT);
+    CHECK(project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
+    rig.tap(LEFT);
+    CHECK(project.tracks[0].effects[0].kind == filter && project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
+    rig.key(A, false);
+    // Without A they move the cursor, as ever.
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 0 && project.tracks[0].effects[0].kind == filter);
 }
 
 void testTheKeysShownFollowTheCursor() {
@@ -4778,6 +5339,8 @@ int main(int, char**) {
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testEffectsThroughTheSession();
+    testSendsThroughTheSession();
+    testTheFxScreensTwoPages();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

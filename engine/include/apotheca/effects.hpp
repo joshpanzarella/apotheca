@@ -70,6 +70,29 @@ int effectChoices(EffectKind kind, int index);
 // another; without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
+// Hold A + left / right on an effect: a whole group at once. From a place in
+// the list, `by` > 0 gives the first effect of the next group and `by` < 0
+// the first of the group before; the same place back when there is none
+// that way. (NONE, at place 0, is a group of its own.)
+int effectGroupJump(int place, int by);
+// The rule itself, over any row of groups: what effectGroupJump does with the list's.
+int groupJump(const EffectGroup* groups, int count, int place, int by);
+
+// Which send bus an effect may sit on, by its group: 0 (ECHO) for a delay, 1
+// (SPACE) for a reverb, -1 for anything else. A new delay or reverb is
+// offered on its bus without being added anywhere.
+int effectBus(EffectKind kind);
+// The setting named MIX, which on a bus reads LEVEL; -1 if it has none.
+int effectMixParam(EffectKind kind);
+// A setting's usual value. On a bus, LEVEL (the MIX) starts at full: the
+// tracks' send amounts say how much, so the bus gives all of it back.
+float effectDefault(EffectKind kind, int index, bool onBus = false);
+// The list a bus's player picks from: NONE (place 0), then the effects that
+// may sit on that bus, in the order of the main list.
+int busListSize(int bus);
+EffectKind busEffectAt(int bus, int place); // None off either end
+int busEffectPlace(int bus, EffectKind kind); // 0 for anything not in it
+
 // A new one, prepared and set to its defaults. nullptr for None. Allocates:
 // not for the audio thread.
 std::unique_ptr<Effect> makeEffect(EffectKind kind, float sampleRate, float tempo);

@@ -3,8 +3,17 @@
 // stereo samples, so it can be tested on its own.
 //
 // Signal path:
-//   track instrument -> track slot 0 -> track slot 1 -> track level -+
-//   (up to 12)                                                       +-> master slot 0 -> master slot 1 -> ceiling -> out
+//   track instrument -> slot 0 -> slot 1 -> slot 2 -> level, mute -+-> mix
+//   (up to 12)                                                     |
+//                                              x its ECHO amount  -+-> ECHO bus  -> its effect -+
+//                                              x its SPACE amount -+-> SPACE bus -> its effect -+-> mix
+//
+//   mix -> master slot 0 -> master slot 1 -> ceiling -> out
+//
+// The two buses are shared: every track has an amount it sends to each (0 to
+// start), and each bus holds one effect which gives back its echoes or its
+// room and none of the sound that went in. A bus nothing has been sent to
+// costs nothing.
 //
 // The ceiling is a soft limit at the very end: below 0.8 of full scale the
 // sound passes untouched, above it the peaks are rounded off, and nothing
@@ -49,8 +58,25 @@
 namespace apotheca {
 
 constexpr int kNumTracks = 12;
-constexpr int kEffectSlots = 2;   // per track, and on the master
+constexpr int kTrackSlots = 3;    // effect slots on a track
+constexpr int kMasterSlots = 2;   // ...and on the master
 constexpr int kMasterTrack = -1;  // "track" index that addresses the master
+// The send buses. Each has ONE slot (slot 0), addressed like the master's:
+// SetEffectParam, InstallEffect and setEffect() take these as the "track".
+constexpr int kBuses = 2;
+constexpr int kEchoBus = -2;      // bus 0: a delay
+constexpr int kSpaceBus = -3;     // bus 1: a reverb
+inline int busTrack(int bus) { return kEchoBus - bus; }                       // 0 -> kEchoBus, 1 -> kSpaceBus
+inline int busOfTrack(int track) { return track == kEchoBus ? 0 : (track == kSpaceBus ? 1 : -1); } // -1: not a bus
+// How many effect slots the thing a "track" number names has; 0 if it names nothing.
+inline int slotsOf(int track) { return track == kMasterTrack ? kMasterSlots : (busOfTrack(track) >= 0 ? 1 : (track >= 0 && track < kNumTracks ? kTrackSlots : 0)); }
+// A bus that has been sent nothing, and has put out nothing above
+// kBusQuiet, for this long is put to rest: its effect is cleared and it is
+// skipped until something is sent to it again. Longer than the longest gap
+// between two echoes of anything a bus can hold (effects_test checks that).
+constexpr float kBusRestSeconds = 10.f;
+constexpr float kBusQuiet = 1e-6f; // 120 dB under full scale
+constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
 constexpr float kMinTempo = 40.f;
@@ -86,7 +112,7 @@ struct Command {
         SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
         ClearAutomation,// a whole lane of a cell: track, scene, a = lane (-1: every lane)
         SetTrackHeard,  // mute and solo: track, a = 1 heard, 0 silent. It fades over 5 ms either way, so it does not click.
-        SetEffectParam, // track (or kMasterTrack), a = slot, b = param, value
+        SetEffectParam, // track (or kMasterTrack, kEchoBus, kSpaceBus), a = slot, b = param, value
         SetLaneLevel,   // one drum's volume:         track, a = lane, value = 0..1
         SetStepNudge,   // move a hit off the grid:   track, scene, a = lane, b = step, value = -0.5..0.5 of a step
         SetStepChance,  // how likely a hit plays:    track, scene, a = lane, b = step, value = 0..1
@@ -112,8 +138,10 @@ struct Command {
         SetTrackSample, // internal: sent by setTrackSample()
         SetLanePart,    // how much of its sound each hit on a drum lane plays: track, a = lane,
                         //   value = 0..1 of its length (0: all of it). A slice of a longer recording.
-        SetStepFx       // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
+        SetStepFx,      // a hit's step effects (StepFx, drums.hpp): track, scene, bar, a = lane, b = step,
                         //   c = pitch in semitones, d = ratchet, value = 1 for backwards, extra = cut (0..3)
+        SetSend         // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
+                        //   Taken after the track's level and mute. It glides, so it does not click.
     };
     Type type = Trigger;
     int track = 0;
@@ -135,15 +163,18 @@ struct Command {
 // Everything a track plays, in one piece: for loading a whole song in a
 // handful of commands instead of thousands.
 // Automation: a setting that moves by itself as the pattern plays. Each
-// track has sixteen "lanes" of it: its synth's eight macros, and the four
-// settings of each of its two effects. A lane holds one value for every step
+// track has twenty-four "lanes" of it: its synth's eight macros, the four
+// settings of each of its three effects, and its two sends (two more are
+// spare). A lane holds one value for every step
 // of every bar of a cell, or "nothing here" (below zero), and where there is
 // a value the setting glides to it over the first half of that step. Where
 // there is none the setting is wherever its knob was left.
-constexpr int kAutoLanes = 16;                     // 0..7 macros; 8 + slot * 4 + setting: effects
+constexpr int kAutoLanes = 24;                     // 0..7 macros; 8 + slot * 4 + setting: effects (8..19); 20, 21 sends; 22, 23 spare
+constexpr int kAutoSendLane = 20;                  // the ECHO send's lane; SPACE's is the next
 constexpr int kAutoSteps = kMaxBars * kSteps;      // a cell at its longest
 constexpr float kAutoNone = -1.f;
 inline int autoLaneOfEffect(int slot, int param) { return 8 + slot * 4 + param; }
+inline int autoLaneOfSend(int bus) { return kAutoSendLane + bus; }
 
 struct TrackImage {
     // Indexed by pattern slot: scene * kMaxBars + bar. Slot 0 is scene 1, bar 1.
@@ -177,6 +208,7 @@ public:
     void prepare(float sampleRate);
     void setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect);
     void setMasterEffect(int slot, std::unique_ptr<Effect> effect);
+    void setBusEffect(int bus, std::unique_ptr<Effect> effect); // told it is on a bus: it gives back no dry sound
 
     // From the control thread, at any time. Give an empty track an
     // instrument; it is there from the next render(). False if the track
@@ -190,7 +222,9 @@ public:
     // Replace every pattern on a track at once.
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
     // From the control thread, at any time: put an effect in a slot (None
-    // empties it), at its default settings. `track` may be kMasterTrack.
+    // empties it), at its default settings. `track` may be kMasterTrack, or
+    // kEchoBus / kSpaceBus (slot 0 only): an effect on a bus is told so, and
+    // gives back only what it adds, its MIX being how loud that is.
     // It does not click: the sound slides from what was in the slot to what
     // is there now over kSwapFadeSeconds, and the old one's tail goes with it.
     // Its settings are then SetEffectParam, each 0..1 (see effects.hpp).
@@ -229,6 +263,7 @@ public:
     void render(float* interleaved, int frames);
 
     // Read-outs for the screen. Safe from any thread.
+    bool busAwake(int bus) const { return bus >= 0 && bus < kBuses && busAwake_[bus].load(std::memory_order_relaxed); } // false: at rest, costing nothing
     float trackPeak(int track) const; // loudest sample in the last render() call
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
     int playScene() const { return playScene_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
@@ -315,7 +350,8 @@ private:
         int total = 1;
     };
     void swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming);
-    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames);
+    // `bus`: the slot is a bus's, where "no effect" is silence and not the sound passing through.
+    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false);
     void binLeaving(SlotFade& fade); // the audio thread only, with no helper at work
 
     struct Track {
@@ -363,8 +399,10 @@ private:
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
-        std::unique_ptr<Effect> effects[kEffectSlots];
-        SlotFade fades[kEffectSlots];
+        float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
+        float sendNow[kBuses] = {}; // ...as it is this sample: moving toward `send`
+        std::unique_ptr<Effect> effects[kTrackSlots];
+        SlotFade fades[kTrackSlots];
         std::atomic<float> peak{0.f};
         bool hasInstrument() const { return hasDrums || synth; }
     };
@@ -409,8 +447,17 @@ private:
     Track tracks_[kNumTracks];
     bool claimed_[kNumTracks] = {};
     bool claimedDrums_[kNumTracks] = {}; // ...and which of those are drums // control thread's view of which tracks have an instrument
-    std::unique_ptr<Effect> masterEffects_[kEffectSlots];
-    SlotFade masterFades_[kEffectSlots];
+    std::unique_ptr<Effect> masterEffects_[kMasterSlots];
+    SlotFade masterFades_[kMasterSlots];
+    // The send buses: one effect each, wet only.
+    std::unique_ptr<Effect> busEffects_[kBuses];
+    SlotFade busFades_[kBuses];
+    std::atomic<bool> busAwake_[kBuses]; // sent something, or still ringing; false: skipped
+    int busQuietFrames_[kBuses] = {};    // how long it has been sent nothing and put out nothing
+    void feedBuses(const int* active, int count, int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], bool* fed);
+    void runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], const bool* fed, float* mixL, float* mixR);
+    // The slot a "track" number and a slot number name, or nullptr.
+    std::unique_ptr<Effect>* effectPlace(int track, int slot, SlotFade** fade = nullptr);
 
     // The step clock. Steps are sixteenth notes.
     bool playing_ = false;

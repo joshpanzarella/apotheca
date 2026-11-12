@@ -46,7 +46,8 @@ public:
                 const float echo = line[static_cast<std::size_t>(from)];
                 damp += coeff_ * (echo - damp); // each repeat a little duller
                 line[static_cast<std::size_t>(at)] = io[c][i] + damp * feedback;
-                io[c][i] += mix * echo;
+                if (bus_) io[c][i] = mix * echo; // on a bus: the echoes alone
+                else io[c][i] += mix * echo;
                 if (++at >= size_) at = 0;
             }
             damp_[c] = std::fabs(damp) < 1e-20f ? 0.f : damp;

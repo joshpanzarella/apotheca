@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (16) | `cd build && ctest -j8` (about 15 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -119,6 +119,11 @@ Where effects are, in the engine:
 The screen, the song file and `bench` pick it up from the table; the build
 takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 
+**A delay or a reverb also goes on a send bus** (by its group: `effectBus`).
+Its `process()` must look at `Unit::bus_` and, when set, put out only what it
+adds (wet times MIX) and none of what came in. `effects_test` checks every
+effect in those two groups and fails one that does not.
+
 ## Rules that bite
 
 ### Files and compatibility
@@ -126,8 +131,15 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   `auto`, `steps`, `name`) never change meaning. Unknown lines are skipped.
 - **Ids are appended, never reordered or reused**: `Command::Type`, every
   synth's settings and macros, effect kinds, effect settings, automation lanes
-  (0..7 macros, `8 + slot * 4 + setting` effects). Songs and presets store
-  them by number.
+  (0..7 macros, `8 + slot * 4 + setting` effects for slots 1 to 3, 20 and 21
+  the ECHO and SPACE sends, 22 and 23 spare). Songs and presets store them by
+  number.
+- **A song file with no `busfx` line is an old song.** Its buses get what a
+  new song's do (`kNewSongBus` in `app/project.hpp`: the one line to change
+  when new songs should start with TAPE and HALL), its sends are 0, and it
+  sounds as it did. `songText` always writes both `busfx` lines, an empty bus
+  as `busfx 2 none`, so "none" is never mistaken for "old". A track's send is
+  a `send BUS AMOUNT` line, left out at 0; `fx 3` is its third slot.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -164,6 +176,24 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   done, never from `renderTrack`: **the trash queue takes from one thread.**
   A test that wants an effect in place at once uses the setup call
   `setTrackEffect`, or renders 10 ms before it listens.
+- **Two send buses, ECHO and SPACE** (`kEchoBus` -2, `kSpaceBus` -3: "track"
+  numbers beside `kMasterTrack`, one slot each; `slotsOf(track)` says how many
+  slots anything has: tracks 3, master 2, a bus 1). A track's send is taken
+  after its level and mute and glides for 5 ms. The buses are fed and run on
+  the audio thread **after the helpers are done, in track order**
+  (`feedBuses`, `runBuses`), and join the mix before the master's slots. Keep
+  it there: that is what holds the output to the bit on any helper count.
+- **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
+  why a song with no sends is the same to the last bit as before there were
+  buses (`effects_test` holds the old song's checksum with an effect waiting
+  on each bus). A bus rests when it has been sent nothing and has put out
+  nothing above `kBusQuiet` (1e-6) for `kBusRestSeconds` (10 s); its effect is
+  then `reset()`. Ten seconds must stay longer than the longest silence
+  between two echoes of anything a bus can hold (`effects_test` measures each
+  delay and reverb at 40 BPM: DELAY 3.0 s). A bus with no effect is not run.
+- **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
+  and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
+  reads LEVEL there, at full (`effectDefault(kind, i, true)`).
 - **Flush-to-zero is ON in the program and in a bounce** (owner, 2026-11-11;
   `Engine::setFlushDenormals(true)` in `main.cpp` and `bounce.cpp`), set for
   each `render()` and on the helpers. It changes the last vanishing samples of
@@ -187,6 +217,23 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 
 ### The app
+- **Anything below zero is not a track**: -1 the master, -2 and -3 the buses.
+  `Session::effectData`, `setEffect` and `setEffectParam` take all three
+  (`slotsOf(track)` bounds the slot). Test `track >= 0` before touching
+  `project.tracks[track]` or automation, never `track != kMasterTrack`: a bus
+  would then index the array at -2. A bus takes only its own kind
+  (`effectBus`), and nothing on a bus or the master is automated.
+- **The FX screen is two pages of four rows, and its rows are numbered
+  through both** (`FxScreen::goTo`): 0 to 2 the track's slots, 3 its SENDS
+  (`kSendsRow`: two columns, not a slot, so `data(row)` is not for it), 4 and
+  5 the buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). Y adds four. A
+  bus's row picks from its own list (`busEffectAt`), shows its MIX as LEVEL,
+  and B there gives `effectDefault(kind, i, true)`. Hold A + left / right is
+  `effectGroupJump`: it reads the groups from the list, so a new effect needs
+  nothing done for it.
+- **A new `Session` tells the engine what the buses hold** (its constructor).
+  The engine starts as a new song in every other way, but with empty buses;
+  without this a handheld with no saved song had sends that did nothing.
 - **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`
   (821 KB). `std::unique_ptr<Project>`.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
@@ -275,6 +322,8 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
+| Feeding both send buses from 12 tracks | 0.03% |
+| ...and a DELAY and a REVERB on them | 0.12% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

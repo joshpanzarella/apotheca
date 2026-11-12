@@ -24,8 +24,8 @@
 //     midway between the cuts, an echo comes back at FEEDBACK.
 //
 // ON A BUS (the plan's sends): the dry sound is dropped and MIX is the level.
-// That is `wetOnly_`, read in one place (gains()). When Effect gains its "you
-// are on a bus" call, it sets that flag; nothing else changes.
+// That is Unit's `bus_`, set by the "you are on a bus" call (setOnBus, which
+// also calls changed()).
 
 #include <vector>
 
@@ -100,7 +100,7 @@ public:
         const bool silent = !(coming >= kNothing);
         if (asleep_) {
             if (silent) {
-                if (wetOnly_)
+                if (bus_)
                     for (int i = 0; i < frames; ++i) left[i] = right[i] = 0.f;
                 return;
             }
@@ -119,7 +119,7 @@ public:
         const float wowEnd = static_cast<float>(std::sin(phase_));
         const float dWow = (wowEnd - wow_) / static_cast<float>(frames);
         float wow = wow_;
-        const float dry = wetOnly_ ? 0.f : 1.f;
+        const float dry = bus_ ? 0.f : 1.f;
         const double pull = 1.0 / (kTapeInertia * sr_);
         float* const tapeL = line_[0].data();
         float* const tapeR = line_[1].data();
@@ -206,7 +206,6 @@ private:
     std::vector<float> line_[2];
     int size_ = 0, at_ = 0, quiet_ = 0;
     bool asleep_ = true;
-    bool wetOnly_ = false; // ON A BUS: true drops the dry sound (see the top of this file)
     float tempo_ = 120.f, wowMost_ = 72.f, wow_ = 0.f;
     double delay_ = 24000.0, delayTo_ = 24000.0, phase_ = 0.0;
     float low_[2] = {}, high_[2] = {};

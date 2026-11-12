@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Step 0 (groundwork), step 4 (TAPE) and step 5 (HALL) are built; see "as built" under the order of work.
+Written 2026-11-11. Steps 0, 1a, 1b, 1c, 4 (TAPE) and 5 (HALL) are built; see "as built" under the order of work.
 
 ## The recommendation
 
@@ -388,9 +388,9 @@ metallic is for ears.
 | Step | What | Size | Needs | Mostly touches |
 | --- | --- | --- | --- | --- |
 | 0 | **DONE 2026-11-11, but for one switch (see below).** **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
-| 1a | **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
-| 1b | Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
-| 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
+| 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
+| 1b | **DONE 2026-11-11 (see below).** Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
+| 1c | **DONE 2026-11-11 (see below).** The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
 | 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
 | 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | **DONE 2026-11-11.** TAPE | medium | 0 | `fx/tape.cpp` |
@@ -411,6 +411,46 @@ metallic is for ears.
 | Flush-to-zero | **ON in the program and in a bounce since 2026-11-11 (the owner's call); the tests leave it off.** As built in step 0 it was: Built, tested, and left OFF. On, it changes 1 of the 40 pinned renders (25 samples, all under 1e-38) and the end of any long tail (under 1e-30, 600 dB down). Nothing anyone could hear, but not "the same to the last bit". **The owner decides**; it is one call, `Engine::setFlushDenormals(true)`, in `app/main.cpp` and `app/bounce.cpp`. The old five do not slow down without it (measured). HALL will need it |
 | Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
 | Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
+
+**Step 1a as built** (2026-11-11; only tests and measurements have seen it, nobody has heard it):
+
+| Thing | Result |
+| --- | --- |
+| The buses | `kEchoBus` (-2) and `kSpaceBus` (-3), one slot each, addressed like the master. `Command::SetSend` appended. Sends are taken after level and mute and glide over 5 ms |
+| Wet only | `Effect::setOnBus`. DELAY and REVERB honour it: one changed line each, off a bus their sound is still the pinned one. A new delay or reverb must do the same (`Unit::bus_`); a test fails one that does not |
+| LEVEL | An effect put on a bus starts with its MIX at 100%. A send of 35% into DELAY at LEVEL 100% is then the echo an insert DELAY gives at MIX 35% |
+| The rest rule | A bus sent nothing, and quieter than 120 dB under full scale, for **10 s** is cleared and skipped. Measured longest silence between echoes: DELAY 3.0 s (a half note at 40 BPM), REVERB 0.26 s. A bus never sent to is never run |
+| No sends, same bits | The step 0 song's checksum holds, also with an effect waiting on each bus, also with helpers |
+| Helpers | A song with sends from four tracks, send automation, both buses, a third slot, a mute and a bus effect swapped mid-song: the same to the last bit with 0, 1, 2 and 3 helpers, and twice from fresh |
+| Lanes | 24. 16 to 19 are slot 3, 20 ECHO send, 21 SPACE send, 22 and 23 do nothing |
+| Slots | `kTrackSlots` 3, `kMasterSlots` 2; `kEffectSlots` is gone |
+| A swap on a bus | Fades like any slot when the bus is sounding (to and from silence, not the dry sound). On a bus at rest the new effect is simply there |
+| Cost (desk, `bench`) | Feeding both buses from 12 tracks **0.03%** of a core (plan: 0.09). With DELAY and REVERB on them 0.12% in all. Handheld, times 5: 0.15% and 0.6%, against the plan's 2.5% for buses with TAPE and HALL |
+| Departed from the plan | "Skipped after its tail" is measured, not declared: no effect says how long its tail is. A tail that never falls under the line (DELAY at full FEEDBACK is 90%, so it does fall) would keep its bus awake |
+
+**Step 1b as built** (2026-11-11; only tests have seen it):
+
+| Thing | Result |
+| --- | --- |
+| In a song file | `busfx BUS NAME settings` twice, after the master's `fx` lines; `send BUS AMOUNT` in a track, left out at 0; `fx 3 NAME` for the third slot. Lanes 16 to 23 load and save |
+| An empty bus | Written as `busfx 2 none`. Departed from the plan, which had no word for it: without one, a bus the player emptied would come back full, since "no line" has to mean "old song" |
+| A new song's buses | **DELAY and REVERB for now**, LEVEL 100%. One line, `kNewSongBus` in `app/project.hpp`, changes it to TAPE and HALL. An old song (no `busfx`) gets the same |
+| A `busfx` line this version cannot use | An effect it does not have, or one of the wrong kind for the bus: skipped, the bus keeps the usual one |
+| The Session | `setSend` (written as automation on lanes 20 and 21 like any setting); `setEffect` and `setEffectParam` take `kEchoBus` and `kSpaceBus`; a bus refuses anything but its own kind; `applyProject` sends the buses, the third slots and every send |
+| Old songs | A five-track song with effects on tracks and master, opened through the Session and played for 12 s: **the same to the last bit** in the program before this step and after it, with 0, 1 and 3 helpers (checked once by hand, both programs built side by side). In the tests: an old song is the same to the bit with the buses emptied, and saves as it was plus the two `busfx` lines |
+| Found on the way | A handheld with no saved song never told the engine its buses, so sends did nothing until a song was opened. The Session's constructor now does it |
+| Not undone | Sends and what the buses hold are not part of undo, like effects. Send automation is, like all automation |
+
+**Step 1c as built** (2026-11-11; seen in stills and tests, not on the handheld):
+
+| Thing | Result |
+| --- | --- |
+| The pages | As drawn in section 5. TRACK: three slots, then SENDS (two boxes, ECHO and SPACE). ALL: the ECHO bus, the SPACE bus, the master's two slots. Y flips; moving down off the last row or up off the first goes to the other page too |
+| A bus's row | Picks from NONE and its own kind only. MIX reads LEVEL. B on LEVEL gives 100% |
+| A send | Hold A + stick turns it, the D-pad moves it a twentieth, B puts it at 0 and clears its automation in the cell. The purple line and the moving value show as on any setting |
+| The group jump | Hold A + left / right (D-pad, or one push of the stick) on an effect: the first effect of the next group in the list, or of the one before. `effectGroupJump` reads the groups from the list. **With today's five effects every group has one effect, so a jump is the same as a step**; it starts to matter when TAPE joins DELAY. The rule is tested on made-up lists |
+| Hints | All fit, with room, in nine stills (`fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, three with `--hold-a`). The longest: `HLD A turn  B default value  Y buses  START stop` |
+| Left out | COMP's gain reduction on the THRESHOLD bar (step 7). Nothing marks which page is up except the title, the rows and the Y hint |
 
 **Step 4 (TAPE) as built, 2026-11-11.** `engine/src/fx/tape.cpp`, number 6,
 word `tape`, in the list before DELAY. Only tests and measurements have seen

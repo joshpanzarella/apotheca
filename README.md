@@ -18,7 +18,7 @@ one to eight bars, each with its own repeat count. Four screens:
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
   For drums, the kit: each lane plays its built-in drum or a recording.
-- **FX**: two effects on each track and two on the master.
+- **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
 Songs are kept as you go: there is no save button. A **rev** keeps the song
 as it is at one moment, to go back to.
@@ -164,14 +164,45 @@ right for a recording played as it is, near enough for one tuned up or down.
 
 ### FX
 
-A fourth screen, after DEVICE. Four rows: the **two effects on the track**
-being worked on, then the **two on the master** (everything, after the tracks
-are mixed).
+A fourth screen, after DEVICE. **Two pages of four rows. Y goes to the other
+page**, and so does moving down off the last row.
+
+| Page | Rows |
+| --- | --- |
+| The track's | The **three effects on the track** being worked on, one after the other. Then its **SENDS**: how much of it goes to ECHO, how much to SPACE. |
+| Everything's | **ECHO** and **SPACE**: one effect each, shared by every track. Then the **two effects on the master** (everything, after the tracks are mixed). |
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, DRIVE, TAPE, DELAY, HALL, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
+| The effect | NONE, FILTER, DRIVE, TAPE, DELAY, HALL, REVERB, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
+| A send | The same: the stick turns it, the D-pad moves it a twentieth. | Nothing sent |
+
+#### ECHO and SPACE: one delay and one reverb for the whole song
+
+A **send** is a copy of a track fed to a shared effect. ECHO holds a delay,
+SPACE holds a reverb. Each track says how much of itself goes to each, from
+0 to 100%, on its SENDS row. Both start at 0.
+
+| | An effect on the track | A send |
+| --- | --- | --- |
+| How many run | One for each track that has it | One for the whole song |
+| How much | Its MIX | The track's ECHO or SPACE amount |
+| The sound | Each track in its own room | Every track in the same room |
+
+- **What ECHO and SPACE hold is on the other page (Y).** Their settings are
+  the delay's and the reverb's, but for the last: **LEVEL**, how loud the
+  echoes or the room come back. It starts at 100%.
+- ECHO takes only a delay and SPACE only a reverb. B empties one.
+- The send is taken after the track's level and its mute: a muted track sends
+  nothing, and the echoes it already made ring on.
+- The master's effects come after, so they act on the echoes and the room too.
+- A send can be **automated** like any setting (see Automation).
+- A new song has DELAY on ECHO and REVERB on SPACE. So does a song made before
+  there were sends: nothing in it is sent, and it sounds as it did.
+- **A song saved here and then opened by an older version of the program
+  loses its sends, its third effects and what ECHO and SPACE hold.** The rest
+  of it opens.
 
 | Effect | Settings |
 | --- | --- |
@@ -294,7 +325,7 @@ A macro, or a setting of a track's effect, can be **moved by the pattern**.
 
 1. **SELECT + X** turns WRITE on. A red WRITE chip shows in the top bar.
 2. Play the song, and move the thing: hold A on a macro (DEVICE) or on an
-   effect's setting (FX) and turn it.
+   effect's setting or a send (FX) and turn it.
 3. What you do is written into the cell that is playing, step by step.
    Turn WRITE off (SELECT + X again) and it plays back every time round.
 
@@ -303,8 +334,8 @@ A macro, or a setting of a track's effect, can be **moved by the pattern**.
 | How fine | One value a step (16 a bar, for every bar of the cell). The setting **glides** to each value over the first half of its step, so a sweep is smooth, not a staircase. |
 | Steps with nothing written | The setting rests where its knob is |
 | A mark | A purple line under a macro or setting that has automation in the cell being worked on. While it plays, the box shows the value the pattern has it at. |
-| Take it away | **B** on the macro or setting: back to its middle or default, and its automation in this cell is cleared |
-| What can be automated | A synth's eight macros; the four settings of each of a track's two effects. Not the master's effects, and not the settings on a synth's ADVANCED pages. |
+| Take it away | **B** on the macro, setting or send: back to its middle or default, and its automation in this cell is cleared |
+| What can be automated | A synth's eight macros; the four settings of each of a track's three effects; its two sends. Not the master's effects, not what ECHO and SPACE hold, and not the settings on a synth's ADVANCED pages. |
 | Undo | SELECT + B takes back a recorded pass like any other edit |
 
 With WRITE off, moving a knob is only moving a knob. Stopped, nothing is

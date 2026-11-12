@@ -9,7 +9,6 @@ namespace apotheca {
 
 namespace {
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
-bool validSlot(int slot) { return slot >= 0 && slot < kEffectSlots; }
 bool validScene(int scene) { return scene >= 0 && scene < kMaxScenes; }
 // A bar of a scene, as the pattern commands name it. -1 if there is no such bar.
 int slotFor(const Command& c) { return validScene(c.scene) && c.bar >= 0 && c.bar < kMaxBars ? c.scene * kMaxBars + c.bar : -1; }
@@ -39,12 +38,14 @@ Engine::Engine() {
     for (Track& track : tracks_) {
         for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
-            track.autoBase[lane] = lane < 8 ? 0.5f : kAutoNone; // macros start in the middle; an effect says when it arrives
+            // Macros start in the middle and sends at nothing; an effect says when it arrives.
+            track.autoBase[lane] = lane < 8 ? 0.5f : (lane >= kAutoSendLane && lane < kAutoSendLane + kBuses ? 0.f : kAutoNone);
             track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = track.autoBase[lane];
         }
     }
     claimed_[0] = true;
     claimedDrums_[0] = true;
+    for (auto& awake : busAwake_) awake.store(false, std::memory_order_relaxed);
     prepare(48000.f);
 }
 
@@ -77,9 +78,21 @@ void Engine::collectGarbage() {
     while (trash_.pop(trash)) destroy(trash);
 }
 
+// The slot a "track" number and a slot number name: a track's, the master's or a bus's.
+std::unique_ptr<Effect>* Engine::effectPlace(int track, int slot, SlotFade** fade) {
+    if (slot < 0 || slot >= slotsOf(track)) return nullptr;
+    const int bus = busOfTrack(track);
+    if (fade) *fade = bus >= 0 ? &busFades_[bus] : (track == kMasterTrack ? &masterFades_[slot] : &tracks_[track].fades[slot]);
+    return bus >= 0 ? &busEffects_[bus] : (track == kMasterTrack ? &masterEffects_[slot] : &tracks_[track].effects[slot]);
+}
+
 bool Engine::setEffect(int track, int slot, EffectKind kind) {
-    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return false;
+    if (slot < 0 || slot >= slotsOf(track)) return false;
     std::unique_ptr<Effect> effect = makeEffect(kind, sampleRate_, 120.f); // the audio thread tells it the real tempo
+    if (effect && busOfTrack(track) >= 0) {
+        effect->setOnBus(true);
+        for (int i = 0; i < effectInfo(kind).params; ++i) effect->setParam(i, effectDefault(kind, i, true)); // LEVEL at full
+    }
     Command c;
     c.type = Command::InstallEffect;
     c.track = track;
@@ -88,7 +101,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     if (!commands_.push(c)) return false;
     effect.release(); // the audio thread hands the old one back through the trash
     // Its settings as it starts, said out loud: automation needs to know where each knob rests.
-    if (track != kMasterTrack && kind != EffectKind::None) {
+    if (validTrack(track) && kind != EffectKind::None) {
         Command p;
         p.type = Command::SetEffectParam;
         p.track = track;
@@ -190,17 +203,36 @@ void Engine::prepare(float sampleRate) {
         }
     }
     for (SlotFade& fade : masterFades_) fade = SlotFade();
+    for (int bus = 0; bus < kBuses; ++bus) {
+        if (busEffects_[bus]) {
+            busEffects_[bus]->prepare(sampleRate);
+            busEffects_[bus]->reset();
+        }
+        busFades_[bus] = SlotFade();
+        busAwake_[bus].store(false, std::memory_order_relaxed);
+        busQuietFrames_[bus] = 0;
+    }
+}
+
+void Engine::setBusEffect(int bus, std::unique_ptr<Effect> effect) {
+    if (bus < 0 || bus >= kBuses) return;
+    if (effect) {
+        effect->prepare(sampleRate_);
+        effect->setOnBus(true);
+    }
+    busEffects_[bus] = std::move(effect);
+    busFades_[bus] = SlotFade();
 }
 
 void Engine::setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect) {
-    if (!validTrack(track) || !validSlot(slot)) return;
+    if (!validTrack(track) || slot < 0 || slot >= kTrackSlots) return;
     if (effect) effect->prepare(sampleRate_);
     tracks_[track].effects[slot] = std::move(effect);
     tracks_[track].fades[slot] = SlotFade();
 }
 
 void Engine::setMasterEffect(int slot, std::unique_ptr<Effect> effect) {
-    if (!validSlot(slot)) return;
+    if (slot < 0 || slot >= kMasterSlots) return;
     if (effect) effect->prepare(sampleRate_);
     masterEffects_[slot] = std::move(effect);
     masterFades_[slot] = SlotFade();
@@ -240,10 +272,13 @@ void Engine::swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* 
 
 // One slot's work on a chunk. With no fade under way this is the effect's own
 // process() and nothing else, so a song sounds as it always did.
-void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames) {
+void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus) {
+    const auto silence = [&](float* l, float* r) {
+        for (int i = 0; i < frames; ++i) l[i] = r[i] = 0.f;
+    };
     if (fade.left <= 0) {
         if (place) place->process(left, right, frames);
-        return;
+        return; // (a bus with no effect is not run at all: runBuses)
     }
     // Both run on the same sound coming in: `was` is the slot as it was.
     float wasL[kMaxBlock], wasR[kMaxBlock];
@@ -252,7 +287,9 @@ void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left
         wasR[i] = right[i];
     }
     if (fade.leaving) fade.leaving->process(wasL, wasR, frames);
+    else if (bus) silence(wasL, wasR);
     if (place) place->process(left, right, frames);
+    else if (bus) silence(left, right);
     // A straight slide: the two are mostly the same sound, so they add in step.
     const float each = 1.f / static_cast<float>(fade.total);
     for (int i = 0; i < frames && fade.left > 0; ++i) {
@@ -447,13 +484,15 @@ void Engine::apply(const Command& c) {
     case Command::InstallEffect: {
         Trash trash;
         trash.isEffect = true;
-        if ((c.track != kMasterTrack && !validTrack(c.track)) || !validSlot(c.a)) {
+        SlotFade* fade = nullptr;
+        std::unique_ptr<Effect>* found = effectPlace(c.track, c.a, &fade);
+        if (!found) {
             trash.pointer = c.pointer; // nowhere to put it
             if (trash.pointer) trash_.push(trash);
             break;
         }
-        std::unique_ptr<Effect>& place = c.track == kMasterTrack ? masterEffects_[c.a] : tracks_[c.track].effects[c.a];
-        if (c.track != kMasterTrack) {
+        std::unique_ptr<Effect>& place = *found;
+        if (validTrack(c.track)) {
             // Another effect in the slot: where its knobs rest is not known until it says.
             for (int i = 0; i < 4; ++i) {
                 const int lane = autoLaneOfEffect(c.a, i);
@@ -461,7 +500,9 @@ void Engine::apply(const Command& c) {
                 tracks_[c.track].autoGliding[lane] = false;
             }
         }
-        swapEffect(place, c.track == kMasterTrack ? masterFades_[c.a] : tracks_[c.track].fades[c.a], static_cast<Effect*>(c.pointer));
+        swapEffect(place, *fade, static_cast<Effect*>(c.pointer));
+        // On a bus at rest there is no sound to fade: the new one is simply there, and the old one goes.
+        if (busOfTrack(c.track) >= 0 && !busAwake_[busOfTrack(c.track)].load(std::memory_order_relaxed)) fade->left = 0;
         if (place) place->setTempo(tempo_);
         break;
     }
@@ -599,6 +640,17 @@ void Engine::apply(const Command& c) {
                     if (effect) effect->setTempo(tempo_);
             for (auto& effect : masterEffects_)
                 if (effect) effect->setTempo(tempo_);
+            for (auto& effect : busEffects_)
+                if (effect) effect->setTempo(tempo_);
+        }
+        break;
+    case Command::SetSend:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kBuses && c.value == c.value) {
+            Track& track = tracks_[c.track];
+            const int lane = autoLaneOfSend(c.a);
+            track.send[c.a] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+            track.autoBase[lane] = track.autoNow[lane] = track.send[c.a]; // the knob itself: where it rests when nothing automates it
+            track.autoGliding[lane] = false;
         }
         break;
     case Command::SetTrackLevel:
@@ -742,13 +794,12 @@ void Engine::apply(const Command& c) {
             trash_.push(trash); // if full, the image is leaked rather than freed here
         }
         break;
-    case Command::SetEffectParam:
-        if (!validSlot(c.a)) break;
-        if (c.track == kMasterTrack) {
-            if (masterEffects_[c.a]) masterEffects_[c.a]->setParam(c.b, c.value);
-        } else if (validTrack(c.track)) {
+    case Command::SetEffectParam: {
+        std::unique_ptr<Effect>* place = effectPlace(c.track, c.a);
+        if (!place) break;
+        if (*place) (*place)->setParam(c.b, c.value);
+        if (validTrack(c.track)) {
             Track& track = tracks_[c.track];
-            if (track.effects[c.a]) track.effects[c.a]->setParam(c.b, c.value);
             if (c.b >= 0 && c.b < 4) {
                 const int lane = autoLaneOfEffect(c.a, c.b);
                 track.autoBase[lane] = track.autoNow[lane] = c.value;
@@ -756,6 +807,7 @@ void Engine::apply(const Command& c) {
             }
         }
         break;
+    }
     }
 }
 
@@ -1045,9 +1097,11 @@ void Engine::applyAuto(Track& track, int lane, float value) {
     track.autoNow[lane] = value;
     if (lane < 8) {
         if (track.synth) track.synth->setMacro(lane, value);
-    } else if (track.effects[(lane - 8) / 4]) {
-        track.effects[(lane - 8) / 4]->setParam((lane - 8) % 4, value);
-    }
+    } else if (lane < 8 + kTrackSlots * 4) {
+        if (track.effects[(lane - 8) / 4]) track.effects[(lane - 8) / 4]->setParam((lane - 8) % 4, value);
+    } else if (lane < kAutoSendLane + kBuses) {
+        track.send[lane - kAutoSendLane] = value; // it glides from there by itself (feedBuses)
+    } // (the last two lanes are spare)
 }
 
 // Move every gliding lane on. The glide takes the first half of a step, in
@@ -1087,7 +1141,7 @@ void Engine::renderTrack(int t) {
     float* right = trackR_[t];
     if (track.synth) track.synth->render(left, right, frames);
     else track.drums.render(left, right, frames);
-    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(track.effects[slot], track.fades[slot], left, right, frames);
+    for (int slot = 0; slot < kTrackSlots; ++slot) runSlot(track.effects[slot], track.fades[slot], left, right, frames);
     if (t == chunkScope_) {
         unsigned written = scopeWritten_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i) {
@@ -1156,6 +1210,82 @@ void Engine::useWorkers(int count, void (*atStart)()) {
     for (int i = 0; i < count; ++i) workers_.emplace_back([this, atStart] { workerLoop(atStart); });
 }
 
+// What each track sends, into the two buses. On the audio thread, after the
+// helpers are done, in track order: so the sum is the same however the tracks
+// were shared out. A track that sends nothing is not looked at, and a bus
+// nothing was sent to is left untouched (`fed` false).
+void Engine::feedBuses(const int* active, int count, int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], bool* fed) {
+    const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
+    for (int bus = 0; bus < kBuses; ++bus) {
+        fed[bus] = false;
+        for (int i = 0; i < count; ++i) {
+            Track& track = tracks_[active[i]];
+            const float to = track.send[bus];
+            if (to == 0.f && track.sendNow[bus] == 0.f) continue;
+            if (!fed[bus]) {
+                for (int f = 0; f < frames; ++f) busL[bus][f] = busR[bus][f] = 0.f;
+                fed[bus] = true;
+            }
+            const float* left = trackL_[active[i]];
+            const float* right = trackR_[active[i]];
+            float now = track.sendNow[bus];
+            for (int f = 0; f < frames; ++f) {
+                if (now != to) {
+                    now += now < to ? glide : -glide;
+                    if ((now > to) == (track.sendNow[bus] < to)) now = to; // arrived (or stepped past)
+                }
+                busL[bus][f] += left[f] * now;
+                busR[bus][f] += right[f] * now;
+            }
+            track.sendNow[bus] = now;
+        }
+        if (!fed[bus]) continue;
+        // Sent, but was any of it sound? A silent track with its send up wakes nothing.
+        bool any = false;
+        for (int f = 0; f < frames && !any; ++f) any = busL[bus][f] != 0.f || busR[bus][f] != 0.f;
+        fed[bus] = any;
+    }
+}
+
+// Each bus through its effect and into the mix. A bus at rest is skipped
+// whole: nothing is added, not even zeros, so a song that sends nothing comes
+// out as it did before there were buses, to the last bit.
+void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], const bool* fed, float* mixL, float* mixR) {
+    const int rest = static_cast<int>(kBusRestSeconds * sampleRate_);
+    for (int bus = 0; bus < kBuses; ++bus) {
+        bool awake = busAwake_[bus].load(std::memory_order_relaxed);
+        if (fed[bus]) {
+            awake = true;
+            busQuietFrames_[bus] = 0;
+        }
+        const bool fading = busFades_[bus].left > 0;
+        if (!busEffects_[bus] && !fading) awake = false; // it holds no effect: it gives nothing back, and is not run
+        if (!awake) {
+            busAwake_[bus].store(false, std::memory_order_relaxed);
+            continue;
+        }
+        if (!fed[bus])
+            for (int f = 0; f < frames; ++f) busL[bus][f] = busR[bus][f] = 0.f;
+        runSlot(busEffects_[bus], busFades_[bus], busL[bus], busR[bus], frames, true);
+        bool quiet = true; // (written so that "not a number" is not quiet: a broken effect is not hidden by resting it)
+        for (int f = 0; f < frames; ++f) {
+            mixL[f] += busL[bus][f];
+            mixR[f] += busR[bus][f];
+            quiet = quiet && std::fabs(busL[bus][f]) < kBusQuiet && std::fabs(busR[bus][f]) < kBusQuiet;
+        }
+        if (!fed[bus] && !fading) {
+            // Sent nothing: has its tail gone?
+            busQuietFrames_[bus] = quiet ? busQuietFrames_[bus] + frames : 0;
+            if (busQuietFrames_[bus] >= rest) {
+                awake = false;
+                busQuietFrames_[bus] = 0;
+                if (busEffects_[bus]) busEffects_[bus]->reset(); // what is left in it is under kBusQuiet: gone, so it wakes clean
+            }
+        }
+        busAwake_[bus].store(awake, std::memory_order_relaxed);
+    }
+}
+
 void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     if (playing_) glideAutomation(frames);
     float mixL[kMaxBlock] = {};
@@ -1193,12 +1323,20 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         }
     }
 
-    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+    // The sends: what each track gives the two buses, their effects, and back into the mix
+    // before the master's slots.
+    float busL[kBuses][kMaxBlock], busR[kBuses][kMaxBlock];
+    bool fed[kBuses];
+    feedBuses(active_, count, frames, busL, busR, fed);
+    runBuses(frames, busL, busR, fed, mixL, mixR);
+
+    for (int slot = 0; slot < kMasterSlots; ++slot) runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
     // Effects whose fade out has ended go to the trash. Here, not in
     // renderTrack: the helpers are done, and the trash takes from this thread alone.
     for (int i = 0; i < count; ++i)
         for (SlotFade& fade : tracks_[active_[i]].fades) binLeaving(fade);
     for (SlotFade& fade : masterFades_) binLeaving(fade);
+    for (SlotFade& fade : busFades_) binLeaving(fade);
 
     // Remember what goes out, for Catch.
     // The volume: after everything, Catch included. It glides to a new
@@ -1271,6 +1409,11 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         }
         for (auto& effect : masterEffects_)
             if (effect) effect->reset();
+        for (int bus = 0; bus < kBuses; ++bus) {
+            if (busEffects_[bus]) busEffects_[bus]->reset();
+            busAwake_[bus].store(false, std::memory_order_relaxed);
+            busQuietFrames_[bus] = 0;
+        }
         // (An effect part way through its 10 ms fade out is left alone: the
         // gate stays shut far longer than that, so it is never heard again.)
     }
