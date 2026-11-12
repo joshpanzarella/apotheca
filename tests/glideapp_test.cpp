@@ -348,7 +348,7 @@ Seen lineOf(const std::vector<Uint32>& with, const std::vector<Uint32>& without,
         }
     return seen;
 }
-const int kTop = 65, kRow = 21, kKey = 25; // the roll at two octaves: its first row, a step, a key (note_screen.cpp)
+const int kTop = 69, kRow = 21, kKey = 25; // the roll at two octaves: its first row, a step, a key (note_screen.cpp)
 
 // What the roll shows of a glide, read off the screen: the line of a FULL glide from a note
 // bars before is in every bar it crosses, the one its source is in too; a glide into the first

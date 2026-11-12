@@ -19,7 +19,7 @@ namespace {
 // 22 the tiles reach the hints bar.
 constexpr int kGridLeft = 28, kGridW = 612, kRowH = 21;
 constexpr int kCellH = kRowH - 2;
-constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 41;
+constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
