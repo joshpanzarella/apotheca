@@ -67,8 +67,11 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(glide_test tests/glide_test.cpp)
   target_link_libraries(glide_test PRIVATE apotheca_engine)
   add_test(NAME glide COMMAND glide_test)
+  add_executable(chordfx_test tests/chordfx_test.cpp)
+  target_link_libraries(chordfx_test PRIVATE apotheca_engine)
+  add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
-  set_tests_properties(engine phazed twin qmod song effects throw glide PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed twin qmod song effects throw glide chordfx PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
