@@ -1280,10 +1280,55 @@ void testTheCommand() {
     CHECK(at(3, 0, 1, false) == -1);                                                         // stopped: it is nowhere, and stays there
 }
 
+// `nextscene_test --measure`: what the block after the gesture costs the audio thread (not a check:
+// it is a time). Blocks of 256, what the program asks for: 5.33 ms of sound each.
+void measure() {
+    const double ms = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
+    for (int song = 0; song < 2; ++song) {
+        Rig rig;
+        fillTwelve(rig);
+        rig.session().togglePlay(song == 1);
+        rig.frames(1);
+        std::vector<float> out(512);
+        const auto block = [&] {
+            const Uint64 from = SDL_GetPerformanceCounter();
+            rig.engine->render(out.data(), 256);
+            return ms * static_cast<double>(SDL_GetPerformanceCounter() - from);
+        };
+        double usual = 0.0, usualWorst = 0.0, after = 0.0, afterWorst = 0.0;
+        int afters = 0;
+        for (int i = 0; i < 400; ++i) {
+            const double t = block();
+            usual += t / 400.0;
+            usualWorst = t > usualWorst ? t : usualWorst;
+        }
+        for (int round = 0; round < 10; ++round) {
+            for (int what = 0; what < 2; ++what) {
+                if (what == 0) rig.nextScene();
+                else rig.undo();
+                for (int frame = 0; frame < 14; ++frame) { // a frame, then the three blocks that fit in it
+                    rig.frames(1);
+                    const double t = block();
+                    if (frame < 12) after += t, ++afters;
+                    afterWorst = t > afterWorst ? t : afterWorst;
+                    block();
+                    block();
+                }
+            }
+        }
+        std::printf("  12 tracks, %s: a usual block %.3f ms (worst %.3f); the first block of each of the 12 frames after NEXT SCENE or its undo %.3f ms on average, worst %.3f\n",
+                    song ? "the song playing through (every track at once)" : "the scene going round (a track a frame)", usual, usualWorst, after / afters, afterWorst);
+    }
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f;
+    if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
+        measure();
+        return 0;
+    }
     testTheSceneIsCopied();
     testOnlyOnTheGrids();
     testNoRoom();

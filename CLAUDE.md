@@ -363,6 +363,25 @@ effect in those two groups and fails one that does not.
   patterns go first and the word that the playing moved last; taking it
   back, the word first and the patterns last. In between the scene playing
   is the same either way. Its tests: `tests/nextscene_test.cpp`.
+- **After a scene move the tracks' patterns go to the engine one a frame**
+  (`Session::imagesDue_`, sent from `update()`), not all in one block: the
+  audio thread copies a megabyte a track, and twelve at once measured 2.6 to
+  3.8 ms on the desk against 0.7 to 0.9 for one (`nextscene_test --measure`;
+  a block is 5.33 ms and the handheld a fifth as fast). Only while it cannot
+  be heard (`oneAFrame`): nothing playing, or one scene going round that the
+  move leaves as it is. A later scene going round, or the song playing
+  through (it could go on to the next scene half-way): all at once, as near
+  together as can be. `togglePlay`, `nextScene` and `redo` send what is left
+  first (`finishMove`); a copy taken back before its word has gone sends
+  neither word.
+- **Ask `Session::playScene()`, never `engine.playScene()`, for the scene
+  that is playing.** Until the engine has heard a scene move (a block, or
+  the frames its tracks take to go) it still says the old number: the
+  playhead left the grid and WRITE went into the scene left behind. The
+  engine counts the moves it has taken in the same atomic as the scene
+  (`Engine::playScene(&heard)`), so the two are never from different moments.
+- **The SONG screen's cursor is a scene's number too** (`SongScreen::scenesMoved`,
+  called by `App` after the gesture, an undo or a redo).
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
   that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
   arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.
