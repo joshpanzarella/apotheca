@@ -462,6 +462,12 @@ private:
     SlotFade busFades_[kBuses];
     std::atomic<bool> busAwake_[kBuses]; // sent something, or still ringing; false: skipped
     int busQuietFrames_[kBuses] = {};    // how long it has been sent nothing and put out nothing
+    // A bus's LEVEL is the engine's own (the effect's MIX stays at full): the rest
+    // rule has to listen to the bus BEFORE its level, or a bus parked at LEVEL 0
+    // with echoes in it would be taken for an empty one and cleared.
+    int busMix_[kBuses] = {-1, -1};        // which setting of the effect it holds is its LEVEL; -1: none (a setup-call effect keeps its own)
+    float busLevel_[kBuses] = {1.f, 1.f};  // where LEVEL is set
+    float busLevelNow_[kBuses] = {1.f, 1.f}; // ...and as it is this sample (it moves like a send, kSendGlideSeconds)
     void feedBuses(const int* active, int count, int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], bool* fed);
     void runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], const bool* fed, float* mixL, float* mixR);
     // The slot a "track" number and a slot number name, or nullptr.

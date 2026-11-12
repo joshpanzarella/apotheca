@@ -91,6 +91,10 @@ std::unique_ptr<Effect>* Engine::effectPlace(int track, int slot, SlotFade** fad
 
 bool Engine::setEffect(int track, int slot, EffectKind kind) {
     if (slot < 0 || slot >= slotsOf(track)) return false;
+    // A bus holds its own kind (ECHO a delay, SPACE a reverb) or nothing. Anything
+    // else there would give the track's sound back a second time: a FILTER has no
+    // "what it adds" to give alone.
+    if (busOfTrack(track) >= 0 && kind != EffectKind::None && effectBus(kind) != busOfTrack(track)) return false;
     std::unique_ptr<Effect> effect = makeEffect(kind, sampleRate_, 120.f); // the audio thread tells it the real tempo
     if (effect && busOfTrack(track) >= 0) {
         effect->setOnBus(true);
@@ -100,6 +104,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.type = Command::InstallEffect;
     c.track = track;
     c.a = slot;
+    c.b = busOfTrack(track) >= 0 ? effectMixParam(kind) : -1; // on a bus: which setting is its LEVEL (the engine's to apply)
     c.pointer = effect.get();
     if (!commands_.push(c)) return false;
     effect.release(); // the audio thread hands the old one back through the trash
@@ -214,6 +219,7 @@ void Engine::prepare(float sampleRate) {
         busFades_[bus] = SlotFade();
         busAwake_[bus].store(false, std::memory_order_relaxed);
         busQuietFrames_[bus] = 0;
+        busLevelNow_[bus] = busLevel_[bus];
     }
 }
 
@@ -225,6 +231,8 @@ void Engine::setBusEffect(int bus, std::unique_ptr<Effect> effect) {
     }
     busEffects_[bus] = std::move(effect);
     busFades_[bus] = SlotFade();
+    busMix_[bus] = -1; // an effect handed over whole keeps its own MIX
+    busLevel_[bus] = busLevelNow_[bus] = 1.f;
 }
 
 void Engine::setTrackEffect(int track, int slot, std::unique_ptr<Effect> effect) {
@@ -511,6 +519,10 @@ void Engine::apply(const Command& c) {
         swapEffect(place, *fade, static_cast<Effect*>(c.pointer));
         // On a bus at rest there is no sound to fade: the new one is simply there, and the old one goes.
         if (busOfTrack(c.track) >= 0 && !busAwake_[busOfTrack(c.track)].load(std::memory_order_relaxed)) fade->left = 0;
+        if (busOfTrack(c.track) >= 0) {
+            busMix_[busOfTrack(c.track)] = place ? c.b : -1;
+            busLevel_[busOfTrack(c.track)] = 1.f; // as the effect starts: LEVEL at full, until it is said
+        }
         if (place) place->setTempo(tempo_);
         break;
     }
@@ -805,6 +817,12 @@ void Engine::apply(const Command& c) {
     case Command::SetEffectParam: {
         std::unique_ptr<Effect>* place = effectPlace(c.track, c.a);
         if (!place) break;
+        const int bus = busOfTrack(c.track);
+        if (bus >= 0 && busMix_[bus] >= 0 && c.b == busMix_[bus]) {
+            // A bus's LEVEL: kept here and applied after the rest rule has listened (runBuses).
+            if (c.value == c.value) busLevel_[bus] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
+            break;
+        }
         if (*place) (*place)->setParam(c.b, c.value);
         if (validTrack(c.track)) {
             Track& track = tracks_[c.track];
@@ -1269,8 +1287,10 @@ void Engine::feedBuses(const int* active, int count, int frames, float busL[][kM
 // out as it did before there were buses, to the last bit.
 void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBlock], const bool* fed, float* mixL, float* mixR) {
     const int rest = static_cast<int>(kBusRestSeconds * sampleRate_);
+    const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
     for (int bus = 0; bus < kBuses; ++bus) {
         bool awake = busAwake_[bus].load(std::memory_order_relaxed);
+        if (!awake) busLevelNow_[bus] = busLevel_[bus]; // nothing is sounding: LEVEL is simply where it is set
         if (fed[bus]) {
             awake = true;
             busQuietFrames_[bus] = 0;
@@ -1284,11 +1304,28 @@ void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBloc
         if (!fed[bus])
             for (int f = 0; f < frames; ++f) busL[bus][f] = busR[bus][f] = 0.f;
         runSlot(busEffects_[bus], busFades_[bus], busL[bus], busR[bus], frames, true);
+        // The rest rule listens HERE, to what the effect gives, before the bus's
+        // LEVEL: a bus turned right down still has its echoes, and they must be
+        // there when it is turned up again.
         bool quiet = true; // (written so that "not a number" is not quiet: a broken effect is not hidden by resting it)
-        for (int f = 0; f < frames; ++f) {
-            mixL[f] += busL[bus][f];
-            mixR[f] += busR[bus][f];
-            quiet = quiet && std::fabs(busL[bus][f]) < kBusQuiet && std::fabs(busR[bus][f]) < kBusQuiet;
+        for (int f = 0; f < frames; ++f) quiet = quiet && std::fabs(busL[bus][f]) < kBusQuiet && std::fabs(busR[bus][f]) < kBusQuiet;
+        const float to = busLevel_[bus];
+        float now = busLevelNow_[bus];
+        if (now == to && to == 1.f) {
+            for (int f = 0; f < frames; ++f) {
+                mixL[f] += busL[bus][f];
+                mixR[f] += busR[bus][f];
+            }
+        } else {
+            for (int f = 0; f < frames; ++f) {
+                if (now != to) {
+                    now += now < to ? glide : -glide;
+                    if ((now > to) == (busLevelNow_[bus] < to)) now = to; // arrived (or stepped past)
+                }
+                mixL[f] += busL[bus][f] * now;
+                mixR[f] += busR[bus][f] * now;
+            }
+            busLevelNow_[bus] = now;
         }
         if (!fed[bus] && !fading) {
             // Sent nothing: has its tail gone?

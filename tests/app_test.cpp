@@ -3400,6 +3400,17 @@ void testSendsThroughTheSession() {
     plain.engine->send(hit);
     CHECK(opened.render(60000) == plain.render(60000));
 
+    // The smallest send a player can set by the stick, and smaller: saved as it is, not rounded away.
+    for (float amount : {0.01f, 0.001f, 0.05f, 0.999f, 1.f}) {
+        std::unique_ptr<Project> song(new Project), back(new Project);
+        song->tracks[0].send[0] = amount;
+        song->tracks[0].send[1] = amount * 0.5f;
+        const std::string text = songText(*song);
+        CHECK(text.find("\nsend 1 ") != std::string::npos && text.find("\nsend 2 ") != std::string::npos);
+        CHECK(parseSong(text, *back));
+        CHECK(std::fabs(back->tracks[0].send[0] - amount) < 1e-6f * amount + 1e-9f && std::fabs(back->tracks[0].send[1] - amount * 0.5f) < 1e-6f * amount + 1e-9f);
+        CHECK(back->tracks[0].send[0] > 0.f && back->tracks[1].send[0] == 0.f);
+    }
     // An old song: no busfx, no send. Its buses are the usual two and nothing is sent, and it is the
     // same to the bit as with no buses at all.
     {
