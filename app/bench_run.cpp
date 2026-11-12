@@ -95,9 +95,9 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // to that. `sends`: every track sends to both buses. `echo` and `space`: what
 // the buses hold (None: they are fed and give nothing back, which is the cost
 // of the feeding alone). `throws`: every hit of every track is thrown to both
-// buses (THROW), which is the most throwing a song can do. The best of five
-// runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false) {
+// buses (THROW), which is the most throwing a song can do. `ducks`: a DUCK in
+// a slot of every track as well. The best of five runs of ten seconds.
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -124,6 +124,8 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
         c.value = sends ? 0.5f : 0.f;
         for (int bus = 0; bus < kBuses; ++bus) c.a = bus, engine->send(c);
     }
+    if (ducks)
+        for (int t = 0; t < kNumTracks; ++t) engine->setEffect(t, 0, EffectKind::Duck);
     if (echo != EffectKind::None) engine->setEffect(kEchoBus, 0, echo);
     if (space != EffectKind::None) engine->setEffect(kSpaceBus, 0, space);
     c = Command();
@@ -189,6 +191,9 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "...or DELAY and REVERB", old - dry);
         const double thrown = busSong(false, none, none, true);
         std::printf("  %-28s %6.2f%% of one core\n", "every hit thrown to both", thrown - dry);
+        // Where THROW, DUCK and the buses' own effects meet: all of it at once.
+        const double all = busSong(true, EffectKind::Tape, EffectKind::Hall, true, true);
+        std::printf("  %-28s %6.2f%% of one core\n", "...thrown, TAPE, HALL, 12 DUCKs", all - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

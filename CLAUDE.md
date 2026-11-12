@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (18) | `cd build && ctest -j8` (about 30 s) |
+| All tests (18) | `cd build && ctest -j8` (about 40 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -210,6 +210,14 @@ effect in those two groups and fails one that does not.
   - Its tests are their own two programs, each a few seconds:
     `tests/throw_test.cpp` (the engine) and `tests/throwapp_test.cpp` (the
     gesture, the song file, undo, a bounce).
+  - **A thrown drum hit is not ducked, a thrown note is.** The hit's copy
+    leaves before the slots; a note's THROW is a send, taken after them. A
+    DUCK on the master dips what the buses give back. `throw_test` holds all
+    three; do not move the thrown copy after the slots.
+  - **A bounce ends the song with Stop, and Stop shuts a thrown note's send**
+    but not a thrown drum hit, which rings out into its bus. The tail after
+    a last-step throw is kept by the bounce's own rule (four seconds of
+    quiet); `throwapp_test` bounces a hit, a note and a howling TAPE there.
 - **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
   why a song with no sends is the same to the last bit as before there were
   buses (`effects_test` holds the old song's checksum with an effect waiting
@@ -459,6 +467,7 @@ effect in those two groups and fails one that does not.
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
 | TAPE with its way down, the same run (0.10% just before it) | 0.11% |
+| Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |
@@ -469,7 +478,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends and THROW are built; DUCK, then the later set.
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; the later set is next.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

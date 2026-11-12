@@ -651,7 +651,7 @@ For the owner's ears: 30 seconds of hold (is that "a long while"); the two secon
 | A read past the end in a test | `testBusEffectsInTheEngine` read 4800 floats past a vector. Fixed; `effects_test` built with the address and undefined-behaviour sanitizers runs clean (the version before fails there) |
 | Readings that did not fit | `1/8 DOTTED` ran out of TAPE's and DELAY's TIME box (now seen on every new song's ALL page). They read `1/8 DOT` and `1/4 DOT`, beside `1/8 TRIP` |
 | Cost (desk, `bench`) | One each, in a run where DRIVE read 0.18%: FILTER 0.05, SATURATE 0.21, DRIVE 0.18, TAPE 0.15, DELAY 0.03, HALL 0.20 (0.23 with TONE above 50%), REVERB 0.09, CHORUS 0.20 (0.10 as VIBRATO or FLANGE), COMP 0.13, CRUSH 0.02. The way-in check costs each new effect about 0.01 (the build before the join read TAPE 0.16, HALL 0.19, CHORUS 0.19, COMP 0.12, SATURATE 0.21 back to back). **The buses, as what they add to twelve busy drum tracks (2.0% by themselves): feeding both 0.05 to 0.12; with TAPE and HALL 0.41 to 0.50; with DELAY and REVERB 0.09 to 0.18** (a small difference of two large numbers: it moves that much from run to run). Handheld, times 5: about 2.5% of a core for both buses with TAPE and HALL, which is the plan's figure |
-| Not done | THROW (DUCK was built after the join: "Step 9 as built"). The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
+| Not done | (THROW and DUCK were built after this join: "Steps 2 and 3 as built", "Step 9 as built".) The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
 
 For the owner's ears, new at the join: TAPE and HALL as the first thing a send
 gives (against DELAY and REVERB); a LEVEL turned while echoes ring (it glides
@@ -685,7 +685,7 @@ stills have seen it; nobody has heard it.
 | The strip, X held | Drums: PITCH, RATCHET, REVERSE, CUT, THROW. Five fields, so they sit closer than the four did. Notes: RATCHET, GLIDE, THROW. With X not held a thrown hit or note says so in its line of effects. On the piano roll a note that is nudged, has an effect and is thrown has no room for all three at full size: its NUDGE value is drawn in the largest size that fits before the effect (`stripFont` in `app/note_marks.hpp`; the small one for 10% and over), where it used to be drawn over the RATCHET. Still: `--view notefx-worst` |
 | Hints | `UP / DOWN pitch  LEFT / RIGHT ratchet  L1 reverse  R1 cut  A throw  Y dice` fits with room (still `effects-held`); the piano roll's too |
 | Undo, copies | Undone and redone by SELECT + B (it is in the patterns' text). Copied with its bar on SONG; carried with its note (hold R1) |
-| A bounce | Has the thrown hit's echoes (tested: the first echo three steps on, as loud as the hit); none from a muted track. **The bounce still stops three seconds after the song**: a long tail from a throw near the end is cut there. Running a bounce until the tail ends, with a cap, was not part of this step |
+| A bounce | Has the thrown hit's echoes (tested: the first echo three steps on, as loud as the hit); none from a muted track. As built the bounce stopped three seconds after the song and cut a late throw's tail; **since the join it runs until the tail ends** ("THROW and DUCK joined") |
 | Cost (desk, `bench`) | Twelve busy drum tracks with nothing thrown: 1.45% of a core, as before THROW (1.46). With THROW's check inside the one voice loop it was 2.18%, so the loop is built twice. **Every hit of all twelve thrown to both buses: 1.2% more**, the most a song can throw. A thrown note costs one more multiply a sample on its track while its send is open |
 | Tests | `throw_test` (the engine, 2 s) and `throwapp_test` (the gesture, the song file, undo, a bounce; 5 s). Mutation: 68 breaks of the engine's part, 67 caught, and the one left changes nothing (an empty note slot's THROW bits); 37 of the app's, all caught. The drawing of the marks is seen in stills only |
 | Departed from the plan | Nothing in the design. Added: the chord; `Trigger` carries THROW; the top-up rule with the knob |
@@ -698,6 +698,33 @@ filter and drive on it (question 6)? Is 5 ms the right ramp on a thrown note,
 which softens the note's own attack in the bus? Other notes on the track
 going with a thrown note: wanted or not? A thrown slice inside a running
 break: does the 1 ms slide tick?
+
+**THROW and DUCK joined**, 2026-11-12 (`fx-duck` merged into `fx-throw`). The
+code joined by itself; the one conflict was this file's first paragraph. No
+line of the engine or the app was changed for the join: what is below is how
+the two behave together, each held by a test. Only tests, measurements and
+stills have seen it; nobody has heard it.
+
+| Where they meet | What happens | Held by |
+| --- | --- | --- |
+| A thrown drum hit, a DUCK on its track | **The thrown copy is not ducked.** It is written out inside the drum machine, before the slots, as the plan says. The bus is given the same to the sample with the DUCK and without, while the track itself dips | `throw_test`, `testWithDuck` |
+| A thrown note, a DUCK on its track | **The thrown note is ducked.** A note's THROW is the track's send held open, and a send is taken after the slots: the bus gets the track as it sounds, dips and all. At AMOUNT 100% the bus is given nothing 3 ms after the kick | the same |
+| A DUCK on the master | Dips the whole mix, which the buses have joined by then: a throw's echoes dip with the song. What the bus is GIVEN does not change | the same |
+| A thrown hit is a hit | It marks its lane for DUCK like any other (the mark is made where the drum is triggered, thrown or not) | a mutant that leaves thrown hits unmarked fails `throw_test` |
+| A hit thrown into a TAPE with FEEDBACK at 120% | The tape is fed by the throw, sings for thirty seconds after it, tires, and **the bus rests 58 s after the hit**. A second hit thrown at 25 s starts the thirty seconds again (83 s). Both far inside `kLongestTailSeconds` | `throw_test`, `testThrownIntoAHowl` |
+| A bounce whose LAST step throws a drum hit | The hit is in the song and every echo of it is in the tail: all kept. The file is exactly as long as with the hit on step 1, fifteen steps later (7.63 s against 5.76), and ends half a second after the last sound | `throwapp_test`, `testABounce` |
+| A bounce whose last step throws a note | The song's end stops the note and shuts its send (5 ms), as Stop always does. The bus has had the one step of the note there was; its echoes are kept (the file runs 4.9 s past the song against 0.7 s unthrown) | the same |
+| The last step thrown into a howling TAPE, bounced | The bounce ends by itself, 64 s after the song. With the cap set to 5 s it ends there, faded | the same |
+| Helpers | A song with thrown hits, thrown notes, sends, TAPE and HALL on the buses, DUCKs on both drum tracks, two synths and the master: the same to the last bit on 0, 1, 2 and 3 helpers and twice from fresh | `throw_test`, `testOnAnyHelperCount` |
+| Old songs | The pinned 40 renders and the whole song match; `effects_test --print` gives the same as main's | `effects_test` |
+| Cost (desk, `bench`) | In one run (DRIVE 0.12%): DUCK 0.02%, TAPE 0.11%; twelve busy drum tracks 1.44%; every hit thrown to both buses 1.19% more; **all of it at once (every hit thrown, sends up, TAPE and HALL on the buses, a DUCK on each of the twelve tracks) 1.70% more** | |
+| Changed for the join | `throwapp_test`'s bounce expected the old fixed three seconds; it now expects the file to end half a second after the last sound. 18 tests | |
+| Mutants | 15 at the meeting points, 14 caught. The one left (no cap on how long the bounce WORKS) writes the same file: the tape tires by itself and the file is cut at the cap either way | |
+| Not done | No handheld build, nothing run on the device. A thrown note's own release, after the song's end, is not sent to the bus (as for any thrown note that is let go) |
+
+For the owner's ears, new at the join: a thrown kick on a track that ducks
+itself goes to the bus at full while the track dips. Is that right, or should
+the echo dip too? A thrown note under a DUCK sends a dipped note: wanted?
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

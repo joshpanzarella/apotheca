@@ -741,6 +741,7 @@ or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
 | How | The drum is played a second time, straight into the bus | The track's send is opened for the note, and shut after it |
 | The track's own effects | **Not on the thrown copy**: it is the plain drum | On it, as on any send |
 | A ratchet | Every hit of it is thrown | The send stays open through all of them |
+| A DUCK on the track | **Does not dip the thrown copy**: the bus gets the whole hit while the track dips | Dips what the bus gets, as it dips the track |
 | Starts and stops | With the hit | Over 5 ms each way, so it does not click |
 
 - **How loud is the bus's LEVEL** (FX, the other page). THROW has no amount
@@ -754,6 +755,12 @@ or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
   when the break is running on through it, so it does not tick.
 - Kept in the song, undone by SELECT + B, copied with its bar, and in a
   bounce. Gone with the hit or the note.
+- **A throw on the song's last step is whole in a bounce**: the bounce runs
+  on until the echoes have died away (see BOUNCE). A thrown note there is
+  stopped by the song's end like any note, so the bus gets what there was of
+  it, and its echoes are kept.
+- A DUCK on the master dips what comes back from ECHO and SPACE with the
+  rest of the song.
 - The dice do not throw.
 
 ### Slices: chopping a break
