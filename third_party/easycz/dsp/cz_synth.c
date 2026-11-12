@@ -207,11 +207,21 @@ static int glide_rate(int time) {
     return time < 5 ? fast[time] : cz_expand((uint8_t)(100 - time));
 }
 
+int cz_synth_glide_rate16(float seconds) {
+    const double most = 2048.0 * 65536.0;
+    if (!(seconds > 0.f)) return (int)most;
+    const double ticks = (double)seconds * 40000.0 * 1000.0 / TICK_CHIP_SAMPLES_X1000;
+    const double rate = most / ticks;
+    return rate >= most ? (int)most : (rate < 1.0 ? 1 : (int)(rate + 0.5));
+}
+
 static void set_glide(cz_synth_t *s, cz_voice_t *v, int word, int glide) {
     if (glide && s->porta && s->last_word >= 0 && s->last_word != word) {
         v->glide_dist = s->last_word - word;
         v->glide_acc = 0;
-        v->glide_rate = glide_rate(s->porta_time);
+        v->glide_rate = s->porta_rate16 > 0 ? 0 : glide_rate(s->porta_time);
+        v->glide_rate16 = s->porta_rate16 > 0 ? s->porta_rate16 : 0;
+        v->glide_frac = 0;
     } else {
         v->glide_dist = 0;
         v->glide_acc = 2048;
@@ -409,6 +419,7 @@ static void play_in_slot(cz_synth_t *s, int si, int note, int velocity, int glid
     sl->pending_note = note;
     sl->pending_velocity = velocity;
     sl->pending_glide = glide;
+    sl->pending_rate16 = s->porta_rate16;
     sl->fades = sl->nvoices;
     for (int i = 0; i < sl->nvoices; i++) fade_voice(s, sl->voice[i], RATE_STEAL);
 }
@@ -599,7 +610,10 @@ static void on_dca_arrival(cz_synth_t *s, int vi) {
         cz_slot_t *sl = &s->slot[v->slot];
         if (sl->state == SLOT_STEALING && sl->fades && --sl->fades == 0) {
             const int si = v->slot;
+            const int rate16 = s->porta_rate16; /* the waiting note glides at the rate it was played with */
+            s->porta_rate16 = sl->pending_rate16;
             start_note(s, si, sl->pending_note, sl->pending_velocity, sl->pending_glide);
+            s->porta_rate16 = rate16;
             if (!sl->key_held && !s->pedal) release_slot(s, si);
             else if (!sl->key_held) sl->sustained = 1;
         } else {
@@ -684,7 +698,12 @@ static void firmware_tick(cz_synth_t *s) {
         cz_voice_t *v = &s->voice[vi];
         if (!v->active && !v->fading) continue;
         if (s->tone.vib_depth) s->lfo_used = 1;
-        if (v->glide_acc < 2048) v->glide_acc += v->glide_rate;
+        if (v->glide_acc < 2048) {
+            v->glide_acc += v->glide_rate;
+            v->glide_frac += v->glide_rate16;
+            v->glide_acc += v->glide_frac >> 16;
+            v->glide_frac &= 0xffff;
+        }
         write_pitch(s, vi);
         if (!v->fading) apply_expression(s, vi, 0);
     }

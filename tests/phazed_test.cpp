@@ -599,7 +599,7 @@ static void testAGlideSurvivesAWaitForItsSlot() {
         std::vector<int> early;
         for (int n = 0; n < kNotes; ++n) {
             const int key = n % 2 ? 81 : 57, before = n % 2 ? 57 : 81;
-            if (glide && n > 0 && !(lastPlain && n >= kNotes - 4)) synth.noteOnFrom(key, 1.f, before, 0.06f);
+            if (glide && n > 0 && !(lastPlain && n >= kNotes - 4)) synth.noteOnFrom(key, 1.f, before, 0.0917f); // (92 ms: what the CZ took before a glide had a length; the numbers below were measured with it)
             else synth.noteOn(key, 1.f);
             const std::vector<float> a = renderSynth(synth, kApart * 95 / 100);
             synth.noteOff(key);

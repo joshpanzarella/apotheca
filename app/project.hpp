@@ -39,7 +39,8 @@ struct NoteEvent {
     float velocity = 0.f; // 0 = empty slot
     // What the note does besides play (hold X on it):
     std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step. 0: the one
-    std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
+    std::uint8_t glide = 0;   // it slides to its pitch from the note before it on the track, for this long (kGlideHalf
+                              // and the rest, apotheca/glide_rule.hpp; 1, which was "on", is half a step). 0: it does not
     std::uint8_t throwTo = 0; // THROW: 1 ECHO, 2 SPACE, 3 both. The track's send to that bus is full while the note lasts
     std::uint8_t spare = 0;   // (so the note has no bytes that are not set: it is compared and hashed whole)
 };

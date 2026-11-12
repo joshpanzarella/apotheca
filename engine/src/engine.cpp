@@ -394,11 +394,11 @@ void Engine::closeThrows() {
 }
 
 namespace {
-constexpr std::uint8_t kLaterPiece = 255; // Note::glide of a ratchet's second, third or fourth note
+constexpr std::uint8_t kLaterPiece = 255; // Note::piece of a ratchet's second, third or fourth note
 }
 
 // Play a pattern's note now, or set it waiting.
-void Engine::startNote(Track& track, const Note& note, double delaySamples) {
+void Engine::startNote(Track& track, const Note& note, double delaySamples, double at) {
     // A ratchet: the note several times over, evenly, inside its first step. Each is let go just
     // before the next, so it is heard to start again; the last is held for what is left of the
     // note. Only the first of them glides.
@@ -413,29 +413,31 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
             one.throwTo = k == 0 ? note.throwTo : 0;
             one.hold = note.length;
             // The first glides, and is there before the second begins. The rest are marked as pieces.
-            one.glide = k > 0 ? kLaterPiece : note.glide ? static_cast<std::uint8_t>(hits) : 0;
+            one.piece = k > 0 ? kLaterPiece : static_cast<std::uint8_t>(hits);
             const float left = note.length - static_cast<float>(k) * apart;
             if (left < kShortestNote) break; // a note shorter than its ratchet: as many as fit
             one.length = k + 1 < hits && left > apart * 0.85f ? apart * 0.85f : left;
-            startNote(track, one, delaySamples + static_cast<double>(k) * apart * samplesPerStep_);
+            startNote(track, one, delaySamples + static_cast<double>(k) * apart * samplesPerStep_, at);
         }
         return;
     }
     if (delaySamples < 1.0) {
         // A ratchet's later piece finds its key held: another note has begun there since (the one
         // before it of the ratchet was let go in time). That note keeps the key, whole.
-        if (note.glide == kLaterPiece && track.offIn[note.pitch] < kNoNote) return;
+        if (note.piece == kLaterPiece && track.offIn[note.pitch] < kNoNote) return;
         if (track.offIn[note.pitch] < kNoNote) track.synth->noteOff(note.pitch); // the same key again
-        // A glide: from the key the track last began, over half a step, or over the first piece of
-        // a ratchet. (The first note after Play has none to come from.)
-        const bool glides = note.glide != 0 && note.glide != kLaterPiece;
-        if (glides && track.lastPitch >= 0 && track.lastPitch != note.pitch) {
-            const double steps = note.glide >= 2 ? 0.85 / note.glide : 0.5;
-            track.synth->noteOnFrom(note.pitch, note.velocity, track.lastPitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
+        // A glide: from the key the track last began, for as long as the note says, and no longer
+        // than the first piece of a ratchet (glide_rule.hpp: the roll draws it from the same rule).
+        // The first note after Play has none to come from.
+        const GlideTrail::From from = track.trail.from(at);
+        const bool glides = note.glide != kGlideOff && note.piece != kLaterPiece;
+        if (glides && from.pitch >= 0 && from.pitch != note.pitch) {
+            const double steps = glideSteps(note.glide, at - from.at, note.piece);
+            track.synth->noteOnFrom(note.pitch, note.velocity, from.pitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
         } else {
             track.synth->noteOn(note.pitch, note.velocity);
         }
-        track.lastPitch = note.pitch;
+        if (note.piece != kLaterPiece) track.trail.began(note.pitch, at); // (a ratchet's later pieces are the same note still)
         track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
         // THROW: the track's send to the bus is held open from here for as long as the note lasts.
         for (int bus = 0; bus < kBuses; ++bus) {
@@ -450,6 +452,8 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples) {
         p.samplesLeft = delaySamples;
         p.pitch = note.pitch;
         p.glide = note.glide;
+        p.piece = note.piece;
+        p.at = at;
         p.velocity = note.velocity;
         p.length = note.length;
         p.throwTo = note.throwTo;
@@ -468,10 +472,12 @@ void Engine::firePendingNotes() {
             note.velocity = p.velocity;
             note.length = p.length;
             note.glide = p.glide;
+            note.piece = p.piece;
             note.throwTo = p.throwTo;
             note.hold = p.hold;
+            const double at = p.at;
             p = Track::PendingNote();
-            startNote(track, note, 0.0);
+            startNote(track, note, 0.0, at);
         }
     }
 }
@@ -626,7 +632,8 @@ void Engine::apply(const Command& c) {
             note.nudge = sound && std::isfinite(c.shift) ? (c.shift < -0.5f ? -0.5f : (c.shift > 0.5f ? 0.5f : c.shift)) : 0.f;
             const int hits = c.e & 0xFF;
             note.ratchet = static_cast<std::uint8_t>(sound && hits >= 2 ? (hits > kMaxRatchet ? kMaxRatchet : hits) : 0);
-            note.glide = sound && (c.e & 256) != 0 ? 1 : 0;
+            // 256: it glides. For how long is above THROW's two bits; nothing there is half a step, as it was.
+            note.glide = static_cast<std::uint8_t>(sound && (c.e & 256) != 0 ? ((c.e >> 11) & 7 ? glideKind((c.e >> 11) & 7) : kGlideHalf) : kGlideOff);
             note.throwTo = static_cast<std::uint8_t>(sound ? (c.e >> 9) & 3 : 0);
         }
         break;
@@ -669,7 +676,8 @@ void Engine::apply(const Command& c) {
         firstStep_ = true;
         clearPending();
         letGoOfNotes();
-        for (Track& track : tracks_) track.lastPitch = -1; // the song's first note has nothing to glide from
+        stepsFired_ = 0;
+        for (Track& track : tracks_) track.trail.clear(); // the song's first note has nothing to glide from
         break;
     case Command::Stop:
         playing_ = false;
@@ -846,7 +854,7 @@ void Engine::apply(const Command& c) {
                         to.nudge = from.nudge;
                         to.velocity = from.velocity;
                         to.ratchet = from.ratchet;
-                        to.glide = from.glide;
+                        to.glide = static_cast<std::uint8_t>(glideKind(from.glide));
                         to.throwTo = from.throwTo & 3;
                     }
                 }
@@ -1009,6 +1017,7 @@ void Engine::fireStep() {
     // "before": so it starts now, at the top, and is not missed.
     const bool veryFirst = firstStep_; // (only ever set for step 1)
     firstStep_ = false;
+    const double now = static_cast<double>(stepsFired_++); // this step, counted from Play
 
     // A scene may be cut short, to any number of steps: its last bar then ends early.
     const int left = sceneSteps(scene_) - bar_ * kSteps; // steps this bar has (at least one: the bar would not have begun otherwise)
@@ -1038,11 +1047,11 @@ void Engine::fireStep() {
             // A late note waits; an early one belongs to the step after
             // this and is set waiting now, as a drum hit is.
             for (const Note& note : track.notes[slotOf(track, scene_, bar_)]) {
-                if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_);
-                else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0);
+                if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_, now + note.nudge);
+                else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0, now);
             }
             for (const Note& note : track.notes[slotOf(track, followingScene, followingBar)]) {
-                if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_);
+                if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
             }
         }
     }
