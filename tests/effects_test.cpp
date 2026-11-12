@@ -3428,6 +3428,75 @@ static void testSaturate() {
                 CHECK(jump < 1.1 * still);
             }
         SAY("saturate TYPE to TYPE at DRIVE 70%%: the worst is %.2f of the steeper wave's own steepest step\n", worst);
+        // A SECOND change of TYPE before the first one's 10 ms fade is over (a
+        // song's automation can do it; a thumb cannot). It used to start the
+        // new fade from the old curve as if the first had finished: a step up
+        // to 11.6 times the steady one. Now the second waits for the first.
+        double worstTwice = 0.0;
+        for (int a = 0; a < 4; ++a)
+            for (int b = 0; b < 4; ++b)
+                for (int c = 0; c < 4; ++c) {
+                    if (a == b || b == c) continue;
+                    for (int gap : {1, 37, 100, 240, 479}) {
+                        std::unique_ptr<Effect> e = saturate(true, 0.7f, a, 0.8f), straight = saturate(true, 0.7f, c, 0.8f);
+                        Stereo io(48000), other(48000);
+                        io.l = io.r = other.l = other.r = sineOf(100.0, 0.5, 48000);
+                        through(*e, io, 0, 24037);
+                        e->setParam(1, kSatType[b]);
+                        through(*e, io, 24037, 24037 + gap);
+                        e->setParam(1, kSatType[c]);
+                        through(*e, io, 24037 + gap, 48000);
+                        through(*straight, other);
+                        const double jump = largestJump(io.l, 24000, 48000) / sineStep(100.0, 0.5);
+                        const double still = std::fmax(steepness(*saturate(true, 0.7f, a, 0.8f)), std::fmax(steepness(*saturate(true, 0.7f, b, 0.8f)), steepness(*saturate(true, 0.7f, c, 0.8f))));
+                        worstTwice = jump / still > worstTwice ? jump / still : worstTwice;
+                        CHECK(jump < 1.1 * still);
+                        // And it ends up as the last one asked for: the same sound as one that was always that.
+                        double apart = 0.0;
+                        for (std::size_t i = 43200; i < 48000; ++i) apart = std::fmax(apart, std::fabs(static_cast<double>(io.l[i]) - other.l[i]));
+                        CHECK(apart < 1e-4);
+                    }
+                }
+        SAY("saturate TYPE changed twice inside one fade, DRIVE 70%%: the worst is %.2f of the steepest wave's own steepest step\n", worstTwice);
+        // Three changes inside one fade: the middle one is never heard, and the last is where it ends.
+        {
+            std::unique_ptr<Effect> e = saturate(true, 0.7f, 0, 0.8f), straight = saturate(true, 0.7f, 3, 0.8f);
+            Stereo io(48000), other(48000);
+            io.l = io.r = other.l = other.r = sineOf(100.0, 0.5, 48000);
+            through(*e, io, 0, 24000);
+            e->setParam(1, kSatType[2]);
+            through(*e, io, 24000, 24050);
+            e->setParam(1, kSatType[1]);
+            through(*e, io, 24050, 24100);
+            e->setParam(1, kSatType[3]);
+            through(*e, io, 24100, 48000);
+            through(*straight, other);
+            double apart = 0.0;
+            for (std::size_t i = 24000 + 2 * 480 + 64 + 480; i < 25200; ++i) apart = std::fmax(apart, std::fabs(static_cast<double>(io.l[i]) - other.l[i]));
+            CHECK(apart < 0.02); // two fades and it is HARD (but for the tone filter's memory): TUBE was passed over
+            CHECK(largestJump(io.l, 23990, 48000) / sineStep(100.0, 0.5) < 1.1 * std::fmax(steepness(*saturate(true, 0.7f, 2, 0.8f)), steepness(*saturate(true, 0.7f, 3, 0.8f))));
+        }
+    }
+    // The first sound is in the TYPE that is set, with no fade from another: from
+    // new, after a long silence, and after a reset() from another curve.
+    for (int c = 0; c < 4; ++c) {
+        Stereo fresh(4800), waited(48000 + 4800), again(9600 + 4800);
+        const std::vector<float> sine = sineOf(100.0, 0.5, 4800);
+        fresh.l = fresh.r = sine;
+        std::copy(sine.begin(), sine.end(), waited.l.begin() + 48000);
+        std::copy(sine.begin(), sine.end(), waited.r.begin() + 48000);
+        again.l = again.r = sineOf(100.0, 0.5, 9600 + 4800);
+        std::copy(sine.begin(), sine.end(), again.l.begin() + 9600);
+        std::copy(sine.begin(), sine.end(), again.r.begin() + 9600);
+        through(*saturate(true, 0.7f, c, 0.8f), fresh);
+        through(*saturate(true, 0.7f, c, 0.8f), waited);
+        std::unique_ptr<Effect> e = saturate(true, 0.7f, (c + 1) % 4, 0.8f);
+        through(*e, again, 0, 9600);
+        e->reset();
+        e->setParam(1, kSatType[c]);
+        through(*e, again, 9600, 9600 + 4800);
+        CHECK(std::equal(fresh.l.begin(), fresh.l.end(), waited.l.begin() + 48000));
+        CHECK(std::equal(fresh.l.begin(), fresh.l.end(), again.l.begin() + 9600));
     }
     // Turned down to 0 while it sounds, MIX gets there, exactly.
     {

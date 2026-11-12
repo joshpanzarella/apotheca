@@ -135,17 +135,9 @@ public:
 
 protected:
     void changed() override {
-        const int type = typeOf(p_[1]);
-        if (type != type_ && settled_) {
-            // Another curve: the old one, as it stood, fades out under the new one.
-            oldType_ = type_;
-            oldPush_ = push_;
-            oldLevel_ = level_;
-            fadeLength_ = fade_ = static_cast<int>(kTypeFade * sr_) > 0 ? static_cast<int>(kTypeFade * sr_) : 1;
-            push_ = pushOf(type, drive_.now);
-            level_ = levelFor(type, push_);
-        }
-        type_ = type;
+        // Another curve fades in over the one that is there (block()). Not
+        // from here: a fade may be under way, and one at a time is the rule.
+        wanted_ = typeOf(p_[1]);
         drive_.to = p_[0];
         const float hz = 500.f * std::pow(40.f, p_[2]); // 500 Hz to 20 kHz
         toneCoeff_.to = 1.f - std::exp(-6.2831853f * (hz > 0.45f * sr_ ? 0.45f * sr_ : hz) / sr_);
@@ -161,9 +153,25 @@ private:
         Glide* const all[] = {&drive_, &toneCoeff_, &mix_, &lateAmount_};
         if (!settled_) {
             for (Glide* g : all) g->snap();
+            type_ = wanted_; // the first sound, or the first after a reset: nothing to fade from
             push_ = pushOf(type_, drive_.now);
             level_ = levelFor(type_, push_);
             settled_ = true;
+        }
+        if (wanted_ != type_ && fade_ == 0) {
+            // Another curve: the old one, as it stood, fades out under the new
+            // one. Only once the last fade is over: started part way through
+            // one, the curve that was still fading out would be cut off (a
+            // click of up to 11.6 times the steady step, measured). A change
+            // asked for meanwhile waits here, and only the last one asked
+            // for is ever gone to.
+            oldType_ = type_;
+            oldPush_ = push_;
+            oldLevel_ = level_;
+            fadeLength_ = fade_ = static_cast<int>(kTypeFade * sr_) > 0 ? static_cast<int>(kTypeFade * sr_) : 1;
+            type_ = wanted_;
+            push_ = pushOf(type_, drive_.now);
+            level_ = levelFor(type_, push_);
         }
         const float part = glideK(frames, kGlide, sr_);
         for (Glide* g : all) g->begin(frames, part);
@@ -260,7 +268,7 @@ private:
     Glide drive_, toneCoeff_, mix_, lateAmount_; // lateAmount_: 0 the plain sound as it came in (MIX 0), 1 made late to match the bent one
     float push_ = 1.f, level_ = 1.f; // how hard into the curve and how loud out of it, as of the end of the last block
     float dcIn_[2] = {}, dcOut_[2] = {}, tone_[2] = {}, dcKeep_ = 1.f;
-    int type_ = 0, oldType_ = 0, fade_ = 0, fadeLength_ = 1, sinceSettle_ = 0;
+    int type_ = 0, wanted_ = 0, oldType_ = 0, fade_ = 0, fadeLength_ = 1, sinceSettle_ = 0;
     float oldPush_ = 1.f, oldLevel_ = 1.f;
     bool settled_ = false;
 };
