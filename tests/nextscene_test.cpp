@@ -620,17 +620,55 @@ void testOneTrackAFrame() {
     CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
     both(300);
 
-    // Pressed and taken back before the last track has gone: the rest goes at once, in its order.
+    // One on top of another before the last track has gone. Taken back while the tracks of the
+    // copy are still going: its word has not gone and never does, and the tracks go back one a frame.
     rig.undo();
     both(4);
     CHECK(session.imagesWaiting() == 8);
     rig.redo();
-    CHECK(session.imagesWaiting() == 12);
+    CHECK(session.imagesWaiting() == 12 && session.sceneMovesUnheard() == 1);
     both(3);
     rig.undo();
+    CHECK(session.imagesWaiting() == 12 && session.sceneMovesUnheard() == 0 && p.playScene == 0 && p.scene == 0);
     both(2);
+    CHECK(rig.engine->playScene() == 0);
     rig.nextScene();
     CHECK(session.imagesWaiting() == 12 && p.scene == 1);
+    both(300);
+    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
+    // A copy of the copy while the first one's tracks are still going: the first is finished at
+    // once, word and all, and the second goes one a frame. The same for two put back in a hurry.
+    rig.undo();
+    both(300);
+    rig.nextScene();
+    both(3);
+    CHECK(session.imagesWaiting() == 9 && rig.engine->playScene() == 0);
+    rig.nextScene();
+    CHECK(session.imagesWaiting() == 12 && p.scene == 2 && p.playScene == 2);
+    both(1);
+    CHECK(session.imagesWaiting() == 11 && rig.engine->playScene() == 1 && p.playScene == 2);
+    both(300);
+    CHECK(rig.engine->playScene() == 2);
+    rig.undo();
+    both(5);
+    rig.undo(); // (the first's word had gone: this one's goes too, and the tracks of both are one lot)
+    CHECK(session.imagesWaiting() == 12 && p.playScene == 0);
+    both(300);
+    CHECK(rig.engine->playScene() == 0 && songText(p) == songText(plain.project()));
+    rig.redo();
+    both(2);
+    rig.redo();
+    CHECK(session.imagesWaiting() == 12 && p.scene == 2);
+    both(1);
+    CHECK(rig.engine->playScene() == 1);
+    for (int i = 0; i < 12; ++i) // (longer blocks: steps begin while the second one's tracks are going)
+        for (Rig* r : {&plain, &rig, &handed}) {
+            r->frames(1);
+            r->render(1024);
+        }
+    both(300);
+    CHECK(rig.engine->playScene() == 2);
+    rig.undo();
     both(300);
     CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
 
@@ -1063,13 +1101,25 @@ void testTheFramesBeforeTheEngineHears() {
     rig.session().setWriting(false);
     rig.settle();
     rig.nextScene();
-    rig.frames(1);
+    rig.frames(2); // (two tracks: both gone, and the word)
+    CHECK(rig.session().sceneMovesUnheard() == 1 && rig.session().imagesWaiting() == 0);
     rig.undo();
     rig.frames(1);
-    CHECK(rig.engine->playScene() == 0 && p.playScene == 0);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 2);
     rig.render(64);
     rig.frames(1);
-    CHECK(rig.engine->playScene() == 0 && p.playScene == 0);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 0);
+    rig.frames(2);
+    // ...and taken back before its own word had gone: neither is sent.
+    rig.redo();
+    rig.frames(1);
+    CHECK(rig.session().sceneMovesUnheard() == 1 && rig.session().imagesWaiting() == 1 && p.playScene == 1);
+    rig.undo();
+    CHECK(rig.session().sceneMovesUnheard() == 0 && p.playScene == 0);
+    rig.frames(3);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 0 && rig.session().imagesWaiting() == 0);
     rig.redo();
     rig.frames(1);
     rig.undo();

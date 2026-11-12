@@ -514,24 +514,31 @@ int movedScene(int scene, int from, int by) { return scene >= from && scene + by
 } // namespace
 
 void Session::scenesMoved(int from, int by, bool tellNow) {
-    sendMove(); // (an earlier one's word: they are told in order)
-    moves_.push_back({from, by});
-    moveUnsent_ = true;
-    if (tellNow) sendMove();
+    if (wordDue_) {
+        // A copy taken back before its word had gone (its tracks were still going, one a frame;
+        // nothing but undo gets here with a word waiting): neither word is sent. The engine
+        // never left the scene, and the tracks go back one a frame.
+        wordDue_ = false;
+    } else {
+        move_ = {from, by};
+        wordDue_ = true;
+        if (tellNow) sendMove();
+    }
     project.playScene = movedScene(project.playScene, from, by); // (-1 when nothing is playing: no scene, and it stays so)
     for (Recording& rec : recordingNote_)
         if (rec.on) rec.scene = movedScene(rec.scene, from, by);
 }
 
 void Session::sendMove() {
-    if (!moveUnsent_) return;
-    moveUnsent_ = false;
+    if (!wordDue_) return;
+    wordDue_ = false;
     Command c;
     c.type = Command::ScenesMoved;
-    c.a = moves_.back().from;
-    c.b = moves_.back().by;
-    if (engine.send(c)) ++movesSent_;
-    else moves_.pop_back(); // lost: the engine will never move, and says where it is itself
+    c.a = move_.from;
+    c.b = move_.by;
+    if (!engine.send(c)) return; // lost: the engine will never move, and says where it is itself
+    ++movesSent_;
+    moves_.push_back(move_);
 }
 
 int Session::imagesWaiting() const {
@@ -545,7 +552,7 @@ Session::Images Session::takeImages(int most) {
     for (int t = 0; t < kNumTracks && static_cast<int>(images.size()) < most; ++t) {
         if (!((imagesDue_ >> t) & 1u)) continue;
         imagesDue_ &= ~(1u << t);
-        if (project.tracks[t].kind != TrackKind::None) images.emplace_back(t, trackImage(t)); // as the track is now, with whatever was done to it since
+        images.emplace_back(t, trackImage(t)); // as the track is now, with whatever was done to it since
     }
     return images;
 }
@@ -569,7 +576,7 @@ bool Session::oneAFrame(int playing, int from) const {
 
 // How many of moves_ (its last ones) the engine had not taken when it said `heard`.
 std::size_t Session::movesUnheard(unsigned heard) const {
-    const std::size_t unheard = (movesSent_ - heard) % Engine::kMovesHeardRound + (moveUnsent_ ? 1 : 0);
+    const std::size_t unheard = (movesSent_ - heard) % Engine::kMovesHeardRound;
     return unheard < moves_.size() ? unheard : moves_.size();
 }
 
@@ -577,13 +584,14 @@ int Session::playScene() const {
     unsigned heard = 0;
     int scene = engine.playScene(&heard); // the scene and the count in one read: never one from before a move and the other from after
     for (std::size_t i = moves_.size() - movesUnheard(heard); i < moves_.size(); ++i) scene = movedScene(scene, moves_[i].from, moves_[i].by);
+    if (wordDue_) scene = movedScene(scene, move_.from, move_.by); // and the one whose word has yet to go
     return scene;
 }
 
 int Session::nextScene() {
     const int from = project.scene, to = from + 1;
     if (from < 0 || to >= kMaxScenes || project.sceneCount() >= kMaxScenes) return -1; // no room: the last scene would fall off the end
-    finishMove(); // (one just before this, with tracks still to go)
+    finishMove(); // a scene move a moment ago, its tracks still going: the rest and its word now, before this one's
     // A step of undo of its own. Whatever was being edited just before is a step already; it ends here.
     if (undoReady_ && cellMark() != cellMark_) noteEdit(); // a hit placed this very frame: its own step, not part of this one
     if (editing_ || !undoReady_) settled_ = patternsNow(); // (not ready: before the first frame of a song just opened)
@@ -685,7 +693,6 @@ bool Session::undo() {
     if (undo_.empty()) return false;
     const UndoStep back = undo_.back();
     undo_.pop_back();
-    finishMove(); // (a scene move just before this, with tracks still to go)
     redo_.push_back({patternsNow(), back.nextScene}); // as things are, to come forward to again
     if (back.nextScene < 0) {
         restorePatterns(back.text);
@@ -708,12 +715,12 @@ bool Session::redo() {
     if (redo_.empty()) return false;
     const UndoStep forward = redo_.back();
     redo_.pop_back();
-    finishMove();
     undo_.push_back({patternsNow(), forward.nextScene});
     if (forward.nextScene < 0) {
         restorePatterns(forward.text);
         return true;
     }
+    finishMove(); // (as in nextScene)
     // A "next scene" put back: the patterns first this time, then the playing and the player.
     const int from = forward.nextScene;
     const bool spread = oneAFrame(playScene(), from);
@@ -916,8 +923,7 @@ void Session::sendEffects(int track) {
 }
 
 void Session::applyProject() {
-    imagesDue_ = 0; // every track goes afresh below
-    sendMove();
+    imagesDue_ = 0; // every track goes afresh below (a word still to go goes at the next frame)
     collectJob(true); // nothing half-made carries over
     Command c;
     c.type = Command::Stop;
