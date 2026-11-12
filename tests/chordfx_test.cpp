@@ -373,6 +373,20 @@ static void testStrum() {
         for (std::size_t k = 0; k < n.size() && k < 8; ++k) CHECK(n[k].pitch == eight[k] && near(n[k].on, 2 * kStep + static_cast<long>(k) * (kStep / 2) / 7) && near(n[k].off, 3 * kStep));
         if (n.size() == 8) CHECK(near(n[7].on, 2 * kStep + kStep / 2));
     }
+    // A chord pushed early on the song's first step: there is no "before" the first time, so it is
+    // strummed from the top; every time after, from where it is, before the bar line.
+    {
+        Rig rig;
+        rig.chord(0, 0, keys, 2.f, playOf(kStrumTight), 0, 0, -0.25f);
+        rig.play();
+        rig.run(2L * kBar - 4 * kStep);
+        const std::vector<Sounded> n = rig.notes();
+        CHECK(n.size() == 8);
+        for (std::size_t k = 0; k < 4 && n.size() == 8; ++k) {
+            CHECK(n[k].pitch == keys[k] && n[k].on == static_cast<long>(k) * kTight && near(n[k].off, 2 * kStep));
+            CHECK(n[4 + k].pitch == keys[k] && near(n[4 + k].on, kBar - kStep / 4 + static_cast<long>(k) * kTight) && near(n[4 + k].off, kBar - kStep / 4 + 2 * kStep, 2));
+        }
+    }
     // One key: nothing to strum.
     {
         Rig rig;
@@ -489,26 +503,61 @@ static void testArpeggio() {
         CHECK(n.size() == 4);
         for (std::size_t m = 0; m < n.size(); ++m) CHECK(n[m].on == 2 * kStep + static_cast<long>(m) * kStep / 2);
     }
-    // One chord's arpeggio ends where the next chord's begins, an early one too.
+    // One chord's arpeggio ends where the next chord's begins: an early one cuts it off, and
+    // each keeps to its own keys while the next is already set waiting.
     {
         Rig rig;
-        rig.chord(0, 0, keys, 4.f, playOf(kStrumHalf));
-        rig.chord(4, 4, {72, 76, 79}, 4.f, playOf(kStrumHalf), 0, 0, -0.25f);
+        rig.chord(0, 0, keys, 4.f, playOf(kStrumQuarter));
+        rig.chord(4, 4, {72, 76, 79}, 4.f, playOf(kStrumQuarter), 0, 0, -0.4f); // from 3.6 steps
         rig.chord(8, 8, {50, 53}, 4.f, playOf(0)); // and a plain chord after
         rig.play();
         rig.run(kBar);
         const std::vector<Sounded> n = rig.notes();
-        CHECK(n.size() == 8 + 8 + 2);
-        long last = -1;
+        CHECK(n.size() == 15 + 16 + 2);
+        const long early = 4 * kStep - 2400;
+        int first = 0, second = 0;
         for (std::size_t m = 0; m < n.size(); ++m) {
             if (n[m].pitch >= 72) {
-                CHECK(n[m].on >= 4 * kStep - kStep / 4 - 1);
-                last = std::max(last, n[m].on);
+                CHECK(n[m].on == early + second * (kStep / 4) && n[m].pitch == 72 + (second % 3 == 0 ? 0 : second % 3 == 1 ? 4 : 7));
+                ++second;
             } else if (n[m].pitch >= 60) {
-                CHECK(n[m].on < 4 * kStep - kStep / 4 - 1);
+                CHECK(n[m].on == first * (kStep / 4) && n[m].on < early && n[m].pitch == keys[static_cast<std::size_t>(first % 3)]);
+                ++first;
             }
         }
-        CHECK(near(last, 4 * kStep - kStep / 4 + 7 * kStep / 2));
+        CHECK(first == 15 && second == 16);
+    }
+    // A chord on step 5 pushed early is set waiting on step 4, where another chord's arpeggio is
+    // just being set too: two chords, two clocks, each its own keys.
+    {
+        Rig rig;
+        rig.chord(0, 4, {60, 64}, 0.75f, playOf(kStrumQuarter));
+        rig.chord(2, 5, {72, 76}, 1.f, playOf(kStrumQuarter), 0, 0, -0.25f);
+        rig.play();
+        rig.run(kBar);
+        const std::vector<Sounded> n = rig.notes();
+        const int want[] = {60, 64, 60, 72, 76, 72, 76};
+        CHECK(n.size() == 7);
+        for (std::size_t m = 0; m < n.size() && m < 7; ++m) CHECK(n[m].pitch == want[m] && n[m].on == 4 * kStep + static_cast<long>(m) * (kStep / 4));
+    }
+    // A chord with a key missing (the bar had no slot left for it): the arpeggio is of the keys there are.
+    {
+        Rig rig;
+        const int given[] = {0, 2, 3}, pitch[] = {60, 67, 71};
+        for (int i = 0; i < 3; ++i) {
+            Command c = make(Command::SetNote, 1, i, 2, 0.8f);
+            c.c = pitch[i];
+            c.d = 2;
+            c.play = playOf(kStrumQuarter);
+            c.play.index = static_cast<std::uint8_t>(given[i]);
+            c.play.count = 4;
+            rig.send(c);
+        }
+        rig.play();
+        rig.run(kBar);
+        const std::vector<Sounded> n = rig.notes();
+        CHECK(n.size() == 8);
+        for (std::size_t m = 0; m < n.size(); ++m) CHECK(n[m].pitch == pitch[m % 3]);
     }
     // A chord on the last step, running over the loop's start: it goes on, and the loop's own
     // first chord takes over from it.
@@ -580,7 +629,9 @@ static void testHumanTime() {
     // A chord on the song's first step: the first time there is nothing before the top to be early
     // in, so its early notes are AT the top; every time after, they are early, before the bar line.
     {
-        const std::vector<std::vector<long>> off = humanOffsets(0, 100, 100);
+        std::vector<Sounded> all;
+        const std::vector<std::vector<long>> off = humanOffsets(0, 100, 100, &all);
+        for (std::size_t i = 0; i < 4 && i < all.size(); ++i) CHECK(all[i].on < 600 && near(all[i].off, 2 * kStep)); // ...and still end with the chord
         int atTop = 0, earlyLater = 0;
         for (int k = 0; k < 4; ++k) {
             CHECK(off[0][static_cast<std::size_t>(k)] >= 0);
@@ -644,22 +695,30 @@ static void testHumanTime() {
         }
         CHECK(least >= -376 && greatest <= 376 && least < -330 && greatest > 330);
     }
-    // ...and at a step a note it is the figure itself.
+    // ...and at a step a note it is the figure itself. Each note is held to the next one's own
+    // moment, wherever it began itself (on six tracks: each rolls its own way).
     {
-        Rig rig;
-        rig.chord(0, 0, {60, 64, 67}, 16.f, playOf(kStrumStep, 0, 100));
-        rig.play();
-        rig.run(40L * kBar - 600);
-        const std::vector<Sounded> n = rig.notes();
-        CHECK(n.size() == 40 * 16);
         long least = 0, greatest = 0;
-        for (std::size_t i = 0; i < n.size(); ++i) {
-            const long by = n[i].on - static_cast<long>(i) * kStep;
-            least = std::min(least, by);
-            greatest = std::max(greatest, by);
-            if (i == 0) CHECK(by >= 0);
+        int firstEarly = 0;
+        for (int track = 1; track <= 6; ++track) {
+            Rig rig(track);
+            rig.chord(0, 0, {60, 64, 67}, 16.f, playOf(kStrumStep, 0, 100), 0, 0, 0.f, 0, track);
+            rig.play();
+            rig.run(40L * kBar - 600);
+            const std::vector<Sounded> n = rig.notes();
+            CHECK(n.size() == 40 * 16);
+            for (std::size_t i = 0; i < n.size(); ++i) {
+                const long by = n[i].on - static_cast<long>(i) * kStep;
+                least = std::min(least, by);
+                greatest = std::max(greatest, by);
+                if (i == 0) CHECK(by >= 0); // nothing is before the top
+                // (The last of each round is the next round's first key: struck again when that one comes, early or not.)
+                if (n[i].off >= 0 && i % 16 != 15) CHECK(near(n[i].off, static_cast<long>(i + 1) * kStep, 2));
+            }
+            firstEarly += n.size() > 16 && n[16].on < kBar; // (the chord's first note, the second time round)
         }
         CHECK(least >= -kHuman - 1 && greatest <= kHuman + 1 && least < -0.9 * kHuman && greatest > 0.9 * kHuman);
+        CHECK(firstEarly >= 1 && firstEarly <= 5);
     }
 }
 
@@ -676,7 +735,7 @@ static void testHumanLevel() {
         CHECK(n.size() == 1200);
         const double most = 0.6 * 0.15 * percent / 100.0;
         double sum = 0.0, least = 1.0, greatest = 0.0;
-        int same = 0;
+        int same = 0, together = 0;
         for (std::size_t i = 0; i < n.size(); ++i) {
             CHECK(n[i].on == static_cast<long>(i / 4) * kBar + 4 * kStep); // its time is not touched
             CHECK(near(n[i].off, n[i].on + 2 * kStep));                     // nor its length
@@ -685,7 +744,9 @@ static void testHumanLevel() {
             least = std::min(least, static_cast<double>(n[i].velocity));
             greatest = std::max(greatest, static_cast<double>(n[i].velocity));
             if (i >= 4) same += n[i].velocity == n[i - 4].velocity;
+            if (i % 4 == 3) together += n[i].velocity == n[i - 1].velocity && n[i].velocity == n[i - 2].velocity && n[i].velocity == n[i - 3].velocity;
         }
+        CHECK(together == 0); // each key its own way, not the chord as one
         CHECK(std::fabs(sum / 1200.0 - 0.6) < 0.06 * most);
         CHECK(least < 0.6 - 0.9 * most && greatest > 0.6 + 0.9 * most);
         CHECK(same == 0);
@@ -720,8 +781,9 @@ static void testLengths() {
         CHECK(n.size() == 200 * 7);
         const long whole = 4 * kStep, least = static_cast<long>(whole * (1.0 - 0.5 * percent / 100.0));
         long shortest = whole, longest = 0;
-        int same = 0;
+        int same = 0, together = 0;
         for (std::size_t i = 0; i < n.size(); ++i) {
+            if (i % 7 == 3) together += n[i].off == n[i - 1].off && n[i].off == n[i - 2].off && n[i].off == n[i - 3].off;
             CHECK(n[i].on % (4 * kStep) == 0 && n[i].velocity == 0.8f); // on its moment, at its level
             const long held = n[i].off - n[i].on;
             CHECK(n[i].off >= 0 && held <= whole + 1 && held >= least - 1); // shorter only, never under the figure
@@ -733,6 +795,7 @@ static void testLengths() {
         }
         CHECK(shortest < least + (whole - least) / 10 && longest > whole - (whole - least) / 10);
         CHECK(same <= 2);
+        CHECK(together == 0); // each key its own way
     }
     // In an arpeggio each note is let go sooner; none runs into the next.
     {
@@ -765,9 +828,10 @@ static void fxSong(Rig& rig, int track = 1) {
     rig.chord(0, 0, {53, 57, 60, 64}, 8.f, playOf(kStrumHalf, kOrderUpDown, 75, 50, 50), 0, 0, 0.f, 1, track);
     rig.chord(4, 8, {48, 55, 64}, 7.5f, playOf(kStrumStep, kOrderDown, 0, 100, 0), 0, 0, 0.f, 1, track);
 }
-static std::vector<Told> performance(int block, int helpers, bool twice = false) {
+static std::vector<Told> performance(int block, int helpers, bool twice = false, float tempo = 120.f) {
     Rig rig;
     rig.engine->useWorkers(helpers);
+    if (tempo != 120.f) rig.send(make(Command::SetTempo, 0, 0, 0, tempo));
     fxSong(rig);
     rig.play();
     rig.run(6L * kBar, block);
@@ -795,6 +859,11 @@ static void testTheSameEveryTime() {
     CHECK(first.size() > 300);
     for (int block : {48, 256, 1, 173}) CHECK(performance(block, 0) == first);
     for (int helpers = 1; helpers <= 3; ++helpers) CHECK(performance(64, helpers) == first);
+    // At a tempo where a step is not a whole number of samples (113: 6371.68), too.
+    const std::vector<Told> odd = performance(64, 0, false, 113.f);
+    CHECK(odd.size() > 300 && !(odd == first));
+    for (int block : {48, 256, 1, 173}) CHECK(performance(block, 0, false, 113.f) == odd);
+    CHECK(performance(64, 3, false, 113.f) == odd);
     // Play from the top again: the same performance (a bounce is what was heard).
     CHECK(performance(64, 0, true) == first);
     // And the times round are not alike: bar 1 of the first two passes.
@@ -1081,8 +1150,12 @@ static void testGlideAfterAChord() {
         cell[k].step = 4;
         cell[k].pitch = keys[static_cast<std::size_t>(k)];
     }
-    const struct { int step; float nudge; int pitch, glide; } after[] = {{4, 0.2f, 80, kGlideFull}, {5, 0.f, 82, kGlideFull}, {9, 0.f, 84, kGlideOne}, {3, 0.f, 86, kGlideHalf}};
-    for (int i = 0; i < 4; ++i) {
+    // Loose notes, in the order they begin, all BELOW the chord's keys: a chord's note that told
+    // the trail of itself when it sounded (late in a strum, or round an arpeggio) would take the
+    // place of the loose note before it there.
+    const struct { int step; float nudge; int pitch, glide; } after[] = {{3, 0.f, 46, kGlideHalf}, {4, 0.1f, 40, kGlideFull}, {4, 0.3f, 42, kGlideFull}, {5, 0.5f, 44, kGlideFull}, {7, 0.5f, 48, kGlideOne}};
+    const int kLoose = 5;
+    for (int i = 0; i < kLoose; ++i) {
         GlideNote& n = cell[3 + i];
         n.sounds = true;
         n.step = after[i].step;
@@ -1092,31 +1165,31 @@ static void testGlideAfterAChord() {
     }
     GlideLine lines[kGlideNotes];
     glideLines(cell, 1, 16, lines);
-    CHECK(lines[3].from == 67 && std::fabs(lines[3].steps - 0.2) < 1e-6); // a note inside the strum: from the chord's top key
-    CHECK(lines[4].from == 80 && lines[5].from == 82 && lines[6].from == 84);
+    CHECK(lines[4].from == 67 && std::fabs(lines[4].steps - 0.1) < 1e-6); // a note inside the strum: from the chord's top key
+    CHECK(lines[3].from == 48 && lines[5].from == 40 && lines[6].from == 42 && lines[7].from == 44);
     std::vector<Told> plain;
     for (std::size_t which = 0; which < sizeof plays / sizeof plays[0]; ++which) {
         Rig rig;
         rig.chord(0, 4, keys, 4.f, plays[which]);
-        for (int i = 0; i < 4; ++i) rig.note(3 + i, after[i].step, after[i].pitch, 0.5f, after[i].glide, after[i].nudge);
+        for (int i = 0; i < kLoose; ++i) rig.note(3 + i, after[i].step, after[i].pitch, 0.25f, after[i].glide, after[i].nudge);
         rig.play();
         rig.run(4L * kBar);
         std::vector<Told> glides; // the loose notes, as they began
         for (const Told& t : rig.log)
-            if (t.on && t.pitch >= 80) glides.push_back(t);
-        CHECK(glides.size() == 16);
+            if (t.on && t.pitch < 60) glides.push_back(t);
+        CHECK(glides.size() == 4 * kLoose);
         if (which == 0) plain = glides;
         CHECK(glides == plain); // exactly what they do after a chord that sounds all at once
         // And that is what the roll draws, once the song has gone round.
-        for (std::size_t g = 4; g < glides.size(); ++g) {
-            const std::size_t i = g % 4 == 0 ? 3 : g % 4 - 1; // (step 3's note begins each bar)
+        for (std::size_t g = kLoose; g < glides.size(); ++g) {
+            const std::size_t i = g % kLoose;
             const int slot = 3 + static_cast<int>(i);
             CHECK(glides[g].pitch == after[i].pitch && glides[g].from == lines[slot].from);
             CHECK(std::fabs(glides[g].seconds - lines[slot].steps * 0.125) < 1e-6);
         }
         // No note of the chord itself slides.
         for (const Told& t : rig.log)
-            if (t.on && t.pitch < 80) CHECK(t.from == -1);
+            if (t.on && t.pitch >= 60) CHECK(t.from == -1);
     }
 }
 

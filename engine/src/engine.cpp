@@ -542,7 +542,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     }
     double late = 0.0; // how long after the chord's own moment this note begins, in samples (below zero: before it)
     const double perMs = static_cast<double>(sampleRate_) / 1000.0;
-    if (play.strum != kStrumOff && play.count > 1) {
+    if (play.strum != kStrumOff) { // (one key: its place is the first, and it is not moved)
         // One after another: never over more than half the chord, or half a ratchet's piece.
         const int hits = note.ratchet >= 2 ? (note.ratchet > kMaxRatchet ? kMaxRatchet : note.ratchet) : 1;
         double piece = note.length;
@@ -784,7 +784,7 @@ void Engine::apply(const Command& c) {
             // 256: it glides. For how long is above THROW's two bits; nothing there is half a step, as it was.
             note.glide = static_cast<std::uint8_t>(sound && (c.e & 256) != 0 ? ((c.e >> 11) & 7 ? glideKind((c.e >> 11) & 7) : kGlideHalf) : kGlideOff);
             note.throwTo = static_cast<std::uint8_t>(sound ? (c.e >> 9) & 3 : 0);
-            note.play = sound ? chordPlayChecked(c.play, 8) : ChordPlay();
+            note.play = chordPlayChecked(c.play, 8);
         }
         break;
     case Command::SetSceneCount:
