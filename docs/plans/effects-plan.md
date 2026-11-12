@@ -136,7 +136,7 @@ no amount.
 | On | How | What it costs |
 | --- | --- | --- |
 | A drum hit | The drum machine writes thrown hits a second time into a small "throw" buffer for the track; that buffer goes to the bus. **Only that hit is thrown**, even with other lanes sounding | `DrumMachine::render` gains a second output. The thrown hit reaches the bus before the track's own slots (it is tapped inside the instrument) |
-| A note | The track's send opens for the note's length, with 5 ms ramps | Other notes sounding on that track at that moment are thrown too. The synths do not hand out single voices, and Phazed's engine is not ours to change |
+| A note | The track's send opens for the note's length, with 5 ms ramps | Other notes sounding on that track at that moment are thrown too. The synths do not hand out single voices |
 
 ### Slots, and where the compressor goes
 
