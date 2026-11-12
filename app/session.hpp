@@ -25,6 +25,45 @@ struct Project;
 // How many frames the song lasts once through, at this sample rate (bounce.cpp).
 long long songFrames(const Project& project, float sampleRate);
 
+// WHERE A BOUNCE ENDS (bounce.cpp). After the song's last step the bounce
+// runs on for as long as there is sound: echoes, a hall, drums ringing out.
+//   - Sound is anything at or over kBounceFloor: one step of a 16-bit file,
+//     90 dB under full. Less than that is not in the file anyway.
+//   - It is over when there has been none for kBounceQuietSeconds. That must
+//     stay longer than the longest gap between two echoes (3 seconds: half a
+//     bar at 40 BPM, the longest DELAY and TAPE go), or a sparse echo would
+//     be taken for the end.
+//   - The file ends kBounceAfterSeconds after the last sound.
+//   - A tail never runs past kBounceCapSeconds: the last kBounceFadeSeconds
+//     before the cap are faded out, so it is not a click. The cap is longer
+//     than any delay or reverb takes to die away at any setting
+//     (kLongestTailSeconds in the engine: effects_test measures it).
+constexpr float kBounceFloor = 3.1e-5f;
+constexpr float kBounceQuietSeconds = 4.f;
+constexpr float kBounceAfterSeconds = 0.5f;
+constexpr float kBounceCapSeconds = 480.f;
+constexpr float kBounceFadeSeconds = 1.f;
+
+// Listens to a bounce's tail, block by block, and says when it is over and
+// how much of it belongs in the file. No engine, no file: it can be tested
+// with made-up sound.
+class BounceTail {
+public:
+    explicit BounceTail(float sampleRate, float capSeconds = kBounceCapSeconds);
+    // The next block of the tail: interleaved stereo, `frames` of it. The fade
+    // before the cap is put on the block here (and nothing is left past the
+    // cap). False: that was the last block; do not render another.
+    bool take(float* block, int frames);
+    long long seen() const { return seen_; } // frames taken so far
+    // How many of them belong in the file, as far as is known yet: up to
+    // kBounceAfterSeconds past the last sound, and never past the cap.
+    long long keep() const;
+    bool capped() const { return seen_ >= cap_; } // it ran into the cap, and was faded out
+
+private:
+    long long seen_ = 0, lastSound_ = 0, cap_, fade_, quiet_, after_;
+};
+
 enum class View { Song, Pattern, Device, Effects, Settings };
 
 // Somewhere to record from: a USB microphone or interface. The app gives the
@@ -240,7 +279,13 @@ public:
     void useBounceFolder(const std::string& folder) { bounceFolder_ = folder; }
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
     bool bouncing() const;
-    float bounceProgress() const;  // 0..1
+    float bounceProgress() const;  // 0..1: how much of the playing of the song is done (the tails are not counted: nobody knows how long they will be)
+    // While a tail is being worked out: how many seconds of it there are so
+    // far. Below zero the rest of the time. The screen says this in place of
+    // a percentage, since a tail has no known end to be a part of.
+    float bounceTail() const;
+    void useBounceCap(float seconds) { bounceCap_ = seconds; } // the longest tail (kBounceCapSeconds unless told otherwise: the tests)
+    void pretendBounce(float progress, float tailSeconds);    // as if one were under way, this far along: for a still of the screen
     int bounceFiles() const;       // once done: how many files were written
     std::string bounceLast() const; // ...and the name of the last one
     void finishBounce();           // wait for it (the tests, and closing down)
@@ -368,12 +413,14 @@ private:
         Bounce what = Bounce::Song;
         int track = 0, files = 0;
         std::string sampleFolder, base, last;
-        std::atomic<float> progress{0.f};
+        float cap = kBounceCapSeconds;
+        std::atomic<float> progress{0.f}, tail{-1.f};
         std::atomic<bool> done{false}, cancel{false};
         std::thread thread;
     };
     std::shared_ptr<BounceJob> bounce_;
     std::string bounceFolder_;
+    float bounceCap_ = kBounceCapSeconds;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     void restorePatterns(const std::string& text);
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece

@@ -558,6 +558,12 @@ int main(int argc, char** argv) {
             app.fx().goTo(2, 3);
         }
         else app.fx().goTo(0, 2);
+    } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
+        // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
+        app.session().view = View::Settings;
+        app.settings().goTo(SettingsScreen::kBounce);
+        if (view[6] == 0) app.session().pretendBounce(0.37f, -1.f);
+        else app.session().pretendBounce(1.f, 12.4f);
     } else if (std::strcmp(view, "panic") == 0) {
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, false);

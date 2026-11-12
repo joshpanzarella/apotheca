@@ -1462,36 +1462,58 @@ void testTheBattery() {
     CHECK(batteryPercent(nullptr, root) == 0);
 }
 
+// ---- bouncing: tools ---------------------------------------------------------------------
+struct Wav { int rate = 0, channels = 0, bits = 0; std::vector<float> left, right; };
+static std::vector<std::string> filesEnding(const std::string& folder, const std::string& ending) {
+    std::vector<std::string> names;
+    if (DIR* dir = opendir(folder.c_str())) {
+        while (const dirent* e = readdir(dir)) {
+            const std::string n = e->d_name;
+            if (n.size() > ending.size() && n.substr(n.size() - ending.size()) == ending) names.push_back(n);
+        }
+        closedir(dir);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+static Wav readWav(const std::string& path) {
+    Wav w;
+    std::string bytes;
+    if (!readTextFile(path, bytes) || bytes.size() < 44 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 8, "WAVEfmt ") != 0) return w;
+    const auto u = [&](std::size_t at, int n) { unsigned v = 0; for (int i = 0; i < n; ++i) v |= static_cast<unsigned>(static_cast<unsigned char>(bytes[at + i])) << (8 * i); return v; };
+    w.channels = static_cast<int>(u(22, 2));
+    w.rate = static_cast<int>(u(24, 4));
+    w.bits = static_cast<int>(u(34, 2));
+    const std::size_t data = u(40, 4);
+    if (bytes.compare(36, 4, "data") != 0 || data + 44 != bytes.size() || u(4, 4) != data + 36) return w;
+    for (std::size_t at = 44; at + 3 < bytes.size(); at += 4) {
+        w.left.push_back(static_cast<float>(static_cast<std::int16_t>(u(at, 2))) / 32767.f);
+        w.right.push_back(static_cast<float>(static_cast<std::int16_t>(u(at + 2, 2))) / 32767.f);
+    }
+    return w;
+}
+// The loudest sample on either side, from `from` up to `to`.
+static float wavPeak(const Wav& w, std::size_t from, std::size_t to) {
+    float p = 0.f;
+    for (std::size_t i = from; i < to && i < w.left.size(); ++i) p = std::fmax(p, std::fmax(std::fabs(w.left[i]), std::fabs(w.right[i])));
+    return p;
+}
+static const float kWavStep = 1.f / 32767.f; // the smallest thing a 16-bit file can hold
+static const std::size_t kAfter = 24000;     // half a second: what a bounce keeps after its last sound
+// A bounce ends where it should: nothing but the last flicker in its last half second, and sound just before that.
+static bool endsOnItsLastSound(const Wav& w, std::size_t body) {
+    if (w.left.size() < body + kAfter) return false;
+    const std::size_t end = w.left.size();
+    if (wavPeak(w, end - kAfter + 1, end) > 1.01f * kWavStep) return false;
+    return end == body + kAfter || wavPeak(w, end - kAfter - 2400, end - kAfter + 1) >= 0.99f * kWavStep;
+}
+
 // Bouncing: the song, or its tracks, written out as WAV files by a second engine.
 void testBouncing() {
     char pattern[] = "/tmp/apotheca-bounce-XXXXXX";
     const std::string folder = mkdtemp(pattern);
-    const auto wavsIn = [&] {
-        std::vector<std::string> names;
-        if (DIR* dir = opendir(folder.c_str())) {
-            while (const dirent* e = readdir(dir)) {
-                const std::string n = e->d_name;
-                if (n.size() > 4 && n.substr(n.size() - 4) == ".wav") names.push_back(n);
-            }
-            closedir(dir);
-        }
-        std::sort(names.begin(), names.end());
-        return names;
-    };
-    struct Wav { int rate = 0, channels = 0, bits = 0; std::vector<float> left; };
-    const auto read = [&](const std::string& name) {
-        Wav w;
-        std::string bytes;
-        if (!readTextFile(folder + "/" + name, bytes) || bytes.size() < 44 || bytes.compare(0, 4, "RIFF") != 0 || bytes.compare(8, 8, "WAVEfmt ") != 0) return w;
-        const auto u = [&](std::size_t at, int n) { unsigned v = 0; for (int i = 0; i < n; ++i) v |= static_cast<unsigned>(static_cast<unsigned char>(bytes[at + i])) << (8 * i); return v; };
-        w.channels = static_cast<int>(u(22, 2));
-        w.rate = static_cast<int>(u(24, 4));
-        w.bits = static_cast<int>(u(34, 2));
-        const std::size_t data = u(40, 4);
-        if (bytes.compare(36, 4, "data") != 0 || data + 44 != bytes.size()) return w;
-        for (std::size_t at = 44; at + 3 < bytes.size(); at += 4) w.left.push_back(static_cast<float>(static_cast<std::int16_t>(u(at, 2))) / 32767.f);
-        return w;
-    };
+    const auto wavsIn = [&] { return filesEnding(folder, ".wav"); };
+    const auto read = [&](const std::string& name) { return readWav(folder + "/" + name); };
     const auto peakIn = [](const Wav& w, std::size_t from, std::size_t to) { float p = 0.f; for (std::size_t i = from; i < to && i < w.left.size(); ++i) p = std::fmax(p, std::fabs(w.left[i])); return p; };
 
     Rig rig;
@@ -1513,20 +1535,23 @@ void testBouncing() {
     const int oversample = rig.project().tracks[1].twin.value[twin::Oversample];
     rig.frames(2);
 
-    // The whole song: one file, as long as the song and three seconds over, with sound where the song has it.
+    // The whole song: one file, as long as the song and its tail (the last kick ringing out, and half a second), with sound where the song has it.
     CHECK(session.startBounce(Session::Bounce::Song));
     CHECK(!session.startBounce(Session::Bounce::Song)); // one at a time
     session.finishBounce();
-    CHECK(!session.bouncing() && session.bounceProgress() == 1.f && session.bounceFiles() == 1);
+    CHECK(!session.bouncing() && session.bounceProgress() == 1.f && session.bounceFiles() == 1 && session.bounceTail() < 0.f);
     std::vector<std::string> names = wavsIn();
-    CHECK(names.size() == 1 && names[0] == session.bounceLast());
-    const std::size_t body = static_cast<std::size_t>(2 * kBar), tail = 3 * 48000;
+    CHECK(names.size() == 1 && names[0] == session.bounceLast() && filesEnding(folder, ".part").empty());
+    const std::size_t body = static_cast<std::size_t>(2 * kBar);
     Wav song = read(names[0]);
-    CHECK(song.rate == 48000 && song.channels == 2 && song.bits == 16 && song.left.size() == body + tail);
+    CHECK(song.rate == 48000 && song.channels == 2 && song.bits == 16);
+    // A dry song: it ends half a second after its last sound, which is well inside the three seconds every bounce used to get.
+    CHECK(endsOnItsLastSound(song, body) && song.left.size() < body + 3 * 48000);
+    const std::size_t tail = song.left.size() - body;
     CHECK(peakIn(song, 0, 2000) > 0.2f);                                  // the first kick, at the very start
     CHECK(peakIn(song, kBar, kBar + 2000) > 0.2f);                        // and the scene's second time round
     CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the Twin note
-    CHECK(peakIn(song, body + 2 * 48000, body + tail) < 0.001f);          // the tail has died away: nothing started again
+    CHECK(peakIn(song, body + tail - kAfter, body + tail) < 0.001f);      // the tail has died away: nothing started again
     CHECK(peakIn(song, body + 4000, body + 24000) < peakIn(song, 0, 2000)); // no kick after the song's end
     // The song itself was only read: Twin's own oversampling setting is as it was, and nothing is playing.
     CHECK(rig.project().tracks[1].twin.value[twin::Oversample] == oversample && !rig.project().playing);
@@ -1545,7 +1570,8 @@ void testBouncing() {
     }
     CHECK(!drums.empty() && !lead.empty());
     const Wav d = read(drums), l = read(lead);
-    CHECK(d.left.size() == body + tail && l.left.size() == body + tail);
+    // Both as long as the longer of the two, so they line up: one of them ends on its own last sound.
+    CHECK(d.left.size() == l.left.size() && d.left.size() >= body + kAfter && (endsOnItsLastSound(d, body) || endsOnItsLastSound(l, body)));
     CHECK(peakIn(d, 0, 2000) > 0.2f && peakIn(l, 0, 2000) == 0.f);                 // the kick is in the drums' file only
     CHECK(peakIn(l, 8 * kStep + 500, 11 * kStep) > 0.01f && peakIn(l, 4 * kStep, 4 * kStep + 2000) == 0.f); // the note is in the lead's file, and no kick on the second beat either
     // A muted track is left out of a song bounce, and still gets its own file when asked for.
@@ -1554,7 +1580,7 @@ void testBouncing() {
     CHECK(session.startBounce(Session::Bounce::Song));
     session.finishBounce();
     Wav quiet = read(session.bounceLast());
-    CHECK(quiet.left.size() == body + tail && peakIn(quiet, 0, 2000) == 0.f && peakIn(quiet, 8 * kStep + 500, 11 * kStep) > 0.01f);
+    CHECK(endsOnItsLastSound(quiet, body) && peakIn(quiet, 0, 2000) == 0.f && peakIn(quiet, 8 * kStep + 500, 11 * kStep) > 0.01f);
     rig.project().track = 0;
     sleep(1);
     CHECK(session.startBounce(Session::Bounce::ThisTrack));
@@ -1580,10 +1606,235 @@ void testBouncing() {
     rig.project().repeats[0] = 16;
     sleep(1);
     CHECK(session.startBounce(Session::Bounce::Song));
+    while (session.bouncing() && session.bounceProgress() <= 0.f) usleep(200); // its file is open and filling
+    CHECK(session.bouncing() && session.bounceProgress() < 1.f && filesEnding(folder, ".part").size() == 1 && wavsIn().size() == before);
     session.cancelBounce();
-    CHECK(!session.bouncing());
-    for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + tail); // every file there is whole
-    CHECK(wavsIn().size() <= before + 1);
+    CHECK(!session.bouncing() && wavsIn().size() == before);
+    for (const std::string& n : wavsIn()) CHECK(read(n).left.size() >= body + kAfter); // every file there is whole
+    CHECK(wavsIn().size() <= before + 1 && filesEnding(folder, ".part").empty());
+}
+
+// WHERE A BOUNCE ENDS, by itself: made-up tails, no engine and no file.
+void testWhereABounceEnds() {
+    const int block = 256;
+    // Feeds `seconds` of a steady `level` and then nothing, until it says stop. Returns the frames it took.
+    const auto run = [&](BounceTail& tail, double seconds, float level) {
+        std::vector<float> io(2 * block);
+        const long long sounding = static_cast<long long>(seconds * 48000.0);
+        for (int guard = 0; guard < 4000000; ++guard) {
+            for (int i = 0; i < block; ++i) io[2 * i] = io[2 * i + 1] = tail.seen() + i < sounding ? level : 0.f;
+            if (!tail.take(io.data(), block)) break;
+        }
+        return tail.seen();
+    };
+    // Nothing at all (a dry song that ended on its last step): four seconds are listened to, half a second is kept.
+    {
+        BounceTail tail(48000.f);
+        CHECK(run(tail, 0.0, 0.f) == 4 * 48000 && tail.keep() == kAfter && !tail.capped());
+        CHECK(kBounceQuietSeconds == 4.f && kBounceAfterSeconds == 0.5f && kBounceFloor == 3.1e-5f);
+    }
+    // A long tail: all of it, and half a second.
+    for (double seconds : {0.001, 2.75, 10.0, 100.0}) {
+        BounceTail tail(48000.f);
+        const long long sounding = static_cast<long long>(seconds * 48000.0), took = run(tail, seconds, 0.01f);
+        CHECK(took >= sounding + 4 * 48000 && took < sounding + 4 * 48000 + block && tail.keep() == sounding + static_cast<long long>(kAfter) && !tail.capped());
+    }
+    // As it goes, what belongs in the file never runs ahead of what has been heard, and never goes back.
+    {
+        BounceTail tail(48000.f);
+        std::vector<float> io(2 * block, 0.01f);
+        long long before = 0;
+        for (int i = 0; i < 400; ++i) {
+            if (i == 200) io.assign(2 * block, 0.f);
+            CHECK(tail.take(io.data(), block));
+            CHECK(tail.keep() >= before && tail.keep() <= tail.seen());
+            if (i < 200) CHECK(tail.keep() == tail.seen()); // while it sounds: all of it, at once
+            before = tail.keep();
+        }
+        CHECK(tail.keep() == 200 * block + static_cast<long long>(kAfter));
+    }
+    // What counts as sound: one step of a 16-bit file, on either side, either way up. Less is not; nor is not-a-number.
+    struct One { float left, right; bool sound; };
+    for (const One& one : {One{3.2e-5f, 0.f, true}, One{0.f, -3.2e-5f, true}, One{-1.f, 0.f, true}, One{3.0e-5f, -3.0e-5f, false}, One{std::nanf(""), 0.f, false}, One{0.f, std::nanf(""), false}}) {
+        BounceTail tail(48000.f);
+        std::vector<float> io(2 * block, 0.f);
+        CHECK(tail.take(io.data(), block));
+        io[2 * 100] = one.left;
+        io[2 * 100 + 1] = one.right;
+        CHECK(tail.take(io.data(), block));
+        CHECK(tail.keep() == (one.sound ? block + 101 + static_cast<long long>(kAfter) : static_cast<long long>(kAfter)) || tail.keep() == tail.seen());
+        io.assign(2 * block, 0.f);
+        while (tail.take(io.data(), block)) {}
+        CHECK(tail.seen() >= (one.sound ? block + 101 : 0) + 4 * 48000 && tail.seen() < (one.sound ? block + 101 : 0) + 4 * 48000 + block);
+        CHECK(tail.keep() == (one.sound ? block + 101 : 0) + static_cast<long long>(kAfter));
+    }
+    // ECHOES FAR APART are one tail: a click every 3.9 seconds is not ended by the gaps. The longest
+    // gap a delay can leave is 3 seconds (half a bar at the slowest tempo), and four is more than that.
+    {
+        CHECK(kBounceQuietSeconds > 8.f * 15.f / kMinTempo + 0.5f);
+        BounceTail tail(48000.f);
+        std::vector<float> io(2 * block, 0.f);
+        const long long gap = 187200; // 3.9 s
+        long long last = 0;
+        bool more = true;
+        while (more) {
+            io.assign(2 * block, 0.f);
+            for (int i = 0; i < block; ++i)
+                if ((tail.seen() + i) % gap == 0 && tail.seen() + i <= 5 * gap) io[2 * i] = 0.5f, last = tail.seen() + i;
+            more = tail.take(io.data(), block);
+        }
+        CHECK(last == 5 * gap && tail.keep() == last + 1 + static_cast<long long>(kAfter) && tail.seen() >= last + 4 * 48000);
+    }
+    // THE CAP: a tail that never ends is cut there, and faded out over its last second so that it is no click.
+    for (float cap : {3.f, 10.f}) {
+        BounceTail tail(48000.f, cap);
+        const long long frames = static_cast<long long>(cap * 48000.f);
+        std::vector<float> all;
+        std::vector<float> io(2 * block);
+        bool more = true;
+        while (more) {
+            for (int i = 0; i < block; ++i) io[2 * i] = 0.5f, io[2 * i + 1] = -0.25f;
+            more = tail.take(io.data(), block);
+            all.insert(all.end(), io.begin(), io.end());
+        }
+        CHECK(tail.capped() && tail.seen() >= frames && tail.seen() < frames + block && tail.keep() == frames);
+        const auto leftAt = [&](long long frame) { return all[static_cast<std::size_t>(2 * frame)]; };
+        CHECK(leftAt(frames - 48000 - 1) == 0.5f && all[static_cast<std::size_t>(2 * (frames - 48000 - 1) + 1)] == -0.25f); // untouched up to the last second
+        CHECK(std::fabs(leftAt(frames - 24000) - 0.25f) < 1e-4f && std::fabs(all[static_cast<std::size_t>(2 * (frames - 24000) + 1)] + 0.125f) < 1e-4f); // half way down, both sides
+        CHECK(leftAt(frames - 1) > 0.f && leftAt(frames - 1) < 2e-5f); // all but nothing on the last frame kept...
+        for (long long f = frames; f < tail.seen(); ++f) CHECK(leftAt(f) == 0.f && all[static_cast<std::size_t>(2 * f + 1)] == 0.f); // ...and nothing past it
+        float step = 0.f;
+        for (long long f = frames - 48000; f < frames; ++f) step = std::fmax(step, std::fabs(leftAt(f) - leftAt(f - 1)));
+        CHECK(step < 0.5f / 48000.f * 1.01f); // a straight line down
+    }
+    // A cap shorter than the fade is all fade; no cap at all is no tail.
+    {
+        BounceTail small(48000.f, 0.25f);
+        std::vector<float> io(2 * block, 0.5f);
+        CHECK(small.take(io.data(), block));
+        CHECK(io[0] < 0.5f && io[0] > 0.49f && io[2 * (block - 1)] < io[0]);
+        BounceTail none(48000.f, 0.f);
+        io.assign(2 * block, 0.5f);
+        CHECK(!none.take(io.data(), block) && io[0] == 0.f && none.keep() == 0 && none.capped());
+    }
+    // Left alone the cap is eight minutes: longer than any delay or reverb takes to die away (the engine's own number).
+    {
+        CHECK(kBounceCapSeconds == 480.f && kBounceFadeSeconds == 1.f);
+        BounceTail tail(48000.f);
+        std::vector<float> io(2 * 4096);
+        long long blocks = 0;
+        for (bool more = true; more; ++blocks) {
+            io.assign(2 * 4096, 0.1f);
+            more = tail.take(io.data(), 4096);
+        }
+        CHECK(tail.capped() && tail.keep() == 480ll * 48000 && blocks == 480ll * 48000 / 4096); // 5625 blocks, the last of which says stop
+    }
+    // Another sample rate: the same times.
+    {
+        BounceTail tail(44100.f, 2.f);
+        std::vector<float> io(2 * 100, 0.f);
+        while (tail.take(io.data(), 100)) {}
+        CHECK(tail.seen() == 88200 && tail.keep() == 22050); // (the cap came before four seconds of quiet could)
+    }
+}
+
+// A BOUNCE RUNS UNTIL ITS TAIL ENDS (owner, 2026-11-12): it used to stop three seconds after the last step.
+void testABounceRunsUntilTheTailEnds() {
+    char pattern[] = "/tmp/apotheca-tail-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    Rig rig;
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    // One kick, on the first step, sent to SPACE, where HALL is set to its longest (20 seconds).
+    rig.app.drums().setStep(0, 0, 1.f);
+    session.setSend(0, 1, 1.f);
+    CHECK(static_cast<EffectKind>(session.effectData(kSpaceBus, 0).kind) == EffectKind::Hall);
+    session.setEffectParam(kSpaceBus, 0, 1, 1.f);
+    rig.frames(2);
+    const std::size_t body = static_cast<std::size_t>(kBar), second = 48000;
+    CHECK(session.startBounce(Session::Bounce::Song));
+    // While it works: the percentage is of the song's own playing, so it is all done by the time
+    // there is a tail to speak of; and the tail's seconds only go up.
+    int inTail = 0;
+    float tailBefore = -1.f, progressBefore = 0.f;
+    bool told = true;
+    while (session.bouncing()) {
+        const float tail = session.bounceTail(), progress = session.bounceProgress();
+        if (tail >= 0.f) {
+            ++inTail;
+            told = told && progress == 1.f && tail >= tailBefore;
+            tailBefore = tail;
+        }
+        told = told && progress >= progressBefore && progress <= 1.f;
+        progressBefore = progress;
+        usleep(100);
+    }
+    CHECK(told && inTail > 0 && tailBefore > 10.f);
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 1);
+    const Wav hall = readWav(folder + "/" + session.bounceLast());
+    // Far longer than three seconds, still sounding where it used to be cut, falling all the way, and ended on its last sound.
+    CHECK(hall.left.size() > body + 15 * second && hall.left.size() < body + 60 * second);
+    CHECK(wavPeak(hall, body + 3 * second, body + 3 * second + 4800) > 100.f * kWavStep);
+    CHECK(wavPeak(hall, body + 10 * second, body + 11 * second) < wavPeak(hall, body + 3 * second, body + 4 * second));
+    CHECK(endsOnItsLastSound(hall, body));
+    // THE CAP, set short: the same song is cut there, and faded so that it does not click.
+    session.useBounceCap(5.f);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const Wav cut = readWav(folder + "/" + session.bounceLast());
+    CHECK(cut.left.size() == body + 5 * second);
+    CHECK(wavPeak(cut, body + 3 * second, body + 3 * second + 4800) == wavPeak(hall, body + 3 * second, body + 3 * second + 4800)); // the same sound up to the fade
+    CHECK(wavPeak(cut, body + 5 * second - 24000 - 2400, body + 5 * second - 24000 + 2400) < 0.6f * wavPeak(hall, body + 5 * second - 24000 - 2400, body + 5 * second - 24000 + 2400));
+    CHECK(wavPeak(cut, body + 5 * second - 48, body + 5 * second) <= kWavStep);
+    session.useBounceCap(kBounceCapSeconds);
+    // ECHOES FAR APART: at the slowest tempo a DELAY set to a half note repeats every three seconds.
+    // Every echo that is in a 16-bit file at all is in the bounce.
+    session.setSend(0, 1, 0.f);
+    rig.project().tempo = kMinTempo;
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 0, 1.f);  // 1/2
+    session.setEffectParam(0, 0, 1, 0.6f); // each echo about half the last
+    session.setEffectParam(0, 0, 3, 1.f);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const Wav echoes = readWav(folder + "/" + session.bounceLast());
+    const std::size_t slowBar = 3 * static_cast<std::size_t>(kBar), every = 3 * second; // a bar at 40 BPM is 6 seconds
+    CHECK(echoes.left.size() > slowBar + 8 * every && endsOnItsLastSound(echoes, slowBar));
+    const std::size_t last = (echoes.left.size() - kAfter) / every * every; // where the last echo that was kept began
+    CHECK(wavPeak(echoes, last, last + 2400) >= kWavStep && wavPeak(echoes, last - every, last - every + 2400) > 1.5f * wavPeak(echoes, last, last + 2400));
+    CHECK(wavPeak(echoes, last - every + second, last - 4800) <= kWavStep); // and between two echoes there is nothing: the gap did not end it
+    // EACH TRACK: one track has a long tail and the other none. Both files are as long as the longer.
+    rig.project().tempo = 120.f;
+    session.setEffect(0, 0, EffectKind::None);
+    session.setSend(0, 1, 1.f);
+    session.addTrack(TrackKind::Drums);
+    rig.project().tracks[1].drums[0][0].level[2][4] = 1.f; // a hat, dry
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::EachTrack));
+    session.finishBounce();
+    CHECK(session.bounceFiles() == 2);
+    Wav wet, dry;
+    for (const std::string& n : filesEnding(folder, ".wav")) {
+        if (n.find(" - 1 ") != std::string::npos) wet = readWav(folder + "/" + n);
+        if (n.find(" - 2 ") != std::string::npos) dry = readWav(folder + "/" + n);
+    }
+    CHECK(wet.left.size() > body + 15 * second && dry.left.size() == wet.left.size() && wet.rate == 48000 && dry.rate == 48000);
+    CHECK(endsOnItsLastSound(wet, body) && wavPeak(dry, 4 * kStep, 4 * kStep + 2400) > 0.05f && wavPeak(dry, body + 2 * second, dry.left.size()) == 0.f);
+    CHECK(filesEnding(folder, ".part").empty());
+    // What the screen is told. A bounce's percentage is of the song's playing; in a tail there is none to give, and it says so.
+    CHECK(session.bounceTail() < 0.f && !session.bouncing());
+    session.pretendBounce(0.37f, -1.f);
+    CHECK(session.bouncing() && session.bounceProgress() == 0.37f && session.bounceTail() < 0.f);
+    session.pretendBounce(1.f, 12.4f);
+    CHECK(session.bouncing() && session.bounceProgress() == 1.f && session.bounceTail() == 12.4f);
+    session.cancelBounce();
+    for (const std::string& n : filesEnding(folder, ".wav")) std::remove((folder + "/" + n).c_str()); // (minutes of sound: not left lying about)
+    rmdir(folder.c_str());
 }
 
 // Automation: with WRITE on and the song playing, a knob moved is written into the pattern.
@@ -5386,8 +5637,15 @@ void testNoteEffects() {
     }
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
+    if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
+        testBouncing();
+        testWhereABounceEnds();
+        testABounceRunsUntilTheTailEnds();
+        if (failures == 0) std::printf("app tests passed (bouncing only)\n");
+        return failures == 0 ? 0 : 1;
+    }
     testTabs();
     testNoteEffects();
     testNoteEffectsHoldUp();
@@ -5424,6 +5682,8 @@ int main(int, char**) {
     testStepsInAScene();
     testTheBattery();
     testBouncing();
+    testWhereABounceEnds();
+    testABounceRunsUntilTheTailEnds();
     testRecordingAutomation();
     testChoicesClick();
     testTheHelpCard();

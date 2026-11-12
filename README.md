@@ -319,8 +319,8 @@ length they had for one-bar scenes.)
 
 | What | Files written |
 | --- | --- |
-| THE SONG | One WAV of the whole song: every scene as many times as it plays, then three seconds for tails to die away. Muted tracks are left out. |
-| EACH TRACK | One WAV for every track by itself (stems), all the same length, so they line up in any other program |
+| THE SONG | One WAV of the whole song: every scene as many times as it plays, then **for as long as its echoes and tails take to die away**. Muted tracks are left out. |
+| EACH TRACK | One WAV for every track by itself (stems), all the same length (the longest one's), so they line up in any other program |
 | THIS TRACK | The track being worked on, by itself |
 
 A bounce is **not recorded as the song plays**. A second engine works the
@@ -328,6 +328,24 @@ song out again from the start, as fast as the handheld can. So you can
 carry on (even play) while it works, and it does not have to keep up:
 **Twin Analog is always bounced at x8 oversampling**, even where that is more
 than the handheld can play live.
+
+**Where a bounce ends.** After the song's last step it runs on until there has
+been no sound for four seconds, and the file ends half a second after the last
+sound. "Sound" is anything a 16-bit file can hold (90 dB under full). So a
+dry song ends just after its last drum has rung out, and a long HALL or a
+TAPE with its FEEDBACK up is all there, however long it takes. Echoes far
+apart (a half note at 40 BPM is three seconds) count as one tail.
+
+There is a cap: **a tail is never longer than eight minutes**. One that would
+be is faded out over its last second. Nothing in Apotheca rings that long by
+itself: every delay and reverb dies away in under seven and a half minutes
+at its most extreme settings and the slowest tempo, and in far less at
+ordinary ones.
+
+While it works the row says `WORKING 37%`: how much of the song's own playing
+is done. In a tail it says `TAIL 12 S` instead: how many seconds of tail so
+far. Nobody knows how long a tail will be until it ends, so there is no
+percentage to give.
 
 Files are 48 kHz, 16-bit stereo, in a `bounces` folder beside the program.
 The WiFi page lists them under BOUNCES, to play, download or delete.

@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (16) | `cd build && ctest -j8` (about 25 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -352,6 +352,19 @@ effect in those two groups and fails one that does not.
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes
   a song: anything new that writes songs off the app thread takes it too.
+- **A bounce runs until its tail ends** (owner, 2026-11-12; `BounceTail` in
+  `session.hpp`, no engine and no file in it, tested with made-up tails).
+  Sound is `kBounceFloor` (one step of a 16-bit file) or more; it is over
+  after `kBounceQuietSeconds` (4) without any, and the file ends half a second
+  after the last sound. **Four seconds must stay longer than the longest gap
+  between two echoes** (3 s: a half note at 40 BPM), as the bus rest time
+  must. The cap (`kBounceCapSeconds`, 480) must stay longer than
+  `kLongestTailSeconds` in the engine; both are checked.
+- **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
+  is whole: a tail of minutes never sits in memory, and a cancelled bounce
+  leaves nothing. The tracks of an EACH TRACK bounce are padded with silence
+  to the longest. Its percentage counts the song's own playing only; in a
+  tail `bounceTail()` gives the seconds so far and the row says that instead.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
 

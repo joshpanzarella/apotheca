@@ -588,6 +588,21 @@ up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 
 For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and it is one number); the shape of the way back; whether a ghost hit should dip less than an accent; whether a drum played by hand should dip at all; 60% and 209 ms as the place to start.
 
+**A bounce runs until its tail ends** (owner, 2026-11-12), as built the same day. Tests and two stills have seen it; nobody has listened to a bounce.
+
+| Thing | Result |
+| --- | --- |
+| Before | Three seconds after the song's last step, always. A long HALL or TAPE tail was cut |
+| What is sound | Anything at or over **-90 dB** (`kBounceFloor`, 3.1e-5: one step of a 16-bit file; less is not in the file anyway), on either side |
+| When it is over | **No sound for 4 seconds** (`kBounceQuietSeconds`). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and a gap would have been taken for the end. Four is longer than that, as the bus's ten are |
+| Where the file ends | **Half a second after the last sound** (`kBounceAfterSeconds`). A dry song is now shorter than it was: its last drum rings out, half a second, done (it had three seconds whatever was in them). Nothing a dry song plays is cut: the end is measured, not guessed |
+| The cap | `kBounceCapSeconds`. A tail that reaches it is faded out in a straight line over its last second (`kBounceFadeSeconds`) |
+| Each track | The files of an EACH TRACK bounce are padded with silence to the longest, so they still line up and are the same length |
+| Memory | Written as it is worked out (16-bit, to `NAME.wav.part`, renamed when whole) instead of held as floats until the end: eight minutes of tail would have been 180 MB in memory on a 1 GB handheld. A cancelled bounce leaves no file, as before |
+| Progress | The percentage counts the song's own playing only, since that length is known. In a tail the row reads `TAIL 12 S` (seconds of tail so far) and "until the echoes have died away". For EACH TRACK the percentage stands still during each track's tail. Stills `bounce`, `bounce-tail` |
+| Code | `BounceTail` (`app/session.hpp`, `app/bounce.cpp`): fed blocks, it says "another" or "stop" and how many frames to keep. No engine and no file in it |
+| Tests | `testWhereABounceEnds` (made-up tails: silence, long, sparse echoes, what counts as sound, the cap and its fade), `testABounceRunsUntilTheTailEnds` (real bounces: HALL at 20 s, the cap set short, echoes three seconds apart at 40 BPM, two tracks of different tails), `testBouncing` (a dry song ends on its last sound; cancelled part-way, nothing is left). 30 mutants, all killed. The row's words are seen in the still only |
+
 **Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.
 
 | Thing | Result |
