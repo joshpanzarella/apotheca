@@ -316,7 +316,7 @@ void Session::hearMidi() {
     MidiEvent event;
     while (midi_.poll(event)) {
         if (event.kind == MidiEvent::NoteOn) midiKey_ = event.note;
-        const int scene = engine.playScene(), step = engine.playStep();
+        const int scene = playScene(), step = engine.playStep();
         // Let go: the recorded note is as long as it was held, in whole steps, to the end of its bar at most.
         Recording& rec = recordingNote_[event.note];
         if (event.kind == MidiEvent::NoteOff && rec.on) {

@@ -457,7 +457,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int colW = columnWidth(tracks);
     const bool held = holding_ || copying_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
-    const int playScene = session_.engine.playScene(), playStep = session_.engine.playStep();
+    const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
     // ---- column heads ----------------------------------------------------------
     fonts.small.drawRight(r, kColumnsLeft - 7.f, kGridTop + 14.f, "PLAYS", kDim);

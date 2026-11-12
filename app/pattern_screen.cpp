@@ -907,7 +907,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         outline(r, kGridLeft + step_ * kStepW - 1, kGridTop + lane_ * kLaneH - 1, kCellW + 2, kCellH + 2, cursorColor, 2);
     }
     // The play line shows when the bar on screen is the one sounding: a short cell goes round under a long scene.
-    const int playStep = engine_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
+    const int playStep = session_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
     if (playStep >= 0) {
         SDL_Color glow = kPurple;
         glow.a = 76;

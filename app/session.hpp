@@ -328,6 +328,11 @@ public:
     // Returns the new scene, or -1 when there is no room (the song's sixteenth scene has
     // something in it, or the scene worked on is the sixteenth), and then nothing is changed.
     int nextScene();
+    // The scene that is playing (-1: none), as it is once the engine has heard every scene
+    // move sent to it. For the block or so until it has, the engine still says the old number;
+    // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)
+    int playScene() const;
+    int sceneMovesUnheard() const { return static_cast<int>(moves_.size()); } // as of the last frame (for tests)
 
     // ---- mute, solo, names -----------------------------------------------------------
     // A muted track is silent. While any track is soloed, only soloed ones
@@ -438,6 +443,12 @@ private:
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
     void standOn(int scene);                         // the player, put on a scene by undo
     void scenesMoved(int from, int by);              // tell the engine (Command::ScenesMoved) and whatever here points at a scene that is playing
+    // Scene moves the engine is not yet known to have heard, oldest first, and how many were sent
+    // in all: the engine says how many it has taken with the scene it is on (Engine::playScene).
+    struct SceneMove { int from = 0, by = 0; };
+    std::vector<SceneMove> moves_;
+    unsigned movesSent_ = 0;
+    std::size_t movesUnheard(unsigned heard) const;
     std::uint32_t cellMark() const;                  // changes when the cell being worked on does
     // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
     // made from, when that is what lies between this text and the one it is swapped for: taking

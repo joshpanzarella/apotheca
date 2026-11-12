@@ -811,6 +811,99 @@ void testWriteGoesToTheNewScene() {
     CHECK(p.tracks[1].automation[1][3][5] == 0.9f && p.tracks[1].automation[0][3][5] < 0.f);
 }
 
+// The frames between the press and the audio thread's next block: the engine has not heard yet
+// and still says the scene it was on. The app does not take that for where the playing is: the
+// playhead stays on the grid, and a knob turned with WRITE on in that very frame is written into
+// the new scene, not the one that was to stay as it was. The same when it is taken back.
+void testTheFramesBeforeTheEngineHears() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    p.track = 1;
+    rig.frames(1);
+    rig.session().togglePlay(false);
+    rig.frames(1);
+    rig.render(5 * kStep + 100);
+    rig.frames(1);
+    rig.session().setWriting(true);
+    rig.nextScene();
+    rig.frames(3); // frames drawn, and no block of sound made in between
+    CHECK(rig.engine->playScene() == 0 && rig.session().sceneMovesUnheard() == 1); // (the engine has not heard)
+    CHECK(p.scene == 1 && p.playScene == 1);
+    rig.session().setSynthMacro(1, 3, 0.9f);
+    CHECK(p.tracks[1].automation[1][3][5] == 0.9f && p.tracks[1].automation[0][3][5] < 0.f);
+    CHECK(rig.session().automated(1, 3, 0.25f) == 0.9f); // and read back from where it was written
+    rig.render(64);
+    CHECK(rig.engine->playScene() == 1 && rig.session().automated(1, 3, 0.25f) == 0.9f); // heard, and no frame yet: not moved twice
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 1 && p.playScene == 1 && rig.session().sceneMovesUnheard() == 0); // heard: not moved a second time
+    rig.frames(1);
+    CHECK(p.playScene == 1);
+    rig.session().setWriting(false);
+    rig.settle();
+    rig.undo(); // (the knob's move, a step of its own)
+    rig.render(64);
+    rig.frames(1);
+    CHECK(p.scene == 1 && p.tracks[1].automation[1][3][5] < 0.f);
+    rig.session().setWriting(true);
+
+    // Taken back: the same the other way.
+    rig.undo();
+    rig.frames(3);
+    CHECK(rig.engine->playScene() == 1 && p.scene == 0 && p.playScene == 0);
+    rig.session().setSynthMacro(1, 3, 0.8f);
+    CHECK(p.tracks[1].automation[0][3][5] == 0.8f && p.tracks[1].automation[1][3][5] < 0.f);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0);
+
+    // Two before the engine hears either (the press, and it taken back at once): where it was.
+    rig.session().setWriting(false);
+    rig.settle();
+    rig.nextScene();
+    rig.frames(1);
+    rig.undo();
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0);
+    rig.redo();
+    rig.frames(1);
+    rig.undo();
+    rig.redo();
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 1);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 1 && p.playScene == 1);
+
+    // A move that moves nothing is heard all the same (stopped; and a scene before the copy going
+    // round, asked before its next step): it is not kept waiting for, to be applied to what plays later.
+    rig.session().togglePlay(false);
+    rig.frames(1);
+    rig.render(64);
+    rig.frames(1);
+    rig.nextScene();
+    rig.frames(1);
+    CHECK(rig.session().sceneMovesUnheard() == 1 && p.playScene == -1);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.session().sceneMovesUnheard() == 0 && p.playScene == -1 && rig.engine->playScene() == -1);
+    p.scene = 0;
+    rig.session().togglePlay(false);
+    p.scene = 4;
+    rig.frames(1);
+    rig.render(kStep + 100);
+    rig.frames(1);
+    rig.nextScene();
+    rig.frames(1);
+    CHECK(rig.session().sceneMovesUnheard() == 1 && p.playScene == 0);
+    rig.render(64);
+    rig.frames(1);
+    CHECK(rig.session().sceneMovesUnheard() == 0 && p.playScene == 0 && rig.engine->playScene() == 0 && rig.engine->playStep() == 1);
+}
+
 // The engine's command, by itself: it moves the playing only for a scene that has moved, only by one, and never off the song.
 void testTheCommand() {
     const auto at = [](int scene, int from, int by, bool play = true) {
@@ -864,6 +957,7 @@ int main() {
     testStopped();
     testTheEngineHasTheWholeSong();
     testWriteGoesToTheNewScene();
+    testTheFramesBeforeTheEngineHears();
     testTheCommand();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

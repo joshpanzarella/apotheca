@@ -291,7 +291,15 @@ public:
     // kMasterTrack. As of the last chunk rendered; no lock, any thread.
     float effectMeter(int track, int slot) const;
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
-    int playScene() const { return playScene_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
+    // 0..15, or -1 when stopped. With it, in one read, how many Command::ScenesMoved the audio
+    // thread has taken so far (counted round at kMovesHeardRound): a caller that has sent more
+    // knows this scene number is from before the ones still on their way.
+    static constexpr unsigned kMovesHeardRound = 1u << 20;
+    int playScene(unsigned* movesHeard = nullptr) const {
+        const unsigned both = playScene_.load(std::memory_order_relaxed);
+        if (movesHeard) *movesHeard = both >> 8;
+        return static_cast<int>(both & 255u) - 1;
+    }
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
     int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
 
@@ -529,7 +537,9 @@ private:
     int repeats_[kMaxScenes];
     int steps_[kMaxScenes]; // how many steps each scene lasts, if it has been cut short (0: every step of its longest cell)
     std::atomic<int> playStep_{-1};
-    std::atomic<int> playScene_{-1};
+    std::atomic<unsigned> playScene_{0}; // the scene playing + 1 in its low byte, movesHeard_ above it: one read gives both
+    unsigned movesHeard_ = 0;            // Command::ScenesMoved taken so far (the audio thread's)
+    void tellScene(int scene) { playScene_.store(((movesHeard_ % kMovesHeardRound) << 8) | static_cast<unsigned>(scene + 1), std::memory_order_relaxed); }
     std::atomic<int> playRepeat_{0};
     std::atomic<int> playBar_{0};
     // The gate at the very end of the chain, for Panic.

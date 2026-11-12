@@ -126,7 +126,13 @@ void Session::audition(int track, int pitch, float velocity) {
 void Session::update(Uint32 nowMs) {
     now_ = nowMs;
     engine.collectGarbage();
-    project.playScene = engine.playScene();
+    {
+        unsigned heard = 0;
+        engine.playScene(&heard);
+        const std::size_t done = moves_.size() - movesUnheard(heard); // the moves the engine has heard are done with
+        if (done > 0) moves_.erase(moves_.begin(), moves_.begin() + static_cast<std::ptrdiff_t>(done));
+    }
+    project.playScene = playScene();
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
     project.playBar = engine.playBar();
@@ -434,7 +440,7 @@ bool Session::hasAutomation(int track, int scene, int lane) const {
 }
 
 float Session::automated(int track, int lane, float resting) const {
-    const int scene = engine.playScene(), step = engine.playStep();
+    const int scene = playScene(), step = engine.playStep();
     if (!project.playing || scene < 0 || step < 0 || track < 0 || track >= kNumTracks || lane < 0 || lane >= kAutoLanes) return resting;
     const TrackData& t = project.tracks[track];
     const float written = t.automation[scene][lane][(engine.playBar() % t.bars[scene]) * kSteps + step];
@@ -443,7 +449,7 @@ float Session::automated(int track, int lane, float resting) const {
 
 // A knob was moved. With WRITE on and the song playing, that is written into the pattern where the song is.
 void Session::recordAutomation(int track, int lane, float value) {
-    const int scene = engine.playScene(), step = engine.playStep();
+    const int scene = playScene(), step = engine.playStep();
     if (!project.writing || !project.playing || scene < 0 || step < 0) return;
     setAutomation(track, scene, lane, (engine.playBar() % project.tracks[track].bars[scene]) * kSteps + step, value);
 }
@@ -500,16 +506,36 @@ void Session::noteEdit() {
 // The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
 // The engine's playing goes with them, and so does what was read from it this frame and a
 // keyboard note that is still held and being recorded.
+namespace {
+// Where a scene is after the ones from `from` on have moved one place (as the engine works it out: never off the song).
+int movedScene(int scene, int from, int by) { return scene >= from && scene + by >= 0 && scene + by < kMaxScenes ? scene + by : scene; }
+} // namespace
+
 void Session::scenesMoved(int from, int by) {
     Command c;
     c.type = Command::ScenesMoved;
     c.a = from;
     c.b = by;
-    engine.send(c);
-    const auto moved = [&](int scene) { return scene >= from && scene + by < kMaxScenes ? scene + by : scene; };
-    project.playScene = moved(project.playScene); // (-1 when nothing is playing: no scene, and it stays so)
+    if (engine.send(c)) { // (lost: the engine will never move, and says where it is itself)
+        ++movesSent_;
+        moves_.push_back({from, by});
+    }
+    project.playScene = movedScene(project.playScene, from, by); // (-1 when nothing is playing: no scene, and it stays so)
     for (Recording& rec : recordingNote_)
-        if (rec.on) rec.scene = moved(rec.scene);
+        if (rec.on) rec.scene = movedScene(rec.scene, from, by);
+}
+
+// How many of moves_ (its last ones) the engine had not taken when it said `heard`.
+std::size_t Session::movesUnheard(unsigned heard) const {
+    const std::size_t unheard = (movesSent_ - heard) % Engine::kMovesHeardRound;
+    return unheard < moves_.size() ? unheard : moves_.size();
+}
+
+int Session::playScene() const {
+    unsigned heard = 0;
+    int scene = engine.playScene(&heard); // the scene and the count in one read: never one from before a move and the other from after
+    for (std::size_t i = moves_.size() - movesUnheard(heard); i < moves_.size(); ++i) scene = movedScene(scene, moves_[i].from, moves_[i].by);
+    return scene;
 }
 
 int Session::nextScene() {

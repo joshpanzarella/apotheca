@@ -71,7 +71,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s)
         if (pat().level[lane_][s] > 0.f) used[sliceOf(s)] = true;
     const int cursorSlice = onName ? -1 : (hitHere() ? sliceOf(step_) : static_cast<int>(std::round(ownStart(step_) * count)));
-    const int playStep = engine_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
+    const int playStep = session_.playScene() == project_.scene && engine_.playBar() % trk().bars[project_.scene] == project_.bar ? engine_.playStep() : -1;
     int playSlice = -1;
     if (playStep >= 0) {
         // The hit that is sounding: the last one at or before the step being played. One slice of it,
