@@ -1817,12 +1817,17 @@ void testTheEnginesMove() {
         CHECK(apart(wild.play(2, 20 * 16), mild.play(2, 20 * 16)) == 0.f);
         CHECK(wild.engine->playScene() == 4 && wild.engine->playRepeat() == 0); // sixteen plays of the new scene, three of the next, and into the empty ones
         CHECK(apart(wild.play(15, 20), mild.play(15, 20)) == 0.f && wild.engine->playScene() == 0); // the sixteenth is in the song: one bar of it, then the top
+        // ...and a cell 99 bars long is eight: the scene goes round after its eighth bar (only its first has hits).
         scenes[0] = hitsScene(5, 1);
-        CHECK(wild.engine->moveScenes(0, 1, scenes, -4, 0, 999));
+        scenes[0]->bars = 99;
+        CHECK(wild.engine->moveScenes(0, 1, scenes, -4, 0, 0));
         scenes[0] = hitsScene(5, 1);
+        scenes[0]->bars = kMaxBars;
         CHECK(mild.engine->moveScenes(0, 1, scenes, 1, 1, 0));
         for (Bare* b : {&wild, &mild}) b->render(256);
-        CHECK(apart(wild.play(0, 40), mild.play(0, 40)) == 0.f && wild.engine->playScene() == 0 && loudest(wild.heard, 17 * kStep, 40 * kStep) > 0.1f);
+        const int kTwice = 9 * 16 + 8;
+        CHECK(apart(wild.play(0, kTwice), mild.play(0, kTwice)) == 0.f && wild.engine->playScene() == 0 && loudest(wild.heard, 8 * 16 * kStep, kTwice * kStep) > 0.1f);
+        CHECK(wild.engine->playBar() == 1 && wild.engine->playRepeat() == 0);
     }
 
     // The queue full: it says so, and nothing is lost but the move (no leak: the sanitizer's to see).
@@ -1859,14 +1864,16 @@ void measure() {
             rig.engine->render(out.data(), 256);
             return ms * static_cast<double>(SDL_GetPerformanceCounter() - from);
         };
-        std::vector<double> usual, cold, after[3];
+        std::vector<double> usual, cold, after[3], key[3];
         double worst[3] = {};
         for (int i = 0; i < 400; ++i) usual.push_back(block());
         for (int round = 0; round < 60; ++round) {
             for (int what = 0; what < 3; ++what) {
+                const Uint64 pressed = SDL_GetPerformanceCounter();
                 if (what == 0) rig.nextScene();
                 else if (what == 1) rig.undo();
                 else rig.redo();
+                key[what].push_back(ms * static_cast<double>(SDL_GetPerformanceCounter() - pressed)); // (the program's own thread: a frame is 16 ms)
                 const double t = block(); // the block that takes it
                 after[what].push_back(t);
                 worst[what] = t > worst[what] ? t : worst[what];
@@ -1888,6 +1895,7 @@ void measure() {
         std::printf("  12 tracks, %s: a usual block %.3f ms, one straight after the program was busy and sent nothing %.3f; the block that takes NEXT SCENE %.3f (worst %.3f), its undo %.3f (worst %.3f), its redo %.3f (worst %.3f)\n",
                     song == 0 ? "the scene going round" : (song == 1 ? "a later scene going round" : "the song playing through"), middle(usual), middle(cold), middle(after[0]), worst[0],
                     middle(after[1]), worst[1], middle(after[2]), worst[2]);
+        std::printf("    ...and on the program's own thread: the key %.1f ms, its undo %.1f, its redo %.1f\n", middle(key[0]), middle(key[1]), middle(key[2]));
     }
     // The command by itself, with nothing else in the block: twelve tracks' scenes moved.
     Engine engine;
