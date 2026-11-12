@@ -9,6 +9,7 @@
 //            quarter, a half: it follows the tempo), FEEDBACK, TONE, MIX
 //   REVERB   SIZE, DAMPING, MIX
 //   CRUSH    BITS, RATE, MIX
+//   COMP     THRESHOLD, RATIO (six choices), SPEED, MIX
 //   CHORUS   RATE, DEPTH, TYPE (chorus / ensemble / vibrato / flange), MIX
 //
 // MIX at 0 is the sound untouched.
@@ -37,7 +38,7 @@ enum class EffectKind {
     // Tape = 6,  (kept for TAPE: built on another branch)
     // Hall = 7,  (kept for HALL: likewise)
     Chorus = 8,
-    // Comp = 9,
+    Comp, // 9
     // Saturate = 10,
     // Duck = 11,
     Count

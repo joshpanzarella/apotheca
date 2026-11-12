@@ -19,6 +19,12 @@ public:
     virtual void setTempo(float bpm) { (void)bpm; } // for effects that keep time. Realtime safe.
     virtual void setParam(int index, float value) = 0;
     virtual void process(float* left, float* right, int frames) = 0;
+    // What it has to show beside its settings, as of the last process():
+    // for COMP, how many dB it is turning the sound down. 0 for an effect
+    // with nothing to show. The audio thread reads it after process() and
+    // keeps it where the screen can ask (Engine::effectMeter): nothing else
+    // may call it while the effect is in a slot.
+    virtual float meter() const { return 0.f; }
 };
 
 // Plain volume. Param 0: linear gain (1 = unchanged).

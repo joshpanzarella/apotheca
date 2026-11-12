@@ -79,6 +79,7 @@ extern const EffectInfo kDelayInfo;  // delay.cpp
 extern const EffectInfo kReverbInfo; // reverb.cpp
 extern const EffectInfo kCrushInfo;  // crush.cpp
 extern const EffectInfo kChorusInfo; // chorus.cpp
+extern const EffectInfo kCompInfo;   // comp.cpp
 
 } // namespace fx
 } // namespace apotheca

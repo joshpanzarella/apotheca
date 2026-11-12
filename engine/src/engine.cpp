@@ -35,6 +35,9 @@ Engine::Engine() {
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
+    for (Track& track : tracks_)
+        for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
+    for (auto& m : masterMeters_) m.store(0.f, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
     for (Track& track : tracks_) {
         for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
@@ -302,6 +305,11 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     synth.release(); // the audio thread owns it from here
     claimed_[track] = true;
     return true;
+}
+
+float Engine::effectMeter(int track, int slot) const {
+    if (!validSlot(slot) || (track != kMasterTrack && !validTrack(track))) return 0.f;
+    return (track == kMasterTrack ? masterMeters_[slot] : tracks_[track].meters[slot]).load(std::memory_order_relaxed);
 }
 
 float Engine::trackPeak(int track) const {
@@ -1087,7 +1095,10 @@ void Engine::renderTrack(int t) {
     float* right = trackR_[t];
     if (track.synth) track.synth->render(left, right, frames);
     else track.drums.render(left, right, frames);
-    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(track.effects[slot], track.fades[slot], left, right, frames);
+    for (int slot = 0; slot < kEffectSlots; ++slot) {
+        runSlot(track.effects[slot], track.fades[slot], left, right, frames);
+        track.meters[slot].store(track.effects[slot] ? track.effects[slot]->meter() : 0.f, std::memory_order_relaxed);
+    }
     if (t == chunkScope_) {
         unsigned written = scopeWritten_.load(std::memory_order_relaxed);
         for (int i = 0; i < frames; ++i) {
@@ -1164,6 +1175,8 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     int count = 0;
     for (int t = 0; t < kNumTracks; ++t)
         if (tracks_[t].hasInstrument()) active_[count++] = t; // an empty track costs nothing
+        else
+            for (auto& m : tracks_[t].meters) m.store(0.f, std::memory_order_relaxed); // and its effects, not run, show nothing
     chunkFrames_ = frames;
     chunkPeaks_ = peaks;
     chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
@@ -1193,7 +1206,10 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         }
     }
 
-    for (int slot = 0; slot < kEffectSlots; ++slot) runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+    for (int slot = 0; slot < kEffectSlots; ++slot) {
+        runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+        masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);
+    }
     // Effects whose fade out has ended go to the trash. Here, not in
     // renderTrack: the helpers are done, and the trash takes from this thread alone.
     for (int i = 0; i < count; ++i)

@@ -317,7 +317,7 @@ static void testPinnedSound() {
     CHECK(static_cast<int>(EffectKind::None) == 0 && static_cast<int>(EffectKind::Filter) == 1 && static_cast<int>(EffectKind::Drive) == 2);
     CHECK(static_cast<int>(EffectKind::Delay) == 3 && static_cast<int>(EffectKind::Reverb) == 4 && static_cast<int>(EffectKind::Crush) == 5);
     // The new ones' numbers were given out before they were built (6 TAPE, 7 HALL, 8 CHORUS, 9 COMP, 10 SATURATE, 11 DUCK).
-    CHECK(static_cast<int>(EffectKind::Chorus) == 8);
+    CHECK(static_cast<int>(EffectKind::Chorus) == 8 && static_cast<int>(EffectKind::Comp) == 9);
 }
 
 // ---- a whole song, with an effect in every slot ------------------------------------------------
@@ -466,8 +466,8 @@ static void testTheTable() {
     }
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
-    // The list as it is today, in its groups: FILTER; DRIVE; DELAY; REVERB; MOVING; DIRT.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Crush};
+    // The list as it is today, in its groups: FILTER; DRIVE; DELAY; REVERB; MOVING; LEVEL; DIRT.
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Crush};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and a group is never in two pieces (a whole group is stepped over at once).
@@ -822,10 +822,12 @@ static void testEveryEffect() {
         // because they come out louder or steeper than the sine went in
         // ("held still" says by how much), not because anything jumps:
         //   CHORUS  RATE 1.3      DEPTH 1.7       TYPE 0.7    MIX 1.3        1.3
+        //   COMP    THRESHOLD 1.1 RATIO 0.9       SPEED 0.8   MIX 1.0        0.8  (it turns this sine down)
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0}, {1.15, 1.01, 18.1, 1.00, 1.00}, {5.87, 1.91, 1.90, 3.80, 1.91}, {33.5, 1.51, 1.55, 2.57, 1.55}, {0.94, 0.90, 1.09, 0, 0.83}, {38.2, 38.8, 3.79, 0, 4.22},
             {0, 0, 0, 0, 0}, {0, 0, 0, 0, 0}, // kept for TAPE and HALL
             {1.26, 1.67, 0.71, 1.25, 1.25},   // CHORUS
+            {1.05, 0.91, 0.83, 1.00, 0.82},   // COMP
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -1627,6 +1629,363 @@ static double swapJump(EffectKind from, EffectKind to, bool master = false) {
     return largestJump(all, 48000 - 2, 48000 + 2400) / sineStep(100.0, kEngineSine);
 }
 
+// ---- COMP ------------------------------------------------------------------------------------
+
+// What a compressor should turn a level down by, worked out here from its
+// description and not from its code: nothing below the knee, (1 - 1/ratio)
+// of the dB over the threshold above it, a curve across the 6 dB between.
+static double shouldTurnDown(double levelDb, double thresholdDb, double ratio) {
+    const double over = levelDb - thresholdDb, slope = 1.0 - 1.0 / ratio, knee = 6.0;
+    if (over <= -0.5 * knee) return 0.0;
+    if (over >= 0.5 * knee) return slope * over;
+    return slope * (over + 0.5 * knee) * (over + 0.5 * knee) / (2.0 * knee);
+}
+static double shouldMakeUp(double thresholdDb, double ratio) {
+    const double half = 0.5 * (1.0 - 1.0 / ratio) * -thresholdDb;
+    return half > 12.0 ? 12.0 : half;
+}
+static double ampOf(double levelDb) { return std::pow(10.0, levelDb / 20.0); }
+
+// THE GAIN AS IT GOES: a sine goes in whose level is `levels[n]` dB for the
+// n-th stretch of `each` samples; out comes how many dB the effect has the
+// sound up or down at every sample (read where the sine is well away from
+// zero, and held between).
+static std::vector<double> gainOf(Effect& effect, double hz, const std::vector<double>& levels, std::size_t each, std::vector<float>* output = nullptr, double rate = 48000.0) {
+    Stereo io(levels.size() * each);
+    for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = static_cast<float>(ampOf(levels[i / each]) * std::sin(2.0 * kPi * hz * static_cast<double>(i) / rate));
+    const std::vector<float> in = io.l;
+    through(effect, io);
+    std::vector<double> gain(io.frames(), 0.0);
+    double last = 0.0;
+    for (std::size_t i = 0; i < io.frames(); ++i) {
+        if (std::fabs(in[i]) > 0.4 * ampOf(levels[i / each])) last = dB(std::fabs(io.l[i] / in[i]));
+        gain[i] = last;
+    }
+    if (output) *output = io.l;
+    return gain;
+}
+// When a run of numbers first gets `part` of the way from `from` to `to`, counted from `start`, in ms. Between samples.
+static double msToReach(const std::vector<double>& v, std::size_t start, double from, double to, double part, double rate = 48000.0) {
+    const double mark = from + (to - from) * part;
+    for (std::size_t i = start + 1; i < v.size(); ++i)
+        if ((v[i] - mark) * (to - from) >= 0.0) {
+            const double between = v[i] != v[i - 1] ? (mark - v[i - 1]) / (v[i] - v[i - 1]) : 0.0;
+            return (static_cast<double>(i - 1 - start) + between) * 1000.0 / rate;
+        }
+    return -1.0;
+}
+
+static const float kCompRatio[6] = {0.05f, 0.2f, 0.4f, 0.58f, 0.7f, 0.9f}; // 1.5, 2, 3, 4, 8, 20 to 1
+static float compThreshold(double dBs) { return static_cast<float>((dBs + 48.0) / 48.0); }
+
+static void testComp() {
+    const EffectKind kind = EffectKind::Comp;
+    // Its row: what a song stores.
+    const EffectInfo& info = effectInfo(kind);
+    CHECK(std::string(info.name) == "COMP" && std::string(info.word) == "comp" && info.params == 4 && info.group == EffectGroup::Level);
+    CHECK(std::string(info.paramNames[0]) == "THRESHOLD" && std::string(info.paramNames[1]) == "RATIO" && std::string(info.paramNames[2]) == "SPEED" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(info.defaults[0] == 0.625f && info.defaults[1] == 0.58f && info.defaults[2] == 0.4f && info.defaults[3] == 1.f);
+    CHECK(effectChoices(kind, 1) == 6 && effectChoices(kind, 0) == 0 && effectChoices(kind, 2) == 0 && effectChoices(kind, 3) == 0);
+    CHECK(reads(kind, 0, 0.f) == "-48 DB" && reads(kind, 0, 1.f) == "0 DB" && reads(kind, 0, 0.625f) == "-18 DB" && reads(kind, 0, 0.5f) == "-24 DB");
+    static const char* const ratioNames[6] = {"1.5:1", "2:1", "3:1", "4:1", "8:1", "20:1"};
+    for (int i = 0; i < 6; ++i) CHECK(reads(kind, 1, kCompRatio[i]) == ratioNames[i]);
+    CHECK(reads(kind, 1, 0.f) == "1.5:1" && reads(kind, 1, 1.f) == "20:1");
+    CHECK(reads(kind, 2, 0.f) == "1/50 MS" && reads(kind, 2, 1.f) == "30/400 MS" && reads(kind, 2, 0.4f) == "4/115 MS" && reads(kind, 3, 0.5f) == "50%");
+
+    // THE CURVE: a steady 1 kHz sine at eleven levels, at three thresholds and
+    // three ratios. What comes out against what should: the level, less the
+    // turn-down, plus the make-up. Today the worst of the 99 is 0.1 dB out.
+    //   e.g. THRESHOLD -24 DB, RATIO 4:1 (make-up 9.0 dB):
+    //     in    -40    -36    -32    -28    -24    -20    -16    -12     -8     -4      0 dB
+    //     out   -31.0  -27.0  -23.0  -19.1  -15.6  -13.6  -13.0  -12.0  -11.0  -10.0   -9.0
+    {
+        double worst = 0.0;
+        const double ratios[3] = {2.0, 4.0, 20.0};
+        const float ratioAt[3] = {kCompRatio[1], kCompRatio[3], kCompRatio[5]};
+        for (double threshold : {-36.0, -24.0, -12.0})
+            for (int r = 0; r < 3; ++r) {
+                std::unique_ptr<Effect> c = fresh(kind, compThreshold(threshold), ratioAt[r], 0.4f, 1.f);
+                if (gMeasure) std::printf("comp     %3.0f dB, %2.0f:1 (make-up %4.1f):", threshold, ratios[r], shouldMakeUp(threshold, ratios[r]));
+                for (int n = 0; n < 11; ++n) {
+                    const double in = -40.0 + 4.0 * n;
+                    const double out = in + levelAt(*c, 1000, ampOf(in));
+                    const double want = in - shouldTurnDown(in, threshold, ratios[r]) + shouldMakeUp(threshold, ratios[r]);
+                    SAY(" %6.1f", out);
+                    worst = std::fabs(out - want) > worst ? std::fabs(out - want) : worst;
+                    CHECK(std::fabs(out - want) < 0.15);
+                }
+                SAY("\n");
+            }
+        SAY("comp     the curve: the worst of 99 levels is %.2f dB from what it should be\n", worst);
+    }
+    // THE KNEE: across the 6 dB around the threshold the turn-down eases in.
+    // Half a dB at a time from 4 dB under to 4 over, at -24 DB, 4:1. Today
+    // every one is within 0.01 dB; at the threshold itself it is 0.56 dB down
+    // (a hard corner would be 0, and a 3 dB knee 0.28).
+    {
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f);
+        double worst = 0.0;
+        for (int n = -8; n <= 8; ++n) {
+            const double in = -24.0 + 0.5 * n;
+            const double down = 9.0 - levelAt(*c, 1000, ampOf(in));
+            worst = std::fabs(down - shouldTurnDown(in, -24.0, 4.0)) > worst ? std::fabs(down - shouldTurnDown(in, -24.0, 4.0)) : worst;
+            CHECK(std::fabs(down - shouldTurnDown(in, -24.0, 4.0)) < 0.04);
+        }
+        SAY("comp     the knee: the worst of 17 levels is %.3f dB out\n", worst);
+        CHECK(shouldTurnDown(-24.0, -24.0, 4.0) == 0.5625 && shouldTurnDown(-27.0, -24.0, 4.0) == 0.0 && shouldTurnDown(-21.0, -24.0, 4.0) == 2.25);
+    }
+    // THE MAKE-UP: half of what a full-scale sound is turned down by, and
+    // never more than 12 dB. A sound far under the threshold comes up by just that.
+    //   Today: -18 DB 4:1 +6.75; -24 DB 4:1 +9.0; -12 DB 2:1 +3.0; -48 DB 20:1 +12.0 (would be 22.8); 0 DB +0.0.
+    {
+        struct Row { double threshold, ratio; float ratioAt; };
+        const Row rows[5] = {{-18.0, 4.0, kCompRatio[3]}, {-24.0, 4.0, kCompRatio[3]}, {-12.0, 2.0, kCompRatio[1]}, {-48.0, 20.0, kCompRatio[5]}, {0.0, 8.0, kCompRatio[4]}};
+        for (const Row& row : rows) {
+            std::unique_ptr<Effect> c = fresh(kind, compThreshold(row.threshold), row.ratioAt, 0.4f, 1.f);
+            const double up = levelAt(*c, 1000, ampOf(-70.0));
+            SAY("comp     make-up at %3.0f dB, %2.0f:1: %+.2f dB\n", row.threshold, row.ratio, up);
+            CHECK(std::fabs(up - shouldMakeUp(row.threshold, row.ratio)) < 0.02);
+        }
+        CHECK(shouldMakeUp(-48.0, 20.0) == 12.0 && shouldMakeUp(-18.0, 4.0) == 6.75);
+    }
+    // ATTACK AND RELEASE, from a step in level: a 4 kHz sine at -40 dB (left
+    // alone), then at -4 dB for a second (turned down 15 dB at -24 DB, 4:1),
+    // then at -40 again. The attack is how long the turn-down takes to get
+    // 63% of the way there, in dB; the release how long to come 63% of the
+    // way back. Against what SPEED reads. Today:
+    //   SPEED 0%    reads 1/50 MS      measured  1.0 /  51 ms
+    //   SPEED 40%   reads 4/115 MS     measured  3.9 / 119 ms
+    //   SPEED 100%  reads 30/400 MS    measured 30.0 / 430 ms
+    // (The release is a little longer than it reads, by about the attack: the
+    // turn-down is held, lets go at the release speed, and is then smoothed at
+    // the attack speed.)
+    for (double rate : {48000.0, 96000.0})
+        for (float speed : {0.f, 0.4f, 1.f}) {
+            std::unique_ptr<Effect> c = makeEffect(kind, static_cast<float>(rate), 120.f);
+            c->setParam(0, compThreshold(-24.0));
+            c->setParam(1, kCompRatio[3]);
+            c->setParam(2, speed);
+            const std::size_t each = static_cast<std::size_t>(2.0 * rate);
+            const std::vector<double> gain = gainOf(*c, 4000.0, {-40.0, -4.0, -40.0}, each, nullptr, rate);
+            const double rest = shouldMakeUp(-24.0, 4.0), down = rest - 15.0;
+            // (Two seconds on, the slowest release still has a tenth of a dB to go.)
+            CHECK(std::fabs(gain[each - 1] - rest) < 0.01 && std::fabs(gain[2 * each - 1] - down) < 0.05 && std::fabs(gain[3 * each - 1] - rest) < (speed == 1.f ? 0.15 : 0.01));
+            const double attack = msToReach(gain, each, rest, gain[2 * each - 1], 0.632, rate), release = msToReach(gain, 2 * each, gain[2 * each - 1], rest, 0.632, rate);
+            int readAttack = 0, readRelease = 0;
+            CHECK(std::sscanf(reads(kind, 2, speed).c_str(), "%d/%d MS", &readAttack, &readRelease) == 2);
+            SAY("comp     SPEED %3.0f%% at %.0f Hz: reads %d/%d MS, measured %.2f / %.1f ms\n", speed * 100.0, rate, readAttack, readRelease, attack, release);
+            CHECK(std::fabs(attack - readAttack) < 0.2 * readAttack && std::fabs(release - readRelease) < 0.2 * readRelease);
+            // And the exact ends of SPEED: 1 ms and 50 ms, 30 ms and 400 ms.
+            if (speed == 0.f) CHECK(std::fabs(attack - 1.0) < 0.15 && std::fabs(release - 51.0) < 2.5);
+            if (speed == 1.f) CHECK(std::fabs(attack - 30.0) < 1.0 && std::fabs(release - 430.0) < 15.0);
+        }
+    // IT DOES NOT PUMP ON A STEADY TONE. A sine at -6 dB, turned down 13.5 dB
+    // (-24 DB, 4:1): once settled, how much the gain still moves within the
+    // tone's own cycle, and the harmonics that movement adds. Today:
+    //                         gain moves by    3rd harmonic
+    //   1 kHz, SPEED 40%        0.000 dB        -103 dB
+    //   100 Hz, SPEED 40%       0.040 dB         -65 dB
+    //   100 Hz, SPEED 0% (1/50) 0.251 dB         -48 dB   (as fast as it goes, on a low note: it follows the wave a little)
+    //   50 Hz, SPEED 100%       0.005 dB         -78 dB
+    {
+        struct Row { int hz; float speed; double moves, third; };
+        const Row rows[4] = {{1000, 0.4f, 0.005, -95.0}, {100, 0.4f, 0.06, -60.0}, {100, 0.f, 0.35, -44.0}, {50, 1.f, 0.01, -72.0}};
+        for (const Row& row : rows) {
+            std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], row.speed, 1.f);
+            const std::vector<double> gain = gainOf(*c, row.hz, {-6.0}, 144000);
+            double low = 1e9, high = -1e9;
+            for (std::size_t i = 96000; i < gain.size(); ++i) low = gain[i] < low ? gain[i] : low, high = gain[i] > high ? gain[i] : high;
+            const Harmonics h = harmonicsOf(*c, row.hz, ampOf(-6.0));
+            SAY("comp     steady %4d Hz, SPEED %3.0f%%: the gain moves by %.3f dB, 3rd harmonic %.1f dB under the sine going in\n", row.hz, row.speed * 100.0, high - low, h.part[3]);
+            CHECK(high - low < row.moves && h.part[3] < row.third);
+        }
+    }
+    // IT IGNORES WHAT IS UNDER 60 HZ when it reads the level: the same sine at
+    // -6 dB is turned down 13.5 dB at 1 kHz and far less down low. Today:
+    //   1 kHz 13.5 dB    120 Hz 13.3    60 Hz 11.2    40 Hz 7.6    30 Hz 4.2
+    {
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], 1.f, 1.f);
+        const double rest = shouldMakeUp(-24.0, 4.0);
+        double down[5];
+        const int at[5] = {1000, 120, 60, 40, 30};
+        for (int i = 0; i < 5; ++i) {
+            down[i] = rest - levelAt(*c, at[i], ampOf(-6.0));
+            SAY("comp     a sine at -6 dB, %4d Hz: turned down %.1f dB\n", at[i], down[i]);
+        }
+        // A two-pole high-pass at 60 Hz in front of the level reading: 3 dB down at 60, 7.8 at 40, 12.3 at 30.
+        CHECK(std::fabs(down[0] - 13.5) < 0.2 && std::fabs(down[1] - 13.3) < 0.3 && std::fabs(down[2] - 0.75 * (18.0 - 3.0)) < 0.2);
+        CHECK(std::fabs(down[3] - 0.75 * (18.0 - 7.8)) < 0.2 && std::fabs(down[4] - 0.75 * (18.0 - 12.3)) < 0.2);
+        // 60 Hz is 60 Hz at any sample rate: the same 30 Hz sine at 96 kHz is turned down the same 4.2 dB.
+        std::unique_ptr<Effect> fast = makeEffect(kind, 96000.f, 120.f);
+        fast->setParam(0, compThreshold(-24.0));
+        fast->setParam(2, 1.f);
+        Stereo io(4 * 96000);
+        io.l = io.r = sineOf(30.0, ampOf(-6.0), io.frames(), 96000.0);
+        through(*fast, io);
+        const double at96 = rest - dB(partAt(io.l.data() + 2 * 96000, 2 * 96000, 30.0, 96000.0) / ampOf(-6.0));
+        SAY("comp     at 96 kHz, 30 Hz: turned down %.1f dB\n", at96);
+        CHECK(std::fabs(at96 - down[4]) < 0.1);
+    }
+    // LEFT AND RIGHT ARE TURNED DOWN TOGETHER, by the louder of the two, so
+    // the picture does not lean: a loud sine on the left and a quiet one on
+    // the right come out with the same gain. And the other way about.
+    for (int loudSide = 0; loudSide < 2; ++loudSide) {
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f);
+        Stereo io(96000);
+        (loudSide ? io.r : io.l) = sineOf(1000.0, ampOf(-6.0), 96000);
+        (loudSide ? io.l : io.r) = sineOf(1000.0, ampOf(-40.0), 96000);
+        through(*c, io);
+        const double loud = dB(partAt((loudSide ? io.r : io.l).data() + 48000, 48000, 1000.0) / ampOf(-6.0)), quiet = dB(partAt((loudSide ? io.l : io.r).data() + 48000, 48000, 1000.0) / ampOf(-40.0));
+        CHECK(std::fabs(loud - quiet) < 0.01 && std::fabs(loud - (shouldMakeUp(-24.0, 4.0) - 13.5)) < 0.2);
+    }
+    // MIX is the squashed sound beside the plain one: at 50%, half of each.
+    {
+        std::unique_ptr<Effect> full = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f), half = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 0.5f);
+        const double squashed = ampOf(levelAt(*full, 1000, ampOf(-6.0))), both = ampOf(levelAt(*half, 1000, ampOf(-6.0)));
+        CHECK(std::fabs(both - 0.5 * (1.0 + squashed)) < 0.002);
+    }
+    // THE METER: how many dB it is turning down, as of the last block.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f);
+        CHECK(c->meter() == 0.f);
+        Stereo io(96000);
+        io.l = io.r = sineOf(1000.0, ampOf(-6.0), 96000);
+        through(*c, io, 0, 48000);
+        SAY("comp     the meter on a 1 kHz sine at -6 dB, -24 DB 4:1: %.2f dB\n", static_cast<double>(c->meter()));
+        CHECK(std::fabs(c->meter() - 13.5f) < 0.2f);
+        // It is the most in the last call, however long the call.
+        std::unique_ptr<Effect> d = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f);
+        Stereo burst(4800);
+        for (std::size_t i = 0; i < 2400; ++i) burst.l[i] = burst.r[i] = io.l[i];
+        d->process(burst.l.data(), burst.r.data(), 4800);
+        CHECK(d->meter() > 12.f);
+        // MIX does not change what it reads; a sound under the threshold reads 0; so does silence, exactly, soon after.
+        std::unique_ptr<Effect> dry = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 0.f);
+        Stereo again(48000);
+        again.l = again.r = sineOf(1000.0, ampOf(-6.0), 48000);
+        const std::vector<float> plain = again.l;
+        through(*dry, again);
+        CHECK(std::fabs(dry->meter() - c->meter()) < 1e-4f && again.l == plain);
+        Stereo quiet(48000 * 3);
+        quiet.l = quiet.r = sineOf(1000.0, ampOf(-30.0), quiet.frames());
+        through(*c, quiet, 0, 4800);
+        CHECK(c->meter() > 5.f && c->meter() < 13.f); // letting go
+        through(*c, quiet, 4800, quiet.frames());
+        CHECK(c->meter() == 0.f);
+        through(*c, again, 0, 4800); // (what came out of `dry` is the plain sine)
+        CHECK(c->meter() > 10.f);
+        c->reset();
+        CHECK(c->meter() == 0.f);
+        // An effect with nothing to show reads 0.
+        for (EffectKind other : {EffectKind::Filter, EffectKind::Drive, EffectKind::Delay, EffectKind::Reverb, EffectKind::Crush, EffectKind::Chorus}) {
+            std::unique_ptr<Effect> e = makeEffect(other, 48000.f, 120.f);
+            through(*e, io, 0, 4800);
+            CHECK(e->meter() == 0.f);
+        }
+    }
+    // THE METER, AS THE SCREEN ASKS FOR IT: Engine::effectMeter(track, slot).
+    // The engine's test sine is at -6 dB in the track's slots (0.5), and at
+    // -9.8 dB on the master (after the track's level of 0.65). It is at 100 Hz,
+    // where the level reading has already lost half a dB to its 60 Hz cut. At
+    // COMP's usual settings (-18 DB, 4:1) that is 8.5 dB down on the track
+    // (0.75 of 11.5); on the master 5.7.
+    {
+        std::unique_ptr<Engine> engine = sineEngine();
+        for (int slot = -1; slot <= kEffectSlots; ++slot) CHECK(engine->effectMeter(0, slot) == 0.f && engine->effectMeter(kMasterTrack, slot) == 0.f);
+        CHECK(engine->setEffect(0, 1, kind));
+        leftOf(*engine, 48000);
+        SAY("comp     Engine::effectMeter on a track: %.2f dB\n", static_cast<double>(engine->effectMeter(0, 1)));
+        CHECK(std::fabs(engine->effectMeter(0, 1) - 8.53f) < 0.15f);
+        CHECK(engine->effectMeter(0, 0) == 0.f && engine->effectMeter(1, 1) == 0.f && engine->effectMeter(kMasterTrack, 0) == 0.f && engine->effectMeter(kMasterTrack, 1) == 0.f);
+        CHECK(engine->effectMeter(-2, 1) == 0.f && engine->effectMeter(kNumTracks, 1) == 0.f && engine->effectMeter(0, kEffectSlots) == 0.f && engine->effectMeter(0, -1) == 0.f);
+        // What comes out agrees with it: the sine, down by the meter, up by the make-up (6.75 dB).
+        const std::vector<float> out = leftOf(*engine, 48000);
+        CHECK(std::fabs(dB(partAt(out.data(), 48000, 100.0) / kEngineSine) - (6.75 - engine->effectMeter(0, 1))) < 0.3);
+        // Its THRESHOLD turned up out of the way: it lets go, and the meter falls to 0.
+        engine->send(make(Command::SetEffectParam, 0, 1, 0, 1.f));
+        leftOf(*engine, 3 * 48000);
+        CHECK(engine->effectMeter(0, 1) == 0.f);
+        engine->send(make(Command::SetEffectParam, 0, 1, 0, 0.625f));
+        leftOf(*engine, 24000);
+        CHECK(engine->effectMeter(0, 1) > 8.f);
+        // Taken out of the slot, the slot reads 0 from the next chunk.
+        CHECK(engine->setEffect(0, 1, EffectKind::None));
+        leftOf(*engine, 64);
+        CHECK(engine->effectMeter(0, 1) == 0.f);
+        // A track that is deleted is not rendered any more: its effects show nothing, though they are still in their slots.
+        CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+        engine->setTrackEffect(1, 0, std::unique_ptr<Effect>(new SineSource));
+        CHECK(engine->setEffect(1, 1, kind));
+        leftOf(*engine, 24000);
+        CHECK(engine->effectMeter(1, 1) > 8.f);
+        CHECK(engine->removeTrack(1));
+        leftOf(*engine, 64);
+        CHECK(engine->effectMeter(1, 1) == 0.f);
+        // On the master, in either slot.
+        CHECK(engine->setEffect(kMasterTrack, 1, kind));
+        leftOf(*engine, 48000);
+        SAY("comp     Engine::effectMeter on the master: %.2f dB\n", static_cast<double>(engine->effectMeter(kMasterTrack, 1)));
+        CHECK(std::fabs(engine->effectMeter(kMasterTrack, 1) - 5.72f) < 0.15f && engine->effectMeter(kMasterTrack, 0) == 0.f && engine->effectMeter(0, 1) == 0.f);
+        engine->collectGarbage();
+        // With helpers sharing the tracks out, the same reading.
+        std::unique_ptr<Engine> shared = sineEngine();
+        shared->useWorkers(3);
+        for (int t = 1; t < 4; ++t) {
+            CHECK(shared->addSynthTrack(t, SynthKind::Sampler));
+            shared->setTrackEffect(t, 0, std::unique_ptr<Effect>(new SineSource));
+            CHECK(shared->setEffect(t, 1, kind));
+        }
+        CHECK(shared->setEffect(0, 1, kind));
+        leftOf(*shared, 48000);
+        for (int t = 0; t < 4; ++t) CHECK(std::fabs(shared->effectMeter(t, 1) - 8.53f) < 0.15f);
+        shared->useWorkers(0);
+        shared->collectGarbage();
+    }
+    // A setting thrown from one end to the other in one go is not a click:
+    // the turn-down moves at its own speed, and the make-up glides.
+    for (int p = 0; p < 4; ++p) {
+        std::unique_ptr<Effect> c = fresh(kind, p == 0 ? 1.f : compThreshold(-24.0), kCompRatio[p == 1 ? 5 : 0], 0.4f, p == 3 ? 0.f : 1.f);
+        Stereo io(48000);
+        io.l = io.r = sineOf(100.0, 0.5, 48000);
+        through(*c, io, 0, 24000);
+        c->setParam(p, p == 1 ? 0.f : (p == 0 ? 0.f : 1.f));
+        through(*c, io, 24000, 48000);
+        const double jump = largestJump(io.l, 23999, 48000) / sineStep(100.0, 0.5);
+        SAY("comp     %s thrown across at once: %.2f\n", info.paramNames[p], jump);
+        CHECK(jump < 2.6);
+    }
+    // Turned down to 0 while it sounds, MIX gets there, exactly.
+    {
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-24.0), kCompRatio[3], 0.4f, 1.f);
+        Stereo in(96000);
+        in.l = in.r = sineOf(1000.0, 0.5, 96000);
+        Stereo out = in;
+        through(*c, out, 0, 24000);
+        c->setParam(3, 0.f);
+        through(*c, out, 24000, 96000);
+        bool same = true;
+        for (std::size_t i = 48000; i < 96000; ++i) same = same && out.l[i] == in.l[i] && out.r[i] == in.r[i];
+        CHECK(same && out.l[24100] != in.l[24100]);
+    }
+    // However the sound is cut into blocks, the same to the last bit; and a reset is a fresh start.
+    {
+        Stereo whole = pinInput(48000.f), cut = whole, big = whole, twice = whole;
+        through(*fresh(kind, compThreshold(-30.0), kCompRatio[4], 0.2f, 0.9f), whole);
+        std::unique_ptr<Effect> c = fresh(kind, compThreshold(-30.0), kCompRatio[4], 0.2f, 0.9f), d = fresh(kind, compThreshold(-30.0), kCompRatio[4], 0.2f, 0.9f);
+        for (std::size_t at = 0, n = 1; at < cut.frames(); at += n, n = n % 61 + 1) {
+            if (at + n > cut.frames()) n = cut.frames() - at;
+            c->process(cut.l.data() + at, cut.r.data() + at, static_cast<int>(n));
+        }
+        d->process(big.l.data(), big.r.data(), static_cast<int>(big.frames()));
+        CHECK(cut.l == whole.l && cut.r == whole.r && big.l == whole.l && big.r == whole.r);
+        Stereo part = twice;
+        through(*d, part, 0, 12000); // (d has had the whole sound, and now some more)
+        d->reset();
+        through(*d, twice);
+        CHECK(twice.l == whole.l && twice.r == whole.r);
+    }
+}
+
 static void testSwapFade() {
     CHECK(static_cast<int>(kSwapFadeSeconds * 48000.f) == kFade);
     // The sine comes out as made, and the click finder agrees it is smooth.
@@ -1890,6 +2249,7 @@ int main(int argc, char** argv) {
     testFlushToZero();
     testReverbDoesNotSlowDown();
     testSwapFade();
+    testComp();
     testSwapsOnAnyHelperCount();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;

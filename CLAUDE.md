@@ -170,10 +170,15 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   **A new effect with many fading states (HALL) does**: settle this before it ships.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **Some effect numbers are kept for effects not built yet** (`EffectKind`
-  6 TAPE, 7 HALL, 9 COMP, 10 SATURATE, 11 DUCK were given out so three people
+  6 TAPE, 7 HALL, 10 SATURATE, 11 DUCK were given out so three people
   could work at once). A kept number has NONE's row in `kTable` and is not in
   `kList`. **A loop over `1..kEffectKinds` must skip what `effectExists()`
   says is not there.**
+- **What an effect shows goes through `Engine::effectMeter(track, slot)`**
+  (COMP: the dB it is turning down). The audio thread reads the effect's
+  `meter()` after each chunk and keeps it in an atomic; the screen asks the
+  engine. **Nothing on the app thread may hold or call an `Effect` that is in
+  a slot**: the audio thread can swap it out at any chunk.
 - **A new effect glides every setting** (`fx::Glide` in `fx/unit.hpp`): a
   turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
   is still the sound untouched to the sample. The first block after it is

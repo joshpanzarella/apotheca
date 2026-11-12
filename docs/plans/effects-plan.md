@@ -433,6 +433,36 @@ metallic is for ears.
 For the owner's ears: is ENSEMBLE different enough from CHORUS; is FLANGE's
 fixed feedback (0.6) right; is DEPTH at full too much; VIBRATO in step.
 
+**Step 7 (COMP) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it. **The meter is in the engine but not on the screen** (the FX screen was being rebuilt).
+
+| Thing | Result |
+| --- | --- |
+| File, number, word | `engine/src/fx/comp.cpp`; `EffectKind::Comp` = 9; `comp`. Group LEVEL |
+| THRESHOLD | -48 to 0 dB, read in DB. Starts at -18 |
+| RATIO | A choice of six: 1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1. Starts at 4:1 |
+| SPEED | Attack `1 x 30^v` ms, release `50 x 8^v` ms. It reads both: `1/50 MS` to `30/400 MS`, `4/115 MS` to start |
+| The curve | A steady 1 kHz sine at 11 levels, 3 thresholds, 3 ratios: the worst of the 99 is **0.02 dB** from threshold, ratio and knee. The 6 dB knee, half a dB at a time: 0.01 dB |
+| Attack and release | From a step in level (-40 to -4 dB and back, 4 kHz), 63% of the way in dB: **1.0 / 51 ms** at SPEED 0, 3.9 / 119 at 40%, 30.0 / 431 at 100%. The same at 96 kHz. The release runs about one attack longer than it reads (the turn-down is held, let go at the release speed, then smoothed at the attack speed) |
+| Make-up | Automatic: half of what a full-scale sound is turned down by, **never more than 12 dB**. Measured +6.75 dB at -18 DB 4:1, +9.0 at -24 DB 4:1, +12.0 at -48 DB 20:1 (it would be 22.8) |
+| A steady tone | It does not pump. Turned down 13.5 dB, the gain still moves within the wave by 0.000 dB at 1 kHz, 0.04 dB at 100 Hz (3rd harmonic 65 dB down), and 0.25 dB at 100 Hz with SPEED at its fastest (48 dB down): as fast as it goes, on a low note, it follows the wave a little |
+| Below 60 Hz | The level is read through a two-pole high-pass at 60 Hz. The same sine at -6 dB is turned down 13.5 dB at 1 kHz, 11.2 at 60 Hz, 7.6 at 40, 4.2 at 30 |
+| Left and right | Turned down together, by the louder: measured the same gain to 0.01 dB |
+| MIX | The squashed sound beside the plain one. At 0 the sound untouched, to the sample |
+| The meter | `Engine::effectMeter(track, slot)`: dB being turned down, as of the last chunk; 0 for an empty slot, an effect with nothing to show, or a deleted track. `track` may be `kMasterTrack`. An atomic: any thread, no lock. `Effect` gained `virtual float meter() const` for it |
+| Clicks | The turn-down moves at its own speed and the make-up glides: any setting thrown across at once is no steeper than the sine underneath |
+| Cost | 0.12% of a desk core on loud noise, every sample over the threshold (the plan: 0.07 with exact log maths; this machine reads DRIVE at 0.17 against the plan's 0.08). Under the threshold it skips the logarithm |
+| Departed from the plan | Exact `log` and `exp`, not the quick kind: the curve is then exact, and it is still a tenth of a percent. The 12 dB cap on the make-up (not in the plan): without it a slow attack lets the first hit through 23 dB up |
+
+For the owner's ears: is the automatic make-up about level on real sounds; is
+one SPEED knob enough; does the 60 Hz cut do what is wanted on a bass track
+(a bass under 60 Hz is hardly squashed); the master glue.
+
+**For whoever builds the meter on the screen** (plan section 5: the THRESHOLD
+box's bar shows it): each frame, `engine.effectMeter(track, slot)` with the
+track and slot of the row (`kMasterTrack` for the master's rows). It returns
+dB turned down, 0 or more. 0 means draw nothing. A full bar at 24 dB would fit
+most uses. It is not smoothed: the engine reports the last chunk.
+
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.
 
