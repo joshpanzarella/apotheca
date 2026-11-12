@@ -408,6 +408,32 @@ void testRecordingASynth() {
     CHECK(notesIn(bar) == before);
 }
 
+// NEXT SCENE (SELECT + Y) pressed while a key is held and being recorded: the playing goes to
+// the new scene, and so does the note. It is as long as it was held there, where it is heard.
+void testAKeyHeldThroughNextScene() {
+    Rig rig;
+    rig.addPhazed();
+    rig.app.session().setMidiRecording(true);
+    const TrackData& track = rig.project().tracks[1];
+    rig.tap(SDLK_RETURN);
+    rig.render(2 * kStep + kStep / 2);
+    rig.frames(1);
+    rig.keys.on(67, 64);
+    CHECK(rig.heard([&] { return !track.notes[0][0].empty(); }));
+    const int slot = track.notes[0][0].at(67, 2);
+    CHECK(slot >= 0);
+    rig.key(SDLK_BACKSPACE, true);
+    rig.tap(SDLK_a);
+    rig.key(SDLK_BACKSPACE, false);
+    CHECK(rig.project().scene == 1 && track.notes[1][0].at(67, 2) == slot);
+    rig.render(3 * kStep);
+    rig.frames(1);
+    CHECK(rig.project().playScene == 1 && rig.project().playStep == 5);
+    rig.keys.off(67);
+    CHECK(rig.heard([&] { return track.notes[1][0].notes[slot].length != 1.f; }));
+    CHECK(track.notes[1][0].notes[slot].length == 3.f && track.notes[0][0].notes[slot].length == 1.f);
+}
+
 void testRecordingDrums() {
     Rig rig;
     Session& session = rig.app.session();
@@ -457,6 +483,7 @@ int main() {
     testAKeyboardPlaysTheTrack();
     testTheCursorFollowsTheKey();
     testRecordingASynth();
+    testAKeyHeldThroughNextScene();
     testRecordingDrums();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

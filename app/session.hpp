@@ -318,6 +318,17 @@ public:
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
 
+    // ---- next scene ---------------------------------------------------------------------
+    // The scene being worked on, copied whole (every track's cell with its length, the
+    // scene's own length, how often it plays, its automation) into a new scene put in
+    // right after it. The scenes after it move down one; nothing is written over. The
+    // player is then on the new one, same track and bar. A song that is playing goes
+    // with them and does not miss a step: the two scenes are the same. One step of
+    // undo, which also takes the player (and the playing) back.
+    // Returns the new scene, or -1 when there is no room (the song's sixteenth scene has
+    // something in it, or the scene worked on is the sixteenth), and then nothing is changed.
+    int nextScene();
+
     // ---- mute, solo, names -----------------------------------------------------------
     // A muted track is silent. While any track is soloed, only soloed ones
     // are heard, muted or not. Both act at once; the song keeps mutes only.
@@ -424,8 +435,15 @@ private:
     std::string patternsNow() const;                 // the patterns as text: a step of undo
     void restorePatterns(const std::string& text);
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
+    std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
+    void standOn(int scene);                         // the player, put on a scene by undo
+    void scenesMoved(int from, int by);              // tell the engine (Command::ScenesMoved) and whatever here points at a scene that is playing
     std::uint32_t cellMark() const;                  // changes when the cell being worked on does
-    std::vector<std::string> undo_, redo_;
+    // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
+    // made from, when that is what lies between this text and the one it is swapped for: taking
+    // it back or putting it forward moves the player and the playing as well as the patterns.
+    struct UndoStep { std::string text; int nextScene = -1; };
+    std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still
     bool editing_ = false, restoring_ = false, undoReady_ = false;
     Uint32 editedAt_ = 0;

@@ -633,6 +633,12 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneCount:
         sceneCount_ = c.a < 1 ? 1 : (c.a > kMaxScenes ? kMaxScenes : c.a);
         break;
+    case Command::ScenesMoved:
+        if (playing_ && (c.b == 1 || c.b == -1) && validScene(c.a) && scene_ >= c.a && validScene(scene_ + c.b)) {
+            scene_ += c.b;
+            playScene_.store(scene_, std::memory_order_relaxed); // told now, not at the next step: what is recorded goes where the playing is
+        }
+        break;
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;

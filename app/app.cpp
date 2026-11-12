@@ -131,6 +131,29 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // SELECT held with Y, on the PATTERN screen (the drum grid, its slices, the piano roll): NEXT
+    // SCENE. The scene being worked on is copied into a new one right after it and the player is
+    // put there, on the same screen with the cursor where it was, to carry on adding. One press,
+    // nothing asked: SELECT + B takes it back. Y let go afterwards is not the screen's Y.
+    if (b == Button::Y && nextSceneY_ && !event.down) {
+        nextSceneY_ = false;
+        return;
+    }
+    if (b == Button::Y && input.held(Button::Select) && session_.view == View::Pattern) {
+        if (event.down) {
+            nextSceneY_ = true;
+            selectAlone_ = false;
+            song_.selectWasUsed();
+        }
+        if (event.down && !panicking_) { // (not in a panic: all four shoulder buttons are down, and nothing is to change)
+            const int to = session_.nextScene();
+            if (to >= 0) std::snprintf(undoSaid_, sizeof undoSaid_, "SCENE %d: COPY OF %d", to + 1, to);
+            else std::snprintf(undoSaid_, sizeof undoSaid_, "NO ROOM: %d SCENES", kMaxScenes);
+            undoSaidUntil_ = now_ + 1500;
+        }
+        return;
+    }
+
     if ((b == Button::L1 || b == Button::R1) && input.held(Button::Select) && !panicking_) {
         if (event.down) {
             changeVolume(b == Button::R1 ? 0.1f : -0.1f);
@@ -323,6 +346,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             {"X", "WRITE on / off: record a knob's moves while playing"},
             {"L1  R1", "quieter / louder"},
             {"L2  R2", "on PATTERN: the scene a step shorter / longer"},
+            {"Y", "on PATTERN: NEXT SCENE, a copy of this one to add to"},
             {"UP  DOWN", "tempo, a beat a minute"},
             {"LEFT  RIGHT", "tempo, ten at a time"},
             {"START", "quit Apotheca"},

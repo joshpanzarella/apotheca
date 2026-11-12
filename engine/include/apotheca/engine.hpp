@@ -154,8 +154,13 @@ struct Command {
                         //   c = pitch in semitones, d = ratchet, value = 1 for backwards, extra = cut (0..3)
                         //   plus 4 times its THROW (0..3: off, ECHO, SPACE, both; drums.hpp). THROW rides with
                         //   the cut because the command has no field to spare.
-        SetSend         // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
+        SetSend,        // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
                         //   Taken after the track's level and mute. It glides, so it does not click.
+        ScenesMoved     // the scenes from `a` on are one place further down the song (b = 1) or one
+                        //   back up it (b = -1): a scene has been put in, or taken out. If one of them is
+                        //   playing, the playing goes with it and nothing else changes: the same step,
+                        //   the same bar, the same time round, no note cut or started. (The patterns
+                        //   themselves are sent apart, as track images.)
     };
     Type type = Trigger;
     int track = 0;
