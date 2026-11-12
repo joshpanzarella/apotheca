@@ -722,6 +722,18 @@ stills have seen it; nobody has heard it.
 | Mutants | 15 at the meeting points, 14 caught. The one left (no cap on how long the bounce WORKS) writes the same file: the tape tires by itself and the file is cut at the cap either way | |
 | Not done | No handheld build, nothing run on the device. A thrown note's own release, after the song's end, is not sent to the bus (as for any thrown note that is let go) |
 
+After the second review (2026-11-12):
+
+| Thing | Result |
+| --- | --- |
+| A tired TAPE depended on its blocks | The count of time left alone went up a block at a time, the ease down was a glide a block, and it fell asleep at the end of the call it was in. Blocks of 64 and of 48 came apart 30.2 s into a tired tail (by up to 0.002 in the test here), and by 1e-23 where it fell asleep: a bounce and live play were not the same. **Now each is on its own sample**: the count, the ease (`tapeTireStep`: a fraction of what is left a sample, 2 s down and 20 ms up, never slower than 2e-7, so it lands), falling asleep, and waking (at the first sample of sound, not the block's first). The numbers are as they were: 0.46 by 32 to 33 s, asleep at 68.7 s |
+| TAPE's wow took its shape from the blocks (on `main` too) | The sine was worked out at each end of a call and joined by a straight line. With AGE up (the default is 35%) blocks of 64 and of 48 were apart from 0.15 s, by 0.05 once it howled. Now a point every 64 samples the tape has run (`kWowEvery`), whatever the calls. Rate and depth as measured before. **A song with TAPE and AGE up is no longer the same to the bit as before this**, which it never was from one block size to another |
+| TAPE's test | `testTapeAlwaysEnds`: 150 s (howl, tire, sleep, a faint sound waking it part way through a block, tire again) cut four ways (64, 48, 256, and 1 to 61 in turn) at AGE 0, 35% and 100%: the same to the bit. TAPE had no such test before |
+| **HALL depends on its blocks too. Not changed** | Found while testing TAPE: HALL (SIZE 50%, DECAY 50%, MIX full) in blocks of 64 and of 48 is apart from 0.02 s, by 0.06. It is the same on `main`; it is not this step's code and a change there is a change to the sound. For its own piece of work |
+| THROW's value on the piano roll's strip | "SPACE" at 575 in the large size ran to pixel 638 of 640 (the margin is 632). `stripThrowFont` (`app/note_marks.hpp`): the value moves left to end at the margin (SPACE alone: at 569), and beside an effect too long to leave it room ("x4 GLIDE") it is drawn in the middle size where it was. ECHO and BOTH are where they were. Stills: `--view notefx-space`, `notefx-worst` |
+| Cost | TAPE 0.09 to 0.13% over six runs (DRIVE 0.11 to 0.13% in them; 0.11% before) |
+| Mutants | 26, 24 caught. The two left change nothing that can be seen: `reset()` no longer clearing the wow's count (waking clears it too), and falling asleep with sound under 240 dB down still coming in (it wakes on the next sample) |
+
 For the owner's ears, new at the join: a thrown kick on a track that ducks
 itself goes to the bus at full while the track dips. Is that right, or should
 the echo dip too? A thrown note under a DUCK sends a dipped note: wanted?

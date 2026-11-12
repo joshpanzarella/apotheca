@@ -479,6 +479,7 @@ int main(int argc, char** argv) {
         app.session().sendNoteBar(2, 0, 0);
         app.notes().moveCursorTo(64, 12);
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
+        if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
         if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held
     } else if (std::strcmp(view, "under") == 0) {
         // A held chord with notes written under it, and a short note under a long one.

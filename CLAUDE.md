@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (18) | `cd build && ctest -j8` (about 40 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -251,7 +251,9 @@ effect in those two groups and fails one that does not.
   TAPE's: left alone 30 s (nothing over `kFedLevel` coming in), a FEEDBACK
   over 90% eases to 90% (`tire_`); at 90% or under it is multiplied by exactly
   1 (`tapeTire` compares the SETTING, 0.75 and a hair, not what it reads:
-  `1.2f * 0.75f` is a float over `0.9f`). **The promise is for one effect.**
+  `1.2f * 0.75f` is a float over `0.9f`). The count, the ease down
+  (`tapeTireStep`), falling asleep and waking are each on their own SAMPLE,
+  never a block's edge. **The promise is for one effect.**
   Effects in a row (two TAPEs: a slot into a bus, or two slots) each count
   from the last sound coming IN, so one keeps the next fed and the tail can
   pass 450 s; the bounce's cap is what ends that one. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
@@ -312,7 +314,13 @@ effect in those two groups and fails one that does not.
   the bit, once its settings are at rest (each has a test). So what an effect
   does "between blocks" (snapping vanishing numbers to zero) is done sample by
   sample, or on a fixed count of samples (SATURATE: every 64th it has been
-  given), never "at the end of this call".
+  given), never "at the end of this call". The same goes for anything slow
+  that moves by itself: TAPE's wow was a sine worked out at each end of a
+  call, and its count of time left alone went up a block at a time; both
+  made a bounce differ from live play. **TAPE's test cuts 150 s four ways**
+  (`testTapeAlwaysEnds`); a new effect with a tail gets the same, through its
+  sleep and its waking. **HALL does not pass it yet** (apart from 0.02 s in
+  blocks of 64 and of 48; as on `main`, not changed).
 - **A filter state does not reach zero by itself**: with a coefficient over a
   half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
   "silence in, silence out" fails and a processor without flush-to-zero crawls.

@@ -1063,8 +1063,36 @@ static void testNoteStripNudgeFits() {
     CHECK(stripFont(widths, 10.f) == 2);
 }
 
+// THROW's value at the strip's right end stops at the margin (632), as every other field does.
+// "SPACE" at 575 in the large size ran to pixel 638 of 640.
+static void testNoteStripThrowFits() {
+    const float space[3] = {63.f, 53.5f, 46.f}, both[3] = {51.f, 43.f, 37.f}; // about as the fonts measure them
+    float x = 0.f;
+    // Short enough: where it always was, as large as ever.
+    CHECK(stripThrowFont(both, 0.f, &x) == 0 && x == kStripThrowX);
+    CHECK(stripThrowFont(both, 577.f, &x) == 0 && x == kStripThrowX); // (an effect's end never pushes it right)
+    const float exact[3] = {kStripRight - kStripThrowX, 40.f, 30.f};
+    CHECK(stripThrowFont(exact, 0.f, &x) == 0 && x == kStripThrowX);  // exactly fitting is fitting
+    // SPACE with nothing before it: moved left to end at the margin, still large.
+    CHECK(stripThrowFont(space, 0.f, &x) == 0 && x == 569.f && x + space[0] == kStripRight);
+    // A short effect before it ("x4", ending near 507): the same.
+    CHECK(stripThrowFont(space, 517.f, &x) == 0 && x == 569.f);
+    // A long one ("x4 GLIDE" ends at 567, and a gap): it cannot move, and is drawn in the middle size.
+    CHECK(stripThrowFont(space, 577.f, &x) == 1 && x == kStripThrowX && x + space[1] <= kStripRight);
+    // Room to move a little, not enough for the large size: the middle size, where it always was.
+    CHECK(stripThrowFont(space, 572.f, &x) == 1 && x == kStripThrowX);
+    // The middle size too wide where it stands: it moves left as far as it may before going smaller still.
+    const float wide[3] = {90.f, 60.f, 50.f};
+    CHECK(stripThrowFont(wide, 572.f, &x) == 1 && x == 572.f && x + wide[1] == kStripRight);
+    CHECK(stripThrowFont(wide, 573.f, &x) == 2 && x == kStripThrowX);
+    // Nothing fits: the smallest, as far left as it may go.
+    const float huge[3] = {200.f, 150.f, 100.f};
+    CHECK(stripThrowFont(huge, 560.f, &x) == 2 && x == 560.f);
+}
+
 int main(int, char**) {
     testNoteStripNudgeFits();
+    testNoteStripThrowFits();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();

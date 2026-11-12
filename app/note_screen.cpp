@@ -1011,12 +1011,23 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(250.f, "LENGTH", "-", kDim);
         }
         const float nudge = under ? under->nudge : (chordUnder ? chordUnder->nudge : 0.f);
+        float effectEnd = 0.f; // where the effect's value ends, and a gap (0: there is none)
         if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
             std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", glideHere ? "GLIDE" : "");
             field(stripEffectX(throwHere != 0), ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
+            effectEnd = stripEffectX(throwHere != 0) + fonts.large.width(text) + kStripSpace;
         }
-        if (!fxHeld_ && throwHere) field(kStripThrowX, "THROW", throwName(throwHere), kPurple);
+        if (!fxHeld_ && throwHere) {
+            // Up to the right margin and no further: moved left, or drawn smaller beside a long effect.
+            const char* to = throwName(throwHere);
+            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
+            const float widths[3] = {fonts.large.width(to), fonts.medium.width(to), fonts.small.width(to)};
+            float x = kStripThrowX;
+            const Font& font = *sizes[stripThrowFont(widths, effectEnd, &x)];
+            fonts.small.draw(r, x, stripY + 8.f, "THROW", kDim);
+            font.draw(r, x, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), to, kPurple);
+        }
         if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
             // Beside an effect and a THROW there is less room: the value is drawn smaller, never over them.
