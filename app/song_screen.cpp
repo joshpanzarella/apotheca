@@ -47,6 +47,14 @@ void SongScreen::moveCursorTo(int scene, int column) {
     if (scene_ >= top_ + kVisibleRows) top_ = scene_ - kVisibleRows + 1;
 }
 
+// The scenes from `from` on are one place further down the song (by = 1) or back up it (-1).
+void SongScreen::scenesMoved(int from, int by) {
+    if (scene_ < from || scene_ + by < 0 || scene_ + by >= kMaxScenes) return;
+    scene_ += by;
+    if (scene_ < top_) top_ = scene_;
+    if (scene_ >= top_ + kVisibleRows) top_ = scene_ - kVisibleRows + 1;
+}
+
 void SongScreen::moveCursor(Button direction, bool pressed) {
     if (listing_) {
         int& cursor = revsOpen_ ? revCursor_ : listCursor_;
@@ -457,7 +465,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const int colW = columnWidth(tracks);
     const bool held = holding_ || copying_;
     const SDL_Color cursorColor = held ? kBrass : kTeal;
-    const int playScene = session_.engine.playScene(), playStep = session_.engine.playStep();
+    const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
     // ---- column heads ----------------------------------------------------------
     fonts.small.drawRight(r, kColumnsLeft - 7.f, kGridTop + 14.f, "PLAYS", kDim);

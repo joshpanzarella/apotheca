@@ -103,6 +103,7 @@ private:
     bool help_ = false;
     Uint32 selectHeldSince_ = 0; // 0: not held
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
+    bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
     SynthScreen phazed_; // the same screen, once for each synth
     SynthScreen twin_;
     SynthScreen qmod_;

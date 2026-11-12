@@ -706,6 +706,16 @@ int main(int argc, char** argv) {
         if (view[4]) app.qmod().goTo(std::atoi(view + 4), 0);
     } else if (std::strcmp(view, "help") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
+    } else if (std::strncmp(view, "next-scene", 10) == 0) {
+        // NEXT SCENE (SELECT + Y) just pressed: on the drum grid, on the piano roll ("next-scene-notes"),
+        // and with every scene of the song used ("next-scene-full").
+        if (std::strcmp(view + 10, "-notes") == 0) {
+            app.project().track = 1;
+            app.notes().moveCursorTo(57, 6);
+        }
+        pushKey(SDLK_BACKSPACE, true); // SELECT, held
+        tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
+        pushKey(SDLK_BACKSPACE, false);
     } else if (std::strcmp(view, "kit-old") == 0) {
         app.session().view = View::Device;
     }

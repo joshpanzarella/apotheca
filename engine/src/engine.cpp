@@ -633,6 +633,15 @@ void Engine::apply(const Command& c) {
     case Command::SetSceneCount:
         sceneCount_ = c.a < 1 ? 1 : (c.a > kMaxScenes ? kMaxScenes : c.a);
         break;
+    case Command::ScenesMoved:
+        ++movesHeard_; // every one is counted, moved by it or not: the app counts what it sent
+        if (playing_ && (c.b == 1 || c.b == -1) && validScene(c.a) && scene_ >= c.a && validScene(scene_ + c.b)) {
+            scene_ += c.b;
+            tellScene(scene_); // told now, not at the next step: what is recorded goes where the playing is
+        } else {
+            tellScene(playScene()); // the same scene, and the count with it
+        }
+        break;
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
         break;
@@ -677,7 +686,7 @@ void Engine::apply(const Command& c) {
         letGoOfNotes();
         settleAutomation(); // every automated setting back to where its knob was left
         playStep_.store(-1, std::memory_order_relaxed);
-        playScene_.store(-1, std::memory_order_relaxed);
+        tellScene(-1);
         break;
     case Command::Panic:
         panicHeld_ = c.a != 0;
@@ -686,7 +695,7 @@ void Engine::apply(const Command& c) {
         clearPending();
         letGoOfNotes();
         playStep_.store(-1, std::memory_order_relaxed);
-        playScene_.store(-1, std::memory_order_relaxed);
+        tellScene(-1);
         if (gate_ != Gate::Shut) gate_ = Gate::Closing;
         silenced_.store(true, std::memory_order_relaxed);
         break;
@@ -1064,7 +1073,7 @@ void Engine::fireStep() {
         }
     }
     playStep_.store(nextStep_, std::memory_order_relaxed);
-    playScene_.store(scene_, std::memory_order_relaxed);
+    tellScene(scene_);
     playRepeat_.store(repeat_, std::memory_order_relaxed);
     playBar_.store(bar_, std::memory_order_relaxed);
     nextStep_ = following;
