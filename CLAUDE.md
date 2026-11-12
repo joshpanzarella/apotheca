@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (20) | `cd build && ctest -j8` (about 50 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -414,9 +414,16 @@ effect in those two groups and fails one that does not.
   `glideapp_test` holds `Project::glideLines` (what the roll draws) to the
   engine through the Session, chords included.
 - **The roll's glide line ends at the note's start** (the owner's picture);
-  the slide is heard FROM the note's start. A line that begins before the
-  bar's top is drawn at the foot of the bar played before
-  (`barPlayedNext`, `glideSpan` in `note_marks.hpp`).
+  the slide is heard FROM the note's start. A line may begin bars before its
+  note (FULL), or before the first bar's top, which is the scene's end: so
+  the roll draws **every bar's lines wherever they cross the bar shown**
+  (`glideShifts`, `glideSpan` in `note_marks.hpp`; drawing only the bar shown
+  and the next left a slow line out of the bar it starts in). The line is
+  rectangles gathered and drawn in one call (`glideLineRects`): a call a
+  pixel cost 0.6 to 0.9 ms for 64 long lines on the desk, this 0.2 to 0.4
+  (`GLIDE_PRINT=1 ./build/glideapp_test`; not timed on the handheld). `glideapp_test`
+  reads the lines and the strip **off the drawn screen**
+  (`testTheLinesOnTheScreen`, a software renderer and the real lettering).
 - **Phazed's glide is the CZ's portamento given a rate**
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played

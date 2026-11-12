@@ -902,6 +902,7 @@ play, one click per push. The strip at the bottom shows the values.
 | Which note it slides from | The last note the track began before this one, on any key. A chord counts as its top key. |
 | The lengths | In steps, so they follow the tempo. **FULL** takes as long as it has been since the note it slides from began: a slow slide between two notes far apart, a quick one between two close together. |
 | The line on the roll | A slanted purple line. It starts on the key the note slides from and ends at the note's start. Its height is the slide's length. The slide itself is heard from the note's start on. |
+| A slide over more than one bar | FULL from a note bars back: the line is in every bar it crosses, from the bar its source note is in to the bar of its own note. |
 | Into step 1 | The note slides from the last note of the loop. Its line is at the foot of the bar before (the same bar, in a one-bar cell), running off the bottom. |
 | A key off the side of the roll | The line runs off that side. |
 | Nothing to slide from | The first note after pressing play, and a note on the same key as the one before: no slide, no line. The corner mark stays. |

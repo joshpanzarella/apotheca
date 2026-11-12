@@ -348,6 +348,18 @@ static void testTheRollsRuleIsTheEngines() {
 
 // The rule by itself, where a made-up song would not say why.
 static void testTheRule() {
+    {
+        // "Together" is 1/256 of a step, and exactly that far apart is still together.
+        GlideTrail trail;
+        trail.began(50, 0.0);
+        trail.began(60, 2.0);
+        CHECK(trail.from(2.0 + 1.0 / 256.0).pitch == 50 && trail.from(2.0 + 1.0 / 256.0 + 1e-9).pitch == 60);
+        CHECK(trail.from(2.0 + 1.0 / 128.0).pitch == 60 && trail.from(2.0 + 1.0 / 512.0).pitch == 50);
+        trail.began(72, 2.0 + 1.0 / 256.0); // one moment with 60: the higher is what follows slides from
+        CHECK(trail.from(3.0).pitch == 72 && trail.from(3.0).at == 2.0 && trail.from(2.0).pitch == 50);
+        trail.began(40, 2.0 + 1.0 / 200.0); // a moment of its own
+        CHECK(trail.from(3.0).pitch == 40 && trail.from(2.0 + 1.0 / 200.0).pitch == 72);
+    }
     std::vector<GlideNote> notes(2 * kGlideNotes);
     std::vector<GlideLine> lines(2 * kGlideNotes);
     const auto put = [&](int bar, int slot, int step, int pitch, int glide, float nudge = 0.f, int ratchet = 0) {

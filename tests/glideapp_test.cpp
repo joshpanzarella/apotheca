@@ -65,6 +65,13 @@ struct Rig {
     Spy* spy = nullptr;
 
     void frames(int count) { for (int i = 0; i < count; ++i) { clock += 16; app.update(input, clock); } }
+    void key(SDL_Keycode code, bool down) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press)) app.onButton(press, input);
+    }
     void render(long audioFrames) {
         std::vector<float> out(2 * 1000);
         for (; audioFrames > 0; audioFrames -= 1000) engine->render(out.data(), audioFrames < 1000 ? static_cast<int>(audioFrames) : 1000);
@@ -214,6 +221,47 @@ void testAGlideFromAChord() {
     CHECK(lines[0].from == top && lines[0].steps == 0.5);
 }
 
+// A track sent whole (a song opened, an undo, a cell made longer: Session::sendTrackImage) keeps
+// each glide's length. Nothing here goes by sendNotePattern: the engine has only the whole track.
+void testATrackSentWhole() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Qmod));
+    rig.listen();
+    Project& project = rig.project();
+    CHECK(project.tracks[1].bars[0] == 1);
+    NotePattern& p = project.tracks[1].notes[0][0];
+    p = NotePattern();
+    project.tracks[1].notes[0][1] = NotePattern();
+    const int kinds[5] = {kGlideTwo, kGlideFull, kGlideQuarter, kGlideOne, kGlideHalf};
+    const double seconds[5] = {0.25, 0.375, 0.03125, 0.125, 0.0625}; // (FULL: the three steps since the note before)
+    p.notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
+    for (int i = 0; i < 5; ++i) {
+        p.notes[i + 1] = NoteEvent{3 + 3 * i, 62 + 2 * i, 1.f, 0.f, 0.8f};
+        p.notes[i + 1].glide = static_cast<std::uint8_t>(kinds[i]);
+    }
+    session.setCellBars(1, 0, 2); // the second bar is filled from the first, and the track goes whole
+    CHECK(project.tracks[1].bars[0] == 2 && project.tracks[1].notes[0][1].notes[3].glide == kGlideQuarter);
+    rig.frames(2);
+    rig.render(2000);
+    rig.log.clear();
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(40L * kStep);
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(2000);
+    CHECK(session.engine.dropped() == 0);
+    int heard[5] = {0, 0, 0, 0, 0};
+    for (const Began& b : rig.log)
+        for (int i = 0; i < 5; ++i) {
+            if (b.pitch != 62 + 2 * i) continue;
+            CHECK(b.from == 60 + 2 * i && about(b.seconds, seconds[i]));
+            ++heard[i];
+        }
+    for (int i = 0; i < 5; ++i) CHECK(heard[i] >= 2); // (both bars)
+}
+
 // The song file: a glide's length is the last number of its notefx line. 1 is what ON was.
 void testTheSongFile() {
     Rig rig;
@@ -255,6 +303,187 @@ void testTheSongFile() {
     CHECK(o.notes[o.at(64, 8)].glide == kGlideHalf && o.notes[o.at(64, 8)].ratchet == 3 && o.notes[o.at(65, 10)].glide == kGlideHalf);
 }
 
+// ---- the picture itself ----------------------------------------------------------------
+
+// The screen drawn into memory, as the program draws it.
+struct Picture {
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, 640, 480, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Renderer* renderer = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
+    Fonts fonts;
+    bool lettering = false;
+    Picture() {
+        const std::vector<unsigned char> ttf = loadFontFile();
+        lettering = renderer && fonts.small.load(renderer, ttf, 14.5f) && fonts.medium.load(renderer, ttf, 17.f) && fonts.large.load(renderer, ttf, 20.f);
+    }
+    ~Picture() {
+        fonts = Fonts();
+        if (renderer) SDL_DestroyRenderer(renderer);
+        if (surface) SDL_FreeSurface(surface);
+    }
+    std::vector<Uint32> of(const App& app) {
+        app.draw(renderer, fonts);
+        SDL_RenderPresent(renderer);
+        const Uint32* px = static_cast<const Uint32*>(surface->pixels);
+        return std::vector<Uint32>(px, px + 640 * 480);
+    }
+};
+// The pixels of a glide's lines: purple where the same notes with no glide have none. (A glide
+// also leaves a purple corner on its own note: `corner` says where not to look, a note's block.)
+struct Seen {
+    int count = 0, top = 9999, bottom = -1, left = 9999, right = -1;
+    int topX = 0, bottomX = 0; // where its highest and its lowest pixels are
+};
+const Uint32 kPurplePixel = 0xff000000u | (154u << 16) | (118u << 8) | 176u;
+Seen lineOf(const std::vector<Uint32>& with, const std::vector<Uint32>& without, int fromY = 0, int toY = 480) {
+    Seen seen;
+    for (int y = fromY; y < toY; ++y)
+        for (int x = 0; x < 640; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y * 640 + x);
+            if (with[i] != kPurplePixel || without[i] == kPurplePixel) continue;
+            ++seen.count;
+            if (y < seen.top) seen.top = y, seen.topX = x;
+            if (y >= seen.bottom) seen.bottom = y, seen.bottomX = x;
+            seen.left = x < seen.left ? x : seen.left;
+            seen.right = x > seen.right ? x : seen.right;
+        }
+    return seen;
+}
+const int kTop = 65, kRow = 21, kKey = 25; // the roll at two octaves: its first row, a step, a key (note_screen.cpp)
+
+// What the roll shows of a glide, read off the screen: the line of a FULL glide from a note
+// bars before is in every bar it crosses, the one its source is in too; a glide into the first
+// step is drawn at the foot of the bar; a line ends at its note's own start, nudge and all,
+// and leans from the key it slides from; and the strip says the length.
+void testTheLinesOnTheScreen() {
+    Rig rig;
+    Picture picture;
+    CHECK(picture.lettering);
+    if (!picture.lettering) return;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Qmod));
+    Project& project = rig.project();
+    project.track = 1;
+    session.view = View::Pattern;
+    CHECK(session.octavesShown() == 2);
+    const auto shot = [&](int bar) {
+        project.bar = bar;
+        rig.app.notes().moveCursorTo(72, 0);
+        rig.frames(1);
+        rig.render(1000);
+        return picture.of(rig.app);
+    };
+    const auto clear = [&] {
+        for (int b = 0; b < kMaxBars; ++b) project.tracks[1].notes[0][b] = NotePattern();
+    };
+    // A slow line: a note in bar 1, the next in bar 3, FULL. 38 steps of line, seven keys to the right.
+    session.setCellBars(1, 0, 4);
+    CHECK(project.tracks[1].bars[0] == 4 && project.sceneSteps(0) == 64);
+    clear();
+    project.tracks[1].notes[0][0].notes[0] = NoteEvent{3, 60, 1.f, 0.f, 0.8f};
+    project.tracks[1].notes[0][2].notes[0] = NoteEvent{9, 67, 1.f, 0.f, 0.8f};
+    std::vector<Uint32> plain[4], drawn[4];
+    for (int bar = 0; bar < 4; ++bar) plain[bar] = shot(bar);
+    project.tracks[1].notes[0][2].notes[0].glide = kGlideFull;
+    for (int bar = 0; bar < 4; ++bar) drawn[bar] = shot(bar);
+    const int foot = kTop + 16 * kRow;
+    const Seen first = lineOf(drawn[0], plain[0]), second = lineOf(drawn[1], plain[1]), third = lineOf(drawn[2], plain[2]), fourth = lineOf(drawn[3], plain[3]);
+    // Bar 1: from its source's start (step 4) to the foot. Bar 2: top to foot. Bar 3: from the top to its note. Bar 4: nothing.
+    CHECK(first.count > 100 && std::abs(first.top - (kTop + 3 * kRow)) <= 2 && first.bottom >= foot - 5 && first.bottom < foot);
+    CHECK(second.count > 100 && second.top <= kTop + 2 && second.top >= kTop && second.bottom >= foot - 5 && second.bottom < foot);
+    CHECK(third.count > 50 && third.top <= kTop + 2 && third.bottom <= kTop + 10 * kRow);
+    CHECK(fourth.count == 0);
+    // It leans: 7 keys over 38 steps, so 16 steps of it cross about three keys, to the right going down.
+    CHECK(second.right - second.left > 2 * kKey && second.right - second.left < 4 * kKey && second.bottomX > second.topX + 2 * kKey);
+    CHECK(first.left >= second.left - 3 * kKey && first.right <= second.left + 4 && third.left >= second.right - 4);
+    // Its dark edge: beside the purple, pixels that were lighter are the background's colour now.
+    int edge = 0, other = 0;
+    for (std::size_t i = 0; i < plain[1].size(); ++i) {
+        if (drawn[1][i] == plain[1][i] || drawn[1][i] == kPurplePixel) continue;
+        ++(drawn[1][i] == (0xff000000u | (20u << 16) | (17u << 8) | 14u) ? edge : other);
+    }
+    CHECK(edge > second.count / 2 && other == 0);
+    // ...and the purple is the middle of it: in each row one run, two or three across, not two with dark between.
+    int rowsOfIt = 0, split = 0;
+    for (int y = kTop; y < foot; ++y) {
+        int count = 0, from = 640, to = -1;
+        for (int x = 0; x < 640; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y * 640 + x);
+            if (drawn[1][i] != kPurplePixel || plain[1][i] == kPurplePixel) continue;
+            ++count, from = x < from ? x : from, to = x;
+        }
+        rowsOfIt += count > 0;
+        split += count > 0 && (to - from + 1 != count || count > 3);
+    }
+    CHECK(rowsOfIt > 300 && split == 0);
+    if (failures) std::printf("  the slow line: bar 1 %d px rows %d..%d, bar 2 %d px rows %d..%d x %d..%d, bar 3 %d px rows %d..%d, bar 4 %d px\n", first.count, first.top, first.bottom, second.count, second.top, second.bottom, second.left, second.right, third.count, third.top, third.bottom, fourth.count);
+
+    // Into the first step from the loop's last note: at the foot of the bar, and nowhere else.
+    session.setCellBars(1, 0, 1);
+    CHECK(project.sceneSteps(0) == 16);
+    clear();
+    NotePattern& p = project.tracks[1].notes[0][0];
+    p.notes[0] = NoteEvent{0, 64, 1.f, 0.f, 0.8f};
+    p.notes[1] = NoteEvent{14, 70, 1.f, 0.f, 0.8f};
+    const std::vector<Uint32> plainRound = shot(0);
+    p.notes[0].glide = kGlideFull;
+    const std::vector<Uint32> round = shot(0);
+    const Seen wrap = lineOf(round, plainRound, kTop + kRow, 480), all = lineOf(round, plainRound);
+    CHECK(wrap.count > 20 && std::abs(wrap.top - (kTop + 14 * kRow)) <= 2 && wrap.bottom >= foot - 5 && wrap.bottom < foot);
+    CHECK(wrap.topX > wrap.bottomX + 2 * kKey); // from key 70, on its way left to 64
+    CHECK(all.count - wrap.count < 80);          // (the corner on the note itself)
+
+    // One step long, into a note played 0.4 of a step late: the line is from 0.6 before the step to 0.4 after it.
+    clear();
+    p.notes[0] = NoteEvent{2, 62, 1.f, 0.f, 0.8f};
+    p.notes[1] = NoteEvent{8, 70, 1.f, 0.4f, 0.8f};
+    const std::vector<Uint32> plainLate = shot(0);
+    p.notes[1].glide = kGlideOne;
+    const Seen late = lineOf(shot(0), plainLate);
+    CHECK(late.count > 20 && std::abs(late.top - (kTop + std::lround(7.4 * kRow))) <= 2);
+    CHECK(late.right - late.left > 7 * kKey - 14 && late.right - late.left < 8 * kKey + 14); // eight keys, centre to centre (and the corner)
+    p.notes[1].nudge = 0.f;
+    p.notes[1].glide = kGlideOff;
+    const std::vector<Uint32> plainOnTime = shot(0);
+    p.notes[1].glide = kGlideOne;
+    CHECK(std::abs(lineOf(shot(0), plainOnTime).top - (kTop + 7 * kRow)) <= 2);
+
+    // The strip with X held says the length: two lengths read differently there.
+    const auto strip = [&](int kind) {
+        p.notes[1].glide = static_cast<std::uint8_t>(kind);
+        project.bar = 0;
+        rig.app.notes().moveCursorTo(70, 8);
+        rig.frames(2);
+        rig.render(2000);
+        const std::vector<Uint32> all = picture.of(rig.app);
+        return std::vector<Uint32>(all.begin() + 640 * (foot + 4), all.begin() + 640 * 456);
+    };
+    const std::vector<Uint32> notHeld = strip(kGlideQuarter);
+    rig.key(SDLK_s, true); // X, on the note
+    rig.frames(2);
+    const std::vector<Uint32> quarter = strip(kGlideQuarter), two = strip(kGlideTwo), full = strip(kGlideFull), again = strip(kGlideQuarter);
+    CHECK(quarter != notHeld); // (it is the strip with X held: RATCHET, GLIDE, THROW, NUDGE)
+    CHECK(quarter == again && quarter != two && two != full && quarter != full);
+    rig.key(SDLK_s, false);
+    rig.frames(2);
+
+    // What the lines cost to draw (GLIDE_PRINT=1): 64 notes, each FULL, from one end of the roll to the other.
+    // On the desk, 2026-11-12, this test's software renderer (1.6 ms a frame without the glides): the lines
+    // add 0.2 to 0.4 ms; drawn a call a pixel they added 0.6 to 0.9 ms. The same pixels either way.
+    if (std::getenv("GLIDE_PRINT")) {
+        clear();
+        for (int i = 0; i < kMaxNotes; ++i) p.notes[i] = NoteEvent{i % 16, i % 2 ? 60 + (i / 2) % 8 : 83 - (i / 2) % 8, 0.5f, i / 16 * 0.2f, 0.8f};
+        double ms[2] = {0, 0};
+        for (int glides = 0; glides < 2; ++glides) {
+            for (int i = 0; i < kMaxNotes; ++i) p.notes[i].glide = static_cast<std::uint8_t>(glides ? kGlideFull : kGlideOff);
+            shot(0);
+            const Uint64 began = SDL_GetPerformanceCounter();
+            for (int i = 0; i < 200; ++i) rig.app.draw(picture.renderer, picture.fonts);
+            ms[glides] = static_cast<double>(SDL_GetPerformanceCounter() - began) * 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency()) / 200.0;
+        }
+        std::printf("  a frame of the roll, 64 notes: %.3f ms; each with a FULL glide: %.3f ms (%d purple pixels)\n", ms[0], ms[1], lineOf(picture.of(rig.app), plainOnTime).count);
+    }
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -262,7 +491,9 @@ int main(int, char**) {
     setenv("SDL_AUDIODRIVER", "dummy", 1);
     testTheRollDrawsWhatTheEnginePlays();
     testAGlideFromAChord();
+    testATrackSentWhole();
     testTheSongFile();
+    testTheLinesOnTheScreen();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

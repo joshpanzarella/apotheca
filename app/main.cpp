@@ -494,6 +494,16 @@ int main(int argc, char** argv) {
         app.session().sendNoteBar(2, 0, 0);
         app.notes().moveCursorTo(64, 12);
         if (std::strstr(view, "glides")) app.notes().moveCursorTo(64, 9);
+        if (std::strstr(view, "far")) { // notefx-glides-far1, -far2, -far3, -far4: a FULL glide from a note two bars before it, each bar of the four
+            p = NotePattern();
+            app.session().setCellBars(2, 0, 4);
+            note(0, 3, 60, 1.f, 0, 0);
+            project.tracks[2].notes[0][2].notes[0] = NoteEvent{9, 67, 1.f, 0.f, 0.8f};
+            project.tracks[2].notes[0][2].notes[0].glide = kGlideFull;
+            app.session().sendNotePattern(2, 0);
+            project.bar = std::strstr(view, "far")[3] >= '1' && std::strstr(view, "far")[3] <= '4' ? std::strstr(view, "far")[3] - '1' : 0;
+            app.notes().moveCursorTo(64, 12);
+        }
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
         if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
         if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held

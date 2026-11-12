@@ -938,10 +938,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (n.ratchet >= 2 || n.glide || n.throwTo) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo, inset);
     }
     // GLIDE: a slanted line from the key the note slides from to the note's start, as long as the
-    // slide. (Which key and how long: the engine's own rule, Project::glideLines.) A line that
-    // starts before the top of the bar is in the bar before for that part: so the lines of the
-    // bar played next are drawn too, at the bottom, where they start. A key off the side of the
-    // roll is where the line runs off it.
+    // slide. (Which key and how long: the engine's own rule, Project::glideLines.) A line may
+    // start bars before its note, or before the top of the first bar, which is the end of the
+    // scene: so every bar's lines are drawn here, wherever they cross the bar shown
+    // (glideShifts). A key off the side of the roll is where the line runs off it.
     {
         bool any = false;
         for (int b = 0; b < cellBars() && !any; ++b)
@@ -951,29 +951,38 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             project_.glideLines(project_.track, project_.scene, lines);
             const int rows = project_.barSteps(project_.scene, project_.bar);
             const int left = kGridLeft, right = kGridLeft + visibleKeys() * keyW() - 2, top = gridTop(), bottom = gridTop() + rows * kRowH - 2;
-            const int next = barPlayedNext(project_.bar, cellBars(), project_.sceneSteps(project_.scene));
-            for (int pass = 0; pass < 2; ++pass) {
-                const int bar = pass == 0 ? project_.bar : next, shift = pass == 0 ? 0 : rows;
+            // The rectangles of a line are drawn in one call: first its dark edge, then the purple over it.
+            constexpr int kMost = 1024;
+            SDL_Rect rects[2][kMost];
+            int held[2] = {0, 0};
+            const auto flush = [&] {
+                for (int layer = 0; layer < 2; ++layer) {
+                    const SDL_Color c = layer == 0 ? kBg : kPurple;
+                    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
+                    if (held[layer]) SDL_RenderFillRects(r, rects[layer], held[layer]);
+                    held[layer] = 0;
+                }
+            };
+            for (int bar = 0; bar < cellBars(); ++bar) {
+                int shifts[kGlideShifts];
+                const int count = glideShifts(bar, project_.bar, cellBars(), project_.sceneSteps(project_.scene), rows, shifts);
                 const NotePattern& in = project_.current().notes[project_.scene][bar];
                 for (int slot = 0; slot < kMaxNotes; ++slot) {
                     const NoteEvent& n = in.notes[slot];
                     const GlideLine& line = lines[bar * kMaxNotes + slot];
                     if (n.velocity <= 0.f || line.from < 0) continue;
-                    const GlideSpan span = glideSpan(static_cast<double>(n.step) + n.nudge, line.steps, shift, rows);
-                    if (!span.seen) continue;
-                    const double x0 = gx(line.from) + cellW() / 2.0, x1 = gx(n.pitch) + cellW() / 2.0;
-                    const double y0 = top + 1 + span.from * kRowH, y1 = top + 1 + span.to * kRowH;
-                    // A dark edge first, then the purple over it: it stands clear of the notes it crosses.
-                    const int count = static_cast<int>(std::ceil(std::fabs(x1 - x0) > std::fabs(y1 - y0) ? std::fabs(x1 - x0) : std::fabs(y1 - y0))) + 1;
-                    for (int layer = 0; layer < 2; ++layer) {
-                        const int grow = layer == 0 ? 1 : 0;
-                        for (int i = 0; i <= count; ++i) {
-                            const double t = static_cast<double>(i) / count;
-                            const int x = static_cast<int>(std::floor(x0 + (x1 - x0) * t)) - 1 - grow, y = static_cast<int>(std::floor(y0 + (y1 - y0) * t)) - 1 - grow;
-                            const int size = 2 + 2 * grow;
-                            if (x < left || x + size > right || y < top || y + size > bottom) continue;
-                            fill(r, x, y, size, size, layer == 0 ? kBg : kPurple);
-                        }
+                    for (int k = 0; k < count; ++k) {
+                        const GlideSpan span = glideSpan(static_cast<double>(n.step) + n.nudge, line.steps, shifts[k], rows);
+                        if (!span.seen) continue;
+                        const double x0 = gx(line.from) + cellW() / 2.0, x1 = gx(n.pitch) + cellW() / 2.0;
+                        const double y0 = top + 1 + span.from * kRowH, y1 = top + 1 + span.to * kRowH;
+                        // A dark edge, so it stands clear of the notes it crosses. (A line's edge is over the line before it.)
+                        for (int layer = 0; layer < 2; ++layer)
+                            glideLineRects(x0, y0, x1, y1, layer == 0 ? 4 : 2, left, top, right, bottom, [&](int x, int y, int w, int h) {
+                                if (held[layer] == kMost) flush(); // (never: a line has fewer squares inside the roll)
+                                rects[layer][held[layer]++] = SDL_Rect{x, y, w, h};
+                            });
+                        flush();
                     }
                 }
             }
