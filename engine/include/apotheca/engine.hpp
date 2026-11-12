@@ -265,6 +265,11 @@ public:
     // Read-outs for the screen. Safe from any thread.
     bool busAwake(int bus) const { return bus >= 0 && bus < kBuses && busAwake_[bus].load(std::memory_order_relaxed); } // false: at rest, costing nothing
     float trackPeak(int track) const; // loudest sample in the last render() call
+    // What the effect in a slot has to show: for COMP, how many dB it is
+    // turning the sound down just now (0: not at all; 6: to half). 0 for an
+    // empty slot and for an effect with nothing to show. `track` may be
+    // kMasterTrack. As of the last chunk rendered; no lock, any thread.
+    float effectMeter(int track, int slot) const;
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
     int playScene() const { return playScene_.load(std::memory_order_relaxed); } // 0..15, or -1 when stopped
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
@@ -403,6 +408,7 @@ private:
         float sendNow[kBuses] = {}; // ...as it is this sample: moving toward `send`
         std::unique_ptr<Effect> effects[kTrackSlots];
         SlotFade fades[kTrackSlots];
+        std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
         std::atomic<float> peak{0.f};
         bool hasInstrument() const { return hasDrums || synth; }
     };
@@ -449,6 +455,7 @@ private:
     bool claimedDrums_[kNumTracks] = {}; // ...and which of those are drums // control thread's view of which tracks have an instrument
     std::unique_ptr<Effect> masterEffects_[kMasterSlots];
     SlotFade masterFades_[kMasterSlots];
+    std::atomic<float> masterMeters_[kMasterSlots];
     // The send buses: one effect each, wet only.
     std::unique_ptr<Effect> busEffects_[kBuses];
     SlotFade busFades_[kBuses];

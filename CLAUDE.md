@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (16) | `cd build && ctest -j8` (about 15 s) |
+| All tests (16) | `cd build && ctest -j8` (about 25 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -103,7 +103,8 @@ Where effects are, in the engine:
 | `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
 | `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
-| `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`), a delay read between samples, the going-to-sleep rule |
+| `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
+| `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -215,6 +216,29 @@ effect in those two groups and fails one that does not.
   wow and the bend start again), so a render does not depend on how long ago
   the last sound was.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
+- **What an effect shows goes through `Engine::effectMeter(track, slot)`**
+  (COMP: the dB it is turning down). The audio thread reads the effect's
+  `meter()` after each chunk and keeps it in an atomic; the screen asks the
+  engine. **Nothing on the app thread may hold or call an `Effect` that is in
+  a slot**: the audio thread can swap it out at any chunk.
+- **A new effect's sound does not depend on how it is cut into blocks**, to
+  the bit, once its settings are at rest (each has a test). So what an effect
+  does "between blocks" (snapping vanishing numbers to zero) is done sample by
+  sample, or on a fixed count of samples (SATURATE: every 64th it has been
+  given), never "at the end of this call".
+- **A filter state does not reach zero by itself**: with a coefficient over a
+  half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
+  "silence in, silence out" fails and a processor without flush-to-zero crawls.
+- **A wet sound that comes out late is never mixed with the plain sound as it
+  came in.** Two samples late is half a wave at 12 kHz, and the two cancel (a
+  comb filter). SATURATE's 2x stage does this; its plain sound goes through
+  `Halfband::late` first, except at MIX 0 exactly. Test a new effect's
+  response at MIX 50%, not only at 0 and 100%.
+- **A new effect glides every setting** (`fx::Glide` in `fx/glide.hpp`, the one such helper): a
+  turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
+  is still the sound untouched to the sample. The first block after it is
+  made or reset starts where the settings are (`snap`), with no slide. The
+  old five do not glide and must not start to.
 
 ### The app
 - **Anything below zero is not a track**: -1 the master, -2 and -3 the buses.
@@ -324,6 +348,7 @@ effect in those two groups and fails one that does not.
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
 | Feeding both send buses from 12 tracks | 0.03% |
 | ...and a DELAY and a REVERB on them | 0.12% |
+| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

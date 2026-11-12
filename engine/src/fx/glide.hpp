@@ -1,7 +1,7 @@
 #pragma once
-// What the gliding effects share (TAPE, HALL): a setting that slides to where
-// it was turned instead of jumping, a delay line read between samples, and
-// the rule for going to sleep.
+// What the newer effects share (TAPE, HALL, CHORUS, COMP, SATURATE): a
+// setting that slides to where it was turned instead of jumping, a delay line
+// read between samples, and the rule for going to sleep.
 //
 // None of the five old effects use this file.
 
@@ -10,21 +10,23 @@
 namespace apotheca {
 namespace fx {
 
-// A value that slides. Once a block: `step = g.begin(frames, k)`, then add
-// `step` to a local copy for each sample, then `g.done()`. It moves a
-// fraction `k` of what is left each block, and lands EXACTLY on `to` when it
-// is close: a value that only ever crept closer would become a number too
-// small to hold, which is slow.
+// A value that slides. Turn it by writing `to`. Once a block:
+// `step = g.begin(frames, k)`; then, for each sample, either add `step` to a
+// local copy or call `g.next()` (one or the other, not both); then
+// `g.done()`. It moves a fraction `k` of what is left each block, and lands
+// EXACTLY on `to` when it is close: a value that only ever crept closer would
+// become a number too small to hold, which is slow.
 struct Glide {
-    float now = 0.f, to = 0.f, end = 0.f;
-    void snap() { now = end = to; }
+    float now = 0.f, to = 0.f, end = 0.f, step = 0.f;
+    void snap() { now = end = to, step = 0.f; } // there at once: before the first sound, and on a reset
     bool moving() const { return now != to; }
     float begin(int frames, float k) {
         end = now + k * (to - now);
         if (std::fabs(to - end) < 1e-5f) end = to;
-        return (end - now) / static_cast<float>(frames);
+        return step = (end - now) / static_cast<float>(frames);
     }
-    void done() { now = end; }
+    float next() { return now += step; }
+    void done() { now = end, step = 0.f; }
 };
 // The fraction a Glide moves in a block of `frames`, to be most of the way in `seconds`.
 inline float glideK(int frames, float seconds, float sampleRate) {

@@ -160,6 +160,7 @@ int apotheca::runBench() {
         effect(effectInfo(kind).name, kind);
         if (kind == EffectKind::Filter) effect("FILTER, LOW 24 DB", kind, 2, 0.3f);
         if (kind == EffectKind::Hall) effect("HALL, TONE ABOVE 50%", kind, 2, 1.f);
+        if (kind == EffectKind::Chorus) effect("CHORUS, VIBRATO or FLANGE", kind, 2, 0.9f);
     }
 
     // The send buses, as what they add to a song of twelve busy drum tracks.
