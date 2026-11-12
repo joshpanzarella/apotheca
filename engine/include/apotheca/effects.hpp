@@ -9,6 +9,9 @@
 //            quarter, a half: it follows the tempo), FEEDBACK, TONE, MIX
 //   REVERB   SIZE, DAMPING, MIX
 //   CRUSH    BITS, RATE, MIX
+//   TAPE     TIME (eight choices, triplets among them), FEEDBACK (to 120%),
+//            AGE (wow, dulling and the ceiling together), MIX
+//   HALL     SIZE, DECAY (0.3 to 20 seconds), TONE, MIX
 //
 // MIX at 0 is the sound untouched.
 //
@@ -26,7 +29,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 

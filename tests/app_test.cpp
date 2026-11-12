@@ -2977,17 +2977,20 @@ void testTheEffectsScreen() {
     rig.tap(UP);
     CHECK(first.kind == static_cast<int>(EffectKind::Filter) && first.param[0] == effectInfo(EffectKind::Filter).defaults[0] && first.param[3] == 1.f);
     CHECK(rig.listen(4000) > 0.05f);
-    rig.tap(UP, 2);
+    // (Where an effect is in the list is the list's business: effectPlace says.)
+    const int delayAt = effectPlace(EffectKind::Delay), lastAt = effectListSize() - 1;
+    CHECK(effectPlace(EffectKind::Filter) == 1 && delayAt > 1 && delayAt < lastAt && effectAt(lastAt) == EffectKind::Crush);
+    rig.tap(UP, delayAt - 1);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(UP, 9);
+    rig.tap(UP, lastAt + 3);
     CHECK(first.kind == static_cast<int>(EffectKind::Crush)); // the last one: it stops
-    rig.tap(DOWN, 2);
+    rig.tap(DOWN, lastAt - delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(DOWN, 3);
+    rig.tap(DOWN, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::None)); // down past the first effect: none
     rig.tap(DOWN, 2);
     CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
-    rig.tap(UP, 3);
+    rig.tap(UP, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(LEFT); // sideways does nothing while A is held
     rig.tap(RIGHT);
@@ -3050,7 +3053,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 1);
     rig.key(A, true);
-    rig.tap(UP, 4);
+    rig.tap(UP, effectPlace(EffectKind::Reverb));
     rig.key(A, false);
     CHECK(rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Reverb) && first.kind == static_cast<int>(EffectKind::Delay));
     rig.tap(RIGHT, 9);
@@ -3058,7 +3061,7 @@ void testTheEffectsScreen() {
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
     rig.key(A, true);
-    rig.tap(UP, 5);
+    rig.tap(UP, effectPlace(EffectKind::Crush));
     rig.key(A, false);
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
     rig.tap(DOWN, 2);
@@ -3189,9 +3192,24 @@ void testEffectsThroughTheSession() {
     {
         // An effect this version does not have (a song from a newer one): the line is skipped, and what the slot held stays.
         std::unique_ptr<Project> newer(new Project);
-        CHECK(parseSong("apotheca-song 1\nfx 1 delay 0.2\nfx 1 tape 0.9 0.9 0.9 0.9\ntrack drums\nfx 2 crush 0.25\nfx 2 hall 1 1\n", *newer));
+        CHECK(parseSong("apotheca-song 1\nfx 1 delay 0.2\nfx 1 nosuchecho 0.9 0.9 0.9 0.9\ntrack drums\nfx 2 crush 0.25\nfx 2 nosuchroom 1 1\n", *newer));
         CHECK(newer->masterEffects[0].kind == static_cast<int>(EffectKind::Delay) && newer->masterEffects[0].param[0] == 0.2f);
         CHECK(newer->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Crush) && newer->tracks[0].effects[1].param[0] == 0.25f);
+    }
+    {
+        // The newer effects are words in a song file like the old ones, and come back as they went.
+        std::unique_ptr<Project> made(new Project), back(new Project);
+        CHECK(parseSong("apotheca-song 1\nfx 2 tape 0.9 0.5 0.25 0.125\ntrack drums\nfx 1 tape 0.0625\n", *made));
+        CHECK(made->masterEffects[1].kind == static_cast<int>(EffectKind::Tape) && made->masterEffects[1].param[0] == 0.9f && made->masterEffects[1].param[3] == 0.125f);
+        CHECK(made->tracks[0].effects[0].kind == static_cast<int>(EffectKind::Tape) && made->tracks[0].effects[0].param[0] == 0.0625f);
+        const std::string text = songText(*made);
+        CHECK(text.find("fx 2 tape 0.9 0.5 0.25 0.125") != std::string::npos);
+        CHECK(parseSong(text, *back) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape) && back->masterEffects[1].param[2] == 0.25f);
+        CHECK(back->tracks[0].effects[0].kind == static_cast<int>(EffectKind::Tape));
+        CHECK(parseSong("apotheca-song 1\nfx 1 hall 0.75 0.5 0.25 0.125\ntrack drums\nfx 2 hall 1\n", *made));
+        CHECK(made->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && made->masterEffects[0].param[1] == 0.5f && made->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Hall));
+        CHECK(made->tracks[0].effects[1].param[0] == 1.f && made->tracks[0].effects[1].param[1] == effectInfo(EffectKind::Hall).defaults[1]);
+        CHECK(songText(*made).find("fx 1 hall 0.75 0.5 0.25 0.125") != std::string::npos && parseSong(songText(*made), *back) && back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[0].param[3] == 0.125f);
     }
     CHECK(parseSong("apotheca-song 1\nfx 1 reverb 0.9\nfx 3 delay\nfx 0 delay\nfx 2 warble 1 1\ntrack drums\nfx 2 crush 5 -5 nonsense\nfx 1\n", *song));
     CHECK(song->masterEffects[0].kind == static_cast<int>(EffectKind::Reverb) && song->masterEffects[0].param[0] == 0.9f);

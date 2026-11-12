@@ -57,6 +57,8 @@ extern const EffectInfo kDriveInfo;  // drive.cpp
 extern const EffectInfo kDelayInfo;  // delay.cpp
 extern const EffectInfo kReverbInfo; // reverb.cpp
 extern const EffectInfo kCrushInfo;  // crush.cpp
+extern const EffectInfo kTapeInfo;   // tape.cpp
+extern const EffectInfo kHallInfo;   // hall.cpp
 
 } // namespace fx
 } // namespace apotheca
