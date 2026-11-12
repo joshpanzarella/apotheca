@@ -1069,9 +1069,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 const float y = static_cast<float>(stripY + kChordFxRowTop + (effect % 3) * kChordFxRowH);
                 const bool picked = effect == fxPick_, waits = chordEffectWaits(c, effect), set = chordEffectSet(c, effect);
                 if (picked) fill(r, static_cast<int>(x) - 8, static_cast<int>(y) - 1, 3, fonts.small.capHeight() + 2, kBrass);
-                fonts.small.draw(r, x, y, chordEffectName(effect), waits ? kLine : picked ? kText : kDim);
+                // (One that waits is dim; picked all the same, it is still to be read.)
+                fonts.small.draw(r, x, y, chordEffectName(effect), waits ? (picked ? kDim : kLine) : picked ? kText : kDim);
                 chordEffectValue(c, effect, text, sizeof text);
-                fonts.small.draw(r, x + kChordFxValueIn[effect / 3], y, text, waits ? kLine : set ? (picked ? kBrass : kText) : kDim);
+                fonts.small.draw(r, x + kChordFxValueIn[effect / 3], y, text, waits ? (picked ? kDim : kLine) : set ? (picked ? kBrass : kText) : kDim);
             }
             field(kChordFxThrowX, "THROW", throwName(chordUnder->throwTo), chordUnder->throwTo ? kBrass : kText);
         } else if (chordUnder) {
