@@ -903,12 +903,14 @@ play, one click per push. The strip at the bottom shows the values.
 
 | Effect | Does | On a chord |
 | --- | --- | --- |
-| **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
+| **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats. It is one of a chord's six effects (see "Chord effects") |
 | **GLIDE** (up = longer, down = shorter) | The note starts at the pitch of the note before it and slides to its own. How long the slide takes is the setting: OFF, 1/4 STEP, 1/2 STEP, 1 STEP, 2 STEPS or FULL. | No: a chord has no one note to slide from |
 | **THROW** (A) | The track is sent in full to ECHO, SPACE or both for as long as the note lasts (see "THROW" under PATTERN, drums). A foot at the note's end: on the left for ECHO, the right for SPACE. | Yes: the whole chord |
-| **Dice** (Y) | Rolls a ratchet, a glide of some length, or both. Always something, and never what it was. THROW is left as it is. | A ratchet |
+| **Dice** (Y) | Rolls a ratchet, a glide of some length, or both. Always something, and never what it was. THROW is left as it is. | Rolls among the chord's six |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
+- **On a chord the directions are shared out differently**: up / down pick
+  one of six effects, left / right set it. See "Chord effects".
 - With both set, only the first of the ratchet glides.
 - A note too short for its ratchet plays as many as fit.
 - Kept in the song, undone by SELECT + B, gone with the note.
@@ -961,6 +963,54 @@ Drop a file in and it shows up. What is read from a pack is listed at the
 top of `app/chords.hpp`. A pack called "Plain C" is built in. A song file
 stores each chord whole, so a song still plays on a device without its pack.
 A bar holds 64 notes, chords' notes included, and 16 chords.
+
+### Chord effects
+
+**A chord that sounds played by a hand, or an arpeggio.** Hold **X** on any
+note of a chord. **Up / down picks the effect, left / right sets it**, one
+click per push, stick or D-pad. The strip lists all six and marks the one
+picked. X + A is still THROW, X + Y still the dice.
+
+| Effect | Values | Does |
+| --- | --- | --- |
+| **RATCHET** | OFF, x2, x3, x4 | The whole chord that many times inside its first step, as before |
+| **STRUM** | OFF, STRUM, WIDE STRUM | The notes start one after another: 9 ms apart, or 26 ms. The first is on the chord's own moment, the rest land late. Each is held to the chord's end |
+| | 1/4 STEP, 1/2 STEP, 1 STEP | **An arpeggio**: one note at a time, that far apart, round and round the chord's notes until the chord ends |
+| **ORDER** | UP, DOWN, UP-DOWN, RANDOM | Which way STRUM runs. Does nothing with STRUM off (the strip shows it dim) |
+| **HUMAN TIME** | OFF, 10, 25, 50, 75, 100% | Each note starts a little early or late. At 100%: up to 12 ms either way |
+| **HUMAN LEVEL** | the same | Each note a little louder or quieter. At 100%: up to 15% of its level either way |
+| **LENGTHS** | the same | Each note is let go a little sooner. At 100%: down to half. Never longer, so nothing runs into the next chord |
+
+**Random means fresh every time the chord plays.** No two times round the
+loop are alike. But pressing play from the top gives the same performance
+again, so a bounce is what you heard from the top.
+
+How the effects meet each other, and the edges:
+
+| Thing | What happens |
+| --- | --- |
+| A strum on a short chord | The strum never takes more than half the chord's length. A shorter chord is strummed faster |
+| STRUM with RATCHET | Every piece of the ratchet is strummed (within half of the piece) |
+| An arpeggio with RATCHET | The ratchet is not played. It is kept, and the strip shows it dim |
+| An arpeggio past the chord's end | It never goes past. It goes round again through the notes until the chord ends; the last note is cut there |
+| UP-DOWN on a strum | Up on one chord, down on the next, as a hand goes. Play starts with up |
+| UP-DOWN on an arpeggio | Up, then back down, without playing the top or bottom twice |
+| RANDOM on an arpeggio | A fresh order each time round the notes. With three notes or more, never the same note twice running |
+| HUMAN TIME, early | The engine looks one step ahead, so a note really can come before the beat. **The song's very first chord cannot**: its early notes land on the first sample |
+| HUMAN TIME in an arpeggio | A note never moves more than a quarter of the way to the next, so the order holds |
+| HUMAN TIME and the next chord | A note that comes early can start up to 12 ms before the chord before it has ended |
+| THROW | The send is open from the chord's first note to the chord's end, strummed or not, however short LENGTHS leaves the notes |
+| GLIDE after the chord | A gliding note after it still slides from the chord's top key, counted from the chord's own moment, as the roll draws it. A strum does not change that |
+| X (hear) | Plays the chord plain, all at once. The effects are heard when the song plays |
+| Swap (hold Y) | The new chord keeps the effects |
+| Break into notes (hold Y, B) | The loose notes keep the ratchet and the THROW. **They keep nothing of the other five**: a strum belongs to a chord |
+| Move (hold R1), copy, NEXT SCENE, undo | The effects go with the chord |
+| The mark | A light corner at the top of each of the chord's keys. A ratchet's lines and edge are as they were |
+| The dice (X + Y) | Always something, never what it was. A strum about half the time, an arpeggio about one roll in seven; human amounts only 10 or 25%; an arpeggio is never given a ratchet |
+
+In the song file a chord's effects are one line after it, left out when none
+is set: `chordplay STEP STRUM ORDER TIME LEVEL LENGTHS`. A program from
+before chord effects skips the line and plays the chord plain.
 
 ### DEVICE, a synth
 

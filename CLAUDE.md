@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (22) | `cd build && ctest -j8` (about 50 s) |
+| All tests (24) | `cd build && ctest -j8` (about 50 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -433,10 +433,71 @@ effect in those two groups and fails one that does not.
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
 - **Note effects are two bytes on a note** (`NoteEvent::ratchet`, `glide`; a
-  chord has `ratchet` only). They reach the engine in `Command::e` (low byte
+  chord has `ratchet` and its own five, next rule). They reach the engine in `Command::e` (low byte
   the ratchet, +256 a glide, and `glide << 11` for a length other than half a
   step, above THROW's two bits). In a song file: `notefx STEP KEY RATCHET
   GLIDE` and `chordfx STEP RATCHET`, each after its note.
+- **Chord effects are a `ChordPlay` on a chord** (owner, 2026-11-12;
+  `ChordEvent::play`, `engine/include/apotheca/chord_rule.hpp`): STRUM (0 off,
+  1 STRUM, 2 WIDE STRUM, 3 / 4 / 5 an arpeggio at a quarter, half and one
+  step), ORDER (0 UP, 1 DOWN, 2 UP-DOWN, 3 RANDOM), and HUMAN TIME, HUMAN
+  LEVEL and LENGTHS as percentages. The numbers are in songs: appended. The
+  top figures are named constants there (`kHumanTimeMs` 12, `kHumanLevelMost`
+  0.15, `kLengthsMost` 0.5, `kStrumMs` 9, `kWideStrumMs` 26).
+  - **The engine does not know chords; each note says which key of its chord
+    it is.** `NotePattern::render` fills `play.index` and `play.count`; they
+    go in `Command::play` (SetNote) and `TrackImage::Note::play`. Anything
+    new that writes chord notes out goes through `render`.
+  - **A chord with nothing set takes the path it always did**
+    (`play.atRest()` in `fireStep`): that is what keeps old songs to the bit.
+    ORDER alone is "nothing set".
+  - **Every roll is worked out from where and which time**
+    (`chordSeed(track, slot, step, steps since Play)`, then `chordUnit` with
+    what it is for and which note). Never a generator walked: that is what
+    makes it the same on any helper count and block length, and Play from
+    the top the same performance again. The only counted thing is
+    `Track::strokes` (chords begun since Play, for UP-DOWN strums), counted in
+    song order on the audio thread.
+  - **Everything a chord effect times is a whole number of samples**
+    (`kWholeFrames`: the delay, a ratchet's pieces, the note's end). A
+    waiting note fires when under one sample is left, so a part of a sample
+    plays a sample sooner or later by how the sound is cut into blocks. A
+    nudged plain note and a plain ratchet still do (not changed: old songs at
+    the handheld's block length). An arpeggio's clock fires as a step does,
+    on the first sample at or after its time.
+  - **A note that may be early is asked for a step ahead**, as a nudged-early
+    note is. Which asking takes it is `nudge < 0 || play.time > 0`: nothing
+    that depends on the tempo, or a tempo change between the two askings
+    plays the note twice or not at all. The song's very first step has no
+    step before it: early notes land on the top (`top`).
+  - **A spread chord is still one moment to a glide.** Its notes say nothing
+    to the `GlideTrail` when they sound (`kUntold`); a waiting note that only
+    tells (`kTellOnly`) names each key at the chord's own moment. So what
+    follows slides from its top key, as `Project::glideLines` draws, however
+    it is strummed. `chordfx_test` and `glideapp_test` hold both.
+  - **An arpeggio is one clock for the chord** (`Track::Arp`, two a track:
+    the next chord's is set waiting while this one's plays, and the one that
+    begins ends the other), not a waiting note per note: 512 would not fit.
+    `clearPending` and a track taken away empty them; `SetTempo` keeps its
+    place in the step. A ratchet is not played in an arpeggio.
+  - **THROW holds for the whole chord** (`Note::hold` is set before LENGTHS
+    shortens the note; an arpeggio's every note carries what is left).
+  - In a song file: `chordplay STEP STRUM ORDER TIME LEVEL LENGTHS`, a line
+    of its own after the chord (and its `chordfx`), **left out when all five
+    are 0**. A new word and not more numbers on `chordfx`: an old program
+    skips a word it does not know, and `chordfx` is written as it always was.
+  - **On the roll, X held on a chord shares the directions out the other
+    way**: up / down pick one of six (`NoteScreen::fxPick_`, kept from one
+    hold to the next), left / right set it. A plain note's are as they were.
+    The list, a click, the words and the dice's odds are
+    `app/chord_effects.hpp`; the strip's places are in `note_marks.hpp`
+    (`kChordFx...`). A chord broken into notes keeps none of the five.
+  - X hears a chord plain. The effects are the step clock's.
+  - Its tests are their own two programs: `tests/chordfx_test.cpp` (the
+    engine, with a listening synth) and `tests/chordfxapp_test.cpp` (the
+    gesture, the strip off the drawn screen, the dice, the song file, undo,
+    swap, break, drag, scenes). `chordfx_test testStrum testArpeggio` runs
+    just those.
 - **A glide is a length, and its number is not its place** (owner,
   2026-11-12; `engine/include/apotheca/glide_rule.hpp`). The numbers are in
   songs, appended: 0 off, **1 half a step (what ON was, so old songs sound as
