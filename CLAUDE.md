@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (18) | `cd build && ctest -j8` (about 40 s) |
+| All tests (19) | `cd build && ctest -j8` (about 40 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -381,7 +381,12 @@ effect in those two groups and fails one that does not.
   name goes through `buttonLabel`, never `buttonName` (that is the word in
   controls.txt, which stays SELECT). The web pages and README keep the full
   word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
-  on a string that would show it spelled out.
+  on a string that would show it spelled out; it plants its own faults at the
+  end and must catch each (add a plant with a new rule).
+- **A check of what is DRAWN uses `tests/canvas.hpp`**: a 640x480 screen in
+  memory with the program's lettering. `ui_test` looks at the hints bar's
+  pixels and `app_test` at the help card's boxes; a check of the text alone
+  passed with the bar drawing the key as written.
 - **Hold X + Y is the dice** for what a hit or a note does (`fxRoll` on both
   grids). **Hold X + A is THROW** (`fxThrow` on both): OFF, ECHO, SPACE, BOTH.
   The check for X held comes before A's own jobs, so A alone still places.

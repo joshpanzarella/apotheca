@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "canvas.hpp"
 #include "input.hpp"
 #include "note_marks.hpp"
 #include "ui.hpp"
@@ -1078,6 +1079,37 @@ static void testTheBarDrawsSelForSelect() {
     CHECK(ui::keyShown("UP / DOWN") == "UP DOWN" && ui::keyShown("A / B") == "A / B"); // arrows stand side by side
 }
 
+// The same, seen on the screen: the bar itself draws SEL, in a box as wide as SEL.
+// (keyShown above is the rule; this is the bar using it.)
+static void testTheBarDrawsSelOnTheScreen() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const auto drawn = [&](const char* key) {
+        const ui::Hint list[] = {{key, "songs"}, {"A", "open"}};
+        canvas.clear();
+        ui::hints(canvas.r, fonts, list, 2);
+        return canvas.all();
+    };
+    const std::vector<Uint32> full = drawn("SELECT"), shortened = drawn("SEL");
+    CHECK(full == shortened);
+    CHECK(drawn("SELECT + Y") == drawn("SEL + Y") && drawn("HOLD SELECT") == drawn("HLD SEL"));
+    CHECK(full != drawn("SELEC") && full != drawn("SE") && full != drawn("SEL + Y")); // the canvas can tell words apart
+    // The box: cream, starting at 8, the word and four pixels each side.
+    drawn("SELECT");
+    const int top = ui::kScreenH - ui::kHintsH + 5;
+    CHECK(canvas.run(8, top, ui::kText) == static_cast<int>(fonts.small.width("SEL") + 8.f));
+    CHECK(canvas.run(8, top, ui::kText) < static_cast<int>(fonts.small.width("SELECT") + 8.f));
+    // And the letters in it are SEL's own, drawn plainly.
+    const int w = canvas.run(8, top, ui::kText), h = ui::kHintsH - 9;
+    const std::vector<Uint32> box = canvas.part(8, top, w, h);
+    canvas.clear();
+    ui::fill(canvas.r, 8, top, w, h, ui::kText);
+    fonts.small.draw(canvas.r, 12.f, ui::kScreenH - ui::kHintsH + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f, "SEL", ui::kBg);
+    CHECK(box == canvas.part(8, top, w, h));
+}
+
 static void testNoteStripThrowFits() {
     const float space[3] = {63.f, 53.5f, 46.f}, both[3] = {51.f, 43.f, 37.f}; // about as the fonts measure them
     float x = 0.f;
@@ -1107,6 +1139,7 @@ int main(int, char**) {
     testNoteStripNudgeFits();
     testNoteStripThrowFits();
     testTheBarDrawsSelForSelect();
+    testTheBarDrawsSelOnTheScreen();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();
