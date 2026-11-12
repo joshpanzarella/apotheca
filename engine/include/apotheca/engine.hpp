@@ -77,6 +77,16 @@ inline int slotsOf(int track) { return track == kMasterTrack ? kMasterSlots : (b
 constexpr float kBusRestSeconds = 10.f;
 constexpr float kBusQuiet = 1e-6f; // 120 dB under full scale
 constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or not a number) is taken as silence
+// A TAIL ALWAYS ENDS. From the last sound a bus is sent to the bus at rest is
+// never longer than this, whatever effect it holds and however it is set, at
+// any tempo (effects_test measures every one: testATailAlwaysEnds). A bounce's
+// cap is longer than this, so no ONE effect runs into it. Effects in a row can
+// (a howling TAPE in a slot keeps a TAPE on a bus fed: about 710 s at 40 BPM),
+// and so can anything broken: the cap is what ends those.
+// Measured 2026-11-12, at 40 BPM, a full-scale burst sent: TAPE 418 s (a half
+// note, FEEDBACK full: 30 s of holding, then DELAY's own fall), DELAY 388 s,
+// HALL 44 s, REVERB 36 s. At 120 BPM the two delays take a third as long.
+constexpr float kLongestTailSeconds = 450.f;
 constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
@@ -364,7 +374,8 @@ private:
     };
     void swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming);
     // `bus`: the slot is a bus's, where "no effect" is silence and not the sound passing through.
-    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false);
+    // `hits`: the lanes of the first drum track hit on this chunk's first sample (chunkHits_), for a DUCK.
+    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false, unsigned hits = 0);
     void binLeaving(SlotFade& fade); // the audio thread only, with no helper at work
 
     struct Track {
@@ -409,6 +420,10 @@ private:
             int more = 0;
         };
         Pending pending[kDrumLanes][3];
+        // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
+        // always lands on a chunk's first sample (render() ends a chunk where the
+        // next one is due), so "which lanes" is all there is to say.
+        unsigned hitsNow = 0;
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
@@ -456,6 +471,11 @@ private:
     int thrownMask_[kNumTracks] = {};
     void closeThrows(); // every note's THROW is over: the sends shut (in 5 ms)
     int chunkFrames_ = 0, chunkScope_ = -1;
+    // DUCK: the lanes of the first drum track hit on this chunk's first sample.
+    // Written by the audio thread before the tracks are shared out, only read
+    // after that: a helper working on the drums changes nothing a helper
+    // working on a ducked track looks at.
+    unsigned chunkHits_ = 0;
     float* chunkPeaks_ = nullptr;
     int active_[kNumTracks] = {};
     std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};

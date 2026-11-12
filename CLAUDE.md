@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (18) | `cd build && ctest -j8` (about 30 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, each also with `--hold-a`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the BOUNCE row at work: `bounce`, `bounce-tail`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -234,6 +234,20 @@ effect in those two groups and fails one that does not.
 - **What is sent to a bus is sound or it is silence**: not-a-number, infinity
   and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
   DELAY and REVERB cannot look after themselves and would hold it for good.
+- **A tail always ends** (owner, 2026-11-12). `kLongestTailSeconds` (450) is
+  the promise: from the last sound a bus is sent to the bus at rest, at every
+  setting of every effect a bus can hold, at 40 BPM. `effects_test`
+  (`testATailAlwaysEnds`) measures every delay and reverb in the table at 0,
+  50% and 100% of each setting and fails one that takes longer, so **a new
+  delay or reverb whose loop can hold at 1 or over needs its own way down**.
+  TAPE's: left alone 30 s (nothing over `kFedLevel` coming in), a FEEDBACK
+  over 90% eases to 90% (`tire_`); at 90% or under it is multiplied by exactly
+  1 (`tapeTire` compares the SETTING, 0.75 and a hair, not what it reads:
+  `1.2f * 0.75f` is a float over `0.9f`). **The promise is for one effect.**
+  Effects in a row (two TAPEs: a slot into a bus, or two slots) each count
+  from the last sound coming IN, so one keeps the next fed and the tail can
+  pass 450 s; the bounce's cap is what ends that one. DELAY and REVERB cannot ring for good (0.9 and 0.98 at most round the
+  loop) and are not capped from outside.
 - **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
   and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
   reads LEVEL there, at full (`effectDefault(kind, i, true)`).
@@ -269,13 +283,22 @@ effect in those two groups and fails one that does not.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
   the last sound was.
+- **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
+  lane 1). A hit always lands on a chunk's first sample (`render()` ends a
+  chunk where the next is due), so the engine marks it where it triggers the
+  drum (`Track::hitsNow`), and `renderChunk` copies the first drum track's
+  marks to `chunkHits_` and clears them **before the tracks are shared out**;
+  helpers only read it. Keep it that way: written during the chunk, a ducked
+  track would depend on which helper got to the drums first. A new way to
+  trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
+  hits by hand); a bus's slot is not told.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **What an effect shows goes through `Engine::effectMeter(track, slot)`**
   (COMP: the dB it is turning down). The audio thread reads the effect's
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD), as a thin
+  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a thin
   strip over the bar from the right, full at `kMeterFullDb` (24).
 - **A new effect's sound does not depend on how it is cut into blocks**, to
   the bit, once its settings are at rest (each has a test). So what an effect
@@ -377,6 +400,21 @@ effect in those two groups and fails one that does not.
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes
   a song: anything new that writes songs off the app thread takes it too.
+- **A bounce runs until its tail ends** (owner, 2026-11-12; `BounceTail` in
+  `session.hpp`, no engine and no file in it, tested with made-up tails).
+  Sound is `kBounceFloor` (one step of a 16-bit file) or more; it is over
+  after `kBounceQuietSeconds` (4) without any, and the file ends half a second
+  after the last sound. **Four seconds must stay longer than the longest gap
+  between two echoes** (3 s: a half note at 40 BPM), as the bus rest time
+  must. The cap (`kBounceCapSeconds`, 480) must stay longer than
+  `kLongestTailSeconds` in the engine; both are checked.
+- **A bounce is written as it goes**, to `NAME.wav.part`, and renamed when it
+  is whole: a tail of minutes never sits in memory, and a cancelled bounce
+  leaves nothing. One that is KILLED (power, a crash) leaves its `.wav.part`:
+  `removeHalfBounces` takes those away when the program opens
+  (`useBounceFolder`) and when a bounce starts, never while one is under way. The tracks of an EACH TRACK bounce are padded with silence
+  to the longest. Its percentage counts the song's own playing only; in a
+  tail `bounceTail()` gives the seconds so far and the row says that instead.
 - **Do not pipe the app's output into `head`** when making a still; it dies
   before it saves.
 
@@ -394,6 +432,10 @@ effect in those two groups and fails one that does not.
   on (`mathsPrint`) and falls back to loudness and peak, saying so. To prove a
   change is bit-exact on another machine, run `--print` before and after and
   compare.
+- **`effects_test --only testDuck testTape`** runs just those (a second or
+  two, for trying a change); `ctest` runs them all. `through()` there hits a
+  drum five times a second, lanes 1 and 8, so the checks for every effect
+  reach DUCK; no other effect hears it.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -415,6 +457,8 @@ effect in those two groups and fails one that does not.
 | ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
 | Every hit of twelve busy drum tracks thrown to both buses, nothing on them (2026-11-12; the tracks themselves 1.45%, as before THROW) | 1.2% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
+| DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
+| TAPE with its way down, the same run (0.10% just before it) | 0.11% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

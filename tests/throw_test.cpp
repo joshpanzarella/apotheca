@@ -9,7 +9,9 @@
 //   3. a thrown note: the track's send held open for the note's length, 5 ms ramps
 //   4. Stop and panic leave no send open
 //   5. the commands that carry it
-//   6. a song with throws, the same to the last bit on 0 to 3 helpers
+//   6. a song with throws, the same to the last bit on 0 to 3 helpers (and with DUCKs in it)
+//   7. THROW and DUCK on one track: a thrown hit is not ducked, a thrown note is
+//   8. a hit thrown into a tape that howls: the tail still ends
 
 #include <cmath>
 #include <cstdint>
@@ -17,6 +19,7 @@
 #include <memory>
 #include <vector>
 
+#include "apotheca/effects.hpp"
 #include "apotheca/engine.hpp"
 
 using namespace apotheca;
@@ -781,7 +784,7 @@ static void testCommands() {
 // Drums and three synths, real effects on both buses, sends from every track,
 // thrown hits (ratcheted, cut, pitched) and thrown notes (ratcheted, nudged),
 // a mute part way. Asked for in blocks of odd sizes.
-static std::vector<float> throwSong(int helpers, bool throws = true) {
+static std::vector<float> throwSong(int helpers, bool throws = true, bool ducks = false) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
     CHECK(engine->addDrumTrack(4));
@@ -816,6 +819,17 @@ static std::vector<float> throwSong(int helpers, bool throws = true) {
     CHECK(engine->setEffect(0, 2, EffectKind::Crush) && engine->setEffect(2, 2, EffectKind::Filter));
     engine->send(make(Command::SetSend, 0, 0, 0, 0.3f));
     engine->send(make(Command::SetSend, 2, 1, 0, 0.6f));
+    if (ducks) {
+        // DUCKs beside the throws: on the drums that are its key (and throw), on the second drum
+        // track, on two synths whose notes are thrown, and on the master, which the buses join.
+        CHECK(engine->setEffect(0, 0, EffectKind::Duck) && engine->setEffect(4, 1, EffectKind::Duck) && engine->setEffect(1, 0, EffectKind::Duck) && engine->setEffect(3, 1, EffectKind::Duck));
+        CHECK(engine->setEffect(kMasterTrack, 0, EffectKind::Duck));
+        engine->send(make(Command::SetEffectParam, 0, 0, 2, 1.5f / 8.f)); // from lane 2
+        engine->send(make(Command::SetEffectParam, 1, 0, 0, 1.f));
+        engine->send(make(Command::SetEffectParam, 3, 1, 2, 3.5f / 8.f));
+        engine->send(make(Command::SetEffectParam, 3, 1, 1, 0.2f));
+        engine->send(make(Command::SetEffectParam, kMasterTrack, 0, 0, 0.3f));
+    }
     std::vector<float> all(2 * 1024);
     engine->render(all.data(), 1024);
     engine->send(make(Command::Play, 0, 0, 1));
@@ -851,6 +865,133 @@ static void testOnAnyHelperCount() {
     double apart = 0.0;
     for (std::size_t i = 0; i + 2 < alone.size(); ++i) apart += (static_cast<double>(alone[i]) - dry[i]) * (static_cast<double>(alone[i]) - dry[i]);
     CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.005);
+    // With DUCKs on the tracks that throw, and on the master: the same again, and not the same song.
+    const std::vector<float> ducked = throwSong(0, true, true);
+    CHECK(ducked.size() == alone.size() && ducked != alone && peakOf(ducked) > 0.1f);
+    for (float v : ducked) {
+        if (v != v || v == 99.f) {
+            CHECK(!"a sample that is not a number, or was never written");
+            break;
+        }
+    }
+    CHECK(throwSong(0, true, true) == ducked);
+    for (int helpers : {1, 2, 3}) CHECK(throwSong(helpers, true, true) == ducked);
+}
+
+// ---- 7. THROW and DUCK on one track -------------------------------------------------------------
+
+static std::unique_ptr<Effect> duck(float amount, float release, int lane) {
+    std::unique_ptr<Effect> e = makeEffect(EffectKind::Duck, 48000.f, 120.f);
+    e->setParam(0, amount);
+    e->setParam(1, release);
+    e->setParam(2, (static_cast<float>(lane) + 0.5f) / 8.f);
+    return e;
+}
+
+static void testWithDuck() {
+    // A thrown DRUM HIT is written out for the bus inside the drum machine, before the track's
+    // slots. So a DUCK on the drum track dips the track and not what was thrown: the bus is given
+    // the same, to the sample, with the DUCK and without. (Lane 1 hits again a step later, with
+    // the first hit still sounding, so there is a dip to be seen.)
+    {
+        Rig plain, ducked;
+        ducked.engine->setTrackEffect(0, 1, duck(1.f, 1.f, 0));
+        for (Rig* rig : {&plain, &ducked}) {
+            rig->hit(0, 2, 0.9f, kThrowEcho);
+            rig->hit(0, 3, 0.9f, kThrowEcho);
+            rig->play();
+            rig->render(8 * kStep, 211);
+        }
+        CHECK(peakOf(plain.echo->fed) > 0.2f && plain.echo->fed == ducked.echo->fed && plain.woke(plain.echo) == ducked.woke(ducked.echo));
+        CHECK(plain.out != ducked.out);
+        // The track itself is all but gone 3 ms after each hit, at AMOUNT 100% (and the thrown copy is not).
+        CHECK(peakOf(plain.out, 3 * kStep + 150, 3 * kStep + 1500) > 0.1f && peakOf(ducked.out, 3 * kStep + 150, 3 * kStep + 1500) < 0.1f * peakOf(plain.out, 3 * kStep + 150, 3 * kStep + 1500));
+        CHECK(peakOf(ducked.echo->fed, static_cast<std::size_t>(kStep + 150), static_cast<std::size_t>(kStep + 1500)) > 0.1f); // (the bus woke at step 2: a step on is step 3)
+    }
+    // A thrown NOTE is the track's send held open, and a send is taken after the slots. So a
+    // DUCK on the note's track dips what the bus is given, exactly as it dips the track.
+    {
+        Rig plain, ducked;
+        for (Rig* rig : {&plain, &ducked}) {
+            rig->sineSynth(1);
+            if (rig == &ducked) rig->engine->setTrackEffect(1, 1, duck(1.f, 0.f, 0));
+            rig->note(1, 0, 2, 60, 6, kThrowEcho);
+            rig->hit(0, 4, 0.9f); // the kick, part way through the note; not thrown
+            rig->play();
+            rig->render(12 * kStep, 211);
+        }
+        const long hit = 4 * kStep;
+        // Up to the kick: the same. From 3 ms after it: nothing, then back (RELEASE at its shortest, 20 ms).
+        bool same = plain.woke(plain.echo) == 2 * kStep && ducked.woke(ducked.echo) == 2 * kStep;
+        for (long i = 2 * kStep; i < hit; ++i) same = same && plain.fedAt(plain.echo, i) == ducked.fedAt(ducked.echo, i);
+        CHECK(same);
+        float dipped = 0.f, there = 0.f, back = 0.f;
+        for (long i = hit + 144; i < hit + 150; ++i) dipped = std::fmax(dipped, std::fabs(ducked.fedAt(ducked.echo, i)));
+        for (long i = hit; i < hit + 480; ++i) there = std::fmax(there, std::fabs(plain.fedAt(plain.echo, i)));
+        for (long i = hit + kStep; i < hit + 2 * kStep; ++i) back = std::fmax(back, std::fabs(ducked.fedAt(ducked.echo, i) - plain.fedAt(plain.echo, i)));
+        CHECK(there > 0.3f && dipped < 0.01f && back < 1e-4f);
+        // And the dip is never a rise: the bus is given no more than it was without the DUCK.
+        bool never = true;
+        for (long i = hit; i < hit + 2 * kStep; ++i) never = never && std::fabs(ducked.fedAt(ducked.echo, i)) <= std::fabs(plain.fedAt(plain.echo, i)) + 1e-6f;
+        CHECK(never);
+    }
+    // A DUCK on the MASTER dips the whole mix, and the buses have joined it by then: a thrown
+    // hit's way back from the bus is dipped with everything else. (What the bus is GIVEN is not.)
+    {
+        Rig plain, ducked;
+        ducked.engine->setMasterEffect(0, duck(1.f, 1.f, 0));
+        for (Rig* rig : {&plain, &ducked}) {
+            rig->hit(0, 2, 0.9f, kThrowSpace);
+            rig->play();
+            rig->render(6 * kStep, 211);
+        }
+        CHECK(plain.space->fed == ducked.space->fed && peakOf(plain.space->fed) > 0.2f);
+        CHECK(peakOf(plain.out, 2 * kStep + 144, 2 * kStep + 400) > 0.1f && peakOf(ducked.out, 2 * kStep + 144, 2 * kStep + 400) < 0.3f * peakOf(plain.out, 2 * kStep + 144, 2 * kStep + 400));
+    }
+}
+
+// ---- 8. thrown into a tape that howls -----------------------------------------------------------
+
+// ECHO holds TAPE with its FEEDBACK at 120%, and nothing is sent to it but thrown hits. The tape
+// sings for thirty seconds after the last of them and then tires (kLongestTailSeconds is the
+// promise): the bus comes to rest. A second thrown hit starts the thirty seconds again.
+static double restsAfter(bool second) {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Tape));
+    engine->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.f));  // a sixteenth
+    engine->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 1.f));  // 120%
+    std::vector<float> out(2 * 256);
+    engine->render(out.data(), 256);
+    Command hit = make(Command::Trigger, 0, 1, 0, 0.9f);
+    hit.extra = 4 * kThrowEcho;
+    CHECK(engine->send(hit));
+    long frames = 0;
+    float at20 = 0.f, at45 = 0.f;
+    bool sent = false;
+    while (frames < 200L * 48000) {
+        if (second && !sent && frames >= 25L * 48000) {
+            CHECK(engine->send(hit));
+            sent = true;
+        }
+        engine->render(out.data(), 256);
+        frames += 256;
+        const bool in20 = frames > 20L * 48000 && frames < 21L * 48000, in45 = frames > 45L * 48000 && frames < 46L * 48000;
+        for (float v : out) {
+            if (in20) at20 = std::fmax(at20, std::fabs(v));
+            if (in45) at45 = std::fmax(at45, std::fabs(v));
+        }
+        if (frames > 48000 && !engine->busAwake(0)) break;
+    }
+    CHECK(at20 > 0.2f);                     // still singing at twenty seconds: it has not been cut short
+    CHECK(second ? at45 > 0.2f : at45 < 0.01f); // at forty-five: tired, unless a second hit was thrown at twenty-five
+    return static_cast<double>(frames) / 48000.0;
+}
+
+static void testThrownIntoAHowl() {
+    const double once = restsAfter(false), twice = restsAfter(true);
+    std::printf("  a hit thrown into TAPE at 120%%: the bus rests %.1f s after it; with another thrown at 25 s, %.1f s\n", once, twice);
+    CHECK(once > 40.0 && once < 70.0 && once < kLongestTailSeconds);
+    CHECK(twice > once + 20.0 && twice < once + 30.0 && twice < kLongestTailSeconds);
 }
 
 int main() {
@@ -860,6 +1001,8 @@ int main() {
     testStopAndPanic();
     testCommands();
     testOnAnyHelperCount();
+    testWithDuck();
+    testThrownIntoAHowl();
     if (failures == 0) std::printf("throw_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

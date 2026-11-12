@@ -2251,6 +2251,7 @@ static void testEffectsOneByOne() {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
         CHECK(info.params >= 3 && info.params <= kEffectParams && info.name[0]);
+        if (kind == EffectKind::Duck) continue; // the one with no MIX, and it does nothing until a drum is hit: effects_test has it (testDuck)
         int mix = -1;
         for (int p = 0; p < info.params; ++p)
             if (std::string(info.paramNames[p]) == "MIX") mix = p;

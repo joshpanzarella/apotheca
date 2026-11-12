@@ -563,10 +563,15 @@ void testABounce() {
     CHECK(session.startBounce(Session::Bounce::Song));
     session.finishBounce();
     const std::vector<float> wet = read(session.bounceLast());
-    CHECK(dry.size() == static_cast<std::size_t>(kBar + 3 * 48000) && wet.size() == dry.size());
-    if (wet.size() != dry.size() || dry.empty()) return;
+    // A bounce runs until its tail ends, and the file ends half a second after the last sound:
+    // the dry one half a second after the song, the thrown one as long as its echoes take.
+    const std::size_t kAfter = 24000;
+    const float kOneStep = 1.5f / 32767.f; // what is under kBounceFloor is written as nothing, or as one step of the file
+    CHECK(dry.size() == static_cast<std::size_t>(kBar) + kAfter && wet.size() > dry.size() + 48000);
+    if (wet.size() <= dry.size() || dry.empty()) return;
     CHECK(loudest(dry, 0, 2000) > 0.2f && loudest(dry, 2 * kStep, kBar) == 0.f);
     CHECK(loudest(wet, 0, 2000) > 0.2f && loudest(wet, 3 * kStep, 4 * kStep) > 0.2f); // the first echo, three steps on, about as loud as the hit
+    CHECK(loudest(wet, wet.size() - kAfter, wet.size()) <= kOneStep && loudest(wet, wet.size() - kAfter - 4800, wet.size() - kAfter) >= 0.9f * kOneStep / 1.5f);
     // And thrown from a muted track: nothing of it.
     session.setMuted(0, true);
     sleep(1);
@@ -574,6 +579,87 @@ void testABounce() {
     session.finishBounce();
     const std::vector<float> muted = read(session.bounceLast());
     CHECK(muted.size() == dry.size() && loudest(muted, 0, muted.size()) == 0.f);
+    session.setMuted(0, false);
+
+    // ---- The song's LAST step throws. The hit is in the song; all of its echoes come after the
+    // song has ended, in the tail. The bounce keeps them, and it ends.
+    drums.setStep(6, 0, 0.f);
+    drums.setFx(6, 0, StepFx());
+    drums.setStep(6, 15, 1.f);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> lastDry = read(session.bounceLast());
+    drums.setFx(6, 15, fx);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> lastWet = read(session.bounceLast());
+    CHECK(lastDry.size() == static_cast<std::size_t>(kBar) + kAfter && loudest(lastDry, 15 * kStep, kBar) > 0.2f && loudest(lastDry, kBar, lastDry.size()) == 0.f);
+    CHECK(lastWet.size() > static_cast<std::size_t>(kBar + 6 * kStep) + kAfter && lastWet.size() < static_cast<std::size_t>(kBar) + 30 * 48000);
+    CHECK(loudest(lastWet, kBar + 2 * kStep, kBar + 3 * kStep) > 0.2f);  // the first echo, three steps after step 16: two steps past the song's end
+    CHECK(loudest(lastWet, kBar + 5 * kStep, kBar + 6 * kStep) > 0.05f); // and the second
+    CHECK(loudest(lastWet, kBar + kStep, kBar + 2 * kStep) < 0.01f);     // between the hit and its echo, nothing
+    if (lastWet.size() > kAfter) CHECK(loudest(lastWet, lastWet.size() - kAfter, lastWet.size()) <= kOneStep);
+    // The same as the hit thrown on step 1, fifteen steps later: the tail is whole, not a part of it.
+    const long apart = static_cast<long>(lastWet.size()) - static_cast<long>(wet.size()) - 15 * kStep;
+    std::printf("  a hit thrown on step 1: %.2f s of file; on step 16: %.2f s (15 steps later would be %+ld frames off)\n", wet.size() / 48000.0, lastWet.size() / 48000.0, apart);
+    CHECK(apart > -2400 && apart < 2400);
+
+    // ---- A thrown NOTE on the last step. The song's end stops it and shuts its send (5 ms), so
+    // what went to the bus is the one step of it there was; its echoes are kept all the same.
+    drums.setStep(6, 15, 0.f);
+    drums.setFx(6, 15, StepFx());
+    session.addTrack(TrackKind::Phazed);
+    NotePattern& notes = rig.project().tracks[1].notes[0][0];
+    notes.notes[0] = NoteEvent{15, 60, 2.f, 0.f, 0.8f};
+    session.sendNotePattern(1, 0);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> noteDry = read(session.bounceLast());
+    notes.notes[0].throwTo = 1;
+    session.sendNotePattern(1, 0);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> noteWet = read(session.bounceLast());
+    std::printf("  a note on the last step: %.2f s after the song unthrown, %.2f s thrown; its echo %.3f (unthrown %.3f there)\n",
+                (static_cast<double>(noteDry.size()) - kBar) / 48000.0, (static_cast<double>(noteWet.size()) - kBar) / 48000.0,
+                static_cast<double>(loudest(noteWet, kBar + 2 * kStep + 2400, kBar + 3 * kStep)), static_cast<double>(loudest(noteDry, kBar + 2 * kStep + 2400, kBar + 3 * kStep)));
+    CHECK(loudest(noteDry, 15 * kStep, kBar) > 0.05f && noteWet.size() > noteDry.size() + 6 * kStep);
+    CHECK(loudest(noteWet, kBar + 2 * kStep + 2400, kBar + 3 * kStep) > 0.05f && loudest(noteWet, kBar + 2 * kStep + 2400, kBar + 3 * kStep) > 4.f * loudest(noteDry, kBar + 2 * kStep + 2400, kBar + 3 * kStep));
+    CHECK(noteWet.size() < static_cast<std::size_t>(kBar) + 30 * 48000);
+
+    // ---- The last step thrown into a TAPE that howls (FEEDBACK 120%). This is the bounce that
+    // never ended: the tape tires after thirty seconds, and the bounce ends by itself, far short of
+    // the cap. And with a cap of five seconds it ends there, faded.
+    notes.notes[0] = NoteEvent();
+    session.sendNotePattern(1, 0);
+    drums.setStep(6, 15, 1.f);
+    drums.setFx(6, 15, fx);
+    session.setEffectParam(kEchoBus, 0, 1, 1.f);
+    rig.frames(2);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> howl = read(session.bounceLast());
+    const double howlSeconds = (static_cast<double>(howl.size()) - kBar) / 48000.0;
+    std::printf("  the last step thrown into TAPE at 120%%: the file ends %.1f s after the song\n", howlSeconds);
+    CHECK(howlSeconds > 30.0 && howlSeconds < 90.0 && howlSeconds < kLongestTailSeconds);
+    CHECK(loudest(howl, kBar + 20 * 48000, kBar + 21 * 48000) > 0.2f); // still singing at twenty seconds: the throw is what fed it, and the thirty count from there
+    if (howl.size() > kAfter) CHECK(loudest(howl, howl.size() - kAfter, howl.size()) <= kOneStep);
+    session.useBounceCap(5.f);
+    sleep(1);
+    CHECK(session.startBounce(Session::Bounce::Song));
+    session.finishBounce();
+    const std::vector<float> capped = read(session.bounceLast());
+    CHECK(capped.size() == static_cast<std::size_t>(kBar + 5 * 48000));
+    CHECK(loudest(capped, kBar + 3 * 48000, kBar + 4 * 48000) > 0.2f && loudest(capped, capped.size() - 480, capped.size()) < 0.02f);
 }
 
 } // namespace

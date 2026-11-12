@@ -2,7 +2,8 @@
 //
 //   TIME      eight choices, in time with the song (kThirds below)
 //   FEEDBACK  0 to 120%: how much of each echo goes round again. Past 100% it
-//             howls, and holds there: the loop has a ceiling
+//             howls, and holds there: the loop has a ceiling. Left alone, a
+//             FEEDBACK over 90% falls back to 90% (IT ALWAYS ENDS, below)
 //   AGE       how worn the tape is: wow, the dulling and the ceiling together
 //   MIX       how loud the echoes are beside the sound (which stays as it is)
 //
@@ -22,6 +23,21 @@
 //     up to 400 Hz. Both 6 dB an octave, and every echo passes them once more.
 //   - The ceiling: 1.0 at AGE 0 down to 0.33 at AGE full. Well under it, and
 //     midway between the cuts, an echo comes back at FEEDBACK.
+//
+// IT ALWAYS ENDS (owner, 2026-11-12: "there should be a cap"). FEEDBACK at
+// 100% never died away and past it the howl held for good: a send bus with
+// it never came to rest, and a bounce would never have ended. So:
+//   - While sound is coming in (anything over kFedLevel, 80 dB under full),
+//     and for kHoldSeconds (30) after the last of it, FEEDBACK is what it
+//     reads. It builds, howls and sings exactly as it did.
+//   - Left alone longer than that, the loop tires: over a couple of seconds
+//     its FEEDBACK eases down to kTiredFeedback (90%, the most the old DELAY
+//     has), if it was set higher. From there each echo is under nine tenths
+//     of the last and the tail dies away. Sound coming in again wakes it:
+//     FEEDBACK is back where it reads within kSettle.
+//   - A FEEDBACK that reads 90% or less is never touched, to the bit (tapeTire).
+//   - That is one TAPE. Two in a row each count from the last sound coming IN,
+//     so a howling one keeps the next fed; a bounce's cap is what ends that.
 //
 // ON A BUS (the plan's sends): the dry sound is dropped and MIX is the level.
 // That is Unit's `bus_`, set by the "you are on a bus" call (setOnBus, which
@@ -47,6 +63,12 @@ int timeChoice(float v) {
 }
 
 constexpr float kMaxFeedback = 1.2f;
+constexpr float kFedLevel = 1e-4f;      // sound coming in under this is not feeding the loop
+constexpr float kHoldSeconds = 30.f;    // how long after the last sound came in FEEDBACK stays what it reads
+constexpr float kTiredFeedback = 0.9f;  // ...and what it is held to after that (as FEEDBACK reads: 90%)
+constexpr float kTiredSetting = 0.75f;  // where FEEDBACK reads that 90%: at this or under, the loop is never touched
+constexpr float kTiredRoom = 1e-4f;     // (a setting got to by sums can be a float off: it still reads 90%)
+constexpr float kTireSeconds = 2.f;     // how gently it gets there
 constexpr float kWowHz = 0.8f;
 constexpr float kWowSeconds = 0.0015f; // either way, at AGE full
 constexpr float kSettle = 0.02f;       // seconds for a turned setting to arrive
@@ -82,7 +104,7 @@ public:
         phase_ = 0.0;
         wow_ = 0.f;
         quiet_ = 0;
-        asleep_ = true; // nothing on the tape
+        asleep_ = true; // nothing on the tape (and when sound wakes it, the count of how long it has been left alone starts again)
         arrive();
     }
     void setTempo(float bpm) override {
@@ -107,12 +129,20 @@ public:
             }
             asleep_ = false;
             quiet_ = 0;
+            starved_ = 0;
             phase_ = 0.0, wow_ = 0.f; // an empty tape starts as one fresh from the box does, wow and all
             arrive();                 // nothing is sounding: whatever was turned meanwhile is simply there
         }
         const float k = glideK(frames, kSettle, sr_);
+        // Fed, or left alone? Alone for longer than the hold, a FEEDBACK over kTiredFeedback is eased down to it.
+        const long hold = static_cast<long>(kHoldSeconds * sr_);
+        starved_ = coming >= kFedLevel ? 0 : (starved_ < hold ? starved_ + frames : hold);
+        const bool tired = starved_ >= hold;
+        tire_.to = tired ? tapeTire(p_[1]) : 1.f;
+        const float dTire = tire_.begin(frames, tired ? glideK(frames, kTireSeconds, sr_) : k);
         const float dFeedback = feedback_.begin(frames, k), dPush = push_.begin(frames, k), dCeiling = ceiling_.begin(frames, k);
         const float dHigh = highCut_.begin(frames, k), dLow = lowCut_.begin(frames, k), dDepth = depth_.begin(frames, k), dMix = mix_.begin(frames, k);
+        float tire = tire_.now;
         float feedback = feedback_.now, push = push_.now, ceiling = ceiling_.now, highCut = highCut_.now, lowCut = lowCut_.now, depth = depth_.now, mix = mix_.now;
         // The wow: a slow sine, worked out at each end of the block and joined by a straight line.
         phase_ += 6.283185307179586 * kWowHz * frames / sr_;
@@ -129,6 +159,7 @@ public:
         int at = at_;
         float loudest = 0.f;
         for (int i = 0; i < frames; ++i) {
+            tire += dTire;
             feedback += dFeedback, push += dPush, ceiling += dCeiling, highCut += dHigh, lowCut += dLow, depth += dDepth, mix += dMix, wow += dWow;
             // TIME glides: the tape speeds up or slows down, never past double or half.
             if (delay != delayTo_) {
@@ -150,7 +181,9 @@ public:
             const float echoL = highL - lowL, echoR = highR - lowR;
             // Back onto the tape under the ceiling, with what is coming in.
             // (Nothing too faint goes round or on: see kFloor.)
-            float backL = echoL * feedback * push, backR = echoR * feedback * push;
+            // (`tire` is exactly 1 unless the loop has been left alone a long while: until then this is the sound as it was, to the bit.)
+            const float round = feedback * tire;
+            float backL = echoL * round * push, backR = echoR * round * push;
             backL = std::fabs(backL) < kQuiet ? 0.f : backL;
             backR = std::fabs(backR) < kQuiet ? 0.f : backR;
             const float nextL = (std::fabs(inL) < kNothing ? 0.f : inL) + ceiling * soft(backL);
@@ -167,6 +200,7 @@ public:
         delay_ = delay;
         wow_ = wowEnd;
         low_[0] = lowL, low_[1] = lowR, high_[0] = highL, high_[1] = highR;
+        tire_.done();
         feedback_.done(), push_.done(), ceiling_.done(), highCut_.done(), lowCut_.done(), depth_.done(), mix_.done();
         // Asleep once the whole tape holds nothing worth the name.
         quiet_ = silent && loudest < kQuiet ? quiet_ + frames : 0;
@@ -196,6 +230,8 @@ private:
     // Everything that glides is where it was turned to, at once.
     void arrive() {
         delay_ = delayTo_;
+        tire_.to = 1.f;
+        tire_.snap();
         feedback_.snap(), push_.snap(), ceiling_.snap(), highCut_.snap(), lowCut_.snap(), depth_.snap(), mix_.snap();
     }
     // The ceiling: straight for small sounds, flat at 1 from 1.5 up.
@@ -206,11 +242,13 @@ private:
 
     std::vector<float> line_[2];
     int size_ = 0, at_ = 0, quiet_ = 0;
+    long starved_ = 0; // frames since sound last came in, up to the hold
     bool asleep_ = true;
     float tempo_ = 120.f, wowMost_ = 72.f, wow_ = 0.f;
     double delay_ = 24000.0, delayTo_ = 24000.0, phase_ = 0.0;
     float low_[2] = {}, high_[2] = {};
     Glide feedback_, push_, ceiling_, highCut_, lowCut_, depth_, mix_;
+    Glide tire_; // what FEEDBACK is multiplied by: 1, or less once the loop has been left alone (IT ALWAYS ENDS)
 };
 
 void reading(int index, float v, const float*, char* out, int size) {
@@ -222,6 +260,13 @@ void reading(int index, float v, const float*, char* out, int size) {
 Effect* create() { return new Tape; }
 
 } // namespace
+
+float tapeTire(float setting) {
+    // The SETTING is compared, with a hair of room, not what it reads: 1.2f * 0.75f comes out a
+    // float above 0.9f, and a FEEDBACK of exactly 90% was then multiplied by 0.99999994.
+    if (!(setting > kTiredSetting + kTiredRoom)) return 1.f;
+    return kTiredFeedback / (kMaxFeedback * setting);
+}
 
 const EffectInfo kTapeInfo = {
     "TAPE", 4, {"TIME", "FEEDBACK", "AGE", "MIX"}, {0.5625f, 0.4f, 0.35f, 0.35f}, // a dotted eighth, 48%

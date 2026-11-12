@@ -297,9 +297,13 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kBounce: {
             static const char* what[3] = {"THE SONG", "EACH TRACK", "THIS TRACK"};
             if (session_.bouncing()) {
-                std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
+                // The song's own length is known, so that part is a percentage. A tail's is not
+                // (it runs until it has died away): it says how much of it there is so far.
+                const float tail = session_.bounceTail();
+                if (tail >= 0.f) std::snprintf(text, sizeof text, "TAIL  %d S", static_cast<int>(tail));
+                else std::snprintf(text, sizeof text, "WORKING  %d%%", static_cast<int>(session_.bounceProgress() * 100.f));
                 part = session_.bounceProgress();
-                note = "you can carry on meanwhile";
+                note = tail >= 0.f ? "until the echoes have died away" : "you can carry on meanwhile";
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
