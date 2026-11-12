@@ -3549,6 +3549,60 @@ void testSendsThroughTheSession() {
 }
 
 // The FX screen: two pages of four rows, the sends, the buses and the group jump.
+// COMP's meter on the FX screen: the row asks the engine for its own slot, and the strip's length.
+void testTheFxScreenShowsCompAtWork() {
+    CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
+    for (int k = 0; k < kEffectKinds; ++k)
+        if (static_cast<EffectKind>(k) != EffectKind::Comp) CHECK(effectMeterParam(static_cast<EffectKind>(k)) == -1);
+    CHECK(kMeterFullDb == 24.f);
+    CHECK(FxScreen::meterPixels(0.f, 108) == 0 && FxScreen::meterPixels(-3.f, 108) == 0 && FxScreen::meterPixels(std::nanf(""), 108) == 0);
+    CHECK(FxScreen::meterPixels(24.f, 108) == 108 && FxScreen::meterPixels(60.f, 108) == 108 && FxScreen::meterPixels(1e30f, 108) == 108);
+    CHECK(FxScreen::meterPixels(12.f, 108) == 54 && FxScreen::meterPixels(6.f, 108) == 27 && FxScreen::meterPixels(2.f, 108) == 9);
+    CHECK(FxScreen::meterPixels(0.1f, 108) == 1 && FxScreen::meterPixels(0.05f, 108) == 0 && FxScreen::meterPixels(12.f, 0) == 0);
+
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    const auto hit = [&] {
+        Command c;
+        c.type = Command::Trigger;
+        c.track = 0;
+        c.value = 1.f;
+        rig.engine->send(c);
+        rig.frames(1);
+        rig.render(3000);
+    };
+    hit();
+    for (int row = 0; row < FxScreen::kRows; ++row) CHECK(fx.meterOf(row) == 0.f); // no COMP anywhere: nothing to show
+    CHECK(fx.meterOf(-1) == 0.f && fx.meterOf(FxScreen::kRows) == 0.f);
+    // On the track's first slot, set to squash hard. (The first: the SENDS row is not a slot, and must not show slot 1's.)
+    session.setEffect(0, 0, EffectKind::Comp);
+    session.setEffectParam(0, 0, 0, 0.f);
+    rig.frames(1);
+    rig.render(2000);
+    hit();
+    const float track = fx.meterOf(0);
+    CHECK(track > 3.f && track == rig.engine->effectMeter(0, 0));
+    for (int row = 1; row < FxScreen::kRows; ++row) CHECK(fx.meterOf(row) == 0.f);
+    // On the master's second slot too: each row shows its own.
+    session.setEffect(kMasterTrack, 1, EffectKind::Comp);
+    session.setEffectParam(kMasterTrack, 1, 0, 0.5f);
+    rig.frames(1);
+    rig.render(2000);
+    hit();
+    const float master = fx.meterOf(FxScreen::kMasterRow + 1);
+    CHECK(master > 0.f && master == rig.engine->effectMeter(kMasterTrack, 1) && master != fx.meterOf(0));
+    CHECK(fx.meterOf(0) > 3.f && fx.meterOf(FxScreen::kMasterRow) == 0.f && fx.meterOf(1) == 0.f && fx.meterOf(2) == 0.f);
+    CHECK(fx.meterOf(FxScreen::kSendsRow) == 0.f && fx.meterOf(FxScreen::kBusRow) == 0.f && fx.meterOf(FxScreen::kBusRow + 1) == 0.f);
+    // Another effect in the slot: it has nothing to show.
+    session.setEffect(0, 0, EffectKind::Filter);
+    rig.frames(1);
+    rig.render(2000);
+    hit();
+    CHECK(fx.meterOf(0) == 0.f && fx.meterOf(FxScreen::kMasterRow + 1) > 0.f); // a FILTER shows nothing
+}
+
 void testTheFxScreensTwoPages() {
     Rig rig;
     Session& session = rig.app.session();
@@ -5387,6 +5441,7 @@ int main(int, char**) {
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensTwoPages();
+    testTheFxScreenShowsCompAtWork();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();

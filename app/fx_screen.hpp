@@ -52,6 +52,12 @@ public:
     int cursorRow() const { return row_; }
     int cursorColumn() const { return column_; }
     int page() const { return row_ / kPageRows; } // 0 the track's, 1 the buses and the master
+    // What the effect in a row is showing just now (COMP: the dB it is turning
+    // the sound down), from the engine; 0 for a row with nothing to show. And
+    // how long the strip that draws it is, in a box whose bar is `width` wide:
+    // nothing at 0 dB, the whole width at kMeterFullDb and beyond.
+    float meterOf(int row) const;
+    static int meterPixels(float dB, int width);
     static constexpr int kPageRows = 4, kPages = 2, kRows = kPages * kPageRows;
     static constexpr int kSendsRow = kTrackSlots, kBusRow = kPageRows, kMasterRow = kPageRows + kBuses;
 

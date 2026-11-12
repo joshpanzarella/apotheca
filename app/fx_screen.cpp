@@ -21,6 +21,18 @@ void FxScreen::goTo(int row, int column) {
     column_ = column < 0 ? 0 : (column > last ? last : column);
 }
 
+float FxScreen::meterOf(int row) const {
+    if (row < 0 || row >= kRows || sends(row)) return 0.f;
+    return session_.engine.effectMeter(trackOf(row), slotOf(row));
+}
+
+int FxScreen::meterPixels(float dB, int width) {
+    if (!(dB > 0.f) || width <= 0) return 0; // (and "not a number" draws nothing)
+    if (dB >= kMeterFullDb) return width;
+    const int px = static_cast<int>(std::round(static_cast<float>(width) * dB / kMeterFullDb));
+    return px < 1 && dB >= 0.1f ? 1 : px; // a tenth of a dB and up is seen
+}
+
 void FxScreen::hear() {
     const TrackKind kind = project_.current().kind;
     if (kind == TrackKind::Drums) {
@@ -238,6 +250,13 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             valueBox(r, fonts, 8 + (p + 1) * (colW + colGap), y + 18, colW, boxH, label, text, effectChoices(kind, p) > 0 ? -1.f : shown[p],
                      here && column_ == p + 1, holding_);
             if (onTrack && session_.hasAutomation(trackOf(row), project_.scene, lane)) fill(r, 8 + (p + 1) * (colW + colGap) + 1, y + 18 + boxH - 3, colW - 2, 2, kPurple);
+            if (p == effectMeterParam(kind)) {
+                // What the effect is doing to the sound just now (COMP: how far it is turning it
+                // down): a strip over the box's own bar, growing from the right as a meter of
+                // this kind does. The bar's track is 7 in from each side of the box (valueBox).
+                const int bw = colW - 14, px = meterPixels(meterOf(row), bw);
+                if (px > 0) fill(r, 8 + (p + 1) * (colW + colGap) + 7 + bw - px, y + 18 + boxH - 14, px, 2, kBrass);
+            }
         }
         if (kind == EffectKind::None) fonts.small.draw(r, 8.f + colW + 14.f, y + 18.f + 24.f, "Nothing here. Hold A and push up to put an effect in.", kDim);
     }

@@ -528,6 +528,7 @@ int main(int argc, char** argv) {
     } else if (std::strncmp(view, "fx", 2) == 0 && (view[2] == 0 || view[2] == '-')) {
         // fx: the track's page. fx-sends: on a send. fx-pick: on an effect (with --hold-a, the picking hints).
         // fx-all: the buses and the master. fx-bus: on a bus's effect. fx-level: on a bus's LEVEL.
+        // fx-comp, fx-comp-all: COMP on the track and on the master, with its meter.
         app.session().setEffect(0, 0, EffectKind::Delay);
         app.session().setEffect(0, 1, EffectKind::Filter);
         app.session().setEffectParam(0, 1, 0, 0.45f);
@@ -541,6 +542,15 @@ int main(int argc, char** argv) {
         else if (std::strcmp(view, "fx-all") == 0) app.fx().goTo(FxScreen::kMasterRow, 1);
         else if (std::strcmp(view, "fx-bus") == 0) app.fx().goTo(FxScreen::kBusRow + 1, 0);
         else if (std::strcmp(view, "fx-level") == 0) app.fx().goTo(FxScreen::kBusRow, 4);
+        else if (std::strcmp(view, "fx-comp") == 0 || std::strcmp(view, "fx-comp-all") == 0) {
+            // COMP at work, on the track and on the master: the strip on THRESHOLD is how far it is turning the sound down.
+            app.session().setEffect(0, 2, EffectKind::Comp);
+            app.session().setEffectParam(0, 2, 0, 0.3f);
+            app.session().setEffect(kMasterTrack, 1, EffectKind::Comp);
+            app.session().setEffectParam(kMasterTrack, 1, 0, 0.45f);
+            if (view[7] == 0) app.fx().goTo(2, 1);
+            else app.fx().goTo(FxScreen::kMasterRow + 1, 1);
+        }
         else app.fx().goTo(0, 2);
     } else if (std::strcmp(view, "panic") == 0) {
         for (SDL_Keycode key : {SDLK_1, SDLK_2, SDLK_q, SDLK_w}) pushKey(key, true); // all four shoulder buttons

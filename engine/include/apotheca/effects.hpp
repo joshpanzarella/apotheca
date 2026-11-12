@@ -73,6 +73,12 @@ int effectChoices(EffectKind kind, int index);
 // another; without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
 
+// What an effect shows while sound passes (Engine::effectMeter): the setting
+// whose box on the FX screen draws it, or -1 for an effect that shows nothing.
+// COMP: how many dB it is turning the sound down, on its THRESHOLD box.
+int effectMeterParam(EffectKind kind);
+constexpr float kMeterFullDb = 24.f; // what fills the box's width
+
 // Hold A + left / right on an effect: a whole group at once. From a place in
 // the list, `by` > 0 gives the first effect of the next group and `by` < 0
 // the first of the group before; the same place back when there is none

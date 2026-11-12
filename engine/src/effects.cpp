@@ -101,6 +101,8 @@ int effectBus(EffectKind kind) {
     return group == EffectGroup::Delay ? 0 : (group == EffectGroup::Reverb ? 1 : -1);
 }
 
+int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp ? 0 : -1; }
+
 int effectMixParam(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);
     for (int i = 0; i < info.params; ++i)
