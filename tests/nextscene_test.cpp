@@ -8,11 +8,14 @@
 
 #include <SDL.h>
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "apotheca/engine.hpp"
@@ -1250,14 +1253,343 @@ void testTheCommand() {
     CHECK(at(3, 0, 1, false) == -1);                                                         // stopped: it is nowhere, and stays there
 }
 
+// The song playing THROUGH its scenes, beside a song built the finished way. An engine that got
+// the copy through the gesture and one handed the song with the copy in it play the same sound
+// to the bit, all the way: through the scenes that moved down, round to the top, and through the
+// copy in its turn. (The two are started a scene apart, so that they are at the same place when
+// the key is pressed: the scene copied and its copy sound the same.) Taken back, it is the song
+// as it was, played by an engine nobody touched; put back, the finished one again.
+//   later = false: the key is pressed in scene 1, in the middle of a step of its first time round.
+//   later = true:  scene 3 is playing, and scene 1 is the one copied: the playing moves down a scene.
+void testTheSongBesideTheFinishedSong(bool later) {
+    Rig plain, handed, made, undone, redone;
+    for (Rig* r : {&plain, &handed, &made, &undone, &redone}) fill(*r);
+    handed.project() = *withCopyAfter(plain.project(), 0);
+    handed.session().applyProject();
+    handed.frames(2);
+    handed.render(512);
+    handed.heard.clear();
+    const int start = later ? 2 : 0;
+    for (Rig* r : {&plain, &handed, &made, &undone, &redone}) {
+        r->project().scene = r == &handed ? start + 1 : start;
+        r->session().togglePlay(true);
+        r->project().scene = r == &handed ? 1 : 0;
+    }
+    const auto all = [&](int audioFrames) {
+        for (Rig* r : {&plain, &handed, &made, &undone, &redone}) {
+            r->frames(1);
+            r->render(audioFrames);
+        }
+    };
+    all(5 * kStep + 777);
+    CHECK(made.engine->playScene() == start && made.engine->playRepeat() == 0 && made.engine->playStep() == 5);
+    const unsigned images = undone.session().imagesSent() + redone.session().imagesSent();
+    for (Rig* r : {&made, &undone, &redone}) r->nextScene();
+    all(256); // one block
+    CHECK(made.engine->playScene() == start + 1 && made.engine->playRepeat() == 0 && made.engine->playStep() == 5);
+    all(4 * kStep + 1234); // (in the middle of a step again)
+    undone.undo();
+    redone.undo();
+    all(256);
+    CHECK(undone.engine->playScene() == start && undone.engine->playStep() == 9 && made.engine->playScene() == start + 1);
+    all(3 * kStep + 99);
+    redone.redo();
+    all(256);
+    CHECK(redone.engine->playScene() == start + 1 && redone.engine->playStep() == 12);
+    all(2 * (kSongSteps + 23 * 2) * kStep); // twice through the longer song
+    CHECK(undone.session().imagesSent() + redone.session().imagesSent() == images); // no track sent whole
+    const float madeOff = apart(made.heard, handed.heard), redoneOff = apart(redone.heard, handed.heard), undoneOff = apart(undone.heard, plain.heard);
+    std::printf("  the song playing through, NEXT SCENE pressed %s: at most %g from the song built with the copy in it; taken back, %g from the song as it was; put back, %g (%.1f s)\n",
+                later ? "on scene 1 while scene 3 plays" : "in scene 1", static_cast<double>(madeOff), static_cast<double>(undoneOff), static_cast<double>(redoneOff),
+                static_cast<double>(made.heard.size()) / 2.0 / 48000.0);
+    CHECK(madeOff == 0.f && redoneOff == 0.f && undoneOff == 0.f);
+    CHECK(loudest(made.heard, 0, made.heard.size() / 2) > 0.1f && apart(plain.heard, handed.heard) > 0.01f); // (and the two songs are not alike)
+}
+
+// Where taking it back cannot leave "the song as it was, played straight through": the copy is
+// playing and the scene it was made from has already had its turn this time round. The playing
+// goes to that scene (there is no other place for it: the copy is gone), at the same step, bar
+// and time round, so that scene is heard for longer than its plays. Nothing is cut or started
+// and no cell of another scene is played; it is not any song played from the top.
+void testTakenBackWhileTheCopyPlaysInItsTurn() {
+    Rig rig, plain;
+    fill(rig);
+    fill(plain);
+    rig.nextScene();
+    for (Rig* r : {&rig, &plain}) {
+        const int on = r->project().scene;
+        r->project().scene = 0;
+        r->session().togglePlay(true);
+        r->project().scene = on; // (back before a frame is drawn: going to another scene is itself a step of undo)
+        r->frames(1);
+        r->render((2 * 23 + 30) * kStep + 500); // scene 1 twice, and the copy: in its second time round, step 8
+        r->frames(1);
+    }
+    CHECK(rig.engine->playScene() == 1 && rig.engine->playRepeat() == 1 && rig.engine->playStep() == 7);
+    CHECK(plain.engine->playScene() == 2 && apart(rig.heard, plain.heard) > 0.01f); // (the song as it was is on its scene 3 by now)
+    rig.undo();
+    rig.render(256);
+    rig.frames(1);
+    CHECK(rig.engine->playScene() == 0 && rig.engine->playRepeat() == 1 && rig.engine->playStep() == 7 && rig.engine->playBar() == 0);
+    rig.render(16 * kStep); // it plays that time round out (a third, for a scene that plays twice), and goes on to scene 2
+    CHECK(rig.engine->playScene() == 1 && rig.engine->playRepeat() == 0 && rig.engine->playStep() == 0);
+}
+
+// A real audio thread, making blocks back to back, and the key pressed and taken back two
+// hundred times with frames, blocks or nothing in between. Whenever a command lands, the sound
+// is the song left alone, to the last sample: a move is one command, whole in one block.
+//   kind 0: a LATER scene is going round (its number changes every time);
+//   kind 1: the scene copied is going round; kind 2: the song is playing through, and is in a later scene.
+void testARealAudioThread() {
+    for (int kind = 0; kind < 3; ++kind) {
+        Rig plain, rig;
+        fillTwelve(plain);
+        fillTwelve(rig);
+        for (Rig* r : {&plain, &rig}) {
+            r->project().repeats[2] = 16; // (kind 2: the song stays in its last scene for as long as the keys are pressed, 208 steps)
+            r->session().applyProject();
+            r->frames(2);
+            r->render(512);
+            r->heard.clear();
+            r->project().scene = kind == 1 ? 0 : 2;
+            r->session().togglePlay(kind == 2);
+            r->project().scene = 0;
+            r->frames(1);
+        }
+        const unsigned images = rig.session().imagesSent();
+        std::atomic<bool> stop{false};
+        std::atomic<long> blocks{0};
+        const int limit = kind == 2 ? 190 * kStep / 256 : 1 << 30; // blocks: (kind 2) the song does not reach its end with a copy still in it
+        std::thread audio([&] {
+            while (!stop.load()) {
+                if (blocks.load() >= limit) {
+                    std::this_thread::yield();
+                    continue;
+                }
+                rig.render(256);
+                blocks.fetch_add(1);
+            }
+        });
+        const auto wait = [&](int some) { // nothing, or a frame and that many blocks
+            if (some == 0) return;
+            const long from = blocks.load();
+            rig.frames(1);
+            while (blocks.load() < from + some && blocks.load() < limit) std::this_thread::yield();
+            rig.frames(1);
+        };
+        int moved = 0;
+        const int pairs = kind == 2 ? 40 : 200;
+        for (int i = 0; i < pairs; ++i) {
+            rig.nextScene();
+            wait(i % 4);
+            moved += rig.project().scene == 1;
+            rig.undo();
+            wait((i / 4) % 3);
+            moved += rig.project().scene == 0;
+        }
+        while (rig.session().sceneMovesUnheard() > 0 && blocks.load() < limit) wait(1);
+        const bool all = rig.session().sceneMovesUnheard() == 0;
+        wait(3);
+        stop.store(true);
+        audio.join();
+        CHECK(moved == 2 * pairs && all && rig.engine->dropped() == 0 && rig.session().imagesSent() == images);
+        CHECK(songText(rig.project()) == songText(plain.project()));
+        plain.frames(1);
+        for (long i = 0; i < blocks.load(); ++i) plain.render(256);
+        const float off = apart(plain.heard, rig.heard);
+        std::printf("  a real audio thread, %d NEXT SCENE and undo pairs while %s: at most %g from the song left alone, over %.1f s of sound\n", pairs,
+                    kind == 0 ? "a later scene goes round" : (kind == 1 ? "the scene copied goes round" : "the song plays through"), static_cast<double>(off),
+                    static_cast<double>(rig.heard.size()) / 2.0 / 48000.0);
+        CHECK(off == 0.f && loudest(rig.heard, 0, rig.heard.size() / 2) > 0.05f);
+    }
+}
+
+// ---- the engine's own call -------------------------------------------------------------------
+
+// A drum track's patterns for the engine: scene `scene` has hits on `lane`, every `every` steps.
+void hits(TrackImage& image, int scene, int lane, int every, float level = 0.8f) {
+    for (int step = 0; step < kSteps; step += every) image.level[scene * kMaxBars][lane][step] = level;
+}
+std::unique_ptr<SceneImage> hitsScene(int lane, int every, float level = 0.8f) {
+    std::unique_ptr<SceneImage> scene(new SceneImage);
+    for (int step = 0; step < kSteps; step += every) scene->level[0][lane][step] = level;
+    return scene;
+}
+struct Bare { // an engine by itself: two drum tracks
+    std::unique_ptr<Engine> engine{new Engine};
+    std::vector<float> heard;
+    Bare() {
+        engine->prepare(48000.f);
+        engine->addDrumTrack(1);
+    }
+    void say(Command::Type type, int scene, int a, int b = 0) {
+        Command c;
+        c.type = type;
+        c.scene = scene;
+        c.a = a;
+        c.b = b;
+        engine->send(c);
+    }
+    void render(int frames) {
+        const std::size_t was = heard.size();
+        heard.resize(was + static_cast<std::size_t>(2 * frames));
+        engine->render(heard.data() + was, frames);
+    }
+    std::vector<float> play(int from, int steps) { // the song from a scene, for so many steps
+        say(Command::Stop, 0, 0);
+        render(6 * 48000); // (the longest drum has rung out: what was played before is not heard in what comes)
+        heard.clear();
+        say(Command::Play, 0, from);
+        render(steps * kStep);
+        return heard;
+    }
+};
+
+// Engine::moveScenes by itself, beside an engine told the finished song the long way.
+void testTheEnginesMove() {
+    // The song: three scenes on track 1 (each its own lane), scene 1 alone on track 2.
+    const auto song = [](Bare& bare) {
+        std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
+        hits(*one, 0, 0, 4);
+        hits(*one, 1, 2, 2);
+        hits(*one, 2, 1, 8);
+        one->bars[1] = 2;
+        one->level[1 * kMaxBars + 1][3][5] = 0.9f;
+        hits(*two, 0, 4, 3);
+        bare.engine->setTrackImage(0, std::move(one));
+        bare.engine->setTrackImage(1, std::move(two));
+        bare.say(Command::SetSceneCount, 0, 3);
+        bare.say(Command::SetSceneRepeats, 0, 2);
+        bare.say(Command::SetSceneRepeats, 2, 3);
+        bare.say(Command::SetSceneSteps, 1, 21);
+        bare.render(256);
+    };
+    const int kWhole = (2 * 16 + 21 + 3 * 16) * 2; // more than once through, with a scene more or less
+
+    // A scene put in at the top. Track 1 is handed the new scene; track 2 is handed none, and gets
+    // the sixteenth scene, which went (it is empty), so its scene 1 moves down like the rest.
+    Bare moved, told, plain;
+    for (Bare* b : {&moved, &told, &plain}) song(*b);
+    {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0] = hitsScene(5, 1, 0.7f);
+        scenes[0]->bars = 99; // (as long as a cell can be, and no longer)
+        CHECK(moved.engine->moveScenes(0, 1, scenes, 4, 3, 7));
+        moved.render(256);
+        unsigned heard = 0;
+        moved.engine->playScene(&heard);
+        CHECK(heard == 1);
+
+        std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
+        hits(*one, 0, 5, 1, 0.7f);
+        one->bars[0] = kMaxBars;
+        hits(*one, 1, 0, 4);
+        hits(*one, 2, 2, 2);
+        hits(*one, 3, 1, 8);
+        one->bars[2] = 2;
+        one->level[2 * kMaxBars + 1][3][5] = 0.9f;
+        hits(*two, 1, 4, 3);
+        told.engine->setTrackImage(0, std::move(one));
+        told.engine->setTrackImage(1, std::move(two));
+        told.say(Command::SetSceneCount, 0, 4);
+        const int repeats[] = {3, 2, 1, 3}, steps[] = {7, 0, 21, 0};
+        for (int scene = 0; scene < 4; ++scene) {
+            told.say(Command::SetSceneRepeats, scene, repeats[scene]);
+            told.say(Command::SetSceneSteps, scene, steps[scene]);
+        }
+        told.render(256);
+    }
+    const std::vector<float> was = plain.play(0, kWhole);
+    CHECK(apart(moved.play(0, kWhole), told.play(0, kWhole)) == 0.f && loudest(moved.heard, 0, moved.heard.size() / 2) > 0.1f);
+    CHECK(apart(moved.heard, was) > 0.01f);
+
+    // ...and taken out again: the song as it was, but for the sixteenth scene, which is the one handed over.
+    {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0] = hitsScene(6, 2);
+        scenes[1] = hitsScene(7, 4);
+        CHECK(moved.engine->moveScenes(1, -1, scenes, 3, 5, 9));
+        moved.render(256);
+        CHECK(apart(moved.play(0, kWhole), was) == 0.f);
+        moved.say(Command::SetSceneCount, 0, kMaxScenes);
+        std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
+        hits(*one, 15, 6, 2);
+        hits(*two, 15, 7, 4);
+        Bare last;
+        last.engine->setTrackImage(0, std::move(one));
+        last.engine->setTrackImage(1, std::move(two));
+        last.say(Command::SetSceneCount, 0, kMaxScenes);
+        last.say(Command::SetSceneRepeats, 15, 5);
+        last.say(Command::SetSceneSteps, 15, 9);
+        last.render(256);
+        CHECK(apart(moved.play(15, 5 * 9), last.play(15, 5 * 9)) == 0.f && loudest(last.heard, 0, last.heard.size() / 2) > 0.1f); // (five times its nine steps, and not a step of the top)
+        CHECK(loudest(moved.heard, 2 * 9 * kStep, 5 * 9 * kStep) > 0.1f);
+        moved.say(Command::SetSceneCount, 0, 3);
+        moved.render(256);
+    }
+
+    // What is not a move changes no pattern (it is counted as heard all the same, and its scenes freed).
+    const int from[] = {-1, kMaxScenes, 0, kMaxScenes, 0, 0, 3};
+    const int by[] = {1, 1, -1, -1, 2, 0, -3};
+    for (int i = 0; i < 7; ++i) {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0] = hitsScene(5, 1);
+        scenes[1] = hitsScene(5, 1);
+        CHECK(moved.engine->moveScenes(from[i], by[i], scenes, 9, 9, 9));
+        moved.render(256);
+    }
+    unsigned heard = 0;
+    moved.engine->playScene(&heard);
+    CHECK(heard == 9 && apart(moved.play(0, kWhole), was) == 0.f);
+
+    // Numbers that cannot be are held to what can: 99 scenes are 16, 99 plays 16, fewer than one, one.
+    Bare wild, mild;
+    for (Bare* b : {&wild, &mild}) song(*b);
+    {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0] = hitsScene(5, 1);
+        CHECK(wild.engine->moveScenes(2, 1, scenes, 99, 99, -5));
+        scenes[0] = hitsScene(5, 1);
+        CHECK(mild.engine->moveScenes(2, 1, scenes, kMaxScenes, kMaxRepeats, 0));
+        for (Bare* b : {&wild, &mild}) b->render(256);
+        CHECK(apart(wild.play(2, 20 * 16), mild.play(2, 20 * 16)) == 0.f);
+        CHECK(wild.engine->playScene() == 4 && wild.engine->playRepeat() == 0); // sixteen plays of the new scene, three of the next, and into the empty ones
+        CHECK(apart(wild.play(15, 20), mild.play(15, 20)) == 0.f && wild.engine->playScene() == 0); // the sixteenth is in the song: one bar of it, then the top
+        scenes[0] = hitsScene(5, 1);
+        CHECK(wild.engine->moveScenes(0, 1, scenes, -4, 0, 999));
+        scenes[0] = hitsScene(5, 1);
+        CHECK(mild.engine->moveScenes(0, 1, scenes, 1, 1, 0));
+        for (Bare* b : {&wild, &mild}) b->render(256);
+        CHECK(apart(wild.play(0, 40), mild.play(0, 40)) == 0.f && wild.engine->playScene() == 0 && loudest(wild.heard, 17 * kStep, 40 * kStep) > 0.1f);
+    }
+
+    // The queue full: it says so, and nothing is lost but the move (no leak: the sanitizer's to see).
+    Bare full;
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = 120.f;
+    while (full.engine->send(c)) {}
+    std::unique_ptr<SceneImage> scenes[kNumTracks];
+    scenes[0] = hitsScene(5, 1);
+    CHECK(!full.engine->moveScenes(0, 1, scenes, 4, 1, 0));
+}
+
 // `nextscene_test --measure`: what the block after the gesture costs the audio thread (not a check:
-// it is a time). Blocks of 256, what the program asks for: 5.33 ms of sound each.
+// it is a time). Blocks of 256, what the program asks for: 5.33 ms of sound each. The block
+// that takes the move is timed against the same block with nothing in it (the median of each:
+// one late block on a busy machine is not the cost).
 void measure() {
     const double ms = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
-    for (int song = 0; song < 2; ++song) {
+    const auto middle = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        return v[v.size() / 2];
+    };
+    for (int song = 0; song < 3; ++song) { // one scene going round; a later one going round; the song playing through
         Rig rig;
         fillTwelve(rig);
-        rig.session().togglePlay(song == 1);
+        rig.project().scene = song == 1 ? 2 : 0;
+        rig.session().togglePlay(song == 2);
+        rig.project().scene = 0;
         rig.frames(1);
         std::vector<float> out(512);
         const auto block = [&] {
@@ -1265,30 +1597,53 @@ void measure() {
             rig.engine->render(out.data(), 256);
             return ms * static_cast<double>(SDL_GetPerformanceCounter() - from);
         };
-        double usual = 0.0, usualWorst = 0.0, after = 0.0, afterWorst = 0.0;
-        int afters = 0;
-        for (int i = 0; i < 400; ++i) {
-            const double t = block();
-            usual += t / 400.0;
-            usualWorst = t > usualWorst ? t : usualWorst;
-        }
-        for (int round = 0; round < 10; ++round) {
-            for (int what = 0; what < 2; ++what) {
+        std::vector<double> usual, cold, after[3];
+        double worst[3] = {};
+        for (int i = 0; i < 400; ++i) usual.push_back(block());
+        for (int round = 0; round < 60; ++round) {
+            for (int what = 0; what < 3; ++what) {
                 if (what == 0) rig.nextScene();
-                else rig.undo();
-                for (int frame = 0; frame < 14; ++frame) { // a frame, then the three blocks that fit in it
+                else if (what == 1) rig.undo();
+                else rig.redo();
+                const double t = block(); // the block that takes it
+                after[what].push_back(t);
+                worst[what] = t > worst[what] ? t : worst[what];
+                for (int frame = 0; frame < 3; ++frame) {
                     rig.frames(1);
-                    const double t = block();
-                    if (frame < 12) after += t, ++afters;
-                    afterWorst = t > afterWorst ? t : afterWorst;
-                    block();
-                    block();
+                    for (int i = 0; i < 3; ++i) usual.push_back(block());
                 }
             }
+            rig.undo(); // (back to where the round began)
+            block();
+            rig.frames(1);
+            // A block made straight after the program has been busy with something else and sent
+            // the engine nothing (here: the song written out as text, as a step of undo is): what
+            // such a block costs with the processor's memory of the engine's work gone cold.
+            const std::string text = songText(rig.project()) + songText(rig.project());
+            cold.push_back(block() + (text.empty() ? 1.0 : 0.0));
+            for (int i = 0; i < 9; ++i) usual.push_back(block());
         }
-        std::printf("  12 tracks, %s: a usual block %.3f ms (worst %.3f); the first block of each of the 12 frames after NEXT SCENE or its undo %.3f ms on average, worst %.3f\n",
-                    song ? "the song playing through (every track at once)" : "the scene going round (a track a frame)", usual, usualWorst, after / afters, afterWorst);
+        std::printf("  12 tracks, %s: a usual block %.3f ms, one straight after the program was busy and sent nothing %.3f; the block that takes NEXT SCENE %.3f (worst %.3f), its undo %.3f (worst %.3f), its redo %.3f (worst %.3f)\n",
+                    song == 0 ? "the scene going round" : (song == 1 ? "a later scene going round" : "the song playing through"), middle(usual), middle(cold), middle(after[0]), worst[0],
+                    middle(after[1]), worst[1], middle(after[2]), worst[2]);
     }
+    // The command by itself, with nothing else in the block: twelve tracks' scenes moved.
+    Engine engine;
+    engine.prepare(48000.f);
+    std::vector<float> out(512);
+    std::vector<double> with, without;
+    for (int i = 0; i < 400; ++i) {
+        for (int move = 0; move < 2; ++move) {
+            std::unique_ptr<SceneImage> scenes[kNumTracks];
+            for (auto& scene : scenes) scene.reset(new SceneImage);
+            if (move) engine.moveScenes(i % 2 ? 1 : 0, i % 2 ? -1 : 1, scenes, 3, 1, 0);
+            const Uint64 from = SDL_GetPerformanceCounter();
+            engine.render(out.data(), 256);
+            (move ? with : without).push_back(1000.0 * ms * static_cast<double>(SDL_GetPerformanceCounter() - from));
+        }
+        engine.collectGarbage();
+    }
+    std::printf("  an empty engine's block: %.1f millionths of a second; with a scene move for twelve tracks in it: %.1f\n", middle(without), middle(with));
 }
 
 } // namespace
@@ -1316,11 +1671,16 @@ int main(int argc, char** argv) {
     testWriteGoesToTheNewScene();
     testTheFramesBeforeTheEngineHears();
     testTheCommand();
+    testTheEnginesMove();
+    testTheSongBesideTheFinishedSong(false);
+    testTheSongBesideTheFinishedSong(true);
+    testTakenBackWhileTheCopyPlaysInItsTurn();
     testTheSongScreensCursorFollows();
     testTwelveTracksInOneStep();
     testInOneStepWhateverPlays();
     testStartStraightAfter();
     testEditsStraightAfter();
+    testARealAudioThread();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
