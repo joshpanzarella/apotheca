@@ -12,6 +12,9 @@
 //   TAPE     TIME (eight choices, triplets among them), FEEDBACK (to 120%),
 //            AGE (wow, dulling and the ceiling together), MIX
 //   HALL     SIZE, DECAY (0.3 to 20 seconds), TONE, MIX
+//   SATURATE DRIVE, TYPE (tape / tube / fold / hard), TONE, MIX
+//   COMP     THRESHOLD, RATIO (six choices), SPEED, MIX
+//   CHORUS   RATE, DEPTH, TYPE (chorus / ensemble / vibrato / flange), MIX
 //
 // MIX at 0 is the sound untouched.
 //
@@ -29,7 +32,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
@@ -46,7 +49,7 @@ struct EffectInfo {
     const char* word;                       // in a song file: "filter". One word, and it never changes once it ships
     EffectGroup group;
     int choices[kEffectParams];             // a setting that is a choice, not an amount: how many choices (0: an amount)
-    // How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS". `all` is the
+    // How a setting reads: "810 HZ", "1/8 DOT", "8 BITS". `all` is the
     // effect's settings together, for one whose reading depends on another
     // (the DJ filter's cutoff), or nullptr. nullptr here: every setting is a
     // percentage. Use effectParamText(), which knows that.
@@ -65,10 +68,39 @@ int effectPlace(EffectKind kind);   // 0 (NONE's) for anything not in the list
 EffectKind effectFromWord(const char* word);
 // How many choices a setting has; 0 if it is an amount (or is not there).
 int effectChoices(EffectKind kind, int index);
-// How a setting reads: "810 HZ", "1/8 DOTTED", "8 BITS", "35%".
+// How a setting reads: "810 HZ", "1/8 DOT", "8 BITS", "35%".
 // `all` is the effect's settings together, for one whose reading depends on
 // another; without it, each is read by itself.
 void effectParamText(EffectKind kind, int index, float value, char* out, int size, const float* all = nullptr);
+
+// What an effect shows while sound passes (Engine::effectMeter): the setting
+// whose box on the FX screen draws it, or -1 for an effect that shows nothing.
+// COMP: how many dB it is turning the sound down, on its THRESHOLD box.
+int effectMeterParam(EffectKind kind);
+constexpr float kMeterFullDb = 24.f; // what fills the box's width
+
+// Hold A + left / right on an effect: a whole group at once. From a place in
+// the list, `by` > 0 gives the first effect of the next group and `by` < 0
+// the first of the group before; the same place back when there is none
+// that way. (NONE, at place 0, is a group of its own.)
+int effectGroupJump(int place, int by);
+// The rule itself, over any row of groups: what effectGroupJump does with the list's.
+int groupJump(const EffectGroup* groups, int count, int place, int by);
+
+// Which send bus an effect may sit on, by its group: 0 (ECHO) for a delay, 1
+// (SPACE) for a reverb, -1 for anything else. A new delay or reverb is
+// offered on its bus without being added anywhere.
+int effectBus(EffectKind kind);
+// The setting named MIX, which on a bus reads LEVEL; -1 if it has none.
+int effectMixParam(EffectKind kind);
+// A setting's usual value. On a bus, LEVEL (the MIX) starts at full: the
+// tracks' send amounts say how much, so the bus gives all of it back.
+float effectDefault(EffectKind kind, int index, bool onBus = false);
+// The list a bus's player picks from: NONE (place 0), then the effects that
+// may sit on that bus, in the order of the main list.
+int busListSize(int bus);
+EffectKind busEffectAt(int bus, int place); // None off either end
+int busEffectPlace(int bus, EffectKind kind); // 0 for anything not in it
 
 // A new one, prepared and set to its defaults. nullptr for None. Allocates:
 // not for the audio thread.

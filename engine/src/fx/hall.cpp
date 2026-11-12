@@ -32,9 +32,8 @@
 //     that a held sound makes about as loud a room at any SIZE.
 //
 // ON A BUS (the plan's sends): the dry sound is dropped and MIX is the level.
-// That is `wetOnly_`, read in one place (changed()). When Effect gains its
-// "you are on a bus" call, it sets that flag and calls changed(); nothing
-// else changes.
+// That is Unit's `bus_`, set by the "you are on a bus" call (setOnBus, which
+// also calls changed()).
 
 #include <vector>
 
@@ -109,6 +108,7 @@ public:
     }
     void process(float* left, float* right, int frames) override {
         if (line_[0].empty() || frames <= 0) return;
+        soundOnly(left, right, frames);
         float coming = 0.f;
         for (int i = 0; i < frames; ++i) {
             const float l = std::fabs(left[i]), r = std::fabs(right[i]);
@@ -276,9 +276,9 @@ protected:
         tone_.to = p_[2];
         // MIX: the sound and the room swap over at equal power (they are unrelated sounds).
         const float mix = p_[3];
-        dry_.to = wetOnly_ ? 0.f : std::cos(1.5707963f * mix);
-        wet_.to = wetOnly_ ? mix : std::sin(1.5707963f * mix);
-        if (mix >= 1.f && !wetOnly_) dry_.to = 0.f, wet_.to = 1.f; // the room alone, exactly (and at 0 cos is 1 and sin is 0: the sound untouched, to the bit)
+        dry_.to = bus_ ? 0.f : std::cos(1.5707963f * mix);
+        wet_.to = bus_ ? mix : std::sin(1.5707963f * mix);
+        if (mix >= 1.f && !bus_) dry_.to = 0.f, wet_.to = 1.f; // the room alone, exactly (and at 0 cos is 1 and sin is 0: the sound untouched, to the bit)
     }
 
 private:
@@ -326,7 +326,6 @@ private:
     int smearAt_[2][4] = {};
     int mask_ = 0, gapMask_ = 0, at_ = 0, quiet_ = 0, restAfter_ = 12000;
     bool asleep_ = true, thinned_ = false, wasThinned_ = false;
-    bool wetOnly_ = false; // ON A BUS: true drops the dry sound (see the top of this file)
     Glide size_, decay_, tone_, dry_, wet_;
     float len_[kLines] = {}, lenTo_[kLines] = {}, gain_[kLines] = {}, highs_[kLines] = {}, lows_[kLines] = {};
     float gainTo_[kLines] = {}, highsTo_[kLines] = {}, lowsTo_[kLines] = {};

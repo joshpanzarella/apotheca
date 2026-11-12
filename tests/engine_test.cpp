@@ -982,7 +982,7 @@ static void testTrackLevel() {
     CHECK(peakOf(renderFrames(engine, 1000)) == 0.f);
 }
 
-static void testTrackEffectSlotsRunInSeries() {
+static void testTrackMasterSlotsRunInSeries() {
     Engine plain, shaped;
     shaped.setTrackEffect(0, 0, std::unique_ptr<Effect>(new GainEffect));
     shaped.setTrackEffect(0, 1, std::unique_ptr<Effect>(new GainEffect));
@@ -2577,8 +2577,8 @@ static void testEffectsInTheEngine() {
     engine->send(make(Command::Panic, 0, 0));
     CHECK(peakOf(renderFrames(*engine, 60000)) == 0.f);
     // Nowhere to put one: refused.
-    CHECK(!engine->setEffect(0, 2, EffectKind::Delay) && !engine->setEffect(0, -1, EffectKind::Delay));
-    CHECK(!engine->setEffect(12, 0, EffectKind::Delay) && !engine->setEffect(-2, 0, EffectKind::Delay));
+    CHECK(!engine->setEffect(0, kTrackSlots, EffectKind::Delay) && !engine->setEffect(0, -1, EffectKind::Delay) && !engine->setEffect(kMasterTrack, kMasterSlots, EffectKind::Delay));
+    CHECK(!engine->setEffect(12, 0, EffectKind::Delay) && !engine->setEffect(kSpaceBus - 1, 0, EffectKind::Delay) && !engine->setEffect(kEchoBus, 1, EffectKind::Delay));
     // One still waiting in the queue when the engine goes is freed with it.
     CHECK(engine->setEffect(3, 0, EffectKind::Reverb));
 }
@@ -3085,7 +3085,7 @@ int main() {
     testStopAndRestart();
     testTempo();
     testTrackLevel();
-    testTrackEffectSlotsRunInSeries();
+    testTrackMasterSlotsRunInSeries();
     testMasterEffectSlots();
     testLowpassCutsHighs();
     testBlockSizeDoesNotChangeTheSound();

@@ -619,24 +619,26 @@ void Session::setTrackName(int track, const std::string& name) {
 // ---- effects ------------------------------------------------------------------------
 
 void Session::setEffect(int track, int slot, EffectKind kind) {
-    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    if (slot < 0 || slot >= slotsOf(track)) return;
     if (static_cast<int>(kind) < 0 || static_cast<int>(kind) >= kEffectKinds) kind = EffectKind::None;
+    const int bus = busOfTrack(track);
+    if (bus >= 0 && kind != EffectKind::None && effectBus(kind) != bus) return; // ECHO holds a delay, SPACE a reverb
     if (!engine.setEffect(track, slot, kind)) return;
     // Another effect in the slot: automation written for the old one's settings means nothing now.
-    if (track != kMasterTrack)
+    if (track >= 0)
         for (int scene = 0; scene < kMaxScenes; ++scene)
             for (int p = 0; p < 4; ++p) clearAutomation(track, scene, autoLaneOfEffect(slot, p));
     EffectData& data = effectData(track, slot);
     data.kind = static_cast<int>(kind);
-    for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectInfo(kind).defaults[i];
+    for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectDefault(kind, i, bus >= 0); // on a bus, LEVEL at full
 }
 
 void Session::setEffectParam(int track, int slot, int index, float value) {
-    if ((track != kMasterTrack && (track < 0 || track >= kNumTracks)) || slot < 0 || slot >= kEffectSlots) return;
+    if (slot < 0 || slot >= slotsOf(track)) return;
     EffectData& data = effectData(track, slot);
     if (index < 0 || index >= effectInfo(static_cast<EffectKind>(data.kind)).params) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
-    if (track != kMasterTrack) recordAutomation(track, autoLaneOfEffect(slot, index), value);
+    if (track >= 0) recordAutomation(track, autoLaneOfEffect(slot, index), value);
     if (value == data.param[index]) return;
     data.param[index] = value;
     Command c;
@@ -644,6 +646,21 @@ void Session::setEffectParam(int track, int slot, int index, float value) {
     c.track = track;
     c.a = slot;
     c.b = index;
+    c.value = value;
+    engine.send(c);
+}
+
+void Session::setSend(int track, int bus, float value) {
+    if (track < 0 || track >= kNumTracks || bus < 0 || bus >= kBuses) return;
+    value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
+    recordAutomation(track, autoLaneOfSend(bus), value);
+    float& amount = project.tracks[track].send[bus];
+    if (value == amount) return;
+    amount = value;
+    Command c;
+    c.type = Command::SetSend;
+    c.track = track;
+    c.a = bus;
     c.value = value;
     engine.send(c);
 }
@@ -701,6 +718,29 @@ void Session::sendTrackImage(int t) {
         image->lanePart[lane] = track.laneOneSlice[lane] ? 1.f / static_cast<float>(laneSlices(t, lane)) : 0.f;
     }
     engine.setTrackImage(t, std::move(image));
+}
+
+// A new handheld's engine is a new song but for the two buses, which hold nothing until they are told.
+Session::Session(Engine& engine, Project& project) : engine(engine), project(project), packs(1, builtInPack()) {
+    for (int bus = 0; bus < kBuses; ++bus) sendEffects(busTrack(bus));
+}
+
+// Tell the engine what every slot of a track (or the master, or a bus) holds, and how each is set.
+void Session::sendEffects(int track) {
+    for (int slot = 0; slot < slotsOf(track); ++slot) {
+        const EffectData data = effectData(track, slot);
+        const EffectKind kind = static_cast<EffectKind>(data.kind);
+        engine.setEffect(track, slot, kind);
+        Command c;
+        c.type = Command::SetEffectParam;
+        c.track = track;
+        c.a = slot;
+        for (int i = 0; i < effectInfo(kind).params; ++i) {
+            c.b = i;
+            c.value = data.param[i];
+            engine.send(c);
+        }
+    }
 }
 
 void Session::applyProject() {
@@ -761,22 +801,18 @@ void Session::applyProject() {
         }
     }
     // Every slot, the empty ones too: what the last song left there goes.
-    for (int track = kMasterTrack; track < kNumTracks; ++track) {
-        for (int slot = 0; slot < kEffectSlots; ++slot) {
-            const EffectData data = effectData(track, slot);
-            const EffectKind kind = static_cast<EffectKind>(data.kind);
-            engine.setEffect(track, slot, kind);
+    // The two buses and the master are the "tracks" below zero.
+    for (int track = busTrack(kBuses - 1); track < kNumTracks; ++track) sendEffects(track);
+    // Every send, the ones at nothing too.
+    for (int track = 0; track < kNumTracks; ++track)
+        for (int bus = 0; bus < kBuses; ++bus) {
             c = Command();
-            c.type = Command::SetEffectParam;
+            c.type = Command::SetSend;
             c.track = track;
-            c.a = slot;
-            for (int i = 0; i < effectInfo(kind).params; ++i) {
-                c.b = i;
-                c.value = data.param[i];
-                engine.send(c);
-            }
+            c.a = bus;
+            c.value = project.tracks[track].send[bus];
+            engine.send(c);
         }
-    }
     for (int scene = 0; scene < kMaxScenes; ++scene) {
         c = Command();
         c.type = Command::SetSceneRepeats;

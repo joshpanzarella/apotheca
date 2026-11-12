@@ -46,7 +46,8 @@ public:
                 const float echo = line[static_cast<std::size_t>(from)];
                 damp += coeff_ * (echo - damp); // each repeat a little duller
                 line[static_cast<std::size_t>(at)] = io[c][i] + damp * feedback;
-                io[c][i] += mix * echo;
+                if (bus_) io[c][i] = mix * echo; // on a bus: the echoes alone
+                else io[c][i] += mix * echo;
                 if (++at >= size_) at = 0;
             }
             damp_[c] = std::fabs(damp) < 1e-20f ? 0.f : damp;
@@ -71,7 +72,7 @@ private:
 
 void reading(int index, float v, const float*, char* out, int size) {
     if (index == 0) {
-        static const char* names[9] = {"", "1/16", "1/8", "1/8 DOTTED", "1/4", "", "1/4 DOTTED", "", "1/2"};
+        static const char* names[9] = {"", "1/16", "1/8", "1/8 DOT", "1/4", "", "1/4 DOT", "", "1/2"};
         std::snprintf(out, static_cast<std::size_t>(size), "%s", names[delaySteps(v)]);
     } else {
         readPercent(v, out, size);

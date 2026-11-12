@@ -24,6 +24,9 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kCrushInfo,  // 5
     &fx::kTapeInfo,   // 6
     &fx::kHallInfo,   // 7
+    &fx::kChorusInfo, // 8
+    &fx::kCompInfo,   // 9
+    &fx::kSaturateInfo, // 10
 };
 
 // The list a player picks from, in groups. This order can change freely;
@@ -31,11 +34,14 @@ const EffectInfo* const kTable[kEffectKinds] = {
 const EffectKind kList[] = {
     EffectKind::None,
     EffectKind::Filter,
+    EffectKind::Saturate,
     EffectKind::Drive,
     EffectKind::Tape,
     EffectKind::Delay,
     EffectKind::Hall,
     EffectKind::Reverb,
+    EffectKind::Chorus,
+    EffectKind::Comp,
     EffectKind::Crush,
 };
 constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
@@ -68,6 +74,72 @@ EffectKind effectFromWord(const char* word) {
     for (int k = 1; k < kEffectKinds; ++k)
         if (std::strcmp(kTable[k]->word, word) == 0) return static_cast<EffectKind>(k);
     return EffectKind::None;
+}
+
+int groupJump(const EffectGroup* groups, int count, int place, int by) {
+    if (!groups || place < 0 || place >= count || by == 0) return place;
+    if (by > 0) {
+        for (int to = place + 1; to < count; ++to)
+            if (groups[to] != groups[place]) return to;
+        return place; // the last group: nowhere to go
+    }
+    int to = place;
+    while (to >= 0 && groups[to] == groups[place]) --to; // the last of the group before
+    if (to < 0) return place;                            // the first group
+    while (to > 0 && groups[to - 1] == groups[to]) --to; // ...and its first
+    return to;
+}
+
+int effectGroupJump(int place, int by) {
+    EffectGroup groups[kListSize];
+    for (int i = 0; i < kListSize; ++i) groups[i] = effectInfo(kList[i]).group;
+    return groupJump(groups, kListSize, place, by);
+}
+
+int effectBus(EffectKind kind) {
+    const EffectGroup group = effectInfo(kind).group;
+    return group == EffectGroup::Delay ? 0 : (group == EffectGroup::Reverb ? 1 : -1);
+}
+
+int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp ? 0 : -1; }
+
+int effectMixParam(EffectKind kind) {
+    const EffectInfo& info = effectInfo(kind);
+    for (int i = 0; i < info.params; ++i)
+        if (std::strcmp(info.paramNames[i], "MIX") == 0) return i;
+    return -1;
+}
+
+float effectDefault(EffectKind kind, int index, bool onBus) {
+    const EffectInfo& info = effectInfo(kind);
+    if (index < 0 || index >= info.params) return 0.f;
+    return onBus && index == effectMixParam(kind) ? 1.f : info.defaults[index];
+}
+
+int busListSize(int bus) {
+    if (bus < 0 || bus >= 2) return 1; // no such bus: NONE alone
+    int n = 1;
+    for (int i = 1; i < kListSize; ++i)
+        if (effectBus(kList[i]) == bus) ++n;
+    return n;
+}
+
+EffectKind busEffectAt(int bus, int place) {
+    if (place <= 0 || bus < 0 || bus >= 2) return EffectKind::None;
+    for (int i = 1; i < kListSize; ++i)
+        if (effectBus(kList[i]) == bus && --place == 0) return kList[i];
+    return EffectKind::None;
+}
+
+int busEffectPlace(int bus, EffectKind kind) {
+    int place = 0;
+    if (bus < 0 || bus >= 2) return 0;
+    for (int i = 1; i < kListSize; ++i) {
+        if (effectBus(kList[i]) != bus) continue;
+        ++place;
+        if (kList[i] == kind) return place;
+    }
+    return 0;
 }
 
 int effectChoices(EffectKind kind, int index) {

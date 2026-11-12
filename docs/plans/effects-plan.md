@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Step 0 (groundwork), step 4 (TAPE) and step 5 (HALL) are built; see "as built" under the order of work.
+Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) and DUCK (9) are not.
 
 ## The recommendation
 
@@ -388,16 +388,16 @@ metallic is for ears.
 | Step | What | Size | Needs | Mostly touches |
 | --- | --- | --- | --- | --- |
 | 0 | **DONE 2026-11-11, but for one switch (see below).** **Groundwork.** `EffectInfo` gets `word`, group, list order and its own "how a setting reads" function; effects move to one file each under `engine/src/fx/`; `effects_test` with the tools; every effect in `bench`; flush-to-zero; the 10 ms fade on a swap; the saved-render test for the old five | medium | | `effects.hpp/.cpp`, `fx_screen.cpp`, `bench.cpp`, tests |
-| 1a | **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
-| 1b | Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
-| 1c | The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
+| 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
+| 1b | **DONE 2026-11-11 (see below).** Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
+| 1c | **DONE 2026-11-11 (see below).** The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
 | 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
 | 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | **DONE 2026-11-11.** TAPE | medium | 0 | `fx/tape.cpp` |
 | 5 | **DONE 2026-11-11.** HALL | medium | 0 | `fx/hall.cpp` |
-| 6 | CHORUS | small | 0 | `fx/chorus.cpp` |
-| 7 | COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
-| 8 | SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
+| 6 | **DONE 2026-11-12.** CHORUS | small | 0 | `fx/chorus.cpp` |
+| 7 | **DONE 2026-11-12** (the meter went on the screen at the join). COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
+| 8 | **DONE 2026-11-12.** SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
 | 9 | DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
 | 10+ | The later set, one at a time | small each (BLOOM, STUTTER medium) | 0; BLOOM needs 5, PING needs 4 | one file each |
 
@@ -411,6 +411,46 @@ metallic is for ears.
 | Flush-to-zero | **ON in the program and in a bounce since 2026-11-11 (the owner's call); the tests leave it off.** As built in step 0 it was: Built, tested, and left OFF. On, it changes 1 of the 40 pinned renders (25 samples, all under 1e-38) and the end of any long tail (under 1e-30, 600 dB down). Nothing anyone could hear, but not "the same to the last bit". **The owner decides**; it is one call, `Engine::setFlushDenormals(true)`, in `app/main.cpp` and `app/bounce.cpp`. The old five do not slow down without it (measured). HALL will need it |
 | Measured with the new tools | REVERB's RT60 0.59 / 1.44 / 10.8 s at SIZE 0 / 60 / 100%. DRIVE at 81%, a 4186 Hz sine: the loudest fold-back 9 dB under the third harmonic, all of it together 16 dB under the sine. None of the old five glides a setting: FILTER TYPE, DELAY TIME and CRUSH jump when turned |
 | Not done | `bench` has not been run on the handheld. Nobody has heard the fade |
+
+**Step 1a as built** (2026-11-11; only tests and measurements have seen it, nobody has heard it):
+
+| Thing | Result |
+| --- | --- |
+| The buses | `kEchoBus` (-2) and `kSpaceBus` (-3), one slot each, addressed like the master. `Command::SetSend` appended. Sends are taken after level and mute and glide over 5 ms |
+| Wet only | `Effect::setOnBus`. DELAY and REVERB honour it: one changed line each, off a bus their sound is still the pinned one. A new delay or reverb must do the same (`Unit::bus_`); a test fails one that does not |
+| LEVEL | An effect put on a bus starts with its MIX at 100%. A send of 35% into DELAY at LEVEL 100% is then the echo an insert DELAY gives at MIX 35% |
+| The rest rule | A bus sent nothing, and quieter than 120 dB under full scale, for **10 s** is cleared and skipped. Measured longest silence between echoes: DELAY 3.0 s (a half note at 40 BPM), REVERB 0.26 s. A bus never sent to is never run |
+| No sends, same bits | The step 0 song's checksum holds, also with an effect waiting on each bus, also with helpers |
+| Helpers | A song with sends from four tracks, send automation, both buses, a third slot, a mute and a bus effect swapped mid-song: the same to the last bit with 0, 1, 2 and 3 helpers, and twice from fresh |
+| Lanes | 24. 16 to 19 are slot 3, 20 ECHO send, 21 SPACE send, 22 and 23 do nothing |
+| Slots | `kTrackSlots` 3, `kMasterSlots` 2; `kEffectSlots` is gone |
+| A swap on a bus | Fades like any slot when the bus is sounding (to and from silence, not the dry sound). On a bus at rest the new effect is simply there |
+| Cost (desk, `bench`) | Feeding both buses from 12 tracks **0.03%** of a core (plan: 0.09). With DELAY and REVERB on them 0.12% in all. Handheld, times 5: 0.15% and 0.6%, against the plan's 2.5% for buses with TAPE and HALL |
+| Departed from the plan | "Skipped after its tail" is measured, not declared: no effect says how long its tail is. A tail that never falls under the line (DELAY at full FEEDBACK is 90%, so it does fall) would keep its bus awake |
+
+**Step 1b as built** (2026-11-11; only tests have seen it):
+
+| Thing | Result |
+| --- | --- |
+| In a song file | `busfx BUS NAME settings` twice, after the master's `fx` lines; `send BUS AMOUNT` in a track, left out at 0; `fx 3 NAME` for the third slot. Lanes 16 to 23 load and save |
+| An empty bus | Written as `busfx 2 none`. Departed from the plan, which had no word for it: without one, a bus the player emptied would come back full, since "no line" has to mean "old song" |
+| A new song's buses | **TAPE and HALL since the join (2026-11-12)**, LEVEL 100%; as built in this step they were DELAY and REVERB. One line, `kNewSongBus` in `app/project.hpp`. An old song (no `busfx`) gets the same |
+| A `busfx` line this version cannot use | An effect it does not have, or one of the wrong kind for the bus: skipped, the bus keeps the usual one |
+| The Session | `setSend` (written as automation on lanes 20 and 21 like any setting); `setEffect` and `setEffectParam` take `kEchoBus` and `kSpaceBus`; a bus refuses anything but its own kind; `applyProject` sends the buses, the third slots and every send |
+| Old songs | A five-track song with effects on tracks and master, opened through the Session and played for 12 s: **the same to the last bit** in the program before this step and after it, with 0, 1 and 3 helpers (checked once by hand, both programs built side by side). In the tests: an old song is the same to the bit with the buses emptied, and saves as it was plus the two `busfx` lines |
+| Found on the way | A handheld with no saved song never told the engine its buses, so sends did nothing until a song was opened. The Session's constructor now does it |
+| Not undone | Sends and what the buses hold are not part of undo, like effects. Send automation is, like all automation |
+
+**Step 1c as built** (2026-11-11; seen in stills and tests, not on the handheld):
+
+| Thing | Result |
+| --- | --- |
+| The pages | As drawn in section 5. TRACK: three slots, then SENDS (two boxes, ECHO and SPACE). ALL: the ECHO bus, the SPACE bus, the master's two slots. Y flips; moving down off the last row or up off the first goes to the other page too |
+| A bus's row | Picks from NONE and its own kind only. MIX reads LEVEL. B on LEVEL gives 100% |
+| A send | Hold A + stick turns it, the D-pad moves it a twentieth, B puts it at 0 and clears its automation in the cell. The purple line and the moving value show as on any setting |
+| The group jump | Hold A + left / right (D-pad, or one push of the stick) on an effect: the first effect of the next group in the list, or of the one before. `effectGroupJump` reads the groups from the list. **With today's five effects every group has one effect, so a jump is the same as a step**; it starts to matter when TAPE joins DELAY. The rule is tested on made-up lists |
+| Hints | All fit, with room, in nine stills (`fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, three with `--hold-a`). The longest: `HLD A turn  B default value  Y buses  START stop` |
+| Left out | Nothing marks which page is up except the title, the rows and the Y hint. (COMP's gain reduction on the THRESHOLD box was left out here and drawn at the join: see "Joined") |
 
 **Step 4 (TAPE) as built, 2026-11-11.** `engine/src/fx/tape.cpp`, number 6,
 word `tape`, in the list before DELAY. Only tests and measurements have seen
@@ -452,6 +492,109 @@ it; nobody has heard it.
 | Cost | **0.18%** of a desk core, 0.21% with TONE above 50% (the low trim runs only then). REVERB reads 0.09% in the same run against the plan's 0.07%, so on the plan's scale about 0.14% and 0.16%, against its 0.15%. By the times-5 guess, about 0.9 to 1% of a handheld core |
 | Departed from the plan | MIX is a true swap-over, not the old REVERB's. Pre-delay is tied to SIZE (the plan gives no fifth setting). The cost is a little over the plan's with TONE up |
 | Not done | The bus call itself (step 1a). Not heard; `bench` not run on the handheld |
+
+**Step 6 (CHORUS) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| File, number, word | `engine/src/fx/chorus.cpp`; `EffectKind::Chorus` = 8; `chorus`. Numbers 6 and 7 are kept for TAPE and HALL (NONE's row until they are built) |
+| RATE | 0.1 to 8 Hz (`0.1 x 80^v`), read in HZ. Measured within 2% of the reading at 0.25, 1, 2, 4, 8 Hz |
+| DEPTH | A percentage of the type's swing. Above 1 Hz the swing shrinks as 1 / RATE, so the pitch bend stays the same however fast it goes. Measured: VIBRATO at full 4.0 ms at 1 Hz, 2.0 at 2, 1.0 at 4, 0.5 at 8 |
+| CHORUS | Three copies a side, at rest 7, 10.5 and 14 ms late, swinging 3 ms each way at full, a third of a turn apart; right a quarter turn behind left. All measured to 0.05 ms and 0.01 of a turn |
+| ENSEMBLE | The same three, 2.5 ms, at 1, 1.29 and 0.77 times RATE |
+| VIBRATO | One copy, 5 ms, swing 4 ms. No dry sound at full MIX (the click's own sample is exactly 0). Left and right in step. A 1 kHz sine at 5 Hz, DEPTH 50%: 987.4 to 1012.6 Hz (22 cents each way), as worked out |
+| FLANGE | One copy, 2.2 ms, swing 1.9 ms, fed back at 0.6 (each time round measured x 0.600) |
+| Width | The same noise on both sides in, MIX full: left and right 0.55 alike for CHORUS and ENSEMBLE, 0.46 for FLANGE, 1.00 for VIBRATO (1 is no width, 0 unrelated). With DEPTH 0 there is no width |
+| Loudness | Dry and copies add to the same power. Noise comes out 0.4 dB quieter (CHORUS), 0.9 (VIBRATO), 0.4 louder (FLANGE): a copy read between samples loses a little of the very top |
+| MIX 0 | The sound untouched, to the sample, in all four types; and turned down to 0 while sounding it gets there exactly |
+| Clicks | Every setting glides (about 20 ms), TYPE included: the copies slide to their new places. Swept or thrown end to end under a 100 Hz sine, nothing steeper than 1.7 of the sine's own step, which is the louder output and not a jump |
+| Cost | 0.18% of a desk core (this run; DRIVE reads 0.17 beside the plan's 0.08, so the machine is slower than the plan's). VIBRATO or FLANGE 0.08%. The plan said 0.13 and 0.05 |
+| Departed from the plan | DEPTH's shrink above 1 Hz (not in the plan: at 8 Hz a full 3 ms swing bends the pitch by 15%). VIBRATO keeps left and right in step, against "left and right waver out of step", because out of step it is a chorus when heard in mono |
+
+For the owner's ears: is ENSEMBLE different enough from CHORUS; is FLANGE's
+fixed feedback (0.6) right; is DEPTH at full too much; VIBRATO in step.
+
+**Step 7 (COMP) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it. The meter was in the engine only as built here; **it is on the screen since the join** (see "Joined").
+
+| Thing | Result |
+| --- | --- |
+| File, number, word | `engine/src/fx/comp.cpp`; `EffectKind::Comp` = 9; `comp`. Group LEVEL |
+| THRESHOLD | -48 to 0 dB, read in DB. Starts at -18 |
+| RATIO | A choice of six: 1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1. Starts at 4:1 |
+| SPEED | Attack `1 x 30^v` ms, release `50 x 8^v` ms. It reads both: `1/50 MS` to `30/400 MS`, `4/115 MS` to start |
+| The curve | A steady 1 kHz sine at 11 levels, 3 thresholds, 3 ratios: the worst of the 99 is **0.02 dB** from threshold, ratio and knee. The 6 dB knee, half a dB at a time: 0.01 dB |
+| Attack and release | From a step in level (-40 to -4 dB and back, 4 kHz), 63% of the way in dB: **1.0 / 51 ms** at SPEED 0, 3.9 / 119 at 40%, 30.0 / 431 at 100%. The same at 96 kHz. The release runs about one attack longer than it reads (the turn-down is held, let go at the release speed, then smoothed at the attack speed) |
+| Make-up | Automatic: half of what a full-scale sound is turned down by, **never more than 12 dB**. Measured +6.75 dB at -18 DB 4:1, +9.0 at -24 DB 4:1, +12.0 at -48 DB 20:1 (it would be 22.8) |
+| A steady tone | It does not pump. Turned down 13.5 dB, the gain still moves within the wave by 0.000 dB at 1 kHz, 0.04 dB at 100 Hz (3rd harmonic 65 dB down), and 0.25 dB at 100 Hz with SPEED at its fastest (48 dB down): as fast as it goes, on a low note, it follows the wave a little |
+| Below 60 Hz | The level is read through a two-pole high-pass at 60 Hz. The same sine at -6 dB is turned down 13.5 dB at 1 kHz, 11.2 at 60 Hz, 7.6 at 40, 4.2 at 30 |
+| Left and right | Turned down together, by the louder: measured the same gain to 0.01 dB |
+| MIX | The squashed sound beside the plain one. At 0 the sound untouched, to the sample |
+| The meter | `Engine::effectMeter(track, slot)`: dB being turned down, as of the last chunk; 0 for an empty slot, an effect with nothing to show, or a deleted track. `track` may be `kMasterTrack`. An atomic: any thread, no lock. `Effect` gained `virtual float meter() const` for it |
+| Clicks | The turn-down moves at its own speed and the make-up glides: any setting thrown across at once is no steeper than the sine underneath |
+| Cost | 0.12% of a desk core on loud noise, every sample over the threshold (the plan: 0.07 with exact log maths; this machine reads DRIVE at 0.17 against the plan's 0.08). Under the threshold it skips the logarithm |
+| Departed from the plan | Exact `log` and `exp`, not the quick kind: the curve is then exact, and it is still a tenth of a percent. The 12 dB cap on the make-up (not in the plan): without it a slow attack lets the first hit through 23 dB up |
+
+For the owner's ears: is the automatic make-up about level on real sounds; is
+one SPEED knob enough; does the 60 Hz cut do what is wanted on a bass track
+(a bass under 60 Hz is hardly squashed); the master glue.
+
+**For whoever builds the meter on the screen** (plan section 5: the THRESHOLD
+box's bar shows it): each frame, `engine.effectMeter(track, slot)` with the
+track and slot of the row (`kMasterTrack` for the master's rows). It returns
+dB turned down, 0 or more. 0 means draw nothing. A full bar at 24 dB would fit
+most uses. It is not smoothed: the engine reports the last chunk.
+
+**Step 8 (SATURATE and the 2x stage) as built**, 2026-11-12. Only tests and measurements have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Files, number, word | `engine/src/fx/saturate.cpp`, `engine/src/fx/halfband.hpp`; `EffectKind::Saturate` = 10; `saturate`. Group DRIVE, listed before the old DRIVE |
+| The 2x stage | A half-band filter of four all-pass stages (two chains of two): eight multiplies a sample for up and back. Up and back with nothing between: 0.000 dB at every frequency tried to 23 kHz. What would fold back from above 28.8 kHz: **70 dB down or more**. Between 24 and 28.8 kHz it is part way shut (10 dB down at 25 kHz, 21 at 26), so a note folding back to above 19.2 kHz is only partly removed. **It makes the sound late**: 1.8 samples low down, 2.0 at 12 kHz (half a wave). So at a part-way MIX the plain sound is made late to match (`Halfband::late`, the four stages at the plain rate) before the two are added. As first built it was not, and MIX 50% lost 12 dB at 10 kHz and 25 at 12 kHz (a comb filter; found in review, 2026-11-12). Now MIX 50% is within 0.1 dB of part way from 1 to 18 kHz. MIX at exactly 0 is still the sound untouched: the plain sound slides between the two in about 20 ms |
+| DRIVE | Up to **24 dB** (16 times); FOLD up to 6 times. 20 dB of drive is 83% |
+| Curves | TAPE: `x (27 + x^2) / (27 + 9 x^2)`, flat beyond 3 (tanh, nearly). TUBE: the same curve 0.5 off centre, brought back on centre afterwards (5 Hz). FOLD: a sine, by polynomial. HARD: straight to 0.75, flat from 1.25, a curve between |
+| Fold-back, 4186 Hz sine at half scale, 20 dB of drive | Against the sine going in. **TAPE: loudest fold-back 59 dB down, all of it together 57** (48 under its third harmonic). FOLD 84 and 84. HARD 43 and 38. TUBE 38 at 22884 Hz (its sixth harmonic, folding into the part-way band; too high to hear) and **63 under 19 kHz** |
+| The same, 2x stage left out | TAPE 24 dB down, TUBE 27, FOLD 30, HARD 22. **The stage buys 35 dB on TAPE**, 54 on FOLD, 21 on HARD, 36 on TUBE under 19 kHz |
+| Against the old DRIVE | At its 81%, the same sine: loudest fold-back 20 dB under the sine going in (9 under its third harmonic), all of it together 16. TAPE without the 2x stage is where DRIVE is |
+| The plan's 50 dB line | "Everything that is not a harmonic at least 50 dB under the harmonics": TAPE 57 and FOLD 84, yes. TUBE yes under 19 kHz (63), no above. **HARD no (38)**: a corner makes high harmonics, and twice the rate is not enough for them. The plan measured one soft curve |
+| At full DRIVE (24 dB) | Worse, as any drive is when it squares the wave: TAPE 43 dB down, TUBE 39, HARD 39, FOLD 78 |
+| Harmonics | TAPE, FOLD, HARD: odd only (even ones under -100 dB). TUBE: second harmonic 15 to 25 dB down. FOLD at 83%: the third harmonic 13 dB over the sine itself |
+| Loudness | For each DRIVE and TYPE the output is scaled so a sine at half scale comes out as loud as it went in: **within 0.03 dB over the whole of DRIVE, all four types** (the old DRIVE: +1.4 to -7.1 dB). A quieter sound comes up as DRIVE rises (a sine at -20 dB: +4.4 dB at 50%, +11.8 at 100%) and a full-scale one comes down (-5.0, -5.9) |
+| TONE | One-pole low-pass after the curve, 500 Hz to 20 kHz: 3.0 dB down at the corner, measured at 48 and 96 kHz |
+| MIX 0 | The sound untouched, to the sample. Half way: half of each, sample for sample |
+| Clicks | DRIVE slides and its level goes with it; TYPE fades from the old curve to the new over 10 ms. Swept, thrown end to end, or one TYPE to another: nothing steeper than the wave is when held still |
+| Cost | **0.15% of a desk core**, under the old DRIVE's 0.16 in the same run (the plan: 0.18 at 2x with a cheap curve) |
+| Departed from the plan | DRIVE stops at 24 dB, not more: past that every type is a square wave and the fold-back climbs. FOLD has its own, shorter range. A second change of TYPE inside the first one's 10 ms fade could click as built here; **fixed at the join**: the second waits for the first |
+
+For the owner's ears: do the four types differ enough to keep four; is TUBE
+lopsided enough (0.5 off centre) or too much; is FOLD's range right; is
+holding a half-scale sine level the right "level" (quiet tails and noise come
+up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
+
+**Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| A new song's buses | **TAPE on ECHO, HALL on SPACE**, LEVEL 100% (`kNewSongBus`). ECHO takes TAPE or DELAY, SPACE takes HALL or REVERB, the newer first in each list |
+| An old song's buses (no `busfx` line) | **The same: TAPE and HALL.** Its sends are all 0, so it sounds as it did, to the bit, whatever the buses hold. The choice only shows when its owner first turns a send up, and then it gives what the same move gives in a new song: one rule, "a bus nobody has touched holds TAPE and HALL". The other choice (DELAY and REVERB for old songs) would have made the same gesture sound different by the song's age, for no reason a player could see; no saved song can hold a bus set to DELAY by an earlier build, since a build that knew buses always wrote the `busfx` lines |
+| One Glide | `fx::Glide` in `fx/glide.hpp` for all five new effects. **It always lands**: never slower than `kLeast` (1e-7 a sample, for a value near 1). In blocks of 8 frames and under the old one stood a hair short for good, and HALL and SATURATE stayed in their costly moving mode. Tested on Glide itself at 1 to 64 frames a block |
+| One wet-only flag | `Unit::bus_`. TAPE's and HALL's own `wetOnly_` went |
+| A bus takes its own kind | Refused in `Engine::setEffect` too (it returns false), not only in the Session. A FILTER on ECHO gave the track's sound back a second time |
+| **A bus's LEVEL is the engine's** | Departed from 1a, where LEVEL was the effect's MIX. The effect on a bus now stays at MIX 100% and the engine applies LEVEL after the rest rule has listened, gliding 5 ms like a send. As built in 1a a bus parked at LEVEL 0 with echoes in it was heard as silent and cleared after ten seconds. For DELAY and REVERB the sound at a steady LEVEL is the same multiply, moved; a turned LEVEL now glides where theirs stepped. An effect handed over whole by the setup call keeps its own MIX |
+| The rest rule's numbers | 1e-6 and 10 s are held by a test, on each side alone; `prepare()` puts both buses to rest and clears them (tested) |
+| A send of 1% | Saved and read back as it is (tested down to 0.1%) |
+| Not a number, infinity | Taken as silence at the way in of every new effect (`fx::soundOnly`, one compare a sample, also anything beyond 1e8) and at the feed of both buses (`feedBuses`). One bad sample used to stay for good in TAPE, HALL, CHORUS, SATURATE, COMP (which also left its make-up gain on) and both buses. With the bad sample in, each now gives the same output to the bit as with a zero there. The old five are not touched. SATURATE's FOLD gives 0 for a value too far round to count the turns, instead of casting it to an int |
+| SATURATE, TYPE changed twice within 10 ms | The second change waits for the first fade and only the last one asked for is gone to. Was up to 11.6 times the steady step; now no steeper than the wave held still, for every pair of changes at five spacings |
+| COMP's meter on the screen | A thin brass line over the THRESHOLD box's bar, growing from the right; the whole width is 24 dB (`kMeterFullDb`), a tenth of a dB shows as one dot. `effectMeterParam(kind)` names the box, so the screen still spells no effect out. On track rows and master rows. Stills `fx-comp`, `fx-comp-all` |
+| DELAY and REVERB on a bus, on ARM | fx-sends put an `if (bus_)` inside their per-sample loops. `effects_test --print`, built as the handheld's program (clang, aarch64, `-O2 -mcpu=cortex-a53`) and run under an emulator: **the 40 renders and the whole song are the same to the last bit before the sends (main) and after**. The loops were left as they are |
+| A read past the end in a test | `testBusEffectsInTheEngine` read 4800 floats past a vector. Fixed; `effects_test` built with the address and undefined-behaviour sanitizers runs clean (the version before fails there) |
+| Readings that did not fit | `1/8 DOTTED` ran out of TAPE's and DELAY's TIME box (now seen on every new song's ALL page). They read `1/8 DOT` and `1/4 DOT`, beside `1/8 TRIP` |
+| Cost (desk, `bench`) | One each, in a run where DRIVE read 0.18%: FILTER 0.05, SATURATE 0.21, DRIVE 0.18, TAPE 0.15, DELAY 0.03, HALL 0.20 (0.23 with TONE above 50%), REVERB 0.09, CHORUS 0.20 (0.10 as VIBRATO or FLANGE), COMP 0.13, CRUSH 0.02. The way-in check costs each new effect about 0.01 (the build before the join read TAPE 0.16, HALL 0.19, CHORUS 0.19, COMP 0.12, SATURATE 0.21 back to back). **The buses, as what they add to twelve busy drum tracks (2.0% by themselves): feeding both 0.05 to 0.12; with TAPE and HALL 0.41 to 0.50; with DELAY and REVERB 0.09 to 0.18** (a small difference of two large numbers: it moves that much from run to run). Handheld, times 5: about 2.5% of a core for both buses with TAPE and HALL, which is the plan's figure |
+| Not done | THROW, DUCK. The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
+
+For the owner's ears, new at the join: TAPE and HALL as the first thing a send
+gives (against DELAY and REVERB); a LEVEL turned while echoes ring (it glides
+5 ms: is that slow enough not to click, fast enough to feel direct); whether
+the meter's 24 dB width suits how hard COMP gets used.
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.

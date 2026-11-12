@@ -18,7 +18,7 @@ one to eight bars, each with its own repeat count. Four screens:
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
   with advanced pages behind it (nine for Phazed, three for Twin Analog).
   For drums, the kit: each lane plays its built-in drum or a recording.
-- **FX**: two effects on each track and two on the master.
+- **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
 Songs are kept as you go: there is no save button. A **rev** keeps the song
 as it is at one moment, to go back to.
@@ -164,31 +164,74 @@ right for a recording played as it is, near enough for one tuned up or down.
 
 ### FX
 
-A fourth screen, after DEVICE. Four rows: the **two effects on the track**
-being worked on, then the **two on the master** (everything, after the tracks
-are mixed).
+A fourth screen, after DEVICE. **Two pages of four rows. Y goes to the other
+page**, and so does moving down off the last row.
+
+| Page | Rows |
+| --- | --- |
+| The track's | The **three effects on the track** being worked on, one after the other. Then its **SENDS**: how much of it goes to ECHO, how much to SPACE. |
+| Everything's | **ECHO** and **SPACE**: one effect each, shared by every track. Then the **two effects on the master** (everything, after the tracks are mixed). |
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, DRIVE, TAPE, DELAY, HALL, REVERB, CRUSH. It goes in at once, at its usual settings. | None |
+| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
+| A send | The same: the stick turns it, the D-pad moves it a twentieth. | Nothing sent |
+
+#### ECHO and SPACE: one delay and one reverb for the whole song
+
+A **send** is a copy of a track fed to a shared effect. ECHO holds a delay,
+SPACE holds a reverb. Each track says how much of itself goes to each, from
+0 to 100%, on its SENDS row. Both start at 0.
+
+| | An effect on the track | A send |
+| --- | --- | --- |
+| How many run | One for each track that has it | One for the whole song |
+| How much | Its MIX | The track's ECHO or SPACE amount |
+| The sound | Each track in its own room | Every track in the same room |
+
+- **What ECHO and SPACE hold is on the other page (Y).** Their settings are
+  the delay's and the reverb's, but for the last: **LEVEL**, how loud the
+  echoes or the room come back. It starts at 100%.
+- ECHO takes only a delay (TAPE or DELAY) and SPACE only a reverb (HALL or
+  REVERB). B empties one.
+- On ECHO or SPACE an effect gives back only what it adds: the echoes or the
+  room, never the sound itself a second time.
+- **LEVEL turned right down keeps the echoes going round.** Turn it up again
+  and they are still there. A bus goes quiet for good only when its echoes
+  have really died away.
+- The send is taken after the track's level and its mute: a muted track sends
+  nothing, and the echoes it already made ring on.
+- The master's effects come after, so they act on the echoes and the room too.
+- A send can be **automated** like any setting (see Automation).
+- **A new song has TAPE on ECHO and HALL on SPACE.** So does a song made
+  before there were sends: nothing in it is sent, so it sounds as it did, and
+  the first send turned up in it gives what it gives in a new song. DELAY and
+  REVERB, the older two, are one push away (hold A + up on the effect).
+- **A song saved here and then opened by an older version of the program
+  loses its sends, its third effects and what ECHO and SPACE hold.** The rest
+  of it opens.
 
 | Effect | Settings |
 | --- | --- |
 | FILTER | Cutoff, resonance, type, mix. Types: LOW 12 DB (two poles, gentle), LOW 24 DB (four poles, steep), BAND PASS, HIGH PASS, and DJ: one knob, nothing in the middle, turned down it closes from the top, turned up it clears out the bottom. |
-| DRIVE | Drive, tone, mix, output |
-| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
-| DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo), feedback, tone, mix |
+| SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
+| DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
+| TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
+| DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
 | REVERB | The older, plainer reverb. Size, damping, mix |
+| CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
+| COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line over the THRESHOLD bar shows how far it is turning the sound down**: it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
 
-TAPE and HALL are new. Their settings slide to where they are turned instead
-of jumping, so they can be turned while sounding without a click. A song that
-uses them, opened by an older version of the program, loads without them.
+TAPE, HALL, CHORUS, COMP and SATURATE are new. Their settings slide to where
+they are turned instead of jumping, so they can be turned while sounding
+without a click. A song that uses one, opened by an older version of the
+program, loads without that effect: the slot is left as it was.
 
 ### Stop all sound
 
@@ -294,7 +337,7 @@ A macro, or a setting of a track's effect, can be **moved by the pattern**.
 
 1. **SELECT + X** turns WRITE on. A red WRITE chip shows in the top bar.
 2. Play the song, and move the thing: hold A on a macro (DEVICE) or on an
-   effect's setting (FX) and turn it.
+   effect's setting or a send (FX) and turn it.
 3. What you do is written into the cell that is playing, step by step.
    Turn WRITE off (SELECT + X again) and it plays back every time round.
 
@@ -303,8 +346,8 @@ A macro, or a setting of a track's effect, can be **moved by the pattern**.
 | How fine | One value a step (16 a bar, for every bar of the cell). The setting **glides** to each value over the first half of its step, so a sweep is smooth, not a staircase. |
 | Steps with nothing written | The setting rests where its knob is |
 | A mark | A purple line under a macro or setting that has automation in the cell being worked on. While it plays, the box shows the value the pattern has it at. |
-| Take it away | **B** on the macro or setting: back to its middle or default, and its automation in this cell is cleared |
-| What can be automated | A synth's eight macros; the four settings of each of a track's two effects. Not the master's effects, and not the settings on a synth's ADVANCED pages. |
+| Take it away | **B** on the macro, setting or send: back to its middle or default, and its automation in this cell is cleared |
+| What can be automated | A synth's eight macros; the four settings of each of a track's three effects; its two sends. Not the master's effects, not what ECHO and SPACE hold, and not the settings on a synth's ADVANCED pages. |
 | Undo | SELECT + B takes back a recorded pass like any other edit |
 
 With WRITE off, moving a knob is only moving a knob. Stopped, nothing is

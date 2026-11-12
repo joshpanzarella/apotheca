@@ -1,7 +1,7 @@
 #pragma once
-// What the gliding effects share (TAPE, HALL): a setting that slides to where
-// it was turned instead of jumping, a delay line read between samples, and
-// the rule for going to sleep.
+// What the newer effects share (TAPE, HALL, CHORUS, COMP, SATURATE): a
+// setting that slides to where it was turned instead of jumping, a delay line
+// read between samples, and the rule for going to sleep.
 //
 // None of the five old effects use this file.
 
@@ -10,25 +10,54 @@
 namespace apotheca {
 namespace fx {
 
-// A value that slides. Once a block: `step = g.begin(frames, k)`, then add
-// `step` to a local copy for each sample, then `g.done()`. It moves a
-// fraction `k` of what is left each block, and lands EXACTLY on `to` when it
-// is close: a value that only ever crept closer would become a number too
-// small to hold, which is slow.
+// A value that slides. Turn it by writing `to`. Once a block:
+// `step = g.begin(frames, k)`; then, for each sample, either add `step` to a
+// local copy or call `g.next()` (one or the other, not both); then
+// `g.done()`. It moves a fraction `k` of what is left each block, and lands
+// EXACTLY on `to`: a value that only ever crept closer would become a number
+// too small to hold, which is slow.
+// IT ALWAYS LANDS, whatever the block length. A fraction of what is left gets
+// smaller for ever, and in short blocks (8 frames and under) it used to fall
+// below the smallest amount a float can be moved by: the value then stood
+// still a hair short of `to` and `moving()` stayed true for good (HALL and
+// SATURATE do their costly work while it is). So it never moves slower than
+// kLeast a sample: the last stretch is a straight line, and it arrives.
 struct Glide {
-    float now = 0.f, to = 0.f, end = 0.f;
-    void snap() { now = end = to; }
+    float now = 0.f, to = 0.f, end = 0.f, step = 0.f;
+    static constexpr float kLeast = 1e-7f; // a sample, for a value near 1; in proportion for a larger one
+    void snap() { now = end = to, step = 0.f; } // there at once: before the first sound, and on a reset
     bool moving() const { return now != to; }
     float begin(int frames, float k) {
-        end = now + k * (to - now);
-        if (std::fabs(to - end) < 1e-5f) end = to;
-        return (end - now) / static_cast<float>(frames);
+        const float left = to - now, least = static_cast<float>(frames) * kLeast * (1.f + std::fabs(to));
+        float move = k * left;
+        if (std::fabs(move) < least) move = left < 0.f ? -least : least;
+        end = std::fabs(move) >= std::fabs(left) ? to : now + move;
+        if (end == now) end = to; // (cannot happen while kLeast is more than a float's grain; kept as the last word)
+        return step = (end - now) / static_cast<float>(frames);
     }
-    void done() { now = end; }
+    float next() { return now += step; }
+    void done() { now = end, step = 0.f; }
 };
 // The fraction a Glide moves in a block of `frames`, to be most of the way in `seconds`.
 inline float glideK(int frames, float seconds, float sampleRate) {
     return static_cast<float>(frames) / (seconds * sampleRate + static_cast<float>(frames));
+}
+
+// THE WAY IN. A sample that is not a number, is infinite, or is beyond
+// kLoudest (160 dB over full scale: a fault upstream, not a sound) is taken as
+// silence. Without this one such sample stays for good in anything that
+// remembers (a delay line, a filter, a level reading): the effect is then
+// silent or broken until it is taken out. Every new effect calls it first
+// thing in process(); the engine does the same to what a bus is sent. The old
+// five do not (their arithmetic is not touched). One compare a sample.
+constexpr float kLoudest = 1e8f;
+inline void soundOnly(float* samples, int frames) {
+    for (int i = 0; i < frames; ++i)
+        if (!(std::fabs(samples[i]) <= kLoudest)) samples[i] = 0.f; // (written so that not-a-number fails it)
+}
+inline void soundOnly(float* left, float* right, int frames) {
+    soundOnly(left, frames);
+    soundOnly(right, frames);
 }
 
 // READING BETWEEN SAMPLES. Four neighbours, weighted (a cubic through them:

@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (16) | `cd build && ctest -j8` (about 15 s) |
+| All tests (16) | `cd build && ctest -j8` (about 25 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -103,7 +103,8 @@ Where effects are, in the engine:
 | `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
 | `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
-| `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`), a delay read between samples, the going-to-sleep rule |
+| `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
+| `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -119,6 +120,11 @@ Where effects are, in the engine:
 The screen, the song file and `bench` pick it up from the table; the build
 takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 
+**A delay or a reverb also goes on a send bus** (by its group: `effectBus`).
+Its `process()` must look at `Unit::bus_` and, when set, put out only what it
+adds (wet times MIX) and none of what came in. `effects_test` checks every
+effect in those two groups and fails one that does not.
+
 ## Rules that bite
 
 ### Files and compatibility
@@ -126,8 +132,15 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   `auto`, `steps`, `name`) never change meaning. Unknown lines are skipped.
 - **Ids are appended, never reordered or reused**: `Command::Type`, every
   synth's settings and macros, effect kinds, effect settings, automation lanes
-  (0..7 macros, `8 + slot * 4 + setting` effects). Songs and presets store
-  them by number.
+  (0..7 macros, `8 + slot * 4 + setting` effects for slots 1 to 3, 20 and 21
+  the ECHO and SPACE sends, 22 and 23 spare). Songs and presets store them by
+  number.
+- **A song file with no `busfx` line is an old song.** Its buses get what a
+  new song's do (`kNewSongBus` in `app/project.hpp`: TAPE and HALL), its
+  sends are 0, and it sounds as it did. Old songs get the same as new ones on
+  purpose: a bus nobody has touched holds the same thing in every song. `songText` always writes both `busfx` lines, an empty bus
+  as `busfx 2 none`, so "none" is never mistaken for "old". A track's send is
+  a `send BUS AMOUNT` line, left out at 0; `fx 3` is its third slot.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -164,6 +177,40 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   done, never from `renderTrack`: **the trash queue takes from one thread.**
   A test that wants an effect in place at once uses the setup call
   `setTrackEffect`, or renders 10 ms before it listens.
+- **Two send buses, ECHO and SPACE** (`kEchoBus` -2, `kSpaceBus` -3: "track"
+  numbers beside `kMasterTrack`, one slot each; `slotsOf(track)` says how many
+  slots anything has: tracks 3, master 2, a bus 1). A track's send is taken
+  after its level and mute and glides for 5 ms. The buses are fed and run on
+  the audio thread **after the helpers are done, in track order**
+  (`feedBuses`, `runBuses`), and join the mix before the master's slots. Keep
+  it there: that is what holds the output to the bit on any helper count.
+- **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
+  why a song with no sends is the same to the last bit as before there were
+  buses (`effects_test` holds the old song's checksum with an effect waiting
+  on each bus). A bus rests when it has been sent nothing and has put out
+  nothing above `kBusQuiet` (1e-6) for `kBusRestSeconds` (10 s); its effect is
+  then `reset()`. Ten seconds must stay longer than the longest silence
+  between two echoes of anything a bus can hold (`effects_test` measures each
+  delay and reverb at 40 BPM: DELAY 3.0 s). A bus with no effect is not run.
+- **A bus's LEVEL waits for a swap's fade** (`held` in `runBuses`): another
+  effect put on a ringing bus sets where LEVEL is going (full), but it stays
+  where it was for the 10 ms the old one fades out. Set at once, a bus turned
+  down had its old tail turned UP as it left.
+- **A bus's LEVEL is the engine's, not the effect's** (`busLevel_`, applied in
+  `runBuses` after the rest rule has listened, gliding like a send). The
+  effect on a bus keeps its MIX at full. Listened to after LEVEL, a bus
+  parked at LEVEL 0 with echoes in it was cleared after ten seconds.
+  `setEffect` says which setting is the LEVEL (`effectMixParam`); an effect
+  handed over whole (`setBusEffect`, a setup call) keeps its own MIX.
+- **`Engine::setEffect` refuses an effect that is not the bus's kind**
+  (returns false), as the Session does. A FILTER on ECHO would give the
+  track's sound back a second time.
+- **What is sent to a bus is sound or it is silence**: not-a-number, infinity
+  and anything beyond `kBusLoudest` are zeroed in `feedBuses`, since the old
+  DELAY and REVERB cannot look after themselves and would hold it for good.
+- **An effect on a bus is told so** (`Effect::setOnBus`, by `Engine::setEffect`
+  and `setBusEffect`), gives back no dry sound, and starts with its MIX, which
+  reads LEVEL there, at full (`effectDefault(kind, i, true)`).
 - **Flush-to-zero is ON in the program and in a bounce** (owner, 2026-11-11;
   `Engine::setFlushDenormals(true)` in `main.cpp` and `bounce.cpp`), set for
   each `render()` and on the helpers. It changes the last vanishing samples of
@@ -179,14 +226,68 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
   must make **no number too small to hold with flush-to-zero off**, and
   `TooSmall` in `effects_test` checks that without a clock. HALL with its
   floor taken out ran 10 times slower two seconds into a tail and 40 times
-  slower for good. A new effect also keeps a `wetOnly_` flag read in one
-  place, ready for the bus call.
+  slower for good. A delay or a reverb reads `Unit::bus_` in one place for
+  the bus call (TAPE and HALL had their own `wetOnly_`; it is gone).
+- **A new effect calls `soundOnly()` first thing in `process()`**
+  (`fx/glide.hpp`): a sample that is not a number, infinite or beyond 1e8 is
+  taken as silence. One such sample used to stay in a delay line, a filter or
+  COMP's level reading for good. The old five do not (their arithmetic is not
+  touched). `effects_test` tries every effect newer than CRUSH, each choice
+  of each setting, and fails a new one that forgets.
+- **A `Glide` always lands, at any block length** (never slower than `kLeast`
+  a sample). A fraction of what is left falls below what a float can add in
+  blocks of 8 frames and under, and `moving()` then stayed true for good.
+- **A change of curve waits for the fade before it** (SATURATE's TYPE: one
+  fade at a time, the last one asked for wins). Starting a second fade inside
+  the first cut the fading curve off: a click.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
   the last sound was.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
+- **What an effect shows goes through `Engine::effectMeter(track, slot)`**
+  (COMP: the dB it is turning down). The audio thread reads the effect's
+  `meter()` after each chunk and keeps it in an atomic; the screen asks the
+  engine. **Nothing on the app thread may hold or call an `Effect` that is in
+  a slot**: the audio thread can swap it out at any chunk. The FX screen draws
+  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD), as a thin
+  strip over the bar from the right, full at `kMeterFullDb` (24).
+- **A new effect's sound does not depend on how it is cut into blocks**, to
+  the bit, once its settings are at rest (each has a test). So what an effect
+  does "between blocks" (snapping vanishing numbers to zero) is done sample by
+  sample, or on a fixed count of samples (SATURATE: every 64th it has been
+  given), never "at the end of this call".
+- **A filter state does not reach zero by itself**: with a coefficient over a
+  half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
+  "silence in, silence out" fails and a processor without flush-to-zero crawls.
+- **A wet sound that comes out late is never mixed with the plain sound as it
+  came in.** Two samples late is half a wave at 12 kHz, and the two cancel (a
+  comb filter). SATURATE's 2x stage does this; its plain sound goes through
+  `Halfband::late` first, except at MIX 0 exactly. Test a new effect's
+  response at MIX 50%, not only at 0 and 100%.
+- **A new effect glides every setting** (`fx::Glide` in `fx/glide.hpp`, the one such helper): a
+  turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
+  is still the sound untouched to the sample. The first block after it is
+  made or reset starts where the settings are (`snap`), with no slide. The
+  old five do not glide and must not start to.
 
 ### The app
+- **Anything below zero is not a track**: -1 the master, -2 and -3 the buses.
+  `Session::effectData`, `setEffect` and `setEffectParam` take all three
+  (`slotsOf(track)` bounds the slot). Test `track >= 0` before touching
+  `project.tracks[track]` or automation, never `track != kMasterTrack`: a bus
+  would then index the array at -2. A bus takes only its own kind
+  (`effectBus`), and nothing on a bus or the master is automated.
+- **The FX screen is two pages of four rows, and its rows are numbered
+  through both** (`FxScreen::goTo`): 0 to 2 the track's slots, 3 its SENDS
+  (`kSendsRow`: two columns, not a slot, so `data(row)` is not for it), 4 and
+  5 the buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). Y adds four. A
+  bus's row picks from its own list (`busEffectAt`), shows its MIX as LEVEL,
+  and B there gives `effectDefault(kind, i, true)`. Hold A + left / right is
+  `effectGroupJump`: it reads the groups from the list, so a new effect needs
+  nothing done for it.
+- **A new `Session` tells the engine what the buses hold** (its constructor).
+  The engine starts as a new song in every other way, but with empty buses;
+  without this a handheld with no saved song had sends that did nothing.
 - **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`
   (821 KB). `std::unique_ptr<Project>`.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
@@ -275,6 +376,10 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
+| Feeding both send buses from 12 tracks | 0.03% |
+| ...and a DELAY and a REVERB on them | 0.12% |
+| ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
+| CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

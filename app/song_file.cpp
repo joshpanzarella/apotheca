@@ -41,8 +41,8 @@ std::string songText(const Project& project) {
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
     // fx SLOT NAME and its settings. Before any track: the master's.
-    const auto putEffects = [&](const EffectData* effects) {
-        for (int slot = 0; slot < kEffectSlots; ++slot) {
+    const auto putEffects = [&](const EffectData* effects, int slots) {
+        for (int slot = 0; slot < slots; ++slot) {
             const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
             if (kind == EffectKind::None) continue;
             put(out, "fx %.0f ", slot + 1);
@@ -51,7 +51,16 @@ std::string songText(const Project& project) {
             out += "\n";
         }
     };
-    putEffects(project.masterEffects);
+    putEffects(project.masterEffects, kMasterSlots);
+    // busfx BUS NAME and its settings: what the ECHO (1) and the SPACE (2) bus hold. Always both, an
+    // empty one as "none": a song with no such line is an old song, and gets the usual two.
+    for (int bus = 0; bus < kBuses; ++bus) {
+        const EffectKind kind = static_cast<EffectKind>(project.busEffects[bus].kind);
+        put(out, "busfx %.0f ", bus + 1);
+        out += kind == EffectKind::None ? "none" : effectInfo(kind).word;
+        for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", project.busEffects[bus].param[i]);
+        out += "\n";
+    }
 
     for (int t = 0; t < project.trackCount(); ++t) {
         const TrackData& track = project.tracks[t];
@@ -73,7 +82,13 @@ std::string songText(const Project& project) {
                 out += line + "\n";
             }
         if (track.muted) out += "muted\n";
-        putEffects(track.effects);
+        putEffects(track.effects, kTrackSlots);
+        // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
+        for (int bus = 0; bus < kBuses; ++bus) {
+            if (!(track.send[bus] > 0.f)) continue;
+            put(out, "send %.0f", bus + 1);
+            put(out, " %.6g\n", track.send[bus]);
+        }
         if (track.kind == TrackKind::Drums) {
             out += "lanes";
             for (float level : track.laneLevel) put(out, " %.6g", level);
@@ -234,7 +249,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "fx") {
             double slot, value;
             std::string name;
-            if (!(in >> slot >> name) || slot < 1 || slot > kEffectSlots) continue;
+            if (!(in >> slot >> name) || slot < 1 || slot > (track ? kTrackSlots : kMasterSlots)) continue;
             EffectData& data = (track ? track->effects : song->masterEffects)[static_cast<int>(slot) - 1];
             const EffectKind kind = effectFromWord(name.c_str());
             if (kind == EffectKind::None) continue; // an effect this version does not have: the slot is left as it was
@@ -242,6 +257,16 @@ bool parseSong(const std::string& text, Project& project) {
             data.kind = static_cast<int>(kind);
             for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
+        } else if (word == "busfx") {
+            double bus, value;
+            std::string name;
+            if (!(in >> bus >> name) || bus < 1 || bus > kBuses) continue;
+            const int b = static_cast<int>(bus) - 1;
+            const EffectKind kind = effectFromWord(name.c_str());
+            // An effect this version does not have, or one that is not for this bus: the bus keeps what it had.
+            if (kind == EffectKind::None ? name != "none" : effectBus(kind) != b) continue;
+            song->setBusEffect(b, kind);
+            for (int i = 0; i < effectInfo(kind).params && (in >> value); ++i) song->busEffects[b].param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
         } else if (word == "track") {
             std::string kind;
             in >> kind;
@@ -272,6 +297,10 @@ bool parseSong(const std::string& text, Project& project) {
                 if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
                 track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
             }
+        } else if (word == "send") {
+            double bus, amount;
+            if (!(in >> bus >> amount) || bus < 1 || bus > kBuses || !(amount >= 0.0)) continue;
+            track->send[static_cast<int>(bus) - 1] = static_cast<float>(amount > 1.0 ? 1.0 : amount);
         } else if (word == "muted") {
             track->muted = true;
         } else if (word == "lanes") {
