@@ -250,7 +250,7 @@ void testThePianoRoll() {
     CHECK(p.notes[slot].ratchet == 2 && p.notes[slot].velocity == level && p.notes[slot].length == length);
     CHECK(p.notes[slot].throwTo == 2); // (that press of A was a step of THROW itself)
     rig.tap(UP);
-    CHECK(p.notes[slot].glide == 1 && p.notes[slot].throwTo == 2);
+    CHECK(p.notes[slot].glide == kGlideQuarter && p.notes[slot].throwTo == 2);
     rig.key(X, false);
     CHECK(rig.thrownTo() == 2);
     // The dice leave it be, both ways.

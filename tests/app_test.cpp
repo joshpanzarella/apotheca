@@ -5384,7 +5384,7 @@ void testNoteEffectsHoldUp() {
         rig.frames(1);
         rig.key(way, false);
         rig.frames(2);
-        CHECK(way == STICK_RIGHT ? p.notes[slot].ratchet == 2 : p.notes[slot].glide == 1);
+        CHECK(way == STICK_RIGHT ? p.notes[slot].ratchet == 2 : p.notes[slot].glide == kGlideQuarter);
         rig.key(X, false);
         rig.frames(2);
     }
@@ -5496,14 +5496,20 @@ void testNoteEffects() {
     CHECK(p.notes[slot].ratchet == 4);
     rig.tap(LEFT, 9);
     CHECK(p.notes[slot].ratchet == 0);
-    // Up: it glides. Down: it does not.
-    rig.tap(UP);
-    CHECK(p.notes[slot].glide == 1 && roll.cursorStep() == 4);
-    rig.tap(UP);
-    CHECK(p.notes[slot].glide == 1);
-    rig.tap(DOWN);
-    CHECK(p.notes[slot].glide == 0);
-    rig.tap(UP);
+    // Up: its glide one length longer, to FULL and no further. Down: one shorter, to OFF and no further.
+    {
+        const int longer[] = {kGlideQuarter, kGlideHalf, kGlideOne, kGlideTwo, kGlideFull, kGlideFull};
+        for (int want : longer) {
+            rig.tap(UP);
+            CHECK(p.notes[slot].glide == want && roll.cursorStep() == 4);
+        }
+        const int shorter[] = {kGlideTwo, kGlideOne, kGlideHalf, kGlideQuarter, kGlideOff, kGlideOff};
+        for (int want : shorter) {
+            rig.tap(DOWN);
+            CHECK(p.notes[slot].glide == want && roll.cursorStep() == 4);
+        }
+    }
+    rig.tap(UP, 2); // half a step: what "on" was, and is 1 in a song
     rig.tap(RIGHT, 2);
     rig.key(X, false);
     CHECK(!roll.effecting() && p.notes[slot].ratchet == 3 && p.notes[slot].glide == 1);
@@ -5513,7 +5519,7 @@ void testNoteEffects() {
     rig.tap(LEFT);
     // The stick clicks too: one at once, and one way per push.
     rig.key(X, true);
-    rig.tap(DOWN); // the glide off, to see that the push below leaves it off
+    rig.tap(DOWN, 2); // the glide off, to see that the push below leaves it off
     CHECK(p.notes[slot].glide == 0);
     rig.key(STICK_LEFT, true);
     rig.frames(1);
@@ -5525,7 +5531,7 @@ void testNoteEffects() {
     rig.frames(1);
     CHECK(p.notes[slot].glide == 0 && p.notes[slot].ratchet <= 2);
     // Back to a glide and a ratchet of three, by the buttons (so the engine is told by them, not by the test).
-    rig.tap(UP);
+    rig.tap(UP, 2);
     rig.tap(LEFT, 3);
     rig.tap(RIGHT, 2);
     rig.key(X, false);
@@ -5604,7 +5610,7 @@ void testNoteEffects() {
     const int before = session.undoSteps();
     roll.moveCursorTo(60, 4);
     rig.key(X, true);
-    rig.tap(DOWN);
+    rig.tap(DOWN, 2);
     rig.key(X, false);
     CHECK(p.notes[slot].glide == 0);
     rig.frames(60);
@@ -5619,19 +5625,22 @@ void testNoteEffects() {
         const int at = p.at(60, 4);
         rig.key(X, true);
         bool ratchets = false, glides = false, both = false, plainRatchet = false;
-        for (int i = 0; i < 40; ++i) {
+        int lengths[kGlideKinds] = {};
+        for (int i = 0; i < 200; ++i) {
             const int ratchetWas = p.notes[at].ratchet, glideWas = p.notes[at].glide;
             rig.tap(Y);
             const NoteEvent& n = p.notes[at];
-            CHECK(n.ratchet >= 2 || n.glide == 1);
+            CHECK(n.ratchet >= 2 || n.glide >= 1);
             CHECK(n.ratchet != ratchetWas || n.glide != glideWas);
-            CHECK((n.ratchet == 0 || (n.ratchet >= 2 && n.ratchet <= 4)) && n.glide <= 1);
+            CHECK((n.ratchet == 0 || (n.ratchet >= 2 && n.ratchet <= 4)) && n.glide < kGlideKinds);
+            ++lengths[n.glide < kGlideKinds ? n.glide : 0];
             ratchets = ratchets || n.ratchet >= 2;
             glides = glides || n.glide;
             both = both || (n.ratchet >= 2 && n.glide);
             plainRatchet = plainRatchet || (n.ratchet >= 2 && !n.glide);
         }
         CHECK(ratchets && glides && both && plainRatchet && roll.effecting() && !roll.picking());
+        for (int kind = 0; kind < kGlideKinds; ++kind) CHECK(lengths[kind] >= 5); // every length comes up, and no glide at all does too
         // The engine is told: what plays is what the roll left. Rolled to a plain ratchet of two,
         // there is a gap just before the half of the step, where the ratchet of three it had before sounds on.
         for (int i = 0; i < 400 && !(p.notes[at].ratchet == 2 && p.notes[at].glide == 0); ++i) rig.tap(Y);

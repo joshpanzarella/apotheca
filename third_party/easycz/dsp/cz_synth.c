@@ -420,6 +420,7 @@ static void play_in_slot(cz_synth_t *s, int si, int note, int velocity, int glid
     sl->pending_velocity = velocity;
     sl->pending_glide = glide;
     sl->pending_rate16 = s->porta_rate16;
+    sl->pending_from = s->last_word;
     sl->fades = sl->nvoices;
     for (int i = 0; i < sl->nvoices; i++) fade_voice(s, sl->voice[i], RATE_STEAL);
 }
@@ -612,6 +613,7 @@ static void on_dca_arrival(cz_synth_t *s, int vi) {
             const int si = v->slot;
             const int rate16 = s->porta_rate16; /* the waiting note glides at the rate it was played with */
             s->porta_rate16 = sl->pending_rate16;
+            if (sl->pending_rate16 > 0) s->last_word = sl->pending_from; /* (the CZ's own glide: from the last note started, as it was) */
             start_note(s, si, sl->pending_note, sl->pending_velocity, sl->pending_glide);
             s->porta_rate16 = rate16;
             if (!sl->key_held && !s->pedal) release_slot(s, si);

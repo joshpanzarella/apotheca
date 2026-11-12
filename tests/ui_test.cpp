@@ -1090,7 +1090,34 @@ static void testNoteStripThrowFits() {
     CHECK(stripThrowFont(huge, 560.f, &x) == 2 && x == 560.f);
 }
 
+// GLIDE's length on the strip. With X held it has its own field, and THROW and NUDGE stand
+// clear of the longest it reads. Without, a glide alone says its length where "GLIDE" was.
+static void testNoteStripGlideFits() {
+    // As the fonts measure them, large / medium / small (printed from the program, 2026-11-12).
+    struct Text { const char* text; float widths[3]; };
+    const Text lengths[] = {{"OFF", {38.7f, 32.9f, 28.f}}, {"1/4 STEP", {90.6f, 77.2f, 66.f}}, {"1/2 STEP", {90.6f, 77.2f, 66.f}}, {"1 STEP", {66.3f, 56.5f, 48.3f}}, {"2 STEPS", {83.9f, 71.3f, 60.8f}}, {"FULL", {50.8f, 43.2f, 36.8f}}};
+    const float space[3] = {64.9f, 55.1f, 47.f}, early[3] = {113.1f, 96.2f, 82.f};
+    // Every length there is has a row here, by its name.
+    for (int place = 0; place < kGlideKinds; ++place) CHECK(std::string(glideName(glideAt(place))) == lengths[place].text);
+    for (const Text& length : lengths) {
+        // X held: GLIDE, a gap, THROW, a gap, NUDGE, and the right margin. All in the large size.
+        CHECK(kStripHeldGlideX + length.widths[0] + kStripSpace <= kStripHeldThrowX);
+        // Not held, a glide alone, thrown or not: it ends before THROW begins, and THROW before the margin.
+        CHECK(stripFont(length.widths, stripGlideRoom(false)) == 0 && stripEffectX(false) + length.widths[0] <= kStripRight);
+        const int size = stripFont(length.widths, stripGlideRoom(true));
+        CHECK(size == (length.widths[0] > 85.f ? 1 : 0)); // only "1/4 STEP" and "1/2 STEP" go down a size
+        float x = 0.f;
+        const float end = stripEffectX(true) + length.widths[size] + kStripSpace;
+        const int font = stripThrowFont(space, end, &x);
+        CHECK(x >= end && x + space[font] <= kStripRight && font <= 1);
+    }
+    CHECK(kStripHeldThrowX + space[0] + kStripSpace <= kStripHeldNudgeX);
+    CHECK(stripFont(early, kStripRight - kStripHeldNudgeX) == 0); // "45% EARLY" as large as ever
+    CHECK(kStripHeldGlideX == 250.f && kStripHeldThrowX > 320.f); // (THROW stood at 320 when a glide read ON or OFF)
+}
+
 int main(int, char**) {
+    testNoteStripGlideFits();
     testNoteStripNudgeFits();
     testNoteStripThrowFits();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check

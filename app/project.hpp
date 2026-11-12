@@ -286,6 +286,29 @@ struct Project {
         const int left = sceneSteps(s) - barIndex * kSteps;
         return left > kSteps ? kSteps : (left < 0 ? 0 : left);
     }
+    // GLIDE, for the roll to draw: what each note of a synth track's cell slides from and for how
+    // long, as the scene goes round (lines[bar * kMaxNotes + slot], kMaxBars * kMaxNotes of them;
+    // a chord's notes are in the slots NotePattern::render gives them, as the engine has them).
+    // The rule is the engine's own (apotheca/glide_rule.hpp).
+    void glideLines(int trackIndex, int s, GlideLine* lines) const {
+        GlideNote all[kMaxBars * kMaxNotes];
+        const TrackData& t = tracks[trackIndex];
+        const int bars = t.bars[s] < 1 ? 1 : (t.bars[s] > kMaxBars ? kMaxBars : t.bars[s]);
+        for (int b = 0; b < bars; ++b) {
+            NoteEvent out[kMaxNotes];
+            t.notes[s][b].render(out);
+            for (int i = 0; i < kMaxNotes; ++i) {
+                GlideNote& n = all[b * kMaxNotes + i];
+                n.sounds = out[i].velocity > 0.f;
+                n.step = out[i].step;
+                n.pitch = out[i].pitch;
+                n.nudge = out[i].nudge;
+                n.ratchet = out[i].ratchet;
+                n.glide = glideKind(out[i].glide);
+            }
+        }
+        apotheca::glideLines(all, bars, sceneSteps(s), lines);
+    }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }
 };

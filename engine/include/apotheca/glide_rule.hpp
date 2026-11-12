@@ -101,7 +101,7 @@ inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, Gli
     Begin begins[kMost];
     int count = 0;
     for (int i = 0; i < cellBars * kGlideNotes && i < kMost; ++i) lines[i] = GlideLine();
-    if (cellBars < 1 || cellBars > kGlideBars || sceneSteps < 1) return;
+    if (cellBars < 1 || cellBars > kGlideBars) return;
     for (int bar = 0; bar * 16 < sceneSteps && count < kMost; ++bar) {
         const int left = sceneSteps - bar * 16, cellBar = bar % cellBars;
         for (int slot = 0; slot < kGlideNotes && count < kMost; ++slot) {

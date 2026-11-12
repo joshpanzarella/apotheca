@@ -476,8 +476,24 @@ int main(int argc, char** argv) {
             p.notes[5].nudge = -0.45f;
             p.notes[5].length = 2.25f;
         }
+        if (std::strstr(view, "glides")) { // notefx-glides: every length of glide, one into step 1 from the loop's end, one from a key off the roll
+            p = NotePattern();
+            note(0, 0, 62, 1.f, 0, kGlideFull);        // into step 1: from the last note of the loop (step 15)
+            note(1, 2, 67, 1.f, 0, kGlideQuarter);
+            note(2, 4, 60, 1.f, 0, kGlideHalf);
+            note(3, 6, 69, 1.f, 0, kGlideOne);
+            note(4, 9, 64, 2.f, 0, kGlideTwo);
+            note(5, 11, 71, 1.f, 3, kGlideFull);       // a ratchet: the slide is over by its second piece
+            note(6, 12, 30, 0.5f, 0, 0);               // far below the roll...
+            note(7, 13, 65, 1.f, 0, kGlideOne, kThrowEcho); // ...and a glide up from it
+            note(8, 14, 57, 1.f, 0, kGlideFull);
+            p.notes[8].nudge = 0.4f;
+            if (std::strstr(view, "alone")) p.notes[4].nudge = -0.45f, p.notes[4].glide = kGlideQuarter, p.notes[4].throwTo = kThrowSpace; // a glide and no ratchet: the strip says its length
+            if (std::strstr(view, "longest")) p.notes[4].nudge = -0.45f, p.notes[4].ratchet = 4, p.notes[4].throwTo = kThrowSpace; // the strip with X held, at its fullest
+        }
         app.session().sendNoteBar(2, 0, 0);
         app.notes().moveCursorTo(64, 12);
+        if (std::strstr(view, "glides")) app.notes().moveCursorTo(64, 9);
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
         if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
         if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held

@@ -9,3 +9,6 @@ these unless they are put back.
   slot, and `cz_synth_glide_rate16(seconds)`. Why: Apotheca's GLIDE is a
   length in steps that follows the tempo; the CZ's one fixed time (92 ms)
   could not be it. With `porta_rate16` at 0 nothing is changed.
+  A note that waits for its slot keeps the rate and the key to slide from
+  that it was played with (`pending_rate16`, `pending_from`): two gliding
+  notes played at one moment each took the other's.

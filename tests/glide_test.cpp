@@ -112,7 +112,7 @@ static void testTheLengths() {
     CHECK(glideAt(-1) == kGlideOff && glideAt(99) == kGlideFull && glidePlace(77) == 0);
     CHECK(glideKind(0) == kGlideOff && glideKind(-3) == kGlideOff && glideKind(5) == kGlideFull && glideKind(6) == kGlideHalf && glideKind(200) == kGlideHalf);
     CHECK(glideSteps(kGlideQuarter, 9, 0) == 0.25 && glideSteps(kGlideHalf, 9, 0) == 0.5 && glideSteps(kGlideOne, 9, 0) == 1.0 && glideSteps(kGlideTwo, 9, 0) == 2.0 && glideSteps(kGlideFull, 9, 0) == 9.0);
-    CHECK(glideSteps(kGlideHalf, 9, 1) == 0.5); // a ratchet of one is no ratchet
+    CHECK(glideSteps(kGlideHalf, 9, 1) == 0.5 && glideSteps(kGlideOne, 9, 1) == 1.0); // a ratchet of one is no ratchet
     CHECK(glideSteps(kGlideHalf, 9, 2) == 0.85 / 2 && glideSteps(kGlideQuarter, 9, 2) == 0.25 && glideSteps(kGlideFull, 9, 4) == 0.85 / 4 && glideSteps(kGlideQuarter, 9, 4) == 0.85 / 4);
     for (int kind = 0; kind < kGlideKinds; ++kind) CHECK(glideName(kind) && glideName(kind)[0]);
     CHECK(std::string(glideName(kGlideHalf)) == "1/2 STEP" && std::string(glideName(kGlideFull)) == "FULL" && std::string(glideName(kGlideOff)) == "OFF" && std::string(glideName(kGlideTwo)) == "2 STEPS");

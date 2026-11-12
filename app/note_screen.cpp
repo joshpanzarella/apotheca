@@ -413,8 +413,8 @@ void NoteScreen::breakUp(int chord) {
 
 // A direction from the D-pad: the cursor, or the thing a held button has hold of.
 // With X held on a note or a chord, one click of what it does besides play. Left and right: a
-// ratchet, the note 2, 3 or 4 times inside its first step. Up and down: a glide, on and off
-// (a note only: a chord has no one note to slide from).
+// ratchet, the note 2, 3 or 4 times inside its first step. Up and down: a glide, one length
+// longer or shorter, down to OFF (a note only: a chord has no one note to slide from).
 void NoteScreen::fxTurn(Button direction) {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
     if (slot < 0 && chord < 0) return;
@@ -426,7 +426,8 @@ void NoteScreen::fxTurn(Button direction) {
     bool changed = to != hits;
     ratchet = static_cast<std::uint8_t>(to < 2 ? 0 : to); // "one" is kept one way: 0
     if (slot >= 0 && (direction == Button::Up || direction == Button::Down)) {
-        const std::uint8_t glide = direction == Button::Up ? 1 : 0;
+        const int place = glidePlace(glideKind(pat().notes[slot].glide)) + (direction == Button::Up ? 1 : -1);
+        const std::uint8_t glide = static_cast<std::uint8_t>(glideAt(place)); // (it stops at each end)
         changed = changed || pat().notes[slot].glide != glide;
         pat().notes[slot].glide = glide;
     }
@@ -444,8 +445,8 @@ void NoteScreen::fxThrow() {
     session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
-// With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide (a note only),
-// or both. Each roll is something, and something else than it was. The dice do not throw: a
+// With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide of some length
+// (a note only), or both. Each roll is something, and something else than it was. The dice do not throw: a
 // THROW is left as the player set it.
 void NoteScreen::fxRoll() {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
@@ -460,7 +461,7 @@ void NoteScreen::fxRoll() {
     int to = 0, glide = 0;
     for (;;) { // (there is always another roll to be had, so this ends)
         to = roll(100) < 65 ? ratchets[roll(4)] : 0;
-        glide = slot >= 0 && roll(100) < 40 ? 1 : 0;
+        glide = slot >= 0 && roll(100) < 40 ? glideAt(1 + static_cast<int>(roll(kGlideKinds - 1))) : kGlideOff;
         if ((to || glide) && (to != ratchetWas || glide != glideWas)) break;
     }
     ratchet = static_cast<std::uint8_t>(to);
@@ -936,6 +937,48 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x, y + 1, w, h - 2, live ? kTeal : kText);
         if (n.ratchet >= 2 || n.glide || n.throwTo) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo, inset);
     }
+    // GLIDE: a slanted line from the key the note slides from to the note's start, as long as the
+    // slide. (Which key and how long: the engine's own rule, Project::glideLines.) A line that
+    // starts before the top of the bar is in the bar before for that part: so the lines of the
+    // bar played next are drawn too, at the bottom, where they start. A key off the side of the
+    // roll is where the line runs off it.
+    {
+        bool any = false;
+        for (int b = 0; b < cellBars() && !any; ++b)
+            for (const NoteEvent& n : project_.current().notes[project_.scene][b].notes) any = any || (n.velocity > 0.f && n.glide);
+        if (any) {
+            GlideLine lines[kMaxBars * kMaxNotes];
+            project_.glideLines(project_.track, project_.scene, lines);
+            const int rows = project_.barSteps(project_.scene, project_.bar);
+            const int left = kGridLeft, right = kGridLeft + visibleKeys() * keyW() - 2, top = gridTop(), bottom = gridTop() + rows * kRowH - 2;
+            const int next = barPlayedNext(project_.bar, cellBars(), project_.sceneSteps(project_.scene));
+            for (int pass = 0; pass < 2; ++pass) {
+                const int bar = pass == 0 ? project_.bar : next, shift = pass == 0 ? 0 : rows;
+                const NotePattern& in = project_.current().notes[project_.scene][bar];
+                for (int slot = 0; slot < kMaxNotes; ++slot) {
+                    const NoteEvent& n = in.notes[slot];
+                    const GlideLine& line = lines[bar * kMaxNotes + slot];
+                    if (n.velocity <= 0.f || line.from < 0) continue;
+                    const GlideSpan span = glideSpan(static_cast<double>(n.step) + n.nudge, line.steps, shift, rows);
+                    if (!span.seen) continue;
+                    const double x0 = gx(line.from) + cellW() / 2.0, x1 = gx(n.pitch) + cellW() / 2.0;
+                    const double y0 = top + 1 + span.from * kRowH, y1 = top + 1 + span.to * kRowH;
+                    // A dark edge first, then the purple over it: it stands clear of the notes it crosses.
+                    const int count = static_cast<int>(std::ceil(std::fabs(x1 - x0) > std::fabs(y1 - y0) ? std::fabs(x1 - x0) : std::fabs(y1 - y0))) + 1;
+                    for (int layer = 0; layer < 2; ++layer) {
+                        const int grow = layer == 0 ? 1 : 0;
+                        for (int i = 0; i <= count; ++i) {
+                            const double t = static_cast<double>(i) / count;
+                            const int x = static_cast<int>(std::floor(x0 + (x1 - x0) * t)) - 1 - grow, y = static_cast<int>(std::floor(y0 + (y1 - y0) * t)) - 1 - grow;
+                            const int size = 2 + 2 * grow;
+                            if (x < left || x + size > right || y < top || y + size > bottom) continue;
+                            fill(r, x, y, size, size, layer == 0 ? kBg : kPurple);
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (picking_ && editing_ < 0) drawChord(inHand(), false, true); // where it will land
     outline(r, gx(pitch_) - 1, gy(step_) - 1, cellW() + 2, kCellH + 2, cursorColor, 2);
     const int playStep = session_.engine.playScene() == project_.scene && session_.engine.playBar() % cellBars() == project_.bar ? session_.engine.playStep() : -1;
@@ -991,14 +1034,15 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", step_ + 1);
         field(100.f, "STEP", text, kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
-        const bool glideHere = under && under->glide;
+        const int glideKindHere = under ? glideKind(under->glide) : kGlideOff;
+        const bool glideHere = glideKindHere != kGlideOff;
         const int throwHere = under ? under->throwTo : (chordUnder ? chordUnder->throwTo : 0);
         if (fxHeld_ && (under || chordUnder)) {
             // X is held: the strip is what the note does besides play.
             std::snprintf(text, sizeof text, ratchetHere >= 2 ? "x%d" : "OFF", ratchetHere);
             field(160.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
-            field(250.f, "GLIDE", !under ? "-" : glideHere ? "ON" : "OFF", !under ? kDim : glideHere ? kBrass : kText);
-            field(320.f, "THROW", throwName(throwHere), throwHere ? kBrass : kText);
+            field(kStripHeldGlideX, "GLIDE", !under ? "-" : glideName(glideKindHere), !under ? kDim : glideHere ? kBrass : kText);
+            field(kStripHeldThrowX, "THROW", throwName(throwHere), throwHere ? kBrass : kText);
         } else if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));
             field(160.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
@@ -1014,9 +1058,15 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         float effectEnd = 0.f; // where the effect's value ends, and a gap (0: there is none)
         if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
-            std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", glideHere ? "GLIDE" : "");
-            field(stripEffectX(throwHere != 0), ratchetHere >= 2 ? "RATCHET" : "EFFECT", text, kPurple);
-            effectEnd = stripEffectX(throwHere != 0) + fonts.large.width(text) + kStripSpace;
+            // A glide alone says how long it is; beside a ratchet there is only room to say it is there.
+            std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", !glideHere ? "" : ratchetHere >= 2 ? "GLIDE" : glideName(glideKindHere));
+            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
+            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const int size = ratchetHere >= 2 ? 0 : stripFont(widths, stripGlideRoom(throwHere != 0)); // (a ratchet's line is as it always was)
+            const float x = stripEffectX(throwHere != 0);
+            fonts.small.draw(r, x, stripY + 8.f, ratchetHere >= 2 ? "RATCHET" : "GLIDE", kDim);
+            sizes[size]->draw(r, x, stripY + 26.f + fonts.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
+            effectEnd = x + widths[size] + kStripSpace;
         }
         if (!fxHeld_ && throwHere) {
             // Up to the right margin and no further: moved left, or drawn smaller beside a long effect.
@@ -1034,9 +1084,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere);
             const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
             const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
-            const Font& font = *sizes[stripFont(widths, stripNudgeRoom(effectHere, !fxHeld_ && throwHere != 0))];
-            fonts.small.draw(r, kStripNudgeX, stripY + 8.f, "NUDGE", kDim);
-            font.draw(r, kStripNudgeX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
+            // (With X held it stands further right: a glide's length needs the room.)
+            const float nudgeX = fxHeld_ ? kStripHeldNudgeX : kStripNudgeX;
+            const Font& font = *sizes[stripFont(widths, fxHeld_ ? kStripRight - nudgeX : stripNudgeRoom(effectHere, throwHere != 0))];
+            fonts.small.draw(r, nudgeX, stripY + 8.f, "NUDGE", kDim);
+            font.draw(r, nudgeX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
         } else if (!fxHeld_) {
             std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
             field(kStripNudgeX, "NOTES", text, kDim);
@@ -1055,7 +1107,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (fxHeld_) {
         hint("LEFT / RIGHT", "ratchet");
-        if (under) hint("UP / DOWN", "glide on / off");
+        if (under) hint("UP / DOWN", "glide length");
         hint("A", "throw");
         hint("Y", "dice");
     } else if (carrying_ != Carry::Nothing) {

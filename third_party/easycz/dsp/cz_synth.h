@@ -83,6 +83,7 @@ typedef struct {
     int pending_velocity;
     int pending_glide;
     int pending_rate16; /* porta_rate16 as it was when the waiting note was played */
+    int pending_from;   /* ...and last_word: a glide of a given length comes from the note it was played after */
     uint8_t voice[2]; /* line 1 (odd chip voice), primed line (even) */
     uint8_t nvoices;
     uint8_t fades;    /* steal fades still to arrive */
