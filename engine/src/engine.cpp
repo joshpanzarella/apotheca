@@ -283,7 +283,11 @@ void Engine::swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* 
 
 // One slot's work on a chunk. With no fade under way this is the effect's own
 // process() and nothing else, so a song sounds as it always did.
-void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus) {
+void Engine::runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus, unsigned hits) {
+    if (hits) {
+        if (place) place->drumHits(hits);
+        if (fade.leaving) fade.leaving->drumHits(hits);
+    }
     const auto silence = [&](float* l, float* r) {
         for (int i = 0; i < frames; ++i) l[i] = r[i] = 0.f;
     };
@@ -876,6 +880,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
     int more = hits - 1;
     if (delaySamples < 1.0) {
         track.drums.trigger(lane, velocity, start, part, how);
+        track.hitsNow |= 1u << lane;
         if (more == 0) return;
         delaySamples += gap; // the rest of the ratchet waits its turn
         --more;
@@ -901,6 +906,7 @@ void Engine::firePending() {
             for (auto& p : track.pending[lane]) {
                 if (p.velocity > 0.f && p.samplesLeft < 1.0) {
                     track.drums.trigger(lane, p.velocity, p.start, p.part, p.how);
+                    track.hitsNow |= 1u << lane;
                     if (p.more > 0) { // a ratchet: the same again, a part of a step on
                         --p.more;
                         p.samplesLeft += p.gap;
@@ -1171,7 +1177,7 @@ void Engine::renderTrack(int t) {
     if (track.synth) track.synth->render(left, right, frames);
     else track.drums.render(left, right, frames);
     for (int slot = 0; slot < kTrackSlots; ++slot) {
-        runSlot(track.effects[slot], track.fades[slot], left, right, frames);
+        runSlot(track.effects[slot], track.fades[slot], left, right, frames, false, chunkHits_);
         track.meters[slot].store(track.effects[slot] ? track.effects[slot]->meter() : 0.f, std::memory_order_relaxed);
     }
     if (t == chunkScope_) {
@@ -1356,6 +1362,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
             for (auto& m : tracks_[t].meters) m.store(0.f, std::memory_order_relaxed); // and its effects, not run, show nothing
     chunkFrames_ = frames;
     chunkPeaks_ = peaks;
+    // DUCK's key: what was hit on the first drum track, on this chunk's first
+    // sample. Taken here, on the audio thread, before any track is worked on;
+    // the hits themselves were all made before this chunk began (render()).
+    chunkHits_ = 0;
+    for (int t = kNumTracks - 1; t >= 0; --t) {
+        if (tracks_[t].hasDrums) chunkHits_ = tracks_[t].hitsNow;
+        tracks_[t].hitsNow = 0;
+    }
     chunkScope_ = scopeTrack_.load(std::memory_order_relaxed);
     if (workers_.empty() || count < 2) {
         for (int i = 0; i < count; ++i) renderTrack(active_[i]);
@@ -1391,7 +1405,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     runBuses(frames, busL, busR, fed, mixL, mixR);
 
     for (int slot = 0; slot < kMasterSlots; ++slot) {
-        runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames);
+        runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames, false, chunkHits_);
         masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);
     }
     // Effects whose fade out has ended go to the trash. Here, not in

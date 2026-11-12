@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) and DUCK (9) are not.
+Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). DUCK (9) is built too (2026-11-12, "Step 9 as built"). THROW (2, 3) is not.
 
 ## The recommendation
 
@@ -398,7 +398,7 @@ metallic is for ears.
 | 6 | **DONE 2026-11-12.** CHORUS | small | 0 | `fx/chorus.cpp` |
 | 7 | **DONE 2026-11-12** (the meter went on the screen at the join). COMP | medium | 0 | `fx/comp.cpp`; the meter in `fx_screen.cpp` |
 | 8 | **DONE 2026-11-12.** SATURATE, with a shared 2x header | medium | 0 | `fx/saturate.cpp`, `fx/halfband.hpp` |
-| 9 | DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
+| 9 | **DONE 2026-11-12.** DUCK | medium | 0, and a small hook in the engine | `fx/duck.cpp`, `engine.cpp` |
 | 10+ | The later set, one at a time | small each (BLOOM, STUTTER medium) | 0; BLOOM needs 5, PING needs 4 | one file each |
 
 **Step 0 as built:**
@@ -570,6 +570,24 @@ lopsided enough (0.5 off centre) or too much; is FOLD's range right; is
 holding a half-scale sine level the right "level" (quiet tails and noise come
 up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 
+**Step 9 (DUCK) as built**, 2026-11-12. Only tests, measurements and one still have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Where | `engine/src/fx/duck.cpp`, number 11, word `duck`, group LEVEL (after COMP in the list). Three settings: AMOUNT, RELEASE, SOURCE (8 choices, reads `LANE 1` to `LANE 8`). As it comes: 60%, 209 ms, lane 1 |
+| The hook | `Effect::drumHits(lanes)`: "these lanes of the first drum track are hit on the first sample of the block you are about to get". Only DUCK listens. The engine marks a hit where it triggers the drum (`Track::hitsNow`, two places: `playHit` and `firePending`) |
+| When it is written and read | **Written on the audio thread before the tracks are shared out; only read after.** `render()` already ends a chunk where the next hit is due, so every hit lands on a chunk's first sample and "which lanes" is all there is to say (no sample offsets). `renderChunk` copies the first drum track's marks to `chunkHits_` and clears them before any helper is woken; `runSlot` hands them to the effect. A helper working on the drums changes nothing a ducked track looks at. The same to the last bit on 0 to 3 helpers and twice from fresh (a song with DUCK on the drums themselves, three synths, the master, and one swapped out and in) |
+| The first drum track | The lowest-numbered track that is drums, worked out each chunk. Remove it and the next one is the source |
+| Which hits count | **Every trigger of the lane, whatever made it** (the plan was silent): a pattern's hit, each hit of a ratchet, a hit pushed early or late (on its own sample), a drum played by hand or from a keyboard, song stopped or not. A step its chance leaves out is no hit. The hit's level does not matter (a ghost dips as far as an accent) |
+| The shape | A straight fall to `1 - AMOUNT` in **3 ms** (`kFall`), not at once: a step in level is a click, and a muted drum is not there to hide it. Then back over RELEASE, `(1 - t)^2` of the dip left at `t` of the way: quick at first, easing in, and **it arrives exactly** (from then on the sound passes untouched to the sample). A hit before it is back falls again from where the level is. RELEASE is 20 ms to 1 s (`20 * 50^v` ms) |
+| Where it may go | Track slots and **the master (allowed: the plan was silent; it dips the whole mix)**. Not a bus: its group is LEVEL, so the picker does not offer it there and `Engine::setEffect` refuses it; a bus's slot is not told the hits |
+| The rules for new effects | `soundOnly` first; AMOUNT and the speed of the way back glide (20 ms) and at rest a turned setting is simply there; the same to the bit in blocks of 1, 7, 35, 64 and 4480; no number too small to hold (`TooSmall`); the same with flush-to-zero on or off; at rest it does no work. No MIX: AMOUNT at 0 is the sound untouched |
+| The meter | `meter()` is the dB it is dipping (60 for "right down"); `effectMeterParam` puts it on the AMOUNT box, the same strip as COMP's. Still `fx-duck` |
+| Tests | `testDuck` in `effects_test` (the plan's row: dip of AMOUNT at the hit's sample, back up in RELEASE, nothing from other lanes; then the engine: what each slot is told and when, muted drums, the master, a DUCK fading out of its slot). `through()` there now hits a drum five times a second so the checks for every effect reach DUCK. 53 mutants, 50 killed; the 3 left change nothing that can be seen (a second clearing of state on reset, a shortcut for speed, the block the glide is worked out in) |
+| Cost | 0.02% of a desk core, dipping eight times a second (a run where DRIVE read 0.12%). The plan guessed 0.01 |
+
+For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and it is one number); the shape of the way back; whether a ghost hit should dip less than an accent; whether a drum played by hand should dip at all; 60% and 209 ms as the place to start.
+
 **Joined, 2026-11-12** (sends, TAPE and HALL, CHORUS, COMP and SATURATE on one branch, and what the reviews found). Only tests, measurements and stills have seen any of it; nobody has heard it.
 
 | Thing | Result |
@@ -589,7 +607,7 @@ up with DRIVE); TONE's range; SATURATE beside the old DRIVE on a high lead.
 | A read past the end in a test | `testBusEffectsInTheEngine` read 4800 floats past a vector. Fixed; `effects_test` built with the address and undefined-behaviour sanitizers runs clean (the version before fails there) |
 | Readings that did not fit | `1/8 DOTTED` ran out of TAPE's and DELAY's TIME box (now seen on every new song's ALL page). They read `1/8 DOT` and `1/4 DOT`, beside `1/8 TRIP` |
 | Cost (desk, `bench`) | One each, in a run where DRIVE read 0.18%: FILTER 0.05, SATURATE 0.21, DRIVE 0.18, TAPE 0.15, DELAY 0.03, HALL 0.20 (0.23 with TONE above 50%), REVERB 0.09, CHORUS 0.20 (0.10 as VIBRATO or FLANGE), COMP 0.13, CRUSH 0.02. The way-in check costs each new effect about 0.01 (the build before the join read TAPE 0.16, HALL 0.19, CHORUS 0.19, COMP 0.12, SATURATE 0.21 back to back). **The buses, as what they add to twelve busy drum tracks (2.0% by themselves): feeding both 0.05 to 0.12; with TAPE and HALL 0.41 to 0.50; with DELAY and REVERB 0.09 to 0.18** (a small difference of two large numbers: it moves that much from run to run). Handheld, times 5: about 2.5% of a core for both buses with TAPE and HALL, which is the plan's figure |
-| Not done | THROW, DUCK. The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
+| Not done | THROW (DUCK was built after the join: "Step 9 as built"). The bus LEVEL is not automated (nothing on a bus is). The meter is not smoothed on the screen: it shows the last chunk's reading, which COMP's own release already smooths |
 
 For the owner's ears, new at the join: TAPE and HALL as the first thing a send
 gives (against DELAY and REVERB); a LEVEL turned while echoes ring (it glides

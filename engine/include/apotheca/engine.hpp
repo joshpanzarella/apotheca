@@ -357,7 +357,8 @@ private:
     };
     void swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* incoming);
     // `bus`: the slot is a bus's, where "no effect" is silence and not the sound passing through.
-    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false);
+    // `hits`: the lanes of the first drum track hit on this chunk's first sample (chunkHits_), for a DUCK.
+    static void runSlot(std::unique_ptr<Effect>& place, SlotFade& fade, float* left, float* right, int frames, bool bus = false, unsigned hits = 0);
     void binLeaving(SlotFade& fade); // the audio thread only, with no helper at work
 
     struct Track {
@@ -402,6 +403,10 @@ private:
             int more = 0;
         };
         Pending pending[kDrumLanes][3];
+        // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
+        // always lands on a chunk's first sample (render() ends a chunk where the
+        // next one is due), so "which lanes" is all there is to say.
+        unsigned hitsNow = 0;
         float level = 0.65f; // one full hit stays clean; hits that land together push the master
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
@@ -440,6 +445,11 @@ private:
     // A chunk being worked on: what the helpers need to know.
     float trackL_[kNumTracks][kMaxBlock], trackR_[kNumTracks][kMaxBlock];
     int chunkFrames_ = 0, chunkScope_ = -1;
+    // DUCK: the lanes of the first drum track hit on this chunk's first sample.
+    // Written by the audio thread before the tracks are shared out, only read
+    // after that: a helper working on the drums changes nothing a helper
+    // working on a ducked track looks at.
+    unsigned chunkHits_ = 0;
     float* chunkPeaks_ = nullptr;
     int active_[kNumTracks] = {};
     std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};

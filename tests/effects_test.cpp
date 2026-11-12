@@ -127,10 +127,16 @@ struct Noise {
 };
 
 // Through an effect in the engine's own chunks of 64 frames, as a slot runs it.
+// A drum is being played meanwhile, for the one effect that listens (DUCK;
+// the rest are deaf to it): lane 1 is hit five times a second (at frame 0,
+// 9600, ...) and lane 8 as often, half way between (4800, 14400, ...).
+static const std::size_t kHitEvery = 9600;
 static void through(Effect& effect, Stereo& io, std::size_t from = 0, std::size_t to = static_cast<std::size_t>(-1)) {
     if (to > io.frames()) to = io.frames();
     for (std::size_t at = from; at < to; at += kMaxBlock) {
         const std::size_t n = to - at < static_cast<std::size_t>(kMaxBlock) ? to - at : static_cast<std::size_t>(kMaxBlock);
+        if (at % kHitEvery == 0) effect.drumHits(1u);
+        if (at % kHitEvery == kHitEvery / 2) effect.drumHits(1u << 7);
         effect.process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
     }
 }
@@ -473,7 +479,7 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its groups (FILTER; DRIVE; DELAY; REVERB; MOVING; LEVEL; DIRT), a new effect before the old one of its group.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Saturate, EffectKind::Drive, EffectKind::Tape, EffectKind::Delay, EffectKind::Hall, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Crush};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Saturate, EffectKind::Drive, EffectKind::Tape, EffectKind::Delay, EffectKind::Hall, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Crush};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and a group is never in two pieces (a whole group is stepped over at once).
@@ -847,6 +853,7 @@ static void testEveryEffect() {
         //   COMP    THRESHOLD 1.1 RATIO 0.9       SPEED 0.8   MIX 1.0        0.8  (it turns this sine down)
         //   SATURATE DRIVE 5.4    TYPE 2.1        TONE 1.4    MIX 1.4        1.4  (it squares the sine: at full DRIVE
         //                                                 held still it is 5.8, and FOLD held still 2.1. testSaturate)
+        //   DUCK    AMOUNT 1.0    RELEASE 1.0     SOURCE 1.0                 1.0  (dipping all the while: testDuck)
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0},
             {1.15, 1.01, 18.1, 1.00, 1.00},
@@ -859,6 +866,7 @@ static void testEveryEffect() {
             {1.26, 1.67, 0.71, 1.25, 1.25},   // CHORUS
             {1.05, 0.91, 0.83, 1.00, 0.82},   // COMP
             {5.42, 2.10, 1.44, 1.43, 1.44},   // SATURATE
+            {1.00, 1.00, 1.00, 0, 1.00},      // DUCK (a drum is hit five times a second all through: see through())
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -4915,6 +4923,508 @@ static void testBusRestNumbers() {
     }
 }
 
+// ---- DUCK ---------------------------------------------------------------------------------------
+
+static const int kDuckFall = 144; // 3 ms at 48 kHz: from the top to the full dip
+static float duckRelease(double seconds) { return static_cast<float>(std::log(seconds / 0.02) / std::log(50.0)); } // the RELEASE setting for a time
+static const double kDuckUsual = 0.02 * std::pow(50.0, 0.6); // RELEASE as it comes: 209 ms
+static float duckLane(int lane) { return (static_cast<float>(lane) + 0.5f) / 8.f; }                               // the SOURCE setting for a lane, 0 to 7
+// What is left of the sound `n` samples after a hit (0: the hit's own sample), from rest.
+static double duckGain(long n, double amount, double release, double rate = 48000.0) {
+    if (n < 0) return 1.0;
+    if (n < kDuckFall) return 1.0 - amount * static_cast<double>(n + 1) / kDuckFall;
+    const double back = static_cast<double>(n - kDuckFall + 1) / (release * rate);
+    return back >= 1.0 ? 1.0 : 1.0 - amount * (1.0 - back) * (1.0 - back);
+}
+// A steady 1 through an effect, cut into blocks of `block`; `lanes` are hit at each frame in `hits`
+// (which must fall on a block's first frame). What comes out is how much of the sound is left.
+static std::vector<float> duckedOnes(Effect& effect, std::size_t frames, const std::vector<std::size_t>& hits, unsigned lanes = 1u, std::size_t block = kMaxBlock, float in = 1.f) {
+    Stereo io(frames);
+    io.l.assign(frames, in);
+    io.r.assign(frames, -in);
+    for (std::size_t at = 0; at < frames; at += block) {
+        for (std::size_t hit : hits)
+            if (hit == at) effect.drumHits(lanes);
+        effect.process(io.l.data() + at, io.r.data() + at, static_cast<int>(frames - at < block ? frames - at : block));
+    }
+    for (std::size_t i = 0; i < frames; ++i) CHECK(io.r[i] == -io.l[i]); // both sides alike
+    return io.l;
+}
+
+// Puts out a steady 1, whatever came in: in a track's first slot, what leaves the track is its level times what the later slots leave.
+struct Flat : Effect {
+    void setParam(int, float) override {}
+    void process(float* left, float* right, int n) override {
+        for (int i = 0; i < n; ++i) left[i] = right[i] = 1.f;
+    }
+};
+// Writes down which lanes it is told were hit, and on which frame.
+struct HitWatch : Effect {
+    std::vector<std::pair<long, unsigned>> heard;
+    long frames = 0;
+    HitWatch() { heard.reserve(4096); }
+    void setParam(int, float) override {}
+    void drumHits(unsigned lanes) override {
+        if (heard.size() < heard.capacity()) heard.emplace_back(frames, lanes);
+    }
+    void process(float*, float*, int n) override { frames += n; }
+};
+static const double kTrackLevel = 0.65;
+static const int kStepFrames = 6000; // a step at 120 BPM and 48 kHz
+
+// An engine whose first track (the drums) puts out a steady 1 into a DUCK in its second slot.
+struct DuckRig {
+    std::unique_ptr<Engine> engine{new Engine};
+    explicit DuckRig(float amount = 1.f, float release = -1.f, int lane = 0, bool withDuck = true) {
+        engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(new Flat));
+        if (withDuck) engine->setTrackEffect(0, 1, fresh(EffectKind::Duck, amount, release, duckLane(lane)));
+    }
+    void step(int lane, int at, float level = 1.f, int track = 0) { engine->send(make(Command::SetStep, track, lane, at, level)); }
+    void play() { engine->send(make(Command::Play, 0, 0, 1)); }
+    // What is left of the track's sound, frame by frame, asked for in blocks of odd sizes.
+    std::vector<float> left(int frames) {
+        std::vector<float> all;
+        for (int done = 0, size = 37; done < frames; done += size, size = size % 301 + 64) {
+            const int n = frames - done < size ? frames - done : size;
+            const std::vector<float> got = leftOf(*engine, n);
+            for (float v : got) all.push_back(static_cast<float>(v / kTrackLevel));
+            size = n;
+        }
+        return all;
+    }
+};
+// The frames at which a dip starts: the sound was whole and is now less.
+static std::vector<long> dipsIn(const std::vector<float>& left) {
+    std::vector<long> at;
+    for (std::size_t i = 1; i < left.size(); ++i)
+        if (left[i] < left[i - 1] - 1e-4f && (i < 2 || left[i - 1] >= left[i - 2] - 1e-6f)) at.push_back(static_cast<long>(i));
+    return at;
+}
+
+// A song for the helpers: drums that duck themselves, three synths ducked from three lanes (one of
+// them a lane that is ratcheted and pushed late), a DUCK on the master, one swapped out and in.
+static std::vector<float> duckSong(int helpers, bool ducks = true) {
+    std::unique_ptr<Engine> engine(new Engine);
+    engine->useWorkers(helpers);
+    for (int s = 0; s < kSteps; s += 4) engine->send(make(Command::SetStep, 0, 0, s, 0.9f));
+    for (int s = 2; s < kSteps; s += 4) engine->send(make(Command::SetStep, 0, 2, s, 0.7f));
+    engine->send(make(Command::SetStep, 0, 4, 6, 0.8f));
+    engine->send(make(Command::SetStepNudge, 0, 4, 6, 0.3f));
+    Command fx = make(Command::SetStepFx, 0, 4, 6);
+    fx.d = 3;
+    engine->send(fx);
+    engine->send(make(Command::SetStepChance, 0, 2, 10, 0.5f));
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Phazed};
+    for (int t = 1; t <= 3; ++t) {
+        CHECK(engine->addSynthTrack(t, kinds[t - 1]));
+        for (int n = 0; n < 4; ++n) {
+            Command note = make(Command::SetNote, t, n, n * 4, 0.7f);
+            note.c = 36 + 7 * t + 2 * n;
+            note.d = 4;
+            engine->send(note);
+        }
+    }
+    if (ducks) {
+        CHECK(engine->setEffect(0, 1, EffectKind::Duck) && engine->setEffect(1, 0, EffectKind::Duck) && engine->setEffect(2, 2, EffectKind::Duck) && engine->setEffect(3, 0, EffectKind::Duck));
+        CHECK(engine->setEffect(kMasterTrack, 0, EffectKind::Duck));
+        engine->send(make(Command::SetEffectParam, 0, 1, 2, duckLane(2)));
+        engine->send(make(Command::SetEffectParam, 1, 0, 0, 1.f));
+        engine->send(make(Command::SetEffectParam, 2, 2, 2, duckLane(4)));
+        engine->send(make(Command::SetEffectParam, 2, 2, 1, 0.2f));
+        engine->send(make(Command::SetEffectParam, 3, 0, 1, 0.9f));
+        engine->send(make(Command::SetEffectParam, kMasterTrack, 0, 0, 0.3f));
+    }
+    std::vector<float> all(2 * 1024);
+    engine->render(all.data(), 1024);
+    engine->send(make(Command::Play, 0, 0, 1));
+    int round = 0;
+    for (int done = 0, size = 37; done < 3 * 16 * kStepFrames; done += size, size = size % 301 + 64, ++round) {
+        if (ducks && round == 400) CHECK(engine->setEffect(1, 0, EffectKind::None));
+        if (ducks && round == 640) CHECK(engine->setEffect(1, 0, EffectKind::Duck));
+        std::vector<float> got(static_cast<std::size_t>(2 * size), 99.f);
+        engine->render(got.data(), size);
+        all.insert(all.end(), got.begin(), got.end());
+        engine->collectGarbage();
+    }
+    return all;
+}
+
+static void testDuck() {
+    // ---- the table
+    CHECK(static_cast<int>(EffectKind::Duck) == 11 && std::string(effectInfo(EffectKind::Duck).word) == "duck" && effectFromWord("duck") == EffectKind::Duck);
+    CHECK(effectInfo(EffectKind::Duck).group == EffectGroup::Level && effectInfo(EffectKind::Duck).params == 3 && effectChoices(EffectKind::Duck, 2) == 8);
+    CHECK(effectChoices(EffectKind::Duck, 0) == 0 && effectChoices(EffectKind::Duck, 1) == 0 && effectBus(EffectKind::Duck) == -1 && effectMixParam(EffectKind::Duck) == -1);
+    CHECK(reads(EffectKind::Duck, 0, 0.6f) == "60%" && reads(EffectKind::Duck, 1, 0.f) == "20 MS" && reads(EffectKind::Duck, 1, 1.f) == "1.0 S" && reads(EffectKind::Duck, 1, 0.6f) == "209 MS");
+    CHECK(reads(EffectKind::Duck, 1, duckRelease(0.1)) == "100 MS" && reads(EffectKind::Duck, 1, duckRelease(0.5)) == "500 MS" && reads(EffectKind::Duck, 1, 0.99f) == "962 MS");
+    for (int lane = 0; lane < 8; ++lane) CHECK(reads(EffectKind::Duck, 2, duckLane(lane)) == std::string("LANE ") + static_cast<char>('1' + lane));
+    CHECK(reads(EffectKind::Duck, 2, 0.f) == "LANE 1" && reads(EffectKind::Duck, 2, 1.f) == "LANE 8");
+    CHECK(effectMeterParam(EffectKind::Duck) == 0 && std::string(effectInfo(EffectKind::Duck).paramNames[0]) == "AMOUNT");
+    // As it comes: 60%, 209 ms, lane 1.
+    CHECK(effectInfo(EffectKind::Duck).defaults[0] == 0.6f && effectInfo(EffectKind::Duck).defaults[1] == 0.6f && effectInfo(EffectKind::Duck).defaults[2] == 0.f);
+
+    // ---- no hit: the sound untouched, to the sample, wherever the settings are
+    for (float amount : {0.f, 0.6f, 1.f}) {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, amount, 0.3f, duckLane(3));
+        const Stereo in = pinInput(48000.f);
+        Stereo out = in;
+        for (std::size_t at = 0; at < out.frames(); at += kMaxBlock) {
+            if (at % 4800 == 0) duck->drumHits(0xffu & ~(1u << 3)); // every lane but its own is being hit
+            duck->process(out.l.data() + at, out.r.data() + at, kMaxBlock < out.frames() - at ? kMaxBlock : static_cast<int>(out.frames() - at));
+            CHECK(duck->meter() == 0.f);
+        }
+        CHECK(out.l == in.l && out.r == in.r);
+    }
+    // AMOUNT at 0 with its own lane hit: untouched too.
+    {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 0.f);
+        const Stereo in = pinInput(48000.f);
+        Stereo out = in;
+        through(*duck, out);
+        CHECK(out.l == in.l && out.r == in.r && duck->meter() == 0.f);
+    }
+
+    // ---- the shape: a straight fall of 3 ms to 1 - AMOUNT, then back over RELEASE, and it arrives
+    double worst = 0.0;
+    for (float amount : {1.f, 0.6f, 0.25f}) {
+        for (double release : {0.02, 0.1, kDuckUsual, 1.0}) {
+            std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, amount, release == kDuckUsual ? -1.f : duckRelease(release));
+            const std::size_t hit = 6400, frames = hit + static_cast<std::size_t>(release * 48000.0) + 9600;
+            const std::vector<float> left = duckedOnes(*duck, frames, {hit});
+            const long back = static_cast<long>(std::lround(release * 48000.0));
+            for (std::size_t i = 0; i < frames; ++i) {
+                const long n = static_cast<long>(i) - static_cast<long>(hit);
+                const double want = duckGain(n, amount, release);
+                worst = std::fmax(worst, std::fabs(left[i] - want));
+                // Untouched before the hit, from its very sample on it dips, and once back it is untouched again.
+                if (n < 0 || n > kDuckFall + back + 2) CHECK(left[i] == 1.f);
+                if (n >= 0 && n < kDuckFall + static_cast<long>(0.97 * back)) CHECK(left[i] < 1.f);
+            }
+            // Right down to 1 - AMOUNT, on the last sample of the fall, and nowhere lower.
+            CHECK(std::fabs(left[hit + kDuckFall - 1] - (1.0 - amount)) < 1e-5);
+            float lowest = 1.f;
+            for (float v : left) lowest = std::fmin(lowest, v);
+            CHECK(lowest == left[hit + kDuckFall - 1] && lowest >= 0.f);
+            // Half of the dip is back 29% of the way through RELEASE (1 - sqrt(1/2)).
+            const std::size_t half = hit + kDuckFall + static_cast<std::size_t>(0.2929 * release * 48000.0);
+            CHECK(std::fabs(left[half] - (1.0 - 0.5 * amount)) < 0.01 * amount + 2e-3);
+            // No step anywhere larger than the fall's own.
+            CHECK(largestJump(left) <= amount / kDuckFall * 1.001f + 1e-6f);
+        }
+    }
+    SAY("duck     furthest from the written shape %.2e\n", worst);
+    CHECK(worst < 2e-4); // today 3e-5: the sums of small steps
+
+    // ---- which lane: each SOURCE hears its own lane and no other
+    for (int source = 0; source < 8; ++source)
+        for (int lane = 0; lane < 8; ++lane) {
+            std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 1.f, -1.f, duckLane(source));
+            const std::vector<float> left = duckedOnes(*duck, 1280, {640}, 1u << lane);
+            float lowest = 1.f;
+            for (float v : left) lowest = std::fmin(lowest, v);
+            CHECK(lane == source ? lowest == 0.f : lowest == 1.f);
+        }
+    // Several lanes hit together: it hears its own among them. A lane past the eighth is nobody's.
+    {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 1.f, -1.f, duckLane(5));
+        CHECK(duckedOnes(*duck, 640, {0}, 0x21u)[kDuckFall - 1] == 0.f);
+        std::unique_ptr<Effect> other = fresh(EffectKind::Duck, 1.f, -1.f, duckLane(7));
+        CHECK(duckedOnes(*other, 640, {0}, 0x100u)[kDuckFall - 1] == 1.f);
+    }
+
+    // ---- a hit before it is back: the fall starts again from where the level is, with no jump
+    {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 0.8f, duckRelease(0.2));
+        const std::size_t first = 640, again = first + 3840; // 80 ms on: about 37% of the dip is still on
+        const std::vector<float> left = duckedOnes(*duck, 24000, {first, again});
+        const double before = left[again - 1];
+        CHECK(before > 0.5 && before < 0.9 && std::fabs(before - duckGain(static_cast<long>(again - 1 - first), 0.8, 0.2)) < 1e-4);
+        CHECK(left[again] < before && std::fabs((before - left[again]) - 0.8 / kDuckFall) < 1e-5); // down at the fall's speed, from where it was
+        CHECK(largestJump(left) <= 0.8f / kDuckFall * 1.001f + 1e-6f);
+        // It reaches the bottom sooner (it had less far to go), and then comes back as from any hit.
+        long bottom = 0;
+        for (std::size_t i = again; i < left.size(); ++i)
+            if (std::fabs(left[i] - 0.2f) < 1e-5f) {
+                bottom = static_cast<long>(i);
+                break;
+            }
+        CHECK(bottom > static_cast<long>(again) + 20 && bottom < static_cast<long>(again) + kDuckFall - 20);
+        for (long n = 0; n < 12000; n += 97) CHECK(std::fabs(left[static_cast<std::size_t>(bottom + n)] - duckGain(kDuckFall - 1 + n, 0.8, 0.2)) < 2e-4);
+        CHECK(left.back() == 1.f);
+        // Two hits told in one go are one hit.
+        std::unique_ptr<Effect> twice = fresh(EffectKind::Duck, 0.8f, duckRelease(0.2));
+        twice->drumHits(1u);
+        std::unique_ptr<Effect> once = fresh(EffectKind::Duck, 0.8f, duckRelease(0.2));
+        CHECK(duckedOnes(*twice, 12000, {0}) == duckedOnes(*once, 12000, {0}));
+    }
+
+    // ---- the same however it is cut into blocks, to the bit; and with flush-to-zero on or off
+    {
+        const std::vector<std::size_t> hits = {4480, 13440, 17920, 44800};
+        std::vector<float> whole;
+        for (std::size_t block : {std::size_t(64), std::size_t(1), std::size_t(7), std::size_t(35), std::size_t(4480)}) {
+            std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 0.7f, duckRelease(0.3));
+            const std::vector<float> left = duckedOnes(*duck, 67200, hits, 1u, block, 0.37f);
+            if (whole.empty()) whole = left;
+            CHECK(left == whole && largestJump(left) > 1e-4f);
+        }
+        CHECK(sameFlushed(EffectKind::Duck, 0.9f, 0.5f, 0.f, -1.f, 2.0));
+        // Nothing too small to hold, ever: a whole dip and the way back, on a sound and on a whisper.
+        for (float in : {0.5f, 1e-30f}) {
+            std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 1.f, duckRelease(0.05));
+            const TooSmall watch;
+            duckedOnes(*duck, 9600, {0, 6400}, 1u, 64, in);
+            CHECK(!watch.seen());
+        }
+    }
+
+    // ---- a turned setting glides: AMOUNT turned up in the middle of a dip does not jump
+    {
+        const auto run = [](Effect& effect, Stereo& io, std::size_t from, std::size_t to) { // (through() would hit the drum again)
+            for (std::size_t at = from; at < to; at += kMaxBlock) effect.process(io.l.data() + at, io.r.data() + at, kMaxBlock);
+        };
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 0.2f, 1.f);
+        Stereo io(48000);
+        io.l.assign(48000, 1.f);
+        io.r.assign(48000, 1.f);
+        duck->drumHits(1u);
+        run(*duck, io, 64, 640);
+        duck->setParam(0, 1.f);
+        run(*duck, io, 640, 19200);
+        // 576 frames in: 0.2 * (1 - 432/48000)^2 of the sound was off; it goes to five times that over the glide's 20 ms and more.
+        CHECK(std::fabs(io.l[639] - (1.0 - 0.2 * 0.982)) < 1e-3);
+        CHECK(largestJump(io.l, 639, 4800) < 0.8f / 960.f * 1.2f && largestJump(io.l, 639, 4800) > 0.8f / 960.f * 0.3f);
+        CHECK(std::fabs(io.l[1600] - duckGain(1600 - 64, 0.2 + 0.8 * 0.63, 1.0)) < 0.03); // most of the way after its 20 ms
+        CHECK(std::fabs(io.l[19199] - duckGain(19199 - 64, 1.0, 1.0)) < 1e-5); // ...and it got there, exactly
+        // RELEASE turned in the middle of the way back: the level carries on from where it is, faster.
+        std::unique_ptr<Effect> slow = fresh(EffectKind::Duck, 1.f, 1.f);
+        io.l.assign(48000, 1.f);
+        io.r.assign(48000, 1.f);
+        slow->drumHits(1u);
+        run(*slow, io, 64, 4864);
+        const float was = io.l[4863];
+        slow->setParam(1, duckRelease(0.1));
+        run(*slow, io, 4864, 19264);
+        CHECK(was < 0.2f && std::fabs(io.l[4864] - was) < 1e-3f && largestJump(io.l, 4800, 19264) < 2.f / 4800.f * 1.2f);
+        CHECK(io.l[4864 + 6000] == 1.f && io.l[4864 + 3360] < 1.f && io.l[19263] == 1.f); // back in about the new 100 ms, not the old second
+        // ...and the speed itself glides: just after the turn it is still climbing nearly as slowly as before, not ten times as fast.
+        const float slopeBefore = io.l[4863] - io.l[4862], slopeAfter = io.l[4864 + 9] - io.l[4864 + 8];
+        CHECK(slopeBefore > 0.f && slopeAfter > slopeBefore && slopeAfter < 2.f * slopeBefore && io.l[4864 + 2000] - io.l[4864 + 1999] > 5.f * slopeBefore);
+        // At rest a turned setting is simply there: the next hit dips by the new AMOUNT from its first sample.
+        std::unique_ptr<Effect> rest = fresh(EffectKind::Duck, 0.2f);
+        Stereo quiet(640);
+        rest->process(quiet.l.data(), quiet.r.data(), 640);
+        rest->setParam(0, 1.f);
+        const std::vector<float> left = duckedOnes(*rest, 640, {0});
+        CHECK(std::fabs(left[0] - (1.0 - 1.0 / kDuckFall)) < 1e-6 && left[kDuckFall - 1] == 0.f);
+    }
+
+    // ---- reset: whatever it was doing, it is at rest
+    {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 1.f, 1.f);
+        duckedOnes(*duck, 640, {0});
+        CHECK(duck->meter() > 0.f);
+        duck->reset();
+        CHECK(duck->meter() == 0.f);
+        const std::vector<float> after = duckedOnes(*duck, 640, {});
+        for (float v : after) CHECK(v == 1.f);
+        // A hit told and then a reset: forgotten.
+        duck->drumHits(1u);
+        duck->reset();
+        CHECK(duckedOnes(*duck, 640, {})[200] == 1.f);
+        // In the middle of the fall: it stops there.
+        duckedOnes(*duck, 64, {0});
+        duck->reset();
+        for (float v : duckedOnes(*duck, 640, {})) CHECK(v == 1.f);
+    }
+    // ---- at another sample rate the times are the same times: 3 ms down, RELEASE back
+    {
+        std::unique_ptr<Effect> duck = makeEffect(EffectKind::Duck, 44100.f, 120.f);
+        duck->setParam(0, 1.f);
+        duck->setParam(1, duckRelease(0.1));
+        const std::vector<float> left = duckedOnes(*duck, 8820, {0});
+        long bottom = -1, back = -1;
+        for (std::size_t i = 0; i < left.size(); ++i) {
+            if (bottom < 0 && left[i] == 0.f) bottom = static_cast<long>(i);
+            if (bottom >= 0 && back < 0 && left[i] == 1.f) back = static_cast<long>(i);
+        }
+        CHECK(bottom >= 131 && bottom <= 133 && back - bottom >= 4390 && back - bottom <= 4412); // 132.3 samples, then 4410
+    }
+
+    // ---- what it shows: the most it dipped in the last block, in dB
+    {
+        std::unique_ptr<Effect> duck = fresh(EffectKind::Duck, 0.5f, 1.f);
+        duckedOnes(*duck, 256, {0}, 1u, 256); // the block that holds the bottom of the fall
+        CHECK(std::fabs(duck->meter() - 6.0206f) < 0.01f);
+        duckedOnes(*duck, 24000, {});
+        CHECK(duck->meter() > 0.5f && duck->meter() < 3.f); // half way back in time, a quarter of the dip is left: 1.2 dB
+        duckedOnes(*duck, 48000, {});
+        CHECK(duck->meter() == 0.f);
+        std::unique_ptr<Effect> all = fresh(EffectKind::Duck, 1.f, 1.f);
+        duckedOnes(*all, 256, {0}, 1u, 256);
+        CHECK(all->meter() == 60.f); // right down: "a lot", not infinity
+        std::unique_ptr<Effect> some = fresh(EffectKind::Duck, 0.9f, 1.f);
+        duckedOnes(*some, 256, {0}, 1u, 256);
+        CHECK(std::fabs(some->meter() - 20.f) < 0.01f);
+    }
+
+    // ==== in the engine ====
+    // ---- what a slot is told: the first drum track's hits, on their own sample
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        HitWatch* watch = new HitWatch;
+        HitWatch* master = new HitWatch;
+        HitWatch* bus = new HitWatch;
+        CHECK(engine->addSynthTrack(1, SynthKind::Phazed));
+        engine->setTrackEffect(1, 2, std::unique_ptr<Effect>(watch));
+        engine->setMasterEffect(1, std::unique_ptr<Effect>(master));
+        engine->setBusEffect(0, std::unique_ptr<Effect>(bus));
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        engine->send(make(Command::SetStep, 0, 0, 0, 1.f));
+        engine->send(make(Command::SetStep, 0, 0, 8, 0.01f)); // a ghost of a hit is a hit
+        engine->send(make(Command::SetStep, 0, 3, 4, 1.f));
+        engine->send(make(Command::SetStep, 0, 7, 4, 1.f));
+        engine->send(make(Command::SetStep, 0, 5, 12, 1.f));
+        engine->send(make(Command::SetStepChance, 0, 5, 12, 0.f)); // never played: never told
+        engine->send(make(Command::SetStep, 0, 2, 10, 1.f));
+        engine->send(make(Command::SetStepNudge, 0, 2, 10, 0.25f)); // late by a quarter of a step
+        engine->send(make(Command::SetStep, 0, 1, 14, 1.f));
+        engine->send(make(Command::SetStepNudge, 0, 1, 14, -0.5f)); // early by half a step
+        engine->send(make(Command::SetStep, 0, 6, 6, 1.f));
+        Command fx = make(Command::SetStepFx, 0, 6, 6);
+        fx.d = 4; // a ratchet of four: four hits
+        engine->send(fx);
+        engine->send(make(Command::SetLaneLevel, 0, 0, 0, 0.f)); // turned right down: it is the hit that counts, not the sound
+        engine->send(make(Command::Play, 0, 0, 1));
+        for (int done = 0, size = 37; done < 16 * kStepFrames; done += size, size = size % 301 + 64) leftOf(*engine, done + size > 16 * kStepFrames ? 16 * kStepFrames - done : size);
+        const std::vector<std::pair<long, unsigned>> want = {
+            {0, 1u}, {4 * kStepFrames, 0x88u}, {6 * kStepFrames, 0x40u}, {6 * kStepFrames + 1500, 0x40u}, {6 * kStepFrames + 3000, 0x40u}, {6 * kStepFrames + 4500, 0x40u},
+            {8 * kStepFrames, 1u}, {10 * kStepFrames + 1500, 4u}, {13 * kStepFrames + 3000, 2u},
+        };
+        CHECK(watch->heard == want);
+        CHECK(master->heard == want);  // the master's slots are told too
+        CHECK(bus->heard.empty() && bus->frames > 0); // a bus is not (no DUCK can be on one), though it ran
+        CHECK(effectBus(EffectKind::Duck) == -1 && !engine->setEffect(kEchoBus, 0, EffectKind::Duck) && !engine->setEffect(kSpaceBus, 0, EffectKind::Duck));
+        // Stopped, a hit played by hand is told on the first frame of the next render; a ratchet's later hits on theirs.
+        engine->send(make(Command::Stop));
+        leftOf(*engine, 48000);
+        watch->heard.clear();
+        const long from = watch->frames;
+        engine->send(make(Command::Trigger, 0, 3, 0, 0.8f));
+        Command roll = make(Command::Trigger, 0, 5, 0, 0.8f);
+        roll.bar = 2;
+        engine->send(roll);
+        leftOf(*engine, 300);
+        leftOf(*engine, 9000);
+        const std::vector<std::pair<long, unsigned>> hand = {{from, 0x28u}, {from + 3000, 0x20u}};
+        CHECK(watch->heard == hand);
+        // A hit on another drum track is not told: only the first one's are.
+        CHECK(engine->addDrumTrack(2));
+        leftOf(*engine, 64);
+        watch->heard.clear();
+        engine->send(make(Command::Trigger, 2, 0, 0, 0.8f));
+        leftOf(*engine, 640);
+        CHECK(watch->heard.empty());
+        // ...until it IS the first: the drums on track 1 go, and track 3's are the first there are.
+        CHECK(engine->removeTrack(0));
+        leftOf(*engine, 640);
+        const long now = watch->frames;
+        engine->send(make(Command::Trigger, 2, 4, 0, 0.8f));
+        leftOf(*engine, 640);
+        const std::vector<std::pair<long, unsigned>> third = {{now, 0x10u}};
+        CHECK(watch->heard == third);
+        // With no drums left at all nothing is told, and the last hit is not told again and again.
+        engine->send(make(Command::Trigger, 2, 1, 0, 0.8f));
+        leftOf(*engine, 64);
+        CHECK(watch->heard.size() == 2);
+        CHECK(engine->removeTrack(2));
+        leftOf(*engine, 640);
+        CHECK(watch->heard.size() == 2);
+        engine->collectGarbage();
+    }
+    // ---- a DUCK in a slot: the dip starts on the hit's own sample, however the audio is asked for
+    {
+        DuckRig rig(0.75f, duckRelease(0.1)), plain(0.f, -1.f, 0, false);
+        for (DuckRig* r : {&rig, &plain}) {
+            r->step(0, 0);
+            r->step(0, 4);
+            r->step(3, 6); // another lane: nothing
+            r->step(0, 9);
+            r->engine->send(make(Command::SetStepNudge, 0, 0, 9, 0.25f));
+            r->engine->send(make(Command::SetTrackHeard, 1, 0));
+            r->play();
+        }
+        const std::vector<float> left = rig.left(16 * kStepFrames), whole = plain.left(16 * kStepFrames);
+        for (float v : whole) CHECK(std::fabs(v - 1.f) < 1e-6f);
+        const std::vector<long> hits = {0, 4 * kStepFrames, 9 * kStepFrames + 1500};
+        double off = 0.0;
+        for (std::size_t i = 0; i < left.size(); ++i) {
+            double want = 1.0;
+            for (long hit : hits) want = std::fmin(want, duckGain(static_cast<long>(i) - hit, 0.75, 0.1));
+            off = std::fmax(off, std::fabs(left[i] - want));
+        }
+        CHECK(off < 3e-4);
+        CHECK(left[0] < 1.f && left[4 * kStepFrames - 1] > 0.9999f && left[4 * kStepFrames] < 0.9999f); // from the very sample, not the block after
+        // The screen can see it: the dB it is dipping, through the engine.
+        DuckRig seen(0.5f, 1.f);
+        seen.step(0, 0);
+        seen.play();
+        seen.left(2048);
+        CHECK(seen.engine->effectMeter(0, 1) > 3.f && seen.engine->effectMeter(0, 1) < 6.1f && seen.engine->effectMeter(0, 0) == 0.f);
+    }
+    // ---- on the master: the whole mix dips
+    {
+        std::unique_ptr<Engine> engine(new Engine);
+        engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(new Flat));
+        engine->setMasterEffect(0, fresh(EffectKind::Duck, 1.f, duckRelease(0.05), duckLane(2)));
+        engine->send(make(Command::SetStep, 0, 2, 2, 1.f));
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> left = leftOf(*engine, 4 * kStepFrames);
+        CHECK(std::fabs(left[2 * kStepFrames - 1] - kTrackLevel) < 1e-6 && left[2 * kStepFrames + kDuckFall - 1] == 0.f && std::fabs(left[2 * kStepFrames + kDuckFall + 2400] - kTrackLevel) < 1e-6);
+        CHECK(engine->setEffect(kMasterTrack, 1, EffectKind::Duck)); // and by the usual way in
+    }
+    // ---- one that is fading out of its slot still hears the hits (it is still sounding)
+    {
+        DuckRig rig(1.f, 1.f);
+        leftOf(*rig.engine, 640);
+        rig.engine->send(make(Command::Trigger, 0, 0, 0, 0.8f));
+        CHECK(rig.engine->setEffect(0, 1, EffectKind::None));
+        const std::vector<float> left = rig.left(kFade + 64);
+        // The fall is over 3 ms in; the old effect is 70% of the sound then.
+        CHECK(std::fabs(left[kDuckFall - 1] - (1.0 - (1.0 - static_cast<double>(kDuckFall) / kFade))) < 0.01);
+        CHECK(std::fabs(left[kFade + 10] - 1.f) < 1e-6f);
+        rig.engine->collectGarbage();
+    }
+    // ---- with the drums muted: another track still dips (it is keyed by the hit, not the sound)
+    for (int heard = 0; heard < 2; ++heard) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Phazed));
+        engine->setTrackEffect(1, 0, std::unique_ptr<Effect>(new Flat));
+        engine->setTrackEffect(1, 1, fresh(EffectKind::Duck, 1.f, duckRelease(0.05)));
+        engine->send(make(Command::SetStep, 0, 0, 1, 1.f));
+        engine->send(make(Command::SetTrackHeard, 0, heard));
+        engine->send(make(Command::SetLaneLevel, 0, 0, 0, 0.f)); // (and silent either way, so that only track 2 is in what is measured)
+        engine->send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> left = leftOf(*engine, 3 * kStepFrames);
+        CHECK(std::fabs(left[kStepFrames - 1] - kTrackLevel) < 1e-6 && left[kStepFrames + kDuckFall - 1] == 0.f && std::fabs(left[kStepFrames + kDuckFall + 2400] - kTrackLevel) < 1e-6);
+    }
+    // ---- the same on any number of helpers, and twice from fresh, to the last bit
+    {
+        const std::vector<float> alone = duckSong(0);
+        CHECK(peakOf(alone) > 0.1f && alone.size() > 500000);
+        for (float v : alone) {
+            if (v != v || v == 99.f) {
+                CHECK(!"a sample that is not a number, or was never written");
+                break;
+            }
+        }
+        CHECK(duckSong(0) == alone);
+        for (int helpers : {1, 2, 3}) CHECK(duckSong(helpers) == alone);
+        // And it is ducking: the song without them is louder.
+        const std::vector<float> dry = duckSong(0, false);
+        CHECK(dry.size() == alone.size() && rmsOf(alone) < 0.9 * rmsOf(dry));
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -4925,37 +5435,56 @@ int main(int argc, char** argv) {
         return 0;
     }
     gMeasure = argc > 1 && std::string(argv[1]) == "--measure";
-    testPinnedSound();
-    testWholeSong();
-    testTheTable();
-    testEveryEffect();
-    testFilterLevels();
-    testDriveHarmonics();
-    testChorus();
-    testDelayEchoes();
-    testReverbTail();
-    testTape();
-    testHall();
-    testFlushToZero();
-    testReverbDoesNotSlowDown();
-    testSwapFade();
-    testComp();
-    testHalfband();
-    testSaturate();
-    testSwapsOnAnyHelperCount();
-    testEffectsOnABus();
-    testSends();
-    testSendLanes();
-    testBusRests();
-    testBusEffectsInTheEngine();
-    testThirdSlot();
-    testSendsOnAnyHelperCount();
-    testTheGroupJump();
-    testGlideLands();
-    testNotSound();
-    testABusTakesItsOwnKind();
-    testBusLevel();
-    testBusRestNumbers();
+    // `effects_test --only testDuck testTape`: just those (for trying a change quickly; ctest runs them all).
+    struct Named {
+        const char* name;
+        void (*run)();
+    };
+    static const Named tests[] = {
+        {"testPinnedSound", testPinnedSound},
+        {"testWholeSong", testWholeSong},
+        {"testTheTable", testTheTable},
+        {"testEveryEffect", testEveryEffect},
+        {"testFilterLevels", testFilterLevels},
+        {"testDriveHarmonics", testDriveHarmonics},
+        {"testChorus", testChorus},
+        {"testDelayEchoes", testDelayEchoes},
+        {"testReverbTail", testReverbTail},
+        {"testTape", testTape},
+        {"testHall", testHall},
+        {"testFlushToZero", testFlushToZero},
+        {"testReverbDoesNotSlowDown", testReverbDoesNotSlowDown},
+        {"testSwapFade", testSwapFade},
+        {"testComp", testComp},
+        {"testHalfband", testHalfband},
+        {"testSaturate", testSaturate},
+        {"testSwapsOnAnyHelperCount", testSwapsOnAnyHelperCount},
+        {"testEffectsOnABus", testEffectsOnABus},
+        {"testSends", testSends},
+        {"testSendLanes", testSendLanes},
+        {"testBusRests", testBusRests},
+        {"testBusEffectsInTheEngine", testBusEffectsInTheEngine},
+        {"testThirdSlot", testThirdSlot},
+        {"testSendsOnAnyHelperCount", testSendsOnAnyHelperCount},
+        {"testTheGroupJump", testTheGroupJump},
+        {"testGlideLands", testGlideLands},
+        {"testNotSound", testNotSound},
+        {"testABusTakesItsOwnKind", testABusTakesItsOwnKind},
+        {"testBusLevel", testBusLevel},
+        {"testBusRestNumbers", testBusRestNumbers},
+        {"testDuck", testDuck},
+    };
+    const bool only = argc > 2 && std::string(argv[1]) == "--only";
+    int ran = 0;
+    for (const Named& test : tests) {
+        bool wanted = !only;
+        for (int a = 2; a < argc && !wanted; ++a) wanted = std::string(argv[a]) == test.name;
+        if (wanted) test.run(), ++ran;
+    }
+    if (ran == 0) {
+        std::printf("effects_test: no such test\n");
+        return 1;
+    }
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

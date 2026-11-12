@@ -24,6 +24,10 @@ public:
     // those groups); the engine puts nothing else on a bus. Not realtime: it
     // is said once, before the effect goes in.
     virtual void setOnBus(bool on) { (void)on; }
+    // "These lanes of the first drum track are hit on the first sample of the
+    // block you are about to be given": bit 0 is lane 1. Only DUCK listens.
+    // Realtime safe; called by whichever thread is about to call process().
+    virtual void drumHits(unsigned lanes) { (void)lanes; }
     virtual void setParam(int index, float value) = 0;
     virtual void process(float* left, float* right, int frames) = 0;
     // What it has to show beside its settings, as of the last process():

@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (16) | `cd build && ctest -j8` (about 25 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, each also with `--hold-a`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -243,13 +243,22 @@ effect in those two groups and fails one that does not.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
   the last sound was.
+- **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
+  lane 1). A hit always lands on a chunk's first sample (`render()` ends a
+  chunk where the next is due), so the engine marks it where it triggers the
+  drum (`Track::hitsNow`), and `renderChunk` copies the first drum track's
+  marks to `chunkHits_` and clears them **before the tracks are shared out**;
+  helpers only read it. Keep it that way: written during the chunk, a ducked
+  track would depend on which helper got to the drums first. A new way to
+  trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
+  hits by hand); a bus's slot is not told.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **What an effect shows goes through `Engine::effectMeter(track, slot)`**
   (COMP: the dB it is turning down). The audio thread reads the effect's
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD), as a thin
+  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a thin
   strip over the bar from the right, full at `kMeterFullDb` (24).
 - **A new effect's sound does not depend on how it is cut into blocks**, to
   the bit, once its settings are at rest (each has a test). So what an effect
@@ -360,6 +369,10 @@ effect in those two groups and fails one that does not.
   on (`mathsPrint`) and falls back to loudness and peak, saying so. To prove a
   change is bit-exact on another machine, run `--print` before and after and
   compare.
+- **`effects_test --only testDuck testTape`** runs just those (a second or
+  two, for trying a change); `ctest` runs them all. `through()` there hits a
+  drum five times a second, lanes 1 and 8, so the checks for every effect
+  reach DUCK; no other effect hears it.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -380,6 +393,7 @@ effect in those two groups and fails one that does not.
 | ...and a DELAY and a REVERB on them | 0.12% |
 | ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
+| DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

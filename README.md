@@ -174,7 +174,7 @@ page**, and so does moving down off the last row.
 
 | On | Hold A + up / down | B |
 | --- | --- | --- |
-| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
+| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, DUCK, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
 | A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
 | A send | The same: the stick turns it, the D-pad moves it a twentieth. | Nothing sent |
 
@@ -223,12 +223,13 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 | REVERB | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line over the THRESHOLD bar shows how far it is turning the sound down**: it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
+| DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line over the AMOUNT bar shows how far it is dipping**, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
 
-TAPE, HALL, CHORUS, COMP and SATURATE are new. Their settings slide to where
+TAPE, HALL, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
 they are turned instead of jumping, so they can be turned while sounding
 without a click. A song that uses one, opened by an older version of the
 program, loads without that effect: the slot is left as it was.

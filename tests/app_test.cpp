@@ -3553,7 +3553,8 @@ void testSendsThroughTheSession() {
 void testTheFxScreenShowsCompAtWork() {
     CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
     for (int k = 0; k < kEffectKinds; ++k)
-        if (static_cast<EffectKind>(k) != EffectKind::Comp) CHECK(effectMeterParam(static_cast<EffectKind>(k)) == -1);
+        if (static_cast<EffectKind>(k) != EffectKind::Comp && static_cast<EffectKind>(k) != EffectKind::Duck) CHECK(effectMeterParam(static_cast<EffectKind>(k)) == -1);
+    CHECK(effectMeterParam(EffectKind::Duck) == 0 && std::string(effectInfo(EffectKind::Duck).paramNames[0]) == "AMOUNT"); // DUCK: how far it is dipping, on AMOUNT
     CHECK(kMeterFullDb == 24.f);
     CHECK(FxScreen::meterPixels(0.f, 108) == 0 && FxScreen::meterPixels(-3.f, 108) == 0 && FxScreen::meterPixels(std::nanf(""), 108) == 0);
     CHECK(FxScreen::meterPixels(24.f, 108) == 108 && FxScreen::meterPixels(60.f, 108) == 108 && FxScreen::meterPixels(1e30f, 108) == 108);

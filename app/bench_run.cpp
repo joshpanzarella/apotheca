@@ -59,7 +59,9 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
 // noise going in so that nothing in it can rest. `setting` >= 0: that setting
 // at `value` first (the filter's TYPE). The best of five runs, each ten
-// seconds of sound: a busy machine only ever makes a run slower.
+// seconds of sound: a busy machine only ever makes a run slower. A drum is
+// hit eight times a second meanwhile (a sixteenth at 120 BPM), for DUCK,
+// which does nothing until one is; no other effect hears it.
 static void effect(const char* name, EffectKind kind, int setting = -1, float value = 0.f) {
     std::unique_ptr<Effect> fx = makeEffect(kind, 48000.f, 120.f);
     if (setting >= 0) fx->setParam(setting, value);
@@ -80,6 +82,7 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
                 left[i] = in[i];
                 right[i] = in[i + 64];
             }
+            if (b % 94 == 0) fx->drumHits(1u);
             fx->process(left, right, 64);
         }
         const double block = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / blocks;

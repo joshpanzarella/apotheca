@@ -529,6 +529,7 @@ int main(int argc, char** argv) {
         // fx: the track's page. fx-sends: on a send. fx-pick: on an effect (with --hold-a, the picking hints).
         // fx-all: the buses and the master. fx-bus: on a bus's effect. fx-level: on a bus's LEVEL.
         // fx-comp, fx-comp-all: COMP on the track and on the master, with its meter.
+        // fx-duck: DUCK on the track, on its SOURCE.
         app.session().setEffect(0, 0, EffectKind::Delay);
         app.session().setEffect(0, 1, EffectKind::Filter);
         app.session().setEffectParam(0, 1, 0, 0.45f);
@@ -550,6 +551,11 @@ int main(int argc, char** argv) {
             app.session().setEffectParam(kMasterTrack, 1, 0, 0.45f);
             if (view[7] == 0) app.fx().goTo(2, 1);
             else app.fx().goTo(FxScreen::kMasterRow + 1, 1);
+        } else if (std::strcmp(view, "fx-duck") == 0) {
+            // DUCK at work: the strip on AMOUNT is how far it is dipping.
+            app.session().setEffect(0, 2, EffectKind::Duck);
+            app.session().setEffectParam(0, 2, 1, 0.9f);
+            app.fx().goTo(2, 3);
         }
         else app.fx().goTo(0, 2);
     } else if (std::strcmp(view, "panic") == 0) {
