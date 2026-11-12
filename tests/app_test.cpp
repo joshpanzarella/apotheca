@@ -3255,7 +3255,8 @@ void testSendsThroughTheSession() {
             for (const TrackData& t : fresh->tracks) CHECK(t.send[bus] == 0.f);
         }
         const std::string text = songText(*fresh);
-        CHECK(text.find("\nbusfx 1 delay 0.5 0.45 0.6 1\nbusfx 2 reverb 0.6 0.5 1\n") != std::string::npos && text.find("send") == std::string::npos);
+        CHECK(kNewSongBus[0] == EffectKind::Tape && kNewSongBus[1] == EffectKind::Hall); // the plan: TAPE on ECHO, HALL on SPACE
+        CHECK(text.find("\nbusfx 1 tape 0.5625 0.4 0.35 1\nbusfx 2 hall 0.6 0.45 0.5 1\n") != std::string::npos && text.find("send") == std::string::npos);
     }
 
     Rig made, opened, plain;
@@ -3278,6 +3279,17 @@ void testSendsThroughTheSession() {
     CHECK(project.tracks[0].send[0] == 0.35f && project.tracks[0].send[1] == 0.25f && project.tracks[1].send[0] == 0.f);
     CHECK(project.tracks[0].laneLevel[0] == 1.f); // (what lies after the two sends: a third bus would have written there)
     // A bus holds one effect, of its own kind: a delay on ECHO, a reverb on SPACE.
+    // ECHO takes TAPE or DELAY, SPACE takes HALL or REVERB, and neither takes the other's.
+    const int tape = static_cast<int>(EffectKind::Tape), hall = static_cast<int>(EffectKind::Hall);
+    CHECK(session.effectData(kEchoBus, 0).kind == tape && session.effectData(kSpaceBus, 0).kind == hall);
+    session.setEffect(kEchoBus, 0, EffectKind::Hall);
+    session.setEffect(kSpaceBus, 0, EffectKind::Tape);
+    session.setEffect(kEchoBus, 0, EffectKind::Chorus);
+    session.setEffect(kSpaceBus, 0, EffectKind::Comp);
+    CHECK(project.busEffects[0].kind == tape && project.busEffects[1].kind == hall);
+    CHECK(project.busEffects[0].param[3] == 1.f && project.busEffects[1].param[3] == 1.f); // LEVEL at full
+    session.setEffect(kEchoBus, 0, EffectKind::Delay);
+    session.setEffect(kSpaceBus, 0, EffectKind::Reverb);
     CHECK(session.effectData(kEchoBus, 0).kind == delay && session.effectData(kSpaceBus, 0).kind == reverb);
     CHECK(&session.effectData(kEchoBus, 0) == &project.busEffects[0] && &session.effectData(kSpaceBus, 0) == &project.busEffects[1]);
     session.setEffect(kEchoBus, 0, EffectKind::Reverb);
@@ -3396,6 +3408,11 @@ void testSendsThroughTheSession() {
         std::unique_ptr<Project> song(new Project);
         CHECK(parseSong(old, *song));
         CHECK(song->busEffects[0].kind == static_cast<int>(kNewSongBus[0]) && song->busEffects[1].kind == static_cast<int>(kNewSongBus[1]));
+        CHECK(song->busEffects[0].kind == static_cast<int>(EffectKind::Tape) && song->busEffects[1].kind == static_cast<int>(EffectKind::Hall)); // as a new song: TAPE and HALL
+        for (int i = 0; i < kEffectParams; ++i) {
+            CHECK(song->busEffects[0].param[i] == effectDefault(EffectKind::Tape, i, true));
+            CHECK(song->busEffects[1].param[i] == effectDefault(EffectKind::Hall, i, true));
+        }
         CHECK(song->busEffects[0].param[effectMixParam(kNewSongBus[0])] == 1.f && song->tracks[0].send[0] == 0.f && song->tracks[0].send[1] == 0.f);
         // Saved by this program, it is what it was, plus the two busfx lines.
         const std::string saved = songText(*song);
@@ -3433,9 +3450,10 @@ void testSendsThroughTheSession() {
         std::unique_ptr<Project> song(new Project);
         CHECK(parseSong("apotheca-song 1\nsend 1 0.9\nbusfx 1 reverb 0.1 0.1 0.1 0.1\nbusfx 2 delay 0.1\nbusfx 3 delay 0.1\nbusfx 0 delay 0.1\nbusfx 1 warble 1 1\n"
                         "busfx 2\nbusfx 1 filter 0.2\nfx 3 delay\ntrack drums\nsend 0 0.5\nsend 3 0.5\nsend 1 -0.5\nsend 2 nonsense\nsend\nfx 4 crush 0.5\nfx 3 crush 0.25\n", *song));
-        CHECK(song->busEffects[0].kind == delay && song->busEffects[0].param[0] == effectInfo(EffectKind::Delay).defaults[0]);
-        CHECK(song->busEffects[0].param[3] == 1.f && song->busEffects[1].param[2] == 1.f);
-        CHECK(song->busEffects[1].kind == reverb && song->busEffects[1].param[0] == effectInfo(EffectKind::Reverb).defaults[0]);
+        // (None of those bus lines can be used: the buses keep what a new song has, TAPE and HALL, LEVEL full.)
+        CHECK(song->busEffects[0].kind == static_cast<int>(EffectKind::Tape) && song->busEffects[0].param[0] == effectInfo(EffectKind::Tape).defaults[0]);
+        CHECK(song->busEffects[0].param[3] == 1.f && song->busEffects[1].param[3] == 1.f);
+        CHECK(song->busEffects[1].kind == static_cast<int>(EffectKind::Hall) && song->busEffects[1].param[0] == effectInfo(EffectKind::Hall).defaults[0]);
         CHECK(song->masterEffects[0].kind == 0 && song->masterEffects[1].kind == 0);
         CHECK(song->tracks[0].send[0] == 0.f && song->tracks[0].send[1] == 0.f && song->tracks[1].send[0] == 0.f);
         CHECK(song->tracks[0].effects[2].kind == static_cast<int>(EffectKind::Crush) && song->tracks[0].effects[2].param[0] == 0.25f);
@@ -3563,12 +3581,17 @@ void testTheFxScreensTwoPages() {
     fx.goTo(3, 0);
     rig.tap(RIGHT, 3);
     CHECK(fx.cursorColumn() == 1);
-    rig.tap(DOWN); // ECHO's row: DELAY and its four settings
+    rig.tap(DOWN); // ECHO's row: TAPE and its four settings
     CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 1);
     rig.tap(RIGHT, 9);
     CHECK(fx.cursorColumn() == 4);
-    rig.tap(DOWN); // SPACE's: REVERB has three
+    rig.tap(DOWN); // SPACE's: HALL has four too
+    CHECK(fx.cursorColumn() == 4);
+    session.setEffect(kSpaceBus, 0, EffectKind::Reverb); // REVERB has three
+    rig.tap(UP);
+    rig.tap(DOWN);
     CHECK(fx.cursorColumn() == 3);
+    session.setEffect(kSpaceBus, 0, EffectKind::Hall);
     rig.tap(DOWN); // the master's first slot: empty
     CHECK(fx.cursorRow() == 6 && fx.cursorColumn() == 0);
 

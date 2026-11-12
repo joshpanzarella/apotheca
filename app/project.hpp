@@ -214,10 +214,12 @@ struct TrackData {
     }
 };
 
-// What the two send buses of a new song hold, ECHO then SPACE. A song file
-// with no `busfx` lines (an old song) gets these too. THE ONE LINE to change
-// when a new song should start with other effects (TAPE and HALL).
-constexpr EffectKind kNewSongBus[kBuses] = {EffectKind::Delay, EffectKind::Reverb};
+// What the two send buses of a new song hold, ECHO then SPACE: TAPE and HALL
+// (the plan). A song file with no `busfx` lines (an old song) gets these too:
+// its sends are all 0, so it sounds as it did, and the first send its owner
+// turns up gives what it gives in a new song. THE ONE LINE to change when a
+// new song should start with other effects.
+constexpr EffectKind kNewSongBus[kBuses] = {EffectKind::Tape, EffectKind::Hall};
 
 struct Project {
     TrackData tracks[kNumTracks];
