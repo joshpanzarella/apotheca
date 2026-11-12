@@ -73,6 +73,7 @@ constexpr float kTireSeconds = 2.f;     // how gently it gets there
 constexpr float kTireLeast = 2e-7f;     // ...and never slower than this a sample, so it arrives (as a Glide does)
 constexpr float kWowHz = 0.8f;
 constexpr float kWowSeconds = 0.0015f; // either way, at AGE full
+constexpr int kWowEvery = 64;          // samples between two points of the wow's sine (straight lines between)
 constexpr float kSettle = 0.02f;       // seconds for a turned setting to arrive
 constexpr float kTapeInertia = 0.15f;  // seconds: how fast the tape's speed follows TIME
 constexpr double kSlowest = 0.5, kFastest = 2.0; // the tape's speed while TIME glides
@@ -113,7 +114,7 @@ public:
         low_[0] = low_[1] = high_[0] = high_[1] = kFloor; // where the cuts rest (see kFloor): the echo, their difference, is nothing
         at_ = 0;
         phase_ = 0.0;
-        wow_ = 0.f;
+        wow_ = wowStep_ = 0.f, wowLeft_ = 0;
         quiet_ = 0;
         asleep_ = true; // nothing on the tape (and when sound wakes it, the count of how long it has been left alone starts again)
         arrive();
@@ -168,7 +169,7 @@ private:
         asleep_ = false;
         quiet_ = 0;
         starved_ = 0;
-        phase_ = 0.0, wow_ = 0.f; // an empty tape starts as one fresh from the box does, wow and all
+        phase_ = 0.0, wow_ = wowStep_ = 0.f, wowLeft_ = 0; // an empty tape starts as one fresh from the box does, wow and all
         arrive();                 // nothing is sounding: whatever was turned meanwhile is simply there
     }
     // A stretch of the tape running.
@@ -187,12 +188,10 @@ private:
         const float dHigh = highCut_.begin(frames, k), dLow = lowCut_.begin(frames, k), dDepth = depth_.begin(frames, k), dMix = mix_.begin(frames, k);
         float tire = tire_;
         float feedback = feedback_.now, push = push_.now, ceiling = ceiling_.now, highCut = highCut_.now, lowCut = lowCut_.now, depth = depth_.now, mix = mix_.now;
-        // The wow: a slow sine, worked out at each end of the block and joined by a straight line.
-        phase_ += 6.283185307179586 * kWowHz * frames / sr_;
-        if (phase_ > 6.283185307179586) phase_ -= 6.283185307179586;
-        const float wowEnd = static_cast<float>(std::sin(phase_));
-        const float dWow = (wowEnd - wow_) / static_cast<float>(frames);
-        float wow = wow_;
+        // The wow: a slow sine, worked out every kWowEvery samples the tape has run (NOT at each
+        // end of a block: its shape was then the block's) and joined by straight lines.
+        float wow = wow_, dWow = wowStep_;
+        int wowLeft = wowLeft_;
         const float dry = bus_ ? 0.f : 1.f;
         const double pull = 1.0 / (kTapeInertia * sr_);
         float* const tapeL = line_[0].data();
@@ -201,7 +200,14 @@ private:
         double delay = delay_;
         int at = at_;
         for (int i = 0; i < frames; ++i) {
-            feedback += dFeedback, push += dPush, ceiling += dCeiling, highCut += dHigh, lowCut += dLow, depth += dDepth, mix += dMix, wow += dWow;
+            feedback += dFeedback, push += dPush, ceiling += dCeiling, highCut += dHigh, lowCut += dLow, depth += dDepth, mix += dMix;
+            if (wowLeft == 0) {
+                phase_ += 6.283185307179586 * kWowHz * kWowEvery / sr_;
+                if (phase_ > 6.283185307179586) phase_ -= 6.283185307179586;
+                dWow = (static_cast<float>(std::sin(phase_)) - wow) / static_cast<float>(kWowEvery);
+                wowLeft = kWowEvery;
+            }
+            wow += dWow, --wowLeft;
             // TIME glides: the tape speeds up or slows down, never past double or half.
             if (delay != delayTo_) {
                 const double left_ = delayTo_ - delay;
@@ -242,7 +248,7 @@ private:
         }
         at_ = at;
         delay_ = delay;
-        wow_ = wowEnd;
+        wow_ = wow, wowStep_ = dWow, wowLeft_ = wowLeft;
         low_[0] = lowL, low_[1] = lowR, high_[0] = highL, high_[1] = highR;
         tire_ = tire;
         starved_ = starved;
@@ -265,7 +271,8 @@ private:
     int size_ = 0, at_ = 0, quiet_ = 0;
     long starved_ = 0; // samples since sound last came in, up to the hold
     bool asleep_ = true;
-    float tempo_ = 120.f, wowMost_ = 72.f, wow_ = 0.f;
+    float tempo_ = 120.f, wowMost_ = 72.f, wow_ = 0.f, wowStep_ = 0.f;
+    int wowLeft_ = 0; // samples until the wow's next point
     double delay_ = 24000.0, delayTo_ = 24000.0, phase_ = 0.0;
     float low_[2] = {}, high_[2] = {};
     Glide feedback_, push_, ceiling_, highCut_, lowCut_, depth_, mix_;

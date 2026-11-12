@@ -5576,10 +5576,11 @@ static void testTapeAlwaysEnds() {
     }
     // A tired loop that has gone to sleep wakes as one fresh from the box, whatever wakes it: a click
     // too faint to count as "sound coming in" gets its thirty seconds of full FEEDBACK all the same.
-    {
-        std::unique_ptr<Effect> slept = fresh(tape, 0.f, 1.f, 0.f, 1.f), box = fresh(tape, 0.f, 1.f, 0.f, 1.f);
+    // (With AGE up too: the wow starts again from its first point.)
+    for (float age : {0.f, 0.35f}) {
+        std::unique_ptr<Effect> slept = fresh(tape, 0.f, 1.f, age, 1.f), box = fresh(tape, 0.f, 1.f, age, 1.f);
         const std::vector<float> first = wetOf(*slept, burst(90));
-        CHECK(first.back() == 0.f && level(first, 10, 20) > 0.5);
+        CHECK(first.back() == 0.f && level(first, 10, 20) > 0.3);
         std::vector<float> faint(20 * second, 0.f);
         faint[0] = 2e-5f;
         const std::vector<float> a = wetOf(*slept, faint), b = wetOf(*box, faint);
@@ -5661,10 +5662,14 @@ static void testTapeAlwaysEnds() {
     // ---- However it is cut into blocks, the same to the last bit: through the hold, the tiring,
     // the fall and into sleep. (The count of time left alone went up a block at a time and the ease
     // down was a glide a block: blocks of 64 and of 48 were the same for 30.47 s and then up to
-    // 5.8e-5 apart, so a bounce and live play differed in a tired TAPE's tail.) AGE 0: no wow.
+    // 5.8e-5 apart, so a bounce and live play differed in a tired TAPE's tail.) And with AGE up:
+    // the wow was a sine worked out at each END OF A BLOCK and joined by a straight line, so its
+    // shape was the block's (apart from 0.15 s, and by 0.05 once it howled).
     // The second sound is too faint to be "coming in" and wakes the sleeping tape part way through
     // a block: the thirty seconds count from that sample, not from the block's first.
-    for (float feedback : {1.f, 0.8f}) {
+    struct Cut { float feedback, age; };
+    for (const Cut& c : {Cut{1.f, 0.f}, Cut{0.8f, 0.f}, Cut{1.f, 0.35f}, Cut{0.8f, 1.f}}) {
+        const float feedback = c.feedback;
         std::vector<float> in(150 * second, 0.f);
         Noise noise(31u);
         for (std::size_t i = 0; i < 4800; ++i) in[1000 + i] = 0.5f * noise.next();
@@ -5672,7 +5677,7 @@ static void testTapeAlwaysEnds() {
         std::vector<float> ways[4];
         const std::size_t sizes[4] = {64, 48, 0, 256}; // 0: odd sizes, 1 to 61 in turn
         for (int way = 0; way < 4; ++way) {
-            std::unique_ptr<Effect> t = fresh(tape, 0.f, feedback, 0.f, 1.f);
+            std::unique_ptr<Effect> t = fresh(tape, 0.f, feedback, c.age, 1.f);
             Stereo io(in.size());
             io.l = io.r = in;
             for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
@@ -5686,10 +5691,10 @@ static void testTapeAlwaysEnds() {
         for (int way = 1; way < 4; ++way)
             for (std::size_t i = 0; i < in.size(); ++i)
                 if (ways[way][i] != ways[0][i]) firstApart = std::min(firstApart, i), apart = std::fmax(apart, std::fabs(ways[way][i] - ways[0][i]));
-        SAY("tape     ends: FEEDBACK %3.0f%%: cut into blocks four ways, first apart at %.2f s, by %g at most\n", feedback * 120.0, static_cast<double>(firstApart) / 48000.0, static_cast<double>(apart));
+        SAY("tape     ends: FEEDBACK %3.0f%%, AGE %3.0f%%: cut into blocks four ways, first apart at %.2f s, by %g at most\n", feedback * 120.0, c.age * 100.0, static_cast<double>(firstApart) / 48000.0, static_cast<double>(apart));
         CHECK(firstApart == in.size());
         // (And it did all of it: howled, tired, slept, was woken by the faint sound and built again, tired again.)
-        if (feedback == 1.f) CHECK(level(ways[0], 20, 30) > 0.5 && level(ways[0], 70, 75) == 0.0 && level(ways[0], 100, 105) > 0.5 && level(ways[0], 140, 150) < 1e-6);
+        if (feedback == 1.f && c.age == 0.f) CHECK(level(ways[0], 20, 30) > 0.5 && level(ways[0], 70, 75) == 0.0 && level(ways[0], 100, 105) > 0.5 && level(ways[0], 140, 150) < 1e-6);
     }
     // ---- On a bus it is the same loop: the bus comes to rest (testATailAlwaysEnds has every setting; this is the howl by itself).
     {
