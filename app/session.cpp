@@ -370,7 +370,7 @@ void Session::sendNoteBar(int track, int scene, int bar) {
         c.extra = notes[slot].length - static_cast<float>(c.d);
         c.shift = notes[slot].nudge;
         c.value = notes[slot].velocity;
-        c.e = (notes[slot].ratchet >= 2 ? notes[slot].ratchet : 0) + (notes[slot].glide ? 256 : 0) + ((notes[slot].throwTo & 3) << 9);
+        c.e = (notes[slot].ratchet >= 2 ? notes[slot].ratchet : 0) + (notes[slot].glide ? 256 : 0) + ((notes[slot].throwTo & 3) << 9) + (notes[slot].glide >= 2 ? glideKind(notes[slot].glide) << 11 : 0);
         engine.send(c);
     }
 }

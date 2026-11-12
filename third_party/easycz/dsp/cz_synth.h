@@ -64,6 +64,8 @@ typedef struct {
     int glide_dist;    /* portamento: starting offset, 1/256 semitone */
     int glide_acc;     /* progress in 1/2048ths; 2048 = arrived */
     int glide_rate;    /* added per firmware tick */
+    int glide_rate16;  /* a glide of a given length (porta_rate16): added per tick, in 1/65536ths */
+    int glide_frac;    /* ...and the part of it not yet a whole one */
     cz_env_state_t env[3];
 } cz_voice_t;
 
@@ -80,6 +82,8 @@ typedef struct {
     int pending_note;
     int pending_velocity;
     int pending_glide;
+    int pending_rate16; /* porta_rate16 as it was when the waiting note was played */
+    int pending_from;   /* ...and last_word: a glide of a given length comes from the note it was played after */
     uint8_t voice[2]; /* line 1 (odd chip voice), primed line (even) */
     uint8_t nvoices;
     uint8_t fades;    /* steal fades still to arrive */
@@ -105,6 +109,8 @@ typedef struct {
     int solo;        /* Solo mode: one note, last-note priority */
     int porta;       /* portamento on */
     int porta_time;  /* 0-99 */
+    int porta_rate16; /* 0: porta_time says how long a glide takes, as on the CZ. Otherwise this does:
+                         progress per firmware tick in 1/65536ths of a 2048th (see cz_synth_glide_rate16) */
     int vel_amp;     /* velocity sensitivity 0-9 for DCA levels; 0 = none */
     int vel_wave;    /* ... for DCW levels */
     int pedal;       /* sustain pedal down */
@@ -150,6 +156,10 @@ void cz_synth_select_tone(cz_synth_t *s, const cz_tone_t *tone);
  * also change notes already sounding; envelopes and key follow apply from the
  * next note. A line select change re-voices, so it fades like a tone change. */
 void cz_synth_edit_tone(cz_synth_t *s, const cz_tone_t *tone);
+
+/* porta_rate16 for a glide that takes `seconds`: the firmware tick is 122.08 Hz, and a glide
+ * is over at 2048. A glide of no time at all still takes one tick. */
+int cz_synth_glide_rate16(float seconds);
 
 /* The patch's volume in dB (-24..+6); it glides there over ~10 ms. */
 void cz_synth_set_volume(cz_synth_t *s, int db);

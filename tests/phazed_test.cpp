@@ -539,6 +539,60 @@ static int presetNamed(const char* name) {
     return -1;
 }
 
+// A glide takes as long as it is given (it took the CZ's own 92 ms whatever was asked).
+extern "C" int cz_synth_glide_rate16(float seconds);
+static double pitchBy(const std::vector<float>& left, int from, int frames, int shortest = 40, int longest = 400) { // the shift at which the sound best matches itself
+    double best = 0.0;
+    int bestLag = 1;
+    for (int lag = shortest; lag <= longest; ++lag) {
+        double sum = 0.0;
+        for (int i = from; i < from + frames; ++i) sum += static_cast<double>(left[static_cast<std::size_t>(i)]) * left[static_cast<std::size_t>(i + lag)];
+        if (sum > best * 1.02) best = sum, bestLag = lag;
+    }
+    return 44100.0 / bestLag;
+}
+static void testAGlideTakesItsLength() {
+    // The rate: 2048 is "arrived", the CZ ticks 122.08 times a second, and the rate is in 65536ths.
+    const double most = 2048.0 * 65536.0;
+    CHECK(cz_synth_glide_rate16(0.f) == static_cast<int>(most) && cz_synth_glide_rate16(-1.f) == static_cast<int>(most)); // no time: there in one tick
+    CHECK(cz_synth_glide_rate16(0.001f) == static_cast<int>(most));                                                        // less than a tick: the same
+    CHECK(cz_synth_glide_rate16(1e9f) == 1);                                                                               // never none at all: it would not arrive
+    CHECK(std::abs(cz_synth_glide_rate16(1.f) - static_cast<int>(most / 122.0822)) < 300);
+    CHECK(std::abs(cz_synth_glide_rate16(0.0917f) - 183 * 65536) < 65536 / 10); // the CZ's dial at 30, what GLIDE was: 183 a tick
+    // An octave up over four seconds: half way (in pitch: six semitones under) after two, there after four.
+    const auto run = [](float seconds, int listenAt) {
+        Phazed synth;
+        synth.prepare(44100.f);
+        synth.noteOnFrom(69, 1.f, 57, seconds);
+        const std::vector<float> out = renderSynth(synth, 5 * 44100);
+        return pitchBy(out, listenAt, 4410);
+    };
+    const double there = run(4.f, 4 * 44100 + 8820), half = run(4.f, 2 * 44100 - 2205), quarter = run(4.f, 44100 - 2205);
+    const bool ok = there > 400.0 && std::fabs(half / there - 0.7071) < 0.02 && std::fabs(quarter / there - 0.5946) < 0.02;
+    CHECK(ok);
+    if (!ok) std::printf("  a glide of four seconds: %.0f Hz after one, %.0f after two, %.0f at its end\n", quarter, half, there);
+}
+
+// Two gliding notes played at one moment, each with its own length, both given slots that still
+// sound: each starts a moment later, and at its own rate, not the one that was asked for last.
+static void testAWaitingGlideKeepsItsOwnLength() {
+    const auto run = [](bool another) {
+        Phazed synth;
+        synth.prepare(44100.f);
+        for (int key = 30; key < 46; ++key) synth.noteOn(key, 0.3f); // every slot sounding
+        renderSynth(synth, 2205);
+        for (int key = 30; key < 46; ++key) synth.noteOff(key);
+        synth.noteOnFrom(81, 1.f, 69, 3.f);                 // three seconds up an octave
+        if (another) synth.noteOnFrom(33, 0.01f, 45, 0.01f); // and a quiet low one that is there at once
+        const std::vector<float> out = renderSynth(synth, 2 * 44100);
+        return pitchBy(out, 44100 + 22050 - 2205, 4410, 45, 90); // half way: six semitones under (looked for between 490 and 980 Hz, over the low note)
+    };
+    const double alone = run(false), beside = run(true);
+    const bool ok = std::fabs(alone - 622.0) < 20.0 && std::fabs(beside - alone) < 0.02 * alone;
+    CHECK(ok);
+    if (!ok) std::printf("  a waiting glide, half way: %.0f Hz alone, %.0f with another note played after it (622 is half way)\n", alone, beside);
+}
+
 // The glide comes from the key the engine names, not from whatever key was last played by hand.
 static void testAGlideComesFromTheKeyItIsGiven() {
     const auto early = [](int handKey) { // crossings from 10 to 40 ms into a note gliding up from A3 to A4
@@ -599,7 +653,7 @@ static void testAGlideSurvivesAWaitForItsSlot() {
         std::vector<int> early;
         for (int n = 0; n < kNotes; ++n) {
             const int key = n % 2 ? 81 : 57, before = n % 2 ? 57 : 81;
-            if (glide && n > 0 && !(lastPlain && n >= kNotes - 4)) synth.noteOnFrom(key, 1.f, before, 0.06f);
+            if (glide && n > 0 && !(lastPlain && n >= kNotes - 4)) synth.noteOnFrom(key, 1.f, before, 0.0917f); // (92 ms: what the CZ took before a glide had a length; the numbers below were measured with it)
             else synth.noteOn(key, 1.f);
             const std::vector<float> a = renderSynth(synth, kApart * 95 / 100);
             synth.noteOff(key);
@@ -652,6 +706,8 @@ int main(int argc, char** argv) {
     testMacrosInTheMiddleChangeNothing();
     testEachMacroDoesItsJob();
     testChoosingAPresetClearsTheMacros();
+    testAGlideTakesItsLength();
+    testAWaitingGlideKeepsItsOwnLength();
     testAGlideComesFromTheKeyItIsGiven();
     testAGlideSurvivesAWaitForItsSlot();
     if (argc > 1 && std::strcmp(argv[1], "--cost") == 0) reportCost();

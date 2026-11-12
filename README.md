@@ -883,7 +883,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
-| **Hold X on a note**, up / down | **GLIDE** on / off: the note slides in from the note before it |
+| **Hold X on a note**, up / down | **GLIDE**: up is one length longer, down one shorter, down to OFF. The note slides in from the note before it |
 | **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
@@ -904,16 +904,30 @@ play, one click per push. The strip at the bottom shows the values.
 | Effect | Does | On a chord |
 | --- | --- | --- |
 | **RATCHET** (left / right) | The note 2, 3 or 4 times, evenly, inside its first step. Each is let go just before the next. The last is held for the rest of the note. | Yes: the whole chord repeats |
-| **GLIDE** (up = on, down = off) | The pitch slides from the last note the track began to this one, over half a step. | No: a chord has no one note to slide from |
+| **GLIDE** (up = longer, down = shorter) | The note starts at the pitch of the note before it and slides to its own. How long the slide takes is the setting: OFF, 1/4 STEP, 1/2 STEP, 1 STEP, 2 STEPS or FULL. | No: a chord has no one note to slide from |
 | **THROW** (A) | The track is sent in full to ECHO, SPACE or both for as long as the note lasts (see "THROW" under PATTERN, drums). A foot at the note's end: on the left for ECHO, the right for SPACE. | Yes: the whole chord |
-| **Dice** (Y) | Rolls a ratchet, a glide or both. Always something, and never what it was. THROW is left as it is. | A ratchet |
+| **Dice** (Y) | Rolls a ratchet, a glide of some length, or both. Always something, and never what it was. THROW is left as it is. | A ratchet |
 
 - A note with an effect carries a mark, so it can be told from a plain one.
-- The first note after pressing play has nothing to slide from, so it does
-  not glide.
 - With both set, only the first of the ratchet glides.
 - A note too short for its ratchet plays as many as fit.
 - Kept in the song, undone by SELECT + B, gone with the note.
+
+**GLIDE, in full.** You set it on the note you slide *to*.
+
+| Thing | How it works |
+| --- | --- |
+| Which note it slides from | The last note the track began before this one, on any key. A chord counts as its top key. |
+| The lengths | In steps, so they follow the tempo. **FULL** takes as long as it has been since the note it slides from began: a slow slide between two notes far apart, a quick one between two close together. |
+| The line on the roll | A slanted purple line. It starts on the key the note slides from and ends at the note's start. Its height is the slide's length. The slide itself is heard from the note's start on. |
+| A slide over more than one bar | FULL from a note bars back: the line is in every bar it crosses, from the bar its source note is in to the bar of its own note. |
+| Into step 1 | The note slides from the last note of the loop. Its line is at the foot of the bar before (the same bar, in a one-bar cell), running off the bottom. |
+| A key off the side of the roll | The line runs off that side. |
+| Nothing to slide from | The first note after pressing play, and a note on the same key as the one before: no slide, no line. The corner mark stays. |
+| Notes that begin together | None slides from another of them. Each slides from the note before them all. |
+| With a ratchet | The slide is over before the second piece: at most 85% of the first piece, however long it is set. |
+| The strip | With X held: GLIDE and its length. Without: the length under GLIDE, or "x3 GLIDE" beside a ratchet. |
+| Old songs | A glide that was ON is 1/2 STEP, which is what it was. On Phazed it was 92 ms at any tempo; it is now half a step there too. |
 
 ### Chords
 

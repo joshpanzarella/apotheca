@@ -48,6 +48,7 @@
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
 #include "apotheca/effects.hpp"
+#include "apotheca/glide_rule.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
@@ -97,6 +98,7 @@ constexpr int kMaxRepeats = 16;
 constexpr int kMaxBars = 8;       // the longest a cell (one track in one scene) can be
 constexpr int kPatternSlots = kMaxScenes * kMaxBars; // a bar of a scene is slot scene * kMaxBars + bar
 constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
+static_assert(kGlideNotes == kMaxNotes && kGlideBars == kMaxBars, "glide_rule.hpp: a cell is as big there as here");
 constexpr int kScopeSize = 1024;  // samples the scope keeps
 constexpr double kNoNote = 1e30;
 constexpr int kCatchFrames = 480000; // what the engine remembers of its own output: ten seconds
@@ -177,6 +179,8 @@ struct Command {
                              //   that many notes, evenly, inside its first step). 256 added: it glides to its
                              //   pitch from the note before it. 512 added: it is thrown to ECHO; 1024: to
                              //   SPACE (THROW: the track's send to that bus is full for as long as the note lasts).
+                             //   2048 times the glide's length (kGlideQuarter and on, glide_rule.hpp) added,
+                             //   with the 256: none of it there, the 256 alone is half a step, as it always was.
     void* pointer = nullptr; // InstallSynth only
 };
 
@@ -369,9 +373,10 @@ private:
         float nudge = 0.f;    // early or late, -0.5..0.5 of a step
         float velocity = 0.f; // 0 = empty slot
         std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step
-        std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track.
-                                  // Inside the engine also: 2..4, the first of a ratchet of that many (the slide
-                                  // is over by the second); kLaterPiece, one of the rest of a ratchet.
+        std::uint8_t glide = 0;   // it slides to its pitch from the note before it on the track: for how long
+                                  // (kGlideHalf and the rest, glide_rule.hpp). 0: it does not.
+        std::uint8_t piece = 0;   // inside the engine: 2..4, the first of a ratchet of that many (its slide is
+                                  // over by the second); kLaterPiece, one of the rest of a ratchet.
         std::uint8_t throwTo = 0; // THROW: the buses the track's send is opened to while it sounds (kThrowEcho, kThrowSpace)
         float hold = 0.f;         // inside the engine: how long that send stays open, in steps (the whole note, also
                                   // when it is the first piece of a ratchet). 0: for its own length.
@@ -413,8 +418,8 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; };
-        int lastPitch = -1; // the key of the note the track last began, for a glide to start from (-1: none since Play)
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; };
+        GlideTrail trail; // the notes the track last began, for a glide to start from (none since Play)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
@@ -457,7 +462,7 @@ private:
     int slotOf(const Track& track, int scene, int bar) const { return scene * kMaxBars + bar % track.bars[scene]; }
     void fireNoteOffs();
     void firePendingNotes();
-    void startNote(Track& track, const Note& note, double delaySamples);
+    void startNote(Track& track, const Note& note, double delaySamples, double at); // at: when it begins, in steps since Play
 
     void apply(const Command& command);
     Position afterThisBar() const;
@@ -526,6 +531,7 @@ private:
     bool playing_ = false;
     bool loopScene_ = false;
     bool firstStep_ = true; // the step about to fire is the first since Play
+    long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;
     double untilStep_ = 0.0; // samples left before the next step fires

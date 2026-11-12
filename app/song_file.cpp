@@ -191,7 +191,7 @@ std::string songText(const Project& project) {
                             put(out, "notefx %.0f", n.step + 1);
                             put(out, " %.0f", n.pitch);
                             put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
-                            put(out, " %.0f\n", n.glide ? 1 : 0);
+                            put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
                         }
                     }
                     // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
@@ -419,7 +419,7 @@ bool parseSong(const std::string& text, Project& project) {
             for (NoteEvent& n : track->notes[scene][bar].notes) {
                 if (n.velocity <= 0.f || n.pitch != static_cast<int>(pitch) || n.step != static_cast<int>(step) - 1) continue;
                 n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
-                n.glide = glide != 0 ? 1 : 0;
+                n.glide = static_cast<std::uint8_t>(glide == 0 ? kGlideOff : (glide >= 1 && glide < 256 ? glideKind(static_cast<int>(glide)) : kGlideHalf)); // (a number not known: on, as it was)
                 break;
             }
         } else if (word == "chordfx" && isSynth(track->kind)) {

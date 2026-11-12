@@ -22,7 +22,7 @@
 //   X                     hear the key under the cursor
 //   hold X on a note      what it does besides play, a click at a time:
 //                           left / right   RATCHET: the note 2, 3 or 4 times inside its first step
-//                           up / down      GLIDE on / off: it slides to its pitch from the note before it
+//                           up / down      GLIDE longer / shorter, down to OFF: it slides to its pitch from the note before it
 //                         A chord takes a ratchet too.
 //   hold R1 on a note     carry the note (or the whole chord) under the cursor.
 //                         The D-pad: to another key, or a whole step. The

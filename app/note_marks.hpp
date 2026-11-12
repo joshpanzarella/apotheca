@@ -2,6 +2,8 @@
 // The marks a note effect leaves on a block of the piano roll, worked out
 // apart from the drawing so they can be tested.
 
+#include <cmath>
+
 namespace apotheca {
 
 // A ratchet cuts the part of a note in its first step into as many pieces as
@@ -33,15 +35,94 @@ inline int ratchetLines(int tall, int pieces, int lineTops[3]) {
     return 0;
 }
 
+// A glide's line on the roll, in steps down the bar the roll shows: it ends where its note
+// begins, `at` (the note's step and nudge), and starts `steps` before that. The note may be in
+// another bar of the cell, or in this one the next time round: `shift` is how many steps after
+// the top of the bar shown its own bar begins (glideShifts). What falls outside the bar is cut
+// off. This says where a line's two ends are, and whether any of it is inside the bar's `rows`
+// steps.
+struct GlideSpan {
+    double from = 0.0, to = 0.0; // in steps from the bar's top; from may be above it, to below
+    bool seen = false;
+};
+inline GlideSpan glideSpan(double at, double steps, int shift, int rows) {
+    GlideSpan span;
+    span.to = at + shift;
+    span.from = span.to - steps;
+    span.seen = steps > 0.0 && span.to > 0.0 && span.from < rows;
+    return span;
+}
+// A line belongs to a note, and it may start bars before it: a FULL glide from a note three
+// bars back crosses every bar between. So the roll draws, in the bar it shows, the lines of
+// EVERY bar of the cell. This says where bar `noteBar` of the cell begins, in steps after the
+// top of bar `shownBar`: once for each time the bar shown plays in the scene (a cell shorter
+// than its scene plays more than once) and that time is as long as the `rows` the roll shows,
+// this time round the scene and the next (a glide into the first step comes from the scene's
+// end). A note's line is answered for the first time its bar plays (glideLines), so that is
+// the playing measured to. Gives how many there are, no two the same; kGlideShifts is the most.
+constexpr int kGlideShifts = 16;
+inline int glideShifts(int noteBar, int shownBar, int cellBars, int sceneSteps, int rows, int shifts[kGlideShifts]) {
+    int count = 0;
+    if (cellBars < 1) cellBars = 1;
+    for (int played = shownBar; played * 16 < sceneSteps && count + 2 <= kGlideShifts; played += cellBars) {
+        const int left = sceneSteps - played * 16;
+        if ((left < 16 ? left : 16) != rows) continue; // cut short that time: not the bar as it is shown
+        for (int round = 0; round < 2; ++round) shifts[count++] = (noteBar - played) * 16 + round * sceneSteps;
+    }
+    return count;
+}
+
+// The line itself, in pixels: little squares along it from (x0, y0) down to (x1, y1), `size`
+// across, each one whole inside the box or left out (so a line stops clean at the roll's edge).
+// Squares that sit in one column or one row are handed over as one rectangle: emit(x, y, w, h).
+// (One call a pixel, sixty-four long lines cost a frame's worth of time on the handheld.)
+template <typename Emit>
+inline void glideLineRects(double x0, double y0, double x1, double y1, int size, int left, int top, int right, int bottom, Emit emit) {
+    const double dx = x1 - x0, dy = y1 - y0;
+    const double longest = (dx < 0 ? -dx : dx) > (dy < 0 ? -dy : dy) ? (dx < 0 ? -dx : dx) : (dy < 0 ? -dy : dy);
+    const int count = static_cast<int>(std::ceil(longest)) + 1;
+    int first = 0, last = count;
+    if (dy > 0.0) { // only the part of it that is level with the box is walked
+        const double a = (top - size - 1 - y0) / dy * count, b = (bottom + 1 - y0) / dy * count;
+        if (b < 0.0 || a > count) return;
+        if (a > first) first = static_cast<int>(a);
+        if (b < last) last = static_cast<int>(b) + 1;
+    }
+    int rx = 0, ry = 0, rw = 0, rh = 0; // the rectangle being gathered (rw 0: none)
+    for (int i = first; i <= last; ++i) {
+        const double t = static_cast<double>(i) / count;
+        const int x = static_cast<int>(std::floor(x0 + dx * t)) - size / 2, y = static_cast<int>(std::floor(y0 + dy * t)) - size / 2;
+        if (x < left || x + size > right || y < top || y + size > bottom) continue;
+        if (rw && x == rx && rw == size && y >= ry && y <= ry + rh) {
+            if (y + size > ry + rh) rh = y + size - ry; // the same column: taller
+            continue;
+        }
+        if (rw && y == ry && rh == size && x >= rx - size && x <= rx + rw) {
+            if (x < rx) rw += rx - x, rx = x; // the same row: wider, to either side
+            if (x + size > rx + rw) rw = x + size - rx;
+            continue;
+        }
+        if (rw) emit(rx, ry, rw, rh);
+        rx = x, ry = y, rw = rh = size;
+    }
+    if (rw) emit(rx, ry, rw, rh);
+}
+
 // The right end of the piano roll's strip, in pixels: NUDGE, then what the note
 // does besides play (RATCHET / EFFECT), then THROW. The effect moves left when
 // the note is thrown, to leave THROW its room.
 constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f, kStripSpace = 10.f;
 inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
+// With X held the strip is RATCHET, GLIDE (at 250), THROW and NUDGE: the last two stand here,
+// clear of the longest a glide's length reads ("1/4 STEP").
+constexpr float kStripHeldGlideX = 250.f, kStripHeldThrowX = 365.f, kStripHeldNudgeX = 440.f;
 // How wide NUDGE's value may be: up to a gap before whatever comes after it.
 inline float stripNudgeRoom(bool effect, bool thrown) {
     return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;
 }
+// How wide a glide's length may be there (it has the field to itself: no ratchet), with a gap
+// left before THROW when the note is thrown. "1/4 STEP" beside a THROW is drawn in the middle size.
+inline float stripGlideRoom(bool thrown) { return (thrown ? kStripThrowX - kStripSpace : kStripRight) - stripEffectX(thrown); }
 // The largest size a value fits its room in: 0 large, 1 medium, 2 small. `widths`
 // is the text's width in each. ("45% EARLY" beside an effect and a THROW is small.)
 inline int stripFont(const float widths[3], float room) { return widths[0] <= room ? 0 : widths[1] <= room ? 1 : 2; }

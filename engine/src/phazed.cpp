@@ -313,20 +313,22 @@ void Phazed::noteOn(int note, float velocity) {
     s.porta = porta;
 }
 
-// GLIDE on Phazed is the CZ's own portamento, switched on for this one note, in the CZ's own
-// time. The CZ slides from the last note it started, whoever played it; the key the track came
-// from is put there first. (The engine is not ours to change; these two fields are its own.)
+// GLIDE on Phazed is the CZ's own portamento, switched on for this one note: it moves on the
+// CZ's own 122 Hz tick, but for as long as the note asks (porta_rate16: added to the CZ's
+// engine for this, third_party/CHANGES.md), not for the one time the CZ's dial was left at.
+// The CZ slides from the last note it started, whoever played it; the key the track came
+// from is put there first.
 // A note given a slot that is still sounding starts a moment later, from the CZ's render, and
 // reads the switch again then: so the switch is left on, and it is the plain notes that turn
 // it off for themselves (noteOn).
 void Phazed::noteOnFrom(int note, float velocity, int from, float seconds) {
-    (void)seconds;
     if (!ok_ || note < 0 || note > 127 || !(velocity > 0.f)) return;
     int v = static_cast<int>(std::lround(velocity * 127.f));
     v = v < 1 ? 1 : (v > 127 ? 127 : v);
     cz_synth_t& s = state_->synth;
     if (from >= 0 && from <= 127) s.last_word = (from - 7) * 256 + s.tone.octave * 12 * 256 + (s.master_tune - 64) * 4; // the CZ's own note_word
     s.porta = 1;
+    s.porta_rate16 = cz_synth_glide_rate16(seconds);
     cz_synth_note_on(&s, note, v);
 }
 
