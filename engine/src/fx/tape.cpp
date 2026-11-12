@@ -91,6 +91,7 @@ public:
     }
     void process(float* left, float* right, int frames) override {
         if (size_ == 0 || frames <= 0) return;
+        soundOnly(left, right, frames);
         float coming = 0.f;
         for (int i = 0; i < frames; ++i) {
             const float l = std::fabs(left[i]), r = std::fabs(right[i]);

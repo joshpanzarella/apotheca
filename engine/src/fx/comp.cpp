@@ -56,6 +56,7 @@ public:
         settled_ = false;
     }
     void process(float* left, float* right, int frames) override {
+        soundOnly(left, right, frames);
         float most = 0.f;
         for (int done = 0; done < frames; done += kBlock) {
             const float got = block(left + done, right + done, frames - done < kBlock ? frames - done : kBlock);

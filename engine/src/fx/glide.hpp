@@ -43,6 +43,23 @@ inline float glideK(int frames, float seconds, float sampleRate) {
     return static_cast<float>(frames) / (seconds * sampleRate + static_cast<float>(frames));
 }
 
+// THE WAY IN. A sample that is not a number, is infinite, or is beyond
+// kLoudest (160 dB over full scale: a fault upstream, not a sound) is taken as
+// silence. Without this one such sample stays for good in anything that
+// remembers (a delay line, a filter, a level reading): the effect is then
+// silent or broken until it is taken out. Every new effect calls it first
+// thing in process(); the engine does the same to what a bus is sent. The old
+// five do not (their arithmetic is not touched). One compare a sample.
+constexpr float kLoudest = 1e8f;
+inline void soundOnly(float* samples, int frames) {
+    for (int i = 0; i < frames; ++i)
+        if (!(std::fabs(samples[i]) <= kLoudest)) samples[i] = 0.f; // (written so that not-a-number fails it)
+}
+inline void soundOnly(float* left, float* right, int frames) {
+    soundOnly(left, frames);
+    soundOnly(right, frames);
+}
+
 // READING BETWEEN SAMPLES. Four neighbours, weighted (a cubic through them:
 // Lagrange's). `f` is how far past the whole sample, 0 to 1. At f = 0 the
 // answer is the sample itself, to the bit. It never makes anything louder at

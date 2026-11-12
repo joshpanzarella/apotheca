@@ -4492,6 +4492,112 @@ static void testGlideLands() {
     }
 }
 
+// Sits in a track's slot and, at one sample, puts out `bad` (on both sides).
+struct Poison : Effect {
+    float bad;
+    long at, seen = 0;
+    Poison(float value, long sample) : bad(value), at(sample) {}
+    void setParam(int, float) override {}
+    void process(float* left, float* right, int n) override {
+        for (int i = 0; i < n; ++i, ++seen)
+            if (seen == at) left[i] = right[i] = bad;
+    }
+};
+
+// WHAT IS NOT SOUND IS SILENCE AT THE WAY IN. One sample that is not a
+// number, is infinite, or is absurdly loud used to stay for good in every new
+// effect and in both buses. Now it is the same, to the bit, as a zero there.
+static void testNotSound() {
+    // The rule by itself.
+    {
+        float v[] = {1.f, -1.f, 1e8f, -1e8f, 1.1e8f, -1.1e8f, std::nanf(""), INFINITY, -INFINITY, 0.f, 1e-30f, FLT_MAX};
+        const float want[] = {1.f, -1.f, 1e8f, -1e8f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1e-30f, 0.f};
+        float w[12];
+        std::memcpy(w, v, sizeof v);
+        fx::soundOnly(v, w, 12);
+        for (int i = 0; i < 12; ++i) CHECK(v[i] == want[i] && w[i] == want[i]);
+        CHECK(fx::kLoudest == kBusLoudest);
+    }
+    const float bads[] = {std::nanf(""), INFINITY, -INFINITY, 1e30f, -FLT_MAX};
+    int tried = 0;
+    for (int k = static_cast<int>(EffectKind::Crush) + 1; k < kEffectKinds; ++k) { // every effect newer than the old five, and any to come
+        const EffectKind kind = static_cast<EffectKind>(k);
+        const EffectInfo& info = effectInfo(kind);
+        // Each choice of each setting that is a choice (SATURATE's four curves, CHORUS's types...), and on a bus where it can be.
+        struct Variant {
+            int param;
+            float value;
+            bool bus;
+        };
+        std::vector<Variant> variants = {{-1, 0.f, false}};
+        if (effectBus(kind) >= 0) variants.push_back({-1, 0.f, true});
+        for (int p = 0; p < info.params; ++p)
+            for (int c = 1; c < info.choices[p]; ++c) variants.push_back({p, (static_cast<float>(c) + 0.5f) / static_cast<float>(info.choices[p]), false});
+        for (const Variant& variant : variants) {
+            for (float bad : bads) {
+                std::unique_ptr<Effect> hurt = makeEffect(kind, 48000.f, 120.f), well = makeEffect(kind, 48000.f, 120.f);
+                for (Effect* e : {hurt.get(), well.get()}) {
+                    if (variant.bus) e->setOnBus(true);
+                    if (variant.param >= 0) e->setParam(variant.param, variant.value);
+                }
+                Stereo a(72000), b(0);
+                Noise noise(77u);
+                for (std::size_t i = 0; i < a.frames(); ++i) a.l[i] = 0.5f * noise.next(), a.r[i] = 0.5f * noise.next();
+                a.l[10000] = a.r[10001] = a.l[10002] = 0.f;
+                b = a;
+                a.l[10000] = bad;
+                a.r[10001] = bad;
+                a.l[10002] = -bad;
+                through(*hurt, a);
+                through(*well, b);
+                bool numbers = true;
+                for (std::size_t i = 0; i < a.frames(); ++i) numbers = numbers && std::fabs(a.l[i]) < 100.f && std::fabs(a.r[i]) < 100.f;
+                CHECK(numbers);
+                CHECK(a.l == b.l && a.r == b.r);
+                CHECK(hurt->meter() == well->meter()); // (COMP: its reading of the level is not left broken either)
+                ++tried;
+            }
+        }
+    }
+    CHECK(tried >= 5 * (2 + 2 + 4 + 6 + 4)); // TAPE and HALL on and off a bus, CHORUS's four types, COMP's six ratios, SATURATE's four curves
+    // SATURATE's FOLD counts the turns with a cast to int: too far round, it gives nothing rather than anything at all.
+    for (float x : {1e7f, 3e9f, 1e30f, FLT_MAX, INFINITY, std::nanf("")}) {
+        CHECK(std::fabs(fx::saturateCurve(2, x)) <= 1.f && std::fabs(fx::saturateCurve(2, -x)) <= 1.f);
+        if (x > 1e9f || x != x) CHECK(fx::saturateCurve(2, x) == 0.f && fx::saturateCurve(2, -x) == 0.f);
+    }
+    CHECK(std::fabs(fx::saturateCurve(2, 1.f) - 1.f) < 1e-5f && std::fabs(fx::saturateCurve(2, 401.f) - 1.f) < 1e-3f && std::fabs(fx::saturateCurve(2, -3.f) - 1.f) < 1e-5f);
+
+    // THE BUSES. A track puts out one bad sample with both sends up, into the
+    // old DELAY and REVERB (which do not look after themselves). What comes
+    // out is what comes out when that sample is a zero, but for the track's own
+    // sound at that one sample.
+    for (float bad : bads) {
+        std::vector<float> out[2];
+        for (int run = 0; run < 2; ++run) {
+            std::unique_ptr<Engine> engine = sineEngine();
+            engine->setTrackEffect(0, 2, std::unique_ptr<Effect>(new Poison(run == 0 ? bad : 0.f, 30000)));
+            CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Delay) && engine->setEffect(kSpaceBus, 0, EffectKind::Reverb));
+            engine->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 1.f)); // FEEDBACK full: what gets in stays a long while
+            engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+            engine->send(make(Command::SetSend, 0, 1, 0, 0.7f));
+            out[run].resize(2 * 144000); // both sides: each has its own delay line and its own room
+            engine->render(out[run].data(), 144000);
+        }
+        int differ = 0;
+        bool numbers = true;
+        for (std::size_t i = 0; i < out[0].size(); ++i) {
+            if (i / 2 == 30000) continue;
+            differ += out[0][i] != out[1][i];
+            numbers = numbers && std::fabs(out[0][i]) < 10.f;
+        }
+        CHECK(numbers && differ == 0);
+        float late = 0.f;
+        for (std::size_t i = 200000; i < out[0].size(); ++i) late = std::fmax(late, std::fabs(out[0][i]));
+        CHECK(late > 0.3f); // (and the buses are sounding)
+    }
+}
+
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -4529,6 +4635,7 @@ int main(int argc, char** argv) {
     testSendsOnAnyHelperCount();
     testTheGroupJump();
     testGlideLands();
+    testNotSound();
     if (failures == 0) std::printf("effects_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

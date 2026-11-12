@@ -76,6 +76,7 @@ inline int slotsOf(int track) { return track == kMasterTrack ? kMasterSlots : (b
 // between two echoes of anything a bus can hold (effects_test checks that).
 constexpr float kBusRestSeconds = 10.f;
 constexpr float kBusQuiet = 1e-6f; // 120 dB under full scale
+constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or not a number) is taken as silence
 constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long

@@ -56,6 +56,7 @@ inline float tube(float x) { return soft(x + kBias) - kSoftAtBias; }
 // sin(x * pi / 2): 1 at x = 1, back to 0 at 2, -1 at 3...
 inline float fold(float x) {
     float t = 0.25f * x;
+    if (!(std::fabs(t) < 1e6f)) return 0.f; // too far round to count the turns (and a cast of it to int would be anything at all)
     t -= static_cast<float>(static_cast<int>(t + (t < 0.f ? -0.5f : 0.5f))); // -0.5..0.5 of a turn
     float u = 4.f * t;
     if (u > 1.f) u = 2.f - u;
@@ -113,6 +114,7 @@ public:
         settled_ = false;
     }
     void process(float* left, float* right, int frames) override {
+        if (frames > 0) soundOnly(left, right, frames);
         while (frames > 0) {
             // In blocks that end every 64th sample it has ever been given,
             // however the caller cuts the sound up: what is done between

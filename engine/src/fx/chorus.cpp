@@ -79,6 +79,7 @@ public:
     }
     void process(float* left, float* right, int frames) override {
         if (line_[0].empty()) return;
+        soundOnly(left, right, frames);
         for (int done = 0; done < frames; done += kBlock) block(left + done, right + done, frames - done < kBlock ? frames - done : kBlock);
     }
 

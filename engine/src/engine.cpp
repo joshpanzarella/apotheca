@@ -1251,6 +1251,12 @@ void Engine::feedBuses(const int* active, int count, int frames, float busL[][kM
             track.sendNow[bus] = now;
         }
         if (!fed[bus]) continue;
+        // What is not sound (not a number, infinite, absurdly loud) is not sent on: one
+        // such sample would stay in a delay or a reverb for good, and in the mix with it.
+        for (int f = 0; f < frames; ++f) {
+            if (!(std::fabs(busL[bus][f]) <= kBusLoudest)) busL[bus][f] = 0.f;
+            if (!(std::fabs(busR[bus][f]) <= kBusLoudest)) busR[bus][f] = 0.f;
+        }
         // Sent, but was any of it sound? A silent track with its send up wakes nothing.
         bool any = false;
         for (int f = 0; f < frames && !any; ++f) any = busL[bus][f] != 0.f || busR[bus][f] != 0.f;
