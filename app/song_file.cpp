@@ -212,6 +212,17 @@ std::string songText(const Project& project) {
                             if (c.throwTo) put(out, " %.0f", c.throwTo);
                             out += "\n";
                         }
+                        // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
+                        // A line of its own, left out when none is set: a chord that has none is written
+                        // as it always was, and a program from before them skips the line whole.
+                        if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
+                            put(out, "chordplay %.0f", c.step + 1);
+                            put(out, " %.0f", c.play.strum);
+                            put(out, " %.0f", c.play.order);
+                            put(out, " %.0f", c.play.time);
+                            put(out, " %.0f", c.play.level);
+                            put(out, " %.0f\n", c.play.lengths);
+                        }
                     }
                 }
             }
@@ -430,6 +441,18 @@ bool parseSong(const std::string& text, Project& project) {
                 if (c.velocity <= 0.f || c.step != static_cast<int>(step) - 1) continue;
                 c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
                 c.throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
+            }
+        } else if (word == "chordplay" && isSynth(track->kind)) {
+            // For the chord of this bar that starts on that step (it comes just before this line).
+            // Numbers left off are 0; one that is not known is off, one too big is the most.
+            double step, value[5] = {0, 0, 0, 0, 0};
+            if (!(in >> step) || step < 1 || step > kSteps) continue;
+            for (double& v : value)
+                if (!(in >> v)) break;
+            const auto whole = [](double v) { return v >= 0 && v < 1000 ? static_cast<int>(v) : (v >= 1000 ? 1000 : 0); }; // (not a number: 0)
+            for (ChordEvent& c : track->notes[scene][bar].chords) {
+                if (c.velocity <= 0.f || c.step != static_cast<int>(step) - 1) continue;
+                c.play = chordPlayOf(whole(value[0]), whole(value[1]), whole(value[2]), whole(value[3]), whole(value[4]));
             }
         } else if (word == "chord" && isSynth(track->kind)) {
             double step, length, level, inversion, root, interval;
