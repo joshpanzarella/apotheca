@@ -267,7 +267,7 @@ void testTheDice() {
     c.throwTo = 2;
     const ChordEvent plain = c;
     const int rolls = 6000;
-    int ratchets = 0, strums = 0, arps = 0, off = 0, orders[4] = {}, times = 0, levels = 0, lengths = 0, big = 0;
+    int ratchets = 0, strums = 0, arps = 0, off = 0, orders[4] = {}, times = 0, levels = 0, lengths = 0, big = 0, kinds[kStrumKinds] = {}, hits[5] = {};
     for (int i = 0; i < rolls; ++i) {
         const ChordEvent was = c;
         chordEffectRoll(c, roll);
@@ -288,6 +288,8 @@ void testTheDice() {
             big += amount == 25;
         }
         ratchets += c.ratchet >= 2;
+        ++kinds[c.play.strum];
+        ++hits[c.ratchet];
         strums += c.play.strum == kStrumTight || c.play.strum == kStrumWide;
         arps += c.play.arpeggio();
         off += c.play.strum == kStrumOff;
@@ -300,6 +302,8 @@ void testTheDice() {
     const auto near = [&](int count, double share) { return std::fabs(static_cast<double>(count) / rolls - share) < 0.03; };
     CHECK(near(strums, 0.50) && near(arps, 0.15) && near(off, 0.35));
     CHECK(strums > 3 * arps); // a strum far more often than an arpeggio
+    CHECK(near(kinds[kStrumTight], 0.30) && near(kinds[kStrumWide], 0.20) && near(kinds[kStrumQuarter], 0.05) && near(kinds[kStrumHalf], 0.05) && near(kinds[kStrumStep], 0.05));
+    CHECK(hits[1] == 0 && near(hits[2], 0.15 * 0.85) && near(hits[3], 0.075 * 0.85) && near(hits[4], 0.075 * 0.85)); // x2 half the time
     CHECK(near(ratchets, 0.30 * 0.85)); // (30 in 100, less those an arpeggio took)
     CHECK(near(times, 0.50) && near(levels, 0.50) && near(lengths, 0.30));
     CHECK(near(big, 1.30 / 3.0));
@@ -522,6 +526,18 @@ void testThroughTheSession() {
     CHECK(heard.size() == 4);
     for (std::size_t m = 0; m < heard.size(); ++m) CHECK(heard[m].pitch == keys[m % static_cast<std::size_t>(n)] && heard[m].frame == static_cast<long>(2 + m) * kStep);
 
+    // The dice's roll is what plays next: the engine is told at once, not at the next edit.
+    for (int i = 0; i < 6; ++i) {
+        rig.key(X, true);
+        rig.tap(Y);
+        rig.key(X, false);
+        const std::vector<Began> rolled = rig.playBar();
+        rig.app.session().sendNoteBar(1, 0, 0); // (told again: nothing may change)
+        const std::vector<Began> told = rig.playBar();
+        CHECK(rolled.size() == told.size() && !rolled.empty());
+        for (std::size_t k = 0; k < rolled.size() && k < told.size(); ++k) CHECK(rolled[k].frame == told[k].frame && rolled[k].pitch == told[k].pitch && rolled[k].velocity == told[k].velocity);
+    }
+    c.ratchet = 0;
     // The track handed over whole (a cell made longer: its second bar is filled from the first,
     // and every pattern goes in one piece) carries them too, and the copy has them.
     c.play = chordPlayOf(kStrumTight, 0, 0, 0, 0);
@@ -856,6 +872,18 @@ void testTheScreen() {
         for (int row = stripTop; row < hintsTop; ++row)
             for (int col = 633; col < 640; ++col) past += !canvas.is(col, row, ui::kBg) && strips.back()[static_cast<std::size_t>(row * 640 + col)] != plain[static_cast<std::size_t>(row * 640 + col)];
         CHECK(past == 0);
+    }
+    // THROW is on the strip too, at the right: OFF and SPACE read differently there, and nowhere else.
+    {
+        roll.pickEffect(kFxStrum);
+        const std::vector<Uint32> thrown = shot();
+        c.throwTo = 0;
+        const std::vector<Uint32> notThrown = shot();
+        c.throwTo = 2;
+        CHECK(differ(thrown, notThrown, static_cast<int>(kChordFxThrowX), stripTop, 640, hintsTop) > 40);
+        CHECK(differ(thrown, notThrown, 0, stripTop, static_cast<int>(kChordFxThrowX), hintsTop) == 0);
+        roll.pickEffect(kFxLengths);
+        strips.back() = shot();
     }
     // The hints with X held on a chord are not a note's, and all four are there: the bar's last
     // key (Y, the dice) is drawn, with room to spare before MENU: HELP.

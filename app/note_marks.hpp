@@ -116,14 +116,6 @@ inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
 // With X held the strip is RATCHET, GLIDE (at 250), THROW and NUDGE: the last two stand here,
 // clear of the longest a glide's length reads ("1/4 STEP").
 constexpr float kStripHeldGlideX = 250.f, kStripHeldThrowX = 365.f, kStripHeldNudgeX = 440.f;
-// With X held on a CHORD the strip is its six effects: the one picked in full at the left (its
-// name, and its value in the large size), all six in two columns of three (a name, and its
-// value further on: by as much as the column's longest name needs), and THROW. Measured on
-// the screen at its fullest (--view chordfx-worst): "WIDE STRUM" ends at 135 at the left and
-// at 322 in the list, "100%" at 488, "SPACE" at 588.
-constexpr float kChordFxListX = 160.f, kChordFxColumn = 184.f, kChordFxThrowX = 522.f;
-constexpr float kChordFxValueIn[2] = {76.f, 108.f};
-constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
 // How wide NUDGE's value may be: up to a gap before whatever comes after it.
 inline float stripNudgeRoom(bool effect, bool thrown) {
     return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;
@@ -146,5 +138,14 @@ inline int stripThrowFont(const float widths[3], float least, float* x) {
     }
     return 2;
 }
+
+// With X held on a CHORD the strip is its six effects: the one picked in full at the left (its
+// name, and its value in the large size), all six in two columns of three (a name, and its
+// value further on: by as much as the column's longest name needs), and THROW. Measured on
+// the screen at its fullest (--view chordfx-worst): "WIDE STRUM" ends at 135 at the left and
+// at 322 in the list, "100%" at 488, "SPACE" at 588.
+constexpr float kChordFxListX = 160.f, kChordFxColumn = 184.f, kChordFxThrowX = 522.f;
+constexpr float kChordFxValueIn[2] = {76.f, 108.f};
+constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
 
 } // namespace apotheca

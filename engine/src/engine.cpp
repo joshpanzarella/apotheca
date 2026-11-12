@@ -542,7 +542,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     }
     double late = 0.0; // how long after the chord's own moment this note begins, in samples (below zero: before it)
     const double perMs = static_cast<double>(sampleRate_) / 1000.0;
-    if (play.strum != kStrumOff) { // (one key: its place is the first, and it is not moved)
+    { // (STRUM off: no time apart. One key: its place is the first, and it is not moved.)
         // One after another: never over more than half the chord, or half a ratchet's piece.
         const int hits = note.ratchet >= 2 ? (note.ratchet > kMaxRatchet ? kMaxRatchet : note.ratchet) : 1;
         double piece = note.length;

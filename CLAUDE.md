@@ -622,6 +622,9 @@ effect in those two groups and fails one that does not.
 | DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
 | TAPE with its way down, the same run (0.10% just before it) | 0.11% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
+| The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
+| ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
+| ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

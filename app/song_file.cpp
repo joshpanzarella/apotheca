@@ -447,8 +447,7 @@ bool parseSong(const std::string& text, Project& project) {
             // Numbers left off are 0; one that is not known is off, one too big is the most.
             double step, value[5] = {0, 0, 0, 0, 0};
             if (!(in >> step) || step < 1 || step > kSteps) continue;
-            for (double& v : value)
-                if (!(in >> v)) break;
+            for (double& v : value) in >> v; // (one that is not there, and all after it, stay 0)
             const auto whole = [](double v) { return v >= 0 && v < 1000 ? static_cast<int>(v) : (v >= 1000 ? 1000 : 0); }; // (not a number: 0)
             for (ChordEvent& c : track->notes[scene][bar].chords) {
                 if (c.velocity <= 0.f || c.step != static_cast<int>(step) - 1) continue;

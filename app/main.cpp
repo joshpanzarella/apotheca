@@ -469,7 +469,12 @@ int main(int argc, char** argv) {
         p.chords[3].throwTo = kThrowEcho;
         int cursorKey = 50, cursorStep = 4;
         if (std::strstr(view, "off")) cursorKey = 48, cursorStep = 0;
-        if (std::strstr(view, "arp")) cursorKey = 55, cursorStep = 12, p.chords[3].ratchet = 2;
+        if (std::strstr(view, "arp")) {
+            int keys[kChordNotes];
+            p.chords[3].ratchet = 2;
+            p.chords[3].pitches(keys); // (a pack's chord sits where the pack puts it: the cursor goes to its lowest key)
+            cursorKey = keys[0], cursorStep = 12;
+        }
         if (std::strstr(view, "worst")) {
             p.chords[1].play = chordPlayOf(kStrumWide, kOrderUpDown, 100, 100, 100);
             p.chords[1].ratchet = 4;
