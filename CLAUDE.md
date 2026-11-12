@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (16) | `cd build && ctest -j8` (about 25 s) |
+| All tests (18) | `cd build && ctest -j8` (about 30 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, each also with `--hold-a`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -184,6 +184,32 @@ effect in those two groups and fails one that does not.
   the audio thread **after the helpers are done, in track order**
   (`feedBuses`, `runBuses`), and join the mix before the master's slots. Keep
   it there: that is what holds the output to the bit on any helper count.
+- **THROW: a thrown drum hit is written twice, a thrown note opens the
+  track's send.** The drum machine writes a thrown voice a second time into
+  `thrown_[track][bus]` (`DrumMachine::render`'s two extra ways out), so the
+  bus gets that hit alone, before the track's slots, at the track's level and
+  mute. A thrown note holds `Track::throwLeft` for its length and
+  `feedBuses` slides `throwNow` open and shut over 5 ms; a ratchet's first
+  piece holds it for the whole note (`Note::hold`). "In full" is a send of 1:
+  the knob's share is topped up, never added to (`now + open * (1 - now)`;
+  a thrown hit gets the `1 - now` the knob leaves).
+  - **The voice loop is built twice** (`renderVoice<true / false>`): with
+    THROW's check inside the one loop, twelve unthrown drum tracks cost half
+    as much again (1.46% to 2.18%). The line that adds to `left` is as it
+    was; the thrown copy is worked out again beside it, not taken from it.
+  - **A track that throws nothing takes the old loop in `feedBuses`**, which
+    is why a song without throws is the same to the bit (the pinned song).
+  - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do
+    `prepare` and a track taken away. Anything new that lets notes go in
+    another way calls `closeThrows`.
+  - In a command THROW rides with the cut (`StepFx::cutAndThrow`: cut plus 4
+    times THROW, in `extra` of `SetStepFx` and `Trigger`); a note's is 512
+    (ECHO) and 1024 (SPACE) added to `SetNote`'s `e`.
+  - A hit that carries a lane's sound on hands on its own THROW, and the
+    sound slides into the bus or out of it over a millisecond.
+  - Its tests are their own two programs, each a few seconds:
+    `tests/throw_test.cpp` (the engine) and `tests/throwapp_test.cpp` (the
+    gesture, the song file, undo, a bounce).
 - **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
   why a song with no sends is the same to the last bit as before there were
   buses (`effects_test` holds the old song's checksum with an effect waiting
@@ -300,7 +326,9 @@ effect in those two groups and fails one that does not.
   that, shorten the words. The bar draws `HOLD` as `HLD`, directions as
   arrows, and the one word `dice` as a die (`ui.cpp`): write hints in full.
 - **Hold X + Y is the dice** for what a hit or a note does (`fxRoll` on both
-  grids). **Hold X + A is kept for THROW.**
+  grids). **Hold X + A is THROW** (`fxThrow` on both): OFF, ECHO, SPACE, BOTH.
+  The check for X held comes before A's own jobs, so A alone still places.
+  **The dice do not throw**, and do not take a THROW away (owner's decision).
 - **Sample names from `wavNames` have no `.wav` ending.**
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
@@ -321,6 +349,12 @@ effect in those two groups and fails one that does not.
 - **A recording's name may carry one folder**: `kicks/808`. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
+- **THROW is a value on a hit, a note or a chord** (`throwTo`: 1 ECHO, 2
+  SPACE, 3 both; `kThrowEcho`, `kThrowSpace` in drums.hpp). In a song file it
+  is one more number at the end of a line, **left off at 0**, so an unthrown
+  song is written as it always was: the seventh of `stepfx`, the sixth of
+  `note` (the nudge is then written even at 0), the third of `chordfx` (the
+  ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
@@ -379,6 +413,7 @@ effect in those two groups and fails one that does not.
 | Feeding both send buses from 12 tracks | 0.03% |
 | ...and a DELAY and a REVERB on them | 0.12% |
 | ...or TAPE and HALL, what a new song has (2026-11-12, a slower run: DRIVE 0.18%, DELAY and REVERB on the buses 0.09 to 0.18%) | 0.41 to 0.50% |
+| Every hit of twelve busy drum tracks thrown to both buses, nothing on them (2026-11-12; the tracks themselves 1.45%, as before THROW) | 1.2% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
@@ -390,7 +425,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW, then the new effects.
+1. The effects plan (`docs/plans/effects-plan.md`): sends and THROW are built; DUCK, then the later set.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

@@ -221,6 +221,19 @@ static void testDrumMachine() {
         without.render(4800, 64, false);
         CHECK(with.out == without.out);
     }
+    // Given only one of the two ways out, a hit thrown to both is written to that one.
+    {
+        DrumMachine drums;
+        drums.setKit(&DrumKit::builtIn(48000.f));
+        drums.prepare(48000.f);
+        drums.trigger(1, 0.9f, 0.f, -1.f, thrown(3));
+        float l[64], r[64], e[64];
+        CHECK(drums.render(l, r, 64, e, nullptr) == 1);
+        bool same = true;
+        for (int i = 0; i < 64; ++i) same = same && e[i] == l[i];
+        CHECK(same && l[20] != 0.f);
+        CHECK(drums.render(l, r, 64, nullptr, e) == 2);
+    }
     // One thrown hit among others: other lanes at the same moment, and the same lane before and
     // after. The way out holds that hit as it sounds by itself (cut short by the next, as it is),
     // and the sound itself is as it was without any THROW, to the bit.

@@ -1,6 +1,6 @@
 # Effects plan
 
-Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) and DUCK (9) are not.
+Written 2026-11-11. Steps 0, 1a to 1c (sends), 4 to 8 (TAPE, HALL, CHORUS, COMP, SATURATE) are built and joined (2026-11-12); see "as built" under the order of work, and "Joined" at its end for what changed when they met (the buses start with TAPE and HALL, a bus's LEVEL is the engine's, COMP's meter is on the screen). THROW (2, 3) is built on its own branch (2026-11-12; see "Steps 2 and 3 as built"). DUCK (9) is not.
 
 ## The recommendation
 
@@ -391,8 +391,8 @@ metallic is for ears.
 | 1a | **DONE 2026-11-11 (see below).** **Sends in the engine**: buses, `SetSend`, bus effects, lanes to 24, `kTrackSlots` 3 | large | 0 | `engine.hpp/.cpp` |
 | 1b | **DONE 2026-11-11 (see below).** Sends in the song file and Session: `send`, `busfx`, `fx 3` | medium | 1a | `song_file.cpp`, `session.cpp`, `project.hpp` |
 | 1c | **DONE 2026-11-11 (see below).** The FX screen's two pages, group jump | medium | 1b | `fx_screen.cpp/.hpp` |
-| 2 | **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
-| 3 | THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
+| 2 | **DONE 2026-11-12 (see below).** **THROW on drum hits** | medium | 1a, 1b | `drums.hpp/.cpp`, `engine.cpp`, `pattern_screen.cpp`, `song_file.cpp` |
+| 3 | **DONE 2026-11-12 (see below).** THROW on notes | medium | 1a, 1b | `engine.cpp`, `note_screen.cpp`, `song_file.cpp` |
 | 4 | **DONE 2026-11-11.** TAPE | medium | 0 | `fx/tape.cpp` |
 | 5 | **DONE 2026-11-11.** HALL | medium | 0 | `fx/hall.cpp` |
 | 6 | **DONE 2026-11-12.** CHORUS | small | 0 | `fx/chorus.cpp` |
@@ -595,6 +595,47 @@ For the owner's ears, new at the join: TAPE and HALL as the first thing a send
 gives (against DELAY and REVERB); a LEVEL turned while echoes ring (it glides
 5 ms: is that slow enough not to click, fast enough to feel direct); whether
 the meter's 24 dB width suits how hard COMP gets used.
+
+**Steps 2 and 3 (THROW) as built**, 2026-11-12. Only tests, measurements and
+stills have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| The value | `throwTo` on a hit (`StepFx`), a note (`NoteEvent`) and a chord: 0 OFF, 1 ECHO, 2 SPACE, 3 BOTH |
+| A thrown drum hit | The drum machine writes that voice a second time, into a buffer for each bus (`DrumMachine::render`'s two extra ways out). The bus is given **the hit as it sounds alone, to the sample**, with kick and hat around it and the same lane a step before and a step after. It skips the track's slots; it takes the track's level and mute |
+| Its ratchet | Every piece is thrown: they are the one hit. A cut hit is thrown cut |
+| A thrown note | The track's send is held open for the note's length and slides open and shut over 5 ms (240 samples). The steepest it makes a 100 Hz sine is the sine's own step plus 1/240 of its height. Other notes sounding on the track then go with it, as the plan said |
+| A ratcheted note | The first piece opens the send for the whole note, so it does not shut in the gaps between the pieces (5 ms at 120 BPM, x4: it would have dipped every piece) |
+| Two thrown notes that overlap | Open from the first's start to the last one's end |
+| A chord | **Takes THROW as a note does** (the plan was silent): every key of it. Kept when the chord is swapped or broken into notes |
+| With the send knob up | "In full" is a send of 1. The knob's share is topped up to 1, never added to: a note gets `knob + open * (1 - knob)`, a thrown hit the `1 - knob` the knob leaves. At 100% a THROW changes nothing, to the bit |
+| A resting bus | Woken on the hit's or the note's own sample |
+| A muted track | Throws nothing and wakes nothing. Muted while a thrown hit rings, the bus's share fades with the track's (5 ms) |
+| Stop, Play, panic | Every send a THROW held shuts (5 ms; behind a shut panic gate). So do `prepare` and a track taken away. A thrown drum hit rings out after Stop as any drum does |
+| Slices (a hit that carries the lane's sound on) | It hands on its own THROW: the running sound slides into the bus over a millisecond, and out again at the next slice that is not thrown. No step, and the lane's own sound is the same to the bit as with no THROW |
+| No throws, same bits | The pinned song and the 40 renders still match. A track that throws nothing takes the loop it always took in `feedBuses`, and an unthrown voice the loop it always took in the drum machine |
+| Helpers | A song with thrown hits (ratcheted, cut, pitched, backwards) on two drum tracks, thrown notes (ratcheted, nudged) on three synths, TAPE and HALL on the buses, two send knobs up and two mutes part way: **the same to the last bit with 0, 1, 2 and 3 helpers**, and twice from fresh |
+| In a command | With the cut, as planned: `extra` is the cut plus 4 times THROW (`SetStepFx`, and `Trigger` so that X on a hit is heard thrown). A note's: 512 and 1024 added to `SetNote`'s `e` |
+| In a song file | The seventh number of `stepfx`; the sixth of `note`, with the nudge written before it even at 0; the third of `chordfx`, with the ratchet written before it even at 1. Each left off at 0: **a song with no throws is written as it always was**, and an older program reads a thrown song without its throws |
+| The gesture | Hold X + A, on the drum grid, in the slice view and on the piano roll: OFF, ECHO, SPACE, BOTH, round. Heard at once on a drum hit (song stopped). A alone still places; with X held it neither places nor shapes |
+| The dice | Hold X + Y neither throws nor takes a THROW away |
+| On the grid | A drum hit: a short purple bar above its block, over the left half for ECHO, the right for SPACE, one each for both (the order the sends have on the FX screen). A note: a foot at its end, the same way round (cream on a chord, which is purple already) |
+| The strip, X held | Drums: PITCH, RATCHET, REVERSE, CUT, THROW. Five fields, so they sit closer than the four did. Notes: RATCHET, GLIDE, THROW. With X not held a thrown hit or note says so in its line of effects |
+| Hints | `UP / DOWN pitch  LEFT / RIGHT ratchet  L1 reverse  R1 cut  A throw  Y dice` fits with room (still `effects-held`); the piano roll's too |
+| Undo, copies | Undone and redone by SELECT + B (it is in the patterns' text). Copied with its bar on SONG; carried with its note (hold R1) |
+| A bounce | Has the thrown hit's echoes (tested: the first echo three steps on, as loud as the hit); none from a muted track. **The bounce still stops three seconds after the song**: a long tail from a throw near the end is cut there. Running a bounce until the tail ends, with a cap, was not part of this step |
+| Cost (desk, `bench`) | Twelve busy drum tracks with nothing thrown: 1.45% of a core, as before THROW (1.46). With THROW's check inside the one voice loop it was 2.18%, so the loop is built twice. **Every hit of all twelve thrown to both buses: 1.2% more**, the most a song can throw. A thrown note costs one more multiply a sample on its track while its send is open |
+| Tests | `throw_test` (the engine, 2 s) and `throwapp_test` (the gesture, the song file, undo, a bounce; 5 s). Mutation: 68 breaks of the engine's part, 67 caught, and the one left changes nothing (an empty note slot's THROW bits); 37 of the app's, all caught. The drawing of the marks is seen in stills only |
+| Departed from the plan | Nothing in the design. Added: the chord; `Trigger` carries THROW; the top-up rule with the knob |
+| Not done | The dice do not scatter throws (the owner's "later"). A hit or a key played by hand from a USB keyboard is never thrown. The thrown copy of a drum hit is mono like the drums. Nothing draws which bus a held note's send is open to while the song plays |
+
+For the owner's ears: a thrown hit's echo comes back **as loud as the hit**
+with the bus's LEVEL at 100% (measured 0.71 against 0.62 through TAPE): is
+full too much as the only amount? Does a thrown drum hit want the track's
+filter and drive on it (question 6)? Is 5 ms the right ramp on a thrown note,
+which softens the note's own attack in the bus? Other notes on the track
+going with a thrown note: wanted or not? A thrown slice inside a running
+break: does the 1 ms slide tick?
 
 **Each step ships by itself.** Steps 4 to 8 are useful in today's two slots
 before sends exist.
