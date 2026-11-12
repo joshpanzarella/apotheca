@@ -4246,8 +4246,12 @@ static void testBusEffectsInTheEngine() {
         engine->send(make(Command::SetSend, 0, 1, 0, 1.f));
         const std::vector<float> out = leftOf(*engine, 48000);
         CHECK(std::equal(out.begin(), out.begin() + 1000, plain.begin() + 4800)); // its first echo is 29 ms on
+        // (Against the plain sound of the same moment: 4800 frames on, so a longer run of it. This once
+        // read `plain` 4800 floats past its end.)
+        const std::vector<float> longer = leftOf(*sineEngine(), 4800 + 48000);
+        CHECK(std::equal(plain.begin(), plain.end(), longer.begin()));
         double differs = 0.0;
-        for (int i = 24000; i < 48000; ++i) differs = std::fmax(differs, std::fabs(static_cast<double>(out[i]) - plain[4800 + i]));
+        for (int i = 24000; i < 48000; ++i) differs = std::fmax(differs, std::fabs(static_cast<double>(out[i]) - longer.at(4800 + i)));
         CHECK(differs > 0.05);
     }
     // An effect put on a bus that is sounding fades in and out like any other: no click.
