@@ -332,13 +332,13 @@ public:
     // move sent to it. For the block or so until it has, the engine still says the old number;
     // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)
     int playScene() const;
-    int imagesWaiting() const; // tracks whose patterns have yet to go to the engine after a scene move (they go one a frame)
+    unsigned imagesSent() const { return imagesSent_; } // how many times a track's every pattern has gone to the engine in one piece (for tests: a scene move sends none)
     // For a screen that holds a scene's number: how many times scenes have moved, and the last time
     // (the scenes from `from` on went `by` places: 1 or -1). One call here moves them once at most.
     unsigned sceneMoves() const { return sceneMoves_; }
     int sceneMoveFrom() const { return lastMove_.from; }
     int sceneMoveBy() const { return lastMove_.by; }
-    int sceneMovesUnheard() const { return static_cast<int>(moves_.size()) + (wordDue_ ? 1 : 0); } // as of the last frame (for tests)
+    int sceneMovesUnheard() const { return static_cast<int>(moves_.size()); } // as of the last frame (for tests)
 
     // ---- mute, solo, names -----------------------------------------------------------
     // A muted track is silent. While any track is soloed, only soloed ones
@@ -444,30 +444,24 @@ private:
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
-    void restorePatterns(const std::string& text, bool imagesLater = false); // (later: not sent, put down in imagesDue_)
+    void restorePatterns(const std::string& text, int movedFrom = 0, int movedBy = 0); // (moved: a "next scene" lies between; see moveScenesHere)
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
+    std::unique_ptr<SceneImage> sceneImage(int track, int scene) const; // one scene of a track
+    unsigned imagesSent_ = 0;
     void standOn(int scene);                         // the player, put on a scene by undo
-    void scenesMoved(int from, int by, bool tellNow); // whatever here points at a scene that is playing follows; the engine is told (Command::ScenesMoved) now, or by sendMove()
-    void sendMove();                                 // the word of the last scene move (move_), if it has not gone
-    // After a scene move every track's patterns go to the engine again. A track's are a megabyte
-    // the audio thread copies inside one block, so while that is safe they go one a frame
-    // (update()), and the word that is to follow them goes with the last. finishMove() sends
-    // what is left at once: anything that cannot wait for them calls it first.
-    std::uint32_t imagesDue_ = 0;                    // a bit a track
-    using Images = std::vector<std::pair<int, std::unique_ptr<TrackImage>>>;
-    Images takeImages(int most);                     // made, and no longer due
-    void sendImages(Images images);                  // ...sent, and the word after them if they were the last
-    void finishMove();
-    bool oneAFrame(int playing, int from) const;     // may the tracks go one a frame, with this scene the one the engine is on meanwhile?
+    // A scene put into the song or taken out. Three things, in this order: the song here
+    // (moveScenesHere), the engine (tellScenesMoved: one command, which holds everything), and
+    // whatever here holds the number of a scene that is playing (scenesMoved).
+    void moveScenesHere(int from, int by, const Project* last);
+    void tellScenesMoved(int from, int by);
+    void scenesMoved(int from, int by);
     // Scene moves told to the engine and not yet known to be heard, oldest first, and how many were
     // sent in all: the engine says how many it has taken with the scene it is on (Engine::playScene).
-    // And the one move whose word has yet to be sent (it waits for its tracks' patterns to go).
     struct SceneMove { int from = 0, by = 0; };
     std::vector<SceneMove> moves_;
-    SceneMove move_, lastMove_;
+    SceneMove lastMove_;
     unsigned sceneMoves_ = 0;
-    bool wordDue_ = false;
     unsigned movesSent_ = 0;
     std::size_t movesUnheard(unsigned heard) const;
     std::uint32_t cellMark() const;                  // changes when the cell being worked on does

@@ -569,11 +569,10 @@ void fillTwelve(Rig& rig, bool withCopy = false) {
     rig.heard.clear();
 }
 
-// A track's patterns are a megabyte the audio thread copies inside one block. Twelve at once is a
-// late block on the handheld, so while the scene going round is one the move leaves as it is, they
-// go one a frame, and the word that the playing has moved goes with the last (taking it back:
-// the word first). The sound is the song left alone, to the bit, with a block made every frame.
-void testOneTrackAFrame() {
+// Twelve tracks, one scene going round, a block of sound made every frame: the gesture, undo and
+// redo, one on top of another. The engine is told each in one command and has moved by the next
+// block; no track's patterns are sent whole. The sound is the song left alone, to the bit.
+void testTwelveTracksInOneStep() {
     Rig plain, rig, handed; // (handed: the song with the copy in it from the start, and the same scene going round all the while)
     fillTwelve(plain);
     fillTwelve(rig);
@@ -589,79 +588,65 @@ void testOneTrackAFrame() {
     };
     for (Rig* r : {&plain, &rig, &handed}) r->session().togglePlay(false);
     both(200);
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 0);
+    CHECK(rig.engine->playScene() == 0);
+    const unsigned images = session.imagesSent();
 
     rig.nextScene();
     CHECK(p.scene == 1 && p.playScene == 1 && songText(p) == songText(*withCopyAfter(plain.project(), 0)));
-    for (int left = 12; left > 0; --left) { // the first goes in the frame of the press
-        CHECK(session.imagesWaiting() == left && rig.engine->playScene() == 0 && p.playScene == 1);
-        both(1);
-    }
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1 && p.playScene == 1); // the last, and the word with it
+    CHECK(rig.engine->playScene() == 0 && session.sceneMovesUnheard() == 1);
+    both(1);
+    CHECK(rig.engine->playScene() == 1 && p.playScene == 1); // one block: all of it
+    both(1);
+    CHECK(session.sceneMovesUnheard() == 0);
     both(300);
     CHECK(rig.engine->playScene() == 1);
 
     rig.undo();
     CHECK(p.scene == 0 && p.playScene == 0 && songText(p) == songText(plain.project()));
-    for (int left = 12; left > 0; --left) {
-        CHECK(session.imagesWaiting() == left);
-        both(1);
-        CHECK(rig.engine->playScene() == 0); // the word went first
-    }
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 0);
+    both(1);
+    CHECK(rig.engine->playScene() == 0);
     both(300);
 
     rig.redo();
     CHECK(p.scene == 1 && p.playScene == 1);
-    for (int left = 12; left > 0; --left) {
-        CHECK(session.imagesWaiting() == left && rig.engine->playScene() == 0);
-        both(1);
-    }
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
+    both(1);
+    CHECK(rig.engine->playScene() == 1);
     both(300);
 
-    // One on top of another before the last track has gone. Taken back while the tracks of the
-    // copy are still going: its word has not gone and never does, and the tracks go back one a frame.
+    // One on top of another, with a few blocks or none in between.
     rig.undo();
     both(4);
-    CHECK(session.imagesWaiting() == 8);
     rig.redo();
-    CHECK(session.imagesWaiting() == 12 && session.sceneMovesUnheard() == 1);
+    CHECK(session.sceneMovesUnheard() == 1);
     both(3);
     rig.undo();
-    CHECK(session.imagesWaiting() == 12 && session.sceneMovesUnheard() == 0 && p.playScene == 0 && p.scene == 0);
+    CHECK(p.playScene == 0 && p.scene == 0);
     both(2);
     CHECK(rig.engine->playScene() == 0);
     rig.nextScene();
-    CHECK(session.imagesWaiting() == 12 && p.scene == 1);
+    CHECK(p.scene == 1);
     both(300);
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
-    // A copy of the copy while the first one's tracks are still going: the first is finished at
-    // once, word and all, and the second goes one a frame. The same for two put back in a hurry.
+    CHECK(rig.engine->playScene() == 1);
+    // A copy of the copy, and two taken back and put back in a hurry.
     rig.undo();
     both(300);
     rig.nextScene();
     both(3);
-    CHECK(session.imagesWaiting() == 9 && rig.engine->playScene() == 0);
     rig.nextScene();
-    CHECK(session.imagesWaiting() == 12 && p.scene == 2 && p.playScene == 2);
+    CHECK(p.scene == 2 && p.playScene == 2);
     both(1);
-    CHECK(session.imagesWaiting() == 11 && rig.engine->playScene() == 1 && p.playScene == 2);
-    both(300);
     CHECK(rig.engine->playScene() == 2);
+    both(300);
     rig.undo();
     both(5);
-    rig.undo(); // (the first's word had gone: this one's goes too, and the tracks of both are one lot)
-    CHECK(session.imagesWaiting() == 12 && p.playScene == 0);
+    rig.undo();
+    CHECK(p.playScene == 0);
     both(300);
     CHECK(rig.engine->playScene() == 0 && songText(p) == songText(plain.project()));
     rig.redo();
-    both(2);
-    rig.redo();
-    CHECK(session.imagesWaiting() == 12 && p.scene == 2);
-    both(1);
-    CHECK(rig.engine->playScene() == 1);
-    for (int i = 0; i < 12; ++i) // (longer blocks: steps begin while the second one's tracks are going)
+    rig.redo(); // (no block in between: the two go in order)
+    CHECK(p.scene == 2 && p.playScene == 2 && session.sceneMovesUnheard() == 2);
+    for (int i = 0; i < 12; ++i) // (longer blocks: steps begin in them)
         for (Rig* r : {&plain, &rig, &handed}) {
             r->frames(1);
             r->render(1024);
@@ -670,10 +655,11 @@ void testOneTrackAFrame() {
     CHECK(rig.engine->playScene() == 2);
     rig.undo();
     both(300);
-    CHECK(session.imagesWaiting() == 0 && rig.engine->playScene() == 1);
+    CHECK(rig.engine->playScene() == 1);
+    CHECK(session.imagesSent() == images && rig.engine->dropped() == 0); // not one track was sent whole, by the gesture or by taking it back
 
     const float off = apart(plain.heard, rig.heard);
-    std::printf("  twelve tracks, a scene looping, a block every frame, NEXT SCENE / undo / redo with one track's patterns sent a frame: at most %g from the song left alone, over %.1f s\n",
+    std::printf("  twelve tracks, a scene looping, a block every frame, NEXT SCENE / undo / redo: at most %g from the song left alone, over %.1f s\n",
                 static_cast<double>(off), static_cast<double>(rig.heard.size()) / 2.0 / 48000.0);
     CHECK(off == 0.f && loudest(rig.heard, 0, rig.heard.size() / 2) > 0.1f);
 
@@ -693,10 +679,9 @@ void testOneTrackAFrame() {
     CHECK(apart(rig.heard, handed.heard) == 0.f && loudest(rig.heard, 0, rig.heard.size() / 2) > 0.1f);
 }
 
-// When the scene going round is NOT one the move leaves as it is (a later scene loops), or the
-// song is playing through (it could go on to the next scene half-way), every track goes at once
-// with the word, as near together as can be.
-void testAllAtOnceWhenItMustBe() {
+// A later scene going round, the song playing through, the song started in the very frame of the
+// press: the same one step. The engine has moved by its next block, with no frame in between.
+void testInOneStepWhateverPlays() {
     for (int kind = 0; kind < 3; ++kind) { // 0: a later scene loops; 1: the song plays; 2: started this very frame
         Rig plain, rig;
         fillTwelve(plain);
@@ -707,51 +692,43 @@ void testAllAtOnceWhenItMustBe() {
             r->project().scene = 0;
             if (kind != 2) r->frames(1), r->render(3 * kStep + 50), r->frames(1);
         }
+        const unsigned images = rig.session().imagesSent();
         rig.nextScene();
-        CHECK(rig.session().imagesWaiting() == 0);
         for (Rig* r : {&plain, &rig}) r->render(256); // no frame
         CHECK(rig.engine->playScene() == (kind == 0 ? 3 : 1));
         for (Rig* r : {&plain, &rig}) r->render(kBar), r->frames(1);
-        rig.undo(); // (kind 2 is by now the copy going round: one a frame)
-        CHECK(rig.session().imagesWaiting() == (kind == 2 ? 12 : 0));
+        rig.undo();
         for (Rig* r : {&plain, &rig}) r->render(256);
         CHECK(rig.engine->playScene() == (kind == 0 ? 2 : 0));
         for (Rig* r : {&plain, &rig}) r->render(kBar), r->frames(1);
         rig.redo();
-        CHECK(rig.session().imagesWaiting() == (kind == 2 ? 12 : 0));
         for (Rig* r : {&plain, &rig}) r->render(kBar), r->frames(1);
+        CHECK(rig.session().imagesSent() == images);
         CHECK(apart(plain.heard, rig.heard) == 0.f && loudest(rig.heard, 0, rig.heard.size() / 2) > 0.05f);
     }
 }
 
-// Stopped, the tracks go one a frame too (a tail may be ringing). START before the last has
-// gone: the rest goes first, and what plays is the new song from its first sample.
-void testStartBeforeTheLastTrackHasGone() {
+// Stopped, then START at once, before the engine has made a block: what plays is the new song from its first sample.
+void testStartStraightAfter() {
     Rig rig, handed;
     fillTwelve(rig);
     fillTwelve(handed, true);
     handed.project().scene = 1;
     rig.nextScene();
-    CHECK(rig.session().imagesWaiting() == 12);
+    CHECK(songText(rig.project()) == songText(handed.project()));
     for (Rig* r : {&rig, &handed}) {
-        r->frames(2);
-        r->render(512);
-        r->heard.clear();
-    }
-    CHECK(rig.session().imagesWaiting() == 10 && songText(rig.project()) == songText(handed.project()));
-    for (Rig* r : {&rig, &handed}) {
-        r->session().togglePlay(true); // the song, from the new scene (the old scene 2 comes next: tracks not yet sent would play it early)
+        r->session().togglePlay(true); // the song, from the new scene (the old scene 2 comes next)
         r->render(50 * kStep);
     }
-    CHECK(rig.session().imagesWaiting() == 0 && rig.engine->playScene() == 2);
+    CHECK(rig.engine->playScene() == 2);
     CHECK(apart(rig.heard, handed.heard) == 0.f && loudest(rig.heard, 0, rig.heard.size() / 2) > 0.1f);
 }
 
-// Things done before the last track has gone. A hit placed on the new scene is in what the engine
-// ends with; a track deleted leaves nothing waiting for a track that is no longer there.
-void testEditsBeforeTheLastTrackHasGone() {
-    // Two the same but for when the keys are pressed: on one before the tracks have gone (one
-    // has), on the other when all have. What the engine then plays is the same.
+// Things done straight after, before the engine has heard. A hit and a note placed on the new
+// scene are in what the engine ends with; a track deleted leaves the engine and the app agreed.
+void testEditsStraightAfter() {
+    // Two the same but for when the keys are pressed: on one before the engine has made a
+    // block, on the other long after. What the engine then plays is the same.
     Rig rig, after;
     for (Rig* r : {&rig, &after}) {
         fillTwelve(*r);
@@ -759,16 +736,14 @@ void testEditsBeforeTheLastTrackHasGone() {
         r->frames(1);
         r->render(256);
         r->nextScene();
-        r->frames(r == &rig ? 1 : 12);
-        CHECK(r->session().imagesWaiting() == (r == &rig ? 11 : 0));
+        if (r == &after) r->frames(1), r->render(256), r->frames(1), r->render(256);
         r->project().track = 7;
         r->app.notes().moveCursorTo(70, 9);
-        r->tap(A); // a note on a track whose patterns have not gone yet
+        r->tap(A);
         r->project().track = 0;
         r->app.drums().moveCursorTo(5, 3);
-        r->tap(A); // a hit on one whose patterns have
-        r->frames(r == &rig ? 11 : 0);
-        CHECK(r->session().imagesWaiting() == 0);
+        r->tap(A);
+        if (r == &rig) r->frames(1), r->render(256), r->frames(1), r->render(256);
         for (int i = 0; i < 400; ++i) r->frames(1), r->render(256);
         CHECK(r->engine->playScene() == 1);
         CHECK(r->project().tracks[7].notes[1][0].notes[1].velocity > 0.f && r->project().tracks[0].drums[1][0].level[5][3] > 0.f);
@@ -781,9 +756,7 @@ void testEditsBeforeTheLastTrackHasGone() {
     cut.frames(1);
     cut.render(256);
     cut.nextScene();
-    CHECK(cut.session().imagesWaiting() == 12);
     CHECK(cut.session().removeTrack(11)); // (it stops the song and hands the engine everything afresh)
-    CHECK(cut.session().imagesWaiting() == 0);
     cut.frames(1);
     cut.render(256);
     cut.frames(1);
@@ -814,7 +787,6 @@ void testPlayingGoesOnUnbroken() {
     rig.nextScene();
     CHECK(p.scene == 1 && p.playing && p.playScene == 1); // what the screens draw from follows at once
     both(8);
-    both(8); // (two tracks: a frame each)
     // The engine is on the new scene, at once (not at the next step, not at the loop's end), where it was in the bar.
     CHECK(rig.engine->playScene() == 1 && rig.engine->playStep() == 2 && rig.engine->playBar() == 1);
     CHECK(loudest(rig.heard, rig.heard.size() / 2 - 16, rig.heard.size() / 2) > 0.01f); // and there is sound to break
@@ -829,7 +801,6 @@ void testPlayingGoesOnUnbroken() {
 
     rig.redo();
     CHECK(p.scene == 1 && p.playScene == 1);
-    both(8);
     both(8);
     CHECK(rig.engine->playScene() == 1);
     both(2 * kBar);
@@ -1101,8 +1072,8 @@ void testTheFramesBeforeTheEngineHears() {
     rig.session().setWriting(false);
     rig.settle();
     rig.nextScene();
-    rig.frames(2); // (two tracks: both gone, and the word)
-    CHECK(rig.session().sceneMovesUnheard() == 1 && rig.session().imagesWaiting() == 0);
+    rig.frames(2);
+    CHECK(rig.session().sceneMovesUnheard() == 1);
     rig.undo();
     rig.frames(1);
     CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 2);
@@ -1110,16 +1081,15 @@ void testTheFramesBeforeTheEngineHears() {
     rig.frames(1);
     CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 0);
     rig.frames(2);
-    // ...and taken back before its own word had gone: neither is sent.
     rig.redo();
     rig.frames(1);
-    CHECK(rig.session().sceneMovesUnheard() == 1 && rig.session().imagesWaiting() == 1 && p.playScene == 1);
+    CHECK(rig.session().sceneMovesUnheard() == 1 && p.playScene == 1);
     rig.undo();
-    CHECK(rig.session().sceneMovesUnheard() == 0 && p.playScene == 0);
+    CHECK(rig.session().sceneMovesUnheard() == 2 && p.playScene == 0);
     rig.frames(3);
     rig.render(64);
     rig.frames(1);
-    CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 0 && rig.session().imagesWaiting() == 0);
+    CHECK(rig.engine->playScene() == 0 && p.playScene == 0 && rig.session().sceneMovesUnheard() == 0);
     rig.redo();
     rig.frames(1);
     rig.undo();
@@ -1347,10 +1317,10 @@ int main(int argc, char** argv) {
     testTheFramesBeforeTheEngineHears();
     testTheCommand();
     testTheSongScreensCursorFollows();
-    testOneTrackAFrame();
-    testAllAtOnceWhenItMustBe();
-    testStartBeforeTheLastTrackHasGone();
-    testEditsBeforeTheLastTrackHasGone();
+    testTwelveTracksInOneStep();
+    testInOneStepWhateverPlays();
+    testStartStraightAfter();
+    testEditsStraightAfter();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
