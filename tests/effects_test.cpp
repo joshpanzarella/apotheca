@@ -4811,6 +4811,56 @@ static void testBusLevel() {
         CHECK(rig.echo->lastIndex == 3 && rig.echo->lastParam == 0.25f);
         CHECK(std::fabs(peakOf(std::vector<float>(out.begin() + 2400, out.end())) - 2.f * kEngineSine) < 1e-3f); // (the probe gives the sound back whole, at its own level)
     }
+    // ANOTHER EFFECT PUT ON A RINGING BUS WHOSE LEVEL IS DOWN. The level used
+    // to jump to full at once, so the one leaving was turned UP while it faded
+    // out: 10 ms louder than anything that was playing. The level stays where
+    // it was until the fade is over, and only then goes to the new one's.
+    for (const EffectKind old : {EffectKind::Delay, EffectKind::Tape})
+        for (const float level : {0.f, 0.3f})
+            for (const EffectKind next : {EffectKind::None, EffectKind::Delay, EffectKind::Tape}) {
+                std::unique_ptr<Engine> engine = sineEngine();
+                CHECK(engine->setEffect(kEchoBus, 0, old));
+                engine->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.f));
+                engine->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 1.f)); // FEEDBACK full: it rings
+                engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+                leftOf(*engine, 48000);
+                engine->send(make(Command::SetTrackHeard, 0, 0));
+                leftOf(*engine, 4800);
+                const float full = peakOf(leftOf(*engine, 4800));
+                CHECK(full > 0.02f); // it is ringing, with the track gone
+                engine->send(make(Command::SetEffectParam, kEchoBus, 0, 3, level));
+                leftOf(*engine, 4800);
+                const float before = peakOf(leftOf(*engine, 4800));
+                CHECK(level == 0.f ? before == 0.f : (before > 0.2f * full && before < 0.4f * full));
+                CHECK(engine->setEffect(kEchoBus, 0, next));
+                const float after = peakOf(leftOf(*engine, 960)); // the 10 ms of the fade, and 10 ms more
+                CHECK(after <= before * 1.02f); // never louder than what was playing (at LEVEL 0: nothing at all)
+            }
+    // ...and it does then go to the new one's LEVEL (full): a second later the
+    // bus gives what a bus that always held the new effect gives.
+    {
+        std::unique_ptr<Engine> engine = sineEngine(), fresh = sineEngine();
+        CHECK(engine->setEffect(kEchoBus, 0, EffectKind::Tape) && fresh->setEffect(kEchoBus, 0, EffectKind::Delay));
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, effectMixParam(EffectKind::Tape), 0.f));
+        for (Engine* e : {engine.get(), fresh.get()}) e->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        leftOf(*engine, 24000);
+        leftOf(*fresh, 24000 - 64);
+        CHECK(engine->busAwake(0) && engine->setEffect(kEchoBus, 0, EffectKind::Delay));
+        for (Engine* e : {engine.get(), fresh.get()}) {
+            e->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.f)); // a sixteenth
+            e->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 0.f)); // one echo
+        }
+        leftOf(*fresh, 64);
+        leftOf(*engine, 24000);
+        leftOf(*fresh, 24000);
+        const std::vector<float> a = leftOf(*engine, 24000), b = leftOf(*fresh, 24000), plain2 = leftOf(*sineEngine(), 72000);
+        double worst = 0.0, echo = 0.0;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            worst = std::fmax(worst, std::fabs(static_cast<double>(a[i]) - b[i]));
+            echo = std::fmax(echo, std::fabs(static_cast<double>(b[i]) - plain2[48000 + i]));
+        }
+        CHECK(echo > 0.05 && worst < 1e-6);
+    }
 }
 
 // THE REST RULE'S NUMBERS, and the setup call that puts the buses to rest.

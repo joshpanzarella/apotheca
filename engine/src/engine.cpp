@@ -521,7 +521,10 @@ void Engine::apply(const Command& c) {
         if (busOfTrack(c.track) >= 0 && !busAwake_[busOfTrack(c.track)].load(std::memory_order_relaxed)) fade->left = 0;
         if (busOfTrack(c.track) >= 0) {
             busMix_[busOfTrack(c.track)] = place ? c.b : -1;
-            busLevel_[busOfTrack(c.track)] = 1.f; // as the effect starts: LEVEL at full, until it is said
+            // As the effect starts: LEVEL at full, until it is said. That is where the
+            // level is GOING: while the one leaving fades out it stays where it was
+            // (runBuses), or a bus turned down would be turned up under its old tail.
+            busLevel_[busOfTrack(c.track)] = 1.f;
         }
         if (place) place->setTempo(tempo_);
         break;
@@ -1303,6 +1306,7 @@ void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBloc
         }
         if (!fed[bus])
             for (int f = 0; f < frames; ++f) busL[bus][f] = busR[bus][f] = 0.f;
+        const int held = busFades_[bus].left; // frames of this chunk still inside a swap's fade: LEVEL waits for them
         runSlot(busEffects_[bus], busFades_[bus], busL[bus], busR[bus], frames, true);
         // The rest rule listens HERE, to what the effect gives, before the bus's
         // LEVEL: a bus turned right down still has its echoes, and they must be
@@ -1318,7 +1322,7 @@ void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBloc
             }
         } else {
             for (int f = 0; f < frames; ++f) {
-                if (now != to) {
+                if (now != to && f >= held) {
                     now += now < to ? glide : -glide;
                     if ((now > to) == (busLevelNow_[bus] < to)) now = to; // arrived (or stepped past)
                 }

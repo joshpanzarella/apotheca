@@ -192,6 +192,10 @@ effect in those two groups and fails one that does not.
   then `reset()`. Ten seconds must stay longer than the longest silence
   between two echoes of anything a bus can hold (`effects_test` measures each
   delay and reverb at 40 BPM: DELAY 3.0 s). A bus with no effect is not run.
+- **A bus's LEVEL waits for a swap's fade** (`held` in `runBuses`): another
+  effect put on a ringing bus sets where LEVEL is going (full), but it stays
+  where it was for the 10 ms the old one fades out. Set at once, a bus turned
+  down had its old tail turned UP as it left.
 - **A bus's LEVEL is the engine's, not the effect's** (`busLevel_`, applied in
   `runBuses` after the rest rule has listened, gliding like a send). The
   effect on a bus keeps its MIX at full. Listened to after LEVEL, a bus
