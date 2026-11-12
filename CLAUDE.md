@@ -207,6 +207,10 @@ takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A).
+- **The page's own script has no test in `ctest`.** A change to it is tried
+  in a browser (Playwright is installed) against a `Transfer` started by a
+  small program, as the folder import was (`planFolders` can be called from
+  `page.evaluate`). Say in the reply that it was, or was not.
 - **The WiFi server's thread never touches the `Project`.** What it did to a
   recording goes on a list (`Transfer::takeChanges`), put there BEFORE
   `received()` goes up; `Session::update` reads it and calls

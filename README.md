@@ -463,6 +463,17 @@ the same network.
   they go one after another, each with a bar and a result: `saved`, or
   `refused` and why. A recording is on the kit screen at once; a chord pack
   is in the chord button's list on the next frame.
+- **A whole folder**: CHOOSE A FOLDER, or drop one on the page. Every `.wav`
+  in it is sent, however deep its sub-folders go. The handheld keeps
+  recordings one folder deep, so each sub-folder becomes one folder:
+  `Pack/Drums/Kicks/808.wav` arrives as folder `Kicks`, file `808`. Two
+  folders with one name get their parent's in front (`Drums Kicks`,
+  `Vintage Kicks`). Names too long for the handheld (32 letters, 24 for a
+  folder) are shortened by dropping words from the middle. **Nothing is sent
+  until you have seen the plan**: how many, how big against the room on the
+  card, which folders, which names change. Other files in the folder are left
+  out. While it runs there is one row with a count and a STOP; only what is
+  refused gets a row of its own.
 - **SPEED TEST** (top of the page) times every instrument and effect on the
   device and shows the numbers in a new tab. Stop the song first; it takes up
   to a minute.

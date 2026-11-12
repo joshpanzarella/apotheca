@@ -778,7 +778,12 @@ static void testTheSpeedTest() {
     a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
     CHECK(a.status == 200 && a.body.find("half\n") != std::string::npos && a.body.find("did not finish") != std::string::npos);
     Transfer::benchCommand = was;
-    CHECK(raw(port, "GET " + door + "/ HTTP/1.1\r\n\r\n").body.find("/bench") != std::string::npos); // the page has the button
+    const std::string page = raw(port, "GET " + door + "/ HTTP/1.1\r\n\r\n").body;
+    CHECK(page.find("/bench") != std::string::npos); // the page has the button
+    // And the parts that take a whole folder (their working is checked in a browser, by hand: see CLAUDE.md).
+    CHECK(page.find("webkitdirectory") != std::string::npos && page.find("function planFolders") != std::string::npos && page.find("webkitGetAsEntry") != std::string::npos);
+    // A recording sent into a folder that is not there yet makes the folder, spaces in the names and all: what a folder sent whole relies on.
+    CHECK(put(port, door + "/samples/Drums%20Kicks/Kick%20808%2001.wav", aWav()).status == 200 && exists(root + "/samples/Drums Kicks/Kick 808 01.wav"));
 }
 
 // A song's lines that name a recording, changed where they stand and nothing else.

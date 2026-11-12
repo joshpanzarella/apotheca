@@ -57,6 +57,16 @@ input[type=text]:focus,select:focus{outline:0;border-color:#6fbfa3}
 .hid{display:none!important}
 #drop{background:#1f1a16;border:1px dashed #43392f;border-radius:4px;padding:16px;margin-top:18px}
 #drop.over,.folder.over{border-color:#6fbfa3;background:#232a25}
+#plan{margin-top:12px;padding:12px;background:#1f1a16;border:1px solid #6fbfa3;border-radius:4px}
+#plan h3{margin:0 0 8px;font-size:15px;letter-spacing:.06em}
+#plan p{margin:4px 0;font-size:13px}
+#plan details{border-top:1px solid #2a231d;padding:5px 0;font-size:13px}
+#plan summary{cursor:pointer}
+#plan summary b{display:inline-block;min-width:210px}
+#plan ul{margin:6px 0 2px 18px;padding:0;list-style:none;max-height:220px;overflow:auto}
+#plan li{padding:1px 0}
+#plan .was{color:#8a7f72}
+#plan .warn{color:#e0a458}
 .line{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
 .line label{font-size:11px;letter-spacing:.1em;color:#8f8370;text-transform:uppercase}
 ul{list-style:none;padding:0;margin:0}
@@ -98,10 +108,12 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
 <header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes up to a minute.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
 
 <div id="drop">
-<div class="line"><button class="main" id="pick">Choose files</button><span class="dim">or drop them on the page, or on a folder.</span></div>
+<div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button><span class="dim">or drop files or a whole folder on the page.</span></div>
 <div class="line" style="margin-top:12px"><label for="into">Recordings go in</label><select id="into"></select><input id="intoNew" class="hid" type="text" maxlength="24" placeholder="new folder name"></div>
 <p style="margin:10px 0 0;font-size:13px">Recordings (.wav), chord packs (.json), songs (.song). 30 MB at most each. Every file is checked before it is kept.</p>
 <input id="files" class="hid" type="file" multiple accept=".wav,.json,.song,audio/wav,audio/x-wav">
+<input id="dir" class="hid" type="file" webkitdirectory multiple>
+<div id="plan" class="hid"></div>
 <ul id="log"></ul>
 <div class="line hid" id="logEnd" style="margin-top:8px"><button id="clear">Clear the list</button></div>
 </div>
@@ -158,7 +170,7 @@ function folderSelect(sel, now) {
 function note(what, state, cls) {
   const li = el('li', cls), w = el('span', 'what', what), s = el('span', 'state', state);
   li.append(w, s); $('log').prepend(li); $('logEnd').classList.remove('hid');
-  return {li, state: s};
+  return {li, state: s, what: w};
 }
 $('clear').onclick = () => { for (const li of [...$('log').children]) if (!li.classList.contains('busy')) li.remove(); if (!$('log').children.length) $('logEnd').classList.add('hid'); };
 
@@ -297,16 +309,31 @@ function add(name, url, file, replaces) {
 async function run() { // one after another: the handheld takes one at a time
   busy = true;
   while (queue.length) {
-    const job = queue.shift();
+    const job = queue.shift(), lot = job.lot;
+    if (lot && lot.stopped) continue;
+    if (lot) lot.n.what.textContent = lot.title + ': ' + (lot.done + lot.failed + 1) + ' of ' + lot.total + ', ' + job.name;
     job.n.state.textContent = 'sending';
     const r = await new Promise(done => {
       const x = new XMLHttpRequest();
       x.open('PUT', job.url);
-      x.upload.onprogress = e => { if (e.lengthComputable) { const p = Math.round(100 * e.loaded / e.total); job.fill.style.width = p + '%'; job.n.state.textContent = p < 100 ? 'sending ' + p + '%' : 'checking'; } };
+      x.upload.onprogress = e => { if (!e.lengthComputable) return; const p = lot ? Math.round(100 * (lot.sent + e.loaded) / (lot.bytes || 1)) : Math.round(100 * e.loaded / e.total); job.fill.style.width = p + '%'; job.n.state.textContent = lot || p < 100 ? 'sending ' + p + '%' : 'checking'; };
       x.onload = () => done({ok: x.status == 200, text: x.responseText.trim()});
       x.onerror = x.ontimeout = () => done({ok: false, text: 'no answer from the handheld'});
       x.send(job.file);
     });
+    if (lot) { // one row for the whole folder; only what was refused gets a row of its own
+      lot.sent += job.file.size;
+      if (r.ok) lot.done++; else { lot.failed++; note(job.name, 'refused: ' + r.text, 'no'); }
+      if (r.text == 'no answer from the handheld' && ++lot.silent >= 3) { lot.stopped = true; lot.failed += lot.total - lot.done - lot.failed; } // the WiFi page went off: not a thousand more tries
+      else if (r.ok) lot.silent = 0;
+      if (lot.done + lot.failed < lot.total) continue;
+      lot.n.what.textContent = lot.title;
+      lot.n.li.className = lot.failed ? 'no' : 'ok';
+      lot.n.state.textContent = lot.done + ' saved' + (lot.failed ? ', ' + lot.failed + (lot.stopped ? ' not sent: no answer from the handheld' : ' refused') : '');
+      job.fill.style.width = '100%';
+      if (lot.stop) lot.stop.remove();
+      continue;
+    }
     job.fill.style.width = '100%';
     job.n.li.className = r.ok ? 'ok' : 'no';
     job.n.state.textContent = r.ok ? r.text + (job.replaces && r.text == 'saved' ? ' (in place of the old one)' : '') : 'refused: ' + r.text;
@@ -328,6 +355,137 @@ $('into').onchange = () => { const isNew = $('into').value == NEW; $('intoNew').
 $('pickUpdate').onclick = () => $('update').click();
 $('update').onchange = () => { const file = $('update').files[0]; if (file && file.size > 30 * 1048576) note('update: ' + file.name, 'refused: too big: 30 MB at most', 'no'); else if (file) add('update: ' + file.name, base + '/update/apotheca', file, false); $('update').value = ''; };
 
+// ---- a whole folder: every recording in it, however deep, each into ONE folder here ----
+// The handheld keeps recordings one folder deep, so "Drums/Kicks/808.wav" arrives as folder
+// "Kicks", file "808". Names are made to fit, and nothing is sent until it has been shown.
+function tidy(s) { return s.replace(/[\x00-\x1f\x7f\/\\:"<>|?*]/g, ' ').replace(/\.\.+/g, '.').replace(/\s+/g, ' ').replace(/^[. ]+/, '').trim(); }
+function fit(s, room) { // to `room` bytes. Whole words go first, from the middle: a pack's names differ at the start and the end ("Kick ... 01")
+  s = tidy(s);
+  if (bytes(s) <= room) return s;
+  const words = s.split(/(?<=[ _\-.])/); // each word keeps the mark after it
+  while (words.length > 2 && bytes(words.join('')) > room) words.splice(Math.max(1, words.length - 2), 1);
+  s = tidy(words.join(''));
+  if (bytes(s) <= room) return s;
+  const c = [...s], keep = Math.min(8, Math.floor(room / 3)), end = c.slice(c.length - keep).join(''); // still too long: letters go, the start and the end stay
+  let head = c.slice(0, c.length - keep);
+  while (head.length && bytes(head.join('').trimEnd() + end) > room) head.pop();
+  return tidy(head.join('').trimEnd() + end);
+}
+// entries: [{file, path}], path as on the computer ("Pack/Drums/Kicks/808.wav"). loose: the folder
+// here for files that came with no folder of their own. have: the names already on the handheld.
+function planFolders(entries, loose, have) {
+  const p = {jobs: [], other: 0, big: [], changed: 0, replaces: 0, bytes: 0, folders: new Map()};
+  const byDir = new Map();
+  for (const e of entries) {
+    const parts = e.path.split('/').filter(Boolean), file = parts.pop() || '', dir = parts.join('/');
+    if (!/\.wav$/i.test(file) || file.startsWith('._')) { p.other++; continue; }
+    if (e.file.size > 30 * 1048576) { p.big.push(e.path); continue; }
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir).push({file: e.file, was: file, path: e.path});
+  }
+  // A folder here for each folder there: its own name, or with its parent's in front where two share one.
+  const dirs = [...byDir.keys()].sort(), last = d => fit(d.split('/').pop(), 24) || 'imported', count = new Map();
+  for (const d of dirs) if (d) count.set(last(d).toLowerCase(), (count.get(last(d).toLowerCase()) || 0) + 1);
+  const used = new Set(), named = new Map();
+  for (const d of dirs) {
+    if (!d) { named.set(d, loose); continue; }
+    let name = last(d);
+    if (count.get(name.toLowerCase()) > 1 && d.includes('/')) {
+      const parent = d.split('/').slice(-2)[0], room = 24 - 1 - bytes(name);
+      if (room >= 3) name = tidy(fit(parent, room) + ' ' + name);
+    }
+    for (let n = 2, plain = name; used.has(name.toLowerCase()); n++) name = fit(plain, 24 - 1 - String(n).length) + ' ' + n;
+    used.add(name.toLowerCase()); named.set(d, name);
+  }
+  const taken = new Map(); // folder -> the names in it, in lower case (a card does not tell Kick from kick)
+  const old = new Set((have || []).map(n => n.toLowerCase()));
+  for (const d of dirs) {
+    const folder = named.get(d), key = folder.toLowerCase(), room = folder ? 32 : 56;
+    if (!taken.has(key)) taken.set(key, new Set());
+    const names = taken.get(key);
+    if (!p.folders.has(folder)) p.folders.set(folder, {from: [], files: []});
+    const row = p.folders.get(folder);
+    row.from.push(d || '(loose files)');
+    for (const f of byDir.get(d).sort((a, b) => a.was.localeCompare(b.was))) {
+      const stem = f.was.replace(/\.wav$/i, '');
+      let name = fit(stem, room) || 'recording';
+      for (let n = 2, plain = name; names.has(name.toLowerCase()); n++) name = fit(plain, room - 1 - String(n).length) + ' ' + n;
+      names.add(name.toLowerCase());
+      const to = (folder ? folder + '/' : '') + name + '.wav', differs = name != stem, replaces = old.has(to.toLowerCase());
+      p.changed += differs; p.replaces += replaces; p.bytes += f.file.size;
+      row.files.push({was: f.was, name, differs});
+      p.jobs.push({file: f.file, to, folder});
+    }
+  }
+  return p;
+}
+function showPlan(p, title) {
+  const box = $('plan'), n = p.jobs.length, mb = p.bytes / 1048576;
+  box.textContent = '';
+  box.append(el('h3', '', title + ': ' + n + ' recording' + (n == 1 ? '' : 's') + ' into ' + p.folders.size + ' folder' + (p.folders.size == 1 ? '' : 's') + ', ' + sizeText(p.bytes)));
+  if (all.free >= 0 && mb > all.free) box.append(el('p', 'warn', 'TOO BIG FOR THE CARD: ' + sizeText(p.bytes) + ' to send, ' + all.free + ' MB free. Choose a smaller folder.'));
+  else if (all.free >= 0) box.append(el('p', '', 'Free on the card: ' + (all.free >= 1024 ? (all.free / 1024).toFixed(1) + ' GB' : all.free + ' MB') + '.'));
+  box.append(el('p', '', 'Sub-folders become one folder each: the handheld keeps recordings one folder deep.'));
+  if (p.changed) box.append(el('p', 'warn', p.changed + ' name' + (p.changed == 1 ? ' is' : 's are') + ' shortened or tidied to fit (32 letters at most). Open a folder below to see them.'));
+  if (p.replaces) box.append(el('p', 'warn', p.replaces + ' will take the place of a recording of the same name already on the handheld.'));
+  if (p.other) box.append(el('p', '', p.other + ' other file' + (p.other == 1 ? '' : 's') + ' left out (not .wav).'));
+  if (p.big.length) box.append(el('p', 'warn', p.big.length + ' left out, over 30 MB: ' + p.big.slice(0, 5).join(', ') + (p.big.length > 5 ? ', ...' : '')));
+  for (const [folder, row] of [...p.folders].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const d = el('details'), sum = el('summary'), changed = row.files.filter(f => f.differs).length;
+    sum.append(el('b', '', folder || 'UNSORTED'), el('span', '', row.files.length + ' file' + (row.files.length == 1 ? '' : 's') + (changed ? ', ' + changed + ' renamed' : '')), el('span', 'was', '  from ' + row.from.join(', ')));
+    d.append(sum);
+    d.addEventListener('toggle', () => { // a folder's files are drawn when it is opened: thousands stay quick
+      if (!d.open || d.querySelector('ul')) return;
+      const ul = el('ul');
+      for (const f of row.files) { const li = el('li', '', f.name); if (f.differs) li.append(el('span', 'was', '   was ' + f.was)); ul.append(li); }
+      d.append(ul);
+    });
+    box.append(d);
+  }
+  const line = el('div', 'line'), go = el('button', 'main', 'Send ' + n), no = el('button', '', 'Cancel');
+  line.style.marginTop = '10px';
+  go.id = 'planGo'; no.id = 'planNo';
+  go.disabled = !n || (all.free >= 0 && mb > all.free);
+  go.onclick = () => { box.classList.add('hid'); sendPlan(p, title); };
+  no.onclick = () => { box.classList.add('hid'); box.textContent = ''; };
+  line.append(go, no); box.append(line);
+  box.classList.remove('hid');
+  box.scrollIntoView({block: 'nearest'});
+}
+function sendPlan(p, title) {
+  if (!p.jobs.length) return;
+  const n = note(title, 'waiting', 'busy'), bar = el('div', 'bar'), fill = el('i'), stop = el('button', '', 'Stop');
+  bar.append(fill); n.li.append(bar, stop);
+  const lot = {title, total: p.jobs.length, done: 0, failed: 0, silent: 0, bytes: p.bytes, sent: 0, n, stop, stopped: false};
+  stop.onclick = () => { // what has gone stays; the rest is not sent
+    if (lot.stopped) return;
+    lot.stopped = true;
+    n.what.textContent = title; n.li.className = 'no'; n.state.textContent = lot.done + ' saved, stopped with ' + (lot.total - lot.done - lot.failed) + ' not sent'; stop.remove();
+  };
+  for (const j of p.jobs) { queue.push({url: urlOf('samples', j.to), file: j.file, name: j.to, n, fill, lot}); if (j.folder) made.add(j.folder); }
+  if (!busy) run();
+}
+// What was dropped, read to the bottom of every folder in it.
+async function readDropped(roots) {
+  const out = [];
+  async function walk(entry, path) {
+    if (entry.isFile) out.push({file: await new Promise((ok, no) => entry.file(ok, no)), path: path + entry.name});
+    else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      for (;;) { const some = await new Promise((ok, no) => reader.readEntries(ok, no)); if (!some.length) break; for (const e of some) await walk(e, path + entry.name + '/'); }
+    }
+  }
+  for (const r of roots) await walk(r, '');
+  return out;
+}
+function looseFolder() { return $('into').value == NEW ? ($('intoNew').value.trim() && !wrong($('intoNew').value.trim(), 24) ? $('intoNew').value.trim() : '') : $('into').value; }
+$('pickFolder').onclick = () => $('dir').click();
+$('dir').onchange = () => {
+  const files = [...$('dir').files];
+  if (files.length) showPlan(planFolders(files.map(f => ({file: f, path: f.webkitRelativePath || f.name})), looseFolder(), all.samples), 'folder ' + (files[0].webkitRelativePath || '').split('/')[0]);
+  $('dir').value = '';
+};
+
 // ---- dropping: files from the computer, or a recording dragged to another folder ----
 let over = null;
 function mark(e) { if (over) over.classList.remove('over'); over = e; if (over) over.classList.add('over'); }
@@ -340,6 +498,13 @@ document.addEventListener('drop', e => {
   e.preventDefault(); mark(null);
   const sec = e.target.closest('.folder'), from = e.dataTransfer.getData('text/x-recording');
   if (from) { if (sec && sec.dataset.folder != split(from)[0]) move(from, (sec.dataset.folder ? sec.dataset.folder + '/' : '') + split(from)[1]); return; }
+  // A folder among what was dropped: all of it is read, planned and shown before anything is sent.
+  const roots = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (roots.some(r => r.isDirectory)) {
+    const loose = sec ? sec.dataset.folder : looseFolder(), dirs = roots.filter(r => r.isDirectory);
+    readDropped(roots).then(got => showPlan(planFolders(got, loose, all.samples), dirs.length == 1 ? 'folder ' + dirs[0].name : dirs.length + ' folders'), () => note('the folder', 'could not be read by the browser', 'no'));
+    return;
+  }
   const f = sec ? sec.dataset.folder : target();
   if (f != null) send([...e.dataTransfer.files], f);
 });
