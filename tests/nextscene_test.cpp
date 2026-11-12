@@ -1404,6 +1404,109 @@ void testARealAudioThread() {
     }
 }
 
+// The fifteenth scene has something in it, so the copy pushes it into the sixteenth; taken back,
+// it is the fifteenth again and the sixteenth is as empty as it was, in the song and in the
+// engine, and no track was sent whole to make it so.
+void testTheSixteenthSceneIsGivenBack() {
+    Rig rig, plain;
+    for (Rig* r : {&rig, &plain}) {
+        fill(*r);
+        Project& p = r->project();
+        p.tracks[0].bars[14] = 2;
+        p.tracks[0].drums[14][0].level[2][3] = 0.8f;
+        p.tracks[0].drums[14][1].level[1][1] = 0.5f;
+        p.tracks[1].notes[14][0].notes[0] = NoteEvent{4, 65, 2.f, 0.f, 0.7f, 0, 0, 0, 0};
+        p.tracks[1].automation[14][1][2] = 0.6f;
+        p.repeats[14] = 4;
+        p.steps[14] = 9;
+        r->session().applyProject();
+        r->frames(2);
+        r->render(512);
+        r->heard.clear();
+    }
+    Project& p = rig.project();
+    CHECK(p.sceneCount() == 15);
+    const std::string was = songText(p);
+    const std::unique_ptr<Project> before = copyOf(p);
+    const unsigned images = rig.session().imagesSent();
+    const auto round = [&](Rig& r, int scene) { // that scene alone, going round, from silence
+        if (r.project().playing) r.session().togglePlay(false);
+        r.frames(1);
+        r.render(6 * 48000);
+        r.heard.clear();
+        const int on = r.project().scene;
+        r.project().scene = scene;
+        r.session().togglePlay(false);
+        r.project().scene = on;
+        r.frames(1);
+        r.render(2 * kBar);
+        return r.heard;
+    };
+    // (Each time the song left alone plays the same scene the same number of times before: a
+    // synth's second note is not its first to the bit.)
+    rig.nextScene();
+    CHECK(p.sceneCount() == 16 && sameScene(p, 15, *before, 14) && sameScene(p, 14, *before, 13));
+    CHECK(apart(round(rig, 15), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    CHECK(loudest(round(rig, 14), 0, 2 * kBar) == 0.f && loudest(round(plain, 15), 0, 2 * kBar) == 0.f);
+    rig.undo();
+    CHECK(songText(p) == was && sameScene(p, 15, *before, 15) && sameScene(p, 14, *before, 14) && p.sceneCount() == 15);
+    CHECK(loudest(round(rig, 15), 0, 2 * kBar) == 0.f && loudest(round(plain, 15), 0, 2 * kBar) == 0.f);
+    CHECK(apart(round(rig, 14), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    rig.redo();
+    CHECK(sameScene(p, 15, *before, 14) && p.sceneCount() == 16);
+    CHECK(apart(round(rig, 15), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
+    rig.undo();
+    CHECK(songText(p) == was && rig.session().imagesSent() == images && rig.engine->dropped() == 0);
+}
+
+// Things done since the copy that are not a step of undo. A knob turned (an effect's setting, the
+// tempo) is not a pattern: the copy is taken back as cheaply as ever, though the song's text is no
+// longer the text that was kept. A pattern that is not what the step kept (nothing in the program
+// does that without a step of its own; here the test writes one) is put back as an ordinary undo
+// puts it back: that once, the track is sent whole.
+void testTakenBackAfterSomethingUndoDoesNotKnow() {
+    Rig rig;
+    fill(rig);
+    Project& p = rig.project();
+    rig.session().setEffect(1, 0, EffectKind::Filter);
+    rig.settle();
+    rig.nextScene();
+    rig.frames(1);
+    rig.render(256);
+    unsigned images = rig.session().imagesSent();
+    const std::string text = songText(p);
+    rig.session().setEffectParam(1, 0, 0, 0.3f);
+    rig.session().setEffectParam(kMasterTrack, 0, 0, 0.2f);
+    p.tempo = 97.f;
+    CHECK(songText(p) != text);
+    rig.undo();
+    CHECK(p.scene == 0 && p.sceneCount() == 3 && rig.session().imagesSent() == images);
+    rig.redo();
+    CHECK(p.scene == 1 && p.sceneCount() == 4 && rig.session().imagesSent() == images);
+
+    rig.undo();
+    rig.settle();
+    const std::string was = songText(p);
+    for (int what = 0; what < 6; ++what) { // (none of them on the cell being worked on: no frame takes it for an edit)
+        rig.nextScene();
+        rig.frames(1);
+        rig.render(256);
+        images = rig.session().imagesSent();
+        if (what == 0) p.tracks[1].notes[2][0].notes[3] = NoteEvent{5, 70, 1.f, 0.f, 0.6f, 0, 0, 0, 0};
+        if (what == 1) p.tracks[0].drums[3][0].level[5][5] = 0.5f;
+        if (what == 2) p.tracks[1].bars[2] = 2;
+        if (what == 3) p.tracks[1].automation[3][2][2] = 0.5f;
+        if (what == 4) p.repeats[2] = 5;
+        if (what == 5) p.steps[2] = 7;
+        rig.undo();
+        CHECK(p.scene == 0 && songText(p) == was);
+        CHECK(rig.session().imagesSent() == images + (what < 4 ? 1 : 0)); // the one track, and no other
+        rig.frames(1);
+        rig.render(256);
+        rig.settle();
+    }
+}
+
 // ---- the engine's own call -------------------------------------------------------------------
 
 // A drum track's patterns for the engine: scene `scene` has hits on `lane`, every `every` steps.
@@ -1435,15 +1538,168 @@ struct Bare { // an engine by itself: two drum tracks
         heard.resize(was + static_cast<std::size_t>(2 * frames));
         engine->render(heard.data() + was, frames);
     }
-    std::vector<float> play(int from, int steps) { // the song from a scene, for so many steps
+    std::vector<float> play(int from, int steps, bool loop = false) { // the song from a scene (or that scene alone, round and round), for so many steps
         say(Command::Stop, 0, 0);
         render(6 * 48000); // (the longest drum has rung out: what was played before is not heard in what comes)
         heard.clear();
-        say(Command::Play, 0, from);
+        say(Command::Play, 0, from, loop ? 1 : 0);
         render(steps * kStep);
         return heard;
     }
 };
+
+// A scene handed over by moveScenes is, hit for hit and note for note, what the commands write
+// one at a time, and what a whole track's image holds (in another scene): everything a hit, a
+// note and a step of automation can carry, in a cell two bars long.
+void testASceneHandedOverIsWhatTheCommandsWrite() {
+    struct Hit { int bar, lane, step; float level, nudge, chance, start; int pitch, ratchet, reverse, cut, throwTo; };
+    const Hit kHits[] = {
+        {0, 0, 0, 0.8f, 0.f, 1.f, 0.f, 0, 0, 0, 0, 0},  {0, 1, 4, 0.9f, 0.25f, 1.f, 0.f, 0, 0, 0, 0, 0}, {0, 2, 6, 0.7f, 0.f, 1.f, 0.25f, 0, 0, 0, 0, 0},
+        {0, 3, 8, 0.9f, 0.f, 0.f, 0.f, 0, 0, 0, 0, 0},  {0, 1, 12, 0.9f, 0.f, 1.f, 0.f, 3, 2, 0, 0, 0},  {0, 0, 10, 0.8f, 0.f, 1.f, 0.f, 0, 0, 0, 2, 1},
+        {1, 4, 2, 0.6f, 0.f, 1.f, 0.f, 0, 0, 1, 0, 0},  {1, 0, 9, 0.75f, -0.25f, 1.f, 0.f, -2, 0, 0, 0, 2},
+    };
+    struct Key { int slot, step, pitch; float length, velocity, nudge; int ratchet, glide, throwTo; };
+    const Key kKeys[] = {{0, 0, 60, 2.f, 0.8f, 0.f, 0, 0, 0}, {1, 4, 64, 1.5f, 0.7f, 0.f, 3, 0, 0}, {2, 8, 67, 2.f, 0.6f, 0.25f, 0, 1, 0}, {5, 12, 55, 1.f, 0.5f, 0.f, 0, 0, 2}};
+    const auto macro = [](int step) { return 0.05f + 0.06f * static_cast<float>(step); }; // the synth's first macro, moving all bar
+    const float kSend = 0.9f;                                                               // the drums' ECHO send, on step 3
+
+    const auto bare = [] {
+        std::unique_ptr<Bare> b(new Bare);
+        b->engine->addSynthTrack(2); // (track 2 has drums and is given nothing)
+        b->engine->setEffect(kEchoBus, 0, EffectKind::Delay);
+        b->engine->setEffect(kSpaceBus, 0, EffectKind::Reverb);
+        b->render(4800);
+        return b;
+    };
+    // Into a scene's bars of an image: a SceneImage's own arrays, or a TrackImage's from that scene's first slot.
+    const auto into = [&](float (*level)[kDrumLanes][kSteps], float (*nudge)[kDrumLanes][kSteps], float (*chance)[kDrumLanes][kSteps], float (*start)[kDrumLanes][kSteps],
+                          StepFx (*fx)[kDrumLanes][kSteps], TrackImage::Note (*notes)[kMaxNotes], bool drums) {
+        for (const Hit& h : kHits) {
+            if (!drums) break;
+            level[h.bar][h.lane][h.step] = h.level;
+            nudge[h.bar][h.lane][h.step] = h.nudge;
+            chance[h.bar][h.lane][h.step] = h.chance;
+            start[h.bar][h.lane][h.step] = h.start;
+            StepFx& f = fx[h.bar][h.lane][h.step];
+            f.pitch = static_cast<std::int8_t>(h.pitch);
+            f.ratchet = static_cast<std::uint8_t>(h.ratchet);
+            f.reverse = h.reverse;
+            f.cut = static_cast<std::uint8_t>(h.cut);
+            f.throwTo = static_cast<std::uint8_t>(h.throwTo);
+        }
+        for (const Key& k : kKeys) {
+            if (drums) break;
+            TrackImage::Note& n = notes[0][k.slot];
+            n.step = static_cast<std::uint8_t>(k.step);
+            n.pitch = static_cast<std::uint8_t>(k.pitch);
+            n.length = k.length;
+            n.velocity = k.velocity;
+            n.nudge = k.nudge;
+            n.ratchet = static_cast<std::uint8_t>(k.ratchet);
+            n.glide = static_cast<std::uint8_t>(k.glide);
+            n.throwTo = static_cast<std::uint8_t>(k.throwTo);
+        }
+    };
+
+    // 1. The commands, into scene 1.
+    std::unique_ptr<Bare> said = bare();
+    {
+        Command c;
+        c.track = 0;
+        c.type = Command::SetCellBars;
+        c.a = 2;
+        said->engine->send(c);
+        for (const Hit& h : kHits) {
+            c = Command();
+            c.bar = h.bar;
+            c.a = h.lane;
+            c.b = h.step;
+            c.type = Command::SetStep;
+            c.value = h.level;
+            said->engine->send(c);
+            c.type = Command::SetStepNudge;
+            c.value = h.nudge;
+            said->engine->send(c);
+            c.type = Command::SetStepChance;
+            c.value = h.chance;
+            said->engine->send(c);
+            c.type = Command::SetStepStart;
+            c.value = h.start;
+            said->engine->send(c);
+            c.type = Command::SetStepFx;
+            c.c = h.pitch;
+            c.d = h.ratchet;
+            c.value = h.reverse ? 1.f : 0.f;
+            c.extra = static_cast<float>(h.cut + 4 * h.throwTo);
+            said->engine->send(c);
+        }
+        for (const Key& k : kKeys) {
+            c = Command();
+            c.type = Command::SetNote;
+            c.track = 2;
+            c.a = k.slot;
+            c.b = k.step;
+            c.c = k.pitch;
+            c.d = static_cast<int>(k.length);
+            c.extra = k.length - static_cast<float>(c.d);
+            c.value = k.velocity;
+            c.shift = k.nudge;
+            c.e = k.ratchet + (k.glide ? 256 : 0) + (k.throwTo << 9);
+            said->engine->send(c);
+        }
+        c = Command();
+        c.type = Command::SetAutomation;
+        c.a = autoLaneOfSend(0);
+        c.b = 3;
+        c.value = kSend;
+        said->engine->send(c);
+        c.track = 2;
+        c.a = 0;
+        for (int step = 0; step < kSteps; ++step) {
+            c.b = step;
+            c.value = macro(step);
+            said->engine->send(c);
+        }
+    }
+    // 2. A scene move: the scene comes in at the top, for tracks 1 and 3 (track 2, between them, is handed none).
+    std::unique_ptr<Bare> moved = bare();
+    {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0].reset(new SceneImage);
+        scenes[2].reset(new SceneImage);
+        scenes[0]->bars = 2;
+        into(scenes[0]->level, scenes[0]->nudge, scenes[0]->chance, scenes[0]->start, scenes[0]->fx, scenes[0]->notes, true);
+        into(scenes[2]->level, scenes[2]->nudge, scenes[2]->chance, scenes[2]->start, scenes[2]->fx, scenes[2]->notes, false);
+        scenes[0]->automation[autoLaneOfSend(0) * kAutoSteps + 3] = kSend;
+        for (int step = 0; step < kSteps; ++step) scenes[2]->automation[step] = macro(step);
+        CHECK(moved->engine->moveScenes(0, 1, scenes, 1, 1, 0));
+    }
+    // 3. Each track's image, with all of it in scene 4.
+    const auto imageOf = [&](bool drums) {
+        const int at = 3, slot = at * kMaxBars;
+        std::unique_ptr<TrackImage> image(new TrackImage);
+        if (drums) image->bars[at] = 2;
+        into(image->level + slot, image->nudge + slot, image->chance + slot, image->start + slot, image->fx + slot, image->notes + slot, drums);
+        image->automation.reset(new float[kMaxScenes * kAutoLanes * kAutoSteps]);
+        for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) image->automation[i] = kAutoNone;
+        if (drums) image->automation[(at * kAutoLanes + autoLaneOfSend(0)) * kAutoSteps + 3] = kSend;
+        for (int step = 0; step < kSteps && !drums; ++step) image->automation[at * kAutoLanes * kAutoSteps + step] = macro(step);
+        return image;
+    };
+    std::unique_ptr<Bare> imaged = bare();
+    imaged->engine->setTrackImage(0, imageOf(true));
+    imaged->engine->setTrackImage(2, imageOf(false));
+    const int kLong = 3 * 2 * kSteps; // the two bars three times round
+    const std::vector<float> a = said->play(0, kLong, true), b = moved->play(0, kLong, true), c = imaged->play(3, kLong, true);
+    CHECK(apart(a, b) == 0.f && apart(a, c) == 0.f && loudest(a, 0, a.size() / 2) > 0.1f);
+    CHECK(loudest(a, 16 * kStep, 32 * kStep) > 0.1f); // (the second bar is played)
+    for (int beside : {2, 4}) { // and nothing either side of it (asked of an engine that has made no sound: the buses ring for long)
+        std::unique_ptr<Bare> fresh = bare();
+        fresh->engine->setTrackImage(0, imageOf(true));
+        fresh->engine->setTrackImage(2, imageOf(false));
+        CHECK(loudest(fresh->play(beside, kLong, true), 0, kLong * kStep) == 0.f);
+    }
+}
 
 // Engine::moveScenes by itself, beside an engine told the finished song the long way.
 void testTheEnginesMove() {
@@ -1453,6 +1709,7 @@ void testTheEnginesMove() {
         hits(*one, 0, 0, 4);
         hits(*one, 1, 2, 2);
         hits(*one, 2, 1, 8);
+        hits(*one, 14, 7, 4); // (past the song's end: the last scene but one, which becomes the last)
         one->bars[1] = 2;
         one->level[1 * kMaxBars + 1][3][5] = 0.9f;
         hits(*two, 0, 4, 3);
@@ -1486,6 +1743,7 @@ void testTheEnginesMove() {
         hits(*one, 1, 0, 4);
         hits(*one, 2, 2, 2);
         hits(*one, 3, 1, 8);
+        hits(*one, 15, 7, 4);
         one->bars[2] = 2;
         one->level[2 * kMaxBars + 1][3][5] = 0.9f;
         hits(*two, 1, 4, 3);
@@ -1502,6 +1760,9 @@ void testTheEnginesMove() {
     const std::vector<float> was = plain.play(0, kWhole);
     CHECK(apart(moved.play(0, kWhole), told.play(0, kWhole)) == 0.f && loudest(moved.heard, 0, moved.heard.size() / 2) > 0.1f);
     CHECK(apart(moved.heard, was) > 0.01f);
+    const std::vector<float> wasLast = plain.play(14, 20, true);
+    CHECK(apart(moved.play(15, 20, true), wasLast) == 0.f && loudest(wasLast, 0, 20 * kStep) > 0.1f); // the last scene but one is the last now
+    CHECK(loudest(moved.play(14, 20, true), 0, 20 * kStep) == 0.f);
 
     // ...and taken out again: the song as it was, but for the sixteenth scene, which is the one handed over.
     {
@@ -1511,6 +1772,7 @@ void testTheEnginesMove() {
         CHECK(moved.engine->moveScenes(1, -1, scenes, 3, 5, 9));
         moved.render(256);
         CHECK(apart(moved.play(0, kWhole), was) == 0.f);
+        CHECK(apart(moved.play(14, 20, true), wasLast) == 0.f);
         moved.say(Command::SetSceneCount, 0, kMaxScenes);
         std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
         hits(*one, 15, 6, 2);
@@ -1672,6 +1934,9 @@ int main(int argc, char** argv) {
     testTheFramesBeforeTheEngineHears();
     testTheCommand();
     testTheEnginesMove();
+    testASceneHandedOverIsWhatTheCommandsWrite();
+    testTheSixteenthSceneIsGivenBack();
+    testTakenBackAfterSomethingUndoDoesNotKnow();
     testTheSongBesideTheFinishedSong(false);
     testTheSongBesideTheFinishedSong(true);
     testTakenBackWhileTheCopyPlaysInItsTurn();

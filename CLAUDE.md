@@ -399,11 +399,15 @@ effect in those two groups and fails one that does not.
   by itself is 0.3 millionths of a second for twelve tracks.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
-  `tellScenesMoved`). It then asks whether the song's TEXT is the step's text
-  (`patternsNow() == text`), not whether the numbers match: automation read
-  back from text is not the same float to the last bit, and a track found
-  different for that alone had all its patterns sent (a megabyte the audio
-  thread copies). `Session::imagesSent()` is how the tests see that none went.
+  `tellScenesMoved`). It then asks whether the PATTERNS, written as text, are
+  the step's (`Session::patternsAre`), not whether the numbers match:
+  automation read back from text is not the same float to the last bit, and a
+  track found different for that alone had all its patterns sent (a megabyte
+  the audio thread copies). The patterns alone, not `patternsNow()`: that is
+  the whole song's text, and a knob turned since the copy is in it. Only if
+  they differ (nothing in the program does that without a step of undo of its
+  own) is a track put back and sent whole, as an ordinary undo does.
+  `Session::imagesSent()` is how the tests see that none went.
 - **Where a scene move cannot be "the song played straight through"**: the
   copy is playing in its own turn (the scene it was made from has had its
   plays this time round) and is taken back. The playing goes to the scene it

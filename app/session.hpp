@@ -454,6 +454,7 @@ private:
     // (moveScenesHere), the engine (tellScenesMoved: one command, which holds everything), and
     // whatever here holds the number of a scene that is playing (scenesMoved).
     void moveScenesHere(int from, int by, const Project* last);
+    bool patternsAre(const Project& was) const;
     void tellScenesMoved(int from, int by);
     void scenesMoved(int from, int by);
     // Scene moves told to the engine and not yet known to be heard, oldest first, and how many were

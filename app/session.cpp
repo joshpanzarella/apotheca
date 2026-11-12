@@ -606,6 +606,25 @@ int Session::nextScene() {
     return to;
 }
 
+// Are the patterns here the ones in `was`, as a song file would hold them?
+bool Session::patternsAre(const Project& was) const {
+    std::unique_ptr<Project> here(new Project(was)); // `was`, with the patterns that are here now
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& now = project.tracks[t];
+        TrackData& to = here->tracks[t];
+        std::memcpy(to.bars, now.bars, sizeof to.bars);
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                to.drums[scene][bar] = now.drums[scene][bar];
+                to.notes[scene][bar] = now.notes[scene][bar];
+            }
+        std::memcpy(to.automation, now.automation, sizeof to.automation);
+    }
+    std::memcpy(here->repeats, project.repeats, sizeof here->repeats);
+    std::memcpy(here->steps, project.steps, sizeof here->steps);
+    return songText(*here) == songText(was);
+}
+
 int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
 
 void Session::restorePatterns(const std::string& text, int movedFrom, int movedBy) {
@@ -618,10 +637,11 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         moveScenesHere(movedFrom, movedBy, was.get());
         tellScenesMoved(movedFrom, movedBy);
     }
-    // ...and that is told by the text, not by the numbers: a value of automation read back from
-    // text is not the number it was written from to the last bit, and a track found different
-    // for that alone would have its every pattern sent, a megabyte for the audio thread to copy.
-    const bool asItWas = movedBy != 0 && patternsNow() == text;
+    // ...and that is told by the patterns as text, not by the numbers: a value of automation
+    // read back from text is not the number it was written from to the last bit, and a track
+    // found different for that alone would have its every pattern sent, a megabyte for the
+    // audio thread to copy. (The patterns alone: a knob turned since is in the song's text too.)
+    const bool asItWas = movedBy != 0 && patternsAre(*was);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {
         TrackData& now = project.tracks[t];
         const TrackData& then = was->tracks[t];
