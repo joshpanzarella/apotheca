@@ -115,7 +115,7 @@ constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f,
 inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
 // With X held the strip is RATCHET, GLIDE (at 250), THROW and NUDGE: the last two stand here,
 // clear of the longest a glide's length reads ("1/4 STEP").
-constexpr float kStripHeldGlideX = 250.f, kStripHeldThrowX = 365.f, kStripHeldNudgeX = 440.f;
+constexpr float kStripHeldGlideX = 250.f, kStripHeldThrowX = 385.f, kStripHeldNudgeX = 500.f;
 // How wide NUDGE's value may be: up to a gap before whatever comes after it.
 inline float stripNudgeRoom(bool effect, bool thrown) {
     return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;
