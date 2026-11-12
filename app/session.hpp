@@ -332,6 +332,7 @@ public:
     // move sent to it. For the block or so until it has, the engine still says the old number;
     // this is what to ask, not engine.playScene(). (project.playScene is this, once a frame.)
     int playScene() const;
+    int imagesWaiting() const; // tracks whose patterns have yet to go to the engine after a scene move (they go one a frame)
     int sceneMovesUnheard() const { return static_cast<int>(moves_.size()); } // as of the last frame (for tests)
 
     // ---- mute, solo, names -----------------------------------------------------------
@@ -438,11 +439,23 @@ private:
     std::string bounceFolder_;
     float bounceCap_ = kBounceCapSeconds;
     std::string patternsNow() const;                 // the patterns as text: a step of undo
-    void restorePatterns(const std::string& text);
+    void restorePatterns(const std::string& text, bool imagesLater = false); // (later: not sent, put down in imagesDue_)
     void sendTrackImage(int track);                  // every pattern of a track to the engine, in one piece
     std::unique_ptr<TrackImage> trackImage(int track) const; // ...made, not yet sent
     void standOn(int scene);                         // the player, put on a scene by undo
-    void scenesMoved(int from, int by);              // tell the engine (Command::ScenesMoved) and whatever here points at a scene that is playing
+    void scenesMoved(int from, int by, bool tellNow); // whatever here points at a scene that is playing follows; the engine is told (Command::ScenesMoved) now, or by sendMove()
+    void sendMove();                                 // the word of the last scene move, if it has not gone
+    // After a scene move every track's patterns go to the engine again. A track's are a megabyte
+    // the audio thread copies inside one block, so while that is safe they go one a frame
+    // (update()), and the word that is to follow them goes with the last. finishMove() sends
+    // what is left at once: anything that cannot wait for them calls it first.
+    std::uint32_t imagesDue_ = 0;                    // a bit a track
+    bool moveUnsent_ = false;                        // the last of moves_ has yet to be told to the engine
+    using Images = std::vector<std::pair<int, std::unique_ptr<TrackImage>>>;
+    Images takeImages(int most);                     // made, and no longer due
+    void sendImages(Images images);                  // ...sent, and the word after them if they were the last
+    void finishMove();
+    bool oneAFrame(int playing, int from) const;     // may the tracks go one a frame, with this scene the one the engine is on meanwhile?
     // Scene moves the engine is not yet known to have heard, oldest first, and how many were sent
     // in all: the engine says how many it has taken with the scene it is on (Engine::playScene).
     struct SceneMove { int from = 0, by = 0; };
