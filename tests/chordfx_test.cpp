@@ -1193,6 +1193,33 @@ static void testGlideAfterAChord() {
     }
 }
 
+// A chord asked for a step ahead (HUMAN TIME) is not yet the last thing the track began: a note
+// that begins between the asking and the chord's own moment slides from the note before it,
+// not from the chord's top key.
+static void testGlideBeforeAnAskedChord() {
+    for (const ChordPlay& play : {playOf(0, 0, 100), playOf(kStrumWide, 0, 50), playOf(kStrumHalf, 0, 50)}) {
+        Rig rig;
+        rig.note(0, 2, 40, 0.5f);
+        rig.note(1, 3, 45, 0.25f, kGlideFull, 0.5f); // half a step before the chord, after it was asked
+        rig.chord(2, 4, {60, 64, 67}, 2.f, play);
+        rig.note(5, 4, 50, 0.25f, kGlideFull, 0.4f); // and one inside it: from its top key
+        rig.play();
+        rig.run(3L * kBar);
+        int seen = 0, inside = 0;
+        for (const Told& t : rig.log) {
+            if (t.on && t.pitch == 45) {
+                ++seen;
+                CHECK(t.from == 40);
+            }
+            if (t.on && t.pitch == 50) {
+                ++inside;
+                CHECK(t.from == 67);
+            }
+        }
+        CHECK(seen == 3 && inside == 3);
+    }
+}
+
 // ---- what a command may ask ----------------------------------------------------------------------------
 
 static void testCommands() {
@@ -1242,6 +1269,36 @@ static void testCommands() {
     const std::vector<Sounded> w = whole.notes();
     CHECK(w.size() == 3);
     for (std::size_t k = 0; k < w.size(); ++k) CHECK(w[k].on == 2 * kStep + static_cast<long>(k) * kWide);
+    // ...and nonsense in it is off, as in a command.
+    {
+        std::unique_ptr<TrackImage> odd(new TrackImage);
+        for (int k = 0; k < 3; ++k) {
+            TrackImage::Note& note = odd->notes[0][k];
+            note.step = 2;
+            note.pitch = static_cast<std::uint8_t>(60 + 4 * k);
+            note.length = 2.f;
+            note.velocity = 0.8f;
+            note.play.strum = 200;
+            note.play.order = 200;
+            note.play.time = 255;
+            note.play.index = static_cast<std::uint8_t>(k == 2 ? 9 : k);
+            note.play.count = 3;
+        }
+        Rig rig;
+        CHECK(rig.engine->setTrackImage(1, std::move(odd)));
+        rig.play();
+        rig.run(30L * kBar);
+        rig.engine->collectGarbage();
+        const std::vector<Sounded> n = rig.notes();
+        CHECK(n.size() == 90);
+        long far = 0;
+        for (const Sounded& s : n) {
+            const long by = (s.on - 2 * kStep + kBar / 2) % kBar - kBar / 2;
+            if (s.pitch == 68) CHECK(by == 0);
+            else far = std::max(far, std::labs(by));
+        }
+        CHECK(far <= kHuman + 1 && far > kHuman / 2);
+    }
     // A note emptied takes its chord values with it: the slot's next note is plain.
     Rig again;
     again.chord(0, 2, {60, 64, 67}, 2.f, playOf(kStrumWide));
@@ -1253,6 +1310,310 @@ static void testCommands() {
     CHECK(again.notes().size() == 3);
 }
 
+// ---- what the reviews found ----------------------------------------------------------------------------
+
+// A song played ONCE (a bounce: Play with c = 1) begins nothing of its start before its end. Asked a
+// step ahead across the song's end, the first chord's early keys sounded in the bounce's last 12 ms.
+static void testOnceThrough() {
+    const std::vector<int> keys = {60, 64, 67, 71};
+    for (int time : {10, 100}) {
+        for (int once = 0; once < 2; ++once) {
+            Rig rig;
+            rig.chord(0, 0, keys, 2.f, playOf(0, 0, time));
+            Command play = make(Command::Play);
+            play.c = once;
+            rig.send(play);
+            rig.run(kBar, 256); // the song is one bar, and this is all of it
+            int begun = 0, early = 0;
+            for (const Told& t : rig.log) begun += t.on, early += t.on && t.frame > kBar / 2;
+            if (once) CHECK(begun == 4 && early == 0);
+            else CHECK(begun > 4 && early == begun - 4); // going round, the next time's early keys are there
+            rig.send(make(Command::Stop));
+            rig.run(4000, 256);
+            int after = 0;
+            for (const Told& t : rig.log) after += t.on;
+            CHECK(after == begun);
+        }
+    }
+    // The same for a plain note and a drum hit nudged early on the song's first step.
+    for (int once = 0; once < 2; ++once) {
+        Rig rig;
+        rig.note(0, 0, 60, 1.f, 0, -0.25f);
+        Command play = make(Command::Play);
+        play.c = once;
+        rig.send(play);
+        rig.run(kBar, 256);
+        int begun = 0;
+        for (const Told& t : rig.log) begun += t.on;
+        CHECK(begun == (once ? 1 : 2));
+    }
+    // (a drum hit, by ear: the rim shot is there again in the last quarter step, or it is not)
+    {
+        float last[2] = {0.f, 0.f};
+        for (int once = 0; once < 2; ++once) {
+            std::unique_ptr<Engine> engine(new Engine);
+            CHECK(engine->send(make(Command::SetStep, 0, 6, 0, 1.f)));
+            CHECK(engine->send(make(Command::SetStepNudge, 0, 6, 0, -0.25f)));
+            Command play = make(Command::Play);
+            play.c = once;
+            CHECK(engine->send(play));
+            std::vector<float> out(2 * 256);
+            for (long at = 0; at < kBar; at += 256) {
+                engine->render(out.data(), 256);
+                if (at >= kBar - 1024)
+                    for (float v : out) last[once] = std::max(last[once], std::fabs(v));
+            }
+        }
+        CHECK(last[0] > 0.05f && last[1] < last[0] * 0.01f);
+    }
+    // Once through is all of it: a scene that plays twice has its second time's early keys...
+    {
+        Rig rig;
+        Command twice = make(Command::SetSceneRepeats, 0, 2);
+        twice.scene = 0;
+        rig.send(twice);
+        rig.chord(0, 0, keys, 2.f, playOf(0, 0, 100));
+        Command play = make(Command::Play);
+        play.c = 1;
+        rig.send(play);
+        rig.run(2L * kBar, 256);
+        int begun = 0, early = 0;
+        for (const Told& t : rig.log) begun += t.on, early += t.on && t.frame > kBar / 2 && t.frame < kBar;
+        CHECK(begun == 8 && early >= 1);
+    }
+    // ...and a cell of two bars its second bar's.
+    {
+        Rig rig;
+        rig.send(make(Command::SetCellBars, 1, 2));
+        rig.chord(0, 0, keys, 2.f, playOf(0, 0, 100), 0, 0, 0.f, 1);
+        Command play = make(Command::Play);
+        play.c = 1;
+        rig.send(play);
+        rig.run(2L * kBar, 256);
+        int begun = 0, early = 0;
+        for (const Told& t : rig.log) begun += t.on, early += t.on && t.frame < kBar;
+        CHECK(begun == 4 && early >= 1);
+    }
+    // Looping one scene is not "once", whatever the command says.
+    {
+        Rig rig;
+        rig.chord(0, 0, keys, 2.f, playOf(0, 0, 100));
+        Command play = make(Command::Play, 0, 0, 1);
+        play.c = 1;
+        rig.send(play);
+        rig.run(kBar, 256);
+        int begun = 0;
+        for (const Told& t : rig.log) begun += t.on;
+        CHECK(begun > 4);
+    }
+    // Once through is the whole song: two scenes, the second's early chord is not lost.
+    {
+        Rig rig;
+        rig.send(make(Command::SetSceneCount, 0, 2));
+        rig.chord(0, 0, keys, 2.f, playOf(0, 0, 100));
+        for (std::size_t k = 0; k < keys.size(); ++k) {
+            Command c = make(Command::SetNote, 1, static_cast<int>(k), 0, 0.8f);
+            c.scene = 1;
+            c.c = keys[k] - 12;
+            c.d = 2;
+            c.play = playOf(0, 0, 100);
+            c.play.index = static_cast<std::uint8_t>(k);
+            c.play.count = 4;
+            rig.send(c);
+        }
+        Command play = make(Command::Play);
+        play.c = 1;
+        rig.send(play);
+        rig.run(2L * kBar, 256);
+        int first = 0, second = 0, early = 0;
+        for (const Told& t : rig.log) {
+            if (!t.on) continue;
+            ++(t.pitch >= 60 ? first : second);
+            early += t.pitch < 60 && t.frame < kBar;
+        }
+        CHECK(first == 4 && second == 4 && early >= 1);
+    }
+}
+
+// A ratcheted chord plays as many hits as it does at rest, on every key, every time: LENGTHS, a
+// strum and HUMAN TIME neither lose one (the last piece running out of chord) nor add one (an
+// early key finding room for a piece more).
+static void testRatchetKeepsItsHits() {
+    const std::vector<int> keys = {60, 64, 67, 71};
+    const struct { float length; int ratchet; ChordPlay play; float tempo; int hits; } cases[] = {
+        {1.f, 4, playOf(0, 0, 0, 0, 100), 120.f, 4}, {1.f, 4, playOf(0, 0, 0, 0, 50), 120.f, 4},  {1.f, 3, playOf(0, 0, 0, 0, 100), 120.f, 3},
+        {1.f, 2, playOf(0, 0, 0, 0, 100), 120.f, 2}, {1.f, 4, playOf(kStrumWide, 0, 100), 120.f, 4}, {1.f, 4, playOf(kStrumWide, 0, 100), 174.f, 4},
+        {0.5f, 2, playOf(0, 0, 100), 174.f, 1},      {0.5f, 2, playOf(0, 0, 50), 240.f, 1},        {0.5f, 4, playOf(kStrumTight, kOrderRandom, 100, 100, 100), 150.f, 2},
+        {2.f, 4, playOf(kStrumWide, kOrderDown, 100, 100, 100), 120.f, 4},
+    };
+    for (const auto& c : cases) {
+        const int loops = 300;
+        const double step = 48000.0 * 60.0 / c.tempo / 4.0, bar = 16.0 * step;
+        Rig rig;
+        rig.send(make(Command::SetTempo, 0, 0, 0, c.tempo));
+        rig.chord(0, 6, keys, c.length, c.play, c.ratchet);
+        { // at rest, for the count: the same chord with nothing set
+            Rig rest;
+            rest.send(make(Command::SetTempo, 0, 0, 0, c.tempo));
+            rest.chord(0, 6, keys, c.length, ChordPlay(), c.ratchet);
+            rest.play();
+            rest.run(static_cast<long>(bar));
+            CHECK(static_cast<int>(rest.notes().size()) == 4 * c.hits);
+        }
+        rig.play();
+        rig.run(static_cast<long>(loops * bar));
+        std::vector<int> hits(static_cast<std::size_t>(loops * 4), 0);
+        const std::vector<Sounded> n = rig.notes();
+        int wrong = 0;
+        for (const Sounded& s : n) {
+            const int loop = static_cast<int>(s.on / bar), key = static_cast<int>(std::find(keys.begin(), keys.end(), s.pitch) - keys.begin());
+            if (loop < loops && key < 4) ++hits[static_cast<std::size_t>(loop * 4 + key)];
+            // Nothing sounds past the chord's end (and a hair: the shortest a note may be).
+            const double end = loop * bar + (6.0 + c.length + kShortestNote) * step + 2.0;
+            if ((s.off < 0 || s.off > end) && getenv("DBG")) std::printf("len %g x%d tempo %g: on %ld off %ld end %g loop %d\n", c.length, c.ratchet, c.tempo, s.on, s.off, end, loop);
+            wrong += s.off < 0 || s.off > end;
+        }
+        int odd = 0;
+        for (int h : hits) odd += h != c.hits;
+        CHECK(odd == 0);
+        CHECK(wrong == 0);
+        // A key is let go before it is struck again.
+        for (std::size_t i = 0; i < n.size(); ++i)
+            for (std::size_t j = i + 1; j < n.size() && j < i + 8; ++j)
+                if (n[j].pitch == n[i].pitch) {
+                    CHECK(n[i].off <= n[j].on);
+                    break;
+                }
+    }
+    // LENGTHS on a ratcheted chord is the last piece let go sooner: different every time, never
+    // under half of it, and the pieces before it as they always are.
+    {
+        Rig rig;
+        rig.chord(0, 6, keys, 2.f, playOf(0, 0, 0, 0, 100), 2);
+        rig.play();
+        rig.run(200L * kBar);
+        const std::vector<Sounded> n = rig.notes();
+        CHECK(n.size() == 1600);
+        long shortest = 2 * kStep, longest = 0;
+        for (std::size_t i = 0; i < n.size(); ++i) {
+            const long held = n[i].off - n[i].on, at = n[i].on % kBar;
+            if (at == 6 * kStep) {
+                CHECK(held == static_cast<long>(std::ceil(kStep * 0.5 * 0.85f))); // the first piece: 85% of its half step
+            } else {
+                CHECK(at == 6 * kStep + kStep / 2 && held <= 3 * kStep / 2 + 1 && held >= 3 * kStep / 4 - 1);
+                shortest = std::min(shortest, held);
+                longest = std::max(longest, held);
+            }
+        }
+        CHECK(shortest < 3 * kStep / 4 + 300 && longest > 3 * kStep / 2 - 300);
+    }
+}
+
+// Three arpeggios with their clocks all alive at once: one still playing (it was nudged late),
+// one waiting for its nudge, one asked a step ahead for its HUMAN TIME. None takes another's.
+static void testThreeArpeggios() {
+    Rig rig;
+    rig.chord(0, 0, {60, 64, 67}, 2.f, playOf(kStrumQuarter), 0, 0, 0.3f);
+    rig.chord(3, 2, {50, 54, 57}, 1.f, playOf(kStrumQuarter), 0, 0, 0.5f);
+    rig.chord(6, 3, {40, 44, 47}, 1.f, playOf(kStrumQuarter, 0, 50));
+    rig.play();
+    rig.run(10L * kBar);
+    int first[10] = {}, third[10] = {};
+    for (const Sounded& s : rig.notes()) {
+        const int loop = static_cast<int>(s.on / kBar);
+        if (loop >= 10) continue;
+        if (s.pitch >= 60) ++first[loop];
+        if (s.pitch < 50) ++third[loop];
+    }
+    for (int loop = 0; loop < 10; ++loop) CHECK(first[loop] == 8 && third[loop] == 4); // every note of the first, to its end
+}
+
+// A chord's values turned WHILE THE SONG PLAYS (the ordinary gesture: X held, left / right, the
+// dice), in the step before the chord: that playing has each key once. Which of the two askings
+// takes a chord was read from its values at each, so one changed between them was played twice
+// or not at all.
+static void testTurnedWhilePlaying() {
+    const std::vector<int> keys = {60, 64, 67};
+    const struct { ChordPlay from; float nudgeFrom; ChordPlay to; float nudgeTo; } cases[] = {
+        {ChordPlay(), 0.f, playOf(0, 0, 10), 0.f},           // HUMAN TIME on
+        {playOf(0, 0, 10), 0.f, ChordPlay(), 0.f},           // ...and off
+        {playOf(0, 0, 0, 50), 0.f, playOf(0, 0, 25, 50), 0.f}, // with another effect set all along
+        {playOf(0, 0, 25, 50), 0.f, playOf(0, 0, 0, 50), 0.f},
+        {ChordPlay(), -0.2f, playOf(0, 0, 10), -0.2f},       // a chord nudged early, at rest, then not
+        {playOf(0, 0, 10), -0.2f, ChordPlay(), -0.2f},
+        {playOf(kStrumTight), 0.f, playOf(kStrumTight), -0.2f}, // nudged early while it plays
+        {playOf(kStrumTight), -0.2f, playOf(kStrumTight), 0.f},
+        {playOf(kStrumHalf), 0.f, playOf(kStrumHalf, 0, 25), 0.f}, // an arpeggio: twice over or none at all
+        {playOf(kStrumHalf, 0, 25), 0.f, playOf(kStrumHalf), 0.f},
+    };
+    for (const auto& c : cases) {
+        Rig rig;
+        rig.chord(0, 4, keys, 1.5f, c.from, 0, 0, c.nudgeFrom);
+        rig.play();
+        rig.run(kBar + 3 * kStep + 2500); // the second time round, part way into the step before it
+        const std::size_t before = rig.notes().size();
+        CHECK(before == 3);
+        rig.chord(0, 4, keys, 1.5f, c.to, 0, 0, c.nudgeTo);
+        rig.run(13 * kStep - 2500 - 1000);
+        CHECK(rig.notes().size() == before + 3);
+        rig.run(1000 + 2L * kBar);
+        CHECK(rig.notes().size() == before + 9); // and from then on, as ever
+        for (const Sounded& s : rig.notes()) CHECK(s.off > s.on);
+    }
+}
+
+// An arpeggio ends with its chord. Deleted, carried off or set back to a plain chord while its
+// arpeggio plays, it begins no more notes (they ran on to where the chord's end had been).
+// Anything else written into the bar leaves it playing.
+static void testAnArpeggioEndsWithItsChord() {
+    const std::vector<int> keys = {60, 64, 67};
+    const auto begunAfter = [](const Rig& rig, long frame) {
+        int n = 0;
+        for (const Told& t : rig.log) n += t.on && t.pitch >= 60 && t.frame > frame;
+        return n;
+    };
+    for (int how = 0; how < 5; ++how) {
+        Rig rig;
+        rig.chord(1, 0, keys, 12.f, playOf(kStrumQuarter));
+        rig.play();
+        rig.run(2 * kStep + 100);
+        CHECK(begunAfter(rig, -1) == 9);
+        if (how == 0) { // deleted
+            for (int k = 0; k < 3; ++k) rig.send(make(Command::SetNote, 1, 1 + k, 0, 0.f));
+        } else if (how == 1) { // STRUM clicked to OFF
+            rig.chord(1, 0, keys, 12.f, ChordPlay());
+        } else if (how == 2) { // carried six steps down
+            rig.chord(1, 6, keys, 4.f, playOf(kStrumQuarter));
+        } else if (how == 3) { // a loose note written into the bar: the chord's keys are in other slots now
+            rig.note(1, 9, 30, 1.f);
+            rig.chord(2, 0, keys, 12.f, playOf(kStrumQuarter));
+        } else { // HUMAN LEVEL turned on it: still the arpeggio it was
+            rig.chord(1, 0, keys, 12.f, playOf(kStrumQuarter, 0, 0, 25));
+        }
+        rig.run(4 * kStep - 100 - 1);
+        const int more = begunAfter(rig, 2 * kStep + 100);
+        if (how <= 2) CHECK(more == 0);
+        else CHECK(more == 15); // a quarter of a step apart, up to the sixth step
+        rig.run(6 * kStep + 1);
+        if (how == 2) CHECK(begunAfter(rig, 6 * kStep - 1) == 16); // where it was carried to, it plays whole
+        for (const Sounded& s : rig.notes()) CHECK(s.off > s.on || s.on > 11 * kStep);
+        // The next time round is as it is written.
+        rig.run(4 * kStep + 100);
+        const int round = begunAfter(rig, kBar - 1);
+        CHECK(round == (how == 0 ? 0 : how == 1 ? 3 : how == 2 ? 0 : 1));
+    }
+    // One that has not begun yet (asked a step ahead) goes too.
+    {
+        Rig rig;
+        rig.chord(1, 4, keys, 4.f, playOf(kStrumQuarter, 0, 25));
+        rig.play();
+        rig.run(3 * kStep + 100);
+        for (int k = 0; k < 3; ++k) rig.send(make(Command::SetNote, 1, 1 + k, 0, 0.f));
+        rig.run(8 * kStep);
+        CHECK(begunAfter(rig, -1) == 0);
+    }
+}
+
 int main(int argc, char** argv) {
     (void)kMs;
     struct Named { const char* name; void (*run)(); };
@@ -1262,6 +1623,8 @@ int main(int argc, char** argv) {
         {"testTheSameEveryTime", testTheSameEveryTime}, {"testTheRealInstruments", testTheRealInstruments}, {"testOnAnyTrack", testOnAnyTrack},
         {"testStopAndPlay", testStopAndPlay}, {"testTempoMidChord", testTempoMidChord}, {"testTheScenesLength", testTheScenesLength},
         {"testThrow", testThrow}, {"testGlideAfterAChord", testGlideAfterAChord}, {"testCommands", testCommands},
+        {"testGlideBeforeAnAskedChord", testGlideBeforeAnAskedChord}, {"testOnceThrough", testOnceThrough}, {"testRatchetKeepsItsHits", testRatchetKeepsItsHits}, {"testThreeArpeggios", testThreeArpeggios},
+        {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testAnArpeggioEndsWithItsChord", testAnArpeggioEndsWithItsChord},
     };
     for (const Named& t : all) {
         bool wanted = argc < 2;

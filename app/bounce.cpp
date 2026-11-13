@@ -253,7 +253,9 @@ bool Session::startBounce(Bounce what) {
             if (!file.open(path, static_cast<int>(rate))) continue;
             Command c;
             c.type = Command::Play;
+            c.c = 1; // once through: the song's last step begins nothing early that belongs to its first
             engine->send(c);
+            c.c = 0;
             const int block = 256;
             std::vector<float> out(static_cast<std::size_t>(2 * block));
             // The song itself: its length is known, and this is what the percentage counts.

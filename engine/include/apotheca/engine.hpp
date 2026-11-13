@@ -114,7 +114,9 @@ struct Command {
                         //   semitones, bar = ratchet (2..4), scene = 1 for backwards, extra = cut (1, 2, 3)
                         //   and, as in SetStepFx, 4 times its THROW added to `extra`
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
-        Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
+        Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone,
+                        //   c = 1: the song is played once through and then stopped (a bounce), so its last
+                        //   step begins nothing early that belongs to its first
         Stop,           // stop; drums ring out, synth notes are let go
         Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
@@ -436,9 +438,10 @@ private:
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
         // An arpeggio (a chord whose STRUM is a length in steps): one note at a time, round the
-        // chord's keys until the chord ends. One clock for the whole chord. Two, because the next
-        // chord's is set waiting (a step ahead, when it is early) while this one's still plays;
-        // the one that begins ends the other.
+        // chord's keys until the chord ends. One clock for the whole chord. Three, because at the most
+        // one is still playing (nudged late), the next chord's waits for its own nudge and the
+        // one after that has been asked a step ahead (it may be early); the one that begins ends
+        // the one playing. (With two, the third took the clock of the one still playing.)
         struct Arp {
             bool on = false, begun = false;
             std::uint32_t seed = 0;       // which playing of which chord (chord_rule.hpp)
@@ -452,8 +455,13 @@ private:
             double wait = 0.0;            // samples until its next note
             double moved = 0.0;           // how far HUMAN TIME moved the note before, in samples
             long next = 0;                // that note's number: 0 the first
+            int slot = -1, step = -1;     // where its chord is written: which bar of the song, which step
+            bool look = false;            // that bar has been written to: see that the chord is still there
         };
-        Arp arps[2];
+        Arp arps[3];
+        // The step (counted from Play) whose chord has been asked for a step ahead: that chord
+        // is not begun again when its step comes.
+        long chordAsked = -1;
         std::uint32_t lastChord = 0; // the chord the track last began (its seed), and how many it has
         long strokes = -1;           // begun since Play, less one: UP-DOWN strums up on the even ones
         double offIn[128];
@@ -568,6 +576,7 @@ private:
     // The step clock. Steps are sixteenth notes.
     bool playing_ = false;
     bool loopScene_ = false;
+    bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
     bool firstStep_ = true; // the step about to fire is the first since Play
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;

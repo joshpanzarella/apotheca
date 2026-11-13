@@ -524,8 +524,17 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
         for (auto& a : track.arps)
             if (a.on && !a.begun && a.seed == seed) arp = &a;
         if (!arp) {
-            arp = !track.arps[0].on ? &track.arps[0] : (!track.arps[1].on ? &track.arps[1] : (track.arps[0].begun ? &track.arps[0] : &track.arps[1]));
+            // A clock that is free. (There is always one: at the most one arpeggio is playing,
+            // one waits for its nudge and one has been asked a step ahead. If ever there were
+            // none, the one playing gives way.)
+            for (auto& a : track.arps)
+                if (!a.on && !arp) arp = &a;
+            for (auto& a : track.arps)
+                if (a.begun && !arp) arp = &a;
+            if (!arp) arp = &track.arps[0];
             *arp = Track::Arp();
+            arp->slot = slot;
+            arp->step = note.step;
             arp->on = true;
             arp->seed = seed;
             arp->play = play;
@@ -554,17 +563,44 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     }
     late += play.time * 0.01 * kHumanTimeMs * perMs * chordSigned(seed, kRollTime, play.index);
     if (own + late < 0.0) late = -own; // the song's first chord: its early notes are at the top
+    { // Never so late that its last hit has no chord left to sound in (a short chord at a fast tempo).
+        const int hits = note.ratchet >= 2 ? (note.ratchet > kMaxRatchet ? kMaxRatchet : note.ratchet) : 1;
+        int lastHit = 0;
+        while (lastHit + 1 < hits && note.length - static_cast<float>(lastHit + 1) / static_cast<float>(hits) >= kShortestNote) ++lastHit;
+        const double room = (static_cast<double>(note.length - static_cast<float>(lastHit) / static_cast<float>(hits)) - kShortestNote) * samplesPerStep_;
+        if (late > room) late = room > 0.0 ? room : 0.0;
+    }
     late = std::ceil(late);
     const double delay = own + late, off = late / samplesPerStep_;
     Note one = note;
     one.how = static_cast<std::uint8_t>(kWholeFrames | (play.timed() ? kUntold : 0));
-    // It ends where the chord ends, wherever it began; LENGTHS lets it go sooner, never later.
-    double length = static_cast<double>(note.length) - off;
-    if (one.throwTo) one.hold = static_cast<float>(length > kShortestNote ? length : kShortestNote); // THROW is for the whole chord
-    length *= 1.0 - play.lengths * 0.01 * kLengthsMost * chordUnit(seed, kRollLengths, play.index);
-    one.length = static_cast<float>(length > kShortestNote ? length : kShortestNote);
+    one.ratchet = 0;
     one.velocity = humanLevel(note.velocity, play, seed, play.index);
-    startNote(track, one, delay, at);
+    // It ends where the chord ends, wherever it began; LENGTHS lets it go sooner, never later.
+    const double whole = static_cast<double>(note.length) - off;
+    const double shorter = 1.0 - play.lengths * 0.01 * kLengthsMost * chordUnit(seed, kRollLengths, play.index);
+    const float hold = static_cast<float>(whole > kShortestNote ? whole : kShortestNote); // THROW is for the whole chord
+    if (one.throwTo) one.hold = hold;
+    // A ratchet: as many hits as the chord has at rest, counted from the CHORD's length, not
+    // from this key's (which is longer when it is early, shorter when it is late or LENGTHS
+    // has let it go sooner: counted from that, keys of one chord played different numbers of
+    // hits, another way each time). The pieces before the last are as they always are; the
+    // last is held to the chord's end, and it is the one LENGTHS shortens.
+    const int hits = note.ratchet >= 2 ? (note.ratchet > kMaxRatchet ? kMaxRatchet : note.ratchet) : 1;
+    const float apart = 1.f / static_cast<float>(hits); // in steps
+    for (int k = 0; k < hits; ++k) {
+        const float left = note.length - static_cast<float>(k) * apart; // of the chord
+        if (k > 0 && left < kShortestNote) break;
+        const bool last = k + 1 == hits || note.length - static_cast<float>(k + 1) * apart < kShortestNote;
+        double length = !last && left > apart * 0.85f ? apart * 0.85f : (whole - static_cast<double>(k) * apart) * (last ? shorter : 1.0);
+        one.length = static_cast<float>(length > kShortestNote ? length : kShortestNote);
+        if (hits > 1) {
+            one.throwTo = k == 0 ? note.throwTo : 0; // (the first piece opens the send for the whole chord)
+            one.hold = hold;
+            one.piece = k > 0 ? kLaterPiece : static_cast<std::uint8_t>(hits);
+        }
+        startNote(track, one, std::ceil(delay + static_cast<double>(k) * apart * samplesPerStep_), at);
+    }
 }
 
 // The arpeggios whose next note is due.
@@ -572,7 +608,18 @@ void Engine::fireArps() {
     for (Track& track : tracks_) {
         if (!track.synth) continue;
         for (auto& arp : track.arps) {
-            if (!arp.on || arp.wait > 0.0) continue; // (on the first sample at or after its time, as a step is)
+            if (!arp.on) continue;
+            if (arp.look) {
+                // Its bar has been written to since: is the chord still there, and still an arpeggio?
+                arp.look = false;
+                bool there = false;
+                for (const Note& note : track.notes[arp.slot]) there = there || (note.velocity > 0.f && note.step == arp.step && note.play.count && note.play.arpeggio());
+                if (!there) {
+                    arp.on = false;
+                    continue;
+                }
+            }
+            if (arp.wait > 0.0) continue; // (on the first sample at or after its time, as a step is)
             if (!arp.begun) {
                 arp.begun = true;
                 for (int i = 0; i < 8; ++i)
@@ -785,6 +832,9 @@ void Engine::apply(const Command& c) {
             note.glide = static_cast<std::uint8_t>(sound && (c.e & 256) != 0 ? ((c.e >> 11) & 7 ? glideKind((c.e >> 11) & 7) : kGlideHalf) : kGlideOff);
             note.throwTo = static_cast<std::uint8_t>(sound ? (c.e >> 9) & 3 : 0);
             note.play = chordPlayChecked(c.play, 8);
+            // An arpeggio of this bar looks, before its next note, whether its chord is still there.
+            for (auto& arp : tracks_[c.track].arps)
+                if (arp.on && arp.slot == slotFor(c)) arp.look = true;
         }
         break;
     case Command::SetSceneCount:
@@ -826,6 +876,7 @@ void Engine::apply(const Command& c) {
     case Command::Play:
         playing_ = true;
         loopScene_ = c.b != 0;
+        once_ = c.c == 1 && !loopScene_;
         scene_ = validScene(c.a) ? c.a : 0;
         if (!loopScene_ && scene_ >= sceneCount_) scene_ = 0;
         repeat_ = 0;
@@ -839,6 +890,7 @@ void Engine::apply(const Command& c) {
         for (Track& track : tracks_) {
             track.trail.clear(); // the song's first note has nothing to glide from
             track.strokes = -1;  // ...and its first strum goes up
+            track.chordAsked = -1;
         }
         break;
     case Command::Stop:
@@ -1197,6 +1249,9 @@ void Engine::fireStep() {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
+    // Played once through (a bounce), the song's last step asks for nothing of its first: an
+    // early hit or note there would sound in the song's last moments, and ring on after them.
+    const bool pastEnd = once_ && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
@@ -1208,7 +1263,7 @@ void Engine::fireStep() {
                 } else if (veryFirst && now.level[lane][0] > 0.f) {
                     schedule(track, lane, now, 0, 0.0);
                 }
-                if (then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
+                if (!pastEnd && then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
                     schedule(track, lane, then, following, (1.0 + then.nudge[lane][following]) * samplesPerStep_);
                 }
             }
@@ -1219,22 +1274,32 @@ void Engine::fireStep() {
             // this and is set waiting now, as a drum hit is.
             // A chord's note with a chord effect set goes its own way (startChordNote): with
             // HUMAN TIME it may be early, so it is asked for a step ahead, as an early note is.
-            for (const Note& note : track.notes[slotOf(track, scene_, bar_)]) {
+            // Which of the two askings takes a chord's note is read from its values (early: the
+            // step before), and they may be turned between the two (X held on a playing chord).
+            // So the track keeps which step's chord it has asked ahead for (`chordAsked`): that
+            // chord is not begun again on its own step, whatever it says now, and one that says
+            // "early" now but was not asked begins on its step, its early keys with the step.
+            // (Only the step is kept, not the bar: NEXT SCENE moves the playing to another
+            // scene's number between the two askings, and the chord is the same chord.)
+            const int slotNow = slotOf(track, scene_, bar_);
+            const bool asked = track.chordAsked == stepsFired_ - 1;
+            for (const Note& note : track.notes[slotNow]) {
+                if (note.play.count && asked) continue; // (begun a step ago, or waiting since)
                 if (note.play.count && !note.play.atRest()) {
-                    const bool ahead = note.nudge < 0.f || note.play.time > 0;
-                    if (note.velocity > 0.f && note.step == nextStep_ && (!ahead || veryFirst)) startChordNote(track, slotOf(track, scene_, bar_), note, veryFirst, now, 0.0);
+                    if (note.velocity > 0.f && note.step == nextStep_) startChordNote(track, slotNow, note, true, now, 0.0);
                     continue;
                 }
                 if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_, now + note.nudge);
                 else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0, now);
             }
-            for (const Note& note : track.notes[slotOf(track, followingScene, followingBar)]) {
-                if (note.play.count && !note.play.atRest()) {
-                    const bool ahead = note.nudge < 0.f || note.play.time > 0;
-                    if (note.velocity > 0.f && note.step == following && ahead) startChordNote(track, slotOf(track, followingScene, followingBar), note, false, now + 1.0, samplesPerStep_);
-                    continue;
-                }
-                if (note.velocity > 0.f && note.step == following && note.nudge < 0.f) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
+            const int slotThen = slotOf(track, followingScene, followingBar);
+            for (const Note& note : track.notes[slotThen]) {
+                if (pastEnd || note.velocity <= 0.f || note.step != following) continue;
+                const bool chordAhead = note.play.count && !note.play.atRest() && (note.nudge < 0.f || note.play.time > 0);
+                if (chordAhead) startChordNote(track, slotThen, note, false, now + 1.0, samplesPerStep_);
+                else if (note.nudge < 0.f && !(note.play.count && !note.play.atRest())) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
+                else continue;
+                if (note.play.count) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
             }
         }
     }
