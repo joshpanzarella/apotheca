@@ -267,7 +267,8 @@ void ControlLearner::update(Uint32 nowMs) {
     }
 }
 
-void ControlLearner::draw(SDL_Renderer* r, const Fonts& fonts) const {
+void ControlLearner::draw(SDL_Renderer* r, const Fonts& chosen) const {
+    const Fonts& fonts = chosen.fixed(); // its lines run the screen's width: always at LARGE, whatever TEXT SIZE is
     using namespace ui;
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);

@@ -305,9 +305,15 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
     trackName(project_, project_.track, name, sizeof name);
     const auto heading = [&](int row, const char* words, const char* more) {
         const float y = static_cast<float>(lineY(row) - 19 + 3);
-        fonts.small.draw(r, kListX + 1.f, y, words, kText);
-        // (A long track name takes the room: what it is beside says less than whose it is.)
-        if (fonts.small.width(words) + fonts.small.width(more) + 10.f <= kListW - 2.f) fonts.small.drawRight(r, kListX + kListW - 1.f, y, more, kDim);
+        // (A long track name takes the room: what it is beside says less than whose it is. Whether
+        // there is room for both is asked at LARGE, so the same words are there at every size; where
+        // the two do not fit side by side at XL, both are held at LARGE.)
+        const Fonts& tight = fonts.fixed();
+        const bool both = tight.small.width(words) + tight.small.width(more) + 10.f <= kListW - 2.f;
+        const float wide = fonts.small.width(words) + (both ? fonts.small.width(more) + 10.f : 0.f);
+        const Font& font = wide <= kListW - 2.f || wide <= tight.small.width(words) + (both ? tight.small.width(more) + 10.f : 0.f) ? fonts.small : tight.small;
+        font.draw(r, kListX + 1.f, y, words, kText);
+        if (both) font.drawRight(r, kListX + kListW - 1.f, y, more, kDim);
     };
     heading(0, name, "THIS TRACK");
     heading(kBusRow, "BUSES", "ALL TRACKS");
@@ -320,7 +326,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, kListX, y, kListW, kLineH, here ? kPanel2 : kPanel, here && !cursor ? kDim : kLine);
         const float ty = y + (kLineH - fonts.small.capHeight()) / 2.f - 1.f;
         const float my = y + (kLineH - fonts.medium.capHeight()) / 2.f - 1.f;
-        fonts.small.draw(r, kListX + 8.f, ty, tags[row], here ? kText : kDim);
+        fonts.within(&Fonts::small, tags[row], kNameX - 5.f - (kListX + 8.f)).draw(r, kListX + 8.f, ty, tags[row], here ? kText : kDim); // ("SENDS" at XL: held at LARGE)
         bool moves = false; // something on the line moves with the pattern, in this scene
         if (sends(row)) {
             // Two little bars: how much of the track goes to each bus.

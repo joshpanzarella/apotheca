@@ -272,6 +272,12 @@ public:
     void setStickSpeed(float speed);
     int octavesShown() const { return octaves_; }
     void setOctavesShown(int octaves);
+    // And how big the lettering is: 0 SMALL, 1 MEDIUM, 2 LARGE (what the screens were laid out
+    // at, and what a handheld with nothing kept gets), 3 XL. Only the number is held here: the
+    // program loads the fonts again when it sees it change (main.cpp), between two frames.
+    static constexpr int kTextSizeCount = 4, kTextSizeAsBuilt = 2;
+    int textSize() const { return textSize_; }
+    void setTextSize(int size);
     void loadSettings();
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
@@ -433,6 +439,7 @@ private:
     void finishRecording();
     float volume_ = 1.f;
     int octaves_ = 2;
+    int textSize_ = kTextSizeAsBuilt;
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;

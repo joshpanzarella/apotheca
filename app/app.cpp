@@ -283,7 +283,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         using namespace ui;
         const int w = 260, h = 34, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
         box(renderer, x, y, w, h, kPanel, kTeal);
-        fonts.medium.drawCentered(renderer, kScreenW / 2.f, y + (h - fonts.medium.capHeight()) / 2.f, undoSaid(), kText);
+        // (Its longest at XL, "SCENE 10: 127 STEPS OF 128", is wider than the box: held at LARGE. Fonts::within.)
+        const Font& saidFont = fonts.within(&Fonts::medium, undoSaid(), w - 12.f);
+        saidFont.drawCentered(renderer, kScreenW / 2.f, y + (h - saidFont.capHeight()) / 2.f, undoSaid(), kText);
     }
     if (session_.updateWaiting() || updateSaid_ != 0) {
         using namespace ui;
@@ -359,7 +361,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             const float kw = keyWidth(fonts, l.key) + 8.f;
             fill(renderer, x + 18, static_cast<int>(ly) - 3, static_cast<int>(kw), 17, kText);
             drawKey(renderer, fonts, x + 22.f, ly, l.key, kBg);
-            fonts.small.draw(renderer, x + 150.f, ly, l.does, kText);
+            fonts.within(&Fonts::small, l.does, w - 150.f - 12.f).draw(renderer, x + 150.f, ly, l.does, kText); // (the card's longest line at XL: held at LARGE)
             ly += 22.f;
         };
         title("ON EVERY SCREEN");

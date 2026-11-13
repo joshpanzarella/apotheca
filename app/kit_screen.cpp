@@ -194,7 +194,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.small.draw(r, soundX + 2.f, 34.f, "SOUND", kDim);
     fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
     if (said_.empty()) fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
-    else fonts.small.draw(r, waveX + 2.f, 34.f, said_.c_str(), kBrass);
+    else fonts.within(&Fonts::small, said_.c_str(), waveW - 4.f).draw(r, waveX + 2.f, 34.f, said_.c_str(), kBrass);
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const int y = top + lane * rowH, h = rowH - 4;
         const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
@@ -210,11 +210,14 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             std::string upper = sampleLabel(file), folder = sampleFolderOf(file);
             for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
             for (char& c : folder) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-            while (!folder.empty() && fonts.small.width(folder.c_str()) > 70) folder.pop_back();
-            const float room = soundW - 34.f - (folder.empty() ? 0.f : fonts.small.width(folder.c_str()) + 14.f);
-            while (!upper.empty() && fonts.medium.width(upper.c_str()) > room) upper.pop_back();
-            fonts.medium.draw(r, soundX + 26.f, textY, upper.c_str(), sound.missing ? kDim : kText);
-            if (!folder.empty()) fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, folder.c_str(), kDim);
+            // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)
+            const Font& folderFont = fonts.within(&Fonts::small, folder.c_str(), 70.f);
+            while (!folder.empty() && folderFont.width(folder.c_str()) > 70) folder.pop_back();
+            const float room = soundW - 34.f - (folder.empty() ? 0.f : folderFont.width(folder.c_str()) + 14.f);
+            const Font& nameFont = fonts.within(&Fonts::medium, upper.c_str(), room);
+            while (!upper.empty() && nameFont.width(upper.c_str()) > room) upper.pop_back();
+            nameFont.draw(r, soundX + 26.f, y + (h - nameFont.capHeight()) / 2.f, upper.c_str(), sound.missing ? kDim : kText);
+            if (!folder.empty()) folderFont.drawRight(r, soundX + soundW - 8.f, y + (h - folderFont.capHeight()) / 2.f, folder.c_str(), kDim);
         } else {
             fonts.medium.draw(r, soundX + 26.f, textY, DrumKit::laneName(lane), kDim);
             fonts.small.drawRight(r, soundX + soundW - 8.f, y + (h - fonts.small.capHeight()) / 2.f, "BUILT IN", kLine);
@@ -232,7 +235,9 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
         // The recording's outline, and what is being done with it.
         if (sound.missing) {
-            fonts.small.draw(r, waveX + 4.f, y + (h - fonts.small.capHeight()) / 2.f, "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS.", kBrass);
+            const char* gone = "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS.";
+            const Font& goneFont = fonts.within(&Fonts::small, gone, waveW - 6.f);
+            goneFont.draw(r, waveX + 4.f, y + (h - goneFont.capHeight()) / 2.f, gone, kBrass);
         } else if (!sound.peaks.empty()) {
             const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 70;
             for (int i = 0; i < count; ++i) {

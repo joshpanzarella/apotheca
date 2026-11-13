@@ -313,6 +313,7 @@ and the day it was built. The number goes up by one with every build.
 | TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, B deletes, Y keeps. Ten characters. |
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
+| TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | WIFI PAGE | | On / off |
@@ -321,6 +322,25 @@ and the day it was built. The number goes up by one with every build.
 
 The first three belong to the song. The rest belong to the handheld and are
 kept in `settings.txt` and `volume.txt` beside the program.
+
+**TEXT SIZE** is how big the lettering is. It changes at once.
+
+| Size | The three sizes of letter | |
+| --- | --- | --- |
+| SMALL | 12 / 14 / 16 | where Apotheca started |
+| MEDIUM | 13.5 / 16 / 18.5 | |
+| LARGE | 14.5 / 17 / 20 | what a new handheld gets; every screen was laid out at it |
+| XL | 15.5 / 18.5 / 21.5 | a little bigger |
+
+Some rows stay at LARGE whatever is chosen, because they were laid out to
+the pixel: the bar across the top, the hints bar (and the buttons it draws
+under a strip), the strip under the drum grid and under the piano roll, and
+the controls setup. At XL a few words that would not fit their box stay at
+LARGE too (a long recording's name, the help card's longest line): nothing
+is cut short and nothing moves.
+
+A still at a size, for looking: `--text-size small` (or `medium`, `large`,
+`xl`) with `--view NAME --shot out.bmp`.
 
 ### The sound designer
 

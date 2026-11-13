@@ -186,10 +186,15 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         chip(x + w - 16 - static_cast<int>(fonts.small.width("R1")) - 10, "R1");
         std::string label = folders_[static_cast<std::size_t>(folder_)].empty() ? "UNSORTED" : folders_[static_cast<std::size_t>(folder_)];
         for (char& c : label) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-        while (!label.empty() && fonts.medium.width(label.c_str()) > w - 200) label.pop_back();
-        fonts.medium.drawCentered(r, x + w / 2.f, fy + (fh - fonts.medium.capHeight()) / 2.f, label.c_str(), kTeal);
         std::snprintf(text, sizeof text, "FOLDER %d OF %d", folder_ + 1, static_cast<int>(folders_.size()));
-        fonts.small.drawRight(r, x + w - 56.f, ty, text, kDim);
+        // The folder's name is in the middle, with "FOLDER 2 OF 12" ending at a fixed place to its
+        // right: where the two would meet at XL, the name is held at LARGE (Fonts::within).
+        const Font& countFont = fonts.small;
+        const float labelRoom = 2.f * (w / 2.f - 56.f - countFont.width(text) - 8.f); // what the count leaves it, about the middle
+        const Font& labelFont = fonts.within(&Fonts::medium, label.c_str(), labelRoom < w - 200 ? labelRoom : w - 200);
+        while (!label.empty() && labelFont.width(label.c_str()) > w - 200) label.pop_back();
+        labelFont.drawCentered(r, x + w / 2.f, fy + (fh - labelFont.capHeight()) / 2.f, label.c_str(), kTeal);
+        countFont.drawRight(r, x + w - 56.f, fy + (fh - countFont.capHeight()) / 2.f, text, kDim);
     }
 
     // The one that is on: its outline and how long it is. (Shorter when the folders take a line.)
@@ -205,7 +210,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (const Playhead* head = jobs_.playhead ? jobs_.playhead() : nullptr) drawPlayhead(r, *head, lastMs_, wx + 2, wy + 2, ww - 4, wh - 4);
         std::snprintf(text, sizeof text, "%.2f S", static_cast<double>(sound->seconds));
-        fonts.small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText);
+        fonts.fixed().small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText); // (over the recording's picture: always at LARGE)
     } else {
         fonts.small.drawCentered(r, wx + ww / 2.f, wy + (wh - fonts.small.capHeight()) / 2.f, cursor_ == 0 ? first_.c_str() : "...", kDim);
     }
@@ -221,8 +226,9 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, x + 12, by, w - 24, rowH - 4, here ? kPanel2 : kPanel, kLine);
         std::string name = i == 0 ? first_ : sampleLabel(names_[static_cast<std::size_t>(i - 1)]); // the folder is said above
         for (char& c : name) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-        while (!name.empty() && fonts.medium.width(name.c_str()) > w - 48) name.pop_back();
-        fonts.medium.draw(r, x + 24.f, by + (rowH - 4 - fonts.medium.capHeight()) / 2.f, name.c_str(), here ? kTeal : (i == 0 ? kDim : kText));
+        const Font& rowFont = fonts.within(&Fonts::medium, name.c_str(), w - 48.f); // (a long name at XL: held at LARGE, and cut as at LARGE)
+        while (!name.empty() && rowFont.width(name.c_str()) > w - 48) name.pop_back();
+        rowFont.draw(r, x + 24.f, by + (rowH - 4 - rowFont.capHeight()) / 2.f, name.c_str(), here ? kTeal : (i == 0 ? kDim : kText));
         if (here && deletePart_ > 0.f) {
             fill(r, x + 13, by + 1, static_cast<int>((w - 26) * (deletePart_ > 1.f ? 1.f : deletePart_)), rowH - 6, faded(kStop, 150));
             fonts.small.drawRight(r, x + w - 24.f, by + (rowH - 4 - fonts.small.capHeight()) / 2.f, "DELETING: CANNOT BE UNDONE", kText);

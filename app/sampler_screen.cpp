@@ -228,7 +228,8 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     else if (sampleFolderOf(t.sample).empty()) std::snprintf(upper, sizeof upper, "%s", t.sample);
     else std::snprintf(upper, sizeof upper, "%s  /  %s", sampleFolderOf(t.sample).c_str(), sampleLabel(t.sample).c_str()); // the folder it is in, then its name
     for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-    fonts.large.draw(r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
+    fonts.within(&Fonts::large, upper, sw - 14.f).draw( // (a name that just fits the box at LARGE: held at LARGE at XL)
+        r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
     if (sound.missing) {
         fonts.small.draw(r, sx + 7.f, sy + 58.f, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
     } else if (!t.sample[0]) {

@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <strings.h>
 #include <sys/stat.h>
 #include <ctime>
 #include <string>
@@ -238,6 +239,9 @@ int main(int argc, char** argv) {
     const char* batteryFolder = nullptr;
     const char* songs = nullptr;
     const char* samples = nullptr;
+    int textSize = -1;           // --text-size small | medium | large | xl: a still at that TEXT SIZE
+    const char* texts = nullptr; // --texts FILE: what the last frame drew, at each text size in turn (for textsize_test)
+    int stillMs = 1000;          // --still-ms N: how long a still (or the smoke run) goes before its picture is taken
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
     for (int i = 1; i < argc; ++i) {
@@ -258,8 +262,20 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--battery") == 0 && i + 1 < argc) batteryFolder = argv[++i];
         else if (std::strcmp(argv[i], "--songs") == 0 && i + 1 < argc) songs = argv[++i];
         else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
+        else if (std::strcmp(argv[i], "--texts") == 0 && i + 1 < argc) texts = argv[++i];
+        else if (std::strcmp(argv[i], "--still-ms") == 0 && i + 1 < argc) stillMs = std::atoi(argv[++i]);
+        else if (std::strcmp(argv[i], "--text-size") == 0 && i + 1 < argc) {
+            ++i;
+            for (int size = 0; size < kTextSizes; ++size)
+                if (strcasecmp(argv[i], kTextSizeNames[size]) == 0) textSize = size;
+            if (textSize < 0) {
+                std::fprintf(stderr, "--text-size is one of small, medium, large, xl\n");
+                return 1;
+            }
+        }
     }
 
+    if (texts && !shot) shot = ""; // a still in every way, with no picture kept
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -276,15 +292,17 @@ int main(int argc, char** argv) {
     // Draw in 640x480 whatever size the display reports.
     SDL_RenderSetLogicalSize(renderer, kScreenW, kScreenH);
 
-    Fonts fonts;
-    {
-        const std::vector<unsigned char> ttf = loadFontFile();
-        if (!fonts.small.load(renderer, ttf, 14.5f) || !fonts.medium.load(renderer, ttf, 17.f) ||
-            !fonts.large.load(renderer, ttf, 20.f)) {
-            std::fprintf(stderr, "could not load the lettering (routed-gothic-narrow.ttf)\n");
-            SDL_Quit();
-            return 1;
-        }
+    // Two sets of lettering: the fixed one is always LARGE, for the rows laid out to the pixel
+    // (the bars, the strips); the other is the size chosen on the SET page (TEXT SIZE), LARGE
+    // until the settings are read. It is loaded again, between two frames, when that changes.
+    const std::vector<unsigned char> ttf = loadFontFile();
+    Fonts fixedFonts, fonts;
+    fonts.fixedSet = &fixedFonts;
+    int fontsAt = kTextLarge;
+    if (!fixedFonts.load(renderer, ttf, kTextLarge) || !fonts.load(renderer, ttf, fontsAt)) {
+        std::fprintf(stderr, "could not load the lettering (routed-gothic-narrow.ttf)\n");
+        SDL_Quit();
+        return 1;
     }
 
     // ---- the controls ----------------------------------------------------------------
@@ -390,6 +408,9 @@ int main(int argc, char** argv) {
         // Not full blast on the handheld's little speaker: two fifths, until it is changed.
         app.session().loadVolume(handheld ? 0.4f : 1.f);
         app.session().loadSettings();
+        // (With --shot nothing is kept: a still has no program folder. Without it the program runs
+        // at that size and it is the setting from then on, written to settings.txt as if set on the SET page.)
+        if (textSize >= 0) app.session().setTextSize(textSize);
         if (!smoke && !shot) app.session().startMidi(); // USB keyboards, whenever one is plugged in
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
@@ -971,18 +992,45 @@ int main(int argc, char** argv) {
         const float peak = engine.trackPeak(0);
         if (peak > loudest) loudest = peak;
 
-        if (learning) learner.draw(renderer, fonts);
+        // TEXT SIZE was changed (or read from the settings): the letters are made again here,
+        // on this thread, before anything of the frame is drawn. If that fails they stay as they were.
+        if (app.session().textSize() != fontsAt) {
+            fontsAt = app.session().textSize();
+            if (!fonts.load(renderer, ttf, fontsAt)) std::fprintf(stderr, "could not load the lettering at that size\n");
+        }
+        if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
         else app.draw(renderer, fonts);
         if (!learning && mapped && !shot && relearnHold.offering()) {
-            // A few seconds at the start: the way back into the setup.
-            const int y = kScreenH - ui::kHintsH;
-            ui::fill(renderer, 0, y, kScreenW, ui::kHintsH, ui::kPanel2);
-            ui::fill(renderer, 0, y, static_cast<int>(kScreenW * relearnHold.part()), 3, ui::kBrass);
-            fonts.small.drawCentered(renderer, kScreenW / 2.f, y + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f,
-                                     "BUTTONS NOT WORKING? HOLD ANY BUTTON FOR 2 SECONDS NOW TO SET THEM UP AGAIN", ui::kBrass);
+            ui::relearnOffer(renderer, fonts, relearnHold.part()); // a few seconds at the start: the way back into the setup
         }
-        if ((smoke || shot) && SDL_GetTicks() - start > 1000) running = false;
-        if (!running && shot) {
+        if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
+        if (!running && texts) {
+            // The same moment drawn once at each text size, and what each drew written down:
+            //   CHOSEN n cap / SIZE n / T order cap x y w h words / B order solid x y w h
+            // `cap` is the capitals' height of the font a text was drawn in. The sound is held
+            // still meanwhile: a meter must read the same in all four.
+            if (FILE* out = std::fopen(texts, "w")) {
+                DrawLog log;
+                // First, the size the frames before this one were drawn at: what "--text-size" (or nothing) came to.
+                std::fprintf(out, "CHOSEN %d %g\n", fontsAt, fonts.small.capHeight());
+                SDL_LockAudioDevice(device);
+                for (int size = 0; size < kTextSizes; ++size) {
+                    if (!fonts.load(renderer, ttf, size)) break;
+                    log.clear();
+                    gDrawLog = &log;
+                    app.draw(renderer, fonts);
+                    gDrawLog = nullptr;
+                    std::fprintf(out, "SIZE %d\n", size);
+                    for (const DrawLog::Text& t : log.texts) std::fprintf(out, "T %d %g %g %g %g %g %s\n", t.order, t.font->capHeight(), t.x, t.y, t.w, t.h, t.words.c_str());
+                    for (const DrawLog::Box& b : log.boxes) std::fprintf(out, "B %d %d %d %d %d %d\n", b.order, b.solid ? 1 : 0, b.x, b.y, b.w, b.h);
+                }
+                SDL_UnlockAudioDevice(device);
+                std::fclose(out);
+            }
+            fonts.load(renderer, ttf, fontsAt);
+            app.draw(renderer, fonts); // the picture, if one is asked for, is at the size asked for
+        }
+        if (!running && shot && *shot) {
             SDL_Surface* picture = SDL_CreateRGBSurfaceWithFormat(0, kScreenW, kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);
             if (picture && SDL_RenderReadPixels(renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, picture->pixels,
                                                 picture->pitch) == 0) {
@@ -998,6 +1046,10 @@ int main(int argc, char** argv) {
     SDL_CloseAudioDevice(device);
     if (pad) SDL_GameControllerClose(pad);
     for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
+    // The letters go before the renderer that made them: it takes its textures with it, and a
+    // font that then let its own go would be letting it go twice (stills ended in a fault that way).
+    fonts.unload();
+    fixedFonts.unload();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
