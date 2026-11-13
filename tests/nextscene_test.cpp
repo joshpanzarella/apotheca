@@ -2412,10 +2412,46 @@ void measure() {
 
 } // namespace
 
+// A fault that is known and not mended (on `main` too; found in review, 2026-11-13). Not part of
+// ctest: `nextscene_test --edge` prints it. The song plays through with a copy of scene 2 after
+// it, and the copy is taken back while the LAST STEP of scene 2 plays. That step has already asked
+// for the early notes and humanised chords of the bar that follows, which was the copy; with the
+// copy gone the bar that follows is scene 3, whose first step then plays wrong.
+void edge() {
+    for (const double at : {60.5, 61.05, 61.5, 61.99}) { // steps since Play; scene 2 ends at 62
+        Rig rig, plain;
+        fill(rig);
+        fill(plain);
+        rig.project().scene = 1;
+        rig.nextScene();
+        for (Rig* r : {&rig, &plain}) {
+            r->frames(2);
+            r->render(512);
+            r->heard.clear();
+            const int on = r->project().scene;
+            r->project().scene = 0;
+            r->session().togglePlay(true);
+            r->project().scene = on; // (back before a frame is drawn: going to another scene is itself a step of undo)
+            r->frames(1);
+            r->render(static_cast<int>(at * kStep));
+        }
+        rig.undo();
+        for (Rig* r : {&rig, &plain}) {
+            r->frames(1);
+            r->render(40 * kStep);
+        }
+        std::printf("  the copy of scene 2 taken back at step %.2f of the song: %g from the song left alone\n", at, static_cast<double>(apart(rig.heard, plain.heard)));
+    }
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
         measure();
+        return 0;
+    }
+    if (argc > 1 && std::strcmp(argv[1], "--edge") == 0) {
+        edge();
         return 0;
     }
     struct Test { const char* name; void (*run)(); bool sound; }; // sound: its proof is of the sound, and is made again on three helper threads

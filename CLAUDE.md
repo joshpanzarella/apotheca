@@ -499,6 +499,15 @@ effect in those two groups and fails one that does not.
   left alone while one scene goes round, and beside a song built with the
   copy in it while the song plays through (press, undo, redo; also with a
   later scene playing, and with a real audio thread making blocks back to back).
+- **A known fault, not mended, on `main` too** (found in review,
+  2026-11-13): the song plays through, and a copy is taken back during the
+  LAST STEP of the scene it was copied from. That step has already asked a
+  step ahead for the early notes and humanised chords of the bar that
+  follows, which was the copy; the first step of the scene that now follows
+  plays wrong (0.28 from the song left alone; taken back half a step sooner,
+  0). One sixteenth note wide. `nextscene_test --edge` prints it; it is not
+  in `ctest`. The mend is in what `fireStep` has asked ahead, and is the
+  owner's call.
 - **What the program remembers it sent is set only when the send went**
   (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
   full queue left the engine with the old song length for good: the song sent
