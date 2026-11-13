@@ -4306,6 +4306,8 @@ void testTheFxScreensList() {
     CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
     rig.tap(DOWN, 4);
     rig.tap(RIGHT, 4);
+    CHECK(project.busEffects[1].kind == static_cast<int>(EffectKind::Plate) && project.busEffects[1].param[3] == 1.f); // the last of REVERB's three types: it stops there
+    rig.tap(LEFT);
     CHECK(project.busEffects[1].kind == hall && project.busEffects[1].param[3] == 1.f);
     rig.key(A, false);
     // The Session refuses the other family on a bus, whoever asks.
@@ -5189,7 +5191,7 @@ void testSongFilesAreAsTheyWere() {
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back));
     CHECK(songText(*back) == asMainWroteIt);
-    for (int k = 1; k < kEffectKinds; ++k) {
+    for (int k = 1; k < kEveryKindMain; ++k) {
         const EffectData& a = project->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
         const EffectData& b = back->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
         CHECK(b.kind == k && a.kind == k);
@@ -5207,6 +5209,11 @@ void testSongFilesAreAsTheyWere() {
     rig.key(A, false);
     CHECK(songText(rig.project()).find("\nfx 1 tape ") != std::string::npos && songText(rig.project()).find("fx 1 delay") == std::string::npos);
     CHECK(songText(rig.project()).find("\nbusfx 1 tape ") != std::string::npos && songText(rig.project()).find("\nbusfx 2 hall ") != std::string::npos);
+    // An effect newer than that song (PLATE) is written by its own word, and read back as itself.
+    rig.app.session().setEffect(0, 1, EffectKind::Plate);
+    CHECK(songText(rig.project()).find("\nfx 2 plate 0.1 0.45 0.6 0.3\n") != std::string::npos);
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(songText(rig.project()), *again) && again->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Plate) && again->tracks[0].effects[1].param[1] == 0.45f);
 }
 
 void testTheKeysShownFollowTheCursor() {

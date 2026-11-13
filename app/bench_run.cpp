@@ -238,6 +238,8 @@ int apotheca::runBench() {
         // Where THROW, DUCK and the buses' own effects meet: all of it at once.
         const double all = busSong(true, EffectKind::Tape, EffectKind::Hall, true, true);
         std::printf("  %-28s %6.2f%% of one core\n", "...thrown, TAPE, HALL, 12 DUCKs", all - dry);
+        const double plate = busSong(true, EffectKind::Tape, EffectKind::Plate);
+        std::printf("  %-28s %6.2f%% of one core\n", "...or TAPE and PLATE on them", plate - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

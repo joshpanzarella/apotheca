@@ -662,6 +662,7 @@ int main(int argc, char** argv) {
         //   fx-sends    the track's sends, on ECHO
         //   fx-bus      in the list, on the SPACE bus; with --hold-a its short list
         //   fx-level    the ECHO bus's LEVEL
+        //   fx-plate    PLATE in the track's second slot, its line in the list; with --hold-a its TYPE and the list
         // Each also with --hold-a.
         Session& s = app.session();
         s.setEffect(0, 0, EffectKind::Tape);
@@ -694,6 +695,9 @@ int main(int argc, char** argv) {
             s.setEffect(0, 2, EffectKind::Duck);
             s.setEffectParam(0, 2, 1, 0.9f);
             fx.goTo(2, 3);
+        } else if (std::strcmp(view, "fx-plate") == 0) {
+            s.setEffect(0, 1, EffectKind::Plate);
+            fx.goTo(1, 0);
         } else fx.goTo(0, 0);
     } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.

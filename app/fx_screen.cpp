@@ -344,9 +344,14 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
             if (kind == EffectKind::None) {
                 fonts.medium.draw(r, static_cast<float>(kNameX), my, "EMPTY", kLine);
             } else {
-                const char* family = effectFamily(kind);
-                fonts.medium.draw(r, static_cast<float>(kNameX), my, family, kText);
-                fonts.small.draw(r, kNameX + fonts.medium.width(family) + 7.f, ty + 1.f, effectTypeName(kind), kDim);
+                // The family and its type, up to the level mark. Where the two do not fit there at the chosen size
+                // (REVERB PLATE at XL), both are held at LARGE, placed by the capitals of the font they are drawn in.
+                const char *family = effectFamily(kind), *type = effectTypeName(kind);
+                const float room = static_cast<float>(kMarkX - 3 - kNameX);
+                const Fonts& held = fonts.medium.width(family) + 7.f + fonts.small.width(type) <= room ? fonts : fonts.fixed();
+                const float hy = y + (kLineH - held.small.capHeight()) / 2.f - 1.f, hm = y + (kLineH - held.medium.capHeight()) / 2.f - 1.f;
+                held.medium.draw(r, static_cast<float>(kNameX), hm, family, kText);
+                held.small.draw(r, kNameX + held.medium.width(family) + 7.f, hy + 1.f, type, kDim);
                 // The tiny mark: how much of it there is (its MIX, or a bus's LEVEL), and for one with
                 // a meter (COMP, DUCK) what it is doing just now, down from the top.
                 const int mh = kLineH - 14, top = y + 7, mix = effectMixParam(kind), track = trackOf(row);

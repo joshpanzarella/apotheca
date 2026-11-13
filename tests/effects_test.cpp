@@ -479,15 +479,16 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its groups (FILTER; DELAY; REVERB; MOVING; LEVEL; DIRT), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Delay, EffectKind::Tape, EffectKind::Reverb, EffectKind::Hall, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Delay, EffectKind::Tape, EffectKind::Reverb, EffectKind::Hall, EffectKind::Plate, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and a group is never in two pieces (the list a player picks from names each group once).
     for (int i = 2; i < effectListSize(); ++i)
         for (int j = 1; j < i - 1; ++j) CHECK(effectInfo(effectAt(i)).group != effectInfo(effectAt(j)).group || effectInfo(effectAt(i - 1)).group == effectInfo(effectAt(i)).group);
     // The numbers of the new ones: fixed for good, as the old five's are.
-    CHECK(static_cast<int>(EffectKind::Tape) == 6 && static_cast<int>(EffectKind::Hall) == 7);
+    CHECK(static_cast<int>(EffectKind::Tape) == 6 && static_cast<int>(EffectKind::Hall) == 7 && static_cast<int>(EffectKind::Plate) == 12);
     CHECK(std::string(effectInfo(EffectKind::Hall).word) == "hall" && effectFromWord("hall") == EffectKind::Hall);
+    CHECK(std::string(effectInfo(EffectKind::Plate).word) == "plate" && effectFromWord("plate") == EffectKind::Plate && effectInfo(EffectKind::Plate).group == EffectGroup::Reverb);
     CHECK(effectInfo(EffectKind::Hall).group == EffectGroup::Reverb && effectChoices(EffectKind::Hall, 0) == 0 && effectChoices(EffectKind::Hall, 1) == 0);
     CHECK(std::string(effectInfo(EffectKind::Tape).word) == "tape" && effectFromWord("tape") == EffectKind::Tape);
     CHECK(effectInfo(EffectKind::Tape).group == EffectGroup::Delay && effectChoices(EffectKind::Tape, 0) == 8 && effectChoices(EffectKind::Tape, 1) == 0);
@@ -790,7 +791,7 @@ static void testEveryEffect() {
             loudest = std::fmax(loudest, std::fmax(peakOf(io.l), peakOf(io.r)));
         }
         // Today, with full-scale noise in, the loudest sample out:
-        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9   HALL 2.6
+        //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9   HALL 2.6   PLATE 2.9
         SAY("bounded  %-7s loudest %.2f\n", info.name, static_cast<double>(loudest));
         CHECK(loudest < 8.f);
         // A setting past either end is the end; one that is not a number is 0;
@@ -854,6 +855,7 @@ static void testEveryEffect() {
         //   SATURATE DRIVE 5.4    TYPE 2.1        TONE 1.4    MIX 1.4        1.4  (it squares the sine: at full DRIVE
         //                                                 held still it is 5.8, and FOLD held still 2.1. testSaturate)
         //   DUCK    AMOUNT 1.0    RELEASE 1.0     SOURCE 1.0                 1.0  (dipping all the while: testDuck)
+        //   PLATE   PRE 1.5       DECAY 1.1       TONE 1.0    MIX 1.3        1.0  (PRE bends the gap's pitch on the way)
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0},
             {1.15, 1.01, 18.1, 1.00, 1.00},
@@ -867,6 +869,7 @@ static void testEveryEffect() {
             {1.05, 0.91, 0.83, 1.00, 0.82},   // COMP
             {5.42, 2.10, 1.44, 1.43, 1.44},   // SATURATE
             {1.00, 1.00, 1.00, 0, 1.00},      // DUCK (a drum is hit five times a second all through: see through())
+            {1.45, 1.07, 1.01, 1.27, 1.01},   // PLATE
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -3850,9 +3853,9 @@ static void testEffectsOnABus() {
         }
         CHECK(busEffectPlace(bus, EffectKind::Filter) == 0 && busEffectPlace(bus, EffectKind::None) == 0);
     }
-    // DELAY and TAPE on ECHO, REVERB and HALL on SPACE, in the main list's order.
+    // DELAY and TAPE on ECHO, REVERB, HALL and PLATE on SPACE, in the main list's order.
     CHECK(busListSize(0) == 3 && busEffectAt(0, 1) == EffectKind::Delay && busEffectAt(0, 2) == EffectKind::Tape);
-    CHECK(busListSize(1) == 3 && busEffectAt(1, 1) == EffectKind::Reverb && busEffectAt(1, 2) == EffectKind::Hall);
+    CHECK(busListSize(1) == 4 && busEffectAt(1, 1) == EffectKind::Reverb && busEffectAt(1, 2) == EffectKind::Hall && busEffectAt(1, 3) == EffectKind::Plate);
     CHECK(busEffectPlace(0, EffectKind::Reverb) == 0 && busEffectPlace(1, EffectKind::Delay) == 0);
     CHECK(busListSize(-1) == 1 && busListSize(kBuses) == 1 && busEffectAt(-1, 1) == EffectKind::None);
     int found = 0;
@@ -4482,7 +4485,7 @@ static void testSendsOnAnyHelperCount() {
     CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.01);
 }
 
-// FAMILIES AND TYPES: what a player picks from is DELAY (CLEAN, TAPE) and REVERB (ROOM, HALL);
+// FAMILIES AND TYPES: what a player picks from is DELAY (CLEAN, TAPE) and REVERB (ROOM, HALL, PLATE);
 // underneath each type is the effect it always was.
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
@@ -4493,11 +4496,17 @@ static void testFamiliesAndTypes() {
     // The families and what each type is called.
     CHECK(std::string(effectFamily(D)) == "DELAY" && std::string(effectFamily(T)) == "DELAY" && std::string(effectFamily(R)) == "REVERB" && std::string(effectFamily(H)) == "REVERB");
     CHECK(std::string(effectTypeName(D)) == "CLEAN" && std::string(effectTypeName(T)) == "TAPE" && std::string(effectTypeName(R)) == "ROOM" && std::string(effectTypeName(H)) == "HALL");
-    CHECK(effectTypes(D) == 2 && effectTypes(T) == 2 && effectTypes(R) == 2 && effectTypes(H) == 2);
+    CHECK(effectTypes(D) == 2 && effectTypes(T) == 2 && effectTypes(R) == 3 && effectTypes(H) == 3);
     CHECK(effectTypeAt(D, 0) == D && effectTypeAt(D, 1) == T && effectTypeAt(T, 0) == D && effectTypeAt(T, 1) == T);
     CHECK(effectTypeAt(R, 0) == R && effectTypeAt(R, 1) == H && effectTypeAt(H, 0) == R && effectTypeAt(H, 1) == H);
-    CHECK(effectTypeAt(D, -1) == N && effectTypeAt(D, 2) == N && effectTypeAt(H, 2) == N && effectTypeAt(H, -1) == N);
+    CHECK(effectTypeAt(D, -1) == N && effectTypeAt(D, 2) == N && effectTypeAt(H, 3) == N && effectTypeAt(H, -1) == N);
     CHECK(effectTypeIndex(D) == 0 && effectTypeIndex(T) == 1 && effectTypeIndex(R) == 0 && effectTypeIndex(H) == 1);
+    {
+        const EffectKind P = EffectKind::Plate; // the third type of REVERB
+        CHECK(std::string(effectFamily(P)) == "REVERB" && std::string(effectTypeName(P)) == "PLATE" && effectTypes(P) == 3 && effectTypeIndex(P) == 2);
+        CHECK(effectTypeAt(R, 2) == P && effectTypeAt(H, 2) == P && effectTypeAt(P, 0) == R && effectTypeAt(P, 1) == H && effectTypeAt(P, 2) == P && effectTypeAt(P, 3) == N);
+        CHECK(familyPlace(P) == 3 && familyPlace(P, 1) == 1 && familyPlace(P, 0) == 0);
+    }
     // Everything else is a family of one, called by its name, with no type.
     int families = 1; // NONE's
     for (int k = 1; k < kEffectKinds; ++k) {
@@ -4552,7 +4561,7 @@ static void testFamiliesAndTypes() {
         effectFamilySays(kind, text, sizeof text);
         return std::string(text);
     };
-    CHECK(says(D) == "echoes: clean, tape" && says(T) == says(D) && says(R) == "space: room, hall" && says(H) == says(R));
+    CHECK(says(D) == "echoes: clean, tape" && says(T) == says(D) && says(R) == "space: room, hall, plate" && says(H) == says(R) && says(EffectKind::Plate) == says(R));
     CHECK(says(EffectKind::Crush) == "fewer bits" && says(N) == "nothing here" && says(bad) == "nothing here" && says(EffectKind::Comp) == "evens loud and quiet");
     char tiny[4] = "zzz";
     effectFamilySays(D, tiny, sizeof tiny);
@@ -4571,6 +4580,27 @@ static void testTypeChangeCarriesSettings() {
     CHECK(effectCarryFrom(H, R, 0) == 0 && effectCarryFrom(H, R, 1) == -1 && effectCarryFrom(H, R, 2) == 3 && effectCarryFrom(H, R, 3) == -1);  // SIZE, (DAMPING), MIX
     CHECK(effectCarryFrom(D, T, -1) == -1 && effectCarryFrom(D, T, 4) == -1 && effectCarryFrom(EffectKind::None, T, 0) == -1 && effectCarryFrom(D, EffectKind::None, 0) == -1);
     CHECK(effectCarryFrom(H, EffectKind::Delay, 2) == 2); // by name alone: HALL's TONE and DELAY's
+    // PLATE: PRE, DECAY, TONE, MIX. From HALL it keeps DECAY, TONE and MIX (the same scales: untouched, to the bit); from ROOM, MIX.
+    {
+        const EffectKind P = EffectKind::Plate;
+        CHECK(effectCarryFrom(H, P, 0) == -1 && effectCarryFrom(H, P, 1) == 1 && effectCarryFrom(H, P, 2) == 2 && effectCarryFrom(H, P, 3) == 3);
+        CHECK(effectCarryFrom(P, H, 0) == -1 && effectCarryFrom(P, H, 1) == 1 && effectCarryFrom(P, H, 2) == 2 && effectCarryFrom(P, H, 3) == 3); // (HALL's SIZE starts at its usual)
+        CHECK(effectCarryFrom(R, P, 0) == -1 && effectCarryFrom(R, P, 1) == -1 && effectCarryFrom(R, P, 2) == -1 && effectCarryFrom(R, P, 3) == 2);
+        CHECK(effectCarryFrom(P, R, 0) == -1 && effectCarryFrom(P, R, 1) == -1 && effectCarryFrom(P, R, 2) == 3);
+        for (float v : {0.f, 0.123456f, 0.45f, 0.987654f, 1.f})
+            for (int i = 1; i < 4; ++i) CHECK(effectCarryValue(H, i, P, i, v) == v && effectCarryValue(P, i, H, i, v) == v);
+        const float hallWas[4] = {0.9f, 0.77f, 0.15f, 0.4f};
+        float now[4];
+        effectCarry(H, P, hallWas, false, now);
+        CHECK(now[0] == effectInfo(P).defaults[0] && now[1] == 0.77f && now[2] == 0.15f && now[3] == 0.4f && reads(P, 1, now[1]) == reads(H, 1, 0.77f));
+        effectCarry(H, P, hallWas, true, now);
+        CHECK(now[0] == effectInfo(P).defaults[0] && now[3] == 0.4f);
+        const float roomWas[4] = {0.9f, 0.1f, 0.6f, 0.f};
+        effectCarry(R, P, roomWas, true, now);
+        CHECK(now[0] == effectInfo(P).defaults[0] && now[1] == effectInfo(P).defaults[1] && now[2] == effectInfo(P).defaults[2] && now[3] == 0.6f);
+        effectCarry(P, R, nullptr, true, now); // nothing to carry: ROOM as it comes, its LEVEL full on a bus
+        CHECK(now[0] == effectInfo(R).defaults[0] && now[2] == 1.f);
+    }
     // The words of the promise: 48% stays 48%, though TAPE's FEEDBACK goes to 120% and DELAY's to 100%.
     CHECK(reads(T, 1, 0.4f) == "48%" && reads(D, 1, effectCarryValue(T, 1, D, 1, 0.4f)) == "48%" && std::fabs(effectCarryValue(T, 1, D, 1, 0.4f) - 0.48f) < 0.005f);
     CHECK(reads(D, 1, 0.48f) == "48%" && reads(T, 1, effectCarryValue(D, 1, T, 1, 0.48f)) == "48%" && std::fabs(effectCarryValue(D, 1, T, 1, 0.48f) - 0.4f) < 0.005f);
@@ -4681,7 +4711,7 @@ static void testTypeChangeCarriesSettings() {
             }
             effectCarry(from, to, old, false, nullptr);
         }
-    CHECK(pairs == 4 && carried == 10 && same > 150 && nearest >= 2);
+    CHECK(pairs == 8 && carried == 18 && same > 250 && nearest >= 2); // DELAY's two types both ways, REVERB's three in every pair
     CHECK(effectCarryValue(D, 9, T, 1, 0.5f) == effectInfo(T).defaults[1] && effectCarryValue(D, 1, T, 9, 0.5f) == 0.f && effectCarryValue(D, 1, T, -1, 0.5f) == 0.f);
     CHECK(effectCarryValue(D, 2, T, 1, 0.5f) == effectInfo(T).defaults[1]); // not the setting it is carried from: the default
 }
@@ -4870,7 +4900,7 @@ static void testABusTakesItsOwnKind() {
             engine->collectGarbage();
         }
     }
-    CHECK(taken == 2 * 3 && refused == 2 * (kEffectKinds - 3)); // each bus: NONE and its two; everything else is turned away
+    CHECK(taken == 3 + 4 && refused == 2 * kEffectKinds - 7); // ECHO: NONE and its two; SPACE: NONE and its three; everything else is turned away
     CHECK(effectBus(EffectKind::Tape) == 0 && effectBus(EffectKind::Hall) == 1 && effectBus(EffectKind::Chorus) == -1 && effectBus(EffectKind::Comp) == -1 && effectBus(EffectKind::Saturate) == -1);
 }
 
@@ -4903,7 +4933,7 @@ static void testBusLevel() {
             }
             CHECK(loudest > 0.05 && worst < 1e-6);
         }
-    CHECK(tried == 4); // TAPE, DELAY, HALL, REVERB
+    CHECK(tried == 5); // TAPE, DELAY, HALL, REVERB, PLATE
     // PARKED AT LEVEL 0 WITH ECHOES IN IT. The rule used to listen after the
     // level: it heard nothing, and after ten seconds cleared the echoes away.
     {
@@ -5878,6 +5908,481 @@ static void testTapeAlwaysEnds() {
     }
 }
 
+// ---- PLATE ------------------------------------------------------------------------------------------
+
+// HOW EVEN A TAIL FALLS: the energy still to come (as rt60 reads it), in dB, against the straight
+// line through it from 5 dB down to 35 dB down. The most it strays from that line, in dB, there.
+static double strays(const std::vector<float>& ir, std::size_t from = 1) {
+    std::vector<double> left(ir.size() + 1, 0.0);
+    for (std::size_t i = ir.size(); i-- > from;) left[i] = left[i + 1] + static_cast<double>(ir[i]) * ir[i];
+    const double all = left[from];
+    if (all <= 0.0) return 0.0;
+    std::size_t a = 0, b = 0;
+    for (std::size_t i = from; i < ir.size(); ++i) {
+        const double down = 10.0 * std::log10(left[i] / all + 1e-300);
+        if (!a && down <= -5.0) a = i;
+        if (down <= -35.0) {
+            b = i;
+            break;
+        }
+    }
+    if (!a || b <= a) return 0.0;
+    const double da = 10.0 * std::log10(left[a] / all), db = 10.0 * std::log10(left[b] / all);
+    double most = 0.0;
+    for (std::size_t i = a; i <= b; ++i) {
+        const double line = da + (db - da) * static_cast<double>(i - a) / static_cast<double>(b - a);
+        most = std::fmax(most, std::fabs(10.0 * std::log10(left[i] / all) - line));
+    }
+    return most;
+}
+// HOW SPIKY THE START IS: the loudest sample against the loudness, over the `ms` after the first sound.
+// Noise reads about 3 to 4; a few separate echoes read far more.
+static double crest(const std::vector<float>& v, double ms, float floor = 1e-9f) {
+    const long at = soundAt(v, floor);
+    if (at < 0) return 0.0;
+    const std::size_t from = static_cast<std::size_t>(at), to = from + static_cast<std::size_t>(ms * 48.0);
+    float peak = 0.f;
+    for (std::size_t i = from; i < to && i < v.size(); ++i) peak = std::fmax(peak, std::fabs(v[i]));
+    const double rms = rmsOf(v, from, to);
+    return rms > 0.0 ? peak / rms : 0.0;
+}
+
+// Measured, and pinned (see where each is used).
+static const double kPlateWander = 6.16; // dB, lowest to highest: a held 1 kHz sine's level in the plate
+static const int kPlateWanderUps = 36;   // times up through its middle in 40 s
+
+static void testPlate() {
+    const EffectKind plate = EffectKind::Plate, hall = EffectKind::Hall;
+    const EffectInfo& info = effectInfo(plate);
+    // Its row: what a song stores, and a TYPE of REVERB.
+    CHECK(static_cast<int>(plate) == 12 && std::string(info.word) == "plate" && effectFromWord("plate") == plate && std::string(info.name) == "PLATE");
+    CHECK(info.group == EffectGroup::Reverb && effectBus(plate) == 1 && std::string(info.family) == "REVERB" && std::string(info.type) == "PLATE" && info.params == 4);
+    CHECK(std::string(info.paramNames[0]) == "PRE" && std::string(info.paramNames[1]) == "DECAY" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(info.defaults[0] == 0.1f && info.defaults[1] == 0.45f && info.defaults[2] == 0.6f && info.defaults[3] == 0.3f);
+    for (int i = 0; i < 4; ++i) CHECK(effectChoices(plate, i) == 0);
+    // How it reads: PRE in ms, DECAY in seconds as HALL's (so a TYPE change carries it untouched), the rest as amounts.
+    CHECK(reads(plate, 0, 0.f) == "0 MS" && reads(plate, 0, 0.1f) == "10 MS" && reads(plate, 0, 0.29f) == "29 MS" && reads(plate, 0, 1.f) == "100 MS");
+    for (float v : {0.f, 0.13f, 0.45f, 0.5f, 0.77f, 1.f}) CHECK(reads(plate, 1, v) == reads(hall, 1, v));
+    CHECK(reads(plate, 1, 0.45f) == "2.0 S" && reads(plate, 1, 1.f) == "20 S" && reads(plate, 2, 0.6f) == "60%" && reads(plate, 3, 0.3f) == "30%");
+
+    // DECAY IS A REAL TIME, and the plate is DENSE. A click, MIX full, PRE 0, TONE at its usual (60%): the RT60
+    // against what DECAY reads; separate echoes in the first 100 ms; and how far the fall at 500 Hz strays
+    // from a straight line (in dB, see strays()).
+    //   DECAY      80 Hz    500 Hz   8 kHz    echoes   strays
+    //   0.3 s      x1.00    x0.98    x0.88    1368     4.8 dB   (a third of a second is under one trip round both loops)
+    //   0.86 s     x1.03    x1.06    x0.93    1386     2.3
+    //   2.45 s     x0.99    x1.04    x0.74    1386     1.3
+    //   7.0 s      x1.01    x1.05    x0.48    1386     0.6
+    //   20 s       x1.00    x1.02    x0.27    1386     0.4
+    // The highs die sooner the longer the tail (TONE's damping is in the loops). The smearing stages are held to
+    // ring no longer than 0.6 of DECAY: without that a 0.3 s plate measured 0.57 s (x1.9) and 0.86 s x1.17. The
+    // second smear in each loop is turned the other way from the classic plate's (-0.4 for +0.5): with it as it
+    // was, the lows lasted 15% longer than DECAY says (a smear that way round holds the lows three times its length).
+    // (The old REVERB: about 200 echoes; HALL 650 to 1250.)
+    {
+        const double want80[5] = {0.997, 1.026, 0.992, 1.008, 0.996}, want500[5] = {0.980, 1.057, 1.038, 1.045, 1.024}, want8k[5] = {0.875, 0.931, 0.744, 0.483, 0.265};
+        int row = 0;
+        double last = 0.0;
+        for (float decay : {0.f, 0.25f, 0.5f, 0.75f, 1.f}) {
+            const double want = 0.3 * std::pow(20.0 / 0.3, decay);
+            const std::vector<float> ir = clickOf(*fresh(plate, 0.f, decay, 0.6f, 1.f), std::fmin(45.0, 2.0 + want * 1.3), 1.f);
+            const double mid = rt60(bandOf(ir, 500.0)), low = rt60(bandOf(ir, 80.0)), high = rt60(bandOf(ir, 8000.0)), stray = strays(bandOf(ir, 500.0));
+            const int echoes = echoesIn(ir, 0.0005, 0.1);
+            SAY("plate    decay %5.2f s: RT60 at 80 Hz x %.3f, at 500 Hz x %.3f, at 8 kHz x %.3f; %d echoes in the first 100 ms; strays %.2f dB from an even fall\n", want, low / want, mid / want, high / want, echoes, stray);
+            CHECK(std::fabs(mid / want - 1.0) < 0.07 && std::fabs(low / want - 1.0) < 0.16);  // within 7% at 500 Hz, at every DECAY
+            CHECK(std::fabs(mid / want - want500[row]) < 0.02 && std::fabs(low / want - want80[row]) < 0.03 && std::fabs(high / want - want8k[row]) < 0.03);
+            CHECK(echoes > 1300 && echoes < 1500);
+            CHECK(stray < (decay == 0.f ? 5.2 : 2.6));
+            CHECK(mid > 2.0 * last);
+            last = mid;
+            ++row;
+        }
+    }
+
+    // THE START. When it first answers: PRE to the sample, and then 8.9 ms (the left's first tap) and 11.9 ms (the right's).
+    //   PRE      0     10 ms   50 ms   100 ms
+    //   left    429    909     2829    5229 samples
+    //   right   569   1049     2969    5369
+    {
+        const float pres[4] = {0.f, 0.1f, 0.5f, 1.f};
+        for (int i = 0; i < 4; ++i) {
+            const Stereo io = clickBoth(*fresh(plate, pres[i], 0.45f, 0.6f, 1.f), 0.5);
+            const long gap = std::lround(pres[i] * 4800.f);
+            SAY("plate    PRE %3.0f%%: first sound at %ld (left), %ld (right) samples\n", pres[i] * 100.0, soundAt(io.l, 1e-9f), soundAt(io.r, 1e-9f));
+            CHECK(soundAt(io.l, 1e-9f) == gap + 429 && soundAt(io.r, 1e-9f) == gap + 569);
+        }
+    }
+    // NO EARLY ECHOES TO PICK OUT: from its first sound the plate is a wash, not a few clicks. Its loudest
+    // sample against its loudness (a crest), over the first 20 and 50 ms after its first sound; noise reads
+    // about 3.5 to 4.5, separate echoes far more:
+    //              20 ms    50 ms    strays (500 Hz)   echoes in the first 100 ms
+    //   PLATE      3.97     4.35     2.2 dB            1386
+    //   HALL      10.2      9.8      0.6 dB            1244
+    //   ROOM      31.0     35.6      1.1 dB             203
+    // (Without its four short smearing stages ahead of the classic four, PLATE read 11.4 and 10.7: a click at
+    // 8.9 ms, a silent gap, another at 12 ms.) DECAY 2.0 s, PRE 0; HALL and ROOM at their usual settings.
+    {
+        const std::vector<float> p = clickOf(*fresh(plate, 0.f, 0.45f, 0.6f, 1.f), 3.0, 1.f), h = clickOf(*fresh(hall, 0.f, 0.45f, 0.5f, 1.f), 3.0, 1.f), r = clickOf(*fresh(EffectKind::Reverb, 0.6f, 0.5f, 1.f), 3.0, 1.f);
+        SAY("plate    the first 20 / 50 ms after the first sound, its loudest sample against its loudness: PLATE %.2f / %.2f, HALL %.2f / %.2f, ROOM %.2f / %.2f\n", crest(p, 20), crest(p, 50), crest(h, 20), crest(h, 50), crest(r, 20), crest(r, 50));
+        SAY("plate    strays from an even fall (500 Hz): PLATE %.2f dB, HALL %.2f dB, ROOM %.2f dB; echoes in 100 ms: %d, %d, %d\n", strays(bandOf(p, 500.0)), strays(bandOf(h, 500.0)), strays(bandOf(r, 500.0)), echoesIn(p, 0.0005, 0.1), echoesIn(h, 0.0005, 0.1), echoesIn(r, 0.0005, 0.1));
+        CHECK(crest(p, 20) < 4.5 && crest(p, 50) < 5.0 && crest(h, 20) > 8.0 && crest(r, 20) > 20.0);
+        // The tool: noise reads about 4; one click in silence reads the square root of the samples.
+        std::vector<float> noise(4800), click(4800, 0.f);
+        Noise n(2u);
+        for (float& v : noise) v = n.next();
+        click[100] = 1.f;
+        CHECK(crest(noise, 50) > 1.5 && crest(noise, 50) < 2.0 && std::fabs(crest(click, 20) - std::sqrt(960.0)) < 1e-6); // (uniform noise: its crest is the square root of 3)
+    }
+
+    // BRIGHT. Held noise, MIX full, PRE 10 ms, DECAY 2.0 s: the plate at each pitch against the noise, in dB.
+    //   TONE    80 Hz   250 Hz   1 kHz   4 kHz   8 kHz   14 kHz
+    //   0%      -0.5    -0.3     -1.9    -7.9    -12.8   -17.3     dark: TONE's corner at 1.2 kHz
+    //   60%     -0.5    -0.2     -0.4    -1.3     -2.9    -5.4     its usual: 6.1 kHz
+    //   100%    -0.5    -0.2     -0.3    -0.5     -1.1    -2.5     bright: 18 kHz
+    {
+        const double hz[6] = {80, 250, 1000, 4000, 8000, 14000};
+        const double rows[3][6] = {{-0.5, -0.3, -1.9, -7.9, -12.8, -17.3}, {-0.5, -0.2, -0.4, -1.3, -2.9, -5.4}, {-0.5, -0.2, -0.3, -0.5, -1.1, -2.5}};
+        const float tones[3] = {0.f, 0.6f, 1.f};
+        for (int t = 0; t < 3; ++t) {
+            Stereo io(48000 * 10);
+            Noise noise(3u);
+            for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+            const std::vector<float> in = io.l;
+            through(*fresh(plate, 0.1f, 0.45f, tones[t], 1.f), io);
+            char line[256] = "";
+            for (int i = 0; i < 6; ++i) {
+                const double level = dB(rmsOf(bandOf(io.l, hz[i]), 5 * 48000) / rmsOf(bandOf(in, hz[i]), 5 * 48000));
+                std::snprintf(line + std::strlen(line), sizeof line - std::strlen(line), " %5.0f Hz %6.1f", hz[i], level);
+                CHECK(std::fabs(level - rows[t][i]) < 0.5);
+            }
+            SAY("plate    tone %3.0f%%: held noise comes out at%s dB\n", tones[t] * 100.0, line);
+        }
+    }
+
+    // WIDE: left and right nearly unrelated (1 the same, 0 unrelated): 0.004 in the first 100 ms, 0.000 after.
+    // It takes left and right in together (as the classic plate does): a click on the left alone fills both
+    // sides alike, 0.0 dB apart.
+    {
+        const Stereo both = clickBoth(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), 3.0), one = clickBoth(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), 3.0, 1.f, 0.f);
+        const double early = alike(both.l, both.r, 1, 4800), later = alike(both.l, both.r, 4800, 96000), across = dB(rmsOf(one.r, 4800, 96000) / rmsOf(one.l, 4800, 96000));
+        SAY("plate    left and right alike %.3f early, %.3f later; a click on the left: right is %.1f dB of the left\n", early, later, across);
+        CHECK(std::fabs(early) < 0.05 && std::fabs(later) < 0.05 && std::fabs(across) < 0.3 && std::fabs(dB(rmsOf(both.l, 4800, 96000) / rmsOf(both.r, 4800, 96000))) < 1.0);
+    }
+    // Left and right are taken in together, to the bit: a click on the right alone is a click on the left alone,
+    // and half of one in each.
+    {
+        const Stereo l = clickBoth(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), 1.0, 1.f, 0.f), r = clickBoth(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), 1.0, 0.f, 1.f), both = clickBoth(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), 1.0, 0.5f, 0.5f);
+        CHECK(l.l == r.l && l.r == r.r && l.l == both.l && l.r == both.r && rmsOf(r.r, 909) > 1e-3);
+    }
+    // THE SAME AT ANY LEVEL, and never asleep while sound comes in: noise 260 dB down (so faint that what goes round
+    // in the plate is under what it calls quiet, but sound all the same) comes out as the same noise at full does,
+    // turned down by as much: 2.5e-3 apart, scaled back up (the plate's floor, 360 dB down, is only 100 dB under
+    // this noise). Let fall asleep with sound coming in, it woke at once, a fresh plate with its bend started
+    // again: 0.25 apart.
+    {
+        Stereo loud(4 * 48000), faint(0);
+        Noise noise(12u);
+        for (std::size_t i = 0; i < loud.frames(); ++i) loud.l[i] = 0.25f * noise.next(), loud.r[i] = 0.25f * noise.next();
+        faint = loud;
+        for (std::size_t i = 0; i < faint.frames(); ++i) faint.l[i] *= 1e-13f, faint.r[i] *= 1e-13f;
+        through(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), loud);
+        through(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), faint);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < loud.frames(); ++i) worst = std::fmax(worst, std::fabs(1e13 * faint.l[i] - loud.l[i]));
+        SAY("plate    noise 260 dB down comes out as noise at full does, 260 dB down: apart by %.1e (the loud noise's own peak %.2f)\n", worst, static_cast<double>(peakOf(loud.l)));
+        CHECK(worst < 1e-2 && peakOf(loud.l) > 0.1f);
+    }
+    // PRE LANDS: turned while sounding, once it has got there the gap is a whole number of samples again. Two
+    // plates with the same past, PRE turned from 80 ms to 29 ms in both; one is then given a click at 2 s. What the
+    // click adds is to the sample what it adds to two plates that were at 29 ms all along (at that same moment:
+    // the bend moves with time), and it begins 1392 + 429 samples after the click.
+    {
+        Stereo turned[2], still[2];
+        Noise noise(11u);
+        Stereo in(3 * 48000);
+        for (std::size_t i = 0; i < 24000; ++i) in.l[i] = in.r[i] = 0.25f * noise.next();
+        for (int k = 0; k < 2; ++k) {
+            turned[k] = still[k] = in;
+            if (k == 0) turned[k].l[2 * 48000] = turned[k].r[2 * 48000] = still[k].l[2 * 48000] = still[k].r[2 * 48000] = 1.f;
+            std::unique_ptr<Effect> a = fresh(plate, 0.8f, 0.45f, 0.6f, 1.f), b = fresh(plate, 0.29f, 0.45f, 0.6f, 1.f);
+            through(*a, turned[k], 0, 12000);
+            a->setParam(0, 0.29f);
+            through(*a, turned[k], 12000, in.frames());
+            through(*b, still[k]);
+        }
+        float apart = 0.f, loud = 0.f;
+        std::vector<float> added(in.frames() - 2 * 48000);
+        for (std::size_t i = 0; i < added.size(); ++i) {
+            added[i] = turned[0].l[2 * 48000 + i] - turned[1].l[2 * 48000 + i];
+            apart = std::fmax(apart, std::fabs(added[i] - (still[0].l[2 * 48000 + i] - still[1].l[2 * 48000 + i])));
+            loud = std::fmax(loud, std::fabs(added[i]));
+        }
+        SAY("plate    PRE turned and landed: a click then differs from one in a plate never turned by %.1e at most (the click's own sound %.3f)\n", static_cast<double>(apart), static_cast<double>(loud));
+        CHECK(apart < 1e-6f && loud > 0.01f && soundAt(added, 1e-9f) == 1392 + 429);
+    }
+    // ABOUT AS LOUD AT ANY DECAY. Held noise, MIX full: -1.7 dB at 0.3 s, -3.7 at 2.45 s, -3.2 at 20 s (HALL: -1.6 to -4.2).
+    for (float decay : {0.f, 0.5f, 1.f}) {
+        Stereo io(48000 * 20);
+        Noise noise(3u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+        const double inRms = rmsOf(io.l);
+        through(*fresh(plate, 0.1f, decay, 0.6f, 1.f), io);
+        const double level = dB(rmsOf(io.l, 19 * 48000, 20 * 48000) / inRms);
+        SAY("plate    decay %3.0f%%: held noise comes out at %.1f dB\n", decay * 100.0, level);
+        CHECK(level > -4.5 && level < -1.0);
+    }
+
+    // NO COPY OF THE SOUND COMES BACK LATE, so at MIX 50% nothing combs. The plate alone against the noise that
+    // went in, 0 to 10 ms late: alike 0.016 at most (a copy would read 1). A held sine at 39 pitches from 100 Hz
+    // to 11 kHz at MIX 50%: -10.1 to +3.4 dB, -2.0 on average: what any room does to a held sine (HALL at its
+    // usual: -15.9 to +2.9, -2.8), not the even notches of a comb.
+    {
+        Stereo io(48000 * 4);
+        Noise noise(9u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+        const std::vector<float> in = io.l;
+        through(*fresh(plate, 0.f, 0.45f, 0.6f, 1.f), io);
+        double most = 0.0;
+        for (int lag = 0; lag <= 480; ++lag) {
+            double ab = 0, aa = 0, bb = 0;
+            for (std::size_t i = 48000; i < io.frames(); ++i) ab += static_cast<double>(io.l[i]) * in[i - lag], aa += static_cast<double>(io.l[i]) * io.l[i], bb += static_cast<double>(in[i - lag]) * in[i - lag];
+            most = std::fmax(most, std::fabs(ab / std::sqrt(aa * bb)));
+        }
+        SAY("plate    the plate alone against the sound that went in, 0 to 10 ms late: alike %.3f at most\n", most);
+        CHECK(most < 0.04);
+        double lo = 1e9, hi = -1e9, sum = 0.0;
+        int n = 0;
+        for (int f = 100; f < 12000; f = static_cast<int>(f * 1.13) + 1) {
+            const double level = levelAt(*fresh(plate, 0.1f, 0.45f, 0.6f, 0.5f), f);
+            lo = std::fmin(lo, level), hi = std::fmax(hi, level), sum += level, ++n;
+        }
+        SAY("plate    MIX 50%%, a held sine at %d pitches: %.1f to %.1f dB, %.1f on average\n", n, lo, hi, sum / n);
+        CHECK(n == 39 && lo > -12.0 && hi < 4.0 && std::fabs(sum / n + 2.0) < 0.6);
+    }
+    // MIX: the sound and the plate swap over at equal power. Before the plate answers, what comes out is the
+    // sound alone times cos(MIX x 90 degrees); after, plus sin of it times the plate alone.
+    {
+        const std::vector<float> in = sineOf(1000.0, 0.25, 48000);
+        std::vector<float> out, room;
+        wetOf(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), in, &room);
+        for (float mix : {0.3f, 0.5f, 1.f}) {
+            wetOf(*fresh(plate, 0.1f, 0.45f, 0.6f, mix), in, &out);
+            const float dry = mix == 1.f ? 0.f : std::cos(1.5707963f * mix), share = std::sin(1.5707963f * mix);
+            bool before = true, after = true;
+            for (std::size_t i = 0; i < 909; ++i) before = before && std::fabs(out[i] - dry * in[i]) < 1e-6f;
+            for (std::size_t i = 909; i < in.size(); ++i) after = after && std::fabs(out[i] - (dry * in[i] + share * room[i])) < 2e-6f;
+            CHECK(before && after && rmsOf(room, 24000) > 0.02);
+        }
+    }
+    // ON A BUS: no dry sound at all, and the same plate (MIX is its LEVEL): what a slot gives at MIX full, to the
+    // sample. (Before the plate answers, nothing but its floor, 360 dB down: see plate.cpp.)
+    {
+        std::unique_ptr<Effect> on = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), in = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), half = fresh(plate, 0.1f, 0.45f, 0.6f, 0.3f);
+        on->setOnBus(true);
+        half->setOnBus(true);
+        const std::vector<float> wet = clickOf(*on, 3.0, 1.f), both = clickOf(*in, 3.0, 1.f), some = clickOf(*half, 3.0, 1.f);
+        CHECK(std::fabs(wet[0]) < 1e-15f && peakOf(std::vector<float>(wet.begin(), wet.begin() + 909)) < 1e-15f && rmsOf(wet, 909) > 1e-3);
+        CHECK(wet == both);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < wet.size(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(some[i]) - 0.3 * wet[i]));
+        CHECK(worst < 1e-6);
+        // ...and a held sine on a bus comes back with none of itself: before the plate answers, nothing.
+        std::unique_ptr<Effect> sine = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f);
+        sine->setOnBus(true);
+        std::vector<float> got;
+        wetOf(*sine, sineOf(1000.0, 0.25, 4800), &got);
+        CHECK(peakOf(std::vector<float>(got.begin(), got.begin() + 909)) < 1e-15f && peakOf(got) > 0.01f);
+    }
+
+    // THE BEND: the two bent smears move, so the tail does not sit on one note. A held 1 kHz sine, MIX full:
+    // its level in the plate wanders (a plate that stood still would hold it to a thousandth of a dB).
+    // Over 40 s from the 10th, a reading every 100 ms: see kPlateWander.
+    {
+        Stereo io(50 * 48000);
+        io.l = io.r = sineOf(1000.0, 0.25, io.frames());
+        through(*fresh(plate, 0.1f, 0.45f, 0.6f, 1.f), io);
+        std::vector<double> level;
+        for (std::size_t at = 10 * 48000; at + 4800 <= io.frames(); at += 4800) level.push_back(dB(partAt(io.l.data() + at, 4800, 1000.0)));
+        double low = level[0], high = level[0], mean = 0.0;
+        for (double v : level) low = std::fmin(low, v), high = std::fmax(high, v), mean += v / static_cast<double>(level.size());
+        int ups = 0;
+        for (std::size_t i = 1; i < level.size(); ++i) ups += level[i - 1] < mean && level[i] >= mean ? 1 : 0;
+        SAY("plate    a held 1 kHz sine: its level in the plate wanders %.2f dB, up through its middle %d times in 40 s\n", high - low, ups);
+        CHECK(std::fabs((high - low) - kPlateWander) < 0.1 * kPlateWander && std::abs(ups - kPlateWanderUps) <= 2);
+    }
+
+    // A TURNED SETTING GLIDES: each turned end to end at once under a held 100 Hz sine at MIX 50%. Two readings
+    // while it gets there, each against the same with nothing turned (the rougher of before and after): the
+    // largest step, and the sharpest corner (a click is a corner).
+    //            down: step  corner     up: step  corner
+    //   PRE         2.00     3.09          1.69     2.09
+    //   DECAY       1.01     1.09          1.51     2.00
+    //   TONE        1.00     1.00          1.01     1.00
+    //   MIX         0.96     4.81          1.00     3.83
+    // MIX's corner is the glide setting off (the same Glide as every new effect's), against a plate whose
+    // steady sound under a 100 Hz sine is very smooth: 5.3e-4 in all, under a 0.5 sine (a click of 0.01 reads 0.01).
+    // PRE bends the pitch for a moment while the gap changes length (about a tenth of a second, as HALL's SIZE
+    // does): going to none the plate's sound is read up to twice as fast, an octave up, so its steps are twice
+    // the size. DECAY turned up from 0.3 s to 20 s: the plate fills up louder than it stood at 0.3 s. Neither is
+    // a click: the corners say so.
+    for (int p = 0; p < 4; ++p)
+        for (int up = 0; up < 2; ++up) {
+            std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 0.5f);
+            h->setParam(p, up ? 0.f : 1.f);
+            Stereo io(5 * 48000);
+            io.l = io.r = sineOf(100.0, 0.5, io.frames());
+            for (std::size_t i = 0; i < 4800; ++i) io.l[i] = io.r[i] = io.l[i] * static_cast<float>(i) / 4800.f; // faded in: a sine that starts at once is a click of its own, and the plate rings with it
+            through(*h, io, 0, 96000);
+            h->setParam(p, up ? 1.f : 0.f);
+            through(*h, io, 96000, io.frames());
+            const auto corner = [&](std::size_t from, std::size_t to) {
+                double most = 0.0;
+                for (std::size_t i = from + 2; i < to; ++i) most = std::fmax(most, std::fabs(static_cast<double>(io.l[i]) - 2.0 * io.l[i - 1] + io.l[i - 2]));
+                return most;
+            };
+            const double steady = std::fmax(largestJump(io.l, 48000, 96000), largestJump(io.l, 4 * 48000, 5 * 48000)), steadyCorner = std::fmax(corner(48000, 96000), corner(4 * 48000, 5 * 48000));
+            const double step = largestJump(io.l, 96000 - 1, 4 * 48000) / steady, sharp = corner(96000 - 2, 4 * 48000) / steadyCorner;
+            SAY("plate    %-5s turned %-4s at once: the largest step is %.2f of the steady one, the sharpest corner %.2f (%.1e)\n", info.paramNames[p], up ? "up" : "down", step, sharp, sharp * steadyCorner);
+            CHECK(step < (p == 0 ? 2.2 : (p == 1 ? 1.7 : 1.1)));
+            CHECK(sharp < (p == 0 ? 3.5 : 2.5) || (p == 3 && sharp * steadyCorner < 1e-3)); // (MIX: see above)
+        }
+    // ...and MIX turned to none LANDS: the sound untouched, to the bit, within a second.
+    {
+        std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f);
+        const std::vector<float> in = sineOf(1000.0, 0.25, 96000);
+        Stereo io(96000);
+        io.l = io.r = in;
+        through(*h, io, 0, 48000);
+        h->setParam(3, 0.f);
+        through(*h, io, 48000, 96000);
+        bool untouched = true;
+        for (std::size_t i = 72000; i < 96000; ++i) untouched = untouched && io.l[i] == in[i] && io.r[i] == in[i];
+        CHECK(untouched && io.l[48100] != in[48100]);
+    }
+
+    // SILENCE IN, SILENCE OUT IN THE END, AND NOTHING TOO SMALL TO HOLD ON THE WAY, with the processor's
+    // flush-to-zero off. A click, then nothing: the plate fades on a floor 360 dB down, and a second after
+    // it has held nothing over 240 dB down it is asleep: exact zeros.
+    //   DECAY 2.0 s: the last sample that is not zero 9.0 s after the click; 0.3 s: 2.2 s; 20 s: 78 s.
+    {
+        struct Row { float pre, decay, tone, mix; double seconds, asleepBy; };
+        const Row rows[4] = {{0.1f, 0.45f, 0.6f, 1.f, 12.0, 9.0}, {0.f, 0.f, 1.f, 0.5f, 4.0, 2.19}, {1.f, 0.f, 0.f, 1.f, 4.0, 2.24}, {0.3f, 1.f, 0.75f, 1.f, 90.0, 77.6}};
+        for (const Row& row : rows) {
+            std::unique_ptr<Effect> h = fresh(plate, row.pre, row.decay, row.tone, row.mix);
+            const TooSmall marks;
+            Stereo io(static_cast<std::size_t>(row.seconds * 48000.0));
+            io.l[0] = io.r[0] = 1.f;
+            through(*h, io);
+            const bool seen = marks.seen();
+            std::size_t last = 0;
+            float smallest = 1.f;
+            for (std::size_t i = 1; i < io.frames(); ++i) {
+                if (io.l[i] != 0.f) last = i, smallest = std::fmin(smallest, std::fabs(io.l[i]));
+                if (io.r[i] != 0.f) last = i > last ? i : last, smallest = std::fmin(smallest, std::fabs(io.r[i]));
+            }
+            SAY("plate    decay %5.2f s pre %3.0f%%: the last sample that is not zero is %.2f s in; the smallest that came out is %.1e\n", 0.3 * std::pow(20.0 / 0.3, row.decay), row.pre * 100.0, static_cast<double>(last) / 48000.0, static_cast<double>(smallest));
+            CHECK(!seen);
+            CHECK(std::fabs(static_cast<double>(last) / 48000.0 - row.asleepBy) < 0.06 * row.asleepBy + 0.05);
+            CHECK(smallest > 1e-25f && io.l.back() == 0.f && io.r.back() == 0.f);
+        }
+        // The same with sound coming in that is itself too small to hold (another effect's dying tail): it is taken as none.
+        std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.f, 1.f, 0.5f);
+        Stereo io(5 * 48000);
+        io.l.assign(io.frames(), 1e-39f);
+        io.r.assign(io.frames(), -1e-39f);
+        io.l[0] = io.r[0] = 0.5f;
+        const TooSmall marks;
+        through(*h, io);
+        const bool seen = marks.seen();
+        CHECK(!seen && rmsOf(io.l, 909, 4800) > 1e-3 && io.l.back() == 0.f && io.r.back() == 0.f);
+    }
+    CHECK(sameFlushed(plate, 0.1f, 0.f, 0.75f, 0.5f, 4.0)); // the same with the processor's flush-to-zero on or off, to the bit
+    CHECK(sameFlushed(plate, 0.6f, 0.3f, 0.2f, 1.f, 8.0));
+    // And by the clock (the app's way, flush-to-zero OFF): a block of 64 is no slower late in a tail than
+    // early, and asleep it is next to nothing.
+    {
+        std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f);
+        const TailTimes took = tailTimes(*h, 40);
+        SAY("flush    plate (flush-to-zero OFF): a block takes %.2f us early, %.2f us at its slowest, %.2f us at the end (asleep)\n", took.early, took.slowest, took.late);
+        CHECK(took.slowest < 3.0 * took.early + 5.0 && took.late < 0.5 * took.early + 1.0);
+    }
+    // Woken by a new sound, it plays as one fresh from the box does (the bend starts again too; what is left in
+    // it is under 240 dB down); a setting turned while it slept is simply there. Asleep, with nothing coming in,
+    // what comes out is nothing; at MIX 0 the sound is not touched at all.
+    {
+        std::unique_ptr<Effect> slept = fresh(plate, 0.f, 0.f, 0.5f, 0.7f), box = fresh(plate, 0.f, 0.f, 0.5f, 0.7f), turned = fresh(plate, 1.f, 1.f, 0.f, 0.f);
+        const Stereo first = clickBoth(*slept, 4.0), a = clickBoth(*slept, 4.0, 0.5f, -0.25f), b = clickBoth(*box, 4.0, 0.5f, -0.25f);
+        float apart = 0.f;
+        for (std::size_t i = 0; i < a.frames(); ++i) apart = std::fmax(apart, std::fmax(std::fabs(a.l[i] - b.l[i]), std::fabs(a.r[i] - b.r[i])));
+        CHECK(first.l.back() == 0.f && a.l.back() == 0.f && apart < 1e-9f && rmsOf(a.l, 429, 4800) > 1e-4);
+        clickBoth(*turned, 0.1, 0.f, 0.f);
+        turned->setParam(0, 0.f);
+        turned->setParam(1, 0.f);
+        turned->setParam(2, 0.5f);
+        turned->setParam(3, 0.7f);
+        const Stereo c = clickBoth(*turned, 4.0, 0.5f, -0.25f);
+        CHECK(c.l == b.l && c.r == b.r);
+        Stereo faint(256);
+        faint.l.assign(256, 1e-20f);
+        through(*slept, faint);
+        CHECK(faint.l[0] == 0.f && faint.l[255] == 0.f);
+        slept->setParam(3, 0.f);
+        faint.l.assign(256, 1e-20f);
+        through(*slept, faint);
+        CHECK(faint.l[0] == 1e-20f && faint.l[255] == 1e-20f);
+    }
+
+    // HOWEVER IT IS CUT INTO BLOCKS, THE SAME TO THE LAST BIT: 150 s, four ways (blocks of 64, of 48, of 1 to
+    // 61 in turn, of 256), through the tail, the sleep, and a waking part way through a block by a sound far
+    // too faint to hear (and again into sleep, but for the longest DECAY: asleep at 88 s, woken at 120 s, and
+    // still ringing at 150). Four settings.
+    {
+        struct Cut { float pre, decay, tone; };
+        for (const Cut& c : {Cut{0.1f, 0.45f, 0.6f}, Cut{0.73f, 0.2f, 1.f}, Cut{0.f, 0.8f, 0.f}, Cut{0.37f, 1.f, 0.6f}}) {
+            const std::size_t second = 48000;
+            std::vector<float> in(150 * second, 0.f);
+            Noise noise(31u);
+            for (std::size_t i = 0; i < 4800; ++i) in[1000 + i] = 0.5f * noise.next();
+            in[120 * second + 1237] = 5e-5f;
+            std::vector<float> ways[4];
+            const std::size_t sizes[4] = {64, 48, 0, 256}; // 0: odd sizes, 1 to 61 in turn
+            for (int way = 0; way < 4; ++way) {
+                std::unique_ptr<Effect> t = fresh(plate, c.pre, c.decay, c.tone, 1.f);
+                Stereo io(in.size());
+                io.l = io.r = in;
+                for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
+                    if (at + n > io.frames()) n = io.frames() - at;
+                    t->process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
+                }
+                ways[way] = io.l;
+                ways[way].insert(ways[way].end(), io.r.begin(), io.r.end());
+            }
+            std::size_t firstApart = ways[0].size();
+            for (int way = 1; way < 4; ++way)
+                for (std::size_t i = 0; i < ways[0].size(); ++i)
+                    if (ways[way][i] != ways[0][i]) firstApart = std::min(firstApart, i);
+            // (And it did all of it: rang, slept, was woken by the faint sound, and slept again.)
+            const std::vector<float>& l = ways[0];
+            std::size_t lastBefore = 0, lastAfter = 0;
+            for (std::size_t i = 0; i < 120 * second; ++i) lastBefore = l[i] != 0.f ? i : lastBefore;
+            for (std::size_t i = 120 * second; i < 150 * second; ++i) lastAfter = l[i] != 0.f ? i : lastAfter;
+            SAY("plate    pre %3.0f%% decay %5.2f s tone %3.0f%%: cut into blocks four ways, first apart at %s; asleep from %.2f s, woken and asleep again from %.2f s\n", c.pre * 100.0, 0.3 * std::pow(20.0 / 0.3, c.decay), c.tone * 100.0,
+                firstApart == ways[0].size() ? "nowhere" : "SOMEWHERE", static_cast<double>(lastBefore) / 48000.0, static_cast<double>(lastAfter) / 48000.0);
+            CHECK(firstApart == ways[0].size());
+            CHECK(lastBefore > 2 * second && lastBefore < 118 * second && lastAfter > 120 * second && (lastAfter < 149 * second) == (c.decay < 1.f));
+            CHECK(rmsOf(l, 120 * second + 1237 + 909, 120 * second + 48000) > 1e-9);
+        }
+    }
+    // On a bus it comes to rest; testATailAlwaysEnds has every setting at 40 BPM (DECAY 20 s is its worst).
+    // Here DECAY 20 s by itself: 52.1 s (the tail falls 120 dB in about 40 s, and the bus waits 10).
+    {
+        const float longest[4] = {0.f, 1.f, 1.f, 1.f};
+        const double seconds = secondsToRest(plate, longest, kMinTempo, 200.0);
+        SAY("plate    on a bus, DECAY 20 s, TONE full: at rest %.1f s after the last sound\n", seconds);
+        CHECK(seconds > 45.0 && seconds < 55.0);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -5930,6 +6435,7 @@ int main(int argc, char** argv) {
         {"testDuck", testDuck},
         {"testATailAlwaysEnds", testATailAlwaysEnds},
         {"testTapeAlwaysEnds", testTapeAlwaysEnds},
+        {"testPlate", testPlate},
     };
     const int first = gMeasure ? 2 : 1; // where "--only" would be
     const bool only = argc > first + 1 && std::string(argv[first]) == "--only";
