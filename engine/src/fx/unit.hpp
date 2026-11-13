@@ -6,10 +6,25 @@
 //
 // Adding an effect:
 //   1. an EffectKind at the END of the list in effects.hpp (never in the middle);
-//   2. a file here with its class and its `const EffectInfo kNameInfo`;
+//   2. a file here with its class and its `const EffectInfo kNameInfo`. The row
+//      has `says`: a few plain words for the list a player picks from ("fewer
+//      bits"). Without it the effect's line in that list has no words;
 //   3. its `extern` line at the bottom of this file;
 //   4. its row in the table in effects.cpp, and its place in kList there;
 //   5. its checks in tests/effects_test.cpp (it is in `bench` by itself).
+// A new TYPE of a family (PING to DELAY; SPRING, PLATE to REVERB) is a new
+// effect, with three more things in its row:
+//   - `family` ("DELAY", spelled as the family's other rows spell it) and
+//     `type` ("PING"). Without them it is a line of its own in the list, not a
+//     TYPE of DELAY. In kList it goes beside the family's other types; the
+//     first of them is what the family goes in as, and its `says` is the
+//     family's;
+//   - its settings named as the other types name theirs (TIME, FEEDBACK, MIX):
+//     changing TYPE carries a setting over by its NAME;
+//   - `amount`, if a setting it shares is a choice whose choices differ (TIME:
+//     how many steps), so a choice the other type does not have goes to the
+//     nearest.
+// effects_test checks every pair of every family by itself.
 // A delay or a reverb (EffectGroup::Delay, ::Reverb) can sit on a send bus:
 // its process() must look at bus_ and, when it is set, put out only what it
 // adds (wet * MIX) and none of the sound that came in. effects_test fails one

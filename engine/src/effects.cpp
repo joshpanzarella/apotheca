@@ -228,13 +228,32 @@ float effectCarryValue(EffectKind from, int fromIndex, EffectKind to, int toInde
     }
     const float found = 0.5f * (low + high);
     // ...then the nearest value to that which reads the very same; if none does, that is the nearest there is.
-    for (int k = 0; k <= 80; ++k)
-        for (int sign = -1; sign <= 1; sign += 2) {
+    float at = -1.f;
+    for (int k = 0; k <= 80 && at < 0.f; ++k)
+        for (int sign = -1; sign <= 1 && at < 0.f; sign += 2) {
             float v = found + static_cast<float>(sign * k) / 4000.f;
             v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
-            if (readAs(to, toIndex, v) == reads) return v;
+            if (readAs(to, toIndex, v) == reads) at = v;
         }
-    return found;
+    if (at < 0.f) return found;
+    // That is an EDGE of the stretch that reads so, and a push of the D-pad from an edge may move nothing that
+    // can be seen. So: the roundest value in the stretch, looked for from its middle (a twentieth is where the
+    // D-pad leaves a setting, so one that came from a twentieth goes back to it, to the bit).
+    const auto edge = [&](float out) {
+        float in = at;
+        for (int i = 0; i < 24; ++i) {
+            const float mid = 0.5f * (in + out);
+            if (readAs(to, toIndex, mid) == reads) in = mid;
+            else out = mid;
+        }
+        return in;
+    };
+    const float middle = 0.5f * (edge(0.f) + edge(1.f));
+    for (int grid : {100, 1000}) { // (a twentieth is a hundredth too)
+        const float v = static_cast<float>(std::lround(middle * static_cast<float>(grid))) / static_cast<float>(grid);
+        if (readAs(to, toIndex, v) == reads) return v;
+    }
+    return middle;
 }
 
 void effectCarry(EffectKind from, EffectKind to, const float* was, bool onBus, float* now) {

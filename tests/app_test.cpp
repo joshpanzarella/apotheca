@@ -4686,6 +4686,8 @@ void testChangingTypeKeepsWhatIsShared() {
     session.setAutomation(0, 0, lane(0, 2), 1, 0.5f);  // AGE: DELAY has none
     session.setAutomation(0, 6, lane(0, 2), 9, 0.5f);
     session.setAutomation(0, 0, lane(0, 0), 4, 1.5f / 8.f); // TIME: 1/8 TRIP
+    session.setAutomation(0, 4, lane(0, 3), 8, 0.f);   // MIX swept right down to 0%: a step that is written, though it is nothing
+    session.setAutomation(0, 4, lane(0, 1), 8, 0.f);   // ...and FEEDBACK to 0%
     session.setAutomation(0, 0, lane(1, 1), 1, 0.6f);  // the next slot's
     session.setAutomation(0, 0, autoLaneOfSend(0), 1, 0.6f);
     session.setAutomation(0, 0, 2, 1, 0.6f);           // a macro's
@@ -4699,6 +4701,7 @@ void testChangingTypeKeepsWhatIsShared() {
     CHECK(written(lane(0, 1), 3) == 1 && reads(D, 1, track.automation[3][lane(0, 1)][100]) == "30%" && std::fabs(track.automation[3][lane(0, 1)][100] - 0.3f) < 0.005f);
     CHECK(written(lane(0, 3), 3) == 1 && track.automation[3][lane(0, 3)][7] == 0.25f);
     CHECK(written(lane(0, 0)) == 1 && reads(D, 0, track.automation[0][lane(0, 0)][4]) == "1/16");
+    CHECK(written(lane(0, 3), 4) == 1 && track.automation[4][lane(0, 3)][8] == 0.f && written(lane(0, 1), 4) == 1 && track.automation[4][lane(0, 1)][8] == 0.f); // a 0 is a step too
     CHECK(written(lane(0, 2)) == 0 && written(lane(0, 2), 6) == 0); // DELAY's TONE starts with nothing written
     CHECK(written(lane(1, 1)) == 1 && written(autoLaneOfSend(0)) == 1 && written(2) == 1 && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
     // The engine has the new type and its settings: the sound is a clean delay's (a hit comes back three steps on, at 48% of ... loud enough to hear).
@@ -4709,6 +4712,7 @@ void testChangingTypeKeepsWhatIsShared() {
     CHECK(reads(T, 0, slot.param[0]) == "1/8 DOT" && reads(T, 1, slot.param[1]) == "48%" && slot.param[2] == effectInfo(T).defaults[2] && slot.param[3] == 0.7f);
     CHECK(reads(T, 1, track.automation[0][lane(0, 1)][2]) == "48%" && reads(T, 1, track.automation[0][lane(0, 1)][5]) == "100%" && reads(T, 0, track.automation[0][lane(0, 0)][4]) == "1/16");
     CHECK(written(lane(0, 1)) == 2 && written(lane(0, 1), 3) == 1 && written(lane(0, 3), 3) == 1 && written(lane(0, 2)) == 0 && written(lane(1, 1)) == 1);
+    CHECK(track.automation[4][lane(0, 3)][8] == 0.f && track.automation[4][lane(0, 1)][8] == 0.f);
 
     // REVERB and HALL: MIX is their third and fourth setting, so its automation moves a lane; TONE's does not become MIX's.
     session.setEffect(0, 2, H);
@@ -5014,6 +5018,142 @@ void testTheFxScreenHoldsUp() {
     CHECK(!changeEffectType(session, 0, kTrackSlots, EffectKind::Delay) && !changeEffectType(session, 0, -1, EffectKind::Delay));
     CHECK(!changeEffectType(session, kEchoBus, 1, EffectKind::Delay) && !changeEffectType(session, kMasterTrack, kMasterSlots, EffectKind::Delay));
     CHECK(project.tracks[0].effects[2].kind == static_cast<int>(EffectKind::Tape) && project.busEffects[0].kind == static_cast<int>(EffectKind::Tape));
+}
+
+// FOUND IN THE SECOND REVIEW, 2026-11-13.
+void testTheFxScreenSecondReview() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    using namespace ui;
+    typedef FxScreen F;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    const EffectData& slot = project.tracks[0].effects[0];
+    const auto reads = [&](int index) { char text[32]; effectParamText(static_cast<EffectKind>(slot.kind), index, slot.param[index], text, sizeof text); return std::string(text); };
+    const auto type = [&](SDL_Keycode way) { rig.key(A, true); rig.tap(way); rig.key(A, false); };
+
+    // NO DEAD PUSH after a change of TYPE. FEEDBACK at 45%, to the TAPE and back: it came back as 0.4452 (the low
+    // edge of what reads 45%), and the first push up went to 0.45: still 45%, nothing seen to move.
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 1, 0.45f);
+    rig.frames(1);
+    rig.render(2000);
+    fx.goTo(0, 0);
+    type(RIGHT);
+    CHECK(slot.kind == static_cast<int>(EffectKind::Tape) && reads(1) == "45%" && slot.param[1] == 0.375f);
+    type(LEFT);
+    CHECK(slot.kind == static_cast<int>(EffectKind::Delay) && reads(1) == "45%" && slot.param[1] == 0.45f); // as it was, to the bit: the song file too
+    fx.goTo(0, 2);
+    rig.key(A, true);
+    rig.tap(UP);
+    CHECK(reads(1) == "50%");
+    rig.tap(DOWN, 2);
+    CHECK(reads(1) == "40%");
+    rig.key(A, false);
+    // The same from the TAPE's usual 48%, and on the TAPE itself every push is seen.
+    session.setEffect(0, 0, EffectKind::Tape);
+    CHECK(slot.param[1] == 0.4f && reads(1) == "48%");
+    fx.goTo(0, 0);
+    type(LEFT);
+    CHECK(reads(1) == "48%" && slot.param[1] == 0.48f);
+    type(RIGHT);
+    CHECK(slot.kind == static_cast<int>(EffectKind::Tape) && slot.param[1] == 0.4f);
+    session.setEffect(0, 0, EffectKind::Delay);
+    for (int k = 0; k <= 20; ++k) {
+        // From every twentieth the D-pad leaves DELAY's FEEDBACK on: over to the TAPE, and one push each way is a new reading.
+        for (SDL_Keycode way : {UP, DOWN}) {
+            if (slot.kind != static_cast<int>(EffectKind::Delay)) { fx.goTo(0, 0); type(LEFT); }
+            session.setEffectParam(0, 0, 1, static_cast<float>(k) / 20.f);
+            fx.goTo(0, 0);
+            type(RIGHT);
+            const std::string was = reads(1);
+            fx.goTo(0, 2);
+            rig.key(A, true);
+            rig.tap(way);
+            rig.key(A, false);
+            CHECK(reads(1) != was || (way == DOWN && k == 0));
+        }
+        rig.frames(1);
+        rig.render(500);
+    }
+    session.setEffect(0, 0, EffectKind::None);
+    rig.frames(2);
+    rig.render(48000);
+
+    // PICKING AN EFFECT OR A TYPE IS HEARD ONLY WHILE THE SONG IS STOPPED: playing, no hit is put on top of the song.
+    CHECK(!project.playing && rig.listen(2000) == 0.f);
+    fx.goTo(0, 0);
+    rig.key(A, true);
+    rig.tap(DOWN); // the first of the list goes in, and the track is heard through it
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(slot.kind != 0 && rig.listen(2000) > 0.01f);
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 3, 0.f); // MIX 0: nothing comes back
+    rig.frames(2);
+    rig.render(48000 * 4);
+    CHECK(rig.listen(2000) < 1e-4f);
+    type(RIGHT); // stopped: the TAPE is heard
+    rig.frames(1);
+    CHECK(slot.kind == static_cast<int>(EffectKind::Tape) && rig.listen(2000) > 0.01f);
+    rig.frames(1);
+    rig.render(48000 * 4);
+    for (auto& bar : project.tracks[0].drums[0]) bar = DrumPattern(); // (an empty scene: the song itself is silence)
+    session.applyProject();
+    rig.frames(1);
+    rig.render(48000);
+    rig.tap(START);
+    rig.frames(1);
+    CHECK(project.playing && rig.listen(2000) < 1e-4f);
+    type(LEFT); // playing: CLEAN goes in, and no hit with it
+    rig.frames(1);
+    CHECK(slot.kind == static_cast<int>(EffectKind::Delay) && rig.listen(4000) < 1e-4f);
+    session.setEffect(0, 1, EffectKind::None);
+    fx.goTo(1, 0);
+    rig.key(A, true);
+    rig.tap(DOWN); // ...and an effect picked: none either
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(project.tracks[0].effects[1].kind != 0 && rig.listen(4000) < 1e-4f);
+    rig.tap(START);
+    rig.frames(1);
+    rig.render(4000);
+
+    // A SEND THAT MOVES WITH THE PATTERN IS DRAWN WHERE THE PATTERN HAS IT while the song plays: the big row and the list's small bar.
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    session.setSend(0, 0, 0.25f);
+    session.setSend(0, 1, 0.5f);
+    for (int step = 0; step < kAutoSteps; ++step) session.setAutomation(0, 0, autoLaneOfSend(0), step, 0.75f);
+    rig.frames(1);
+    const int wide = F::kPaneW - 24, small = 38;
+    const int bigY = F::kSendY + 84 + 3, bigY2 = bigY + F::kSendH + F::kSendGap, smallY = F::lineY(F::kSendsRow) + F::kLineH / 2 - 1, smallX = F::kNameX + 14;
+    const auto part = [](int width, float v) { return static_cast<int>(std::round(static_cast<float>(width) * v)); };
+    fx.goTo(F::kSendsRow, 0);
+    draw();
+    CHECK(canvas.run(F::kPaneX + 12, bigY, kDim) == part(wide, 0.25f) && canvas.run(smallX, smallY, kText) == part(small, 0.25f)); // stopped: the knob
+    CHECK(inked(canvas, scratch, 2, F::kPaneX + 12.f, F::kSendY + 40.f, "25%", kText));
+    rig.tap(START);
+    rig.render(kStep + kStep / 2);
+    rig.frames(1);
+    draw();
+    CHECK(project.playing && canvas.run(F::kPaneX + 12, bigY, kDim) == part(wide, 0.75f) && canvas.run(smallX, smallY, kText) == part(small, 0.75f));
+    CHECK(inked(canvas, scratch, 2, F::kPaneX + 12.f, F::kSendY + 40.f, "75%", kText));
+    CHECK(canvas.run(F::kPaneX + 12, bigY2, kDim) == part(wide, 0.5f) && canvas.run(smallX + 62, smallY, kText) == part(small, 0.5f)); // SPACE's is not automated: the knob
+    fx.goTo(0, 0); // the cursor elsewhere: the small bar is dim, and still the pattern's
+    draw();
+    CHECK(canvas.run(smallX, smallY, kDim) == part(small, 0.75f));
+    rig.tap(START);
+    rig.render(2000);
+    rig.frames(1);
+    CHECK(project.tracks[0].send[0] == 0.25f); // the knob itself was never moved
 }
 
 
@@ -6638,6 +6778,7 @@ int main(int argc, char** argv) {
     testChangingTypeKeepsWhatIsShared();
     testFxTextsFit();
     testTheFxScreenHoldsUp();
+    testTheFxScreenSecondReview();
     testSongFilesAreAsTheyWere();
     testTheFxScreenShowsCompAtWork();
     testTheKeysShownFollowTheCursor();

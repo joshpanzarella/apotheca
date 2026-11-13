@@ -4574,6 +4574,22 @@ static void testTypeChangeCarriesSettings() {
     // The words of the promise: 48% stays 48%, though TAPE's FEEDBACK goes to 120% and DELAY's to 100%.
     CHECK(reads(T, 1, 0.4f) == "48%" && reads(D, 1, effectCarryValue(T, 1, D, 1, 0.4f)) == "48%" && std::fabs(effectCarryValue(T, 1, D, 1, 0.4f) - 0.48f) < 0.005f);
     CHECK(reads(D, 1, 0.48f) == "48%" && reads(T, 1, effectCarryValue(D, 1, T, 1, 0.48f)) == "48%" && std::fabs(effectCarryValue(D, 1, T, 1, 0.48f) - 0.4f) < 0.005f);
+    // It lands on the ROUNDEST value that reads so, not on the reading's low edge (found in review: 45% came back as
+    // 0.4452, the first push up went to 0.45, still 45%, and nothing was seen to move).
+    CHECK(effectCarryValue(D, 1, T, 1, 0.45f) == 0.375f && effectCarryValue(T, 1, D, 1, 0.375f) == 0.45f);
+    CHECK(effectCarryValue(T, 1, D, 1, 0.4f) == 0.48f && effectCarryValue(D, 1, T, 1, 0.48f) == 0.4f);
+    CHECK(effectCarryValue(D, 1, T, 1, 0.452f) == 0.375f && effectCarryValue(D, 1, T, 1, 0.4461f) == 0.375f); // anywhere in the 45%: the one place
+    CHECK(effectCarryValue(D, 1, T, 1, 1.f) == 0.83f && reads(T, 1, 0.83f) == "100%"); // no twentieth reads 100% on the TAPE: a hundredth
+    CHECK(effectCarryValue(D, 1, T, 1, 0.f) == 0.f && effectCarryValue(T, 1, D, 1, 0.f) == 0.f);
+    // Every twentieth the D-pad can leave a setting on comes back as itself, to the bit, if the other type can read it.
+    for (int k = 0; k <= 20; ++k) {
+        const float v = static_cast<float>(k) / 20.f;
+        const float there = effectCarryValue(D, 1, T, 1, v);
+        CHECK(reads(T, 1, there) == reads(D, 1, v) && effectCarryValue(T, 1, D, 1, there) == v);
+        const float back = effectCarryValue(T, 1, D, 1, v);
+        if (reads(D, 1, back) == reads(T, 1, v)) CHECK(effectCarryValue(D, 1, T, 1, back) == v);
+        else CHECK(k > 16); // 105% and over: DELAY has no such reading
+    }
     // More than DELAY can read: the nearest there is, its most.
     CHECK(reads(T, 1, 1.f) == "120%" && effectCarryValue(T, 1, D, 1, 1.f) > 0.999f && reads(D, 1, effectCarryValue(T, 1, D, 1, 1.f)) == "100%");
     // A scale that is the same on both sides is not touched at all, to the bit.

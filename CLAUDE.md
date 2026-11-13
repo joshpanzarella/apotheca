@@ -190,10 +190,20 @@ effect in those two groups and fails one that does not.
   `effectCarryValue`): the value whose reading is the same text; if the new
   type cannot read it, the nearest (an amount by the number in its reading, a
   choice by its row's `amount`). A scale that is the same on both sides is
-  not touched, to the bit. `changeEffectType` (app/fx_screen.cpp) does it to
+  not touched, to the bit. Where the scales differ an amount lands on **the
+  roundest value that reads so** (a hundredth, else a thousandth, nearest the
+  middle of the stretch), never on the stretch's edge: from an edge the first
+  push of the D-pad moved nothing that could be seen, and 45% came back as
+  0.4452 in the song file. A twentieth goes there and back to the bit.
+  `changeEffectType` (app/fx_screen.cpp) does it to
   a slot and **moves the automation of each kept setting to its new lane**
   (REVERB's MIX is its third setting, HALL's its fourth), read the same way,
-  in every scene; the rest of the slot's lanes are cleared. Another FAMILY
+  in every scene (a step written as 0 is a step); the rest of the slot's
+  lanes are cleared. **Undo after a TYPE change is wrong and not fixed**
+  (found in review, 2026-11-13): undo puts the patterns' automation back in
+  the old type's lanes and the effect stays the new type (effects are not in
+  undo; `main` has the same fault when an effect is changed or emptied). The
+  mend is in `session.*` and is the owner's call. Another FAMILY
   put in a slot (`Session::setEffect`) still clears all four.
 
 ### The engine and its threads
