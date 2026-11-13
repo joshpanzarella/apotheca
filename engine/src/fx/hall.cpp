@@ -348,6 +348,7 @@ Effect* create() { return new Hall; }
 const EffectInfo kHallInfo = {
     "HALL", 4, {"SIZE", "DECAY", "TONE", "MIX"}, {0.6f, 0.45f, 0.5f, 0.3f}, // 2.0 seconds
     "hall", EffectGroup::Reverb, {0, 0, 0, 0}, reading, create,
+    "", "REVERB", "HALL",
 };
 
 } // namespace fx

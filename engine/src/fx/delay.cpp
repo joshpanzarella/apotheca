@@ -81,11 +81,15 @@ void reading(int index, float v, const float*, char* out, int size) {
 
 Effect* create() { return new Delay; }
 
+// TIME in steps, to match another delay's TIME by (changing TYPE).
+float amount(int index, float v) { return index == 0 ? static_cast<float>(delaySteps(v)) : std::nanf(""); }
+
 } // namespace
 
 const EffectInfo kDelayInfo = {
     "DELAY", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5f, 0.45f, 0.6f, 0.35f},
     "delay", EffectGroup::Delay, {6, 0, 0, 0}, reading, create,
+    "echoes", "DELAY", "CLEAN", amount, // the DELAY family's first type: the word is the family's
 };
 
 } // namespace fx
