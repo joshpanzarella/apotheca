@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (25) | `cd build && ctest -j8` (about 70 s) |
+| All tests (25) | `cd build && ctest -j8` (70 to 85 s; `nextscene` is the longest) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -435,28 +435,116 @@ effect in those two groups and fails one that does not.
   `noteEdit()`. Sounds, effects and track deletes are not undone.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
-  scene's number must follow: the engine's playing (`Command::ScenesMoved`,
-  which changes the scene number and nothing else), `project.playScene`, a
-  keyboard note being recorded (`Session::scenesMoved` does all three), and
-  the player (`UndoStep::nextScene` is how undo and redo know to move them).
-  **The order is what keeps a playing song unbroken**: making the copy, the
-  patterns go first and the word that the playing moved last; taking it
-  back, the word first and the patterns last. In between the scene playing
-  is the same either way. Its tests: `tests/nextscene_test.cpp`.
-- **After a scene move the tracks' patterns go to the engine one a frame**
-  (`Session::imagesDue_`, sent from `update()`), not all in one block: the
-  audio thread copies a megabyte a track, and twelve at once measured 2.6 to
-  3.8 ms on the desk against 0.7 to 0.9 for one (`nextscene_test --measure`;
-  a block is 5.33 ms and the handheld a fifth as fast). Only while it cannot
-  be heard (`oneAFrame`): nothing playing, or one scene going round that the
-  move leaves as it is. A later scene going round, or the song playing
-  through (it could go on to the next scene half-way): all at once, as near
-  together as can be. `togglePlay`, `nextScene` and `redo` send what is left
-  first (`finishMove`); a copy taken back before its word has gone sends
-  neither word.
+  scene's number must follow: the engine's playing, its patterns and an
+  arpeggio that is playing (`Command::ScenesMoved`, next rule),
+  `project.playScene`, a keyboard note being recorded (`Session::scenesMoved`
+  does those two and counts the move), and the player (`UndoStep::nextScene`
+  is how undo and redo know to move them). Its tests: `tests/nextscene_test.cpp`.
+- **A scene move is ONE command, and the audio thread copies nothing**
+  (`Engine::moveScenes`, which sends `Command::ScenesMoved`). The engine keeps
+  each scene of each track as a piece of its own (`Track::scenes`: sixteen
+  pointers to a `SceneStore`; `drumScenes`, `notes`, `bars` and `automation`
+  read them as the one run they used to be). The command moves the pointers,
+  takes in the one scene that is new for each track (made on the app thread:
+  `Session::sceneImage`), sets that scene's repeats and steps and the song's
+  length, moves the playing, and hands the scene that fell off the end back
+  through the trash. **It is all in one block of sound or none of it is**, so
+  there is no order to keep and no case that plays a wrong cell. Sending a
+  track's patterns one a frame, and "all at once when it must be", are gone:
+  do not bring them back. **Anything new the engine keeps for a scene goes in
+  `SceneStore`, or is moved by that command** (`repeats_`, `steps_`).
+  Measured with 12 tracks (`nextscene_test --measure`, the desk): before, the
+  block after the gesture took 2.1 to 3.8 ms with every track at once (0.5 on
+  average and 1.3 at worst with one a frame) against a usual 0.21; now 0.30
+  to 0.37 against a usual 0.24, **which is what any block costs straight after
+  the program has been busy** (0.30 to 0.35 with nothing sent). The command
+  by itself is 0.1 to 0.3 millionths of a second for twelve tracks. (Again
+  later on a busy desk: 0.28 to 0.33 against a usual 0.22 to 0.24, and 0.28 to
+  0.30 with nothing sent; a worst of several ms there is the machine taking
+  the thread away, and shows as often in a block with no move in it.) The
+  key itself is the program's thread: 1.3 ms, and 11 to 12 ms for its undo or
+  redo (the song read back from text), **not timed on the handheld**.
+  (2026-11-13, joined with chord effects, a slower run. The test's song has
+  the chord track now, so its figures are not the ones above: a usual block
+  0.30 to 0.34, the block that takes the move 0.43 to 0.47. With the song as
+  it was: 0.27 to 0.31 and 0.38 to 0.45, against 0.26 to 0.30 and 0.38 to
+  0.43 for the branch before the join in the same run. An ordinary block of
+  twelve busy tracks, timed apart: 0.57 to 0.63 ms before the join, on `main`
+  and joined alike. The step clock's three rows of `bench`, four runs each:
+  0.80 to 0.86%, 1.29 to 1.41% and 1.24 to 1.31% joined; 0.77 to 0.86%, 1.39
+  to 1.42% and 1.24 to 1.35% on `main`.)
+- **`nextscene_test` runs a real audio thread** beside 200 press and undo
+  pairs, held to twelve blocks past the last key (a busy machine made minutes
+  of sound otherwise). It is clean under the thread sanitizer
+  (`-fsanitize=thread`, about nine minutes; sixteen with its build, on a busy
+  desk, since the chord track and the helpers' round: clean again 2026-11-13); run that again after a change to
+  what a scene move hands over.
+- **Taking a NEXT SCENE back, or putting it back, sends no track whole**
+  (`Session::restorePatterns` with a move: `moveScenesHere`, then
+  `tellScenesMoved`). It then asks whether the PATTERNS, written as text, are
+  the step's (`Session::patternsAre`), not whether the numbers match:
+  automation read back from text is not the same float to the last bit, and a
+  track found different for that alone had all its patterns sent (a megabyte
+  the audio thread copies). The patterns alone, not `patternsNow()`: that is
+  the whole song's text, and a knob turned since the copy is in it. Only if
+  they differ (nothing in the program does that without a step of undo of its
+  own) is a track put back and sent whole, as an ordinary undo does.
+  `Session::imagesSent()` is how the tests see that none went.
+- **Where a scene move cannot be "the song played straight through"**: the
+  copy is playing in its own turn (the scene it was made from has had its
+  plays this time round) and is taken back. The playing goes to the scene it
+  was copied from, same step, bar and time round, so that scene is heard for
+  longer than its plays. Nothing is cut and no other scene's cell is played.
+  Everywhere else the tests hold the sound to 0 difference: beside the song
+  left alone while one scene goes round, and beside a song built with the
+  copy in it while the song plays through (press, undo, redo; also with a
+  later scene playing, and with a real audio thread making blocks back to back).
+- **A known fault, not mended, on `main` too** (found in review,
+  2026-11-13): the song plays through, and a copy is taken back during the
+  LAST STEP of the scene it was copied from. That step has already asked a
+  step ahead for the early notes and humanised chords of the bar that
+  follows, which was the copy; the first step of the scene that now follows
+  plays wrong (0.28 from the song left alone; taken back half a step sooner,
+  0). One sixteenth note wide. `nextscene_test --edge` prints it; it is not
+  in `ctest`. The mend is in what `fireStep` has asked ahead, and is the
+  owner's call.
+- **What the program remembers it sent is set only when the send went**
+  (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
+  full queue left the engine with the old song length for good: the song sent
+  again found nothing to send. `nextscene_test` fills the queue to hold it.
+- **`sceneIn` (engine.cpp) is the one place a pattern is read into the
+  engine**, for a whole track (`SetTrackImage`) and for one scene. A new
+  field of a note or a hit is copied there, once; `sceneInto` (session.cpp)
+  is the one place the app writes a scene out for it. A chord's `play` and a
+  glide's length go through both (`glideKind`, `chordPlayChecked`).
+  `nextscene_test` hands a scene over with them beside the same notes written
+  by commands, and beside the bars the piano roll sends.
+- **What plays while a scene moves goes with it, and nothing of a chord is
+  worked out from a scene's number** (the join of chord effects and the scene
+  move, 2026-11-13). `chordSeed` takes the bar of the CELL, not the bar of the
+  song: with the scene's number in it a humanised chord rolled another way
+  after NEXT SCENE, and no song left alone or built the finished way matched.
+  So a chord effect in scene 2 or later rolls other numbers than it did
+  before the join (scene 1 is the same to the bit). `Track::Arp::slot` is a
+  bar of the song, so `ScenesMoved` moves it by the rule the playing moves by;
+  an arpeggio whose scene has no place to go to (the sixteenth when one goes
+  in, the one taken out) stays and looks whether its chord is still there
+  (`Arp::look`). Waiting notes, `chordAsked`, `strokes` and the `GlideTrail`
+  hold no scene number: time is steps since Play. **Anything new that the
+  engine keeps while a chord plays either holds no scene number or is moved
+  there.**
+- **The song `nextscene_test` plays (`fill`) has a track of chords strummed,
+  as arpeggios, humanised, ratcheted, thrown, in every ORDER, and a glide of
+  every length**, so every proof of the sound has them in flight when the
+  scene moves. The proofs marked `sound` in its table run again with the
+  tracks on three helper threads, and the song left alone is held to the same
+  sound on none and on three. `nextscene_test --only NAME...` runs just
+  those; `--times` says how long each takes (the whole is near its two
+  minutes on a busy machine: put a long new proof in the helpers' round only
+  if it earns it).
 - **Ask `Session::playScene()`, never `engine.playScene()`, for the scene
-  that is playing.** Until the engine has heard a scene move (a block, or
-  the frames its tracks take to go) it still says the old number: the
+  that is playing.** Until the engine has heard a scene move (its next
+  block) it still says the old number: the
   playhead left the grid and WRITE went into the scene left behind. The
   engine counts the moves it has taken in the same atomic as the scene
   (`Engine::playScene(&heard)`), so the two are never from different moments.
@@ -527,8 +615,8 @@ effect in those two groups and fails one that does not.
     (`play.atRest()` in `fireStep`): that is what keeps old songs to the bit.
     ORDER alone is "nothing set".
   - **Every roll is worked out from where and which time**
-    (`chordSeed(track, slot, step, steps since Play)`, then `chordUnit` with
-    what it is for and which note). Never a generator walked: that is what
+    (`chordSeed(track, bar of the cell, step, steps since Play)`, then `chordUnit` with
+    what it is for and which note; not the scene's number, see the scene-move rules). Never a generator walked: that is what
     makes it the same on any helper count and block length, and Play from
     the top the same performance again. The only counted thing is
     `Track::strokes` (chords begun since Play, for UP-DOWN strums), counted in

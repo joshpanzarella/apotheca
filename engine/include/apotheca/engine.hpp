@@ -161,11 +161,14 @@ struct Command {
                         //   the cut because the command has no field to spare.
         SetSend,        // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
                         //   Taken after the track's level and mute. It glides, so it does not click.
-        ScenesMoved     // the scenes from `a` on are one place further down the song (b = 1) or one
-                        //   back up it (b = -1): a scene has been put in, or taken out. If one of them is
-                        //   playing, the playing goes with it and nothing else changes: the same step,
-                        //   the same bar, the same time round, no note cut or started. (The patterns
-                        //   themselves are sent apart, as track images.)
+        ScenesMoved     // internal: sent by moveScenes(). The scenes from `a` on are one place further down
+                        //   the song (b = 1) or one back up it (b = -1): a scene has been put in, or taken
+                        //   out. If one of them is playing, the playing goes with it and nothing else
+                        //   changes: the same step, the same bar, the same time round, no note cut or
+                        //   started. The patterns go with their scenes in the same command (the engine
+                        //   keeps each scene of each track apart and only changes which is which), with
+                        //   the scene that is new: c = the times it plays, d = its steps, scene = how many
+                        //   scenes the song now has. (With no pointer: the playing moves and nothing else.)
     };
     Type type = Trigger;
     int track = 0;
@@ -228,6 +231,24 @@ struct TrackImage {
     }
 };
 
+// One scene of one track, as TrackImage holds sixteen: for Engine::moveScenes.
+struct SceneImage {
+    float level[kMaxBars][kDrumLanes][kSteps] = {};
+    float nudge[kMaxBars][kDrumLanes][kSteps] = {};
+    float chance[kMaxBars][kDrumLanes][kSteps];
+    float start[kMaxBars][kDrumLanes][kSteps] = {};
+    StepFx fx[kMaxBars][kDrumLanes][kSteps];
+    int bars = 1; // how long the track's cell is in it
+    TrackImage::Note notes[kMaxBars][kMaxNotes];
+    float automation[kAutoLanes * kAutoSteps]; // [lane][bar * 16 + step]
+    SceneImage() {
+        for (auto& bar : chance)
+            for (auto& lane : bar)
+                for (float& c : lane) c = 1.f;
+        for (float& v : automation) v = kAutoNone;
+    }
+};
+
 class Engine {
 public:
     Engine();
@@ -250,6 +271,15 @@ public:
     bool removeTrack(int track);
     // Replace every pattern on a track at once.
     bool setTrackImage(int track, std::unique_ptr<TrackImage> image);
+    // A scene put into the song, or one taken out, in ONE step for the audio thread, which
+    // copies nothing: it changes which scene is which, and takes in the one scene that is new,
+    // made ready here. by = 1: a scene goes in at `from`, those from there on move down one and
+    // the last falls off the end. by = -1 (from 1 up): the scene before `from` goes, those from
+    // `from` on move up one, and the new one is the last. `scenes` is that new scene for each of
+    // the kNumTracks tracks (nullptr for a track with nothing: it gets whichever scene went);
+    // `repeats` and `steps` are its own, and `sceneCount` the song's from then on. The playing
+    // goes with a scene that moves (see Command::ScenesMoved). Allocates; false if the queue is full.
+    bool moveScenes(int from, int by, const std::unique_ptr<SceneImage>* scenes, int sceneCount, int repeats, int steps);
     // From the control thread, at any time: put an effect in a slot (None
     // empties it), at its default settings. `track` may be kMasterTrack, or
     // kEchoBus / kSpaceBus (slot 0 only): an effect on a bus is told so, and
@@ -388,6 +418,30 @@ private:
         ChordPlay play;           // a chord's note: which of its keys, and the chord's effects (chord_rule.hpp)
         std::uint8_t how = 0;     // inside the engine: kUntold, kTellOnly, kWholeFrames (below)
     };
+    // Everything one track plays in one scene.
+    struct SceneStore {
+        DrumScene drums[kMaxBars];
+        Note notes[kMaxBars][kMaxNotes];
+        float automation[kAutoLanes * kAutoSteps]; // [lane][step of the cell]
+        std::uint8_t bars = 1;                     // the cell's length
+        SceneStore() {
+            for (DrumScene& bar : drums)
+                for (auto& lane : bar.chance)
+                    for (float& c : lane) c = 1.f;
+            for (float& v : automation) v = kAutoNone;
+        }
+    };
+    // What Command::ScenesMoved carries: the scene that is new, for each track (or nullptr). The
+    // audio thread puts in their place the ones the song has no more use for, and hands it back.
+    struct SceneMove {
+        SceneStore* scenes[kNumTracks] = {};
+        ~SceneMove() {
+            for (SceneStore* scene : scenes) delete scene;
+        }
+    };
+    // One scene's patterns read in, as the engine keeps them (from a TrackImage, or a SceneImage).
+    static void sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
+                        const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation);
     // A chord whose notes do not all begin on its own moment (strummed, an arpeggio, HUMAN TIME)
     // is still ONE moment to a glide: what follows slides from its top key, as the roll draws.
     // So those notes say nothing to the track's GlideTrail when they sound (kUntold), and the
@@ -418,16 +472,32 @@ private:
         std::unique_ptr<Instrument> synth; // set on a synth track
         // The patterns are large (every bar of every scene), so they live
         // on the heap: an Engine can then sit on the stack.
-        std::unique_ptr<DrumScene[]> drumScenes{new DrumScene[kPatternSlots]};
-        std::unique_ptr<Note[][kMaxNotes]> notes{new Note[kPatternSlots][kMaxNotes]};
-        std::uint8_t bars[kMaxScenes]; // the cell's length in each scene
+        // Each scene is a piece of its own, so that a scene put into the song or taken out
+        // (Command::ScenesMoved) is sixteen pointers moved and nothing copied. What follows
+        // reads them as the one run they used to be: by pattern slot, by scene, by place.
+        SceneStore* scenes[kMaxScenes];
+        struct DrumsOf {
+            SceneStore* const* scenes;
+            DrumScene& operator[](int slot) const { return scenes[slot / kMaxBars]->drums[slot % kMaxBars]; }
+        } drumScenes{scenes};
+        struct NotesOf {
+            SceneStore* const* scenes;
+            auto operator[](int slot) const -> Note (&)[kMaxNotes] { return scenes[slot / kMaxBars]->notes[slot % kMaxBars]; }
+        } notes{scenes};
+        struct BarsOf { // the cell's length in each scene
+            SceneStore* const* scenes;
+            std::uint8_t& operator[](int scene) const { return scenes[scene]->bars; }
+        } bars{scenes};
         // Automation (see kAutoLanes). `automation` is [scene][lane][step of the cell].
-        std::unique_ptr<float[]> automation{new float[kMaxScenes * kAutoLanes * kAutoSteps]};
+        struct AutoOf {
+            SceneStore* const* scenes;
+            float& operator[](int i) const { return scenes[i / (kAutoLanes * kAutoSteps)]->automation[i % (kAutoLanes * kAutoSteps)]; }
+        } automation{scenes};
         float autoBase[kAutoLanes]; // where each knob was left; below zero: not known (an effect not yet told)
         float autoNow[kAutoLanes];  // what the synth or effect has been given
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
         bool autoGliding[kAutoLanes] = {};
-        float* autoAt(int scene, int lane) { return automation.get() + (scene * kAutoLanes + lane) * kAutoSteps; }
+        float* autoAt(int scene, int lane) { return scenes[scene]->automation + lane * kAutoSteps; }
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
@@ -467,7 +537,10 @@ private:
         double offIn[128];
         Track() {
             for (double& off : offIn) off = kNoNote;
-            for (auto& b : bars) b = 1;
+            for (SceneStore*& scene : scenes) scene = new SceneStore;
+        }
+        ~Track() {
+            for (SceneStore* scene : scenes) delete scene;
         }
         // Hits waiting for their moment: a late hit from the step that just
         // began, and an early hit that belongs to the next one.
@@ -628,7 +701,7 @@ private:
     std::atomic<unsigned> dropped_{0};   // commands lost to a full queue
 
     // Things the audio thread no longer needs and must not free itself.
-    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; };
+    struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; };
     SpscQueue<Trash, 64> trash_;
     static void destroy(const Trash& trash);
 };
