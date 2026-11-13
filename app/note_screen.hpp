@@ -23,6 +23,8 @@
 //   hold X on a note      what it does besides play, a click at a time:
 //                           left / right   RATCHET: the note 2, 3 or 4 times inside its first step
 //                           up / down      GLIDE longer / shorter, down to OFF: it slides to its pitch from the note before it
+//                           L1 / R1        GLIDE FROM, the track's: which key of a chord before its glides
+//                                          come from (TOP, PAIRED, NEAREST, RANDOM). It stops at each end.
 //                         A chord has six effects (chord_effects.hpp): up / down pick one,
 //                         left / right set it. The strip lists them.
 //   hold R1 on a note     carry the note (or the whole chord) under the cursor.
@@ -160,6 +162,7 @@ private:
     int carried_ = 0; // its slot
     void fxRoll();                      // with X held, Y: the dice set the ratchet and the glide
     void fxThrow();                     // with X held, A: the note's or the chord's THROW a step round
+    void fxFrom(int by);                // with X held on a note, L1 (-1) / R1 (+1): the track's GLIDE FROM, a click
     std::uint32_t dice_ = 0x9E3779B9u;
     void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down);
                                         // on a chord, up / down pick one of its six effects and left / right set it

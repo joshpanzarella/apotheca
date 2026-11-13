@@ -191,6 +191,8 @@ struct TrackData {
     int bars[kMaxScenes];
     EffectData effects[kTrackSlots]; // on this track, one after the other
     float send[kBuses] = {};         // how much of it goes to the ECHO and the SPACE bus, 0..1
+    std::uint8_t glideFrom = 0;      // GLIDE FROM, a synth track's: which key of the moment before its glides come from
+                                     // (kFromTop, kFromPaired, kFromNearest, kFromRandom: apotheca/glide_rule.hpp)
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
@@ -297,7 +299,8 @@ struct Project {
     // GLIDE, for the roll to draw: what each note of a synth track's cell slides from and for how
     // long, as the scene goes round (lines[bar * kMaxNotes + slot], kMaxBars * kMaxNotes of them;
     // a chord's notes are in the slots NotePattern::render gives them, as the engine has them).
-    // The rule is the engine's own (apotheca/glide_rule.hpp).
+    // The rule is the engine's own (apotheca/glide_rule.hpp), by the track's GLIDE FROM. (RANDOM is
+    // as it is the first time the scene plays after Play; later times round roll anew.)
     void glideLines(int trackIndex, int s, GlideLine* lines) const {
         GlideNote all[kMaxBars * kMaxNotes];
         const TrackData& t = tracks[trackIndex];
@@ -315,7 +318,7 @@ struct Project {
                 n.glide = glideKind(out[i].glide);
             }
         }
-        apotheca::glideLines(all, bars, sceneSteps(s), lines);
+        apotheca::glideLines(all, bars, sceneSteps(s), lines, t.glideFrom, trackIndex);
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

@@ -583,6 +583,24 @@ int main(int argc, char** argv) {
             if (std::strstr(view, "short")) project.steps[0] = 25;
             if (std::strstr(view, "drums")) app.session().setCellBars(0, 0, 4), project.track = 0;
         }
+        if (std::strstr(view, "from")) {
+            // notefx-from (TOP), notefx-from-paired, -nearest, -random, and each with -held (X held:
+            // the strip says GLIDE FROM): a chord of four keys, two notes that glide out of it in
+            // FULL, and four that glide out of those two. The same notes; only the track's GLIDE
+            // FROM differs, and with it where the lines come from.
+            p = NotePattern();
+            const int chord[4] = {60, 64, 67, 71};
+            for (int k = 0; k < 4; ++k) note(k, 1, chord[k], 3.f, 0, 0);
+            note(4, 7, 62, 2.f, 0, kGlideFull);
+            note(5, 7, 69, 2.f, 0, kGlideFull);
+            note(6, 13, 59, 2.f, 0, kGlideFull);
+            note(7, 13, 63, 2.f, 0, kGlideFull);
+            note(8, 13, 66, 2.f, 0, kGlideFull);
+            note(9, 13, 70, 2.f, 0, kGlideFull);
+            app.session().setGlideFrom(2, std::strstr(view, "paired") ? kFromPaired : std::strstr(view, "nearest") ? kFromNearest : std::strstr(view, "random") ? kFromRandom : kFromTop);
+            app.session().sendNotePattern(2, 0);
+            app.notes().moveCursorTo(62, 7);
+        }
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
         if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)
         if (std::strstr(view, "held")) pushKey(SDLK_s, true); // X held

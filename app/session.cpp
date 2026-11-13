@@ -815,6 +815,18 @@ void Session::setEffectParam(int track, int slot, int index, float value) {
     engine.send(c);
 }
 
+void Session::setGlideFrom(int track, int type) {
+    if (track < 0 || track >= kNumTracks || !isSynth(project.tracks[track].kind)) return;
+    type = glideFromKind(type);
+    if (type == project.tracks[track].glideFrom) return;
+    project.tracks[track].glideFrom = static_cast<std::uint8_t>(type);
+    Command c;
+    c.type = Command::SetGlideFrom;
+    c.track = track;
+    c.a = type;
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
 void Session::setSend(int track, int bus, float value) {
     if (track < 0 || track >= kNumTracks || bus < 0 || bus >= kBuses) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
@@ -1003,6 +1015,14 @@ void Session::applyProject() {
             c.value = project.tracks[track].send[bus];
             engine.send(c);
         }
+    // Every track's GLIDE FROM, TOP too. (A drum track has none.)
+    for (int track = 0; track < kNumTracks; ++track) {
+        c = Command();
+        c.type = Command::SetGlideFrom;
+        c.track = track;
+        c.a = isSynth(project.tracks[track].kind) ? project.tracks[track].glideFrom : 0;
+        engine.send(c);
+    }
     for (int scene = 0; scene < kMaxScenes; ++scene) {
         c = Command();
         c.type = Command::SetSceneRepeats;

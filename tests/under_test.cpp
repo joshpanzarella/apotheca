@@ -287,15 +287,41 @@ void heldOnANote(Rig& rig) {
     rig.draw();
     const Chips chips = rig.chips();
     const float labelY = kRollStrip + 8.f;
-    // RATCHET, GLIDE, THROW: a chip under each. NUDGE: nothing sets it here, and nothing is under it.
-    CHECK((chips == Chips{{8, rig.chipW("Y")}, {160, rig.chipW("LEFT / RIGHT")}, {250, rig.chipW("UP / DOWN")}, {385, rig.chipW("A")}}));
-    CHECK(rig.label(kStripHeldRatchetX, labelY, "RATCHET") && rig.label(kStripHeldGlideX, labelY, "GLIDE") && rig.label(kStripHeldThrowX, labelY, "THROW"));
-    CHECK(!rig.label(kStripHeldRatchetX - 1.f, labelY, "RATCHET"));
+    // RATCHET, GLIDE, THROW and GLIDE FROM (the track's): a chip under each. NUDGE, which nothing
+    // sets here, is not on the strip while X is held.
+    CHECK((chips == Chips{{8, rig.chipW("Y")}, {160, rig.chipW("LEFT / RIGHT")}, {250, rig.chipW("UP / DOWN")}, {385, rig.chipW("A")}, {500, rig.chipW("L1 / R1")}}));
+    CHECK(rig.label(kStripHeldRatchetX, labelY, "RATCHET") && rig.label(kStripHeldGlideX, labelY, "GLIDE") && rig.label(kStripHeldThrowX, labelY, "THROW") && rig.label(kStripHeldFromX, labelY, "GLIDE FROM"));
+    CHECK(!rig.label(kStripHeldRatchetX - 1.f, labelY, "RATCHET") && !rig.label(kStripHeldFromX - 1.f, labelY, "GLIDE FROM"));
+    CHECK(!rig.label(kStripHeldFromX, labelY, "NUDGE") && !rig.label(kStripNudgeX, labelY, "NUDGE"));
     CHECK(rig.chipIs(static_cast<int>(kStripHeldRatchetX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kStripHeldGlideX), "UP / DOWN") && rig.chipIs(static_cast<int>(kStripHeldThrowX), "A"));
+    CHECK(rig.chipIs(static_cast<int>(kStripHeldFromX), "L1 / R1"));
     CHECK(rig.diceAlone(static_cast<int>(kStripHeldRatchetX)));
-    // No words; and here the help has its room at the end, as on the plain bar.
-    CHECK(rig.noWords(chips, rig.helpLeft()));
-    CHECK(rig.helpShown());
+    // No words, and GLIDE FROM's chip stands where the help would be said: it gives way, MENU or none.
+    CHECK(rig.noWords(chips, ui::kScreenW));
+    CHECK(static_cast<int>(kStripHeldFromX) + rig.chipW("L1 / R1") + 11 > rig.helpLeft() + 2);
+}
+
+// GLIDE FROM's value on the strip, X held: how much of it is drawn in a colour (the large
+// lettering, under the label, from the field's left edge to the strip's right).
+int fromInked(const Rig& rig, SDL_Color colour) {
+    int count = 0;
+    for (int y = kRollStrip + 22; y < kRollStrip + 50; ++y)
+        for (int x = static_cast<int>(kStripHeldFromX) - 1; x < static_cast<int>(kStripRight) + 1; ++x) count += rig.canvas.is(x, y, colour) ? 1 : 0;
+    return count;
+}
+// ...and is it this word, in this colour, in the large lettering?
+bool fromReads(Rig& rig, const char* word, SDL_Color colour) {
+    const Font& font = rig.scratch.fonts->large;
+    const int x0 = static_cast<int>(kStripHeldFromX) - 1, x1 = static_cast<int>(kStripRight) + 1, y0 = kRollStrip + 22, y1 = kRollStrip + 50;
+    ui::fill(rig.scratch.r, x0, y0, x1 - x0, y1 - y0, SDL_Color{255, 0, 255, 255});
+    font.draw(rig.scratch.r, kStripHeldFromX, kRollStrip + 26.f, word, colour);
+    int body = 0;
+    for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x) {
+            if (rig.scratch.is(x, y, colour) != rig.canvas.is(x, y, colour)) return false; // the same lettering, and no more of it
+            body += rig.scratch.is(x, y, colour) ? 1 : 0;
+        }
+    return body > 30;
 }
 
 void testANote() {
@@ -314,12 +340,51 @@ void testANote() {
     rig.key(X, true);
     CHECK(roll.effecting());
     heldOnANote(rig);
-    CHECK(!rig.label(kStripHeldNudgeX, kRollStrip + 8.f, "NUDGE")); // (not nudged: the field is not there)
+    // GLIDE FROM is the track's: TOP until it is turned, and dim while this note has no glide.
+    CHECK(fromReads(rig, "TOP", ui::kDim) && fromInked(rig, ui::kText) == 0 && fromInked(rig, ui::kBrass) == 0);
+    // Each of its values fits there in the large lettering (the strip does not look for a smaller one).
+    for (int type = 0; type < kGlideFroms; ++type) CHECK(kStripHeldFromX + rig.scratch.fonts->large.width(glideFromName(type)) <= kStripRight);
     // At its fullest: a ratchet, the longest glide to read, thrown, nudged.
     note.ratchet = 4, note.glide = kGlideQuarter, note.throwTo = kThrowSpace, note.nudge = -0.45f;
     heldOnANote(rig);
-    CHECK(rig.label(kStripHeldNudgeX, kRollStrip + 8.f, "NUDGE") && rig.label(500.f, kRollStrip + 8.f, "NUDGE"));
-    CHECK(rig.bare(static_cast<int>(kStripHeldNudgeX) - 20, rig.helpLeft())); // nothing under NUDGE
+    CHECK(fromReads(rig, "TOP", ui::kText) && fromInked(rig, ui::kBrass) == 0); // the note glides: it is said plainly
+    // R1 is the next of the four, L1 the one before; each stops at its end. Brass when it is not TOP.
+    const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w;
+    const int zoom = rig.app.session().octavesShown();
+    const char* const names[4] = {"TOP", "PAIRED", "NEAREST", "RANDOM"};
+    for (int press = 1; press <= 5; ++press) {
+        rig.key(R1, true);
+        rig.key(R1, false);
+        const int want = press < 3 ? press : 3;
+        CHECK(rig.project().tracks[1].glideFrom == want && roll.effecting() && !roll.carrying());
+        heldOnANote(rig);
+        CHECK(fromReads(rig, names[want], ui::kBrass) && fromInked(rig, ui::kText) == 0);
+    }
+    note.glide = kGlideOff; // no glide on this note: the track's choice is still read, dimly
+    heldOnANote(rig);
+    CHECK(fromReads(rig, "RANDOM", ui::kDim) && fromInked(rig, ui::kBrass) == 0);
+    note.glide = kGlideQuarter;
+    for (int press = 1; press <= 5; ++press) {
+        rig.key(L1, true);
+        rig.key(L1, false);
+        const int want = press < 3 ? 3 - press : 0;
+        CHECK(rig.project().tracks[1].glideFrom == want && roll.effecting());
+        heldOnANote(rig);
+        CHECK(fromReads(rig, names[want], want ? ui::kBrass : ui::kText));
+    }
+    CHECK(rig.app.session().octavesShown() == zoom); // (L1 did not zoom, R1 did not carry: they wait for X to be let go)
+    CHECK(note.step == 4 && note.pitch == 62 && note.ratchet == 4 && note.glide == kGlideQuarter && note.throwTo == kThrowSpace); // ...and nothing of the note changed
+    rig.key(R1, true);
+    rig.key(R1, false);
+    CHECK(rig.project().tracks[1].glideFrom == kFromPaired);
+    // The dice are the note's: they leave the track's GLIDE FROM alone.
+    for (int i = 0; i < 12; ++i) {
+        rig.key(SDLK_a, true);
+        rig.key(SDLK_a, false);
+    }
+    CHECK(rig.project().tracks[1].glideFrom == kFromPaired && roll.effecting());
+    note.ratchet = 4, note.glide = kGlideQuarter;
+    rig.draw();
     // A handheld with no MENU button: the bar's last words are longer, and still have their room.
     static ControlMap none;
     rig.input.useMap(&none);
@@ -329,10 +394,29 @@ void testANote() {
     rig.input.useMap(nullptr);
     rig.frames(1);
     CHECK(std::strcmp(ui::gHelpHint, "MENU: HELP") == 0);
-    // Let go: the plain bar again.
+    // Let go: the plain bar again, and NUDGE where it stands with nothing held.
     rig.key(X, false);
     rig.draw();
     CHECK(!roll.effecting() && rig.plainBar(onANote, 6));
+    CHECK(rig.label(kStripNudgeX, kRollStrip + 8.f, "NUDGE") && !rig.label(kStripHeldFromX, kRollStrip + 8.f, "GLIDE FROM"));
+    // With X let go, L1 zooms and R1 carries, as ever, and GLIDE FROM stays.
+    rig.key(SDLK_q, true);
+    rig.key(SDLK_q, false);
+    CHECK(rig.app.session().octavesShown() != 2 && rig.project().tracks[1].glideFrom == kFromPaired);
+    rig.key(SDLK_w, true);
+    CHECK(roll.carrying() && rig.project().tracks[1].glideFrom == kFromPaired);
+    rig.key(SDLK_w, false);
+    // L1 already down when X takes hold of the note, and let go under it: that is not a tap of the zoom.
+    const int zoomNow = rig.app.session().octavesShown();
+    rig.key(SDLK_q, true);
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    rig.key(SDLK_q, false);
+    rig.frames(1);
+    CHECK(rig.app.session().octavesShown() == zoomNow && rig.project().tracks[1].glideFrom == kFromPaired);
+    rig.key(X, false);
+    rig.frames(1);
+    CHECK(rig.app.session().octavesShown() == zoomNow);
 }
 
 // ---- the piano roll: a chord -------------------------------------------------------------------
@@ -389,6 +473,15 @@ void testAChord() {
     held();
     rig.input.useMap(nullptr);
     rig.frames(1);
+    // A chord does not glide: L1 and R1 with X held on one do not turn the track's GLIDE FROM
+    // (they are as they were there: R1 takes hold of the chord).
+    rig.key(SDLK_w, true);
+    CHECK(rig.project().tracks[1].glideFrom == kFromTop && roll.carrying());
+    rig.key(SDLK_w, false);
+    rig.key(SDLK_q, true);
+    rig.key(SDLK_q, false);
+    CHECK(rig.project().tracks[1].glideFrom == kFromTop);
+    CHECK(!rig.label(kStripHeldFromX, kRollStrip + 8.f, "GLIDE FROM"));
     rig.key(X, false);
     rig.draw();
     CHECK(!roll.effecting() && rig.plainBar(onAChord, 6));

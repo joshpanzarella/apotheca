@@ -796,3 +796,27 @@ For the owner's ears: FEEDBACK stopping at 90% and reading in steps of 4.5% on t
 | A limiter on by default in new songs? | No. The soft ceiling stays the default; LIMITER is put in by hand |
 | Should the dice be able to scatter THROWs? | Later, after THROW has been used by hand |
 | Is 5 a fair handheld factor for effects? | Unknown. Run `bench` on the device after step 0 before trusting any budget here |
+
+## Seven families (owner, 2026-11-13)
+
+The list a player picks from becomes seven families, each with a TYPE (left /
+right). The owner wants as many effects and types as fit; each gets a cost
+figure so the costly ones can be pared down after. Old effects keep their
+number, word and sound; they only move under a family name.
+
+| Family | Types |
+| --- | --- |
+| FILTER | the five today, COMB, VOWEL, EQ |
+| DRIVE | DRIVE, SATURATE's curves, FOLD, FUZZ |
+| CRUSH | CRUSH, RING, WEAR |
+| MOD | CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO |
+| DELAY | CLEAN, TAPE, PING, DUB, REVERSE, STUTTER |
+| REVERB | ROOM, HALL, SPRING, PLATE, BLOOM, SHIMMER |
+| LEVEL | COMP, DUCK, LIMITER, SNAP |
+
+- Built in batches of three, a build shipped after each batch.
+- STUTTER on the ECHO bus is to be tried; if it is odd there, it stays in the
+  family but out of the bus's list.
+- Types that share no setting names (FILTER to EQ, COMP to SNAP) start from
+  their usual values.
+- Order: after the pit stop audit, the colour themes and the mixer.
