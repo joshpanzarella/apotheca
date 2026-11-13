@@ -39,9 +39,12 @@ struct NoteEvent {
     float velocity = 0.f; // 0 = empty slot
     // What the note does besides play (hold X on it):
     std::uint8_t ratchet = 0; // 2..4: that many notes, evenly, inside its first step. 0: the one
-    std::uint8_t glide = 0;   // 1: it slides to its pitch from the note before it on the track
+    std::uint8_t glide = 0;   // it slides to its pitch from the note before it on the track, for this long (kGlideHalf
+                              // and the rest, apotheca/glide_rule.hpp; 1, which was "on", is half a step). 0: it does not
     std::uint8_t throwTo = 0; // THROW: 1 ECHO, 2 SPACE, 3 both. The track's send to that bus is full while the note lasts
     std::uint8_t spare = 0;   // (so the note has no bytes that are not set: it is compared and hashed whole)
+    ChordPlay play;           // only on a chord's note as NotePattern::render gives it: which key of the chord it is,
+                              // and the chord's effects (apotheca/chord_rule.hpp). A loose note's is all nothing.
 };
 
 // A chord placed in a bar. It stays one thing: one level, one length, one
@@ -61,6 +64,9 @@ struct ChordEvent {
     std::uint8_t ratchet = 0;   // 2..4: the whole chord that many times, evenly, inside its first step
     std::uint8_t throwTo = 0;   // THROW, as a note's: every key of the chord is thrown
     std::uint8_t spare[2] = {};
+    // CHORD EFFECTS (hold X on it, apotheca/chord_rule.hpp): STRUM, ORDER, HUMAN TIME, HUMAN LEVEL,
+    // LENGTHS. Its `index` and `count` are not used here: render() fills them in for each key.
+    ChordPlay play;
 
     // The keys it plays, lowest first, with no key twice. Returns how many.
     int pitches(int out[kChordNotes]) const {
@@ -131,6 +137,9 @@ struct NotePattern {
                 out[next].ratchet = c.ratchet;
                 out[next].glide = 0;
                 out[next].throwTo = c.throwTo;
+                out[next].play = c.play;
+                out[next].play.index = static_cast<std::uint8_t>(k);
+                out[next].play.count = static_cast<std::uint8_t>(n);
                 ++count;
             }
         }
@@ -284,6 +293,29 @@ struct Project {
     int barSteps(int s, int barIndex) const {
         const int left = sceneSteps(s) - barIndex * kSteps;
         return left > kSteps ? kSteps : (left < 0 ? 0 : left);
+    }
+    // GLIDE, for the roll to draw: what each note of a synth track's cell slides from and for how
+    // long, as the scene goes round (lines[bar * kMaxNotes + slot], kMaxBars * kMaxNotes of them;
+    // a chord's notes are in the slots NotePattern::render gives them, as the engine has them).
+    // The rule is the engine's own (apotheca/glide_rule.hpp).
+    void glideLines(int trackIndex, int s, GlideLine* lines) const {
+        GlideNote all[kMaxBars * kMaxNotes];
+        const TrackData& t = tracks[trackIndex];
+        const int bars = t.bars[s] < 1 ? 1 : (t.bars[s] > kMaxBars ? kMaxBars : t.bars[s]);
+        for (int b = 0; b < bars; ++b) {
+            NoteEvent out[kMaxNotes];
+            t.notes[s][b].render(out);
+            for (int i = 0; i < kMaxNotes; ++i) {
+                GlideNote& n = all[b * kMaxNotes + i];
+                n.sounds = out[i].velocity > 0.f;
+                n.step = out[i].step;
+                n.pitch = out[i].pitch;
+                n.nudge = out[i].nudge;
+                n.ratchet = out[i].ratchet;
+                n.glide = glideKind(out[i].glide);
+            }
+        }
+        apotheca::glideLines(all, bars, sceneSteps(s), lines);
     }
     TrackData& current() { return tracks[track]; }
     const TrackData& current() const { return tracks[track]; }

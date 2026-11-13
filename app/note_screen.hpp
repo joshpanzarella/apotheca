@@ -22,8 +22,9 @@
 //   X                     hear the key under the cursor
 //   hold X on a note      what it does besides play, a click at a time:
 //                           left / right   RATCHET: the note 2, 3 or 4 times inside its first step
-//                           up / down      GLIDE on / off: it slides to its pitch from the note before it
-//                         A chord takes a ratchet too.
+//                           up / down      GLIDE longer / shorter, down to OFF: it slides to its pitch from the note before it
+//                         A chord has six effects (chord_effects.hpp): up / down pick one,
+//                         left / right set it. The strip lists them.
 //   hold R1 on a note     carry the note (or the whole chord) under the cursor.
 //                         The D-pad: to another key, or a whole step. The
 //                         stick up / down: it slides freely in time, off
@@ -58,6 +59,7 @@
 // the cursor anywhere in its steps, hold Y to swap it for another chord in
 // place; B while Y is held breaks it up into loose notes instead.
 
+#include "chord_effects.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -76,7 +78,9 @@ public:
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
     // A note hidden on the screen by a chord, or a longer note, on the same key at the same time. (It is drawn inside the other.)
     bool isUnderAnother(const NoteEvent& note) const;
-    bool effecting() const { return fxHeld_; } // X is held on a note or a chord: the stick sets what it does
+    bool effecting() const { return fxHeld_; }
+    int effectPicked() const { return fxPick_; } // with X held on a chord: which of its effects left / right set
+    void pickEffect(int effect) { fxPick_ = effect < 0 ? 0 : (effect >= kChordEffects ? kChordEffects - 1 : effect); } // (for a still) // X is held on a note or a chord: the stick sets what it does
 
     // For tests and stills.
     void moveCursorTo(int pitch, int step);
@@ -157,7 +161,10 @@ private:
     void fxRoll();                      // with X held, Y: the dice set the ratchet and the glide
     void fxThrow();                     // with X held, A: the note's or the chord's THROW a step round
     std::uint32_t dice_ = 0x9E3779B9u;
-    void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down)
+    void fxTurn(Button direction);      // with X held: one click of ratchet (left / right) or glide (up / down);
+                                        // on a chord, up / down pick one of its six effects and left / right set it
+    int fxPick_ = 0;                    // the chord effect picked (kFxRatchet and on, chord_effects.hpp); it is kept
+                                        // from one hold to the next, so the same thing is quick to set on chord after chord
     bool fxHeld_ = false;
     float fxSaved_ = 0.f;
     bool fxWas_ = false;

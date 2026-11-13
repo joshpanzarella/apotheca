@@ -1135,7 +1135,137 @@ static void testNoteStripThrowFits() {
     CHECK(stripThrowFont(huge, 560.f, &x) == 2 && x == 560.f);
 }
 
+// GLIDE's length on the strip. With X held it has its own field, and THROW and NUDGE stand
+// clear of the longest it reads. Without, a glide alone says its length where "GLIDE" was.
+static void testNoteStripGlideFits() {
+    // As the fonts measure them, large / medium / small (printed from the program, 2026-11-12).
+    struct Text { const char* text; float widths[3]; };
+    const Text lengths[] = {{"OFF", {38.7f, 32.9f, 28.f}}, {"1/4 STEP", {90.6f, 77.2f, 66.f}}, {"1/2 STEP", {90.6f, 77.2f, 66.f}}, {"1 STEP", {66.3f, 56.5f, 48.3f}}, {"2 STEPS", {83.9f, 71.3f, 60.8f}}, {"FULL", {50.8f, 43.2f, 36.8f}}};
+    const float space[3] = {64.9f, 55.1f, 47.f}, early[3] = {113.1f, 96.2f, 82.f};
+    // Every length there is has a row here, by its name.
+    for (int place = 0; place < kGlideKinds; ++place) CHECK(std::string(glideName(glideAt(place))) == lengths[place].text);
+    for (const Text& length : lengths) {
+        // X held: GLIDE, a gap, THROW, a gap, NUDGE, and the right margin. All in the large size.
+        CHECK(kStripHeldGlideX + length.widths[0] + kStripSpace <= kStripHeldThrowX);
+        // Not held, a glide alone, thrown or not: it ends before THROW begins, and THROW before the margin.
+        CHECK(stripFont(length.widths, stripGlideRoom(false)) == 0 && stripEffectX(false) + length.widths[0] <= kStripRight);
+        const int size = stripFont(length.widths, stripGlideRoom(true));
+        CHECK(size == (length.widths[0] > 85.f ? 1 : 0)); // only "1/4 STEP" and "1/2 STEP" go down a size
+        float x = 0.f;
+        const float end = stripEffectX(true) + length.widths[size] + kStripSpace;
+        const int font = stripThrowFont(space, end, &x);
+        CHECK(x >= end && x + space[font] <= kStripRight && font <= 1);
+    }
+    CHECK(kStripHeldThrowX + space[0] + kStripSpace <= kStripHeldNudgeX);
+    CHECK(stripFont(early, kStripRight - kStripHeldNudgeX) == 0); // "45% EARLY" as large as ever
+    CHECK(kStripHeldGlideX == 250.f && kStripHeldThrowX > 320.f); // (THROW stood at 320 when a glide read ON or OFF)
+}
+
+// Where a glide's line is on the roll: it ends at its note's start and begins that long before.
+static void testGlideLineSpan() {
+    // A step-5 note, two steps of slide: from step 3 to step 5 of the bar shown.
+    GlideSpan span = glideSpan(4.0, 2.0, 0, 16);
+    CHECK(span.seen && span.from == 2.0 && span.to == 4.0);
+    // Nudged early, a quarter step.
+    span = glideSpan(4.0 - 0.45, 0.25, 0, 16);
+    CHECK(span.seen && std::fabs(span.to - 3.55) < 1e-9 && std::fabs(span.from - 3.3) < 1e-9);
+    // Into step 1: all of it is in the bar before, and none is seen here...
+    span = glideSpan(0.0, 4.0, 0, 16);
+    CHECK(!span.seen);
+    // ...it is seen at the foot of the bar played before, moved down by that bar's length.
+    span = glideSpan(0.0, 4.0, 16, 16);
+    CHECK(span.seen && span.from == 12.0 && span.to == 16.0);
+    span = glideSpan(0.0, 4.0, 12, 12); // (a bar cut to twelve steps)
+    CHECK(span.seen && span.from == 8.0 && span.to == 12.0);
+    // A note of the next bar whose line does not reach back into this one: not seen.
+    CHECK(!glideSpan(4.0, 4.0, 16, 16).seen && glideSpan(4.0, 4.5, 16, 16).seen);
+    // Late on step 1, a short slide: partly here.
+    span = glideSpan(0.2, 0.5, 0, 16);
+    CHECK(span.seen && span.from < 0.0 && span.to == 0.2);
+    // No length: nothing to draw.
+    CHECK(!glideSpan(4.0, 0.0, 0, 16).seen);
+    // A note past the end of a cut bar is never played; its line would start past the end too.
+    CHECK(!glideSpan(14.0, 1.0, 0, 12).seen && glideSpan(12.5, 1.0, 0, 12).seen);
+}
+
+// Which bars' lines cross the bar shown, and where: every bar of the cell is asked, for each
+// time the bar shown plays, this time round the scene and the next.
+static bool hasShift(const int* shifts, int count, int shift) {
+    int found = 0;
+    for (int i = 0; i < count; ++i) found += shifts[i] == shift;
+    return found == 1; // (and only once: a line is not drawn twice)
+}
+static void testGlideShifts() {
+    int s[kGlideShifts];
+    // One bar going round: its own lines where they are, and once more a bar lower (the next time round).
+    int n = glideShifts(0, 0, 1, 16, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 0) && hasShift(s, n, 16));
+    // Four bars, the first shown. The third bar's notes begin 32 steps down: a line 38 long from there starts in this bar.
+    n = glideShifts(2, 0, 4, 64, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 32) && hasShift(s, n, 96));
+    CHECK(glideSpan(9.0, 38.0, 32, 16).seen && glideSpan(9.0, 38.0, 32, 16).from == 3.0 && !glideSpan(9.0, 38.0, 96, 16).seen);
+    // ...and seen from the second bar, the third is 16 down, the first 16 up or 48 down (round the end).
+    n = glideShifts(2, 1, 4, 64, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 16));
+    n = glideShifts(0, 1, 4, 64, 16, s);
+    CHECK(n == 2 && hasShift(s, n, -16) && hasShift(s, n, 48));
+    // The last bar shown: the first bar's lines come in at its foot.
+    n = glideShifts(0, 3, 4, 64, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 16) && hasShift(s, n, -48));
+    // A scene cut to 40 steps, its third bar (eight steps) shown: the first bar begins at that bar's eighth step.
+    n = glideShifts(0, 2, 4, 40, 8, s);
+    CHECK(n == 2 && hasShift(s, n, 8) && hasShift(s, n, -32));
+    // A cell of two bars in a scene of four: the second bar plays twice, and the first comes after it both times.
+    n = glideShifts(0, 1, 2, 64, 16, s);
+    CHECK(n == 4 && hasShift(s, n, -16) && hasShift(s, n, 48) && hasShift(s, n, -48) && hasShift(s, n, 16));
+    // A cell of one bar in a scene of 28 steps: its second playing is cut to twelve, and the roll shows sixteen. Only the first counts.
+    n = glideShifts(0, 0, 1, 28, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 0) && hasShift(s, n, 28));
+    // A bar past the scene's end never plays: nothing. No bars at all is one bar.
+    CHECK(glideShifts(0, 2, 4, 32, 16, s) == 0 && glideShifts(0, 2, 4, 32, 0, s) == 0);
+    n = glideShifts(0, 0, 0, 16, 16, s);
+    CHECK(n == 2 && hasShift(s, n, 0) && hasShift(s, n, 16));
+    // The most there can be: a cell of one bar in a scene of eight.
+    CHECK(glideShifts(0, 0, 1, 128, 16, s) == kGlideShifts);
+}
+
+// A line's rectangles cover just the pixels its little squares do, one square a step along it,
+// each whole inside the box or left out; and far fewer rectangles than squares.
+static void testGlideLineRects() {
+    const int W = 120, H = 90, left = 10, top = 8, right = 110, bottom = 80;
+    const double lines[][4] = {{20, 0, 100, 88}, {100, -30, 20, 60}, {60, 10, 60, 70}, {15, 20, 105, 24}, {105, 30, 15, 33}, {-400, -10, 60, 50}, {30, 12.5, 500, 300}, {40.5, 20.25, 47.75, 79.5}, {11, 9, 108, 79}, {50, 100, 90, 140}, {50, -60, 90, -10}, {30, 76, 60, 120}, {30, -40, 60, 10}};
+    int squares = 0, rects = 0;
+    for (const double* l : lines) {
+        for (int size : {2, 4}) {
+            std::vector<int> want(W * H, 0), got(W * H, 0);
+            const double dx = l[2] - l[0], dy = l[3] - l[1];
+            const int count = static_cast<int>(std::ceil(std::fabs(dx) > std::fabs(dy) ? std::fabs(dx) : std::fabs(dy))) + 1;
+            for (int i = 0; i <= count; ++i) {
+                const double t = static_cast<double>(i) / count;
+                const int x = static_cast<int>(std::floor(l[0] + dx * t)) - size / 2, y = static_cast<int>(std::floor(l[1] + dy * t)) - size / 2;
+                if (x < left || x + size > right || y < top || y + size > bottom) continue;
+                ++squares;
+                for (int yy = y; yy < y + size; ++yy)
+                    for (int xx = x; xx < x + size; ++xx) want[yy * W + xx] = 1;
+            }
+            bool inside = true;
+            glideLineRects(l[0], l[1], l[2], l[3], size, left, top, right, bottom, [&](int x, int y, int w, int h) {
+                ++rects;
+                inside = inside && x >= left && y >= top && x + w <= right && y + h <= bottom && w >= size && h >= size;
+                for (int yy = y; inside && yy < y + h; ++yy)
+                    for (int xx = x; xx < x + w; ++xx) got[yy * W + xx] = 1;
+            });
+            CHECK(inside && want == got);
+        }
+    }
+    CHECK(squares > 800 && rects * 2 < squares);
+}
+
 int main(int, char**) {
+    testGlideLineSpan();
+    testGlideShifts();
+    testGlideLineRects();
+    testNoteStripGlideFits();
     testNoteStripNudgeFits();
     testNoteStripThrowFits();
     testTheBarDrawsSelForSelect();

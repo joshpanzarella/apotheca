@@ -141,6 +141,44 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
     return 100.0 * best / (256.0 / 48.0);
 }
 
+// CHORD EFFECTS: what the step clock's own work costs. Eleven tracks, each a sampler with no
+// recording (so there is next to no sound to work out), four chords of four keys a bar on
+// each; `play` is what every chord does. The best of five runs of ten seconds.
+static double chordSong(ChordPlay play, int ratchet) {
+    std::unique_ptr<Engine> engine(new Engine);
+    Command c;
+    for (int t = 1; t < kNumTracks; ++t) {
+        engine->addSynthTrack(t, SynthKind::Sampler);
+        for (int chord = 0; chord < 4; ++chord)
+            for (int key = 0; key < 4; ++key) {
+                c = Command();
+                c.type = Command::SetNote;
+                c.track = t;
+                c.a = chord * 4 + key;
+                c.b = chord * 4;
+                c.c = 48 + t + 4 * key;
+                c.d = 4;
+                c.e = ratchet;
+                c.value = 0.8f;
+                c.play = play;
+                c.play.index = static_cast<std::uint8_t>(key);
+                c.play.count = 4;
+                engine->send(c);
+            }
+    }
+    c = Command();
+    c.type = Command::Play;
+    engine->send(c);
+    std::vector<float> out(512);
+    for (int i = 0; i < 400; ++i) engine->render(out.data(), 256);
+    double best = 1e30;
+    for (int run = 0; run < 5; ++run) {
+        const double block = ms([&] { engine->render(out.data(), 256); }, 1875);
+        best = block < best ? block : best;
+    }
+    return 100.0 * best / (256.0 / 48.0);
+}
+
 int apotheca::runBench() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
@@ -169,6 +207,12 @@ int apotheca::runBench() {
         const double block = ms([&] { engine->render(out.data(), 256); }, 2000);
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
+
+    // Chord effects: the clock's work, with next to no sound under it.
+    std::printf("chord effects, eleven silent tracks, four chords of four keys a bar on each:\n");
+    std::printf("  %-28s %5.2f%% of one core\n", "plain chords", chordSong(ChordPlay(), 0));
+    std::printf("  %-28s %5.2f%% of one core\n", "strummed, humanised, x4", chordSong(chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100), 4));
+    std::printf("  %-28s %5.2f%% of one core\n", "arpeggios, 1/4 step, random", chordSong(chordPlayOf(kStrumQuarter, kOrderRandom, 100, 100, 100), 0));
 
     // Every effect in the table, in the order of the list: a new one is here without being added.
     std::printf("effects, one each, stereo, at their usual settings:\n");
