@@ -127,6 +127,13 @@ if(APOTHECA_BUILD_APP)
     # Each by itself: textviews starts the program a hundred times, four at once, and textsize draws
     # some thousands of screens. Beside the others they slow them (effects came to 116 s of its 120).
     set_tests_properties(textsize textviews PROPERTIES RUN_SERIAL TRUE)
+    # THEME: the six palettes, the setting and its row; and every still drawn by the program in all six.
+    add_executable(theme_test tests/theme_test.cpp)
+    target_link_libraries(theme_test PRIVATE apotheca_app)
+    add_test(NAME theme COMMAND theme_test)
+    add_test(NAME themeviews COMMAND theme_test views $<TARGET_FILE:apotheca>)
+    set_tests_properties(theme themeviews PROPERTIES TIMEOUT 120)
+    set_tests_properties(themeviews PROPERTIES RUN_SERIAL TRUE) # (a hundred and more starts of the program, four at once)
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
     # SELECT is drawn as SEL: no text the device shows spells it out.

@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (27) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `textsize` and `textviews` each run by themselves) |
+| All tests (29) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -613,12 +613,39 @@ effect in those two groups and fails one that does not.
     still it knows at all four sizes (`--texts FILE` writes down each text
     and rectangle; `tests/textfit.hpp` measures them against LARGE: the same
     words, no text out of its box, into its neighbour, or into the bar beside
-    it). **A new `--view` goes in `kViews` in `tests/textsize_test.cpp`**; the
+    it). **A new `--view` goes in `kViews` in `tests/stills.hpp`**; the
     test reads `main.cpp` and fails on one that is missing. `textsize` draws
     the screens the stills do not reach (every FX setting, long names,
     twelve tracks) and checks the tight rows pixel for pixel. A new screen or
     state with words in it gets a `holds(rig, "what")` there.
   - A still at a size: `--text-size xl`.
+- **The colours are a THEME** (owner, 2026-11-13; SET page, THEME: BROWN,
+  BLUE, GREEN, BLACK, PAPER, GREY; `kThemeTable` in `ui.hpp`; kept as
+  `theme N` in settings.txt, the numbers appended, no line reads BROWN, which
+  is the look as built to the number). `ui::kBg` ... `ui::kStop` are
+  references into `ui::gTheme`, which `App::draw` (and main.cpp, before the
+  controls setup) sets from `Session::theme()` each frame. A theme changes
+  colours only, never a size or a place.
+  - **A new colour goes through the ten names (or `faded()` of one): never
+    numbers of its own.** Each name is a JOB (`ui.hpp` says which), kept in
+    every theme; pick by job, not by hue.
+  - **A new mark is checked on a light theme** (`--theme paper`). A light
+    theme keeps the order of the surfaces (bg the deepest, then panel,
+    panel2) with its line darker than them; text on a chip filled with an
+    accent or with text is written in `kBg`; a wash is `faded(kBg, ...)`.
+    Anything that only works light-on-dark breaks there.
+  - A new theme meets the contrast in `theme_test` (text 7, dim 4.5, an
+    accent 4.5 on every surface and under bg letters, accents and the two
+    letterings 20 apart in delta E). BROWN is measured, not held to it (its
+    dim is 4.16 on panel2), and stays as it is.
+  - **`ctest -R theme` holds it.** `themeviews` has the program draw every
+    still in all six (`--themes PREFIX`) and finds, by pixels, any colour
+    that is not the theme's or one of its laid over another (`Explain`); a
+    new alpha given to `faded()` goes in its list there. A still in a theme:
+    `--theme paper`.
+- **The SET page shows twelve rows and moves one row at a time**
+  (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME. A new row
+  costs nothing more than its place in `Row`.
 - **A check of what is DRAWN uses `tests/canvas.hpp`**: a 640x480 screen in
   memory with the program's lettering. `ui_test` looks at the hints bar's
   pixels and `app_test` at the help card's boxes; a check of the text alone

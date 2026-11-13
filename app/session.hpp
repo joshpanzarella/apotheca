@@ -278,6 +278,12 @@ public:
     static constexpr int kTextSizeCount = 4, kTextSizeAsBuilt = 2;
     int textSize() const { return textSize_; }
     void setTextSize(int size);
+    // And the colours: a THEME (ui.hpp's kThemeTable; 0 is the look as it was built, and what a
+    // handheld with nothing kept gets). Only the number is held here: App::draw puts it to use,
+    // so it takes effect between two frames.
+    static constexpr int kThemeCount = 6, kThemeAsBuilt = 0;
+    int theme() const { return theme_; }
+    void setTheme(int theme);
     void loadSettings();
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
@@ -440,6 +446,7 @@ private:
     float volume_ = 1.f;
     int octaves_ = 2;
     int textSize_ = kTextSizeAsBuilt;
+    int theme_ = kThemeAsBuilt;
     struct BounceJob {
         std::unique_ptr<Project> song;
         Bounce what = Bounce::Song;

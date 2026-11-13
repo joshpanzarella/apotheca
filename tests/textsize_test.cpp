@@ -37,6 +37,7 @@
 #include "pattern_layout.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
+#include "stills.hpp"
 #include "textfit.hpp"
 
 using namespace apotheca;
@@ -52,55 +53,7 @@ static int failures = 0;
 
 namespace {
 
-// ---- every still the program knows ---------------------------------------------------------
-// As they are asked for: the view's name, then any flags. (An empty name is the drum grid, which
-// has no name of its own.) testEveryViewIsListed reads main.cpp and fails if it knows one that
-// is not here.
-const char* const kViews[] = {
-    "song", "deleting", "effects", "effects-held",
-    "chordfx", "chordfx-held", "chordfx-ratchet", "chordfx-strum", "chordfx-order", "chordfx-time", "chordfx-level", "chordfx-lengths",
-    "chordfx-off", "chordfx-arp", "chordfx-worst", "chordfx-line",
-    "notefx", "notefx-held", "notefx-chord", "notefx-chord-held", "notefx-worst", "notefx-space", "notefx-space-held",
-    "notefx-glides", "notefx-glides-alone", "notefx-glides-longest-held", "notefx-glides-far1", "notefx-glides-far2", "notefx-glides-far3", "notefx-glides-far4",
-    "notefx-glides-far2-short", "notefx-glides-far2-short-drums",
-    "notefx-from", "notefx-from-paired", "notefx-from-nearest", "notefx-from-random",
-    "notefx-from-held", "notefx-from-paired-held", "notefx-from-nearest-held", "notefx-from-random-held",
-    "under", "songs", "sampler", "bars", "bars-roll",
-    "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-master", "fx-master --hold-a",
-    "fx-duck", "fx-duck --hold-a", "fx-choice", "fx-choice --hold-a", "fx-auto", "fx-auto --hold-a", "fx-sends", "fx-sends --hold-a",
-    "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a",
-    "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
-    "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "twin", "twin0", "twin1", "twin2", "twin3", "twin4",
-    "kit", "slices", "slices-32", "slices-name", "slices-throw", "starts", "picker",
-    "setup", "buttons", "typing", "qmod", "qmod0", "qmod1", "qmod2", "qmod3", "help",
-    "next-scene", "next-scene-notes", "next-scene-full", "volume", "nomenu", "help-nomenu", "kit-old",
-    "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
-    "help --no-menu", "song --no-menu", "setup --no-menu",
-};
-const int kViewCount = static_cast<int>(sizeof kViews / sizeof kViews[0]);
-
-// The names main.cpp compares `view` with: strcmp(view, "x"), strncmp(view, "x", n), strstr(view, "x"),
-// strcmp(view + n, "-x").
-std::vector<std::string> viewsInMain(const std::string& source) {
-    std::vector<std::string> found;
-    for (std::size_t at = 0; (at = source.find("(view", at)) != std::string::npos; ++at) {
-        const std::size_t open = source.find('"', at), close = open == std::string::npos ? open : source.find('"', open + 1);
-        if (close == std::string::npos || open - at > 16) continue; // ("(view + 10, " is the longest there is before the name)
-        found.push_back(source.substr(open + 1, close - open - 1));
-    }
-    return found;
-}
-
-// The names in a source that no still in kViews has in it.
-std::vector<std::string> unlisted(const std::string& source) {
-    std::vector<std::string> missing;
-    for (const std::string& name : viewsInMain(source)) {
-        bool listed = false;
-        for (const char* view : kViews) listed = listed || std::strstr(view, name.c_str()) != nullptr;
-        if (!listed) missing.push_back(name);
-    }
-    return missing;
-}
+using namespace stills;
 
 void testEveryViewIsListed() {
     std::string source;
@@ -185,7 +138,7 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
         bool same = true;
         int lit = 0;
         const int bytes = with->format->BytesPerPixel;
-        for (int y = SettingsScreen::rowY(0); y < SettingsScreen::rowY(SettingsScreen::kRows - 1) + SettingsScreen::kRowH - 6; ++y) { // (the rows: nothing in them moves while the song plays)
+        for (int y = SettingsScreen::rowY(0); y < SettingsScreen::rowY(SettingsScreen::kRowsShown - 1) + SettingsScreen::kRowH - 6; ++y) { // (the rows: nothing in them moves while the song plays)
             const Uint8* a = static_cast<const Uint8*>(with->pixels) + y * with->pitch;
             const Uint8* b = static_cast<const Uint8*>(without->pixels) + y * without->pitch;
             same = same && std::memcmp(a, b, static_cast<std::size_t>(640 * bytes)) == 0;
@@ -701,7 +654,7 @@ void testTheSettingIsKept() {
         for (int size : {kTextXl, kTextSmall, kTextMedium, kTextLarge, kTextXl}) {
             session.setTextSize(size);
             CHECK(session.textSize() == size);
-            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\n");
+            CHECK(readTextFile(file, kept) && kept == "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves 2\nmidirec 0\ntext " + std::to_string(size) + "\ntheme 0\n");
         }
         // It has ends.
         session.setTextSize(99);
@@ -764,8 +717,8 @@ void testTheRow() {
     Session& session = rig.session();
     session.view = View::Settings;
     S& setup = rig.app.settings();
-    // Among the handheld's rows, after STICK SPEED; twelve rows now.
-    CHECK(S::kRows == 12 && S::kTextSize == S::kStick + 1 && S::kOctaves == S::kTextSize + 1 && S::kTextSize > S::kVolume);
+    // Among the handheld's rows, after STICK SPEED; thirteen rows now, THEME after it (tests/theme_test.cpp).
+    CHECK(S::kRows == 13 && S::kTextSize == S::kStick + 1 && S::kTheme == S::kTextSize + 1 && S::kOctaves == S::kTheme + 1 && S::kTextSize > S::kVolume);
     setup.goTo(S::kStick);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kTextSize && session.textSize() == kTextLarge);
@@ -803,18 +756,21 @@ void testTheRow() {
     rig.key(SDLK_j, false);
     rig.frames(1);
     CHECK(session.textSize() == kTextLarge);
-    // The other rows are where they were, by name: down from TEXT SIZE is PIANO ROLL.
+    // The other rows are where they were, by name: down from TEXT SIZE is THEME, then PIANO ROLL.
+    rig.tap(DOWN);
+    CHECK(setup.cursorRow() == S::kTheme);
     rig.tap(DOWN);
     CHECK(setup.cursorRow() == S::kOctaves);
     rig.tap(RIGHT);
     CHECK(session.octavesShown() == 3 && session.textSize() == kTextLarge);
 
-    // As drawn. Each size's own name is on the row, in that size; twelve rows, none over another, the last clear of the hints bar.
+    // As drawn. Each size's own name is on the row, in that size; twelve rows shown, none over another, the last clear of the hints bar.
     setup.goTo(S::kTextSize);
-    for (int row = 0; row < S::kRows; ++row) {
-        CHECK(S::rowY(row) >= ui::kTopBarH + 8 && S::rowY(row) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
-        if (row > 0) CHECK(S::rowY(row) >= S::rowY(row - 1) + S::kRowH - 6 + 4);
-    }
+    for (int first = 0; first + S::kRowsShown <= S::kRows; ++first)
+        for (int row = first; row < first + S::kRowsShown; ++row) {
+            CHECK(S::rowY(row, first) >= ui::kTopBarH + 8 && S::rowY(row, first) + S::kRowH - 6 <= ui::kScreenH - ui::kHintsH - 4);
+            if (row > first) CHECK(S::rowY(row, first) >= S::rowY(row - 1, first) + S::kRowH - 6 + 4);
+        }
     for (int size = 0; size < kTextSizes; ++size) {
         session.setTextSize(size);
         rig.frames(1);

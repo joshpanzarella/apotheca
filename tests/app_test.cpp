@@ -2912,6 +2912,13 @@ void testTheSetupScreen() {
         CHECK(setup.cursorRow() == SettingsScreen::kTextSize && session.textSize() == Session::kTextSizeAsBuilt);
         rig.tap(LEFT);
         CHECK(session.textSize() == 1);
+        // THEME: six of them, a click a push (tests/theme_test.cpp has the rest)
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kTheme && session.theme() == Session::kThemeAsBuilt);
+        rig.tap(RIGHT);
+        CHECK(session.theme() == 1);
+        rig.tap(LEFT);
+        CHECK(session.theme() == 0);
         // PIANO ROLL SHOWS: 1, 2 or 3
         rig.tap(DOWN);
         rig.tap(RIGHT, 5);
@@ -2966,7 +2973,7 @@ void testTheSetupScreen() {
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());
         // Nonsense in the file is not believed.
         std::string kept;
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\ntext 1\n");
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\ntext 1\ntheme 0\n");
         writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nmidirec 5\nrubbish\n");
         later.app.session().loadSettings();
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());

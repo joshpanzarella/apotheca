@@ -241,6 +241,8 @@ int main(int argc, char** argv) {
     const char* samples = nullptr;
     int textSize = -1;           // --text-size small | medium | large | xl: a still at that TEXT SIZE
     const char* texts = nullptr; // --texts FILE: what the last frame drew, at each text size in turn (for textsize_test)
+    const char* themes = nullptr; // --themes PREFIX: the last frame drawn in every theme, PREFIX0.bmp to PREFIX5.bmp (for theme_test)
+    int theme = -1;              // --theme NAME: a still in that THEME (brown, blue, green, black, paper, grey)
     int stillMs = 1000;          // --still-ms N: how long a still (or the smoke run) goes before its picture is taken
     for (int i = 1; i < argc; ++i)
         if (std::strcmp(argv[i], "--bench") == 0) return runBench(); // the timings and nothing else: no window, no sound
@@ -264,6 +266,16 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--samples") == 0 && i + 1 < argc) samples = argv[++i];
         else if (std::strcmp(argv[i], "--texts") == 0 && i + 1 < argc) texts = argv[++i];
         else if (std::strcmp(argv[i], "--still-ms") == 0 && i + 1 < argc) stillMs = std::atoi(argv[++i]);
+        else if (std::strcmp(argv[i], "--themes") == 0 && i + 1 < argc) themes = argv[++i];
+        else if (std::strcmp(argv[i], "--theme") == 0 && i + 1 < argc) {
+            ++i;
+            for (int t = 0; t < kThemes; ++t)
+                if (strcasecmp(argv[i], kThemeTable[t].name) == 0) theme = t;
+            if (theme < 0) {
+                std::fprintf(stderr, "--theme is one of brown, blue, green, black, paper, grey\n");
+                return 1;
+            }
+        }
         else if (std::strcmp(argv[i], "--text-size") == 0 && i + 1 < argc) {
             ++i;
             for (int size = 0; size < kTextSizes; ++size)
@@ -275,7 +287,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (texts && !shot) shot = ""; // a still in every way, with no picture kept
+    if ((texts || themes) && !shot) shot = ""; // a still in every way, with no picture kept
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
@@ -411,6 +423,7 @@ int main(int argc, char** argv) {
         // (With --shot nothing is kept: a still has no program folder. Without it the program runs
         // at that size and it is the setting from then on, written to settings.txt as if set on the SET page.)
         if (textSize >= 0) app.session().setTextSize(textSize);
+        if (theme >= 0) app.session().setTheme(theme); // (the same: kept, without --shot)
         if (!smoke && !shot) app.session().startMidi(); // USB keyboards, whenever one is plugged in
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
@@ -998,6 +1011,7 @@ int main(int argc, char** argv) {
             fontsAt = app.session().textSize();
             if (!fonts.load(renderer, ttf, fontsAt)) std::fprintf(stderr, "could not load the lettering at that size\n");
         }
+        ui::useTheme(app.session().theme()); // (App::draw does the same; the setup draws without it)
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
         else app.draw(renderer, fonts);
         if (!learning && mapped && !shot && relearnHold.offering()) {
@@ -1030,14 +1044,31 @@ int main(int argc, char** argv) {
             fonts.load(renderer, ttf, fontsAt);
             app.draw(renderer, fonts); // the picture, if one is asked for, is at the size asked for
         }
-        if (!running && shot && *shot) {
+        // A picture of the screen as it is now, kept as a BMP file.
+        const auto keepPicture = [&](const char* path) {
             SDL_Surface* picture = SDL_CreateRGBSurfaceWithFormat(0, kScreenW, kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);
-            if (picture && SDL_RenderReadPixels(renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, picture->pixels,
-                                                picture->pitch) == 0) {
-                SDL_SaveBMP(picture, shot);
-            }
+            if (picture && SDL_RenderReadPixels(renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, picture->pixels, picture->pitch) == 0) SDL_SaveBMP(picture, path);
             if (picture) SDL_FreeSurface(picture);
+        };
+        if (!running && themes) {
+            // The same moment drawn once in each theme, each kept as a picture; the sound held still
+            // meanwhile, so the six differ only in their colours. Then back to the theme it had.
+            const int was = app.session().theme();
+            SDL_LockAudioDevice(device);
+            for (int t = 0; t < kThemes; ++t) {
+                app.session().setTheme(t);
+                ui::useTheme(t);
+                if (learning) learner.draw(renderer, fonts); // (--learn: the controls setup)
+                else app.draw(renderer, fonts);
+                keepPicture((std::string(themes) + std::to_string(t) + ".bmp").c_str());
+            }
+            SDL_UnlockAudioDevice(device);
+            app.session().setTheme(was);
+            ui::useTheme(was);
+            if (learning) learner.draw(renderer, fonts);
+            else app.draw(renderer, fonts);
         }
+        if (!running && shot && *shot) keepPicture(shot);
         SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
