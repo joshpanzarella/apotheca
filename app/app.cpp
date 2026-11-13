@@ -9,7 +9,6 @@ namespace apotheca {
 
 namespace {
 constexpr Uint32 kUpdateHoldMs = 1000; // A held this long accepts an update
-constexpr float kNoticeEdge = 14.f;   // a notice's words end this far inside its box, or before
 constexpr Uint32 kHelpAfterMs = 400;   // with no MENU button: SELECT held this long shows the help card
 constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the buttons are let go
 }
@@ -292,25 +291,21 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 190));
         box(renderer, x, y, w, h, kPanel, kTeal);
         outline(renderer, x, y, w, h, kTeal, 2);
-        // (A line too wide for the notice at XL is held at LARGE: Fonts::within.)
-        const auto say = [&](Font Fonts::*size, float tx, float ty, const char* words, SDL_Color color) {
-            fonts.within(size, words, x + w - kNoticeEdge - tx).draw(renderer, tx, ty, words, color);
-        };
         if (updateSaid_ == 1) {
-            say(&Fonts::large, x + 18.f, y + 16.f, "UPDATE ACCEPTED", kTeal);
-            say(&Fonts::medium, x + 18.f, y + 46.f, "It will be used the next time Apotheca starts.", kText);
-            say(&Fonts::small, x + 18.f, y + 74.f, "The one running now is kept. If the new one does not", kDim);
-            say(&Fonts::small, x + 18.f, y + 90.f, "start, Apotheca goes back to this one by itself.", kDim);
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "UPDATE ACCEPTED", kTeal);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, "It will be used the next time Apotheca starts.", kText);
+            fonts.small.draw(renderer, x + 18.f, y + 74.f, "The one running now is kept. If the new one does not", kDim);
+            fonts.small.draw(renderer, x + 18.f, y + 90.f, "start, Apotheca goes back to this one by itself.", kDim);
         } else if (updateSaid_ == 2) {
-            say(&Fonts::large, x + 18.f, y + 16.f, "COULD NOT KEEP THE UPDATE", kBrass);
-            say(&Fonts::medium, x + 18.f, y + 46.f, "Nothing was changed. Is the card full?", kText);
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "COULD NOT KEEP THE UPDATE", kBrass);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, "Nothing was changed. Is the card full?", kText);
         } else {
             char size[64];
             std::snprintf(size, sizeof size, "A new Apotheca was sent over WiFi (%.1f MB).", static_cast<double>(session_.updateMegabytes()));
-            say(&Fonts::large, x + 18.f, y + 16.f, "AN UPDATE HAS ARRIVED", kTeal);
-            say(&Fonts::medium, x + 18.f, y + 46.f, size, kText);
-            say(&Fonts::small, x + 18.f, y + 72.f, "Only accept it if you sent it yourself.", kBrass);
-            say(&Fonts::small, x + 18.f, y + 96.f, "HOLD A for a second to accept.    B to throw it away.", kText);
+            fonts.large.draw(renderer, x + 18.f, y + 16.f, "AN UPDATE HAS ARRIVED", kTeal);
+            fonts.medium.draw(renderer, x + 18.f, y + 46.f, size, kText);
+            fonts.small.draw(renderer, x + 18.f, y + 72.f, "Only accept it if you sent it yourself.", kBrass);
+            fonts.small.draw(renderer, x + 18.f, y + 96.f, "HOLD A for a second to accept.    B to throw it away.", kText);
             // The hold, filling.
             fill(renderer, x + 18, y + 120, w - 36, 8, kLine);
             if (updateHeld_ && updateSince_ != 0) {
@@ -324,13 +319,10 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         fill(renderer, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - 1, faded(kBg, 170));
         box(renderer, x, y, w, h, kPanel, kBrass);
         outline(renderer, x, y, w, h, kBrass, 2);
-        const auto say = [&](Font Fonts::*size, float tx, float ty, const char* words, SDL_Color color) {
-            fonts.within(size, words, x + w - kNoticeEdge - tx).draw(renderer, tx, ty, words, color);
-        };
         // Few words, large: it comes up when things are loud and someone is in a hurry.
-        say(&Fonts::large, x + 20.f, y + 18.f, "ALL SOUND STOPPED", kBrass);
-        say(&Fonts::large, x + 20.f, y + 54.f, "You held all four shoulder buttons.", kText);
-        say(&Fonts::large, x + 20.f, y + 84.f, panicking_ ? "Let go to carry on." : "Press any button to carry on.", kText);
+        fonts.large.draw(renderer, x + 20.f, y + 18.f, "ALL SOUND STOPPED", kBrass);
+        fonts.large.draw(renderer, x + 20.f, y + 54.f, "You held all four shoulder buttons.", kText);
+        fonts.large.draw(renderer, x + 20.f, y + 84.f, panicking_ ? "Let go to carry on." : "Press any button to carry on.", kText);
     } else if (help_) {
         // What is true on every screen, so the bar at the bottom need not say it each time.
         using namespace ui;

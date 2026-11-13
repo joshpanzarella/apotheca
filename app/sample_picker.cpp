@@ -188,8 +188,8 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         for (char& c : label) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
         std::snprintf(text, sizeof text, "FOLDER %d OF %d", folder_ + 1, static_cast<int>(folders_.size()));
         // The folder's name is in the middle, with "FOLDER 2 OF 12" ending at a fixed place to its
-        // right: where the two would meet at XL, each is held at LARGE (Fonts::within).
-        const Font& countFont = fonts.within(&Fonts::small, text, fonts.fixed().small.width(text));
+        // right: where the two would meet at XL, the name is held at LARGE (Fonts::within).
+        const Font& countFont = fonts.small;
         const float labelRoom = 2.f * (w / 2.f - 56.f - countFont.width(text) - 8.f); // what the count leaves it, about the middle
         const Font& labelFont = fonts.within(&Fonts::medium, label.c_str(), labelRoom < w - 200 ? labelRoom : w - 200);
         while (!label.empty() && labelFont.width(label.c_str()) > w - 200) label.pop_back();
@@ -210,7 +210,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (const Playhead* head = jobs_.playhead ? jobs_.playhead() : nullptr) drawPlayhead(r, *head, lastMs_, wx + 2, wy + 2, ww - 4, wh - 4);
         std::snprintf(text, sizeof text, "%.2f S", static_cast<double>(sound->seconds));
-        fonts.small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText);
+        fonts.fixed().small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText); // (over the recording's picture: always at LARGE)
     } else {
         fonts.small.drawCentered(r, wx + ww / 2.f, wy + (wh - fonts.small.capHeight()) / 2.f, cursor_ == 0 ? first_.c_str() : "...", kDim);
     }

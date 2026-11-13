@@ -5,12 +5,14 @@
 // rectangle). LARGE is the owner's layout, so it is the measure: at another size
 //
 //   - the same texts are drawn, the same words, in the same order (nothing cut short, nothing
-//     left out), and the same number of rectangles;
+//     left out; a name that LARGE cuts to fit may show more of itself in smaller lettering),
+//     and the same number of rectangles;
 //   - a text that is on the screen at LARGE is on the screen;
 //   - a text that is inside a rectangle at LARGE (its box, its row, its chip, its panel) is
 //     inside that rectangle: it has not left its box;
-//   - two texts that are clear of each other at LARGE (one above the other, or side by side
-//     with a space between) are clear of each other: it has not run into its neighbour;
+//   - two texts that are clear of each other at LARGE (not overlapping, and with a space
+//     between them if they are side by side on a line) are clear of each other: it has not
+//     run into its neighbour;
 //   - a text that is clear of a rectangle at LARGE (the bar beside a value, the line a label
 //     stands on, the next box along) has not grown into it;
 //   - a text that sits in the middle, up and down, of a box snug round it at LARGE (a row, a
@@ -52,14 +54,18 @@ inline bool inside(const Text& t, const Box& b) {
     return t.x >= b.x - kSlack && t.y >= b.y - kSlack && t.x + t.w <= b.x + b.w + kSlack && t.y + t.h <= b.y + b.h + kSlack;
 }
 inline bool inside(const Box& a, const Box& b) { return a.x >= b.x && a.y >= b.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h; }
-// Two texts are clear of each other when one is above the other, or they are side by side
-// with at least a space between them ("UNSORTED" ending where "FOLDER 1 OF 3" begins is one
-// word to the eye). A space is as wide as the lettering makes it: about a third of the height
-// of the smaller text's capitals (kGap of it is asked for; a space itself is a little more).
+// Two texts are clear of each other when they do not overlap, and, if they are side by side on
+// one line (each shares half its capitals' height or more with the other), there is at least
+// a space between them ("UNSORTED" ending where "FOLDER 1 OF 3" begins is one word to the
+// eye). A space is as wide as the lettering makes it: about a third of the height of the
+// smaller text's capitals (kGap of it is asked for; a space itself is a little more).
 constexpr float kGap = 0.3f;
 inline bool clear(const Text& a, const Text& b) {
-    const float gap = kGap * (a.cap < b.cap ? a.cap : b.cap);
-    return a.x + a.w + gap <= b.x + kSlack || b.x + b.w + gap <= a.x + kSlack || a.y + a.h <= b.y + kSlack || b.y + b.h <= a.y + kSlack;
+    const float cap = a.cap < b.cap ? a.cap : b.cap;
+    const float shared = (a.y + a.h < b.y + b.h ? a.y + a.h : b.y + b.h) - (a.y > b.y ? a.y : b.y); // how much of a line they share
+    if (shared <= kSlack) return true; // one is above the other
+    const float gap = shared >= cap / 2.f ? kGap * cap : 0.f;
+    return a.x + a.w + gap <= b.x + kSlack || b.x + b.w + gap <= a.x + kSlack;
 }
 inline bool touches(const Text& t, const Box& b) { return t.x < b.x + b.w && b.x < t.x + t.w && t.y < b.y + b.h && b.y < t.y + t.h; }
 inline bool onScreen(const Text& t) {
@@ -149,7 +155,9 @@ inline std::vector<std::string> faults(const Frame& large, const Frame& now) {
         return out;
     }
     for (std::size_t i = 0; i < now.texts.size(); ++i) {
-        if (now.texts[i].words != large.texts[i].words || now.texts[i].order != large.texts[i].order) {
+        // (A name cut to fit its room shows more of itself in smaller lettering: that is the one way the words may differ.)
+        const bool more = now.texts[i].cap < large.texts[i].cap && now.texts[i].words.compare(0, large.texts[i].words.size(), large.texts[i].words) == 0;
+        if ((now.texts[i].words != large.texts[i].words && !more) || now.texts[i].order != large.texts[i].order) {
             say("other words than at LARGE", now.texts[i], (" (LARGE: \"" + large.texts[i].words + "\")").c_str());
             return out; // the two frames cannot be matched text for text
         }

@@ -974,7 +974,7 @@ int main(int argc, char** argv) {
             fontsAt = app.session().textSize();
             if (!fonts.load(renderer, ttf, fontsAt)) std::fprintf(stderr, "could not load the lettering at that size\n");
         }
-        if (learning) learner.draw(renderer, fixedFonts); // the setup's lines run the screen's width: always LARGE
+        if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
         else app.draw(renderer, fonts);
         if (!learning && mapped && !shot && relearnHold.offering()) {
             // A few seconds at the start: the way back into the setup.
@@ -987,11 +987,13 @@ int main(int argc, char** argv) {
         if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
             // The same moment drawn once at each text size, and what each drew written down:
-            //   SIZE n / T order cap x y w h words / B order solid x y w h
+            //   CHOSEN n cap / SIZE n / T order cap x y w h words / B order solid x y w h
             // `cap` is the capitals' height of the font a text was drawn in. The sound is held
             // still meanwhile: a meter must read the same in all four.
             if (FILE* out = std::fopen(texts, "w")) {
                 DrawLog log;
+                // First, the size the frames before this one were drawn at: what "--text-size" (or nothing) came to.
+                std::fprintf(out, "CHOSEN %d %g\n", fontsAt, fonts.small.capHeight());
                 SDL_LockAudioDevice(device);
                 for (int size = 0; size < kTextSizes; ++size) {
                     if (!fonts.load(renderer, ttf, size)) break;

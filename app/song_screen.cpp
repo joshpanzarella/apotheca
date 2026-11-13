@@ -481,7 +481,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
             fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
             const char* words = colW > 150 ? "DELETING: NO UNDO" : colW > 90 ? "DELETING TRACK" : "DELETE"; // (which one was worked out at LARGE: one too wide for its column at XL is held at LARGE)
-            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.within(&Fonts::small, words, colW - 4.f).drawCentered(r, x + colW / 2.f, kGridTop + 13.f, words, kText);
+            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.within(&Fonts::small, words, colW - 12.f).drawCentered(r, x + colW / 2.f, kGridTop + 13.f, words, kText);
         } else {
             std::snprintf(text, sizeof text, "%d", t + 1);
             fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
@@ -491,7 +491,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             char own[12];
             std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
             // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)
-            const Font& headFont = fonts.within(&Fonts::small, own[0] ? own : name, colW - 6.f);
+            // In the narrow columns (the short names: nine tracks and up) the heads are side by side with no room to spare: always at LARGE.
+            const Font& headFont = fonts.within(&Fonts::small, own[0] ? own : name, colW > 60 ? colW - 6.f : 0.f);
             for (std::size_t n = std::strlen(own); n > 0 && headFont.width(own) > colW - 6; --n) own[n - 1] = 0;
             headFont.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
         }

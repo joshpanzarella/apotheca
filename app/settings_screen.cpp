@@ -238,7 +238,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             box(r, x + 2, y + 2, kw - 4, kh - 4, here ? kTeal : kPanel, here ? kTeal : kLine);
             char one[8];
             std::snprintf(one, sizeof one, "%s", kKeys[i] == ' ' ? "SPACE" : std::string(1, kKeys[i]).c_str());
-            const Font& font = kKeys[i] == ' ' ? fonts.small : fonts.large;
+            const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
             font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
         }
         const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "delete"}, {"Y", "keep"}};
