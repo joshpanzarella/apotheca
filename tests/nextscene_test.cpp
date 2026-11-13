@@ -1427,6 +1427,11 @@ void testTheSixteenthSceneIsGivenBack() {
         p.tracks[1].automation[14][1][2] = 0.6f;
         p.repeats[14] = 4;
         p.steps[14] = 9;
+        // The sixteenth has no hit in it (there is room for the copy), but it is not as a new
+        // scene is: a cell two bars long, played three times, cut to eleven steps.
+        p.tracks[0].bars[15] = 2;
+        p.repeats[15] = 3;
+        p.steps[15] = 11;
         r->session().applyProject();
         r->frames(2);
         r->render(512);
@@ -1465,6 +1470,48 @@ void testTheSixteenthSceneIsGivenBack() {
     CHECK(apart(round(rig, 15), round(plain, 14)) == 0.f && loudest(rig.heard, 0, 2 * kBar) > 0.05f);
     rig.undo();
     CHECK(songText(p) == was && rig.session().imagesSent() == images && rig.engine->dropped() == 0);
+    CHECK(p.tracks[0].bars[15] == 2 && p.repeats[15] == 3 && p.steps[15] == 11);
+}
+
+// The queue is full (the audio thread has stood still for seconds) and scene moves are lost. When
+// it runs again the program sends the whole song, and with it how long the song is: the engine
+// plays all five scenes, as an engine handed the same song does.
+void testMovesLostToAFullQueue() {
+    Rig rig;
+    fill(rig);
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = rig.project().tempo;
+    while (rig.engine->send(c)) {}
+    const unsigned lost = rig.engine->dropped();
+    const int resyncs = rig.session().resyncs();
+    rig.nextScene();
+    rig.nextScene();
+    rig.undo();
+    rig.redo();
+    CHECK(rig.project().sceneCount() == 5 && rig.engine->dropped() > lost);
+    rig.render(512); // the audio thread is back: the queue empties
+    rig.frames(2);   // ...and the program sees what was lost
+    rig.render(512);
+    CHECK(rig.session().resyncs() == resyncs + 1 && rig.engine->caughtUp());
+    Rig handed;
+    CHECK(handed.session().addTrack(TrackKind::Phazed));
+    handed.project() = rig.project();
+    handed.session().applyProject();
+    handed.session().view = View::Pattern;
+    handed.frames(2);
+    handed.render(512);
+    for (Rig* r : {&rig, &handed}) {
+        r->project().scene = 0;
+        r->frames(2);
+        r->render(512);
+        r->heard.clear();
+        r->session().togglePlay(true);
+        r->frames(1);
+        r->render((kSongSteps + 23 * 4) * kStep + kBar); // the five scenes once through, and a bar of the next time round
+    }
+    CHECK(loudest(rig.heard, 0, rig.heard.size() / 2) > 0.1f);
+    CHECK(apart(rig.heard, handed.heard) == 0.f);
 }
 
 // Things done since the copy that are not a step of undo. A knob turned (an effect's setting, the
@@ -1952,6 +1999,7 @@ int main(int argc, char** argv) {
     testTheEnginesMove();
     testASceneHandedOverIsWhatTheCommandsWrite();
     testTheSixteenthSceneIsGivenBack();
+    testMovesLostToAFullQueue();
     testTakenBackAfterSomethingUndoDoesNotKnow();
     testTheSongBesideTheFinishedSong(false);
     testTheSongBesideTheFinishedSong(true);

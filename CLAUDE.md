@@ -427,6 +427,10 @@ effect in those two groups and fails one that does not.
   left alone while one scene goes round, and beside a song built with the
   copy in it while the song plays through (press, undo, redo; also with a
   later scene playing, and with a real audio thread making blocks back to back).
+- **What the program remembers it sent is set only when the send went**
+  (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
+  full queue left the engine with the old song length for good: the song sent
+  again found nothing to send. `nextscene_test` fills the queue to hold it.
 - **`sceneIn` (engine.cpp) is the one place a pattern is read into the
   engine**, for a whole track (`SetTrackImage`) and for one scene. A new
   field of a note or a hit is copied there, once.

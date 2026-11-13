@@ -52,11 +52,10 @@ void Session::panic(bool held) {
 void Session::syncSong() {
     const int count = project.sceneCount();
     if (count == sentSceneCount_) return;
-    sentSceneCount_ = count;
     Command c;
     c.type = Command::SetSceneCount;
     c.a = count;
-    engine.send(c);
+    if (engine.send(c)) sentSceneCount_ = count; // lost to a full queue: not sent, so the song sent again sends it
 }
 
 bool Session::removeTrack(int track) {
