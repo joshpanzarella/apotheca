@@ -850,26 +850,38 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         outline(r, x, y, full, h, edge);
         if (level > 0.f) fill(r, x, y, w, h, inside);
     };
+    // Where a chord's name is: above its lowest key that shows; on the first step there is no
+    // room above, so just inside the top. False when the whole chord is off the side.
+    const auto chordNameBox = [&](const ChordEvent& c, SDL_Rect* box) {
+        int keys[kChordNotes];
+        const int n = c.pitches(keys);
+        if (n == 0) return false;
+        const int low = keys[0] < low_ ? low_ : keys[0];
+        const int high = keys[n - 1] > low_ + (visibleKeys() - 1) ? low_ + (visibleKeys() - 1) : keys[n - 1];
+        if (high < low) return false;
+        const float w = fonts.small.width(c.name) + 6.f;
+        float lx = static_cast<float>(gx(low));
+        if (lx + w > kScreenW - 2) lx = kScreenW - 2 - w;
+        *box = SDL_Rect{static_cast<int>(lx), c.step == 0 ? gy(c.step) + 1 : gy(c.step) - 15, static_cast<int>(w), 14};
+        return true;
+    };
     // A chord: its notes in purple, tied along the top, named above.
-    const auto drawChord = [&](const ChordEvent& c, bool live, bool ghost) {
+    const auto drawChord = [&](const ChordEvent& c, bool live, bool ghost, bool nameOnly = false) {
         int keys[kChordNotes];
         const int n = c.pitches(keys);
         if (n == 0) return;
         const SDL_Color color = ghost ? kBrass : (live ? kTeal : kPurple);
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < n && !nameOnly; ++i)
             if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color, c.nudge);
         const int low = keys[0] < low_ ? low_ : keys[0];
         const int high = keys[n - 1] > low_ + (visibleKeys() - 1) ? low_ + (visibleKeys() - 1) : keys[n - 1];
         if (high < low) return; // all of it is off the screen
         const int x0 = gx(low), x1 = gx(high) + cellW(), y = gy(c.step);
-        fill(r, x0, y - 1, x1 - x0, 2, color);
-        const float w = fonts.small.width(c.name) + 6.f;
-        float lx = static_cast<float>(x0);
-        if (lx + w > kScreenW - 2) lx = kScreenW - 2 - w;
-        // Above it; on the first step there is no room, so just inside the top.
-        const int ly = c.step == 0 ? y + 1 : y - 15;
-        fill(r, static_cast<int>(lx), ly, static_cast<int>(w), 14, color);
-        fonts.small.draw(r, lx + 3.f, ly + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
+        if (!nameOnly) fill(r, x0, y - 1, x1 - x0, 2, color);
+        SDL_Rect box;
+        if (!chordNameBox(c, &box)) return;
+        fill(r, box.x, box.y, box.w, box.h, color);
+        fonts.small.draw(r, static_cast<float>(box.x) + 3.f, box.y + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
     };
     // What is still sounding from earlier bars of the cell: drawn faint, from
     // the top, for as long as it has left. It is changed in the bar it starts in.
@@ -938,11 +950,33 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     for (const NoteEvent& n : pat().notes)
         if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide || n.throwTo) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo);
-    for (const ChordEvent& c : pat().chords) {
+    // A chord's RATCHET lines and its chord-effects corner are drawn ONCE (owner, 2026-11-13): on
+    // the first of its keys under its name, which is its lowest that shows. They never write over
+    // the name: where the name sits on that key (a chord on the first step, or one nudged early)
+    // they go on the next key clear of it, and the name is drawn again on top of whatever is
+    // left. THROW's foot stays on every key: it is at each key's end, where nothing else is.
+    // A ratchet that is not played (the chord is an arpeggio) is not drawn.
+    for (int slot = 0; slot < kMaxChords; ++slot) {
+        const ChordEvent& c = pat().chords[slot];
         if (c.velocity <= 0.f || (c.ratchet < 2 && !c.throwTo && !chordPlays(c))) continue;
         int keys[kChordNotes];
         const int count = c.pitches(keys);
-        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, c.ratchet, false, c.throwTo, 0, true, chordPlays(c));
+        SDL_Rect name;
+        const bool named = chordNameBox(c, &name);
+        const int top = gy(c.step) + 1 + static_cast<int>(std::round(c.nudge * kRowH));
+        int once = -1;
+        for (int i = 0; i < count; ++i) {
+            if (!shows(keys[i])) continue;
+            if (once < 0) once = i; // (if the name is over every key, the lowest all the same)
+            const bool under = named && gx(keys[i]) + cellW() > name.x && gx(keys[i]) < name.x + name.w && top < name.y + name.h && top + kRowH > name.y;
+            if (!under) {
+                once = i;
+                break;
+            }
+        }
+        const int ratchet = chordEffectWaits(c, kFxRatchet) ? 0 : c.ratchet;
+        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, i == once ? ratchet : 0, false, c.throwTo, 0, true, i == once && chordPlays(c));
+        if (named) drawChord(c, (shaping_ && &c == chordUnder) || (picking_ && slot == editing_), false, true);
     }
     // A note written where something longer is already sounding on the same key (a held chord, or
     // a long note) would be hidden under it. It is drawn again on top, narrower, with a dark edge:

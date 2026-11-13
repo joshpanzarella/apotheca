@@ -819,8 +819,30 @@ void testTheScreen() {
         return n;
     };
     const int stripTop = 400, hintsTop = 456; // (the strip's rows and the hints bar, as the stills show them)
-    // The mark: a chord with a chord effect set has a light corner on each key; without, none.
+    // Where the chord's keys are on the screen: the columns its blocks' last rows are in.
+    c.velocity = 0.f;
+    const std::vector<Uint32> empty = shot();
+    c.velocity = 0.7f;
+    const auto columns = [&](const std::vector<Uint32>& with) {
+        int bottom = 0;
+        for (int y = 0; y < stripTop; ++y)
+            if (differ(with, empty, 0, y, 640, y + 1)) bottom = y;
+        std::vector<std::pair<int, int>> runs;
+        for (int x = 0; x < 640; ++x) {
+            if (!differ(with, empty, x, bottom - 6, x + 1, bottom + 1)) continue;
+            if (!runs.empty() && runs.back().second == x) runs.back().second = x + 1;
+            else runs.push_back({x, x + 1});
+        }
+        return runs;
+    };
+    // The mark: a chord with a chord effect set has ONE light corner, on its lowest key (the one
+    // under its name); without, none. Its other keys carry no mark.
     const std::vector<Uint32> plain = shot();
+    const std::vector<std::pair<int, int>> key = columns(plain);
+    int keys[kChordNotes];
+    const int n = c.pitches(keys);
+    CHECK(n >= 3 && static_cast<int>(key.size()) == n);
+    if (static_cast<int>(key.size()) != n) return;
     c.play.time = 10;
     const std::vector<Uint32> marked = shot();
     int light = 0, other = 0;
@@ -830,12 +852,12 @@ void testTheScreen() {
             if (marked[i] == plain[i]) continue;
             ++(marked[i] == Canvas::colour(ui::kText) ? light : other);
         }
-    int keys[kChordNotes];
-    const int n = c.pitches(keys);
-    CHECK(light >= 20 * n && light <= 60 * n); // a corner ten across on each of its keys
-    CHECK(other > 0 && other <= 12 * n);       // ...and the dark edge beside it
+    CHECK(light >= 20 && light <= 60); // a corner ten across, once
+    CHECK(other > 0 && other <= 12);   // ...and the dark edge beside it
+    CHECK(differ(marked, plain, key[0].first, 0, key[0].second, stripTop) == light + other); // all of it on the lowest key
     CHECK(differ(marked, plain, 0, stripTop, 640, 480) > 0); // the strip says so too ("EFFECTS")
-    // A ratchet's mark is another thing: lines and a purple edge, no light corner.
+    // A ratchet's mark is another thing: lines and a purple edge, no light corner. It too is
+    // drawn once, on the key under the name, and the chord's other keys are as a plain chord's.
     c.play = ChordPlay();
     c.ratchet = 3;
     const std::vector<Uint32> ratcheted = shot();
@@ -846,6 +868,64 @@ void testTheScreen() {
             lightToo += ratcheted[i] != plain[i] && ratcheted[i] == Canvas::colour(ui::kText);
         }
     CHECK(lightToo == 0 && differ(ratcheted, plain, 0, 0, 640, stripTop) > 0);
+    CHECK(differ(ratcheted, plain, key[0].first, 0, key[0].second, stripTop) >= 2 * (key[0].second - key[0].first - 4)); // two lines across the key
+    CHECK(differ(ratcheted, plain, 0, 0, key[0].first, stripTop) == 0);
+    CHECK(differ(ratcheted, plain, key[0].second, 0, 640, stripTop) == 0); // nothing on any other key
+    // THROW's foot stays on every key.
+    c.throwTo = 1;
+    const std::vector<Uint32> thrownToo = shot();
+    for (int i = 0; i < n; ++i) CHECK(differ(thrownToo, ratcheted, key[static_cast<std::size_t>(i)].first, 0, key[static_cast<std::size_t>(i)].second, stripTop) > 0);
+    c.throwTo = 0;
+    // Nothing writes over the name. Nudged early the chord's lowest key is under its name: the
+    // marks go on the next key, and the name's own key is as a plain chord's.
+    for (int way = 0; way < 2; ++way) {
+        c.ratchet = 0;
+        c.play = ChordPlay();
+        if (way == 0) c.nudge = -0.45f;
+        else c.nudge = 0.f, c.step = 0; // ...as it is on the first step, where the name is inside the top
+        const std::vector<Uint32> bare = shot();
+        c.ratchet = 4;
+        c.play.strum = kStrumTight;
+        const std::vector<Uint32> full = shot();
+        CHECK(differ(full, bare, 0, 0, key[1].first, stripTop) == 0); // (the name and the lowest key)
+        CHECK(differ(full, bare, key[1].first, 0, key[1].second, stripTop) > 40);
+        CHECK(differ(full, bare, key[1].second, 0, 640, stripTop) == 0);
+    }
+    // A chord of one key on the first step: the name is on its only key. The marks are there
+    // too, and the name is on top of them, whole.
+    {
+        const int count = c.count;
+        c.count = 1;
+        c.ratchet = 0;
+        c.play = ChordPlay();
+        const std::vector<Uint32> bare = shot();
+        int top = 0;
+        while (top < stripTop && !differ(bare, empty, key[0].first, top, key[0].second, top + 1)) ++top;
+        c.ratchet = 4;
+        c.play.time = 10;
+        const std::vector<Uint32> full = shot();
+        // (the name's letter: what is not purple at the block's top left, and one pixel round it)
+        int x0 = 640, x1 = 0, y0 = 480, y1 = 0;
+        for (int y = top + 1; y < top + 13; ++y)
+            for (int x = key[0].first + 1; x < key[0].first + 12; ++x)
+                if (bare[static_cast<std::size_t>(y * 640 + x)] != Canvas::colour(ui::kPurple)) {
+                    x0 = x < x0 ? x : x0, x1 = x > x1 ? x : x1, y0 = y < y0 ? y : y0, y1 = y > y1 ? y : y1;
+                }
+        CHECK(x1 - x0 >= 3 && y1 - y0 >= 5);
+        CHECK(differ(full, bare, x0 - 1, y0 - 1, x1 + 2, y1 + 2) == 0);
+        CHECK(differ(full, bare, key[0].first, top + 14, key[0].second, stripTop) > 0);
+        c.count = count;
+    }
+    c.step = 2;
+    // A ratchet that is not played (the chord is an arpeggio) is not drawn on the roll.
+    c.ratchet = 0;
+    c.play.strum = kStrumHalf;
+    const std::vector<Uint32> arp = shot();
+    c.ratchet = 2;
+    CHECK(differ(shot(), arp, 0, 0, 640, stripTop) == 0);
+    c.play.strum = kStrumTight;
+    CHECK(differ(shot(), arp, 0, 0, 640, stripTop) > 0); // (and is, as soon as it would be)
+    c.play = ChordPlay();
     c.ratchet = 0;
 
     // X held: the strip is the six, and each one picked reads differently; nothing is drawn
