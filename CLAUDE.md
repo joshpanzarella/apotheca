@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (25) | `cd build && ctest -j8` (70 to 85 s; `nextscene` is the longest) |
+| All tests (27) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `textsize` and `textviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -575,6 +575,49 @@ effect in those two groups and fails one that does not.
   word. `ctest -R words` (`tests/words_test.sh`) reads the sources and fails
   on a string that would show it spelled out; it plants its own faults at the
   end and must catch each (add a plant with a new rule).
+- **The lettering's size is a setting, and the program holds TWO sets of
+  fonts** (owner, 2026-11-12; SET page, TEXT SIZE: SMALL, MEDIUM, LARGE, XL;
+  `kTextPoints` in `ui.hpp`; kept as `text N` in settings.txt, the numbers
+  appended, no line reads LARGE). A screen is handed the chosen set;
+  `fonts.fixed()` is the other, always LARGE, which every screen was laid
+  out at. `main.cpp` loads the chosen set again between two frames when
+  `Session::textSize()` changes.
+  - **The tight rows are drawn with `fixed()`**, so they are the same pixels
+    at every size: the top bar (and the tempo's box), the hints bar and
+    `hintsUnder` (inside `ui.cpp`: hand them the set you were given), the
+    strip under the drum grid and under the piano roll (`tight` in both),
+    anything written over a little picture (a cell's bar count on SONG, a
+    recording's seconds in the list), the heads of narrow SONG columns, the
+    controls setup, the offer at the start (`ui::relearnOffer`). The tests that read a strip or a bar off the screen
+    draw at LARGE and hold at every size for that reason.
+  - **Everything else follows the setting, and a new text is checked at XL.**
+    Where it would not fit its room at XL it is drawn with
+    `fonts.within(&Fonts::small, text, room)`: the chosen size if it fits,
+    LARGE if not. Never cut it shorter than LARGE cuts it, never move it,
+    never change the words. A name cut by width is cut with the font
+    `within` gave. A text that stands on a line is placed from the line
+    (the roll's OCTAVE: `line - capHeight`), not at a number that was right
+    at 12 pixels.
+  - **A held text takes its row with it.** What shares a line with a text
+    held at LARGE is held too (a song's name and OPEN NOW > REVS; a SET
+    row's value and its note; all sixteen step numbers of a roll's bar of
+    three figures), and it is placed with the capitals' height of the font
+    it is DRAWN in, not the chosen one's. A text that is made at run time
+    (a name, a number, what a toast says) is checked at its longest: no
+    still shows a ten-W track name or scene 10's 127 STEPS OF 128.
+  - **A font loaded again lets its old letters go** (`Font::sheets()` counts
+    them; a test holds it), and the fonts are unloaded before the renderer
+    is destroyed (`main.cpp`'s end).
+  - **`ctest -R text` holds it.** `textviews` has the program draw every
+    still it knows at all four sizes (`--texts FILE` writes down each text
+    and rectangle; `tests/textfit.hpp` measures them against LARGE: the same
+    words, no text out of its box, into its neighbour, or into the bar beside
+    it). **A new `--view` goes in `kViews` in `tests/textsize_test.cpp`**; the
+    test reads `main.cpp` and fails on one that is missing. `textsize` draws
+    the screens the stills do not reach (every FX setting, long names,
+    twelve tracks) and checks the tight rows pixel for pixel. A new screen or
+    state with words in it gets a `holds(rig, "what")` there.
+  - A still at a size: `--text-size xl`.
 - **A check of what is DRAWN uses `tests/canvas.hpp`**: a 640x480 screen in
   memory with the program's lettering. `ui_test` looks at the hints bar's
   pixels and `app_test` at the help card's boxes; a check of the text alone

@@ -480,7 +480,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (deleting) {
             const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
             fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
-            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 13.f, colW > 150 ? "DELETING: NO UNDO" : colW > 90 ? "DELETING TRACK" : "DELETE", kText);
+            const char* words = colW > 150 ? "DELETING: NO UNDO" : colW > 90 ? "DELETING TRACK" : "DELETE"; // (which one was worked out at LARGE: one too wide for its column at XL is held at LARGE)
+            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.within(&Fonts::small, words, colW - 12.f).drawCentered(r, x + colW / 2.f, kGridTop + 13.f, words, kText);
         } else {
             std::snprintf(text, sizeof text, "%d", t + 1);
             fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
@@ -489,8 +490,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // The player's own name for it, cut to fit a narrow column.
             char own[12];
             std::snprintf(own, sizeof own, "%s", project_.tracks[t].name);
-            for (std::size_t n = std::strlen(own); n > 0 && fonts.small.width(own) > colW - 6; --n) own[n - 1] = 0;
-            fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
+            // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)
+            // In the narrow columns (the short names: nine tracks and up) the heads are side by side with no room to spare: always at LARGE.
+            const Font& headFont = fonts.within(&Fonts::small, own[0] ? own : name, colW > 60 ? colW - 6.f : 0.f);
+            for (std::size_t n = std::strlen(own); n > 0 && headFont.width(own) > colW - 6; --n) own[n - 1] = 0;
+            headFont.drawCentered(r, x + colW / 2.f, kGridTop + 22.f, own[0] ? own : name, sounding ? kText : kDim);
         }
         if (onHead_ && t == column_ && !listing_ && !choosing_) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, kTeal, 2);
         // Muted, or soloed: a mark in the corner of the head, and a silent track's head goes dark.
@@ -507,7 +511,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (addColumn() >= 0) {
         const int x = kColumnsLeft + tracks * (colW + 1);
         outline(r, x, kGridTop, colW, kHeadH, kLine);
-        fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 14.f, colW > 60 ? "+ TRACK" : "+", kDim);
+        fonts.within(&Fonts::small, colW > 60 ? "+ TRACK" : "+", colW - 4.f).drawCentered(r, x + colW / 2.f, kGridTop + 14.f, colW > 60 ? "+ TRACK" : "+", kDim);
         if (column_ == addColumn()) outline(r, x - 1, kGridTop - 1, colW + 2, kHeadH + 2, cursorColor, 2);
     }
 
@@ -593,7 +597,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             }
             if (cellBars > 1) { // how long it is, in the corner
                 std::snprintf(text, sizeof text, "%d", cellBars);
-                fonts.small.drawRight(r, x + colW - 4.f, y + 3.f, text, kDim);
+                fonts.fixed().small.drawRight(r, x + colW - 4.f, y + 3.f, text, kDim); // (over the cell's little picture, to the pixel: always at LARGE)
             }
             // Where the cell has got to: a short one goes round under a long scene.
             if (playingHere && playStep >= 0) {
@@ -625,10 +629,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, x + 34.f, static_cast<float>(ty), on ? "FILES OVER WIFI: ON" : "FILES OVER WIFI: OFF", on ? kTeal : kText);
             if (on) {
                 const std::string address = session_.transferAddress();
-                if (address[0] == ':') fonts.small.draw(r, x + 12.f, ty + 16.f, "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST.", kBrass);
-                else fonts.small.draw(r, x + 12.f, ty + 16.f, ("OPEN IN A BROWSER:  " + address).c_str(), kBrass);
+                // (These run the panel's width: one too wide at XL is held at LARGE.)
+                const std::string open = address[0] == ':' ? "NOT ON A NETWORK. JOIN WIFI IN THE FIRMWARE FIRST." : "OPEN IN A BROWSER:  " + address;
+                fonts.within(&Fonts::small, open.c_str(), w - 24.f).draw(r, x + 12.f, ty + 16.f, open.c_str(), kBrass);
             } else {
-                fonts.small.draw(r, x + 12.f, ty + 16.f, "Recordings, chord packs, songs: from a browser.", kDim);
+                const char* from = "Recordings, chord packs, songs: from a browser.";
+                fonts.within(&Fonts::small, from, w - 24.f).draw(r, x + 12.f, ty + 16.f, from, kDim);
             }
         }
         char saved[32] = "";
@@ -646,7 +652,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 box(r, x + 12, by, w - 24, rowH - 4, kPanel2, kLine);
                 if (i == 0) {
                     fonts.medium.draw(r, x + 22.f, by + 9.f, "+ SAVE A REV", i == revCursor_ ? kTeal : kText);
-                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "THE SONG AS IT IS NOW", kDim);
+                    const char* what = "THE SONG AS IT IS NOW"; // (clear of "+ SAVE A REV" beside it: at XL it is held at LARGE)
+                    fonts.within(&Fonts::small, what, w - 44.f - fonts.medium.width("+ SAVE A REV") - 12.f).drawRight(r, x + w - 22.f, by + 10.f, what, kDim);
                 } else {
                     const int rev = revs_[static_cast<std::size_t>(i - 1)];
                     std::snprintf(text, sizeof text, "REV %d", rev);
@@ -661,8 +668,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         const int rows = static_cast<int>(songs_.size()) + 1;
         const int first = listCursor_ < shown ? 0 : listCursor_ - shown + 1;
+        // (The heading and what is said beside it share a line: where they would meet at XL, what is said is held at LARGE.)
+        const char* said = saved[0] ? saved : "KEPT AS YOU GO. NOTHING TO SAVE.";
         fonts.small.draw(r, x + 12.f, y + 12.f, "SONGS", kDim);
-        fonts.small.drawRight(r, x + w - 12.f, y + 12.f, saved[0] ? saved : "KEPT AS YOU GO. NOTHING TO SAVE.", saved[0] ? kBrass : kDim);
+        fonts.within(&Fonts::small, said, w - 24.f - fonts.small.width("SONGS") - 8.f).drawRight(r, x + w - 12.f, y + 12.f, said, saved[0] ? kBrass : kDim);
         for (int i = first; i < rows && i < first + shown; ++i) {
             const int by = y + 32 + (i - first) * rowH;
             box(r, x + 12, by, w - 24, rowH - 4, kPanel2, kLine);
@@ -673,9 +682,14 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 char upper[40];
                 std::snprintf(upper, sizeof upper, "%s", name.c_str());
                 for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-                fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
+                // The open song's name shares its row with OPEN NOW > REVS. Where the two would meet at XL
+                // (MERCURY WINDOW: a name the program gives), both are held at LARGE (Fonts::within).
+                const bool open = name == session_.songName();
+                const char* const openSays = "OPEN NOW  >  REVS";
+                const Font& nameFont = fonts.within(&Fonts::medium, upper, w - 44.f - (open ? fonts.small.width(openSays) + 8.f : 0.f));
+                nameFont.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
                 const bool deleting = bHeld_ && bDownAt_ != 0 && i == bRow_;
-                if (name == session_.songName() && !deleting) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
+                if (open && !deleting) (&nameFont == &fonts.medium ? fonts : fonts.fixed()).small.drawRight(r, x + w - 22.f, by + 10.f, openSays, kPurple);
                 // B held on it: the row fills, and at full the song is deleted.
                 if (bHeld_ && bDownAt_ != 0 && i == bRow_) {
                     const float part = static_cast<float>(lastMs_ - bDownAt_) / static_cast<float>(kDeleteHoldMs);
@@ -711,7 +725,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else std::snprintf(about, sizeof about, "%s", info.about);
             box(r, x + 12, by, w - 24, 46, kPanel2, kLine);
             fonts.large.draw(r, x + 24.f, by + 9.f, info.listName, i == choice_ ? kTeal : kText);
-            fonts.small.draw(r, x + 24.f, by + 29.f, about, kDim);
+            fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + 29.f, about, kDim); // (the longest at XL: held at LARGE)
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
         }
         const Hint list[] = {{"A", changing_ >= 0 ? "change to it" : "add the track"}, {"B", "cancel"}};

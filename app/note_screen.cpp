@@ -816,17 +816,27 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x0, kOctaveTop + kOctaveH - 2, x1 - x0, 1, color);
         if (pitch % 12 == 0) fill(r, x0, kOctaveTop + 2, 1, kOctaveH - 3, color); // the C end
         std::snprintf(text, sizeof text, x1 - x0 > 70 ? "OCTAVE %d" : "%d", c / 12 - 1);
-        if (x1 - x0 > 14) fonts.small.draw(r, x0 + 5.f, kOctaveTop - 3.f, text, mine ? cursorColor : kText);
+        // (The words stand on the band's line, whatever their size: at LARGE that is kOctaveTop - 3.)
+        if (x1 - x0 > 14) fonts.small.draw(r, x0 + 5.f, kOctaveTop + kOctaveH - 2.f - fonts.small.capHeight(), text, mine ? cursorColor : kText);
     }
 
     // ---- the empty grid: a column for each key, a row for each step ------------------
+    // The numbers at the left have the 25 pixels before the grid. Three figures at XL do not fit
+    // them (bars 7 and 8 of a cell): such a bar's numbers are at LARGE, all sixteen of them.
+    bool numbersFit = true;
+    for (int step = 0; step < kSteps; ++step) {
+        const int number = project_.bar * kSteps + step + 1;
+        std::snprintf(text, sizeof text, "%d", number);
+        numbersFit = numbersFit && fonts.small.width(text) <= kGridLeft - (number >= 100 ? 3.f : 7.f);
+    }
+    const Font& numberFont = numbersFit ? fonts.small : fonts.fixed().small;
     for (int step = 0; step < kSteps; ++step) {
         // Counted through the cell: bar 2 reads 17 to 32. A step past the scene's end (a scene of
         // 25 steps: 26 to 32) is never played and reads "-".
         if (step < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step + 1);
         else std::snprintf(text, sizeof text, "-");
         // Three figures (bars 7 and 8) need the room: they stand four pixels nearer the grid.
-        fonts.small.drawRight(r, kGridLeft - (project_.bar * kSteps + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
+        numberFont.drawRight(r, kGridLeft - (project_.bar * kSteps + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - numberFont.capHeight()) / 2.f, text,
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
         for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
             const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
@@ -1058,30 +1068,33 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, 0, gy(steps) - 1, kGridLeft + visibleKeys() * keyW(), (kSteps - steps) * kRowH, faded(kBg, 185));
 
     // ---- what is under the cursor ---------------------------------------------------
+    // The strip is a tight row: its fields stand at fixed places (note_marks.hpp) with a chip
+    // under each, and the chord tiles are 88 across. Always at LARGE, whatever TEXT SIZE is.
+    const Fonts& tight = fonts.fixed();
     const int stripY = gridTop() + kSteps * kRowH + kStripGap;
     const auto field = [&](float fx, const char* label, const char* value, SDL_Color color) {
-        fonts.small.draw(r, fx, stripY + 8.f, label, kDim);
-        fonts.large.draw(r, fx, stripY + 26.f, value, color);
+        tight.small.draw(r, fx, stripY + 8.f, label, kDim);
+        tight.large.draw(r, fx, stripY + 26.f, value, color);
     };
     if (picking_) {
         // The pack laid out: seven chords at a time, the one in hand lit.
         const ChordPack& p = pack();
         const int count = static_cast<int>(p.chords.size());
         float x = 8.f;
-        fonts.small.draw(r, x, static_cast<float>(stripY), "L1", kDim);
-        x += fonts.small.width("L1") + 6.f;
+        tight.small.draw(r, x, static_cast<float>(stripY), "L1", kDim);
+        x += tight.small.width("L1") + 6.f;
         std::string packName = p.name;
         for (char& c : packName) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
-        fonts.small.draw(r, x, static_cast<float>(stripY), packName.c_str(), kText);
-        x += fonts.small.width(packName.c_str()) + 6.f;
-        fonts.small.draw(r, x, static_cast<float>(stripY), "R1", kDim);
+        tight.small.draw(r, x, static_cast<float>(stripY), packName.c_str(), kText);
+        x += tight.small.width(packName.c_str()) + 6.f;
+        tight.small.draw(r, x, static_cast<float>(stripY), "R1", kDim);
         std::snprintf(text, sizeof text, "%d / %d", hand_ + 1, count);
-        fonts.small.draw(r, 300.f, static_cast<float>(stripY), text, kDim);
+        tight.small.draw(r, 300.f, static_cast<float>(stripY), text, kDim);
         if (inversion_ != 0) {
             std::snprintf(text, sizeof text, "INVERSION %+d", inversion_);
-            fonts.small.draw(r, 380.f, static_cast<float>(stripY), text, kBrass);
+            tight.small.draw(r, 380.f, static_cast<float>(stripY), text, kBrass);
         }
-        fonts.small.drawRight(r, kScreenW - 8.f, static_cast<float>(stripY), editing_ >= 0 ? "SWAPPING THIS CHORD" : "LET GO OF Y TO PLACE", kDim);
+        tight.small.drawRight(r, kScreenW - 8.f, static_cast<float>(stripY), editing_ >= 0 ? "SWAPPING THIS CHORD" : "LET GO OF Y TO PLACE", kDim);
         const int shown = count < 7 ? count : 7, tileW = 88, tileH = 30, tileY = stripY + 15;
         int first = hand_ - 3;
         if (first > count - shown) first = count - shown;
@@ -1090,7 +1103,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const int index = first + i, tx = 8 + i * (tileW + 2);
             const bool here = index == hand_;
             box(r, tx, tileY, tileW, tileH, here ? kPanel2 : kPanel, kLine);
-            fonts.small.drawCentered(r, tx + tileW / 2.f, tileY + (tileH - fonts.small.capHeight()) / 2.f,
+            tight.small.drawCentered(r, tx + tileW / 2.f, tileY + (tileH - tight.small.capHeight()) / 2.f,
                                      p.chords[static_cast<std::size_t>(index)].name, here ? kText : kDim);
             if (here) outline(r, tx - 1, tileY - 1, tileW + 2, tileH + 2, kBrass, 2);
         }
@@ -1106,11 +1119,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 const float x = kChordFxListX + static_cast<float>(effect / 3) * kChordFxColumn;
                 const float y = static_cast<float>(stripY + kChordFxRowTop + (effect % 3) * kChordFxRowH);
                 const bool picked = effect == fxPick_, waits = chordEffectWaits(c, effect), set = chordEffectSet(c, effect);
-                if (picked) fill(r, static_cast<int>(x) - 8, static_cast<int>(y) - 1, 3, fonts.small.capHeight() + 2, kBrass);
+                if (picked) fill(r, static_cast<int>(x) - 8, static_cast<int>(y) - 1, 3, tight.small.capHeight() + 2, kBrass);
                 // (One that waits is dim; picked all the same, it is still to be read.)
-                fonts.small.draw(r, x, y, chordEffectName(effect), waits ? (picked ? kDim : kLine) : picked ? kText : kDim);
+                tight.small.draw(r, x, y, chordEffectName(effect), waits ? (picked ? kDim : kLine) : picked ? kText : kDim);
                 chordEffectValue(c, effect, text, sizeof text);
-                fonts.small.draw(r, x + kChordFxValueIn[effect / 3], y, text, waits ? (picked ? kDim : kLine) : set ? (picked ? kBrass : kText) : kDim);
+                tight.small.draw(r, x + kChordFxValueIn[effect / 3], y, text, waits ? (picked ? kDim : kLine) : set ? (picked ? kBrass : kText) : kDim);
             }
             field(kChordFxThrowX, "THROW", throwName(chordUnder->throwTo), chordUnder->throwTo ? kBrass : kText);
         } else if (chordUnder) {
@@ -1152,39 +1165,39 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // that does not fit even in the small size, how many are on.
             chordEffectLine(*chordUnder, text, sizeof text);
             const float room = stripGlideRoom(throwHere != 0);
-            if (fonts.small.width(text) > room) {
+            if (tight.small.width(text) > room) {
                 int on = 0;
                 for (int effect = 0; effect < kChordEffects; ++effect) on += chordEffectSet(*chordUnder, effect) && !chordEffectWaits(*chordUnder, effect);
                 std::snprintf(text, sizeof text, "%d ON", on);
             }
-            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
-            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const Font* sizes[3] = {&tight.large, &tight.medium, &tight.small};
+            const float widths[3] = {tight.large.width(text), tight.medium.width(text), tight.small.width(text)};
             const int size = stripFont(widths, room);
             const float x = stripEffectX(throwHere != 0);
-            fonts.small.draw(r, x, stripY + 8.f, "EFFECTS", kDim);
-            sizes[size]->draw(r, x, stripY + 26.f + fonts.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
+            tight.small.draw(r, x, stripY + 8.f, "EFFECTS", kDim);
+            sizes[size]->draw(r, x, stripY + 26.f + tight.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
             effectEnd = x + widths[size] + kStripSpace;
         } else if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
             // A glide alone says how long it is; beside a ratchet there is only room to say it is there.
             std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", !glideHere ? "" : ratchetHere >= 2 ? "GLIDE" : glideName(glideKindHere));
-            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
-            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const Font* sizes[3] = {&tight.large, &tight.medium, &tight.small};
+            const float widths[3] = {tight.large.width(text), tight.medium.width(text), tight.small.width(text)};
             const int size = ratchetHere >= 2 ? 0 : stripFont(widths, stripGlideRoom(throwHere != 0)); // (a ratchet's line is as it always was)
             const float x = stripEffectX(throwHere != 0);
-            fonts.small.draw(r, x, stripY + 8.f, ratchetHere >= 2 ? "RATCHET" : "GLIDE", kDim);
-            sizes[size]->draw(r, x, stripY + 26.f + fonts.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
+            tight.small.draw(r, x, stripY + 8.f, ratchetHere >= 2 ? "RATCHET" : "GLIDE", kDim);
+            sizes[size]->draw(r, x, stripY + 26.f + tight.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
             effectEnd = x + widths[size] + kStripSpace;
         }
         if (!fxHeld_ && throwHere) {
             // Up to the right margin and no further: moved left, or drawn smaller beside a long effect.
             const char* to = throwName(throwHere);
-            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
-            const float widths[3] = {fonts.large.width(to), fonts.medium.width(to), fonts.small.width(to)};
+            const Font* sizes[3] = {&tight.large, &tight.medium, &tight.small};
+            const float widths[3] = {tight.large.width(to), tight.medium.width(to), tight.small.width(to)};
             float x = kStripThrowX;
             const Font& font = *sizes[stripThrowFont(widths, effectEnd, &x)];
-            fonts.small.draw(r, x, stripY + 8.f, "THROW", kDim);
-            font.draw(r, x, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), to, kPurple);
+            tight.small.draw(r, x, stripY + 8.f, "THROW", kDim);
+            font.draw(r, x, stripY + 26.f + tight.large.capHeight() - font.capHeight(), to, kPurple);
         }
         if (chordFx) {
             // (the chord's effects have the strip; its nudge is there again when X is let go)
@@ -1192,13 +1205,13 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
             // Beside an effect and a THROW there is less room: the value is drawn smaller, never over them.
             const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere || chordPlaysHere);
-            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
-            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const Font* sizes[3] = {&tight.large, &tight.medium, &tight.small};
+            const float widths[3] = {tight.large.width(text), tight.medium.width(text), tight.small.width(text)};
             // (With X held it stands further right: a glide's length needs the room.)
             const float nudgeX = fxHeld_ ? kStripHeldNudgeX : kStripNudgeX;
             const Font& font = *sizes[stripFont(widths, fxHeld_ ? kStripRight - nudgeX : stripNudgeRoom(effectHere, throwHere != 0))];
-            fonts.small.draw(r, nudgeX, stripY + 8.f, "NUDGE", kDim);
-            font.draw(r, nudgeX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
+            tight.small.draw(r, nudgeX, stripY + 8.f, "NUDGE", kDim);
+            font.draw(r, nudgeX, stripY + 26.f + tight.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
         } else if (!fxHeld_) {
             std::snprintf(text, sizeof text, "%d / %d", pat().used(), kMaxNotes);
             field(kStripNudgeX, "NOTES", text, kDim);

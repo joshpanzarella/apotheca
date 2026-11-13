@@ -19,8 +19,15 @@ constexpr float kLetterSpacing = 0.06f; // of the nominal size
 constexpr float kCapHeight = 736.f / 1024.f; // of the em, from the font's own tables
 } // namespace
 
-Font::~Font() {
-    if (texture_) SDL_DestroyTexture(texture_);
+namespace {
+int gLetterSheets = 0; // (the app thread's alone)
+}
+int Font::sheets() { return gLetterSheets; }
+
+Font::~Font() { unload(); }
+
+void Font::unload() {
+    if (texture_) SDL_DestroyTexture(texture_), texture_ = nullptr, --gLetterSheets;
 }
 
 bool Font::load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, float size) {
@@ -34,6 +41,7 @@ bool Font::load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, f
     const int ok = stbtt_PackFontRange(&context, ttf.data(), 0, STBTT_POINT_SIZE(em), 32, 95, packed);
     stbtt_PackEnd(&context);
     if (!ok) return false;
+    unload(); // loaded before, at another size
 
     // White letters with the coverage in the alpha channel; the colour is
     // applied when drawing.
@@ -44,6 +52,7 @@ bool Font::load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, f
     }
     texture_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, kAtlasW, kAtlasH);
     if (!texture_) return false;
+    ++gLetterSheets;
     SDL_UpdateTexture(texture_, nullptr, rgba.data(), kAtlasW * 4);
     SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_BLEND);
 
@@ -71,6 +80,7 @@ float Font::width(const char* text) const {
 
 void Font::draw(SDL_Renderer* renderer, float x, float y, const char* text, SDL_Color color) const {
     if (!texture_) return;
+    if (gDrawLog && *text) gDrawLog->texts.push_back({gDrawLog->drawn++, this, x, y, width(text), capHeight_, text});
     SDL_SetTextureColorMod(texture_, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(texture_, color.a);
     const float baseline = y + capHeight_;

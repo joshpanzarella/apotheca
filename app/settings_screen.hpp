@@ -3,7 +3,7 @@
 // handheld, and the way back into the controls setup.
 //
 //   up / down (stick or D-pad)   choose a row
-//   left / right                 change it
+//   left / right                 change it (a choice, such as TEXT SIZE, clicks once a push)
 //   A                            on WIFI PAGE: on / off
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
@@ -34,13 +34,20 @@ namespace apotheca {
 
 class SettingsScreen : public Screen {
 public:
-    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
+    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kTextSize, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+
+    // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
+    // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
+    static constexpr int kRowH = 32, kRowsTop = 50, kHandheldGap = 22, kRowX = 16, kRowW = 640 - 32;
+    static constexpr float kNameX = 26.f, kValueX = 170.f, kNoteRight = kRowX + kRowW - 10.f;
+    static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
+    static constexpr int rowY(int row) { return kRowsTop + row * kRowH + (row >= kVolume ? kHandheldGap : 0); }
 
     void goTo(int row) { row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row); }
     int cursorRow() const { return row_; }

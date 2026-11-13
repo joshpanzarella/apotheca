@@ -117,6 +117,16 @@ if(APOTHECA_BUILD_APP)
     # A test that hangs is a failed test in two minutes, not a run that never ends.
     set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
+    add_executable(textsize_test tests/textsize_test.cpp)
+    target_link_libraries(textsize_test PRIVATE apotheca_app)
+    target_compile_definitions(textsize_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    add_test(NAME textsize COMMAND textsize_test)
+    add_test(NAME textviews COMMAND textsize_test views $<TARGET_FILE:apotheca>)
+    set_tests_properties(textsize textviews PROPERTIES TIMEOUT 120)
+    # Each by itself: textviews starts the program a hundred times, four at once, and textsize draws
+    # some thousands of screens. Beside the others they slow them (effects came to 116 s of its 120).
+    set_tests_properties(textsize textviews PROPERTIES RUN_SERIAL TRUE)
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
     # SELECT is drawn as SEL: no text the device shows spells it out.
