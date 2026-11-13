@@ -408,7 +408,9 @@ int main(int argc, char** argv) {
         // Not full blast on the handheld's little speaker: two fifths, until it is changed.
         app.session().loadVolume(handheld ? 0.4f : 1.f);
         app.session().loadSettings();
-        if (textSize >= 0) app.session().setTextSize(textSize); // (a still: nothing is kept, there is no program folder)
+        // (With --shot nothing is kept: a still has no program folder. Without it the program runs
+        // at that size and it is the setting from then on, written to settings.txt as if set on the SET page.)
+        if (textSize >= 0) app.session().setTextSize(textSize);
         if (!smoke && !shot) app.session().startMidi(); // USB keyboards, whenever one is plugged in
         app.session().useChordFolder(beside);
         if (app.session().packs.size() == 1) app.session().useChordFolder(beside.substr(0, beside.size() - 6) + "../assets/chords");
@@ -981,12 +983,7 @@ int main(int argc, char** argv) {
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
         else app.draw(renderer, fonts);
         if (!learning && mapped && !shot && relearnHold.offering()) {
-            // A few seconds at the start: the way back into the setup.
-            const int y = kScreenH - ui::kHintsH;
-            ui::fill(renderer, 0, y, kScreenW, ui::kHintsH, ui::kPanel2);
-            ui::fill(renderer, 0, y, static_cast<int>(kScreenW * relearnHold.part()), 3, ui::kBrass);
-            fixedFonts.small.drawCentered(renderer, kScreenW / 2.f, y + (ui::kHintsH - fixedFonts.small.capHeight()) / 2.f + 1.f,
-                                     "BUTTONS NOT WORKING? HOLD ANY BUTTON FOR 2 SECONDS NOW TO SET THEM UP AGAIN", ui::kBrass);
+            ui::relearnOffer(renderer, fonts, relearnHold.part()); // a few seconds at the start: the way back into the setup
         }
         if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
@@ -1031,6 +1028,10 @@ int main(int argc, char** argv) {
     SDL_CloseAudioDevice(device);
     if (pad) SDL_GameControllerClose(pad);
     for (SDL_Joystick* stick : opened) SDL_JoystickClose(stick);
+    // The letters go before the renderer that made them: it takes its textures with it, and a
+    // font that then let its own go would be letting it go twice (stills ended in a fault that way).
+    fonts.unload();
+    fixedFonts.unload();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

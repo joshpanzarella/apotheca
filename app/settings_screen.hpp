@@ -46,6 +46,7 @@ public:
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
     static constexpr int kRowH = 32, kRowsTop = 50, kHandheldGap = 22, kRowX = 16, kRowW = 640 - 32;
     static constexpr float kNameX = 26.f, kValueX = 170.f, kNoteRight = kRowX + kRowW - 10.f;
+    static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
     static constexpr int rowY(int row) { return kRowsTop + row * kRowH + (row >= kVolume ? kHandheldGap : 0); }
 
     void goTo(int row) { row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row); }

@@ -471,10 +471,18 @@ bool drew(const char* words) {
         if (t.words == words) return true;
     return false;
 }
-float capAtXl(const char* words) {
+float capAtXl(const char* words, float below = 0.f) { // (`below`: not the one in the top bar)
     for (const textfit::Text& t : lastXl.texts)
-        if (t.words == words) return t.cap;
+        if (t.words == words && t.y >= below) return t.cap;
     return 0.f;
+}
+// Is this text, held at LARGE at XL, drawn at XL just where LARGE draws it (the same letters in the same place)?
+bool asAtLarge(const char* words, float below = 0.f) {
+    for (const textfit::Text& was : lastLarge.texts)
+        for (const textfit::Text& is : lastXl.texts)
+            if (was.words == words && is.words == words && was.y >= below && is.y >= below)
+                return std::fabs(was.x - is.x) < 0.001f && std::fabs(was.y - is.y) < 0.001f && std::fabs(was.w - is.w) < 0.001f && was.cap == is.cap; // (the first of each)
+    return false;
 }
 // Words made of `letter` that fit `room` in a font at LARGE and not at XL: the case Fonts::within is for.
 std::string fitsLargeOnly(Font Fonts::*font, float room, char letter = 'W') {
@@ -1417,6 +1425,182 @@ void testTheFxScreen() {
 }
 } // namespace
 
+// What fits at LARGE and did not at XL, in states no still shows (a review found them): a
+// song's own name beside OPEN NOW > REVS, a wide track name beside its note on the SET page,
+// the longest thing the scene's length says, and the step numbers of a long cell's last bars.
+void testWhatOnlyLargeHadRoomFor() {
+    Screens& s = screens();
+    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    // A new song's name is two words from a list. The widest pairs that still clear OPEN NOW > REVS at LARGE:
+    // a seed for each is looked for, and the open song's row drawn.
+    {
+        int tried = 0;
+        for (std::uint32_t seed = 1; seed < 600 && tried < 4; seed += 2) {
+            Rig rig;
+            const std::string songs = folder + "/songs" + std::to_string(seed);
+            rig.session().useSongFolder(songs, seed);
+            std::string upper = rig.session().songName();
+            for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+            if (s.at[kTextXl]->medium.width(upper.c_str()) <= 160.f) continue; // (a name with room to spare at XL: not the case looked for)
+            ++tried;
+            rig.session().view = View::Song;
+            rig.app.drums().setStep(0, 0, 0.8f);
+            rig.frames(2);
+            rig.app.song().moveCursorTo(0, 0);
+            rig.tap(SELECT);
+            holds(rig, ("the list of songs, the open song " + upper).c_str());
+            CHECK(drew(upper.c_str()) && drew("OPEN NOW  >  REVS"));
+            // Held at LARGE, both of them: the name, and what stands beside it.
+            CHECK(capAtXl(upper.c_str(), ui::kTopBarH) == s.at[kTextLarge]->medium.capHeight() && capAtXl("OPEN NOW  >  REVS") == s.at[kTextLarge]->small.capHeight());
+            CHECK(asAtLarge(upper.c_str(), ui::kTopBarH) && asAtLarge("OPEN NOW  >  REVS"));
+        }
+        CHECK(tried == 4);
+        // A short name follows the setting, and so does what stands beside it.
+        Rig rig;
+        for (std::uint32_t seed = 1; seed < 600; seed += 2) {
+            rig.session().useSongFolder(folder + "/short" + std::to_string(seed), seed);
+            if (rig.session().songName().size() <= 8) break;
+        }
+        std::string upper = rig.session().songName();
+        for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
+        CHECK(upper.size() <= 8);
+        rig.session().view = View::Song;
+        rig.app.drums().setStep(0, 0, 0.8f);
+        rig.frames(2);
+        rig.app.song().moveCursorTo(0, 0);
+        rig.tap(SELECT);
+        holds(rig, "the list of songs, the open song's name short");
+        CHECK(capAtXl(upper.c_str(), ui::kTopBarH) == s.at[kTextXl]->medium.capHeight() && capAtXl("OPEN NOW  >  REVS") == s.at[kTextXl]->small.capHeight());
+    }
+    // SET: the track's name at its widest, beside what the row says about it.
+    {
+        Rig rig;
+        for (int t = 1; t < kNumTracks; ++t) CHECK(rig.session().addTrack(TrackKind::Phazed));
+        rig.session().setTrackName(kNumTracks - 1, "WWWWWWWWWW");
+        rig.project().track = kNumTracks - 1;
+        rig.session().view = View::Settings;
+        rig.app.settings().goTo(SettingsScreen::kTrackName);
+        rig.frames(2);
+        holds(rig, "SET, a track's name at its widest");
+        CHECK(drew("12 WWWWWWWWWW") && drew("left / right: from a list.  A: type one"));
+        CHECK(capAtXl("12 WWWWWWWWWW") == s.at[kTextLarge]->large.capHeight() && capAtXl("left / right: from a list.  A: type one") == s.at[kTextLarge]->small.capHeight());
+        CHECK(asAtLarge("12 WWWWWWWWWW") && asAtLarge("left / right: from a list.  A: type one")); // (and in the middle of the row, as at LARGE)
+        CHECK(capAtXl("TRACK NAME") == s.at[kTextXl]->small.capHeight()); // (the row's own name has its room: it follows)
+        // An ordinary name follows the setting, value and note.
+        rig.session().setTrackName(kNumTracks - 1, "BASS");
+        rig.frames(2);
+        holds(rig, "SET, a track's name");
+        CHECK(capAtXl("12 BASS") == s.at[kTextXl]->large.capHeight() && capAtXl("left / right: from a list.  A: type one") == s.at[kTextXl]->small.capHeight());
+    }
+    // What SEL + L2 says at its longest: scene 10, a step short of eight bars. And the last two
+    // bars' step numbers, three figures each, on the piano roll, the drum grid and its slices.
+    {
+        Rig rig;
+        CHECK(rig.session().addTrack(TrackKind::Phazed));
+        Project& project = rig.project();
+        project.scene = 9;
+        rig.session().setCellBars(0, 9, 8);
+        rig.session().setCellBars(1, 9, 8);
+        rig.session().view = View::Pattern;
+        rig.frames(2);
+        rig.key(SELECT, true);
+        rig.tap(L2);
+        rig.key(SELECT, false);
+        rig.frames(1);
+        CHECK(std::strcmp(rig.app.undoSaid(), "SCENE 10: 127 STEPS OF 128") == 0);
+        holds(rig, "the scene's length, said at its longest"); // (it stands over the strip's top: no strip is held to the pixel here)
+        CHECK(drew("SCENE 10: 127 STEPS OF 128") && capAtXl("SCENE 10: 127 STEPS OF 128") == s.at[kTextLarge]->medium.capHeight());
+        CHECK(asAtLarge("SCENE 10: 127 STEPS OF 128"));
+        rig.key(SELECT, true);
+        rig.tap(R2);
+        rig.key(SELECT, false);
+        rig.frames(1);
+        holds(rig, "the scene's length, all of it");
+        CHECK(drew("SCENE 10: ALL 128 STEPS") && capAtXl("SCENE 10: ALL 128 STEPS") == s.at[kTextXl]->medium.capHeight()); // (it has the room: it follows)
+        rig.frames(120); // (it has gone)
+        CHECK(!rig.app.undoSaid()[0]);
+        for (int bar = 5; bar < 8; ++bar) {
+            project.bar = bar;
+            for (int track = 0; track < 2; ++track) {
+                project.track = track;
+                rig.frames(2);
+                char what[64];
+                std::snprintf(what, sizeof what, "%s, bar %d of eight", track ? "the piano roll" : "the drum grid", bar + 1);
+                holds(rig, what, track ? rollStrip(rig.session().octavesShown()) : kDrumStrip);
+                char number[8];
+                std::snprintf(number, sizeof number, "%d", bar * kSteps + 16);
+                CHECK(drew(number));
+                // The roll's numbers stand in 25 pixels at the left: a bar of three figures is held at LARGE, all sixteen of them; two figures follow.
+                if (track) {
+                    int held = 0, follow = 0;
+                    for (const textfit::Text& t : lastXl.texts)
+                        if (t.x + t.w <= 30.f && t.y > ui::kTopBarH && t.y < ui::kScreenH - ui::kHintsH - 40) (t.cap == s.at[kTextLarge]->small.capHeight() ? held : follow) += 1;
+                    CHECK(bar >= 6 ? (held == kSteps && follow == 0) : (held == 0 && follow == kSteps));
+                    for (const textfit::Text& t : lastXl.texts) CHECK(t.x >= 0.f);
+                    CHECK(bar < 6 || asAtLarge(number)); // (and in the middle of its row, as at LARGE)
+                }
+            }
+        }
+    }
+    CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);
+}
+
+// A size loaded over another leaves nothing behind: a font holds one sheet of letters, whatever
+// it has been through. (Changing TEXT SIZE loads three; so does every still's "--texts".)
+void testNoLettersAreLeftBehind() {
+    Screens& s = screens();
+    const std::vector<unsigned char> ttf = loadFontFile();
+    const int before = Font::sheets();
+    CHECK(before == 3 * (1 + kTextSizes)); // the canvas's own, and the four sets
+    {
+        Fonts set;
+        CHECK(Font::sheets() == before);
+        for (int round = 0; round < 5; ++round)
+            for (int size = 0; size < kTextSizes; ++size) {
+                CHECK(set.load(s.canvas.r, ttf, size));
+                CHECK(Font::sheets() == before + 3);
+            }
+        set.small.unload();
+        CHECK(Font::sheets() == before + 2);
+        set.small.unload(); // (nothing to let go: nothing happens)
+        CHECK(Font::sheets() == before + 2);
+        CHECK(set.small.load(s.canvas.r, ttf, 12.f) && Font::sheets() == before + 3);
+        set.unload();
+        CHECK(Font::sheets() == before);
+        CHECK(set.load(s.canvas.r, ttf, kTextXl) && Font::sheets() == before + 3);
+    }
+    CHECK(Font::sheets() == before); // (a font that goes takes its letters with it)
+}
+
+// The offer at the start (BUTTONS NOT WORKING?) stands where the hints bar does and runs the
+// screen's width: the same pixels whatever is chosen, and inside the screen.
+void testTheOfferAtTheStart() {
+    Screens& s = screens();
+    // (And where the dice's chip starts at the end of the bar under a strip: worked out from the bar's own lettering.)
+    for (int size = 0; size < kTextSizes; ++size) CHECK(ui::hintDiceEndX(*s.at[size], "Y") == ui::hintDiceEndX(*s.canvas.fonts, "Y"));
+    CHECK(ui::hintDiceEndX(*s.canvas.fonts, "Y") > 500.f);
+    std::vector<Uint32> large;
+    for (int size : {kTextLarge, kTextSmall, kTextMedium, kTextXl}) {
+        DrawLog log;
+        s.canvas.clear();
+        gDrawLog = &log;
+        ui::relearnOffer(s.canvas.r, *s.at[size], 0.5f);
+        gDrawLog = nullptr;
+        SDL_RenderPresent(s.canvas.r);
+        const std::vector<Uint32> now = s.canvas.all();
+        if (size == kTextLarge) large = now;
+        CHECK(now == large);
+        CHECK(log.texts.size() == 1 && log.texts[0].font == &s.canvas.fonts->small);
+        // (Its words are 655 pixels at LARGE, 15 more than the screen: so they are on main too, a letter's edge
+        // lost at each end. Not mended here: it would change LARGE. They are in the bar's place, up and down.)
+        CHECK(log.texts.size() == 1 && log.texts[0].y >= ui::kScreenH - ui::kHintsH && log.texts[0].y + log.texts[0].h <= ui::kScreenH);
+        CHECK(log.texts.size() == 1 && near(log.texts[0].x + log.texts[0].w / 2.f, ui::kScreenW / 2.f));
+        // The line that fills is half way, and the bar is nowhere but the hints bar's place.
+        CHECK(log.boxes.size() == 2 && log.boxes[0].y == ui::kScreenH - ui::kHintsH && log.boxes[0].h == ui::kHintsH && log.boxes[1].w == ui::kScreenW / 2 && log.boxes[1].h == 3);
+    }
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
@@ -1430,6 +1614,9 @@ int main(int argc, char** argv) {
     testTheDrumGridsRows();
     testThePianoRollsRows();
     testTheOtherScreens();
+    testWhatOnlyLargeHadRoomFor();
+    testNoLettersAreLeftBehind();
+    testTheOfferAtTheStart();
     testTheControlsSetup();
     testTheUpdateNotice();
     testTheFxScreen();

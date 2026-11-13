@@ -682,9 +682,14 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 char upper[40];
                 std::snprintf(upper, sizeof upper, "%s", name.c_str());
                 for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-                fonts.medium.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
+                // The open song's name shares its row with OPEN NOW > REVS. Where the two would meet at XL
+                // (MERCURY WINDOW: a name the program gives), both are held at LARGE (Fonts::within).
+                const bool open = name == session_.songName();
+                const char* const openSays = "OPEN NOW  >  REVS";
+                const Font& nameFont = fonts.within(&Fonts::medium, upper, w - 44.f - (open ? fonts.small.width(openSays) + 8.f : 0.f));
+                nameFont.draw(r, x + 22.f, by + 9.f, upper, i == listCursor_ ? kTeal : kText);
                 const bool deleting = bHeld_ && bDownAt_ != 0 && i == bRow_;
-                if (name == session_.songName() && !deleting) fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "OPEN NOW  >  REVS", kPurple);
+                if (open && !deleting) (&nameFont == &fonts.medium ? fonts : fonts.fixed()).small.drawRight(r, x + w - 22.f, by + 10.f, openSays, kPurple);
                 // B held on it: the row fills, and at full the song is deleted.
                 if (bHeld_ && bDownAt_ != 0 && i == bRow_) {
                     const float part = static_cast<float>(lastMs_ - bDownAt_) / static_cast<float>(kDeleteHoldMs);

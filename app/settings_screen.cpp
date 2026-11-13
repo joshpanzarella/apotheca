@@ -350,8 +350,13 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         box(r, kRowX, y, w, rowH - 6, kPanel, kLine);
         fonts.small.draw(r, kNameX, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, names[row], kDim);
-        fonts.large.draw(r, kValueX, y + (rowH - 6 - fonts.large.capHeight()) / 2.f, text, here ? kTeal : kText);
-        if (note[0]) fonts.small.drawRight(r, kNoteRight, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, note, kDim);
+        // A value and what is said about it share the row. Where the two would meet at XL (a track's
+        // name of ten wide letters), both are held at LARGE (Fonts::within).
+        const float valueRoom = kNoteRight - kValueX - (note[0] ? fonts.small.width(note) + kNoteGap : 0.f);
+        const Font& valueFont = fonts.within(&Fonts::large, text, valueRoom);
+        const Font& noteFont = (&valueFont == &fonts.large ? fonts : fonts.fixed()).small;
+        valueFont.draw(r, kValueX, y + (rowH - 6 - valueFont.capHeight()) / 2.f, text, here ? kTeal : kText);
+        if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
             fill(r, 250, y + rowH - 16, 110, 4, kLine);
             fill(r, 250, y + rowH - 16, static_cast<int>(std::round(110.f * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);

@@ -283,7 +283,9 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         using namespace ui;
         const int w = 260, h = 34, x = (kScreenW - w) / 2, y = kScreenH - kHintsH - h - 12;
         box(renderer, x, y, w, h, kPanel, kTeal);
-        fonts.medium.drawCentered(renderer, kScreenW / 2.f, y + (h - fonts.medium.capHeight()) / 2.f, undoSaid(), kText);
+        // (Its longest at XL, "SCENE 10: 127 STEPS OF 128", is wider than the box: held at LARGE. Fonts::within.)
+        const Font& saidFont = fonts.within(&Fonts::medium, undoSaid(), w - 12.f);
+        saidFont.drawCentered(renderer, kScreenW / 2.f, y + (h - saidFont.capHeight()) / 2.f, undoSaid(), kText);
     }
     if (session_.updateWaiting() || updateSaid_ != 0) {
         using namespace ui;

@@ -33,6 +33,12 @@ public:
     // `size` is the mockups' nominal size (12, 14, 16...). Returns false if
     // the font data cannot be read. Loading again (another size) lets the old letters go.
     bool load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, float size);
+    // Lets its letters go: before the renderer they were made with is taken away (a renderer
+    // takes its textures with it, and letting one go after that is letting it go twice).
+    void unload();
+    // How many fonts hold letters just now (a texture each), in the whole program: a size
+    // loaded over another must not leave the old one behind. For the tests.
+    static int sheets();
 
     // `y` is the top of the capital letters.
     void draw(SDL_Renderer* renderer, float x, float y, const char* text, SDL_Color color) const;

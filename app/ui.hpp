@@ -41,6 +41,7 @@ struct Fonts {
         const Font& held = fixed().*which;
         return chosen.width(text) <= room || chosen.width(text) <= held.width(text) ? chosen : held;
     }
+    void unload() { small.unload(), medium.unload(), large.unload(); } // before their renderer goes
     // All three at a size. False if the font data cannot be read.
     bool load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, int size) {
         if (size < 0 || size >= kTextSizes) size = kTextLarge;
@@ -155,6 +156,9 @@ constexpr float kHintUnderGap = 6.f;
 // is the field LEFT / RIGHT sets); the help gives way to them.
 float hintDiceEndX(const Fonts& fonts, const char* dice); // where the dice's chip starts, at the end
 void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count, bool diceAtEnd = false);
+// For a few seconds at the start, in the hints bar's place: the way back into the controls
+// setup, with a line that fills (`part`, 0..1) as a button is held. A tight row: always at LARGE.
+void relearnOffer(SDL_Renderer* r, const Fonts& fonts, float part);
 
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
