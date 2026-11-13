@@ -588,7 +588,7 @@ effect in those two groups and fails one that does not.
     strip under the drum grid and under the piano roll (`tight` in both),
     anything written over a little picture (a cell's bar count on SONG, a
     recording's seconds in the list), the heads of narrow SONG columns, the
-    controls setup. The tests that read a strip or a bar off the screen
+    controls setup, the offer at the start (`ui::relearnOffer`). The tests that read a strip or a bar off the screen
     draw at LARGE and hold at every size for that reason.
   - **Everything else follows the setting, and a new text is checked at XL.**
     Where it would not fit its room at XL it is drawn with
@@ -598,6 +598,16 @@ effect in those two groups and fails one that does not.
     `within` gave. A text that stands on a line is placed from the line
     (the roll's OCTAVE: `line - capHeight`), not at a number that was right
     at 12 pixels.
+  - **A held text takes its row with it.** What shares a line with a text
+    held at LARGE is held too (a song's name and OPEN NOW > REVS; a SET
+    row's value and its note; all sixteen step numbers of a roll's bar of
+    three figures), and it is placed with the capitals' height of the font
+    it is DRAWN in, not the chosen one's. A text that is made at run time
+    (a name, a number, what a toast says) is checked at its longest: no
+    still shows a ten-W track name or scene 10's 127 STEPS OF 128.
+  - **A font loaded again lets its old letters go** (`Font::sheets()` counts
+    them; a test holds it), and the fonts are unloaded before the renderer
+    is destroyed (`main.cpp`'s end).
   - **`ctest -R text` holds it.** `textviews` has the program draw every
     still it knows at all four sizes (`--texts FILE` writes down each text
     and rectangle; `tests/textfit.hpp` measures them against LARGE: the same
