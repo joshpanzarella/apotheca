@@ -1213,11 +1213,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
-        // Each button under what it changes, with no word: UP / DOWN picks one of the six, under
-        // their names; LEFT / RIGHT sets the one picked, under their values; A under THROW.
-        // The dice roll all six and stand alone at the left.
-        const HintUnder below[] = {{kChordFxListX, "UP / DOWN"}, {kChordFxSetX, "LEFT / RIGHT"}, {kChordFxThrowX, "A"}};
-        hintsUnder(r, fonts, "Y", below, 3);
+        // Each button under what it changes, with no word: LEFT / RIGHT sets the one picked, under
+        // its large value at the left (right whichever of the six is picked); UP / DOWN picks one,
+        // under the list; A under THROW. The dice roll all six and stand alone at the right-hand
+        // end (owner, 2026-11-13).
+        const HintUnder below[] = {{kChordFxSetX, "LEFT / RIGHT"}, {kChordFxListX, "UP / DOWN"}, {kChordFxThrowX, "A"}};
+        hintsUnder(r, fonts, "Y", below, 3, true);
         return;
     } else if (fxHeld_ && under) {
         // Each button under the field it sets. (Nothing here sets NUDGE: nothing under it.)

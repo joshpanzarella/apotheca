@@ -149,8 +149,9 @@ constexpr float kChordFxListX = 160.f, kChordFxColumn = 184.f, kChordFxThrowX = 
 constexpr float kChordFxValueIn[2] = {76.f, 108.f};
 constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
 // The one picked, in full, starts here. The bar under the strip (ui::hintsUnder) draws LEFT / RIGHT
-// (it sets the one picked) at kChordFxSetX, UP / DOWN (it picks one of the six) under the list at
-// kChordFxListX, and A under THROW at kChordFxThrowX.
-constexpr float kChordFxPickedX = 8.f, kChordFxSetX = kChordFxListX + kChordFxValueIn[0];
+// (it sets the one picked) at kChordFxSetX, under the large value (owner, 2026-11-13: it was under
+// the list's first column, wrong for the second), UP / DOWN (it picks one of the six) under the
+// list at kChordFxListX, A under THROW at kChordFxThrowX, and the dice at the right-hand end.
+constexpr float kChordFxPickedX = 8.f, kChordFxSetX = kChordFxPickedX;
 
 } // namespace apotheca

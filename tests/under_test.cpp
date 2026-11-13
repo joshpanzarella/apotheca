@@ -354,15 +354,19 @@ void testAChord() {
     const auto held = [&] {
         rig.draw();
         const Chips chips = rig.chips();
-        // UP / DOWN picks one of the six: under their names. LEFT / RIGHT sets it: under their
-        // values. A under THROW. The dice at the left, under the one picked.
-        CHECK((chips == Chips{{8, rig.chipW("Y")}, {160, rig.chipW("UP / DOWN")}, {236, rig.chipW("LEFT / RIGHT")}, {522, rig.chipW("A")}}));
-        CHECK(kChordFxSetX == kChordFxListX + kChordFxValueIn[0]);
+        // LEFT / RIGHT sets the one picked: under its large value at the left. UP / DOWN picks
+        // one of the six: under their names. A under THROW. The dice at the right-hand end.
+        const int diceX = static_cast<int>(ui::hintDiceEndX(*rig.canvas.fonts, "Y"));
+        CHECK((chips == Chips{{8, rig.chipW("LEFT / RIGHT")}, {160, rig.chipW("UP / DOWN")}, {522, rig.chipW("A")}, {diceX, rig.chipW("Y")}}));
+        CHECK(kChordFxSetX == kChordFxPickedX);
         CHECK(rig.chipIs(static_cast<int>(kChordFxListX), "UP / DOWN") && rig.chipIs(static_cast<int>(kChordFxSetX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kChordFxThrowX), "A"));
-        CHECK(rig.diceAlone(static_cast<int>(kChordFxListX) - 1));
+        CHECK(rig.chipIs(diceX, "Y") && diceX > static_cast<int>(kChordFxThrowX) + rig.chipW("A") + 6);
+        CHECK(rig.canvas.is(diceX + rig.chipW("Y") + 6, kBarTop + 6, ui::kDim) && diceX + rig.chipW("Y") + 5 + 13 <= ui::kScreenW - 6); // the die, inside the bar
         CHECK(rig.label(kChordFxThrowX, kRollStrip + 8.f, "THROW"));
         CHECK(rig.label(kChordFxPickedX, kRollStrip + 8.f, chordEffectName(roll.effectPicked())) && rig.label(8.f, kRollStrip + 8.f, chordEffectName(roll.effectPicked())));
-        CHECK(rig.noWords(chips, ui::kScreenW)); // (THROW's chip is too near the end for the help: it gives way)
+        // No words: bare between the chips, and after the die. (The help gives way to the dice.)
+        for (std::size_t i = 0; i + 1 < chips.size(); ++i) CHECK(rig.bare(chips[i].first + chips[i].second, chips[i + 1].first));
+        CHECK(rig.bare(0, 8) && rig.bare(diceX + rig.chipW("Y") + 5 + 13, ui::kScreenW));
         CHECK(static_cast<int>(kChordFxThrowX) + rig.chipW("A") + 11 > rig.helpLeft() + 2);
     };
     // The list's first name and its value stand where the two chips do.
@@ -371,7 +375,7 @@ void testAChord() {
     char value[32];
     chordEffectValue(chord, 0, value, sizeof value);
     CHECK(rig.label(kChordFxListX, static_cast<float>(kRollStrip + kChordFxRowTop), chordEffectName(0)));
-    CHECK(rig.label(kChordFxSetX, static_cast<float>(kRollStrip + kChordFxRowTop), value));
+    CHECK(rig.label(kChordFxListX + kChordFxValueIn[0], static_cast<float>(kRollStrip + kChordFxRowTop), value));
     // Whichever is picked, and at its fullest, the chips stay where they are.
     chord.play = chordPlayOf(kStrumWide, kOrderUpDown, 100, 100, 100);
     chord.ratchet = 4, chord.throwTo = 3;
