@@ -3295,38 +3295,54 @@ void testTheEffectsScreen() {
     session.view = View::Effects;
     const EffectData& first = rig.project().tracks[0].effects[0];
     CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0 && first.kind == 0);
-    // An empty slot has nothing to move along to.
+    // An empty slot has no settings to go into.
     rig.tap(RIGHT);
-    CHECK(fx.cursorColumn() == 0);
+    CHECK(fx.cursorColumn() == 0 && fx.settings(0) == 0);
 
-    // Hold A and go up: the effects in turn, each at its usual settings, heard at once.
+    // Hold A: the list of effects is open. Down it: the effects in turn, each at its usual settings, heard at once.
     rig.render(100000);
+    CHECK(!fx.picking());
     rig.key(A, true);
-    rig.tap(UP);
+    CHECK(fx.picking());
+    rig.tap(DOWN);
     CHECK(first.kind == static_cast<int>(EffectKind::Filter) && first.param[0] == effectInfo(EffectKind::Filter).defaults[0] && first.param[3] == 1.f);
     CHECK(rig.listen(4000) > 0.05f);
-    // (Counted from the list, which has its own order and grows: an effect's place is not its number.)
-    const int last = effectListSize() - 1, delayAt = effectPlace(EffectKind::Delay);
-    CHECK(effectPlace(EffectKind::Filter) == 1 && delayAt > 1 && effectAt(last) == EffectKind::Crush);
-    rig.tap(UP, delayAt - 1);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(UP, last + 3);
+    // (Counted from the list, which has its own order and grows: an effect's place is not its number. A line is a FAMILY.)
+    const int last = familyListSize() - 1, delayAt = familyPlace(EffectKind::Delay);
+    CHECK(familyPlace(EffectKind::Filter) == 1 && delayAt > 1 && familyAt(last) == EffectKind::Crush);
+    rig.tap(DOWN, delayAt - 1);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay)); // the family goes in as its first type
+    rig.tap(DOWN, last + 3);
     CHECK(first.kind == static_cast<int>(EffectKind::Crush)); // the last one: it stops
-    rig.tap(DOWN, last - delayAt);
+    rig.tap(UP, last - delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(DOWN, delayAt);
-    CHECK(first.kind == static_cast<int>(EffectKind::None)); // down past the first effect: none
-    rig.tap(DOWN, 2);
-    CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
     rig.tap(UP, delayAt);
+    CHECK(first.kind == static_cast<int>(EffectKind::None)); // up past the first effect: empty
+    rig.tap(UP, 2);
+    CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
+    rig.tap(LEFT);
+    rig.tap(RIGHT); // nothing has no TYPE
+    CHECK(first.kind == static_cast<int>(EffectKind::None) && fx.cursorColumn() == 0);
+    rig.tap(DOWN, delayAt);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(LEFT); // sideways with A held jumps a group of the list: the cursor stays on the effect
-    CHECK(effectPlace(static_cast<EffectKind>(first.kind)) == effectGroupJump(delayAt, -1) && fx.cursorColumn() == 0);
+    // Sideways with A held is the TYPE: the cursor stays on the line, and the ends stop.
+    rig.tap(LEFT);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay) && fx.cursorColumn() == 0);
+    rig.render(100000);
     rig.tap(RIGHT);
-    CHECK(effectInfo(static_cast<EffectKind>(first.kind)).group == EffectGroup::Delay && fx.cursorColumn() == 0);
-    rig.tap(UP, delayAt - effectPlace(static_cast<EffectKind>(first.kind))); // the first of the delays need not be DELAY
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
+    CHECK(rig.listen(4000) > 0.05f); // heard at once, as a new effect is
+    rig.tap(RIGHT, 3);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape));
+    rig.tap(LEFT);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    // Out of the family and back: it comes in afresh, at its usual settings.
+    session.setEffectParam(0, 0, 0, 0.05f);
+    rig.tap(UP);
+    rig.tap(DOWN);
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay) && first.param[0] == effectInfo(EffectKind::Delay).defaults[0]);
     rig.key(A, false);
+    CHECK(!fx.picking());
 
     // The delay is on the track: a rim shot comes back a quarter note later.
     rig.render(200000);
@@ -3339,10 +3355,13 @@ void testTheEffectsScreen() {
     CHECK(Rig::peak(out, 24000, 28000) > 0.02f);
     CHECK(Rig::peak(out, 18000, 23000) < 0.5f * Rig::peak(out, 24000, 28000)); // quiet before it
 
-    // Along to its settings. TIME is a choice: the D-pad steps to the next one.
+    // Right: into its settings. TIME is a choice: the D-pad steps to the next one.
     rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
+    rig.tap(RIGHT); // there is nothing further right
     CHECK(fx.cursorColumn() == 1);
     rig.key(A, true);
+    CHECK(!fx.picking()); // on a setting A turns it: no list
     rig.tap(UP);
     CHECK(delaySteps(first.param[0]) == 6);
     rig.tap(UP, 5);
@@ -3350,8 +3369,9 @@ void testTheEffectsScreen() {
     rig.tap(DOWN, 9);
     CHECK(delaySteps(first.param[0]) == 1 && first.param[0] > 0.05f && first.param[0] < 0.12f); // the middle of its part of the range
     rig.key(A, false);
-    // FEEDBACK is an amount: the D-pad moves it a twentieth, the stick turns it.
-    rig.tap(RIGHT);
+    // FEEDBACK, the next one down, is an amount: the D-pad moves it a twentieth, the stick turns it.
+    rig.tap(DOWN);
+    CHECK(fx.cursorColumn() == 2);
     rig.key(A, true);
     rig.tap(UP);
     CHECK(near(first.param[1], 0.5f));
@@ -3368,62 +3388,87 @@ void testTheEffectsScreen() {
     rig.frames(200);
     rig.key(STICK_DOWN, false);
     rig.frames(1);
-    CHECK(first.param[1] == 0.f);
-    // B needs A let go. On a setting: its usual value. On the effect: none.
+    CHECK(first.param[1] == 0.f && fx.cursorColumn() == 2);
+    // B needs A let go. On a setting: its usual value. On the line: empty.
     rig.tap(B);
     CHECK(first.param[1] == 0.f);
     rig.key(A, false);
     rig.tap(B);
     CHECK(first.param[1] == effectInfo(EffectKind::Delay).defaults[1]);
-    rig.tap(RIGHT, 9);
-    CHECK(fx.cursorColumn() == 4); // four settings, no more
-    rig.tap(LEFT, 9);
-    CHECK(fx.cursorColumn() == 0);
+    rig.tap(DOWN, 9);
+    CHECK(fx.cursorColumn() == 4 && fx.cursorRow() == 0); // four settings, no more: the end stops
+    rig.tap(UP, 9);
+    CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0); // and the top
+    // Left: back to the list, on the same line. Right: back to the setting last used there.
+    rig.tap(DOWN, 2);
+    CHECK(fx.cursorColumn() == 3);
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 3);
+    rig.tap(LEFT); // nothing further left
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 3);
+    rig.tap(LEFT);
 
-    // Down through the slots: the track's second and third, its sends, then (the other page) the buses and the master's two, and round.
+    // Down the list: the track's second and third, its sends, the buses and the master's two, and round.
     rig.tap(DOWN);
-    CHECK(fx.cursorRow() == 1);
+    CHECK(fx.cursorRow() == 1 && fx.cursorColumn() == 0);
     rig.key(A, true);
-    rig.tap(UP, effectPlace(EffectKind::Reverb));
+    rig.tap(DOWN, familyPlace(EffectKind::Reverb));
     rig.key(A, false);
     CHECK(rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Reverb) && first.kind == static_cast<int>(EffectKind::Delay));
-    rig.tap(RIGHT, 9);
-    CHECK(fx.cursorColumn() == 3); // the reverb has three
+    rig.tap(RIGHT);
+    rig.tap(DOWN, 9);
+    CHECK(fx.cursorColumn() == 3 && fx.cursorRow() == 1); // the room reverb has three
+    rig.tap(LEFT);
     rig.tap(DOWN);
-    CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0); // an empty slot below: the cursor comes back to the effect
+    CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0);
     rig.tap(DOWN, 4);
     CHECK(fx.cursorRow() == FxScreen::kMasterRow && fx.cursorColumn() == 0);
     rig.key(A, true);
-    rig.tap(UP, last);
+    rig.tap(DOWN, last);
     rig.key(A, false);
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
     rig.tap(DOWN, 2);
     CHECK(fx.cursorRow() == 0);
     rig.tap(UP);
     CHECK(fx.cursorRow() == FxScreen::kRows - 1);
-    // The stick moves the cursor too.
+    // The stick moves the cursor too: down the list, right into the settings, left back.
     rig.key(STICK_DOWN, true);
     rig.frames(1);
     rig.key(STICK_DOWN, false);
     rig.frames(1);
-    CHECK(fx.cursorRow() == 0);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0);
+    rig.key(STICK_RIGHT, true);
+    rig.frames(1);
+    rig.key(STICK_RIGHT, false);
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 3);
+    rig.key(STICK_LEFT, true);
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0);
     rig.tap(B);
     CHECK(first.kind == 0 && first.param[0] == 0.f);
 
-    // The first page is whichever track is being worked on; the master's stay.
+    // The first lines are whichever track is being worked on; the master's stay.
     session.addTrack(TrackKind::Phazed);
     session.setEffect(0, 0, EffectKind::Delay);
     fx.goTo(0, 4);
-    CHECK(fx.cursorColumn() == 4);
+    CHECK(fx.cursorColumn() == 4 && fx.remembered(0) == 4);
     rig.project().track = 1;
     rig.frames(1);
-    CHECK(fx.cursorColumn() == 0); // the new track's slot is empty: there is no fourth setting to be on
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0); // the new track's slot is empty: there is no setting to be on. The line is kept
     session.setEffect(0, 0, EffectKind::None);
     rig.key(A, true);
-    rig.tap(UP, effectPlace(EffectKind::Drive));
+    rig.tap(DOWN, familyPlace(EffectKind::Drive));
     rig.key(A, false);
     CHECK(rig.project().tracks[1].effects[0].kind == static_cast<int>(EffectKind::Drive) && first.kind == 0);
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Crush));
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 4); // what was last used on the line is not forgotten by a change of track
+    rig.tap(LEFT);
     // X hears a synth track by a note.
     rig.render(200000);
     rig.tap(X);
@@ -3875,7 +3920,6 @@ void testSendsThroughTheSession() {
     }
 }
 
-// The FX screen: two pages of four rows, the sends, the buses and the group jump.
 // COMP's meter on the FX screen: the row asks the engine for its own slot, and the strip's length.
 void testTheFxScreenShowsCompAtWork() {
     CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
@@ -3931,65 +3975,108 @@ void testTheFxScreenShowsCompAtWork() {
     CHECK(fx.meterOf(0) == 0.f && fx.meterOf(FxScreen::kMasterRow + 1) > 0.f); // a FILTER shows nothing
 }
 
-void testTheFxScreensTwoPages() {
+// The FX screen's list: eight lines, all in view, walked with up and down alone; the sends; the buses.
+void testTheFxScreensList() {
     Rig rig;
     Session& session = rig.app.session();
     Project& project = rig.project();
     FxScreen& fx = rig.app.fx();
     session.view = View::Effects;
     rig.frames(1);
-    const int delay = static_cast<int>(EffectKind::Delay), reverb = static_cast<int>(EffectKind::Reverb), filter = static_cast<int>(EffectKind::Filter);
+    const int delay = static_cast<int>(EffectKind::Delay), tape = static_cast<int>(EffectKind::Tape), reverb = static_cast<int>(EffectKind::Reverb), hall = static_cast<int>(EffectKind::Hall);
+    const int filter = static_cast<int>(EffectKind::Filter);
     CHECK(FxScreen::kRows == 8 && FxScreen::kSendsRow == 3 && FxScreen::kBusRow == 4 && FxScreen::kMasterRow == 6);
-    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0 && fx.page() == 0);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0);
 
-    // Down the track's page: three slots, the sends, and on to the other page; up comes back.
-    rig.tap(DOWN, 3);
-    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
-    rig.tap(DOWN);
-    CHECK(fx.cursorRow() == 4 && fx.page() == 1);
-    rig.tap(DOWN, 3);
-    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
-    rig.tap(DOWN);
-    CHECK(fx.cursorRow() == 0 && fx.page() == 0);
-    rig.tap(UP);
-    CHECK(fx.cursorRow() == 7);
-    rig.tap(UP, 4);
-    CHECK(fx.cursorRow() == 3);
-    // Y: the other page, the same row of it; and back.
-    rig.tap(Y);
-    CHECK(fx.cursorRow() == 7 && fx.page() == 1);
-    rig.tap(Y);
-    CHECK(fx.cursorRow() == 3 && fx.page() == 0);
+    // Down the list with nothing but DOWN: every line in turn, none hidden, and round; UP the same way back.
+    for (int line = 1; line <= FxScreen::kRows; ++line) {
+        rig.tap(DOWN);
+        CHECK(fx.cursorRow() == line % FxScreen::kRows && fx.cursorColumn() == 0);
+    }
+    for (int line = FxScreen::kRows - 1; line >= 0; --line) {
+        rig.tap(UP);
+        CHECK(fx.cursorRow() == line && fx.cursorColumn() == 0);
+    }
+    // Each line is drawn where the list says, one under the other, clear of the bar at the top and the hints.
+    for (int line = 0; line < FxScreen::kRows; ++line) {
+        CHECK(FxScreen::lineY(line) >= ui::kTopBarH + 19 && FxScreen::lineY(line) + FxScreen::kLineH <= ui::kScreenH - ui::kHintsH);
+        if (line) CHECK(FxScreen::lineY(line) >= FxScreen::lineY(line - 1) + FxScreen::kLineH + FxScreen::kLineGap);
+    }
+    CHECK(FxScreen::lineY(FxScreen::kBusRow) - FxScreen::lineY(FxScreen::kBusRow - 1) > FxScreen::kLineH + 19); // room for the BUSES heading
+    CHECK(FxScreen::lineY(FxScreen::kMasterRow) - FxScreen::lineY(FxScreen::kMasterRow - 1) > FxScreen::kLineH + 19);
+    // Y is not a page any more: it does nothing here, held or not.
     fx.goTo(1, 0);
     rig.tap(Y);
-    CHECK(fx.cursorRow() == 5);
-    rig.tap(Y);
-    CHECK(fx.cursorRow() == 1);
-    // Not while A is held: A is turning something.
+    CHECK(fx.cursorRow() == 1 && fx.cursorColumn() == 0);
     rig.key(A, true);
     rig.tap(Y);
     rig.key(A, false);
-    CHECK(fx.cursorRow() == 1);
-    // The cursor keeps to what the row has: two sends; an effect and its settings; nothing beside an empty slot.
+    CHECK(fx.cursorRow() == 1 && fx.cursorColumn() == 0 && project.tracks[0].effects[1].kind == 0);
+
+    // How many settings each line has: two sends; an effect's own; none beside an empty slot.
+    CHECK(fx.settings(0) == 0 && fx.settings(3) == 2 && fx.settings(4) == 4 && fx.settings(5) == 4 && fx.settings(6) == 0);
     fx.goTo(3, 0);
-    rig.tap(RIGHT, 3);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 1); // the ECHO send
+    rig.tap(DOWN, 3);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 2); // the SPACE send, and the end
+    rig.tap(UP, 3);
     CHECK(fx.cursorColumn() == 1);
-    rig.tap(DOWN); // ECHO's row: TAPE and its four settings
-    CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 1);
-    rig.tap(RIGHT, 9);
-    CHECK(fx.cursorColumn() == 4);
-    rig.tap(DOWN); // SPACE's: HALL has four too
-    CHECK(fx.cursorColumn() == 4);
-    session.setEffect(kSpaceBus, 0, EffectKind::Reverb); // REVERB has three
-    rig.tap(UP);
+    rig.tap(LEFT);
+    CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0);
+    // Each line remembers its own last setting.
+    fx.goTo(4, 3); // ECHO's TAPE: AGE
+    rig.tap(LEFT);
     rig.tap(DOWN);
-    CHECK(fx.cursorColumn() == 3);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 1); // SPACE's: never used, its first
+    rig.tap(DOWN, 9);
+    CHECK(fx.cursorColumn() == 4); // HALL has four
+    rig.tap(LEFT);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 3);
+    rig.tap(LEFT);
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 4 && fx.remembered(5) == 4 && fx.remembered(4) == 3 && fx.remembered(0) == 1);
+    CHECK(fx.remembered(-1) == 1 && fx.remembered(FxScreen::kRows) == 1);
+    // An effect with fewer settings there now: the nearest it has, and back in the list if it has none.
+    session.setEffect(kSpaceBus, 0, EffectKind::Reverb); // the room reverb has three
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 3);
+    session.setEffect(kSpaceBus, 0, EffectKind::None);
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 0);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 0);
     session.setEffect(kSpaceBus, 0, EffectKind::Hall);
-    rig.tap(DOWN); // the master's first slot: empty
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 4); // (what the line last used is still known)
+    rig.tap(LEFT);
+    // goTo keeps to what there is.
+    fx.goTo(6, 3);
     CHECK(fx.cursorRow() == 6 && fx.cursorColumn() == 0);
+    fx.goTo(3, 9);
+    CHECK(fx.cursorColumn() == 2);
+    fx.goTo(-1, -4);
+    CHECK(fx.cursorRow() == 7 && fx.cursorColumn() == 0);
+    fx.goTo(8, 0);
+    CHECK(fx.cursorRow() == 0);
 
     // The sends. Hold A + the D-pad: a twentieth at a push, stopping at the ends.
     fx.goTo(3, 0);
+    rig.key(A, true);
+    CHECK(!fx.picking()); // the sends line holds no effect: A opens no list there, and turns nothing from the list
+    rig.tap(UP, 2);
+    rig.tap(DOWN);
+    rig.tap(LEFT);
+    rig.tap(RIGHT);
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorRow() == 3 && fx.cursorColumn() == 0);
+    rig.key(A, false);
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 2); // where the line was last (goTo, above)
+    rig.tap(UP);
     rig.key(A, true);
     rig.tap(UP, 3);
     CHECK(near(project.tracks[0].send[0], 0.15f) && project.tracks[0].send[1] == 0.f);
@@ -3999,9 +4086,9 @@ void testTheFxScreensTwoPages() {
     CHECK(project.tracks[0].send[0] == 0.f);
     rig.tap(LEFT);
     rig.tap(RIGHT); // sideways with A held does nothing to a send, and does not move off it
-    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 0);
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorColumn() == 1);
     rig.key(A, false);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     rig.key(A, true);
     rig.tap(UP, 25);
     CHECK(project.tracks[0].send[1] == 1.f && project.tracks[0].send[0] == 0.f);
@@ -4017,7 +4104,7 @@ void testTheFxScreensTwoPages() {
     CHECK(std::fabs(turned / 0.05f - std::round(turned / 0.05f)) > 0.02f); // smoothly: not in twentieths
     // ...the first send as the second.
     rig.key(A, false);
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.key(A, true);
     rig.key(STICK_UP, true);
     rig.frames(10);
@@ -4027,7 +4114,7 @@ void testTheFxScreensTwoPages() {
     CHECK(echo > 0.02f && echo < 0.3f && std::fabs(echo / 0.05f - std::round(echo / 0.05f)) > 0.02f);
     rig.key(A, false);
     session.setSend(0, 0, 0.f);
-    rig.tap(RIGHT);
+    rig.tap(DOWN);
     // It reaches the engine: a hit now wakes the SPACE bus and not the ECHO bus.
     Command hit;
     hit.type = Command::Trigger;
@@ -4036,18 +4123,33 @@ void testTheFxScreensTwoPages() {
     rig.engine->send(hit);
     rig.render(4800);
     CHECK(rig.engine->busAwake(1) && !rig.engine->busAwake(0));
-    // B: nothing sent, and its automation in this cell goes; the other send's stays, and so does another scene's.
+    // B on a send: nothing sent, and its automation in this cell goes; the other send's stays, and so does another scene's.
     session.setSend(0, 0, 0.4f);
     session.setAutomation(0, 0, autoLaneOfSend(0), 3, 0.5f);
     session.setAutomation(0, 0, autoLaneOfSend(1), 3, 0.5f);
     session.setAutomation(0, 2, autoLaneOfSend(1), 3, 0.5f);
     rig.tap(B);
-    CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f);
+    CHECK(project.tracks[0].send[1] == 0.f && project.tracks[0].send[0] == 0.4f && fx.cursorColumn() == 2);
     CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
-    rig.tap(LEFT);
+    rig.tap(UP);
     rig.tap(B);
     CHECK(project.tracks[0].send[0] == 0.f && !session.hasAutomation(0, 0, autoLaneOfSend(0)));
-    // With WRITE on and the song playing, B's reset is not itself written down.
+    // B on the SENDS line itself: nothing sent to either, and both automations of this cell go.
+    session.setSend(0, 0, 0.4f);
+    session.setSend(0, 1, 0.7f);
+    session.setAutomation(0, 0, autoLaneOfSend(0), 3, 0.5f);
+    session.setAutomation(0, 0, autoLaneOfSend(1), 3, 0.5f);
+    rig.tap(LEFT);
+    rig.key(A, true);
+    rig.tap(B); // not while A is held
+    rig.key(A, false);
+    CHECK(project.tracks[0].send[0] == 0.4f && project.tracks[0].send[1] == 0.7f);
+    rig.tap(B);
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorRow() == 3 && fx.cursorColumn() == 0);
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(0)) && !session.hasAutomation(0, 0, autoLaneOfSend(1)) && session.hasAutomation(0, 2, autoLaneOfSend(1)));
+    rig.tap(RIGHT);
+    CHECK(fx.cursorColumn() == 1);
+    // With WRITE on and the song playing, a send turned is written down, and B's reset is not.
     rig.key(SELECT, true);
     rig.tap(X);
     rig.key(SELECT, false);
@@ -4061,6 +4163,24 @@ void testTheFxScreensTwoPages() {
     CHECK(session.hasAutomation(0, 0, autoLaneOfSend(0)) && near(project.tracks[0].automation[0][20][1], 0.05f));
     rig.tap(B);
     CHECK(!session.hasAutomation(0, 0, autoLaneOfSend(0)) && session.writing());
+    // ...and so is an effect's setting, from its row on the right.
+    session.setEffect(0, 0, EffectKind::Filter);
+    fx.goTo(0, 2); // RESONANCE
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(session.hasAutomation(0, 0, autoLaneOfEffect(0, 1)) && near(project.tracks[0].automation[0][autoLaneOfEffect(0, 1)][1], 0.25f) && !session.hasAutomation(0, 0, autoLaneOfEffect(0, 0)));
+    rig.tap(B); // B: its usual value, the automation of this cell gone, and that not written either
+    CHECK(!session.hasAutomation(0, 0, autoLaneOfEffect(0, 1)) && project.tracks[0].effects[0].param[1] == effectInfo(EffectKind::Filter).defaults[1]);
+    // Picking an effect and changing a TYPE are not knobs: WRITE records nothing of them.
+    rig.tap(LEFT);
+    rig.key(A, true);
+    rig.tap(DOWN); // DELAY
+    rig.tap(RIGHT); // its TAPE
+    rig.key(A, false);
+    CHECK(project.tracks[0].effects[0].kind == tape && session.writing());
+    for (int p = 0; p < kEffectParams; ++p) CHECK(!session.hasAutomation(0, 0, autoLaneOfEffect(0, p)));
+    session.setEffect(0, 0, EffectKind::None);
     rig.tap(START);
     rig.key(SELECT, true);
     rig.tap(X);
@@ -4071,7 +4191,7 @@ void testTheFxScreensTwoPages() {
     addPhazed(rig);
     project.track = 1;
     session.view = View::Effects;
-    fx.goTo(3, 0);
+    fx.goTo(3, 1);
     rig.key(A, true);
     rig.tap(UP, 2);
     rig.key(A, false);
@@ -4081,46 +4201,51 @@ void testTheFxScreensTwoPages() {
     // The third slot is a slot like the others.
     fx.goTo(2, 0);
     rig.key(A, true);
-    rig.tap(UP);
+    rig.tap(DOWN);
     rig.key(A, false);
     CHECK(project.tracks[0].effects[2].kind == filter && project.tracks[0].effects[0].kind == 0 && project.tracks[0].effects[1].kind == 0);
     rig.tap(B);
     CHECK(project.tracks[0].effects[2].kind == 0);
 
-    // A bus offers its own kind only: NONE and the delays on ECHO, NONE and the reverbs on SPACE.
-    // (Which delay and which reverb come first is the list's business.)
-    const EffectKind echoKind = busEffectAt(0, 1), spaceKind = busEffectAt(1, 1);
-    const int echo1 = static_cast<int>(echoKind), space1 = static_cast<int>(spaceKind);
-    const int echoMix = effectMixParam(echoKind), spaceMix = effectMixParam(spaceKind);
-    CHECK(echo1 != 0 && space1 != 0 && echoMix == 3 && spaceMix >= 0);
+    // A bus offers its own family only: EMPTY and DELAY on ECHO, EMPTY and REVERB on SPACE; left and right its types.
+    CHECK(project.busEffects[0].kind == tape && project.busEffects[1].kind == hall); // a new song's
     fx.goTo(4, 0);
     rig.key(A, true);
-    for (int i = 0; i < 7; ++i) {
-        rig.tap(UP);
-        CHECK(project.busEffects[0].kind != 0 && effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
-    }
-    CHECK(project.busEffects[0].kind == static_cast<int>(busEffectAt(0, busListSize(0) - 1))); // the end of its list stops
-    rig.tap(DOWN, 8);
-    CHECK(project.busEffects[0].kind == 0 && project.busEffects[1].kind == static_cast<int>(kNewSongBus[1]));
-    rig.tap(RIGHT); // no groups to jump on a bus
+    CHECK(fx.picking());
+    rig.tap(DOWN, 7);
+    CHECK(project.busEffects[0].kind == tape); // on its family already, the end of its list: nothing is put in afresh
+    rig.tap(UP);
+    CHECK(project.busEffects[0].kind == 0 && project.busEffects[1].kind == hall);
+    rig.tap(UP, 3);
+    rig.tap(RIGHT); // nothing has no TYPE
     CHECK(project.busEffects[0].kind == 0 && fx.cursorRow() == 4 && fx.cursorColumn() == 0);
-    rig.tap(UP);
-    rig.tap(LEFT);
-    CHECK(project.busEffects[0].kind == echo1 && fx.cursorColumn() == 0);
     rig.tap(DOWN);
-    CHECK(project.busEffects[0].kind == 0);
-    rig.tap(UP);
-    CHECK(project.busEffects[0].kind == echo1 && project.busEffects[0].param[echoMix] == 1.f); // in at its usual settings, LEVEL full
+    CHECK(project.busEffects[0].kind == delay && project.busEffects[0].param[3] == 1.f); // the family's first type, at its usual settings, LEVEL full
+    for (int i = 0; i < 4; ++i) {
+        rig.tap(DOWN);
+        rig.tap(RIGHT);
+        CHECK(effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
+    }
+    CHECK(project.busEffects[0].kind == tape && project.busEffects[0].param[3] == 1.f);
+    rig.tap(LEFT, 5);
+    CHECK(project.busEffects[0].kind == delay);
     rig.key(A, false);
     fx.goTo(5, 0);
     rig.tap(B);
-    CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == echo1);
+    CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == delay);
     rig.key(A, true);
-    rig.tap(UP);
-    CHECK(project.busEffects[1].kind == space1 && project.busEffects[1].param[spaceMix] == 1.f);
-    rig.tap(UP, 4);
-    CHECK(effectBus(static_cast<EffectKind>(project.busEffects[1].kind)) == 1);
+    rig.tap(DOWN);
+    CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
+    rig.tap(DOWN, 4);
+    rig.tap(RIGHT, 4);
+    CHECK(project.busEffects[1].kind == hall && project.busEffects[1].param[3] == 1.f);
     rig.key(A, false);
+    // The Session refuses the other family on a bus, whoever asks.
+    session.setEffect(kEchoBus, 0, EffectKind::Hall);
+    session.setEffect(kSpaceBus, 0, EffectKind::Tape);
+    session.setEffect(kEchoBus, 0, EffectKind::Filter);
+    CHECK(project.busEffects[0].kind == delay && project.busEffects[1].kind == hall);
+    CHECK(!changeEffectType(session, kEchoBus, 0, EffectKind::Hall) && !changeEffectType(session, kSpaceBus, 0, EffectKind::Delay) && project.busEffects[0].kind == delay && project.busEffects[1].kind == hall);
     // LEVEL (the echo's MIX, its fourth setting): turned like any setting; B puts it back to full, not to the MIX an effect on a track starts at.
     fx.goTo(4, 4);
     rig.key(A, true);
@@ -4132,7 +4257,7 @@ void testTheFxScreensTwoPages() {
     fx.goTo(4, 2);
     session.setEffectParam(kEchoBus, 0, 1, 0.9f);
     rig.tap(B);
-    CHECK(project.busEffects[0].param[1] == effectInfo(echoKind).defaults[1]);
+    CHECK(project.busEffects[0].param[1] == effectInfo(EffectKind::Delay).defaults[1]);
     session.setEffect(0, 0, EffectKind::Delay);
     session.setEffectParam(0, 0, 3, 0.9f);
     fx.goTo(0, 4);
@@ -4140,71 +4265,656 @@ void testTheFxScreensTwoPages() {
     CHECK(project.tracks[0].effects[0].param[3] == effectInfo(EffectKind::Delay).defaults[3]);
     session.setEffect(0, 0, EffectKind::None);
 
-    // The master's two slots are the last two rows.
+    // The master's two slots are the last two lines.
     fx.goTo(6, 0);
     rig.key(A, true);
-    rig.tap(UP);
+    rig.tap(DOWN);
     rig.key(A, false);
     CHECK(project.masterEffects[0].kind == filter && project.masterEffects[1].kind == 0);
     fx.goTo(7, 0);
     rig.key(A, true);
-    rig.tap(UP, 2);
+    rig.tap(DOWN, 2);
+    rig.tap(RIGHT);
     rig.key(A, false);
-    CHECK(project.masterEffects[1].kind == static_cast<int>(effectAt(2)) && project.masterEffects[0].kind == filter);
+    CHECK(project.masterEffects[1].kind == tape && project.masterEffects[0].kind == filter); // the master takes any family, and its types
     fx.goTo(6, 0);
     rig.tap(B);
     fx.goTo(7, 0);
     rig.tap(B);
     CHECK(project.masterEffects[0].kind == 0 && project.masterEffects[1].kind == 0);
 
-    // Hold A + left / right on an effect: a whole group of the list at once.
+    // The stick with A held on a line: one push, one step of the list; sideways, one type.
     fx.goTo(0, 0);
     const auto kindNow = [&] { return static_cast<EffectKind>(project.tracks[0].effects[0].kind); };
+    const auto flick = [&](SDL_Keycode way) {
+        rig.key(way, true);
+        rig.frames(1);
+        rig.key(way, false);
+        rig.frames(1);
+    };
     rig.key(A, true);
-    int place = 0;
-    for (int i = 0; i < effectListSize() + 2; ++i) {
-        const int to = effectGroupJump(place, 1);
-        rig.tap(RIGHT);
-        CHECK(effectPlace(kindNow()) == to && (to == place || effectInfo(effectAt(to)).group != effectInfo(effectAt(place)).group));
-        place = to;
-    }
-    CHECK(place > 0 && effectInfo(effectAt(place)).group == effectInfo(effectAt(effectListSize() - 1)).group); // the last group: it stops
-    // ...and stopping is doing nothing: the effect there is not put in afresh, so its settings stay as they were turned.
-    if (effectInfo(kindNow()).params > 0) {
-        session.setEffectParam(0, 0, 0, 0.123f);
-        rig.tap(RIGHT);
-        CHECK(project.tracks[0].effects[0].param[0] == 0.123f);
-    }
-    for (int i = 0; i < effectListSize() + 2; ++i) {
-        const int to = effectGroupJump(place, -1);
-        rig.tap(LEFT);
-        CHECK(effectPlace(kindNow()) == to && to <= place);
-        place = to;
-    }
-    CHECK(place == 0 && kindNow() == EffectKind::None && fx.cursorColumn() == 0);
-    // The stick: one push, one jump.
-    rig.key(STICK_RIGHT, true);
-    rig.frames(1);
-    rig.key(STICK_RIGHT, false);
-    rig.frames(1);
-    CHECK(effectPlace(kindNow()) == effectGroupJump(0, 1) && kindNow() != EffectKind::None);
-    rig.key(STICK_LEFT, true);
-    rig.frames(1);
-    rig.key(STICK_LEFT, false);
-    rig.frames(1);
+    flick(STICK_DOWN);
+    CHECK(kindNow() == EffectKind::Filter);
+    flick(STICK_DOWN);
+    CHECK(kindNow() == EffectKind::Delay);
+    flick(STICK_RIGHT);
+    CHECK(kindNow() == EffectKind::Tape && fx.cursorColumn() == 0);
+    flick(STICK_LEFT);
+    CHECK(kindNow() == EffectKind::Delay);
+    flick(STICK_UP);
+    CHECK(kindNow() == EffectKind::Filter);
+    // Stopping at an end is doing nothing: the effect there is not put in afresh, so its settings stay as they were turned.
+    rig.tap(DOWN, familyListSize());
+    CHECK(kindNow() == EffectKind::Crush);
+    session.setEffectParam(0, 0, 0, 0.123f);
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    rig.tap(LEFT);
+    CHECK(kindNow() == EffectKind::Crush && project.tracks[0].effects[0].param[0] == 0.123f);
+    // A held D-pad steps through the list slowly enough to see each one: five a second.
+    rig.tap(UP, familyListSize());
     CHECK(kindNow() == EffectKind::None);
+    rig.key(DOWN, true);
+    rig.frames(1);
+    CHECK(familyPlace(kindNow()) == 1);
+    rig.frames(60); // a second: the wait, then one every fifth of a second
+    CHECK(familyPlace(kindNow()) >= 4 && familyPlace(kindNow()) <= 6);
+    rig.key(DOWN, false);
+    rig.key(A, false);
     // On a setting, left and right with A held do nothing at all.
     session.setEffect(0, 0, EffectKind::Filter);
     fx.goTo(0, 1);
     const float cutoff = project.tracks[0].effects[0].param[0];
+    rig.key(A, true);
     rig.tap(RIGHT);
     CHECK(project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
     rig.tap(LEFT);
     CHECK(project.tracks[0].effects[0].kind == filter && project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
     rig.key(A, false);
-    // Without A they move the cursor, as ever.
+    // Without A, left goes back to the list, as ever.
     rig.tap(LEFT);
     CHECK(fx.cursorColumn() == 0 && project.tracks[0].effects[0].kind == filter);
+}
+
+// ---- the FX screen as it is DRAWN (tests/canvas.hpp) -----------------------------------------
+
+// Is `text` drawn at (x, y) in `colour`? It is drawn there on a second screen, and wherever that
+// has a pixel of the full colour (the body of a letter, not its soft edge) the screen looked at
+// must have it too.
+static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour) {
+    const Font& font = size == 0 ? scratch.fonts->small : (size == 1 ? scratch.fonts->medium : scratch.fonts->large);
+    const int x0 = std::max(0, static_cast<int>(x) - 2), x1 = std::min(ui::kScreenW, static_cast<int>(x + font.width(text)) + 3);
+    const int y0 = std::max(0, static_cast<int>(y) - 4), y1 = std::min(ui::kScreenH, static_cast<int>(y) + 30);
+    ui::fill(scratch.r, x0, y0, x1 - x0, y1 - y0, SDL_Color{255, 0, 255, 255}); // a ground no lettering is drawn in
+    font.draw(scratch.r, x, y, text, colour);
+    int body = 0;
+    for (int py = y0; py < y1; ++py)
+        for (int px = x0; px < x1; ++px) {
+            if (!scratch.is(px, py, colour)) continue;
+            ++body;
+            if (!canvas.is(px, py, colour)) return false;
+        }
+    return body >= 6;
+}
+
+void testTheFxScreenAsDrawn() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    using namespace ui;
+    typedef FxScreen F;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffect(0, 2, EffectKind::Filter);
+    rig.frames(1);
+    rig.render(2000);
+    const Fonts& fonts = *canvas.fonts;
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    const float smallMid = (F::kLineH - fonts.small.capHeight()) / 2.f - 1.f, mediumMid = (F::kLineH - fonts.medium.capHeight()) / 2.f - 1.f;
+    const auto lineName = [&](int line, const char* name, SDL_Color colour) { return inked(canvas, scratch, 1, static_cast<float>(F::kNameX), F::lineY(line) + mediumMid, name, colour); };
+    const auto pickY = [&](int place) { return F::kPickY + 4 + place * F::kPickLineH; };
+    const auto pickName = [&](int place, const char* name, SDL_Color colour) {
+        return inked(canvas, scratch, 1, static_cast<float>(F::kPickNameX), pickY(place) + (F::kPickLineH - fonts.medium.capHeight()) / 2.f - 1.f, name, colour);
+    };
+    const auto heading = [&](const char* name, SDL_Color colour) { return inked(canvas, scratch, 2, F::kPaneX + 12.f, F::kPaneY + 30.f, name, colour); };
+
+    // THE LIST, at rest on an empty slot: every line is there, each saying what it holds.
+    fx.goTo(1, 0);
+    draw();
+    CHECK(lineName(0, "DELAY", kText) && lineName(1, "EMPTY", kLine) && lineName(2, "FILTER", kText));
+    CHECK(lineName(4, "DELAY", kText) && lineName(5, "REVERB", kText) && lineName(6, "EMPTY", kLine) && lineName(7, "EMPTY", kLine));
+    CHECK(!lineName(1, "DELAY", kText) && !lineName(0, "EMPTY", kLine)); // (the check can tell)
+    // ...the type beside the family, dimmer: TAPE on the track's delay and on ECHO, HALL on SPACE.
+    CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(0) + smallMid + 1.f, "TAPE", kDim));
+    CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(4) + smallMid + 1.f, "TAPE", kDim));
+    CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "HALL", kDim));
+    // ...the tags and the three headings.
+    const char* tags[8] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "1", "2"};
+    for (int line = 0; line < 8; ++line) CHECK(inked(canvas, scratch, 0, F::kListX + 8.f, F::lineY(line) + smallMid, tags[line], line == 1 ? kText : kDim));
+    CHECK(inked(canvas, scratch, 0, F::kListX + 1.f, F::lineY(0) - 16.f, "1 DRUMS", kText) && inked(canvas, scratch, 0, F::kListX + 1.f, F::lineY(4) - 16.f, "BUSES", kText));
+    CHECK(inked(canvas, scratch, 0, F::kListX + 1.f, F::lineY(6) - 16.f, "MASTER", kText));
+    CHECK(inked(canvas, scratch, 0, F::kListX + F::kListW - 1.f - fonts.small.width("THIS TRACK"), F::lineY(0) - 16.f, "THIS TRACK", kDim));
+    CHECK(inked(canvas, scratch, 0, F::kListX + F::kListW - 1.f - fonts.small.width("EVERYTHING"), F::lineY(6) - 16.f, "EVERYTHING", kDim));
+    // The cursor is the teal box round its line, and the tongue to the right.
+    CHECK(canvas.is(F::kListX - 1, F::lineY(1) + 10, kTeal) && !canvas.is(F::kListX - 1, F::lineY(0) + 10, kTeal) && canvas.is(F::kListX + F::kListW + 6, F::lineY(1) + F::kLineH / 2, kTeal));
+    // On the right: the slot is EMPTY, and says how to fill it. No list of effects.
+    CHECK(heading("EMPTY", kDim) && inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, "1 DRUMS, EFFECT 2", kDim));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSetY + 24.f, "Nothing here.", kText) && inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSetY + 48.f, "Hold A to see the effects and pick one.", kDim));
+    CHECK(!pickName(1, "FILTER", kText));
+
+    // HOLD A: the list of effects is open, every family on its own line with its words, the cursor on what the slot holds.
+    rig.key(A, true);
+    draw();
+    CHECK(familyListSize() == 10);
+    for (int place = 0; place < familyListSize(); ++place) {
+        const EffectKind family = familyAt(place);
+        char says[64];
+        effectFamilySays(family, says, sizeof says);
+        CHECK(pickName(place, place == 0 ? "EMPTY" : effectFamily(family), place == 0 ? kBrass : kText));
+        CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kPickSaysX), pickY(place) + (F::kPickLineH - fonts.small.capHeight()) / 2.f - 1.f, says, kDim));
+        CHECK(canvas.is(F::kPaneX + 3, pickY(place) + 10, kBrass) == (place == 0));
+        CHECK(pickY(place) + F::kPickLineH <= kScreenH - kHintsH - 2); // clear of the hints
+    }
+    // A group is named once, on its first line.
+    const auto groupAt = [&](int place, const char* name) { return inked(canvas, scratch, 0, F::kPaneX + 12.f, pickY(place) + (F::kPickLineH - fonts.small.capHeight()) / 2.f - 1.f, name, kDim); };
+    CHECK(groupAt(1, "FILTER") && groupAt(2, "DELAY") && groupAt(3, "REVERB") && groupAt(4, "MOVING") && groupAt(5, "LEVEL") && groupAt(7, "DIRT"));
+    CHECK(!groupAt(6, "LEVEL") && !groupAt(8, "DIRT") && !groupAt(9, "DIRT"));
+    CHECK(heading("EMPTY", kBrass) && canvas.is(F::kPaneX - 1, F::kPaneY + 20, kBrass) && canvas.is(F::kListX - 1, F::lineY(1) + 10, kBrass)); // A held: brass
+    CHECK(!inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSetY + 24.f, "Nothing here.", kText));
+    // Down four: CHORUS goes in, the cursor is on its line, the heading and the list on the left say so.
+    rig.tap(DOWN, 4);
+    draw();
+    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Chorus));
+    CHECK(pickName(4, "CHORUS", kBrass) && pickName(0, "EMPTY", kText) && canvas.is(F::kPaneX + 3, pickY(4) + 10, kBrass) && !canvas.is(F::kPaneX + 3, pickY(0) + 10, kBrass));
+    CHECK(heading("CHORUS", kBrass) && lineName(1, "CHORUS", kText));
+    // Up two: DELAY, a family with types. Its TYPE row is in the heading, the one it is on a brass plate.
+    rig.tap(UP, 2);
+    draw();
+    const float typeX = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f, typeY = F::kPaneY + 64.f;
+    const float tapeX = typeX + fonts.small.width("CLEAN") + 20.f;
+    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Delay) && heading("DELAY", kBrass) && pickName(2, "DELAY", kBrass));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, typeY, "TYPE", kDim) && inked(canvas, scratch, 0, typeX, typeY, "CLEAN", kBg) && inked(canvas, scratch, 0, tapeX, typeY, "TAPE", kDim));
+    CHECK(canvas.is(static_cast<int>(typeX) - 5, static_cast<int>(typeY) - 4, kBrass) && !canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kBrass));
+    rig.tap(RIGHT); // the TYPE: TAPE
+    draw();
+    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Tape) && heading("DELAY", kBrass) && pickName(2, "DELAY", kBrass));
+    CHECK(inked(canvas, scratch, 0, typeX, typeY, "CLEAN", kDim) && inked(canvas, scratch, 0, tapeX, typeY, "TAPE", kBg) && canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kBrass));
+    CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(1) + smallMid + 1.f, "TAPE", kDim));
+    rig.key(A, false);
+    rig.frames(1);
+    draw();
+    // A let go: the list shuts and the settings are back; the plate is cream.
+    CHECK(!pickName(2, "DELAY", kBrass) && !pickName(2, "DELAY", kText) && heading("DELAY", kText) && canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kText));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSetY + 10.f, "TIME", kDim));
+
+    // A BUS holds one family: its list is two lines, EMPTY and REVERB, and nothing under them.
+    fx.goTo(F::kBusRow + 1, 0);
+    rig.key(A, true);
+    draw();
+    CHECK(pickName(0, "EMPTY", kText) && pickName(1, "REVERB", kBrass) && canvas.is(F::kPaneX + 3, pickY(1) + 10, kBrass));
+    for (int place = 2; place < 10; ++place)
+        for (int x = F::kPaneX; x < F::kPaneX + F::kPaneW; x += 3) CHECK(canvas.is(x, pickY(place) + 14, kBg));
+    CHECK(heading("REVERB", kBrass) && inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, "SPACE BUS: WHAT THE TRACKS SEND TO SPACE", kDim));
+    rig.key(A, false);
+    rig.frames(1);
+
+    // THE SETTINGS, large. On TAPE's FEEDBACK: its label, its reading, a bar as long as the setting.
+    fx.goTo(0, 2);
+    draw();
+    const auto setY = [&](int p) { return F::kSetY + p * (F::kSetH + F::kSetGap); };
+    const auto barY = [&](int p) { return setY(p) + F::kSetH / 2 - F::kBarH / 2; };
+    const char* labels[4] = {"TIME", "FEEDBACK", "AGE", "MIX"};
+    const char* values[4] = {"1/8 DOT", "48%", "35%", "35%"};
+    for (int p = 0; p < 4; ++p) {
+        CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(p) + 10.f, labels[p], kDim));
+        CHECK(inked(canvas, scratch, 2, static_cast<float>(F::kValueX), setY(p) + 30.f, values[p], p == 1 ? kTeal : kText));
+        CHECK(canvas.is(F::kPaneX - 1, setY(p) + 20, kTeal) == (p == 1)); // the cursor's box
+        CHECK(setY(p) + F::kSetH <= kScreenH - kHintsH - 2);
+    }
+    CHECK(canvas.run(F::kBarX, barY(1) + 2, kTeal) == static_cast<int>(std::round(F::kBarW * 0.4f)) && canvas.run(F::kBarX + static_cast<int>(std::round(F::kBarW * 0.4f)), barY(1) + 2, kLine) == F::kBarW - static_cast<int>(std::round(F::kBarW * 0.4f)));
+    CHECK(canvas.run(F::kBarX, barY(2) + 2, kDim) == static_cast<int>(std::round(F::kBarW * 0.35f)));
+    CHECK(canvas.run(F::kBarX, barY(1) - 1, kTeal) == 0 && canvas.run(F::kBarX, barY(1) + F::kBarH, kTeal) == 0 && canvas.run(F::kBarX, barY(1) + F::kBarH - 1, kTeal) > 0); // ten high
+    // TIME is a CHOICE: no bar to be somewhere along, but one piece for each of its eight, the fifth lit.
+    {
+        int pieces = 0, lit = -1;
+        for (int x = F::kBarX; x < F::kBarX + F::kBarW;) {
+            const int dim = canvas.run(x, barY(0) + 2, kLine), on = canvas.run(x, barY(0) + 2, kDim);
+            if (dim + on == 0) { ++x; continue; }
+            if (on) lit = pieces;
+            ++pieces;
+            x += dim + on;
+            CHECK(dim + on >= 12 && canvas.is(x, barY(0) + 2, kPanel)); // a gap after each, the last one's at the bar's end
+        }
+        CHECK(pieces == 8 && lit == 4);
+        CHECK(canvas.is(F::kBarX, barY(0) + 2, kLine) && canvas.is(F::kBarX + F::kBarW - 1, barY(0) + 2, kLine) && canvas.is(F::kBarX + F::kBarW, barY(0) + 2, kPanel));
+    }
+    // The cursor on the choice lights its piece teal; turned to the last, the last is lit.
+    fx.goTo(0, 1);
+    session.setEffectParam(0, 0, 0, 0.99f);
+    draw();
+    CHECK(canvas.is(F::kBarX + F::kBarW - 2, barY(0) + 2, kTeal) && canvas.is(F::kBarX + 2, barY(0) + 2, kLine) && canvas.run(F::kBarX + F::kBarW - 2, barY(0) + 2, kTeal) == 2);
+    session.setEffectParam(0, 0, 0, 0.f);
+    draw();
+    CHECK(canvas.is(F::kBarX, barY(0) + 2, kTeal) && canvas.is(F::kBarX + F::kBarW - 2, barY(0) + 2, kLine));
+    // With A held the cursor and what it turns are brass.
+    rig.key(A, true);
+    draw();
+    CHECK(canvas.is(F::kBarX, barY(0) + 2, kBrass) && canvas.is(F::kPaneX - 1, setY(0) + 20, kBrass) && !pickName(1, "FILTER", kText));
+    rig.key(A, false);
+    rig.frames(1);
+    // On a bus the MIX reads LEVEL; on a track it reads MIX.
+    fx.goTo(F::kBusRow, 4);
+    draw();
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(3) + 10.f, "LEVEL", kDim) && !inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(3) + 10.f, "MIX", kDim));
+    CHECK(inked(canvas, scratch, 2, static_cast<float>(F::kValueX), setY(3) + 30.f, "100%", kTeal) && canvas.run(F::kBarX, barY(3) + 2, kTeal) == F::kBarW);
+    // The room reverb has three settings: there is no fourth row.
+    session.setEffect(kSpaceBus, 0, EffectKind::Reverb);
+    fx.goTo(F::kBusRow + 1, 3);
+    draw();
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, setY(2) + 10.f, "LEVEL", kDim) && canvas.is(F::kPaneX + 40, setY(3) + 30, kBg));
+
+    // WHAT MOVES WITH THE PATTERN is marked in purple: on its row, with the words, and on its line of the list.
+    fx.goTo(0, 2);
+    draw();
+    CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    session.setAutomation(0, 0, autoLaneOfEffect(0, 1), 5, 0.3f);
+    draw();
+    CHECK(canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kPaneX + 50, setY(0) + F::kSetH - 3, kPurple) && !canvas.is(F::kPaneX + 50, setY(2) + F::kSetH - 3, kPurple));
+    CHECK(inked(canvas, scratch, 0, F::kBarX + F::kBarW - fonts.small.width("moves with the pattern"), setY(1) + 10.f, "moves with the pattern", kPurple));
+    CHECK(canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(2) + F::kLineH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(3) + F::kLineH - 3, kPurple));
+    // ...in the scene being worked on, not another.
+    rig.project().scene = 1;
+    draw();
+    CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    rig.project().scene = 0;
+
+    // THE SENDS, large: two rows, where each goes, and the automated one marked.
+    session.setSend(0, 0, 0.35f);
+    session.setSend(0, 1, 0.1f);
+    session.setAutomation(0, 0, autoLaneOfSend(1), 0, 0.5f);
+    fx.goTo(F::kSendsRow, 1);
+    draw();
+    const auto sendY = [&](int b) { return F::kSendY + b * (F::kSendH + F::kSendGap); };
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 1.f, F::kPaneY + 2.f, "1 DRUMS, SENDS", kDim));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, sendY(0) + 12.f, "ECHO", kDim) && inked(canvas, scratch, 0, F::kPaneX + 12.f, sendY(1) + 12.f, "SPACE", kDim));
+    CHECK(inked(canvas, scratch, 2, F::kPaneX + 12.f, sendY(0) + 40.f, "35%", kTeal) && inked(canvas, scratch, 2, F::kPaneX + 12.f, sendY(1) + 40.f, "10%", kText));
+    CHECK(canvas.run(F::kPaneX + 12, sendY(0) + 90, kTeal) == static_cast<int>(std::round((F::kPaneW - 24) * 0.35f)) && canvas.run(F::kPaneX + 12, sendY(1) + 90, kDim) == static_cast<int>(std::round((F::kPaneW - 24) * 0.1f)));
+    const char* toEcho = "to the ECHO bus: DELAY, TAPE";
+    const char* toSpace = "to the SPACE bus: REVERB, ROOM";
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + F::kPaneW - 12.f - fonts.small.width(toEcho), sendY(0) + 12.f, toEcho, kDim));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + F::kPaneW - 12.f - fonts.small.width(toSpace), sendY(1) + 12.f, toSpace, kDim));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, sendY(1) + 110.f, "moves with the pattern", kPurple) && !inked(canvas, scratch, 0, F::kPaneX + 12.f, sendY(0) + 110.f, "moves with the pattern", kPurple));
+    CHECK(canvas.is(F::kPaneX + 50, sendY(1) + 104, kPurple) && !canvas.is(F::kPaneX + 50, sendY(0) + 104, kPurple) && canvas.is(F::kListX + 50, F::lineY(3) + F::kLineH - 3, kPurple));
+    CHECK(canvas.is(F::kPaneX - 1, sendY(0) + 20, kTeal) && !canvas.is(F::kPaneX - 1, sendY(1) + 20, kTeal));
+    CHECK(sendY(1) + F::kSendH <= kScreenH - kHintsH - 2);
+    // The two little bars on the list's line say the same.
+    CHECK(canvas.run(F::kNameX + 14, F::lineY(3) + F::kLineH / 2, kText) == static_cast<int>(std::round(38 * 0.35f)) && canvas.run(F::kNameX + 62 + 14, F::lineY(3) + F::kLineH / 2, kText) == static_cast<int>(std::round(38 * 0.1f)));
+    // An empty bus says so, where the send would go.
+    session.setEffect(kEchoBus, 0, EffectKind::None);
+    draw();
+    const char* noEcho = "the ECHO bus is EMPTY";
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + F::kPaneW - 12.f - fonts.small.width(noEcho), sendY(0) + 12.f, noEcho, kDim));
+    // The level mark on a line: as tall as the MIX (or LEVEL) is, from the bottom.
+    session.setEffect(kEchoBus, 0, EffectKind::Tape);
+    session.setEffectParam(kEchoBus, 0, 3, 0.5f);
+    draw();
+    const int markH = F::kLineH - 14;
+    CHECK(canvas.is(F::kMarkX, F::lineY(4) + 7 + markH - 1, kDim) && canvas.is(F::kMarkX, F::lineY(4) + 7 + markH - markH / 2, kDim) && canvas.is(F::kMarkX, F::lineY(4) + 7 + markH - markH / 2 - 1, kLine) && canvas.is(F::kMarkX, F::lineY(4) + 7, kLine));
+    CHECK(canvas.is(F::kMarkX, F::lineY(2) + 7, kDim)); // the FILTER's MIX is full
+    CHECK(!canvas.is(F::kMarkX, F::lineY(1 + 5) + 7 + 5, kLine) && !canvas.is(F::kMarkX, F::lineY(6) + 7 + 5, kDim)); // an empty slot has no mark
+
+    // THE HINTS say what the buttons do where the cursor is. (Their words; the bar's drawing is ui_test's.)
+    const auto hinted = [&](const char* words) {
+        // somewhere along the bar, in the hint's own colour
+        for (float x = 4.f; x < kScreenW - 40.f; x += 0.0625f)
+            if (inked(canvas, scratch, 0, x, kScreenH - kHintsH + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f, words, kDim)) return true;
+        return false;
+    };
+    fx.goTo(0, 0);
+    draw();
+    const bool barFound = hinted("pick effect");
+    CHECK(barFound);
+    if (barFound) {
+        CHECK(hinted("its settings") && hinted("empty it") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        fx.goTo(1, 0);
+        session.setEffect(0, 1, EffectKind::None);
+        draw();
+        CHECK(!hinted("its settings") && hinted("pick effect")); // an empty slot has none to go into
+        fx.goTo(F::kSendsRow, 0);
+        draw();
+        CHECK(hinted("the sends") && hinted("send nothing") && !hinted("pick effect"));
+        fx.goTo(F::kSendsRow, 2);
+        draw();
+        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default value"));
+        fx.goTo(0, 2);
+        draw();
+        CHECK(hinted("list") && hinted("turn") && hinted("default value"));
+        rig.key(A, true);
+        draw();
+        CHECK(hinted("turn it") && !hinted("list") && !hinted("effect"));
+        fx.goTo(0, 0);
+        draw();
+        CHECK(hinted("effect") && hinted("type") && !hinted("turn it")); // DELAY has types
+        fx.goTo(2, 0);
+        draw();
+        CHECK(hinted("effect") && !hinted("type")); // FILTER has none
+        rig.key(A, false);
+        rig.frames(1);
+    }
+}
+
+// CHANGING TYPE through the Session: the settings the types share are kept as they read, and the
+// automation written for them goes with them; what the new type does not have is cleared.
+void testChangingTypeKeepsWhatIsShared() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    TrackData& track = project.tracks[0];
+    const auto written = [&](int lane, int scene = 0) { int n = 0; for (float v : track.automation[scene][lane]) n += v >= 0.f ? 1 : 0; return n; };
+    const auto reads = [&](EffectKind kind, int index, float v) { char text[32]; effectParamText(kind, index, v, text, sizeof text); return std::string(text); };
+    const auto lane = [](int slot, int p) { return autoLaneOfEffect(slot, p); };
+    const EffectKind D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
+    const EffectData& slot = track.effects[0];
+
+    // TAPE on the track, turned, with automation on three of its settings and on its neighbours.
+    session.setEffect(0, 0, T);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffectParam(0, 0, 0, 4.5f / 8.f); // 1/8 DOT
+    session.setEffectParam(0, 0, 1, 0.4f);       // 48%
+    session.setEffectParam(0, 0, 2, 0.8f);       // AGE
+    session.setEffectParam(0, 0, 3, 0.7f);       // MIX
+    session.setAutomation(0, 0, lane(0, 1), 2, 0.4f);  // FEEDBACK 48%
+    session.setAutomation(0, 0, lane(0, 1), 5, 1.f);   // ...and 120%
+    session.setAutomation(0, 3, lane(0, 1), 100, 0.25f); // another scene, a later bar: 30%
+    session.setAutomation(0, 3, lane(0, 3), 7, 0.25f); // MIX
+    session.setAutomation(0, 0, lane(0, 2), 1, 0.5f);  // AGE: DELAY has none
+    session.setAutomation(0, 6, lane(0, 2), 9, 0.5f);
+    session.setAutomation(0, 0, lane(0, 0), 4, 1.5f / 8.f); // TIME: 1/8 TRIP
+    session.setAutomation(0, 0, lane(1, 1), 1, 0.6f);  // the next slot's
+    session.setAutomation(0, 0, autoLaneOfSend(0), 1, 0.6f);
+    session.setAutomation(0, 0, 2, 1, 0.6f);           // a macro's
+    rig.frames(1);
+    rig.render(2000);
+    CHECK(changeEffectType(session, 0, 0, D));
+    CHECK(slot.kind == static_cast<int>(D));
+    CHECK(reads(D, 0, slot.param[0]) == "1/8 DOT" && reads(D, 1, slot.param[1]) == "48%" && slot.param[2] == effectInfo(D).defaults[2] && slot.param[3] == 0.7f);
+    // The automation: FEEDBACK reads as it did (and 120% is DELAY's most), MIX is as it was, TIME is the nearest DELAY has; AGE's is gone, everywhere.
+    CHECK(written(lane(0, 1)) == 2 && reads(D, 1, track.automation[0][lane(0, 1)][2]) == "48%" && track.automation[0][lane(0, 1)][5] == 1.f);
+    CHECK(written(lane(0, 1), 3) == 1 && reads(D, 1, track.automation[3][lane(0, 1)][100]) == "30%" && std::fabs(track.automation[3][lane(0, 1)][100] - 0.3f) < 0.005f);
+    CHECK(written(lane(0, 3), 3) == 1 && track.automation[3][lane(0, 3)][7] == 0.25f);
+    CHECK(written(lane(0, 0)) == 1 && reads(D, 0, track.automation[0][lane(0, 0)][4]) == "1/16");
+    CHECK(written(lane(0, 2)) == 0 && written(lane(0, 2), 6) == 0); // DELAY's TONE starts with nothing written
+    CHECK(written(lane(1, 1)) == 1 && written(autoLaneOfSend(0)) == 1 && written(2) == 1 && track.effects[1].kind == static_cast<int>(EffectKind::Filter));
+    // The engine has the new type and its settings: the sound is a clean delay's (a hit comes back three steps on, at 48% of ... loud enough to hear).
+    rig.frames(1);
+    rig.render(20000);
+    // And back: 48% is 48% again, the TIME DELAY had is on the TAPE, AGE starts at its usual value.
+    CHECK(changeEffectType(session, 0, 0, T) && slot.kind == static_cast<int>(T));
+    CHECK(reads(T, 0, slot.param[0]) == "1/8 DOT" && reads(T, 1, slot.param[1]) == "48%" && slot.param[2] == effectInfo(T).defaults[2] && slot.param[3] == 0.7f);
+    CHECK(reads(T, 1, track.automation[0][lane(0, 1)][2]) == "48%" && reads(T, 1, track.automation[0][lane(0, 1)][5]) == "100%" && reads(T, 0, track.automation[0][lane(0, 0)][4]) == "1/16");
+    CHECK(written(lane(0, 1)) == 2 && written(lane(0, 1), 3) == 1 && written(lane(0, 3), 3) == 1 && written(lane(0, 2)) == 0 && written(lane(1, 1)) == 1);
+
+    // REVERB and HALL: MIX is their third and fourth setting, so its automation moves a lane; TONE's does not become MIX's.
+    session.setEffect(0, 2, H);
+    session.setEffectParam(0, 2, 0, 0.9f); // SIZE
+    session.setEffectParam(0, 2, 3, 0.2f); // MIX
+    session.setAutomation(0, 0, lane(2, 0), 3, 0.4f); // SIZE
+    session.setAutomation(0, 0, lane(2, 1), 3, 0.4f); // DECAY
+    session.setAutomation(0, 0, lane(2, 2), 4, 0.9f); // TONE
+    session.setAutomation(0, 0, lane(2, 3), 6, 0.3f); // MIX
+    session.setAutomation(0, 9, lane(2, 3), 60, 0.8f);
+    CHECK(changeEffectType(session, 0, 2, R));
+    const EffectData& third = track.effects[2];
+    CHECK(third.kind == static_cast<int>(R) && third.param[0] == 0.9f && third.param[1] == effectInfo(R).defaults[1] && third.param[2] == 0.2f);
+    CHECK(written(lane(2, 0)) == 1 && track.automation[0][lane(2, 0)][3] == 0.4f && written(lane(2, 1)) == 0); // SIZE kept; DAMPING is not DECAY
+    CHECK(written(lane(2, 2)) == 1 && track.automation[0][lane(2, 2)][6] == 0.3f && track.automation[0][lane(2, 2)][4] < 0.f); // MIX's, not TONE's
+    CHECK(written(lane(2, 2), 9) == 1 && track.automation[9][lane(2, 2)][60] == 0.8f && written(lane(2, 3)) == 0 && written(lane(2, 3), 9) == 0);
+    CHECK(changeEffectType(session, 0, 2, H) && third.kind == static_cast<int>(H) && third.param[0] == 0.9f && third.param[3] == 0.2f && third.param[1] == effectInfo(H).defaults[1] && third.param[2] == effectInfo(H).defaults[2]);
+    CHECK(written(lane(2, 3)) == 1 && track.automation[0][lane(2, 3)][6] == 0.3f && written(lane(2, 3), 9) == 1 && written(lane(2, 2)) == 0 && written(lane(2, 2), 9) == 0 && written(lane(2, 0)) == 1);
+    // The first slot's were not touched by any of that.
+    CHECK(written(lane(0, 1)) == 2 && written(lane(0, 0)) == 1 && written(lane(1, 1)) == 1);
+
+    // With WRITE on and the song playing, none of it is written down as a move.
+    session.setWriting(true);
+    rig.tap(START);
+    rig.render(kStep * 9 + kStep / 2);
+    rig.frames(1);
+    CHECK(project.playing && session.writing());
+    CHECK(changeEffectType(session, 0, 0, D) && session.writing());
+    CHECK(written(lane(0, 1)) == 2 && written(lane(0, 0)) == 1 && written(lane(0, 3)) == 0 && written(lane(0, 2)) == 0 && track.automation[0][lane(0, 1)][9] < 0.f);
+    rig.tap(START);
+    session.setWriting(false);
+    rig.frames(1);
+
+    // What is not a change of type is refused, and nothing is touched.
+    const EffectData before = slot;
+    CHECK(!changeEffectType(session, 0, 0, D));                 // what it is already
+    CHECK(!changeEffectType(session, 0, 0, EffectKind::None) && !changeEffectType(session, 0, 0, EffectKind::Filter) && !changeEffectType(session, 0, 0, H));
+    CHECK(!changeEffectType(session, 0, 0, static_cast<EffectKind>(77)) && !changeEffectType(session, 0, 0, static_cast<EffectKind>(-2)));
+    CHECK(!changeEffectType(session, 0, 3, T) && !changeEffectType(session, 0, -1, T) && !changeEffectType(session, kMasterTrack, 2, T) && !changeEffectType(session, kEchoBus, 1, D));
+    CHECK(slot.kind == before.kind && slot.param[0] == before.param[0] && slot.param[1] == before.param[1] && slot.param[3] == before.param[3] && written(lane(0, 1)) == 2);
+    session.setEffect(0, 1, EffectKind::None);
+    CHECK(!changeEffectType(session, 0, 1, T) && track.effects[1].kind == 0); // nothing in the slot: no type to change
+    CHECK(!changeEffectType(session, 0, 1, EffectKind::Filter));
+
+    // On a bus: LEVEL (its MIX) is kept as it was turned, not put back to full; what is new starts as it does on a bus.
+    CHECK(project.busEffects[0].kind == static_cast<int>(T));
+    session.setEffectParam(kEchoBus, 0, 3, 0.8f);
+    session.setEffectParam(kEchoBus, 0, 1, 0.5f); // 60%
+    CHECK(changeEffectType(session, kEchoBus, 0, D));
+    CHECK(project.busEffects[0].kind == static_cast<int>(D) && project.busEffects[0].param[3] == 0.8f && reads(D, 1, project.busEffects[0].param[1]) == "60%" && project.busEffects[0].param[2] == effectInfo(D).defaults[2]);
+    CHECK(project.busEffects[1].kind == static_cast<int>(H));
+    session.setEffectParam(kSpaceBus, 0, 3, 0.6f);
+    CHECK(changeEffectType(session, kSpaceBus, 0, R) && project.busEffects[1].kind == static_cast<int>(R) && project.busEffects[1].param[2] == 0.6f);
+    // On the master, where nothing is automated.
+    session.setEffect(kMasterTrack, 1, R);
+    session.setEffectParam(kMasterTrack, 1, 2, 0.15f);
+    CHECK(changeEffectType(session, kMasterTrack, 1, H) && project.masterEffects[1].kind == static_cast<int>(H) && project.masterEffects[1].param[3] == 0.15f && project.masterEffects[1].param[1] == effectInfo(H).defaults[1]);
+    // The engine was told each time, and nothing was lost on the way.
+    rig.frames(2);
+    rig.render(4000);
+    rig.frames(2);
+    CHECK(rig.listen(2000) < 4.f);
+
+    // A lane written full, in every scene: all of it goes with the setting (and the engine is sent the whole song if its queue fills).
+    session.setEffect(0, 0, T);
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int step = 0; step < kAutoSteps; ++step) track.automation[scene][lane(0, 1)][step] = 0.1f + 0.5f * static_cast<float>(step) / kAutoSteps;
+    CHECK(changeEffectType(session, 0, 0, D));
+    for (int scene = 0; scene < kMaxScenes; scene += 5) {
+        CHECK(written(lane(0, 1), scene) == kAutoSteps);
+        for (int step = 0; step < kAutoSteps; step += 17) CHECK(reads(D, 1, track.automation[scene][lane(0, 1)][step]) == reads(T, 1, 0.1f + 0.5f * static_cast<float>(step) / kAutoSteps));
+    }
+    for (int i = 0; i < 40; ++i) {
+        rig.frames(1);
+        rig.render(256);
+    }
+}
+
+// EVERY TEXT FITS ITS BOX, at every value: measured with the program's lettering, and looked for on the drawn screen.
+void testFxTextsFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    using namespace ui;
+    typedef FxScreen F;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    // The longest a track's name can be, and the last track's number.
+    for (int t = 1; t < kNumTracks; ++t) session.addTrack(TrackKind::Drums);
+    project.track = kNumTracks - 1;
+    std::snprintf(project.tracks[kNumTracks - 1].name, sizeof project.tracks[kNumTracks - 1].name, "WWWWWWWWWW");
+    char name[24], text[96];
+    ui::trackName(project, project.track, name, sizeof name);
+    CHECK(std::strlen(name) >= 12);
+    CHECK(fonts.small.width(name) <= F::kListW - 2.f);
+    for (const char* more : {"THIS TRACK", "ALL TRACKS", "EVERYTHING"}) CHECK(fonts.small.width("MASTER") + fonts.small.width(more) + 10.f <= F::kListW - 2.f);
+    const float headRoom = F::kPaneW - 24.f;
+    std::snprintf(text, sizeof text, "%s, EFFECT 3", name);
+    CHECK(fonts.small.width(text) <= headRoom);
+    std::snprintf(text, sizeof text, "%s, SENDS", name);
+    CHECK(fonts.small.width(text) <= headRoom);
+    CHECK(fonts.small.width("SPACE BUS: WHAT THE TRACKS SEND TO SPACE") <= headRoom && fonts.small.width("MASTER (EVERYTHING), EFFECT 2") <= headRoom);
+    CHECK(fonts.small.width("Hold A to see what this bus can hold.") <= headRoom && fonts.small.width("Hold A to see the effects and pick one.") <= headRoom);
+    CHECK(F::kValueRoom > 100 && F::kValueX + F::kValueRoom < F::kBarX && F::kBarX + F::kBarW <= F::kPaneX + F::kPaneW - 12);
+    CHECK(fonts.small.width("moves with the pattern") <= F::kBarW);
+
+    int values = 0, smaller = 0;
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        const EffectInfo& info = effectInfo(kind);
+        // In the list: the family, its type, and room before the marks at the line's end.
+        const float nameEnds = F::kNameX + fonts.medium.width(effectFamily(kind)) + (effectTypeName(kind)[0] ? 7.f + fonts.small.width(effectTypeName(kind)) : 0.f);
+        CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3);
+        if (nameEnds > F::kMarkX - 3) std::printf("    %s %s ends at %.0f, the mark is at %d\n", effectFamily(kind), effectTypeName(kind), static_cast<double>(nameEnds), F::kMarkX);
+        CHECK(F::kListX + 8.f + fonts.small.width("SPACE") <= F::kNameX - 4);
+        // In the heading: the family, large, and what its meter says beside it at its longest; its types in a row, and the arrows after them.
+        FxScreen::meterWords(kind, 99.f, text, sizeof text);
+        CHECK(fonts.large.width(effectFamily(kind)) + 16.f + fonts.small.width(text) <= headRoom);
+        float types = fonts.small.width("TYPE") + 12.f;
+        for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f;
+        CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
+        // In the list of effects: the group, the family and its words, each in its own column.
+        CHECK(F::kPaneX + 12.f + fonts.small.width(effectGroupName(info.group)) <= F::kPickNameX - 6);
+        CHECK(F::kPickNameX + fonts.medium.width(effectFamily(kind)) <= F::kPickSaysX - 6);
+        effectFamilySays(kind, text, sizeof text);
+        CHECK(F::kPickSaysX + fonts.small.width(text) <= F::kPaneX + F::kPaneW - 10);
+        // Where a send goes.
+        if (effectBus(kind) >= 0) {
+            std::snprintf(text, sizeof text, "to the SPACE bus: %s, %s", effectFamily(kind), effectTypeName(kind));
+            CHECK(fonts.small.width("SPACE") + 16.f + fonts.small.width(text) <= headRoom);
+        }
+        // Its settings: each label, and each reading at 33 places along its range, in the largest lettering that fits the room.
+        for (int onBus = 0; onBus < (effectBus(kind) >= 0 ? 2 : 1); ++onBus) {
+            const int track = onBus ? busTrack(effectBus(kind)) : project.track, row = onBus ? F::kBusRow + effectBus(kind) : 0;
+            session.setEffect(track, 0, kind);
+            CHECK(session.effectData(track, 0).kind == k);
+            for (int p = 0; p < info.params; ++p) {
+                CHECK(fonts.small.width(info.paramNames[p]) <= F::kValueRoom && fonts.small.width("LEVEL") <= F::kValueRoom);
+                for (int other = 0; other < 2; ++other) {
+                    // (A reading can depend on another setting: the DJ filter's cutoff. Every choice of every other setting is too many; the first and the DJ's are tried.)
+                    if (other == 1 && kind != EffectKind::Filter) continue;
+                    if (kind == EffectKind::Filter) session.setEffectParam(track, 0, 2, other ? 0.7f : 0.1f);
+                    for (int i = 0; i <= 32; ++i) {
+                        const float v = static_cast<float>(i) / 32.f;
+                        if (kind == EffectKind::Filter && p == 2 && other == 1) continue;
+                        session.setEffectParam(track, 0, p, v);
+                        const EffectData& d = session.effectData(track, 0);
+                        effectParamText(kind, p, v, text, sizeof text, d.param);
+                        ++values;
+                        CHECK(text[0] != 0);
+                        const Font& font = fonts.fit(text, static_cast<float>(F::kValueRoom));
+                        CHECK(font.width(text) <= F::kValueRoom);
+                        if (font.width(text) > F::kValueRoom) std::printf("    %s %s reads %s: %.0f wide in a room of %d\n", info.name, info.paramNames[p], text, static_cast<double>(font.width(text)), F::kValueRoom);
+                        smaller += &font != &fonts.large ? 1 : 0;
+                        // ...and on the screen: nothing of it in the gutter before the bar, nothing past the pane, nothing over the hints.
+                        fx.goTo(row, p + 1);
+                        canvas.clear();
+                        fx.draw(canvas.r, fonts);
+                        const int y = F::kSetY + p * (F::kSetH + F::kSetGap);
+                        bool clean = true;
+                        for (int py = y + 24; py < y + F::kSetH - 4 && clean; ++py)
+                            for (int px = F::kValueX + F::kValueRoom; px < F::kBarX; ++px) clean = clean && canvas.is(px, py, kPanel);
+                        for (int py = kTopBarH + 2; py < kScreenH - kHintsH - 1 && clean; py += 2)
+                            for (int px = F::kPaneX + F::kPaneW + 1; px < kScreenW; ++px) clean = clean && canvas.is(px, py, kBg);
+                        CHECK(clean);
+                        if (!clean) std::printf("    %s %s at %.3f (%s) is drawn out of its room\n", info.name, info.paramNames[p], static_cast<double>(v), text);
+                        // The value is there, in the cursor's colour.
+                        int ink = 0;
+                        for (int py = y + 26; py < y + F::kSetH - 6; ++py)
+                            for (int px = F::kValueX; px < F::kValueX + F::kValueRoom; ++px) ink += canvas.is(px, py, kTeal) ? 1 : 0;
+                        CHECK(ink > 6);
+                    }
+                    session.setEffectParam(track, 0, p, effectDefault(kind, p, onBus != 0));
+                }
+            }
+            rig.frames(1);
+            rig.render(512);
+        }
+        // With A held on its line (the list open): the line of the list it is on is drawn inside the pane.
+        fx.goTo(0, 0);
+        session.setEffect(project.track, 0, kind);
+        rig.key(A, true);
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+        rig.key(A, false);
+        bool inside = true;
+        for (int py = kTopBarH + 2; py < kScreenH - kHintsH - 1; ++py)
+            for (int px = F::kPaneX + F::kPaneW + 1; px < kScreenW; ++px) inside = inside && canvas.is(px, py, kBg);
+        CHECK(inside);
+        rig.frames(1);
+    }
+    CHECK(values > 1300);
+    CHECK(smaller < values / 10); // nearly every reading is in the large lettering
+    // What a meter says, and when.
+    FxScreen::meterWords(EffectKind::Comp, 7.2f, text, sizeof text);
+    CHECK(std::string(text) == "TURNING DOWN 7 DB");
+    FxScreen::meterWords(EffectKind::Duck, 3.5f, text, sizeof text);
+    CHECK(std::string(text) == "DIPPING 4 DB");
+    FxScreen::meterWords(EffectKind::Comp, 0.5f, text, sizeof text);
+    CHECK(std::string(text) == "TURNING DOWN 1 DB");
+    FxScreen::meterWords(EffectKind::Comp, 0.49f, text, sizeof text);
+    CHECK(text[0] == 0);
+    FxScreen::meterWords(EffectKind::Comp, 1e9f, text, sizeof text);
+    CHECK(std::string(text) == "TURNING DOWN 99 DB");
+    std::snprintf(text, sizeof text, "x");
+    FxScreen::meterWords(EffectKind::Comp, std::nanf(""), text, sizeof text);
+    CHECK(text[0] == 0);
+    std::snprintf(text, sizeof text, "x");
+    FxScreen::meterWords(EffectKind::Filter, 12.f, text, sizeof text);
+    CHECK(text[0] == 0);
+    FxScreen::meterWords(EffectKind::Comp, -3.f, text, sizeof text);
+    CHECK(text[0] == 0);
+    char two[4] = "zzz";
+    FxScreen::meterWords(EffectKind::Comp, 7.f, two, sizeof two);
+    CHECK(std::string(two) == "TUR");
+    FxScreen::meterWords(EffectKind::Comp, 7.f, nullptr, 8);
+    FxScreen::meterWords(EffectKind::Comp, 7.f, two, 0);
+    CHECK(std::string(two) == "TUR");
+}
+
+// A SONG FILE IS WRITTEN AS IT WAS before there were families: every effect by its own word, as main wrote it.
+#include "everykind.inc"
+void testSongFilesAreAsTheyWere() {
+    static const char* const asMainWroteIt =
+#include "everykind_main.inc"
+        ;
+    std::unique_ptr<Project> project(new Project);
+    fillWithEveryKind(*project);
+    const std::string text = songText(*project);
+    CHECK(text == asMainWroteIt);
+    // ...and read back it is the same song, and written again the same file.
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back));
+    CHECK(songText(*back) == asMainWroteIt);
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectData& a = project->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
+        const EffectData& b = back->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
+        CHECK(b.kind == k && a.kind == k);
+        for (int i = 0; i < effectInfo(static_cast<EffectKind>(k)).params; ++i) CHECK(near(a.param[i], b.param[i]));
+    }
+    CHECK(back->busEffects[0].kind == static_cast<int>(EffectKind::Delay) && back->busEffects[1].kind == static_cast<int>(EffectKind::Reverb));
+    CHECK(back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape));
+    // A change of TYPE on the screen writes the other type's own word, and nothing else about the line is new.
+    Rig rig;
+    rig.app.session().view = View::Effects;
+    rig.app.session().setEffect(0, 0, EffectKind::Delay);
+    CHECK(songText(rig.project()).find("\nfx 1 delay 0.5 0.45 0.6 0.35\n") != std::string::npos);
+    rig.key(A, true);
+    rig.tap(RIGHT);
+    rig.key(A, false);
+    CHECK(songText(rig.project()).find("\nfx 1 tape ") != std::string::npos && songText(rig.project()).find("fx 1 delay") == std::string::npos);
+    CHECK(songText(rig.project()).find("\nbusfx 1 tape ") != std::string::npos && songText(rig.project()).find("\nbusfx 2 hall ") != std::string::npos);
 }
 
 void testTheKeysShownFollowTheCursor() {
@@ -5787,7 +6497,11 @@ int main(int argc, char** argv) {
     testTheEffectsScreen();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
-    testTheFxScreensTwoPages();
+    testTheFxScreensList();
+    testTheFxScreenAsDrawn();
+    testChangingTypeKeepsWhatIsShared();
+    testFxTextsFit();
+    testSongFilesAreAsTheyWere();
     testTheFxScreenShowsCompAtWork();
     testTheKeysShownFollowTheCursor();
     testTheScreensKnowWhereTheSongIs();

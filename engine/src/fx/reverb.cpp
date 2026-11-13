@@ -94,6 +94,7 @@ Effect* create() { return new Reverb; }
 const EffectInfo kReverbInfo = {
     "REVERB", 3, {"SIZE", "DAMPING", "MIX", ""}, {0.6f, 0.5f, 0.3f, 0.f},
     "reverb", EffectGroup::Reverb, {0, 0, 0, 0}, nullptr, create, // every setting reads as a percentage
+    "space", "REVERB", "ROOM", // the REVERB family's first type: the word is the family's
 };
 
 } // namespace fx

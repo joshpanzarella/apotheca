@@ -119,7 +119,7 @@ Effect* create() { return new Filter; }
 
 const EffectInfo kFilterInfo = {
     "FILTER", 4, {"CUTOFF", "RESONANCE", "TYPE", "MIX"}, {0.6f, 0.2f, 0.f, 1.f},
-    "filter", EffectGroup::Filter, {0, 0, 5, 0}, reading, create,
+    "filter", EffectGroup::Filter, {0, 0, 5, 0}, reading, create, "low, band, high, DJ",
 };
 
 } // namespace fx

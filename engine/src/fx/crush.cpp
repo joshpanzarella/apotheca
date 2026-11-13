@@ -59,7 +59,7 @@ Effect* create() { return new Crush; }
 
 const EffectInfo kCrushInfo = {
     "CRUSH", 3, {"BITS", "RATE", "MIX", ""}, {0.5f, 0.3f, 1.f, 0.f},
-    "crush", EffectGroup::Dirt, {0, 0, 0, 0}, reading, create,
+    "crush", EffectGroup::Dirt, {0, 0, 0, 0}, reading, create, "fewer bits",
 };
 
 } // namespace fx
