@@ -599,6 +599,80 @@ static void testPairedAcrossAStepLine() {
     CHECK(lines[2].from == 60 && lines[3].from == 60 && lines[4].from == 50 && lines[5].from == 70);
 }
 
+// Where the scene goes round: a note half a step late on the last step and a note half a step
+// early on the first are one moment, of two keys. The engine's last step asks the first step's
+// early notes a step ahead and so tells both; the roll must tell the same (it told a step only
+// its own round's notes, and drew the late note as alone: from the top).
+static void testPairedWhereTheSceneGoesRound() {
+    for (int type = 0; type < kGlideFroms; ++type) {
+        Rig rig;
+        rig.engine->send(glideFrom(type));
+        rig.engine->send(noteAt(0, 8, 50, 1.f));
+        rig.engine->send(noteAt(1, 8, 60, 1.f));
+        rig.engine->send(noteAt(2, 15, 55, 0.25f, packed(0, kGlideFull), 0.5f));
+        rig.engine->send(noteAt(3, 0, 70, 0.25f, packed(0, kGlideFull), -0.5f));
+        rig.play(3 * 16 + 2);
+        const Began *late = rig.at(2 * 16 + 15.5, 55), *early = rig.at(3 * 16 - 0.5, 70);
+        CHECK(late && early);
+        if (!late || !early) continue;
+        if (type == kFromPaired) CHECK(late->from == 50 && early->from == 60); // the lower of two from the bottom, the upper from the top
+        if (type == kFromTop) CHECK(late->from == 60 && early->from == 60);
+        std::vector<GlideNote> notes(kGlideNotes);
+        std::vector<GlideLine> lines(kGlideNotes);
+        const int keys[4] = {50, 60, 55, 70}, steps[4] = {8, 8, 15, 0};
+        const float nudges[4] = {0.f, 0.f, 0.5f, -0.5f};
+        for (int i = 0; i < 4; ++i) notes[i].sounds = true, notes[i].pitch = keys[i], notes[i].step = steps[i], notes[i].nudge = nudges[i], notes[i].glide = i >= 2 ? kGlideFull : kGlideOff;
+        glideLines(notes.data(), 1, 16, lines.data(), type, 1, 2);
+        CHECK(lines[2].from == late->from && lines[3].from == early->from);
+        CHECK(about(late->seconds, lines[2].steps * kStepSeconds) && about(early->seconds, lines[3].steps * kStepSeconds));
+        if (lines[2].from != late->from) std::printf("  %s, the late note on the last step: the engine from %d, the roll from %d\n", glideFromName(type), late->from, lines[2].from);
+    }
+}
+
+// RANDOM on the roll is the roll for the first time the scene plays after Play. Play always
+// starts on the scene being worked on (Session::togglePlay), the song or the scene alone, so
+// that is what is heard whichever scene the roll shows. Held here for a later scene, both ways
+// of playing. What is NOT the same, and is held as it is: a song played through from an
+// earlier scene reaches this one at another time, and rolls other keys there.
+static void testRandomOnALaterScene() {
+    // Four chords of four keys, a gliding note two steps after each.
+    const int roots[4] = {40, 47, 54, 61}, shape[4] = {0, 4, 7, 11}, after[4] = {30, 90, 31, 91};
+    std::vector<GlideNote> notes(kGlideNotes);
+    std::vector<GlideLine> lines(kGlideNotes);
+    for (int i = 0; i < 20; ++i) {
+        GlideNote& n = notes[static_cast<std::size_t>(i)];
+        const int group = i / 5, k = i % 5;
+        n.sounds = true, n.step = group * 4 + (k == 4 ? 2 : 0), n.pitch = k == 4 ? after[group] : roots[group] + shape[k], n.glide = k == 4 ? kGlideFull : kGlideOff;
+    }
+    glideLines(notes.data(), 1, 16, lines.data(), kFromRandom, 1);
+    int differs = 0, notTheTop = 0;
+    for (int way = 0; way < 3; ++way) { // 0: the song from scene 2; 1: scene 2 alone, going round; 2: the song from scene 1
+        Rig rig;
+        rig.engine->send(make(Command::SetSceneCount, 0, 2));
+        rig.engine->send(glideFrom(kFromRandom));
+        for (int i = 0; i < 20; ++i) {
+            const GlideNote& n = notes[static_cast<std::size_t>(i)];
+            Command c = noteAt(i, n.step, n.pitch, 1.f, packed(0, n.glide));
+            c.scene = 1;
+            rig.engine->send(c);
+        }
+        rig.engine->send(make(Command::Play, 0, way == 2 ? 0 : 1, way == 1 ? 1 : 0));
+        rig.run(way == 2 ? 31 : 15);
+        // (way 2: scene 1 is empty and plays first, so these are the only notes there all the same)
+        for (int group = 0; group < 4; ++group) {
+            const Began* b = rig.at((way == 2 ? 16 : 0) + group * 4 + 2, after[group]);
+            const int drawn = lines[static_cast<std::size_t>(group * 5 + 4)].from;
+            CHECK(b != nullptr && drawn >= roots[group] && drawn <= roots[group] + 11);
+            if (!b) continue;
+            if (way < 2) CHECK(b->from == drawn);
+            else differs += b->from != drawn;
+            notTheTop += b->from != roots[group] + 11;
+        }
+    }
+    CHECK(notTheTop > 0); // (it was RANDOM that was asked)
+    CHECK(differs > 0);   // the song from an earlier scene: other rolls. Known, and said in the notes.
+}
+
 // The same performance however the sound is cut into blocks, and on any number of helpers.
 static void testTypesAtAnyBlockLength() {
     for (int type = 0; type < kGlideFroms; ++type) {
@@ -673,10 +747,10 @@ static void testTheRollsRuleIsTheEngines(int type) {
             n.sounds = true;
             n.step = roll(4) == 0 ? roll(3) * 15 / 2 : roll(16); // (often step 1 or 16, where the loop goes round)
             n.pitch = 40 + roll(30);
-            n.nudge = roll(3) == 0 ? static_cast<float>(roll(19) - 9) * 0.05f : 0.f;
+            n.nudge = roll(3) == 0 ? static_cast<float>(roll(21) - 10) * 0.05f : 0.f; // (to half a step each way)
             // Often it begins with the note placed before it, or a hair after it: several keys to a moment.
             if (lastPlaced && roll(5) < 3) n.step = lastPlaced->step, n.nudge = lastPlaced->nudge + (roll(4) == 0 ? 0.002f : 0.f);
-            if (n.nudge > 0.45f) n.nudge = 0.45f;
+            if (n.nudge > 0.5f) n.nudge = 0.5f; // (the most a note can be nudged, and it is reached: the last step, half a step late)
             n.ratchet = roll(3) == 0 ? 2 + roll(3) : 0;
             n.glide = roll(4) == 0 ? 0 : 1 + roll(5);
             // No two on one key at one moment (the second would only cut the first off).
@@ -1071,6 +1145,8 @@ int main() {
     testTypesWithChords();
     testRandomIsRolledForItsPlace();
     testPairedAcrossAStepLine();
+    testPairedWhereTheSceneGoesRound();
+    testRandomOnALaterScene();
     testTypesAtAnyBlockLength();
     testTheRule();
     for (int type = 0; type < kGlideFroms; ++type) testTheRollsRuleIsTheEngines(type);

@@ -769,7 +769,10 @@ effect in those two groups and fails one that does not.
     `startChordNote` only tell the trail what is coming (`tellComing`) and
     change nothing. The list holds 128 (`kGlideComing`: all a step can ask);
     one more is not kept and not counted. `glideLines` tells in the same whole
-    steps. **`telling_` is false outside that loop**; anything new that begins
+    steps, **and at the scene's last step also the early notes of the first
+    step of the next time round**, as the engine's last step asks them ahead
+    (a note half a step late there and one half a step early on step 1 are one
+    moment: `testPairedWhereTheSceneGoesRound`). **`telling_` is false outside that loop**; anything new that begins
     a pattern's note inside `fireStep` goes through those two functions.
   - **Known, held by `testPairedAcrossAStepLine`, not hidden**: two notes
     within 1/256 of a step with a step line between them. The first is told a
@@ -782,13 +785,17 @@ effect in those two groups and fails one that does not.
     scene's number. **The roll draws the first time the scene plays after
     Play** (`glideLines`' `timesRound` 0; later rounds roll anew, and a scene
     that is not first in the song is first played at another time than the
-    roll assumes).
+    roll assumes). Play always starts on the scene worked on
+    (`Session::togglePlay`), so the roll is right for the scene Play was
+    pressed on, song or scene alone; a song played through INTO a later scene
+    rolls other keys there. `testRandomOnALaterScene` holds both.
   - **It is the track's, not the patterns'**: `TrackData::glideFrom`,
     `Session::setGlideFrom`, `Command::SetGlideFrom`. Not in a track image,
     not in a scene, so a scene move carries nothing for it. `applyProject`
     tells every track's. `RemoveInstrument` puts the engine's back to TOP.
     **Not in undo** (like a send; the owner's call). In a song file:
-    `glidefrom N`, a line of a synth track's own, left out at TOP.
+    `glidefrom N`, a line of a synth track's own, left out at TOP; under a
+    drum track it is read and not taken.
   - **The gesture: X held on a note, L1 back, R1 on**, a click, stopping at
     each end (`NoteScreen::fxFrom`). Zoom and carry wait for X to be let go,
     on a note only: on a chord L1 / R1 are as they were. The dice leave it

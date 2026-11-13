@@ -342,6 +342,8 @@ void testANote() {
     heldOnANote(rig);
     // GLIDE FROM is the track's: TOP until it is turned, and dim while this note has no glide.
     CHECK(fromReads(rig, "TOP", ui::kDim) && fromInked(rig, ui::kText) == 0 && fromInked(rig, ui::kBrass) == 0);
+    // Each of its values fits there in the large lettering (the strip does not look for a smaller one).
+    for (int type = 0; type < kGlideFroms; ++type) CHECK(kStripHeldFromX + rig.scratch.fonts->large.width(glideFromName(type)) <= kStripRight);
     // At its fullest: a ratchet, the longest glide to read, thrown, nudged.
     note.ratchet = 4, note.glide = kGlideQuarter, note.throwTo = kThrowSpace, note.nudge = -0.45f;
     heldOnANote(rig);

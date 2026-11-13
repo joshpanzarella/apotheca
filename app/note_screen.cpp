@@ -1164,11 +1164,8 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 // GLIDE FROM, the track's: dim while this note has no glide for it to say anything of.
                 const int fromHere = glideFromKind(project_.current().glideFrom);
                 const char* from = glideFromName(fromHere);
-                const Font* sizes[3] = {&tight.large, &tight.medium, &tight.small};
-                const float widths[3] = {tight.large.width(from), tight.medium.width(from), tight.small.width(from)};
-                const Font& font = *sizes[stripFont(widths, kStripRight - kStripHeldFromX)];
-                tight.small.draw(r, kStripHeldFromX, stripY + 8.f, "GLIDE FROM", kDim);
-                font.draw(r, kStripHeldFromX, stripY + 26.f + tight.large.capHeight() - font.capHeight(), from, !glideHere ? kDim : fromHere != kFromTop ? kBrass : kText);
+                // (Each of its values fits in the large lettering: under_test measures them.)
+                field(kStripHeldFromX, "GLIDE FROM", from, !glideHere ? kDim : fromHere != kFromTop ? kBrass : kText);
             }
         } else if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));

@@ -472,7 +472,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
     // A PAIRED track's step, the first time through: the note is only told as coming, so that
     // the first note of a moment to begin knows the whole moment (glide_rule.hpp).
     if (telling_) {
-        if (note.piece != kLaterPiece && !(note.how & kUntold)) track.trail.tellComing(note.pitch, at);
+        track.trail.tellComing(note.pitch, at); // (only a pattern's own notes come here: never a ratchet's later piece, never a chord's spread key)
         return;
     }
     // A ratchet: the note several times over, evenly, inside its first step. Each is let go just

@@ -510,6 +510,16 @@ void testGlideFromInTheSongFile() {
     project.tracks[1].glideFrom = 0;
     CHECK(project.tracks[0].kind == TrackKind::Drums && songText(project) == plain);
     project.tracks[0].glideFrom = 0;
+    {
+        // (Written by hand under the drum track's own line: read, and left where it was. The same line under a synth's is taken.)
+        std::unique_ptr<Project> back(new Project);
+        std::string hand = plain;
+        const std::size_t drums = hand.find("\ntrack drums"), end = drums == std::string::npos ? drums : hand.find('\n', drums + 1);
+        CHECK(end != std::string::npos);
+        if (end != std::string::npos) hand.insert(end + 1, "glidefrom 2\n");
+        CHECK(parseSong(hand, *back) && back->tracks[0].kind == TrackKind::Drums && back->tracks[0].glideFrom == 0);
+        CHECK(back->tracks[1].glideFrom == 0 && back->tracks[2].glideFrom == 0 && songText(*back) == plain);
+    }
     // Numbers no version has written: TOP. No number: the line is skipped. An old program skips the word.
     project.tracks[1].glideFrom = kFromNearest;
     const std::string text = songText(project);

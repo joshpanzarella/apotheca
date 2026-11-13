@@ -325,6 +325,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "glidefrom") {
             double type = 0;
             if (!(in >> type) || !(type >= 0.0) || type > 255.0) continue;
+            if (!isSynth(track->kind)) continue; // (a drum track has none: one written there by hand would wait for the day it became a synth)
             track->glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
         } else if (word == "muted") {
             track->muted = true;

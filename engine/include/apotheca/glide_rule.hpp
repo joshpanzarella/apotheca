@@ -275,8 +275,8 @@ inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, Gli
     std::stable_sort(begins, begins + count, [](const Begin& a, const Begin& b) { return a.at < b.at; });
     type = glideFromKind(type);
     GlideTrail trail;
+    double told = -1e30; // the whole step whose notes have been told as coming
     for (int round = 0; round < 2; ++round) {
-        double told = -1e30; // the whole step whose notes have been told as coming
         for (int i = 0; i < count; ++i) {
             const Begin& b = begins[i];
             const double at = b.at + round * static_cast<double>(sceneSteps);
@@ -286,6 +286,14 @@ inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, Gli
                 trail.window(told);
                 for (int j = i; j < count; ++j) {
                     const double then = begins[j].at + round * static_cast<double>(sceneSteps);
+                    if (std::floor(then) != told) break;
+                    trail.tellComing(begins[j].pitch, then);
+                }
+                // The scene's last step also asks, a step ahead, for the early notes of the first
+                // step of the next time round: they begin in this step, and are told with it.
+                // (So `told` is kept from one round to the next: they are not told twice.)
+                for (int j = 0; j < count; ++j) {
+                    const double then = begins[j].at + (round + 1) * static_cast<double>(sceneSteps);
                     if (std::floor(then) != told) break;
                     trail.tellComing(begins[j].pitch, then);
                 }
