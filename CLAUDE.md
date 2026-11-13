@@ -933,5 +933,7 @@ there is a change to the sound, and needs the owner's ears.
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
 2026-11-11): it has more features than it needs and is the costly synth; cut
-it down rather than tune it. The engine stays at 48 kHz: 44.1 would save about
+it down rather than tune it. **Decided (owner, 2026-11-13): Twin Analog becomes a
+faithful Roland JX-3P clone**, which is what it was meant to be; it grew past that
+in VCV Rack. Queued after the pit stop. The engine stays at 48 kHz: 44.1 would save about
 8%, which the owner judged not worth it.
