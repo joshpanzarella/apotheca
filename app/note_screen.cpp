@@ -19,7 +19,7 @@ namespace {
 // 22 the tiles reach the hints bar.
 constexpr int kGridLeft = 28, kGridW = 612, kRowH = 21;
 constexpr int kCellH = kRowH - 2;
-constexpr int kOctaveTop = 29, kOctaveH = 11, kKeysTop = 41;
+constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
 constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
@@ -369,6 +369,7 @@ void NoteScreen::pickChanged() {
     swapped.nudge = c.nudge;
     swapped.ratchet = c.ratchet;
     swapped.throwTo = c.throwTo;
+    swapped.play = c.play; // and what the chord does: it is the same place in the song
     int keys[kChordNotes];
     if (pat().used() - c.pitches(keys) + swapped.pitches(keys) > kMaxNotes) return; // no room for a bigger chord
     c = swapped;
@@ -399,7 +400,9 @@ void NoteScreen::breakUp(int chord) {
         const int slot = pat().freeSlot();
         if (slot < 0) break;
         NoteEvent& note = pat().notes[slot];
-        note = NoteEvent(); // the notes play as the chord did: its nudge and its ratchet too
+        // The notes play as the chord did: its nudge and its ratchet too. Its chord effects go
+        // with the chord: a strum is the chord's, and loose notes are each their own.
+        note = NoteEvent();
         note.step = c.step;
         note.pitch = keys[i];
         note.length = c.length;
@@ -415,17 +418,29 @@ void NoteScreen::breakUp(int chord) {
 // With X held on a note or a chord, one click of what it does besides play. Left and right: a
 // ratchet, the note 2, 3 or 4 times inside its first step. Up and down: a glide, one length
 // longer or shorter, down to OFF (a note only: a chord has no one note to slide from).
+//
+// On a chord there are six things it can do (chord_effects.hpp), so the directions are
+// shared out the other way: up and down pick which, left and right set it, a click a push.
 void NoteScreen::fxTurn(Button direction) {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
     if (slot < 0 && chord < 0) return;
-    std::uint8_t& ratchet = slot >= 0 ? pat().notes[slot].ratchet : pat().chords[chord].ratchet;
+    if (slot < 0) {
+        if (direction == Button::Up || direction == Button::Down) {
+            const int to = fxPick_ + (direction == Button::Down ? 1 : -1);
+            if (to >= 0 && to < kChordEffects) fxPick_ = to; // (it stops at each end)
+            return;
+        }
+        if (chordEffectStep(pat().chords[chord], fxPick_, direction == Button::Right ? 1 : -1)) session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+        return;
+    }
+    std::uint8_t& ratchet = pat().notes[slot].ratchet;
     const int hits = ratchet < 2 ? 1 : ratchet;
     int to = hits;
     if (direction == Button::Right && hits < kMaxRatchet) to = hits + 1;
     if (direction == Button::Left && hits > 1) to = hits - 1;
     bool changed = to != hits;
     ratchet = static_cast<std::uint8_t>(to < 2 ? 0 : to); // "one" is kept one way: 0
-    if (slot >= 0 && (direction == Button::Up || direction == Button::Down)) {
+    if (direction == Button::Up || direction == Button::Down) {
         const int place = glidePlace(glideKind(pat().notes[slot].glide)) + (direction == Button::Up ? 1 : -1);
         const std::uint8_t glide = static_cast<std::uint8_t>(glideAt(place)); // (it stops at each end)
         changed = changed || pat().notes[slot].glide != glide;
@@ -448,24 +463,30 @@ void NoteScreen::fxThrow() {
 // With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide of some length
 // (a note only), or both. Each roll is something, and something else than it was. The dice do not throw: a
 // THROW is left as the player set it.
+// A chord's dice roll among its six (chordEffectRoll, chord_effects.hpp: the odds are there).
 void NoteScreen::fxRoll() {
     const int slot = pat().at(pitch_, step_), chord = chordSlotHere();
     if (slot < 0 && chord < 0) return;
-    std::uint8_t& ratchet = slot >= 0 ? pat().notes[slot].ratchet : pat().chords[chord].ratchet;
-    const int ratchetWas = ratchet < 2 ? 0 : ratchet, glideWas = slot >= 0 ? pat().notes[slot].glide : 0;
     const auto roll = [&](std::uint32_t outOf) {
         dice_ = dice_ * 1664525u + 1013904223u;
         return (dice_ >> 12) % outOf;
     };
+    if (slot < 0) {
+        chordEffectRoll(pat().chords[chord], roll);
+        session_.sendNoteBar(project_.track, project_.scene, project_.bar);
+        return;
+    }
+    std::uint8_t& ratchet = pat().notes[slot].ratchet;
+    const int ratchetWas = ratchet < 2 ? 0 : ratchet, glideWas = pat().notes[slot].glide;
     static const std::uint8_t ratchets[] = {2, 2, 3, 4};
     int to = 0, glide = 0;
     for (;;) { // (there is always another roll to be had, so this ends)
         to = roll(100) < 65 ? ratchets[roll(4)] : 0;
-        glide = slot >= 0 && roll(100) < 40 ? glideAt(1 + static_cast<int>(roll(kGlideKinds - 1))) : kGlideOff;
+        glide = roll(100) < 40 ? glideAt(1 + static_cast<int>(roll(kGlideKinds - 1))) : kGlideOff;
         if ((to || glide) && (to != ratchetWas || glide != glideWas)) break;
     }
     ratchet = static_cast<std::uint8_t>(to);
-    if (slot >= 0) pat().notes[slot].glide = static_cast<std::uint8_t>(glide);
+    pat().notes[slot].glide = static_cast<std::uint8_t>(glide);
     session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
@@ -829,26 +850,38 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         outline(r, x, y, full, h, edge);
         if (level > 0.f) fill(r, x, y, w, h, inside);
     };
+    // Where a chord's name is: above its lowest key that shows; on the first step there is no
+    // room above, so just inside the top. False when the whole chord is off the side.
+    const auto chordNameBox = [&](const ChordEvent& c, SDL_Rect* box) {
+        int keys[kChordNotes];
+        const int n = c.pitches(keys);
+        if (n == 0) return false;
+        const int low = keys[0] < low_ ? low_ : keys[0];
+        const int high = keys[n - 1] > low_ + (visibleKeys() - 1) ? low_ + (visibleKeys() - 1) : keys[n - 1];
+        if (high < low) return false;
+        const float w = fonts.small.width(c.name) + 6.f;
+        float lx = static_cast<float>(gx(low));
+        if (lx + w > kScreenW - 2) lx = kScreenW - 2 - w;
+        *box = SDL_Rect{static_cast<int>(lx), c.step == 0 ? gy(c.step) + 1 : gy(c.step) - 15, static_cast<int>(w), 14};
+        return true;
+    };
     // A chord: its notes in purple, tied along the top, named above.
-    const auto drawChord = [&](const ChordEvent& c, bool live, bool ghost) {
+    const auto drawChord = [&](const ChordEvent& c, bool live, bool ghost, bool nameOnly = false) {
         int keys[kChordNotes];
         const int n = c.pitches(keys);
         if (n == 0) return;
         const SDL_Color color = ghost ? kBrass : (live ? kTeal : kPurple);
-        for (int i = 0; i < n; ++i)
+        for (int i = 0; i < n && !nameOnly; ++i)
             if (shows(keys[i])) block(keys[i], c.step, c.length, ghost ? 0.f : c.velocity, color, color, c.nudge);
         const int low = keys[0] < low_ ? low_ : keys[0];
         const int high = keys[n - 1] > low_ + (visibleKeys() - 1) ? low_ + (visibleKeys() - 1) : keys[n - 1];
         if (high < low) return; // all of it is off the screen
         const int x0 = gx(low), x1 = gx(high) + cellW(), y = gy(c.step);
-        fill(r, x0, y - 1, x1 - x0, 2, color);
-        const float w = fonts.small.width(c.name) + 6.f;
-        float lx = static_cast<float>(x0);
-        if (lx + w > kScreenW - 2) lx = kScreenW - 2 - w;
-        // Above it; on the first step there is no room, so just inside the top.
-        const int ly = c.step == 0 ? y + 1 : y - 15;
-        fill(r, static_cast<int>(lx), ly, static_cast<int>(w), 14, color);
-        fonts.small.draw(r, lx + 3.f, ly + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
+        if (!nameOnly) fill(r, x0, y - 1, x1 - x0, 2, color);
+        SDL_Rect box;
+        if (!chordNameBox(c, &box)) return;
+        fill(r, box.x, box.y, box.w, box.h, color);
+        fonts.small.draw(r, static_cast<float>(box.x) + 3.f, box.y + (14 - fonts.small.capHeight()) / 2.f, c.name, kBg);
     };
     // What is still sounding from earlier bars of the cell: drawn faint, from
     // the top, for as long as it has left. It is changed in the bar it starts in.
@@ -879,7 +912,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // step, cutting it into as many pieces as it has notes. A glide: a purple corner at its top,
     // on the side of the key it comes from... (the side it slides in from is not known here; the corner is on the left).
     // A note drawn inside another (below) is narrower by `inset` each side, and its marks with it.
-    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide, int throwTo, int inset = 0, bool chord = false) {
+    // A chord with a chord effect set (STRUM, HUMAN TIME and the rest): a light corner at the top
+    // of each of its keys, where a note has its glide's purple one (a chord does not glide).
+    const auto marks = [&](int pitch, int step, float nudge, float length, int ratchet, bool glide, int throwTo, int inset = 0, bool chord = false, bool plays = false) {
         if (!shows(pitch)) return;
         const int pad = inset ? 1 : 0; // the dark edge it has above and below
         const int x = gx(pitch) + 1 + inset, y = gy(step) + 1 + pad + static_cast<int>(std::round(nudge * kRowH)), full = cellW() - 2 - 2 * inset;
@@ -888,12 +923,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int line = ratchetLines(first, ratchet, tops);
         for (int k = 0; line > 0 && k < ratchet - 1; ++k) fill(r, x, y + tops[k], full, line, kBg);
         if (ratchet >= 2 && first > 2) fill(r, x + full - 4, y, 4, first, kPurple); // and a purple edge, so it is not taken for a few short notes
-        if (glide) {
+        if (glide || plays) {
             // Ten across where there is room. On narrow keys it stops short of a ratchet's purple edge.
             const int room = ratchet >= 2 ? full - 6 : full - 2;
             const int corner = room > 10 ? 10 : (room < 3 ? 3 : room);
             for (int d = 0; d < corner; ++d) {
-                fill(r, x, y + d, corner - d, 1, kPurple);
+                fill(r, x, y + d, corner - d, 1, plays ? kText : kPurple);
                 fill(r, x + corner - d, y + d, 1, 1, kBg); // a dark edge, so it stands clear of the note and of a ratchet's lines
             }
         }
@@ -915,11 +950,33 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     for (const NoteEvent& n : pat().notes)
         if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide || n.throwTo) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo);
-    for (const ChordEvent& c : pat().chords) {
-        if (c.velocity <= 0.f || (c.ratchet < 2 && !c.throwTo)) continue;
+    // A chord's RATCHET lines and its chord-effects corner are drawn ONCE (owner, 2026-11-13): on
+    // the first of its keys under its name, which is its lowest that shows. They never write over
+    // the name: where the name sits on that key (a chord on the first step, or one nudged early)
+    // they go on the next key clear of it, and the name is drawn again on top of whatever is
+    // left. THROW's foot stays on every key: it is at each key's end, where nothing else is.
+    // A ratchet that is not played (the chord is an arpeggio) is not drawn.
+    for (int slot = 0; slot < kMaxChords; ++slot) {
+        const ChordEvent& c = pat().chords[slot];
+        if (c.velocity <= 0.f || (c.ratchet < 2 && !c.throwTo && !chordPlays(c))) continue;
         int keys[kChordNotes];
         const int count = c.pitches(keys);
-        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, c.ratchet, false, c.throwTo, 0, true);
+        SDL_Rect name;
+        const bool named = chordNameBox(c, &name);
+        const int top = gy(c.step) + 1 + static_cast<int>(std::round(c.nudge * kRowH));
+        int once = -1;
+        for (int i = 0; i < count; ++i) {
+            if (!shows(keys[i])) continue;
+            if (once < 0) once = i; // (if the name is over every key, the lowest all the same)
+            const bool under = named && gx(keys[i]) + cellW() > name.x && gx(keys[i]) < name.x + name.w && top < name.y + name.h && top + kRowH > name.y;
+            if (!under) {
+                once = i;
+                break;
+            }
+        }
+        const int ratchet = chordEffectWaits(c, kFxRatchet) ? 0 : c.ratchet;
+        for (int i = 0; i < count; ++i) marks(keys[i], c.step, c.nudge, c.length, i == once ? ratchet : 0, false, c.throwTo, 0, true, i == once && chordPlays(c));
+        if (named) drawChord(c, (shaping_ && &c == chordUnder) || (picking_ && slot == editing_), false, true);
     }
     // A note written where something longer is already sounding on the same key (a held chord, or
     // a long note) would be hidden under it. It is drawn again on top, narrower, with a dark edge:
@@ -1034,19 +1091,40 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (here) outline(r, tx - 1, tileY - 1, tileW + 2, tileH + 2, kBrass, 2);
         }
     } else {
-        if (chordUnder) {
+        const bool chordFx = fxHeld_ && !under && chordUnder; // X is held on a chord: the strip is its six effects
+        if (chordFx) {
+            // The one picked, in full: its name and its value.
+            const ChordEvent& c = *chordUnder;
+            chordEffectValue(c, fxPick_, text, sizeof text);
+            field(8.f, chordEffectName(fxPick_), text, chordEffectWaits(c, fxPick_) ? kDim : chordEffectSet(c, fxPick_) ? kBrass : kText);
+            // All six, the picked one marked. One that waits on another (ORDER with no STRUM) is dimmer still.
+            for (int effect = 0; effect < kChordEffects; ++effect) {
+                const float x = kChordFxListX + static_cast<float>(effect / 3) * kChordFxColumn;
+                const float y = static_cast<float>(stripY + kChordFxRowTop + (effect % 3) * kChordFxRowH);
+                const bool picked = effect == fxPick_, waits = chordEffectWaits(c, effect), set = chordEffectSet(c, effect);
+                if (picked) fill(r, static_cast<int>(x) - 8, static_cast<int>(y) - 1, 3, fonts.small.capHeight() + 2, kBrass);
+                // (One that waits is dim; picked all the same, it is still to be read.)
+                fonts.small.draw(r, x, y, chordEffectName(effect), waits ? (picked ? kDim : kLine) : picked ? kText : kDim);
+                chordEffectValue(c, effect, text, sizeof text);
+                fonts.small.draw(r, x + kChordFxValueIn[effect / 3], y, text, waits ? (picked ? kDim : kLine) : set ? (picked ? kBrass : kText) : kDim);
+            }
+            field(kChordFxThrowX, "THROW", throwName(chordUnder->throwTo), chordUnder->throwTo ? kBrass : kText);
+        } else if (chordUnder) {
             field(8.f, "CHORD", chordUnder->name, kPurple);
         } else {
             noteName(pitch_, text, sizeof text);
             field(8.f, "KEY", text, kText);
         }
         std::snprintf(text, sizeof text, "%d", step_ + 1);
-        field(100.f, "STEP", text, kText);
+        if (!chordFx) field(100.f, "STEP", text, kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const int glideKindHere = under ? glideKind(under->glide) : kGlideOff;
         const bool glideHere = glideKindHere != kGlideOff;
         const int throwHere = under ? under->throwTo : (chordUnder ? chordUnder->throwTo : 0);
-        if (fxHeld_ && (under || chordUnder)) {
+        const bool chordPlaysHere = !under && chordUnder && chordPlays(*chordUnder);
+        if (chordFx) {
+            // (drawn above)
+        } else if (fxHeld_ && (under || chordUnder)) {
             // X is held: the strip is what the note does besides play.
             std::snprintf(text, sizeof text, ratchetHere >= 2 ? "x%d" : "OFF", ratchetHere);
             field(160.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
@@ -1065,7 +1143,24 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         }
         const float nudge = under ? under->nudge : (chordUnder ? chordUnder->nudge : 0.f);
         float effectEnd = 0.f; // where the effect's value ends, and a gap (0: there is none)
-        if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
+        if (!fxHeld_ && chordPlaysHere) {
+            // A chord with chord effects: the first of them, and how many more ("STRUM +2"). Where
+            // that does not fit even in the small size, how many are on.
+            chordEffectLine(*chordUnder, text, sizeof text);
+            const float room = stripGlideRoom(throwHere != 0);
+            if (fonts.small.width(text) > room) {
+                int on = 0;
+                for (int effect = 0; effect < kChordEffects; ++effect) on += chordEffectSet(*chordUnder, effect) && !chordEffectWaits(*chordUnder, effect);
+                std::snprintf(text, sizeof text, "%d ON", on);
+            }
+            const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
+            const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
+            const int size = stripFont(widths, room);
+            const float x = stripEffectX(throwHere != 0);
+            fonts.small.draw(r, x, stripY + 8.f, "EFFECTS", kDim);
+            sizes[size]->draw(r, x, stripY + 26.f + fonts.large.capHeight() - sizes[size]->capHeight(), text, kPurple);
+            effectEnd = x + widths[size] + kStripSpace;
+        } else if (!fxHeld_ && (ratchetHere >= 2 || glideHere)) {
             // In a line, what X held would show in full.
             // A glide alone says how long it is; beside a ratchet there is only room to say it is there.
             std::snprintf(text, sizeof text, "%s%s%s", ratchetHere >= 2 ? (ratchetHere == 2 ? "x2" : ratchetHere == 3 ? "x3" : "x4") : "", ratchetHere >= 2 && glideHere ? " " : "", !glideHere ? "" : ratchetHere >= 2 ? "GLIDE" : glideName(glideKindHere));
@@ -1087,10 +1182,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, x, stripY + 8.f, "THROW", kDim);
             font.draw(r, x, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), to, kPurple);
         }
-        if (nudge != 0.f) {
+        if (chordFx) {
+            // (the chord's effects have the strip; its nudge is there again when X is let go)
+        } else if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
             // Beside an effect and a THROW there is less room: the value is drawn smaller, never over them.
-            const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere);
+            const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere || chordPlaysHere);
             const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
             const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
             // (With X held it stands further right: a glide's length needs the room.)
@@ -1114,6 +1211,11 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "inversion");
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
+    } else if (fxHeld_ && !under && chordUnder) {
+        hint("UP / DOWN", "effect");
+        hint("LEFT / RIGHT", "amount");
+        hint("A", "throw");
+        hint("Y", "dice");
     } else if (fxHeld_) {
         hint("LEFT / RIGHT", "ratchet");
         if (under) hint("UP / DOWN", "glide length");

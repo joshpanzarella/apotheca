@@ -43,6 +43,8 @@ struct NoteEvent {
                               // and the rest, apotheca/glide_rule.hpp; 1, which was "on", is half a step). 0: it does not
     std::uint8_t throwTo = 0; // THROW: 1 ECHO, 2 SPACE, 3 both. The track's send to that bus is full while the note lasts
     std::uint8_t spare = 0;   // (so the note has no bytes that are not set: it is compared and hashed whole)
+    ChordPlay play;           // only on a chord's note as NotePattern::render gives it: which key of the chord it is,
+                              // and the chord's effects (apotheca/chord_rule.hpp). A loose note's is all nothing.
 };
 
 // A chord placed in a bar. It stays one thing: one level, one length, one
@@ -62,6 +64,9 @@ struct ChordEvent {
     std::uint8_t ratchet = 0;   // 2..4: the whole chord that many times, evenly, inside its first step
     std::uint8_t throwTo = 0;   // THROW, as a note's: every key of the chord is thrown
     std::uint8_t spare[2] = {};
+    // CHORD EFFECTS (hold X on it, apotheca/chord_rule.hpp): STRUM, ORDER, HUMAN TIME, HUMAN LEVEL,
+    // LENGTHS. Its `index` and `count` are not used here: render() fills them in for each key.
+    ChordPlay play;
 
     // The keys it plays, lowest first, with no key twice. Returns how many.
     int pitches(int out[kChordNotes]) const {
@@ -132,6 +137,9 @@ struct NotePattern {
                 out[next].ratchet = c.ratchet;
                 out[next].glide = 0;
                 out[next].throwTo = c.throwTo;
+                out[next].play = c.play;
+                out[next].play.index = static_cast<std::uint8_t>(k);
+                out[next].play.count = static_cast<std::uint8_t>(n);
                 ++count;
             }
         }

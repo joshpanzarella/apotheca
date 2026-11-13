@@ -6541,28 +6541,30 @@ void testNoteEffects() {
         char line[40];
         std::snprintf(line, sizeof line, "\nnotefx 5 60 %d %d\n", hits, p.notes[at].glide);
         CHECK(text.find(line) != std::string::npos);
-        // A chord: a ratchet, never a glide, and never nothing.
+        // A chord: one or more of its own six (the odds are held in tests/chordfxapp_test.cpp),
+        // never nothing, and never what it was.
+        const auto same = [](const ChordEvent& a, const ChordEvent& b) { return a.ratchet == b.ratchet && std::memcmp(&a.play, &b.play, sizeof a.play) == 0; };
         roll.moveCursorTo(48, 10);
         rig.key(X, true);
         CHECK(roll.effecting());
         for (int i = 0; i < 12; ++i) {
-            const int was = p.chords[0].ratchet;
+            const ChordEvent was = p.chords[0];
             rig.tap(Y);
-            CHECK(p.chords[0].ratchet >= 2 && p.chords[0].ratchet <= 4 && p.chords[0].ratchet != was);
+            CHECK((p.chords[0].ratchet >= 2 || !p.chords[0].play.atRest()) && p.chords[0].ratchet <= 4 && !same(p.chords[0], was));
         }
         rig.key(X, false);
         // A roll is undone like any other change.
         rig.frames(60);
-        const int kept = p.chords[0].ratchet;
+        const ChordEvent kept = p.chords[0];
         rig.key(X, true);
         rig.tap(Y);
         rig.key(X, false);
-        CHECK(p.chords[0].ratchet != kept);
+        CHECK(!same(p.chords[0], kept));
         rig.frames(60);
         rig.key(SELECT, true);
         rig.tap(B);
         rig.key(SELECT, false);
-        CHECK(p.chords[0].ratchet == kept);
+        CHECK(same(p.chords[0], kept));
     }
 }
 

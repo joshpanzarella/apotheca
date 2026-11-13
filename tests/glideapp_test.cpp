@@ -112,7 +112,7 @@ void testTheRollDrawsWhatTheEnginePlays() {
     CHECK(rig.app.session().addTrack(TrackKind::Qmod) && isSynth(rig.project().tracks[1].kind));
     rig.listen();
     Session& session = rig.app.session();
-    int lines = 0, fromChords = 0, acrossTheEnd = 0, notesHeard = 0;
+    int lines = 0, fromChords = 0, acrossTheEnd = 0, notesHeard = 0, spread = 0, fromSpread = 0;
     for (int song = 0; song < 60; ++song) {
         Project& project = rig.project();
         session.setCellBars(1, 0, 1 + roll(4));
@@ -127,6 +127,10 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 p.chords[0] = makeChord(builtInPack().chords[static_cast<std::size_t>(roll(4))], 48 + roll(12), roll(16), 1.f, 0.7f, roll(3) - 1);
                 p.chords[0].nudge = roll(3) == 0 ? static_cast<float>(roll(9) - 4) * 0.1f : 0.f;
                 p.chords[0].ratchet = static_cast<std::uint8_t>(roll(3) == 0 ? 2 + roll(3) : 0);
+                // Chord effects, half the time: strummed, an arpeggio, humanised. A chord is one moment
+                // to a glide however its notes are spread, so nothing below changes for them.
+                if (roll(2) == 0) p.chords[0].play = chordPlayOf(roll(kStrumKinds), roll(kOrderKinds), kAmountAt[roll(kAmountClicks)], kAmountAt[roll(kAmountClicks)], kAmountAt[roll(kAmountClicks)]);
+                spread += p.chords[0].play.timed();
                 int keys[kChordNotes];
                 const int n = p.chords[0].pitches(keys);
                 for (int k = 0; k < n; ++k) chordKey[bar][keys[k]] = true;
@@ -182,11 +186,13 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 if (n.glide == kGlideOff) CHECK(line.from < 0);
                 lines += line.from >= 0;
                 fromChords += line.from >= 0 && chordKey[bar][line.from];
+                fromSpread += line.from >= 0 && chordKey[bar][line.from] && p.chords[0].play.timed();
                 acrossTheEnd += line.from >= 0 && n.ratchet < 2 && n.glide == kGlideFull && bar * kSteps + n.step + n.nudge - line.steps < -0.01;
             }
         }
     }
     CHECK(lines > 400 && fromChords > 40 && acrossTheEnd > 3); // the songs did hold what this is for
+    CHECK(spread > 20 && fromSpread > 10); // ...chords strummed and humanised among them, with glides out of them
     if (failures || std::getenv("GLIDE_PRINT")) std::printf("  the roll and the engine: %d lines, %d from a chord's key, %d across the loop's end, of %d notes\n", lines, fromChords, acrossTheEnd, notesHeard);
 }
 
@@ -348,7 +354,7 @@ Seen lineOf(const std::vector<Uint32>& with, const std::vector<Uint32>& without,
         }
     return seen;
 }
-const int kTop = 65, kRow = 21, kKey = 25; // the roll at two octaves: its first row, a step, a key (note_screen.cpp)
+const int kTop = 69, kRow = 21, kKey = 25; // the roll at two octaves: its first row, a step, a key (note_screen.cpp)
 
 // What the roll shows of a glide, read off the screen: the line of a FULL glide from a note
 // bars before is in every bar it crosses, the one its source is in too; a glide into the first
