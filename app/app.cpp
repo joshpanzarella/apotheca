@@ -332,7 +332,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         outline(renderer, x, y, w, h, kTeal, 2);
         struct Line { const char* key; const char* does; };
         const Line everywhere[] = {
-            {"X", "hear it. Held: its effects, a button under each"},
+            {"X", "hear it. Held on a hit or note: buttons under its effects"},
             {"STICK or D-PAD", "move: the stick for big moves, the D-pad for exact"},
             {"A", "place, open or pick. Held: a direction changes it"},
             {"B", "delete, empty, or go back"},
