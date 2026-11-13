@@ -634,10 +634,19 @@ effect in those two groups and fails one that does not.
     panel2) with its line darker than them; text on a chip filled with an
     accent or with text is written in `kBg`; a wash is `faded(kBg, ...)`.
     Anything that only works light-on-dark breaks there.
+  - **A thing drawn as an object, not a surface, asks `ui::lightTheme()`.**
+    The roll's keyboard is the one: by job its white keys were dim and its
+    black keys the background, a negative on PAPER and GREY. On a light
+    theme the white keys are panel2 and the black keys text.
   - A new theme meets the contrast in `theme_test` (text 7, dim 4.5, an
     accent 4.5 on every surface and under bg letters, accents and the two
     letterings 20 apart in delta E). BROWN is measured, not held to it (its
-    dim is 4.16 on panel2), and stays as it is.
+    dim is 4.16 on panel2), and stays as it is. **Every theme, BROWN
+    included:** the cursor's colour 1.4 or more in lightness from purple and
+    from dim (PAPER and GREY were 1.12 and 1.01 at first: the cursor's
+    outline and the purple line beside it read as one dark border), and the
+    four accents 15 apart in delta E as a reader without red or without
+    green sees them (simulated, not seen by a person).
   - **`ctest -R theme` holds it.** `themeviews` has the program draw every
     still in all six (`--themes PREFIX`) and finds, by pixels, any colour
     that is not the theme's or one of its laid over another (`Explain`); a

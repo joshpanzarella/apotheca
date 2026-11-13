@@ -802,20 +802,23 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the keyboard, across the top ---------------------------------------------
     // Drawn as a keyboard is: the white keys one cream strip with lines
-    // between them, the black keys dark bars hanging from the top edge.
+    // between them, the black keys dark bars hanging from the top edge. On a light theme the
+    // background is light, so the keys take the lightest surface and the lettering's dark: a
+    // keyboard drawn by job there (white keys dim, black keys the background) reads as a negative.
     const int keysW = visibleKeys() * keyW() - 2;
-    fill(r, kGridLeft, kKeysTop, keysW, keysH(), kDim);
+    const SDL_Color whiteKey = ui::lightTheme() ? kPanel2 : kDim, blackKey = ui::lightTheme() ? kText : kBg;
+    fill(r, kGridLeft, kKeysTop, keysW, keysH(), whiteKey);
     for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
         const bool black = isBlackKey(pitch), here = pitch == pitch_;
         const int x = gx(pitch);
         if (black) {
             // The two white keys meet under the middle of a black one.
-            fill(r, x + cellW() / 2, kKeysTop + blackKeyH(), 1, keysH() - blackKeyH(), kBg);
-            fill(r, x + 1, kKeysTop, cellW() - 2, blackKeyH(), here ? cursorColor : kBg);
+            fill(r, x + cellW() / 2, kKeysTop + blackKeyH(), 1, keysH() - blackKeyH(), blackKey);
+            fill(r, x + 1, kKeysTop, cellW() - 2, blackKeyH(), here ? cursorColor : blackKey);
         } else {
             if (here) fill(r, x, kKeysTop + blackKeyH() + 1, cellW(), keysH() - blackKeyH() - 1, cursorColor);
             // Two white keys side by side (E and F, B and C): a line all the way up.
-            if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, keysH(), kBg);
+            if (pitch > low_ && !isBlackKey(pitch - 1)) fill(r, x - 1, kKeysTop, 1, keysH(), blackKey);
         }
     }
     // ---- which octave: a band over each, from its C ------------------------------------

@@ -76,6 +76,19 @@ double apart(SDL_Color a, SDL_Color b) {
     lab(a, p), lab(b, q);
     return std::sqrt((p[0] - q[0]) * (p[0] - q[0]) + (p[1] - q[1]) * (p[1] - q[1]) + (p[2] - q[2]) * (p[2] - q[2]));
 }
+// A colour as a reader without red or without green sees it (Vienot, Brettel and Mollon 1999, in
+// linear light): `protan` without red, else without green. The usual two of colour blindness.
+SDL_Color blind(SDL_Color c, bool protan) {
+    const double r = linear(c.r), g = linear(c.g), b = linear(c.b);
+    const double rg = protan ? 0.11238 * r + 0.88762 * g : 0.29275 * r + 0.70725 * g;
+    const double bb = protan ? 0.00401 * r - 0.00401 * g + b : -0.02234 * r + 0.02234 * g + b;
+    const auto back = [](double v) {
+        v = v < 0 ? 0 : v;
+        const double e = 255.0 * (v <= 0.0031308 ? 12.92 * v : 1.055 * std::pow(v, 1 / 2.4) - 0.055);
+        return static_cast<Uint8>(e > 255 ? 255 : (e < 0 ? 0 : e + 0.5));
+    };
+    return SDL_Color{back(rg), back(rg), back(bb), 255};
+}
 bool same(SDL_Color a, SDL_Color b) { return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a; }
 
 // The ten of a theme, in the order of the struct.
@@ -86,9 +99,13 @@ std::vector<SDL_Color> tenOf(const Theme& t) { return {t.bg, t.panel, t.panel2, 
 // on, an accent on them, the background's colour written on an accent (a chip: the tab, L2 / R2,
 // WRITE), the faintest lettering (line: EMPTY, BUILT IN) on panel2, and how far apart the six
 // lettering and accent colours are.
-struct Measured { double text, dim, accent, onAccent, line, lineDim, apart; };
+// And two that are not about a surface: how far the cursor's colour is in lightness from
+// automation's and from the dim lettering (`cursorLight`: on a light theme the three are all dark,
+// and the same lightness makes the cursor's outline and the purple line beside it one thick
+// border), and how far apart the four accents stay for a colour-blind reader (`blind`).
+struct Measured { double text, dim, accent, onAccent, line, lineDim, apart, cursorLight, blind; };
 Measured measure(const Theme& t) {
-    Measured m{99, 99, 99, 99, 99, 99, 999};
+    Measured m{99, 99, 99, 99, 99, 99, 999, 99, 999};
     const SDL_Color surfaces[3] = {t.bg, t.panel, t.panel2};
     const SDL_Color accents[4] = {t.teal, t.purple, t.brass, t.stop};
     for (const SDL_Color& s : surfaces) {
@@ -102,6 +119,10 @@ Measured measure(const Theme& t) {
     const SDL_Color marks[6] = {t.teal, t.purple, t.brass, t.stop, t.text, t.dim};
     for (int i = 0; i < 6; ++i)
         for (int j = i + 1; j < 6; ++j) m.apart = std::min(m.apart, apart(marks[i], marks[j]));
+    m.cursorLight = std::min(contrast(t.teal, t.purple), contrast(t.teal, t.dim));
+    for (int i = 0; i < 4; ++i)
+        for (int j = i + 1; j < 4; ++j)
+            for (bool protan : {true, false}) m.blind = std::min(m.blind, apart(blind(accents[i], protan), blind(accents[j], protan)));
     return m;
 }
 
@@ -137,8 +158,14 @@ void testThePalettes(bool print) {
         CHECK(dark ? luminance(t.text) > luminance(t.dim) : luminance(t.text) < luminance(t.dim));
         const Measured m = measure(t);
         if (print)
-            std::printf("  %-6s text %5.2f  dim %5.2f  accent %5.2f  bg on accent %5.2f  line %4.2f  dim on line %4.2f  apart %5.1f\n", t.name, m.text, m.dim, m.accent,
-                        m.onAccent, m.line, m.lineDim, m.apart);
+            std::printf("  %-6s text %5.2f  dim %5.2f  accent %5.2f  bg on accent %5.2f  line %4.2f  dim on line %4.2f  apart %5.1f  cursor %4.2f  blind %5.1f\n", t.name, m.text,
+                        m.dim, m.accent, m.onAccent, m.line, m.lineDim, m.apart, m.cursorLight, m.blind);
+        // Every theme, BROWN as built included (1.71 and 18.4): the cursor, automation and the dim
+        // lettering differ in lightness, not in hue alone (BROWN's 1.71 shows as a lilac line inside
+        // a mint outline; PAPER and GREY were 1.12 and 1.01 at first, one dark border); and the four
+        // accents stay apart for a reader without red or without green (they were 2 and 10 there).
+        CHECK(m.cursorLight >= 1.4);
+        CHECK(m.blind >= 15.0);
         if (id == kThemeBrown) {
             // As built, and settled (the owner's look): measured, not held to the rules below. Its
             // dim is 4.16 on panel2 where the rule is 4.5; it stays, to the pixel.
@@ -176,6 +203,10 @@ void testTheMeasures() {
     CHECK(std::fabs(contrast({0, 0, 0, 255}, {255, 255, 255, 255}) - 21.0) < 0.01);
     CHECK(std::fabs(contrast({119, 119, 119, 255}, {255, 255, 255, 255}) - 4.48) < 0.01); // the classic grey that just fails 4.5
     CHECK(contrast({50, 50, 50, 255}, {50, 50, 50, 255}) == 1.0);
+    // Red and green: far apart, and close to a reader without either; a grey is a grey to both.
+    CHECK(apart({200, 40, 40, 255}, {60, 140, 40, 255}) > 100.0 && apart(blind({200, 40, 40, 255}, false), blind({60, 140, 40, 255}, false)) < 10.0);
+    CHECK(apart({200, 80, 40, 255}, {120, 120, 40, 255}) > 50.0 && apart(blind({200, 80, 40, 255}, true), blind({120, 120, 40, 255}, true)) < 14.0);
+    CHECK(same(blind({90, 90, 90, 255}, true), SDL_Color{90, 90, 90, 255}) && same(blind({90, 90, 90, 255}, false), SDL_Color{90, 90, 90, 255}));
     CHECK(apart({10, 20, 30, 255}, {10, 20, 30, 255}) == 0.0 && apart({0, 0, 0, 255}, {255, 255, 255, 255}) > 99.0);
     // A theme that breaks a rule is found: dim too faint, two accents the same.
     Theme t = kThemeTable[kThemeBlue];
@@ -602,6 +633,34 @@ void testTheScreensInEveryTheme() {
     checkAll("the button test");
     rig.key(SDLK_UP, false);
     rig.frames(300); // (it closes by itself)
+
+    // The piano roll: its keyboard is drawn as a keyboard in every theme, the white keys lighter
+    // than the black ones. (Drawn by job, the dim white keys and the background's black keys came
+    // out as a negative on a light theme: light black keys on a dark strip.)
+    CHECK(session.addTrack(TrackKind::Qmod));
+    rig.app.project().track = 1;
+    session.view = View::Pattern;
+    rig.frames(2);
+    CHECK(session.octavesShown() == 2); // (25 pixels a key from x 28, the keys 22 high from y 45, the black 13)
+    checkAll("the piano roll");
+    const auto colourAt = [](const std::vector<Uint32>& screen, int x, int y) {
+        const Uint32 p = screen[static_cast<std::size_t>(y * ui::kScreenW + x)];
+        return SDL_Color{Uint8((p >> 16) & 255), Uint8((p >> 8) & 255), Uint8(p & 255), 255};
+    };
+    for (int t = 0; t < kThemes; ++t) {
+        session.setTheme(t);
+        const std::vector<Uint32> screen = rig.draw();
+        const SDL_Color black = colourAt(screen, 28 + 1 * 25 + 12, 45 + 5); // C#3, near the top
+        const SDL_Color white = colourAt(screen, 28 + 2 * 25 + 12, 45 + 18); // D3, under the black keys
+        const SDL_Color between = colourAt(screen, 28 + 5 * 25 - 1, 45 + 18); // the line between E3 and F3
+        if (!(luminance(white) > luminance(black) && contrast(white, black) >= 3.0 && same(between, black)))
+            std::printf("    the roll's keys in %s: white %d,%d,%d black %d,%d,%d\n", kThemeTable[t].name, white.r, white.g, white.b, black.r, black.g, black.b);
+        CHECK(luminance(white) > luminance(black) && contrast(white, black) >= 3.0);
+        CHECK(same(between, black)); // two white keys side by side: a line in the black keys' colour
+        // BROWN as it was built, to the pixel.
+        if (t == kThemeBrown) CHECK(same(white, kThemeTable[t].dim) && same(black, kThemeTable[t].bg));
+    }
+    session.setTheme(kThemeBrown);
 }
 
 // ---- every still, drawn by the program ---------------------------------------------------------
@@ -674,6 +733,10 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     CHECK(corner("--view setup --theme PAPER", &pixel) && pixel == Canvas::colour(kThemeTable[kThemePaper].bg)); // (in either case)
     CHECK(!corner("--view setup --theme mauve", &pixel)); // a theme nobody knows: said, and no still
     CHECK(corner("--learn --theme grey", &pixel) && pixel == Canvas::colour(kThemeTable[kThemeGrey].bg));
+    // --themes draws all six and then puts the theme back: a picture kept after it is in the one asked for.
+    const std::string six = "--view setup --theme blue --themes '" + folder + "/six-'";
+    CHECK(corner(six.c_str(), &pixel) && pixel == Canvas::colour(kThemeTable[kThemeBlue].bg));
+    for (int t = 0; t < kThemes; ++t) unlink((folder + "/six-" + std::to_string(t) + ".bmp").c_str());
 }
 
 int runViews(const char* program, const char* only) {
