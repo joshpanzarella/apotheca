@@ -162,11 +162,24 @@ struct Rig {
     }
 };
 
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-under-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
+// A folder of its own for a test's recording, taken away with what the test put in it when the test ends.
+struct TempFolder {
+    std::string path;
+    bool made = false;
+    TempFolder() {
+        char pattern[] = "/tmp/apotheca-under-XXXXXX";
+        const char* got = mkdtemp(pattern);
+        made = got != nullptr;
+        path = made ? got : "/tmp";
+    }
+    ~TempFolder() {
+        if (!made) return;
+        std::remove((path + "/break.wav").c_str());
+        rmdir(path.c_str());
+    }
+    TempFolder(const TempFolder&) = delete;
+    TempFolder& operator=(const TempFolder&) = delete;
+};
 
 // ---- the drum grid ----------------------------------------------------------------------------
 
@@ -241,7 +254,8 @@ void testTheDrumGrid() {
 
 // The slice view is the drum grid in another mode: the same strip, the same chips.
 void testTheSliceView() {
-    const std::string folder = tempFolder();
+    const TempFolder temp; // (made before the rig, so it goes after it)
+    const std::string& folder = temp.path;
     CHECK(writeWav(folder + "/break.wav", std::vector<float>(48000, 0.25f), 48000));
     Rig rig(folder);
     if (!rig.canvas.ok || !rig.scratch.ok) return;
