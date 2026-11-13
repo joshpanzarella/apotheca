@@ -1200,16 +1200,17 @@ static void testGlideBeforeAnAskedChord() {
     for (const ChordPlay& play : {playOf(0, 0, 100), playOf(kStrumWide, 0, 50), playOf(kStrumHalf, 0, 50)}) {
         Rig rig;
         rig.note(0, 2, 40, 0.5f);
-        rig.note(1, 3, 45, 0.25f, kGlideFull, 0.5f); // half a step before the chord, after it was asked
-        rig.chord(2, 4, {60, 64, 67}, 2.f, play);
-        rig.note(5, 4, 50, 0.25f, kGlideFull, 0.4f); // and one inside it: from its top key
+        rig.note(1, 3, 43, 0.1f, 0, 0.2f);           // after the chord was asked for
+        rig.note(2, 3, 80, 0.25f, kGlideFull, 0.5f); // half a step before the chord, above its top key: from the note before
+        rig.chord(3, 4, {60, 64, 67}, 2.f, play);
+        rig.note(6, 4, 50, 0.25f, kGlideFull, 0.4f); // and one inside it: from its top key
         rig.play();
         rig.run(3L * kBar);
         int seen = 0, inside = 0;
         for (const Told& t : rig.log) {
-            if (t.on && t.pitch == 45) {
+            if (t.on && t.pitch == 80) {
                 ++seen;
-                CHECK(t.from == 40);
+                CHECK(t.from == 43);
             }
             if (t.on && t.pitch == 50) {
                 ++inside;
@@ -1562,6 +1563,22 @@ static void testTurnedWhilePlaying() {
     }
 }
 
+// ...and what was asked in one playing is not remembered in the next: Stop, the value turned, Play.
+static void testTurnedWhileStopped() {
+    const std::vector<int> keys = {60, 64, 67};
+    Rig rig;
+    rig.chord(0, 1, keys, 1.5f, playOf(0, 0, 10));
+    rig.play();
+    rig.run(3 * kStep);
+    CHECK(rig.notes().size() == 3);
+    rig.send(make(Command::Stop));
+    rig.run(1000);
+    rig.chord(0, 1, keys, 1.5f, ChordPlay());
+    rig.play();
+    rig.run(3 * kStep);
+    CHECK(rig.notes().size() == 6);
+}
+
 // An arpeggio ends with its chord. Deleted, carried off or set back to a plain chord while its
 // arpeggio plays, it begins no more notes (they ran on to where the chord's end had been).
 // Anything else written into the bar leaves it playing.
@@ -1624,7 +1641,7 @@ int main(int argc, char** argv) {
         {"testStopAndPlay", testStopAndPlay}, {"testTempoMidChord", testTempoMidChord}, {"testTheScenesLength", testTheScenesLength},
         {"testThrow", testThrow}, {"testGlideAfterAChord", testGlideAfterAChord}, {"testCommands", testCommands},
         {"testGlideBeforeAnAskedChord", testGlideBeforeAnAskedChord}, {"testOnceThrough", testOnceThrough}, {"testRatchetKeepsItsHits", testRatchetKeepsItsHits}, {"testThreeArpeggios", testThreeArpeggios},
-        {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testAnArpeggioEndsWithItsChord", testAnArpeggioEndsWithItsChord},
+        {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testTurnedWhileStopped", testTurnedWhileStopped}, {"testAnArpeggioEndsWithItsChord", testAnArpeggioEndsWithItsChord},
     };
     for (const Named& t : all) {
         bool wanted = argc < 2;

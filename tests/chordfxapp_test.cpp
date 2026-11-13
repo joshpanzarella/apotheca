@@ -324,6 +324,16 @@ void testTheDice() {
         chordEffectRoll(d, scripted);
         CHECK(d.play.strum == kStrumTight && d.ratchet == 0 && at == sizeof script / sizeof script[0]);
     }
+    // ...but under a STRUM the ORDER is heard: a roll that changes only that is a roll.
+    {
+        ChordEvent d = plain;
+        d.play.strum = kStrumTight;
+        const std::uint32_t script[] = {99, 40, 60, 99, 99, 99}; // no ratchet, STRUM, DOWN, nothing else
+        std::size_t at = 0;
+        const auto scripted = [&](std::uint32_t outOf) { return script[at++ % 6] % outOf; };
+        chordEffectRoll(d, scripted);
+        CHECK(d.play.strum == kStrumTight && d.play.order == kOrderDown && at == 6);
+    }
 }
 
 // ---- the gesture ---------------------------------------------------------------------------------------

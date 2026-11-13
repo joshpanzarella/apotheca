@@ -592,7 +592,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
         const float left = note.length - static_cast<float>(k) * apart; // of the chord
         if (k > 0 && left < kShortestNote) break;
         const bool last = k + 1 == hits || note.length - static_cast<float>(k + 1) * apart < kShortestNote;
-        double length = !last && left > apart * 0.85f ? apart * 0.85f : (whole - static_cast<double>(k) * apart) * (last ? shorter : 1.0);
+        const double length = !last ? apart * 0.85f : (whole - static_cast<double>(k) * apart) * shorter;
         one.length = static_cast<float>(length > kShortestNote ? length : kShortestNote);
         if (hits > 1) {
             one.throwTo = k == 0 ? note.throwTo : 0; // (the first piece opens the send for the whole chord)
