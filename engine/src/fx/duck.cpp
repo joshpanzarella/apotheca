@@ -138,7 +138,7 @@ Effect* create() { return new Duck; }
 
 const EffectInfo kDuckInfo = {
     "DUCK", 3, {"AMOUNT", "RELEASE", "SOURCE", ""}, {0.6f, 0.6f, 0.f, 0.f}, // lane 1, 209 ms
-    "duck", EffectGroup::Level, {0, 0, kLanes, 0}, reading, create,
+    "duck", EffectGroup::Level, {0, 0, kLanes, 0}, reading, create, "dips on a drum hit",
 };
 
 } // namespace fx

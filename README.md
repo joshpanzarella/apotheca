@@ -164,25 +164,63 @@ right for a recording played as it is, near enough for one tuned up or down.
 
 ### FX
 
-A fourth screen, after DEVICE. **Two pages of four rows. Y goes to the other
-page**, and so does moving down off the last row.
+A fourth screen, after DEVICE. **Two columns, and everything is in view.**
 
-| Page | Rows |
+| Column | Holds |
 | --- | --- |
-| The track's | The **three effects on the track** being worked on, one after the other. Then its **SENDS**: how much of it goes to ECHO, how much to SPACE. |
-| Everything's | **ECHO** and **SPACE**: one effect each, shared by every track. Then the **two effects on the master** (everything, after the tracks are mixed). |
+| Left: the list | Eight lines, always there. **THIS TRACK**: its three effects, one after the other, then its **SENDS** (how much of it goes to ECHO, how much to SPACE). **BUSES**: what **ECHO** and **SPACE** hold, one effect each, shared by every track. **MASTER**: the two effects on everything, after the tracks are mixed. |
+| Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), then each setting as a wide row: its name, its value, a bar. For SENDS: the two sends. |
 
-| On | Hold A + up / down | B |
+Each line of the list says what it holds (DELAY TAPE, or EMPTY). The small
+upright mark at its end is how much of the effect there is (its MIX, or a
+bus's LEVEL). COMP and DUCK have a second, brass mark: what they are doing
+to the sound just now.
+
+| Where | Button | Does |
 | --- | --- | --- |
-| The effect | NONE, FILTER, SATURATE, DRIVE, TAPE, DELAY, HALL, REVERB, CHORUS, COMP, DUCK, CRUSH. It goes in at once, at its usual settings. **Hold A + left / right** jumps to the next kind of effect in the list (filters, drives, delays, reverbs...) | None |
-| A setting | The stick turns it. The D-pad moves it a twentieth, or to the next choice. | Its usual value |
-| A send | The same: the stick turns it, the D-pad moves it a twentieth. | Nothing sent |
+| The list | Up / down | The next line. All eight, round the ends. |
+| | Right | Into the line's settings, **at the one last used there** |
+| | **Hold A** | **The list of effects opens on the right.** Up / down steps through it, and the effect goes in at once at its usual settings. |
+| | Hold A + left / right | The **TYPE**, for an effect that has types |
+| | B | Empties the line. On SENDS: nothing sent. |
+| The settings | Up / down | The next setting |
+| | Left | Back to the list, on the same line |
+| | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
+| | B | Its usual value. A send: nothing sent. |
+
+X hears the track and START plays, as everywhere. Y does nothing here.
+
+**The list of effects**, in its groups:
+
+| Group | Effects |
+| --- | --- |
+| FILTER | FILTER |
+| DELAY | **DELAY**, with a TYPE: **CLEAN** or **TAPE** |
+| REVERB | **REVERB**, with a TYPE: **ROOM** or **HALL** |
+| MOVING | CHORUS |
+| LEVEL | COMP, DUCK |
+| DIRT | SATURATE, DRIVE, CRUSH |
+
+**Changing TYPE keeps what the two types share.** TIME, FEEDBACK and MIX go
+from CLEAN to TAPE and back; SIZE and MIX from ROOM to HALL. They are kept
+**as they read**: TAPE's FEEDBACK goes to 120% and CLEAN's to 100%, and 48%
+stays 48%. What the other type cannot read goes to the nearest it can (120%
+becomes 100%; a triplet TIME becomes the nearest plain one). A setting the
+new type does not have is dropped, and its own extra settings start at
+their usual values. Automation follows the settings that are kept.
+
+A setting that is a choice (a TIME, a filter's TYPE, COMP's RATIO) has no
+bar to be somewhere along. It has **one piece for each choice, and the one
+it is on is lit**.
+
+**A setting that moves with the pattern** (see Automation) has a purple
+line under its row and says so; its line in the list has a purple line too.
 
 #### ECHO and SPACE: one delay and one reverb for the whole song
 
 A **send** is a copy of a track fed to a shared effect. ECHO holds a delay,
 SPACE holds a reverb. Each track says how much of itself goes to each, from
-0 to 100%, on its SENDS row. Both start at 0.
+0 to 100%, on its SENDS line. Both start at 0.
 
 | | An effect on the track | A send |
 | --- | --- | --- |
@@ -190,11 +228,11 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 | How much | Its MIX | The track's ECHO or SPACE amount |
 | The sound | Each track in its own room | Every track in the same room |
 
-- **What ECHO and SPACE hold is on the other page (Y).** Their settings are
-  the delay's and the reverb's, but for the last: **LEVEL**, how loud the
+- **What ECHO and SPACE hold is in the list, under BUSES.** Their settings
+  are the delay's and the reverb's, but for the last: **LEVEL**, how loud the
   echoes or the room come back. It starts at 100%.
-- ECHO takes only a delay (TAPE or DELAY) and SPACE only a reverb (HALL or
-  REVERB). B empties one.
+- ECHO takes only a DELAY (CLEAN or TAPE) and SPACE only a REVERB (ROOM or
+  HALL): hold A there and that is all the list offers. B empties one.
 - On ECHO or SPACE an effect gives back only what it adds: the echoes or the
   room, never the sound itself a second time.
 - **LEVEL turned right down keeps the echoes going round.** Turn it up again
@@ -204,15 +242,19 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   nothing, and the echoes it already made ring on.
 - The master's effects come after, so they act on the echoes and the room too.
 - A send can be **automated** like any setting (see Automation).
-- **THROW** sends one drum hit or one note in full, whatever the SENDS row
+- **THROW** sends one drum hit or one note in full, whatever the SENDS line
   says: hold X on it and press A. See "THROW" under PATTERN.
-- **A new song has TAPE on ECHO and HALL on SPACE.** So does a song made
+- **A new song has DELAY (TAPE) on ECHO and REVERB (HALL) on SPACE.** So does a song made
   before there were sends: nothing in it is sent, so it sounds as it did, and
-  the first send turned up in it gives what it gives in a new song. DELAY and
-  REVERB, the older two, are one push away (hold A + up on the effect).
+  the first send turned up in it gives what it gives in a new song. CLEAN and
+  ROOM, the older two, are one push away (hold A + left on the line).
 - **A song saved here and then opened by an older version of the program
   loses its sends, its throws, its third effects and what ECHO and SPACE hold.** The rest
   of it opens.
+
+In the table below, **TAPE** and **DELAY** are the DELAY's two types (TAPE,
+and CLEAN), and **HALL** and **REVERB** the REVERB's (HALL, and ROOM). A
+song file calls each by the name it has always had.
 
 | Effect | Settings |
 | --- | --- |
@@ -220,12 +262,12 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
 | TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
-| DELAY | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
+| DELAY (the type CLEAN) | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
-| REVERB | The older, plainer reverb. Size, damping, mix |
+| REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
-| COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line over the THRESHOLD bar shows how far it is turning the sound down**: it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
-| DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line over the AMOUNT bar shows how far it is dipping**, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
+| COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
+| DUCK | Amount, release, source. **The track dips each time a drum is hit**, and comes back up: the pumping sound, or room made for the kick. SOURCE is which drum: a lane, 1 to 8, of the **first drum track** in the song (lane 1 is the kick in the built-in kit). AMOUNT is how far it dips (100%: right down to nothing). RELEASE is how long it takes to come back, 20 ms to 1 second. It goes by the hit itself, not by the drum's sound: it works with the drums muted or that lane turned right down, every hit counts whatever its level (each hit of a ratchet, and a drum played by hand), and a step that its chance leaves out does nothing. **A thin line under the AMOUNT bar shows how far it is dipping**, and the heading says DIPPING 3 DB, as COMP's does. On the master it dips the whole song. Not for ECHO or SPACE. |
 | CRUSH | Bits, rate, mix |
 
 Effects are kept in the song. They can be changed while it plays. Stopping
@@ -762,7 +804,7 @@ or the note and press **A**: OFF, ECHO, SPACE, BOTH, and round again.
 | A DUCK on the track | **Does not dip the thrown copy**: the bus gets the whole hit while the track dips | Dips what the bus gets, as it dips the track |
 | Starts and stops | With the hit | Over 5 ms each way, so it does not click |
 
-- **How loud is the bus's LEVEL** (FX, the other page). THROW has no amount
+- **How loud is the bus's LEVEL** (FX, the bus's line). THROW has no amount
   of its own: it is a send at 100% for that hit or note.
 - If the track's send is already up, THROW tops it up to 100%. It never adds
   on top.

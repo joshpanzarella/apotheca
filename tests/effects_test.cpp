@@ -478,11 +478,11 @@ static void testTheTable() {
     }
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
-    // The list as it is today, in its groups (FILTER; DRIVE; DELAY; REVERB; MOVING; LEVEL; DIRT), a new effect before the old one of its group.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Saturate, EffectKind::Drive, EffectKind::Tape, EffectKind::Delay, EffectKind::Hall, EffectKind::Reverb, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Crush};
+    // The list as it is today, in its groups (FILTER; DELAY; REVERB; MOVING; LEVEL; DIRT), the types of a family side by side.
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Delay, EffectKind::Tape, EffectKind::Reverb, EffectKind::Hall, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
-    // ...and a group is never in two pieces (a whole group is stepped over at once).
+    // ...and a group is never in two pieces (the list a player picks from names each group once).
     for (int i = 2; i < effectListSize(); ++i)
         for (int j = 1; j < i - 1; ++j) CHECK(effectInfo(effectAt(i)).group != effectInfo(effectAt(j)).group || effectInfo(effectAt(i - 1)).group == effectInfo(effectAt(i)).group);
     // The numbers of the new ones: fixed for good, as the old five's are.
@@ -495,10 +495,10 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, 2) == 5 && effectChoices(EffectKind::Delay, 0) == 6);
     CHECK(effectChoices(EffectKind::Filter, 0) == 0 && effectChoices(EffectKind::Delay, 1) == 0 && effectChoices(EffectKind::Drive, 0) == 0);
     CHECK(effectChoices(EffectKind::Reverb, 0) == 0 && effectChoices(EffectKind::Crush, 0) == 0);
-    CHECK(effectInfo(EffectKind::Filter).group == EffectGroup::Filter && effectInfo(EffectKind::Drive).group == EffectGroup::Drive);
+    CHECK(effectInfo(EffectKind::Filter).group == EffectGroup::Filter && effectInfo(EffectKind::Drive).group == EffectGroup::Dirt);
     CHECK(effectInfo(EffectKind::Delay).group == EffectGroup::Delay && effectInfo(EffectKind::Reverb).group == EffectGroup::Reverb);
     CHECK(effectInfo(EffectKind::Crush).group == EffectGroup::Dirt && effectInfo(EffectKind::None).group == EffectGroup::None);
-    CHECK(std::string(effectGroupName(EffectGroup::Filter)) == "FILTER" && std::string(effectGroupName(EffectGroup::Drive)) == "DRIVE");
+    CHECK(std::string(effectGroupName(EffectGroup::Filter)) == "FILTER" && static_cast<int>(EffectGroup::Count) == 7);
     CHECK(std::string(effectGroupName(EffectGroup::Delay)) == "DELAY" && std::string(effectGroupName(EffectGroup::Reverb)) == "REVERB");
     CHECK(std::string(effectGroupName(EffectGroup::Moving)) == "MOVING" && std::string(effectGroupName(EffectGroup::Level)) == "LEVEL");
     CHECK(std::string(effectGroupName(EffectGroup::Dirt)) == "DIRT" && std::string(effectGroupName(EffectGroup::None)).empty());
@@ -3064,7 +3064,7 @@ static void testSaturate() {
     const EffectKind kind = EffectKind::Saturate;
     // Its row: what a song stores.
     const EffectInfo& info = effectInfo(kind);
-    CHECK(std::string(info.name) == "SATURATE" && std::string(info.word) == "saturate" && info.params == 4 && info.group == EffectGroup::Drive);
+    CHECK(std::string(info.name) == "SATURATE" && std::string(info.word) == "saturate" && info.params == 4 && info.group == EffectGroup::Dirt);
     CHECK(std::string(info.paramNames[0]) == "DRIVE" && std::string(info.paramNames[1]) == "TYPE" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.4f && info.defaults[1] == 0.f && info.defaults[2] == 0.8f && info.defaults[3] == 1.f);
     CHECK(effectChoices(kind, 1) == 4 && effectChoices(kind, 0) == 0 && effectChoices(kind, 2) == 0 && effectChoices(kind, 3) == 0);
@@ -3850,9 +3850,9 @@ static void testEffectsOnABus() {
         }
         CHECK(busEffectPlace(bus, EffectKind::Filter) == 0 && busEffectPlace(bus, EffectKind::None) == 0);
     }
-    // TAPE and DELAY on ECHO, HALL and REVERB on SPACE, the newer one first as in the main list.
-    CHECK(busListSize(0) == 3 && busEffectAt(0, 1) == EffectKind::Tape && busEffectAt(0, 2) == EffectKind::Delay);
-    CHECK(busListSize(1) == 3 && busEffectAt(1, 1) == EffectKind::Hall && busEffectAt(1, 2) == EffectKind::Reverb);
+    // DELAY and TAPE on ECHO, REVERB and HALL on SPACE, in the main list's order.
+    CHECK(busListSize(0) == 3 && busEffectAt(0, 1) == EffectKind::Delay && busEffectAt(0, 2) == EffectKind::Tape);
+    CHECK(busListSize(1) == 3 && busEffectAt(1, 1) == EffectKind::Reverb && busEffectAt(1, 2) == EffectKind::Hall);
     CHECK(busEffectPlace(0, EffectKind::Reverb) == 0 && busEffectPlace(1, EffectKind::Delay) == 0);
     CHECK(busListSize(-1) == 1 && busListSize(kBuses) == 1 && busEffectAt(-1, 1) == EffectKind::None);
     int found = 0;
@@ -4482,35 +4482,208 @@ static void testSendsOnAnyHelperCount() {
     CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.01);
 }
 
-// Hold A + left / right on the FX screen: the first effect of the next group, or of the one before.
-static void testTheGroupJump() {
-    const EffectGroup F = EffectGroup::Filter, D = EffectGroup::Drive, E = EffectGroup::Delay, R = EffectGroup::Reverb, N = EffectGroup::None;
-    const EffectGroup row[] = {N, F, D, D, E, E, E, R, R};
-    const int n = 9;
-    const int right[] = {1, 2, 4, 4, 7, 7, 7, 7, 8}, left[] = {0, 0, 1, 1, 2, 2, 2, 4, 4};
-    for (int i = 0; i < n; ++i) {
-        CHECK(groupJump(row, n, i, 1) == right[i]);
-        CHECK(groupJump(row, n, i, -1) == left[i]);
-        CHECK(groupJump(row, n, i, 0) == i && groupJump(row, n, i, 5) == right[i] && groupJump(row, n, i, -5) == left[i]);
-    }
-    CHECK(groupJump(row, n, -1, 1) == -1 && groupJump(row, n, n, -1) == n && groupJump(nullptr, n, 3, 1) == 3 && groupJump(row, 0, 0, 1) == 0);
-    // A list whose first group has more than one in it: left from inside it goes nowhere.
-    const EffectGroup two[] = {F, F, D};
-    CHECK(groupJump(two, 3, 1, -1) == 1 && groupJump(two, 3, 0, -1) == 0 && groupJump(two, 3, 2, -1) == 0 && groupJump(two, 3, 0, 1) == 2);
-    // The real list: every jump lands on the first of another group, or stays.
-    for (int place = 0; place < effectListSize(); ++place)
-        for (int by = -1; by <= 1; by += 2) {
-            const int to = effectGroupJump(place, by);
-            CHECK(to >= 0 && to < effectListSize() && (by > 0 ? to >= place : to <= place));
-            if (to == place) continue;
-            CHECK(effectInfo(effectAt(to)).group != effectInfo(effectAt(place)).group);
-            CHECK(to == 0 || effectInfo(effectAt(to - 1)).group != effectInfo(effectAt(to)).group);
-            // ...and the nearest such: nothing of a third group lies between.
-            for (int i = (by > 0 ? place : to) + 1; i < (by > 0 ? to : place); ++i)
-                CHECK(effectInfo(effectAt(i)).group == effectInfo(effectAt(by > 0 ? place : to)).group || (by < 0 && effectInfo(effectAt(i)).group == effectInfo(effectAt(place)).group));
+// FAMILIES AND TYPES: what a player picks from is DELAY (CLEAN, TAPE) and REVERB (ROOM, HALL);
+// underneath each type is the effect it always was.
+static void testFamiliesAndTypes() {
+    const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
+    // Nothing moved underneath: the numbers and the song-file words.
+    CHECK(static_cast<int>(D) == 3 && static_cast<int>(R) == 4 && static_cast<int>(T) == 6 && static_cast<int>(H) == 7);
+    CHECK(std::string(effectInfo(D).word) == "delay" && std::string(effectInfo(T).word) == "tape" && std::string(effectInfo(R).word) == "reverb" && std::string(effectInfo(H).word) == "hall");
+    CHECK(std::string(effectInfo(D).name) == "DELAY" && std::string(effectInfo(T).name) == "TAPE" && std::string(effectInfo(R).name) == "REVERB" && std::string(effectInfo(H).name) == "HALL");
+    // The families and what each type is called.
+    CHECK(std::string(effectFamily(D)) == "DELAY" && std::string(effectFamily(T)) == "DELAY" && std::string(effectFamily(R)) == "REVERB" && std::string(effectFamily(H)) == "REVERB");
+    CHECK(std::string(effectTypeName(D)) == "CLEAN" && std::string(effectTypeName(T)) == "TAPE" && std::string(effectTypeName(R)) == "ROOM" && std::string(effectTypeName(H)) == "HALL");
+    CHECK(effectTypes(D) == 2 && effectTypes(T) == 2 && effectTypes(R) == 2 && effectTypes(H) == 2);
+    CHECK(effectTypeAt(D, 0) == D && effectTypeAt(D, 1) == T && effectTypeAt(T, 0) == D && effectTypeAt(T, 1) == T);
+    CHECK(effectTypeAt(R, 0) == R && effectTypeAt(R, 1) == H && effectTypeAt(H, 0) == R && effectTypeAt(H, 1) == H);
+    CHECK(effectTypeAt(D, -1) == N && effectTypeAt(D, 2) == N && effectTypeAt(H, 2) == N && effectTypeAt(H, -1) == N);
+    CHECK(effectTypeIndex(D) == 0 && effectTypeIndex(T) == 1 && effectTypeIndex(R) == 0 && effectTypeIndex(H) == 1);
+    // Everything else is a family of one, called by its name, with no type.
+    int families = 1; // NONE's
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        const EffectInfo& info = effectInfo(kind);
+        CHECK((info.family == nullptr) == (info.type == nullptr));
+        // A type knows its family, and the family's types are side by side in the list.
+        const int types = effectTypes(kind), at = effectTypeIndex(kind);
+        CHECK(types >= 1 && at >= 0 && at < types && effectTypeAt(kind, at) == kind);
+        for (int t = 0; t < types; ++t) {
+            const EffectKind other = effectTypeAt(kind, t);
+            CHECK(other != N && std::string(effectFamily(other)) == effectFamily(kind) && effectPlace(other) == effectPlace(kind) - at + t);
+            CHECK(effectInfo(other).group == info.group && effectBus(other) == effectBus(kind)); // one family, one group, one bus
+            CHECK(effectTypes(other) == types && effectTypeIndex(other) == t);
+            for (int u = 0; u < t; ++u) CHECK(std::string(effectTypeName(other)) != effectTypeName(effectTypeAt(kind, u)));
         }
-    CHECK(effectGroupJump(0, -1) == 0 && effectGroupJump(0, 1) == 1 && effectGroupJump(effectListSize() - 1, 1) == effectListSize() - 1);
-    CHECK(effectGroupJump(-3, 1) == -3 && effectGroupJump(effectListSize(), -1) == effectListSize());
+        if (!info.family) {
+            CHECK(types == 1 && std::string(effectFamily(kind)) == info.name && effectTypeName(kind)[0] == 0);
+        } else {
+            CHECK(types >= 2 && info.type[0] != 0 && std::string(effectTypeName(kind)) == info.type);
+        }
+        families += at == 0 ? 1 : 0;
+        // In the list a player picks from: a family once, at its first type.
+        const int place = familyPlace(kind);
+        CHECK(place >= 1 && place < familyListSize() && familyAt(place) == effectTypeAt(kind, 0));
+        // A few plain words for it, that fit the list's line (measured on the screen in app_test).
+        char says[64] = "?";
+        effectFamilySays(kind, says, sizeof says);
+        CHECK(says[0] != 0 && says[0] != '?' && std::strlen(says) <= 28);
+        for (int t = 0; t < types && types > 1; ++t) {
+            std::string small = effectTypeName(effectTypeAt(kind, t));
+            for (char& c : small) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+            CHECK(std::string(says).find(small) != std::string::npos); // every type is named in the family's line
+        }
+    }
+    CHECK(effectTypes(N) == 1 && effectTypeAt(N, 0) == N && effectTypeIndex(N) == 0 && effectTypeName(N)[0] == 0 && std::string(effectFamily(N)) == "NONE");
+    const EffectKind bad = static_cast<EffectKind>(77);
+    CHECK(effectTypes(bad) == 1 && effectTypeAt(bad, 0) == N && effectTypeIndex(bad) == 0 && familyPlace(bad) == 0 && effectTypeName(bad)[0] == 0);
+    // The list of families as it is today.
+    static const EffectKind list[] = {N, EffectKind::Filter, D, R, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
+    CHECK(familyListSize() == 10 && families == 10);
+    for (int i = 0; i < 10; ++i) CHECK(familyAt(i) == list[i] && familyPlace(list[i]) == i);
+    CHECK(familyAt(-1) == N && familyAt(10) == N && familyPlace(T) == 2 && familyPlace(H) == 3 && familyPlace(N) == 0);
+    // A bus's own list: NONE and the one family it may hold.
+    CHECK(familyListSize(0) == 2 && familyAt(0, 0) == N && familyAt(1, 0) == D && familyAt(2, 0) == N && familyAt(-1, 0) == N);
+    CHECK(familyListSize(1) == 2 && familyAt(0, 1) == N && familyAt(1, 1) == R && familyAt(2, 1) == N);
+    CHECK(familyPlace(D, 0) == 1 && familyPlace(T, 0) == 1 && familyPlace(R, 0) == 0 && familyPlace(H, 0) == 0 && familyPlace(EffectKind::Filter, 0) == 0 && familyPlace(N, 0) == 0);
+    CHECK(familyPlace(R, 1) == 1 && familyPlace(H, 1) == 1 && familyPlace(D, 1) == 0 && familyPlace(T, 1) == 0 && familyPlace(EffectKind::Crush, 1) == 0);
+    CHECK(familyListSize(2) == 10 && familyListSize(-5) == 10 && familyAt(3, 7) == R); // no such bus: the whole list
+    const auto says = [](EffectKind kind) {
+        char text[64] = "?";
+        effectFamilySays(kind, text, sizeof text);
+        return std::string(text);
+    };
+    CHECK(says(D) == "echoes: clean, tape" && says(T) == says(D) && says(R) == "space: room, hall" && says(H) == says(R));
+    CHECK(says(EffectKind::Crush) == "fewer bits" && says(N) == "nothing here" && says(bad) == "nothing here" && says(EffectKind::Comp) == "evens loud and quiet");
+    char tiny[4] = "zzz";
+    effectFamilySays(D, tiny, sizeof tiny);
+    CHECK(std::string(tiny) == "ech");
+    effectFamilySays(D, nullptr, 8);
+    effectFamilySays(D, tiny, 0);
+}
+
+// CHANGING TYPE keeps what the two types share by name, as values that READ the same.
+static void testTypeChangeCarriesSettings() {
+    const EffectKind D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
+    // What is carried from what, today.
+    CHECK(effectCarryFrom(D, T, 0) == 0 && effectCarryFrom(D, T, 1) == 1 && effectCarryFrom(D, T, 2) == -1 && effectCarryFrom(D, T, 3) == 3); // TIME, FEEDBACK, (AGE), MIX
+    CHECK(effectCarryFrom(T, D, 0) == 0 && effectCarryFrom(T, D, 1) == 1 && effectCarryFrom(T, D, 2) == -1 && effectCarryFrom(T, D, 3) == 3); // (TONE)
+    CHECK(effectCarryFrom(R, H, 0) == 0 && effectCarryFrom(R, H, 1) == -1 && effectCarryFrom(R, H, 2) == -1 && effectCarryFrom(R, H, 3) == 2); // SIZE, (DECAY), (TONE), MIX
+    CHECK(effectCarryFrom(H, R, 0) == 0 && effectCarryFrom(H, R, 1) == -1 && effectCarryFrom(H, R, 2) == 3 && effectCarryFrom(H, R, 3) == -1);  // SIZE, (DAMPING), MIX
+    CHECK(effectCarryFrom(D, T, -1) == -1 && effectCarryFrom(D, T, 4) == -1 && effectCarryFrom(EffectKind::None, T, 0) == -1 && effectCarryFrom(D, EffectKind::None, 0) == -1);
+    CHECK(effectCarryFrom(H, EffectKind::Delay, 2) == 2); // by name alone: HALL's TONE and DELAY's
+    // The words of the promise: 48% stays 48%, though TAPE's FEEDBACK goes to 120% and DELAY's to 100%.
+    CHECK(reads(T, 1, 0.4f) == "48%" && reads(D, 1, effectCarryValue(T, 1, D, 1, 0.4f)) == "48%" && std::fabs(effectCarryValue(T, 1, D, 1, 0.4f) - 0.48f) < 0.005f);
+    CHECK(reads(D, 1, 0.48f) == "48%" && reads(T, 1, effectCarryValue(D, 1, T, 1, 0.48f)) == "48%" && std::fabs(effectCarryValue(D, 1, T, 1, 0.48f) - 0.4f) < 0.005f);
+    // It lands on the ROUNDEST value that reads so, not on the reading's low edge (found in review: 45% came back as
+    // 0.4452, the first push up went to 0.45, still 45%, and nothing was seen to move).
+    CHECK(effectCarryValue(D, 1, T, 1, 0.45f) == 0.375f && effectCarryValue(T, 1, D, 1, 0.375f) == 0.45f);
+    CHECK(effectCarryValue(T, 1, D, 1, 0.4f) == 0.48f && effectCarryValue(D, 1, T, 1, 0.48f) == 0.4f);
+    CHECK(effectCarryValue(D, 1, T, 1, 0.452f) == 0.375f && effectCarryValue(D, 1, T, 1, 0.4461f) == 0.375f); // anywhere in the 45%: the one place
+    CHECK(effectCarryValue(D, 1, T, 1, 1.f) == 0.83f && reads(T, 1, 0.83f) == "100%"); // no twentieth reads 100% on the TAPE: a hundredth
+    CHECK(effectCarryValue(D, 1, T, 1, 0.f) == 0.f && effectCarryValue(T, 1, D, 1, 0.f) == 0.f);
+    // Every twentieth the D-pad can leave a setting on comes back as itself, to the bit, if the other type can read it.
+    for (int k = 0; k <= 20; ++k) {
+        const float v = static_cast<float>(k) / 20.f;
+        const float there = effectCarryValue(D, 1, T, 1, v);
+        CHECK(reads(T, 1, there) == reads(D, 1, v) && effectCarryValue(T, 1, D, 1, there) == v);
+        const float back = effectCarryValue(T, 1, D, 1, v);
+        if (reads(D, 1, back) == reads(T, 1, v)) CHECK(effectCarryValue(D, 1, T, 1, back) == v);
+        else CHECK(k > 16); // 105% and over: DELAY has no such reading
+    }
+    // More than DELAY can read: the nearest there is, its most.
+    CHECK(reads(T, 1, 1.f) == "120%" && effectCarryValue(T, 1, D, 1, 1.f) > 0.999f && reads(D, 1, effectCarryValue(T, 1, D, 1, 1.f)) == "100%");
+    // A scale that is the same on both sides is not touched at all, to the bit.
+    for (float v : {0.f, 0.123456f, 0.5f, 0.987654f, 1.f}) {
+        CHECK(effectCarryValue(D, 3, T, 3, v) == v && effectCarryValue(T, 3, D, 3, v) == v);
+        CHECK(effectCarryValue(R, 0, H, 0, v) == v && effectCarryValue(H, 0, R, 0, v) == v && effectCarryValue(R, 2, H, 3, v) == v && effectCarryValue(H, 3, R, 2, v) == v);
+    }
+    // TIME: the one that reads the same; a triplet DELAY does not have goes to the nearest in steps.
+    const auto time = [&](EffectKind from, EffectKind to, float v) { return reads(to, 0, effectCarryValue(from, 0, to, 0, v)); };
+    for (int c = 0; c < 6; ++c) CHECK(time(D, T, (c + 0.5f) / 6.f) == reads(D, 0, (c + 0.5f) / 6.f)); // every one of DELAY's is on the TAPE
+    CHECK(reads(T, 0, 1.5f / 8.f) == "1/8 TRIP" && time(T, D, 1.5f / 8.f) == "1/16");   // 1.33 steps: 1 is nearer than 2
+    CHECK(reads(T, 0, 3.5f / 8.f) == "1/4 TRIP" && time(T, D, 3.5f / 8.f) == "1/8 DOT"); // 2.67 steps: 3 is nearer than 2
+    for (int c : {0, 2, 4, 5, 6, 7}) CHECK(time(T, D, (c + 0.5f) / 8.f) == reads(T, 0, (c + 0.5f) / 8.f));
+    // A choice lands in the middle of its part, as the screen puts it.
+    CHECK(effectCarryValue(D, 0, T, 0, 0.99f) == 7.5f / 8.f && effectCarryValue(T, 0, D, 0, 0.01f) == 0.5f / 6.f);
+
+    // EVERY PAIR in every family, both ways, every setting of the new type, right along the old one's range.
+    int pairs = 0, carried = 0, same = 0, nearest = 0;
+    for (int a = 1; a < kEffectKinds; ++a)
+        for (int b = 1; b < kEffectKinds; ++b) {
+            const EffectKind from = static_cast<EffectKind>(a), to = static_cast<EffectKind>(b);
+            if (a == b || std::string(effectFamily(from)) != effectFamily(to)) continue;
+            ++pairs;
+            const EffectInfo& was = effectInfo(from);
+            const EffectInfo& is = effectInfo(to);
+            for (int i = 0; i < is.params; ++i) {
+                const int had = effectCarryFrom(from, to, i);
+                // By name, and never a choice from an amount.
+                int byName = -1;
+                for (int j = 0; j < was.params; ++j)
+                    if (std::string(was.paramNames[j]) == is.paramNames[i] && (was.choices[j] > 0) == (is.choices[i] > 0)) byName = byName < 0 ? j : byName;
+                CHECK(had == byName);
+                if (had < 0) {
+                    CHECK(effectCarryValue(from, 0, to, i, 0.9f) == is.defaults[i] && effectCarryValue(from, -1, to, i, 0.9f) == is.defaults[i]);
+                    continue;
+                }
+                ++carried;
+                // Everything the new type can read, to look the old reading up in.
+                std::vector<std::string> can;
+                std::vector<float> where;
+                const int steps = is.choices[i] ? is.choices[i] : 20000;
+                for (int k = 0; k <= steps; ++k) {
+                    const float v = is.choices[i] ? (std::min(k, steps - 1) + 0.5f) / steps : static_cast<float>(k) / steps;
+                    can.push_back(reads(to, i, v));
+                    where.push_back(v);
+                }
+                const int points = was.choices[had] ? was.choices[had] : 32;
+                for (int k = 0; k <= points; ++k) {
+                    const float v = was.choices[had] ? (std::min(k, points - 1) + 0.5f) / points : static_cast<float>(k) / points; // 0, 50%, 100% among them
+                    const float got = effectCarryValue(from, had, to, i, v);
+                    CHECK(got >= 0.f && got <= 1.f);
+                    const std::string before = reads(from, had, v), after = reads(to, i, got);
+                    const bool reachable = std::find(can.begin(), can.end(), before) != can.end();
+                    if (reachable) {
+                        CHECK(after == before);
+                        if (after != before) std::printf("    %s %s %.4f reads %s, as %s reads %s\n", was.name, was.paramNames[had], static_cast<double>(v), before.c_str(), is.name, after.c_str());
+                        ++same;
+                    } else {
+                        // It cannot be read there: the nearest that can. For an amount, by the number read.
+                        ++nearest;
+                        if (!is.choices[i]) {
+                            const float want = std::strtof(before.c_str(), nullptr), gave = std::strtof(after.c_str(), nullptr);
+                            for (const std::string& other : can) CHECK(std::fabs(std::strtof(other.c_str(), nullptr) - want) >= std::fabs(gave - want) - 1e-4f);
+                        } else {
+                            CHECK(was.amount && is.amount);
+                            const float want = was.amount(had, v), gave = is.amount(i, got);
+                            for (float other : where) CHECK(std::fabs(is.amount(i, other) - want) >= std::fabs(gave - want) - 1e-4f);
+                        }
+                    }
+                    // A choice is put in the middle of its part.
+                    if (const int count = is.choices[i]) CHECK(std::fabs(got * count - std::floor(got * count) - 0.5f) < 1e-4f);
+                }
+                // What is not a number, or off the range, is carried as the end of the range would be.
+                CHECK(effectCarryValue(from, had, to, i, std::nanf("")) == effectCarryValue(from, had, to, i, 0.f));
+                CHECK(effectCarryValue(from, had, to, i, -3.f) == effectCarryValue(from, had, to, i, 0.f) && effectCarryValue(from, had, to, i, 7.f) == effectCarryValue(from, had, to, i, 1.f));
+            }
+            // All four at once: carried, or the new type's default; on a bus LEVEL's default is full.
+            const float old[kEffectParams] = {0.3f, 0.7f, 0.2f, 0.9f};
+            for (int onBus = 0; onBus < 2; ++onBus) {
+                float now[kEffectParams] = {-1.f, -1.f, -1.f, -1.f};
+                effectCarry(from, to, old, onBus != 0, now);
+                for (int i = 0; i < kEffectParams; ++i) {
+                    const int had = effectCarryFrom(from, to, i);
+                    CHECK(now[i] == (had >= 0 ? effectCarryValue(from, had, to, i, old[had]) : effectDefault(to, i, onBus != 0)));
+                }
+                float fresh[kEffectParams];
+                effectCarry(from, to, nullptr, onBus != 0, fresh); // nothing to carry: its usual settings
+                for (int i = 0; i < kEffectParams; ++i) CHECK(fresh[i] == effectDefault(to, i, onBus != 0));
+            }
+            effectCarry(from, to, old, false, nullptr);
+        }
+    CHECK(pairs == 4 && carried == 10 && same > 150 && nearest >= 2);
+    CHECK(effectCarryValue(D, 9, T, 1, 0.5f) == effectInfo(T).defaults[1] && effectCarryValue(D, 1, T, 9, 0.5f) == 0.f && effectCarryValue(D, 1, T, -1, 0.5f) == 0.f);
+    CHECK(effectCarryValue(D, 2, T, 1, 0.5f) == effectInfo(T).defaults[1]); // not the setting it is carried from: the default
 }
 
 // ---- 7. found in review, 2026-11-12 -----------------------------------------------------------
@@ -4683,7 +4856,7 @@ static void testABusTakesItsOwnKind() {
         for (int bus = 0; bus < kBuses; ++bus) {
             std::unique_ptr<Engine> engine = sineEngine(), twin = sineEngine();
             for (Engine* e : {engine.get(), twin.get()}) {
-                CHECK(e->setEffect(busTrack(bus), 0, busEffectAt(bus, 2))); // DELAY, or REVERB
+                CHECK(e->setEffect(busTrack(bus), 0, busEffectAt(bus, 1))); // DELAY, or REVERB
                 e->send(make(Command::SetSend, 0, bus, 0, 1.f));
             }
             const bool fits = kind == EffectKind::None || effectBus(kind) == bus;
@@ -5747,7 +5920,8 @@ int main(int argc, char** argv) {
         {"testBusEffectsInTheEngine", testBusEffectsInTheEngine},
         {"testThirdSlot", testThirdSlot},
         {"testSendsOnAnyHelperCount", testSendsOnAnyHelperCount},
-        {"testTheGroupJump", testTheGroupJump},
+        {"testFamiliesAndTypes", testFamiliesAndTypes},
+        {"testTypeChangeCarriesSettings", testTypeChangeCarriesSettings},
         {"testGlideLands", testGlideLands},
         {"testNotSound", testNotSound},
         {"testABusTakesItsOwnKind", testABusTakesItsOwnKind},

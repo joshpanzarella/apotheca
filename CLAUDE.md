@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (24) | `cd build && ctest -j8` (70 to 85 s; `nextscene` is the longest) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -100,7 +100,7 @@ Where effects are, in the engine:
 | File | Holds |
 | --- | --- |
 | `engine/include/apotheca/effects.hpp` | `EffectKind` (the numbers), `EffectInfo` (a row), and everything that reads the table |
-| `engine/src/effects.cpp` | **the one table of effects**: each row's number, and the list a player picks from |
+| `engine/src/effects.cpp` | **the one table of effects**: each row's number, the list a player picks from, families and types, how a setting is carried to another type |
 | `engine/src/fx/NAME.cpp` | one effect: its class, how its settings read, its row |
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
 | `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
@@ -112,13 +112,25 @@ Where effects are, in the engine:
 1. an `EffectKind` at the **end** of the list in `effects.hpp`;
 2. a file `engine/src/fx/NAME.cpp` with its class and its `const EffectInfo kNameInfo`
    (name, settings, defaults, song-file `word`, group, which settings are
-   choices, how a setting reads, how to make one);
+   choices, how a setting reads, how to make one, and `says`: a few plain
+   words for the list a player picks from);
 3. its `extern` line at the bottom of `fx/unit.hpp`;
 4. its row in `kTable` in `effects.cpp` and its place in `kList` there;
 5. its checks in `tests/effects_test.cpp`, with the tools there.
 
 The screen, the song file and `bench` pick it up from the table; the build
 takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
+
+**Adding a TYPE to a family** (PING to DELAY; SPRING, PLATE to REVERB) is
+adding an effect, with two more things in its row: `family` ("DELAY", spelled
+as the family's other rows spell it) and `type` ("PING"). Put it in `kList`
+beside the family's other types: they must be side by side, and the first
+is what the family goes in as. Name the settings it shares with the other
+types as they name them (TIME, FEEDBACK, MIX): changing TYPE carries a
+setting over **by its name**. If a shared setting is a choice whose choices
+differ (TIME), give the row an `amount` function, so a choice the other does
+not have goes to the nearest. `effects_test` checks every pair of every
+family by itself; nothing is listed there.
 
 **A delay or a reverb also goes on a send bus** (by its group: `effectBus`).
 Its `process()` must look at `Unit::bus_` and, when set, put out only what it
@@ -164,6 +176,35 @@ effect in those two groups and fails one that does not.
   reordered. The `word` is in song files: never changed. The place in the
   list (`kList`) is only what the player sees: change it freely. Never use
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
+- **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
+  just be one of the delays"). The player sees DELAY with a TYPE (CLEAN,
+  TAPE) and REVERB with a TYPE (ROOM, HALL); underneath each type is the
+  `EffectKind` it always was, with its number and its word (`delay`, `tape`,
+  `reverb`, `hall`), and `info.name` is still its own ("TAPE": bench and the
+  tests use it). The screen asks `effectFamily`, `effectTypeName`,
+  `effectTypes` / `effectTypeAt` / `effectTypeIndex`, and picks from
+  `familyAt` / `familyPlace` (a line a family; `bus` gives a bus its own short
+  list). A song file is written as before: `app_test` holds a song with every
+  kind to what `main` wrote (`tests/everykind_main.inc`; do not remake it).
+- **Changing TYPE carries settings by NAME, as they READ** (`effectCarry`,
+  `effectCarryValue`): the value whose reading is the same text; if the new
+  type cannot read it, the nearest (an amount by the number in its reading, a
+  choice by its row's `amount`). A scale that is the same on both sides is
+  not touched, to the bit. Where the scales differ an amount lands on **the
+  roundest value that reads so** (a hundredth, else a thousandth, nearest the
+  middle of the stretch), never on the stretch's edge: from an edge the first
+  push of the D-pad moved nothing that could be seen, and 45% came back as
+  0.4452 in the song file. A twentieth goes there and back to the bit.
+  `changeEffectType` (app/fx_screen.cpp) does it to
+  a slot and **moves the automation of each kept setting to its new lane**
+  (REVERB's MIX is its third setting, HALL's its fourth), read the same way,
+  in every scene (a step written as 0 is a step); the rest of the slot's
+  lanes are cleared. **Undo after a TYPE change is wrong and not fixed**
+  (found in review, 2026-11-13): undo puts the patterns' automation back in
+  the old type's lanes and the effect stays the new type (effects are not in
+  undo; `main` has the same fault when an effect is changed or emptied). The
+  mend is in `session.*` and is the owner's call. Another FAMILY
+  put in a slot (`Session::setEffect`) still clears all four.
 
 ### The engine and its threads
 - **The audio thread never allocates, locks for long, or frees.** Things it
@@ -318,8 +359,10 @@ effect in those two groups and fails one that does not.
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it on the box `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a thin
-  strip over the bar from the right, full at `kMeterFullDb` (24).
+  it three ways: on the row `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a
+  strip under the bar from the right, full at `kMeterFullDb` (24); in words in
+  the heading (`FxScreen::meterWords`: TURNING DOWN 7 DB, DIPPING 3 DB); and
+  as a brass mark on the effect's line of the list.
 - **A new effect's sound does not depend on how it is cut into blocks**, to
   the bit, once its settings are at rest (each has a test). So what an effect
   does "between blocks" (snapping vanishing numbers to zero) is done sample by
@@ -352,14 +395,33 @@ effect in those two groups and fails one that does not.
   `project.tracks[track]` or automation, never `track != kMasterTrack`: a bus
   would then index the array at -2. A bus takes only its own kind
   (`effectBus`), and nothing on a bus or the master is automated.
-- **The FX screen is two pages of four rows, and its rows are numbered
-  through both** (`FxScreen::goTo`): 0 to 2 the track's slots, 3 its SENDS
-  (`kSendsRow`: two columns, not a slot, so `data(row)` is not for it), 4 and
-  5 the buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). Y adds four. A
-  bus's row picks from its own list (`busEffectAt`), shows its MIX as LEVEL,
-  and B there gives `effectDefault(kind, i, true)`. Hold A + left / right is
-  `effectGroupJump`: it reads the groups from the list, so a new effect needs
-  nothing done for it.
+- **The FX screen is two columns: a list of eight lines, always all in view,
+  and the line picked drawn large** (owner, 2026-11-12; the EVERYTHING page
+  was never found, so there is no second page and Y does nothing there).
+  The lines (`FxScreen::goTo(row, column)`): 0 to 2 the track's slots, 3 its
+  SENDS (`kSendsRow`: not a slot, so `data(row)` is not for it), 4 and 5 the
+  buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). **Column 0 is the line
+  in the list; 1 and up are its settings** (SENDS: 1 ECHO, 2 SPACE).
+  - Up / down in the list goes round; right goes to the setting the line
+    last used (`last_`, kept through a change of track); left comes back.
+    `update()` only pulls the cursor in when the line has fewer settings now.
+  - **Hold A on a slot's line opens the list of effects** (`picking()`), drawn
+    from `familyAt`: DOWN is the next line of it, since it is seen (it was UP
+    when the list was stepped through blind). Left / right is the TYPE
+    (`changeEffectType`). The group jump is gone. On a setting, A + up / down
+    turns it as before, and left / right do nothing.
+  - B empties a line (SENDS: both sends), and on a setting gives its usual
+    value; a bus's LEVEL goes back to full (`effectDefault(kind, i, true)`).
+  - A choice has no bar: one piece for each choice, the one it is lit
+    (`wideBar`). A value is drawn in the largest lettering that fits
+    `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
+    setting of every effect at 33 values and looks at the screen.
+  - What is automated in the scene worked on has a purple line under its row
+    and "moves with the pattern", and a purple line under its line of the
+    list. WRITE itself is said by the top bar.
+  - The places things are drawn are constants in `fx_screen.hpp`, so the
+    tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
+    is this text drawn here in this colour).
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.

@@ -620,38 +620,51 @@ int main(int argc, char** argv) {
             app.song().moveCursorTo(0, 2);
         }
     } else if (std::strncmp(view, "fx", 2) == 0 && (view[2] == 0 || view[2] == '-')) {
-        // fx: the track's page. fx-sends: on a send. fx-pick: on an effect (with --hold-a, the picking hints).
-        // fx-all: the buses and the master. fx-bus: on a bus's effect. fx-level: on a bus's LEVEL.
-        // fx-comp, fx-comp-all: COMP on the track and on the master, with its meter.
-        // fx-duck: DUCK on the track, on its SOURCE.
-        app.session().setEffect(0, 0, EffectKind::Delay);
-        app.session().setEffect(0, 1, EffectKind::Filter);
-        app.session().setEffectParam(0, 1, 0, 0.45f);
-        app.session().setEffect(kMasterTrack, 0, EffectKind::Reverb);
-        app.session().setSend(0, 0, 0.35f);
-        app.session().setSend(0, 1, 0.1f);
-        app.session().setAutomation(0, 0, autoLaneOfSend(1), 0, 0.5f);
-        app.session().view = View::Effects;
-        if (std::strcmp(view, "fx-sends") == 0) app.fx().goTo(FxScreen::kSendsRow, 0);
-        else if (std::strcmp(view, "fx-pick") == 0) app.fx().goTo(1, 0);
-        else if (std::strcmp(view, "fx-all") == 0) app.fx().goTo(FxScreen::kMasterRow, 1);
-        else if (std::strcmp(view, "fx-bus") == 0) app.fx().goTo(FxScreen::kBusRow + 1, 0);
-        else if (std::strcmp(view, "fx-level") == 0) app.fx().goTo(FxScreen::kBusRow, 4);
-        else if (std::strcmp(view, "fx-comp") == 0 || std::strcmp(view, "fx-comp-all") == 0) {
-            // COMP at work, on the track and on the master: the strip on THRESHOLD is how far it is turning the sound down.
-            app.session().setEffect(0, 2, EffectKind::Comp);
-            app.session().setEffectParam(0, 2, 0, 0.3f);
-            app.session().setEffect(kMasterTrack, 1, EffectKind::Comp);
-            app.session().setEffectParam(kMasterTrack, 1, 0, 0.45f);
-            if (view[7] == 0) app.fx().goTo(2, 1);
-            else app.fx().goTo(FxScreen::kMasterRow + 1, 1);
+        // The FX screen: the list on the left, the line picked large on the right.
+        //   fx          in the list, on the track's first effect (DELAY, TAPE)
+        //   fx-type     the same; with --hold-a its TYPE row and the list of effects
+        //   fx-pick     on an empty slot; with --hold-a the list of effects is open
+        //   fx-comp     COMP on the track, on its THRESHOLD, with its meter
+        //   fx-master   COMP on the master, on its THRESHOLD
+        //   fx-duck     DUCK on the track, on its SOURCE (a choice: one piece for each)
+        //   fx-choice   FILTER's TYPE (a choice)
+        //   fx-auto     a setting that moves with the pattern
+        //   fx-sends    the track's sends, on ECHO
+        //   fx-bus      in the list, on the SPACE bus; with --hold-a its short list
+        //   fx-level    the ECHO bus's LEVEL
+        // Each also with --hold-a.
+        Session& s = app.session();
+        s.setEffect(0, 0, EffectKind::Tape);
+        s.setEffect(0, 1, EffectKind::Filter);
+        s.setEffectParam(0, 1, 0, 0.45f);
+        s.setEffect(0, 2, EffectKind::Comp);
+        s.setEffectParam(0, 2, 0, 0.3f);
+        s.setEffect(kMasterTrack, 0, EffectKind::Comp);
+        s.setEffectParam(kMasterTrack, 0, 0, 0.45f);
+        s.setEffectParam(kSpaceBus, 0, 3, 0.8f);
+        s.setSend(0, 0, 0.35f);
+        s.setSend(0, 1, 0.1f);
+        s.setAutomation(0, 0, autoLaneOfSend(1), 0, 0.5f);
+        s.view = View::Effects;
+        FxScreen& fx = app.fx();
+        if (std::strcmp(view, "fx-sends") == 0) fx.goTo(FxScreen::kSendsRow, 1);
+        else if (std::strcmp(view, "fx-pick") == 0) {
+            s.setEffect(0, 1, EffectKind::None);
+            fx.goTo(1, 0);
+        } else if (std::strcmp(view, "fx-comp") == 0) fx.goTo(2, 1);
+        else if (std::strcmp(view, "fx-master") == 0) fx.goTo(FxScreen::kMasterRow, 1);
+        else if (std::strcmp(view, "fx-bus") == 0) fx.goTo(FxScreen::kBusRow + 1, 0);
+        else if (std::strcmp(view, "fx-level") == 0) fx.goTo(FxScreen::kBusRow, 4);
+        else if (std::strcmp(view, "fx-choice") == 0) fx.goTo(1, 3);
+        else if (std::strcmp(view, "fx-auto") == 0) {
+            for (int step = 0; step < kSteps; ++step) s.setAutomation(0, 0, autoLaneOfEffect(1, 0), step, 0.2f + 0.04f * static_cast<float>(step));
+            fx.goTo(1, 1);
         } else if (std::strcmp(view, "fx-duck") == 0) {
             // DUCK at work: the strip on AMOUNT is how far it is dipping.
-            app.session().setEffect(0, 2, EffectKind::Duck);
-            app.session().setEffectParam(0, 2, 1, 0.9f);
-            app.fx().goTo(2, 3);
-        }
-        else app.fx().goTo(0, 2);
+            s.setEffect(0, 2, EffectKind::Duck);
+            s.setEffectParam(0, 2, 1, 0.9f);
+            fx.goTo(2, 3);
+        } else fx.goTo(0, 0);
     } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
         app.session().view = View::Settings;
@@ -834,6 +847,8 @@ int main(int argc, char** argv) {
         drums.moveCursorTo(0, 0);
         tapKey(SDLK_UP);
         pushKey(SDLK_x, true);
+    } else if (holdA && std::strncmp(view, "fx", 2) == 0) {
+        pushKey(SDLK_x, true); // A, held on the FX screen: the list of effects, or a setting being turned
     } else if (holdA) {
         drums.setStep(drums.cursorLane(), drums.cursorStep(), 0.55f);
         drums.setNudge(drums.cursorLane(), drums.cursorStep(), 0.3f);

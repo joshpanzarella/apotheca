@@ -267,6 +267,17 @@ screen's special.
 
 ### The FX screen: two pages, same rows
 
+> **Replaced 2026-11-12.** The owner did not find the second page ("I just
+> didn't think to scroll down to the EVERYTHING page") and picked the "two
+> columns" design: a list of all eight lines always in view on the left, the
+> line picked drawn large on the right, no pages and no Y. The same day DELAY
+> and REVERB became **families with a TYPE** (CLEAN, TAPE; ROOM, HALL), each
+> type still its own effect underneath; PING, SPRING and PLATE will be new
+> types. The group jump went with the blind list (hold A now opens the list
+> of effects, and left / right is the TYPE). What follows in this section is
+> the two-page screen as it was built. The rules now: `CLAUDE.md`, "The FX
+> screen is two columns" and "A family is only how the list is shown".
+
 Today: four rows. After: **two pages of four rows**, drawn with the same boxes.
 **Y** flips the page. Moving down off the last row also goes to the next page.
 

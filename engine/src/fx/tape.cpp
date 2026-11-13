@@ -287,6 +287,9 @@ void reading(int index, float v, const float*, char* out, int size) {
 
 Effect* create() { return new Tape; }
 
+// TIME in steps, to match another delay's TIME by (changing TYPE).
+float amount(int index, float v) { return index == 0 ? static_cast<float>(kThirds[timeChoice(v)]) / 3.f : std::nanf(""); }
+
 } // namespace
 
 float tapeTire(float setting) {
@@ -303,6 +306,7 @@ float tapeTireStep(float tire, float to, float sampleRate) {
 const EffectInfo kTapeInfo = {
     "TAPE", 4, {"TIME", "FEEDBACK", "AGE", "MIX"}, {0.5625f, 0.4f, 0.35f, 0.35f}, // a dotted eighth, 48%
     "tape", EffectGroup::Delay, {kTimes, 0, 0, 0}, reading, create,
+    "", "DELAY", "TAPE", amount,
 };
 
 } // namespace fx
