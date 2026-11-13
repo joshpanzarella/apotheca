@@ -24,6 +24,37 @@
 
 using namespace apotheca;
 
+// Every new and delete of this program is counted (the engine's and the app's are C++'s): how
+// many bytes are held, and how many of each were made while gInRender was set. That is how a
+// test can say "the audio thread freed nothing" and "everything handed over came back".
+#include <cstdlib>
+#include <new>
+static std::atomic<long long> gHeldBytes{0};
+static std::atomic<long> gNewsInRender{0}, gDeletesInRender{0};
+static std::atomic<bool> gInRender{false};
+static const std::size_t kCountRoom = 16; // (in front of each piece: its size; and it stays aligned to 16)
+static void* countedNew(std::size_t size) {
+    void* const base = std::malloc(size + kCountRoom);
+    if (!base) throw std::bad_alloc();
+    *static_cast<std::size_t*>(base) = size;
+    gHeldBytes += static_cast<long long>(size);
+    if (gInRender) ++gNewsInRender;
+    return static_cast<char*>(base) + kCountRoom;
+}
+static void countedDelete(void* p) noexcept {
+    if (!p) return;
+    void* const base = static_cast<char*>(p) - kCountRoom;
+    gHeldBytes -= static_cast<long long>(*static_cast<std::size_t*>(base));
+    if (gInRender) ++gDeletesInRender;
+    std::free(base);
+}
+void* operator new(std::size_t size) { return countedNew(size); }
+void* operator new[](std::size_t size) { return countedNew(size); }
+void operator delete(void* p) noexcept { countedDelete(p); }
+void operator delete[](void* p) noexcept { countedDelete(p); }
+void operator delete(void* p, std::size_t) noexcept { countedDelete(p); }
+void operator delete[](void* p, std::size_t) noexcept { countedDelete(p); }
+
 static int failures = 0;
 #define CHECK(cond)                                                        \
     do {                                                                   \
@@ -2220,6 +2251,94 @@ void testTheEnginesMove() {
 // it is a time). Blocks of 256, what the program asks for: 5.33 ms of sound each. The block
 // that takes the move is timed against the same block with nothing in it (the median of each:
 // one late block on a busy machine is not the cost).
+// The audio thread makes nothing and frees nothing when scenes move, and nothing is lost: the
+// command's own piece and the scene the song has no more use for both come back through the
+// trash, and the program frees them (collectGarbage). Counted on every new and delete: after any
+// number of moves in and out, the program holds what it held, to the byte.
+void testNothingFreedOnTheAudioThreadAndAllOfItComesBack() {
+    { // (the counters can see)
+        const long long held = gHeldBytes;
+        gInRender = true;
+        int* const one = new int(1);
+        gInRender = false;
+        CHECK(gHeldBytes == held + static_cast<long long>(sizeof(int)) && gNewsInRender == 1 && gDeletesInRender == 0);
+        gInRender = true;
+        delete one;
+        gInRender = false;
+        CHECK(gHeldBytes == held && gDeletesInRender == 1);
+        gNewsInRender = 0;
+        gDeletesInRender = 0;
+    }
+    const int helpersWere = gHelpers;
+    for (int helpers : {0, 3}) {
+        gHelpers = helpers;
+        Bare bare;
+        {
+            std::unique_ptr<TrackImage> one(new TrackImage), two(new TrackImage);
+            hits(*one, 0, 0, 4);
+            hits(*one, 1, 2, 2);
+            hits(*one, 2, 1, 8);
+            hits(*two, 0, 4, 3);
+            bare.engine->setTrackImage(0, std::move(one));
+            bare.engine->setTrackImage(1, std::move(two));
+        }
+        bare.say(Command::SetSceneCount, 0, 3);
+        std::vector<float> out(2 * 256);
+        const auto render = [&] {
+            gInRender = true;
+            bare.engine->render(out.data(), 256);
+            gInRender = false;
+        };
+        // One scene in after scene 1, and out again: track 1 is handed a scene each way, track 2
+        // none (it is given the one that went). Then a move that is no move, its scene freed.
+        const auto round = [&] {
+            const long long before = gHeldBytes;
+            {
+                std::unique_ptr<SceneImage> scenes[kNumTracks];
+                scenes[0] = hitsScene(5, 1, 0.7f);
+                CHECK(bare.engine->moveScenes(1, 1, scenes, 4, 2, 0));
+            }
+            CHECK(gHeldBytes > before); // (what was handed over is on its way)
+            render();
+            bare.engine->collectGarbage();
+            {
+                std::unique_ptr<SceneImage> scenes[kNumTracks];
+                scenes[0] = hitsScene(6, 2);
+                CHECK(bare.engine->moveScenes(2, -1, scenes, 3, 1, 0));
+            }
+            render();
+            bare.engine->collectGarbage();
+            {
+                std::unique_ptr<SceneImage> scenes[kNumTracks];
+                scenes[0] = hitsScene(5, 1);
+                scenes[1] = hitsScene(5, 1);
+                CHECK(bare.engine->moveScenes(kMaxScenes, 1, scenes, 9, 9, 9));
+            }
+            render();
+            bare.engine->collectGarbage();
+        };
+        for (int i = 0; i < 3; ++i) round();
+        for (int playing = 0; playing < 3; ++playing) { // stopped, one scene going round, the song through
+            if (playing) bare.say(Command::Play, 0, 0, playing == 1 ? 1 : 0);
+            render();
+            bare.engine->collectGarbage();
+            const long long held = gHeldBytes;
+            for (int i = 0; i < 20; ++i) {
+                round();
+                for (int block = 0; block < 5; ++block) render();
+            }
+            bare.engine->collectGarbage();
+            CHECK(gHeldBytes == held); // nothing lost on the way, nothing kept
+            unsigned heard = 0;
+            bare.engine->playScene(&heard);
+            CHECK(heard == static_cast<unsigned>(3 * (3 + 20 * (playing + 1))));
+        }
+        CHECK(gNewsInRender == 0 && gDeletesInRender == 0); // the audio thread, and the helpers beside it
+        CHECK(bare.engine->dropped() == 0);
+    }
+    gHelpers = helpersWere;
+}
+
 void measure() {
     const double ms = 1000.0 / static_cast<double>(SDL_GetPerformanceFrequency());
     const auto middle = [](std::vector<double> v) {
@@ -2307,7 +2426,7 @@ int main(int argc, char** argv) {
         {"testUndoWhileTheFirstOfTheTwoPlays", testUndoWhileTheFirstOfTheTwoPlays, false}, {"testTheLastSceneIsPlaying", testTheLastSceneIsPlaying, false},
         {"testTheSongIsLongerAtOnce", testTheSongIsLongerAtOnce, false}, {"testStopped", testStopped, false}, {"testTheEngineHasTheWholeSong", testTheEngineHasTheWholeSong, false},
         {"testWriteGoesToTheNewScene", testWriteGoesToTheNewScene, false}, {"testTheFramesBeforeTheEngineHears", testTheFramesBeforeTheEngineHears, false}, {"testTheCommand", testTheCommand, false},
-        {"testTheEnginesMove", testTheEnginesMove, false}, {"testASceneHandedOverIsWhatTheCommandsWrite", testASceneHandedOverIsWhatTheCommandsWrite, false},
+        {"testTheEnginesMove", testTheEnginesMove, false}, {"testNothingFreedOnTheAudioThreadAndAllOfItComesBack", testNothingFreedOnTheAudioThreadAndAllOfItComesBack, false}, {"testASceneHandedOverIsWhatTheCommandsWrite", testASceneHandedOverIsWhatTheCommandsWrite, false},
         {"testAnArpeggioGoesWithItsScene", testAnArpeggioGoesWithItsScene, true}, {"testOnceThroughAfterAMove", testOnceThroughAfterAMove, true},
         {"testTheCopyIsWhatTheRollWrites", testTheCopyIsWhatTheRollWrites, true}, {"testTheSixteenthSceneIsGivenBack", testTheSixteenthSceneIsGivenBack, false},
         {"testMovesLostToAFullQueue", testMovesLostToAFullQueue, false}, {"testTakenBackAfterSomethingUndoDoesNotKnow", testTakenBackAfterSomethingUndoDoesNotKnow, false},
