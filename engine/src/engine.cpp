@@ -1396,7 +1396,7 @@ void Engine::fireStep() {
                     if (note.play.count && !telling_) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
                 }
             }
-            telling_ = false;
+            // (`telling_` is false again here: the last time through is the real one.)
         }
     }
     // Automation: where each lane is to be by the middle of this step.

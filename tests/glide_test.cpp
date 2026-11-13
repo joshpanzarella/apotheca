@@ -359,6 +359,22 @@ static void testEachTypeIsPlayed() {
         const int want[4] = {60, 48, 48, 60};
         for (int round = 0; round < 4; ++round) CHECK(rig.at(round * 16 + 6, 50) && rig.at(round * 16 + 6, 50)->from == want[round] && rig.at(round * 16 + 6, 70)->from == 60);
     }
+    // A long song: what was told of a step is forgotten when the next comes, so the list of
+    // what is coming never fills (it holds 128), and the fiftieth time round is as the first.
+    {
+        Rig rig;
+        rig.engine->send(glideFrom(kFromPaired));
+        rig.engine->send(noteAt(0, 2, 48, 1.f));
+        rig.engine->send(noteAt(1, 2, 60, 1.f));
+        rig.engine->send(noteAt(2, 6, 50, 1.f, packed(0, kGlideOne)));
+        rig.engine->send(noteAt(3, 6, 70, 1.f, packed(0, kGlideOne)));
+        rig.engine->send(noteAt(4, 10, 45, 1.f, packed(0, kGlideOne), -0.25f));
+        rig.engine->send(noteAt(5, 10, 75, 1.f, packed(0, kGlideOne), -0.25f));
+        rig.play(16 * 50);
+        int low = 0, high = 0, early = 0;
+        for (const Began& b : rig.log) low += b.pitch == 50 && b.from == 48, high += b.pitch == 70 && b.from == 60, early += b.pitch == 45 && b.from == 50;
+        CHECK(low == 50 && high == 50 && early == 50);
+    }
     // A track taken away and another put in its place: TOP again.
     {
         Rig rig;
@@ -440,34 +456,37 @@ static void testTypesWithChords() {
                 Rig rig;
                 rig.engine->send(glideFrom(type));
                 const int first[4] = {50, 55, 59, 62}, chord[3] = {60, 64, 67};
-                for (int k = 0; k < 4; ++k) rig.engine->send(chordKey(k, 2, first[k], 3.f, k, 4, play, nudge));
-                // The second chord, a bass note under it and a melody note over it, all in one moment.
-                for (int k = 0; k < 3; ++k) rig.engine->send(chordKey(4 + k, 8, chord[k], 3.f, k, 3, play, nudge));
-                rig.engine->send(noteAt(7, 8, 40, 1.f, packed(0, kGlideFull), nudge));
-                rig.engine->send(noteAt(8, 8, 80, 1.f, packed(0, kGlideFull), nudge));
+                // (The loose notes are in the slots before the chords': the engine comes to them first.)
+                for (int k = 0; k < 4; ++k) rig.engine->send(chordKey(10 + k, 2, first[k], 3.f, k, 4, play, nudge));
+                // The second chord, a bass note under it, a melody note over it and one between its keys, all in one moment.
+                for (int k = 0; k < 3; ++k) rig.engine->send(chordKey(14 + k, 8, chord[k], 3.f, k, 3, play, nudge));
+                rig.engine->send(noteAt(0, 8, 40, 1.f, packed(0, kGlideFull), nudge));
+                rig.engine->send(noteAt(1, 8, 80, 1.f, packed(0, kGlideFull), nudge));
+                rig.engine->send(noteAt(2, 8, 63, 1.f, packed(0, kGlideFull), nudge));
                 // Notes while the second chord sounds (an arpeggio is in the middle of its round), and after it.
-                rig.engine->send(noteAt(9, 10, 61, 0.5f, packed(0, kGlideFull)));
-                rig.engine->send(noteAt(10, 13, 30, 0.5f, packed(0, kGlideFull)));
-                rig.engine->send(noteAt(11, 13, 100, 0.5f, packed(0, kGlideFull)));
+                rig.engine->send(noteAt(3, 10, 61, 0.5f, packed(0, kGlideFull)));
+                rig.engine->send(noteAt(4, 13, 30, 0.5f, packed(0, kGlideFull)));
+                rig.engine->send(noteAt(5, 13, 100, 0.5f, packed(0, kGlideFull)));
                 rig.play(16);
-                const Began *bass = rig.at(8.0 + nudge, 40), *melody = rig.at(8.0 + nudge, 80), *during = rig.at(10, 61), *low = rig.at(13, 30), *high = rig.at(13, 100);
-                CHECK(bass && melody && during && low && high);
-                if (!bass || !melody || !during || !low || !high) continue;
-                bool ok = about(bass->seconds, 6 * kStepSeconds) && about(melody->seconds, 6 * kStepSeconds) && about(during->seconds, (2.0 - nudge) * kStepSeconds) && about(low->seconds, 3 * kStepSeconds) && about(high->seconds, 3 * kStepSeconds);
-                if (type == kFromTop) ok = ok && bass->from == 62 && melody->from == 62 && during->from == 80 && low->from == 61 && high->from == 61;
-                // PAIRED: the moment at 8 is five keys (40, 60, 64, 67, 80) from four; 61 is alone, from the top of those five.
-                if (type == kFromPaired) ok = ok && bass->from == 50 && melody->from == 62 && during->from == 80 && low->from == 61 && high->from == 61;
-                if (type == kFromNearest) ok = ok && bass->from == 50 && melody->from == 62 && during->from == 60 && low->from == 61 && high->from == 61;
+                const Began *bass = rig.at(8.0 + nudge, 40), *melody = rig.at(8.0 + nudge, 80), *middle = rig.at(8.0 + nudge, 63), *during = rig.at(10, 61), *low = rig.at(13, 30), *high = rig.at(13, 100);
+                CHECK(bass && melody && middle && during && low && high);
+                if (!bass || !melody || !middle || !during || !low || !high) continue;
+                bool ok = about(bass->seconds, 6 * kStepSeconds) && about(melody->seconds, 6 * kStepSeconds) && about(middle->seconds, 6 * kStepSeconds) && about(during->seconds, (2.0 - nudge) * kStepSeconds) && about(low->seconds, 3 * kStepSeconds) && about(high->seconds, 3 * kStepSeconds);
+                if (type == kFromTop) ok = ok && bass->from == 62 && melody->from == 62 && middle->from == 62 && during->from == 80 && low->from == 61 && high->from == 61;
+                // PAIRED: the moment at 8 is six keys (40, 60, 63, 64, 67, 80) from four: the third of six comes from the
+                // second of four (of the three loose notes alone it would be the third). 61 is alone, from the top of the six.
+                if (type == kFromPaired) ok = ok && bass->from == 50 && melody->from == 62 && middle->from == 55 && during->from == 80 && low->from == 61 && high->from == 61;
+                if (type == kFromNearest) ok = ok && bass->from == 50 && melody->from == 62 && middle->from == 62 && during->from == 60 && low->from == 61 && high->from == 61;
                 if (type == kFromRandom) {
                     const auto in = [](int key, std::initializer_list<int> keys) {
                         for (int k : keys)
                             if (k == key) return true;
                         return false;
                     };
-                    ok = ok && in(bass->from, {50, 55, 59, 62}) && in(melody->from, {50, 55, 59, 62}) && in(during->from, {40, 60, 64, 67, 80}) && low->from == 61 && high->from == 61;
+                    ok = ok && in(bass->from, {50, 55, 59, 62}) && in(melody->from, {50, 55, 59, 62}) && in(middle->from, {50, 55, 59, 62}) && in(during->from, {40, 60, 63, 64, 67, 80}) && low->from == 61 && high->from == 61;
                 }
                 CHECK(ok);
-                if (!ok) std::printf("  chord (strum %d, time %d), %s, nudge %.2f: bass from %d (%.3f s), melody from %d, during from %d (%.3f s), after from %d and %d\n", play.strum, play.time, glideFromName(type), nudge, bass->from, bass->seconds, melody->from, during->from, during->seconds, low->from, high->from);
+                if (!ok) std::printf("  chord (strum %d, time %d), %s, nudge %.2f: bass from %d (%.3f s), melody from %d, middle from %d, during from %d (%.3f s), after from %d and %d\n", play.strum, play.time, glideFromName(type), nudge, bass->from, bass->seconds, melody->from, middle->from, during->from, during->seconds, low->from, high->from);
             }
         }
     }
@@ -845,6 +864,8 @@ static void testTheKeysAndThePicking() {
         // A note that was not told, between the two moments: alone. One not told that begins with the three: one of four.
         CHECK(trail.from(kFromPaired, 40, 4.25, 0).pitch == 70);
         CHECK(trail.from(kFromPaired, 80, 4.5, 0).pitch == 50 && trail.from(kFromPaired, 99, 4.5, 0).pitch == 70 && trail.from(kFromPaired, 91, 4.5 + 1.0 / 512.0, 0).pitch == 70);
+        // One of the three that begins a hair after the first of them, asked before any has begun: still one of three.
+        CHECK(trail.from(kFromPaired, 90, 4.5 + 1.0 / 512.0, 0).pitch == 50 && trail.from(kFromPaired, 80, 4.5 + 1.0 / 512.0, 0).pitch == 50);
         // The next step: what was told before it is forgotten, what is told for later is kept.
         trail.tellComing(60, 5.0);
         trail.window(5.0);
@@ -862,6 +883,29 @@ static void testTheKeysAndThePicking() {
         CHECK(kGlideComing == 128 && trail.comingCount == kGlideComing);
         CHECK(trail.last.any && trail.last.at == 0.0 && trail.last.keys.count() == 2); // (what stands after the list in the trail is whole)
         CHECK(trail.from(kFromPaired, 0, 4.0, 0).pitch == 40 && trail.from(kFromPaired, 127, 4.0, 0).pitch == 80 && trail.from(kFromPaired, 63, 4.0, 0).pitch == 40 && trail.from(kFromPaired, 64, 4.0, 0).pitch == 80);
+    }
+    // A cell of more notes than can be told at once (two bars, four to a step: 128, and twice
+    // round is 256): each step's are told when it comes and forgotten after, so the last are
+    // paired as the first are.
+    {
+        std::vector<GlideNote> notes(2 * kGlideNotes);
+        std::vector<GlideLine> lines(2 * kGlideNotes);
+        for (int i = 0; i < 2 * kGlideNotes; ++i) {
+            GlideNote& n = notes[static_cast<std::size_t>(i)];
+            const int step = i / 4, key = i % 4;
+            n.sounds = true, n.step = step % 16, n.glide = kGlideHalf;
+            n.pitch = 40 + (step % 2) * 2 + key * 10; // 40 50 60 70, then 42 52 62 72, and so on
+        }
+        // (A bar's slots: the first bar holds steps 0..15, the second the same again.)
+        glideLines(notes.data(), 2, 32, lines.data(), kFromPaired, 1);
+        int wrong = 0;
+        for (int i = 0; i < 2 * kGlideNotes; ++i) {
+            const int step = i / 4, key = i % 4;
+            wrong += lines[static_cast<std::size_t>(i)].from != 40 + ((step + 1) % 2) * 2 + key * 10; // each from the key in its own place, a step before
+        }
+        CHECK(wrong == 0);
+        glideLines(notes.data(), 2, 32, lines.data(), kFromTop, 1);
+        CHECK(lines[0].from == 72 && lines[2 * kGlideNotes - 1].from == 70);
     }
     // The roll's lines, by type: a chord of four, then two notes; then four notes after those two.
     {

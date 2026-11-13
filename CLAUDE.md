@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (25) | `cd build && ctest -j8` (70 to 85 s; `nextscene` is the longest) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -535,7 +535,7 @@ effect in those two groups and fails one that does not.
   there.**
 - **The song `nextscene_test` plays (`fill`) has a track of chords strummed,
   as arpeggios, humanised, ratcheted, thrown, in every ORDER, and a glide of
-  every length**, so every proof of the sound has them in flight when the
+  every length, on a track whose GLIDE FROM is PAIRED**, so every proof of the sound has them in flight when the
   scene moves. The proofs marked `sound` in its table run again with the
   tracks on three helper threads, and the song left alone is held to the same
   sound on none and on three. `nextscene_test --only NAME...` runs just
@@ -556,8 +556,9 @@ effect in those two groups and fails one that does not.
   hints in full.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
-  field's label says it; the dice alone at the left (a chord: at the right); nothing under a field
-  nothing sets (NUDGE). **The chip and the field take their x from one
+  field's label says it; the dice alone at the left (a chord: at the right). On a note the
+  fourth chip is L1 / R1 under GLIDE FROM, and NUDGE, which nothing sets there, is not drawn
+  until X is let go. **The chip and the field take their x from one
   constant** (`kFx...X` in `pattern_layout.hpp`; `kStripHeld...X` and
   `kChordFx...X` in `note_marks.hpp`): never write the number twice. On a
   chord LEFT / RIGHT is under the picked effect's large value at the left
@@ -565,7 +566,7 @@ effect in those two groups and fails one that does not.
   right-hand end (owner, 2026-11-13). The chips are the bar's own (`hintChip`): do not draw
   another kind. The help's words need eleven pixels clear after the last
   chip, or they give way: they do on a drum hit and a chord, where THROW's
-  chip is at the right. `tests/under_test.cpp` reads all of it off the drawn
+  chip is at the right, and on a note, where GLIDE FROM's is. `tests/under_test.cpp` reads all of it off the drawn
   screen, and that the plain bar is back, pixel for pixel, with X let go.
 - **The device writes SEL, never SELECT** (owner, 2026-11-12). A hint's key
   and a help-card key are written in full and drawn short (`keyWords`); any
@@ -583,6 +584,7 @@ effect in those two groups and fails one that does not.
   grids). **Hold X + A is THROW** (`fxThrow` on both): OFF, ECHO, SPACE, BOTH.
   The check for X held comes before A's own jobs, so A alone still places.
   **The dice do not throw**, and do not take a THROW away (owner's decision).
+  **Hold X + L1 / R1 on a note is the track's GLIDE FROM** (the glide rules, below).
 - **Sample names from `wavNames` have no `.wav` ending.**
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
@@ -636,8 +638,9 @@ effect in those two groups and fails one that does not.
   - **A spread chord is still one moment to a glide.** Its notes say nothing
     to the `GlideTrail` when they sound (`kUntold`); a waiting note that only
     tells (`kTellOnly`) names each key at the chord's own moment. So what
-    follows slides from its top key, as `Project::glideLines` draws, however
-    it is strummed. `chordfx_test` and `glideapp_test` hold both.
+    follows slides from its keys as written (which one: the track's GLIDE
+    FROM; TOP is the top key), as `Project::glideLines` draws, however it is
+    strummed. `chordfx_test`, `glide_test` and `glideapp_test` hold it.
   - **An arpeggio is one clock for the chord** (`Track::Arp`, three a track:
     one still playing, the next chord's waiting for its nudge, the one after
     asked a step ahead; the one that begins ends the one playing; with two,
@@ -697,13 +700,63 @@ effect in those two groups and fails one that does not.
   `glideSteps`, `glideLines`). Do not work either out anywhere else.
   The rule: the last note the track began (Play clears it); a ratchet's later
   pieces are not notes beginning; notes that begin within 1/256 of a step are
-  one moment (none slides from another, what follows slides from the highest);
-  FULL is the time since that note began; on a ratchet never more than 85% of
+  one moment (none slides from another, what follows slides from one of its
+  keys: GLIDE FROM, next rule, says which);
+  FULL is the time since that moment began; on a ratchet never more than 85% of
   the first piece. The engine counts time in steps since Play (`stepsFired_`
   plus the nudge), not in samples, so both sides get the same numbers.
   `glide_test` holds the rule to the engine with a listening synth;
   `glideapp_test` holds `Project::glideLines` (what the roll draws) to the
   engine through the Session, chords included.
+- **GLIDE FROM is the track's choice of which key of the moment before**
+  (owner, 2026-11-13: "I always like the option"; `glideFromKey` in
+  `glide_rule.hpp`). The numbers are in songs, appended: 0 TOP (the highest,
+  as it was), 1 PAIRED, 2 NEAREST (a tie: the higher), 3 RANDOM. A number
+  nobody knows is TOP (`glideFromKind`). The lengths do not change; "that
+  note" is the key picked, and FULL counts from its moment.
+  - **PAIRED**: new `i` of `n` (by pitch) from old `round(i * (m - 1) / (n - 1))`,
+    a half rounded up; one note alone, from the top. **It counts every note
+    of the moment**, a chord's keys too, gliding or not: a bass note under a
+    chord comes from the bottom, a melody note over it from the top.
+  - **The trail keeps every key of the last two moments** (`GlideKeys`: 128
+    bits, one a key, so there is no cap and nothing is left out).
+  - **PAIRED must know a note's whole moment when its first note begins.** So
+    a PAIRED track's step is gone through twice by the one set of conditions
+    (`fireStep`: `telling_`, then for real): the first time `startNote` and
+    `startChordNote` only tell the trail what is coming (`tellComing`) and
+    change nothing. The list holds 128 (`kGlideComing`: all a step can ask);
+    one more is not kept and not counted. `glideLines` tells in the same whole
+    steps. **`telling_` is false outside that loop**; anything new that begins
+    a pattern's note inside `fireStep` goes through those two functions.
+  - **Known, held by `testPairedAcrossAStepLine`, not hidden**: two notes
+    within 1/256 of a step with a step line between them. The first is told a
+    step before the second, so it counts as alone (from the top). The roll
+    draws the same. Also: PAIRED turned on mid-step, that one step's notes
+    count as alone.
+  - **RANDOM is a roll for where and when** (`glideSeed(track, at)`: the track
+    and the whole step nearest the moment, counted from Play; then
+    `chordUnit(seed, kRollGlide, pitch)`). Never a generator walked, never the
+    scene's number. **The roll draws the first time the scene plays after
+    Play** (`glideLines`' `timesRound` 0; later rounds roll anew, and a scene
+    that is not first in the song is first played at another time than the
+    roll assumes).
+  - **It is the track's, not the patterns'**: `TrackData::glideFrom`,
+    `Session::setGlideFrom`, `Command::SetGlideFrom`. Not in a track image,
+    not in a scene, so a scene move carries nothing for it. `applyProject`
+    tells every track's. `RemoveInstrument` puts the engine's back to TOP.
+    **Not in undo** (like a send; the owner's call). In a song file:
+    `glidefrom N`, a line of a synth track's own, left out at TOP.
+  - **The gesture: X held on a note, L1 back, R1 on**, a click, stopping at
+    each end (`NoteScreen::fxFrom`). Zoom and carry wait for X to be let go,
+    on a note only: on a chord L1 / R1 are as they were. The dice leave it
+    alone. On the strip it has NUDGE's place while X is held
+    (`kStripHeldFromX`): dim while the note has no glide, brass when not TOP.
+  - Tests: `glide_test` (each type by hand-worked keys, chords strummed and
+    arpeggios, ratchets, RANDOM's rolls, block lengths and helpers, the roll
+    against the engine under each type), `glideapp_test` (the Session, the
+    song file, undo, the lines' lean off the screen), `under_test` (the strip
+    and the gesture), `nextscene_test` (`fill`'s chord track is PAIRED; one
+    proof again under RANDOM).
 - **The roll's glide line ends at the note's start** (the owner's picture);
   the slide is heard FROM the note's start. A line may begin bars before its
   note (FULL), or before the first bar's top, which is the scene's end: so
@@ -813,6 +866,7 @@ effect in those two groups and fails one that does not.
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
 | ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
+| ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

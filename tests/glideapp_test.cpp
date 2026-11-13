@@ -494,7 +494,7 @@ void testGlideFromInTheSongFile() {
         CHECK(songText(*back) == text);
         // The line is in its own track's part of the file: after that track begins, before the next does.
         std::string moved = text;
-        moved.erase(moved.find(line) + 1, line.size() - 1);
+        if (moved.find(line) != std::string::npos) moved.erase(moved.find(line) + 1, line.size() - 1);
         CHECK(moved == plain);
     }
     // Both synth tracks, each its own.
@@ -525,7 +525,7 @@ void testGlideFromInTheSongFile() {
     }
     {
         std::string changed = text;
-        changed.replace(changed.find("glidefrom 2"), 11, "glidefrom 3.7"); // (a number between two: the one under it)
+        if (changed.find("glidefrom 2") != std::string::npos) changed.replace(changed.find("glidefrom 2"), 11, "glidefrom 3.7"); // (a number between two: the one under it)
         std::unique_ptr<Project> back(new Project);
         CHECK(parseSong(changed, *back) && back->tracks[1].glideFrom == kFromRandom);
     }

@@ -404,6 +404,17 @@ void testANote() {
     rig.key(SDLK_w, true);
     CHECK(roll.carrying() && rig.project().tracks[1].glideFrom == kFromPaired);
     rig.key(SDLK_w, false);
+    // L1 already down when X takes hold of the note, and let go under it: that is not a tap of the zoom.
+    const int zoomNow = rig.app.session().octavesShown();
+    rig.key(SDLK_q, true);
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    rig.key(SDLK_q, false);
+    rig.frames(1);
+    CHECK(rig.app.session().octavesShown() == zoomNow && rig.project().tracks[1].glideFrom == kFromPaired);
+    rig.key(X, false);
+    rig.frames(1);
+    CHECK(rig.app.session().octavesShown() == zoomNow);
 }
 
 // ---- the piano roll: a chord -------------------------------------------------------------------
