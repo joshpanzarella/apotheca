@@ -87,6 +87,9 @@ extern const EffectInfo kChorusInfo; // chorus.cpp
 extern const EffectInfo kCompInfo;   // comp.cpp
 extern const EffectInfo kSaturateInfo; // saturate.cpp
 extern const EffectInfo kDuckInfo;   // duck.cpp
+extern const EffectInfo kPingInfo;   // ping.cpp
+extern const EffectInfo kSpringInfo; // spring.cpp
+extern const EffectInfo kPlateInfo;  // plate.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
