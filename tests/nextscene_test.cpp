@@ -54,6 +54,20 @@ void operator delete(void* p) noexcept { countedDelete(p); }
 void operator delete[](void* p) noexcept { countedDelete(p); }
 void operator delete(void* p, std::size_t) noexcept { countedDelete(p); }
 void operator delete[](void* p, std::size_t) noexcept { countedDelete(p); }
+// (The kind that gives back nullptr: std::stable_sort asks for its working room so, in the roll's
+// glideLines. The library's own calls the one above; a sanitizer's does not, and its piece would
+// then be freed here as one of ours.)
+static void* countedNewOrNone(std::size_t size) noexcept {
+    try {
+        return countedNew(size);
+    } catch (...) {
+        return nullptr;
+    }
+}
+void* operator new(std::size_t size, const std::nothrow_t&) noexcept { return countedNewOrNone(size); }
+void* operator new[](std::size_t size, const std::nothrow_t&) noexcept { return countedNewOrNone(size); }
+void operator delete(void* p, const std::nothrow_t&) noexcept { countedDelete(p); }
+void operator delete[](void* p, const std::nothrow_t&) noexcept { countedDelete(p); }
 
 static int failures = 0;
 #define CHECK(cond)                                                        \

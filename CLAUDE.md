@@ -477,7 +477,7 @@ effect in those two groups and fails one that does not.
   pairs, held to twelve blocks past the last key (a busy machine made minutes
   of sound otherwise). It is clean under the thread sanitizer
   (`-fsanitize=thread`, about nine minutes; sixteen with its build, on a busy
-  desk, since the chord track and the helpers' round: clean again 2026-11-13); run that again after a change to
+  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
   what a scene move hands over.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
