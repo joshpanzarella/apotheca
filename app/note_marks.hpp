@@ -113,10 +113,12 @@ inline void glideLineRects(double x0, double y0, double x1, double y1, int size,
 // the note is thrown, to leave THROW its room.
 constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f, kStripSpace = 10.f;
 inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
-// With X held the strip is RATCHET, GLIDE (at 250), THROW and NUDGE: the last two stand here,
-// clear of the longest a glide's length reads ("1/4 STEP").
-constexpr float kStripHeldRatchetX = 160.f, kStripHeldGlideX = 250.f, kStripHeldThrowX = 385.f, kStripHeldNudgeX = 500.f;
-// (The bar under the strip draws each field's button at the same x: ui::hintsUnder. NUDGE has none.)
+// With X held the strip is RATCHET, GLIDE (at 250), THROW and GLIDE FROM (the track's: which
+// key of the moment before its glides come from): the last two stand here, clear of the
+// longest a glide's length reads ("1/4 STEP"). NUDGE, which nothing sets with X held, is not
+// drawn then; it is back when X is let go.
+constexpr float kStripHeldRatchetX = 160.f, kStripHeldGlideX = 250.f, kStripHeldThrowX = 385.f, kStripHeldFromX = 500.f;
+// (The bar under the strip draws each field's button at the same x: ui::hintsUnder.)
 // How wide NUDGE's value may be: up to a gap before whatever comes after it.
 inline float stripNudgeRoom(bool effect, bool thrown) {
     return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;

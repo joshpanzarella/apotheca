@@ -1348,8 +1348,9 @@ static void testNoteStripGlideFits() {
         const int font = stripThrowFont(space, end, &x);
         CHECK(x >= end && x + space[font] <= kStripRight && font <= 1);
     }
-    CHECK(kStripHeldThrowX + space[0] + kStripSpace <= kStripHeldNudgeX);
-    CHECK(stripFont(early, kStripRight - kStripHeldNudgeX) == 0); // "45% EARLY" as large as ever
+    CHECK(kStripHeldThrowX + space[0] + kStripSpace <= kStripHeldFromX);
+    // (GLIDE FROM stands there with X held; that each of its values is drawn large and fits is read off the screen in under_test.)
+    CHECK(stripFont(early, stripNudgeRoom(false, false)) == 0); // "45% EARLY" as large as ever, where NUDGE stands with nothing held
     CHECK(kStripHeldGlideX == 250.f && kStripHeldThrowX > 320.f); // (THROW stood at 320 when a glide read ON or OFF)
 }
 

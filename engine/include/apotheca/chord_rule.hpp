@@ -125,7 +125,7 @@ inline std::uint32_t chordSeed(int track, int bar, int step, long stepsSincePlay
     h = chordHash(h ^ (static_cast<std::uint32_t>(stepsSincePlay) * 0x27D4EB2Fu + 3u));
     return h;
 }
-enum ChordRoll : std::uint32_t { kRollTime = 1, kRollLevel = 2, kRollLengths = 3, kRollOrder = 4 };
+enum ChordRoll : std::uint32_t { kRollTime = 1, kRollLevel = 2, kRollLengths = 3, kRollOrder = 4, kRollGlide = 5 }; // (kRollGlide: glide_rule.hpp, GLIDE FROM RANDOM)
 // A number from 0 up to (not reaching) 1 for one thing about one note of that playing.
 inline double chordUnit(std::uint32_t seed, ChordRoll what, int which) {
     const std::uint32_t h = chordHash(seed ^ chordHash(static_cast<std::uint32_t>(what) * 0x10000u + static_cast<std::uint32_t>(which) + 0x51ED270Bu));

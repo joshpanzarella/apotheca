@@ -954,6 +954,7 @@ is loud; holding A shapes it the way it is drawn.
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |
 | **Hold X on a note**, up / down | **GLIDE**: up is one length longer, down one shorter, down to OFF. The note slides in from the note before it |
 | **Hold X on a note**, A | **THROW**: the note goes to ECHO, to SPACE, to both; off |
+| **Hold X on a note**, L1 / R1 | **GLIDE FROM**, for the whole track: which key of a chord its glides come from. R1 is the next of TOP, PAIRED, NEAREST, RANDOM; L1 the one before. It stops at each end |
 | **Hold R1 on a note** and move | Carry the note (or the whole chord) under the cursor. **D-pad:** to another key, or a whole step. **Stick up / down:** it slides freely in time, off the grid. It stops at the ends of the bar and will not land on another note. |
 | L1 | Zoom. A tap goes closer: 2 octaves, 1, then round to 3. Held, up is closer and down is further. |
 
@@ -988,7 +989,7 @@ play, one click per push. The strip at the bottom shows the values.
 
 | Thing | How it works |
 | --- | --- |
-| Which note it slides from | The last note the track began before this one, on any key. A chord counts as its top key. |
+| Which note it slides from | The last note the track began before this one, on any key. After a chord (or any notes that began together), **GLIDE FROM** says which of its keys: see below. |
 | The lengths | In steps, so they follow the tempo. **FULL** takes as long as it has been since the note it slides from began: a slow slide between two notes far apart, a quick one between two close together. |
 | The line on the roll | A slanted purple line. It starts on the key the note slides from and ends at the note's start. Its height is the slide's length. The slide itself is heard from the note's start on. |
 | A slide over more than one bar | FULL from a note bars back: the line is in every bar it crosses, from the bar its source note is in to the bar of its own note. |
@@ -997,8 +998,34 @@ play, one click per push. The strip at the bottom shows the values.
 | Nothing to slide from | The first note after pressing play, and a note on the same key as the one before: no slide, no line. The corner mark stays. |
 | Notes that begin together | None slides from another of them. Each slides from the note before them all. |
 | With a ratchet | The slide is over before the second piece: at most 85% of the first piece, however long it is set. |
-| The strip | With X held: GLIDE and its length. Without: the length under GLIDE, or "x3 GLIDE" beside a ratchet. |
+| The strip | With X held: GLIDE and its length, and the track's GLIDE FROM where NUDGE stands otherwise. Without: the length under GLIDE, or "x3 GLIDE" beside a ratchet. |
 | Old songs | A glide that was ON is 1/2 STEP, which is what it was. On Phazed it was 92 ms at any tempo; it is now half a step there too. |
+
+**GLIDE FROM: which key of a chord a glide comes from.** A setting of the
+**track**, not of a note. Hold **X** on any note; **R1** is the next, **L1**
+the one before. Every line on the roll moves at once.
+
+"Moment" below: notes that begin together (a chord, or loose notes on one
+step). A single note after a single note is the same under every type.
+
+| Type | Each gliding note comes from | 4 keys, then 2 notes | 2 keys, then 4 notes |
+| --- | --- | --- | --- |
+| **TOP** | The highest key of the moment before. What it always did. | Both from the top key | All four from the upper key |
+| **PAIRED** | Its opposite number, by pitch order: lowest from lowest, highest from highest, those between spread evenly. One note alone: from the top. | Bottom from bottom, top from top | Lower two from the lower key, upper two from the upper |
+| **NEAREST** | The key nearest in pitch. A tie: the higher. Its own key: no slide. | Each from whichever key is closest | The same |
+| **RANDOM** | A key of the moment before, rolled each time it plays. Play from the top gives the same rolls again. | Each from any of the four | Each from either |
+
+| Thing | How it works |
+| --- | --- |
+| PAIRED counts every note of the moment | A chord's keys too, gliding or not. So a bass note under a chord comes from the bottom of the chord before, a melody note over it from the top. |
+| FULL | As long as it has been since that moment began, whichever of its keys is picked. |
+| RANDOM on the roll | The lines are as they are the first time the scene plays after Play. Later times round roll anew. |
+| The strip, X held | GLIDE FROM and its value: dim while this note has no glide, brass when it is not TOP. |
+| The dice | Leave it alone. It is the track's. |
+| Undo | Does not take it back (like a send or a sound). One click puts it back. |
+| In the song file | `glidefrom 1` (PAIRED), `2` (NEAREST), `3` (RANDOM), on a line of the track's own. Nothing at TOP. |
+| Not on a chord | X held on a chord shows the chord's six effects; L1 / R1 there are as they were. |
+| A known oddity | PAIRED, two notes under half a millisecond apart with a step line between them: the first is taken as a note alone (from the top). |
 
 ### Chords
 
@@ -1070,7 +1097,7 @@ How the effects meet each other, and the edges:
 | HUMAN TIME in an arpeggio | A note never moves more than a quarter of the way to the next, so the order holds |
 | HUMAN TIME and the next chord | A note that comes early can start up to 12 ms before the chord before it has ended |
 | THROW | The send is open from the chord's first note to the chord's end, strummed or not, however short LENGTHS leaves the notes |
-| GLIDE after the chord | A gliding note after it still slides from the chord's top key, counted from the chord's own moment, as the roll draws it. A strum does not change that |
+| GLIDE after the chord | A gliding note after it still slides from the chord's keys as written (which one: the track's GLIDE FROM; TOP is its top key), counted from the chord's own moment, as the roll draws it. A strum does not change that |
 | X (hear) | Plays the chord plain, all at once. The effects are heard when the song plays |
 | Swap (hold Y) | The new chord keeps the effects |
 | Break into notes (hold Y, B) | The loose notes keep the ratchet and the THROW. **They keep nothing of the other five**: a strum belongs to a chord |

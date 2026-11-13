@@ -144,7 +144,10 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
 // CHORD EFFECTS: what the step clock's own work costs. Eleven tracks, each a sampler with no
 // recording (so there is next to no sound to work out), four chords of four keys a bar on
 // each; `play` is what every chord does. The best of five runs of ten seconds.
-static double chordSong(ChordPlay play, int ratchet) {
+// `from`: -1, or the tracks' GLIDE FROM, and then two notes that glide follow each chord (so
+// the choice of key is worked out eight times a bar on each track; PAIRED also goes through
+// each step's notes twice).
+static double chordSong(ChordPlay play, int ratchet, int from = -1) {
     std::unique_ptr<Engine> engine(new Engine);
     Command c;
     for (int t = 1; t < kNumTracks; ++t) {
@@ -165,6 +168,25 @@ static double chordSong(ChordPlay play, int ratchet) {
                 c.play.count = 4;
                 engine->send(c);
             }
+        if (from < 0) continue;
+        for (int chord = 0; chord < 4; ++chord)
+            for (int key = 0; key < 2; ++key) {
+                c = Command();
+                c.type = Command::SetNote;
+                c.track = t;
+                c.a = 16 + chord * 2 + key;
+                c.b = chord * 4 + 2;
+                c.c = 50 + t + 9 * key;
+                c.d = 1;
+                c.e = 256 + (kGlideFull << 11);
+                c.value = 0.8f;
+                engine->send(c);
+            }
+        c = Command();
+        c.type = Command::SetGlideFrom;
+        c.track = t;
+        c.a = from;
+        engine->send(c);
     }
     c = Command();
     c.type = Command::Play;
@@ -213,6 +235,8 @@ int apotheca::runBench() {
     std::printf("  %-28s %5.2f%% of one core\n", "plain chords", chordSong(ChordPlay(), 0));
     std::printf("  %-28s %5.2f%% of one core\n", "strummed, humanised, x4", chordSong(chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100), 4));
     std::printf("  %-28s %5.2f%% of one core\n", "arpeggios, 1/4 step, random", chordSong(chordPlayOf(kStrumQuarter, kOrderRandom, 100, 100, 100), 0));
+    std::printf("the same plain chords, two gliding notes after each; the tracks' GLIDE FROM:\n");
+    for (int from = 0; from < kGlideFroms; ++from) std::printf("  %-28s %5.2f%% of one core\n", glideFromName(from), chordSong(ChordPlay(), 0, from));
 
     // Every effect in the table, in the order of the list: a new one is here without being added.
     std::printf("effects, one each, stereo, at their usual settings:\n");
