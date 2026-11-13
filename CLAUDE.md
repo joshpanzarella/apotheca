@@ -547,12 +547,13 @@ effect in those two groups and fails one that does not.
   hints in full.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
-  field's label says it; the dice alone at the left; nothing under a field
+  field's label says it; the dice alone at the left (a chord: at the right); nothing under a field
   nothing sets (NUDGE). **The chip and the field take their x from one
   constant** (`kFx...X` in `pattern_layout.hpp`; `kStripHeld...X` and
   `kChordFx...X` in `note_marks.hpp`): never write the number twice. On a
-  chord UP / DOWN is under the list's names and LEFT / RIGHT under its values
-  (`kChordFxSetX`). The chips are the bar's own (`hintChip`): do not draw
+  chord LEFT / RIGHT is under the picked effect's large value at the left
+  (`kChordFxSetX`), UP / DOWN under the list's names, and the dice at the
+  right-hand end (owner, 2026-11-13). The chips are the bar's own (`hintChip`): do not draw
   another kind. The help's words need eleven pixels clear after the last
   chip, or they give way: they do on a drum hit and a chord, where THROW's
   chip is at the right. `tests/under_test.cpp` reads all of it off the drawn
