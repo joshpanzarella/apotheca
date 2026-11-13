@@ -72,6 +72,7 @@ void SettingsScreen::change(int by) {
     }
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
+    case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
     case kOctaves: session_.setOctavesShown(session_.octavesShown() + by); break;
     case kMidi: session_.setMidiRecording(by > 0); break;
     default: break;
@@ -271,15 +272,15 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
-    const int rowH = 34, top = 50, w = kScreenW - 32;
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "TEXT SIZE", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const int rowH = kRowH, w = kRowW; // (twelve rows: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
     // Which Apotheca this is.
     std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
     fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
     for (int row = 0; row < kRows; ++row) {
         // The first four belong to the song; the rest to the handheld.
-        const int y = top + row * rowH + (row >= kVolume ? 22 : 0);
+        const int y = rowY(row);
         if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "HANDHELD", kDim);
         const bool here = row == row_;
         float part = -1.f;
@@ -321,6 +322,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             part = (session_.stickSpeed() - Session::kStickSlowest) / (Session::kStickFastest - Session::kStickSlowest);
             note = "how fast the stick moves things";
             break;
+        case kTextSize:
+            std::snprintf(text, sizeof text, "%s", kTextSizeNames[session_.textSize()]);
+            note = "the bars and the strips stay as they are";
+            break;
         case kOctaves:
             std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");
             note = "L1 on the piano roll does the same";
@@ -343,10 +348,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             note = "asks for every button in turn";
             break;
         }
-        box(r, 16, y, w, rowH - 6, kPanel, kLine);
-        fonts.small.draw(r, 26.f, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, names[row], kDim);
-        fonts.large.draw(r, 170.f, y + (rowH - 6 - fonts.large.capHeight()) / 2.f, text, here ? kTeal : kText);
-        if (note[0]) fonts.small.drawRight(r, 16.f + w - 10.f, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, note, kDim);
+        box(r, kRowX, y, w, rowH - 6, kPanel, kLine);
+        fonts.small.draw(r, kNameX, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, names[row], kDim);
+        fonts.large.draw(r, kValueX, y + (rowH - 6 - fonts.large.capHeight()) / 2.f, text, here ? kTeal : kText);
+        if (note[0]) fonts.small.drawRight(r, kNoteRight, y + (rowH - 6 - fonts.small.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
             fill(r, 250, y + rowH - 16, 110, 4, kLine);
             fill(r, 250, y + rowH - 16, static_cast<int>(std::round(110.f * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);

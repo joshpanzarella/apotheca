@@ -4,16 +4,34 @@
 
 #include <SDL.h>
 
+#include <string>
 #include <vector>
 
 namespace apotheca {
+
+class Font;
+// What a frame drew, written down as it is drawn: every text (where its capitals are, and how
+// wide it is) and every filled or outlined rectangle. Nothing is kept unless `gDrawLog` points
+// at one: it is for the tests and for a still's "--texts" file, which check that at every text
+// size each text stays in its box and clear of its neighbours.
+struct DrawLog {
+    // `order` counts everything drawn, so it can be told what was painted over what. A box is
+    // `solid` when it was filled with a colour nothing shows through (not an outline, not a shade).
+    struct Text { int order; const Font* font; float x, y, w, h; std::string words; };
+    struct Box { int order; bool solid; int x, y, w, h; };
+    std::vector<Text> texts;
+    std::vector<Box> boxes;
+    int drawn = 0;
+    void clear() { texts.clear(), boxes.clear(), drawn = 0; }
+};
+inline DrawLog* gDrawLog = nullptr;
 
 class Font {
 public:
     ~Font();
 
     // `size` is the mockups' nominal size (12, 14, 16...). Returns false if
-    // the font data cannot be read.
+    // the font data cannot be read. Loading again (another size) lets the old letters go.
     bool load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, float size);
 
     // `y` is the top of the capital letters.

@@ -24,7 +24,7 @@ struct Canvas {
         r = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
         if (!r) return;
         const std::vector<unsigned char> ttf = loadFontFile();
-        ok = fonts->small.load(r, ttf, 14.5f) && fonts->medium.load(r, ttf, 17.f) && fonts->large.load(r, ttf, 20.f); // as main.cpp
+        ok = fonts->load(r, ttf, kTextLarge); // as main.cpp: LARGE, what the screens were laid out at
         clear();
     }
     ~Canvas() {

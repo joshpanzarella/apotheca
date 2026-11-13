@@ -62,7 +62,8 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     (fonts.medium.width(laneLabel(lane_)) <= kNameW - 12 ? fonts.medium : fonts.small).draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
     fonts.small.draw(r, 15.f, kWaveY + 44.f, "EACH HIT", kDim);
     fonts.small.draw(r, 15.f, kWaveY + 60.f, "PLAYS", kDim);
-    fonts.medium.draw(r, 15.f, kWaveY + 78.f, trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON", trk().laneOneSlice[lane_] ? kPurple : kText);
+    const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";
+    fonts.within(&Fonts::medium, plays, kNameW - 10.f).draw(r, 15.f, kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
     std::snprintf(text, sizeof text, "%d SLICES", count);
     fonts.small.draw(r, 15.f, kWaveY + kWaveH - 22.f, text, kDim);
 

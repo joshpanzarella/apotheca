@@ -34,6 +34,7 @@ bool Font::load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, f
     const int ok = stbtt_PackFontRange(&context, ttf.data(), 0, STBTT_POINT_SIZE(em), 32, 95, packed);
     stbtt_PackEnd(&context);
     if (!ok) return false;
+    if (texture_) SDL_DestroyTexture(texture_), texture_ = nullptr; // loaded before, at another size
 
     // White letters with the coverage in the alpha channel; the colour is
     // applied when drawing.
@@ -71,6 +72,7 @@ float Font::width(const char* text) const {
 
 void Font::draw(SDL_Renderer* renderer, float x, float y, const char* text, SDL_Color color) const {
     if (!texture_) return;
+    if (gDrawLog && *text) gDrawLog->texts.push_back({gDrawLog->drawn++, this, x, y, width(text), capHeight_, text});
     SDL_SetTextureColorMod(texture_, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(texture_, color.a);
     const float baseline = y + capHeight_;

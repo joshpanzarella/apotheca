@@ -2907,6 +2907,11 @@ void testTheSetupScreen() {
         CHECK(near(session.stickSpeed(), 1.5f));
         rig.tap(LEFT, 14);
         CHECK(near(session.stickSpeed(), 0.8f));
+        // TEXT SIZE: four of them, a click a push, with ends (tests/textsize_test.cpp has the rest)
+        rig.tap(DOWN);
+        CHECK(setup.cursorRow() == SettingsScreen::kTextSize && session.textSize() == Session::kTextSizeAsBuilt);
+        rig.tap(LEFT);
+        CHECK(session.textSize() == 1);
         // PIANO ROLL SHOWS: 1, 2 or 3
         rig.tap(DOWN);
         rig.tap(RIGHT, 5);
@@ -2961,7 +2966,7 @@ void testTheSetupScreen() {
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());
         // Nonsense in the file is not believed.
         std::string kept;
-        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\n");
+        CHECK(readTextFile(folder + "/settings.txt", kept) && kept == "stick 80\noctaves 1\nmidirec 1\ntext 1\n");
         writeTextFile(folder + "/settings.txt", "stick 900\noctaves 7\nmidirec 5\nrubbish\n");
         later.app.session().loadSettings();
         CHECK(near(later.app.session().stickSpeed(), 0.8f) && later.app.session().octavesShown() == 1 && later.app.session().midiRecording());

@@ -11,12 +11,14 @@ namespace apotheca {
 namespace ui {
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {
+    if (gDrawLog) gDrawLog->boxes.push_back({gDrawLog->drawn++, c.a == 255, x, y, w, h});
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     SDL_Rect rect = {x, y, w, h};
     SDL_RenderFillRect(r, &rect);
 }
 
 void outline(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c, int thickness) {
+    if (gDrawLog) gDrawLog->boxes.push_back({gDrawLog->drawn++, false, x, y, w, h});
     SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
     for (int i = 0; i < thickness; ++i) {
         SDL_Rect rect = {x + i, y + i, w - 2 * i, h - 2 * i};
@@ -87,8 +89,9 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     const bool turned = std::fabs(part - 0.5f) > 0.005f; // away from "as the preset has it"
     const SDL_Color accent = held ? kBrass : kTeal;
     box(r, x, y, w, h, turned ? kPanel2 : kPanel, kLine);
-    fonts.small.draw(r, x + 7.f, y + 7.f, name, turned || cursor ? kText : kDim);
-    fonts.large.draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : (turned ? kText : kDim));
+    // (A name or a value too wide for the box at XL is held at LARGE: Fonts::within. The picture has the name's last 27 pixels.)
+    fonts.within(&Fonts::small, name, picture ? w - 14.f - 27.f : w - 14.f).draw(r, x + 7.f, y + 7.f, name, turned || cursor ? kText : kDim);
+    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : (turned ? kText : kDim));
     if (picture) {
         const SDL_Color c = turned || cursor ? family : faded(family, 110);
         SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
@@ -109,7 +112,8 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
-TopBar topBar(SDL_Renderer* r, const Fonts& fonts, View view, const char* context, const Project& project) {
+TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* context, const Project& project) {
+    const Fonts& fonts = chosen.fixed(); // a tight row: laid out to the pixel, always at LARGE
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
     fill(r, 0, 0, kScreenW, kScreenH, kBg);
     fill(r, 0, 0, kScreenW, kTopBarH, kPanel);
@@ -361,7 +365,8 @@ void hintHelp(SDL_Renderer* r, const Fonts& fonts, float x, float textY) {
 }
 } // namespace
 
-void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
+void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
+    const Fonts& fonts = chosen.fixed(); // a tight row: what fits was worked out at LARGE
     const float textY = hintsBar(r, fonts);
     float x = kHintsLeft;
     // Nothing is ever drawn past the right-hand end: a
@@ -382,7 +387,8 @@ void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
     hintHelp(r, fonts, x, textY);
 }
 
-void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count) {
+void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const HintUnder* list, int count) {
+    const Fonts& fonts = chosen.fixed(); // a tight row: each chip stands under a field of a strip that is itself at LARGE
     const float textY = hintsBar(r, fonts);
     float end = kHintsLeft - kHintUnderGap; // where the last thing drawn ends
     if (dice) {
@@ -405,8 +411,8 @@ void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
               float part, bool cursor, bool held, bool centre) {
     box(r, x, y, w, h, kPanel, kLine);
     const SDL_Color accent = held ? kBrass : kTeal;
-    fonts.small.draw(r, x + 7.f, y + 7.f, name, kDim);
-    fonts.large.draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : kText);
+    fonts.within(&Fonts::small, name, w - 14.f).draw(r, x + 7.f, y + 7.f, name, kDim);
+    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : kText);
     if (part >= 0.f) {
         const int bx = x + 7, bw = w - 14, by = y + h - 10;
         fill(r, bx, by, bw, 4, kLine);

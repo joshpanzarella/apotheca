@@ -222,17 +222,21 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- the recording ------------------------------------------------------------
     const int sx = 8, sy = 36, sw = 624, sh = 96;
     box(r, sx, sy, sw, sh, kPanel, kLine);
-    fonts.small.draw(r, sx + 7.f, sy + 7.f, said_.empty() ? "SOUND" : said_.c_str(), said_.empty() ? kDim : kBrass);
+    // (What is said here runs the box's width: a line too wide at XL is held at LARGE.)
+    const char* head = said_.empty() ? "SOUND" : said_.c_str();
+    fonts.within(&Fonts::small, head, sw - 14.f - 60.f).draw(r, sx + 7.f, sy + 7.f, head, said_.empty() ? kDim : kBrass);
     char upper[80];
     if (!t.sample[0]) std::snprintf(upper, sizeof upper, "NONE");
     else if (sampleFolderOf(t.sample).empty()) std::snprintf(upper, sizeof upper, "%s", t.sample);
     else std::snprintf(upper, sizeof upper, "%s  /  %s", sampleFolderOf(t.sample).c_str(), sampleLabel(t.sample).c_str()); // the folder it is in, then its name
     for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
-    fonts.large.draw(r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
+    fonts.within(&Fonts::large, upper, sw - 14.f).draw(r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
     if (sound.missing) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
+        const char* gone = "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.";
+        fonts.within(&Fonts::small, gone, sw - 14.f).draw(r, sx + 7.f, sy + 58.f, gone, kBrass);
     } else if (!t.sample[0]) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
+        const char* how = "Hold A and push up to pick a recording, or press Y to catch the last bar played.";
+        fonts.within(&Fonts::small, how, sw - 14.f).draw(r, sx + 7.f, sy + 58.f, how, kDim);
     } else if (!sound.peaks.empty()) {
         const int wx = sx + 7, wy = sy + 48, ww = sw - 14, wh = 40;
         const int count = static_cast<int>(sound.peaks.size());

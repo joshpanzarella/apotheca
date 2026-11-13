@@ -12,12 +12,41 @@
 
 namespace apotheca {
 
+// The size of the lettering is a setting (SET page, TEXT SIZE; owner, 2026-11-12): from where
+// it started to a little bigger than the screens were laid out for. The numbers are kept in
+// "settings.txt": appended, never reordered.
+enum TextSize { kTextSmall, kTextMedium, kTextLarge, kTextXl, kTextSizes };
+constexpr const char* const kTextSizeNames[kTextSizes] = {"SMALL", "MEDIUM", "LARGE", "XL"};
+// The three fonts at each size: small, medium, large. LARGE is what every screen was laid out at.
+constexpr float kTextPoints[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.5f, 16.f, 18.5f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
+
+// The program holds TWO sets of these: the chosen one (the setting), and the fixed one, which
+// is always LARGE. The rows that were laid out to the pixel are drawn with the fixed one
+// whatever the setting (`fixed()`): the top bar, the hints bar and the chips under a strip,
+// and the bottom strips of the two grids. Everything else is drawn with the set it is handed.
 struct Fonts {
     Font small;  // labels, hints, tabs
     Font medium; // names
     Font large;  // values
+    const Fonts* fixedSet = nullptr; // LARGE's; none: this set is it (the tests' canvas)
+    const Fonts& fixed() const { return fixedSet ? *fixedSet : *this; }
     // The largest of them that a text fits a width in: for a name that may be long.
     const Font& fit(const char* text, float room) const { return large.width(text) <= room ? large : medium.width(text) <= room ? medium : small; }
+    // For a text whose room was measured at LARGE: one of the three (`&Fonts::small`...) at the
+    // chosen size if the text fits `room` in it, and otherwise at LARGE (where XL does not fit,
+    // that text is held at LARGE; it is never cut short). Never bigger than it has to be: at
+    // LARGE and under this is always the chosen one.
+    const Font& within(Font Fonts::*which, const char* text, float room) const {
+        const Font& chosen = this->*which;
+        const Font& held = fixed().*which;
+        return chosen.width(text) <= room || chosen.width(text) <= held.width(text) ? chosen : held;
+    }
+    // All three at a size. False if the font data cannot be read.
+    bool load(SDL_Renderer* renderer, const std::vector<unsigned char>& ttf, int size) {
+        if (size < 0 || size >= kTextSizes) size = kTextLarge;
+        return small.load(renderer, ttf, kTextPoints[size][0]) && medium.load(renderer, ttf, kTextPoints[size][1]) &&
+               large.load(renderer, ttf, kTextPoints[size][2]);
+    }
 };
 
 namespace ui {

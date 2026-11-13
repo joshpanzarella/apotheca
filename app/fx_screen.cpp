@@ -320,7 +320,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
         box(r, kListX, y, kListW, kLineH, here ? kPanel2 : kPanel, here && !cursor ? kDim : kLine);
         const float ty = y + (kLineH - fonts.small.capHeight()) / 2.f - 1.f;
         const float my = y + (kLineH - fonts.medium.capHeight()) / 2.f - 1.f;
-        fonts.small.draw(r, kListX + 8.f, ty, tags[row], here ? kText : kDim);
+        fonts.within(&Fonts::small, tags[row], kNameX - 5.f - (kListX + 8.f)).draw(r, kListX + 8.f, ty, tags[row], here ? kText : kDim); // ("SENDS" at XL: held at LARGE)
         bool moves = false; // something on the line moves with the pattern, in this scene
         if (sends(row)) {
             // Two little bars: how much of the track goes to each bus.

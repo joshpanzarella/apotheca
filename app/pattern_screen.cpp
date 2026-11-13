@@ -817,18 +817,21 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (trk().bars[project_.scene] > 1) std::snprintf(context, sizeof context, "%s / %sBAR %d OF %d / SCENE %d", name, slicing_ ? "SLICES / " : "", project_.bar + 1, trk().bars[project_.scene], project_.scene + 1);
     else std::snprintf(context, sizeof context, "%s / %sSCENE %d", name, slicing_ ? "SLICES / " : "", project_.scene + 1);
     const TopBar top = topBar(r, fonts, View::Pattern, context, project_);
+    // The tight rows are always at LARGE, whatever TEXT SIZE is: the tempo's box in the top bar
+    // and the strip under the grid, whose fields stand at fixed places with a chip under each.
+    const Fonts& tight = fonts.fixed();
     if (onTempo_) {
         // The tempo fills too: its box is a bar from the slowest to the fastest.
-        const int bx = static_cast<int>(top.tempoNumberRight - fonts.small.width("240") - 6.f);
+        const int bx = static_cast<int>(top.tempoNumberRight - tight.small.width("240") - 6.f);
         const int bw = static_cast<int>(top.tempoRight) - bx + 6;
         const float part = (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo);
         fill(r, bx, 3, bw, kTopBarH - 6, kPanel2);
         fill(r, bx, 3, static_cast<int>(std::round(bw * part)), kTopBarH - 6, faded(cursorColor, 90));
         outline(r, bx - 1, 2, bw + 2, kTopBarH - 4, cursorColor, 2);
-        const float textY = (kTopBarH - fonts.small.capHeight()) / 2.f;
+        const float textY = (kTopBarH - tight.small.capHeight()) / 2.f;
         std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
-        fonts.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
-        fonts.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
+        tight.small.drawRight(r, top.tempoRight, textY, "BPM", kText);
+        tight.small.drawRight(r, top.tempoNumberRight, textY, text, kText);
     }
 
     if (slicing_) {
@@ -857,8 +860,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fill(r, kNameX + 1, y + 1, filled, kCellH - 2, kPanel);
         }
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
-        fonts.medium.draw(r, 15.f, y + (kCellH - fonts.medium.capHeight()) / 2.f, laneLabel(lane),
-                          !onTempo_ && lane == lane_ ? kTeal : kText);
+        const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 10.f); // (a long recording's name at XL: held at LARGE)
+        nameFont.draw(r, 15.f, y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
 
         for (int s = 0; s < kSteps; ++s) {
             box(r, kGridLeft + s * kStepW, y, kCellW, kCellH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
@@ -922,8 +925,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, kGridLeft + steps * kStepW - 1, kGridTop - 14, (kSteps - steps) * kStepW, kDrumLanes * kLaneH + 12, faded(kBg, 185));
     const int stripY = kStripY;
     const auto field = [&](float fx, const char* name, const char* value, SDL_Color color) {
-        fonts.small.draw(r, fx, stripY, name, kDim);
-        fonts.large.draw(r, fx, stripY + 16.f, value, color);
+        tight.small.draw(r, fx, stripY, name, kDim);
+        tight.large.draw(r, fx, stripY + 16.f, value, color);
     };
     const auto bar = [&](int bx, float part, SDL_Color color) {
         fill(r, bx, stripY + 20, 150, 6, kLine);
@@ -935,8 +938,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         field(134.f, "BPM", text, cursorColor);
         bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
     } else if (onName) {
-        fonts.small.draw(r, 8.f, stripY, "LANE", kDim);
-        fonts.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+        tight.small.draw(r, 8.f, stripY, "LANE", kDim);
+        tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
@@ -947,8 +950,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(430.f, "DICE HITS", text, dicing_ ? kBrass : kText);
         }
     } else {
-        fonts.small.draw(r, 8.f, stripY, "LANE", kDim);
-        fonts.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+        tight.small.draw(r, 8.f, stripY, "LANE", kDim);
+        tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         std::snprintf(text, sizeof text, "%d", step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {
@@ -999,7 +1002,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (fx.reverse) add("REVERSE");
                 if (fx.cut) add(fx.cut == 1 ? "CUT 1 STEP" : fx.cut == 2 ? "CUT 1/2" : "CUT 1/4");
                 if (fx.throwTo) std::snprintf(text, sizeof text, "THROW %s", throwName(fx.throwTo)), add(text);
-                fonts.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
+                tight.small.drawRight(r, 632.f, stripY + 44.f, summary.c_str(), kPurple);
             }
             const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
             if (!slicing_ && !sound.peaks.empty() && (turning_ == Turning::Start || start > 0.f)) {
@@ -1016,7 +1019,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // Something said for a moment (why L1 did not open the slices).
-    if (said()[0]) fonts.small.draw(r, 8.f, stripY + 44.f, said(), kBrass);
+    if (said()[0]) tight.small.draw(r, 8.f, stripY + 44.f, said(), kBrass);
 
     // ---- hints -------------------------------------------------------------------
     // Only what does something here, and what the ONE stick does right now.
