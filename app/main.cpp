@@ -18,6 +18,8 @@
 //                  (a handheld with no MENU button: its hint, and its help card)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
+//   --no-menu      with --shot: any view as on a handheld with no MENU button (the bar's
+//                  last words are then HLD SEL: HELP)
 //   --shot FILE    save the last frame drawn as a BMP picture
 //   --battery DIR  read the battery from DIR (laid out like /sys/class/power_supply)
 //   --learn        set up the controls again (as on a first start with a joystick)
@@ -228,6 +230,7 @@ int main(int argc, char** argv) {
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     bool learn = false; // ask for each button again, whatever has been learned
     bool handheld = false; // started by the handheld's launcher: with no controls learned yet, ask, joystick or not
+    bool noMenu = false;
     bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false, dice = false;
     int paint = 0; // 1: R1, 2: L1
     const char* view = "";
@@ -243,6 +246,7 @@ int main(int argc, char** argv) {
         else if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
+        else if (std::strcmp(argv[i], "--no-menu") == 0) noMenu = true;
         else if (std::strcmp(argv[i], "--hold-y") == 0) holdY = true;
         else if (std::strcmp(argv[i], "--dice") == 0) dice = true;
         else if (std::strcmp(argv[i], "--paint") == 0) paint = 1;
@@ -371,6 +375,7 @@ int main(int argc, char** argv) {
 
     Input input;
     if (mapped) input.useMap(&controlMap);
+    else if (noMenu && shot) input.useMap(&controlMap); // nothing learned: the keyboard stand-ins, and no MENU
     static SdlInput recordingInput;
     App app(engine);
     if (batteryFolder) app.useBatteryFolder(batteryFolder);
