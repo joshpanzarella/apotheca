@@ -1265,6 +1265,43 @@ static void testThePlainBarIsAsItWas() {
     CHECK(canvas.all() == plain.all());
 }
 
+// The plain bar's last hint: a key, five pixels, its word, and none of it past the end. A hint
+// whose word would end within those five pixels of the end is left out, key and all.
+static void testAHintThatJustDoesNotFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const float keyW = ui::keyWidth(fonts, "A") + 8.f, limit = ui::kScreenW - 6.f;
+    const int top = ui::kScreenH - ui::kHintsH + 5;
+    // One word of m's and i's, as wide as asked: over `over`, at most `most`.
+    const auto word = [&](float over, float most) {
+        for (int wide = 0; wide < 120; ++wide)
+            for (int narrow = 0; narrow < 12; ++narrow) {
+                const std::string text = std::string(static_cast<size_t>(wide), 'm') + std::string(static_cast<size_t>(narrow), 'i');
+                const float w = fonts.small.width(text.c_str());
+                if (w > over && w <= most) return text;
+            }
+        return std::string();
+    };
+    const auto drawn = [&](const std::string& does) {
+        const ui::Hint list[] = {{"A", does.c_str()}};
+        canvas.clear();
+        ui::hints(canvas.r, fonts, list, 1);
+        return canvas.is(8, top, ui::kText);
+    };
+    const float room = limit - 8.f - keyW - 5.f; // the widest word that fits after the key
+    const std::string fits = word(room - 4.f, room), tooWide = word(room, room + 5.f);
+    CHECK(!fits.empty() && !tooWide.empty());
+    if (fits.empty() || tooWide.empty()) return;
+    CHECK(drawn(fits));
+    CHECK(!drawn(tooWide)); // (key and word alone would fit; with the five between them they do not)
+    // Left out, nothing of it is drawn: the bar is the empty bar but for the help, which has the room.
+    Canvas plain;
+    ui::hints(plain.r, *plain.fonts, nullptr, 0);
+    CHECK(canvas.all() == plain.all());
+}
+
 static void testNoteStripThrowFits() {
     const float space[3] = {63.f, 53.5f, 46.f}, both[3] = {51.f, 43.f, 37.f}; // about as the fonts measure them
     float x = 0.f;
@@ -1427,6 +1464,7 @@ int main(int, char**) {
     testTheBarDrawsSelOnTheScreen();
     testTheBarUnderAStrip();
     testThePlainBarIsAsItWas();
+    testAHintThatJustDoesNotFit();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();
