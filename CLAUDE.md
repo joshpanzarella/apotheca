@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (27) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `textsize` and `textviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-spring` (REVERB SPRING on the track and on SPACE), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -178,14 +178,16 @@ effect in those two groups and fails one that does not.
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"). The player sees DELAY with a TYPE (CLEAN,
-  TAPE) and REVERB with a TYPE (ROOM, HALL); underneath each type is the
+  TAPE) and REVERB with a TYPE (ROOM, HALL, SPRING); underneath each type is the
   `EffectKind` it always was, with its number and its word (`delay`, `tape`,
-  `reverb`, `hall`), and `info.name` is still its own ("TAPE": bench and the
+  `reverb`, `hall`, `spring`), and `info.name` is still its own ("TAPE": bench and the
   tests use it). The screen asks `effectFamily`, `effectTypeName`,
   `effectTypes` / `effectTypeAt` / `effectTypeIndex`, and picks from
   `familyAt` / `familyPlace` (a line a family; `bus` gives a bus its own short
   list). A song file is written as before: `app_test` holds a song with every
-  kind to what `main` wrote (`tests/everykind_main.inc`; do not remake it).
+  kind to what `main` wrote (`tests/everykind_main.inc`; do not remake it:
+  an effect newer than DUCK is one more `fx` line with its own word, and the
+  test takes those lines out before it compares).
 - **Changing TYPE carries settings by NAME, as they READ** (`effectCarry`,
   `effectCarryValue`): the value whose reading is the same text; if the new
   type cannot read it, the nearest (an amount by the number in its reading, a
@@ -416,6 +418,11 @@ effect in those two groups and fails one that does not.
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
     setting of every effect at 33 values and looks at the screen.
+  - **In a line of the list a type stands 7 pixels after its family; one too
+    long for that closes up, or the line is held at LARGE**
+    (`FxScreen::lineFonts`: REVERB SPRING is 4 pixels too long, so its gap
+    is 2.9; at XL the family and the type are both drawn at LARGE). The tests
+    ask the same function. A new type's name is checked there at every size.
   - What is automated in the scene worked on has a purple line under its row
     and "moves with the pattern", and a purple line under its line of the
     list. WRITE itself is said by the top bar.
@@ -851,6 +858,7 @@ effect in those two groups and fails one that does not.
 | Every hit of twelve busy drum tracks thrown to both buses, nothing on them (2026-11-12; the tracks themselves 1.45%, as before THROW) | 1.2% |
 | CHORUS / COMP / SATURATE, one each (2026-11-12, a run where DRIVE read 0.16%) | 0.18% / 0.11% / 0.18% (0.15% before its plain sound was made late to match) |
 | DUCK, dipping eight times a second (2026-11-12, a run where DRIVE read 0.12%) | 0.02% |
+| SPRING (2026-11-13, four runs on a shared desk: HALL 0.15 to 0.17%, TAPE 0.10 to 0.14%, DRIVE 0.12 to 0.21% in them). Its springs run at a fifth of the sample rate | 0.13% (0.16% in one run) |
 | TAPE with its way down, the same run (0.10% just before it) | 0.11% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |

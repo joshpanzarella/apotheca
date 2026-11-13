@@ -203,13 +203,14 @@ X hears the track and START plays, as everywhere. Y does nothing here.
 | --- | --- |
 | FILTER | FILTER |
 | DELAY | **DELAY**, with a TYPE: **CLEAN** or **TAPE** |
-| REVERB | **REVERB**, with a TYPE: **ROOM** or **HALL** |
+| REVERB | **REVERB**, with a TYPE: **ROOM**, **HALL** or **SPRING** |
 | MOVING | CHORUS |
 | LEVEL | COMP, DUCK |
 | DIRT | SATURATE, DRIVE, CRUSH |
 
 **Changing TYPE keeps what the two types share.** TIME, FEEDBACK and MIX go
-from CLEAN to TAPE and back; SIZE and MIX from ROOM to HALL. They are kept
+from CLEAN to TAPE and back; SIZE and MIX from ROOM to HALL; DECAY, TONE and
+MIX from HALL to SPRING (from ROOM to SPRING, MIX alone). They are kept
 **as they read**: TAPE's FEEDBACK goes to 120% and CLEAN's to 100%, and 48%
 stays 48%. What the other type cannot read goes to the nearest it can (120%
 becomes 100%; a triplet TIME becomes the nearest plain one). A setting the
@@ -238,8 +239,8 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 - **What ECHO and SPACE hold is in the list, under BUSES.** Their settings
   are the delay's and the reverb's, but for the last: **LEVEL**, how loud the
   echoes or the room come back. It starts at 100%.
-- ECHO takes only a DELAY (CLEAN or TAPE) and SPACE only a REVERB (ROOM or
-  HALL): hold A there and that is all the list offers. B empties one.
+- ECHO takes only a DELAY (CLEAN or TAPE) and SPACE only a REVERB (ROOM,
+  HALL or SPRING): hold A there and that is all the list offers. B empties one.
 - On ECHO or SPACE an effect gives back only what it adds: the echoes or the
   room, never the sound itself a second time.
 - **LEVEL turned right down keeps the echoes going round.** Turn it up again
@@ -260,7 +261,8 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   of it opens.
 
 In the table below, **TAPE** and **DELAY** are the DELAY's two types (TAPE,
-and CLEAN), and **HALL** and **REVERB** the REVERB's (HALL, and ROOM). A
+and CLEAN), and **HALL**, **SPRING** and **REVERB** the REVERB's (HALL,
+SPRING, and ROOM). A
 song file calls each by the name it has always had.
 
 | Effect | Settings |
@@ -271,6 +273,7 @@ song file calls each by the name it has always had.
 | TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
 | DELAY (the type CLEAN) | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
+| SPRING | A spring tank: the boing. In a spring the high notes travel slower than the low ones, so a click comes back as a quick sweep, low first, and each time round it is longer. **Drip** (how strong that sweep is; at none, plain echoes), **decay** (how long the tail lasts, in seconds: 0.4 to 4), **tone** (low is dark: the highs die soon), **mix**. Like a real one it passes little under 100 Hz or over about 4.5 kHz, takes the sound in as one (left and right added), and gives it back a little different on each side. Changing TYPE from HALL keeps DECAY as the seconds it reads, or the nearest SPRING has. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
 | CHORUS | Rate, depth, type, mix. Copies of the sound, a little late and wavering, which makes one sound into several and spreads it left and right. RATE is how fast they waver (0.1 to 8 times a second), DEPTH how far. Types: CHORUS (three copies a side), ENSEMBLE (three copies, each at its own speed: thicker, less regular), VIBRATO (the pitch itself wavers; at full mix there is no plain sound), FLANGE (one very short copy fed back into itself: the jet sweep). |
 | COMP | Threshold, ratio, speed, mix. A compressor: it turns the loud parts down and then the whole up, so a sound is more even and sits forward. THRESHOLD is how loud "loud" is (-48 to 0 dB: lower catches more). RATIO is how hard (1.5:1, 2:1, 3:1, 4:1, 8:1, 20:1). **While sound passes, a thin line under the THRESHOLD bar shows how far it is turning the sound down**, and the heading says it in words (TURNING DOWN 7 DB): it grows from the right, and the whole width is 24 dB. No line: the sound is under the threshold and nothing is done to it. SPEED is how fast it acts and lets go, as one knob: it reads both, from 1/50 MS (it catches every hit) to 30/400 MS (hits get through, the whole is held together). MIX part way keeps the plain sound beside the squashed one. The level comes back up by itself. It does not listen below 60 Hz, so a kick's thump does not pull everything down. **On the master it glues a mix together.** |
@@ -280,7 +283,7 @@ song file calls each by the name it has always had.
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
 
-TAPE, HALL, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
+TAPE, HALL, SPRING, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
 they are turned instead of jumping, so they can be turned while sounding
 without a click. A song that uses one, opened by an older version of the
 program, loads without that effect: the slot is left as it was.
@@ -430,7 +433,7 @@ be is faded out over its last second. No one delay or reverb rings that
 long: at its most extreme settings and the slowest tempo (40 BPM) the longest
 takes seven minutes to die away (TAPE or DELAY at a half note with FEEDBACK
 full), and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB
-36. **Two in a row can**: a TAPE with FEEDBACK full in a track's slot feeding
+36, SPRING 19. **Two in a row can**: a TAPE with FEEDBACK full in a track's slot feeding
 another on the ECHO bus, at 40 BPM, would ring for about twelve minutes, since
 the first keeps the second fed. That bounce stops at eight minutes, faded.
 

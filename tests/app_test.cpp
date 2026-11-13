@@ -4306,6 +4306,8 @@ void testTheFxScreensList() {
     CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
     rig.tap(DOWN, 4);
     rig.tap(RIGHT, 4);
+    CHECK(project.busEffects[1].kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && project.busEffects[1].param[3] == 1.f); // the last of its types, and no further
+    rig.tap(LEFT, effectTypes(EffectKind::Reverb) - 2);
     CHECK(project.busEffects[1].kind == hall && project.busEffects[1].param[3] == 1.f);
     rig.key(A, false);
     // The Session refuses the other family on a bus, whoever asks.
@@ -4462,6 +4464,17 @@ void testTheFxScreenAsDrawn() {
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(0) + smallMid + 1.f, "TAPE", kDim));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(4) + smallMid + 1.f, "TAPE", kDim));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "HALL", kDim));
+    {
+        // A type too long to stand 7 after its family closes up to end 3 short of the mark: REVERB SPRING.
+        session.setEffect(kSpaceBus, 0, EffectKind::Spring);
+        draw();
+        const float at = F::kMarkX - 3.f - fonts.small.width("SPRING");
+        CHECK(lineName(5, "REVERB", kText) && inked(canvas, scratch, 0, at, F::lineY(5) + smallMid + 1.f, "SPRING", kDim));
+        CHECK(at - (F::kNameX + fonts.medium.width("REVERB")) < 3.5f && at - (F::kNameX + fonts.medium.width("REVERB")) >= 2.5f);
+        CHECK(!inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "SPRING", kDim)); // (not where a short one stands)
+        session.setEffect(kSpaceBus, 0, EffectKind::Hall);
+        draw();
+    }
     // ...the tags and the three headings.
     const char* tags[8] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "1", "2"};
     for (int line = 0; line < 8; ++line) CHECK(inked(canvas, scratch, 0, F::kListX + 8.f, F::lineY(line) + smallMid, tags[line], line == 1 ? kText : kDim));
@@ -4846,8 +4859,13 @@ void testFxTextsFit() {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
         // In the list: the family, its type, and room before the marks at the line's end.
-        const float nameEnds = F::kNameX + fonts.medium.width(effectFamily(kind)) + (effectTypeName(kind)[0] ? 7.f + fonts.small.width(effectTypeName(kind)) : 0.f);
-        CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3);
+        // (A type stands 7 after its family; one too long for that closes up, REVERB SPRING to 2.9: FxScreen::lineFonts.)
+        float gap = 0.f;
+        CHECK(&F::lineFonts(fonts, kind, &gap) == &fonts && gap >= 2.5f && gap <= 7.f);
+        if (kind == EffectKind::Tape || kind == EffectKind::Hall || kind == EffectKind::Delay || kind == EffectKind::Reverb) CHECK(gap == 7.f); // as they were
+        if (kind == EffectKind::Spring) CHECK(gap < 3.5f);
+        const float nameEnds = F::kNameX + fonts.medium.width(effectFamily(kind)) + (effectTypeName(kind)[0] ? gap + fonts.small.width(effectTypeName(kind)) : 0.f);
+        CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3 + 0.01f);
         if (nameEnds > F::kMarkX - 3) std::printf("    %s %s ends at %.0f, the mark is at %d\n", effectFamily(kind), effectTypeName(kind), static_cast<double>(nameEnds), F::kMarkX);
         CHECK(F::kListX + 8.f + fonts.small.width("SPACE") <= F::kNameX - 4);
         // In the heading: the family, large, and what its meter says beside it at its longest; its types in a row, and the arrows after them.
@@ -5184,11 +5202,28 @@ void testSongFilesAreAsTheyWere() {
     std::unique_ptr<Project> project(new Project);
     fillWithEveryKind(*project);
     const std::string text = songText(*project);
-    CHECK(text == asMainWroteIt);
+    // (An effect newer than that file, SPRING and after, is one more line with its own word; without those lines the file is main's.)
+    const auto asItWas = [](const std::string& all) {
+        std::string kept;
+        int newer = 0;
+        for (std::size_t from = 0; from < all.size();) {
+            const std::size_t end = all.find('\n', from), next = end == std::string::npos ? all.size() : end + 1;
+            const std::string line = all.substr(from, next - from);
+            bool isNewer = false;
+            for (int k = static_cast<int>(EffectKind::Duck) + 1; k < kEffectKinds; ++k) isNewer = isNewer || line.find(std::string(" ") + effectInfo(static_cast<EffectKind>(k)).word + " ") != std::string::npos;
+            if (isNewer && line.compare(0, 3, "fx ") == 0) ++newer;
+            else kept += line;
+            from = next;
+        }
+        CHECK(newer == kEffectKinds - 1 - static_cast<int>(EffectKind::Duck));
+        return kept;
+    };
+    CHECK(asItWas(text) == asMainWroteIt);
+    CHECK(text.find("fx 3 spring 0.84 0.871 0.902 0.933\n") != std::string::npos);
     // ...and read back it is the same song, and written again the same file.
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back));
-    CHECK(songText(*back) == asMainWroteIt);
+    CHECK(songText(*back) == text && asItWas(songText(*back)) == asMainWroteIt);
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectData& a = project->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
         const EffectData& b = back->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
