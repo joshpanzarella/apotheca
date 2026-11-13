@@ -114,7 +114,8 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     for (int s = 0; s < kSteps; ++s) {
         const int x = kGridLeft + s * kStepW;
         box(r, x, kStepsY, kCellW, kStepsH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
-        std::snprintf(text, sizeof text, "%d", s + 1);
+        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + s + 1);
+        else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, x + kCellW / 2.f, kStepsY + kStepsH + 5.f, text, s % 4 == 0 ? kText : kDim);
     }
     const int right = kGridLeft + kSteps * kStepW - 2;

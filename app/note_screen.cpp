@@ -821,7 +821,10 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the empty grid: a column for each key, a row for each step ------------------
     for (int step = 0; step < kSteps; ++step) {
-        std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step + 1); // counted through the cell: bar 2 reads 17 to 32
+        // Counted through the cell: bar 2 reads 17 to 32. A step past the scene's end (a scene of
+        // 25 steps: 26 to 32) is never played and reads "-".
+        if (step < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step + 1);
+        else std::snprintf(text, sizeof text, "-");
         // Three figures (bars 7 and 8) need the room: they stand four pixels nearer the grid.
         fonts.small.drawRight(r, kGridLeft - (project_.bar * kSteps + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
