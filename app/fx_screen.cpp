@@ -345,12 +345,14 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 fonts.medium.draw(r, static_cast<float>(kNameX), my, "EMPTY", kLine);
             } else {
                 const char* family = effectFamily(kind);
-                // (A family and type too long for the line close up, or are held at LARGE together: lineFonts.)
+                // (A family and type too long for the line draw the family small too, or are held at LARGE together: lineFonts.)
                 float gap = 0.f;
-                const Fonts& set = lineFonts(fonts, kind, &gap);
-                const float setTy = y + (kLineH - set.small.capHeight()) / 2.f - 1.f, setMy = y + (kLineH - set.medium.capHeight()) / 2.f - 1.f;
-                set.medium.draw(r, static_cast<float>(kNameX), setMy, family, kText);
-                set.small.draw(r, kNameX + set.medium.width(family) + gap, setTy + 1.f, effectTypeName(kind), kDim);
+                bool familySmall = false;
+                const Fonts& set = lineFonts(fonts, kind, &gap, &familySmall);
+                const Font& familyFont = familySmall ? set.small : set.medium;
+                const float setTy = y + (kLineH - set.small.capHeight()) / 2.f - 1.f, setMy = y + (kLineH - familyFont.capHeight()) / 2.f - 1.f;
+                familyFont.draw(r, static_cast<float>(kNameX), familySmall ? setTy + 1.f : setMy, family, kText);
+                set.small.draw(r, kNameX + familyFont.width(family) + gap, setTy + 1.f, effectTypeName(kind), kDim);
                 // The tiny mark: how much of it there is (its MIX, or a bus's LEVEL), and for one with
                 // a meter (COMP, DUCK) what it is doing just now, down from the top.
                 const int mh = kLineH - 14, top = y + 7, mix = effectMixParam(kind), track = trackOf(row);

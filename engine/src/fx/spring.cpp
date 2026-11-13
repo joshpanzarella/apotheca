@@ -6,12 +6,14 @@
 //           been along the spring again the sweep is longer
 //   DECAY   how long the tail lasts: 0.4 to 4 seconds, a real time (RT60,
 //           the time to fall 60 dB), set by formula
-//   TONE    low: dark, the highs die soon. High: bright
+//   TONE    low: dark, the highs die soon (at 0% a 3.5 kHz tail lasts two
+//           thirds as long as a 1 kHz one). High: bright
 //   MIX     from the sound alone to the springs alone
 //
 // How it is built:
 //
-//   in (left + right) -> down to a fifth of the rate -> low cut --+
+//   in (left at one spring, right at the other) -> down to a fifth of the
+//   rate -> low cut ----------------------------------------------+
 //                                                                 |
 //        +--(+)--> 80 chirp stages --+--> the spring's sound      |
 //        |   ^                       |                            |
@@ -39,14 +41,22 @@
 //     counted.
 //   - Each trip is turned down by exp(-6.908 x its time / DECAY), its time
 //     taken at 1 kHz: that is what makes DECAY a real time.
-//   - TONE: above a corner of 400 Hz (dark) to 4.8 kHz (bright, which is past
-//     the top: nothing is damped) the tail lasts 0.35 times as long.
+//   - TONE: above a corner of 1.5 kHz the tail lasts 0.2 times as long at
+//     TONE none, 0.85 times at full, and in between by a fixed ratio a step.
+//     The corner stays put and TONE sets how far the highs are cut, so every
+//     step darker is darker. (The corner was once swept from 400 Hz to
+//     4.8 kHz instead: at TONE none the whole spring band was above it, all of
+//     it died sooner alike, and 0% came out brighter than 50%.) At full the
+//     highs are still cut a little, since they take longer a trip than the
+//     1 kHz DECAY is reckoned at: cut not at all, they outlast DECAY by a fifth.
 //   - Low cut: 100 Hz, 12 dB an octave, once, on the way in.
 //   - The sound going in is turned down for a long DECAY (by the fourth root
 //     of what a trip loses), so a held sound makes about as loud a tail at
 //     any DECAY.
-//   - The sound is taken in as one (left and right added): a spring tank has
-//     one way in. What comes out differs a little side to side.
+//   - The left goes in at one spring and the right at the other. A sound the
+//     same on both sides goes into both alike (as into a tank with one way
+//     in), and what comes out differs a little side to side. (Taken in as one,
+//     left and right added, a sound opposite on the two sides put nothing in.)
 //
 // NUMBERS TOO SMALL TO HOLD: see kFloor. IT SLEEPS when the springs have held
 // nothing over kQuiet for a quarter of a second with nothing coming in, on
@@ -75,8 +85,8 @@ constexpr float kLineMs[2] = {33.1f, 41.3f};   // the two springs
 constexpr float kOwn = 0.8f, kOthers = 0.6f;   // what a spring gets back of itself and of the other (0.64 + 0.36 = 1)
 constexpr float kShortest = 0.4f, kLongest = 4.f; // DECAY, seconds
 constexpr float kTripHz = 1000.f;              // where a trip's time is taken for DECAY
-constexpr float kHighsLast = 0.35f;            // above TONE's corner the tail lasts this much as long
-constexpr float kDarkHz = 400.f, kBrightTimes = 12.f; // TONE's corner: 400 Hz to 12 times that
+constexpr float kHighsLast = 0.2f, kHighsLastBright = 0.85f; // above TONE's corner the tail lasts this much as long: at TONE none, and at TONE full
+constexpr float kToneHz = 1500.f;              // TONE's corner
 constexpr float kLowCutHz = 100.f;
 constexpr float kPass = 0.42f;                 // the way down and the way up pass this much of the springs' rate
 constexpr double kRipple = 0.5;                // dB
@@ -142,6 +152,7 @@ public:
             cut_[i].a2 = static_cast<float>((1.0 - b * k + c * k * k) / a0);
         }
         lowCut_ = onePole(kLowCutHz, rate_);
+        highCut_ = onePole(kToneHz, rate_);
         restAfter_ = static_cast<int>(0.25f * sampleRate); // longer than a spring, its stages and the ways down and up together
         changed();
         reset();
@@ -189,18 +200,18 @@ protected:
 private:
     // What follows from DRIP, DECAY and TONE: a stage's number, each spring's share of a trip, the damping, how hard each is fed.
     struct Follows {
-        float chirp = 0.f, highCut = 1.f, feed = 0.f, gain[2] = {}, highs[2] = {};
+        float chirp = 0.f, feed = 0.f, gain[2] = {}, highs[2] = {};
     };
     void follow() {
         const float a = kMostChirp * drip_.now, seconds = decaySeconds(decay_.now);
         to_.chirp = a;
         // How long a stage holds a 1 kHz sound, in samples of the springs' rate (1 at DRIP none, less as it is turned up: the lows hurry).
         const float held = (1.f - a * a) / (1.f + 2.f * a * std::cos(6.2831853f * kTripHz / rate_) + a * a);
-        to_.highCut = onePole(kDarkHz * std::pow(kBrightTimes, tone_.now), rate_);
+        const float last = std::pow(kHighsLast, 1.f - tone_.now) * std::pow(kHighsLastBright, tone_.now);
         for (int i = 0; i < 2; ++i) {
             const float trip = -6.9077553f * (static_cast<float>(len_[i] + 1) + 2.f * kStages * held) / (rate_ * seconds); // the natural log of what one trip leaves
             to_.gain[i] = std::exp(trip);
-            to_.highs[i] = std::exp(trip * (1.f / kHighsLast - 1.f));
+            to_.highs[i] = std::exp(trip * (1.f / last - 1.f));
         }
         // Both are fed alike, and less for a long DECAY (by the fourth root of what a trip of the two together loses).
         to_.feed = kDriveIn * std::sqrt(std::sqrt(1.f - to_.gain[0] * to_.gain[1]));
@@ -219,10 +230,11 @@ private:
         // come out as itself times a stage's number 80 times over, which is a number too small to hold.)
         for (auto& stage : stage_)
             for (float& v : stage) v = kFloor;
-        for (CutMemory& m : down_) m = CutMemory();
+        for (auto& side : down_)
+            for (CutMemory& m : side) m = CutMemory();
         for (auto& side : up_)
             for (CutMemory& m : side) m = CutMemory();
-        low_[0] = low_[1] = high_[0] = high_[1] = half_[0] = half_[1] = 0.f;
+        low_[0] = low_[1] = low_[2] = low_[3] = high_[0] = high_[1] = half_[0] = half_[1] = 0.f;
         at_ = 0, phase_ = 0;
         calm_ = false;
     }
@@ -241,11 +253,11 @@ private:
         if (decay_.moving()) decay_.begin(frames, k), decay_.done(), moved = true;
         if (tone_.moving()) tone_.begin(frames, k), tone_.done(), moved = true;
         if (moved) follow();
-        const bool gliding = moved || now_.chirp != to_.chirp || now_.highCut != to_.highCut || now_.gain[0] != to_.gain[0] || now_.gain[1] != to_.gain[1] || now_.highs[0] != to_.highs[0] ||
+        const bool gliding = moved || now_.chirp != to_.chirp || now_.gain[0] != to_.gain[0] || now_.gain[1] != to_.gain[1] || now_.highs[0] != to_.highs[0] ||
                              now_.highs[1] != to_.highs[1]; // (a feed moves only with its gain)
         Follows v = now_, d;
         if (gliding) {
-            d.chirp = (to_.chirp - v.chirp) * per, d.highCut = (to_.highCut - v.highCut) * per, d.feed = (to_.feed - v.feed) * per;
+            d.chirp = (to_.chirp - v.chirp) * per, d.feed = (to_.feed - v.feed) * per;
             for (int i = 0; i < 2; ++i) d.gain[i] = (to_.gain[i] - v.gain[i]) * per, d.highs[i] = (to_.highs[i] - v.highs[i]) * per;
         }
         const float dDry = dry_.begin(frames, k), dWet = wet_.begin(frames, k);
@@ -253,38 +265,41 @@ private:
         float* const lineA = line_[0].data();
         float* const lineB = line_[1].data();
         const int mask = mask_, lenA = len_[0], lenB = len_[1], every = every_;
-        const float lowCut = lowCut_, back = static_cast<float>(every_);
+        const float lowCut = lowCut_, highCut = highCut_, back = static_cast<float>(every_);
         const Cut c0 = cut_[0], c1 = cut_[1], c2 = cut_[2];
-        CutMemory down[kCuts], upA[kCuts], upB[kCuts];
-        for (int i = 0; i < kCuts; ++i) down[i] = down_[i], upA[i] = up_[0][i], upB[i] = up_[1][i];
+        CutMemory downL[kCuts], downR[kCuts], upA[kCuts], upB[kCuts];
+        for (int i = 0; i < kCuts; ++i) downL[i] = down_[0][i], downR[i] = down_[1][i], upA[i] = up_[0][i], upB[i] = up_[1][i];
         int at = at_, phase = phase_, quiet = quiet_;
         bool calm = calm_;
         for (int n = 0; n < frames; ++n) {
             dry += dDry, wet += dWet;
             if (gliding) {
-                v.chirp += d.chirp, v.highCut += d.highCut, v.feed += d.feed;
+                v.chirp += d.chirp, v.feed += d.feed;
                 v.gain[0] += d.gain[0], v.gain[1] += d.gain[1], v.highs[0] += d.highs[0], v.highs[1] += d.highs[1];
             }
             // (Sound too faint to be sound is none: see kFloor.)
             const bool nothing = std::fabs(left[n]) < kNothing && std::fabs(right[n]) < kNothing;
             const float inL = std::fabs(left[n]) < kNothing ? 0.f : left[n], inR = std::fabs(right[n]) < kNothing ? 0.f : right[n];
             // Down to the springs' rate: everything they cannot carry is taken off first.
-            const float low = cut(c2, down[2], cut(c1, down[1], cut(c0, down[0], 0.5f * (inL + inR) + kFloor)));
+            const float lowL = cut(c2, downL[2], cut(c1, downL[1], cut(c0, downL[0], inL + kFloor)));
+            const float lowR = cut(c2, downR[2], cut(c1, downR[1], cut(c0, downR[0], inR + kFloor)));
             float springA = 0.f, springB = 0.f;
             if (phase == 0) { // one sample of the springs
                 // The low cut, twice (the first takes the floor out, so the second is fed it again).
-                low_[0] += lowCut * (low - low_[0]);
-                const float once = low - low_[0] + kFloor;
-                low_[1] += lowCut * (once - low_[1]);
-                const float in = once - low_[1];
+                low_[0] += lowCut * (lowL - low_[0]);
+                low_[2] += lowCut * (lowR - low_[2]);
+                const float onceL = lowL - low_[0] + kFloor, onceR = lowR - low_[2] + kFloor;
+                low_[1] += lowCut * (onceL - low_[1]);
+                low_[3] += lowCut * (onceR - low_[3]);
+                const float inA = onceL - low_[1], inB = onceR - low_[3];
                 // What comes off the end of each spring, damped and turned down for its trip...
                 const float endA = lineA[(at - lenA) & mask], endB = lineB[(at - lenB) & mask];
-                high_[0] += v.highCut * (endA - high_[0]);
-                high_[1] += v.highCut * (endB - high_[1]);
+                high_[0] += highCut * (endA - high_[0]);
+                high_[1] += highCut * (endB - high_[1]);
                 const float backA = (high_[0] + v.highs[0] * (endA - high_[0])) * v.gain[0], backB = (high_[1] + v.highs[1] * (endB - high_[1])) * v.gain[1];
-                // ...goes back in at the start with what is arriving, and a little of the other spring's.
-                const float fed = in * v.feed;
-                float x0 = fed + kOwn * backA + kOthers * backB, x1 = fed + kOwn * backB - kOthers * backA;
+                // ...goes back in at the start with what is arriving (the left at one spring, the right at the
+                // other), and a little of the other spring's.
+                float x0 = inA * v.feed + kOwn * backA + kOthers * backB, x1 = inB * v.feed + kOwn * backB - kOthers * backA;
                 // The chirp stages. Each spring's 80 are two rows of 40, the second a sample behind the
                 // first, so that four short rows are worked at once instead of two long ones.
                 float x2 = half_[0], x3 = half_[1];
@@ -310,7 +325,7 @@ private:
             // Asleep once the springs have held nothing worth the name, with nothing coming in, for longer than they remember.
             quiet = calm && nothing ? quiet + 1 : 0;
         }
-        for (int i = 0; i < kCuts; ++i) down_[i] = down[i], up_[0][i] = upA[i], up_[1][i] = upB[i];
+        for (int i = 0; i < kCuts; ++i) down_[0][i] = downL[i], down_[1][i] = downR[i], up_[0][i] = upA[i], up_[1][i] = upB[i];
         at_ = at, phase_ = phase, quiet_ = quiet;
         calm_ = calm;
         dry_.done(), wet_.done();
@@ -320,11 +335,11 @@ private:
     std::vector<float> line_[2];
     float stage_[kStages][4] = {};
     Cut cut_[kCuts];
-    CutMemory down_[kCuts], up_[2][kCuts];
-    float low_[2] = {}, high_[2] = {}, half_[2] = {};
+    CutMemory down_[2][kCuts], up_[2][kCuts];
+    float low_[4] = {}, high_[2] = {}, half_[2] = {};
     int len_[2] = {1, 1}, mask_ = 0, at_ = 0, every_ = 5, phase_ = 0, quiet_ = 0, restAfter_ = 12000;
     bool asleep_ = true, calm_ = false;
-    float rate_ = 9600.f, lowCut_ = 0.f;
+    float rate_ = 9600.f, lowCut_ = 0.f, highCut_ = 1.f;
     Glide drip_, decay_, tone_, dry_, wet_;
     Follows now_, to_;
 };

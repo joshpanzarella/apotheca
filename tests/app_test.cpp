@@ -4465,13 +4465,34 @@ void testTheFxScreenAsDrawn() {
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(4) + smallMid + 1.f, "TAPE", kDim));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "HALL", kDim));
     {
-        // A type too long to stand 7 after its family closes up to end 3 short of the mark: REVERB SPRING.
+        // A type too long to stand 7 after its family keeps the 7 and draws the family small too: REVERB SPRING.
         session.setEffect(kSpaceBus, 0, EffectKind::Spring);
         draw();
-        const float at = F::kMarkX - 3.f - fonts.small.width("SPRING");
-        CHECK(lineName(5, "REVERB", kText) && inked(canvas, scratch, 0, at, F::lineY(5) + smallMid + 1.f, "SPRING", kDim));
-        CHECK(at - (F::kNameX + fonts.medium.width("REVERB")) < 3.5f && at - (F::kNameX + fonts.medium.width("REVERB")) >= 2.5f);
-        CHECK(!inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "SPRING", kDim)); // (not where a short one stands)
+        const float at = F::kNameX + fonts.small.width("REVERB") + 7.f;
+        CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kNameX), F::lineY(5) + smallMid + 1.f, "REVERB", kText) && inked(canvas, scratch, 0, at, F::lineY(5) + smallMid + 1.f, "SPRING", kDim));
+        CHECK(at + fonts.small.width("SPRING") <= F::kMarkX - 3.f && !lineName(5, "REVERB", kText));
+        // ...so the two read as two words, off the screen: the empty columns between them are more than any
+        // between two letters of either (it once closed up to 2.9: 4 empty columns, as many as inside REVERB).
+        const auto blank = [&](int x) {
+            for (int y = F::lineY(5) + 3; y < F::lineY(5) + F::kLineH - 3; ++y)
+                if (!canvas.is(x, y, kPanel)) return false;
+            return true;
+        };
+        int widest = 0, next = 0, run = 0;
+        bool begun = false;
+        for (int x = F::kNameX; x < F::kMarkX; ++x) {
+            if (blank(x)) {
+                ++run;
+                continue;
+            }
+            if (begun && run > 0) {
+                if (run > widest) next = widest, widest = run;
+                else if (run > next) next = run;
+            }
+            begun = true, run = 0;
+        }
+        std::printf("    REVERB SPRING in the list: %d empty columns between the words, at most %d between two letters\n", widest, next);
+        CHECK(widest >= 7 && widest >= next + 3);
         session.setEffect(kSpaceBus, 0, EffectKind::Hall);
         draw();
     }
@@ -4859,12 +4880,12 @@ void testFxTextsFit() {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
         // In the list: the family, its type, and room before the marks at the line's end.
-        // (A type stands 7 after its family; one too long for that closes up, REVERB SPRING to 2.9: FxScreen::lineFonts.)
+        // (A type stands 7 after its family; one too long for that draws its family small too, REVERB SPRING: FxScreen::lineFonts.)
         float gap = 0.f;
-        CHECK(&F::lineFonts(fonts, kind, &gap) == &fonts && gap >= 2.5f && gap <= 7.f);
-        if (kind == EffectKind::Tape || kind == EffectKind::Hall || kind == EffectKind::Delay || kind == EffectKind::Reverb) CHECK(gap == 7.f); // as they were
-        if (kind == EffectKind::Spring) CHECK(gap < 3.5f);
-        const float nameEnds = F::kNameX + fonts.medium.width(effectFamily(kind)) + (effectTypeName(kind)[0] ? gap + fonts.small.width(effectTypeName(kind)) : 0.f);
+        bool familySmall = false;
+        CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall) == &fonts && gap == 7.f);
+        CHECK(familySmall == (kind == EffectKind::Spring)); // the others as they were
+        const float nameEnds = F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeName(kind)[0] ? gap + fonts.small.width(effectTypeName(kind)) : 0.f);
         CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3 + 0.01f);
         if (nameEnds > F::kMarkX - 3) std::printf("    %s %s ends at %.0f, the mark is at %d\n", effectFamily(kind), effectTypeName(kind), static_cast<double>(nameEnds), F::kMarkX);
         CHECK(F::kListX + 8.f + fonts.small.width("SPACE") <= F::kNameX - 4);

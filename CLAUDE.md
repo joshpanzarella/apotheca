@@ -418,11 +418,13 @@ effect in those two groups and fails one that does not.
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
     setting of every effect at 33 values and looks at the screen.
-  - **In a line of the list a type stands 7 pixels after its family; one too
-    long for that closes up, or the line is held at LARGE**
-    (`FxScreen::lineFonts`: REVERB SPRING is 4 pixels too long, so its gap
-    is 2.9; at XL the family and the type are both drawn at LARGE). The tests
-    ask the same function. A new type's name is checked there at every size.
+  - **In a line of the list a type stands 7 pixels after its family; for one
+    too long for that the family is drawn in the type's smaller lettering, or
+    the line is held at LARGE** (`FxScreen::lineFonts`: REVERB SPRING is 4
+    pixels too long; at XL both are drawn at LARGE). Never close the gap up:
+    at 2.9 REVERB SPRING read as one word (`app_test` counts the empty
+    columns). The tests ask the same function. A new type's name is checked
+    there at every size.
   - What is automated in the scene worked on has a purple line under its row
     and "moves with the pattern", and a purple line under its line of the
     list. WRITE itself is said by the top bar.

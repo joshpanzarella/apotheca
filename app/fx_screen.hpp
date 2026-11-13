@@ -96,24 +96,23 @@ public:
     static constexpr int kPickNameX = kPaneX + 86, kPickSaysX = kPaneX + 200;
     static int lineY(int row); // the top of a line in the list
     static constexpr int kNameX = kListX + 62, kMarkX = kListX + kListW - 12; // in a line: the effect's name; its level mark
-    // In a line the type stands kTypeGap after its family. One that would then run into the mark (REVERB
-    // SPRING) closes up to end kNameClear short of it; if it would have to close up past kTypeGapLeast (XL),
-    // the family and the type are both drawn at LARGE. Which lettering, and the gap (the tests ask this too).
+    // In a line the type stands kTypeGap after its family. One that would then run into the mark at LARGE
+    // (REVERB SPRING) keeps that gap and draws its family in the type's smaller lettering, at every size, to
+    // end kNameClear short of the mark or sooner; where it does not fit (XL), the two are held at LARGE. (It
+    // once closed the gap up instead, to 2.9: REVERB SPRING then read as one word.) Which lettering, the gap,
+    // and whether the family is drawn small (the tests ask this too).
     static constexpr int kTypeGap = 7, kNameClear = 3;
-    static constexpr float kTypeGapLeast = 2.5f;
     static float nameEnd(EffectKind kind) { return static_cast<float>(kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0)); } // the mark, or the meter before it
-    static const Fonts& lineFonts(const Fonts& fonts, EffectKind kind, float* gap) {
+    static const Fonts& lineFonts(const Fonts& fonts, EffectKind kind, float* gap, bool* familySmall) {
         const char* family = effectFamily(kind);
         const char* type = effectTypeName(kind);
+        const Fonts& large = fonts.fixed();
         *gap = static_cast<float>(kTypeGap);
-        if (!type[0] || kNameX + fonts.medium.width(family) + *gap + fonts.small.width(type) <= nameEnd(kind)) return fonts;
-        const Fonts* set = &fonts;
-        for (int tries = 0; tries < 2; ++tries, set = &fonts.fixed()) {
-            const float room = nameEnd(kind) - kNameClear - kNameX - set->medium.width(family) - set->small.width(type);
-            *gap = room < kTypeGap ? room : static_cast<float>(kTypeGap);
-            if (*gap >= kTypeGapLeast) return *set;
-        }
-        return fonts.fixed();
+        *familySmall = type[0] && kNameX + large.medium.width(family) + *gap + large.small.width(type) > nameEnd(kind);
+        const auto fits = [&](const Fonts& set) {
+            return kNameX + (*familySmall ? set.small : set.medium).width(family) + *gap + set.small.width(type) <= nameEnd(kind) - (*familySmall ? kNameClear : 0);
+        };
+        return !type[0] || fits(fonts) ? fonts : large;
     }
     // The room a value has, in a setting's row and in a send's.
     static constexpr int kValueRoom = kBarX - kValueX - 8;

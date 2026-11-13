@@ -1394,16 +1394,18 @@ void testTheFxScreen() {
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
-        // In its line of the list a family with a type ends clear of the mark at every size: closed up, or held at LARGE (REVERB SPRING).
+        // In its line of the list a family with a type ends clear of the mark at every size, 7 after its family:
+        // the family drawn small, or the two held at LARGE (REVERB SPRING).
         for (int size = 0; size < kTextSizes && effectTypeName(kind)[0]; ++size) {
             const Fonts& chosen = *screens().at[size];
             float gap = 0.f;
-            const Fonts& set = FxScreen::lineFonts(chosen, kind, &gap);
-            const float ends = FxScreen::kNameX + set.medium.width(effectFamily(kind)) + gap + set.small.width(effectTypeName(kind));
-            CHECK(gap >= 2.5f && gap <= 7.f && ends <= FxScreen::nameEnd(kind) + 0.01f);
-            if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: closed up to LARGE, held at LARGE at XL
+            bool familySmall = false;
+            const Fonts& set = FxScreen::lineFonts(chosen, kind, &gap, &familySmall);
+            const float ends = FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeName(kind));
+            CHECK(gap == 7.f && ends <= FxScreen::nameEnd(kind) - (familySmall ? FxScreen::kNameClear : 0) + 0.01f);
+            CHECK(familySmall == (kind == EffectKind::Spring)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: as chosen to LARGE, held at LARGE at XL
             CHECK(&set == &chosen || &set == &chosen.fixed());
-            if (gap < FxScreen::kTypeGap) CHECK(ends > FxScreen::nameEnd(kind) - FxScreen::kNameClear - 0.01f); // closed up no further than it has to be
         }
         for (int onBus = 0; onBus < (effectBus(kind) >= 0 ? 2 : 1); ++onBus) {
             const int track = onBus ? busTrack(effectBus(kind)) : project.track, row = onBus ? FxScreen::kBusRow + effectBus(kind) : 1;
@@ -1432,7 +1434,7 @@ void testTheFxScreen() {
                 const float below = static_cast<float>(FxScreen::lineY(FxScreen::kBusRow + 1)) - 2.f;
                 const bool held = kind == EffectKind::Spring;
                 CHECK(drew(effectTypeName(kind)) && capAtXl(effectTypeName(kind), below) == screens().at[held ? kTextLarge : kTextXl]->small.capHeight());
-                CHECK(capAtXl("REVERB", below) == screens().at[held ? kTextLarge : kTextXl]->medium.capHeight());
+                CHECK(capAtXl("REVERB", below) == (held ? screens().at[kTextLarge]->small.capHeight() : screens().at[kTextXl]->medium.capHeight())); // (REVERB in SPRING's smaller lettering)
                 if (held) CHECK(asAtLarge("SPRING", below) && asAtLarge("REVERB", below));
             }
             // A setting that moves with the pattern says so under its row.
