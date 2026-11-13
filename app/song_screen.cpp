@@ -480,8 +480,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (deleting) {
             const float part = trackHoldPart_ > 1.f ? 1.f : trackHoldPart_;
             fill(r, x + 1, kGridTop + 1, static_cast<int>((colW - 2) * part), kHeadH - 2, faded(kStop, 170));
-            const char* words = colW > 150 ? "DELETING: NO UNDO" : colW > 90 ? "DELETING TRACK" : "DELETE"; // (which one was worked out at LARGE: one too wide for its column at XL is held at LARGE)
-            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.within(&Fonts::small, words, colW - 12.f).drawCentered(r, x + colW / 2.f, kGridTop + 13.f, words, kText);
+            // One word, so it never leaves its column (owner, 2026-11-13); DEL where even that is too wide.
+            // (Which one is asked at LARGE, so the word is the same at every size: one too wide at XL is held at LARGE.)
+            const char* words = fonts.fixed().small.width("DELETING") <= colW - 8.f ? "DELETING" : "DEL";
+            if (std::fmod(part * 3.f, 1.f) < 0.65f) fonts.within(&Fonts::small, words, colW - 8.f).drawCentered(r, x + colW / 2.f, kGridTop + 13.f, words, kText);
         } else {
             std::snprintf(text, sizeof text, "%d", t + 1);
             fonts.small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);

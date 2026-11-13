@@ -444,7 +444,7 @@ int main(int argc, char** argv) {
     if (std::strcmp(view, "song") == 0) {
         app.session().view = View::Song;
     } else if (std::strcmp(view, "deleting") == 0) {
-        // B held on a track: its head a second into "DELETING TRACK".
+        // B held on a track: its head a second into DELETING.
         app.session().view = View::Song;
         pushKey(SDLK_z, true);
     } else if (std::strncmp(view, "effects", 7) == 0) {

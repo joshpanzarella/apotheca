@@ -1005,12 +1005,14 @@ void testThePianoRollsRows() {
     rig.session().setOctavesShown(2);
 }
 
+const int kLastWholeWord = 5; // the most tracks whose heads have room for DELETING whole; past it, DEL
+
 // B held on a track of SONG: frames go by until its head says what is coming (the words flash).
 void holdUntilItSays(Rig& rig) {
     for (int frame = 0; frame < 80; ++frame) {
         rig.frames(1);
         for (const textfit::Text& t : rig.draw().frame.texts)
-            if (t.words.compare(0, 6, "DELETE") == 0 || t.words.compare(0, 8, "DELETING") == 0) return;
+            if (t.words == "DEL" || t.words == "DELETING") return;
     }
 }
 
@@ -1055,7 +1057,7 @@ void testTheOtherScreens() {
     holds(rig, "SONG, a track being deleted");
     rig.key(B, false);
     rig.frames(2);
-    // Every number of tracks there can be: the heads' words (DELETING: NO UNDO, DELETING TRACK, DELETE; + TRACK, +)
+    // Every number of tracks there can be: the heads' words (DELETING, or DEL in a narrow column; + TRACK, +)
     // are picked by the column's width, which was worked out at LARGE.
     for (int tracks = 1; tracks <= kNumTracks; ++tracks) {
         Rig some;
@@ -1071,7 +1073,10 @@ void testTheOtherScreens() {
         holdUntilItSays(some);
         std::snprintf(what, sizeof what, "SONG, %d track%s, one being deleted", tracks, tracks == 1 ? "" : "s");
         holds(some, what);
-        CHECK(drew("DELETING: NO UNDO") || drew("DELETING TRACK") || drew("DELETE"));
+        CHECK(drew("DELETING") || drew("DEL"));
+        CHECK(!drew("DELETING: NO UNDO") && !drew("DELETING TRACK") && !drew("DELETE"));
+        if (std::getenv("DEL_PRINT")) std::printf("%d tracks: %s\n", tracks, drew("DELETING") ? "DELETING" : "DEL");
+        CHECK(drew("DELETING") == (tracks <= kLastWholeWord));
         some.key(B, false);
     }
     // SONG with one track and with three: the wide columns, where the words are longer.
