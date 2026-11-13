@@ -338,32 +338,67 @@ void drawDie(SDL_Renderer* r, int x, int y, SDL_Color color) {
 }
 } // namespace
 
-void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
+namespace {
+constexpr float kHintsLimit = kScreenW - 6.f; // nothing in the bar is drawn past this
+// The bar itself, empty. Gives where its lettering goes.
+float hintsBar(SDL_Renderer* r, const Fonts& fonts) {
     const int y = kScreenH - kHintsH;
     fill(r, 0, y, kScreenW, kHintsH, kPanel);
     fill(r, 0, y, kScreenW, 1, kLine);
-    const float textY = y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
-    float x = 8.f;
+    return y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
+}
+// A button's name in its cream box (a chip), starting at x. Gives how wide the box is.
+float hintChipWidth(const Fonts& fonts, const char* key) { return keyWidth(fonts, key) + 8.f; }
+void hintChip(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const char* key) {
+    fill(r, static_cast<int>(x), kScreenH - kHintsH + 5, static_cast<int>(hintChipWidth(fonts, key)), kHintsH - 9, kText);
+    drawKey(r, fonts, x + 4.f, textY, key, kBg);
+}
+void hintDie(SDL_Renderer* r, float x) { drawDie(r, static_cast<int>(x), kScreenH - kHintsH + (kHintsH - kDie) / 2 + 1, kDim); }
+// In what room is left at the end, after what ends at x: how to see the help card.
+void hintHelp(SDL_Renderer* r, const Fonts& fonts, float x, float textY) {
+    const char* help = gHelpHint;
+    if (x + 6.f + fonts.small.width(help) <= kHintsLimit) fonts.small.drawRight(r, kHintsLimit, textY, help, faded(kDim, 170));
+}
+} // namespace
+
+void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count) {
+    const float textY = hintsBar(r, fonts);
+    float x = kHintsLeft;
     // Nothing is ever drawn past the right-hand end: a
     // hint that does not fit is left out, and so are the ones after it. The
     // lists are written most useful first.
-    const float limit = kScreenW - 6.f;
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
-        const float keyW = keyWidth(fonts, list[i].key) + 8.f;
+        const float keyW = hintChipWidth(fonts, list[i].key);
         const bool die = isDice(list[i].does);
         const float doesW = die ? static_cast<float>(kDie) : doesWidth(fonts, list[i].does);
-        if (x + keyW + 5.f + doesW > limit) break;
-        fill(r, static_cast<int>(x), y + 5, static_cast<int>(keyW), kHintsH - 9, kText);
-        drawKey(r, fonts, x + 4.f, textY, list[i].key, kBg);
+        if (x + keyW + 5.f + doesW > kHintsLimit) break;
+        hintChip(r, fonts, x, textY, list[i].key);
         x += keyW + 5.f;
-        if (die) drawDie(r, static_cast<int>(x), y + (kHintsH - kDie) / 2 + 1, kDim);
+        if (die) hintDie(r, x);
         else drawDoes(r, fonts, x, textY, list[i].does, kDim);
         x += doesW + 11.f;
     }
-    // In what room is left at the end: how to see the help card.
-    const char* help = gHelpHint;
-    if (x + 6.f + fonts.small.width(help) <= limit) fonts.small.drawRight(r, limit, textY, help, faded(kDim, 170));
+    hintHelp(r, fonts, x, textY);
+}
+
+void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count) {
+    const float textY = hintsBar(r, fonts);
+    float end = kHintsLeft - kHintUnderGap; // where the last thing drawn ends
+    if (dice) {
+        const float keyW = hintChipWidth(fonts, dice);
+        hintChip(r, fonts, kHintsLeft, textY, dice);
+        hintDie(r, kHintsLeft + keyW + 5.f);
+        end = kHintsLeft + keyW + 5.f + kDie;
+    }
+    for (int i = 0; i < count; ++i) {
+        const float keyW = hintChipWidth(fonts, list[i].key);
+        // One that would touch the one before it, or pass the right-hand end, is left out.
+        if (list[i].x < end + kHintUnderGap || list[i].x + keyW > kHintsLimit) continue;
+        hintChip(r, fonts, list[i].x, textY, list[i].key);
+        end = list[i].x + keyW;
+    }
+    hintHelp(r, fonts, end + 5.f, textY); // (eleven clear of the last chip)
 }
 
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,

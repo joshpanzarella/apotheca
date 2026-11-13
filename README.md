@@ -93,6 +93,13 @@ stick or the D-pad gives is written as the direction alone (UP / DOWN); the
 two are named only where they do different things. The bar never runs off
 the screen: a hint that does not fit is left out.
 
+**While X is held on a hit, a note or a chord, each button stands right under
+the thing it sets**, with no word beside it: the name above it says what it
+is. The arrows under RATCHET set the ratchet, A under THROW throws. Y and the
+die at the left roll all of it. A field with nothing under it (NUDGE on a
+note) is not set from there. Where THROW stands at the right-hand end (a drum
+hit, a chord) its button takes the place of the words about the help card.
+
 **SELECT + B is undo; SELECT + A puts it back.** Twenty steps deep. One
 step is one burst of editing: a paint stroke, a roll of the dice, a cell
 emptied, a chord placed, a pass of automation. It covers what is in the

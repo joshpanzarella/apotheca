@@ -962,12 +962,12 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (fx.pitch == 0) std::snprintf(text, sizeof text, "0");
             else std::snprintf(text, sizeof text, "%+d", fx.pitch);
             // (Five of them: closer together than the four a hit has when X is not held.)
-            field(190.f, "PITCH", text, fx.pitch ? kBrass : kText);
+            field(kFxPitchX, "PITCH", text, fx.pitch ? kBrass : kText);
             std::snprintf(text, sizeof text, fx.hits() > 1 ? "x%d" : "OFF", fx.hits());
-            field(260.f, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
-            field(355.f, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
-            field(450.f, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
-            field(555.f, "THROW", throwName(fx.throwTo), fx.throwTo ? kBrass : kText);
+            field(kFxRatchetX, "RATCHET", text, fx.hits() > 1 ? kBrass : kText);
+            field(kFxReverseX, "REVERSE", fx.reverse ? "ON" : "OFF", fx.reverse ? kBrass : kText);
+            field(kFxCutX, "CUT", fx.cut == 1 ? "1 STEP" : fx.cut == 2 ? "1/2 STEP" : fx.cut == 3 ? "1/4 STEP" : "OFF", fx.cut ? kBrass : kText);
+            field(kFxThrowX, "THROW", throwName(fx.throwTo), fx.throwTo ? kBrass : kText);
         } else {
             // The one the stick has hold of is brass; the others are quiet.
             const auto shade = [&](Turning t) { return turning_ == t ? kBrass : (turning_ == Turning::Nothing ? kTeal : kText); };
@@ -1024,13 +1024,13 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { hints[count].key = key; hints[count].does = does; ++count; };
     char brushText[40];
-    if (fxHeld_) {
-        hint("UP / DOWN", "pitch");
-        hint("LEFT / RIGHT", "ratchet");
-        hint("L1", "reverse");
-        hint("R1", "cut");
-        hint("A", "throw");
-        hint("Y", "dice");
+    if (fxHeld_ && hitHere()) { // (as the strip above: its fields are there only on a hit)
+        // Each button under the field it sets, with no word: the field's name is right above it.
+        // The dice roll all of it and stand alone at the left. (THROW is so far right that the
+        // bar has no room left to say how the help is opened; the help card says it.)
+        const HintUnder under[] = {{kFxPitchX, "UP / DOWN"}, {kFxRatchetX, "LEFT / RIGHT"}, {kFxReverseX, "L1"}, {kFxCutX, "R1"}, {kFxThrowX, "A"}};
+        ui::hintsUnder(r, fonts, "Y", under, 5);
+        return;
     } else if (slicing_ && paint_ == Paint::OneLevel) {
         hint("DRAG", "lay the break out in order");
         hint("+ R2", "shuffled");

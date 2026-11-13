@@ -1110,6 +1110,198 @@ static void testTheBarDrawsSelOnTheScreen() {
     CHECK(box == canvas.part(8, top, w, h));
 }
 
+// The bar as a strip of fields is being set (ui::hintsUnder): a chip under each field, no words,
+// the dice alone at the left. Read off the screen.
+static void testTheBarUnderAStrip() {
+    Canvas canvas, plain;
+    CHECK(canvas.ok && plain.ok);
+    if (!canvas.ok || !plain.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const int barTop = ui::kScreenH - ui::kHintsH, top = barTop + 5;
+    const float textY = barTop + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
+    const auto chipW = [&](const char* key) { return static_cast<int>(ui::keyWidth(fonts, key) + 8.f); };
+    // Where the cream boxes are: (left edge, width), along the row the boxes begin on.
+    const auto chips = [&](const Canvas& on) {
+        std::vector<std::pair<int, int>> found;
+        for (int x = 0; x < ui::kScreenW;) {
+            const int w = on.run(x, top, ui::kText);
+            if (w > 0) found.push_back({x, w});
+            x += w > 0 ? w : 1;
+        }
+        return found;
+    };
+    const auto under = [&](const char* dice, std::initializer_list<ui::HintUnder> list) {
+        canvas.clear();
+        ui::hintsUnder(canvas.r, fonts, dice, list.begin(), static_cast<int>(list.size()));
+        return chips(canvas);
+    };
+    using Chips = std::vector<std::pair<int, int>>;
+    const float helpW = fonts.small.width(ui::gHelpHint);
+    const int helpLeft = static_cast<int>(ui::kScreenW - 6.f - helpW);
+    const auto bar = [&](const Canvas& on, int x0, int x1) { return on.part(x0, barTop, x1 - x0, ui::kHintsH); };
+    const auto helpShown = [&] { // the bar's last words, exactly as the plain bar draws them
+        plain.clear();
+        ui::hints(plain.r, *plain.fonts, nullptr, 0);
+        return bar(canvas, helpLeft - 2, ui::kScreenW) == bar(plain, helpLeft - 2, ui::kScreenW);
+    };
+    const auto helpGone = [&](int from = 0) { // (from: where a chip that stands in its place ends)
+        from = from > helpLeft - 2 ? from : helpLeft - 2;
+        for (Uint32 px : canvas.part(from, barTop + 1, ui::kScreenW - from, ui::kHintsH - 1))
+            if (px != Canvas::colour(ui::kPanel)) return false;
+        return true;
+    };
+
+    // The piano roll's fields: each chip starts where it was asked to, as wide as its key.
+    const Chips roll = under("Y", {{160.f, "LEFT / RIGHT"}, {250.f, "UP / DOWN"}, {385.f, "A"}});
+    CHECK((roll == Chips{{8, chipW("Y")}, {160, chipW("LEFT / RIGHT")}, {250, chipW("UP / DOWN")}, {385, chipW("A")}}));
+    CHECK(helpShown());
+    CHECK(canvas.run(0, barTop, ui::kLine) == ui::kScreenW && canvas.is(0, barTop + 1, ui::kPanel) && canvas.is(0, ui::kScreenH - 1, ui::kPanel)); // the bar itself
+    // They are the plain bar's own chips: the same pixels as the bar draws for that key (at 8, its first place).
+    const auto sameChip = [&](int x, const char* key) {
+        const ui::Hint one[] = {{key, ""}};
+        plain.clear();
+        ui::hints(plain.r, *plain.fonts, one, 1);
+        return canvas.part(x, barTop, chipW(key) + 1, ui::kHintsH) == plain.part(8, barTop, chipW(key) + 1, ui::kHintsH);
+    };
+    CHECK(sameChip(160, "LEFT / RIGHT") && sameChip(250, "UP / DOWN") && sameChip(385, "A"));
+    // The dice: the bar's own Y and die, where the bar starts.
+    {
+        const ui::Hint dice[] = {{"Y", "dice"}};
+        plain.clear();
+        ui::hints(plain.r, *plain.fonts, dice, 1);
+        CHECK(bar(canvas, 0, 159) == bar(plain, 0, 159));
+        CHECK(canvas.is(8 + chipW("Y") + 5 + 1, barTop + (ui::kHintsH - 13) / 2 + 1, ui::kDim)); // (a die is there at all)
+    }
+    // No words: between the chips there is nothing but the bar.
+    for (int x = 8 + chipW("Y") + 5 + 13; x < helpLeft - 2; ++x) {
+        const bool inChip = (x >= 160 && x < 160 + chipW("LEFT / RIGHT")) || (x >= 250 && x < 250 + chipW("UP / DOWN")) || (x >= 385 && x < 385 + chipW("A"));
+        if (inChip) continue;
+        for (int y = barTop + 1; y < ui::kScreenH; ++y) CHECK(canvas.is(x, y, ui::kPanel));
+    }
+    // A chip is its key's own: HOLD is HLD, SELECT is SEL.
+    CHECK((under(nullptr, {{100.f, "HOLD SELECT"}}) == Chips{{100, chipW("HLD SEL")}}));
+    CHECK(sameChip(100, "HOLD SELECT"));
+    // No dice: nothing at the left, and a chip may stand at the bar's start.
+    CHECK((under(nullptr, {{8.f, "A"}}) == Chips{{8, chipW("A")}}));
+    CHECK(under(nullptr, {}).empty() && helpShown());
+    {
+        const ui::Hint a[] = {{"A", ""}};
+        plain.clear();
+        ui::hints(plain.r, *plain.fonts, a, 1);
+        under(nullptr, {{8.f, "A"}});
+        CHECK(canvas.all() == plain.all()); // one chip at the start is the plain bar with one key and no word
+    }
+    // A chip never touches the one before it: closer than kHintUnderGap, it is left out (and
+    // the one after it is judged against the last one DRAWN).
+    const float aW = ui::keyWidth(fonts, "A") + 8.f, yEnd = 8.f + ui::keyWidth(fonts, "Y") + 8.f + 5.f + 13.f;
+    const float gap = ui::kHintUnderGap, next = 100.f + aW + gap;
+    CHECK(under("Y", {{yEnd + gap, "A"}}).size() == 2);
+    CHECK(under("Y", {{yEnd + gap - 0.5f, "A"}}).size() == 1);
+    CHECK(under("Y", {{8.f, "A"}}).size() == 1);
+    CHECK((under(nullptr, {{100.f, "A"}, {next, "A"}}) == Chips{{100, chipW("A")}, {static_cast<int>(next), chipW("A")}}));
+    CHECK((under(nullptr, {{100.f, "A"}, {next - 0.5f, "A"}, {next, "L1"}}) == Chips{{100, chipW("A")}, {static_cast<int>(next), chipW("L1")}}));
+    // Nothing passes the right-hand end (six from the edge).
+    CHECK(under(nullptr, {{634.f - aW, "A"}}).size() == 1);
+    CHECK(under(nullptr, {{634.5f - aW, "A"}}).empty());
+    // How to see the help: only with eleven clear after the last chip. Else it gives way.
+    under(nullptr, {{634.f - helpW - 11.f - aW, "A"}});
+    CHECK(helpShown());
+    under(nullptr, {{634.5f - helpW - 11.f - aW, "A"}});
+    CHECK(helpGone() && chips(canvas).size() == 1);
+    CHECK((under("Y", {{555.f, "A"}}) == Chips{{8, chipW("Y")}, {555, chipW("A")}})); // (the drum grid's THROW)
+    CHECK(555 + chipW("A") > helpLeft && helpGone(555 + chipW("A")));
+    // ...and on a handheld with no MENU button it says the other thing, by the same rule.
+    const char* was = ui::gHelpHint;
+    ui::gHelpHint = "HLD SEL: HELP";
+    const int longLeft = static_cast<int>(ui::kScreenW - 6.f - fonts.small.width(ui::gHelpHint));
+    under("Y", {{385.f, "A"}});
+    plain.clear();
+    ui::hints(plain.r, *plain.fonts, nullptr, 0);
+    CHECK(longLeft < helpLeft && bar(canvas, longLeft - 2, ui::kScreenW) == bar(plain, longLeft - 2, ui::kScreenW) && !canvas.is(ui::kScreenW - 12, static_cast<int>(textY) + 4, ui::kText));
+    under(nullptr, {{634.5f - fonts.small.width(ui::gHelpHint) - 11.f - aW, "A"}});
+    for (Uint32 px : canvas.part(longLeft - 2, barTop + 1, ui::kScreenW - longLeft + 2, ui::kHintsH - 1)) CHECK(px == Canvas::colour(ui::kPanel));
+    ui::gHelpHint = was;
+}
+
+// The plain bar, pixel for pixel: boxes, arrows, a word, a die, and the help, each drawn here
+// by hand where the bar has always put them. (The bar's chips are shared with hintsUnder.)
+static void testThePlainBarIsAsItWas() {
+    Canvas canvas, plain;
+    CHECK(canvas.ok && plain.ok);
+    if (!canvas.ok || !plain.ok) return;
+    const Fonts& fonts = *plain.fonts;
+    const ui::Hint list[] = {{"UP / DOWN", "level / nudge"}, {"HOLD Y", "dice"}, {"A", "place"}};
+    ui::hints(canvas.r, *canvas.fonts, list, 3);
+    const int y = ui::kScreenH - ui::kHintsH;
+    const float textY = y + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
+    ui::fill(plain.r, 0, y, ui::kScreenW, ui::kHintsH, ui::kPanel);
+    ui::fill(plain.r, 0, y, ui::kScreenW, 1, ui::kLine);
+    float x = 8.f;
+    const auto key = [&](const char* name) {
+        const float w = ui::keyWidth(fonts, name) + 8.f;
+        ui::fill(plain.r, static_cast<int>(x), y + 5, static_cast<int>(w), ui::kHintsH - 9, ui::kText);
+        ui::drawKey(plain.r, fonts, x + 4.f, textY, name, ui::kBg);
+        x += w + 5.f;
+    };
+    key("UP / DOWN");
+    fonts.small.draw(plain.r, x, textY, "level", ui::kDim);
+    x += fonts.small.width("level");
+    fonts.small.draw(plain.r, x + 2.f, textY, "/", ui::kDim);
+    x += 4.f + fonts.small.width("/");
+    fonts.small.draw(plain.r, x, textY, "nudge", ui::kDim);
+    x += fonts.small.width("nudge") + 11.f;
+    key("HOLD Y");
+    { // the die: a rounded square, thirteen across, five pips
+        const int dx = static_cast<int>(x), dy = y + (ui::kHintsH - 13) / 2 + 1;
+        ui::fill(plain.r, dx + 1, dy, 11, 13, ui::kDim);
+        ui::fill(plain.r, dx, dy + 1, 13, 11, ui::kDim);
+        const int at[5][2] = {{3, 3}, {9, 3}, {6, 6}, {3, 9}, {9, 9}};
+        for (const auto& pip : at) ui::fill(plain.r, dx + pip[0] - 1, dy + pip[1] - 1, 3, 3, ui::kPanel);
+        x += 13.f + 11.f;
+    }
+    key("A");
+    fonts.small.draw(plain.r, x, textY, "place", ui::kDim);
+    fonts.small.drawRight(plain.r, ui::kScreenW - 6.f, textY, ui::gHelpHint, ui::faded(ui::kDim, 170));
+    CHECK(canvas.all() == plain.all());
+}
+
+// The plain bar's last hint: a key, five pixels, its word, and none of it past the end. A hint
+// whose word would end within those five pixels of the end is left out, key and all.
+static void testAHintThatJustDoesNotFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const float keyW = ui::keyWidth(fonts, "A") + 8.f, limit = ui::kScreenW - 6.f;
+    const int top = ui::kScreenH - ui::kHintsH + 5;
+    // One word of m's and i's, as wide as asked: over `over`, at most `most`.
+    const auto word = [&](float over, float most) {
+        for (int wide = 0; wide < 120; ++wide)
+            for (int narrow = 0; narrow < 12; ++narrow) {
+                const std::string text = std::string(static_cast<size_t>(wide), 'm') + std::string(static_cast<size_t>(narrow), 'i');
+                const float w = fonts.small.width(text.c_str());
+                if (w > over && w <= most) return text;
+            }
+        return std::string();
+    };
+    const auto drawn = [&](const std::string& does) {
+        const ui::Hint list[] = {{"A", does.c_str()}};
+        canvas.clear();
+        ui::hints(canvas.r, fonts, list, 1);
+        return canvas.is(8, top, ui::kText);
+    };
+    const float room = limit - 8.f - keyW - 5.f; // the widest word that fits after the key
+    const std::string fits = word(room - 4.f, room), tooWide = word(room, room + 5.f);
+    CHECK(!fits.empty() && !tooWide.empty());
+    if (fits.empty() || tooWide.empty()) return;
+    CHECK(drawn(fits));
+    CHECK(!drawn(tooWide)); // (key and word alone would fit; with the five between them they do not)
+    // Left out, nothing of it is drawn: the bar is the empty bar but for the help, which has the room.
+    Canvas plain;
+    ui::hints(plain.r, *plain.fonts, nullptr, 0);
+    CHECK(canvas.all() == plain.all());
+}
+
 static void testNoteStripThrowFits() {
     const float space[3] = {63.f, 53.5f, 46.f}, both[3] = {51.f, 43.f, 37.f}; // about as the fonts measure them
     float x = 0.f;
@@ -1270,6 +1462,9 @@ int main(int, char**) {
     testNoteStripThrowFits();
     testTheBarDrawsSelForSelect();
     testTheBarDrawsSelOnTheScreen();
+    testTheBarUnderAStrip();
+    testThePlainBarIsAsItWas();
+    testAHintThatJustDoesNotFit();
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     testCursorMovesAndWraps();
     testHeldDirectionRunsFast();
