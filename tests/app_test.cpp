@@ -3351,6 +3351,8 @@ void testTheEffectsScreen() {
     CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
     CHECK(rig.listen(4000) > 0.05f); // heard at once, as a new effect is
     rig.tap(RIGHT, 3);
+    CHECK(first.kind == static_cast<int>(EffectKind::Ping)); // the family's last type: it stops there
+    rig.tap(LEFT);
     CHECK(first.kind == static_cast<int>(EffectKind::Tape));
     rig.tap(LEFT);
     CHECK(first.kind == static_cast<int>(EffectKind::Delay));
@@ -4294,7 +4296,7 @@ void testTheFxScreensList() {
         rig.tap(RIGHT);
         CHECK(effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
     }
-    CHECK(project.busEffects[0].kind == tape && project.busEffects[0].param[3] == 1.f);
+    CHECK(project.busEffects[0].kind == static_cast<int>(EffectKind::Ping) && project.busEffects[0].param[3] == 1.f); // the DELAY's last type
     rig.tap(LEFT, 5);
     CHECK(project.busEffects[0].kind == delay);
     rig.key(A, false);
@@ -5189,7 +5191,7 @@ void testSongFilesAreAsTheyWere() {
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back));
     CHECK(songText(*back) == asMainWroteIt);
-    for (int k = 1; k < kEffectKinds; ++k) {
+    for (int k = 1; k < kKindsMainWrote; ++k) {
         const EffectData& a = project->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
         const EffectData& b = back->tracks[(k - 1) / kTrackSlots].effects[(k - 1) % kTrackSlots];
         CHECK(b.kind == k && a.kind == k);
@@ -5197,6 +5199,23 @@ void testSongFilesAreAsTheyWere() {
     }
     CHECK(back->busEffects[0].kind == static_cast<int>(EffectKind::Delay) && back->busEffects[1].kind == static_cast<int>(EffectKind::Reverb));
     CHECK(back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape));
+    // An effect newer than that file (PING, and any to come): written by its own word, in a slot and on its bus, and read back the same.
+    CHECK(std::string(effectInfo(EffectKind::Ping).word) == "ping");
+    for (int k = kKindsMainWrote; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        std::unique_ptr<Project> newer(new Project), read(new Project);
+        newer->tracks[0].kind = TrackKind::Drums;
+        EffectData& d = newer->tracks[0].effects[1];
+        d.kind = k;
+        for (int i = 0; i < effectInfo(kind).params; ++i) d.param[i] = 0.07f * static_cast<float>(k % 10 + 1) + 0.031f * static_cast<float>(i);
+        if (effectBus(kind) >= 0) newer->busEffects[effectBus(kind)] = d;
+        const std::string wrote = songText(*newer);
+        CHECK(wrote.find(std::string("\nfx 2 ") + effectInfo(kind).word + " ") != std::string::npos);
+        if (effectBus(kind) >= 0) CHECK(wrote.find("\nbusfx " + std::to_string(effectBus(kind) + 1) + " " + effectInfo(kind).word + " ") != std::string::npos);
+        CHECK(parseSong(wrote, *read) && songText(*read) == wrote && read->tracks[0].effects[1].kind == k);
+        for (int i = 0; i < effectInfo(kind).params; ++i) CHECK(near(read->tracks[0].effects[1].param[i], d.param[i]));
+        if (effectBus(kind) >= 0) CHECK(read->busEffects[effectBus(kind)].kind == k);
+    }
     // A change of TYPE on the screen writes the other type's own word, and nothing else about the line is new.
     Rig rig;
     rig.app.session().view = View::Effects;

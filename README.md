@@ -202,14 +202,15 @@ X hears the track and START plays, as everywhere. Y does nothing here.
 | Group | Effects |
 | --- | --- |
 | FILTER | FILTER |
-| DELAY | **DELAY**, with a TYPE: **CLEAN** or **TAPE** |
+| DELAY | **DELAY**, with a TYPE: **CLEAN**, **TAPE** or **PING** |
 | REVERB | **REVERB**, with a TYPE: **ROOM** or **HALL** |
 | MOVING | CHORUS |
 | LEVEL | COMP, DUCK |
 | DIRT | SATURATE, DRIVE, CRUSH |
 
 **Changing TYPE keeps what the two types share.** TIME, FEEDBACK and MIX go
-from CLEAN to TAPE and back; SIZE and MIX from ROOM to HALL. They are kept
+from CLEAN to TAPE and back (and to PING, with TONE too between CLEAN and
+PING); SIZE and MIX from ROOM to HALL. They are kept
 **as they read**: TAPE's FEEDBACK goes to 120% and CLEAN's to 100%, and 48%
 stays 48%. What the other type cannot read goes to the nearest it can (120%
 becomes 100%; a triplet TIME becomes the nearest plain one). A setting the
@@ -238,7 +239,7 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
 - **What ECHO and SPACE hold is in the list, under BUSES.** Their settings
   are the delay's and the reverb's, but for the last: **LEVEL**, how loud the
   echoes or the room come back. It starts at 100%.
-- ECHO takes only a DELAY (CLEAN or TAPE) and SPACE only a REVERB (ROOM or
+- ECHO takes only a DELAY (CLEAN, TAPE or PING) and SPACE only a REVERB (ROOM or
   HALL): hold A there and that is all the list offers. B empties one.
 - On ECHO or SPACE an effect gives back only what it adds: the echoes or the
   room, never the sound itself a second time.
@@ -259,8 +260,8 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   loses its sends, its throws, its third effects and what ECHO and SPACE hold.** The rest
   of it opens.
 
-In the table below, **TAPE** and **DELAY** are the DELAY's two types (TAPE,
-and CLEAN), and **HALL** and **REVERB** the REVERB's (HALL, and ROOM). A
+In the table below, **TAPE**, **PING** and **DELAY** are the DELAY's three types
+(TAPE, PING and CLEAN), and **HALL** and **REVERB** the REVERB's (HALL, and ROOM). A
 song file calls each by the name it has always had.
 
 | Effect | Settings |
@@ -269,6 +270,7 @@ song file calls each by the name it has always had.
 | SATURATE | Drive, type, tone, mix. Clean drive: the newer of the two, far smoother on high notes than DRIVE. DRIVE is how hard the sound is pushed; **the loudness stays about level as it rises**, so it is the grit that changes and not the volume (a quiet sound comes up, a loud one comes down). Types: TAPE (soft and even), TUBE (lopsided: warmer, with a touch of the octave), FOLD (past the top the wave folds back down: hollow, then metallic), HARD (straight, then flat: a clipper). TONE takes the top off afterwards. |
 | DRIVE | Drive, tone, mix, output. The older one: rougher up high, and louder as it is driven. Songs made with it sound as they did. |
 | TAPE | A tape echo: each repeat is duller, thinner and a little bent. **Time** (1/16, 1/8 triplet, 1/8, 1/4 triplet, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; a triplet, shown as TRIP, is three in the space of two; a dotted one, shown as DOT, is half as long again), **feedback** (to 120%), **age**, **mix**. Turn TIME while it sounds and the echoes swoop in pitch, as tape does when its speed changes. FEEDBACK past 100% howls and holds there; it does not blow up. **It does not howl for ever either**: while sound is coming in, and for 30 seconds after the last of it, FEEDBACK is what it reads; left alone longer than that, a FEEDBACK over 90% eases back to 90% and the echoes die away. Play into it again and it is back at once. A FEEDBACK that reads 90% or less is never touched. AGE is how worn the tape is: more wobble in pitch, duller and thinner repeats, a lower ceiling on the howl. MIX is how loud the echoes are; the sound itself stays as it is. |
+| PING | A clean echo that bounces from side to side: the first repeat on the left, the next on the right, and so on. **Time** (TAPE's eight choices), **feedback** (0 to 90%: how much of each repeat is in the next; it reads what it does, and cannot ring for ever), **tone** (how bright the repeats stay: low is duller each time across), **mix**. A sound in the middle, or on one side only, bounces all the same. The first repeat is the sound exactly as it was. Turn TIME while it sounds and the echoes swoop in pitch, as TAPE's do. |
 | DELAY (the type CLEAN) | Time (1/16, 1/8, dotted 1/8, 1/4, dotted 1/4, 1/2: it follows the tempo; dotted is shown as DOT), feedback, tone, mix |
 | HALL | A reverb with a dense tail that keeps moving. **Size** (the room, and the gap before it answers: 2 to 30 ms), **decay** (how long the tail lasts, in seconds: 0.3 to 20), **tone** (low is dark: the highs die soon; above the middle it is bright and the lows are thinned), **mix** (from the sound alone to the room alone). Turning SIZE while it sounds bends the room's pitch for a moment. |
 | REVERB (the type ROOM) | The older, plainer reverb. Size, damping, mix |
@@ -280,7 +282,7 @@ song file calls each by the name it has always had.
 Effects are kept in the song. They can be changed while it plays. Stopping
 all sound empties their tails.
 
-TAPE, HALL, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
+TAPE, PING, HALL, CHORUS, COMP, SATURATE and DUCK are new. Their settings slide to where
 they are turned instead of jumping, so they can be turned while sounding
 without a click. A song that uses one, opened by an older version of the
 program, loads without that effect: the slot is left as it was.
@@ -428,8 +430,8 @@ apart (a half note at 40 BPM is three seconds) count as one tail.
 There is a cap: **a tail is never longer than eight minutes**. One that would
 be is faded out over its last second. No one delay or reverb rings that
 long: at its most extreme settings and the slowest tempo (40 BPM) the longest
-takes seven minutes to die away (TAPE or DELAY at a half note with FEEDBACK
-full), and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB
+takes seven minutes to die away (TAPE, PING or DELAY at a half note with
+FEEDBACK full), and at 120 BPM a third of that. HALL takes 45 seconds at most, REVERB
 36. **Two in a row can**: a TAPE with FEEDBACK full in a track's slot feeding
 another on the ECHO bus, at 40 BPM, would ring for about twelve minutes, since
 the first keeps the second fed. That bounce stops at eight minutes, faded.

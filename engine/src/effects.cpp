@@ -32,6 +32,7 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kCompInfo,   // 9
     &fx::kSaturateInfo, // 10
     &fx::kDuckInfo,   // 11
+    &fx::kPingInfo,   // 12
 };
 
 // The order a player meets them in: the groups, the families in each, and the
@@ -42,6 +43,7 @@ const EffectKind kList[] = {
     EffectKind::Filter,
     EffectKind::Delay, // DELAY: CLEAN
     EffectKind::Tape,  //        TAPE
+    EffectKind::Ping,  //        PING
     EffectKind::Reverb, // REVERB: ROOM
     EffectKind::Hall,   //         HALL
     EffectKind::Chorus,

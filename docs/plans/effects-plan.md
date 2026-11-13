@@ -764,6 +764,25 @@ Step 0 exists to make that true: today a new effect means edits in
 `effects.cpp`, `effects.hpp` and `fx_screen.cpp` at once. Steps 2, 3 and 9
 all touch `engine.cpp`: one person, or in turn.
 
+**PING as built**, 2026-11-13 (branch `fx-ping`). Only tests, measurements and stills have seen it; nobody has heard it.
+
+| Thing | Result |
+| --- | --- |
+| Where | `engine/src/fx/ping.cpp`, number 12, word `ping`, group DELAY, family DELAY, type PING (third, after TAPE). TIME, FEEDBACK, TONE, MIX. As it comes: 1/8 DOT, 45%, 60%, 35% |
+| The loop | Two lines, each TIME long. The sound goes on the left line (both sides halved and added). The left line's echo goes on to the right line, the right's back to the left, each time through a 6 dB an octave high cut and times FEEDBACK. So: left, right, left..., TIME apart, each FEEDBACK of the last |
+| TIME | TAPE's eight choices. The step length to the sample at 90, 120 and 174 BPM, all eight; the first echo is the sound itself to the bit. Turned (or a new tempo) it glides as TAPE's: half to double speed, a 1 kHz sine reads 500.0 and 2000.0 Hz at the extremes, then lands exactly |
+| FEEDBACK | **Reads what it does, 0 to 90%** (the plan asked "each repeat down by FEEDBACK within 0.5 dB"; CLEAN's reads 100% for 0.9). An echo's sum is FEEDBACK of the last to 0.002 at any TONE; at 1 kHz within 0.01 dB at TONE full and 0.19 dB at TONE 60% |
+| TONE | The cut's corner, 600 Hz to 18 kHz (CLEAN's range, so TONE carries to and from CLEAN untouched). Each repeat loses, at 100 Hz / 1 kHz / 6 kHz: 0.12 / 5.77 / 19.82 dB at TONE 0; 0 / 0.19 / 4.07 dB at 60%; 0 / 0.01 / 0.28 dB at full |
+| Sides | Echo n is all on one side; the other is exact zeros there. Left and right share 0.0000 of the tail. A sound on one side only bounces the same, at half the size; opposite on the two sides, it makes no echo |
+| It ends | 0.9 at most: 7.43 dB a second at a sixteenth at 120 BPM, silent (the exact zero) 31 s after a burst. On a bus at 40 BPM, a half note, FEEDBACK and TONE full: at rest 388.0 s after the last sound (DELAY the same; the promise is 450) |
+| The rules for new effects | `soundOnly` first; FEEDBACK, TONE and MIX glide 20 ms and land; nothing under 240 dB down goes on a line (a zero does), asleep when both lines are zeros, awake again as a fresh one **to the bit**; the same to the bit in blocks of 64, 48, 1 to 61 in turn and 256 over 70 s (ring, sleep, woken part way through a block), three settings, both sides; `TooSmall` sees nothing at three TONEs; the same with flush-to-zero on or off; on a bus no dry sound, asleep too |
+| TYPE | To and from CLEAN: all four carried. To and from TAPE: TIME, FEEDBACK, MIX (TAPE's AGE and PING's TONE start at their defaults). 45% stays 45% on all three FEEDBACK scales; over 90% becomes 90% |
+| Screen | Nothing written for it: the list says "echoes: clean, tape, ping", the TYPE row has three. Stills `fx-ping`, `fx-ping-bus`, each with `--hold-a`; they are in `textviews` at all four sizes |
+| Tests | `testPing` in `effects_test`, and the checks for every effect, every delay on a bus, every pair of a family and every tail. 61 mutants of `ping.cpp`, 60 killed (6 lived at first and got tests); the one left moves the moment it falls asleep to the end of the block, which changes no sample (both lines are zeros by then) |
+| Cost | 0.02% of a desk core, four runs alike (DELAY 0.02%, TAPE 0.09 to 0.10%, HALL 0.15% in the same runs). The plan guessed 0.06 |
+
+For the owner's ears: FEEDBACK stopping at 90% and reading in steps of 4.5% on the D-pad; the sound coming in halved when it is on one side only; TONE at 60% as the place to start; whether the first echo should be on the left.
+
 ## 8. Open questions for the owner
 
 | Question | Recommended answer |

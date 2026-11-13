@@ -662,6 +662,8 @@ int main(int argc, char** argv) {
         //   fx-sends    the track's sends, on ECHO
         //   fx-bus      in the list, on the SPACE bus; with --hold-a its short list
         //   fx-level    the ECHO bus's LEVEL
+        //   fx-ping     PING on the track, in the list; with --hold-a its TYPE row (the DELAY's third)
+        //   fx-ping-bus PING on the ECHO bus, in the list; with --hold-a the bus's short list
         // Each also with --hold-a.
         Session& s = app.session();
         s.setEffect(0, 0, EffectKind::Tape);
@@ -694,6 +696,12 @@ int main(int argc, char** argv) {
             s.setEffect(0, 2, EffectKind::Duck);
             s.setEffectParam(0, 2, 1, 0.9f);
             fx.goTo(2, 3);
+        } else if (std::strcmp(view, "fx-ping") == 0) {
+            s.setEffect(0, 0, EffectKind::Ping);
+            fx.goTo(0, 0);
+        } else if (std::strcmp(view, "fx-ping-bus") == 0) {
+            s.setEffect(kEchoBus, 0, EffectKind::Ping);
+            fx.goTo(FxScreen::kBusRow, 0);
         } else fx.goTo(0, 0);
     } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
