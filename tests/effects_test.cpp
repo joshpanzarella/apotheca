@@ -5948,7 +5948,7 @@ static double crest(const std::vector<float>& v, double ms, float floor = 1e-9f)
 }
 
 // Measured, and pinned (see where each is used).
-static const double kPlateWander = 6.16; // dB, lowest to highest: a held 1 kHz sine's level in the plate
+static const double kPlateWander = 6.96; // dB, lowest to highest: a held 1 kHz sine's level in the plate
 static const int kPlateWanderUps = 36;   // times up through its middle in 40 s
 
 static void testPlate() {
@@ -5969,18 +5969,22 @@ static void testPlate() {
     // against what DECAY reads; separate echoes in the first 100 ms; and how far the fall at 500 Hz strays
     // from a straight line (in dB, see strays()).
     //   DECAY      80 Hz    500 Hz   8 kHz    echoes   strays
-    //   0.3 s      x1.00    x0.98    x0.88    1368     4.8 dB   (a third of a second is under one trip round both loops)
-    //   0.86 s     x1.03    x1.06    x0.93    1386     2.3
-    //   2.45 s     x0.99    x1.04    x0.74    1386     1.3
-    //   7.0 s      x1.01    x1.05    x0.48    1386     0.6
-    //   20 s       x1.00    x1.02    x0.27    1386     0.4
-    // The highs die sooner the longer the tail (TONE's damping is in the loops). The smearing stages are held to
-    // ring no longer than 0.6 of DECAY: without that a 0.3 s plate measured 0.57 s (x1.9) and 0.86 s x1.17. The
+    //   0.3 s      x0.89    x1.04    x0.92    1374     2.2 dB   (a third of a second is under one trip round both loops)
+    //   0.86 s     x0.88    x1.06    x0.89    1397     1.3
+    //   2.45 s     x0.82    x1.02    x0.78    1411     1.4
+    //   7.0 s      x0.78    x1.01    x0.66    1406     0.6
+    //   20 s       x0.78    x1.00    x0.61    1406     0.4
+    // A plate is thin at the bottom and bright at the top, at any DECAY: in each loop, below 200 Hz the tail is
+    // made to last 0.75 of DECAY and above TONE's corner 0.4 of it (shelves set from the trip, as HALL's are).
+    // With a plain lowpass in the loops and nothing for the lows (before 2026-11-13), 80 Hz lasted x1.00 and
+    // 8 kHz x0.27 at 20 s: held noise at DECAY 20 s came out 3 dB heavier at 80 Hz than at 1 kHz (see BRIGHT
+    // AT ANY DECAY). The smearing stages are held to ring no longer than 0.45 of DECAY: without that a 0.3 s
+    // plate measured 0.57 s (x1.9) and 0.86 s x1.17. The
     // second smear in each loop is turned the other way from the classic plate's (-0.4 for +0.5): with it as it
     // was, the lows lasted 15% longer than DECAY says (a smear that way round holds the lows three times its length).
     // (The old REVERB: about 200 echoes; HALL 650 to 1250.)
     {
-        const double want80[5] = {0.997, 1.026, 0.992, 1.008, 0.996}, want500[5] = {0.980, 1.057, 1.038, 1.045, 1.024}, want8k[5] = {0.875, 0.931, 0.744, 0.483, 0.265};
+        const double want80[5] = {0.892, 0.880, 0.815, 0.777, 0.784}, want500[5] = {1.036, 1.058, 1.021, 1.005, 1.002}, want8k[5] = {0.923, 0.890, 0.776, 0.664, 0.607};
         int row = 0;
         double last = 0.0;
         for (float decay : {0.f, 0.25f, 0.5f, 0.75f, 1.f}) {
@@ -5989,13 +5993,64 @@ static void testPlate() {
             const double mid = rt60(bandOf(ir, 500.0)), low = rt60(bandOf(ir, 80.0)), high = rt60(bandOf(ir, 8000.0)), stray = strays(bandOf(ir, 500.0));
             const int echoes = echoesIn(ir, 0.0005, 0.1);
             SAY("plate    decay %5.2f s: RT60 at 80 Hz x %.3f, at 500 Hz x %.3f, at 8 kHz x %.3f; %d echoes in the first 100 ms; strays %.2f dB from an even fall\n", want, low / want, mid / want, high / want, echoes, stray);
-            CHECK(std::fabs(mid / want - 1.0) < 0.07 && std::fabs(low / want - 1.0) < 0.16);  // within 7% at 500 Hz, at every DECAY
+            CHECK(std::fabs(mid / want - 1.0) < 0.07 && low / want > 0.7 && low / want < 0.95); // within 7% at 500 Hz, at every DECAY; the lows shorter
             CHECK(std::fabs(mid / want - want500[row]) < 0.02 && std::fabs(low / want - want80[row]) < 0.03 && std::fabs(high / want - want8k[row]) < 0.03);
             CHECK(echoes > 1300 && echoes < 1500);
-            CHECK(stray < (decay == 0.f ? 5.2 : 2.6));
+            CHECK(stray < (decay == 0.f ? 2.6 : 1.6));
             CHECK(mid > 2.0 * last);
             last = mid;
             ++row;
+        }
+    }
+
+    // THE START FALLS AT ONCE. A click, PRE 0, MIX full: left and right's energy in 10 ms frames, and read off
+    // the energy still to come (as rt60): EDT, the time to fall the first 10 dB, times 6, and T20 (from 5 to 25
+    // dB down, times 3), against what DECAY reads. An even fall has EDT about T20; a tail that stands level
+    // before it falls has a long EDT.
+    //              loudest 10 ms   150 ms on      EDT      T20      before 2026-11-13: loudest, 150 ms on, EDT
+    //   PLATE 0.3 s    60 ms       -14.0 dB     x2.23    x1.05     150 ms, 0.0 dB, x3.67: level for 170 ms
+    //   PLATE 0.86 s   50 ms        -3.9        x1.26    x0.86     140 ms, -0.7, x1.43
+    //   PLATE 2.0 s   100 ms        -1.5        x0.90    x0.85     130 ms, -0.7, x0.96
+    //   HALL 0.3 s     40 ms       -11.0        x2.41    x0.85     (SIZE at its usual)
+    //   HALL 0.86 s    40 ms        -9.8        x0.91    x0.57
+    //   HALL 2.0 s     40 ms        -8.5        x0.51    x0.57
+    // The taps were read before DECAY's gains were taken (at the end of each half of a loop), so a tap 120 ms
+    // in was as loud as one 5 ms in. Now each tap is turned down for how far into its half it is. At 2 s the
+    // plate still builds for its first 150 ms: the taps in the second half of each loop join 172 ms in, once
+    // the sound has got there, and add as much as the tail has fallen.
+    {
+        const auto shape = [](Effect& e, double seconds, double* peakMs, double* at150, double* edt, double* t20) {
+            const Stereo io = clickBoth(e, seconds);
+            std::vector<double> energy(io.frames());
+            for (std::size_t i = 0; i < io.frames(); ++i) energy[i] = static_cast<double>(io.l[i]) * io.l[i] + static_cast<double>(io.r[i]) * io.r[i];
+            double loudest = 0.0;
+            for (std::size_t f = 0; f < 50; ++f) {
+                double sum = 0.0;
+                for (std::size_t i = f * 480; i < (f + 1) * 480; ++i) sum += energy[i];
+                if (sum > loudest) loudest = sum, *peakMs = 10.0 * static_cast<double>(f);
+                if (f == 15) *at150 = sum;
+            }
+            *at150 = dB(std::sqrt(*at150 / loudest));
+            std::vector<double> left(energy.size() + 1, 0.0);
+            for (std::size_t i = energy.size(); i-- > 1;) left[i] = left[i + 1] + energy[i];
+            double t5 = -1.0, t10 = -1.0, t25 = -1.0;
+            for (std::size_t i = 1; i < energy.size() && t25 < 0.0; ++i) {
+                const double down = 10.0 * std::log10(left[i] / left[1] + 1e-300), t = static_cast<double>(i) / 48000.0;
+                if (t5 < 0.0 && down <= -5.0) t5 = t;
+                if (t10 < 0.0 && down <= -10.0) t10 = t;
+                if (down <= -25.0) t25 = t;
+            }
+            *edt = 6.0 * t10, *t20 = 3.0 * (t25 - t5);
+        };
+        const float decays[3] = {0.f, 0.25f, 0.45f};
+        const double wantPeak[3] = {60, 50, 100}, want150[3] = {-14.0, -3.9, -1.5}, wantEdt[3] = {2.23, 1.26, 0.90}, wantT20[3] = {1.05, 0.86, 0.85};
+        for (int i = 0; i < 3; ++i) {
+            const double want = 0.3 * std::pow(20.0 / 0.3, decays[i]);
+            double peak = 0, at150 = 0, edt = 0, t20 = 0, hPeak = 0, h150 = 0, hEdt = 0, hT20 = 0;
+            shape(*fresh(plate, 0.f, decays[i], 0.6f, 1.f), 2.0 + want * 1.3, &peak, &at150, &edt, &t20);
+            shape(*fresh(hall, 0.6f, decays[i], 0.5f, 1.f), 2.0 + want * 1.3, &hPeak, &h150, &hEdt, &hT20);
+            SAY("plate    decay %4.2f s: loudest 10 ms at %3.0f ms, 150 ms on %5.1f dB, EDT x %.2f, T20 x %.2f; HALL %3.0f ms, %5.1f dB, x %.2f, x %.2f\n", want, peak, at150, edt / want, t20 / want, hPeak, h150, hEdt / want, hT20 / want);
+            CHECK(std::fabs(peak - wantPeak[i]) < 15.0 && std::fabs(at150 - want150[i]) < 1.0 && std::fabs(edt / want - wantEdt[i]) < 0.06 && std::fabs(t20 / want - wantT20[i]) < 0.04);
         }
     }
 
@@ -6016,7 +6071,7 @@ static void testPlate() {
     // sample against its loudness (a crest), over the first 20 and 50 ms after its first sound; noise reads
     // about 3.5 to 4.5, separate echoes far more:
     //              20 ms    50 ms    strays (500 Hz)   echoes in the first 100 ms
-    //   PLATE      3.97     4.35     2.2 dB            1386
+    //   PLATE      4.08     4.40     2.1 dB            1412
     //   HALL      10.2      9.8      0.6 dB            1244
     //   ROOM      31.0     35.6      1.1 dB             203
     // (Without its four short smearing stages ahead of the classic four, PLATE read 11.4 and 10.7: a click at
@@ -6036,12 +6091,13 @@ static void testPlate() {
 
     // BRIGHT. Held noise, MIX full, PRE 10 ms, DECAY 2.0 s: the plate at each pitch against the noise, in dB.
     //   TONE    80 Hz   250 Hz   1 kHz   4 kHz   8 kHz   14 kHz
-    //   0%      -0.5    -0.3     -1.9    -7.9    -12.8   -17.3     dark: TONE's corner at 1.2 kHz
-    //   60%     -0.5    -0.2     -0.4    -1.3     -2.9    -5.4     its usual: 6.1 kHz
-    //   100%    -0.5    -0.2     -0.3    -0.5     -1.1    -2.5     bright: 18 kHz
+    //   0%      -1.6    -0.7     -1.6    -5.8     -9.9   -14.1     dark: TONE's corner at 1.2 kHz
+    //   60%     -1.6    -0.6     -0.5    -1.1     -2.2    -3.9     its usual: 6.1 kHz
+    //   100%    -1.6    -0.6     -0.4    -0.6     -1.2    -2.5     bright: 18 kHz
+    // (The gentle cut on the way in is at three times TONE's corner; it was twice, and 14 kHz read -5.4 at 60%.)
     {
         const double hz[6] = {80, 250, 1000, 4000, 8000, 14000};
-        const double rows[3][6] = {{-0.5, -0.3, -1.9, -7.9, -12.8, -17.3}, {-0.5, -0.2, -0.4, -1.3, -2.9, -5.4}, {-0.5, -0.2, -0.3, -0.5, -1.1, -2.5}};
+        const double rows[3][6] = {{-1.6, -0.7, -1.6, -5.8, -9.9, -14.1}, {-1.6, -0.6, -0.5, -1.1, -2.2, -3.9}, {-1.6, -0.6, -0.4, -0.6, -1.2, -2.5}};
         const float tones[3] = {0.f, 0.6f, 1.f};
         for (int t = 0; t < 3; ++t) {
             Stereo io(48000 * 10);
@@ -6120,7 +6176,7 @@ static void testPlate() {
         SAY("plate    PRE turned and landed: a click then differs from one in a plate never turned by %.1e at most (the click's own sound %.3f)\n", static_cast<double>(apart), static_cast<double>(loud));
         CHECK(apart < 1e-6f && loud > 0.01f && soundAt(added, 1e-9f) == 1392 + 429);
     }
-    // ABOUT AS LOUD AT ANY DECAY. Held noise, MIX full: -1.7 dB at 0.3 s, -3.7 at 2.45 s, -3.2 at 20 s (HALL: -1.6 to -4.2).
+    // ABOUT AS LOUD AT ANY DECAY. Held noise, MIX full: -2.3 dB at 0.3 s, -3.1 at 2.45 s, -2.7 at 20 s (HALL: -1.6 to -4.2).
     for (float decay : {0.f, 0.5f, 1.f}) {
         Stereo io(48000 * 20);
         Noise noise(3u);
@@ -6129,7 +6185,37 @@ static void testPlate() {
         through(*fresh(plate, 0.1f, decay, 0.6f, 1.f), io);
         const double level = dB(rmsOf(io.l, 19 * 48000, 20 * 48000) / inRms);
         SAY("plate    decay %3.0f%%: held noise comes out at %.1f dB\n", decay * 100.0, level);
-        CHECK(level > -4.5 && level < -1.0);
+        CHECK(level > -3.6 && level < -1.8);
+    }
+
+    // BRIGHT AT ANY DECAY, and thin at the bottom. Held noise for 30 s, MIX full, PRE 10 ms, DECAY 20 s: each
+    // pitch against the noise, in dB, over the last 10 s (HALL at its usual SIZE and TONE 50%, for the eye).
+    //   TONE           80 Hz   250 Hz   1 kHz   8 kHz   14 kHz
+    //   60%    PLATE    0.0     0.9      0.8    -1.8     -4.6
+    //   100%   PLATE    0.0     0.9      0.9    -0.0     -3.0
+    //   50%    HALL     0.5     0.9      0.7    -1.8     -2.9
+    // Before 2026-11-13 (a plain lowpass in the loops, nothing for the lows) the plate tilted dark and heavy
+    // as DECAY grew: at 60% +3.5 +4.1 +3.2 -4.3 -8.1, at 100% +3.5 +4.1 +3.6 +1.4 -1.9.
+    {
+        const double hz[5] = {80, 250, 1000, 8000, 14000};
+        const double rows[2][5] = {{0.0, 0.9, 0.8, -1.8, -4.6}, {0.0, 0.9, 0.9, -0.0, -3.0}};
+        const float tones[2] = {0.6f, 1.f};
+        for (int t = 0; t < 3; ++t) {
+            Stereo io(48000 * 30);
+            Noise noise(5u);
+            for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+            const std::vector<float> in = io.l;
+            through(t < 2 ? *fresh(plate, 0.1f, 1.f, tones[t], 1.f) : *fresh(hall, 0.6f, 1.f, 0.5f, 1.f), io);
+            char line[256] = "";
+            double level[5];
+            for (int i = 0; i < 5; ++i) {
+                level[i] = dB(rmsOf(bandOf(io.l, hz[i]), 20 * 48000) / rmsOf(bandOf(in, hz[i]), 20 * 48000));
+                std::snprintf(line + std::strlen(line), sizeof line - std::strlen(line), " %5.0f Hz %6.1f", hz[i], level[i]);
+                if (t < 2) CHECK(std::fabs(level[i] - rows[t][i]) < 0.5);
+            }
+            SAY("plate    %s, DECAY 20 s: held noise comes out at%s dB\n", t == 0 ? "PLATE TONE 60%" : (t == 1 ? "PLATE TONE 100%" : "HALL TONE 50%"), line);
+            if (t < 2) CHECK(level[0] < level[2] - 0.4 && level[1] < level[2] + 1.0 && level[4] > level[2] - (t ? 4.0 : 6.5)); // no heavier at the bottom than in the middle; the top not far under it
+        }
     }
 
     // NO COPY OF THE SOUND COMES BACK LATE, so at MIX 50% nothing combs. The plate alone against the noise that
@@ -6215,16 +6301,17 @@ static void testPlate() {
     // while it gets there, each against the same with nothing turned (the rougher of before and after): the
     // largest step, and the sharpest corner (a click is a corner).
     //            down: step  corner     up: step  corner
-    //   PRE         2.00     3.09          1.69     2.09
-    //   DECAY       1.01     1.09          1.51     2.00
-    //   TONE        1.00     1.00          1.01     1.00
-    //   MIX         0.96     4.81          1.00     3.83
+    //   PRE         1.91     3.03          1.53     2.16
+    //   DECAY       1.00     1.00          1.42     1.69
+    //   TONE        1.00     1.00          1.00     1.00
+    //   MIX         0.97     4.85          1.00     3.84
     // MIX's corner is the glide setting off (the same Glide as every new effect's), against a plate whose
     // steady sound under a 100 Hz sine is very smooth: 5.3e-4 in all, under a 0.5 sine (a click of 0.01 reads 0.01).
     // PRE bends the pitch for a moment while the gap changes length (about a tenth of a second, as HALL's SIZE
     // does): going to none the plate's sound is read up to twice as fast, an octave up, so its steps are twice
     // the size. DECAY turned up from 0.3 s to 20 s: the plate fills up louder than it stood at 0.3 s. Neither is
-    // a click: the corners say so.
+    // a click: the corners say so. DECAY glides in 0.1 s, not 0.03: from 0.3 s up the far taps are turned up
+    // thirty times (see THE START FALLS AT ONCE), and in 0.03 s that read 1.70 and 3.97 turned up.
     for (int p = 0; p < 4; ++p)
         for (int up = 0; up < 2; ++up) {
             std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 0.5f);
@@ -6246,6 +6333,25 @@ static void testPlate() {
             CHECK(step < (p == 0 ? 2.2 : (p == 1 ? 1.7 : 1.1)));
             CHECK(sharp < (p == 0 ? 3.5 : 2.5) || (p == 3 && sharp * steadyCorner < 1e-3)); // (MIX: see above)
         }
+    // MIX 0 IS THE SOUND UNTOUCHED, TO THE BIT, awake or asleep: sound far too faint to be sound (under 1e-15,
+    // which the plate takes in as none) comes out as it came, and a -0 stays -0. (Before 2026-11-13 the faint
+    // samples came out as 0 while the plate was awake, and as they were while it slept: 1002 of these differed.
+    // HALL does the same: not changed here.)
+    {
+        std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 0.f);
+        Stereo io(48000);
+        Noise noise(13u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = 0.25f * noise.next(), io.r[i] = 0.25f * noise.next();
+        for (std::size_t i = 24000; i < 25000; ++i) io.l[i] *= 4e-16f, io.r[i] *= -4e-16f; // awake: loud sound just before
+        io.l[25000] = -0.f, io.r[25001] = 1e-39f;
+        const Stereo in = io;
+        through(*h, io);
+        int apart = 0;
+        for (std::size_t i = 0; i < io.frames(); ++i)
+            apart += std::memcmp(&io.l[i], &in.l[i], sizeof(float)) != 0 || std::memcmp(&io.r[i], &in.r[i], sizeof(float)) != 0 ? 1 : 0;
+        SAY("plate    MIX 0, awake, sound 300 dB down and a -0: %d samples differ from what came in\n", apart);
+        CHECK(apart == 0 && std::fabs(in.l[24500]) < 1e-15f && std::fabs(in.l[24500]) > 0.f);
+    }
     // ...and MIX turned to none LANDS: the sound untouched, to the bit, within a second.
     {
         std::unique_ptr<Effect> h = fresh(plate, 0.1f, 0.45f, 0.6f, 1.f);
@@ -6263,10 +6369,10 @@ static void testPlate() {
     // SILENCE IN, SILENCE OUT IN THE END, AND NOTHING TOO SMALL TO HOLD ON THE WAY, with the processor's
     // flush-to-zero off. A click, then nothing: the plate fades on a floor 360 dB down, and a second after
     // it has held nothing over 240 dB down it is asleep: exact zeros.
-    //   DECAY 2.0 s: the last sample that is not zero 9.0 s after the click; 0.3 s: 2.2 s; 20 s: 78 s.
+    //   DECAY 2.0 s: the last sample that is not zero 8.9 s after the click; 0.3 s: 2.1 s; 20 s: 76 s.
     {
         struct Row { float pre, decay, tone, mix; double seconds, asleepBy; };
-        const Row rows[4] = {{0.1f, 0.45f, 0.6f, 1.f, 12.0, 9.0}, {0.f, 0.f, 1.f, 0.5f, 4.0, 2.19}, {1.f, 0.f, 0.f, 1.f, 4.0, 2.24}, {0.3f, 1.f, 0.75f, 1.f, 90.0, 77.6}};
+        const Row rows[4] = {{0.1f, 0.45f, 0.6f, 1.f, 12.0, 8.91}, {0.f, 0.f, 1.f, 0.5f, 4.0, 2.14}, {1.f, 0.f, 0.f, 1.f, 4.0, 2.18}, {0.3f, 1.f, 0.75f, 1.f, 90.0, 76.4}};
         for (const Row& row : rows) {
             std::unique_ptr<Effect> h = fresh(plate, row.pre, row.decay, row.tone, row.mix);
             const TooSmall marks;
@@ -6332,6 +6438,30 @@ static void testPlate() {
         CHECK(faint.l[0] == 1e-20f && faint.l[255] == 1e-20f);
     }
 
+    // IT SLEEPS ONLY WHEN IT IS EMPTY. It falls asleep once nothing has come in, and what it gives out (all
+    // fourteen taps: they read every piece of both loops, and each trip round is under 0.4 s) has stayed under
+    // kQuiet, 240 dB down, for a second. What is still in it then is so little that, woken by a click of 1e-6,
+    // it differs from a fresh plate by 7.0e-13 at most (DECAY 20 s; 2e-16 at 0.3 s), at five DECAYs, TONE 0 and
+    // full. Asleep at ten times kQuiet, that read 7.5e-12; after a tenth of a second, 1.3e-12. (It used to watch
+    // what went into the loops: a test could not tell that from watching half of it, and the taps are what is
+    // heard. Watching one side's taps and not the other's is the same within 3e-13: each side reads both loops.)
+    {
+        double worst = 0.0;
+        for (float decay : {0.f, 0.2f, 0.45f, 0.8f, 1.f})
+            for (float tone : {0.f, 1.f}) {
+                const double seconds = 0.3 * std::pow(20.0 / 0.3, decay) * 5.0 + 3.0;
+                std::unique_ptr<Effect> slept = fresh(plate, 0.f, decay, tone, 1.f), box = fresh(plate, 0.f, decay, tone, 1.f);
+                const Stereo first = clickBoth(*slept, seconds);
+                const Stereo a = clickBoth(*slept, 3.0, 1e-6f, -0.5e-6f), b = clickBoth(*box, 3.0, 1e-6f, -0.5e-6f);
+                double apart = 0.0;
+                for (std::size_t i = 0; i < a.frames(); ++i) apart = std::fmax(apart, std::fmax(std::fabs(static_cast<double>(a.l[i]) - b.l[i]), std::fabs(static_cast<double>(a.r[i]) - b.r[i])));
+                CHECK(first.l.back() == 0.f && first.r.back() == 0.f && rmsOf(b.l, 429, 4800) > 1e-10);
+                worst = std::fmax(worst, apart);
+            }
+        SAY("plate    asleep, then woken by a click of 1e-6: it differs from a fresh plate by %.1e at most\n", worst);
+        CHECK(worst < 1e-12);
+    }
+
     // HOWEVER IT IS CUT INTO BLOCKS, THE SAME TO THE LAST BIT: 150 s, four ways (blocks of 64, of 48, of 1 to
     // 61 in turn, of 256), through the tail, the sleep, and a waking part way through a block by a sound far
     // too faint to hear (and again into sleep, but for the longest DECAY: asleep at 88 s, woken at 120 s, and
@@ -6374,7 +6504,7 @@ static void testPlate() {
         }
     }
     // On a bus it comes to rest; testATailAlwaysEnds has every setting at 40 BPM (DECAY 20 s is its worst).
-    // Here DECAY 20 s by itself: 52.1 s (the tail falls 120 dB in about 40 s, and the bus waits 10).
+    // Here DECAY 20 s by itself: 51.2 s (the tail falls 120 dB in about 40 s, and the bus waits 10).
     {
         const float longest[4] = {0.f, 1.f, 1.f, 1.f};
         const double seconds = secondsToRest(plate, longest, kMinTempo, 200.0);

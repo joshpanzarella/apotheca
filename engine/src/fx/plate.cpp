@@ -4,7 +4,8 @@
 //   PRE     a gap before the plate answers: 0 to 100 ms
 //   DECAY   how long the tail lasts: 0.3 to 20 seconds, a real time (RT60, the
 //           time to fall 60 dB), read and set as HALL's is
-//   TONE    low: dark, the highs die soon. High: bright
+//   TONE    low: dark, the highs die soon. High: bright. At any TONE the
+//           lowest notes die a little sooner than the rest (a plate is thin at the bottom)
 //   MIX     from the sound alone to the plate alone
 //
 // How it is built (the well-known figure-of-eight tank):
@@ -29,25 +30,36 @@
 //     so that a click is a wash from the plate's first sound: without them it
 //     was a click, a silent gap and another click in the first 12 ms.
 //   - Each half of a loop is turned down by exp(-6.908 x its length / DECAY):
-//     that is what makes DECAY a real time. A smearing stage rings by itself
-//     too, so none is let ring longer than kRing (0.6) of DECAY; and the second
+//     that is what makes DECAY a real time. Each TAP is turned down the same way
+//     for how far into its half it reads, so the fall starts at once: read
+//     before the half's gain, a tap 120 ms in was as loud as one 5 ms in, and a
+//     0.3 s plate stood level for 170 ms. The fourteen taps are then turned up
+//     together to kOut on average (a short DECAY turns them down most), and the
+//     sound going in is turned down for a long DECAY (DECAY to the power 0.33),
+//     so that a held sound makes about as loud a plate at any DECAY.
+//   - A smearing stage rings by itself
+//     too, so none is let ring longer than kRing (0.45) of DECAY; and the second
 //     smear in each loop is turned the other way from the classic plate's
 //     (-0.4, for +0.5), which held the lows 15% longer than DECAY said.
-//   - TONE: the damping in the loops has its corner at 1.2 kHz (dark) to 18
-//     kHz (bright), 15 times higher; the cut on the way in is an octave above it.
+//   - TONE: the damping in the loops is a shelf with its corner at 1.2 kHz
+//     (dark) to 18 kHz (bright), 15 times higher: above it the tail lasts 0.4 of
+//     DECAY, at any DECAY (a plain lowpass left 8 kHz lasting 0.27 of 20 s). A
+//     second shelf makes what is under 200 Hz last 0.75 of it. Both are set from
+//     the trip round the loop, as HALL's are. The cut on the way in is at three
+//     times the corner.
 //   - The two bent smears move 0.03 ms either way at 0.9 Hz, a quarter of a
 //     turn apart, so the tail does not ring on one note. (At 0.4 ms, the classic
 //     plate's, a held sine's level in it wandered 25 dB; at 0.03 ms 6 dB; HALL 5.)
 //     The sine is worked out every 64 samples the plate has run (not at a
 //     block's end) and joined by straight lines.
-//   - The sound going in is turned down for a long DECAY (the fifth root), so
-//     that a held sound makes about as loud a plate at any DECAY.
 //   - Left and right go in together, as the classic plate takes them: a sound
 //     on one side fills both alike.
 //
 // GOING TO SLEEP and waking are each on their own SAMPLE, not at a block's
 // edge (as TAPE's are), so the sound is the same to the bit however it is cut
-// into blocks, through its sleep and its waking.
+// into blocks, through its sleep and its waking. It falls asleep when nothing
+// has come in and what it gives out (the taps, which read every piece of both
+// loops) has stayed under kQuiet for kRestSeconds.
 //
 // ON A BUS (the plan's sends): the dry sound is dropped and MIX is the level.
 // That is Unit's `bus_`, read in changed() and nowhere else.
@@ -84,10 +96,15 @@ constexpr int kBendEvery = 64;                   // samples between two points o
 constexpr float kPreMostMs = 100.f;
 constexpr float kShortest = 0.3f, kLongest = 20.f; // DECAY, seconds (as HALL's)
 constexpr float kDampLeastHz = 1200.f, kDampRange = 15.f; // TONE's corner: 1.2 kHz to 18 kHz
-constexpr float kRing = 0.6f;                   // no smearing stage rings longer than this much of DECAY
+constexpr float kInCut = 3.f;                    // the gentle high cut on the way in: this many times TONE's corner
+constexpr float kHighsLast = 0.4f;  // above TONE's corner the tail lasts this much as long as DECAY, at any DECAY
+constexpr float kLowCornerHz = 200.f, kLowsLast = 0.75f; // and below this, this much as long: a plate is thin at the bottom
+constexpr float kRing = 0.45f;                   // no smearing stage rings longer than this much of DECAY
 constexpr float kPreSettle = 0.1f; // PRE: the gap changes length slowly, as HALL's SIZE does (the sound in it bends in pitch on the way)
 constexpr float kSettle = 0.03f;                // seconds for a turned setting to arrive
+constexpr float kDecaySettle = 0.1f;            // DECAY slower: from 0.3 s up, the far taps are turned up thirty times
 constexpr float kDriveIn = 0.55f, kOut = 0.8f;  // how hard the loops are fed, and how loud the taps are
+constexpr float kFeedLong = 0.33f;              // the feed falls as DECAY to this power: a held sound about as loud at any DECAY
 constexpr float kRestSeconds = 1.f; // nothing in it louder than kQuiet for this long, with nothing coming in: asleep. Longer than PRE, the smearing and both loops together
 // NUMBERS TOO SMALL TO HOLD (as HALL): the plate is fed this much with the
 // sound, so every line and filter comes to rest on it, not on nothing.
@@ -132,7 +149,7 @@ public:
         for (auto& line : smear_) line.assign(line.size(), 0.f);
         for (auto& side : loop_)
             for (auto& line : side) line.assign(line.size(), 0.f);
-        band_ = damp_[0] = damp_[1] = 0.f;
+        band_ = damp_[0] = damp_[1] = low_[0] = low_[1] = 0.f;
         at_ = 0;
         quiet_ = 0;
         asleep_ = true; // nothing on the plate
@@ -181,10 +198,16 @@ private:
         phase_ = 0.0, bend_ = bendStep_ = 0.f, bendQ_ = 1.f, bendQStep_ = 0.f, bendLeft_ = 0;
         preGlide_.snap(), decay_.snap(), tone_.snap(), dry_.snap(), wet_.snap();
         follow();
-        for (int s = 0; s < 2; ++s) gain_[s][0] = gainTo_[s][0], gain_[s][1] = gainTo_[s][1];
+        snapFollowers();
+    }
+    // What follows from the settings is where they are going, at once.
+    void snapFollowers() {
+        for (int s = 0; s < 2; ++s) gain_[s][0] = gainTo_[s][0], gain_[s][1] = gainTo_[s][1], highs_[s] = highsTo_[s], lows_[s] = lowsTo_[s];
         dampC_ = dampTo_, bandC_ = bandTo_, feed_ = feedTo_;
         for (int j = 0; j < kSmears; ++j) smearG_[j] = smearGTo_[j];
         for (int s = 0; s < 2; ++s) loopG_[s][0] = loopGTo_[s][0], loopG_[s][1] = loopGTo_[s][1];
+        for (int c = 0; c < 2; ++c)
+            for (int t = 0; t < 7; ++t) tapG_[c][t] = tapGTo_[c][t];
     }
     // Everything that follows from DECAY and TONE as they stand.
     void follow() {
@@ -194,10 +217,36 @@ private:
             gainTo_[s][0] = std::exp(-6.9077553f * first / (sr_ * seconds));
             gainTo_[s][1] = std::exp(-6.9077553f * second / (sr_ * seconds));
         }
+        // The damping, once round each loop (all four pieces): above TONE's corner the tail lasts kHighsLast as
+        // long, below kLowCornerHz kLowsLast as long, at any DECAY (as HALL's: the shelf is set from the trip).
+        for (int s = 0; s < 2; ++s) {
+            const float trip = -6.9077553f * static_cast<float>(len_[s][0] + len_[s][1] + len_[s][2] + len_[s][3]) / (sr_ * seconds);
+            highsTo_[s] = std::exp(trip * (1.f / kHighsLast - 1.f));
+            lowsTo_[s] = 1.f - std::exp(trip * (1.f / kLowsLast - 1.f));
+        }
+        // Each tap is turned down for how far into its half of the loop it is, so the fall begins at once and
+        // goes on evenly (DECAY's gains are taken at the end of each half: a tap read before them, 120 ms in,
+        // was as loud as one 5 ms in, and a short plate stood level for its first 170 ms). Then all fourteen
+        // are turned up together to kOut on average (a short DECAY turns its taps down most), at the taps and
+        // not on the way in: turned up on the way in, a plate fed hard at 0.3 s and then turned to 20 s read
+        // the loud loops through taps turned up, and jumped three times as loud.
+        float taps = 0.f;
+        for (int c = 0; c < 2; ++c)
+            for (int t = 0; t < 7; ++t) {
+                const Tap& tap = kTaps[c][t];
+                const int* const l = len_[tap.loop];
+                const float into = static_cast<float>(tapAgo_[c][t] + (tap.piece == 1 ? l[0] : (tap.piece == 3 ? l[2] : 0)));
+                tapGTo_[c][t] = tap.sign * std::exp(-6.9077553f * into / (sr_ * seconds));
+                taps += tapGTo_[c][t] * tapGTo_[c][t];
+            }
+        const float up = kOut / std::sqrt(taps / 14.f);
+        for (int c = 0; c < 2; ++c)
+            for (int t = 0; t < 7; ++t) tapGTo_[c][t] *= up;
         const float corner = kDampLeastHz * std::pow(kDampRange, tone);
         dampTo_ = onePole(corner, sr_);
-        bandTo_ = onePole(2.f * corner, sr_);
-        feedTo_ = kDriveIn * std::pow(2.f / seconds, 0.2f);
+        lowC_ = onePole(kLowCornerHz, sr_);
+        bandTo_ = onePole(kInCut * corner, sr_);
+        feedTo_ = kDriveIn * std::pow(2.f / seconds, kFeedLong); // (less for a long DECAY)
         // A smearing stage rings by itself for a while (its own RT60: 6.9 x its length / -ln g). For a short DECAY that
         // would be the tail: so none rings longer than kRing of DECAY (nearer nothing it smears less).
         const auto held = [&](float g, float ms) {
@@ -211,7 +260,7 @@ private:
     void run(float* left, float* right, int frames) {
         const float k = glideK(frames, kSettle, sr_), per = 1.f / static_cast<float>(frames);
         bool moved = false;
-        if (decay_.moving()) decay_.begin(frames, k), decay_.done(), moved = true;
+        if (decay_.moving()) decay_.begin(frames, glideK(frames, kDecaySettle, sr_)), decay_.done(), moved = true;
         if (tone_.moving()) tone_.begin(frames, k), tone_.done(), moved = true;
         if (moved) follow();
         const float dDry = dry_.begin(frames, k), dWet = wet_.begin(frames, k);
@@ -224,7 +273,12 @@ private:
         float gain[2][2], dGain[2][2];
         for (int s = 0; s < 2; ++s)
             for (int j = 0; j < 2; ++j) gain[s][j] = gain_[s][j], dGain[s][j] = (gainTo_[s][j] - gain_[s][j]) * per;
-        float dampC = dampC_, bandC = bandC_, feed = feed_;
+        float dampC = dampC_, bandC = bandC_, feed = feed_, highs[2] = {highs_[0], highs_[1]}, lows[2] = {lows_[0], lows_[1]};
+        const float dHighs[2] = {(highsTo_[0] - highs_[0]) * per, (highsTo_[1] - highs_[1]) * per}, dLows[2] = {(lowsTo_[0] - lows_[0]) * per, (lowsTo_[1] - lows_[1]) * per};
+        const float lowC = lowC_;
+        float tapG[2][7], dTapG[2][7];
+        for (int c = 0; c < 2; ++c)
+            for (int t = 0; t < 7; ++t) tapG[c][t] = tapG_[c][t], dTapG[c][t] = (tapGTo_[c][t] - tapG_[c][t]) * per;
         const float dDamp = (dampTo_ - dampC_) * per, dBand = (bandTo_ - bandC_) * per, dFeed = (feedTo_ - feed_) * per;
         // Everything the loop touches, in its own hands.
         float* const preLine = pre_.data();
@@ -242,7 +296,7 @@ private:
         int mask[2][4], len[2][4];
         for (int s = 0; s < 2; ++s)
             for (int j = 0; j < 4; ++j) line[s][j] = loop_[s][j].data(), mask[s][j] = mask_[s][j], len[s][j] = len_[s][j];
-        float band = band_, damp[2] = {damp_[0], damp_[1]};
+        float band = band_, damp[2] = {damp_[0], damp_[1]}, low[2] = {low_[0], low_[1]};
         float bend = bend_, bendStep = bendStep_, bendQ = bendQ_, bendQStep = bendQStep_;
         int bendLeft = bendLeft_;
         const float bendMost = bendMost_;
@@ -250,9 +304,13 @@ private:
         unsigned at = at_;
         for (int n = 0; n < frames; ++n) {
             dry += dDry, wet += dWet;
-            dampC += dDamp, bandC += dBand, feed += dFeed;
-            for (int s = 0; s < 2; ++s) gain[s][0] += dGain[s][0], gain[s][1] += dGain[s][1], loopG[s][0] += dLoopG[s][0], loopG[s][1] += dLoopG[s][1];
-            for (int j = 0; j < kSmears; ++j) smearG[j] += dSmearG[j];
+            if (moved) { // (DECAY or TONE turned: else every step here is 0, and adding 0 changes no bit)
+                dampC += dDamp, bandC += dBand, feed += dFeed;
+                for (int s = 0; s < 2; ++s) gain[s][0] += dGain[s][0], gain[s][1] += dGain[s][1], loopG[s][0] += dLoopG[s][0], loopG[s][1] += dLoopG[s][1], highs[s] += dHighs[s], lows[s] += dLows[s];
+                for (int c = 0; c < 2; ++c)
+                    for (int t = 0; t < 7; ++t) tapG[c][t] += dTapG[c][t];
+                for (int j = 0; j < kSmears; ++j) smearG[j] += dSmearG[j];
+            }
             // The bend: a slow sine and the same a quarter turn on, a point every kBendEvery samples, straight lines between.
             if (bendLeft == 0) {
                 phase_ += 6.283185307179586 * kBendHz * kBendEvery / sr_;
@@ -287,7 +345,6 @@ private:
             // What each loop gives the other: the end of its second delay, turned down for its trip.
             float end[2];
             for (int s = 0; s < 2; ++s) end[s] = line[s][3][(at - static_cast<unsigned>(len[s][3])) & static_cast<unsigned>(mask[s][3])] * gain[s][1];
-            float loudest = 0.f;
             for (int s = 0; s < 2; ++s) {
                 float* const* const piece = line[s];
                 const int* const m = mask[s];
@@ -298,17 +355,19 @@ private:
                 const float fed = x + end[1 - s] + g1 * was;
                 piece[0][at & static_cast<unsigned>(m[0])] = fed;
                 piece[1][at & static_cast<unsigned>(m[1])] = was - g1 * fed;
-                // The first delay, damped and turned down.
+                // The first delay, damped (the highs less highs, the lows less lows) and turned down.
                 const float v = piece[1][(at - static_cast<unsigned>(l[1])) & static_cast<unsigned>(m[1])];
                 damp[s] += dampC * (v - damp[s]);
-                const float into = damp[s] * gain[s][0];
+                float u = damp[s] + highs[s] * (v - damp[s]);
+                low[s] += lowC * (u - low[s]);
+                u -= lows[s] * low[s];
+                const float into = u * gain[s][0];
                 // The second smear, into the second delay.
                 const float was2 = piece[2][(at - static_cast<unsigned>(l[2])) & static_cast<unsigned>(m[2])];
                 const float fed2 = into + g2 * was2;
                 piece[2][at & static_cast<unsigned>(m[2])] = fed2;
                 const float out2 = was2 - g2 * fed2;
                 piece[3][at & static_cast<unsigned>(m[3])] = out2;
-                loudest = std::fmax(loudest, std::fmax(std::fabs(fed), std::fabs(out2)));
             }
             // Each side: seven taps from the two loops.
             float side[2];
@@ -316,25 +375,26 @@ private:
                 float sum = 0.f;
                 for (int t = 0; t < 7; ++t) {
                     const Tap& tap = kTaps[c][t];
-                    sum += tap.sign * line[tap.loop][tap.piece][(at - static_cast<unsigned>(tapAgo_[c][t])) & static_cast<unsigned>(mask[tap.loop][tap.piece])];
+                    sum += tapG[c][t] * line[tap.loop][tap.piece][(at - static_cast<unsigned>(tapAgo_[c][t])) & static_cast<unsigned>(mask[tap.loop][tap.piece])];
                 }
-                side[c] = kOut * sum;
+                side[c] = sum;
             }
-            left[n] = inL * dry + wet * side[0];
-            right[n] = inR * dry + wet * side[1];
-            // Asleep once nothing worth the name has gone in or round for longer than the plate remembers.
-            quiet = inL == 0.f && inR == 0.f && loudest < kQuiet ? quiet + 1 : 0;
+            // At MIX 0, at rest, the sound as it came, to the bit (the faintest of it and a -0 too).
+            if (dry != 1.f || wet != 0.f) {
+                left[n] = inL * dry + wet * side[0];
+                right[n] = inR * dry + wet * side[1];
+            }
+            // Asleep once nothing worth the name has come in or come out (the plate's own sound, before MIX) for
+            // longer than the plate remembers: the taps read all of both loops, each trip round is under 0.4 s.
+            quiet = inL == 0.f && inR == 0.f && std::fabs(side[0]) < kQuiet && std::fabs(side[1]) < kQuiet ? quiet + 1 : 0;
             ++at;
         }
         at_ = at;
-        band_ = band, damp_[0] = damp[0], damp_[1] = damp[1];
+        band_ = band, damp_[0] = damp[0], damp_[1] = damp[1], low_[0] = low[0], low_[1] = low[1];
         bend_ = bend, bendStep_ = bendStep, bendQ_ = bendQ, bendQStep_ = bendQStep, bendLeft_ = bendLeft;
         quiet_ = quiet;
         dry_.done(), wet_.done(), preGlide_.done();
-        for (int s = 0; s < 2; ++s) gain_[s][0] = gainTo_[s][0], gain_[s][1] = gainTo_[s][1];
-        dampC_ = dampTo_, bandC_ = bandTo_, feed_ = feedTo_;
-        for (int j = 0; j < kSmears; ++j) smearG_[j] = smearGTo_[j];
-        for (int s = 0; s < 2; ++s) loopG_[s][0] = loopGTo_[s][0], loopG_[s][1] = loopGTo_[s][1];
+        snapFollowers();
     }
     // The sound `ago` samples before place `at` (written at `at` already), read between samples.
     static float between(const float* line, int mask, unsigned at, float ago) {
@@ -360,7 +420,8 @@ private:
     Glide preGlide_, decay_, tone_, dry_, wet_;
     float preTo_ = 0.f;
     float gain_[2][2] = {}, gainTo_[2][2] = {}, dampC_ = 1.f, dampTo_ = 1.f, bandC_ = 1.f, bandTo_ = 1.f, feed_ = 0.f, feedTo_ = 0.f;
-    float band_ = 0.f, damp_[2] = {};
+    float band_ = 0.f, damp_[2] = {}, low_[2] = {};
+    float highs_[2] = {}, highsTo_[2] = {}, lows_[2] = {}, lowsTo_[2] = {}, lowC_ = 0.f, tapG_[2][7] = {}, tapGTo_[2][7] = {};
     double phase_ = 0.0;
     float bend_ = 0.f, bendStep_ = 0.f, bendQ_ = 1.f, bendQStep_ = 0.f, bendMost_ = 19.2f;
     int bendLeft_ = 0;
