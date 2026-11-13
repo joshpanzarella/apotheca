@@ -110,6 +110,19 @@ struct Hint { const char* key; const char* does; };
 // D-pad gives is written as the direction alone. A hint that does not fit
 // is left out; the end of the bar says how to see the help, if there is room.
 void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count);
+// Where the bar's first chip starts.
+constexpr float kHintsLeft = 8.f;
+// The bar while a strip of fields is being set (X held on a hit, a note or a chord): each
+// button's chip stands DIRECTLY UNDER THE FIELD IT CHANGES, its left edge at the field's
+// (`x`: the same constant the strip draws the field at), with no word: the field's label
+// above it says what it is. The chips are the bar's own. `dice` (a key, or null) is the
+// button that rolls all of it: it stands by itself at the left end with a die. Written left
+// to right; a chip that would come within kHintUnderGap of the one before, or pass the
+// right-hand end, is left out. How to see the help is said at the end only if there is room
+// after the last chip: where a field is that far right, it gives way.
+struct HintUnder { float x; const char* key; };
+constexpr float kHintUnderGap = 6.f;
+void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count);
 
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
