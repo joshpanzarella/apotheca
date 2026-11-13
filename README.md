@@ -991,6 +991,7 @@ How the effects meet each other, and the edges:
 | --- | --- |
 | A strum on a short chord | The strum never takes more than half the chord's length. A shorter chord is strummed faster |
 | STRUM with RATCHET | Every piece of the ratchet is strummed (within half of the piece) |
+| RATCHET with any of the others | Every key plays as many hits as the plain chord does, every time. LENGTHS lets the **last** hit go sooner; the hits before it are as they always are |
 | An arpeggio with RATCHET | The ratchet is not played. It is kept, and the strip shows it dim |
 | An arpeggio past the chord's end | It never goes past. It goes round again through the notes until the chord ends; the last note is cut there |
 | UP-DOWN on a strum | Up on one chord, down on the next, as a hand goes. Play starts with up |
@@ -1005,7 +1006,9 @@ How the effects meet each other, and the edges:
 | Swap (hold Y) | The new chord keeps the effects |
 | Break into notes (hold Y, B) | The loose notes keep the ratchet and the THROW. **They keep nothing of the other five**: a strum belongs to a chord |
 | Move (hold R1), copy, NEXT SCENE, undo | The effects go with the chord |
-| The mark | A light corner at the top of each of the chord's keys. A ratchet's lines and edge are as they were |
+| The mark | A light corner at the top of **one** key: the chord's lowest, the one under its name. A ratchet's lines are on that key too, once, not on every key. Where the name sits on that key (a chord on step 1, or nudged early) both go on the next key, so nothing is written over the name. THROW's foot is on every key. A ratchet that is not played (an arpeggio) is not drawn |
+| Changed while the song plays | The change is heard the next time the chord plays, and that time has each note once. An arpeggio stops at once if its chord is deleted, moved or made a plain chord |
+| A bounce | The song is played once, so nothing of its first chord sounds at its end (live, going round, HUMAN TIME's early notes do come just before the bar line) |
 | The dice (X + Y) | Always something, never what it was. A strum about half the time, an arpeggio about one roll in seven; human amounts only 10 or 25%; an arpeggio is never given a ratchet |
 
 In the song file a chord's effects are one line after it, left out when none

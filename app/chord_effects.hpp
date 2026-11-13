@@ -115,7 +115,9 @@ inline void chordEffectRoll(ChordEvent& c, Roll roll) {
         c.play.lengths = roll(100) < 30 ? small[roll(3)] : 0;
         if (c.play.arpeggio()) c.ratchet = 0;
         const bool something = c.ratchet >= 2 || chordPlays(c);
-        const bool same = c.ratchet == was.ratchet && c.play.strum == was.play.strum && c.play.order == was.play.order && c.play.time == was.play.time && c.play.level == was.play.level && c.play.lengths == was.play.lengths;
+        // (What is PLAYED: an ORDER under a STRUM that is off does nothing, so it does not count.)
+        const bool sameOrder = c.play.order == was.play.order || (c.play.strum == kStrumOff && was.play.strum == kStrumOff);
+        const bool same = c.ratchet == was.ratchet && c.play.strum == was.play.strum && sameOrder && c.play.time == was.play.time && c.play.level == was.play.level && c.play.lengths == was.play.lengths;
         if (something && !same) return;
     }
 }

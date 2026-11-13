@@ -4,6 +4,7 @@
 // side is tests/chordfx_test.cpp.
 
 #include <SDL.h>
+#include <unistd.h>
 
 #include <cmath>
 #include <cstdio>
@@ -310,6 +311,19 @@ void testTheDice() {
     const int ordered = orders[0] + orders[1] + orders[2] + orders[3];
     CHECK(std::fabs(orders[0] / static_cast<double>(ordered) - 0.50) < 0.04 && std::fabs(orders[1] / static_cast<double>(ordered) - 0.20) < 0.04);
     CHECK(std::fabs(orders[2] / static_cast<double>(ordered) - 0.15) < 0.04 && std::fabs(orders[3] / static_cast<double>(ordered) - 0.15) < 0.04);
+    // "Never what it was" is about what is PLAYED. An ORDER set by hand under a STRUM that is
+    // off does nothing: a roll that changes only that has changed nothing, and is rolled again.
+    {
+        ChordEvent d = plain;
+        d.ratchet = 2;
+        d.play.order = kOrderDown; // (dim on the strip: STRUM is off)
+        const std::uint32_t script[] = {0, 0, 0, 0, 99, 99, 99,  // x2, STRUM OFF, nothing else: as it plays now
+                                        99, 40, 0, 99, 99, 99};  // then: no ratchet, STRUM, UP
+        std::size_t at = 0;
+        const auto scripted = [&](std::uint32_t outOf) { return script[at++ % (sizeof script / sizeof script[0])] % outOf; };
+        chordEffectRoll(d, scripted);
+        CHECK(d.play.strum == kStrumTight && d.ratchet == 0 && at == sizeof script / sizeof script[0]);
+    }
 }
 
 // ---- the gesture ---------------------------------------------------------------------------------------
@@ -793,6 +807,53 @@ void testScenes() {
     CHECK(rig.pattern(2).chords[0].velocity > 0.f && samePlay(rig.pattern(2).chords[0].play, chordPlayOf(kStrumHalf, kOrderRandom, 10, 25, 50)));
 }
 
+// ---- a bounce ----------------------------------------------------------------------------------------------
+
+// A bounce plays the song once. With HUMAN TIME on the song's first chord its early keys were
+// asked for on the song's last step, sounded in its last 12 ms and rang on into the file's tail.
+void testABounce() {
+    char pattern[] = "/tmp/apotheca-chordfx-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    const auto read = [&](const std::string& name) {
+        std::vector<float> left;
+        std::string bytes;
+        if (!readTextFile(folder + "/" + name, bytes) || bytes.size() < 44) return left;
+        for (std::size_t at = 44; at + 3 < bytes.size(); at += 4) {
+            const int low = static_cast<unsigned char>(bytes[at]), high = static_cast<signed char>(bytes[at + 1]);
+            left.push_back(static_cast<float>(high * 256 + low) / 32767.f);
+        }
+        return left;
+    };
+    const auto loudest = [](const std::vector<float>& v, std::size_t from, std::size_t to) {
+        float p = 0.f;
+        for (std::size_t i = from; i < to && i < v.size(); ++i) p = std::fmax(p, std::fabs(v[i]));
+        return p;
+    };
+    Rig rig;
+    CHECK(rig.app.session().addTrack(TrackKind::Phazed));
+    rig.project().track = 1;
+    rig.frames(2);
+    rig.render(2000);
+    Session& session = rig.app.session();
+    session.useBounceFolder(folder);
+    ChordEvent& c = rig.chord(0, 60, 0, 2.f);
+    std::vector<float> made[2];
+    for (int time = 0; time < 2; ++time) {
+        c.play.time = static_cast<std::uint8_t>(time * 100);
+        session.sendNoteBar(1, 0, 0);
+        rig.frames(2);
+        rig.render(2000);
+        if (time) sleep(1); // the files are named by the second
+        CHECK(session.startBounce(Session::Bounce::Song));
+        session.finishBounce();
+        made[time] = read(session.bounceLast());
+    }
+    const std::size_t bar = static_cast<std::size_t>(kBar);
+    CHECK(made[0].size() > bar && made[1].size() == made[0].size()); // no longer for it
+    CHECK(loudest(made[0], 0, 3 * kStep) > 0.02f && loudest(made[1], 0, 3 * kStep) > 0.02f);
+    CHECK(loudest(made[1], bar - 4 * kStep, made[1].size()) <= loudest(made[0], bar - 4 * kStep, made[0].size()) + 1e-4f); // and nothing at its end that the plain one has not
+}
+
 // ---- what is drawn -----------------------------------------------------------------------------------------
 
 // The strip and the hints with X held on a chord, and the chord's mark on the roll: read off
@@ -984,6 +1045,95 @@ void testTheScreen() {
     rig.key(X, false);
 }
 
+// The strip's edges, off the drawn screen: what no check held (a review's mutants lived).
+void testTheStripsEdges() {
+    Rig rig;
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    rig.roll();
+    NoteScreen& roll = rig.app.notes();
+    ChordEvent& c = rig.chord(0, 60, 2);
+    const auto shot = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        SDL_RenderPresent(canvas.r);
+        return canvas.all();
+    };
+    const int stripTop = 400, hintsTop = 456;
+    const auto ink = [&](const std::vector<Uint32>& with, const std::vector<Uint32>& bare, int x0, int x1) {
+        int n = 0;
+        for (int y = stripTop; y < hintsTop; ++y)
+            for (int x = x0; x < x1; ++x) n += with[static_cast<std::size_t>(y * 640 + x)] != bare[static_cast<std::size_t>(y * 640 + x)];
+        return n;
+    };
+    const std::vector<Uint32> bare = shot(); // a plain chord: nothing right of LENGTH
+    CHECK(ink(bare, bare, 0, 640) == 0);
+    // X let go, thrown to SPACE: what the chord does is said in the room THROW leaves, and where
+    // the words do not fit ("LENGTHS 100%") it says how many are on. Nothing runs into THROW.
+    c.throwTo = 2;
+    const int effectX = static_cast<int>(stripEffectX(true));
+    // (Where THROW stands: its label is the last thing on the strip's upper line, and its value begins under it.)
+    const auto throwAt = [&](const std::vector<Uint32>& s) {
+        int at = 640, last = 640;
+        for (int x = 639; x >= effectX; --x) {
+            int n = 0;
+            for (int y = stripTop; y < stripTop + 22; ++y) n += s[static_cast<std::size_t>(y * 640 + x)] != bare[static_cast<std::size_t>(y * 640 + x)];
+            if (n) at = last = x;
+            else if (last - x > 6 && at < 640) break;
+        }
+        return at;
+    };
+    const auto valueInk = [&](const std::vector<Uint32>& s, int x0, int x1) {
+        int n = 0;
+        for (int y = stripTop + 24; y < hintsTop; ++y)
+            for (int x = x0; x < x1; ++x) n += s[static_cast<std::size_t>(y * 640 + x)] != bare[static_cast<std::size_t>(y * 640 + x)];
+        return n;
+    };
+    for (const ChordPlay& play : {chordPlayOf(0, 0, 0, 0, 100), chordPlayOf(0, 0, 0, 100, 0), chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100), chordPlayOf(kStrumWide, 0, 0, 0, 0)}) {
+        c.play = play;
+        const std::vector<Uint32> s = shot();
+        const int at = throwAt(s);
+        CHECK(at > effectX + 40 && at <= static_cast<int>(kStripThrowX));
+        CHECK(valueInk(s, effectX, at - 7) > 30); // it is said
+        CHECK(valueInk(s, at - 7, at - 1) == 0);  // ...and stops short of THROW
+        CHECK(ink(s, bare, 633, 640) == 0);
+    }
+    // A nudge's value keeps clear of EFFECTS, as it does of a note's effect: "45% EARLY" is
+    // drawn smaller beside it.
+    c.play = chordPlayOf(kStrumWide, 0, 0, 0, 0);
+    c.nudge = -0.45f;
+    for (int thrown = 0; thrown < 2; ++thrown) {
+        c.throwTo = static_cast<std::uint8_t>(thrown ? 2 : 0);
+        const std::vector<Uint32> s = shot();
+        const int x = static_cast<int>(stripEffectX(thrown != 0));
+        CHECK(ink(s, bare, static_cast<int>(kStripNudgeX), x - static_cast<int>(kStripSpace)) > 30);
+        CHECK(ink(s, bare, x - static_cast<int>(kStripSpace) + 2, x - 1) == 0);
+    }
+    c.nudge = 0.f;
+    c.throwTo = 0;
+    // X held, an effect that waits on another (ORDER with STRUM off): picked it is dim, as a
+    // value at rest is; not picked it is dimmer still. Never dark where the cursor is.
+    c.play = ChordPlay();
+    rig.key(X, true);
+    const auto letters = [&](const std::vector<Uint32>& s, SDL_Color colour) {
+        const int x0 = static_cast<int>(kChordFxListX), y0 = stripTop + kChordFxRowTop + (kFxOrder % 3) * kChordFxRowH;
+        int n = 0;
+        for (int y = y0 + 1; y < y0 + kChordFxRowH - 3; ++y)
+            for (int x = x0; x < x0 + static_cast<int>(kChordFxColumn) - 12; ++x) n += s[static_cast<std::size_t>(y * 640 + x)] == Canvas::colour(colour);
+        return n;
+    };
+    roll.pickEffect(kFxOrder);
+    const std::vector<Uint32> picked = shot();
+    roll.pickEffect(kFxRatchet);
+    const std::vector<Uint32> notPicked = shot();
+    if (getenv("DBG")) std::printf("picked dim %d line %d; not picked dim %d line %d\n", letters(picked, ui::kDim), letters(picked, ui::kLine), letters(notPicked, ui::kDim), letters(notPicked, ui::kLine));
+    CHECK(letters(picked, ui::kDim) >= 15 && letters(picked, ui::kLine) == 0);
+    CHECK(letters(notPicked, ui::kLine) >= 15 && letters(notPicked, ui::kDim) == 0);
+    rig.key(X, false);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -993,7 +1143,7 @@ int main(int argc, char** argv) {
     const Named all[] = {
         {"testTheList", testTheList}, {"testTheLine", testTheLine}, {"testTheDice", testTheDice}, {"testTheGesture", testTheGesture},
         {"testThroughTheSession", testThroughTheSession}, {"testTheSongFile", testTheSongFile}, {"testUndo", testUndo},
-        {"testSwapBreakAndDrag", testSwapBreakAndDrag}, {"testScenes", testScenes}, {"testTheScreen", testTheScreen},
+        {"testSwapBreakAndDrag", testSwapBreakAndDrag}, {"testScenes", testScenes}, {"testTheScreen", testTheScreen}, {"testABounce", testABounce}, {"testTheStripsEdges", testTheStripsEdges},
     };
     for (const Named& t : all) {
         bool wanted = argc < 2;

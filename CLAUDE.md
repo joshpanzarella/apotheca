@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (24) | `cd build && ctest -j8` (about 50 s) |
+| All tests (24) | `cd build && ctest -j8` (about 70 s) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-sends`, `fx-pick`, `fx-all`, `fx-bus`, `fx-level`, `fx-comp`, `fx-comp-all`, `fx-duck`, each also with `--hold-a`; the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -475,11 +475,31 @@ effect in those two groups and fails one that does not.
     tells (`kTellOnly`) names each key at the chord's own moment. So what
     follows slides from its top key, as `Project::glideLines` draws, however
     it is strummed. `chordfx_test` and `glideapp_test` hold both.
-  - **An arpeggio is one clock for the chord** (`Track::Arp`, two a track:
-    the next chord's is set waiting while this one's plays, and the one that
-    begins ends the other), not a waiting note per note: 512 would not fit.
-    `clearPending` and a track taken away empty them; `SetTempo` keeps its
-    place in the step. A ratchet is not played in an arpeggio.
+  - **An arpeggio is one clock for the chord** (`Track::Arp`, three a track:
+    one still playing, the next chord's waiting for its nudge, the one after
+    asked a step ahead; the one that begins ends the one playing; with two,
+    the third took the clock of the one still playing), not a waiting note
+    per note: 512 would not fit. `clearPending` and a track taken away empty
+    them; `SetTempo` keeps its place in the step. A ratchet is not played in
+    an arpeggio. **An arpeggio ends with its chord**: a `SetNote` into its
+    bar sets `Arp::look`, and before its next note it looks whether an
+    arpeggio's note is still written on its step (by step, not by slot: a
+    chord's keys change slots when a loose note is written).
+  - **Which asking takes a chord is remembered, not read twice**
+    (`Track::chordAsked`: the step, counted from Play, whose chord was asked
+    a step ahead). A chord asked ahead is not begun again on its step; one
+    not asked begins on its step, early keys with the step. Read from the
+    values at each asking, a HUMAN TIME turned while the song played lost
+    the chord once or played it twice.
+  - **A ratcheted chord's hits are counted from the CHORD's length**
+    (`startChordNote` has the ratchet's loop itself), not from the key's own
+    (longer when early, shorter when late or under LENGTHS): keys of one
+    chord played different numbers of hits. LENGTHS shortens the last hit
+    only. No key is so late that its last hit has no chord left.
+  - **A bounce plays the song once** (`Command::Play` with `c = 1`,
+    `Engine::once_`): on the song's last step nothing early is asked for
+    from its first (chords, notes and drum hits alike), or it sounds in the
+    file's last moments and rings into the tail. Live, going round, it is.
   - **THROW holds for the whole chord** (`Note::hold` is set before LENGTHS
     shortens the note; an arpeggio's every note carries what is left).
   - In a song file: `chordplay STEP STRUM ORDER TIME LEVEL LENGTHS`, a line
@@ -492,6 +512,11 @@ effect in those two groups and fails one that does not.
     The list, a click, the words and the dice's odds are
     `app/chord_effects.hpp`; the strip's places are in `note_marks.hpp`
     (`kChordFx...`). A chord broken into notes keeps none of the five.
+  - **A chord's RATCHET lines and its light corner are drawn once** (owner,
+    2026-11-13): on its lowest key that shows, the one under its name; on
+    the next key clear of the name where the name sits on that one (step 1,
+    nudged early), and the name is drawn again on top. THROW's foot is on
+    every key. `chordfxapp_test` reads it off the drawn screen.
   - X hears a chord plain. The effects are the step clock's.
   - Its tests are their own two programs: `tests/chordfx_test.cpp` (the
     engine, with a listening synth) and `tests/chordfxapp_test.cpp` (the
