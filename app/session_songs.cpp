@@ -166,7 +166,8 @@ float Session::ui_stickSpeed() { return ui::gStickSpeed; }
 void Session::keepSettings() const {
     if (programFolder_.empty()) return;
     writeTextFile(programFolder_ + "/settings.txt", "stick " + std::to_string(static_cast<int>(std::round(ui::gStickSpeed * 100.f))) + "\noctaves " +
-                                                        std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) + "\n");
+                                                        std::to_string(octaves_) + "\nmidirec " + (midiRecord_ ? "1" : "0") + "\ntext " + std::to_string(textSize_) +
+                                                        "\ntheme " + std::to_string(theme_) + "\n");
 }
 
 void Session::setStickSpeed(float speed) {
@@ -186,6 +187,11 @@ void Session::setTextSize(int size) {
     keepSettings();
 }
 
+void Session::setTheme(int theme) {
+    theme_ = theme < 0 ? 0 : (theme >= kThemeCount ? kThemeCount - 1 : theme);
+    keepSettings();
+}
+
 void Session::loadSettings() {
     std::string text;
     if (programFolder_.empty() || !readTextFile(programFolder_ + "/settings.txt", text)) return;
@@ -199,6 +205,7 @@ void Session::loadSettings() {
         if (name == "octaves" && value >= 1 && value <= 3) setOctavesShown(value);
         if (name == "midirec" && (value == 0 || value == 1)) setMidiRecording(value == 1);
         if (name == "text" && value >= 0 && value < kTextSizeCount) setTextSize(value); // (a file from before the setting has no such line: LARGE)
+        if (name == "theme" && value >= 0 && value < kThemeCount) setTheme(value); // (none: the look as it was built)
     }
     programFolder_ = folder;
 }

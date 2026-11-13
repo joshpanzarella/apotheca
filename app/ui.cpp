@@ -8,6 +8,8 @@
 #include <string>
 
 namespace apotheca {
+static_assert(Session::kThemeCount == kThemes, "the SET page's THEME steps through every theme");
+static_assert(Session::kThemeAsBuilt == kThemeBrown, "nothing kept: the look as it was built");
 namespace ui {
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c) {

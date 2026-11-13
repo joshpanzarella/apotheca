@@ -50,18 +50,59 @@ struct Fonts {
     }
 };
 
+// ---- the colours: a THEME (SET page; owner, 2026-11-13) ---------------------------------------
+// Each colour has a JOB, and every theme keeps the jobs; only the colours change, never a size,
+// a place or a shape. The surfaces, deepest first: bg (the screen, the black keys, the lettering
+// on a chip that is filled with an accent or with text), panel, panel2 (a box that has been turned
+// or stands out), line (edges, the empty part of a bar, dividers). The two levels of lettering:
+// text and dim. The four accents: teal (the cursor, and "on"), purple (automation, glide, chords,
+// where the song is playing), brass (a value changed from its usual, a held cursor, meters), stop
+// (stop, WRITE, delete). A light theme keeps that order: its bg is the deepest of its surfaces and
+// its line darker than them, so "fade to the background" pushes a thing back on either kind.
+struct Theme {
+    const char* name; // as the SET page shows it: one plain word
+    SDL_Color bg, panel, panel2, line, text, dim, teal, purple, brass, stop;
+};
+// The numbers are kept in "settings.txt" (`theme N`): appended, never reordered. The dark ones
+// first, and the first of all is the look as it was built (a file with no such line gets it).
+enum ThemeId { kThemeBrown, kThemeBlue, kThemeGreen, kThemeBlack, kThemePaper, kThemeGrey, kThemes };
+constexpr Theme kThemeTable[kThemes] = {
+    {"BROWN", {20, 17, 14, 255}, {31, 26, 22, 255}, {42, 35, 29, 255}, {67, 57, 47, 255}, {224, 213, 191, 255}, {143, 131, 112, 255},
+     {111, 191, 163, 255}, {154, 118, 176, 255}, {201, 161, 90, 255}, {196, 84, 70, 255}},
+    {"BLUE", {13, 17, 25, 255}, {20, 26, 37, 255}, {29, 37, 52, 255}, {64, 79, 105, 255}, {222, 230, 242, 255}, {146, 160, 182, 255},
+     {96, 204, 226, 255}, {186, 138, 236, 255}, {232, 184, 92, 255}, {238, 104, 96, 255}},
+    {"GREEN", {11, 19, 15, 255}, {17, 29, 23, 255}, {25, 40, 32, 255}, {57, 84, 69, 255}, {224, 234, 216, 255}, {144, 166, 148, 255},
+     {188, 226, 112, 255}, {214, 150, 226, 255}, {240, 156, 60, 255}, {246, 98, 118, 255}},
+    {"BLACK", {6, 6, 6, 255}, {18, 18, 18, 255}, {30, 30, 30, 255}, {76, 76, 76, 255}, {242, 242, 242, 255}, {168, 168, 168, 255},
+     {70, 226, 184, 255}, {236, 120, 255, 255}, {255, 196, 64, 255}, {255, 96, 86, 255}},
+    {"PAPER", {224, 215, 196, 255}, {237, 231, 217, 255}, {248, 244, 235, 255}, {170, 156, 132, 255}, {22, 17, 12, 255}, {70, 60, 46, 255},
+     {0, 106, 92, 255}, {92, 36, 124, 255}, {128, 84, 0, 255}, {134, 18, 44, 255}},
+    {"GREY", {211, 217, 224, 255}, {228, 232, 238, 255}, {243, 245, 248, 255}, {152, 161, 173, 255}, {10, 13, 18, 255}, {52, 59, 70, 255},
+     {0, 92, 156, 255}, {98, 16, 86, 255}, {134, 82, 0, 255}, {144, 20, 36, 255}},
+};
+
 namespace ui {
 
-constexpr SDL_Color kBg = {20, 17, 14, 255};
-constexpr SDL_Color kPanel = {31, 26, 22, 255};
-constexpr SDL_Color kPanel2 = {42, 35, 29, 255};
-constexpr SDL_Color kLine = {67, 57, 47, 255};
-constexpr SDL_Color kText = {224, 213, 191, 255};
-constexpr SDL_Color kDim = {143, 131, 112, 255};
-constexpr SDL_Color kTeal = {111, 191, 163, 255};
-constexpr SDL_Color kPurple = {154, 118, 176, 255};
-constexpr SDL_Color kBrass = {201, 161, 90, 255};
-constexpr SDL_Color kStop = {196, 84, 70, 255}; // the stop square in the top bar: red, so it reads as "stopped"
+// The theme every screen draws in. The ten names below are this theme's colours, so a screen
+// writes `kTeal` and gets the cursor's colour of whichever theme is chosen. It is set between two
+// frames (App::draw, and main.cpp before the controls setup draws), from Session::theme().
+// ANY NEW COLOUR goes through these ten (or faded() of one): never a number of its own.
+inline Theme gTheme = kThemeTable[kThemeBrown];
+inline void useTheme(int id) { gTheme = kThemeTable[id >= 0 && id < kThemes ? id : kThemeBrown]; }
+// A light theme: its lettering is darker than its background. For the few things drawn as an object
+// is (the roll's keyboard: white keys light, black keys dark), not as a surface with a job.
+inline bool lightTheme() { return gTheme.bg.r + gTheme.bg.g + gTheme.bg.b > gTheme.text.r + gTheme.text.g + gTheme.text.b; }
+
+inline const SDL_Color& kBg = gTheme.bg;
+inline const SDL_Color& kPanel = gTheme.panel;
+inline const SDL_Color& kPanel2 = gTheme.panel2;
+inline const SDL_Color& kLine = gTheme.line;
+inline const SDL_Color& kText = gTheme.text;
+inline const SDL_Color& kDim = gTheme.dim;
+inline const SDL_Color& kTeal = gTheme.teal;
+inline const SDL_Color& kPurple = gTheme.purple;
+inline const SDL_Color& kBrass = gTheme.brass;
+inline const SDL_Color& kStop = gTheme.stop; // the stop square in the top bar: red, so it reads as "stopped"
 
 constexpr int kScreenW = 640, kScreenH = 480;
 constexpr int kTopBarH = 26, kHintsH = 24;

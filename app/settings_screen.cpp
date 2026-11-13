@@ -73,6 +73,7 @@ void SettingsScreen::change(int by) {
     case kVolume: session_.setVolume(session_.volume() + 0.05f * static_cast<float>(by)); break;
     case kStick: session_.setStickSpeed(session_.stickSpeed() + 0.05f * static_cast<float>(by)); break;
     case kTextSize: session_.setTextSize(session_.textSize() + by); break; // (it has ends, as PIANO ROLL has)
+    case kTheme: session_.setTheme(session_.theme() + by); break;       // (so has this; the colours change from the next frame)
     case kOctaves: session_.setOctavesShown(session_.octavesShown() + by); break;
     case kMidi: session_.setMidiRecording(by > 0); break;
     default: break;
@@ -272,16 +273,20 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
 
-    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "TEXT SIZE", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
-    const int rowH = kRowH, w = kRowW; // (twelve rows: 34 a row, as it was with eleven, would run into the hints bar)
+    const char* names[kRows] = {"TEMPO", "CHORD PACK", "TRACK NAME", "BOUNCE", "VOLUME", "STICK SPEED", "TEXT SIZE", "THEME", "PIANO ROLL", "USB KEYBOARD", "WIFI PAGE", "BUTTONS", "CONTROLS"};
+    const int rowH = kRowH, w = kRowW; // (twelve rows shown: 34 a row, as it was with eleven, would run into the hints bar)
     fonts.small.draw(r, 16.f, 34.f, "PROJECT", kDim);
+    // A row out of sight above (the page has moved down) or below: an arrow after its section's name.
+    const auto more = [&](float y, const char* section, const char* way) { drawKey(r, fonts, 16.f + fonts.small.width(section) + 6.f, y, way, kDim); };
+    if (first_ > 0) more(34.f, "PROJECT", "UP");
     // Which Apotheca this is.
     std::snprintf(text, sizeof text, "APOTHECA %s   %s", kVersion, kBuilt);
     fonts.small.drawRight(r, kScreenW - 16.f, 34.f, text, kDim);
-    for (int row = 0; row < kRows; ++row) {
+    for (int row = first_; row < first_ + kRowsShown && row < kRows; ++row) {
         // The first four belong to the song; the rest to the handheld.
-        const int y = rowY(row);
+        const int y = rowNowY(row);
         if (row == kVolume) fonts.small.draw(r, 16.f, y - 18.f, "HANDHELD", kDim);
+        if (row == kVolume && first_ + kRowsShown < kRows) more(y - 18.f, "HANDHELD", "DOWN");
         const bool here = row == row_;
         float part = -1.f;
         const char* note = "";
@@ -325,6 +330,10 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         case kTextSize:
             std::snprintf(text, sizeof text, "%s", kTextSizeNames[session_.textSize()]);
             note = "the bars and the strips stay as they are";
+            break;
+        case kTheme:
+            std::snprintf(text, sizeof text, "%s", kThemeTable[session_.theme()].name);
+            note = "four dark, two light";
             break;
         case kOctaves:
             std::snprintf(text, sizeof text, "%d OCTAVE%s", session_.octavesShown(), session_.octavesShown() == 1 ? "" : "S");

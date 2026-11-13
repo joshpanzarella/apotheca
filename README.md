@@ -321,6 +321,7 @@ and the day it was built. The number goes up by one with every build.
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
+| THEME | The colours: BROWN, BLUE, GREEN, BLACK, PAPER or GREY, kept for next time | |
 | PIANO ROLL SHOWS | 1, 2 or 3 octaves | |
 | USB KEYBOARD | PLAY ONLY, or PLAY + RECORD | |
 | WIFI PAGE | | On / off |
@@ -329,6 +330,26 @@ and the day it was built. The number goes up by one with every build.
 
 The first three belong to the song. The rest belong to the handheld and are
 kept in `settings.txt` and `volume.txt` beside the program.
+
+The page shows twelve rows. Going down past BUTTONS moves it up a row to show
+CONTROLS; a small arrow after HANDHELD (or PROJECT) says a row is out of sight
+that way.
+
+**THEME** changes the colours, and nothing else: every box, word and mark
+stays where it was. It changes at once. Four are dark and two are light:
+
+| Theme | |
+| --- | --- |
+| BROWN | the look Apotheca was built with; a new handheld gets it |
+| BLUE | cool blue-black |
+| GREEN | deep green |
+| BLACK | near black, the most contrast |
+| PAPER | warm and light, for daylight |
+| GREY | cool and light |
+
+In every theme each colour keeps its job: the cursor and "on" (teal in
+BROWN), automation, glides and chords (purple), a value changed from its usual
+(brass), and stop and delete (red).
 
 **TEXT SIZE** is how big the lettering is. It changes at once.
 

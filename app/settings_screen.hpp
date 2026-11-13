@@ -3,7 +3,7 @@
 // handheld, and the way back into the controls setup.
 //
 //   up / down (stick or D-pad)   choose a row
-//   left / right                 change it (a choice, such as TEXT SIZE, clicks once a push)
+//   left / right                 change it (a choice, such as TEXT SIZE or THEME, clicks once a push)
 //   A                            on WIFI PAGE: on / off
 //                                on TRACK NAME: type a name (below)
 //                                on BOUNCE: write the song (or its tracks) out as WAV files
@@ -34,7 +34,7 @@ namespace apotheca {
 
 class SettingsScreen : public Screen {
 public:
-    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kTextSize, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
+    enum Row { kTempo, kPack, kTrackName, kBounce, kVolume, kStick, kTextSize, kTheme, kOctaves, kMidi, kWifi, kTest, kControls, kRows };
 
     explicit SettingsScreen(Session& session) : session_(session), project_(session.project) {}
 
@@ -44,12 +44,23 @@ public:
 
     // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.
+    // Twelve rows fit between the bars (thirteen since THEME): the page shows twelve and moves
+    // one row at a time when the cursor goes past either end (`first`: the row shown at the top).
+    // A small arrow beside PROJECT or HANDHELD says a row is out of sight that way.
     static constexpr int kRowH = 32, kRowsTop = 50, kHandheldGap = 22, kRowX = 16, kRowW = 640 - 32;
+    static constexpr int kRowsShown = 12;
     static constexpr float kNameX = 26.f, kValueX = 170.f, kNoteRight = kRowX + kRowW - 10.f;
     static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
-    static constexpr int rowY(int row) { return kRowsTop + row * kRowH + (row >= kVolume ? kHandheldGap : 0); }
+    static constexpr int rowY(int row, int first = 0) { return kRowsTop + (row - first) * kRowH + (row >= kVolume ? kHandheldGap : 0); }
+    int rowNowY(int row) const { return rowY(row, first_); } // where it is drawn just now
+    int firstShown() const { return first_; }
+    bool shown(int row) const { return row >= first_ && row < first_ + kRowsShown; }
 
-    void goTo(int row) { row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row); }
+    void goTo(int row) {
+        row_ = row < 0 ? 0 : (row >= kRows ? kRows - 1 : row);
+        if (row_ < first_) first_ = row_;
+        if (row_ >= first_ + kRowsShown) first_ = row_ - kRowsShown + 1;
+    }
     int cursorRow() const { return row_; }
     bool testing() const { return testing_; }
     bool typing() const { return typing_; }
@@ -67,6 +78,7 @@ private:
     Session& session_;
     Project& project_;
     int row_ = 0;
+    int first_ = 0; // the row at the top of the page
     mutable char bounced_[64] = "";
     int bounceWhat_ = 0; // 0 the song, 1 each track, 2 this track
     bool typing_ = false;

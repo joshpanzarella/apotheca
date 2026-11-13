@@ -266,6 +266,7 @@ void App::update(const Input& input, Uint32 nowMs) {
 }
 
 void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
+    ui::useTheme(session_.theme()); // THEME: chosen on the SET page, in use from this frame
     screenNow().draw(renderer, fonts);
 
     if (now_ < volumeShownUntil_) {
