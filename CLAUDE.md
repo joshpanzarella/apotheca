@@ -383,7 +383,9 @@ effect in those two groups and fails one that does not.
   is "both lines are zeros from end to end" and waking is a fresh effect to
   the bit (TAPE leaves what is under 240 dB down on its tape: 1e-9 apart).
   So a steady sine's samples at its zero crossings (under 1e-12) are not
-  echoed. Its FEEDBACK reads what it does, 0 to 90%: a twentieth is 4.5%, so
+  echoed. **Its tail leans left** (each right echo is FEEDBACK of the left before it:
+  7.8 dB over a tail at 45%; a sound hard right echoes first on the left; the
+  owner's call, pinned in `testPing`). Its FEEDBACK reads what it does, 0 to 90%: a twentieth is 4.5%, so
   the D-pad's stops read 5, 9, 14, 18... (CLEAN reads 0 to 100% and does nine
   tenths of it; TAPE reads to 120%. Three scales, carried as they read.)
 - **A filter state does not reach zero by itself**: with a coefficient over a

@@ -25,6 +25,15 @@
 // of the one before it (and the high cut once more). The first is the sound
 // as it came, not cut at all.
 //
+// What that costs, measured (testPing), and the owner's to change: the tail
+// LEANS LEFT, since each right echo is FEEDBACK of the left one before it
+// (over a whole tail the left is 7.8 dB louder at 45%, 1.6 dB at 90%; at 0%
+// the one echo is on the left only). And the sound's own width is not kept:
+// a sound hard right echoes first on the left at half its size, and a sound
+// opposite on the two sides echoes not at all. Ways to change it (a setting
+// for the side it starts on, or some of the input on the right line too)
+// would each cost the plain left, right, left of a mono sound.
+//
 // The numbers, all pinned by tests/effects_test.cpp (testPing):
 //   - TIME is the step length to the nearest sample. Turned, or with a new
 //     tempo, it GLIDES as TAPE's does: the lines run between half and double

@@ -6274,6 +6274,131 @@ static void testPing() {
         SAY("ping     TONE turned to nothing: at 6 kHz the right echo is %.3f of the sound before the turn, %.3f from 2 to 3 ms after it, %.3f 50 ms after\n", before, soon, later);
         CHECK(before > 0.8 && before < 0.95 && soon > 0.5 * before && soon < 0.98 * before && later < 0.25 * before && later > 0.09);
     }
+    // ...and on the RIGHT side's cut the same (the right echo on its way back to the left): the same
+    // burst, TONE turned in the middle of its RIGHT echo, and what reaches the left (two cuts, two
+    // FEEDBACKs: 0.871 x 0.871 is 0.759):
+    //   before the turn                0.759
+    //   2 to 3 ms after the turn       0.725   (on its way, as the left side's)
+    //   50 ms after                    0.145
+    {
+        std::unique_ptr<Effect> t = fresh(ping, 0.f, 1.f, 1.f, 1.f);
+        Stereo io(72000);
+        for (std::size_t i = 44000; i < 50000; ++i) io.l[i] = io.r[i] = static_cast<float>(0.25 * std::sin(2.0 * kPi * 6000.0 * static_cast<double>(i) / 48000.0));
+        through(*t, io, 0, 59000);
+        t->setParam(2, 0.f);
+        through(*t, io, 59000, 72000);
+        // The right echo is from 56000; what passed its cut at 59000, the turn, is on the left at 65000.
+        const double before = partAt(io.l.data() + 64000, 480, 6000.0) / 0.25, soon = partAt(io.l.data() + 65000 + 96, 48, 6000.0) / 0.25, later = partAt(io.l.data() + 65000 + 2400, 480, 6000.0) / 0.25;
+        SAY("ping     TONE turned to nothing on the right echo: at 6 kHz the next left echo is %.3f of the sound before the turn, %.3f from 2 to 3 ms after it, %.3f 50 ms after\n", before, soon, later);
+        CHECK(before > 0.7 && before < 0.8 && soon > 0.5 * before && soon < 0.98 * before && later < 0.25 * before && later > 0.08);
+    }
+
+    // EVERY SETTING SLIDES SAMPLE BY SAMPLE, ON BOTH SIDES: never still for a block and then a step
+    // (blocks of 64 here; that zipper is heard: MIX turned under a sine made steps 41% larger).
+    // A steady level on the way in (0.5 both sides, FEEDBACK 45%, a sixteenth, TONE full) makes every
+    // echo steady too. MIX turned moves both echoes by a little every sample at once; FEEDBACK turned
+    // moves them a sixteenth later, when what it scaled comes off the lines. Each sample's move is
+    // from 0.5 to 2 times the one before it, in the same direction, through the first 10 blocks.
+    {
+        const auto slides = [](const std::vector<float>& v, std::size_t from, std::size_t count) {
+            double worst = 1.0;
+            bool ok = true;
+            for (std::size_t i = from + 1; i < from + count; ++i) {
+                const double now = v[i] - v[i - 1], was = v[i - 1] - v[i - 2];
+                const double ratio = was != 0.0 ? now / was : 0.0;
+                ok = ok && ratio >= 0.5 && ratio <= 2.0;
+                worst = std::fabs(std::log(ratio > 0.0 ? ratio : 1e-9)) > std::fabs(std::log(worst)) ? (ratio > 0.0 ? ratio : 0.0) : worst;
+            }
+            return std::make_pair(ok, worst);
+        };
+        std::unique_ptr<Effect> t = fresh(ping, 0.f, 0.5f, 1.f, 1.f);
+        const std::size_t turnMix = 6 * 48000, turnFeedback = turnMix + 150 * 64; // both on a block's edge
+        Stereo io(turnFeedback + 6000 + 4800);
+        io.l.assign(io.frames(), 0.5f);
+        io.r.assign(io.frames(), 0.5f);
+        through(*t, io, 0, turnMix);
+        t->setParam(3, 0.2f);
+        through(*t, io, turnMix, turnFeedback);
+        t->setParam(1, 0.1f);
+        through(*t, io, turnFeedback, io.frames());
+        const auto mixL = slides(io.l, turnMix + 1, 640), mixR = slides(io.r, turnMix + 1, 640);
+        const auto fbL = slides(io.l, turnFeedback + 6000 + 1, 640), fbR = slides(io.r, turnFeedback + 6000 + 1, 640);
+        SAY("ping     MIX turned: each sample's move against the last, at worst %.3f left, %.3f right; FEEDBACK: %.3f, %.3f\n", mixL.second, mixR.second, fbL.second, fbR.second);
+        CHECK(mixL.first && mixR.first && fbL.first && fbR.first);
+        CHECK(io.l[turnMix - 1] == io.l[turnMix - 2] && io.r[turnFeedback + 5999] == io.r[turnFeedback + 5998] && io.l[turnFeedback + 6000] != io.l[turnFeedback + 5999]); // steady before each
+    }
+    // TONE too: a steady level passes a high cut whatever it is set to, so a steady SLOPE is used
+    // (the cut lags a slope by an amount that is its setting). On a bus, a slope on the way in, a
+    // sixteenth: its first right echo is FEEDBACK of what left the cut, alone there. TONE turned from
+    // full to nothing while the slope is in the cut: the largest change in that echo's step from one
+    // sample to the next, in the 20 ms after (against the slope's own step, 9e-5 a sample):
+    //   gliding sample by sample         9e-8   (a float's grain: 6e-8 before the turn)
+    //   still for a block, then a step   5.2e-6 (the lag jumps at each block's edge)
+    {
+        std::unique_ptr<Effect> t = fresh(ping, 0.f, 1.f, 1.f, 1.f);
+        t->setOnBus(true);
+        Stereo io(30000);
+        for (std::size_t i = 0; i < 12000; ++i) io.l[i] = io.r[i] = static_cast<float>(1e-4 * (static_cast<double>(i) - 6000.0));
+        const std::size_t turn = 9000; // the slope from 3000 on is in the cut now; on the right 6000 later
+        through(*t, io, 0, turn);
+        t->setParam(2, 0.f);
+        through(*t, io, turn, io.frames());
+        double bend = 0.0, quiet = 0.0;
+        for (std::size_t i = turn + 6000 + 2; i < turn + 6000 + 960; ++i) bend = std::fmax(bend, std::fabs(static_cast<double>(io.r[i]) - 2.0 * io.r[i - 1] + io.r[i - 2]));
+        for (std::size_t i = turn + 6000 - 960; i < turn + 6000; ++i) quiet = std::fmax(quiet, std::fabs(static_cast<double>(io.r[i]) - 2.0 * io.r[i - 1] + io.r[i - 2]));
+        SAY("ping     TONE turned under a slope: the right echo's step changes by at most %.2e a sample after the turn (%.2e before it)\n", bend, quiet);
+        CHECK(bend < 1e-6);
+    }
+
+    // TIME LANDS ON THE SAMPLE WITHOUT A STEP. Turned from a sixteenth to an eighth under a steady
+    // 1 kHz sine, the lines are read between samples until the reading is within a thousandth of a
+    // sample of the new TIME, and then on it. Measured: on the sample 2.36 s after the turn; in the
+    // 10 ms before, it reads the sound an eighth ago to within 3.5e-5 (a thousandth of a sample of
+    // this sine is 3.3e-5; a tenth of one, 3.3e-3, would be a step).
+    {
+        std::unique_ptr<Effect> t = fresh(ping, 0.f, 0.f, 1.f, 1.f);
+        Stereo io(6 * 48000);
+        io.l = io.r = sineOf(1000.0, 0.25, io.frames());
+        const std::vector<float> in = io.l;
+        through(*t, io, 0, 48000);
+        t->setParam(0, tapeTime(2));
+        through(*t, io, 48000, io.frames());
+        const auto exact = [&](std::size_t i) { return io.l[i] == in[i] + in[i - 12000] || (std::fabs(in[i - 12000]) < 1e-12f && io.l[i] == in[i]); };
+        std::size_t landed = 48000;
+        for (std::size_t i = 48000; i < io.frames(); ++i) landed = exact(i) ? landed : i + 1;
+        double worst = 0.0;
+        for (std::size_t i = landed - 480; i < landed; ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(io.l[i]) - (static_cast<double>(in[i]) + in[i - 12000])));
+        SAY("ping     TIME turned to an eighth: on the sample %.2f s after the turn; in the 10 ms before, within %.1e of the sound an eighth ago\n", static_cast<double>(landed - 48000) / 48000.0, worst);
+        CHECK(landed > 48000 + 2.2 * 48000 && landed < 48000 + 2.6 * 48000 && worst < 1e-4);
+    }
+
+    // THE TAIL LEANS LEFT, by design (the owner's call to change it: see ping.cpp). The first echo is
+    // on the left and each right echo is FEEDBACK of the left one before it, so over the whole tail
+    // the left has 1 / FEEDBACK squared of the right's energy: 20 log10(1 / FEEDBACK) dB, and a
+    // little more for what TONE takes off noise on the way across. 50 ms of noise in the middle,
+    // TONE full, a sixteenth at 120 BPM. Measured, left over right:
+    //   FEEDBACK reads    0%               23%     45%     67%     90%
+    //   left over right   (right silent)   13.8    7.8     4.25    1.64 dB
+    //   1 / FEEDBACK^2    -                13.0    6.9     3.4     0.9 dB
+    {
+        const float settings[4] = {0.25f, 0.5f, 0.75f, 1.f};
+        const double measured[4] = {13.82, 7.80, 4.25, 1.64};
+        for (int s = 0; s < 4; ++s) {
+            Stereo io(60 * 48000);
+            Noise noise(5u);
+            for (std::size_t i = 0; i < 2400; ++i) io.l[i] = io.r[i] = 0.5f * noise.next();
+            std::unique_ptr<Effect> p = fresh(ping, 0.f, settings[s], 1.f, 1.f);
+            p->setOnBus(true);
+            through(*p, io);
+            double l = 0.0, r = 0.0;
+            for (std::size_t i = 0; i < io.frames(); ++i) l += static_cast<double>(io.l[i]) * io.l[i], r += static_cast<double>(io.r[i]) * io.r[i];
+            const double lean = 10.0 * std::log10(l / r), plain = -20.0 * std::log10(kPingMost * settings[s]);
+            SAY("ping     FEEDBACK %s: the tail's left over its right %.2f dB (1 / FEEDBACK squared: %.2f dB)\n", reads(ping, 1, settings[s]).c_str(), lean, plain);
+            CHECK(std::fabs(lean - measured[s]) < 0.1 && lean > plain && lean < plain + 1.0);
+        }
+        const Stereo once = clickBoth(*fresh(ping, 0.f, 0.f, 1.f, 1.f), 1.0);
+        CHECK(echoAt(once.r, 1) == -1); // at 0%: one echo, on the left
+    }
 
     // HOWEVER IT IS CUT INTO BLOCKS, the same to the last bit, both sides: through a whole tail,
     // into sleep, and awake again part way through a block (a second, faint sound 60 dB down at
