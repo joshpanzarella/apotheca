@@ -48,6 +48,7 @@
 #include "apotheca/drums.hpp"
 #include "apotheca/effect.hpp"
 #include "apotheca/effects.hpp"
+#include "apotheca/chord_rule.hpp"
 #include "apotheca/glide_rule.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
@@ -113,7 +114,9 @@ struct Command {
                         //   semitones, bar = ratchet (2..4), scene = 1 for backwards, extra = cut (1, 2, 3)
                         //   and, as in SetStepFx, 4 times its THROW added to `extra`
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
-        Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone
+        Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone,
+                        //   c = 1: the song is played once through and then stopped (a bounce), so its last
+                        //   step begins nothing early that belongs to its first
         Stop,           // stop; drums ring out, synth notes are let go
         Panic,          // silence, now. a = 1: the output fades to nothing in 5 ms and stays shut;
                         //   playing stops, every drum is cut and every note let go. a = 0: it may
@@ -182,6 +185,8 @@ struct Command {
                              //   2048 times the glide's length (kGlideQuarter and on, glide_rule.hpp) added,
                              //   with the 256: none of it there, the 256 alone is half a step, as it always was.
     void* pointer = nullptr; // InstallSynth only
+    ChordPlay play;          // SetNote only: the note is one of a chord's, and what the chord does besides sound
+                             //   all at once (chord_rule.hpp). Nothing set: a note like any other.
 };
 
 // Everything a track plays, in one piece: for loading a whole song in a
@@ -207,7 +212,7 @@ struct TrackImage {
     float chance[kPatternSlots][kDrumLanes][kSteps];
     float start[kPatternSlots][kDrumLanes][kSteps] = {};
     int bars[kMaxScenes]; // how long the track's cell is in each scene
-    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0, throwTo = 0; }; // length in steps, not only whole ones
+    struct Note { std::uint8_t step = 0, pitch = 0; float length = 0.f; float velocity = 0.f; float nudge = 0.f; std::uint8_t ratchet = 0, glide = 0, throwTo = 0; ChordPlay play; }; // length in steps, not only whole ones
     Note notes[kPatternSlots][kMaxNotes];
     // Automation, [scene][lane][bar * 16 + step], or null for none anywhere.
     std::unique_ptr<float[]> automation;
@@ -380,7 +385,16 @@ private:
         std::uint8_t throwTo = 0; // THROW: the buses the track's send is opened to while it sounds (kThrowEcho, kThrowSpace)
         float hold = 0.f;         // inside the engine: how long that send stays open, in steps (the whole note, also
                                   // when it is the first piece of a ratchet). 0: for its own length.
+        ChordPlay play;           // a chord's note: which of its keys, and the chord's effects (chord_rule.hpp)
+        std::uint8_t how = 0;     // inside the engine: kUntold, kTellOnly, kWholeFrames (below)
     };
+    // A chord whose notes do not all begin on its own moment (strummed, an arpeggio, HUMAN TIME)
+    // is still ONE moment to a glide: what follows slides from its top key, as the roll draws.
+    // So those notes say nothing to the track's GlideTrail when they sound (kUntold), and the
+    // trail is told of each key at the chord's own moment by a note that only tells (kTellOnly).
+    // kWholeFrames: everything about the note is timed in whole samples (its ratchet's pieces and
+    // its end too), so it is the same performance however the sound is cut into blocks.
+    static constexpr std::uint8_t kUntold = 1, kTellOnly = 2, kWholeFrames = 4;
     // An effect going into a slot, or coming out of one, is faded: for
     // kSwapFadeSeconds the one that was there (or the plain sound, if the slot
     // was empty) and the one that is there now both run, and the sound slides
@@ -418,11 +432,38 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; };
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; std::uint8_t how = 0; };
         GlideTrail trail; // the notes the track last began, for a glide to start from (none since Play)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
+        // An arpeggio (a chord whose STRUM is a length in steps): one note at a time, round the
+        // chord's keys until the chord ends. One clock for the whole chord. Three, because at the most
+        // one is still playing (nudged late), the next chord's waits for its own nudge and the
+        // one after that has been asked a step ahead (it may be early); the one that begins ends
+        // the one playing. (With two, the third took the clock of the one still playing.)
+        struct Arp {
+            bool on = false, begun = false;
+            std::uint32_t seed = 0;       // which playing of which chord (chord_rule.hpp)
+            ChordPlay play;
+            std::uint8_t pitch[8] = {};   // by the key's place in the chord; `have`: which are there
+            unsigned have = 0;
+            int keys = 0;                 // once begun: how many, packed to the front of `pitch`
+            std::uint8_t throwTo = 0;
+            float velocity = 0.f;
+            double length = 0.0;          // the chord's, in steps
+            double wait = 0.0;            // samples until its next note
+            double moved = 0.0;           // how far HUMAN TIME moved the note before, in samples
+            long next = 0;                // that note's number: 0 the first
+            int slot = -1, step = -1;     // where its chord is written: which bar of the song, which step
+            bool look = false;            // that bar has been written to: see that the chord is still there
+        };
+        Arp arps[3];
+        // The step (counted from Play) whose chord has been asked for a step ahead: that chord
+        // is not begun again when its step comes.
+        long chordAsked = -1;
+        std::uint32_t lastChord = 0; // the chord the track last began (its seed), and how many it has
+        long strokes = -1;           // begun since Play, less one: UP-DOWN strums up on the even ones
         double offIn[128];
         Track() {
             for (double& off : offIn) off = kNoNote;
@@ -463,6 +504,11 @@ private:
     void fireNoteOffs();
     void firePendingNotes();
     void startNote(Track& track, const Note& note, double delaySamples, double at); // at: when it begins, in steps since Play
+    // A chord's note with a chord effect set (chord_rule.hpp). `ahead`: asked a step before the
+    // note's own step, as an early note is; `stepAt`: when that step begins, in steps since Play;
+    // `wait`: samples from now until it does.
+    void startChordNote(Track& track, int slot, const Note& note, bool top, double stepAt, double wait);
+    void fireArps();
 
     void apply(const Command& command);
     Position afterThisBar() const;
@@ -530,6 +576,7 @@ private:
     // The step clock. Steps are sixteenth notes.
     bool playing_ = false;
     bool loopScene_ = false;
+    bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
     bool firstStep_ = true; // the step about to fire is the first since Play
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;

@@ -67,8 +67,11 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(glide_test tests/glide_test.cpp)
   target_link_libraries(glide_test PRIVATE apotheca_engine)
   add_test(NAME glide COMMAND glide_test)
+  add_executable(chordfx_test tests/chordfx_test.cpp)
+  target_link_libraries(chordfx_test PRIVATE apotheca_engine)
+  add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
-  set_tests_properties(engine phazed twin qmod song effects throw glide PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed twin qmod song effects throw glide chordfx PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -106,13 +109,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # The handheld's launcher: an update is put in place, or taken back out.
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)

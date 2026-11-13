@@ -139,4 +139,13 @@ inline int stripThrowFont(const float widths[3], float least, float* x) {
     return 2;
 }
 
+// With X held on a CHORD the strip is its six effects: the one picked in full at the left (its
+// name, and its value in the large size), all six in two columns of three (a name, and its
+// value further on: by as much as the column's longest name needs), and THROW. Measured on
+// the screen at its fullest (--view chordfx-worst): "WIDE STRUM" ends at 135 at the left and
+// at 322 in the list, "100%" at 488, "SPACE" at 588.
+constexpr float kChordFxListX = 160.f, kChordFxColumn = 184.f, kChordFxThrowX = 522.f;
+constexpr float kChordFxValueIn[2] = {76.f, 108.f};
+constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
+
 } // namespace apotheca

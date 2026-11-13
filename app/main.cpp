@@ -447,6 +447,53 @@ int main(int argc, char** argv) {
         fx(6, 3, 0, 0, false, 0, kThrowEcho);  // a quiet one
         drums.moveCursorTo(1, 4);
         if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
+    } else if (std::strncmp(view, "chordfx", 7) == 0) {
+        // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
+        // chordfx-held: X held on it (the strip is its six effects). chordfx-ratchet, -strum,
+        // -order, -time, -level, -lengths: X held with that one picked. chordfx-off: X held on a
+        // chord with nothing set. chordfx-arp: on an arpeggio with a ratchet (which waits).
+        // chordfx-worst: everything at its widest. chordfx-line: X let go, the strip's one line
+        // at its longest, thrown and nudged.
+        Project& project = app.project();
+        project.track = 2;
+        NotePattern& p = project.tracks[2].notes[0][0];
+        p = NotePattern();
+        const ChordPack& pack = builtInPack();
+        p.chords[0] = makeChord(pack.chords[0], 48, 0, 3.f, .7f, 0);  // plain
+        p.chords[1] = makeChord(pack.chords[1], 50, 4, 3.f, .7f, 0);  // strummed, humanised: under the cursor
+        p.chords[1].play = chordPlayOf(kStrumTight, kOrderDown, 25, 10, 0);
+        p.chords[2] = makeChord(pack.chords[2], 53, 8, 3.f, .7f, 0);  // a ratchet and nothing else
+        p.chords[2].ratchet = 3;
+        p.chords[3] = makeChord(pack.chords[0], 55, 12, 4.f, .7f, 0); // an arpeggio, thrown
+        p.chords[3].play = chordPlayOf(kStrumHalf, kOrderUpDown, 0, 0, 25);
+        p.chords[3].throwTo = kThrowEcho;
+        int cursorKey = 50, cursorStep = 4;
+        if (std::strstr(view, "off")) cursorKey = 48, cursorStep = 0;
+        if (std::strstr(view, "arp")) {
+            int keys[kChordNotes];
+            p.chords[3].ratchet = 2;
+            p.chords[3].pitches(keys); // (a pack's chord sits where the pack puts it: the cursor goes to its lowest key)
+            cursorKey = keys[0], cursorStep = 12;
+        }
+        if (std::strstr(view, "worst")) {
+            p.chords[1].play = chordPlayOf(kStrumWide, kOrderUpDown, 100, 100, 100);
+            p.chords[1].ratchet = 4;
+            p.chords[1].throwTo = 3;
+            p.chords[1].nudge = -0.45f;
+        }
+        if (std::strstr(view, "line")) {
+            p.chords[1].play = chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100);
+            p.chords[1].throwTo = kThrowSpace;
+            p.chords[1].nudge = -0.45f;
+        }
+        app.session().sendNoteBar(2, 0, 0);
+        app.notes().moveCursorTo(cursorKey, cursorStep);
+        static const char* const picks[kChordEffects] = {"ratchet", "strum", "order", "time", "level", "lengths"};
+        bool held = std::strstr(view, "held") || std::strstr(view, "off") || std::strstr(view, "arp") || std::strstr(view, "worst");
+        for (int effect = 0; effect < kChordEffects; ++effect)
+            if (std::strstr(view, picks[effect])) app.notes().pickEffect(effect), held = true;
+        if (std::strstr(view, "worst")) app.notes().pickEffect(kFxStrum);
+        if (held) pushKey(SDLK_s, true); // X held
     } else if (std::strncmp(view, "notefx", 6) == 0) {
         // Note effects on the piano roll: ratchets of two, three and four, a glide, both, and a short one.
         Project& project = app.project();
