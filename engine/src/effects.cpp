@@ -34,6 +34,7 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kDuckInfo,   // 11
     &fx::kPingInfo,   // 12
     &fx::kSpringInfo, // 13
+    &fx::kPlateInfo,  // 14
 };
 
 // The order a player meets them in: the groups, the families in each, and the
@@ -48,6 +49,7 @@ const EffectKind kList[] = {
     EffectKind::Reverb, // REVERB: ROOM
     EffectKind::Hall,   //         HALL
     EffectKind::Spring, //         SPRING
+    EffectKind::Plate,  //         PLATE
     EffectKind::Chorus,
     EffectKind::Comp,
     EffectKind::Duck,
@@ -172,11 +174,15 @@ void effectFamilySays(EffectKind kind, char* out, int size) {
     std::string says = kind == EffectKind::None || first == EffectKind::None ? "nothing here" : effectInfo(first).says;
     if (types > 1) {
         // Its types, in small letters: a new type is in the line without being written here.
-        says += says.empty() ? "" : ": ";
+        std::string names;
         for (int t = 0; t < types; ++t) {
-            if (t) says += ", ";
-            for (const char* c = effectTypeName(effectTypeAt(kind, t)); *c; ++c) says += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c - 'A' + 'a' : *c);
+            if (t) names += ", ";
+            for (const char* c = effectTypeName(effectTypeAt(kind, t)); *c; ++c) names += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c - 'A' + 'a' : *c);
         }
+        // The family's own words go first while the line fits the list (kFamilySaysMost letters); a family with
+        // more types than that has room for says its types alone (REVERB's four: "room, hall, spring, plate").
+        const bool both = !says.empty() && says.size() + 2 + names.size() <= static_cast<std::size_t>(kFamilySaysMost);
+        says = both ? says + ": " + names : names;
     }
     std::snprintf(out, static_cast<std::size_t>(size), "%s", says.c_str());
 }

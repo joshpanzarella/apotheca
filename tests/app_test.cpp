@@ -5238,8 +5238,8 @@ void testSongFilesAreAsTheyWere() {
     }
     CHECK(back->busEffects[0].kind == static_cast<int>(EffectKind::Delay) && back->busEffects[1].kind == static_cast<int>(EffectKind::Reverb));
     CHECK(back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape));
-    // An effect newer than that file (PING, SPRING, and any to come): written by its own word, in a slot and on its bus, and read back the same.
-    CHECK(std::string(effectInfo(EffectKind::Ping).word) == "ping" && std::string(effectInfo(EffectKind::Spring).word) == "spring");
+    // An effect newer than that file (PING, SPRING, PLATE, and any to come): written by its own word, in a slot and on its bus, and read back the same.
+    CHECK(std::string(effectInfo(EffectKind::Ping).word) == "ping" && std::string(effectInfo(EffectKind::Spring).word) == "spring" && std::string(effectInfo(EffectKind::Plate).word) == "plate");
     for (int k = kKindsMainWrote; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         std::unique_ptr<Project> newer(new Project), read(new Project);
@@ -5265,6 +5265,11 @@ void testSongFilesAreAsTheyWere() {
     rig.key(A, false);
     CHECK(songText(rig.project()).find("\nfx 1 tape ") != std::string::npos && songText(rig.project()).find("fx 1 delay") == std::string::npos);
     CHECK(songText(rig.project()).find("\nbusfx 1 tape ") != std::string::npos && songText(rig.project()).find("\nbusfx 2 hall ") != std::string::npos);
+    // ...and one put there on the screen (PLATE) is written by its own word, and read back as itself.
+    rig.app.session().setEffect(0, 1, EffectKind::Plate);
+    CHECK(songText(rig.project()).find("\nfx 2 plate 0.1 0.45 0.6 0.3\n") != std::string::npos);
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(songText(rig.project()), *again) && again->tracks[0].effects[1].kind == static_cast<int>(EffectKind::Plate) && again->tracks[0].effects[1].param[1] == 0.45f);
 }
 
 void testTheKeysShownFollowTheCursor() {

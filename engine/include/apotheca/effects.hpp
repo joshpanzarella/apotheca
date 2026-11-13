@@ -20,11 +20,12 @@
 //   PING     TIME (TAPE's eight choices), FEEDBACK (to 90%), TONE, MIX: a clean
 //            echo that bounces left, right, left
 //   SPRING   DRIP (how strong the chirp is), DECAY (0.4 to 4 seconds), TONE, MIX
+//   PLATE    PRE (0 to 100 ms), DECAY (0.3 to 20 seconds), TONE, MIX
 //
 // MIX at 0 is the sound untouched.
 //
 // FAMILIES AND TYPES. A player sees one effect called DELAY with a TYPE
-// (CLEAN, TAPE, PING) and one called REVERB with a TYPE (ROOM, HALL, SPRING). Underneath
+// (CLEAN, TAPE, PING) and one called REVERB with a TYPE (ROOM, HALL, SPRING, PLATE). Underneath
 // each type is its own effect, with its own number and its own word in a song
 // file, as it always was: a family is only how the list is shown. An effect
 // with no `family` in its row is a family of one and has no TYPE. A new type
@@ -44,7 +45,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
@@ -120,7 +121,10 @@ int effectTypeIndex(EffectKind kind);                // which of them this one i
 int familyListSize(int bus = -1);
 EffectKind familyAt(int place, int bus = -1);
 int familyPlace(EffectKind kind, int bus = -1);
-// A family in a few plain words: "fewer bits"; for one with types, its types: "echoes: clean, tape".
+// A family in a few plain words: "fewer bits"; for one with types, its types: "echoes: clean, tape, ping".
+// Never more than kFamilySaysMost letters, what the list of effects has room for: where the family's words
+// and its types together are longer, its types alone ("room, hall, spring, plate").
+constexpr int kFamilySaysMost = 28;
 void effectFamilySays(EffectKind kind, char* out, int size);
 
 // Changing TYPE keeps the settings the two types share BY NAME (TIME,
