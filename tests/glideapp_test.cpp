@@ -107,12 +107,18 @@ bool about(double a, double b) { return std::fabs(a - b) <= 1e-6 * (std::fabs(b)
 // one to three bars, a scene cut short), sent by the Session, played by the engine. For
 // every note: the line the roll would draw (Project::glideLines) names the key the engine
 // slid from and the time it took.
-void testTheRollDrawsWhatTheEnginePlays() {
+// Under each GLIDE FROM, set by the Session. RANDOM rolls anew each time round and the roll
+// draws the first: so it is held to the first time the scene plays (what comes from the song's
+// first moment left out: the first time, nothing was before it), the rest to the third.
+void testTheRollDrawsWhatTheEnginePlays(int type) {
     Rig rig;
     CHECK(rig.app.session().addTrack(TrackKind::Qmod) && isSynth(rig.project().tracks[1].kind));
-    rig.listen();
+    rig.listen(); // (a synth put in is TOP: the type is told after it)
     Session& session = rig.app.session();
-    int lines = 0, fromChords = 0, acrossTheEnd = 0, notesHeard = 0, spread = 0, fromSpread = 0;
+    session.setGlideFrom(1, type);
+    CHECK(rig.project().tracks[1].glideFrom == type);
+    const int roundHeard = type == kFromRandom ? 0 : 2;
+    int lines = 0, fromChords = 0, acrossTheEnd = 0, notesHeard = 0, spread = 0, fromSpread = 0, notTheTop = 0;
     for (int song = 0; song < 60; ++song) {
         Project& project = rig.project();
         session.setCellBars(1, 0, 1 + roll(4));
@@ -136,6 +142,7 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 for (int k = 0; k < n; ++k) chordKey[bar][keys[k]] = true;
             }
             const int count = 2 + roll(12);
+            const NoteEvent* before = nullptr;
             for (int i = 0; i < count; ++i) {
                 const int slot = roll(kMaxNotes);
                 if (p.notes[slot].velocity > 0.f) continue;
@@ -145,19 +152,33 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 n.length = 0.5f;
                 n.velocity = 0.8f;
                 n.nudge = roll(3) == 0 ? static_cast<float>(roll(9) - 4) * 0.1f : 0.f;
+                // Often it begins with the note before it, or with the bar's chord (under it or over it): several keys to a moment.
+                if (before && roll(2) == 0) n.step = before->step, n.nudge = before->nudge;
+                else if (p.chords[0].velocity > 0.f && roll(4) == 0) n.step = p.chords[0].step, n.nudge = p.chords[0].nudge, n.pitch = roll(2) ? 36 + roll(8) : 90 + roll(8);
                 n.ratchet = static_cast<std::uint8_t>(roll(3) == 0 ? 2 + roll(3) : 0);
                 n.glide = static_cast<std::uint8_t>(roll(5) == 0 ? 0 : 1 + roll(5));
                 bool clash = chordKey[bar][n.pitch];
                 for (const NoteEvent& o : p.notes) clash = clash || (o.velocity > 0.f && o.pitch == n.pitch);
-                if (!clash) p.notes[slot] = n;
+                if (!clash) p.notes[slot] = n, before = &p.notes[slot];
             }
         }
         session.sendNotePattern(1, 0);
         rig.frames(2);
         rig.render(1000);
-        std::vector<GlideLine> drawn(kMaxBars * kMaxNotes);
+        std::vector<GlideLine> drawn(kMaxBars * kMaxNotes), top(kMaxBars * kMaxNotes);
         project.glideLines(1, 0, drawn.data());
+        project.tracks[1].glideFrom = kFromTop; // (only to count how often the type picks another key than TOP would)
+        project.glideLines(1, 0, top.data());
+        project.tracks[1].glideFrom = static_cast<std::uint8_t>(type);
         rig.log.clear();
+        // Every moment a note or a chord's key begins at, the first time round.
+        std::vector<double> begins;
+        for (int bar = 0; bar < bars && bar * kSteps < sceneSteps; ++bar) {
+            NoteEvent out[kMaxNotes];
+            project.tracks[1].notes[0][bar].render(out);
+            for (const NoteEvent& n : out)
+                if (n.velocity > 0.f && n.step < project.barSteps(0, bar)) begins.push_back(bar * kSteps + n.step + static_cast<double>(n.nudge));
+        }
 
         const long began = rig.spy->frame;
         session.togglePlay(false);
@@ -173,7 +194,13 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 const NoteEvent& n = p.notes[slot];
                 if (n.velocity <= 0.f || n.step >= project.barSteps(0, bar)) continue;
                 const GlideLine& line = drawn[static_cast<std::size_t>(bar * kMaxNotes + slot)];
-                const long at = began + std::lround((2.0 * sceneSteps + bar * kSteps + n.step + static_cast<double>(n.nudge)) * kStep);
+                const double steps = bar * kSteps + n.step + static_cast<double>(n.nudge);
+                if (roundHeard == 0) {
+                    bool between = false;
+                    for (double then : begins) between = between || (then > 0.01 && then < steps - 0.01);
+                    if (!between) continue;
+                }
+                const long at = began + std::lround((static_cast<double>(roundHeard) * sceneSteps + steps) * kStep);
                 const Began* heard = nullptr;
                 for (const Began& b : rig.log)
                     if (!heard && b.pitch == n.pitch && std::labs(b.frame - at) <= 2) heard = &b;
@@ -185,15 +212,17 @@ void testTheRollDrawsWhatTheEnginePlays() {
                 if (!same) std::printf("  song %d bar %d step %d key %d (nudge %.1f, x%d, glide %d): the engine from %d for %.4f s, the roll from %d for %.4f s\n", song, bar, n.step, n.pitch, n.nudge, n.ratchet, n.glide, heard->from, heard->seconds, line.from, line.steps * 0.125);
                 if (n.glide == kGlideOff) CHECK(line.from < 0);
                 lines += line.from >= 0;
+                notTheTop += line.from >= 0 && line.from != top[static_cast<std::size_t>(bar * kMaxNotes + slot)].from;
                 fromChords += line.from >= 0 && chordKey[bar][line.from];
                 fromSpread += line.from >= 0 && chordKey[bar][line.from] && p.chords[0].play.timed();
                 acrossTheEnd += line.from >= 0 && n.ratchet < 2 && n.glide == kGlideFull && bar * kSteps + n.step + n.nudge - line.steps < -0.01;
             }
         }
     }
-    CHECK(lines > 400 && fromChords > 40 && acrossTheEnd > 3); // the songs did hold what this is for
+    CHECK(lines > (roundHeard ? 400 : 250) && fromChords > 40 && (acrossTheEnd > 3 || roundHeard == 0)); // the songs did hold what this is for
     CHECK(spread > 20 && fromSpread > 10); // ...chords strummed and humanised among them, with glides out of them
-    if (failures || std::getenv("GLIDE_PRINT")) std::printf("  the roll and the engine: %d lines, %d from a chord's key, %d across the loop's end, of %d notes\n", lines, fromChords, acrossTheEnd, notesHeard);
+    CHECK(type == kFromTop ? notTheTop == 0 : notTheTop > 60); // ...and the type did pick another key than the top one, often
+    if (failures || std::getenv("GLIDE_PRINT")) std::printf("  the roll and the engine, %s: %d lines, %d from a chord's key, %d not from the top key, %d across the loop's end, of %d notes\n", glideFromName(type), lines, fromChords, notTheTop, acrossTheEnd, notesHeard);
 }
 
 // A chord's keys are in the slots NotePattern::render gives them, and what follows slides from its top one.
@@ -307,6 +336,199 @@ void testTheSongFile() {
     const NotePattern& o = odd->tracks[1].notes[0][0];
     CHECK(o.notes[o.at(61, 2)].glide == kGlideHalf && o.notes[o.at(62, 4)].glide == kGlideHalf && o.notes[o.at(63, 6)].glide == kGlideHalf);
     CHECK(o.notes[o.at(64, 8)].glide == kGlideHalf && o.notes[o.at(64, 8)].ratchet == 3 && o.notes[o.at(65, 10)].glide == kGlideHalf);
+}
+
+// ---- GLIDE FROM in the app ----------------------------------------------------------------
+
+// The pitch over a stretch of sound: the shift at which it best matches itself.
+double pitchOver(const std::vector<float>& out, long from, int frames) {
+    double best = -1e30;
+    int bestLag = 1;
+    for (int lag = 48; lag <= 600; ++lag) { // 1000 Hz down to 80
+        double sum = 0.0;
+        for (long i = from; i < from + frames; ++i) sum += static_cast<double>(out[static_cast<std::size_t>(2 * i)]) * out[static_cast<std::size_t>(2 * (i + lag))];
+        if (sum > best * 1.02 + 1e-12 || best < 0.0) {
+            if (sum > best) {
+                best = sum;
+                bestLag = lag;
+            }
+        }
+    }
+    return 48000.0 / bestLag;
+}
+
+// It is the track's: set by the Session, kept through a track sent whole, an undo and a scene
+// move, told again with the whole song, and never a drum track's.
+void testGlideFromIsTheTracks() {
+    Rig rig;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Qmod));
+    rig.listen();
+    Project& project = rig.project();
+    NotePattern& p = project.tracks[1].notes[0][0];
+    p = NotePattern();
+    p.notes[0] = NoteEvent{2, 48, 1.f, 0.f, 0.8f};
+    p.notes[1] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
+    p.notes[2] = NoteEvent{6, 50, 1.f, 0.f, 0.8f};
+    p.notes[3] = NoteEvent{6, 70, 1.f, 0.f, 0.8f};
+    p.notes[2].glide = p.notes[3].glide = kGlideOne;
+    session.sendNotePattern(1, 0);
+    // What the low note of the pair slides from, the first time round after Play.
+    const auto lowFrom = [&] {
+        rig.frames(2);
+        rig.render(2000);
+        rig.log.clear();
+        session.togglePlay(false);
+        rig.frames(1);
+        rig.render(10L * kStep);
+        session.togglePlay(false);
+        rig.frames(1);
+        rig.render(2000);
+        int from = -2;
+        for (const Began& b : rig.log)
+            if (b.pitch == 50 && from == -2) from = b.from;
+        return from;
+    };
+    CHECK(project.tracks[1].glideFrom == kFromTop && lowFrom() == 60);
+    session.setGlideFrom(1, kFromPaired);
+    CHECK(project.tracks[1].glideFrom == kFromPaired && lowFrom() == 48);
+    // A number nobody knows is TOP; a track that is not there, or a drum track, takes none.
+    session.setGlideFrom(1, 9);
+    CHECK(project.tracks[1].glideFrom == kFromTop && lowFrom() == 60);
+    session.setGlideFrom(1, -1);
+    CHECK(project.tracks[1].glideFrom == kFromTop);
+    CHECK(project.tracks[0].kind == TrackKind::Drums);
+    session.setGlideFrom(0, kFromPaired);
+    session.setGlideFrom(5, kFromPaired);
+    session.setGlideFrom(-1, kFromPaired);
+    session.setGlideFrom(kNumTracks, kFromPaired);
+    CHECK(project.tracks[0].glideFrom == 0 && project.tracks[5].glideFrom == 0);
+    session.setGlideFrom(1, kFromNearest);
+    CHECK(project.tracks[1].glideFrom == kFromNearest && lowFrom() == 48);
+    session.setGlideFrom(1, kFromPaired);
+    // The track sent whole (a cell made longer): still PAIRED.
+    const unsigned images = session.imagesSent();
+    session.setCellBars(1, 0, 2);
+    CHECK(session.imagesSent() > images && lowFrom() == 48);
+    session.setCellBars(1, 0, 1);
+    // Undo and redo are the patterns': GLIDE FROM is not in them, and stays as it was set.
+    session.noteEdit();
+    rig.frames(50); // (a burst of edits is over after 700 ms)
+    rig.render(40000);
+    p.notes[3].pitch = 72;
+    session.sendNotePattern(1, 0);
+    session.noteEdit();
+    rig.frames(50); // (a burst of edits is over after 700 ms)
+    rig.render(40000);
+    session.setGlideFrom(1, kFromNearest);
+    CHECK(session.undo() && p.notes[3].pitch == 70);
+    CHECK(project.tracks[1].glideFrom == kFromNearest && lowFrom() == 48);
+    std::vector<GlideLine> lines(kMaxBars * kMaxNotes);
+    project.glideLines(1, 0, lines.data());
+    CHECK(lines[2].from == 48 && lines[3].from == 60); // the roll and the engine still agree
+    CHECK(session.redo() && p.notes[3].pitch == 72 && project.tracks[1].glideFrom == kFromNearest);
+    session.setGlideFrom(1, kFromPaired);
+    // A NEXT SCENE, and it taken back: the track's choice goes on, and no track is sent whole.
+    rig.frames(2);
+    rig.render(2000);
+    const unsigned before = session.imagesSent();
+    CHECK(session.nextScene() >= 0);
+    rig.frames(2);
+    rig.render(2000);
+    CHECK(project.tracks[1].glideFrom == kFromPaired);
+    CHECK(session.undo());
+    rig.frames(2);
+    rig.render(2000);
+    CHECK(session.imagesSent() == before && project.tracks[1].glideFrom == kFromPaired && lowFrom() == 48);
+    CHECK(session.engine.dropped() == 0);
+}
+
+// The whole song told to the engine afresh (a song opened, a track taken away, the queue
+// overrun): each track's GLIDE FROM goes with it. Heard, with a real synth: a low note after
+// a low key and a high one comes up from the low one (NEAREST) or down from the high (TOP).
+void testGlideFromGoesWithTheSong() {
+    double heard[2] = {0, 0};
+    for (int type : {kFromTop, kFromNearest}) {
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Phazed));
+        Project& project = rig.project();
+        NotePattern& p = project.tracks[1].notes[0][0];
+        p = NotePattern();
+        p.notes[0] = NoteEvent{0, 48, 1.f, 0.f, 0.02f};
+        p.notes[1] = NoteEvent{0, 72, 1.f, 0.f, 0.02f};
+        p.notes[2] = NoteEvent{4, 50, 8.f, 0.f, 0.8f};
+        p.notes[2].glide = kGlideFull;
+        project.tracks[1].glideFrom = static_cast<std::uint8_t>(type);
+        session.applyProject();
+        rig.frames(2);
+        rig.render(4000);
+        session.togglePlay(false);
+        rig.frames(1);
+        std::vector<float> out(2 * 12 * kStep);
+        for (int i = 0; i < 12 * kStep; i += 1000) rig.engine->render(out.data() + 2 * i, 1000);
+        heard[type == kFromTop ? 0 : 1] = pitchOver(out, 4L * kStep + 1800, 2400); // a third of a step into the note
+        CHECK(session.engine.dropped() == 0);
+    }
+    // The note is 147 Hz. From 131 Hz it is nearly there; from 523 Hz, four steps long, it is still far above.
+    CHECK(heard[0] > 300.0 && heard[1] > 115.0 && heard[1] < 160.0);
+    if (failures || std::getenv("GLIDE_PRINT")) std::printf("  the whole song told afresh: TOP %.0f Hz a third of a step in, NEAREST %.0f Hz\n", heard[0], heard[1]);
+}
+
+// The song file: `glidefrom N`, a line of a synth track's own, left out at TOP.
+void testGlideFromInTheSongFile() {
+    Rig rig;
+    CHECK(rig.app.session().addTrack(TrackKind::Qmod) && rig.app.session().addTrack(TrackKind::Phazed));
+    Project& project = rig.project();
+    project.tracks[1].notes[0][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
+    const std::string plain = songText(project);
+    CHECK(plain.find("glidefrom") == std::string::npos); // TOP: the song is written as it always was
+    for (int type = 1; type < kGlideFroms; ++type) {
+        project.tracks[1].glideFrom = static_cast<std::uint8_t>(type);
+        const std::string text = songText(project);
+        const std::string line = "\nglidefrom " + std::to_string(type) + "\n";
+        CHECK(text.find(line) != std::string::npos && text.find("glidefrom") == text.rfind("glidefrom")); // once, for that track alone
+        CHECK(text.size() == plain.size() + line.size() - 1);                                             // ...and nothing else is other than it was
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(text, *back) && back->tracks[1].glideFrom == type && back->tracks[2].glideFrom == 0 && back->tracks[0].glideFrom == 0);
+        CHECK(songText(*back) == text);
+        // The line is in its own track's part of the file: after that track begins, before the next does.
+        std::string moved = text;
+        moved.erase(moved.find(line) + 1, line.size() - 1);
+        CHECK(moved == plain);
+    }
+    // Both synth tracks, each its own.
+    project.tracks[1].glideFrom = kFromRandom;
+    project.tracks[2].glideFrom = kFromPaired;
+    {
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(songText(project), *back) && back->tracks[1].glideFrom == kFromRandom && back->tracks[2].glideFrom == kFromPaired);
+    }
+    project.tracks[2].glideFrom = 0;
+    // A drum track never writes it, whatever its data says; and does not take one that was written.
+    project.tracks[0].glideFrom = kFromPaired;
+    project.tracks[1].glideFrom = 0;
+    CHECK(project.tracks[0].kind == TrackKind::Drums && songText(project) == plain);
+    project.tracks[0].glideFrom = 0;
+    // Numbers no version has written: TOP. No number: the line is skipped. An old program skips the word.
+    project.tracks[1].glideFrom = kFromNearest;
+    const std::string text = songText(project);
+    for (const char* odd : {"glidefrom 9", "glidefrom 4", "glidefrom -1", "glidefrom 1e9", "glidefrom 0", "glidefrom", "glidefrom x", "glidefrum 2"}) {
+        std::string changed = text;
+        const std::size_t at = changed.find("glidefrom 2");
+        CHECK(at != std::string::npos);
+        if (at == std::string::npos) continue;
+        changed.replace(at, 11, odd);
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(changed, *back) && back->tracks[1].glideFrom == kFromTop);
+        CHECK(back->tracks[1].notes[0][0].at(60, 2) >= 0 && back->tracks[2].kind == TrackKind::Phazed); // the rest of the song is read
+    }
+    {
+        std::string changed = text;
+        changed.replace(changed.find("glidefrom 2"), 11, "glidefrom 3.7"); // (a number between two: the one under it)
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(changed, *back) && back->tracks[1].glideFrom == kFromRandom);
+    }
 }
 
 // ---- the picture itself ----------------------------------------------------------------
@@ -490,16 +712,73 @@ void testTheLinesOnTheScreen() {
     }
 }
 
+// GLIDE FROM, read off the screen: a chord of four keys, then a low note that glides and a
+// high one beside it. The line leans from the key the type picks: far from the right (TOP,
+// the chord's top key), from the left (PAIRED, its bottom key), a little from the right
+// (NEAREST). RANDOM's is from the key the rule rolls for the first time the scene plays.
+void testTheTypesOnTheScreen() {
+    Rig rig;
+    Picture picture;
+    CHECK(picture.lettering);
+    if (!picture.lettering) return;
+    Session& session = rig.app.session();
+    CHECK(session.addTrack(TrackKind::Qmod));
+    Project& project = rig.project();
+    project.track = 1;
+    session.view = View::Pattern;
+    NotePattern& p = project.tracks[1].notes[0][0];
+    p = NotePattern();
+    const int chord[4] = {60, 64, 67, 71};
+    for (int k = 0; k < 4; ++k) p.notes[k] = NoteEvent{2, chord[k], 1.f, 0.f, 0.8f};
+    p.notes[4] = NoteEvent{10, 62, 1.f, 0.f, 0.8f};
+    p.notes[5] = NoteEvent{10, 69, 1.f, 0.f, 0.8f};
+    const auto shot = [&] {
+        project.bar = 0;
+        rig.app.notes().moveCursorTo(72, 0);
+        rig.frames(1);
+        rig.render(1000);
+        return picture.of(rig.app);
+    };
+    const std::vector<Uint32> plain = shot();
+    p.notes[4].glide = kGlideFull;
+    int leans[kGlideFroms] = {};
+    for (int type = 0; type < kGlideFroms; ++type) {
+        session.setGlideFrom(1, type);
+        const Seen line = lineOf(shot(), plain, kTop + 2 * kRow, kTop + 10 * kRow - 2); // (above the note: its corner is not looked at)
+        CHECK(line.count > 50 && std::abs(line.top - (kTop + 2 * kRow)) <= 2); // from the chord's own start, eight steps before
+        leans[type] = line.topX - line.bottomX;
+        std::vector<GlideLine> lines(kMaxBars * kMaxNotes);
+        project.glideLines(1, 0, lines.data());
+        // A key is kKey across: the line's top is over the key it comes from, its foot at the note's.
+        const int want = (lines[4].from - 62) * kKey;
+        CHECK(lines[4].from >= 0 && std::abs(leans[type] - want) <= 8);
+        if (failures) std::printf("  %s: the line leans %d px (from key %d: %d px)\n", glideFromName(type), leans[type], lines[4].from, want);
+    }
+    CHECK(leans[kFromTop] > 8 * kKey && leans[kFromPaired] < -kKey && leans[kFromNearest] > kKey && leans[kFromNearest] < 3 * kKey);
+    // The high note beside it glides too: under PAIRED the two lines come from the two ends of the chord.
+    p.notes[5].glide = kGlideFull;
+    session.setGlideFrom(1, kFromPaired);
+    const Seen both = lineOf(shot(), plain, kTop + 2 * kRow, kTop + 2 * kRow + 6);
+    CHECK(both.right - both.left > 10 * kKey); // at their tops: one over key 60, one over key 71
+    session.setGlideFrom(1, kFromTop);
+    const Seen one = lineOf(shot(), plain, kTop + 2 * kRow, kTop + 2 * kRow + 6);
+    CHECK(one.count > 0 && one.right - one.left < kKey); // TOP: both from key 71
+}
+
 } // namespace
 
 int main(int, char**) {
     setenv("SDL_VIDEODRIVER", "dummy", 1);
     setenv("SDL_AUDIODRIVER", "dummy", 1);
-    testTheRollDrawsWhatTheEnginePlays();
+    for (int type = 0; type < kGlideFroms; ++type) testTheRollDrawsWhatTheEnginePlays(type);
     testAGlideFromAChord();
     testATrackSentWhole();
     testTheSongFile();
+    testGlideFromIsTheTracks();
+    testGlideFromGoesWithTheSong();
+    testGlideFromInTheSongFile();
     testTheLinesOnTheScreen();
+    testTheTypesOnTheScreen();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

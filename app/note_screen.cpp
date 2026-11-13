@@ -460,6 +460,15 @@ void NoteScreen::fxThrow() {
     session_.sendNoteBar(project_.track, project_.scene, project_.bar);
 }
 
+// With X held on a note, L1 and R1 step the track's GLIDE FROM: which key of the moment before
+// its glides come from (TOP, PAIRED, NEAREST, RANDOM). It is the track's, not the note's: every
+// line on the roll follows at once. It stops at each end. (The dice leave it alone.)
+void NoteScreen::fxFrom(int by) {
+    const int to = glideFromKind(project_.current().glideFrom) + by;
+    if (to < 0 || to >= kGlideFroms) return;
+    session_.setGlideFrom(project_.track, to);
+}
+
 // With X held on a note or a chord, Y rolls the dice for it: a ratchet, a glide of some length
 // (a note only), or both. Each roll is something, and something else than it was. The dice do not throw: a
 // THROW is left as the player set it.
@@ -527,6 +536,10 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (fxHeld_ && b == Button::A) {
         if (event.down) fxThrow(); // THROW, a step round. (Placing and shaping wait until X is let go.)
+        return;
+    }
+    if (fxHeld_ && (b == Button::L1 || b == Button::R1) && noteHere()) {
+        if (event.down) fxFrom(b == Button::R1 ? 1 : -1); // GLIDE FROM, a click. (Zoom and carry wait until X is let go.)
         return;
     }
     if (b == Button::Y) {
@@ -1134,6 +1147,16 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             field(kStripHeldRatchetX, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
             field(kStripHeldGlideX, "GLIDE", !under ? "-" : glideName(glideKindHere), !under ? kDim : glideHere ? kBrass : kText);
             field(kStripHeldThrowX, "THROW", throwName(throwHere), throwHere ? kBrass : kText);
+            if (under) {
+                // GLIDE FROM, the track's: dim while this note has no glide for it to say anything of.
+                const int fromHere = glideFromKind(project_.current().glideFrom);
+                const char* from = glideFromName(fromHere);
+                const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
+                const float widths[3] = {fonts.large.width(from), fonts.medium.width(from), fonts.small.width(from)};
+                const Font& font = *sizes[stripFont(widths, kStripRight - kStripHeldFromX)];
+                fonts.small.draw(r, kStripHeldFromX, stripY + 8.f, "GLIDE FROM", kDim);
+                font.draw(r, kStripHeldFromX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), from, !glideHere ? kDim : fromHere != kFromTop ? kBrass : kText);
+            }
         } else if (under || chordUnder) {
             std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(levelNow() * 100.f)));
             field(160.f, "LEVEL", text, shaping_ && !turningLength_ ? kBrass : (shaping_ ? kText : kTeal));
@@ -1186,17 +1209,16 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.draw(r, x, stripY + 8.f, "THROW", kDim);
             font.draw(r, x, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), to, kPurple);
         }
-        if (chordFx) {
-            // (the chord's effects have the strip; its nudge is there again when X is let go)
+        if (chordFx || (fxHeld_ && under)) {
+            // (the chord's effects have the strip, or GLIDE FROM has NUDGE's place: the nudge is there again when X is let go)
         } else if (nudge != 0.f) {
             std::snprintf(text, sizeof text, "%d%% %s", static_cast<int>(std::round(std::fabs(nudge) * 100.f)), nudge < 0.f ? "EARLY" : "LATE");
             // Beside an effect and a THROW there is less room: the value is drawn smaller, never over them.
             const bool effectHere = !fxHeld_ && (ratchetHere >= 2 || glideHere || chordPlaysHere);
             const Font* sizes[3] = {&fonts.large, &fonts.medium, &fonts.small};
             const float widths[3] = {fonts.large.width(text), fonts.medium.width(text), fonts.small.width(text)};
-            // (With X held it stands further right: a glide's length needs the room.)
-            const float nudgeX = fxHeld_ ? kStripHeldNudgeX : kStripNudgeX;
-            const Font& font = *sizes[stripFont(widths, fxHeld_ ? kStripRight - nudgeX : stripNudgeRoom(effectHere, throwHere != 0))];
+            const float nudgeX = kStripNudgeX;
+            const Font& font = *sizes[stripFont(widths, stripNudgeRoom(effectHere, throwHere != 0))];
             fonts.small.draw(r, nudgeX, stripY + 8.f, "NUDGE", kDim);
             font.draw(r, nudgeX, stripY + 26.f + fonts.large.capHeight() - font.capHeight(), text, shaping_ ? kText : kTeal);
         } else if (!fxHeld_) {
@@ -1224,9 +1246,9 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hintsUnder(r, fonts, "Y", below, 3, true);
         return;
     } else if (fxHeld_ && under) {
-        // Each button under the field it sets. (Nothing here sets NUDGE: nothing under it.)
-        const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}};
-        hintsUnder(r, fonts, "Y", below, 3);
+        // Each button under the field it sets.
+        const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}, {kStripHeldFromX, "L1 / R1"}};
+        hintsUnder(r, fonts, "Y", below, 4);
         return;
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time, freely");

@@ -133,6 +133,9 @@ public:
     void setEffectParam(int track, int slot, int index, float value); // 0..1
     // How much of a track goes to a bus (0 ECHO, 1 SPACE), 0..1. Written as automation like any setting.
     void setSend(int track, int bus, float value);
+    // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
+    // the rest, apotheca/glide_rule.hpp). Like a send or a sound, it is not in undo.
+    void setGlideFrom(int track, int type);
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the

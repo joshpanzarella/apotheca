@@ -89,6 +89,8 @@ std::string songText(const Project& project) {
             put(out, "send %.0f", bus + 1);
             put(out, " %.6g\n", track.send[bus]);
         }
+        // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
+        if (isSynth(track.kind) && track.glideFrom) put(out, "glidefrom %.0f\n", track.glideFrom);
         if (track.kind == TrackKind::Drums) {
             out += "lanes";
             for (float level : track.laneLevel) put(out, " %.6g", level);
@@ -320,6 +322,10 @@ bool parseSong(const std::string& text, Project& project) {
             double bus, amount;
             if (!(in >> bus >> amount) || bus < 1 || bus > kBuses || !(amount >= 0.0)) continue;
             track->send[static_cast<int>(bus) - 1] = static_cast<float>(amount > 1.0 ? 1.0 : amount);
+        } else if (word == "glidefrom") {
+            double type = 0;
+            if (!(in >> type) || !(type >= 0.0) || type > 255.0) continue;
+            track->glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
         } else if (word == "muted") {
             track->muted = true;
         } else if (word == "lanes") {

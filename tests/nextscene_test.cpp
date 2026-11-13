@@ -146,7 +146,13 @@ ChordEvent chordOf(int step, float length, int root, int keys, int strum, int or
 // thrown, in every ORDER, and a glide of every length. Everything about them that the engine
 // keeps while they play (an arpeggio's clock, the chord asked for a step ahead, notes waiting,
 // what a glide comes from) is in flight wherever in the song a scene is moved.
+//
+// Its GLIDE FROM is PAIRED (gGlideFrom), so every step of it is gone through twice (told as
+// coming, then begun) and what was told is in flight too; a note beside a gliding one makes
+// PAIRED pick another key than the top one. One proof is made again with RANDOM.
+int gGlideFrom = kFromPaired;
 void fillChords(TrackData& t) {
+    t.glideFrom = static_cast<std::uint8_t>(gGlideFrom);
     t.bars[0] = 2;
     NotePattern& a = t.notes[0][0];
     a.chords[0] = chordOf(0, 2.f, 48, 3, kStrumTight, kOrderUpDown, 0, 0, 0, 2, kThrowEcho);                 // strummed on the song's first step, a ratchet, thrown
@@ -156,6 +162,8 @@ void fillChords(TrackData& t) {
     a.notes[2] = NoteEvent{8, 67, 1.f, 0.f, 0.7f, 2, kGlideOne, 0, 0};                                        // a ratchet that glides
     a.chords[2] = chordOf(9, 2.5f, 52, 3, kStrumWide, kOrderDown, 100, 100, 0, 3, 0, -0.25f);                // early: asked for a step ahead
     a.notes[3] = NoteEvent{12, 76, 1.5f, 0.25f, 0.7f, 0, kGlideTwo, 3, 0};                                    // late, thrown to both
+    a.notes[4] = NoteEvent{7, 84, 0.5f, 0.f, 0.5f, 0, 0, 0, 0};                                               // with the glide on step 8: PAIRED, that one is the lower of two
+    a.notes[5] = NoteEvent{12, 40, 0.5f, 0.25f, 0.6f, 0, kGlideOne, 0, 0};                                    // two gliding notes in one late moment
     a.chords[3] = chordOf(14, 2.f, 45, 5, kStrumOff, kOrderRandom, 75, 0, 100);                               // HUMAN TIME alone
     NotePattern& b = t.notes[0][1]; // (the scene is cut to 23 steps: seven of this bar are played)
     b.chords[0] = chordOf(0, 4.f, 53, 3, kStrumStep, kOrderUpDown, 100, 50, 0);                               // an arpeggio asked for from the bar before
@@ -166,6 +174,8 @@ void fillChords(TrackData& t) {
     c.notes[0] = NoteEvent{6, 69, 2.f, 0.f, 0.7f, 0, kGlideFull, 0, 0};
     c.chords[1] = chordOf(10, 5.f, 59, 3, kStrumQuarter, kOrderUp, 25, 0, 0);
     c.notes[1] = NoteEvent{15, 62, 1.f, -0.3f, 0.7f, 0, kGlideTwo, 0, 0};
+    c.notes[2] = NoteEvent{6, 45, 1.f, 0.f, 0.6f, 0, kGlideOne, 0, 0};                                        // under the FULL glide on step 7: from the chord's other end
+    c.notes[3] = NoteEvent{15, 81, 0.5f, -0.3f, 0.5f, 0, kGlideHalf, 0, 0};                                   // early, with another: told a step ahead
     NotePattern& d = t.notes[2][0]; // (thirteen steps, three times)
     d.chords[0] = chordOf(0, 3.f, 43, 4, kStrumWide, kOrderUpDown, 50, 0, 0, 0, 0, -0.2f);                   // asked for from the scene before, and from its own last step
     d.notes[0] = NoteEvent{5, 79, 1.f, 0.f, 0.7f, 3, kGlideQuarter, 1, 0};
@@ -2444,6 +2454,36 @@ void edge() {
     }
 }
 
+// The song above is what it is said to be: under PAIRED and under RANDOM its chord track's
+// lines come from other keys than TOP's do, so a scene moved with either in flight is a proof
+// of something. (And each is another sound than TOP: the choice is heard.)
+void testTheSongDoesGlideFromOtherKeys() {
+    std::vector<float> heard[3];
+    const int types[3] = {kFromTop, kFromPaired, kFromRandom};
+    int other[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        gGlideFrom = types[i];
+        Rig rig;
+        fill(rig);
+        gGlideFrom = kFromPaired;
+        std::vector<GlideLine> top(kMaxBars * kMaxNotes), lines(kMaxBars * kMaxNotes);
+        for (int scene = 0; scene < 3; ++scene) {
+            rig.project().tracks[2].glideFrom = kFromTop;
+            rig.project().glideLines(2, scene, top.data());
+            rig.project().tracks[2].glideFrom = static_cast<std::uint8_t>(types[i]);
+            rig.project().glideLines(2, scene, lines.data());
+            for (std::size_t n = 0; n < lines.size(); ++n) other[i] += lines[n].from != top[n].from;
+        }
+        rig.heard.clear();
+        rig.session().togglePlay(true);
+        rig.frames(1);
+        rig.render(kSongSteps * kStep);
+        heard[i] = rig.heard;
+    }
+    CHECK(other[0] == 0 && other[1] >= 3 && other[2] >= 3);
+    CHECK(apart(heard[0], heard[1]) > 0.001f && apart(heard[0], heard[2]) > 0.001f && apart(heard[1], heard[2]) > 0.001f);
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) {
@@ -2470,6 +2510,8 @@ int main(int argc, char** argv) {
         {"testTakenBackWhileTheCopyPlaysInItsTurn", testTakenBackWhileTheCopyPlaysInItsTurn, false}, {"testTheSongScreensCursorFollows", testTheSongScreensCursorFollows, false},
         {"testTwelveTracksInOneStep", testTwelveTracksInOneStep, false}, {"testInOneStepWhateverPlays", testInOneStepWhateverPlays, false}, {"testStartStraightAfter", testStartStraightAfter, false},
         {"testEditsStraightAfter", testEditsStraightAfter, false}, {"testARealAudioThread", testARealAudioThread, false},
+        {"testTheCopyIsWhatTheRollWritesUnderRandom", [] { gGlideFrom = kFromRandom; testTheCopyIsWhatTheRollWrites(); gGlideFrom = kFromPaired; }, false},
+        {"testTheSongDoesGlideFromOtherKeys", testTheSongDoesGlideFromOtherKeys, false},
     };
     // `--only NAME...`: just those (for trying a change). `--times`: how long each takes.
     bool times = false;

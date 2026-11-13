@@ -7,6 +7,10 @@
 // 1 was "on" before a glide had a length, and it was half a step: so it still is.
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+#include "apotheca/chord_rule.hpp"
 
 namespace apotheca {
 
@@ -45,29 +49,181 @@ inline double glideSteps(int kind, double since, int hits) {
     return steps;
 }
 
-// Which note a glide comes from: the last note the track began before this one. Notes that
-// begin together count as one moment: none of them slides from another of them, and what
-// comes after slides from the highest of them. (The later pieces of a ratchet are not notes
-// beginning: they are not told to this.)
+// ---- GLIDE FROM: which key of the moment before a note slides from ------------------------
+//
+// A track's setting. The numbers are kept in songs: appended, never given another meaning.
+constexpr int kFromTop = 0;     // every note from the highest key of the moment before
+constexpr int kFromPaired = 1;  // by pitch order, spread across: the lowest new note from the lowest old key,
+                                // the highest from the highest, those between spaced evenly
+constexpr int kFromNearest = 2; // each from the key nearest in pitch (a tie: the higher)
+constexpr int kFromRandom = 3;  // each from a key rolled for where and when the note is (never a generator walked)
+constexpr int kGlideFroms = 4;
+// A number from outside (a song file, a command): one that is not known is TOP.
+inline int glideFromKind(int number) { return number > 0 && number < kGlideFroms ? number : kFromTop; }
+inline const char* glideFromName(int kind) {
+    static const char* const names[kGlideFroms] = {"TOP", "PAIRED", "NEAREST", "RANDOM"};
+    return names[glideFromKind(kind)];
+}
+
+// The keys of one moment: one bit a key, so every key there is fits and nothing is ever left
+// out. The same key twice in a moment is one key.
+struct GlideKeys {
+    std::uint64_t bits[2] = {0, 0};
+
+    void add(int pitch) {
+        if (pitch >= 0 && pitch < 128) bits[pitch >> 6] |= std::uint64_t(1) << (pitch & 63);
+    }
+    bool has(int pitch) const { return pitch >= 0 && pitch < 128 && ((bits[pitch >> 6] >> (pitch & 63)) & 1) != 0; }
+    bool empty() const { return (bits[0] | bits[1]) == 0; }
+    int count() const {
+        int n = 0;
+        for (int pitch = 0; pitch < 128; ++pitch) n += has(pitch) ? 1 : 0;
+        return n;
+    }
+    int top() const { // the highest (-1: there is none)
+        for (int pitch = 127; pitch >= 0; --pitch)
+            if (has(pitch)) return pitch;
+        return -1;
+    }
+    int at(int k) const { // the k-th from the bottom, 0 the lowest (-1: there are not so many)
+        for (int pitch = 0; pitch < 128; ++pitch)
+            if (has(pitch) && k-- == 0) return pitch;
+        return -1;
+    }
+    int below(int pitch) const { // how many are lower than this
+        int n = 0;
+        for (int p = 0; p < pitch && p < 128; ++p) n += has(p) ? 1 : 0;
+        return n;
+    }
+};
+
+// RANDOM's roll is for one note of one moment: the track, and the whole step the moment is
+// nearest to, counted from Play (so no two times round are alike, yet Play from the top gives
+// the same again; not the scene's number, which NEXT SCENE changes under a playing song).
+inline std::uint32_t glideSeed(int track, double at) { return chordSeed(track, 0, 0, static_cast<long>(std::floor(at + 0.5))); }
+
+// The key of `old` (the moment before) that a note slides from. `rank` and `count`: the note is
+// the rank-th lowest (0 the lowest) of the `count` keys of its own moment (PAIRED asks; a note
+// alone is 0 of 1). -1: there is none.
+inline int glideFromKey(int type, const GlideKeys& old, int pitch, int rank, int count, std::uint32_t seed) {
+    const int m = old.count();
+    if (m < 1) return -1;
+    if (type == kFromPaired) {
+        if (count <= 1) return old.top(); // one note alone: from the top
+        if (rank < 0) rank = 0;
+        if (rank > count - 1) rank = count - 1;
+        return old.at((2 * rank * (m - 1) + (count - 1)) / (2 * (count - 1))); // rank * (m - 1) / (count - 1), a half rounded up
+    }
+    if (type == kFromNearest) {
+        int best = -1, far = 1000;
+        for (int k = 0; k < 128; ++k) {
+            if (!old.has(k)) continue;
+            const int d = k > pitch ? k - pitch : pitch - k;
+            if (d <= far) { // (going up: a tie is taken by the higher)
+                far = d;
+                best = k;
+            }
+        }
+        return best;
+    }
+    if (type == kFromRandom) {
+        int k = static_cast<int>(chordUnit(seed, kRollGlide, pitch) * m);
+        return old.at(k < m ? k : m - 1);
+    }
+    return old.top();
+}
+
+// The most notes that can be told as coming: what one step can ask, every note of this
+// bar's step and every early note of the next bar's. One more than that is not kept (a
+// pattern cannot ask it), and is then not counted by PAIRED.
+constexpr int kGlideComing = 2 * 64;
+
+// Which notes a glide may come from: the keys of the moment the track last began before this
+// note. Notes that begin together count as one moment: none of them slides from another of
+// them, and what comes after slides from one of them (GLIDE FROM says which). (The later
+// pieces of a ratchet are not notes beginning: they are not told to this.)
+//
+// PAIRED needs to know a note's whole moment when its first note begins, so the notes a step
+// is about to begin are told first (`window`, then `tellComing` for each): the engine does
+// that at each step for a PAIRED track, and glideLines below in the same steps.
 struct GlideTrail {
     struct From {
         int pitch = -1;  // -1: there is none
-        double at = 0.0; // when it began, in steps
+        double at = 0.0; // when its moment began, in steps
     };
-    From last, before;
+    struct Moment {
+        GlideKeys keys;
+        double at = 0.0; // when its first note began
+        bool any = false;
+    };
+    struct Coming {
+        double at = 0.0;
+        std::uint8_t pitch = 0;
+    };
+    Moment last, before;
+    Coming coming[kGlideComing];
+    int comingCount = 0;
 
-    void clear() { last = before = From(); }
-    // What a note beginning at `at` slides from.
-    From from(double at) const { return last.pitch < 0 || at > last.at + kGlideTogether ? last : before; }
+    void clear() {
+        last = before = Moment();
+        comingCount = 0;
+    }
+    // A step begins: what was told as coming before `from` has begun, or never will.
+    void window(double from) {
+        int kept = 0;
+        for (int i = 0; i < comingCount; ++i)
+            if (coming[i].at >= from) coming[kept++] = coming[i];
+        comingCount = kept;
+    }
+    // A note is going to begin at `at`.
+    void tellComing(int pitch, double at) {
+        if (comingCount >= kGlideComing) return;
+        coming[comingCount].at = at;
+        coming[comingCount].pitch = static_cast<std::uint8_t>(pitch);
+        ++comingCount;
+    }
+    bool joins(double at) const { return last.any && at <= last.at + kGlideTogether; } // the moment last begun is its own
+    // What a note beginning at `at` slides from. `seed`: glideSeed(track, at), for RANDOM.
+    From from(int type, int pitch, double at, std::uint32_t seed) const {
+        const Moment& old = joins(at) ? before : last;
+        From result;
+        if (!old.any) return result;
+        int rank = 0, count = 1;
+        if (type == kFromPaired) {
+            // Its own moment: the keys that have begun in it, and those told as coming in it.
+            GlideKeys own;
+            double first = at; // when the moment begins
+            if (joins(at)) {
+                own = last.keys;
+                first = last.at;
+            } else {
+                bool found = false;
+                for (int i = 0; i < comingCount; ++i) {
+                    if (last.any && coming[i].at <= last.at + kGlideTogether) continue; // (of the moment before)
+                    if (!found || coming[i].at < first) first = coming[i].at;
+                    found = true;
+                }
+                if (!found || at < first || at > first + kGlideTogether) first = at; // (it was not told: alone, or with what follows it closely)
+            }
+            for (int i = 0; i < comingCount; ++i)
+                if (coming[i].at >= first && coming[i].at <= first + kGlideTogether) own.add(coming[i].pitch);
+            own.add(pitch);
+            rank = own.below(pitch);
+            count = own.count();
+        }
+        result.pitch = glideFromKey(type, old.keys, pitch, rank, count, seed);
+        result.at = old.at;
+        return result;
+    }
     // A note has begun.
     void began(int pitch, double at) {
-        if (last.pitch < 0 || at > last.at + kGlideTogether) {
+        if (!joins(at)) {
             before = last;
-            last.pitch = pitch;
+            last = Moment();
+            last.any = true;
             last.at = at;
-        } else if (pitch > last.pitch) {
-            last.pitch = pitch;
         }
+        last.keys.add(pitch);
     }
 };
 
@@ -85,13 +241,16 @@ struct GlideLine {
 };
 
 constexpr int kGlideBars = 8, kGlideNotes = 64; // (kMaxBars and kMaxNotes: checked in engine.hpp)
+static_assert(kGlideComing == 2 * kGlideNotes, "a step can ask a bar's notes and the next bar's early ones");
 
 // A cell of `cellBars` bars of kGlideNotes notes each (notes[bar * kGlideNotes + slot], in the
 // order the engine is given them), in a scene that lasts `sceneSteps` and goes round. For each
 // note, what it slides from once the scene has gone round once: so a glide into the first
 // step comes from the last note of the loop. A cell shorter than its scene plays more than
-// once in it; each bar is answered for the first time it plays.
-inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, GlideLine* lines) {
+// once in it; each bar is answered for the first time it plays. `type`: the track's GLIDE
+// FROM; `track`: its number, for RANDOM, which rolls anew each time round: `timesRound` says
+// for which (0: the first time the scene plays after Play, which is what the roll draws).
+inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, GlideLine* lines, int type = kFromTop, int track = 0, int timesRound = 0) {
     struct Begin {
         double at;
         int index; // bar * kGlideNotes + slot, or -1: a later playing of a bar, not answered for
@@ -114,14 +273,26 @@ inline void glideLines(const GlideNote* notes, int cellBars, int sceneSteps, Gli
         }
     }
     std::stable_sort(begins, begins + count, [](const Begin& a, const Begin& b) { return a.at < b.at; });
+    type = glideFromKind(type);
     GlideTrail trail;
     for (int round = 0; round < 2; ++round) {
+        double told = -1e30; // the whole step whose notes have been told as coming
         for (int i = 0; i < count; ++i) {
             const Begin& b = begins[i];
             const double at = b.at + round * static_cast<double>(sceneSteps);
-            const GlideTrail::From from = trail.from(at);
+            if (type == kFromPaired && std::floor(at) != told) {
+                // As the engine's step does: the notes this whole step begins are told first.
+                told = std::floor(at);
+                trail.window(told);
+                for (int j = i; j < count; ++j) {
+                    const double then = begins[j].at + round * static_cast<double>(sceneSteps);
+                    if (std::floor(then) != told) break;
+                    trail.tellComing(begins[j].pitch, then);
+                }
+            }
             if (round == 1 && b.index >= 0) {
                 const GlideNote& n = notes[b.index];
+                const GlideTrail::From from = trail.from(type, n.pitch, at, glideSeed(track, b.at + timesRound * static_cast<double>(sceneSteps)));
                 if (n.glide != kGlideOff && from.pitch >= 0 && from.pitch != n.pitch) {
                     lines[b.index].from = from.pitch;
                     lines[b.index].steps = glideSteps(n.glide, at - from.at, n.ratchet);

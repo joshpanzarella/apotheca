@@ -469,6 +469,12 @@ double arpMoved(const ChordPlay& play, std::uint32_t seed, long m, double sample
 
 // Play a pattern's note now, or set it waiting.
 void Engine::startNote(Track& track, const Note& note, double delaySamples, double at) {
+    // A PAIRED track's step, the first time through: the note is only told as coming, so that
+    // the first note of a moment to begin knows the whole moment (glide_rule.hpp).
+    if (telling_) {
+        if (note.piece != kLaterPiece && !(note.how & kUntold)) track.trail.tellComing(note.pitch, at);
+        return;
+    }
     // A ratchet: the note several times over, evenly, inside its first step. Each is let go just
     // before the next, so it is heard to start again; the last is held for what is left of the
     // note. Only the first of them glides.
@@ -501,8 +507,10 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         // A glide: from the key the track last began, for as long as the note says, and no longer
         // than the first piece of a ratchet (glide_rule.hpp: the roll draws it from the same rule).
         // The first note after Play has none to come from.
-        const GlideTrail::From from = track.trail.from(at);
+        // Which key of that moment: the track's GLIDE FROM.
         const bool glides = note.glide != kGlideOff && note.piece != kLaterPiece;
+        const int trackIndex = static_cast<int>(&track - tracks_);
+        const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, glideSeed(trackIndex, at)) : GlideTrail::From();
         if (glides && from.pitch >= 0 && from.pitch != note.pitch) {
             const double steps = glideSteps(note.glide, at - from.at, note.piece);
             track.synth->noteOnFrom(note.pitch, note.velocity, from.pitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
@@ -541,6 +549,12 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
 // roll is worked out from where the chord is and which time it is being played.
 void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, double stepAt, double wait) {
     const ChordPlay& play = note.play;
+    const double nudge = top && note.nudge < 0.f ? 0.0 : static_cast<double>(note.nudge); // (nothing is before the top)
+    const double at = stepAt + nudge;                  // the chord's own moment, in steps since Play
+    if (telling_) { // (a PAIRED track's step, the first time through: see startNote)
+        track.trail.tellComing(note.pitch, at);
+        return;
+    }
     // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
     // the scenes after it, and a chord that is playing must go on as the same chord.)
     const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt));
@@ -548,8 +562,6 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
         track.lastChord = seed;
         ++track.strokes;
     }
-    const double nudge = top && note.nudge < 0.f ? 0.0 : static_cast<double>(note.nudge); // (nothing is before the top)
-    const double at = stepAt + nudge;                  // the chord's own moment, in steps since Play
     // ...and how many samples off it is. A whole number, as is everything a chord effect times:
     // a part of a sample is played a sample sooner or later by how the sound is cut into blocks
     // (a nudged note always was), and a performance must not depend on that.
@@ -1024,6 +1036,9 @@ void Engine::apply(const Command& c) {
                 if (effect) effect->setTempo(tempo_);
         }
         break;
+    case Command::SetGlideFrom:
+        if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
+        break;
     case Command::SetSend:
         if (validTrack(c.track) && c.a >= 0 && c.a < kBuses && c.value == c.value) {
             Track& track = tracks_[c.track];
@@ -1106,6 +1121,7 @@ void Engine::apply(const Command& c) {
                 trash_.push(trash);
             }
             track.hasDrums = false;
+            track.glideFrom = kFromTop;
             track.drums.reset();
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (!track.laneSamples[lane]) continue;
@@ -1353,24 +1369,34 @@ void Engine::fireStep() {
             // scene's number between the two askings, and the chord is the same chord.)
             const int slotNow = slotOf(track, scene_, bar_);
             const bool asked = track.chordAsked == stepsFired_ - 1;
-            for (const Note& note : track.notes[slotNow]) {
-                if (note.play.count && asked) continue; // (begun a step ago, or waiting since)
-                if (note.play.count && !note.play.atRest()) {
-                    if (note.velocity > 0.f && note.step == nextStep_) startChordNote(track, slotNow, note, true, now, 0.0);
-                    continue;
-                }
-                if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_, now + note.nudge);
-                else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0, now);
-            }
             const int slotThen = slotOf(track, followingScene, followingBar);
-            for (const Note& note : track.notes[slotThen]) {
-                if (pastEnd || note.velocity <= 0.f || note.step != following) continue;
-                const bool chordAhead = note.play.count && !note.play.atRest() && (note.nudge < 0.f || note.play.time > 0);
-                if (chordAhead) startChordNote(track, slotThen, note, false, now + 1.0, samplesPerStep_);
-                else if (note.nudge < 0.f && !(note.play.count && !note.play.atRest())) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
-                else continue;
-                if (note.play.count) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
+            // GLIDE FROM PAIRED: a note's key comes from its place among the notes of its own
+            // moment, so the step's notes are gone through twice, by the one set of conditions:
+            // first only told to the trail as coming (`telling_`: startNote and startChordNote
+            // then begin nothing and change nothing), then begun. Any other track: once, as ever.
+            const bool paired = track.glideFrom == kFromPaired;
+            if (paired) track.trail.window(now);
+            for (int pass = paired ? 0 : 1; pass < 2; ++pass) {
+                telling_ = pass == 0;
+                for (const Note& note : track.notes[slotNow]) {
+                    if (note.play.count && asked) continue; // (begun a step ago, or waiting since)
+                    if (note.play.count && !note.play.atRest()) {
+                        if (note.velocity > 0.f && note.step == nextStep_) startChordNote(track, slotNow, note, true, now, 0.0);
+                        continue;
+                    }
+                    if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_, now + note.nudge);
+                    else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0, now);
+                }
+                for (const Note& note : track.notes[slotThen]) {
+                    if (pastEnd || note.velocity <= 0.f || note.step != following) continue;
+                    const bool chordAhead = note.play.count && !note.play.atRest() && (note.nudge < 0.f || note.play.time > 0);
+                    if (chordAhead) startChordNote(track, slotThen, note, false, now + 1.0, samplesPerStep_);
+                    else if (note.nudge < 0.f && !(note.play.count && !note.play.atRest())) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
+                    else continue;
+                    if (note.play.count && !telling_) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
+                }
             }
+            telling_ = false;
         }
     }
     // Automation: where each lane is to be by the middle of this step.

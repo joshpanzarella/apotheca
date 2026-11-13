@@ -161,7 +161,7 @@ struct Command {
                         //   the cut because the command has no field to spare.
         SetSend,        // how much of a track goes to a bus: track, a = bus (0 ECHO, 1 SPACE), value = 0..1.
                         //   Taken after the track's level and mute. It glides, so it does not click.
-        ScenesMoved     // internal: sent by moveScenes(). The scenes from `a` on are one place further down
+        ScenesMoved,    // internal: sent by moveScenes(). The scenes from `a` on are one place further down
                         //   the song (b = 1) or one back up it (b = -1): a scene has been put in, or taken
                         //   out. If one of them is playing, the playing goes with it and nothing else
                         //   changes: the same step, the same bar, the same time round, no note cut or
@@ -169,6 +169,9 @@ struct Command {
                         //   keeps each scene of each track apart and only changes which is which), with
                         //   the scene that is new: c = the times it plays, d = its steps, scene = how many
                         //   scenes the song now has. (With no pointer: the playing moves and nothing else.)
+        SetGlideFrom    // GLIDE FROM, which key of the moment before a synth track's glides come from:
+                        //   track, a = kFromTop, kFromPaired, kFromNearest, kFromRandom (glide_rule.hpp;
+                        //   a number not known is TOP). Notes that begin after it is taken go by it.
     };
     Type type = Trigger;
     int track = 0;
@@ -443,7 +446,8 @@ private:
     static void sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
                         const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation);
     // A chord whose notes do not all begin on its own moment (strummed, an arpeggio, HUMAN TIME)
-    // is still ONE moment to a glide: what follows slides from its top key, as the roll draws.
+    // is still ONE moment to a glide: what follows slides from its keys as written (which of
+    // them, the track's GLIDE FROM says), as the roll draws.
     // So those notes say nothing to the track's GlideTrail when they sound (kUntold), and the
     // trail is told of each key at the chord's own moment by a note that only tells (kTellOnly).
     // kWholeFrames: everything about the note is timed in whole samples (its ratchet's pieces and
@@ -504,6 +508,7 @@ private:
         // began, early ones that belong to the next.
         struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; std::uint8_t how = 0; };
         GlideTrail trail; // the notes the track last began, for a glide to start from (none since Play)
+        std::uint8_t glideFrom = 0; // GLIDE FROM: which of them (kFromTop and the rest, glide_rule.hpp)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
@@ -651,6 +656,7 @@ private:
     bool loopScene_ = false;
     bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
     bool firstStep_ = true; // the step about to fire is the first since Play
+    bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;
