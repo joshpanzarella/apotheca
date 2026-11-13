@@ -88,24 +88,29 @@ std::vector<std::string> viewsInMain(const std::string& source) {
     return found;
 }
 
+// The names in a source that no still in kViews has in it.
+std::vector<std::string> unlisted(const std::string& source) {
+    std::vector<std::string> missing;
+    for (const std::string& name : viewsInMain(source)) {
+        bool listed = false;
+        for (const char* view : kViews) listed = listed || std::strstr(view, name.c_str()) != nullptr;
+        if (!listed) missing.push_back(name);
+    }
+    return missing;
+}
+
 void testEveryViewIsListed() {
     std::string source;
     CHECK(readTextFile(std::string(APOTHECA_SOURCE_DIR) + "/app/main.cpp", source));
-    const std::vector<std::string> names = viewsInMain(source);
-    CHECK(names.size() > 60); // (main.cpp was read, and the names found in it)
-    for (const std::string& name : names) {
-        bool listed = false;
-        for (const char* view : kViews) listed = listed || std::strstr(view, name.c_str()) != nullptr;
-        if (!listed) std::printf("    main.cpp knows a still named \"%s\": add it to kViews\n", name.c_str());
-        CHECK(listed);
-    }
-    // The reading itself: each of the ways main.cpp asks.
+    CHECK(viewsInMain(source).size() > 60); // (main.cpp was read, and the names found in it)
+    for (const std::string& name : unlisted(source)) std::printf("    main.cpp knows a still named \"%s\": add it to kViews\n", name.c_str());
+    CHECK(unlisted(source).empty());
+    // The reading itself: each of the ways main.cpp asks, and a still nobody has listed is found.
     const std::vector<std::string> read = viewsInMain("if (std::strcmp(view, \"aa\") == 0 || std::strncmp(view, \"bb\", 2) == 0) x(\"no\"); if (std::strstr(view, \"cc\")) y; std::strcmp(view + 10, \"-dd\")");
     CHECK(read.size() == 4 && read[0] == "aa" && read[1] == "bb" && read[2] == "cc" && read[3] == "-dd");
+    const std::vector<std::string> fresh = unlisted("if (std::strcmp(view, \"song\") == 0) a; else if (std::strcmp(view, \"brand-new-still\") == 0) b;");
+    CHECK(fresh.size() == 1 && fresh[0] == "brand-new-still");
 }
-
-// A text in one of the two bars: they are drawn with the fixed set, so at every size it is where LARGE has it.
-bool inABar(const textfit::Text& t) { return t.y + t.h <= ui::kTopBarH || t.y >= ui::kScreenH - ui::kHintsH; }
 
 // One still: the program draws it at each size and writes down what it drew. Gives its faults.
 std::vector<std::string> viewFaults(const std::string& program, const std::string& folder, const std::string& samples, int index, bool* ran) {
@@ -123,13 +128,13 @@ std::vector<std::string> viewFaults(const std::string& program, const std::strin
     for (int size = 0; size < kTextSizes; ++size) {
         if (size == kTextLarge) continue;
         for (const std::string& fault : textfit::faults(frames[kTextLarge], frames[size])) out.push_back(std::string(kTextSizeNames[size]) + ": " + fault);
-        if (frames[size].texts.size() != frames[kTextLarge].texts.size()) continue;
-        for (std::size_t i = 0; i < frames[size].texts.size(); ++i) {
-            const textfit::Text& was = frames[kTextLarge].texts[i];
-            const textfit::Text& is = frames[size].texts[i];
-            if (inABar(was) && (is.x != was.x || is.y != was.y || is.w != was.w || is.h != was.h || is.cap != was.cap))
-                out.push_back(std::string(kTextSizeNames[size]) + ": a bar's text is not as at LARGE: \"" + is.words + "\"");
+        // It was drawn at that size: every still has words outside the bars and strips, and they are smaller than LARGE's, or bigger.
+        bool smaller = false, bigger = false;
+        for (std::size_t i = 0; i < frames[size].texts.size() && i < frames[kTextLarge].texts.size(); ++i) {
+            smaller = smaller || frames[size].texts[i].cap < frames[kTextLarge].texts[i].cap;
+            bigger = bigger || frames[size].texts[i].cap > frames[kTextLarge].texts[i].cap;
         }
+        if (size < kTextLarge ? !smaller || bigger : !bigger) out.push_back(std::string(kTextSizeNames[size]) + ": it was not drawn at that size");
     }
     return out;
 }
@@ -166,6 +171,28 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
     bool said = false;
     for (const textfit::Text& t : frames[kTextSmall].texts) said = said || t.words == "SMALL";
     CHECK(said);
+    // And writing the texts down (all four sizes) leaves the picture as asked for: the same rows of the SET page as a still without "--texts".
+    const std::string plain = folder + "/plain.bmp";
+    const std::string again = "SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy '" + program + "' --demo --view setup --text-size small --still-ms 100 --shot '" + plain + "' > /dev/null 2>&1";
+    CHECK(std::system(again.c_str()) == 0);
+    SDL_Surface* with = SDL_LoadBMP(picture.c_str());
+    SDL_Surface* without = SDL_LoadBMP(plain.c_str());
+    CHECK(with && without && with->w == 640 && without->w == 640 && with->format->BytesPerPixel == without->format->BytesPerPixel);
+    if (with && without && with->w == without->w && with->format->BytesPerPixel == without->format->BytesPerPixel) {
+        bool same = true;
+        int lit = 0;
+        const int bytes = with->format->BytesPerPixel;
+        for (int y = SettingsScreen::rowY(0); y < SettingsScreen::rowY(SettingsScreen::kRows - 1) + SettingsScreen::kRowH - 6; ++y) { // (the rows: nothing in them moves while the song plays)
+            const Uint8* a = static_cast<const Uint8*>(with->pixels) + y * with->pitch;
+            const Uint8* b = static_cast<const Uint8*>(without->pixels) + y * without->pitch;
+            same = same && std::memcmp(a, b, static_cast<std::size_t>(640 * bytes)) == 0;
+            for (int x = 0; x < 640 * bytes; ++x) lit += a[x] > 150 ? 1 : 0;
+        }
+        CHECK(same);
+        CHECK(lit > 3000); // (there are words in it)
+    }
+    if (with) SDL_FreeSurface(with);
+    if (without) SDL_FreeSurface(without);
 }
 
 int runViews(const char* program, const char* only) {
@@ -314,6 +341,20 @@ void testTheMeasure() {
     };
     CHECK(faults(chip(18, true), chip(22, true)).empty());
     CHECK(has(faults(chip(18, false), chip(22, false)), "ran into what is beside it"));
+    // A chip snug round its text, inside a row: the chip grows with the text, and the row still holds it.
+    {
+        const auto chipped = [&](float w) {
+            Frame f;
+            order = 0;
+            box(f, 0, 0, 640, 480);
+            box(f, 100, 100, 60, 20);      // the row
+            box(f, 110, 103, w + 6, 14);   // the chip, drawn in it
+            text(f, "Dm7", 113, 104, w);
+            return f;
+        };
+        CHECK(faults(chipped(30), chipped(40)).empty());
+        CHECK(has(faults(chipped(30), chipped(50)), "left its box")); // out of the row, though still on its chip
+    }
     // A mark that only touches a text (the end of a line) is not a layer over it.
     {
         const auto marked = [&](float w) {
@@ -321,7 +362,7 @@ void testTheMeasure() {
             order = 0;
             box(f, 0, 0, 640, 480);
             text(f, "OCTAVE 3", 33, 30, 70);
-            box(f, 28, 35, 1, 8);  // the band's end, drawn after: it touches the text's column
+            box(f, 40, 35, 1, 8);  // a mark drawn after it and across it: a pixel wide, not a layer
             text(f, "OCTAVE 4", 110, 30, w);
             return f;
         };
@@ -593,6 +634,16 @@ void testTheBoxes() {
     gDrawLog = nullptr;
     CHECK(log.texts.size() == 2 && log.texts[0].font == &xl.small);
     CHECK(&xl.within(&Fonts::small, pictured.c_str(), w - 14.f - 27.f) == &xl.fixed().small && &xl.within(&Fonts::small, pictured.c_str(), w - 14.f) == &xl.small);
+    {
+        // In the box itself: RELEASE in one narrow enough that at XL it would reach its picture, and not the box's end.
+        const int narrow = 110;
+        CHECK(xl.small.width("RELEASE") > narrow - 14.f - 27.f && xl.small.width("RELEASE") <= narrow - 14.f && xl.fixed().small.width("RELEASE") <= narrow - 14.f - 27.f);
+        log.clear();
+        gDrawLog = &log;
+        ui::macroBox(s.canvas.r, xl, 200, 240, narrow, 70, "RELEASE", "+0", 0.5f, false, false);
+        gDrawLog = nullptr;
+        CHECK(log.texts.size() == 2 && log.texts[0].font == &xl.fixed().small && log.texts[1].font == &xl.large);
+    }
 
     // Rectangles: a filled one is solid unless its colour lets what is under it show; an outline is not; a box is both. In the order drawn.
     log.clear();
@@ -865,6 +916,13 @@ void testTheDrumGridsRows() {
     drums.moveCursorTo(5, -1);
     rig.frames(2);
     holds(rig, "the slice view, on the lane's name", kDrumStrip);
+    // ONE SLICE, beside the lane's picture: wider than the name's column at XL, so it is held at LARGE there (RUNS ON fits).
+    CHECK(drew("RUNS ON") && capAtXl("RUNS ON") == screens().at[kTextXl]->medium.capHeight());
+    rig.project().tracks[0].laneOneSlice[5] = true;
+    rig.frames(1);
+    holds(rig, "the slice view, a lane that plays one slice", kDrumStrip);
+    CHECK(drew("ONE SLICE") && capAtXl("ONE SLICE") == screens().at[kTextLarge]->medium.capHeight());
+    CHECK(screens().at[kTextXl]->medium.capHeight() > screens().at[kTextLarge]->medium.capHeight());
     // WRITE on, a scene of several bars, a twelfth track with the longest name: the top bar at its fullest.
     rig.tap(L1);
     rig.session().setTrackName(0, "WWWWWWWWWW");
@@ -975,6 +1033,13 @@ void testTheOtherScreens() {
     session.setCellBars(1, 0, 4);
     rig.frames(2);
     holds(rig, "SONG, twelve tracks with long names");
+    {
+        // The four-bar cell's count, over its little picture: at LARGE whatever is chosen. (The scene's own number 4 follows the setting.)
+        int held = 0, follows = 0;
+        for (const textfit::Text& t : lastXl.texts)
+            if (t.words == "4") (t.cap == screens().at[kTextLarge]->small.capHeight() ? held : follows) += 1;
+        CHECK(held == 1 && follows >= 1);
+    }
     rig.app.song().moveCursorTo(0, 1);
     rig.key(B, true); // deleting a track: its head says so
     holdUntilItSays(rig);
@@ -1277,6 +1342,26 @@ void testTheFxScreen() {
         besides += drew("THIS TRACK") ? 1 : 0;
     }
     CHECK(besides >= 3 && besides <= 9); // (some with it and some without: the test reaches both)
+    {
+        // A name there is room for beside THIS TRACK at LARGE and not at XL: both are held at LARGE there.
+        Screens& s = screens();
+        const float room = FxScreen::kListW - 2.f - 10.f;
+        std::string found;
+        for (int letters = 1; letters <= 10 && found.empty(); ++letters)
+            for (int mix = 0; mix < (1 << letters) && found.empty(); ++mix) {
+                std::string own;
+                for (int i = 0; i < letters; ++i) own += (mix >> i) & 1 ? 'W' : 'I';
+                const std::string head = std::to_string(project.track + 1) + " " + own;
+                if (s.at[kTextLarge]->small.width(head.c_str()) + s.at[kTextLarge]->small.width("THIS TRACK") <= room &&
+                    s.at[kTextXl]->small.width(head.c_str()) + s.at[kTextXl]->small.width("THIS TRACK") > room)
+                    found = own;
+            }
+        CHECK(!found.empty());
+        session.setTrackName(project.track, found);
+        rig.frames(1);
+        holds(rig, "FX, a name that just fits beside THIS TRACK at LARGE");
+        CHECK(drew("THIS TRACK") && capAtXl("THIS TRACK") == 12.f && capAtXl("BUSES") == 13.f);
+    }
     session.setTrackName(project.track, "WWWWWWWWWW");
     // Every line of the list, on the line and on each of its settings, with A held and not.
     for (int row = 0; row < FxScreen::kRows; ++row)
