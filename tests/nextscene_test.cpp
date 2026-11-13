@@ -41,12 +41,16 @@ const int kStep = 6000, kBar = 16 * kStep; // at 120 BPM, 48 kHz
 const SDL_Keycode A = SDLK_x, B = SDLK_z, Y = SDLK_a, SELECT = SDLK_BACKSPACE;
 const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2;
 
+int gHelpers = 0; // the helper threads every engine below is given (the tracks are rendered side by side on them)
+
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
     Input input;
     App app{*engine};
     Uint32 clock = 1000;
     std::vector<float> heard; // everything rendered, end to end
+
+    Rig() { engine->useWorkers(gHelpers); }
 
     void key(SDL_Keycode code, bool down) {
         SDL_Event event = {};
@@ -89,14 +93,64 @@ float apart(const std::vector<float>& a, const std::vector<float>& b) {
     return worst;
 }
 
+// A chord with its effects (chord_rule.hpp), for the song below.
+ChordEvent chordOf(int step, float length, int root, int keys, int strum, int order, int time, int level, int lengths, int ratchet = 0, int throwTo = 0, float nudge = 0.f) {
+    static const int kIntervals[kChordNotes] = {0, 4, 7, 11, 14, 17, 21, 24};
+    ChordEvent c;
+    c.step = step;
+    c.length = length;
+    c.root = root;
+    c.count = keys;
+    for (int i = 0; i < keys; ++i) c.intervals[i] = kIntervals[i];
+    c.velocity = 0.6f;
+    c.nudge = nudge;
+    c.ratchet = static_cast<std::uint8_t>(ratchet);
+    c.throwTo = static_cast<std::uint8_t>(throwTo);
+    c.play = chordPlayOf(strum, order, time, level, lengths);
+    std::snprintf(c.name, sizeof c.name, "C%d", step);
+    return c;
+}
+
+// Track 3 of the song below: chords strummed, played as arpeggios, humanised, ratcheted and
+// thrown, in every ORDER, and a glide of every length. Everything about them that the engine
+// keeps while they play (an arpeggio's clock, the chord asked for a step ahead, notes waiting,
+// what a glide comes from) is in flight wherever in the song a scene is moved.
+void fillChords(TrackData& t) {
+    t.bars[0] = 2;
+    NotePattern& a = t.notes[0][0];
+    a.chords[0] = chordOf(0, 2.f, 48, 3, kStrumTight, kOrderUpDown, 0, 0, 0, 2, kThrowEcho);                 // strummed on the song's first step, a ratchet, thrown
+    a.notes[0] = NoteEvent{2, 72, 1.f, 0.f, 0.7f, 0, kGlideQuarter, 0, 0};
+    a.chords[1] = chordOf(3, 4.f, 50, 4, kStrumQuarter, kOrderRandom, 50, 75, 50, 0, kThrowSpace);          // an arpeggio, everything humanised
+    a.notes[1] = NoteEvent{7, 60, 0.75f, 0.f, 0.7f, 0, kGlideHalf, 0, 0};
+    a.notes[2] = NoteEvent{8, 67, 1.f, 0.f, 0.7f, 2, kGlideOne, 0, 0};                                        // a ratchet that glides
+    a.chords[2] = chordOf(9, 2.5f, 52, 3, kStrumWide, kOrderDown, 100, 100, 0, 3, 0, -0.25f);                // early: asked for a step ahead
+    a.notes[3] = NoteEvent{12, 76, 1.5f, 0.25f, 0.7f, 0, kGlideTwo, 3, 0};                                    // late, thrown to both
+    a.chords[3] = chordOf(14, 2.f, 45, 5, kStrumOff, kOrderRandom, 75, 0, 100);                               // HUMAN TIME alone
+    NotePattern& b = t.notes[0][1]; // (the scene is cut to 23 steps: seven of this bar are played)
+    b.chords[0] = chordOf(0, 4.f, 53, 3, kStrumStep, kOrderUpDown, 100, 50, 0);                               // an arpeggio asked for from the bar before
+    b.chords[1] = chordOf(4, 4.f, 55, 4, kStrumHalf, kOrderDown, 0, 0, 25, 2, kThrowEcho);                   // ...and one still going when the scene ends
+    b.notes[0] = NoteEvent{6, 65, 1.f, 0.f, 0.7f, 0, kGlideFull, 0, 0};
+    NotePattern& c = t.notes[1][0];
+    c.chords[0] = chordOf(2, 3.f, 57, 4, kStrumTight, kOrderRandom, 0, 50, 0, 4, 3);
+    c.notes[0] = NoteEvent{6, 69, 2.f, 0.f, 0.7f, 0, kGlideFull, 0, 0};
+    c.chords[1] = chordOf(10, 5.f, 59, 3, kStrumQuarter, kOrderUp, 25, 0, 0);
+    c.notes[1] = NoteEvent{15, 62, 1.f, -0.3f, 0.7f, 0, kGlideTwo, 0, 0};
+    NotePattern& d = t.notes[2][0]; // (thirteen steps, three times)
+    d.chords[0] = chordOf(0, 3.f, 43, 4, kStrumWide, kOrderUpDown, 50, 0, 0, 0, 0, -0.2f);                   // asked for from the scene before, and from its own last step
+    d.notes[0] = NoteEvent{5, 79, 1.f, 0.f, 0.7f, 3, kGlideQuarter, 1, 0};
+    d.chords[1] = chordOf(9, 6.f, 47, 3, kStrumHalf, kOrderRandom, 100, 100, 75);                             // an arpeggio that runs on into the next time round
+}
+
 // A song with something of every kind a scene holds, and no two scenes alike:
-// track 1 drums, track 2 Phazed; three scenes.
+// track 1 drums, track 2 Phazed, track 3 Phazed with the chords above; three scenes.
 //   scene 1: the drums' cell two bars long, the synth's one; cut to 23 steps; played twice
 //   scene 2: one bar, once
 //   scene 3: cut to 13 steps, three times
 void fill(Rig& rig) {
     Project& p = rig.project();
     CHECK(rig.session().addTrack(TrackKind::Phazed));
+    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    fillChords(p.tracks[2]);
     TrackData& drums = p.tracks[0];
     TrackData& synth = p.tracks[1];
 
@@ -557,13 +611,13 @@ void testUndoIsOneStep() {
 
 // ---- one track's patterns a frame ---------------------------------------------------------------
 
-// Twelve tracks, the ten added ones each with a note of its own in each of the three scenes.
+// Twelve tracks, the nine added ones each with a note of its own in each of the three scenes.
 void fillTwelve(Rig& rig, bool withCopy = false) {
     fill(rig);
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 9; ++i) {
         CHECK(rig.session().addTrack(TrackKind::Phazed));
         for (int scene = 0; scene < 3; ++scene)
-            rig.project().tracks[2 + i].notes[scene][0].notes[0] = NoteEvent{(i * 3 + scene * 5) % 13, 48 + i + 2 * scene, 1.5f, 0.f, 0.5f, 0, 0, 0, 0};
+            rig.project().tracks[3 + i].notes[scene][0].notes[0] = NoteEvent{(i * 3 + scene * 5) % 13, 48 + i + 2 * scene, 1.5f, 0.f, 0.5f, 0, 0, 0, 0};
     }
     if (withCopy) rig.project() = *withCopyAfter(rig.project(), 0); // the song as NEXT SCENE on scene 1 leaves it, handed to the engine whole
     rig.session().applyProject();
@@ -813,6 +867,10 @@ void testPlayingGoesOnUnbroken() {
                 static_cast<double>(off), static_cast<double>(rig.heard.size()) / 2.0 / 48000.0);
     CHECK(off == 0.f);
     CHECK(loudest(rig.heard, 0, rig.heard.size() / 2) > 0.1f);
+    // ...and the same sound on any number of helper threads.
+    static std::vector<float> alone;
+    if (gHelpers == 0) alone = plain.heard;
+    else CHECK(apart(alone, plain.heard) == 0.f);
 }
 
 // The song, played from the top. The gesture during scene 1's first time round: the copy takes over
@@ -857,6 +915,9 @@ void testTheSongGoesOnUnbroken() {
     std::printf("  ...and taken back while it played: at most %g from the song left alone, a time and a half through\n", static_cast<double>(off));
     CHECK(off == 0.f);
     CHECK(apart(plain.heard, rig.heard) > 0.01f); // the song with the copy in it has gone its own way by now
+    static std::vector<float> alone, copied; // ...and each is the same sound on any number of helper threads
+    if (gHelpers == 0) alone = plain.heard, copied = rig.heard;
+    else CHECK(apart(alone, plain.heard) == 0.f && apart(copied, rig.heard) == 0.f);
 }
 
 // Another scene is the one going round, not the one on the screen. A scene after the copy moves
@@ -983,6 +1044,7 @@ void testTheEngineHasTheWholeSong() {
     redone.undo();
     redone.redo();
     Rig handed; // an engine as new as the others: the song goes to it once, as theirs did
+    CHECK(handed.session().addTrack(TrackKind::Phazed));
     CHECK(handed.session().addTrack(TrackKind::Phazed));
     handed.project() = *whole;
     handed.session().applyProject();
@@ -1296,7 +1358,7 @@ void testTheSongBesideTheFinishedSong(bool later) {
     redone.redo();
     all(256);
     CHECK(redone.engine->playScene() == start + 1 && redone.engine->playStep() == 12);
-    all(2 * (kSongSteps + 23 * 2) * kStep); // twice through the longer song
+    all((gHelpers ? 1 : 2) * (kSongSteps + 23 * 2) * kStep); // twice through the longer song (once, in the helper threads' round)
     CHECK(undone.session().imagesSent() + redone.session().imagesSent() == images); // no track sent whole
     const float madeOff = apart(made.heard, handed.heard), redoneOff = apart(redone.heard, handed.heard), undoneOff = apart(undone.heard, plain.heard);
     std::printf("  the song playing through, NEXT SCENE pressed %s: at most %g from the song built with the copy in it; taken back, %g from the song as it was; put back, %g (%.1f s)\n",
@@ -1496,6 +1558,7 @@ void testMovesLostToAFullQueue() {
     CHECK(rig.session().resyncs() == resyncs + 1 && rig.engine->caughtUp());
     Rig handed;
     CHECK(handed.session().addTrack(TrackKind::Phazed));
+    CHECK(handed.session().addTrack(TrackKind::Phazed));
     handed.project() = rig.project();
     handed.session().applyProject();
     handed.session().view = View::Pattern;
@@ -1577,6 +1640,7 @@ struct Bare { // an engine by itself: two drum tracks
     std::unique_ptr<Engine> engine{new Engine};
     std::vector<float> heard;
     Bare() {
+        engine->useWorkers(gHelpers);
         engine->prepare(48000.f);
         engine->addDrumTrack(1);
     }
@@ -1613,8 +1677,26 @@ void testASceneHandedOverIsWhatTheCommandsWrite() {
         {0, 3, 8, 0.9f, 0.f, 0.f, 0.f, 0, 0, 0, 0, 0},  {0, 1, 12, 0.9f, 0.f, 1.f, 0.f, 3, 2, 0, 0, 0},  {0, 0, 10, 0.8f, 0.f, 1.f, 0.f, 0, 0, 0, 2, 1},
         {1, 4, 2, 0.6f, 0.f, 1.f, 0.f, 0, 0, 1, 0, 0},  {1, 0, 9, 0.75f, -0.25f, 1.f, 0.f, -2, 0, 0, 0, 2},
     };
-    struct Key { int slot, step, pitch; float length, velocity, nudge; int ratchet, glide, throwTo; };
-    const Key kKeys[] = {{0, 0, 60, 2.f, 0.8f, 0.f, 0, 0, 0}, {1, 4, 64, 1.5f, 0.7f, 0.f, 3, 0, 0}, {2, 8, 67, 2.f, 0.6f, 0.25f, 0, 1, 0}, {5, 12, 55, 1.f, 0.5f, 0.f, 0, 0, 2}};
+    struct Key { int slot, step, pitch; float length, velocity, nudge; int ratchet, glide, throwTo; ChordPlay play; };
+    const auto keyOf = [](int strum, int order, int time, int level, int lengths, int index, int count) { // a chord's key, with the chord's effects
+        ChordPlay play = chordPlayOf(strum, order, time, level, lengths);
+        play.index = static_cast<std::uint8_t>(index);
+        play.count = static_cast<std::uint8_t>(count);
+        return play;
+    };
+    const Key kKeys[] = {
+        {0, 0, 60, 2.f, 0.8f, 0.f, 0, 0, 0, ChordPlay()},  {1, 4, 64, 1.5f, 0.7f, 0.f, 3, 0, 0, ChordPlay()}, {2, 8, 67, 2.f, 0.6f, 0.25f, 0, kGlideHalf, 0, ChordPlay()},
+        {5, 12, 55, 1.f, 0.5f, 0.f, 0, 0, 2, ChordPlay()},
+        // a glide of each of the other lengths, one of them on a ratchet
+        {6, 2, 70, 1.f, 0.6f, 0.f, 0, kGlideQuarter, 0, ChordPlay()}, {7, 3, 62, 1.f, 0.6f, 0.f, 2, kGlideOne, 0, ChordPlay()}, {8, 6, 71, 1.f, 0.6f, 0.f, 0, kGlideTwo, 0, ChordPlay()},
+        {9, 7, 58, 1.f, 0.6f, 0.f, 0, kGlideFull, 0, ChordPlay()},
+        // a chord played as an arpeggio, everything about it humanised
+        {10, 9, 52, 3.f, 0.6f, 0.f, 0, 0, 0, keyOf(kStrumQuarter, kOrderRandom, 50, 50, 50, 0, 3)}, {11, 9, 56, 3.f, 0.6f, 0.f, 0, 0, 0, keyOf(kStrumQuarter, kOrderRandom, 50, 50, 50, 1, 3)},
+        {12, 9, 59, 3.f, 0.6f, 0.f, 0, 0, 0, keyOf(kStrumQuarter, kOrderRandom, 50, 50, 50, 2, 3)},
+        // ...and one strummed downwards, early or late by HUMAN TIME, a ratchet, thrown
+        {13, 13, 50, 2.5f, 0.6f, 0.f, 2, 0, 1, keyOf(kStrumWide, kOrderDown, 100, 0, 0, 0, 3)}, {14, 13, 53, 2.5f, 0.6f, 0.f, 2, 0, 1, keyOf(kStrumWide, kOrderDown, 100, 0, 0, 1, 3)},
+        {15, 13, 57, 2.5f, 0.6f, 0.f, 2, 0, 1, keyOf(kStrumWide, kOrderDown, 100, 0, 0, 2, 3)},
+    };
     const auto macro = [](int step) { return 0.05f + 0.06f * static_cast<float>(step); }; // the synth's first macro, moving all bar
     const float kSend = 0.9f;                                                               // the drums' ECHO send, on step 3
 
@@ -1653,6 +1735,7 @@ void testASceneHandedOverIsWhatTheCommandsWrite() {
             n.ratchet = static_cast<std::uint8_t>(k.ratchet);
             n.glide = static_cast<std::uint8_t>(k.glide);
             n.throwTo = static_cast<std::uint8_t>(k.throwTo);
+            n.play = k.play;
         }
     };
 
@@ -1699,7 +1782,8 @@ void testASceneHandedOverIsWhatTheCommandsWrite() {
             c.extra = k.length - static_cast<float>(c.d);
             c.value = k.velocity;
             c.shift = k.nudge;
-            c.e = k.ratchet + (k.glide ? 256 : 0) + (k.throwTo << 9);
+            c.e = k.ratchet + (k.glide ? 256 : 0) + (k.throwTo << 9) + (k.glide >= 2 ? k.glide << 11 : 0);
+            c.play = k.play;
             said->engine->send(c);
         }
         c = Command();
@@ -1754,6 +1838,242 @@ void testASceneHandedOverIsWhatTheCommandsWrite() {
         fresh->engine->setTrackImage(2, imageOf(false));
         CHECK(loudest(fresh->play(beside, kLong, true), 0, kLong * kStep) == 0.f);
     }
+    // The chord's effects and the glides' lengths are heard in it: the same scene without them is another sound.
+    for (int without = 0; without < 2; ++without) { // 0: no chord effect; 1: every glide half a step
+        std::unique_ptr<Bare> other = bare();
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0].reset(new SceneImage);
+        scenes[2].reset(new SceneImage);
+        scenes[0]->bars = 2;
+        into(scenes[0]->level, scenes[0]->nudge, scenes[0]->chance, scenes[0]->start, scenes[0]->fx, scenes[0]->notes, true);
+        into(scenes[2]->level, scenes[2]->nudge, scenes[2]->chance, scenes[2]->start, scenes[2]->fx, scenes[2]->notes, false);
+        scenes[0]->automation[autoLaneOfSend(0) * kAutoSteps + 3] = kSend;
+        for (int step = 0; step < kSteps; ++step) scenes[2]->automation[step] = macro(step);
+        for (TrackImage::Note& n : scenes[2]->notes[0]) {
+            if (without == 0) n.play = ChordPlay();
+            else if (n.glide) n.glide = kGlideHalf;
+        }
+        CHECK(other->engine->moveScenes(0, 1, scenes, 1, 1, 0));
+        CHECK(apart(other->play(0, kLong, true), a) > 0.01f);
+    }
+    // A glide's number nobody knows is half a step, handed over as from a song file.
+    std::vector<float> glides[3];
+    for (int which = 0; which < 3; ++which) {
+        std::unique_ptr<Bare> one = bare();
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[2].reset(new SceneImage);
+        TrackImage::Note* n = scenes[2]->notes[0];
+        n[0].step = 0, n[0].pitch = 48, n[0].length = 1.f, n[0].velocity = 0.8f;
+        n[1].step = 4, n[1].pitch = 72, n[1].length = 3.f, n[1].velocity = 0.8f;
+        n[1].glide = static_cast<std::uint8_t>(which == 0 ? 9 : (which == 1 ? kGlideHalf : kGlideTwo));
+        CHECK(one->engine->moveScenes(0, 1, scenes, 1, 1, 0));
+        glides[which] = one->play(0, 16, true);
+    }
+    CHECK(apart(glides[0], glides[1]) == 0.f && apart(glides[0], glides[2]) > 0.01f && loudest(glides[0], 4 * kStep, 6 * kStep) > 0.05f);
+}
+
+// ---- chords and their effects when scenes move ----------------------------------------------------
+
+// A synth on track 3 of an engine by itself, and a chord of three keys written by commands: an
+// arpeggio, a note every half step for twelve steps (velocity 0: the chord is taken away).
+void arpChord(Bare& bare, int scene, float velocity) {
+    for (int k = 0; k < 3; ++k) {
+        Command c;
+        c.type = Command::SetNote;
+        c.track = 2;
+        c.scene = scene;
+        c.a = k;
+        c.b = 0;
+        c.c = 55 + 4 * k;
+        c.d = 12;
+        c.value = velocity;
+        c.play = chordPlayOf(kStrumHalf, kOrderUp, 0, 0, 0);
+        c.play.index = static_cast<std::uint8_t>(k);
+        c.play.count = 3;
+        bare.engine->send(c);
+    }
+}
+
+// An arpeggio that is playing knows which bar of the song its chord is written in: when that
+// bar is written to, it looks whether the chord is still there. A scene move takes the bar to
+// another number, and the arpeggio goes with it, as the playing does.
+//   - the chord taken away in the scene that is playing (its new number): the arpeggio ends,
+//     as in a song where no scene moved;
+//   - something written in the scene that has its old number now: the arpeggio does not look there;
+//   - a scene that does not move (it is before the one put in): the arpeggio stays;
+//   - a scene with no place to go to (the sixteenth, when one is put in; the one taken out): the
+//     playing stays on that number, where another scene is now, and the arpeggio ends if its
+//     chord is not in it.
+void testAnArpeggioGoesWithItsScene() {
+    struct Case { int scene, from, by, now, gone; }; // the scene the chord is in, the move, where that scene is then (gone: it has no place)
+    const Case kCases[] = {{2, 0, 1, 3, 0}, {2, 2, 1, 3, 0}, {2, 3, 1, 2, 0}, {3, 1, -1, 2, 0}, {3, 3, -1, 2, 0}, {1, 3, -1, 1, 0}, {15, 0, 1, 15, 1}, {1, 2, -1, 1, 1}};
+    for (const Case& k : kCases) {
+        for (int then = 0; then < 3; ++then) { // 0: nothing more; 1: the chord is taken away where it is; 2: a note is written where it was
+            if (k.gone && then != 0) continue;
+            if (then == 2 && k.now == k.scene) continue;
+            Bare moved, plain;
+            for (Bare* b : {&moved, &plain}) {
+                b->engine->addSynthTrack(2);
+                arpChord(*b, k.scene, 0.7f);
+                b->say(Command::SetSceneCount, 0, kMaxScenes);
+                b->render(256);
+                b->say(Command::Play, 0, k.scene, 1); // that scene, round and round
+                b->render(3 * kStep + 1234);          // its seventh note is sounding
+            }
+            std::unique_ptr<SceneImage> scenes[kNumTracks]; // (none handed over: the scene that comes in has nothing in it)
+            CHECK(moved.engine->moveScenes(k.from, k.by, scenes, kMaxScenes, 1, 0));
+            if (k.gone) arpChord(plain, k.scene, 0.f); // the scene there now has no chord: as if it had been taken away
+            for (Bare* b : {&moved, &plain}) b->render(700);
+            CHECK(moved.engine->playScene() == k.now);
+            if (then == 1) {
+                arpChord(moved, k.now, 0.f);
+                arpChord(plain, k.scene, 0.f);
+            }
+            if (then == 2) { // (a note far along the bar of the scene that is not playing: nothing to hear of it)
+                Command c;
+                c.type = Command::SetNote;
+                c.track = 2;
+                c.scene = k.scene;
+                c.a = 9;
+                c.b = 15;
+                c.c = 80;
+                c.d = 1;
+                c.value = 0.5f;
+                moved.engine->send(c);
+            }
+            for (Bare* b : {&moved, &plain}) b->render(10 * kStep);
+            const float off = apart(moved.heard, plain.heard);
+            if (off != 0.f) std::printf("  an arpeggio in scene %d, the scenes from %d moved by %d, then %d: %g apart\n", k.scene + 1, k.from + 1, k.by, then, static_cast<double>(off));
+            CHECK(off == 0.f);
+            // The arpeggio is heard for its twelve steps, or ends where its chord went.
+            const bool ends = k.gone || then == 1;
+            const std::size_t at = static_cast<std::size_t>(8 * kStep), to = static_cast<std::size_t>(11 * kStep);
+            CHECK(ends ? loudest(moved.heard, at, to) < 0.001f : loudest(moved.heard, at, to) > 0.02f);
+        }
+    }
+}
+
+// The song played ONCE through (Command::Play with c = 1, a bounce): its last step asks for
+// nothing early that belongs to its first. Which step is the last is the song's length, and a
+// scene move changes that in the same command. A song a scene was put into, before Play or
+// while it plays once through, is to the bit the finished song played once through.
+void testOnceThroughAfterAMove() {
+    // Each scene's first hit is early: it is asked for on the last step of the scene before.
+    const auto early = [](float (*level)[kDrumLanes][kSteps], float (*nudge)[kDrumLanes][kSteps], int lane) {
+        for (int step = 0; step < kSteps; step += 4) level[0][lane][step] = 0.8f;
+        nudge[0][lane][0] = -0.3f;
+    };
+    const auto song = [&](Bare& bare, bool whole) { // whole: three scenes, the new one at the top; else the two it is put in front of
+        std::unique_ptr<TrackImage> image(new TrackImage);
+        const int first = whole ? 1 : 0;
+        if (whole) early(image->level, image->nudge, 5);
+        early(image->level + first * kMaxBars, image->nudge + first * kMaxBars, 0);
+        early(image->level + (first + 1) * kMaxBars, image->nudge + (first + 1) * kMaxBars, 2);
+        bare.engine->setTrackImage(0, std::move(image));
+        bare.say(Command::SetSceneCount, 0, whole ? 3 : 2);
+        bare.render(256);
+    };
+    const auto put = [&](Bare& bare) {
+        std::unique_ptr<SceneImage> scenes[kNumTracks];
+        scenes[0].reset(new SceneImage);
+        early(scenes[0]->level, scenes[0]->nudge, 5);
+        CHECK(bare.engine->moveScenes(0, 1, scenes, 3, 1, 0));
+    };
+    const auto play = [](Bare& bare, int from, int once) {
+        Command c;
+        c.type = Command::Play;
+        c.a = from;
+        c.c = once;
+        bare.engine->send(c);
+    };
+    const int kThrough = 3 * 16 * kStep + 4 * kStep; // the three scenes, and on into the top again
+    // Put in before Play.
+    Bare told, moved, again;
+    song(told, true);
+    song(moved, false);
+    song(again, true);
+    put(moved);
+    moved.render(256);
+    told.render(256);
+    again.render(256);
+    for (Bare* b : {&told, &moved}) {
+        b->heard.clear();
+        play(*b, 0, 1);
+        b->render(kThrough);
+    }
+    again.heard.clear();
+    play(again, 0, 0);
+    again.render(kThrough);
+    CHECK(apart(moved.heard, told.heard) == 0.f && loudest(told.heard, 0, told.heard.size() / 2) > 0.1f);
+    // (Once through is another sound than round and round: the top's early hit is not heard at the end.)
+    CHECK(apart(again.heard, told.heard) > 0.01f);
+    const std::size_t end = static_cast<std::size_t>(3 * 16 * kStep), lead = static_cast<std::size_t>(0.3 * kStep);
+    CHECK(std::equal(told.heard.begin(), told.heard.begin() + static_cast<std::ptrdiff_t>(2 * (end - lead)), again.heard.begin())); // the same until the last step's early hit
+    // Put in while it plays once through: the two are started a scene apart, and are at the same place when it goes in.
+    Bare finished, during;
+    song(finished, true);
+    song(during, false);
+    play(finished, 1, 1);
+    play(during, 0, 1);
+    for (Bare* b : {&finished, &during}) b->render(5 * kStep + 321);
+    put(during);
+    for (Bare* b : {&finished, &during}) b->render(kThrough);
+    CHECK(during.engine->playScene() == finished.engine->playScene() && during.engine->playStep() == finished.engine->playStep());
+    CHECK(apart(during.heard, finished.heard) == 0.f && loudest(during.heard, 0, during.heard.size() / 2) > 0.1f);
+}
+
+// The copy NEXT SCENE hands the engine is, note for note, what the piano roll writes there a
+// bar at a time: a chord's effects, a glide's length and THROW are in it. And an arpeggio that
+// is playing when the key is pressed goes with its scene: its chord taken off the roll then,
+// it ends as it does in a song where no key was pressed.
+void testTheCopyIsWhatTheRollWrites() {
+    Rig copied, written;
+    fill(copied);
+    fill(written);
+    copied.nextScene(); // the engine's scene 1 is the one handed over now
+    for (int bar = 0; bar < 2; ++bar) written.session().sendNoteBar(2, 0, bar); // ...and here every note of it is written again, by commands
+    for (Rig* r : {&copied, &written}) {
+        r->project().scene = 0;
+        r->frames(2);
+        r->render(512);
+        r->heard.clear();
+        r->session().togglePlay(false);
+        r->frames(1);
+        r->render(3 * 23 * kStep);
+    }
+    CHECK(copied.engine->playScene() == 0 && apart(copied.heard, written.heard) == 0.f && loudest(copied.heard, 0, copied.heard.size() / 2) > 0.1f);
+
+    Rig plain, rig;
+    fill(plain);
+    fill(rig);
+    for (Rig* r : {&plain, &rig}) {
+        r->project().track = 2;
+        r->session().togglePlay(false);
+        r->frames(1);
+        r->render(4 * kStep + 3000); // the arpeggio on step 4 is on its third note
+        r->frames(1);
+    }
+    rig.nextScene();
+    for (Rig* r : {&plain, &rig}) r->render(256), r->frames(1);
+    CHECK(rig.engine->playScene() == 1);
+    plain.project().tracks[2].notes[0][0].chords[1].velocity = 0.f;
+    plain.session().sendNoteBar(2, 0, 0);
+    rig.project().tracks[2].notes[1][0].chords[1].velocity = 0.f; // (the scene that is playing: scene 2 now)
+    rig.session().sendNoteBar(2, 1, 0);
+    for (Rig* r : {&plain, &rig}) r->render(2 * kBar), r->frames(1);
+    CHECK(apart(plain.heard, rig.heard) == 0.f && rig.engine->dropped() == 0);
+    // (It did end: left on the roll, it is heard.)
+    Rig left;
+    fill(left);
+    left.project().track = 2;
+    left.session().togglePlay(false);
+    left.frames(1);
+    left.render(4 * kStep + 3000);
+    left.frames(1);
+    left.render(256);
+    left.frames(1);
+    left.render(2 * kBar);
+    CHECK(apart(left.heard, plain.heard) > 0.01f);
 }
 
 // Engine::moveScenes by itself, beside an engine told the finished song the long way.
@@ -1979,37 +2299,47 @@ int main(int argc, char** argv) {
         measure();
         return 0;
     }
-    testTheSceneIsCopied();
-    testOnlyOnTheGrids();
-    testNoRoom();
-    testUndo();
-    testUndoPutsThePlayerOnABarThatIsThere();
-    testUndoIsOneStep();
-    testPlayingGoesOnUnbroken();
-    testTheSongGoesOnUnbroken();
-    testAnotherSceneIsPlaying();
-    testUndoWhileTheFirstOfTheTwoPlays();
-    testTheLastSceneIsPlaying();
-    testTheSongIsLongerAtOnce();
-    testStopped();
-    testTheEngineHasTheWholeSong();
-    testWriteGoesToTheNewScene();
-    testTheFramesBeforeTheEngineHears();
-    testTheCommand();
-    testTheEnginesMove();
-    testASceneHandedOverIsWhatTheCommandsWrite();
-    testTheSixteenthSceneIsGivenBack();
-    testMovesLostToAFullQueue();
-    testTakenBackAfterSomethingUndoDoesNotKnow();
-    testTheSongBesideTheFinishedSong(false);
-    testTheSongBesideTheFinishedSong(true);
-    testTakenBackWhileTheCopyPlaysInItsTurn();
-    testTheSongScreensCursorFollows();
-    testTwelveTracksInOneStep();
-    testInOneStepWhateverPlays();
-    testStartStraightAfter();
-    testEditsStraightAfter();
-    testARealAudioThread();
+    struct Test { const char* name; void (*run)(); bool sound; }; // sound: its proof is of the sound, and is made again on three helper threads
+    const Test kTests[] = {
+        {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnlyOnTheGrids", testOnlyOnTheGrids, false}, {"testNoRoom", testNoRoom, false}, {"testUndo", testUndo, false},
+        {"testUndoPutsThePlayerOnABarThatIsThere", testUndoPutsThePlayerOnABarThatIsThere, false}, {"testUndoIsOneStep", testUndoIsOneStep, false},
+        {"testPlayingGoesOnUnbroken", testPlayingGoesOnUnbroken, true}, {"testTheSongGoesOnUnbroken", testTheSongGoesOnUnbroken, true}, {"testAnotherSceneIsPlaying", testAnotherSceneIsPlaying, false},
+        {"testUndoWhileTheFirstOfTheTwoPlays", testUndoWhileTheFirstOfTheTwoPlays, false}, {"testTheLastSceneIsPlaying", testTheLastSceneIsPlaying, false},
+        {"testTheSongIsLongerAtOnce", testTheSongIsLongerAtOnce, false}, {"testStopped", testStopped, false}, {"testTheEngineHasTheWholeSong", testTheEngineHasTheWholeSong, false},
+        {"testWriteGoesToTheNewScene", testWriteGoesToTheNewScene, false}, {"testTheFramesBeforeTheEngineHears", testTheFramesBeforeTheEngineHears, false}, {"testTheCommand", testTheCommand, false},
+        {"testTheEnginesMove", testTheEnginesMove, false}, {"testASceneHandedOverIsWhatTheCommandsWrite", testASceneHandedOverIsWhatTheCommandsWrite, false},
+        {"testAnArpeggioGoesWithItsScene", testAnArpeggioGoesWithItsScene, true}, {"testOnceThroughAfterAMove", testOnceThroughAfterAMove, true},
+        {"testTheCopyIsWhatTheRollWrites", testTheCopyIsWhatTheRollWrites, true}, {"testTheSixteenthSceneIsGivenBack", testTheSixteenthSceneIsGivenBack, false},
+        {"testMovesLostToAFullQueue", testMovesLostToAFullQueue, false}, {"testTakenBackAfterSomethingUndoDoesNotKnow", testTakenBackAfterSomethingUndoDoesNotKnow, false},
+        {"testTheSongBesideTheFinishedSong", [] { testTheSongBesideTheFinishedSong(false); }, false}, {"testTheSongBesideTheFinishedSongLater", [] { testTheSongBesideTheFinishedSong(true); }, true},
+        {"testTakenBackWhileTheCopyPlaysInItsTurn", testTakenBackWhileTheCopyPlaysInItsTurn, false}, {"testTheSongScreensCursorFollows", testTheSongScreensCursorFollows, false},
+        {"testTwelveTracksInOneStep", testTwelveTracksInOneStep, false}, {"testInOneStepWhateverPlays", testInOneStepWhateverPlays, false}, {"testStartStraightAfter", testStartStraightAfter, false},
+        {"testEditsStraightAfter", testEditsStraightAfter, false}, {"testARealAudioThread", testARealAudioThread, false},
+    };
+    // `--only NAME...`: just those (for trying a change). `--times`: how long each takes.
+    bool times = false;
+    std::vector<std::string> only;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--times") == 0) times = true;
+        else if (std::strcmp(argv[i], "--only") != 0) only.push_back(argv[i]);
+    }
+    int ran = 0;
+    for (int helpers : {0, 3}) {
+        gHelpers = helpers;
+        if (helpers) std::printf("the proofs of the sound again, the tracks rendered on %d helper threads:\n", helpers);
+        for (const Test& test : kTests) {
+            if (helpers && !test.sound) continue;
+            if (!only.empty() && std::find(only.begin(), only.end(), test.name) == only.end()) continue;
+            const Uint64 from = SDL_GetPerformanceCounter();
+            test.run();
+            ++ran;
+            if (times) std::printf("  %s: %.1f s\n", test.name, static_cast<double>(SDL_GetPerformanceCounter() - from) / static_cast<double>(SDL_GetPerformanceFrequency()));
+        }
+    }
+    if (ran == 0) {
+        std::printf("no test of that name\n");
+        return 1;
+    }
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

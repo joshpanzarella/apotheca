@@ -541,7 +541,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
 // roll is worked out from where the chord is and which time it is being played.
 void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, double stepAt, double wait) {
     const ChordPlay& play = note.play;
-    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot, note.step, static_cast<long>(stepAt));
+    // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
+    // the scenes after it, and a chord that is playing must go on as the same chord.)
+    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt));
     if (seed != track.lastChord || track.strokes < 0) { // the first of its notes: another chord has begun
         track.lastChord = seed;
         ++track.strokes;
@@ -908,6 +910,14 @@ void Engine::apply(const Command& c) {
                     for (int scene = gone; scene != made; scene -= c.b) track.scenes[scene] = track.scenes[scene - c.b];
                     track.scenes[made] = move.scenes[t] ? move.scenes[t] : leaving; // (a track with nothing: the one that went will do)
                     if (move.scenes[t]) move.scenes[t] = leaving;
+                    // An arpeggio that is playing goes with its scene, as the playing does (below). One
+                    // whose scene has no place to go to stays, and looks whether its chord is still there.
+                    for (auto& arp : track.arps) {
+                        if (!arp.on) continue;
+                        const int at = arp.slot / kMaxBars;
+                        if (at >= c.a && validScene(at + c.b)) arp.slot += c.b * kMaxBars;
+                        else if (at == gone) arp.look = true;
+                    }
                 }
                 for (int scene = gone; scene != made; scene -= c.b) {
                     repeats_[scene] = repeats_[scene - c.b];
