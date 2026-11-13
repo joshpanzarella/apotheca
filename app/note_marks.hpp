@@ -115,7 +115,8 @@ constexpr float kStripNudgeX = 390.f, kStripThrowX = 575.f, kStripRight = 632.f,
 inline float stripEffectX(bool thrown) { return thrown ? 480.f : 510.f; }
 // With X held the strip is RATCHET, GLIDE (at 250), THROW and NUDGE: the last two stand here,
 // clear of the longest a glide's length reads ("1/4 STEP").
-constexpr float kStripHeldGlideX = 250.f, kStripHeldThrowX = 385.f, kStripHeldNudgeX = 500.f;
+constexpr float kStripHeldRatchetX = 160.f, kStripHeldGlideX = 250.f, kStripHeldThrowX = 385.f, kStripHeldNudgeX = 500.f;
+// (The bar under the strip draws each field's button at the same x: ui::hintsUnder. NUDGE has none.)
 // How wide NUDGE's value may be: up to a gap before whatever comes after it.
 inline float stripNudgeRoom(bool effect, bool thrown) {
     return (effect ? stripEffectX(thrown) : thrown ? kStripThrowX : kStripRight) - kStripSpace - kStripNudgeX;
@@ -147,5 +148,9 @@ inline int stripThrowFont(const float widths[3], float least, float* x) {
 constexpr float kChordFxListX = 160.f, kChordFxColumn = 184.f, kChordFxThrowX = 522.f;
 constexpr float kChordFxValueIn[2] = {76.f, 108.f};
 constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
+// The one picked, in full, starts here. The bar under the strip (ui::hintsUnder) draws LEFT / RIGHT
+// (it sets the one picked) at kChordFxSetX, UP / DOWN (it picks one of the six) under the list at
+// kChordFxListX, and A under THROW at kChordFxThrowX.
+constexpr float kChordFxPickedX = 8.f, kChordFxSetX = kChordFxListX + kChordFxValueIn[0];
 
 } // namespace apotheca

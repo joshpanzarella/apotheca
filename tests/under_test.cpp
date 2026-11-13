@@ -1,0 +1,407 @@
+// THE BAR UNDER A STRIP: while X is held on a drum hit, a note or a chord, the hints bar draws
+// each button's chip directly under the field it changes, with no word, and the dice alone at
+// the left. Read off the drawn screen (tests/canvas.hpp): each chip's left edge is its field's,
+// on both grids, the slice view and the chord strip; and with X not held the bar is the plain
+// one, pixel for pixel. The bar's own rules (ui::hintsUnder) are in tests/ui_test.cpp.
+
+#include <SDL.h>
+#include <unistd.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "apotheca/engine.hpp"
+#include "app.hpp"
+#include "canvas.hpp"
+#include "chord_effects.hpp"
+#include "chords.hpp"
+#include "controls.hpp"
+#include "note_marks.hpp"
+#include "pattern_layout.hpp"
+#include "samples.hpp"
+
+using namespace apotheca;
+
+static int failures = 0;
+#define CHECK(cond)                                                        \
+    do {                                                                   \
+        if (!(cond)) {                                                     \
+            std::printf("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);    \
+            ++failures;                                                    \
+        }                                                                  \
+    } while (0)
+
+namespace {
+
+const SDL_Keycode X = SDLK_s;
+const int kBarTop = ui::kScreenH - ui::kHintsH, kChipTop = kBarTop + 5;
+const int kRollStrip = 45 + 22 + 2 + 16 * 21 + 4; // the piano roll's strip with two octaves shown: under the keys (45, 22 tall, 2) and sixteen rows of 21, 4 down
+using Chips = std::vector<std::pair<int, int>>; // (left edge, width)
+
+struct Rig {
+    std::unique_ptr<Engine> engine{new Engine};
+    Input input;
+    App app{*engine};
+    Uint32 clock = 1000;
+    Canvas canvas, scratch;
+
+    explicit Rig(const std::string& sampleFolder = "") {
+        if (!sampleFolder.empty()) app.session().useSampleFolder(sampleFolder);
+    }
+    void key(SDL_Keycode code, bool down) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press)) app.onButton(press, input);
+    }
+    void frames(int count) {
+        for (int i = 0; i < count; ++i) {
+            clock += 16;
+            app.update(input, clock);
+            std::vector<float> out(2 * 256); // (a test that never renders never empties the queue)
+            engine->render(out.data(), 256);
+        }
+    }
+    Project& project() { return app.project(); }
+    NotePattern& pattern() { return project().tracks[1].notes[0][0]; }
+    // A synth track (track 2) with the piano roll showing.
+    void roll() {
+        CHECK(app.session().addTrack(TrackKind::Qmod));
+        project().track = 1;
+        app.session().view = View::Pattern;
+        frames(2);
+        CHECK(app.session().octavesShown() == 2);
+    }
+    void drums() {
+        app.session().view = View::Pattern;
+        frames(2);
+    }
+    // The screen as it is now.
+    void draw() {
+        frames(1);
+        canvas.clear();
+        app.draw(canvas.r, *canvas.fonts);
+        SDL_RenderPresent(canvas.r);
+    }
+    // The cream boxes in the hints bar.
+    Chips chips() const {
+        Chips found;
+        for (int x = 0; x < ui::kScreenW;) {
+            const int w = canvas.run(x, kChipTop, ui::kText);
+            if (w > 0) found.push_back({x, w});
+            x += w > 0 ? w : 1;
+        }
+        return found;
+    }
+    int chipW(const char* key) const { return static_cast<int>(ui::keyWidth(*canvas.fonts, key) + 8.f); }
+    // Is this chip the bar's own, for this key? The same pixels as the plain bar draws for it.
+    bool chipIs(int x, const char* key) {
+        const ui::Hint one[] = {{key, ""}};
+        scratch.clear();
+        ui::hints(scratch.r, *scratch.fonts, one, 1);
+        return canvas.part(x, kBarTop, chipW(key) + 1, ui::kHintsH) == scratch.part(8, kBarTop, chipW(key) + 1, ui::kHintsH);
+    }
+    // The dice at the left: the bar's own Y and die, and nothing after them up to `to`.
+    bool diceAlone(int to) {
+        const ui::Hint dice[] = {{"Y", "dice"}};
+        scratch.clear();
+        ui::hints(scratch.r, *scratch.fonts, dice, 1);
+        return canvas.part(0, kBarTop, to, ui::kHintsH) == scratch.part(0, kBarTop, to, ui::kHintsH) && canvas.is(8 + chipW("Y") + 6, kBarTop + 6, ui::kDim);
+    }
+    // Nothing but the bar itself from x0 to x1: no word, no chip.
+    bool bare(int x0, int x1) const {
+        for (int y = kBarTop + 1; y < ui::kScreenH; ++y)
+            for (int x = x0; x < x1; ++x)
+                if (!canvas.is(x, y, ui::kPanel)) return false;
+        return true;
+    }
+    // No words: outside the chips (and the die) the bar is bare, from the die to `to`.
+    bool noWords(const Chips& list, int to) const {
+        int x = 8 + chipW("Y") + 5 + 13;
+        for (std::size_t i = 1; i < list.size(); ++i) {
+            if (!bare(x, list[i].first)) return false;
+            x = list[i].first + list[i].second;
+        }
+        return bare(x, to);
+    }
+    // How the help is opened, at the bar's end, exactly as the plain bar says it.
+    int helpLeft() const { return static_cast<int>(ui::kScreenW - 6.f - canvas.fonts->small.width(ui::gHelpHint)) - 2; }
+    bool helpShown() {
+        scratch.clear();
+        ui::hints(scratch.r, *scratch.fonts, nullptr, 0);
+        const int x = helpLeft();
+        return !bare(x, ui::kScreenW) && canvas.part(x, kBarTop, ui::kScreenW - x, ui::kHintsH) == scratch.part(x, kBarTop, ui::kScreenW - x, ui::kHintsH);
+    }
+    // The whole bar is the plain one for this list.
+    bool plainBar(const ui::Hint* list, int count) {
+        scratch.clear();
+        ui::hints(scratch.r, *scratch.fonts, list, count);
+        return canvas.part(0, kBarTop, ui::kScreenW, ui::kHintsH) == scratch.part(0, kBarTop, ui::kScreenW, ui::kHintsH);
+    }
+    // Is `text` drawn at (x, y) in the small lettering, in `colour`? It is drawn there on the
+    // second screen, and wherever that has the full colour the screen looked at must have it too.
+    bool label(float x, float y, const char* text, SDL_Color colour = ui::kDim) {
+        const Font& font = scratch.fonts->small;
+        const int x0 = static_cast<int>(x) - 2, x1 = static_cast<int>(x + font.width(text)) + 3, y0 = static_cast<int>(y) - 4, y1 = static_cast<int>(y) + 20;
+        ui::fill(scratch.r, x0, y0, x1 - x0, y1 - y0, SDL_Color{255, 0, 255, 255}); // a ground no lettering is drawn in
+        font.draw(scratch.r, x, y, text, colour);
+        int body = 0;
+        for (int py = y0; py < y1; ++py)
+            for (int px = x0; px < x1; ++px) {
+                if (!scratch.is(px, py, colour)) continue;
+                ++body;
+                if (!canvas.is(px, py, colour)) return false;
+            }
+        return body >= 6;
+    }
+};
+
+// A folder of its own for a test's recording, taken away with what the test put in it when the test ends.
+struct TempFolder {
+    std::string path;
+    bool made = false;
+    TempFolder() {
+        char pattern[] = "/tmp/apotheca-under-XXXXXX";
+        const char* got = mkdtemp(pattern);
+        made = got != nullptr;
+        path = made ? got : "/tmp";
+    }
+    ~TempFolder() {
+        if (!made) return;
+        std::remove((path + "/break.wav").c_str());
+        rmdir(path.c_str());
+    }
+    TempFolder(const TempFolder&) = delete;
+    TempFolder& operator=(const TempFolder&) = delete;
+};
+
+// ---- the drum grid ----------------------------------------------------------------------------
+
+// What the bar says on a hit with nothing held (pattern_screen.cpp's last list).
+const ui::Hint kOnAHit[] = {{"A", "level / nudge"}, {"Y", "chance / start"}, {"HOLD X", "effects"}, {"HOLD B", "delete"}, {"HOLD R1", "paint"}, {"R1 + R2", "paint random"}};
+
+void heldOnAHit(Rig& rig) {
+    using namespace pattern_layout;
+    rig.draw();
+    const Chips chips = rig.chips();
+    // Each chip's left edge is its field's: PITCH, RATCHET, REVERSE, CUT, THROW; the dice at the left.
+    CHECK((chips == Chips{{8, rig.chipW("Y")}, {190, rig.chipW("UP / DOWN")}, {260, rig.chipW("LEFT / RIGHT")}, {355, rig.chipW("L1")}, {450, rig.chipW("R1")}, {555, rig.chipW("A")}}));
+    CHECK(rig.label(kFxPitchX, kStripY, "PITCH") && rig.label(kFxRatchetX, kStripY, "RATCHET") && rig.label(kFxReverseX, kStripY, "REVERSE"));
+    CHECK(rig.label(kFxCutX, kStripY, "CUT") && rig.label(kFxThrowX, kStripY, "THROW"));
+    CHECK(!rig.label(kFxPitchX + 1.f, kStripY, "PITCH") && !rig.label(kFxPitchX, kStripY, "RATCHET")); // (the check can tell)
+    CHECK(rig.chipIs(static_cast<int>(kFxPitchX), "UP / DOWN") && rig.chipIs(static_cast<int>(kFxRatchetX), "LEFT / RIGHT"));
+    CHECK(rig.chipIs(static_cast<int>(kFxReverseX), "L1") && rig.chipIs(static_cast<int>(kFxCutX), "R1") && rig.chipIs(static_cast<int>(kFxThrowX), "A"));
+    CHECK(rig.diceAlone(static_cast<int>(kFxPitchX)));
+    // No words, and THROW's chip stands where the help would be said: it gives way, MENU or none.
+    CHECK(rig.noWords(chips, ui::kScreenW));
+    CHECK(static_cast<int>(kFxThrowX) + rig.chipW("A") > rig.helpLeft());
+}
+
+void testTheDrumGrid() {
+    Rig rig;
+    CHECK(rig.canvas.ok && rig.scratch.ok);
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    rig.drums();
+    PatternScreen& drums = rig.app.drums();
+    drums.setStep(1, 4, 0.8f);
+    drums.moveCursorTo(1, 4);
+    // Nothing held: the plain bar, pixel for pixel.
+    rig.draw();
+    CHECK(rig.plainBar(kOnAHit, 6));
+    CHECK(rig.label(190.f, pattern_layout::kStripY, "LEVEL") && !rig.label(pattern_layout::kFxPitchX, pattern_layout::kStripY, "PITCH"));
+    // X held: a chip under each field.
+    rig.key(X, true);
+    CHECK(drums.effecting());
+    heldOnAHit(rig);
+    // The same at the fields' widest: every effect on, thrown to both.
+    StepFx fx;
+    fx.pitch = -12, fx.ratchet = 4, fx.reverse = true, fx.cut = 2, fx.throwTo = 3;
+    drums.setFx(1, 4, fx);
+    heldOnAHit(rig);
+    // Let go: the plain bar again.
+    rig.key(X, false);
+    rig.draw();
+    CHECK(!drums.effecting() && rig.plainBar(kOnAHit, 6));
+    // X held where there is no hit: nothing to set, and the bar is the plain one for an empty step.
+    drums.moveCursorTo(1, 5);
+    rig.key(X, true);
+    rig.draw();
+    const ui::Hint empty[] = {{"A", "place"}, {"Y", "maybe"}, {"HOLD B", "delete"}, {"HOLD R1", "paint"}, {"R1 + R2", "paint random"}};
+    CHECK(!drums.effecting() && rig.plainBar(empty, 5));
+    rig.key(X, false);
+
+    // A handheld with no MENU button: the same chips.
+    static ControlMap none; // nothing learned: the keyboard stand-ins, and no MENU
+    rig.input.useMap(&none);
+    drums.moveCursorTo(1, 4);
+    rig.key(X, true);
+    rig.draw();
+    CHECK(std::strcmp(ui::gHelpHint, "HLD SEL: HELP") == 0);
+    heldOnAHit(rig);
+    rig.key(X, false);
+    rig.draw();
+    CHECK(rig.plainBar(kOnAHit, 6));
+    rig.input.useMap(nullptr);
+    rig.frames(1);
+    CHECK(std::strcmp(ui::gHelpHint, "MENU: HELP") == 0);
+}
+
+// The slice view is the drum grid in another mode: the same strip, the same chips.
+void testTheSliceView() {
+    const TempFolder temp; // (made before the rig, so it goes after it)
+    const std::string& folder = temp.path;
+    CHECK(writeWav(folder + "/break.wav", std::vector<float>(48000, 0.25f), 48000));
+    Rig rig(folder);
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    rig.drums();
+    PatternScreen& drums = rig.app.drums();
+    rig.app.session().setLaneSample(0, 2, "break");
+    drums.setStep(2, 4, 0.8f);
+    drums.moveCursorTo(2, 4);
+    drums.setSlicing(true);
+    CHECK(drums.slicing());
+    rig.draw();
+    const ui::Hint onASlice[] = {{"UP / DOWN", "slice"}, {"A", "level / nudge"}, {"Y", "chance"}, {"HOLD X", "effects"}, {"HOLD R1", "in order"}, {"L1", "grid"}};
+    CHECK(rig.plainBar(onASlice, 6));
+    rig.key(X, true);
+    CHECK(drums.effecting() && drums.slicing());
+    heldOnAHit(rig);
+    StepFx fx;
+    fx.throwTo = kThrowSpace, fx.ratchet = 2;
+    drums.setFx(2, 4, fx);
+    heldOnAHit(rig);
+    rig.key(X, false);
+    rig.draw();
+    CHECK(rig.plainBar(onASlice, 6));
+}
+
+// ---- the piano roll: a note --------------------------------------------------------------------
+
+void heldOnANote(Rig& rig) {
+    rig.draw();
+    const Chips chips = rig.chips();
+    const float labelY = kRollStrip + 8.f;
+    // RATCHET, GLIDE, THROW: a chip under each. NUDGE: nothing sets it here, and nothing is under it.
+    CHECK((chips == Chips{{8, rig.chipW("Y")}, {160, rig.chipW("LEFT / RIGHT")}, {250, rig.chipW("UP / DOWN")}, {385, rig.chipW("A")}}));
+    CHECK(rig.label(kStripHeldRatchetX, labelY, "RATCHET") && rig.label(kStripHeldGlideX, labelY, "GLIDE") && rig.label(kStripHeldThrowX, labelY, "THROW"));
+    CHECK(!rig.label(kStripHeldRatchetX - 1.f, labelY, "RATCHET"));
+    CHECK(rig.chipIs(static_cast<int>(kStripHeldRatchetX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kStripHeldGlideX), "UP / DOWN") && rig.chipIs(static_cast<int>(kStripHeldThrowX), "A"));
+    CHECK(rig.diceAlone(static_cast<int>(kStripHeldRatchetX)));
+    // No words; and here the help has its room at the end, as on the plain bar.
+    CHECK(rig.noWords(chips, rig.helpLeft()));
+    CHECK(rig.helpShown());
+}
+
+void testANote() {
+    Rig rig;
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    rig.roll();
+    NoteScreen& roll = rig.app.notes();
+    NoteEvent& note = rig.pattern().notes[0];
+    note = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
+    rig.app.session().sendNoteBar(1, 0, 0);
+    roll.moveCursorTo(62, 4);
+    const ui::Hint onANote[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "chord"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"L1", "zoom"}};
+    rig.draw();
+    CHECK(rig.plainBar(onANote, 6));
+    CHECK(rig.label(160.f, kRollStrip + 8.f, "LEVEL") && !rig.label(kStripHeldRatchetX, kRollStrip + 8.f, "RATCHET"));
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    heldOnANote(rig);
+    CHECK(!rig.label(kStripHeldNudgeX, kRollStrip + 8.f, "NUDGE")); // (not nudged: the field is not there)
+    // At its fullest: a ratchet, the longest glide to read, thrown, nudged.
+    note.ratchet = 4, note.glide = kGlideQuarter, note.throwTo = kThrowSpace, note.nudge = -0.45f;
+    heldOnANote(rig);
+    CHECK(rig.label(kStripHeldNudgeX, kRollStrip + 8.f, "NUDGE") && rig.label(500.f, kRollStrip + 8.f, "NUDGE"));
+    CHECK(rig.bare(static_cast<int>(kStripHeldNudgeX) - 20, rig.helpLeft())); // nothing under NUDGE
+    // A handheld with no MENU button: the bar's last words are longer, and still have their room.
+    static ControlMap none;
+    rig.input.useMap(&none);
+    rig.frames(1);
+    CHECK(std::strcmp(ui::gHelpHint, "HLD SEL: HELP") == 0);
+    heldOnANote(rig);
+    rig.input.useMap(nullptr);
+    rig.frames(1);
+    CHECK(std::strcmp(ui::gHelpHint, "MENU: HELP") == 0);
+    // Let go: the plain bar again.
+    rig.key(X, false);
+    rig.draw();
+    CHECK(!roll.effecting() && rig.plainBar(onANote, 6));
+}
+
+// ---- the piano roll: a chord -------------------------------------------------------------------
+
+void testAChord() {
+    Rig rig;
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    rig.roll();
+    NoteScreen& roll = rig.app.notes();
+    ChordEvent& chord = rig.pattern().chords[0];
+    chord = makeChord(builtInPack().chords[0], 60, 2, 4.f, 0.7f, 0);
+    rig.app.session().sendNoteBar(1, 0, 0);
+    roll.moveCursorTo(60, 2);
+    const ui::Hint onAChord[] = {{"A", "level / length"}, {"B", "delete"}, {"HOLD Y", "swap"}, {"HOLD R1", "move"}, {"HOLD X", "effects"}, {"L1", "zoom"}};
+    rig.draw();
+    CHECK(rig.plainBar(onAChord, 6));
+    rig.key(X, true);
+    CHECK(roll.effecting());
+    const auto held = [&] {
+        rig.draw();
+        const Chips chips = rig.chips();
+        // UP / DOWN picks one of the six: under their names. LEFT / RIGHT sets it: under their
+        // values. A under THROW. The dice at the left, under the one picked.
+        CHECK((chips == Chips{{8, rig.chipW("Y")}, {160, rig.chipW("UP / DOWN")}, {236, rig.chipW("LEFT / RIGHT")}, {522, rig.chipW("A")}}));
+        CHECK(kChordFxSetX == kChordFxListX + kChordFxValueIn[0]);
+        CHECK(rig.chipIs(static_cast<int>(kChordFxListX), "UP / DOWN") && rig.chipIs(static_cast<int>(kChordFxSetX), "LEFT / RIGHT") && rig.chipIs(static_cast<int>(kChordFxThrowX), "A"));
+        CHECK(rig.diceAlone(static_cast<int>(kChordFxListX) - 1));
+        CHECK(rig.label(kChordFxThrowX, kRollStrip + 8.f, "THROW"));
+        CHECK(rig.label(kChordFxPickedX, kRollStrip + 8.f, chordEffectName(roll.effectPicked())) && rig.label(8.f, kRollStrip + 8.f, chordEffectName(roll.effectPicked())));
+        CHECK(rig.noWords(chips, ui::kScreenW)); // (THROW's chip is too near the end for the help: it gives way)
+        CHECK(static_cast<int>(kChordFxThrowX) + rig.chipW("A") + 11 > rig.helpLeft() + 2);
+    };
+    // The list's first name and its value stand where the two chips do.
+    roll.pickEffect(1);
+    held();
+    char value[32];
+    chordEffectValue(chord, 0, value, sizeof value);
+    CHECK(rig.label(kChordFxListX, static_cast<float>(kRollStrip + kChordFxRowTop), chordEffectName(0)));
+    CHECK(rig.label(kChordFxSetX, static_cast<float>(kRollStrip + kChordFxRowTop), value));
+    // Whichever is picked, and at its fullest, the chips stay where they are.
+    chord.play = chordPlayOf(kStrumWide, kOrderUpDown, 100, 100, 100);
+    chord.ratchet = 4, chord.throwTo = 3;
+    for (int effect = 0; effect < kChordEffects; ++effect) {
+        roll.pickEffect(effect);
+        held();
+    }
+    static ControlMap none;
+    rig.input.useMap(&none);
+    rig.frames(1);
+    held();
+    rig.input.useMap(nullptr);
+    rig.frames(1);
+    rig.key(X, false);
+    rig.draw();
+    CHECK(!roll.effecting() && rig.plainBar(onAChord, 6));
+}
+
+} // namespace
+
+int main(int, char**) {
+    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
+    testTheDrumGrid();
+    testTheSliceView();
+    testANote();
+    testAChord();
+    if (failures) {
+        std::printf("%d check(s) failed\n", failures);
+        return 1;
+    }
+    std::printf("the bar under a strip: tests passed\n");
+    return 0;
+}

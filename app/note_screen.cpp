@@ -1096,7 +1096,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             // The one picked, in full: its name and its value.
             const ChordEvent& c = *chordUnder;
             chordEffectValue(c, fxPick_, text, sizeof text);
-            field(8.f, chordEffectName(fxPick_), text, chordEffectWaits(c, fxPick_) ? kDim : chordEffectSet(c, fxPick_) ? kBrass : kText);
+            field(kChordFxPickedX, chordEffectName(fxPick_), text, chordEffectWaits(c, fxPick_) ? kDim : chordEffectSet(c, fxPick_) ? kBrass : kText);
             // All six, the picked one marked. One that waits on another (ORDER with no STRUM) is dimmer still.
             for (int effect = 0; effect < kChordEffects; ++effect) {
                 const float x = kChordFxListX + static_cast<float>(effect / 3) * kChordFxColumn;
@@ -1127,7 +1127,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         } else if (fxHeld_ && (under || chordUnder)) {
             // X is held: the strip is what the note does besides play.
             std::snprintf(text, sizeof text, ratchetHere >= 2 ? "x%d" : "OFF", ratchetHere);
-            field(160.f, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
+            field(kStripHeldRatchetX, "RATCHET", text, ratchetHere >= 2 ? kBrass : kText);
             field(kStripHeldGlideX, "GLIDE", !under ? "-" : glideName(glideKindHere), !under ? kDim : glideHere ? kBrass : kText);
             field(kStripHeldThrowX, "THROW", throwName(throwHere), throwHere ? kBrass : kText);
         } else if (under || chordUnder) {
@@ -1212,15 +1212,17 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
-        hint("UP / DOWN", "effect");
-        hint("LEFT / RIGHT", "amount");
-        hint("A", "throw");
-        hint("Y", "dice");
-    } else if (fxHeld_) {
-        hint("LEFT / RIGHT", "ratchet");
-        if (under) hint("UP / DOWN", "glide length");
-        hint("A", "throw");
-        hint("Y", "dice");
+        // Each button under what it changes, with no word: UP / DOWN picks one of the six, under
+        // their names; LEFT / RIGHT sets the one picked, under their values; A under THROW.
+        // The dice roll all six and stand alone at the left.
+        const HintUnder below[] = {{kChordFxListX, "UP / DOWN"}, {kChordFxSetX, "LEFT / RIGHT"}, {kChordFxThrowX, "A"}};
+        hintsUnder(r, fonts, "Y", below, 3);
+        return;
+    } else if (fxHeld_ && under) {
+        // Each button under the field it sets. (Nothing here sets NUDGE: nothing under it.)
+        const HintUnder below[] = {{kStripHeldRatchetX, "LEFT / RIGHT"}, {kStripHeldGlideX, "UP / DOWN"}, {kStripHeldThrowX, "A"}};
+        hintsUnder(r, fonts, "Y", below, 3);
+        return;
     } else if (carrying_ != Carry::Nothing) {
         hint("STICK UP / DOWN", "slide in time, freely");
         hint("D-PAD", "by whole steps");
