@@ -13,7 +13,7 @@
 //   LENGTHS      ...and is let go a little sooner (never later).
 //
 // Nothing here is rolled once and kept: every roll is worked out from WHERE the chord is
-// (track, bar of the song, step) and WHICH TIME it is being played (the steps since Play),
+// (track, bar of its cell, step) and WHICH TIME it is being played (the steps since Play),
 // so no two times round are alike, yet Play from the top gives the same performance again,
 // on any number of helper threads and at any block length. No generator is walked.
 //
@@ -114,11 +114,13 @@ inline std::uint32_t chordHash(std::uint32_t x) {
     x ^= x >> 16;
     return x;
 }
-// One playing of one chord: the track, the bar of the song it is in (scene * 8 + bar of the
-// cell), its step, and how many steps the song had played when that step began.
-inline std::uint32_t chordSeed(int track, int slot, int step, long stepsSincePlay) {
+// One playing of one chord: the track, the bar of its cell it is in, its step, and how many
+// steps the song had played when that step began. (Not the scene's number: NEXT SCENE moves a
+// scene that is playing to another number, and the chord goes on as it was. Two scenes are
+// told apart by when they play.)
+inline std::uint32_t chordSeed(int track, int bar, int step, long stepsSincePlay) {
     std::uint32_t h = chordHash(static_cast<std::uint32_t>(track) + 0x9E3779B9u);
-    h = chordHash(h ^ (static_cast<std::uint32_t>(slot) * 0x85EBCA6Bu + 1u));
+    h = chordHash(h ^ (static_cast<std::uint32_t>(bar) * 0x85EBCA6Bu + 1u));
     h = chordHash(h ^ (static_cast<std::uint32_t>(step) * 0xC2B2AE35u + 2u));
     h = chordHash(h ^ (static_cast<std::uint32_t>(stepsSincePlay) * 0x27D4EB2Fu + 3u));
     return h;

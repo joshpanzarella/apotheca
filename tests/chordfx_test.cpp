@@ -1059,6 +1059,38 @@ static void testTheScenesLength() {
     CHECK(high == 0 && mid == 60 && low >= 40 && low <= 42 && early > 8);
 }
 
+// The rolls of a chord are the rule's (chord_rule.hpp) with the bar OF ITS CELL in the seed, in
+// every bar of a cell and not only the first: note for note the engine moves each key by what
+// chordSeed and chordSigned say for that track, bar, step and time round. (What a chord rolls in
+// scene 1 is what it rolled before scenes were kept apart: the bar of the cell is there the bar
+// of the song.)
+static void testTheRollsOfEveryBar() {
+    const std::vector<int> keys = {60, 64, 67, 71};
+    const int kBars = 3, kAt = 5, kLoops = 6;
+    Rig rig;
+    rig.send(make(Command::SetCellBars, 1, kBars));
+    for (int bar = 0; bar < kBars; ++bar) rig.chord(0, kAt, keys, 2.f, playOf(0, 0, 100), 0, 0, 0.f, bar);
+    rig.play();
+    rig.run(static_cast<long>(kLoops) * kBars * kBar + 8 * kStep);
+    const std::vector<Sounded> n = rig.notes();
+    int found = 0, apartFromBarOne = 0;
+    for (int loop = 0; loop < kLoops; ++loop)
+        for (int bar = 0; bar < kBars; ++bar) {
+            const long steps = (static_cast<long>(loop) * kBars + bar) * 16 + kAt; // steps since Play when the chord's step began
+            const std::uint32_t seed = chordSeed(1, bar, kAt, steps);
+            for (int k = 0; k < 4; ++k) {
+                const long want = steps * kStep + static_cast<long>(std::ceil(kHuman * chordSigned(seed, kRollTime, k)));
+                bool there = false;
+                for (const Sounded& s : n) there = there || (s.pitch == keys[static_cast<std::size_t>(k)] && s.on == want);
+                CHECK(there);
+                found += there;
+                apartFromBarOne += std::ceil(kHuman * chordSigned(seed, kRollTime, k)) != std::ceil(kHuman * chordSigned(chordSeed(1, 0, kAt, steps), kRollTime, k));
+            }
+        }
+    CHECK(found == kLoops * kBars * 4);
+    CHECK(apartFromBarOne > 4 * kLoops * (kBars - 1) * 9 / 10); // (the bar is in the roll: this test can tell)
+}
+
 // ---- THROW: the whole chord, for its whole length ---------------------------------------------------
 
 struct Probe : Effect {
@@ -1636,7 +1668,7 @@ int main(int argc, char** argv) {
     struct Named { const char* name; void (*run)(); };
     const Named all[] = {
         {"testTheNumbers", testTheNumbers}, {"testAtRest", testAtRest}, {"testStrum", testStrum}, {"testStrumWithRatchet", testStrumWithRatchet},
-        {"testArpeggio", testArpeggio}, {"testHumanTime", testHumanTime}, {"testHumanLevel", testHumanLevel}, {"testLengths", testLengths},
+        {"testArpeggio", testArpeggio}, {"testHumanTime", testHumanTime}, {"testTheRollsOfEveryBar", testTheRollsOfEveryBar}, {"testHumanLevel", testHumanLevel}, {"testLengths", testLengths},
         {"testTheSameEveryTime", testTheSameEveryTime}, {"testTheRealInstruments", testTheRealInstruments}, {"testOnAnyTrack", testOnAnyTrack},
         {"testStopAndPlay", testStopAndPlay}, {"testTempoMidChord", testTempoMidChord}, {"testTheScenesLength", testTheScenesLength},
         {"testThrow", testThrow}, {"testGlideAfterAChord", testGlideAfterAChord}, {"testCommands", testCommands},

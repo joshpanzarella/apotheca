@@ -576,6 +576,10 @@ int main(int argc, char** argv) {
             app.session().sendNotePattern(2, 0);
             project.bar = std::strstr(view, "far")[3] >= '1' && std::strstr(view, "far")[3] <= '4' ? std::strstr(view, "far")[3] - '1' : 0;
             app.notes().moveCursorTo(64, 12);
+            // notefx-glides-far2-short: the scene is 25 steps, so bar 2 reads 17 to 25 and then "-";
+            // ...-short-drums: the same scene on the drum grid.
+            if (std::strstr(view, "short")) project.steps[0] = 25;
+            if (std::strstr(view, "drums")) app.session().setCellBars(0, 0, 4), project.track = 0;
         }
         if (std::strstr(view, "chord")) app.notes().moveCursorTo(48, 1);
         if (std::strstr(view, "space")) app.notes().moveCursorTo(69, 5); // notefx-space: a note thrown to SPACE and nothing else (THROW's widest value)

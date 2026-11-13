@@ -387,11 +387,20 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
     hintHelp(r, fonts, x, textY);
 }
 
-void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const HintUnder* list, int count) {
+float hintDiceEndX(const Fonts& chosen, const char* dice) {
+    return std::floor(kHintsLimit - kDie - 5.f - hintChipWidth(chosen.fixed(), dice)); // the bar's own lettering, always LARGE
+}
+
+void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const HintUnder* list, int count, bool diceAtEnd) {
     const Fonts& fonts = chosen.fixed(); // a tight row: each chip stands under a field of a strip that is itself at LARGE
     const float textY = hintsBar(r, fonts);
     float end = kHintsLeft - kHintUnderGap; // where the last thing drawn ends
-    if (dice) {
+    const float limit = dice && diceAtEnd ? hintDiceEndX(fonts, dice) - kHintUnderGap : kHintsLimit;
+    if (dice && diceAtEnd) {
+        const float x = hintDiceEndX(fonts, dice);
+        hintChip(r, fonts, x, textY, dice);
+        hintDie(r, x + hintChipWidth(fonts, dice) + 5.f);
+    } else if (dice) {
         const float keyW = hintChipWidth(fonts, dice);
         hintChip(r, fonts, kHintsLeft, textY, dice);
         hintDie(r, kHintsLeft + keyW + 5.f);
@@ -400,11 +409,11 @@ void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const Hi
     for (int i = 0; i < count; ++i) {
         const float keyW = hintChipWidth(fonts, list[i].key);
         // One that would touch the one before it, or pass the right-hand end, is left out.
-        if (list[i].x < end + kHintUnderGap || list[i].x + keyW > kHintsLimit) continue;
+        if (list[i].x < end + kHintUnderGap || list[i].x + keyW > limit) continue;
         hintChip(r, fonts, list[i].x, textY, list[i].key);
         end = list[i].x + keyW;
     }
-    hintHelp(r, fonts, end + 5.f, textY); // (eleven clear of the last chip)
+    if (!(dice && diceAtEnd)) hintHelp(r, fonts, end + 5.f, textY); // (eleven clear of the last chip)
 }
 
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,

@@ -1036,15 +1036,20 @@ void testTheScreen() {
         roll.pickEffect(kFxLengths);
         strips.back() = shot();
     }
-    // The hints with X held on a chord are not a note's, and all four are there: the bar's last
-    // key (Y, the dice) is drawn, with room to spare before MENU: HELP.
+    // The hints with X held on a chord are not a note's, and all four are there: UP / DOWN under
+    // the list is the last before THROW's, and the bar's last key (Y, the dice) is at its end.
     const std::vector<Uint32> held = strips.back();
     CHECK(differ(held, letGo, 0, hintsTop, 640, 480) > 100);
     int lastInk = 0;
     for (int x = 0; x < 520; ++x)
         for (int y = hintsTop + 4; y < 478; ++y)
             if (held[static_cast<std::size_t>(y * 640 + x)] == Canvas::colour(ui::kText)) lastInk = x;
-    CHECK(lastInk > 240 && lastInk < 420);
+    CHECK(lastInk > 160 && lastInk < 236);
+    int endInk = 0;
+    for (int x = 560; x < 640; ++x)
+        for (int y = hintsTop + 4; y < 478; ++y)
+            if (held[static_cast<std::size_t>(y * 640 + x)] == Canvas::colour(ui::kText)) endInk = x;
+    CHECK(endInk > 600 && endInk < 634);
     rig.key(X, false);
     // On a plain note the hints are the note's own.
     roll.moveCursorTo(80, 9);

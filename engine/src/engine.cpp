@@ -62,6 +62,7 @@ Engine::~Engine() {
         if (command.type == Command::SetLaneSample) delete static_cast<SampleData*>(command.pointer);
         if (command.type == Command::InstallEffect) delete static_cast<Effect*>(command.pointer);
         if (command.type == Command::SetTrackSample) delete static_cast<SampleData*>(command.pointer);
+        if (command.type == Command::ScenesMoved) delete static_cast<SceneMove*>(command.pointer);
     }
     collectGarbage();
     for (Track& track : tracks_)
@@ -73,6 +74,7 @@ void Engine::destroy(const Trash& trash) {
     if (trash.isEffect) delete static_cast<Effect*>(trash.pointer);
     else if (trash.isSample) delete static_cast<SampleData*>(trash.pointer);
     else if (trash.isImage) delete static_cast<TrackImage*>(trash.pointer);
+    else if (trash.isMove) delete static_cast<SceneMove*>(trash.pointer); // and the scenes in it
     else delete static_cast<Instrument*>(trash.pointer);
 }
 
@@ -186,6 +188,56 @@ bool Engine::setTrackImage(int track, std::unique_ptr<TrackImage> image) {
     if (!send(c)) return false;
     image.release(); // the audio thread hands it back through the trash
     return true;
+}
+
+bool Engine::moveScenes(int from, int by, const std::unique_ptr<SceneImage>* scenes, int sceneCount, int repeats, int steps) {
+    std::unique_ptr<SceneMove> move(new SceneMove);
+    for (int t = 0; scenes && t < kNumTracks; ++t) {
+        if (!scenes[t]) continue;
+        const SceneImage& image = *scenes[t];
+        move->scenes[t] = new SceneStore;
+        sceneIn(*move->scenes[t], image.level, image.nudge, image.chance, image.start, image.fx, image.notes, image.bars, image.automation);
+    }
+    Command c;
+    c.type = Command::ScenesMoved;
+    c.a = from;
+    c.b = by;
+    c.c = repeats;
+    c.d = steps;
+    c.scene = sceneCount;
+    c.pointer = move.get();
+    if (!send(c)) return false;
+    move.release(); // the audio thread hands it back through the trash, with the scenes that went
+    return true;
+}
+
+void Engine::sceneIn(SceneStore& to, const float (*level)[kDrumLanes][kSteps], const float (*nudge)[kDrumLanes][kSteps], const float (*chance)[kDrumLanes][kSteps],
+                     const float (*start)[kDrumLanes][kSteps], const StepFx (*fx)[kDrumLanes][kSteps], const TrackImage::Note (*notes)[kMaxNotes], int bars, const float* automation) {
+    to.bars = static_cast<std::uint8_t>(bars < 1 ? 1 : (bars > kMaxBars ? kMaxBars : bars));
+    for (int bar = 0; bar < kMaxBars; ++bar) {
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) {
+                to.drums[bar].level[lane][step] = level[bar][lane][step];
+                to.drums[bar].nudge[lane][step] = nudge[bar][lane][step];
+                to.drums[bar].chance[lane][step] = chance[bar][lane][step];
+                to.drums[bar].start[lane][step] = start[bar][lane][step];
+                to.drums[bar].fx[lane][step] = fx[bar][lane][step];
+            }
+        for (int slot = 0; slot < kMaxNotes; ++slot) {
+            const TrackImage::Note& from = notes[bar][slot];
+            Note& note = to.notes[bar][slot];
+            note.step = from.step;
+            note.pitch = from.pitch;
+            note.length = from.length;
+            note.nudge = from.nudge;
+            note.velocity = from.velocity;
+            note.ratchet = from.ratchet;
+            note.glide = static_cast<std::uint8_t>(glideKind(from.glide));
+            note.throwTo = from.throwTo & 3;
+            note.play = chordPlayChecked(from.play, 8);
+        }
+    }
+    for (int i = 0; i < kAutoLanes * kAutoSteps; ++i) to.automation[i] = automation ? automation[i] : kAutoNone;
 }
 
 void Engine::prepare(float sampleRate) {
@@ -489,7 +541,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
 // roll is worked out from where the chord is and which time it is being played.
 void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, double stepAt, double wait) {
     const ChordPlay& play = note.play;
-    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot, note.step, static_cast<long>(stepAt));
+    // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
+    // the scenes after it, and a chord that is playing must go on as the same chord.)
+    const std::uint32_t seed = chordSeed(static_cast<int>(&track - tracks_), slot % kMaxBars, note.step, static_cast<long>(stepAt));
     if (seed != track.lastChord || track.strokes < 0) { // the first of its notes: another chord has begun
         track.lastChord = seed;
         ++track.strokes;
@@ -842,6 +896,42 @@ void Engine::apply(const Command& c) {
         break;
     case Command::ScenesMoved:
         ++movesHeard_; // every one is counted, moved by it or not: the app counts what it sent
+        if (c.pointer) {
+            // The patterns go with their scenes: pointers moved, nothing copied. The scene that
+            // is new comes in from the command, and the one the song has lost goes back in it.
+            SceneMove& move = *static_cast<SceneMove*>(c.pointer);
+            const int last = kMaxScenes - 1;
+            const bool in = c.b == 1 && validScene(c.a), out = c.b == -1 && c.a >= 1 && validScene(c.a);
+            if (in || out) {
+                const int gone = in ? last : c.a - 1, made = in ? c.a : last; // the scene that goes, and where the new one is
+                for (int t = 0; t < kNumTracks; ++t) {
+                    Track& track = tracks_[t];
+                    SceneStore* const leaving = track.scenes[gone];
+                    for (int scene = gone; scene != made; scene -= c.b) track.scenes[scene] = track.scenes[scene - c.b];
+                    track.scenes[made] = move.scenes[t] ? move.scenes[t] : leaving; // (a track with nothing: the one that went will do)
+                    if (move.scenes[t]) move.scenes[t] = leaving;
+                    // An arpeggio that is playing goes with its scene, as the playing does (below). One
+                    // whose scene has no place to go to stays, and looks whether its chord is still there.
+                    for (auto& arp : track.arps) {
+                        if (!arp.on) continue;
+                        const int at = arp.slot / kMaxBars;
+                        if (at >= c.a && validScene(at + c.b)) arp.slot += c.b * kMaxBars;
+                        else if (at == gone) arp.look = true;
+                    }
+                }
+                for (int scene = gone; scene != made; scene -= c.b) {
+                    repeats_[scene] = repeats_[scene - c.b];
+                    steps_[scene] = steps_[scene - c.b];
+                }
+                repeats_[made] = c.c < 1 ? 1 : (c.c > kMaxRepeats ? kMaxRepeats : c.c);
+                steps_[made] = c.d < 0 ? 0 : (c.d > kMaxBars * kSteps ? kMaxBars * kSteps : c.d);
+                sceneCount_ = c.scene < 1 ? 1 : (c.scene > kMaxScenes ? kMaxScenes : c.scene);
+            }
+            Trash trash;
+            trash.isMove = true;
+            trash.pointer = c.pointer;
+            trash_.push(trash); // if full, it is leaked rather than freed here
+        }
         if (playing_ && (c.b == 1 || c.b == -1) && validScene(c.a) && scene_ >= c.a && validScene(scene_ + c.b)) {
             scene_ += c.b;
             tellScene(scene_); // told now, not at the next step: what is recorded goes where the playing is
@@ -1038,7 +1128,7 @@ void Engine::apply(const Command& c) {
             }
             for (int slot = 0; slot < kPatternSlots; ++slot)
                 for (Note& note : track.notes[slot]) note = Note();
-            for (auto& b : track.bars) b = 1;
+            for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = 1;
             for (double& off : track.offIn) off = kNoNote;
             for (auto& p : track.pendingNotes) p = Track::PendingNote();
             for (auto& arp : track.arps) arp = Track::Arp();
@@ -1055,31 +1145,11 @@ void Engine::apply(const Command& c) {
             const TrackImage& image = *static_cast<TrackImage*>(c.pointer);
             if (validTrack(c.track)) {
                 Track& track = tracks_[c.track];
-                for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = static_cast<std::uint8_t>(image.bars[scene] < 1 ? 1 : (image.bars[scene] > kMaxBars ? kMaxBars : image.bars[scene]));
-                for (int scene = 0; scene < kPatternSlots; ++scene) {
-                    for (int lane = 0; lane < kDrumLanes; ++lane)
-                        for (int step = 0; step < kSteps; ++step) {
-                            track.drumScenes[scene].level[lane][step] = image.level[scene][lane][step];
-                            track.drumScenes[scene].nudge[lane][step] = image.nudge[scene][lane][step];
-                            track.drumScenes[scene].chance[lane][step] = image.chance[scene][lane][step];
-                            track.drumScenes[scene].start[lane][step] = image.start[scene][lane][step];
-                            track.drumScenes[scene].fx[lane][step] = image.fx[scene][lane][step];
-                        }
-                    for (int slot = 0; slot < kMaxNotes; ++slot) {
-                        const TrackImage::Note& from = image.notes[scene][slot];
-                        Note& to = track.notes[scene][slot];
-                        to.step = from.step;
-                        to.pitch = from.pitch;
-                        to.length = from.length;
-                        to.nudge = from.nudge;
-                        to.velocity = from.velocity;
-                        to.ratchet = from.ratchet;
-                        to.glide = static_cast<std::uint8_t>(glideKind(from.glide));
-                        to.throwTo = from.throwTo & 3;
-                        to.play = chordPlayChecked(from.play, 8);
-                    }
+                for (int scene = 0; scene < kMaxScenes; ++scene) {
+                    const int slot = scene * kMaxBars;
+                    sceneIn(*track.scenes[scene], image.level + slot, image.nudge + slot, image.chance + slot, image.start + slot, image.fx + slot, image.notes + slot, image.bars[scene],
+                            image.automation ? image.automation.get() + scene * kAutoLanes * kAutoSteps : nullptr);
                 }
-                for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = image.automation ? image.automation[i] : kAutoNone;
                 for (int lane = 0; lane < kDrumLanes; ++lane) {
                     track.drums.setLaneLevel(lane, image.laneLevel[lane]);
                     track.drums.setLanePart(lane, image.lanePart[lane]);

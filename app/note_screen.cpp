@@ -822,8 +822,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the empty grid: a column for each key, a row for each step ------------------
     for (int step = 0; step < kSteps; ++step) {
-        std::snprintf(text, sizeof text, "%d", step + 1);
-        fonts.small.drawRight(r, kGridLeft - 7.f, gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
+        // Counted through the cell: bar 2 reads 17 to 32. A step past the scene's end (a scene of
+        // 25 steps: 26 to 32) is never played and reads "-".
+        if (step < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step + 1);
+        else std::snprintf(text, sizeof text, "-");
+        // Three figures (bars 7 and 8) need the room: they stand four pixels nearer the grid.
+        fonts.small.drawRight(r, kGridLeft - (project_.bar * kSteps + step + 1 >= 100 ? 3.f : 7.f), gy(step) + (kCellH - fonts.small.capHeight()) / 2.f, text,
                               step == step_ ? kTeal : (step % 4 == 0 ? kText : kDim));
         for (int pitch = low_; pitch < low_ + visibleKeys(); ++pitch) {
             const SDL_Color inside = isBlackKey(pitch) ? kBg : (step % 4 == 0 ? kPanel2 : kPanel);
@@ -1119,7 +1123,7 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             noteName(pitch_, text, sizeof text);
             field(8.f, "KEY", text, kText);
         }
-        std::snprintf(text, sizeof text, "%d", step_ + 1);
+        std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step_ + 1); // as the numbers at the left read
         if (!chordFx) field(100.f, "STEP", text, kText);
         const int ratchetHere = under ? under->ratchet : (chordUnder ? chordUnder->ratchet : 0);
         const int glideKindHere = under ? glideKind(under->glide) : kGlideOff;
@@ -1216,11 +1220,12 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 R1", "pack");
         hint("B", editing_ >= 0 ? "break into notes" : "cancel");
     } else if (fxHeld_ && !under && chordUnder) {
-        // Each button under what it changes, with no word: UP / DOWN picks one of the six, under
-        // their names; LEFT / RIGHT sets the one picked, under their values; A under THROW.
-        // The dice roll all six and stand alone at the left.
-        const HintUnder below[] = {{kChordFxListX, "UP / DOWN"}, {kChordFxSetX, "LEFT / RIGHT"}, {kChordFxThrowX, "A"}};
-        hintsUnder(r, fonts, "Y", below, 3);
+        // Each button under what it changes, with no word: LEFT / RIGHT sets the one picked, under
+        // its large value at the left (right whichever of the six is picked); UP / DOWN picks one,
+        // under the list; A under THROW. The dice roll all six and stand alone at the right-hand
+        // end (owner, 2026-11-13).
+        const HintUnder below[] = {{kChordFxSetX, "LEFT / RIGHT"}, {kChordFxListX, "UP / DOWN"}, {kChordFxThrowX, "A"}};
+        hintsUnder(r, fonts, "Y", below, 3, true);
         return;
     } else if (fxHeld_ && under) {
         // Each button under the field it sets. (Nothing here sets NUDGE: nothing under it.)

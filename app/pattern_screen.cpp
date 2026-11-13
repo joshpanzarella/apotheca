@@ -839,7 +839,9 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
     // ---- step numbers --------------------------------------------------------
     for (int s = 0; s < kSteps; ++s) {
-        std::snprintf(text, sizeof text, "%d", s + 1);
+        // Counted through the cell, as the piano roll counts: bar 2 reads 17 to 32; past the scene's end, "-".
+        if (s < project_.barSteps(project_.scene, project_.bar)) std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + s + 1);
+        else std::snprintf(text, sizeof text, "-");
         fonts.small.drawCentered(r, kGridLeft + s * kStepW + kCellW / 2.f, 36.f, text, s % 4 == 0 ? kText : kDim);
     }
 
@@ -952,7 +954,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
-        std::snprintf(text, sizeof text, "%d", step_ + 1);
+        std::snprintf(text, sizeof text, "%d", project_.bar * kSteps + step_ + 1);
         field(120.f, "STEP", text, kText);
         if (!hitHere()) {
             field(190.f, "LEVEL", "-", kDim);

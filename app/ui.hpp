@@ -151,7 +151,10 @@ constexpr float kHintsLeft = 8.f;
 // after the last chip: where a field is that far right, it gives way.
 struct HintUnder { float x; const char* key; };
 constexpr float kHintUnderGap = 6.f;
-void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count);
+// `diceAtEnd`: the dice stand at the right-hand end instead (the chord strip, where the left end
+// is the field LEFT / RIGHT sets); the help gives way to them.
+float hintDiceEndX(const Fonts& fonts, const char* dice); // where the dice's chip starts, at the end
+void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count, bool diceAtEnd = false);
 
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
