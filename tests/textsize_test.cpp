@@ -68,7 +68,7 @@ const char* const kViews[] = {
     "under", "songs", "sampler", "bars", "bars-roll",
     "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-master", "fx-master --hold-a",
     "fx-duck", "fx-duck --hold-a", "fx-choice", "fx-choice --hold-a", "fx-auto", "fx-auto --hold-a", "fx-sends", "fx-sends --hold-a",
-    "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a", "fx-ping", "fx-ping --hold-a", "fx-ping-bus", "fx-ping-bus --hold-a",
+    "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a", "fx-ping", "fx-ping --hold-a", "fx-ping-bus", "fx-ping-bus --hold-a", "fx-spring", "fx-spring --hold-a",
     "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "twin", "twin0", "twin1", "twin2", "twin3", "twin4",
     "kit", "slices", "slices-32", "slices-name", "slices-throw", "starts", "picker",
@@ -1396,6 +1396,19 @@ void testTheFxScreen() {
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
+        // In its line of the list a family with a type ends clear of the mark at every size, 7 after its family:
+        // the family drawn small, or the two held at LARGE (REVERB SPRING).
+        for (int size = 0; size < kTextSizes && effectTypeName(kind)[0]; ++size) {
+            const Fonts& chosen = *screens().at[size];
+            float gap = 0.f;
+            bool familySmall = false;
+            const Fonts& set = FxScreen::lineFonts(chosen, kind, &gap, &familySmall);
+            const float ends = FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeName(kind));
+            CHECK(gap == 7.f && ends <= FxScreen::nameEnd(kind) - (familySmall ? FxScreen::kNameClear : 0) + 0.01f);
+            CHECK(familySmall == (kind == EffectKind::Spring)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: as chosen to LARGE, held at LARGE at XL
+            CHECK(&set == &chosen || &set == &chosen.fixed());
+        }
         for (int onBus = 0; onBus < (effectBus(kind) >= 0 ? 2 : 1); ++onBus) {
             const int track = onBus ? busTrack(effectBus(kind)) : project.track, row = onBus ? FxScreen::kBusRow + effectBus(kind) : 1;
             session.setEffect(track, onBus ? 0 : 1, kind);
@@ -1416,6 +1429,15 @@ void testTheFxScreen() {
                     holds(rig, what);
                     ++states;
                 }
+            }
+            // On SPACE's line of the list (the only REVERB under the buses' heading): a type that fits at XL is
+            // drawn at XL; REVERB SPRING does not, and the family and the type are both held at LARGE.
+            if (onBus && effectBus(kind) == 1) {
+                const float below = static_cast<float>(FxScreen::lineY(FxScreen::kBusRow + 1)) - 2.f;
+                const bool held = kind == EffectKind::Spring;
+                CHECK(drew(effectTypeName(kind)) && capAtXl(effectTypeName(kind), below) == screens().at[held ? kTextLarge : kTextXl]->small.capHeight());
+                CHECK(capAtXl("REVERB", below) == (held ? screens().at[kTextLarge]->small.capHeight() : screens().at[kTextXl]->medium.capHeight())); // (REVERB in SPRING's smaller lettering)
+                if (held) CHECK(asAtLarge("SPRING", below) && asAtLarge("REVERB", below));
             }
             // A setting that moves with the pattern says so under its row.
             if (!onBus && info.params > 0) {

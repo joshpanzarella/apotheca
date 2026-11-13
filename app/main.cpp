@@ -682,6 +682,7 @@ int main(int argc, char** argv) {
         //   fx-level    the ECHO bus's LEVEL
         //   fx-ping     PING on the track, in the list; with --hold-a its TYPE row (the DELAY's third)
         //   fx-ping-bus PING on the ECHO bus, in the list; with --hold-a the bus's short list
+        //   fx-spring   REVERB (SPRING) on the track and on the SPACE bus, on its DECAY
         // Each also with --hold-a.
         Session& s = app.session();
         s.setEffect(0, 0, EffectKind::Tape);
@@ -706,6 +707,11 @@ int main(int argc, char** argv) {
         else if (std::strcmp(view, "fx-bus") == 0) fx.goTo(FxScreen::kBusRow + 1, 0);
         else if (std::strcmp(view, "fx-level") == 0) fx.goTo(FxScreen::kBusRow, 4);
         else if (std::strcmp(view, "fx-choice") == 0) fx.goTo(1, 3);
+        else if (std::strcmp(view, "fx-spring") == 0) {
+            s.setEffect(0, 1, EffectKind::Spring);
+            s.setEffect(kSpaceBus, 0, EffectKind::Spring);
+            fx.goTo(1, 2);
+        }
         else if (std::strcmp(view, "fx-auto") == 0) {
             for (int step = 0; step < kSteps; ++step) s.setAutomation(0, 0, autoLaneOfEffect(1, 0), step, 0.2f + 0.04f * static_cast<float>(step));
             fx.goTo(1, 1);

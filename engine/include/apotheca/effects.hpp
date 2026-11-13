@@ -19,11 +19,12 @@
 //            first drum track, 1 to 8): it dips when that lane is hit
 //   PING     TIME (TAPE's eight choices), FEEDBACK (to 90%), TONE, MIX: a clean
 //            echo that bounces left, right, left
+//   SPRING   DRIP (how strong the chirp is), DECAY (0.4 to 4 seconds), TONE, MIX
 //
 // MIX at 0 is the sound untouched.
 //
 // FAMILIES AND TYPES. A player sees one effect called DELAY with a TYPE
-// (CLEAN, TAPE) and one called REVERB with a TYPE (ROOM, HALL). Underneath
+// (CLEAN, TAPE, PING) and one called REVERB with a TYPE (ROOM, HALL, SPRING). Underneath
 // each type is its own effect, with its own number and its own word in a song
 // file, as it always was: a family is only how the list is shown. An effect
 // with no `family` in its row is a family of one and has no TYPE. A new type
@@ -43,7 +44,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 

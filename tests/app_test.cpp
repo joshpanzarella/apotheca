@@ -4308,6 +4308,8 @@ void testTheFxScreensList() {
     CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
     rig.tap(DOWN, 4);
     rig.tap(RIGHT, 4);
+    CHECK(project.busEffects[1].kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && project.busEffects[1].param[3] == 1.f); // the last of its types, and no further
+    rig.tap(LEFT, effectTypes(EffectKind::Reverb) - 2);
     CHECK(project.busEffects[1].kind == hall && project.busEffects[1].param[3] == 1.f);
     rig.key(A, false);
     // The Session refuses the other family on a bus, whoever asks.
@@ -4464,6 +4466,38 @@ void testTheFxScreenAsDrawn() {
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(0) + smallMid + 1.f, "TAPE", kDim));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(4) + smallMid + 1.f, "TAPE", kDim));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("REVERB") + 7.f, F::lineY(5) + smallMid + 1.f, "HALL", kDim));
+    {
+        // A type too long to stand 7 after its family keeps the 7 and draws the family small too: REVERB SPRING.
+        session.setEffect(kSpaceBus, 0, EffectKind::Spring);
+        draw();
+        const float at = F::kNameX + fonts.small.width("REVERB") + 7.f;
+        CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kNameX), F::lineY(5) + smallMid + 1.f, "REVERB", kText) && inked(canvas, scratch, 0, at, F::lineY(5) + smallMid + 1.f, "SPRING", kDim));
+        CHECK(at + fonts.small.width("SPRING") <= F::kMarkX - 3.f && !lineName(5, "REVERB", kText));
+        // ...so the two read as two words, off the screen: the empty columns between them are more than any
+        // between two letters of either (it once closed up to 2.9: 4 empty columns, as many as inside REVERB).
+        const auto blank = [&](int x) {
+            for (int y = F::lineY(5) + 3; y < F::lineY(5) + F::kLineH - 3; ++y)
+                if (!canvas.is(x, y, kPanel)) return false;
+            return true;
+        };
+        int widest = 0, next = 0, run = 0;
+        bool begun = false;
+        for (int x = F::kNameX; x < F::kMarkX; ++x) {
+            if (blank(x)) {
+                ++run;
+                continue;
+            }
+            if (begun && run > 0) {
+                if (run > widest) next = widest, widest = run;
+                else if (run > next) next = run;
+            }
+            begun = true, run = 0;
+        }
+        std::printf("    REVERB SPRING in the list: %d empty columns between the words, at most %d between two letters\n", widest, next);
+        CHECK(widest >= 7 && widest >= next + 3);
+        session.setEffect(kSpaceBus, 0, EffectKind::Hall);
+        draw();
+    }
     // ...the tags and the three headings.
     const char* tags[8] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "1", "2"};
     for (int line = 0; line < 8; ++line) CHECK(inked(canvas, scratch, 0, F::kListX + 8.f, F::lineY(line) + smallMid, tags[line], line == 1 ? kText : kDim));
@@ -4848,8 +4882,13 @@ void testFxTextsFit() {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
         // In the list: the family, its type, and room before the marks at the line's end.
-        const float nameEnds = F::kNameX + fonts.medium.width(effectFamily(kind)) + (effectTypeName(kind)[0] ? 7.f + fonts.small.width(effectTypeName(kind)) : 0.f);
-        CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3);
+        // (A type stands 7 after its family; one too long for that draws its family small too, REVERB SPRING: FxScreen::lineFonts.)
+        float gap = 0.f;
+        bool familySmall = false;
+        CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall) == &fonts && gap == 7.f);
+        CHECK(familySmall == (kind == EffectKind::Spring)); // the others as they were
+        const float nameEnds = F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeName(kind)[0] ? gap + fonts.small.width(effectTypeName(kind)) : 0.f);
+        CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3 + 0.01f);
         if (nameEnds > F::kMarkX - 3) std::printf("    %s %s ends at %.0f, the mark is at %d\n", effectFamily(kind), effectTypeName(kind), static_cast<double>(nameEnds), F::kMarkX);
         CHECK(F::kListX + 8.f + fonts.small.width("SPACE") <= F::kNameX - 4);
         // In the heading: the family, large, and what its meter says beside it at its longest; its types in a row, and the arrows after them.
@@ -5199,8 +5238,8 @@ void testSongFilesAreAsTheyWere() {
     }
     CHECK(back->busEffects[0].kind == static_cast<int>(EffectKind::Delay) && back->busEffects[1].kind == static_cast<int>(EffectKind::Reverb));
     CHECK(back->masterEffects[0].kind == static_cast<int>(EffectKind::Hall) && back->masterEffects[1].kind == static_cast<int>(EffectKind::Tape));
-    // An effect newer than that file (PING, and any to come): written by its own word, in a slot and on its bus, and read back the same.
-    CHECK(std::string(effectInfo(EffectKind::Ping).word) == "ping");
+    // An effect newer than that file (PING, SPRING, and any to come): written by its own word, in a slot and on its bus, and read back the same.
+    CHECK(std::string(effectInfo(EffectKind::Ping).word) == "ping" && std::string(effectInfo(EffectKind::Spring).word) == "spring");
     for (int k = kKindsMainWrote; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         std::unique_ptr<Project> newer(new Project), read(new Project);
