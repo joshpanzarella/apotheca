@@ -3920,6 +3920,8 @@ void testSendsThroughTheSession() {
     }
 }
 
+static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour);
+
 // COMP's meter on the FX screen: the row asks the engine for its own slot, and the strip's length.
 void testTheFxScreenShowsCompAtWork() {
     CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
@@ -3967,6 +3969,54 @@ void testTheFxScreenShowsCompAtWork() {
     CHECK(master > 0.f && master == rig.engine->effectMeter(kMasterTrack, 1) && master != fx.meterOf(0));
     CHECK(fx.meterOf(0) > 3.f && fx.meterOf(FxScreen::kMasterRow) == 0.f && fx.meterOf(1) == 0.f && fx.meterOf(2) == 0.f);
     CHECK(fx.meterOf(FxScreen::kSendsRow) == 0.f && fx.meterOf(FxScreen::kBusRow) == 0.f && fx.meterOf(FxScreen::kBusRow + 1) == 0.f);
+    // DRAWN, three ways: in words in the heading, as a strip under THRESHOLD's bar from the right, and as a mark on the list's line from the top.
+    {
+        Canvas canvas, scratch;
+        CHECK(canvas.ok && scratch.ok);
+        typedef FxScreen F;
+        const Fonts& fonts = *canvas.fonts;
+        const auto shown = [&](int row) {
+            fx.goTo(row, 1);
+            canvas.clear();
+            fx.draw(canvas.r, fonts);
+            const float dB = fx.meterOf(row);
+            char words[32];
+            FxScreen::meterWords(EffectKind::Comp, dB, words, sizeof words);
+            bool ok = words[0] != 0 && inked(canvas, scratch, 0, F::kPaneX + F::kPaneW - 12.f - fonts.small.width(words), F::kPaneY + 36.f, words, ui::kBrass);
+            const int px = FxScreen::meterPixels(dB, F::kBarW), y = F::kSetY + F::kSetH / 2 - F::kBarH / 2 + F::kBarH + 5;
+            ok = ok && px > 0 && canvas.run(F::kBarX + F::kBarW - px, y, ui::kBrass) == px && !canvas.is(F::kBarX + F::kBarW - px - 1, y, ui::kBrass);
+            ok = ok && canvas.is(F::kBarX + F::kBarW - 1, y + 3, ui::kBrass) && !canvas.is(F::kBarX + F::kBarW - 1, y + 4, ui::kBrass) && !canvas.is(F::kBarX + F::kBarW - 1, y - 1, ui::kBrass);
+            // No strip on the rows under it.
+            for (int p = 1; p < 4; ++p) ok = ok && !canvas.is(F::kBarX + F::kBarW - 1, y + p * (F::kSetH + F::kSetGap), ui::kBrass);
+            // The mark on the line: its own track, lit from the top as far as the meter says.
+            const int mh = F::kLineH - 14, lit = FxScreen::meterPixels(dB, mh), top = F::lineY(row) + 7;
+            int brass = 0;
+            for (int py = top; py < top + mh; ++py) brass += canvas.is(F::kMarkX - 7, py, ui::kBrass) ? 1 : 0;
+            ok = ok && lit > 0 && brass == lit && canvas.is(F::kMarkX - 7, top, ui::kBrass) && canvas.is(F::kMarkX - 7, top + mh - 1, lit == mh ? ui::kBrass : ui::kLine);
+            return ok;
+        };
+        if (canvas.ok && scratch.ok) {
+            CHECK(shown(0));
+            CHECK(shown(FxScreen::kMasterRow + 1));
+            // Every line's mark is its own effect's, wherever the cursor is.
+            const auto markLit = [&](int row) {
+                int brass = 0;
+                for (int py = F::lineY(row) + 7; py < F::lineY(row) + F::kLineH - 7; ++py) brass += canvas.is(F::kMarkX - 7, py, ui::kBrass) ? 1 : 0;
+                return brass;
+            };
+            const int mine = FxScreen::meterPixels(fx.meterOf(0), F::kLineH - 14), masters = FxScreen::meterPixels(fx.meterOf(FxScreen::kMasterRow + 1), F::kLineH - 14);
+            CHECK(mine != masters && markLit(0) == mine && markLit(FxScreen::kMasterRow + 1) == masters);
+            CHECK(FxScreen::meterPixels(fx.meterOf(0), F::kBarW) != FxScreen::meterPixels(fx.meterOf(FxScreen::kMasterRow + 1), F::kBarW));
+            // A line whose effect has no meter has no such mark, and the heading says nothing.
+            for (int row : {FxScreen::kBusRow, FxScreen::kBusRow + 1})
+                for (int py = F::lineY(row) + 7; py < F::lineY(row) + F::kLineH - 7; ++py) CHECK(canvas.is(F::kMarkX - 7, py, ui::kPanel));
+            fx.goTo(FxScreen::kBusRow, 1);
+            canvas.clear();
+            fx.draw(canvas.r, fonts);
+            for (int px = F::kPaneX + 200; px < F::kPaneX + F::kPaneW - 2; ++px) CHECK(canvas.is(px, F::kPaneY + 42, ui::kPanel));
+            fx.goTo(0, 0);
+        }
+    }
     // Another effect in the slot: it has nothing to show.
     session.setEffect(0, 0, EffectKind::Filter);
     rig.frames(1);
@@ -4341,7 +4391,7 @@ void testTheFxScreensList() {
 // Is `text` drawn at (x, y) in `colour`? It is drawn there on a second screen, and wherever that
 // has a pixel of the full colour (the body of a letter, not its soft edge) the screen looked at
 // must have it too.
-static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour) {
+bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, float y, const char* text, SDL_Color colour) {
     const Font& font = size == 0 ? scratch.fonts->small : (size == 1 ? scratch.fonts->medium : scratch.fonts->large);
     const int x0 = std::max(0, static_cast<int>(x) - 2), x1 = std::min(ui::kScreenW, static_cast<int>(x + font.width(text)) + 3);
     const int y0 = std::max(0, static_cast<int>(y) - 4), y1 = std::min(ui::kScreenH, static_cast<int>(y) + 30);
@@ -4882,6 +4932,90 @@ void testFxTextsFit() {
     FxScreen::meterWords(EffectKind::Comp, 7.f, two, 0);
     CHECK(std::string(two) == "TUR");
 }
+
+// What the checks above could not tell: each of these was a change to the screen's code that none of them noticed.
+void testTheFxScreenHoldsUp() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    using namespace ui;
+    typedef FxScreen F;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    FxScreen& fx = rig.app.fx();
+    session.view = View::Effects;
+    const int filter = static_cast<int>(EffectKind::Filter);
+    session.setEffect(0, 0, EffectKind::Filter);
+    rig.frames(1);
+    rig.render(2000);
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    const auto barY = [](int p) { return F::kSetY + p * (F::kSetH + F::kSetGap) + F::kSetH / 2 - F::kBarH / 2; };
+
+    // The SENDS line is not a slot: A held on it picks nothing, in any direction (not into the track's first slot either).
+    fx.goTo(F::kSendsRow, 0);
+    rig.key(A, true);
+    CHECK(!fx.picking());
+    for (int b : {DOWN, UP, LEFT, RIGHT}) {
+        rig.tap(b);
+        CHECK(project.tracks[0].effects[0].kind == filter);
+    }
+    rig.key(A, false);
+    CHECK(project.tracks[0].effects[0].kind == filter && project.tracks[0].effects[1].kind == 0 && project.tracks[0].effects[2].kind == 0);
+    CHECK(project.tracks[0].send[0] == 0.f && project.tracks[0].send[1] == 0.f && fx.cursorRow() == F::kSendsRow && fx.cursorColumn() == 0);
+    // On that line, still in the list, the two sends are already drawn on the right.
+    draw();
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSendY + 12.f, "ECHO", kDim) && inked(canvas, scratch, 2, F::kPaneX + 12.f, F::kSendY + 40.f, "0%", kText));
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kSendY + F::kSendH + F::kSendGap + 12.f, "SPACE", kDim));
+
+    // A let go while another screen was showing: the list of effects is not left open, and DOWN moves.
+    fx.goTo(1, 0);
+    rig.key(A, true);
+    CHECK(fx.picking());
+    session.view = View::Pattern;
+    rig.frames(1);
+    rig.key(A, false);
+    session.view = View::Effects;
+    rig.frames(1);
+    CHECK(!fx.picking());
+    rig.tap(DOWN);
+    CHECK(fx.cursorRow() == 2 && project.tracks[0].effects[1].kind == 0);
+
+    // A choice at the very top of its range (a song file can hold 1) lights its last piece, not none.
+    session.setEffectParam(0, 0, 2, 1.f);
+    fx.goTo(0, 1);
+    draw();
+    CHECK(project.tracks[0].effects[0].param[2] == 1.f && effectChoices(EffectKind::Filter, 2) == 5);
+    CHECK(canvas.is(F::kBarX + F::kBarW - 2, barY(2) + 2, kDim) && canvas.is(F::kBarX + 2, barY(2) + 2, kLine));
+
+    // While the song plays, an automated setting is drawn where the pattern has it, not where the knob is.
+    session.setEffectParam(0, 0, 0, 0.25f);
+    for (int step = 0; step < kAutoSteps; ++step) session.setAutomation(0, 0, autoLaneOfEffect(0, 0), step, 0.75f);
+    draw();
+    const int knob = static_cast<int>(std::round(F::kBarW * 0.25f)), pattern = static_cast<int>(std::round(F::kBarW * 0.75f));
+    fx.goTo(0, 2);
+    draw();
+    CHECK(canvas.run(F::kBarX, barY(0) + 2, kDim) == knob); // stopped: the knob
+    rig.tap(START);
+    rig.render(kStep + kStep / 2);
+    rig.frames(1);
+    draw();
+    CHECK(project.playing && canvas.run(F::kBarX, barY(0) + 2, kDim) == pattern);
+    rig.tap(START);
+    rig.render(2000);
+    rig.frames(1);
+
+    // A type is changed only in a slot there is.
+    session.setEffect(0, 2, EffectKind::Tape);
+    CHECK(!changeEffectType(session, 0, kTrackSlots, EffectKind::Delay) && !changeEffectType(session, 0, -1, EffectKind::Delay));
+    CHECK(!changeEffectType(session, kEchoBus, 1, EffectKind::Delay) && !changeEffectType(session, kMasterTrack, kMasterSlots, EffectKind::Delay));
+    CHECK(project.tracks[0].effects[2].kind == static_cast<int>(EffectKind::Tape) && project.busEffects[0].kind == static_cast<int>(EffectKind::Tape));
+}
+
 
 // A SONG FILE IS WRITTEN AS IT WAS before there were families: every effect by its own word, as main wrote it.
 #include "everykind.inc"
@@ -6501,6 +6635,7 @@ int main(int argc, char** argv) {
     testTheFxScreenAsDrawn();
     testChangingTypeKeepsWhatIsShared();
     testFxTextsFit();
+    testTheFxScreenHoldsUp();
     testSongFilesAreAsTheyWere();
     testTheFxScreenShowsCompAtWork();
     testTheKeysShownFollowTheCursor();
