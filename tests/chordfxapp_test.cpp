@@ -889,7 +889,7 @@ void testTheScreen() {
             for (int x = x0; x < x1; ++x) n += a[static_cast<std::size_t>(y * 640 + x)] != b[static_cast<std::size_t>(y * 640 + x)];
         return n;
     };
-    const int stripTop = 400, hintsTop = 456; // (the strip's rows and the hints bar, as the stills show them)
+    const int stripTop = 404, hintsTop = 456; // (the strip's rows and the hints bar, as the stills show them)
     // Where the chord's keys are on the screen: the columns its blocks' last rows are in.
     c.velocity = 0.f;
     const std::vector<Uint32> empty = shot();
@@ -1071,7 +1071,7 @@ void testTheStripsEdges() {
         SDL_RenderPresent(canvas.r);
         return canvas.all();
     };
-    const int stripTop = 400, hintsTop = 456;
+    const int stripTop = 404, hintsTop = 456;
     const auto ink = [&](const std::vector<Uint32>& with, const std::vector<Uint32>& bare, int x0, int x1) {
         int n = 0;
         for (int y = stripTop; y < hintsTop; ++y)
