@@ -453,7 +453,7 @@ static void testTheTable() {
         CHECK(!word.empty() && effectFromWord(info.word) == kind);
         for (char c : word) CHECK((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'));
         for (int other = 1; other < k; ++other) CHECK(word != effectInfo(static_cast<EffectKind>(other)).word);
-        CHECK(info.group != EffectGroup::None && effectGroupName(info.group)[0] != 0);
+        CHECK(info.family != EffectFamily::None && effectFamilyName(info.family)[0] != 0);
         CHECK(info.create != nullptr && info.params >= 1 && info.params <= kEffectParams);
         const int place = effectPlace(kind);
         CHECK(place >= 1 && place < effectListSize() && effectAt(place) == kind);
@@ -479,32 +479,32 @@ static void testTheTable() {
     }
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
-    // The list as it is today, in its groups (FILTER; DELAY; REVERB; MOVING; LEVEL; DIRT), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
+    // The list as it is today, in its seven families (FILTER, DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL), the types of a family side by side.
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Saturate, EffectKind::Crush, EffectKind::Chorus, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Comp, EffectKind::Duck};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
-    // ...and a group is never in two pieces (the list a player picks from names each group once).
-    for (int i = 2; i < effectListSize(); ++i)
-        for (int j = 1; j < i - 1; ++j) CHECK(effectInfo(effectAt(i)).group != effectInfo(effectAt(j)).group || effectInfo(effectAt(i - 1)).group == effectInfo(effectAt(i)).group);
+    // ...and the families in EffectFamily's order, so a family is never in two pieces (the list a player picks from has each once).
+    for (int i = 2; i < effectListSize(); ++i) CHECK(static_cast<int>(effectInfo(effectAt(i - 1)).family) <= static_cast<int>(effectInfo(effectAt(i)).family));
     // The numbers of the new ones: fixed for good, as the old five's are.
     CHECK(static_cast<int>(EffectKind::Tape) == 6 && static_cast<int>(EffectKind::Hall) == 7 && static_cast<int>(EffectKind::Ping) == 12 && static_cast<int>(EffectKind::Spring) == 13 && static_cast<int>(EffectKind::Plate) == 14);
     CHECK(std::string(effectInfo(EffectKind::Hall).word) == "hall" && effectFromWord("hall") == EffectKind::Hall);
-    CHECK(std::string(effectInfo(EffectKind::Plate).word) == "plate" && effectFromWord("plate") == EffectKind::Plate && effectInfo(EffectKind::Plate).group == EffectGroup::Reverb);
-    CHECK(effectInfo(EffectKind::Hall).group == EffectGroup::Reverb && effectChoices(EffectKind::Hall, 0) == 0 && effectChoices(EffectKind::Hall, 1) == 0);
+    CHECK(std::string(effectInfo(EffectKind::Plate).word) == "plate" && effectFromWord("plate") == EffectKind::Plate && effectInfo(EffectKind::Plate).family == EffectFamily::Reverb);
+    CHECK(effectInfo(EffectKind::Hall).family == EffectFamily::Reverb && effectChoices(EffectKind::Hall, 0) == 0 && effectChoices(EffectKind::Hall, 1) == 0);
     CHECK(std::string(effectInfo(EffectKind::Tape).word) == "tape" && effectFromWord("tape") == EffectKind::Tape);
-    CHECK(effectInfo(EffectKind::Tape).group == EffectGroup::Delay && effectChoices(EffectKind::Tape, 0) == 8 && effectChoices(EffectKind::Tape, 1) == 0);
+    CHECK(effectInfo(EffectKind::Tape).family == EffectFamily::Delay && effectChoices(EffectKind::Tape, 0) == 8 && effectChoices(EffectKind::Tape, 1) == 0);
     // Which settings are choices today, and the groups.
     CHECK(effectChoices(EffectKind::Filter, 2) == 5 && effectChoices(EffectKind::Delay, 0) == 6);
     CHECK(effectChoices(EffectKind::Filter, 0) == 0 && effectChoices(EffectKind::Delay, 1) == 0 && effectChoices(EffectKind::Drive, 0) == 0);
     CHECK(effectChoices(EffectKind::Reverb, 0) == 0 && effectChoices(EffectKind::Crush, 0) == 0);
-    CHECK(effectInfo(EffectKind::Filter).group == EffectGroup::Filter && effectInfo(EffectKind::Drive).group == EffectGroup::Dirt);
-    CHECK(effectInfo(EffectKind::Delay).group == EffectGroup::Delay && effectInfo(EffectKind::Reverb).group == EffectGroup::Reverb);
-    CHECK(effectInfo(EffectKind::Crush).group == EffectGroup::Dirt && effectInfo(EffectKind::None).group == EffectGroup::None);
-    CHECK(std::string(effectGroupName(EffectGroup::Filter)) == "FILTER" && static_cast<int>(EffectGroup::Count) == 7);
-    CHECK(std::string(effectGroupName(EffectGroup::Delay)) == "DELAY" && std::string(effectGroupName(EffectGroup::Reverb)) == "REVERB");
-    CHECK(std::string(effectGroupName(EffectGroup::Moving)) == "MOVING" && std::string(effectGroupName(EffectGroup::Level)) == "LEVEL");
-    CHECK(std::string(effectGroupName(EffectGroup::Dirt)) == "DIRT" && std::string(effectGroupName(EffectGroup::None)).empty());
-    CHECK(std::string(effectGroupName(EffectGroup::Count)).empty() && std::string(effectGroupName(static_cast<EffectGroup>(-1))).empty());
+    CHECK(effectInfo(EffectKind::Filter).family == EffectFamily::Filter && effectInfo(EffectKind::Drive).family == EffectFamily::Drive);
+    CHECK(effectInfo(EffectKind::Delay).family == EffectFamily::Delay && effectInfo(EffectKind::Reverb).family == EffectFamily::Reverb);
+    CHECK(effectInfo(EffectKind::Crush).family == EffectFamily::Crush && effectInfo(EffectKind::None).family == EffectFamily::None);
+    CHECK(std::string(effectFamilyName(EffectFamily::Filter)) == "FILTER" && static_cast<int>(EffectFamily::Count) == 8);
+    CHECK(std::string(effectFamilyName(EffectFamily::Delay)) == "DELAY" && std::string(effectFamilyName(EffectFamily::Reverb)) == "REVERB");
+    CHECK(std::string(effectFamilyName(EffectFamily::Mod)) == "MOD" && std::string(effectFamilyName(EffectFamily::Level)) == "LEVEL");
+    CHECK(std::string(effectFamilyName(EffectFamily::Drive)) == "DRIVE" && std::string(effectFamilyName(EffectFamily::Crush)) == "CRUSH");
+    CHECK(std::string(effectFamilyName(EffectFamily::None)).empty());
+    CHECK(std::string(effectFamilyName(EffectFamily::Count)).empty() && std::string(effectFamilyName(static_cast<EffectFamily>(-1))).empty());
     // How settings read, each effect's own way.
     CHECK(reads(EffectKind::Filter, 0, 0.f) == "30 HZ" && reads(EffectKind::Filter, 0, 1.f) == "21.7 KHZ" && reads(EffectKind::Filter, 1, 0.2f) == "20%");
     CHECK(reads(EffectKind::Filter, 2, 0.1f) == "LOW 12 DB" && reads(EffectKind::Filter, 2, 0.3f) == "LOW 24 DB" && reads(EffectKind::Filter, 2, 0.5f) == "BAND PASS");
@@ -997,7 +997,7 @@ static void testChorus() {
     const EffectKind kind = EffectKind::Chorus;
     // Its row: what a song stores.
     const EffectInfo& info = effectInfo(kind);
-    CHECK(std::string(info.name) == "CHORUS" && std::string(info.word) == "chorus" && info.params == 4 && info.group == EffectGroup::Moving);
+    CHECK(std::string(info.name) == "CHORUS" && std::string(info.word) == "chorus" && info.params == 4 && info.family == EffectFamily::Mod);
     CHECK(std::string(info.paramNames[0]) == "RATE" && std::string(info.paramNames[1]) == "DEPTH" && std::string(info.paramNames[2]) == "TYPE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.4f && info.defaults[1] == 0.5f && info.defaults[2] == 0.f && info.defaults[3] == 0.8f);
     CHECK(effectChoices(kind, 2) == 4 && effectChoices(kind, 0) == 0 && effectChoices(kind, 1) == 0 && effectChoices(kind, 3) == 0);
@@ -2632,7 +2632,7 @@ static void testComp() {
     const EffectKind kind = EffectKind::Comp;
     // Its row: what a song stores.
     const EffectInfo& info = effectInfo(kind);
-    CHECK(std::string(info.name) == "COMP" && std::string(info.word) == "comp" && info.params == 4 && info.group == EffectGroup::Level);
+    CHECK(std::string(info.name) == "COMP" && std::string(info.word) == "comp" && info.params == 4 && info.family == EffectFamily::Level);
     CHECK(std::string(info.paramNames[0]) == "THRESHOLD" && std::string(info.paramNames[1]) == "RATIO" && std::string(info.paramNames[2]) == "SPEED" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.625f && info.defaults[1] == 0.58f && info.defaults[2] == 0.4f && info.defaults[3] == 1.f);
     CHECK(effectChoices(kind, 1) == 6 && effectChoices(kind, 0) == 0 && effectChoices(kind, 2) == 0 && effectChoices(kind, 3) == 0);
@@ -3072,7 +3072,7 @@ static void testSaturate() {
     const EffectKind kind = EffectKind::Saturate;
     // Its row: what a song stores.
     const EffectInfo& info = effectInfo(kind);
-    CHECK(std::string(info.name) == "SATURATE" && std::string(info.word) == "saturate" && info.params == 4 && info.group == EffectGroup::Dirt);
+    CHECK(std::string(info.name) == "SATURATE" && std::string(info.word) == "saturate" && info.params == 4 && info.family == EffectFamily::Drive);
     CHECK(std::string(info.paramNames[0]) == "DRIVE" && std::string(info.paramNames[1]) == "TYPE" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.4f && info.defaults[1] == 0.f && info.defaults[2] == 0.8f && info.defaults[3] == 1.f);
     CHECK(effectChoices(kind, 1) == 4 && effectChoices(kind, 0) == 0 && effectChoices(kind, 2) == 0 && effectChoices(kind, 3) == 0);
@@ -4490,86 +4490,108 @@ static void testSendsOnAnyHelperCount() {
     CHECK(std::sqrt(apart / static_cast<double>(alone.size())) > 0.01);
 }
 
-// FAMILIES AND TYPES: what a player picks from is DELAY (CLEAN, TAPE, PING) and REVERB (ROOM, HALL, SPRING, PLATE);
-// underneath each type is the effect it always was.
+// FAMILIES AND TYPES (owner, 2026-11-13): what a player picks from is seven families, each with a TYPE: FILTER (FILTER),
+// DRIVE (DRIVE, SATURATE), CRUSH (CRUSH), MOD (CHORUS), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE),
+// LEVEL (COMP, DUCK). Underneath each type is the effect it always was.
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
-    // Nothing moved underneath: the numbers and the song-file words.
-    CHECK(static_cast<int>(D) == 3 && static_cast<int>(R) == 4 && static_cast<int>(T) == 6 && static_cast<int>(H) == 7);
-    CHECK(std::string(effectInfo(D).word) == "delay" && std::string(effectInfo(T).word) == "tape" && std::string(effectInfo(R).word) == "reverb" && std::string(effectInfo(H).word) == "hall");
-    CHECK(std::string(effectInfo(D).name) == "DELAY" && std::string(effectInfo(T).name) == "TAPE" && std::string(effectInfo(R).name) == "REVERB" && std::string(effectInfo(H).name) == "HALL");
-    // The families and what each type is called.
-    CHECK(std::string(effectFamily(D)) == "DELAY" && std::string(effectFamily(T)) == "DELAY" && std::string(effectFamily(R)) == "REVERB" && std::string(effectFamily(H)) == "REVERB");
-    CHECK(std::string(effectTypeName(D)) == "CLEAN" && std::string(effectTypeName(T)) == "TAPE" && std::string(effectTypeName(R)) == "ROOM" && std::string(effectTypeName(H)) == "HALL");
-    CHECK(effectTypes(D) == 3 && effectTypes(T) == 3 && effectTypes(R) == 4 && effectTypes(H) == 4);
-    CHECK(effectTypeAt(D, 0) == D && effectTypeAt(D, 1) == T && effectTypeAt(T, 0) == D && effectTypeAt(T, 1) == T);
-    CHECK(effectTypeAt(R, 0) == R && effectTypeAt(R, 1) == H && effectTypeAt(H, 0) == R && effectTypeAt(H, 1) == H);
-    CHECK(effectTypeAt(D, -1) == N && effectTypeAt(D, 2) == EffectKind::Ping && effectTypeAt(D, 3) == N && effectTypeAt(H, 2) == EffectKind::Spring && effectTypeAt(H, 3) == EffectKind::Plate && effectTypeAt(H, 4) == N && effectTypeAt(H, -1) == N);
-    CHECK(effectTypeIndex(D) == 0 && effectTypeIndex(T) == 1 && effectTypeIndex(R) == 0 && effectTypeIndex(H) == 1);
-    {
-        const EffectKind P = EffectKind::Plate; // the fourth type of REVERB, after SPRING
-        CHECK(std::string(effectFamily(P)) == "REVERB" && std::string(effectTypeName(P)) == "PLATE" && effectTypes(P) == 4 && effectTypeIndex(P) == 3);
-        CHECK(effectTypeAt(R, 3) == P && effectTypeAt(H, 3) == P && effectTypeAt(P, 0) == R && effectTypeAt(P, 1) == H && effectTypeAt(P, 2) == EffectKind::Spring && effectTypeAt(P, 3) == P && effectTypeAt(P, 4) == N);
-        CHECK(familyPlace(P) == 3 && familyPlace(P, 1) == 1 && familyPlace(P, 0) == 0);
+    // Nothing moved underneath: the numbers and the song-file words of every effect, as they shipped.
+    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate"};
+    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE"};
+    CHECK(kEffectKinds == 15);
+    for (int k = 0; k < kEffectKinds; ++k) {
+        const EffectKind kind = static_cast<EffectKind>(k);
+        CHECK(std::string(effectInfo(kind).word) == words[k] && std::string(effectInfo(kind).name) == names[k]);
+        if (k > 0) CHECK(effectFromWord(words[k]) == kind);
     }
-    // Everything else is a family of one, called by its name, with no type.
+    // Every old kind in its family, as its type, in the families' order.
+    struct Row { EffectKind kind; const char* family; const char* type; const char* shown; int types, index; EffectFamily id; };
+    static const Row rows[] = {
+        {EffectKind::Filter, "FILTER", "FILTER", "", 1, 0, EffectFamily::Filter},
+        {EffectKind::Drive, "DRIVE", "DRIVE", "", 2, 0, EffectFamily::Drive},
+        {EffectKind::Saturate, "DRIVE", "SATURATE", "SATURATE", 2, 1, EffectFamily::Drive},
+        {EffectKind::Crush, "CRUSH", "CRUSH", "", 1, 0, EffectFamily::Crush},
+        {EffectKind::Chorus, "MOD", "CHORUS", "CHORUS", 1, 0, EffectFamily::Mod},
+        {D, "DELAY", "CLEAN", "CLEAN", 3, 0, EffectFamily::Delay},
+        {T, "DELAY", "TAPE", "TAPE", 3, 1, EffectFamily::Delay},
+        {EffectKind::Ping, "DELAY", "PING", "PING", 3, 2, EffectFamily::Delay},
+        {R, "REVERB", "ROOM", "ROOM", 4, 0, EffectFamily::Reverb},
+        {H, "REVERB", "HALL", "HALL", 4, 1, EffectFamily::Reverb},
+        {EffectKind::Spring, "REVERB", "SPRING", "SPRING", 4, 2, EffectFamily::Reverb},
+        {EffectKind::Plate, "REVERB", "PLATE", "PLATE", 4, 3, EffectFamily::Reverb},
+        {EffectKind::Comp, "LEVEL", "COMP", "COMP", 2, 0, EffectFamily::Level},
+        {EffectKind::Duck, "LEVEL", "DUCK", "DUCK", 2, 1, EffectFamily::Level},
+    };
+    CHECK(static_cast<int>(sizeof rows / sizeof rows[0]) == kEffectKinds - 1);
+    for (int i = 0; i < kEffectKinds - 1; ++i) {
+        const Row& row = rows[i];
+        CHECK(effectInfo(row.kind).family == row.id && std::string(effectFamily(row.kind)) == row.family && std::string(effectFamilyName(row.id)) == row.family);
+        CHECK(std::string(effectTypeName(row.kind)) == row.type && std::string(effectTypeShown(row.kind)) == row.shown);
+        CHECK(effectTypes(row.kind) == row.types && effectTypeIndex(row.kind) == row.index && effectTypeAt(row.kind, row.index) == row.kind);
+        CHECK(effectPlace(row.kind) == i + 1); // the whole list, in this order
+        CHECK(effectFamilyNamesTypes(row.kind) == (row.types > 1 || row.shown[0] != 0)); // FILTER and CRUSH say their words
+    }
+    CHECK(!effectFamilyNamesTypes(N) && !effectFamilyNamesTypes(static_cast<EffectKind>(77)));
+    // Stepping the TYPE within each family: the types in order, ends that stop (None off either end).
+    for (const Row& row : rows) {
+        CHECK(effectTypeAt(row.kind, -1) == N && effectTypeAt(row.kind, row.types) == N);
+        for (int t = 0; t < row.types; ++t) CHECK(effectTypeAt(row.kind, t) == rows[&row - rows - row.index + t].kind);
+    }
+    CHECK(effectTypeAt(D, 1) == T && effectTypeAt(T, 2) == EffectKind::Ping && effectTypeAt(H, 3) == EffectKind::Plate && effectTypeAt(EffectKind::Duck, 0) == EffectKind::Comp);
+    CHECK(effectTypeAt(EffectKind::Saturate, 0) == EffectKind::Drive && effectTypeAt(EffectKind::Drive, 1) == EffectKind::Saturate);
+    // Every effect is a type of a family; a family's types are side by side, one bus.
     int families = 1; // NONE's
     for (int k = 1; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         const EffectInfo& info = effectInfo(kind);
-        CHECK((info.family == nullptr) == (info.type == nullptr));
-        // A type knows its family, and the family's types are side by side in the list.
+        CHECK(info.family != EffectFamily::None && effectTypeName(kind)[0] != 0);
         const int types = effectTypes(kind), at = effectTypeIndex(kind);
         CHECK(types >= 1 && at >= 0 && at < types && effectTypeAt(kind, at) == kind);
         for (int t = 0; t < types; ++t) {
             const EffectKind other = effectTypeAt(kind, t);
             CHECK(other != N && std::string(effectFamily(other)) == effectFamily(kind) && effectPlace(other) == effectPlace(kind) - at + t);
-            CHECK(effectInfo(other).group == info.group && effectBus(other) == effectBus(kind)); // one family, one group, one bus
+            CHECK(effectInfo(other).family == info.family && effectBus(other) == effectBus(kind)); // one family, one bus
             CHECK(effectTypes(other) == types && effectTypeIndex(other) == t);
             for (int u = 0; u < t; ++u) CHECK(std::string(effectTypeName(other)) != effectTypeName(effectTypeAt(kind, u)));
-        }
-        if (!info.family) {
-            CHECK(types == 1 && std::string(effectFamily(kind)) == info.name && effectTypeName(kind)[0] == 0);
-        } else {
-            CHECK(types >= 2 && info.type[0] != 0 && std::string(effectTypeName(kind)) == info.type);
         }
         families += at == 0 ? 1 : 0;
         // In the list a player picks from: a family once, at its first type.
         const int place = familyPlace(kind);
         CHECK(place >= 1 && place < familyListSize() && familyAt(place) == effectTypeAt(kind, 0));
-        // A few plain words for it, that fit the list's line (measured on the screen in app_test).
+        CHECK(place == static_cast<int>(info.family)); // the families in EffectFamily's order
+        // A few plain words for it: its first type's.
         char says[64] = "?";
         effectFamilySays(kind, says, sizeof says);
-        CHECK(says[0] != 0 && says[0] != '?' && std::strlen(says) <= static_cast<std::size_t>(kFamilySaysMost) && kFamilySaysMost == 28);
-        for (int t = 0; t < types && types > 1; ++t) {
-            std::string small = effectTypeName(effectTypeAt(kind, t));
-            for (char& c : small) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
-            CHECK(std::string(says).find(small) != std::string::npos); // every type is named in the family's line
-        }
+        CHECK(says[0] != 0 && std::string(says) == effectInfo(effectTypeAt(kind, 0)).says);
     }
-    CHECK(effectTypes(N) == 1 && effectTypeAt(N, 0) == N && effectTypeIndex(N) == 0 && effectTypeName(N)[0] == 0 && std::string(effectFamily(N)) == "NONE");
+    CHECK(effectTypes(N) == 1 && effectTypeAt(N, 0) == N && effectTypeIndex(N) == 0 && effectTypeName(N)[0] == 0 && effectTypeShown(N)[0] == 0 && std::string(effectFamily(N)) == "NONE");
     const EffectKind bad = static_cast<EffectKind>(77);
     CHECK(effectTypes(bad) == 1 && effectTypeAt(bad, 0) == N && effectTypeIndex(bad) == 0 && familyPlace(bad) == 0 && effectTypeName(bad)[0] == 0);
-    // The list of families as it is today.
-    static const EffectKind list[] = {N, EffectKind::Filter, D, R, EffectKind::Chorus, EffectKind::Comp, EffectKind::Duck, EffectKind::Saturate, EffectKind::Drive, EffectKind::Crush};
-    CHECK(familyListSize() == 10 && families == 10);
-    for (int i = 0; i < 10; ++i) CHECK(familyAt(i) == list[i] && familyPlace(list[i]) == i);
-    CHECK(familyAt(-1) == N && familyAt(10) == N && familyPlace(T) == 2 && familyPlace(H) == 3 && familyPlace(N) == 0);
+    // The list of families: EMPTY and the seven, in the owner's order.
+    static const EffectKind list[] = {N, EffectKind::Filter, EffectKind::Drive, EffectKind::Crush, EffectKind::Chorus, D, R, EffectKind::Comp};
+    CHECK(familyListSize() == 8 && families == 8 && static_cast<int>(EffectFamily::Count) == 8);
+    for (int i = 0; i < 8; ++i) CHECK(familyAt(i) == list[i] && familyPlace(list[i]) == i);
+    for (int i = 1; i < 8; ++i) CHECK(effectInfo(familyAt(i)).family == static_cast<EffectFamily>(i));
+    CHECK(familyAt(-1) == N && familyAt(8) == N && familyPlace(T) == 5 && familyPlace(H) == 6 && familyPlace(EffectKind::Saturate) == 2 && familyPlace(EffectKind::Duck) == 7 && familyPlace(N) == 0);
     // A bus's own list: NONE and the one family it may hold.
     CHECK(familyListSize(0) == 2 && familyAt(0, 0) == N && familyAt(1, 0) == D && familyAt(2, 0) == N && familyAt(-1, 0) == N);
     CHECK(familyListSize(1) == 2 && familyAt(0, 1) == N && familyAt(1, 1) == R && familyAt(2, 1) == N);
     CHECK(familyPlace(D, 0) == 1 && familyPlace(T, 0) == 1 && familyPlace(R, 0) == 0 && familyPlace(H, 0) == 0 && familyPlace(EffectKind::Filter, 0) == 0 && familyPlace(N, 0) == 0);
     CHECK(familyPlace(R, 1) == 1 && familyPlace(H, 1) == 1 && familyPlace(D, 1) == 0 && familyPlace(T, 1) == 0 && familyPlace(EffectKind::Crush, 1) == 0);
-    CHECK(familyListSize(2) == 10 && familyListSize(-5) == 10 && familyAt(3, 7) == R); // no such bus: the whole list
+    CHECK(familyListSize(2) == 8 && familyListSize(-5) == 8 && familyAt(6, 7) == R); // no such bus: the whole list
+    // Only a DELAY goes on ECHO and only a REVERB on SPACE, every type of each.
+    for (int k = 1; k < kEffectKinds; ++k) {
+        const EffectFamily family = effectInfo(static_cast<EffectKind>(k)).family;
+        CHECK(effectBus(static_cast<EffectKind>(k)) == (family == EffectFamily::Delay ? 0 : (family == EffectFamily::Reverb ? 1 : -1)));
+    }
     const auto says = [](EffectKind kind) {
         char text[64] = "?";
         effectFamilySays(kind, text, sizeof text);
         return std::string(text);
     };
-    CHECK(says(D) == "echoes: clean, tape, ping" && says(EffectKind::Ping) == says(D) && says(T) == says(D) && says(R) == "room, hall, spring, plate" && says(EffectKind::Spring) == says(R) && says(EffectKind::Plate) == says(R) && says(H) == says(R));
-    // (REVERB's own word, "space", is left out: with it the line is 32 letters, more than the list has room for.)
-    CHECK(std::string(effectInfo(R).says) == "space" && std::strlen("space: room, hall, spring, plate") > static_cast<std::size_t>(kFamilySaysMost));
-    CHECK(says(EffectKind::Crush) == "fewer bits" && says(N) == "nothing here" && says(bad) == "nothing here" && says(EffectKind::Comp) == "evens loud and quiet");
+    CHECK(says(D) == "echoes" && says(EffectKind::Ping) == says(D) && says(R) == "space" && says(EffectKind::Plate) == says(R));
+    CHECK(says(EffectKind::Crush) == "fewer bits" && says(N) == "nothing here" && says(bad) == "nothing here" && says(EffectKind::Duck) == "evens loud and quiet");
+    CHECK(says(EffectKind::Filter) == "low, band, high, DJ" && says(EffectKind::Saturate) == "hard edge");
     char tiny[4] = "zzz";
     effectFamilySays(D, tiny, sizeof tiny);
     CHECK(std::string(tiny) == "ech");
@@ -4718,7 +4740,34 @@ static void testTypeChangeCarriesSettings() {
             }
             effectCarry(from, to, old, false, nullptr);
         }
-    CHECK(pairs == 18 && carried == 46 && same > 250 && nearest >= 2); // DELAY's three types: six pairs; REVERB's four: twelve. Every pair both ways
+    // DELAY's three types: six pairs; REVERB's four: twelve; DRIVE's two and LEVEL's two: two each. Every pair both ways.
+    CHECK(pairs == 22 && carried == 52 && same > 250 && nearest >= 2);
+    // DRIVE and SATURATE share DRIVE, TONE and MIX, on one scale (percentages): each goes over untouched, to the bit.
+    // DRIVE's OUTPUT and SATURATE's TYPE start at their usual values.
+    {
+        const EffectKind V = EffectKind::Drive, S = EffectKind::Saturate;
+        CHECK(effectCarryFrom(V, S, 0) == 0 && effectCarryFrom(V, S, 1) == -1 && effectCarryFrom(V, S, 2) == 1 && effectCarryFrom(V, S, 3) == 2);
+        CHECK(effectCarryFrom(S, V, 0) == 0 && effectCarryFrom(S, V, 1) == 2 && effectCarryFrom(S, V, 2) == 3 && effectCarryFrom(S, V, 3) == -1);
+        for (float v : {0.f, 0.123456f, 0.35f, 0.987654f, 1.f}) CHECK(effectCarryValue(V, 0, S, 0, v) == v && effectCarryValue(S, 2, V, 1, v) == v && effectCarryValue(S, 3, V, 2, v) == v);
+        const float driveWas[4] = {0.8f, 0.25f, 0.6f, 0.9f};
+        float now[4];
+        effectCarry(V, S, driveWas, false, now);
+        CHECK(now[0] == 0.8f && now[1] == effectInfo(S).defaults[1] && now[2] == 0.25f && now[3] == 0.6f);
+        const float satWas[4] = {0.7f, 0.9f, 0.1f, 0.5f};
+        effectCarry(S, V, satWas, false, now);
+        CHECK(now[0] == 0.7f && now[1] == 0.1f && now[2] == 0.5f && now[3] == effectInfo(V).defaults[3]);
+    }
+    // COMP and DUCK share no setting's name: the new one starts at its usual values, whatever the old one was at.
+    {
+        const EffectKind C = EffectKind::Comp, K = EffectKind::Duck;
+        for (int i = 0; i < kEffectParams; ++i) CHECK(effectCarryFrom(C, K, i) == -1 && effectCarryFrom(K, C, i) == -1);
+        const float was[4] = {0.11f, 0.22f, 0.33f, 0.44f};
+        float now[4];
+        effectCarry(C, K, was, false, now);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(now[i] == effectDefault(K, i));
+        effectCarry(K, C, was, false, now);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(now[i] == effectDefault(C, i));
+    }
     CHECK(effectCarryValue(D, 9, T, 1, 0.5f) == effectInfo(T).defaults[1] && effectCarryValue(D, 1, T, 9, 0.5f) == 0.f && effectCarryValue(D, 1, T, -1, 0.5f) == 0.f);
     CHECK(effectCarryValue(D, 2, T, 1, 0.5f) == effectInfo(T).defaults[1]); // not the setting it is carried from: the default
 }
@@ -5262,7 +5311,7 @@ static std::vector<float> duckSong(int helpers, bool ducks = true) {
 static void testDuck() {
     // ---- the table
     CHECK(static_cast<int>(EffectKind::Duck) == 11 && std::string(effectInfo(EffectKind::Duck).word) == "duck" && effectFromWord("duck") == EffectKind::Duck);
-    CHECK(effectInfo(EffectKind::Duck).group == EffectGroup::Level && effectInfo(EffectKind::Duck).params == 3 && effectChoices(EffectKind::Duck, 2) == 8);
+    CHECK(effectInfo(EffectKind::Duck).family == EffectFamily::Level && effectInfo(EffectKind::Duck).params == 3 && effectChoices(EffectKind::Duck, 2) == 8);
     CHECK(effectChoices(EffectKind::Duck, 0) == 0 && effectChoices(EffectKind::Duck, 1) == 0 && effectBus(EffectKind::Duck) == -1 && effectMixParam(EffectKind::Duck) == -1);
     CHECK(reads(EffectKind::Duck, 0, 0.6f) == "60%" && reads(EffectKind::Duck, 1, 0.f) == "20 MS" && reads(EffectKind::Duck, 1, 1.f) == "1.0 S" && reads(EffectKind::Duck, 1, 0.6f) == "209 MS");
     CHECK(reads(EffectKind::Duck, 1, duckRelease(0.1)) == "100 MS" && reads(EffectKind::Duck, 1, duckRelease(0.5)) == "500 MS" && reads(EffectKind::Duck, 1, 0.99f) == "962 MS");
@@ -5939,7 +5988,7 @@ static void testPing() {
     const EffectInfo& info = effectInfo(ping);
     CHECK(static_cast<int>(ping) == 12 && std::string(info.word) == "ping" && effectFromWord("ping") == ping); // its number and its word: fixed for good
     CHECK(std::string(info.name) == "PING" && std::string(effectFamily(ping)) == "DELAY" && std::string(effectTypeName(ping)) == "PING" && effectTypeIndex(ping) == 2);
-    CHECK(info.group == EffectGroup::Delay && effectBus(ping) == 0 && effectMixParam(ping) == 3 && effectMeterParam(ping) == -1);
+    CHECK(info.family == EffectFamily::Delay && effectBus(ping) == 0 && effectMixParam(ping) == 3 && effectMeterParam(ping) == -1);
     CHECK(info.params == 4 && std::string(info.paramNames[0]) == "TIME" && std::string(info.paramNames[1]) == "FEEDBACK" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.5625f && info.defaults[1] == 0.5f && info.defaults[2] == 0.6f && info.defaults[3] == 0.35f);
     CHECK(effectChoices(ping, 0) == 8 && effectChoices(ping, 1) == 0 && effectChoices(ping, 2) == 0 && effectChoices(ping, 3) == 0);
@@ -6567,7 +6616,7 @@ static void testSpring() {
     const EffectInfo& info = effectInfo(spring);
     // Its row: number 12 and the word "spring" for good; a TYPE of REVERB, after ROOM and HALL; it may sit on SPACE.
     CHECK(static_cast<int>(spring) == 13 && std::string(info.word) == "spring" && effectFromWord("spring") == spring);
-    CHECK(std::string(info.name) == "SPRING" && info.params == 4 && info.group == EffectGroup::Reverb && effectBus(spring) == 1);
+    CHECK(std::string(info.name) == "SPRING" && info.params == 4 && info.family == EffectFamily::Reverb && effectBus(spring) == 1);
     CHECK(std::string(info.paramNames[0]) == "DRIP" && std::string(info.paramNames[1]) == "DECAY" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.7f && info.defaults[1] == 0.6f && info.defaults[2] == 0.5f && info.defaults[3] == 0.3f);
     CHECK(std::string(effectFamily(spring)) == "REVERB" && std::string(effectTypeName(spring)) == "SPRING" && effectTypeIndex(spring) == 2 && effectTypeAt(room, 2) == spring);
@@ -7179,7 +7228,7 @@ static void testPlate() {
     const EffectInfo& info = effectInfo(plate);
     // Its row: what a song stores, and a TYPE of REVERB.
     CHECK(static_cast<int>(plate) == 14 && std::string(info.word) == "plate" && effectFromWord("plate") == plate && std::string(info.name) == "PLATE");
-    CHECK(info.group == EffectGroup::Reverb && effectBus(plate) == 1 && std::string(info.family) == "REVERB" && std::string(info.type) == "PLATE" && info.params == 4);
+    CHECK(info.family == EffectFamily::Reverb && effectBus(plate) == 1 && std::string(effectFamily(plate)) == "REVERB" && std::string(info.type) == "PLATE" && info.params == 4);
     CHECK(std::string(info.paramNames[0]) == "PRE" && std::string(info.paramNames[1]) == "DECAY" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.1f && info.defaults[1] == 0.45f && info.defaults[2] == 0.6f && info.defaults[3] == 0.3f);
     for (int i = 0; i < 4; ++i) CHECK(effectChoices(plate, i) == 0);

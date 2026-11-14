@@ -218,8 +218,8 @@ float amount(int index, float v) { return index == 0 ? static_cast<float>(kThird
 
 const EffectInfo kPingInfo = {
     "PING", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5625f, 0.5f, 0.6f, 0.35f}, // a dotted eighth, 45%
-    "ping", EffectGroup::Delay, {kTimes, 0, 0, 0}, reading, create,
-    "", "DELAY", "PING", amount,
+    "ping", EffectFamily::Delay, {kTimes, 0, 0, 0}, reading, create,
+    "", "PING", amount,
 };
 
 } // namespace fx

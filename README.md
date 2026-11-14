@@ -180,7 +180,11 @@ A fourth screen, after DEVICE. **Two columns, and everything is in view.**
 | Left: the list | Eight lines, always there. **THIS TRACK**: its three effects, one after the other, then its **SENDS** (how much of it goes to ECHO, how much to SPACE). **BUSES**: what **ECHO** and **SPACE** hold, one effect each, shared by every track. **MASTER**: the two effects on everything, after the tracks are mixed. |
 | Right: the line picked | Large. A heading (where it is, the effect, its TYPE, what it is doing just now), then each setting as a wide row: its name, its value, a bar. For SENDS: the two sends. |
 
-Each line of the list says what it holds (DELAY TAPE, or EMPTY). The small
+Both columns go down to the hints bar.
+
+Each line of the list says what it holds (DELAY TAPE, LEVEL COMP, or
+EMPTY). Where the type is the family's own word it says it once (FILTER,
+DRIVE); where the two are too long for the line, the type alone (SATURATE). The small
 upright mark at its end is how much of the effect there is (its MIX, or a
 bus's LEVEL). COMP and DUCK have a second, brass mark: what they are doing
 to the sound just now.
@@ -189,7 +193,7 @@ to the sound just now.
 | --- | --- | --- |
 | The list | Up / down | The next line. All eight, round the ends. |
 | | Right | Into the line's settings, **at the one last used there** |
-| | **Hold A** | **The list of effects opens on the right.** Up / down steps through it, and the effect goes in at once at its usual settings. |
+| | **Hold A** | **The list of effects opens on the right**: the seven families, each line naming its types. Up / down steps through it, and the family goes in at once as its first type, at its usual settings. |
 | | Hold A + left / right | The **TYPE**, for an effect that has types |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
@@ -199,22 +203,33 @@ to the sound just now.
 
 X hears the track and START plays, as everywhere. Y does nothing here.
 
-**The list of effects**, in its groups:
+**The list of effects** is seven families, each with a TYPE:
 
-| Group | Effects |
+| Family | Types |
 | --- | --- |
 | FILTER | FILTER |
-| DELAY | **DELAY**, with a TYPE: **CLEAN**, **TAPE** or **PING** |
-| REVERB | **REVERB**, with a TYPE: **ROOM**, **HALL**, **SPRING** or **PLATE** |
-| MOVING | CHORUS |
-| LEVEL | COMP, DUCK |
-| DIRT | SATURATE, DRIVE, CRUSH |
+| DRIVE | **DRIVE**, **SATURATE** |
+| CRUSH | CRUSH |
+| MOD | **CHORUS** |
+| DELAY | **CLEAN**, **TAPE**, **PING** |
+| REVERB | **ROOM**, **HALL**, **SPRING**, **PLATE** |
+| LEVEL | **COMP**, **DUCK** |
+
+Each family's line names its types ("clean, tape, ping"), and the one in the
+slot is lit, so you see what is inside before you pick. FILTER and CRUSH
+have one type, called as the family is: their lines say what they do. The
+heading's TYPE row shows the types too, the one it is on a plate (as many as
+fit, "..." for the rest). An ECHO bus's list is EMPTY and DELAY; a SPACE
+bus's, EMPTY and REVERB. Old songs are untouched: each type is the same
+effect it always was.
 
 **Changing TYPE keeps what the two types share.** TIME, FEEDBACK and MIX go
 from CLEAN to TAPE and back (and to PING, with TONE too between CLEAN and
 PING); SIZE and MIX from ROOM to HALL; DECAY, TONE and MIX from HALL to
 SPRING (from ROOM to SPRING, MIX alone), and from HALL or SPRING to PLATE
-(from ROOM to PLATE, MIX alone). They are kept
+(from ROOM to PLATE, MIX alone); DRIVE, TONE and MIX between DRIVE and
+SATURATE. COMP and DUCK share nothing: the new one starts at its usual
+values. They are kept
 **as they read**: TAPE's FEEDBACK goes to 120% and CLEAN's to 100%, and 48%
 stays 48%. What the other type cannot read goes to the nearest it can (120%
 becomes 100%; a triplet TIME becomes the nearest plain one). A setting the

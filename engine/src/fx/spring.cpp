@@ -355,8 +355,8 @@ Effect* create() { return new Spring; }
 
 const EffectInfo kSpringInfo = {
     "SPRING", 4, {"DRIP", "DECAY", "TONE", "MIX"}, {0.7f, 0.6f, 0.5f, 0.3f}, // 1.6 seconds
-    "spring", EffectGroup::Reverb, {0, 0, 0, 0}, reading, create,
-    "", "REVERB", "SPRING",
+    "spring", EffectFamily::Reverb, {0, 0, 0, 0}, reading, create,
+    "", "SPRING",
 };
 
 } // namespace fx

@@ -88,8 +88,8 @@ float amount(int index, float v) { return index == 0 ? static_cast<float>(delayS
 
 const EffectInfo kDelayInfo = {
     "DELAY", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5f, 0.45f, 0.6f, 0.35f},
-    "delay", EffectGroup::Delay, {6, 0, 0, 0}, reading, create,
-    "echoes", "DELAY", "CLEAN", amount, // the DELAY family's first type: the word is the family's
+    "delay", EffectFamily::Delay, {6, 0, 0, 0}, reading, create,
+    "echoes", "CLEAN", amount, // the DELAY family's first type: its words are the family's
 };
 
 } // namespace fx

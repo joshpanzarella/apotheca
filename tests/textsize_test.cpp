@@ -1386,14 +1386,24 @@ void testTheFxScreen() {
         const EffectInfo& info = effectInfo(kind);
         // In its line of the list a family with a type ends clear of the mark at every size, 7 after its family:
         // the family drawn small, or the two held at LARGE (REVERB SPRING).
-        for (int size = 0; size < kTextSizes && effectTypeName(kind)[0]; ++size) {
+        // (A pair too long even so, DRIVE SATURATE, is its type alone, in the family's lettering.) A line with no type
+        // shown (FILTER, CRUSH, DRIVE's DRIVE) is its family alone, as chosen at every size.
+        for (int size = 0; size < kTextSizes && !effectTypeShown(kind)[0]; ++size) {
             const Fonts& chosen = *screens().at[size];
             float gap = 0.f;
-            bool familySmall = false;
-            const Fonts& set = FxScreen::lineFonts(chosen, kind, &gap, &familySmall);
-            const float ends = FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeName(kind));
+            bool familySmall = true, typeAlone = true;
+            CHECK(&FxScreen::lineFonts(chosen, kind, &gap, &familySmall, &typeAlone) == &chosen && !familySmall && !typeAlone);
+        }
+        for (int size = 0; size < kTextSizes && effectTypeShown(kind)[0]; ++size) {
+            const Fonts& chosen = *screens().at[size];
+            float gap = 0.f;
+            bool familySmall = false, typeAlone = false;
+            const Fonts& set = FxScreen::lineFonts(chosen, kind, &gap, &familySmall, &typeAlone);
+            const float ends = typeAlone ? FxScreen::kNameX + set.medium.width(effectTypeShown(kind))
+                                         : FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeShown(kind));
             CHECK(gap == 7.f && ends <= FxScreen::nameEnd(kind) - (familySmall ? FxScreen::kNameClear : 0) + 0.01f);
-            CHECK(familySmall == (kind == EffectKind::Spring)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            CHECK(typeAlone == (kind == EffectKind::Saturate));
             if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: as chosen to LARGE, held at LARGE at XL
             CHECK(&set == &chosen || &set == &chosen.fixed());
         }
@@ -1446,6 +1456,196 @@ void testTheFxScreen() {
     CHECK(states > 300);
 }
 } // namespace
+
+// THE LIST OF EFFECTS names each family's types on its line, and the heading's TYPE row names them too. Both must hold
+// the fifteen types the owner has planned (2026-11-13, docs/plans/effects-plan.md "Seven families") as well as today's,
+// at every size: a family's line in one row, as chosen or held at LARGE (MOD's five at XL); and names longer still
+// (made up: every one as long as today's longest type word, SATURATE) in two rows at LARGE, inside the line. The TYPE
+// row shows as many as fit about the one it is, "..." for the rest. (Asked of the functions the screen draws with;
+// the six themes change colours only, and every still of the list is drawn in all six by themeviews.)
+void testTheListOfEffectsHoldsTheLaterTypes() {
+    Screens& s = screens();
+    const std::vector<std::vector<std::string>> later = {
+        {"filter", "comb", "vowel", "eq"},
+        {"drive", "saturate", "fold", "fuzz"},
+        {"crush", "ring", "wear"},
+        {"chorus", "flanger", "ensemble", "phaser", "tremolo"},
+        {"clean", "tape", "ping", "dub", "reverse", "stutter"},
+        {"room", "hall", "spring", "plate", "bloom", "shimmer"},
+        {"comp", "duck", "limiter", "snap"},
+    };
+    // Today's types are the first of each family's planned ones, in their order.
+    CHECK(familyListSize() == 1 + static_cast<int>(later.size()));
+    for (int f = 0; f < static_cast<int>(later.size()); ++f) {
+        const std::vector<std::string> today = FxScreen::typeWords(familyAt(f + 1));
+        CHECK(today.size() <= later[f].size());
+        for (std::size_t t = 0; t < today.size(); ++t) CHECK(today[t] == later[f][t]);
+    }
+    std::size_t longest = 0;
+    for (int k = 1; k < kEffectKinds; ++k) longest = std::max(longest, std::strlen(effectTypeName(static_cast<EffectKind>(k))));
+    CHECK(longest == 8); // SATURATE
+    const float room = static_cast<float>(FxScreen::kPickTypesRoom);
+    int held = 0;
+    for (int size = 0; size < kTextSizes; ++size) {
+        const Fonts& chosen = *s.at[size];
+        for (const std::vector<std::string>& names : later) {
+            // The planned names: one row, at the size chosen if they fit it, else at LARGE.
+            const FxScreen::PickRows rows = FxScreen::pickRows(chosen, names);
+            CHECK(rows.rows == 1 && rows.split == static_cast<int>(names.size()));
+            CHECK(FxScreen::typesWidth(rows.set->small, names, 0, static_cast<int>(names.size())) <= room);
+            const bool fitsChosen = FxScreen::typesWidth(chosen.small, names, 0, static_cast<int>(names.size())) <= room;
+            CHECK(rows.set == (fitsChosen ? &chosen : &chosen.fixed()));
+            held += rows.set != &chosen ? 1 : 0;
+            if (size <= kTextLarge) CHECK(rows.set == &chosen); // held only at XL
+            // Made up: as many, each as long as SATURATE. Two rows at LARGE, each in the room, both inside the line.
+            const std::vector<std::string> made(names.size(), "saturat" + std::string(1, 'e'));
+            const FxScreen::PickRows two = FxScreen::pickRows(chosen, made);
+            const int count = static_cast<int>(made.size());
+            if (FxScreen::typesWidth(chosen.fixed().small, made, 0, count) > room && FxScreen::typesWidth(chosen.small, made, 0, count) > room) {
+                CHECK(two.rows == 2 && two.set == &chosen.fixed() && two.split > 0 && two.split < count);
+                CHECK(FxScreen::typesWidth(two.set->small, made, 0, two.split) <= room && FxScreen::typesWidth(two.set->small, made, two.split, count) <= room);
+                const float rowsH = 2.f * two.set->small.capHeight() + FxScreen::kPickRowGap, top = (FxScreen::kPickLineH - rowsH) / 2.f - 1.f;
+                CHECK(top >= 3.f && top + rowsH <= FxScreen::kPickLineH - 3.f); // clear of the cursor's outline, capitals and all
+            } else {
+                CHECK(two.rows == 1); // (smaller than LARGE they can fit in one)
+                if (count == 6) CHECK(size < kTextLarge);
+            }
+            // The heading's TYPE row, in capitals, on each type in turn: that one in view, the rest that are in view about it,
+            // all in the room the row has, and never fewer than three.
+            std::vector<std::string> upper;
+            for (std::string name : names) {
+                for (char& c : name) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+                upper.push_back(name);
+            }
+            const float rowRoom = FxScreen::typeRowRoom(chosen, count);
+            for (int at = 0; at < count; ++at) {
+                int from = -1, to = -1;
+                FxScreen::typesInView(chosen.small, upper, at, rowRoom, &from, &to);
+                CHECK(from >= 0 && from <= at && at < to && to <= count && to - from >= std::min(3, count));
+                float w = (from > 0 ? chosen.small.width(FxScreen::kTypeMore) + FxScreen::kTypeGapX : 0.f) + (to < count ? chosen.small.width(FxScreen::kTypeMore) + FxScreen::kTypeGapX : 0.f);
+                for (int t = from; t < to; ++t) w += chosen.small.width(upper[t].c_str()) + (t + 1 < to ? FxScreen::kTypeGapX : 0.f);
+                CHECK(w <= rowRoom);
+                // Not one more would fit, at either end (as many as fit).
+                if (to < count) {
+                    const float more = chosen.small.width(upper[to].c_str()) + FxScreen::kTypeGapX - (to + 1 == count ? chosen.small.width(FxScreen::kTypeMore) + FxScreen::kTypeGapX : 0.f);
+                    CHECK(w + more > rowRoom);
+                }
+            }
+        }
+    }
+    CHECK(held >= 1 && held <= 7); // at XL some are held (MOD's five), and only there
+    std::printf("    the planned types: %d families held at LARGE at XL\n", held);
+}
+
+// ...and AS DRAWN, with names no effect has yet: what the two functions above decide is what the screen draws
+// (a review's mutants broke the drawing of two rows, the "...", and the key's room, and every test still passed).
+// The pixels are read off the canvas, at every size: the ink of a line of the list of effects in one band of rows
+// or two, each ending where its words end (no comma after the last of a row), all of it in the line and clear of
+// the cursor's outline; the TYPE row's "..." where the rest are left out, and nothing in the key's room unless the
+// key is drawn.
+void testTheListOfEffectsAsDrawn() {
+    Screens& s = screens();
+    Canvas& canvas = s.canvas;
+    const Uint32 ground = Canvas::colour(ui::kBg);
+    const auto inkIn = [&](int x0, int y0, int x1, int y1) { // pixels not the ground in [x0, x1) x [y0, y1)
+        int n = 0;
+        for (int y = std::max(0, y0); y < std::min(ui::kScreenH, y1); ++y)
+            for (int x = std::max(0, x0); x < std::min(ui::kScreenW, x1); ++x) n += canvas.at(x, y) != ground ? 1 : 0;
+        return n;
+    };
+    const auto upper = [](std::vector<std::string> names) {
+        for (std::string& name : names)
+            for (char& c : name) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+        return names;
+    };
+    const std::vector<std::vector<std::string>> tried = {
+        {"clean", "tape", "ping", "dub", "reverse", "stutter"},
+        {"room", "hall", "spring", "plate", "bloom", "shimmer"},
+        {"chorus", "flanger", "ensemble", "phaser", "tremolo"},
+        std::vector<std::string>(6, "saturate"), // made up: six of today's longest
+        std::vector<std::string>(4, "saturate"),
+        {"low, band, high, DJ and every other word"}, // a family's words, made up longer: never split
+    };
+    const int lineTop = FxScreen::pickLineY(3), right = FxScreen::kPickTypesX + FxScreen::kPickTypesRoom;
+    int twoRows = 0, heldOneRow = 0, cut = 0, cutLeft = 0;
+    for (int size = 0; size < kTextSizes; ++size) {
+        const Fonts& chosen = *s.at[size];
+        for (const std::vector<std::string>& names : tried) {
+            // THE LIST OF EFFECTS: one band of ink a row, a row's ink ending where its words do.
+            const FxScreen::PickRows rows = FxScreen::pickRows(chosen, names);
+            const int count = static_cast<int>(names.size());
+            canvas.clear();
+            FxScreen::drawPickTypes(canvas.r, chosen, names, count - 1, lineTop);
+            CHECK(inkIn(0, 0, ui::kScreenW, lineTop + 3) == 0 && inkIn(0, lineTop + FxScreen::kPickLineH - 3, ui::kScreenW, ui::kScreenH) == 0); // in the line, clear of the outline
+            CHECK(inkIn(0, 0, FxScreen::kPickTypesX - 1, ui::kScreenH) == 0 && inkIn(right + 1, 0, ui::kScreenW, ui::kScreenH) == 0);
+            std::vector<std::pair<int, int>> bands; // rows of ink, top and foot
+            for (int y = lineTop; y < lineTop + FxScreen::kPickLineH; ++y) {
+                if (inkIn(FxScreen::kPickTypesX - 1, y, right + 1, y + 1) == 0) continue;
+                if (bands.empty() || bands.back().second < y - 1) bands.push_back({y, y});
+                else bands.back().second = y;
+            }
+            CHECK(static_cast<int>(bands.size()) == rows.rows);
+            const Font& font = rows.set->small;
+            for (int b = 0; b < static_cast<int>(bands.size()) && b < 2; ++b) {
+                const int from = b == 0 ? 0 : rows.split, to = b == 0 ? (rows.rows == 2 ? rows.split : count) : count;
+                const float ends = FxScreen::kPickTypesX + FxScreen::typesWidth(font, names, from, to);
+                int last = -1;
+                for (int x = FxScreen::kPickTypesX - 1; x <= right; ++x)
+                    if (inkIn(x, bands[b].first, x + 1, bands[b].second + 1) > 0) last = x;
+                CHECK(last >= ends - font.width("e") && last <= ends + 1.f); // its last word ends the row: no ", " after it
+                CHECK(inkIn(FxScreen::kPickTypesX - 1, bands[b].first, FxScreen::kPickTypesX + 3, bands[b].second + 1) > 0); // and it starts at the column
+            }
+            if (rows.rows == 2) {
+                ++twoRows;
+                CHECK(rows.set == &chosen.fixed() && bands.size() == 2 && bands[1].first > bands[0].second + 1); // two rows apart, at LARGE
+            }
+            // The one lit is in brass, and only it.
+            int brass = 0;
+            for (int y = lineTop; y < lineTop + FxScreen::kPickLineH; ++y)
+                for (int x = FxScreen::kPickTypesX; x <= right; ++x) brass += canvas.is(x, y, ui::kBrass) ? 1 : 0;
+            CHECK(brass > 6);
+            heldOneRow += rows.rows == 1 && rows.set != &chosen ? 1 : 0;
+
+            // THE TYPE ROW, on each type, held and not: in its room, "..." for those left out, the key in its own room.
+            // (Of a family with types to go to: one with one has no key, and its room goes to the edge.)
+            if (count < 2) continue;
+            const std::vector<std::string> big = upper(names);
+            const float room = FxScreen::typeRowRoom(chosen, count), roomEnd = FxScreen::typeRowX(chosen) + room;
+            const float keyX = FxScreen::kPaneX + FxScreen::kPaneW - 12.f - ui::keyWidth(chosen, "LEFT / RIGHT");
+            CHECK(roomEnd + 12.f <= keyX + 0.01f);
+            const int y0 = FxScreen::kTypeRowY - 6, y1 = FxScreen::kTypeRowY + static_cast<int>(chosen.small.capHeight()) + 7;
+            for (int at = 0; at < count; ++at) {
+                int from = 0, to = 0;
+                FxScreen::typesInView(chosen.small, big, at, room, &from, &to);
+                for (int held = 0; held < 2; ++held) {
+                    canvas.clear();
+                    FxScreen::drawTypeRow(canvas.r, chosen, big, at, held == 1);
+                    // Nothing past the room but the key, and the key only with A held.
+                    CHECK(inkIn(static_cast<int>(roomEnd) + 7, y0, static_cast<int>(keyX) - 1, y1) == 0);
+                    CHECK((inkIn(static_cast<int>(keyX), y0, FxScreen::kPaneX + FxScreen::kPaneW, y1) > 0) == (held == 1));
+                    // "..." where the rest are: at the left before the first in view, at the right after the last.
+                    float x = FxScreen::typeRowX(chosen);
+                    const float dots = chosen.small.width(FxScreen::kTypeMore);
+                    if (from > 0) {
+                        CHECK(inkIn(static_cast<int>(x), y0, static_cast<int>(x + dots) + 1, y1) > 0);
+                        cutLeft += held;
+                        x += dots + FxScreen::kTypeGapX;
+                    }
+                    for (int t = from; t < to; ++t) x += chosen.small.width(big[t].c_str()) + FxScreen::kTypeGapX;
+                    if (to < count) {
+                        CHECK(inkIn(static_cast<int>(x), y0, static_cast<int>(x + dots) + 1, y1) > 0);
+                        CHECK(x + dots <= roomEnd + 0.01f);
+                        cut += held;
+                    } else if (at != count - 1) {
+                        CHECK(inkIn(static_cast<int>(x) - 2, y0, static_cast<int>(roomEnd) + 7, y1) == 0); // nothing after the last
+                    }
+                }
+            }
+        }
+    }
+    std::printf("    the list of effects as drawn: %d lines in two rows, %d held at LARGE in one; the TYPE row cut %d times on the right, %d on the left\n", twoRows, heldOneRow, cut, cutLeft);
+    CHECK(twoRows >= 4 && heldOneRow >= 1 && cut >= 4 && cutLeft >= 4); // (each way of drawing was reached)
+}
 
 // What fits at LARGE and did not at XL, in states no still shows (a review found them): a
 // song's own name beside OPEN NOW > REVS, a wide track name beside its note on the SET page,
@@ -1726,6 +1926,12 @@ int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
     CHECK(screens().canvas.ok);
+    if (argc >= 2 && std::strcmp(argv[1], "--fx-list") == 0) { // just the list of effects (ctest runs everything)
+        testTheListOfEffectsHoldsTheLaterTypes();
+        testTheListOfEffectsAsDrawn();
+        std::printf(failures ? "%d check(s) failed\n" : "text size: the list of effects passed\n", failures);
+        return failures ? 1 : 0;
+    }
     if (argc >= 2 && std::strcmp(argv[1], "--bounce") == 0) { // just the SET page's bars (ctest runs everything)
         testTheBounceBarClearsItsWords();
         std::printf(failures ? "%d check(s) failed\n" : "text size: bounce bar passed\n", failures);
@@ -1747,6 +1953,8 @@ int main(int argc, char** argv) {
     testTheControlsSetup();
     testTheUpdateNotice();
     testTheFxScreen();
+    testTheListOfEffectsHoldsTheLaterTypes();
+    testTheListOfEffectsAsDrawn();
     testTheBounceBarClearsItsWords();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

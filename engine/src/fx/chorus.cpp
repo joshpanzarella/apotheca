@@ -209,7 +209,7 @@ Effect* create() { return new Chorus; }
 
 const EffectInfo kChorusInfo = {
     "CHORUS", 4, {"RATE", "DEPTH", "TYPE", "MIX"}, {0.4f, 0.5f, 0.f, 0.8f},
-    "chorus", EffectGroup::Moving, {0, 0, 4, 0}, reading, create, "thicker, wider",
+    "chorus", EffectFamily::Mod, {0, 0, 4, 0}, reading, create, "thicker, wider",
 };
 
 } // namespace fx

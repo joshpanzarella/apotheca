@@ -698,6 +698,8 @@ int main(int argc, char** argv) {
         //   fx-ping-bus PING on the ECHO bus, in the list; with --hold-a the bus's short list
         //   fx-spring   REVERB (SPRING) on the track and on the SPACE bus, on its DECAY
         //   fx-plate    PLATE in the track's second slot, its line in the list; with --hold-a its TYPE and the list
+        //   fx-family-N the last type of family N (1 FILTER ... 7 LEVEL) in the track's second slot, its line in the
+        //               list; with --hold-a the list of effects on that family's line, the type lit
         // Each also with --hold-a.
         Session& s = app.session();
         s.setEffect(0, 0, EffectKind::Tape);
@@ -743,6 +745,10 @@ int main(int argc, char** argv) {
             fx.goTo(FxScreen::kBusRow, 0);
         } else if (std::strcmp(view, "fx-plate") == 0) {
             s.setEffect(0, 1, EffectKind::Plate);
+            fx.goTo(1, 0);
+        } else if (std::strncmp(view, "fx-family-", 10) == 0) {
+            const EffectKind family = familyAt(std::atoi(view + 10));
+            s.setEffect(0, 1, effectTypeAt(family, effectTypes(family) - 1));
             fx.goTo(1, 0);
         } else if (std::strcmp(view, "fx-deleting") == 0) {
             // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).

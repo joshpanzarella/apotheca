@@ -165,7 +165,7 @@ Effect* create() { return new Comp; }
 
 const EffectInfo kCompInfo = {
     "COMP", 4, {"THRESHOLD", "RATIO", "SPEED", "MIX"}, {0.625f, 0.58f, 0.4f, 1.f},
-    "comp", EffectGroup::Level, {0, 6, 0, 0}, reading, create, "evens loud and quiet",
+    "comp", EffectFamily::Level, {0, 6, 0, 0}, reading, create, "evens loud and quiet",
 };
 
 } // namespace fx

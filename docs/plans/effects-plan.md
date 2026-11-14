@@ -820,3 +820,31 @@ number, word and sound; they only move under a family name.
 - Types that share no setting names (FILTER to EQ, COMP to SNAP) start from
   their usual values.
 - Order: after the pit stop audit, the colour themes and the mixer.
+
+**Built (2026-11-14, branch `families`):** the list is the seven families in
+this order, each line naming its types (the slot's lit), FILTER and CRUSH
+saying their words. Every effect today is a type: DRIVE (DRIVE, SATURATE),
+MOD (CHORUS), LEVEL (COMP, DUCK) beside DELAY and REVERB; the DIRT and
+MOVING groups are gone. Numbers, words and sounds unchanged (the pinned
+checksums and `everykind_main.inc` untouched). A later type is a row: its
+`EffectFamily`, its `type`, its place in `kList`. The list's line and the
+heading's TYPE row were measured against all fifteen planned names at every
+text size (`textsize_test`): MOD's five are held at LARGE at XL; the TYPE row
+shows as many as fit with "..." (six DELAYs at LARGE do not all fit). The
+FX page now goes down to the hints bar. Not built: the fifteen new types.
+
+**After review (2026-11-14):** the list's two rows, the TYPE row's "..." and
+the room it keeps for the LEFT / RIGHT key are now drawn in a test with the
+planned names and made-up longer ones, at every size, and read off the pixels
+(`textsize_test --fx-list`). Two things for the owner, not changed:
+- **Two rows say TYPE on one screen** for SATURATE and CHORUS: the heading's
+  TYPE row (DRIVE / SATURATE; CHORUS) above the effect's own TYPE setting
+  (SATURATE's curve, CHORUS's kind: CHORUS, VIBRATO...). On MOD it reads "TYPE CHORUS"
+  twice, two meanings. FILTER will do the same when COMB, VOWEL and EQ join.
+  Renaming the setting (CURVE, MODE) would change only what the screen says;
+  its number and the song file stay. The owner's call.
+- **STUTTER out of the ECHO bus's list is more than a row.** A bus's list is
+  a whole family, its type stepped with left / right; nothing in a row keeps
+  one type off a bus. If STUTTER is odd there, it needs a field in its row
+  that `effectTypes` / `effectTypeAt` honour on a bus (and the carry and the
+  bus's TYPE row with them).

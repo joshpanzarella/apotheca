@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (30) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -121,18 +121,23 @@ Where effects are, in the engine:
 The screen, the song file and `bench` pick it up from the table; the build
 takes every `.cpp` in `engine/src/fx/`. Nothing else is edited.
 
-**Adding a TYPE to a family** (PING to DELAY; SPRING, PLATE to REVERB) is
-adding an effect, with two more things in its row: `family` ("DELAY", spelled
-as the family's other rows spell it) and `type` ("PING"). Put it in `kList`
-beside the family's other types: they must be side by side, and the first
-is what the family goes in as. Name the settings it shares with the other
+**Every effect is a TYPE of one of seven families** (owner, 2026-11-13), so
+adding a TYPE (COMB to FILTER, FUZZ to DRIVE, BLOOM to REVERB) is adding an
+effect, nothing more. Its row names its `family` (`EffectFamily`: FILTER,
+DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL) and, where its name is not what
+the type is called, its `type` (DELAY's is "CLEAN"). Put it in `kList`
+beside the family's other types: the families in `EffectFamily`'s order,
+side by side (`effects_test` fails one out of place), and the first type is
+what the family goes in as. The list of effects names it on its family's
+line by itself. Name the settings it shares with the other
 types as they name them (TIME, FEEDBACK, MIX): changing TYPE carries a
 setting over **by its name**. If a shared setting is a choice whose choices
 differ (TIME), give the row an `amount` function, so a choice the other does
 not have goes to the nearest. `effects_test` checks every pair of every
-family by itself; nothing is listed there.
+family by itself; nothing is listed there. A type that shares no name with
+another (COMP and DUCK) starts at its usual values.
 
-**A delay or a reverb also goes on a send bus** (by its group: `effectBus`).
+**A delay or a reverb also goes on a send bus** (by its family: `effectBus`).
 Its `process()` must look at `Unit::bus_` and, when set, put out only what it
 adds (wet times MIX) and none of what came in. `effects_test` checks every
 effect in those two groups and fails one that does not.
@@ -198,21 +203,27 @@ effect in those two groups and fails one that does not.
   list (`kList`) is only what the player sees: change it freely. Never use
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
-  just be one of the delays"). The player sees DELAY with a TYPE (CLEAN,
-  TAPE, PING) and REVERB with a TYPE (ROOM, HALL, SPRING, PLATE); underneath each type is the
-  `EffectKind` it always was, with its number and its word (`delay`, `tape`,
-  `ping`, `reverb`, `hall`, `spring`, `plate`), and `info.name` is still its own ("TAPE": bench and the
-  tests use it). The screen asks `effectFamily`, `effectTypeName`,
-  `effectTypes` / `effectTypeAt` / `effectTypeIndex`, and picks from
-  `familyAt` / `familyPlace` (a line a family; `bus` gives a bus its own short
-  list). A song file is written as before: `app_test` holds a song with every
+  just be one of the delays"; 2026-11-13: seven families). The player picks
+  from FILTER (FILTER), DRIVE (DRIVE, SATURATE), CRUSH (CRUSH), MOD (CHORUS),
+  DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
+  DUCK), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
+  gone). Underneath each type is the `EffectKind` it always was, with its
+  number and its word, and `info.name` is still its own ("TAPE": bench and
+  the tests use it). Fifteen more types are planned (effects-plan.md, "Seven
+  families"); each is a row. The screen asks `effectFamily`,
+  `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
+  (the same, but "" where it is the family's own word: a line says FILTER,
+  not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
+  `effectTypeAt` / `effectTypeIndex`, and picks from `familyAt` /
+  `familyPlace` (a line a family; `bus` gives a bus its own short list). A
+  song file is written as before: `app_test` holds a song with every
   kind up to DUCK to what `main` wrote (`tests/everykind_main.inc`; do not
   remake it). An effect newer than that is not in it (`kKindsMainWrote`):
   `testSongFilesAreAsTheyWere` writes and reads each newer kind by its own word.
-  In the list of effects a family says its words and its types
-  (`effectFamilySays`: "echoes: clean, tape, ping") in at most
-  `kFamilySaysMost` (28) letters; REVERB's four types fill that, so it says
-  them alone ("room, hall, spring, plate"). A fifth type there needs shorter words.
+  In the list of effects a family's line names its types, the slot's lit
+  (`effectFamilyNamesTypes`: more than one, or one that is not the family's
+  word, MOD's CHORUS); FILTER and CRUSH say their words instead
+  (`effectFamilySays`, the first type's `says`).
 - **Changing TYPE carries settings by NAME, as they READ** (`effectCarry`,
   `effectCarryValue`): the value whose reading is the same text; if the new
   type cannot read it, the nearest (an amount by the number in its reading, a
@@ -458,6 +469,19 @@ effect in those two groups and fails one that does not.
     when the list was stepped through blind). Left / right is the TYPE
     (`changeEffectType`). The group jump is gone. On a setting, A + up / down
     turns it as before, and left / right do nothing.
+  - **The list of effects is eight lines, EMPTY and the seven families**
+    (`kPickLines`), each a family's name and, from `kPickTypesX`, its types
+    in small letters with ", " between ("clean, tape, ping"), the slot's type
+    in brass on the cursor's line. In one row at the size chosen if they fit
+    `kPickTypesRoom`, else held at LARGE (MOD's five planned at XL), else two
+    rows at LARGE (`pickRows`; no planned name needs it, made-up ones as long
+    as SATURATE do). `textsize_test` (`testTheListOfEffectsHoldsTheLaterTypes`)
+    holds the fifteen planned types to it at every size.
+  - **The heading's TYPE row shows as many types as fit** about the one the
+    slot is, "..." (`kTypeMore`) for the rest (`typesInView`, in the room the
+    row keeps for the LEFT / RIGHT key held or not). Today's all fit; six
+    planned DELAYs at LARGE do not. A family of one shows its type all the
+    same where it is not the family's word (MOD: TYPE CHORUS), with no key.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it
@@ -473,14 +497,26 @@ effect in those two groups and fails one that does not.
     the line is held at LARGE** (`FxScreen::lineFonts`: REVERB SPRING is 4
     pixels too long; at XL both are drawn at LARGE). Never close the gap up:
     at 2.9 REVERB SPRING read as one word (`app_test` counts the empty
-    columns). The tests ask the same function. A new type's name is checked
-    there at every size.
+    columns). A pair too long even with both small at LARGE is drawn as its
+    type alone, in the family's lettering (`typeAlone`: DRIVE SATURATE is 4
+    pixels over, and the line says SATURATE). The tests ask the same
+    function. A new type's name is checked there at every size.
+  - **The page goes down to `kPageBottom`** (449: 7 above the hints bar, as
+    its top is 7 under the top bar; owner, 2026-11-13: it stopped 40 short).
+    The same layout, taller: a line of the list is `kLineH` 41 (was 36), a
+    setting's row `kSetH` 74 (was 66), the heading `kHeadH` 93 (was 92), a
+    send's row `kSendH` 193 (was 128; its value, bar and purple line at
+    `kSendValueY`, `kSendBarY`, `kSendLineY`, the last two from its foot), a
+    line of the list of effects `kPickLineH` 38 (was 31). `fx_screen.hpp`
+    works each out from the foot and `static_assert`s that all four columns
+    end on it.
   - What is automated in the scene worked on has a purple line under its row
     and "moves with the pattern", and a purple line under its line of the
     list. WRITE itself is said by the top bar.
   - The places things are drawn are constants in `fx_screen.hpp`, so the
     tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
-    is this text drawn here in this colour).
+    is this text drawn here in this colour). `app_test --fx` runs just the FX
+    screen's tests (about 9 s).
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
@@ -1070,7 +1106,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined).
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), their fifteen new types not yet.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

@@ -16,7 +16,7 @@ namespace apotheca {
 
 namespace {
 
-const EffectInfo kNoneInfo = {"NONE", 0, {"", "", "", ""}, {0.f, 0.f, 0.f, 0.f}, "", EffectGroup::None, {0, 0, 0, 0}, nullptr, nullptr};
+const EffectInfo kNoneInfo = {"NONE", 0, {"", "", "", ""}, {0.f, 0.f, 0.f, 0.f}, "", EffectFamily::None, {0, 0, 0, 0}, nullptr, nullptr};
 
 // By number. A row's place here IS its EffectKind: append, never reorder.
 const EffectInfo* const kTable[kEffectKinds] = {
@@ -37,25 +37,26 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kPlateInfo,  // 14
 };
 
-// The order a player meets them in: the groups, the families in each, and the
-// types of a family side by side (the first is the one a family goes in as).
-// This order can change freely; nothing stores it.
+// The order a player meets them in: the families in EffectFamily's order, and
+// the types of each side by side (the first is the one a family goes in as).
+// This order can change freely; nothing stores it. (effects_test fails a list
+// whose families are out of that order or in two pieces.)
 const EffectKind kList[] = {
     EffectKind::None,
-    EffectKind::Filter,
-    EffectKind::Delay, // DELAY: CLEAN
-    EffectKind::Tape,  //        TAPE
-    EffectKind::Ping,  //        PING
-    EffectKind::Reverb, // REVERB: ROOM
-    EffectKind::Hall,   //         HALL
-    EffectKind::Spring, //         SPRING
-    EffectKind::Plate,  //         PLATE
-    EffectKind::Chorus,
-    EffectKind::Comp,
-    EffectKind::Duck,
-    EffectKind::Saturate,
-    EffectKind::Drive,
-    EffectKind::Crush,
+    EffectKind::Filter,   // FILTER: FILTER
+    EffectKind::Drive,    // DRIVE:  DRIVE
+    EffectKind::Saturate, //         SATURATE
+    EffectKind::Crush,    // CRUSH:  CRUSH
+    EffectKind::Chorus,   // MOD:    CHORUS
+    EffectKind::Delay,    // DELAY:  CLEAN
+    EffectKind::Tape,     //         TAPE
+    EffectKind::Ping,     //         PING
+    EffectKind::Reverb,   // REVERB: ROOM
+    EffectKind::Hall,     //         HALL
+    EffectKind::Spring,   //         SPRING
+    EffectKind::Plate,    //         PLATE
+    EffectKind::Comp,     // LEVEL:  COMP
+    EffectKind::Duck,     //         DUCK
 };
 constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
 
@@ -66,10 +67,10 @@ const EffectInfo& effectInfo(EffectKind kind) {
     return *kTable[index < 0 || index >= kEffectKinds ? 0 : index];
 }
 
-const char* effectGroupName(EffectGroup group) {
-    static const char* const names[static_cast<int>(EffectGroup::Count)] = {"", "FILTER", "DELAY", "REVERB", "MOVING", "LEVEL", "DIRT"};
-    const int index = static_cast<int>(group);
-    return names[index < 0 || index >= static_cast<int>(EffectGroup::Count) ? 0 : index];
+const char* effectFamilyName(EffectFamily family) {
+    static const char* const names[static_cast<int>(EffectFamily::Count)] = {"", "FILTER", "DRIVE", "CRUSH", "MOD", "DELAY", "REVERB", "LEVEL"};
+    const int index = static_cast<int>(family);
+    return names[index < 0 || index >= static_cast<int>(EffectFamily::Count) ? 0 : index];
 }
 
 int effectListSize() { return kListSize; }
@@ -96,9 +97,8 @@ namespace {
 // Two effects are one family when their rows name the same one.
 bool sameFamily(EffectKind a, EffectKind b) {
     if (a == b) return true;
-    const char* fa = effectInfo(a).family;
-    const char* fb = effectInfo(b).family;
-    return fa && fb && std::strcmp(fa, fb) == 0;
+    const EffectFamily family = effectInfo(a).family;
+    return family != EffectFamily::None && family == effectInfo(b).family;
 }
 
 // Where in kList a family starts: the place of its first type. -1: not in the list.
@@ -121,12 +121,21 @@ float numberIn(const std::string& text) { return std::strtof(text.c_str(), nullp
 
 const char* effectFamily(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);
-    return info.family ? info.family : info.name;
+    return info.family == EffectFamily::None ? info.name : effectFamilyName(info.family);
 }
 
 const char* effectTypeName(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);
-    return info.family && info.type ? info.type : "";
+    return info.family == EffectFamily::None ? "" : (info.type ? info.type : info.name);
+}
+
+const char* effectTypeShown(EffectKind kind) {
+    const char* type = effectTypeName(kind);
+    return std::strcmp(type, effectFamily(kind)) == 0 ? "" : type;
+}
+
+bool effectFamilyNamesTypes(EffectKind kind) {
+    return effectInfo(kind).family != EffectFamily::None && (effectTypes(kind) > 1 || effectTypeShown(kind)[0] != 0);
 }
 
 int effectTypes(EffectKind kind) {
@@ -169,22 +178,8 @@ int familyPlace(EffectKind kind, int bus) {
 
 void effectFamilySays(EffectKind kind, char* out, int size) {
     if (!out || size <= 0) return;
-    const int types = effectTypes(kind);
     const EffectKind first = effectTypeAt(kind, 0);
-    std::string says = kind == EffectKind::None || first == EffectKind::None ? "nothing here" : effectInfo(first).says;
-    if (types > 1) {
-        // Its types, in small letters: a new type is in the line without being written here.
-        std::string names;
-        for (int t = 0; t < types; ++t) {
-            if (t) names += ", ";
-            for (const char* c = effectTypeName(effectTypeAt(kind, t)); *c; ++c) names += static_cast<char>(*c >= 'A' && *c <= 'Z' ? *c - 'A' + 'a' : *c);
-        }
-        // The family's own words go first while the line fits the list (kFamilySaysMost letters); a family with
-        // more types than that has room for says its types alone (REVERB's four: "room, hall, spring, plate").
-        const bool both = !says.empty() && says.size() + 2 + names.size() <= static_cast<std::size_t>(kFamilySaysMost);
-        says = both ? says + ": " + names : names;
-    }
-    std::snprintf(out, static_cast<std::size_t>(size), "%s", says.c_str());
+    std::snprintf(out, static_cast<std::size_t>(size), "%s", kind == EffectKind::None || first == EffectKind::None ? "nothing here" : effectInfo(first).says);
 }
 
 int effectCarryFrom(EffectKind from, EffectKind to, int toIndex) {
@@ -275,8 +270,8 @@ void effectCarry(EffectKind from, EffectKind to, const float* was, bool onBus, f
 }
 
 int effectBus(EffectKind kind) {
-    const EffectGroup group = effectInfo(kind).group;
-    return group == EffectGroup::Delay ? 0 : (group == EffectGroup::Reverb ? 1 : -1);
+    const EffectFamily family = effectInfo(kind).family;
+    return family == EffectFamily::Delay ? 0 : (family == EffectFamily::Reverb ? 1 : -1);
 }
 
 int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck ? 0 : -1; }

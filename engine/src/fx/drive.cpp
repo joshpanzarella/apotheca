@@ -54,7 +54,7 @@ Effect* create() { return new Drive; }
 
 const EffectInfo kDriveInfo = {
     "DRIVE", 4, {"DRIVE", "TONE", "MIX", "OUTPUT"}, {0.35f, 0.7f, 1.f, 0.5f},
-    "drive", EffectGroup::Dirt, {0, 0, 0, 0}, reading, create, "hard edge",
+    "drive", EffectFamily::Drive, {0, 0, 0, 0}, reading, create, "hard edge",
 };
 
 } // namespace fx
