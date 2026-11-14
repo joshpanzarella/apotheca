@@ -284,7 +284,7 @@ Effect* create() { return new Saturate; }
 
 const EffectInfo kSaturateInfo = {
     "SATURATE", 4, {"DRIVE", "TYPE", "TONE", "MIX"}, {0.4f, 0.f, 0.8f, 1.f},
-    "saturate", EffectGroup::Dirt, {0, 4, 0, 0}, reading, create, "warm to hot",
+    "saturate", EffectFamily::Drive, {0, 4, 0, 0}, reading, create, "warm to hot",
 };
 
 Effect* makeSaturatePlain() { return new Saturate(false); }

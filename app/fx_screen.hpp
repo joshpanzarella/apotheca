@@ -13,8 +13,10 @@
 //           effect, its TYPE if it has types, what it is doing just now),
 //           then its settings as wide rows. For the SENDS line: the two sends.
 //
-// An effect is a FAMILY (apotheca/effects.hpp): DELAY has the types CLEAN and
-// TAPE, REVERB has ROOM and HALL. Nothing here spells an effect out.
+// An effect is a TYPE of one of seven FAMILIES (apotheca/effects.hpp): DELAY
+// has the types CLEAN, TAPE and PING, LEVEL has COMP and DUCK. The list of
+// effects (A held) is the families, each line naming its types. Nothing here
+// spells an effect out.
 //
 //   in the list      up / down: the next line (round the ends). Right: into
 //                    the line's settings, at the one last used there.
@@ -38,6 +40,9 @@
 
 #include "screen.hpp"
 #include <SDL.h>
+
+#include <string>
+#include <vector>
 
 #include "input.hpp"
 #include "session.hpp"
@@ -94,36 +99,72 @@ public:
     static constexpr int kRows = kTrackSlots + 1 + kBuses + kMasterSlots;
     static constexpr int kSendsRow = kTrackSlots, kBusRow = kSendsRow + 1, kMasterRow = kBusRow + kBuses;
 
-    // Where things are drawn (for the tests that read the screen).
-    static constexpr int kListX = 8, kListW = 200, kLineH = 36, kLineGap = 3;
-    static constexpr int kPaneX = 222, kPaneW = ui::kScreenW - 8 - kPaneX, kPaneY = 34, kHeadH = 92;
-    static constexpr int kSetY = kPaneY + kHeadH + 8, kSetH = 66, kSetGap = 6;  // a setting's row
+    // Where things are drawn (for the tests that read the screen). The page goes down to kPageBottom, 7 above
+    // the hints bar as its top is 7 under the top bar: the list's last line, the fourth setting, the second send
+    // and the full list of effects all end there (owner, 2026-11-13: it once stopped 40 short).
+    static constexpr int kPageBottom = ui::kScreenH - ui::kHintsH - 7;
+    static constexpr int kListX = 8, kListW = 200, kLineH = 41, kLineGap = 3;
+    static constexpr int kPaneX = 222, kPaneW = ui::kScreenW - 8 - kPaneX, kPaneY = 34, kHeadH = 93;
+    static constexpr int kSetY = kPaneY + kHeadH + 8, kSetGap = 6, kSetH = (kPageBottom - kSetY - 3 * kSetGap) / 4; // a setting's row
     static constexpr int kValueX = kPaneX + 12, kBarX = kPaneX + 168, kBarW = kPaneW - 168 - 14, kBarH = 10; // in it: the value, the bar
-    static constexpr int kSendY = kPaneY + 20, kSendH = 128, kSendGap = 8;       // a send's row
-    static constexpr int kPickY = kSetY - 2, kPickLineH = 31;                    // the list of effects
-    static constexpr int kPickNameX = kPaneX + 86, kPickSaysX = kPaneX + 200;
-    static int lineY(int row); // the top of a line in the list
+    static constexpr int kSendY = kPaneY + 20, kSendGap = 9, kSendH = (kPageBottom - kSendY - kSendGap) / 2; // a send's row
+    // In a send's row, down from its top: the value; the bar, the purple line and its words (these three from its foot).
+    static constexpr int kSendValueY = 40 + (kSendH - 128) / 2, kSendBarY = kSendH - 44, kSendLineY = kSendH - 24, kSendWordsY = kSendH - 18;
+    // The list of effects: a line a family, EMPTY first. The full list fills the box to the page's foot.
+    static constexpr int kPickY = kSetY - 2, kPickLines = 8, kPickLineH = (kPageBottom - kPickY) / kPickLines - 1;
+    static constexpr int kPickPad = (kPageBottom - kPickY - kPickLines * kPickLineH) / 2; // above the first line and under the last
+    static constexpr int kPickNameX = kPaneX + 12, kPickTypesX = kPaneX + 100; // in a line: the family; its types (or its words)
+    static constexpr int pickLineY(int place) { return kPickY + kPickPad + place * kPickLineH; }
+    static constexpr int lineY(int row) { // the top of a line in the list: three blocks, each under a heading
+        return 33 + 19 + row * (kLineH + kLineGap) + (row >= kBusRow ? 5 + 19 : 0) + (row >= kMasterRow ? 5 + 19 : 0);
+    }
     static constexpr int kNameX = kListX + 62, kMarkX = kListX + kListW - 12; // in a line: the effect's name; its level mark
     // In a line the type stands kTypeGap after its family. One that would then run into the mark at LARGE
     // (REVERB SPRING) keeps that gap and draws its family in the type's smaller lettering, at every size, to
     // end kNameClear short of the mark or sooner; where it does not fit (XL), the two are held at LARGE. (It
-    // once closed the gap up instead, to 2.9: REVERB SPRING then read as one word.) Which lettering, the gap,
-    // and whether the family is drawn small (the tests ask this too).
+    // once closed the gap up instead, to 2.9: REVERB SPRING then read as one word.) A pair too long even so,
+    // both small at LARGE (DRIVE SATURATE, 4 pixels over), is drawn as its type alone, in the family's
+    // lettering: `typeAlone`. Which lettering, the gap, and whether the family is drawn small (the tests ask
+    // this too).
     static constexpr int kTypeGap = 7, kNameClear = 3;
     static float nameEnd(EffectKind kind) { return static_cast<float>(kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0)); } // the mark, or the meter before it
-    static const Fonts& lineFonts(const Fonts& fonts, EffectKind kind, float* gap, bool* familySmall) {
+    static const Fonts& lineFonts(const Fonts& fonts, EffectKind kind, float* gap, bool* familySmall, bool* typeAlone = nullptr) {
         const char* family = effectFamily(kind);
-        const char* type = effectTypeName(kind);
+        const char* type = effectTypeShown(kind);
         const Fonts& large = fonts.fixed();
         *gap = static_cast<float>(kTypeGap);
         *familySmall = type[0] && kNameX + large.medium.width(family) + *gap + large.small.width(type) > nameEnd(kind);
         const auto fits = [&](const Fonts& set) {
             return kNameX + (*familySmall ? set.small : set.medium).width(family) + *gap + set.small.width(type) <= nameEnd(kind) - (*familySmall ? kNameClear : 0);
         };
+        const bool alone = type[0] && !fits(large);
+        if (typeAlone) *typeAlone = alone;
+        if (alone) return kNameX + fonts.medium.width(type) <= nameEnd(kind) - kNameClear ? fonts : large;
         return !type[0] || fits(fonts) ? fonts : large;
     }
     // The room a value has, in a setting's row and in a send's.
     static constexpr int kValueRoom = kBarX - kValueX - 8;
+
+    // A family's types on its line in the list of effects, as they are written there: "clean", "tape", "ping",
+    // with ", " between. In one row in the lettering chosen if they fit kPickTypesX to the box's right edge
+    // less 12; if not, held at LARGE; if not even then, in two rows at LARGE (`split`: the first of the
+    // second row). Asked with the names alone, so a test can try names no effect has yet.
+    struct PickRows {
+        const Fonts* set;
+        int rows, split;
+    };
+    static constexpr int kPickTypesRoom = kPaneX + kPaneW - 12 - kPickTypesX, kPickRowGap = 4;
+    static constexpr const char* kPickComma = ", ";
+    static float typesWidth(const Font& font, const std::vector<std::string>& names, int from, int to);
+    static PickRows pickRows(const Fonts& fonts, const std::vector<std::string>& names);
+    static std::vector<std::string> typeWords(EffectKind kind); // a family's types, small: {"clean", "tape", "ping"}
+    // The heading's TYPE row: its types 20 apart after "TYPE", the one it is on a plate. Those in view run from
+    // `from` to before `to`: all where they fit `room`; else as many as fit about the one at `at`, with
+    // kTypeMore standing for the rest at a cut end. The room is the same with A held or not (the key's is kept).
+    static constexpr float kTypeGapX = 20.f;
+    static constexpr const char* kTypeMore = "...";
+    static float typeRowRoom(const Fonts& fonts, int types);
+    static void typesInView(const Font& font, const std::vector<std::string>& names, int at, float room, int* from, int* to);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }
@@ -156,5 +197,11 @@ private:
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
 };
+
+// The page reaches its foot exactly: the list's last line, the fourth setting and the second send.
+static_assert(FxScreen::lineY(FxScreen::kRows - 1) + FxScreen::kLineH == FxScreen::kPageBottom, "the list ends at the page's foot");
+static_assert(FxScreen::kSetY + 4 * FxScreen::kSetH + 3 * FxScreen::kSetGap == FxScreen::kPageBottom, "the settings end at the page's foot");
+static_assert(FxScreen::kSendY + 2 * FxScreen::kSendH + FxScreen::kSendGap == FxScreen::kPageBottom, "the sends end at the page's foot");
+static_assert(FxScreen::kPickY + 2 * FxScreen::kPickPad + FxScreen::kPickLines * FxScreen::kPickLineH == FxScreen::kPageBottom, "the list of effects ends at the page's foot");
 
 } // namespace apotheca

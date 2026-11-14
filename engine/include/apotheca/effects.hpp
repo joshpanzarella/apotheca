@@ -24,12 +24,14 @@
 //
 // MIX at 0 is the sound untouched.
 //
-// FAMILIES AND TYPES. A player sees one effect called DELAY with a TYPE
-// (CLEAN, TAPE, PING) and one called REVERB with a TYPE (ROOM, HALL, SPRING, PLATE). Underneath
-// each type is its own effect, with its own number and its own word in a song
-// file, as it always was: a family is only how the list is shown. An effect
-// with no `family` in its row is a family of one and has no TYPE. A new type
-// is a new effect (fx/unit.hpp) whose row names the family and the type.
+// FAMILIES AND TYPES (owner, 2026-11-13). A player picks from seven families,
+// in this order, each with a TYPE: FILTER (FILTER), DRIVE (DRIVE, SATURATE),
+// CRUSH (CRUSH), MOD (CHORUS), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL,
+// SPRING, PLATE), LEVEL (COMP, DUCK). Underneath each type is its own effect,
+// with its own number and its own word in a song file, as it always was: a
+// family is only how the list is shown. A new type is a new effect
+// (fx/unit.hpp) whose row names its family and its type: nothing else is
+// edited for it.
 //
 // ONE TABLE. Everything the rest of the program needs to know about an
 // effect is in its EffectInfo: the screen, the song file and the engine read
@@ -49,10 +51,10 @@ enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */,
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
-// What sort of thing it is, for the list a player picks from (the list is in
-// groups). Nothing stores a group's number.
-enum class EffectGroup { None, Filter, Delay, Reverb, Moving, Level, Dirt, Count };
-const char* effectGroupName(EffectGroup group); // "FILTER", "MOVING"...; "" for None
+// The family an effect is a type of, in the order the list a player picks
+// from shows them. Nothing stores a family's number: reorder freely.
+enum class EffectFamily { None, Filter, Drive, Crush, Mod, Delay, Reverb, Level, Count };
+const char* effectFamilyName(EffectFamily family); // "FILTER", "MOD"...; "" for None
 
 struct EffectInfo {
     const char* name;                       // on the screen: "FILTER"
@@ -60,7 +62,7 @@ struct EffectInfo {
     const char* paramNames[kEffectParams];
     float defaults[kEffectParams];
     const char* word;                       // in a song file: "filter". One word, and it never changes once it ships
-    EffectGroup group;
+    EffectFamily family;                    // the family it is a type of
     int choices[kEffectParams];             // a setting that is a choice, not an amount: how many choices (0: an amount)
     // How a setting reads: "810 HZ", "1/8 DOT", "8 BITS". `all` is the
     // effect's settings together, for one whose reading depends on another
@@ -68,12 +70,11 @@ struct EffectInfo {
     // percentage. Use effectParamText(), which knows that.
     void (*reading)(int index, float value, const float* all, char* out, int size);
     Effect* (*create)();                    // a new one. Allocates: not for the audio thread. Use makeEffect()
-    // What it is in a few plain words, for the list a player picks from: "fewer bits".
-    // For the first type of a family, a word for the whole family: "echoes".
+    // What it is in a few plain words: "fewer bits". For the first type of a
+    // family, words for the whole family; the list a player picks from shows
+    // them for a family whose types it does not name (FILTER, CRUSH).
     const char* says = "";
-    // The family it is a type of, and what the type is called: "DELAY", "TAPE".
-    // Both nullptr: an effect with no types (a family of one, called by its name).
-    const char* family = nullptr;
+    // What the type is called: "TAPE", "CLEAN". nullptr: its name.
     const char* type = nullptr;
     // A setting as a real amount (TIME: how many steps), so that a setting two
     // types share by name can be matched when their choices differ. Not a
@@ -106,14 +107,22 @@ int effectMeterParam(EffectKind kind);
 constexpr float kMeterFullDb = 24.f; // what fills the box's width
 
 // ---- families and types ----
-// The family's name: "DELAY" for DELAY and for TAPE; an effect with no types: its own name.
+// The family's name: "DELAY" for DELAY and for TAPE; "NONE" for NONE.
 const char* effectFamily(EffectKind kind);
-// What the type is called: "TAPE"; "" for an effect with no types.
+// What the type is called: "TAPE", "CLEAN", "FILTER"; "" for NONE.
 const char* effectTypeName(EffectKind kind);
+// The type as it is written beside its family ("DELAY TAPE", "MOD CHORUS"):
+// "" where it is the family's own word (FILTER's FILTER, DRIVE's DRIVE).
+const char* effectTypeShown(EffectKind kind);
 // The types of an effect's family, in the list's order. One: there is no TYPE to change.
 int effectTypes(EffectKind kind);
 EffectKind effectTypeAt(EffectKind kind, int index); // None off either end
 int effectTypeIndex(EffectKind kind);                // which of them this one is
+// Whether the list a player picks from names the family's types on its line
+// (DELAY: clean, tape, ping; MOD: chorus), or says its words (FILTER: "low,
+// band, high, DJ"): its types are named when there is more than one, or when
+// the one is not called by the family's own word.
+bool effectFamilyNamesTypes(EffectKind kind);
 // The list a player picks from: one line a family, place 0 NONE. `bus` 0 or 1
 // gives a bus's own short list (NONE and the one family it may hold); anything
 // else the whole list. familyAt gives the family's first type; familyPlace
@@ -121,10 +130,7 @@ int effectTypeIndex(EffectKind kind);                // which of them this one i
 int familyListSize(int bus = -1);
 EffectKind familyAt(int place, int bus = -1);
 int familyPlace(EffectKind kind, int bus = -1);
-// A family in a few plain words: "fewer bits"; for one with types, its types: "echoes: clean, tape, ping".
-// Never more than kFamilySaysMost letters, what the list of effects has room for: where the family's words
-// and its types together are longer, its types alone ("room, hall, spring, plate").
-constexpr int kFamilySaysMost = 28;
+// A family in a few plain words, its first type's `says`: "fewer bits"; "nothing here" for NONE.
 void effectFamilySays(EffectKind kind, char* out, int size);
 
 // Changing TYPE keeps the settings the two types share BY NAME (TIME,
@@ -139,8 +145,8 @@ float effectCarryValue(EffectKind from, int fromIndex, EffectKind to, int toInde
 // All of them at once. `now` gets kEffectParams values: carried, or the default (on a bus, LEVEL's is full).
 void effectCarry(EffectKind from, EffectKind to, const float* was, bool onBus, float* now);
 
-// Which send bus an effect may sit on, by its group: 0 (ECHO) for a delay, 1
-// (SPACE) for a reverb, -1 for anything else. A new delay or reverb is
+// Which send bus an effect may sit on, by its family: 0 (ECHO) for a DELAY, 1
+// (SPACE) for a REVERB, -1 for anything else. A new delay or reverb is
 // offered on its bus without being added anywhere.
 int effectBus(EffectKind kind);
 // The setting named MIX, which on a bus reads LEVEL; -1 if it has none.

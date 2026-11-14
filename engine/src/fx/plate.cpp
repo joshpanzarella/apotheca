@@ -443,8 +443,8 @@ Effect* create() { return new Plate; }
 
 const EffectInfo kPlateInfo = {
     "PLATE", 4, {"PRE", "DECAY", "TONE", "MIX"}, {0.1f, 0.45f, 0.6f, 0.3f}, // 10 ms, 2.0 seconds
-    "plate", EffectGroup::Reverb, {0, 0, 0, 0}, reading, create,
-    "", "REVERB", "PLATE",
+    "plate", EffectFamily::Reverb, {0, 0, 0, 0}, reading, create,
+    "", "PLATE",
 };
 
 } // namespace fx

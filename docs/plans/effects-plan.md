@@ -820,3 +820,15 @@ number, word and sound; they only move under a family name.
 - Types that share no setting names (FILTER to EQ, COMP to SNAP) start from
   their usual values.
 - Order: after the pit stop audit, the colour themes and the mixer.
+
+**Built (2026-11-14, branch `families`):** the list is the seven families in
+this order, each line naming its types (the slot's lit), FILTER and CRUSH
+saying their words. Every effect today is a type: DRIVE (DRIVE, SATURATE),
+MOD (CHORUS), LEVEL (COMP, DUCK) beside DELAY and REVERB; the DIRT and
+MOVING groups are gone. Numbers, words and sounds unchanged (the pinned
+checksums and `everykind_main.inc` untouched). A later type is a row: its
+`EffectFamily`, its `type`, its place in `kList`. The list's line and the
+heading's TYPE row were measured against all fifteen planned names at every
+text size (`textsize_test`): MOD's five are held at LARGE at XL; the TYPE row
+shows as many as fit with "..." (six DELAYs at LARGE do not all fit). The
+FX page now goes down to the hints bar. Not built: the fifteen new types.

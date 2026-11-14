@@ -305,8 +305,8 @@ float tapeTireStep(float tire, float to, float sampleRate) {
 
 const EffectInfo kTapeInfo = {
     "TAPE", 4, {"TIME", "FEEDBACK", "AGE", "MIX"}, {0.5625f, 0.4f, 0.35f, 0.35f}, // a dotted eighth, 48%
-    "tape", EffectGroup::Delay, {kTimes, 0, 0, 0}, reading, create,
-    "", "DELAY", "TAPE", amount,
+    "tape", EffectFamily::Delay, {kTimes, 0, 0, 0}, reading, create,
+    "", "TAPE", amount,
 };
 
 } // namespace fx

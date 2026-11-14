@@ -62,12 +62,58 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     return true;
 }
 
-int FxScreen::lineY(int row) {
-    // Three blocks, each under a heading: the track's four lines, the buses' two, the master's two.
-    int y = 33 + 19 + row * (kLineH + kLineGap);
-    if (row >= kBusRow) y += 5 + 19;
-    if (row >= kMasterRow) y += 5 + 19;
-    return y;
+float FxScreen::typesWidth(const Font& font, const std::vector<std::string>& names, int from, int to) {
+    float w = 0.f;
+    for (int t = from; t < to; ++t) w += font.width(names[t].c_str()) + (t + 1 < to ? font.width(kPickComma) : 0.f);
+    return w;
+}
+
+FxScreen::PickRows FxScreen::pickRows(const Fonts& fonts, const std::vector<std::string>& names) {
+    const int count = static_cast<int>(names.size());
+    const float room = static_cast<float>(kPickTypesRoom);
+    if (typesWidth(fonts.small, names, 0, count) <= room) return {&fonts, 1, count};
+    const Fonts& large = fonts.fixed();
+    if (typesWidth(large.small, names, 0, count) <= room) return {&large, 1, count};
+    // Two rows: where the longer of the two is shortest.
+    int split = 1;
+    float best = -1.f;
+    for (int s = 1; s < count; ++s) {
+        const float a = typesWidth(large.small, names, 0, s), b = typesWidth(large.small, names, s, count), w = a > b ? a : b;
+        if (best < 0.f || w < best) best = w, split = s;
+    }
+    return {&large, 2, split};
+}
+
+float FxScreen::typeRowRoom(const Fonts& fonts, int types) {
+    const float end = kPaneX + kPaneW - 12.f - (types > 1 ? keyWidth(fonts, "LEFT / RIGHT") + 12.f : 0.f); // the key's room, held or not
+    return end - (kPaneX + 12.f + fonts.small.width("TYPE") + 12.f);
+}
+
+void FxScreen::typesInView(const Font& font, const std::vector<std::string>& names, int at, float room, int* from, int* to) {
+    const int count = static_cast<int>(names.size());
+    at = at < 0 ? 0 : (at >= count ? count - 1 : at);
+    const auto wide = [&](int a, int b) {
+        float w = (a > 0 ? font.width(kTypeMore) + kTypeGapX : 0.f) + (b < count ? font.width(kTypeMore) + kTypeGapX : 0.f);
+        for (int t = a; t < b; ++t) w += font.width(names[t].c_str()) + (t + 1 < b ? kTypeGapX : 0.f);
+        return w;
+    };
+    int a = at, b = count > 0 ? at + 1 : 0;
+    for (bool grew = true; grew;) {
+        grew = false;
+        if (b < count && wide(a, b + 1) <= room) ++b, grew = true;
+        if (a > 0 && wide(a - 1, b) <= room) --a, grew = true;
+    }
+    *from = a, *to = b;
+}
+
+std::vector<std::string> FxScreen::typeWords(EffectKind kind) {
+    std::vector<std::string> words;
+    for (int t = 0; t < effectTypes(kind); ++t) {
+        std::string word = effectTypeName(effectTypeAt(kind, t));
+        for (char& c : word) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+        words.push_back(word);
+    }
+    return words;
 }
 
 void FxScreen::goTo(int row, int column) {
@@ -366,12 +412,16 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 const char* family = effectFamily(kind);
                 // (A family and type too long for the line draw the family small too, or are held at LARGE together: lineFonts.)
                 float gap = 0.f;
-                bool familySmall = false;
-                const Fonts& set = lineFonts(fonts, kind, &gap, &familySmall);
+                bool familySmall = false, typeAlone = false;
+                const Fonts& set = lineFonts(fonts, kind, &gap, &familySmall, &typeAlone);
                 const Font& familyFont = familySmall ? set.small : set.medium;
                 const float setTy = y + (kLineH - set.small.capHeight()) / 2.f - 1.f, setMy = y + (kLineH - familyFont.capHeight()) / 2.f - 1.f;
-                familyFont.draw(r, static_cast<float>(kNameX), familySmall ? setTy + 1.f : setMy, family, kText);
-                set.small.draw(r, kNameX + familyFont.width(family) + gap, setTy + 1.f, effectTypeName(kind), kDim);
+                if (typeAlone) {
+                    set.medium.draw(r, static_cast<float>(kNameX), setMy, effectTypeShown(kind), kText); // (DRIVE SATURATE does not fit: SATURATE)
+                } else {
+                    familyFont.draw(r, static_cast<float>(kNameX), familySmall ? setTy + 1.f : setMy, family, kText);
+                    set.small.draw(r, kNameX + familyFont.width(family) + gap, setTy + 1.f, effectTypeShown(kind), kDim);
+                }
                 // The tiny mark: how much of it there is (its MIX, or a bus's LEVEL), and for one with
                 // a meter (COMP, DUCK) what it is doing just now, down from the top.
                 const int mh = kLineH - 14, top = y + 7, mix = effectMixParam(kind), track = trackOf(row);
@@ -410,16 +460,16 @@ void FxScreen::drawSends(SDL_Renderer* r, const Fonts& fonts) const {
         // Where it goes: what the bus holds just now.
         const EffectKind holds = static_cast<EffectKind>(project_.busEffects[b].kind);
         if (holds == EffectKind::None) std::snprintf(text, sizeof text, "the %s bus is EMPTY", b == 0 ? "ECHO" : "SPACE");
-        else std::snprintf(text, sizeof text, "to the %s bus: %s%s%s", b == 0 ? "ECHO" : "SPACE", effectFamily(holds), effectTypeName(holds)[0] ? ", " : "", effectTypeName(holds));
+        else std::snprintf(text, sizeof text, "to the %s bus: %s%s%s", b == 0 ? "ECHO" : "SPACE", effectFamily(holds), effectTypeShown(holds)[0] ? ", " : "", effectTypeShown(holds));
         fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, y + 12.f, text, kDim);
         // While the song plays an automated send shows where the pattern has it.
         const float shown = session_.automated(project_.track, lane, send(b));
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(shown * 100.f + 0.5f));
-        fonts.large.draw(r, kPaneX + 12.f, y + 40.f, text, cursor ? accent : kText);
-        wideBar(r, kPaneX + 12, y + 84, kPaneW - 24, 14, shown, 0, 0, cursor ? accent : kDim);
+        fonts.large.draw(r, kPaneX + 12.f, static_cast<float>(y + kSendValueY), text, cursor ? accent : kText);
+        wideBar(r, kPaneX + 12, y + kSendBarY, kPaneW - 24, 14, shown, 0, 0, cursor ? accent : kDim);
         if (session_.hasAutomation(project_.track, project_.scene, lane)) {
-            fill(r, kPaneX + 12, y + 104, kPaneW - 24, 2, kPurple);
-            fonts.small.draw(r, kPaneX + 12.f, y + 110.f, "moves with the pattern", kPurple);
+            fill(r, kPaneX + 12, y + kSendLineY, kPaneW - 24, 2, kPurple);
+            fonts.small.draw(r, kPaneX + 12.f, static_cast<float>(y + kSendWordsY), "moves with the pattern", kPurple);
         }
         if (cursor) outline(r, kPaneX - 1, y - 1, kPaneW + 2, kSendH + 2, accent, 2);
     }
@@ -452,14 +502,23 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.large.draw(r, kPaneX + 12.f, kPaneY + 30.f, empty ? "EMPTY" : effectFamily(kind), list ? kBrass : (empty ? kDim : kText));
     meterWords(kind, meterOf(row_), text, sizeof text);
     fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, kPaneY + 36.f, text, kBrass);
-    if (const int types = effectTypes(kind); types > 1) {
-        // Its types in a row; the one it is stands out.
+    if (const int types = effectTypes(kind); effectFamilyNamesTypes(kind)) {
+        // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.) As many
+        // as fit, about the one it is, "..." for the rest (six DELAYs at LARGE do not all fit beside the key).
         float tx = kPaneX + 12.f;
         const float ty = kPaneY + 64.f;
         fonts.small.draw(r, tx, ty, "TYPE", kDim);
         tx += fonts.small.width("TYPE") + 12.f;
-        for (int t = 0; t < types; ++t) {
-            const char* type = effectTypeName(effectTypeAt(kind, t));
+        std::vector<std::string> names;
+        for (int t = 0; t < types; ++t) names.push_back(effectTypeName(effectTypeAt(kind, t)));
+        int from = 0, to = types;
+        typesInView(fonts.small, names, effectTypeIndex(kind), typeRowRoom(fonts, types), &from, &to);
+        if (from > 0) {
+            fonts.small.draw(r, tx, ty, kTypeMore, kDim);
+            tx += fonts.small.width(kTypeMore) + kTypeGapX;
+        }
+        for (int t = from; t < to; ++t) {
+            const char* type = names[t].c_str();
             const float w = fonts.small.width(type);
             if (t == effectTypeIndex(kind)) {
                 fill(r, static_cast<int>(tx) - 6, static_cast<int>(ty) - 5, static_cast<int>(w) + 12, static_cast<int>(fonts.small.capHeight()) + 11, list ? kBrass : kText);
@@ -467,33 +526,51 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
             } else {
                 fonts.small.draw(r, tx, ty, type, kDim);
             }
-            tx += w + 20.f;
+            tx += w + kTypeGapX;
         }
+        if (to < types) fonts.small.draw(r, tx, ty, kTypeMore, kDim);
         // Which way gives another, while A is held.
-        if (list) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, "LEFT / RIGHT"), ty, "LEFT / RIGHT", kText);
+        if (list && types > 1) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, "LEFT / RIGHT"), ty, "LEFT / RIGHT", kText);
     }
     if (list) outline(r, kPaneX - 1, kPaneY - 1, kPaneW + 2, kHeadH + 2, kBrass, 2);
 
     if (list) {
-        // A held on the line: every effect it can hold is seen, not stepped through blind.
+        // A held on the line: every family it can hold is seen, not stepped through blind, each naming its types
+        // (the one in the slot lit), or for a family whose one type is its own word (FILTER), saying what it is.
         const int count = familyListSize(bus), at = familyPlace(kind, bus);
-        box(r, kPaneX, kPickY, kPaneW, kPickLineH * count + 8, kPanel, kLine);
-        EffectGroup group = EffectGroup::None;
+        box(r, kPaneX, kPickY, kPaneW, kPickLineH * count + 2 * kPickPad, kPanel, kLine);
         for (int i = 0; i < count; ++i) {
             const EffectKind family = familyAt(i, bus);
-            const int y = kPickY + 4 + i * kPickLineH;
-            const bool cursor = i == at, first = effectInfo(family).group != group;
-            group = effectInfo(family).group;
-            if (i > 0 && first) fill(r, kPaneX + 8, y, kPaneW - 16, 1, kLine);
+            const int y = pickLineY(i);
+            const bool cursor = i == at;
+            if (i > 0) fill(r, kPaneX + 8, y, kPaneW - 16, 1, kLine);
             if (cursor) {
                 fill(r, kPaneX + 2, y + 1, kPaneW - 4, kPickLineH - 1, kPanel2);
                 outline(r, kPaneX + 2, y + 1, kPaneW - 4, kPickLineH - 1, kBrass, 2);
             }
-            const float ty = y + (kPickLineH - fonts.small.capHeight()) / 2.f - 1.f, my = y + (kPickLineH - fonts.medium.capHeight()) / 2.f - 1.f;
-            if (first) fonts.small.draw(r, kPaneX + 12.f, ty, effectGroupName(group), kDim);
+            const float my = y + (kPickLineH - fonts.medium.capHeight()) / 2.f - 1.f;
             fonts.medium.draw(r, static_cast<float>(kPickNameX), my, i == 0 ? "EMPTY" : effectFamily(family), cursor ? kBrass : kText);
-            effectFamilySays(family, text, sizeof text);
-            fonts.small.draw(r, static_cast<float>(kPickSaysX), ty, text, kDim);
+            if (!effectFamilyNamesTypes(family)) {
+                effectFamilySays(family, text, sizeof text);
+                const Font& font = fonts.within(&Fonts::small, text, static_cast<float>(kPickTypesRoom));
+                font.draw(r, static_cast<float>(kPickTypesX), y + (kPickLineH - font.capHeight()) / 2.f - 1.f, text, kDim);
+                continue;
+            }
+            const std::vector<std::string> words = typeWords(family);
+            const PickRows rows = pickRows(fonts, words);
+            const Font& font = rows.set->small;
+            const float rowsH = rows.rows * font.capHeight() + (rows.rows - 1) * kPickRowGap;
+            float tx = static_cast<float>(kPickTypesX), ty = y + (kPickLineH - rowsH) / 2.f - 1.f;
+            for (int t = 0; t < static_cast<int>(words.size()); ++t) {
+                if (t == rows.split && t > 0) tx = static_cast<float>(kPickTypesX), ty += font.capHeight() + kPickRowGap;
+                const bool lit = cursor && t == effectTypeIndex(kind);
+                font.draw(r, tx, ty, words[t].c_str(), lit ? kBrass : kDim);
+                tx += font.width(words[t].c_str());
+                if (t + 1 < static_cast<int>(words.size()) && t + 1 != rows.split) {
+                    font.draw(r, tx, ty, kPickComma, kDim);
+                    tx += font.width(kPickComma);
+                }
+            }
         }
         return;
     }
