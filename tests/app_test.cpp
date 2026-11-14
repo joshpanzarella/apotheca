@@ -6907,9 +6907,6 @@ void testATrackDeletedOrChangedKeepsUndo() {
     }
 }
 
-// An undo of one hit sends the one track it changed. The others are compared as the song file
-// writes them: a keyboard's 90/127 or a setting written with WRITE on is not the number the text
-// reads back to the last bit, and each such track was sent whole and its values rounded.
 // From silence: a hit on track 0's lane 1, or a note on track 1 let go after 20000 frames. 150000 frames.
 std::vector<float> heardFromSilence(Rig& rig, bool note) {
     rig.render(500000); // every tail out first, and the buses at rest (ten seconds of nothing)
@@ -7075,6 +7072,82 @@ void testUndoCoversSounds() {
     CHECK(alike(windows(heardFromSilence(rig, false)), asReverb));
 }
 
+// What undo covers besides the patterns is compared as the song file writes it too (review,
+// 2026-11-14): a third read back from the step's text is 0.333332986, not 0.333333343, and an undo of
+// one hit rounded every such effect setting, send and macro and told the engine (a synth's whole
+// patch; the master and the buses on every undo). Now each is left alone, to the last bit.
+void testUndoLeavesWhatTheTextRounds() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    addPhazed(rig); // track 1
+    CHECK(session.addTrack(TrackKind::Phazed)); // track 2
+    rig.frames(60);
+    rig.render(512);
+    const float third = 1.f / 3.f;
+    session.setEffect(0, 0, EffectKind::Filter);
+    session.setEffectParam(0, 0, 0, third);
+    session.setSend(0, 0, third);
+    session.setEffect(kMasterTrack, 0, EffectKind::Filter);
+    session.setEffectParam(kMasterTrack, 0, 0, third);
+    session.setEffectParam(kEchoBus, 0, 0, third);
+    session.setSynthMacro(1, 2, third);
+    rig.frames(60);
+    rig.render(512);
+    placeAndSettle(rig, 0, 1, 0);
+    project.tracks[2].notes[0][0].notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
+    session.sendNotePattern(2, 0);
+    rig.frames(60);
+    rig.render(512);
+    const unsigned images = session.imagesSent();
+    CHECK(session.undo() && session.undo());
+    CHECK(project.tracks[0].drums[0][0].level[1][0] == 0.f && project.tracks[2].notes[0][0].notes[0].velocity == 0.f);
+    CHECK(session.imagesSent() - images == 2);
+    CHECK(project.tracks[0].effects[0].param[0] == third); // to the last bit: not read back from the text
+    CHECK(project.tracks[0].send[0] == third);
+    CHECK(project.masterEffects[0].param[0] == third);
+    CHECK(project.busEffects[0].param[0] == third);
+    CHECK(project.tracks[1].macro[2] == third);
+    // ...and a value that did change is still put back (as the text holds it).
+    session.setSynthMacro(1, 2, 0.9f);
+    session.setEffectParam(kMasterTrack, 0, 0, 0.9f);
+    rig.frames(60);
+    CHECK(session.undo() && std::fabs(project.tracks[1].macro[2] - third) < 1e-6f && std::fabs(project.masterEffects[0].param[0] - third) < 1e-6f);
+}
+
+// A bus's effect or LEVEL changed by itself is a step of undo, and a Sampler track's settings are
+// one too, put back on undo and on redo (the review's surviving mutants: each shared a burst with
+// something else, or was not tried).
+void testUndoCoversABusAndASampler() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    rig.frames(60);
+    rig.render(512);
+    const int steps = session.undoSteps();
+    session.setEffectParam(kEchoBus, 0, 3, 0.4f); // the ECHO bus's LEVEL, alone
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    const int kind = project.busEffects[1].kind;
+    session.setEffect(kSpaceBus, 0, EffectKind::None); // the SPACE bus emptied, alone
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 2);
+    const int was = project.tracks[1].sampler[sampler::Tune];
+    session.setSamplerSetting(1, sampler::Tune, was + 37);
+    session.setSamplerSetting(1, sampler::Level, 20);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 3);
+    CHECK(session.undo() && project.tracks[1].sampler[sampler::Tune] == was && project.tracks[1].sampler[sampler::Level] == sampler::settingDefault(sampler::Level));
+    CHECK(session.undo() && project.busEffects[1].kind == kind && kind != 0);
+    CHECK(session.undo() && project.busEffects[0].param[3] == 1.f && session.undoSteps() == steps);
+    CHECK(session.redo() && session.redo() && session.redo());
+    CHECK(project.busEffects[0].param[3] == 0.4f && project.busEffects[1].kind == 0 && project.tracks[1].sampler[sampler::Tune] == was + 37 && project.tracks[1].sampler[sampler::Level] == 20);
+}
+
+// An undo of one hit sends the one track it changed. The others are compared as the song file
+// writes them: a keyboard's 90/127 or a setting written with WRITE on is not the number the text
+// reads back to the last bit, and each such track was sent whole and its values rounded.
 void testUndoSendsOnlyTheTrackItChanged() {
     Rig rig;
     Session& session = rig.app.session();
@@ -7591,6 +7664,8 @@ int main(int argc, char** argv) {
         testNextSceneTakenBackReadsTheStepWhole();
         testUndoIsAsItWasReadWhole();
         testUndoCoversSounds();
+        testUndoLeavesWhatTheTextRounds();
+        testUndoCoversABusAndASampler();
         if (failures == 0) std::printf("app tests passed (undo kept only)\n");
         return failures == 0 ? 0 : 1;
     }
@@ -7610,6 +7685,8 @@ int main(int argc, char** argv) {
     testNextSceneTakenBackReadsTheStepWhole();
     testUndoIsAsItWasReadWhole();
     testUndoCoversSounds();
+    testUndoLeavesWhatTheTextRounds();
+    testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();
