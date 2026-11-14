@@ -1218,6 +1218,41 @@ static void testTrashThatDoesNotFitWaits() {
     CHECK(engine->trashLost() == 0);
 }
 
+// Every command lost to a full queue is counted (dropped()), the ones that hand
+// over a recording or an effect too: the app sends the whole song again only
+// when that count moves, so a loss it cannot see is never mended.
+static void testEveryLostCommandIsCounted() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Sampler));
+    renderFrames(*engine, 64);
+    while (engine->send(make(Command::SetTempo, 0, 0, 0, 120.f))) {
+    }
+    CHECK(engine->dropped() == 1);
+    CHECK(!engine->setLaneSample(0, KICK, steadySample(16, 0.5f)));
+    CHECK(engine->dropped() == 2);
+    CHECK(!engine->setTrackSample(1, steadySample(16, 0.5f)));
+    CHECK(engine->dropped() == 3);
+    CHECK(!engine->setEffect(0, 0, EffectKind::Tape));
+    CHECK(engine->dropped() == 4);
+    CHECK(!engine->setEffect(kEchoBus, 0, EffectKind::Tape));
+    CHECK(engine->dropped() == 5);
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+
+    // Room for the effect but not for the settings it starts at: those are counted too.
+    std::unique_ptr<Engine> other(new Engine);
+    int room = 0;
+    while (other->send(make(Command::SetTempo, 0, 0, 0, 120.f))) ++room;
+    renderFrames(*other, 64);
+    const unsigned before = other->dropped();
+    for (int i = 0; i < room - 1; ++i) other->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    CHECK(other->dropped() == before);
+    CHECK(other->setEffect(0, 0, EffectKind::Tape));
+    CHECK(other->dropped() == before + static_cast<unsigned>(effectInfo(EffectKind::Tape).params));
+    renderFrames(*other, 64);
+    other->collectGarbage();
+}
+
 // ---- recordings on drum lanes ---------------------------------------------------------
 
 // A recording that is easy to measure: steady at `first` for its first half,
@@ -3158,6 +3193,7 @@ int main() {
     testBadCommandsAreIgnored();
     testOpeningASongDropsEveryOldInstrument();
     testTrashThatDoesNotFitWaits();
+    testEveryLostCommandIsCounted();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

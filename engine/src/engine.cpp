@@ -129,7 +129,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.a = slot;
     c.b = busOfTrack(track) >= 0 ? effectMixParam(kind) : -1; // on a bus: which setting is its LEVEL (the engine's to apply)
     c.pointer = effect.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     effect.release(); // the audio thread hands the old one back through the trash
     // Its settings as it starts, said out loud: automation needs to know where each knob rests.
     if (validTrack(track) && kind != EffectKind::None) {
@@ -140,7 +140,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
         for (int i = 0; i < effectInfo(kind).params; ++i) {
             p.b = i;
             p.value = effectInfo(kind).defaults[i];
-            commands_.push(p);
+            send(p); // a loss here is counted too: where the knobs rest would be unknown
         }
     }
     return true;
@@ -152,7 +152,7 @@ bool Engine::setTrackSample(int track, std::unique_ptr<SampleData> sample) {
     c.type = Command::SetTrackSample;
     c.track = track;
     c.pointer = sample.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release();
     return true;
 }
@@ -164,7 +164,7 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
     c.track = track;
     c.a = lane;
     c.pointer = sample.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release(); // the audio thread hands the old one back through the trash
     return true;
 }

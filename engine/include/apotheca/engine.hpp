@@ -291,12 +291,15 @@ public:
     // It does not click: the sound slides from what was in the slot to what
     // is there now over kSwapFadeSeconds, and the old one's tail goes with it.
     // Its settings are then SetEffectParam, each 0..1 (see effects.hpp).
+    // A full queue is counted in dropped(), for the starting settings too (so
+    // true can still mean those were lost; dropped() says, and the app resends).
     bool setEffect(int track, int slot, EffectKind kind);
     // Put a recording on one lane of a drum track in place of the built-in
-    // drum, or nullptr to bring the drum back. False if the track has no drums.
+    // drum, or nullptr to bring the drum back. False if the track has no drums,
+    // or the queue is full (counted in dropped(), as every lost command is).
     bool setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample);
     // Give a synth track's instrument a recording to play (the sampler), or
-    // nullptr to take it away. False if the track has no synth.
+    // nullptr to take it away. False if the track has no synth, or the queue is full (counted).
     bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.

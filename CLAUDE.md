@@ -218,7 +218,9 @@ effect in those two groups and fails one that does not.
 - **Commands go through a queue that can fill.** `Engine::send` returns false
   and counts the loss (`dropped()`). `Session::update` notices and sends the
   whole song again (`applyProject`). Callers that hand over a pointer must
-  check the return themselves.
+  check the return themselves. **Every push goes through `send()`**, the
+  ones that carry a recording or an effect too: a loss it does not count is
+  never mended.
 - **A test that never renders never empties the queue.** Render alongside
   frames (`rig.frames(n); rig.render(...)`), or commands pile up and drop.
 - **Helper threads** (`useWorkers`): tracks are rendered side by side and
