@@ -3,6 +3,7 @@
 
 #include <SDL.h>
 
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -948,6 +949,26 @@ void testHugeNumbersAreHeldToTheirLimits() {
     CHECK(song->tracks[2].sampler[0] == sampler::settingMax(0) && song->tracks[2].sampler[1] == sampler::settingMin(1));
 }
 
+// parseSong runs on the WiFi server's thread too (every song sent is checked), and in undo. It
+// keeps a TrackData (821 KB) off the stack: with one there it took a megabyte, and a thread with
+// a smaller stack than glibc's eight megabytes crashed. Here it reads a song on a 256 KB stack.
+void* readOnASmallStack(void* text) {
+    std::unique_ptr<Project> song(new Project);
+    const bool read = parseSong(*static_cast<const std::string*>(text), *song) && song->trackCount() == 3 && song->tempo == 99.f;
+    return read ? text : nullptr;
+}
+void testParseSongOnASmallStack() {
+    const std::string text = "apotheca-song 1\ntempo 99\ntrack drums\nscene 1\nhit 1 1 0.8\ntrack phazed\nscene 1\nnote 1 60 1 0.8\ntrack sampler\n";
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    CHECK(pthread_attr_setstacksize(&attr, 256 * 1024) == 0);
+    pthread_t thread;
+    void* result = nullptr;
+    CHECK(pthread_create(&thread, &attr, readOnASmallStack, const_cast<std::string*>(&text)) == 0 && pthread_join(thread, &result) == 0);
+    CHECK(result == &text);
+    pthread_attr_destroy(&attr);
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -961,6 +982,7 @@ int main(int, char**) {
     testADeletedSongIsNeverWrittenOver();
     testWindowsLineEnds();
     testHugeNumbersAreHeldToTheirLimits();
+    testParseSongOnASmallStack();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

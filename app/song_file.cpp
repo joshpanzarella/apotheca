@@ -276,7 +276,8 @@ bool parseSong(const std::string& text, Project& project) {
     if (!std::getline(lines, line) || line.compare(0, 13, "apotheca-song") != 0) return false;
 
     std::unique_ptr<Project> song(new Project);
-    song->tracks[0] = TrackData(); // no tracks until the file names them
+    const std::unique_ptr<const TrackData> blank(new TrackData); // a track as new (821 KB: never on the stack)
+    song->tracks[0] = *blank; // no tracks until the file names them
     int count = 0, scene = -1, bar = 0;
     int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
     for (int& n : oldSteps) n = kSteps;
@@ -334,7 +335,7 @@ bool parseSong(const std::string& text, Project& project) {
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
             track = &song->tracks[count++];
-            *track = TrackData();
+            *track = *blank;
             track->kind = k;
             if (const SynthSpec* spec = specFor(k)) spec->loadPreset(*track, 0);
         } else if (!track) {
