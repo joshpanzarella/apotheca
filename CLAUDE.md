@@ -206,13 +206,13 @@ effect in those two groups and fails one that does not.
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
-  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING), MOD (CHORUS),
+  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS),
   DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
-  DUCK), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
+  DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
   the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
-  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ and RING are built (branch `newfx`). The screen asks `effectFamily`,
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
@@ -427,7 +427,7 @@ effect in those two groups and fails one that does not.
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it three ways: on the row `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a
+  it three ways: on the row `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT; LIMITER: GAIN), as a
   strip under the bar from the right, full at `kMeterFullDb` (24); in words in
   the heading (`FxScreen::meterWords`: TURNING DOWN 7 DB, DIPPING 3 DB); and
   as a brass mark on the effect's line of the list.
@@ -466,6 +466,20 @@ effect in those two groups and fails one that does not.
   `Halfband::late` first, except at MIX 0 exactly; FOLD and FUZZ do the same
   through `BendSide::plain` (`fx/bend.hpp`). Test a new effect's
   response at MIX 50%, not only at 0 and 100%.
+- **An effect that is late by design has no MIX** (LIMITER: always exactly
+  3 ms late, `kLookSeconds`, 144 samples at 48 kHz; a MIX would lay the plain
+  sound 3 ms early under it). Its "untouched" is the sound as it came in, 3 ms
+  later, to the bit (`testLimiter`, `engine_test`); `holdsTheRules` skips its
+  MIX-0 check. **On a track it puts that track 3 ms behind the others**: it is
+  meant for the master, where everything is late alike. A swap into or out of
+  it lays the sine over itself 3 ms apart for the fade (2.10 of a step,
+  allowed 2.3 in `testSwapFade`).
+- **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
+  end, everything the samples change copied in, worked on, copied back).
+  Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
+  same arithmetic on locals, 0.15% (the compiler cannot keep members in
+  registers across the writes to the block). A new effect over about 0.15%
+  is looked at this way before it is called costly.
 - **A new effect glides every setting** (`fx::Glide` in `fx/glide.hpp`, the one such helper): a
   turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
   is still the sound untouched to the sample. The first block after it is
@@ -1257,6 +1271,8 @@ effect in those two groups and fails one that does not.
 | ...each with a setting turned all the while (PITCH, VOWEL, MID FREQ: worked out again every 16 samples) | 0.08 to 0.10% / 0.13% / 0.10% |
 | FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches) | 0.23 to 0.24% / 0.17 to 0.18% / 0.04% |
 | ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.32 to 0.33% / 0.21 to 0.22% / 0.04% (0.06% in one run); 0.04% |
+| WEAR / LIMITER / SNAP (2026-11-14, three runs: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.10%, RING 0.03% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% / 0.08% |
+| ...WEAR at DIRT 100%, or its WOW turned all the while; LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
@@ -1275,7 +1291,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ and RING are built (branch `newfx`).
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`).
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

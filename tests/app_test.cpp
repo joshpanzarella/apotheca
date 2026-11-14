@@ -3980,7 +3980,8 @@ static bool inked(const Canvas& canvas, Canvas& scratch, int size, float x, floa
 void testTheFxScreenShowsCompAtWork() {
     CHECK(effectMeterParam(EffectKind::Comp) == 0 && std::string(effectInfo(EffectKind::Comp).paramNames[0]) == "THRESHOLD");
     for (int k = 0; k < kEffectKinds; ++k)
-        if (static_cast<EffectKind>(k) != EffectKind::Comp && static_cast<EffectKind>(k) != EffectKind::Duck) CHECK(effectMeterParam(static_cast<EffectKind>(k)) == -1);
+        if (static_cast<EffectKind>(k) != EffectKind::Comp && static_cast<EffectKind>(k) != EffectKind::Duck && static_cast<EffectKind>(k) != EffectKind::Limiter) CHECK(effectMeterParam(static_cast<EffectKind>(k)) == -1);
+    CHECK(effectMeterParam(EffectKind::Limiter) == 0 && std::string(effectInfo(EffectKind::Limiter).paramNames[0]) == "GAIN"); // LIMITER: how far it is turning down, on GAIN
     CHECK(effectMeterParam(EffectKind::Duck) == 0 && std::string(effectInfo(EffectKind::Duck).paramNames[0]) == "AMOUNT"); // DUCK: how far it is dipping, on AMOUNT
     CHECK(kMeterFullDb == 24.f);
     CHECK(FxScreen::meterPixels(0.f, 108) == 0 && FxScreen::meterPixels(-3.f, 108) == 0 && FxScreen::meterPixels(std::nanf(""), 108) == 0);
@@ -4695,11 +4696,12 @@ void testTheFxScreensList() {
     rig.tap(DOWN);
     rig.tap(LEFT); // (COMP is LEVEL's first type: that end too)
     CHECK(kindNow() == EffectKind::Comp);
-    rig.tap(RIGHT); // DUCK, and at the other end it stops
-    rig.tap(RIGHT);
-    CHECK(kindNow() == EffectKind::Duck);
+    rig.tap(RIGHT, 4); // DUCK, LIMITER, SNAP, and at the other end it stops
+    CHECK(kindNow() == EffectKind::Snap);
     rig.tap(LEFT);
-    CHECK(kindNow() == EffectKind::Comp && fx.onLine(0).param[0] == effectDefault(EffectKind::Comp, 0)); // (no setting shared: its usual values)
+    CHECK(kindNow() == EffectKind::Limiter && fx.onLine(0).param[0] == effectDefault(EffectKind::Limiter, 0)); // (nothing shared with COMP: its usual values)
+    rig.tap(LEFT, 2);
+    CHECK(kindNow() == EffectKind::Comp && fx.onLine(0).param[0] == effectDefault(EffectKind::Comp, 0));
     // A held D-pad steps through the list slowly enough to see each one: five a second.
     rig.tap(UP, familyListSize());
     CHECK(kindNow() == EffectKind::None);
@@ -5287,7 +5289,7 @@ void testFxTextsFit() {
         bool familySmall = false;
         bool typeAlone = true;
         CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall, &typeAlone) == &fonts && gap == 7.f);
-        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate)); // the others as they were
+        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more)
         CHECK(typeAlone == (kind == EffectKind::Saturate)); // DRIVE SATURATE, both small, is 4 pixels too long: SATURATE alone
         const float nameEnds = typeAlone ? F::kNameX + fonts.medium.width(effectTypeShown(kind))
                                          : F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeShown(kind)[0] ? gap + fonts.small.width(effectTypeShown(kind)) : 0.f);

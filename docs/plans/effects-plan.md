@@ -921,3 +921,59 @@ Numbers 18, 19, 20; words `fold`, `fuzz`, `ring`; in the list after SATURATE
 | FOLD | the folder by itself; a 220 Hz sine's harmonics 10 to 40 against SATURATE's FOLD; SYMMETRY's 2nd harmonic; the reference sine's level; 4186 Hz's fold-back; 12 kHz at MIX 50% | the table to 1e-5, no corner; 40 dB more than SATURATE's at every push; under -90 dB at 0, over -30 off it; within -1 / +0.5 dB everywhere; 40 dB under the strongest harmonic; within 0.5 dB of MIX 100% |
 | FUZZ | the clip by itself; a 220 Hz sine's harmonics at four FUZZ; the reference sine at FUZZ 35 to 100% and every TONE; TONE on quiet sines; a dying note at three GATEs; 12 kHz at MIX 50% | 2nd over -35 dB at 35%; within -3.5 / +0.6 dB; a scoop of 3 dB at 1 kHz, 15 dB from end to end; GATE ends it 0.3 s and more sooner; in step to 0.3 dB |
 | RING | the carrier at every place and pitch; 1 kHz by 300 Hz; what folds back of a 2.9 kHz carrier; SPREAD at 2 Hz; a click after silence; WAVE changed twice in 2 ms | never past 1; 0.25 at 700 and 1300 Hz (SQUARE 4/pi of it), nothing at 1 kHz; SINE -62, TRIANGLE -35, SQUARE -28 dB; the right is the left 1/8 s later; the click whole every time; SQUARE's own sound after 30 ms, to the bit |
+
+**Batch b3 built (2026-11-14, branch `newfx`): CRUSH's WEAR, LEVEL's LIMITER and SNAP.**
+Numbers 21, 22, 23; words `wear`, `limiter`, `snap`; in the list after RING
+(WEAR) and after DUCK (LIMITER, SNAP). In the list of effects LEVEL LIMITER
+is drawn with its family small, as REVERB SPRING is (its meter's mark keeps
+7 pixels more).
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.10% in the same runs) |
+| --- | --- | --- | --- |
+| WEAR | an old tape or a worn record: the pitch sways, hiss and crackle ride on the sound, now and then it drops away, the top and the bottom worn off | WOW (a 0.55 Hz sway, a 6.3 Hz flutter and a drift that never repeats: 31 cents at most at 100%), DIRT (hiss 23 dB under the sound and about 25 crackles a second at 100%; both ride on the sound and fade 0.15 s after it), DROPS (the chance a 40 ms piece sinks 6 to 24 dB: about one in three at 100%), TONE (the top from 20 kHz to 2.5 kHz, the bottom thinned to 150 Hz). No MIX | 0.15 to 0.16% (0.40% before its loop worked on locals); the same at DIRT 100% and with WOW turning |
+| LIMITER | a hard top: nothing comes out over the CEILING, seen 3 ms ahead and turned down before it gets there; always exactly 3 ms late | GAIN (0 to +20 dB), CEILING (-10 to 0 dB, usual -2 dB: the engine's soft ceiling, from 0.8, then never acts), RELEASE (DUCK's, 20 ms to 1 s, carried to the bit). No MIX. Its meter on GAIN, as COMP's | 0.05%; 0.12 to 0.13% at +20 dB |
+| SNAP | a transient shaper: more or less of each hit's start, more or less of its tail, whatever its level | ATTACK (-100 to +100%: about +12 / -13 dB in a hit's first ms, gone by 30 ms), SUSTAIN (-100 to +100%: about 6 dB on a tail 100 to 250 ms in), MIX (COMP's, carried) | 0.08% (ATTACK turning the same) |
+
+- **Why these settings.** WEAR has no MIX: its swaying sound laid under the
+  plain one is a flanger, not wear; every setting at 0 is the sound untouched,
+  to the bit. TONE is how worn (the top and the bottom together), one knob for
+  "age". LIMITER has no MIX for the same reason as its lateness: a limiter
+  under the plain sound lets every peak through. CEILING got the third place
+  the plan left "if room". SNAP is the plan's three: two knobs and a blend is
+  what a transient designer has.
+- **Nothing overlaps an existing choice.** TAPE's AGE sways and dulls the
+  ECHOES only; WEAR is an insert on the sound itself, with dirt and dropouts.
+  COMP at 20:1 still lets each hit's first milliseconds through (1 ms at its
+  fastest, no look ahead) and is over the top on every hit; LIMITER is never
+  over by a sample. SNAP listens to how the sound moves, not how loud it is:
+  a hit 40 dB down is shaped exactly as a loud one (testSnap), and a steady
+  note is left alone (within 0.25 dB).
+- **For the owner:**
+  - **LIMITER on a track makes that track 3 ms late** against the rest (no
+    lateness is made up anywhere in the engine). On the master all is late
+    alike, which is what it is for.
+  - WEAR's dice are rolled by the count of samples since it woke; it sleeps
+    after 4 s of nothing (as RING). Hits further apart than that each start
+    the dice afresh, so each hears the same crackles and dropouts at the same
+    places. Closer hits hear new ones.
+  - WEAR's hiss and crackle follow the sound's level: a quiet passage has
+    quiet hiss, and silence none (tape through a noise gate, not a tape left
+    running). Rule: silence in, silence out.
+  - SNAP at full ATTACK or SUSTAIN bends a steady 100 Hz bass a little
+    (harmonics -33 dB of it): its followers ripple at twice the note.
+- Stills: `fx-kind-wear`, `fx-kind-limiter`, `fx-kind-snap` (each with
+  `--hold-a`, and `-N` on a setting).
+- Mutants: 53 tried, 48 killed. Survivors, each looked at: LIMITER's hold one
+  sample short and its average one sample short (the last-word clip on the
+  ceiling catches the one-sample overshoot, to the bit; the second is the
+  same guarantee), its running sum not put back to 0 when nothing is turned
+  down (the sum of these floats is exact in a double: kept as a guard);
+  SNAP's followers snapped under 1e-20 (it sleeps at 1e-12 first) and its
+  sleep not waiting for a tick of nothing (a sound under 1e-12 comes out as
+  it went in either way).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| WEAR | a 1 kHz sine's pitch at WOW 100%, 30%, 0 and 1%; its flutter, sway and drift; DIRT on a sine: the dirt's level, crackles counted, half a second after, under 300 Hz; dropouts counted in 40 ms pieces at DROPS 100%, 20%, 0; TONE at 10 kHz, 1 kHz, 40 Hz; hits 2 s apart with zeros or faint noise between, and 4.5 s apart; a click with no DIRT | 20 to 45 cents, the mean within 1, 30% a fifth to two fifths of it, 0 none; as smooth as the sine; flutter 1.5 to 5 cents rms, sway over 6, drift over 3; -26 to -12 dB, 8 to 20 a second, 20 dB further down, under 0.08; 80 to 200, 1 to 15, 0, no step over the sine's; under -12 dB, over -2, under -3; new dice near, the same far, the two 1e-4 apart; nothing too small |
+| LIMITER | noise through at GAIN 0, CEILING 0, at 48, 44.1 and 96 kHz; noise, clicks and a sweep at +20 dB at four ceilings and two RELEASEs; a click on a quiet sine; a 100 Hz sine 12 dB in at three RELEASEs; the meter; the time back from 12 dB down; a loud side; a quiet sine after a loud second with zeros or faint noise between | exactly 3 ms late, to the bit; never over the ceiling, to 1e-7; the click at the ceiling, the sine turned down 1.5 ms before, untouched 3.1 ms before; harmonics 2 to 9 under -35 / -50 / -18 dB; 14 dB; under 80 / 150 to 350 / 1500 to 3500 ms; the other side down as much; the same to 1e-6 |
+| SNAP | a drum (noise falling 60 dB in 0.3 s) at five settings: its first ms, 4 to 6 ms, 20 to 40, 100 to 250; the same 40 dB down; MIX 50%; steady sines at 100 Hz and 1 kHz at every end; a hit on one side; ATTACK and SUSTAIN turned at once under hits | +11 to +12.8, +6.5 to 8.5 dB, falling, the tail untouched; -12.5 to -14; tail +5 to +7 / -5 to -7; within 0.5 dB of the loud one; the two added; within 0.5 dB, harmonics under -25 / -45 dB; the other side up 1.5 times; under 0.25 of the way in 3 ms, 0.85 at 60 to 80 ms, there by 300 |

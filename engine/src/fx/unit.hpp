@@ -95,6 +95,9 @@ extern const EffectInfo kEqInfo;     // eq.cpp
 extern const EffectInfo kFoldInfo;   // fold.cpp
 extern const EffectInfo kFuzzInfo;   // fuzz.cpp
 extern const EffectInfo kRingInfo;   // ring.cpp
+extern const EffectInfo kWearInfo;   // wear.cpp
+extern const EffectInfo kLimiterInfo; // limiter.cpp
+extern const EffectInfo kSnapInfo;   // snap.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.

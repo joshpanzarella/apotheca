@@ -41,6 +41,9 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kFoldInfo,   // 18
     &fx::kFuzzInfo,   // 19
     &fx::kRingInfo,   // 20
+    &fx::kWearInfo,   // 21
+    &fx::kLimiterInfo, // 22
+    &fx::kSnapInfo,   // 23
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -59,6 +62,7 @@ const EffectKind kList[] = {
     EffectKind::Fuzz,     //         FUZZ
     EffectKind::Crush,    // CRUSH:  CRUSH
     EffectKind::Ring,     //         RING
+    EffectKind::Wear,     //         WEAR
     EffectKind::Chorus,   // MOD:    CHORUS
     EffectKind::Delay,    // DELAY:  CLEAN
     EffectKind::Tape,     //         TAPE
@@ -69,6 +73,8 @@ const EffectKind kList[] = {
     EffectKind::Plate,    //         PLATE
     EffectKind::Comp,     // LEVEL:  COMP
     EffectKind::Duck,     //         DUCK
+    EffectKind::Limiter,  //         LIMITER
+    EffectKind::Snap,     //         SNAP
 };
 constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
 
@@ -286,7 +292,7 @@ int effectBus(EffectKind kind) {
     return family == EffectFamily::Delay ? 0 : (family == EffectFamily::Reverb ? 1 : -1);
 }
 
-int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck ? 0 : -1; }
+int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck || kind == EffectKind::Limiter ? 0 : -1; }
 
 int effectMixParam(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);
