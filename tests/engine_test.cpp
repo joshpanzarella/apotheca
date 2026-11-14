@@ -2436,6 +2436,37 @@ static void testEffectsOneByOne() {
         const EffectInfo& info = effectInfo(kind);
         CHECK(info.params >= 3 && info.params <= kEffectParams && info.name[0]);
         if (kind == EffectKind::Duck) continue; // the one with no MIX, and it does nothing until a drum is hit: effects_test has it (testDuck)
+        if (kind == EffectKind::Limiter) {
+            // No MIX: it is always 3 ms late. Under its ceiling, GAIN at 0 dB, the sound as it came in 144 samples
+            // later, to the bit (effects_test, testLimiter, has the rest).
+            std::unique_ptr<Effect> lim = makeEffect(kind, 48000.f, 120.f);
+            lim->setParam(0, 0.f);
+            const std::vector<float> in = sine(330.f, 48000);
+            const std::vector<float> out = through(*lim, in);
+            bool late = true;
+            for (std::size_t i = 144; i < in.size(); ++i) late = late && (out[i] == in[i - 144] || std::fabs(in[i - 144]) < 1e-15f);
+            CHECK(late && out != in);
+            continue;
+        }
+        if (kind == EffectKind::Wear) {
+            // No MIX: every setting at 0 is the sound untouched, to the bit; as it comes it is not (testWear has the rest).
+            std::unique_ptr<Effect> wear = makeEffect(kind, 48000.f, 120.f);
+            const std::vector<float> in = sine(330.f, 48000);
+            CHECK(through(*wear, in) != in);
+            wear = makeEffect(kind, 48000.f, 120.f);
+            for (int p = 0; p < 4; ++p) wear->setParam(p, 0.f);
+            CHECK(through(*wear, in) == in);
+            continue;
+        }
+        if (kind == EffectKind::Eq) {
+            // No MIX either: every band at 0 dB (its usual) is the sound untouched, to the bit; LOW up is not (testEq has the rest).
+            std::unique_ptr<Effect> eq = makeEffect(kind, 48000.f, 120.f);
+            const std::vector<float> in = sine(330.f, 48000);
+            CHECK(through(*eq, in) == in);
+            eq->setParam(0, 1.f);
+            CHECK(through(*eq, in) != in);
+            continue;
+        }
         int mix = -1;
         for (int p = 0; p < info.params; ++p)
             if (std::string(info.paramNames[p]) == "MIX") mix = p;

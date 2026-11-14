@@ -371,6 +371,9 @@ for this plan and gave sane numbers.
 | COMP | steady sines at eleven levels; a level step up, then down | the curve within 0.5 dB of threshold, ratio and knee; attack and release times within 20% |
 | DUCK | fire the source lane | dip of AMOUNT at the hit's sample, back up in RELEASE; nothing from other lanes |
 | LIMITER | loud drums | never over the top; 3 ms late, exactly |
+| COMB | an impulse: where it rings, how long; noise and a sine on a harmonic | within 3.5 cents of the note at every TONE (and an octave down below 0); rt60 as written; noise level within 0.5 dB to FEEDBACK 50%, 4.5 dB at 100% |
+| VOWEL | sines at each vowel's peaks and between; a saw and noise | each first peak +10.9 dB and 6 dB over the place between; SHIFT moves it by the octave; half way A-E at 490 Hz; a saw 2.7 to 7.6 dB down at any RESONANCE |
+| EQ | sines at 40 Hz to 15 kHz | each band's table within 0.1 dB; every band at 0 dB the sound to the bit |
 | SATURATE | 4186 Hz sine, 20 dB of drive, a spectrum | everything that is not a harmonic at least **50 dB** under the harmonics (measured now: 54). Level steady within 1 dB across DRIVE. TUBE has even harmonics, TAPE has none |
 | Sends | one track, send at half | the bus gets half; a muted track sends nothing; lanes 20 and 21 move it |
 | THROW | one thrown hit among others | the bus holds that hit and nothing from the step before or after |
@@ -848,3 +851,179 @@ planned names and made-up longer ones, at every size, and read off the pixels
   one type off a bus. If STUTTER is odd there, it needs a field in its row
   that `effectTypes` / `effectTypeAt` honour on a bus (and the carry and the
   bus's TYPE row with them).
+
+**Batch b1 built (2026-11-14, branch `newfx`): FILTER's COMB, VOWEL and EQ.**
+Numbers 15, 16, 17; words `comb`, `vowel`, `eq`; in the list after FILTER.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15% in the same runs) |
+| --- | --- | --- | --- |
+| COMB | the sound fed back on itself one cycle of a note late: it rings at the note and its harmonics | PITCH (25 notes, C2 to C4, a choice), FEEDBACK (-100 to +100%: below 0 hollow, odd harmonics, an octave down, and PITCH then reads the note an octave down, C1 to C3), TONE (a high cut in the loop), MIX | 0.04% (0.07% in one run); 0.08 to 0.10% while PITCH moves |
+| VOWEL | four narrow peaks at a bass voice's vowel places, morphing A E I O U | VOWEL (and every shade between), SHIFT (-12 to +12 semitones), RESONANCE (Q 3 to 24, named as FILTER's so TYPE keeps it), MIX | 0.08% (0.11% in one run); 0.13% while VOWEL moves |
+| EQ | three bands: a low shelf at 200 Hz, a bell, a high shelf at 5 kHz | LOW, MID, MID FREQ (125 Hz to 8 kHz), HIGH (-12 to +12 dB each; no MIX: every band at 0 dB is the sound untouched, to the bit) | 0.07% (0.09% in one run); 0.10% while MID FREQ moves |
+
+- **They share `fx/svf.hpp`**: the old FILTER's state-variable filter, the
+  TICK (what glides is worked out every 16 samples counted from the effect's
+  start, so the sound is the same to the bit however it is cut into blocks,
+  even while a setting moves), `Slide` (the tick's numbers reached sample by
+  sample) and `Gentle` (two Glides one after the other, so a turned setting
+  sets off slowly). A band of EQ turned from +12 to -12 dB at once clicked
+  with a plain Glide and numbers stepped once a tick: a corner of 790 times a
+  sine's (0.28); slid, 34; with Gentle, 2.2.
+- **Nothing overlaps an existing choice.** COMB is a tuned resonance, not a
+  delay (CLEAN is in time with the song, 1/16 and up; COMB is 4 to 15 ms, a
+  note). VOWEL's peaks are not FILTER's BAND PASS: four of them at once, at
+  a voice's places, moving together. EQ is the only type with no MIX.
+- **For the owner's eyes:** FILTER now has two rows that say TYPE on one
+  screen (the heading's FILTER / COMB / VOWEL / EQ, and FILTER's own TYPE:
+  LOW 12 DB...), as SATURATE and CHORUS did. COMB's FEEDBACK and EQ's bands
+  are signed, but their bars fill from the left like any amount (0 is the
+  middle). The list of effects' FILTER line now names its types ("filter,
+  comb, vowel, eq") where it said "low, band, high, DJ".
+- Stills: `fx-kind-comb`, `fx-kind-vowel`, `fx-kind-eq` (each with
+  `--hold-a`, and `-N` on a setting).
+
+**Batch b2 built (2026-11-14, branch `newfx`): DRIVE's FOLD and FUZZ, CRUSH's RING.**
+Numbers 18, 19, 20; words `fold`, `fuzz`, `ring`; in the list after SATURATE
+(FOLD, FUZZ) and after CRUSH (RING). CRUSH's line now names its types
+("crush, ring") where it said "fewer bits".
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in the same runs) |
+| --- | --- | --- | --- |
+| FOLD | a wavefolder: past the top the wave folds back down, again and again as it is pushed | DRIVE (1.5 to 12 times; SATURATE's name, so TYPE keeps it), SYMMETRY (-100 to +100%: the folds off centre, even overtones), TONE (SATURATE's low-pass, kept to the bit), MIX | 0.58% (0.66% while DRIVE turns; four times the rate: 0.23% at twice, which folded back) |
+| FUZZ | a fuzz pedal: turned up until nearly square, one side clipped harder than the other, a GATE that makes a dying note sputter and stop | FUZZ (6 to 48 dB, its own name: starts at 70%), TONE (a Big Muff's: dark, scooped, thin; what it takes from a fuzzed note made up, on average over A1 to A7), GATE (only takes away), MIX | 0.16% (0.20% while TONE turns) |
+| RING | a ring modulator: every note comes out as two, the carrier's pitch above and below it, the note itself gone | FREQ (1 Hz to 4 kHz), WAVE (SINE, TRIANGLE, SQUARE), SPREAD (the right carrier up to a quarter turn behind), MIX (CRUSH's, kept) | 0.03 to 0.04% |
+
+- **FOLD is not SATURATE's FOLD.** SATURATE's is a sine of the input: every
+  turn rounded, a soft bell. FOLD is a triangle with only the top 30% of each
+  fold rounded: steep straight sides, so far more high overtones (harmonics
+  10 to 40 of a 220 Hz sine at the same push: -57 to -26 dB of the sound,
+  against -160 to -69 for SATURATE's FOLD), twice the push (12 times against
+  6), and SYMMETRY, which SATURATE has not.
+- **FUZZ is not DRIVE, SATURATE's HARD or TUBE.** Those keep the shape of a
+  quiet sound; FUZZ is 48 dB at most and nearly square from 35%; its GATE
+  is a step the sound must get past (a note dying away 40 dB a second:
+  at GATE 50% nothing over -60 dB after 0.77 s, with no gate 2.0 s), and its TONE is a scoop, not a low-pass.
+- **RING has no note-tracking.** An effect is not told the notes played, so
+  FREQ is in hertz. Tracking would need the engine to hand the slot the
+  track's pitch: more than a row.
+- They share `fx/bend.hpp` (FOLD, FUZZ): one side bent at twice the rate
+  (FOLD: four times, `BendSide4`, since the review) a sample at a time, so the TICK holds and the sound is the same to the bit
+  however it is cut into blocks, even while a setting moves (SATURATE is
+  only once at rest), the plain sound made as late to match.
+- **A fault found by the tests and mended before it shipped**: RING's square
+  read 2 (twice full scale) for one sample whenever the carrier stood at
+  0.49999997 of its turn (0.49999997 + 0.5 is 1 in a float).
+- **Mended after review (2026-11-14)**, each with a test that fails without it:
+  - **FUZZ's TONE made up for a 220 Hz square alone.** At TONE full a high note
+    came out 14 dB louder than it went in, peaks past 2. Now made up for the
+    share squares A1 to A7 keep, averaged: no note louder than it went in, peak
+    0.42 (a 0.3 sine, FUZZ 70%). TONE is still a tone control: at TONE full A1
+    comes out 20 dB under A7, at TONE 0 A7 18 dB under A1, as a pedal's does.
+  - **FUZZ was matched to a half-scale sine**, so at its usual settings a 0.02
+    sine came out 17 dB over DRIVE. A fuzz brings everything to about one level;
+    it is now matched to a sine at 0.18: from 0.01 to 0.9, and noise, it is
+    within +8.9 and -10.8 dB of DRIVE (louder on quiet sound, quieter on loud).
+    **Owner's call: FUZZ on full-scale sound is now about 10 dB quieter than
+    DRIVE**; a larger `kFuzzReference` makes it louder, and quiet notes louder still.
+  - **FUZZ's level took in the GATE**, so a reference that only just got past
+    the step was made up as much as four times over (FUZZ 25%, GATE 50%: a
+    half-scale sine 12 dB over its neighbours; a FUZZ turned through there at
+    once jumped twice as far as any setting held still). The level is evened
+    out without the gate now: GATE only takes away.
+  - **FOLD at full DRIVE aliased above about 2.5 kHz** at twice the rate. It
+    now bends at four times the rate (`BendSide4`). What folds back under
+    19 kHz, against all of it, at full DRIVE: 1 kHz -75 dB (was -54), 2.5 kHz
+    -54 (-38), 5 kHz -38 (-19), 10 kHz -21 (-1.4); SATURATE's FOLD at its
+    full DRIVE -69, -40, -32, -19. Cleaner than SATURATE's FOLD everywhere now.
+    Its stages are settled every sample (at four times, 32 steps a tick took
+    a stage from 1e-20 past the smallest float).
+  - **RING slept after one tick of exact zeros** and woke with the carrier at
+    its top, so drum hits with digital silence between them all met the
+    carrier at its top (a 1 Hz ring did nothing, SPREAD never swung), unlike
+    the same hits with sound 120 dB down between them. It sleeps after 4 s
+    of nothing now (`kRestSeconds`); hits closer than that meet the carrier
+    where it has got to.
+  - Tests that did not test: RING's WAVE fade (its turns landed where SINE and
+    TRIANGLE meet; a WAVE with no fade passed), MIX's glide time (FOLD, FUZZ,
+    RING: `mixGlides`), FOLD's and FUZZ's filter snaps (`faintAfterANote`: a
+    note, then a faint steady offset).
+  - Not changed: RING passes a 1e7 sample on as 4.3e6. The rule zeroes only
+    what is past 1e8; old CRUSH does the same, and FOLD and FUZZ clip by nature.
+- Stills: `fx-kind-fold`, `fx-kind-fuzz`, `fx-kind-ring` (each with
+  `--hold-a`, and `-N` on a setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| FOLD | the folder by itself; a 220 Hz sine's harmonics 10 to 40 against SATURATE's FOLD; SYMMETRY's 2nd harmonic; the reference sine's level; 4186 Hz's fold-back; 2.5 and 5 kHz at full DRIVE; 12 kHz at MIX 50%; MIX's glide; a note then a faint offset | the table to 1e-5, no corner; 40 dB more than SATURATE's at every push; under -90 dB at 0, over -30 off it; within -1 / +0.5 dB everywhere; 40 dB under the strongest harmonic; 45 and 25 dB under it (at 2x: 37 and 14); within 0.5 dB of MIX 100%; under 20% of the way in 3 ms, 90 to 99% at 60 to 80 ms; nothing too small |
+| FUZZ | the clip by itself; a 220 Hz sine's harmonics at four FUZZ; the reference sine (0.18) at FUZZ 35 to 100%; GATE 50% against off at every FUZZ; a 0.3 sine A1 to A7 at three TONEs; sines 0.01 to 0.9 and noise against DRIVE; TONE on quiet sines; a dying note at three GATEs; 12 kHz at MIX 50%; MIX's glide; a note then a faint offset | 2nd over -35 dB at 35%; within -2 / +1 dB; never louder; none over +1 dB, peak under 0.6, TONE 50% within 5 dB; under +10 and over -12 dB against DRIVE; a scoop of 3 dB at 1 kHz, 15 dB from end to end; GATE ends it 0.3 s and more sooner; in step to 0.3 dB; as FOLD's; nothing too small |
+| RING | the carrier at every place and pitch; 1 kHz by 300 Hz; what folds back of a 2.9 kHz carrier; SPREAD at 2 Hz; a click after 4 s of silence, and after 3.9 s; hits 0.25 s apart, zeros or noise 120 dB down between; WAVE changed twice in 2 ms, where SINE and TRIANGLE differ; MIX's glide | never past 1; 0.25 at 700 and 1300 Hz (SQUARE 4/pi of it), nothing at 1 kHz; SINE -62, TRIANGLE -35, SQUARE -28 dB; the right is the left 1/8 s later; the click whole every time, and 0.9 of a turn on at 3.9 s; the two within 1e-5, hits from under 0.1 to whole, SPREAD's right whole on some; SQUARE's own sound after 30 ms, to the bit, never rougher than the carrier; as FOLD's |
+
+**Batch b3 built (2026-11-14, branch `newfx`): CRUSH's WEAR, LEVEL's LIMITER and SNAP.**
+Numbers 21, 22, 23; words `wear`, `limiter`, `snap`; in the list after RING
+(WEAR) and after DUCK (LIMITER, SNAP). In the list of effects LEVEL LIMITER
+is drawn with its family small, as REVERB SPRING is (its meter's mark keeps
+7 pixels more).
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.10% in the same runs) |
+| --- | --- | --- | --- |
+| WEAR | an old tape or a worn record: the pitch sways, hiss and crackle ride on the sound, now and then it drops away, the top and the bottom worn off | WOW (a 0.55 Hz sway, a 6.3 Hz flutter and a drift that never repeats: 31 cents at most at 100%), DIRT (hiss 23 dB under the sound and about 25 crackles a second at 100%; both ride on the sound and fade 0.15 s after it), DROPS (the chance a 40 ms piece sinks 6 to 24 dB: about one in three at 100%), TONE (the top from 20 kHz to 2.5 kHz, the bottom thinned to 150 Hz). No MIX | 0.15 to 0.16% (0.40% before its loop worked on locals); 0.15% at DIRT 100% and with WOW turning (0.23% in one run of ten) |
+| LIMITER | a hard top: nothing comes out over the CEILING, seen 3 ms ahead and turned down before it gets there; always exactly 3 ms late | GAIN (0 to +20 dB), CEILING (-10 to 0 dB, usual -2 dB: the engine's soft ceiling, from 0.8, then never acts), RELEASE (DUCK's, 20 ms to 1 s, carried to the bit). No MIX. Its meter on GAIN, as COMP's | 0.05% (0.09% in one run of ten); 0.12 to 0.13% at +20 dB |
+| SNAP | a transient shaper: more or less of each hit's start, more or less of its tail, whatever its level | ATTACK (-100 to +100%: about +12 / -13 dB in a hit's first ms, gone by 30 ms), SUSTAIN (-100 to +100%: about 6 dB on a tail 100 to 250 ms in), MIX (COMP's, carried) | 0.08% (ATTACK turning the same) |
+
+- **Why these settings.** WEAR has no MIX: its swaying sound laid under the
+  plain one is a flanger, not wear; every setting at 0 is the sound untouched,
+  to the bit. TONE is how worn (the top and the bottom together), one knob for
+  "age". LIMITER has no MIX for the same reason as its lateness: a limiter
+  under the plain sound lets every peak through. CEILING got the third place
+  the plan left "if room". SNAP is the plan's three: two knobs and a blend is
+  what a transient designer has.
+- **Nothing overlaps an existing choice.** TAPE's AGE sways and dulls the
+  ECHOES only; WEAR is an insert on the sound itself, with dirt and dropouts.
+  COMP at 20:1 still lets each hit's first milliseconds through (1 ms at its
+  fastest, no look ahead) and is over the top on every hit; LIMITER is never
+  over by a sample. SNAP listens to how the sound moves, not how loud it is:
+  a hit 40 dB down is shaped exactly as a loud one (testSnap), and a steady
+  note is left alone (within 0.25 dB).
+- **For the owner:**
+  - **LIMITER on a track makes that track 3 ms late** against the rest (no
+    lateness is made up anywhere in the engine). On the master all is late
+    alike, which is what it is for.
+  - WEAR's dice are rolled by the count of samples since it woke; it sleeps
+    after 4 s of nothing (as RING). Hits further apart than that each start
+    the dice afresh, so each hears the same crackles and dropouts at the same
+    places. Closer hits hear new ones.
+  - WEAR's hiss and crackle follow the sound's level: a quiet passage has
+    quiet hiss, and silence none (tape through a noise gate, not a tape left
+    running). Rule: silence in, silence out.
+  - SNAP at full ATTACK or SUSTAIN bends a steady 100 Hz bass a little
+    (harmonics -33 dB of it): its followers ripple at twice the note.
+- Stills: `fx-kind-wear`, `fx-kind-limiter`, `fx-kind-snap` (each with
+  `--hold-a`, and `-N` on a setting).
+- Mutants: 53 tried, 48 killed. Survivors, each looked at: LIMITER's hold one
+  sample short and its average one sample short (the last-word clip on the
+  ceiling catches the one-sample overshoot, to the bit; the second is the
+  same guarantee), its running sum not put back to 0 when nothing is turned
+  down (the sum of these floats is exact in a double: kept as a guard);
+  SNAP's followers snapped under 1e-20 (it sleeps at 1e-12 first) and its
+  sleep not waiting for a tick of nothing (a sound under 1e-12 comes out as
+  it went in either way).
+- **Mended after review (2026-11-14)**, each with a test that fails without it:
+  - **Turning WEAR's WOW dived the pitch.** WOW sets how late the sound is
+    read, and on the usual 20 ms glide 0 to 100% swooped 500 cents down (0 to
+    30%: 143; 100% to 0: 120 up), a tape-speed dive on every automated step.
+    WOW now moves at most all its way in a second (`kWowPerSecond`, through
+    `Glide::begin`'s new `most`): turned at once the pitch strays 29 cents at
+    worst, no more than it sways at rest (31). 0 to 100% takes 1.1 s.
+  - Tests that could not see a fault (each mutant now killed): SNAP's right
+    side at MIX between 0 and 100% (left and right the same, to the bit, and
+    the plain and shaped laid together); LIMITER's meter is the most of the
+    block, not its last sample; WEAR's hiss is two hisses (left and right
+    alike by 0.10), not one.
+  - Kept: a setting turned just after waking glides on a tick grid set by the
+    silence's length (CLAUDE.md, the wake rule), as in every type on the TICK.
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| WEAR | a 1 kHz sine's pitch at WOW 100%, 30%, 0 and 1%; its flutter, sway and drift; DIRT on a sine: the dirt's level, crackles counted, half a second after, under 300 Hz; dropouts counted in 40 ms pieces at DROPS 100%, 20%, 0; TONE at 10 kHz, 1 kHz, 40 Hz; hits 2 s apart with zeros or faint noise between, and 4.5 s apart; a click with no DIRT; WOW turned at once 0 to 100%, 100% to 0, 0 to 30%; the left's and right's dirt on one sine | 20 to 45 cents, the mean within 1, 30% a fifth to two fifths of it, 0 none; as smooth as the sine; flutter 1.5 to 5 cents rms, sway over 6, drift over 3; -26 to -12 dB, 8 to 20 a second, 20 dB further down, under 0.08; 80 to 200, 1 to 15, 0, no step over the sine's; under -12 dB, over -2, under -3; new dice near, the same far, the two 1e-4 apart; nothing too small; strays under 1.6 times its sway at rest (0.8 for 30%), there in 0.9 to 1.3 s; alike under 0.5 |
+| LIMITER | noise through at GAIN 0, CEILING 0, at 48, 44.1 and 96 kHz; noise, clicks and a sweep at +20 dB at four ceilings and two RELEASEs; a click on a quiet sine; a 100 Hz sine 12 dB in at three RELEASEs; the meter; the time back from 12 dB down; a loud side; a quiet sine after a loud second with zeros or faint noise between; the meter on one block loud at first and quiet at its end | exactly 3 ms late, to the bit; never over the ceiling, to 1e-7; the click at the ceiling, the sine turned down 1.5 ms before, untouched 3.1 ms before; harmonics 2 to 9 under -35 / -50 / -18 dB; 14 dB; under 80 / 150 to 350 / 1500 to 3500 ms; the other side down as much; the same to 1e-6; 14 dB (the block's most) |
+| SNAP | a drum (noise falling 60 dB in 0.3 s) at five settings: its first ms, 4 to 6 ms, 20 to 40, 100 to 250; the same 40 dB down; MIX 50%; steady sines at 100 Hz and 1 kHz at every end; a hit on one side; ATTACK and SUSTAIN turned at once under hits; one drum on both sides at MIX 25, 50, 80% | +11 to +12.8, +6.5 to 8.5 dB, falling, the tail untouched; -12.5 to -14; tail +5 to +7 / -5 to -7; within 0.5 dB of the loud one; the two added; within 0.5 dB, harmonics under -25 / -45 dB; the other side up 1.5 times; under 0.25 of the way in 3 ms, 0.85 at 60 to 80 ms, there by 300; the sides the same to the bit, the plain and shaped laid together to 1e-5 |

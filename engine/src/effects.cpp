@@ -35,6 +35,15 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kPingInfo,   // 12
     &fx::kSpringInfo, // 13
     &fx::kPlateInfo,  // 14
+    &fx::kCombInfo,   // 15
+    &fx::kVowelInfo,  // 16
+    &fx::kEqInfo,     // 17
+    &fx::kFoldInfo,   // 18
+    &fx::kFuzzInfo,   // 19
+    &fx::kRingInfo,   // 20
+    &fx::kWearInfo,   // 21
+    &fx::kLimiterInfo, // 22
+    &fx::kSnapInfo,   // 23
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -44,9 +53,16 @@ const EffectInfo* const kTable[kEffectKinds] = {
 const EffectKind kList[] = {
     EffectKind::None,
     EffectKind::Filter,   // FILTER: FILTER
+    EffectKind::Comb,     //         COMB
+    EffectKind::Vowel,    //         VOWEL
+    EffectKind::Eq,       //         EQ
     EffectKind::Drive,    // DRIVE:  DRIVE
     EffectKind::Saturate, //         SATURATE
+    EffectKind::Fold,     //         FOLD
+    EffectKind::Fuzz,     //         FUZZ
     EffectKind::Crush,    // CRUSH:  CRUSH
+    EffectKind::Ring,     //         RING
+    EffectKind::Wear,     //         WEAR
     EffectKind::Chorus,   // MOD:    CHORUS
     EffectKind::Delay,    // DELAY:  CLEAN
     EffectKind::Tape,     //         TAPE
@@ -57,6 +73,8 @@ const EffectKind kList[] = {
     EffectKind::Plate,    //         PLATE
     EffectKind::Comp,     // LEVEL:  COMP
     EffectKind::Duck,     //         DUCK
+    EffectKind::Limiter,  //         LIMITER
+    EffectKind::Snap,     //         SNAP
 };
 constexpr int kListSize = static_cast<int>(sizeof kList / sizeof kList[0]);
 
@@ -274,7 +292,7 @@ int effectBus(EffectKind kind) {
     return family == EffectFamily::Delay ? 0 : (family == EffectFamily::Reverb ? 1 : -1);
 }
 
-int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck ? 0 : -1; }
+int effectMeterParam(EffectKind kind) { return kind == EffectKind::Comp || kind == EffectKind::Duck || kind == EffectKind::Limiter ? 0 : -1; }
 
 int effectMixParam(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);

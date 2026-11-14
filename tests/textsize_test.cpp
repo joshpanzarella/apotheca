@@ -1406,7 +1406,7 @@ void testTheFxScreen() {
             const float ends = typeAlone ? FxScreen::kNameX + set.medium.width(effectTypeShown(kind))
                                          : FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeShown(kind));
             CHECK(gap == 7.f && ends <= FxScreen::nameEnd(kind) - (familySmall ? FxScreen::kNameClear : 0) + 0.01f);
-            CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
             CHECK(typeAlone == (kind == EffectKind::Saturate));
             if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: as chosen to LARGE, held at LARGE at XL
             CHECK(&set == &chosen || &set == &chosen.fixed());

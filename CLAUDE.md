@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (33) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -105,6 +105,8 @@ Where effects are, in the engine:
 | `engine/src/fx/unit.hpp` | what the effects share; the steps to add one are at its top |
 | `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
 | `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
+| `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
+| `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -204,13 +206,13 @@ effect in those two groups and fails one that does not.
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
-  from FILTER (FILTER), DRIVE (DRIVE, SATURATE), CRUSH (CRUSH), MOD (CHORUS),
+  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS),
   DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
-  DUCK), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
+  DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
-  the tests use it). Fifteen more types are planned (effects-plan.md, "Seven
-  families"); each is a row. The screen asks `effectFamily`,
+  the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
@@ -222,8 +224,8 @@ effect in those two groups and fails one that does not.
   `testSongFilesAreAsTheyWere` writes and reads each newer kind by its own word.
   In the list of effects a family's line names its types, the slot's lit
   (`effectFamilyNamesTypes`: more than one, or one that is not the family's
-  word, MOD's CHORUS); FILTER and CRUSH say their words instead
-  (`effectFamilySays`, the first type's `says`).
+  word, MOD's CHORUS); since RING every family does, so `effectFamilySays`
+  (the first type's `says`) is drawn for none today.
 - **Changing TYPE carries settings by NAME, as they READ** (`effectCarry`,
   `effectCarryValue`): the value whose reading is the same text; if the new
   type cannot read it, the nearest (an amount by the number in its reading, a
@@ -392,12 +394,37 @@ effect in those two groups and fails one that does not.
 - **A `Glide` always lands, at any block length** (never slower than `kLeast`
   a sample). A fraction of what is left falls below what a float can add in
   blocks of 8 frames and under, and `moving()` then stayed true for good.
+- **A gain or a filter's numbers turned at once set off gently and slide
+  sample by sample** (`fx/svf.hpp`, COMB, VOWEL, EQ): what glides is worked
+  out on the TICK (every 16 samples counted from the effect's start, so the
+  sound is the same to the bit however it is cut into blocks, moving or
+  not), `Slide` reaches each tick's numbers sample by sample, and `Gentle`
+  is two Glides one after the other. EQ's LOW turned from +12 to -12 dB at
+  once made a corner 790 times a 100 Hz sine's (0.28, a click) stepped a tick
+  at a time; slid, 34; with `Gentle`, 2.2. `holdsTheRules` in `effects_test`
+  turns every setting of a new filter at once and holds the numbers.
 - **A change of curve waits for the fade before it** (SATURATE's TYPE: one
   fade at a time, the last one asked for wins). Starting a second fade inside
   the first cut the fading curve off: a click.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
-  the last sound was.
+  the last sound was. **So one whose sound hangs on a clock that runs on
+  (RING's carrier; WEAR's sway and its dice, rolled by the count of samples)
+  sleeps only after `kRestSeconds` (4 s) of nothing.** It
+  slept after a third of a millisecond of exact zeros at first: every drum hit
+  met the carrier at its top, and a slow ring did nothing, unlike the same
+  hits with sound too faint to hear between them. **One exception, kept (review 2026-11-14): a setting
+  turned within a glide of waking.** The TICK counts from the effect's start,
+  asleep too (`tickCountsAsleep` pins it), so its 16-sample grid falls where
+  the silence's length put it, and such a glide moves on ticks up to 15
+  samples apart from a fresh one's (WEAR 1e-4, SNAP 0.002, LIMITER 0.02 apart;
+  RING, COMB and FUZZ alike). With settings at rest, exact.
+- **A DRIVE type that evens out its loudness does it without its gate**
+  (FUZZ: GATE only takes away), and **a fuzz is matched where it lands**, a
+  sine at 0.18, not half scale: it brings everything to about one level, and
+  matched at half scale a quiet note came out 17 dB over DRIVE. A tone's
+  make-up is for the share squares A1 to A7 keep, averaged, not one pitch
+  (made up for 220 Hz alone, a high note came out 14 dB louder).
 - **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
   lane 1). A hit always lands on a chunk's first sample (`render()` ends a
   chunk where the next is due), so the engine marks it where it triggers the
@@ -416,7 +443,7 @@ effect in those two groups and fails one that does not.
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
   engine. **Nothing on the app thread may hold or call an `Effect` that is in
   a slot**: the audio thread can swap it out at any chunk. The FX screen draws
-  it three ways: on the row `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT), as a
+  it three ways: on the row `effectMeterParam(kind)` names (COMP: THRESHOLD; DUCK: AMOUNT; LIMITER: GAIN), as a
   strip under the bar from the right, full at `kMeterFullDb` (24); in words in
   the heading (`FxScreen::meterWords`: TURNING DOWN 7 DB, DIPPING 3 DB); and
   as a brass mark on the effect's line of the list.
@@ -452,8 +479,23 @@ effect in those two groups and fails one that does not.
 - **A wet sound that comes out late is never mixed with the plain sound as it
   came in.** Two samples late is half a wave at 12 kHz, and the two cancel (a
   comb filter). SATURATE's 2x stage does this; its plain sound goes through
-  `Halfband::late` first, except at MIX 0 exactly. Test a new effect's
+  `Halfband::late` first, except at MIX 0 exactly; FOLD and FUZZ do the same
+  through `BendSide::plain` / `BendSide4::plain` (`fx/bend.hpp`). Test a new effect's
   response at MIX 50%, not only at 0 and 100%.
+- **An effect that is late by design has no MIX** (LIMITER: always exactly
+  3 ms late, `kLookSeconds`, 144 samples at 48 kHz; a MIX would lay the plain
+  sound 3 ms early under it). Its "untouched" is the sound as it came in, 3 ms
+  later, to the bit (`testLimiter`, `engine_test`); `holdsTheRules` skips its
+  MIX-0 check. **On a track it puts that track 3 ms behind the others**: it is
+  meant for the master, where everything is late alike. A swap into or out of
+  it lays the sine over itself 3 ms apart for the fade (2.10 of a step,
+  allowed 2.3 in `testSwapFade`).
+- **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
+  end, everything the samples change copied in, worked on, copied back).
+  Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
+  same arithmetic on locals, 0.15% (the compiler cannot keep members in
+  registers across the writes to the block). A new effect over about 0.15%
+  is looked at this way before it is called costly.
 - **A new effect glides every setting** (`fx::Glide` in `fx/glide.hpp`, the one such helper): a
   turned setting slides for about 20 ms and then arrives exactly, so MIX at 0
   is still the sound untouched to the sample. The first block after it is
@@ -1241,6 +1283,12 @@ effect in those two groups and fails one that does not.
 | TAPE with its way down, the same run (0.10% just before it) | 0.11% |
 | PING (2026-11-13, four runs alike; in them DELAY 0.02%, TAPE 0.09 to 0.10%, HALL 0.15%, DRIVE 0.12 to 0.14%) | 0.02% |
 | PLATE (2026-11-13, six runs: HALL 0.15 to 0.16%, TAPE 0.09 to 0.10% in the same) | 0.14 to 0.15% |
+| COMB / VOWEL / EQ (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, FILTER 0.03% in all) | 0.04% / 0.08% / 0.07% (one run 0.07 / 0.11 / 0.09) |
+| ...each with a setting turned all the while (PITCH, VOWEL, MID FREQ: worked out again every 16 samples) | 0.08 to 0.10% / 0.13% / 0.10% |
+| FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches; 0.58% since it runs at four times the rate, two runs, DRIVE 0.12%) | 0.58% / 0.16 to 0.18% / 0.03 to 0.04% |
+| ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.66 to 0.67% (0.32 at twice the rate) / 0.20 to 0.22% / 0.04% (0.06% in one run); 0.04% |
+| WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
+| ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
@@ -1259,7 +1307,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), their fifteen new types not yet.
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`).
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

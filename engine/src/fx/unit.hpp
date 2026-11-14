@@ -89,6 +89,15 @@ extern const EffectInfo kDuckInfo;   // duck.cpp
 extern const EffectInfo kPingInfo;   // ping.cpp
 extern const EffectInfo kSpringInfo; // spring.cpp
 extern const EffectInfo kPlateInfo;  // plate.cpp
+extern const EffectInfo kCombInfo;   // comb.cpp
+extern const EffectInfo kVowelInfo;  // vowel.cpp
+extern const EffectInfo kEqInfo;     // eq.cpp
+extern const EffectInfo kFoldInfo;   // fold.cpp
+extern const EffectInfo kFuzzInfo;   // fuzz.cpp
+extern const EffectInfo kRingInfo;   // ring.cpp
+extern const EffectInfo kWearInfo;   // wear.cpp
+extern const EffectInfo kLimiterInfo; // limiter.cpp
+extern const EffectInfo kSnapInfo;   // snap.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -99,6 +108,14 @@ float saturateCurve(int type, float x);
 float tapeTire(float setting);
 // One sample of TAPE's multiplier on its way to `to` (down gently, up at once): it lands exactly.
 float tapeTireStep(float tire, float to, float sampleRate);
+// The note COMB rings at for a PITCH setting, in hertz.
+double combHz(float pitch);
+// FOLD's folder by itself (the rounded triangle), for `x` after DRIVE and SYMMETRY.
+float foldCurve(float x);
+// FUZZ's clip by itself, past a gate's step `gate`, for `x` after FUZZ.
+float fuzzCurve(float x, float gate);
+// RING's carrier: 0 SINE, 1 TRIANGLE, 2 SQUARE, at `at` of its turn (0 to 1), `dt` a sample's share of a turn.
+float ringCarrier(int wave, float at, float dt);
 
 } // namespace fx
 } // namespace apotheca

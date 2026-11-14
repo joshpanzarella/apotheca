@@ -698,6 +698,8 @@ int main(int argc, char** argv) {
         //   fx-trying   A held on the TAPE's line and moved up two: another family tried, the TAPE kept aside
         //   fx-family-N the last type of family N (1 FILTER ... 7 LEVEL) in the track's second slot, its line in the
         //               list; with --hold-a the list of effects on that family's line, the type lit
+        //   fx-kind-WORD the effect whose song-file word is WORD (comb, vowel, eq...) in the track's second slot, its
+        //               line in the list; fx-kind-WORD-N on its Nth setting (1 to 4)
         // Each also with --hold-a.
         Session& s = app.session();
         s.setEffect(0, 0, EffectKind::Tape);
@@ -748,6 +750,13 @@ int main(int argc, char** argv) {
             const EffectKind family = familyAt(std::atoi(view + 10));
             s.setEffect(0, 1, effectTypeAt(family, effectTypes(family) - 1));
             fx.goTo(1, 0);
+        } else if (std::strncmp(view, "fx-kind-", 8) == 0) {
+            std::string word = view + 8;
+            int column = 0;
+            const std::size_t dash = word.find('-');
+            if (dash != std::string::npos) column = std::atoi(word.c_str() + dash + 1), word.resize(dash);
+            s.setEffect(0, 1, effectFromWord(word.c_str()));
+            fx.goTo(1, column);
         } else if (std::strcmp(view, "fx-trying") == 0) {
             // A held on the TAPE's line (its FEEDBACK automated) and up two: MOD tried, the TAPE kept aside.
             s.setAutomation(0, 0, autoLaneOfEffect(0, 1), 0, 0.3f);

@@ -64,11 +64,11 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
 // noise going in so that nothing in it can rest. `setting` >= 0: that setting
-// at `value` first (the filter's TYPE). The best of five runs, each ten
+// at `value` first (the filter's TYPE); `turning`, that setting turned all the while instead. The best of five runs, each ten
 // seconds of sound: a busy machine only ever makes a run slower. A drum is
 // hit eight times a second meanwhile (a sixteenth at 120 BPM), for DUCK,
 // which does nothing until one is; no other effect hears it.
-static void effect(const char* name, EffectKind kind, int setting = -1, float value = 0.f) {
+static void effect(const char* name, EffectKind kind, int setting = -1, float value = 0.f, bool turning = false) {
     std::unique_ptr<Effect> fx = makeEffect(kind, 48000.f, 120.f);
     if (setting >= 0) fx->setParam(setting, value);
     const int blocks = 7500;
@@ -89,6 +89,7 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
                 right[i] = in[i + 64];
             }
             if (b % 94 == 0) fx->drumHits(1u);
+            if (turning) fx->setParam(setting, static_cast<float>(b % 200) / 200.f); // turned all the while: it never comes to rest
             fx->process(left, right, 64);
         }
         const double block = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / blocks;
@@ -421,6 +422,17 @@ int apotheca::runBench() {
         if (kind == EffectKind::Filter) effect("FILTER, LOW 24 DB", kind, 2, 0.3f);
         if (kind == EffectKind::Hall) effect("HALL, TONE ABOVE 50%", kind, 2, 1.f);
         if (kind == EffectKind::Chorus) effect("CHORUS, VIBRATO or FLANGE", kind, 2, 0.9f);
+        if (kind == EffectKind::Comb) effect("COMB, PITCH TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Vowel) effect("VOWEL, VOWEL TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Eq) effect("EQ, MID FREQ TURNING", kind, 2, 0.f, true);
+        if (kind == EffectKind::Fold) effect("FOLD, DRIVE TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Fuzz) effect("FUZZ, TONE TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Ring) effect("RING, SQUARE", kind, 1, 0.9f);
+        if (kind == EffectKind::Ring) effect("RING, FREQ TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Wear) effect("WEAR, DIRT 100%", kind, 1, 1.f);
+        if (kind == EffectKind::Wear) effect("WEAR, WOW TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Limiter) effect("LIMITER, +20 DB", kind, 0, 1.f);
+        if (kind == EffectKind::Snap) effect("SNAP, ATTACK TURNING", kind, 0, 0.f, true);
     }
 
     // The send buses, as what they add to a song of twelve busy drum tracks.
