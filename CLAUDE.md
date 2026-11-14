@@ -1362,8 +1362,11 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track.
+1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
+2. Twin Analog becomes a JX-3P clone (`docs/plans/jx3p-plan.md`; branch `jx3p`, engine batches under way).
+3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
+4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
+5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
