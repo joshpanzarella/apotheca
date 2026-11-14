@@ -54,12 +54,9 @@ device that has none or keeps MENU for itself. The answers are kept in
 `controls.txt` in the `apotheca` folder.
 
 **To set them up again** (another handheld, or a button learned wrongly),
-any of three ways:
+either of two ways:
 
 - **SETUP screen, CONTROLS row:** hold A for a second.
-- **Just after Apotheca starts,** hold any button for two seconds. A brass
-  line at the bottom of the screen says so for the first five seconds. This
-  reads the buttons raw, so it works even when none of them is understood.
 - Delete `controls.txt`.
 
 The setup learns triggers that rest at one end of their travel (many L2 / R2

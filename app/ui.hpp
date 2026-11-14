@@ -208,7 +208,6 @@ float hintDiceEndX(const Fonts& fonts, const char* dice); // where the dice's ch
 void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const HintUnder* list, int count, bool diceAtEnd = false);
 // For a few seconds at the start, in the hints bar's place: the way back into the controls
 // setup, with a line that fills (`part`, 0..1) as a button is held. A tight row: always at LARGE.
-void relearnOffer(SDL_Renderer* r, const Fonts& fonts, float part);
 
 // A box taller than kBoxUsualH (what the boxes were laid out at) keeps its name at the top and its
 // bar at the bottom, and its value goes down by half of the extra height, so it is not left at the

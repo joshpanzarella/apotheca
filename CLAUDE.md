@@ -900,7 +900,7 @@ effect in those two groups and fails one that does not.
     strip under the drum grid and under the piano roll (`tight` in both),
     anything written over a little picture (a cell's bar count on SONG, a
     recording's seconds in the list), the heads of narrow SONG columns, the
-    controls setup, the offer at the start (`ui::relearnOffer`). The tests that read a strip or a bar off the screen
+    controls setup. The tests that read a strip or a bar off the screen
     draw at LARGE and hold at every size for that reason.
   - **Everything else follows the setting, and a new text is checked at XL.**
     Where it would not fit its room at XL it is drawn with

@@ -63,41 +63,6 @@ bool ControlMap::parse(const std::string& text) {
     return true;
 }
 
-// ---- the hold at the start ----------------------------------------------------------------
-
-void RelearnHold::handle(const SDL_Event& e) {
-    if (done_) return;
-    int kind = 0, index = 0;
-    bool down = false;
-    if (e.type == SDL_JOYBUTTONDOWN || e.type == SDL_JOYBUTTONUP) kind = 1, index = e.jbutton.button, down = e.type == SDL_JOYBUTTONDOWN;
-    else if (e.type == SDL_JOYHATMOTION) kind = 2, index = e.jhat.hat, down = e.jhat.value != SDL_HAT_CENTERED;
-    else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
-        kind = 3, index = e.key.keysym.sym, down = e.type == SDL_KEYDOWN;
-    } else return;
-    if (down && !holding_) {
-        // Only a press that begins in the first seconds counts.
-        if (began_ != 0 && now_ - began_ >= kWindowMs) return;
-        wants_ = true;
-        kind_ = kind;
-        index_ = index;
-    } else if (!down && kind == kind_ && index == index_) {
-        holding_ = wants_ = false;
-    }
-}
-
-bool RelearnHold::update(Uint32 nowMs) {
-    if (began_ == 0) began_ = nowMs;
-    now_ = nowMs;
-    if (done_) return false;
-    if (wants_ && !holding_) holding_ = true, since_ = nowMs; // the hold's clock starts here
-    if (holding_ && nowMs - since_ >= kHoldMs) {
-        done_ = true;
-        holding_ = wants_ = false;
-        return true;
-    }
-    return false;
-}
-
 // ---- learning ---------------------------------------------------------------------------
 
 ControlLearner::ControlLearner() {

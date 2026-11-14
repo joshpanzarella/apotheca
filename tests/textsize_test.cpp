@@ -1806,32 +1806,12 @@ void testNoLettersAreLeftBehind() {
     CHECK(Font::sheets() == before); // (a font that goes takes its letters with it)
 }
 
-// The offer at the start (BUTTONS NOT WORKING?) stands where the hints bar does and runs the
-// screen's width: the same pixels whatever is chosen, and inside the screen.
-void testTheOfferAtTheStart() {
+// Where the dice's chip starts at the end of the bar under a strip: worked out from the bar's own
+// lettering, so the same at every size.
+void testTheDiceEndAtEverySize() {
     Screens& s = screens();
-    // (And where the dice's chip starts at the end of the bar under a strip: worked out from the bar's own lettering.)
     for (int size = 0; size < kTextSizes; ++size) CHECK(ui::hintDiceEndX(*s.at[size], "Y") == ui::hintDiceEndX(*s.canvas.fonts, "Y"));
     CHECK(ui::hintDiceEndX(*s.canvas.fonts, "Y") > 500.f);
-    std::vector<Uint32> large;
-    for (int size : {kTextLarge, kTextSmall, kTextMedium, kTextXl}) {
-        DrawLog log;
-        s.canvas.clear();
-        gDrawLog = &log;
-        ui::relearnOffer(s.canvas.r, *s.at[size], 0.5f);
-        gDrawLog = nullptr;
-        SDL_RenderPresent(s.canvas.r);
-        const std::vector<Uint32> now = s.canvas.all();
-        if (size == kTextLarge) large = now;
-        CHECK(now == large);
-        CHECK(log.texts.size() == 1 && log.texts[0].font == &s.canvas.fonts->small);
-        // (Its words are 655 pixels at LARGE, 15 more than the screen: so they are on main too, a letter's edge
-        // lost at each end. Not mended here: it would change LARGE. They are in the bar's place, up and down.)
-        CHECK(log.texts.size() == 1 && log.texts[0].y >= ui::kScreenH - ui::kHintsH && log.texts[0].y + log.texts[0].h <= ui::kScreenH);
-        CHECK(log.texts.size() == 1 && near(log.texts[0].x + log.texts[0].w / 2.f, ui::kScreenW / 2.f));
-        // The line that fills is half way, and the bar is nowhere but the hints bar's place.
-        CHECK(log.boxes.size() == 2 && log.boxes[0].y == ui::kScreenH - ui::kHintsH && log.boxes[0].h == ui::kHintsH && log.boxes[1].w == ui::kScreenW / 2 && log.boxes[1].h == 3);
-    }
 }
 
 // ---- the SET page's bars: never through the words beside them -----------------------------------
@@ -1960,7 +1940,7 @@ int main(int argc, char** argv) {
     testTheOtherScreens();
     testWhatOnlyLargeHadRoomFor();
     testNoLettersAreLeftBehind();
-    testTheOfferAtTheStart();
+    testTheDiceEndAtEverySize();
     testTheControlsSetup();
     testTheUpdateNotice();
     testTheFxScreen();

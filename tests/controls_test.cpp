@@ -267,58 +267,6 @@ void testTriggersNobodyToldUsAbout() {
     }
 }
 
-// Any button held for two seconds just after the start: the setup again.
-void testHoldingAnyButtonAtTheStart() {
-    {
-        RelearnHold hold;
-        CHECK(!hold.update(1000) && hold.offering());
-        hold.handle(joyButton(13, true));
-        CHECK(!hold.update(1500)); // the hold's clock starts here
-        CHECK(!hold.update(3400) && hold.part() > 0.9f);
-        CHECK(hold.update(3500));
-        CHECK(!hold.update(3600)); // once: a second hold, still inside the first seconds, is nothing
-        hold.handle(joyButton(13, false));
-        hold.handle(joyButton(14, true));
-        CHECK(!hold.update(3700) && !hold.update(5900) && !hold.update(9000));
-        hold.handle(joyButton(13, false));
-        hold.handle(joyButton(13, true));
-        CHECK(!hold.update(9100) && !hold.update(12000));
-    }
-    {
-        // Let go too soon: nothing. Another button's letting go does not end a hold.
-        RelearnHold hold;
-        hold.update(1000);
-        hold.handle(hat(SDL_HAT_LEFT));
-        hold.update(1100);
-        hold.handle(hat(SDL_HAT_CENTERED));
-        CHECK(!hold.update(3300) && hold.part() == 0.f);
-        hold.handle(keyEvent(SDLK_F5, true));
-        hold.update(3400);
-        hold.handle(joyButton(2, false));
-        hold.handle(keyEvent(SDLK_F6, false));
-        CHECK(!hold.update(5300));
-        CHECK(hold.offering()); // past the window, but a hold is under way
-        CHECK(hold.update(5400));
-    }
-    {
-        // A press that begins after the first five seconds is ordinary playing.
-        RelearnHold hold;
-        hold.update(1000);
-        CHECK(hold.offering());
-        hold.update(5999);
-        CHECK(hold.offering());
-        hold.update(6000);
-        CHECK(!hold.offering());
-        hold.handle(joyButton(1, true));
-        CHECK(!hold.update(6100) && !hold.update(9000) && hold.part() == 0.f);
-        // A stick or trigger moving is not a button.
-        RelearnHold other;
-        other.update(1000);
-        other.handle(axis(2, 32767));
-        CHECK(!other.update(1100) && !other.update(4000));
-    }
-}
-
 void testTheSetupDoesNotTakeAWrongAnswer() {
     ControlLearner learner;
     learner.update(1000);
@@ -406,7 +354,6 @@ int main(int, char**) {
     testLearningAndUsingTheHandheld();
     testATriggerWhoseRestSdlKnows();
     testTriggersNobodyToldUsAbout();
-    testHoldingAnyButtonAtTheStart();
     testTheSetupDoesNotTakeAWrongAnswer();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
