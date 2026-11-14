@@ -410,8 +410,11 @@ public:
     // as a new rev first, so going back loses nothing.
     bool openRev(int rev);
 
-    // Tell the engine everything in the project, from nothing.
+    // Tell the engine everything in the project, from nothing. Another song: undo starts again.
     void applyProject();
+    // The engine half of it: the song is the same song (a resync, a track deleted or given
+    // another instrument), so undo and redo are kept.
+    void sendSong();
     // How many times the engine fell behind (a full command queue) and was sent the whole song again.
     int resyncs() const { return resyncs_; }
 

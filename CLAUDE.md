@@ -459,6 +459,11 @@ effect in those two groups and fails one that does not.
 - **Undo is a text snapshot of the patterns** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. Sounds, effects and track deletes are not undone.
+  **Only another song clears undo** (`applyProject`). A resync after a full
+  queue, a track deleted and a track given another instrument send the song
+  with `sendSong()` and keep the steps: a delete takes its track out of every
+  step's text (`dropTrackText`), and another instrument is passed by (its kind
+  differs). The delete itself is still not undone.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an

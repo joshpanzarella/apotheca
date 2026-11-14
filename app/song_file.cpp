@@ -502,6 +502,30 @@ bool parseSong(const std::string& text, Project& project) {
     return true;
 }
 
+bool dropTrackText(std::string& text, int track) {
+    if (track < 0 || text.compare(0, 13, "apotheca-song") != 0) return false;
+    std::size_t from = std::string::npos, to = text.size();
+    int count = 0;
+    for (std::size_t at = 0; at < text.size();) {
+        std::size_t end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::istringstream in(text.substr(at, end - at));
+        std::string word, which;
+        if ((in >> word) && word == "track") {
+            if (from != std::string::npos) { // the next track's line, of any kind: the end of the one taken out
+                to = at;
+                break;
+            }
+            in >> which;
+            if (trackKindFromWord(which.c_str()) != TrackKind::None && count < kNumTracks && count++ == track) from = at; // as parseSong counts
+        }
+        at = end + 1;
+    }
+    if (from == std::string::npos) return false;
+    text.erase(from, to - from);
+    return true;
+}
+
 bool renameRecordings(std::string& text, const std::vector<std::pair<std::string, std::string>>& renames) {
     if (text.compare(0, 13, "apotheca-song") != 0) return false;
     std::string out;

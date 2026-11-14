@@ -39,6 +39,10 @@ bool parseSong(const std::string& text, Project& project);
 // name the new one. Everything else is left byte for byte, lines this version does not know
 // included. True if anything changed; text that is not a song is left alone. The names are the
 // caller's to check (sampleNameOk): Session::savedSongsFollow does.
+// A song's text with its track `track` (counted as parseSong counts them) taken out, and the
+// tracks after it a place up: what the steps of undo hold once a track is deleted. False if
+// the text has no such track (it is then as it was).
+bool dropTrackText(std::string& text, int track);
 bool renameRecordings(std::string& text, const std::vector<std::pair<std::string, std::string>>& renames);
 
 bool writeTextFile(const std::string& path, const std::string& text); // whole or not at all

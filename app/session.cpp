@@ -68,7 +68,17 @@ bool Session::removeTrack(int track) {
     }
     if (project.track > track || project.track >= count - 1) project.track = project.track > 0 ? project.track - 1 : 0;
     project.bar = 0;
-    applyProject(); // every track told to the engine afresh, in its new place
+    sendSong(); // every track told to the engine afresh, in its new place
+    // Undo keeps what the other tracks did: each step loses the track, and the ones after it move
+    // up a place with it. (The delete itself is not undone: the steps no longer hold the track.)
+    for (UndoStep& step : undo_) dropTrackText(step.text, track);
+    for (UndoStep& step : redo_) dropTrackText(step.text, track);
+    if (undoReady_) {
+        if (editing_) settled_ = patternsNow(); // the burst of edits ends here
+        else dropTrackText(settled_, track);
+        editing_ = false;
+        cellMark_ = cellMark();
+    }
     return true;
 }
 
@@ -96,7 +106,9 @@ bool Session::setTrackKind(int track, TrackKind kind) {
     for (auto& scene : t.automation)
         for (int lane = 0; lane < kSynthMacros; ++lane) // the macros' lanes; the effects' are still the same effects
             for (float& v : scene[lane]) v = kAutoNone;
-    applyProject(); // the engine is given the song afresh, with the new instrument in its place
+    sendSong(); // the engine is given the song afresh, with the new instrument in its place
+    // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).
+    if (undoReady_) cellMark_ = cellMark();
     return true;
 }
 
@@ -145,7 +157,7 @@ void Session::update(Uint32 nowMs) {
     // too, dropped() moves again and this comes round once more.
     if (const unsigned lost = engine.dropped(); lost != droppedSeen_ && engine.caughtUp()) {
         droppedSeen_ = lost;
-        applyProject();
+        sendSong(); // the same song: undo and redo are kept
         ++resyncs_;
     }
 
@@ -976,6 +988,15 @@ void Session::sendEffects(int track) {
 }
 
 void Session::applyProject() {
+    sendSong();
+    // Another song: nothing of the last one to go back to.
+    undo_.clear();
+    redo_.clear();
+    editing_ = false;
+    undoReady_ = false;
+}
+
+void Session::sendSong() {
     collectJob(true); // nothing half-made carries over
     Command c;
     c.type = Command::Stop;
@@ -1069,11 +1090,6 @@ void Session::applyProject() {
     engine.send(c);
     syncSong(); // the song's length, if it differs from the last one's
     sendMutes(); // the song's mutes; nothing is soloed in a song just opened
-    // Another song: nothing of the last one to go back to.
-    undo_.clear();
-    redo_.clear();
-    editing_ = false;
-    undoReady_ = false;
 }
 
 } // namespace apotheca

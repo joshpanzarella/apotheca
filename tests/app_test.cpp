@@ -6796,6 +6796,79 @@ void testNoteEffects() {
     }
 }
 
+// ---- undo kept where the song is the same song ----------------------------------------------
+
+// A hit placed on a track by the code, as an edit is: a step of undo, then still for a while.
+void placeAndSettle(Rig& rig, int track, int lane, int step) {
+    rig.project().tracks[track].drums[0][0].level[lane][step] = 0.8f;
+    rig.app.session().sendDrumPattern(track, 0);
+    rig.frames(60); // a second: the burst of edits is over
+    rig.render(512);
+}
+
+// A full queue makes the song be sent again (a resync). It is the same song: undo stays.
+void testAResyncKeepsUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(2);
+    placeAndSettle(rig, 0, 2, 4);
+    CHECK(session.undoSteps() == 1);
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = 120.f;
+    for (int i = 0; i < 20000; ++i) rig.engine->send(c); // more than the queue holds
+    CHECK(rig.engine->dropped() > 0);
+    rig.render(512);
+    rig.frames(2);
+    CHECK(session.resyncs() == 1);
+    CHECK(session.undoSteps() == 1);
+    CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[2][4] == 0.f);
+    CHECK(session.redo() && rig.project().tracks[0].drums[0][0].level[2][4] > 0.f);
+}
+
+// Deleting a track, or giving one another instrument, keeps what undo knew of the other tracks.
+void testATrackDeletedOrChangedKeepsUndo() {
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums));
+        rig.project().tracks[1].drums[0][0].level[5][12] = 0.8f; // the track that goes: its hit must not land on the one after it
+        session.sendDrumPattern(1, 0);
+        rig.frames(2);
+        placeAndSettle(rig, 0, 1, 0);
+        placeAndSettle(rig, 2, 3, 8);
+        CHECK(session.undoSteps() == 2);
+        CHECK(session.removeTrack(1) && rig.project().trackCount() == 2);
+        rig.frames(60);
+        CHECK(session.undoSteps() == 2);
+        // An edit after the delete: its step is the song as it was just after it.
+        placeAndSettle(rig, 0, 6, 6);
+        CHECK(session.undoSteps() == 3);
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[6][6] == 0.f && rig.project().tracks[1].drums[0][0].level[3][8] > 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        // The third track is the second now, and its step of undo went with it.
+        CHECK(session.undo() && rig.project().tracks[1].drums[0][0].level[3][8] == 0.f && rig.project().tracks[0].drums[0][0].level[1][0] > 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[1][0] == 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        CHECK(rig.project().trackCount() == 2); // the delete itself is not undone
+        CHECK(session.redo() && session.redo() && rig.project().tracks[1].drums[0][0].level[3][8] > 0.f);
+    }
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums));
+        rig.frames(2);
+        placeAndSettle(rig, 0, 1, 0);
+        placeAndSettle(rig, 1, 3, 8);
+        CHECK(session.setTrackKind(1, TrackKind::Phazed));
+        rig.frames(60);
+        CHECK(session.undoSteps() == 2);
+        CHECK(session.undo() && rig.project().tracks[1].kind == TrackKind::Phazed); // passed by: another kind now
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[1][0] == 0.f);
+    }
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
@@ -6805,6 +6878,14 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
+        testAResyncKeepsUndo();
+        testATrackDeletedOrChangedKeepsUndo();
+        if (failures == 0) std::printf("app tests passed (undo kept only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    testAResyncKeepsUndo();
+    testATrackDeletedOrChangedKeepsUndo();
     testTabs();
     testNoteEffects();
     testNoteEffectsHoldUp();
