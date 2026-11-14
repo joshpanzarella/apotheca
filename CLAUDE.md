@@ -429,10 +429,12 @@ effect in those two groups and fails one that does not.
   the bit (TAPE leaves what is under 240 dB down on its tape: 1e-9 apart).
   So a steady sine's samples at its zero crossings (under 1e-12) are not
   echoed. **Its tail leans left** (each right echo is FEEDBACK of the left before it:
-  7.8 dB over a tail at 45%; a sound hard right echoes first on the left; the
-  owner's call, pinned in `testPing`). Its FEEDBACK reads what it does, 0 to 90%: a twentieth is 4.5%, so
-  the D-pad's stops read 5, 9, 14, 18... (CLEAN reads 0 to 100% and does nine
-  tenths of it; TAPE reads to 120%. Three scales, carried as they read.)
+  7.8 dB over a tail at FEEDBACK 50%, each echo 0.45 of the last; a sound hard right echoes first on
+  the left; the owner's call, pinned in `testPing`). **Its FEEDBACK reads 0 to 100% and does nine
+  tenths of it, exactly as CLEAN's** (owner, 2026-11-14; it read 0 to 90%, and the D-pad's stops read
+  5, 9, 14, 18...). Only the reading changed: the same setting does what it did, so old songs sound
+  as they did. CLEAN and PING are one scale (carried to the bit); TAPE reads to 120% (carried as it
+  reads, 50% to 0.42). Its loop is still 0.9 at most: the tail always ends.
 - **A filter state does not reach zero by itself**: with a coefficient over a
   half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
   "silence in, silence out" fails and a processor without flush-to-zero crawls.

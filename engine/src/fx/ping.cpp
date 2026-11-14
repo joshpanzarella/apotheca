@@ -1,8 +1,10 @@
 // PING: a clean echo that bounces from side to side. TAPE's loop without the wear.
 //
 //   TIME      eight choices, in time with the song (TAPE's eight: kThirds below)
-//   FEEDBACK  0 to 90%: how much of each echo is in the next. It reads what it
-//             does. Under 1 at its most, so it cannot ring for good
+//   FEEDBACK  0 to 100%, as CLEAN reads it, and does nine tenths of that: how
+//             much of each echo is in the next is 0 to 0.9. Under 1 at its
+//             most, so it cannot ring for good (owner, 2026-11-14: it read 0
+//             to 90%, and the D-pad's stops read 5, 9, 14, 18...)
 //   TONE      how bright the repeats stay: a high cut each echo passes on its
 //             way to the other side, 600 Hz to 18 kHz (the old DELAY's range)
 //   MIX       how loud the echoes are beside the sound (which stays as it is)
@@ -27,7 +29,7 @@
 //
 // What that costs, measured (testPing), and the owner's to change: the tail
 // LEANS LEFT, since each right echo is FEEDBACK of the left one before it
-// (over a whole tail the left is 7.8 dB louder at 45%, 1.6 dB at 90%; at 0%
+// (over a whole tail the left is 7.8 dB louder at FEEDBACK 50%, 1.6 dB at 100%; at 0%
 // the one echo is on the left only). And the sound's own width is not kept:
 // a sound hard right echoes first on the left at half its size, and a sound
 // opposite on the two sides echoes not at all. Ways to change it (a setting
@@ -205,8 +207,7 @@ private:
 
 void reading(int index, float v, const float*, char* out, int size) {
     if (index == 0) std::snprintf(out, static_cast<std::size_t>(size), "%s", kTimeNames[timeChoice(v)]);
-    else if (index == 1) readPercent(v * kMaxFeedback, out, size);
-    else readPercent(v, out, size);
+    else readPercent(v, out, size); // (FEEDBACK too: it reads as CLEAN's does, 0 to 100%)
 }
 
 Effect* create() { return new Ping; }
@@ -217,7 +218,7 @@ float amount(int index, float v) { return index == 0 ? static_cast<float>(kThird
 } // namespace
 
 const EffectInfo kPingInfo = {
-    "PING", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5625f, 0.5f, 0.6f, 0.35f}, // a dotted eighth, 45%
+    "PING", 4, {"TIME", "FEEDBACK", "TONE", "MIX"}, {0.5625f, 0.5f, 0.6f, 0.35f}, // a dotted eighth, FEEDBACK 50% (each echo 0.45 of the last)
     "ping", EffectFamily::Delay, {kTimes, 0, 0, 0}, reading, create,
     "", "PING", amount,
 };
