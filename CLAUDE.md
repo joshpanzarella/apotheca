@@ -499,7 +499,7 @@ effect in those two groups and fails one that does not.
     at 2.9 REVERB SPRING read as one word (`app_test` counts the empty
     columns). A pair too long even with both small at LARGE is drawn as its
     type alone, in the family's lettering (`typeAlone`: DRIVE SATURATE is 4
-    pixels over, and the line says SATURATE). The tests ask the same
+    pixels over, and the line says SATURATE: the owner is content with that, 2026-11-14). The tests ask the same
     function. A new type's name is checked there at every size.
   - **The page goes down to `kPageBottom`** (449: 7 above the hints bar, as
     its top is 7 under the top bar; owner, 2026-11-13: it stopped 40 short).
