@@ -58,7 +58,7 @@ void SongScreen::scenesMoved(int from, int by) {
 void SongScreen::moveCursor(Button direction, bool pressed) {
     if (listing_) {
         int& cursor = revsOpen_ ? revCursor_ : listCursor_;
-        const int last = static_cast<int>(revsOpen_ ? revs_.size() : songs_.size());
+        const int last = static_cast<int>(revsOpen_ ? revs_.size() + kRevsFirst - 1 : songs_.size());
         if (direction == Button::Up && cursor > 0) --cursor;
         if (direction == Button::Down && cursor < last) ++cursor;
         return;
@@ -199,8 +199,8 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.toggleTransfer(lastMs_ * 2654435761u + 12345u); // files over WiFi, on or off
             return;
         }
-        if (b == Button::X) {
-            // Anywhere in the list: keep the song as it is now.
+        if (b == Button::Y) {
+            // Anywhere in the list: keep the song as it is now. (Y, not X: X hears, everywhere.)
             savedRev_ = session_.saveRev();
             if (revsOpen_) openRevList();
             return;
@@ -210,8 +210,14 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             if (b == Button::A && revCursor_ == 0) {
                 savedRev_ = session_.saveRev();
                 openRevList();
+            } else if (b == Button::A && revCursor_ == kNewNameRow) {
+                // Another two words; again for another (the revs go with it). The songs behind say it too.
+                const std::string renamed = session_.renameSong();
+                songs_ = session_.songNames();
+                for (std::size_t i = 0; i < songs_.size(); ++i)
+                    if (songs_[i] == renamed) listCursor_ = static_cast<int>(i) + 1;
             } else if (b == Button::A) {
-                if (session_.openRev(revs_[static_cast<std::size_t>(revCursor_ - 1)])) {
+                if (session_.openRev(revs_[static_cast<std::size_t>(revCursor_ - kRevsFirst)])) {
                     listing_ = revsOpen_ = false;
                     scene_ = column_ = top_ = 0;
                 }
@@ -227,12 +233,6 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             } else {
                 listing_ = false;
             }
-        }
-        if (b == Button::Y && listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName()) {
-            const std::string renamed = session_.renameSong();
-            songs_ = session_.songNames();
-            for (std::size_t i = 0; i < songs_.size(); ++i)
-                if (songs_[i] == renamed) listCursor_ = static_cast<int>(i) + 1;
         }
         if (b == Button::A) {
             if (listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName()) {
@@ -647,7 +647,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
             fonts.small.draw(r, x + 12.f, y + 12.f, upper, kDim);
             fonts.small.drawRight(r, x + w - 12.f, y + 12.f, saved, kBrass);
-            const int rows = static_cast<int>(revs_.size()) + 1;
+            const int rows = static_cast<int>(revs_.size()) + kRevsFirst;
             const int first = revCursor_ < shown ? 0 : revCursor_ - shown + 1;
             for (int i = first; i < rows && i < first + shown; ++i) {
                 const int by = y + 32 + (i - first) * rowH;
@@ -656,15 +656,19 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                     fonts.medium.draw(r, x + 22.f, by + 9.f, "+ SAVE A REV", i == revCursor_ ? kTeal : kText);
                     const char* what = "THE SONG AS IT IS NOW"; // (clear of "+ SAVE A REV" beside it: at XL it is held at LARGE)
                     fonts.within(&Fonts::small, what, w - 44.f - fonts.medium.width("+ SAVE A REV") - 12.f).drawRight(r, x + w - 22.f, by + 10.f, what, kDim);
+                } else if (i == kNewNameRow) {
+                    fonts.medium.draw(r, x + 22.f, by + 9.f, "+ NEW NAME", i == revCursor_ ? kTeal : kText);
+                    const char* what = "TWO OTHER WORDS"; // (as THE SONG AS IT IS NOW beside SAVE A REV)
+                    fonts.within(&Fonts::small, what, w - 44.f - fonts.medium.width("+ NEW NAME") - 12.f).drawRight(r, x + w - 22.f, by + 10.f, what, kDim);
                 } else {
-                    const int rev = revs_[static_cast<std::size_t>(i - 1)];
+                    const int rev = revs_[static_cast<std::size_t>(i - kRevsFirst)];
                     std::snprintf(text, sizeof text, "REV %d", rev);
                     fonts.medium.draw(r, x + 22.f, by + 9.f, text, i == revCursor_ ? kTeal : kText);
                     fonts.small.drawRight(r, x + w - 22.f, by + 10.f, session_.revWhen(rev).c_str(), kDim);
                 }
                 if (i == revCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
             }
-            const Hint list[] = {{"A", revCursor_ == 0 ? "save a rev" : "go back to this rev"}, {"X", "save a rev"}, {"B", "songs"}};
+            const Hint list[] = {{"A", revCursor_ == 0 ? "save a rev" : revCursor_ == kNewNameRow ? "new name" : "go back to this rev"}, {"Y", "save a rev"}, {"B", "songs"}};
             hints(r, fonts, list, 3);
             return;
         }
@@ -707,9 +711,9 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
         }
         const bool onOpen = listCursor_ > 0 && songs_[static_cast<std::size_t>(listCursor_ - 1)] == session_.songName();
-        const Hint list[] = {{"A", listCursor_ == 0 ? "new song" : onOpen ? "its revs" : "open"}, {"X", "save a rev"}, {"Y", onOpen ? "new name" : nullptr},
+        const Hint list[] = {{"A", listCursor_ == 0 ? "new song" : onOpen ? "its revs" : "open"}, {"Y", "save a rev"},
                              {"B", "close"}, {"HOLD B", listCursor_ > 0 ? "delete" : nullptr}};
-        hints(r, fonts, list, 5);
+        hints(r, fonts, list, 4);
         return;
     }
 

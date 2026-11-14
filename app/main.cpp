@@ -765,7 +765,7 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "revs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT
-        tapKey(SDLK_s, 2);      // X twice: two revs
+        tapKey(SDLK_a, 2);      // Y twice: two revs
         tapKey(SDLK_DOWN);
         tapKey(SDLK_x);         // A on the open song: its revs
     } else if (std::strcmp(view, "change-instrument") == 0) {
@@ -779,7 +779,7 @@ int main(int argc, char** argv) {
         // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list
-        tapKey(SDLK_s);         // X: a rev, so the song is on the card
+        tapKey(SDLK_a);         // Y: a rev, so the song is on the card
         tapKey(SDLK_DOWN);
         pushKey(SDLK_z, true);
     } else if (std::strcmp(view, "add-track") == 0) {

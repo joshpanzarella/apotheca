@@ -627,7 +627,10 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 
 In the list:
 
-- **Y on the open song** gives it a new two-word name. Press again for another.
+- **Y** saves a rev of the open song, wherever the cursor is (X hears, so it
+  saves nothing).
+- **A on the open song** lists its revs. Its second row, **NEW NAME**, gives
+  the song a new two-word name. Press again for another.
 - **Hold B on a song for a second** deletes it; the row fills as you hold and
   says CANNOT BE UNDONE (nothing on the handheld brings it back). A
   tap of B only closes the list. A deleted song and its revs are moved to a
@@ -751,7 +754,7 @@ Apotheca-only system image.
 A rev is a snapshot: the song as it is now, kept beside it and never written
 to again.
 
-- **SELECT, then X** saves a rev.
+- **SELECT, then Y** saves a rev (in the list of revs too).
 - **SELECT, then A on the open song** lists its revs. A on one goes back to it.
 - **Going back loses nothing.** If no rev holds the song as it is now, it is
   kept as a new rev first.

@@ -589,11 +589,13 @@ void testRevs() {
     CHECK(peakOf(rig.render(24000)) > 0.01f);
     rig.tap(START);
 
-    // ---- on screen: SELECT, then X saves one ----------------------------------------
+    // ---- on screen: SELECT, then Y saves one (X hears, everywhere: it saves nothing) ----
     rig.session().view = View::Song;
     const int before = static_cast<int>(session.revs().size());
     rig.tap(SELECT);
     rig.tap(X);
+    CHECK(static_cast<int>(session.revs().size()) == before && rig.app.song().listingSongs());
+    rig.tap(Y);
     CHECK(static_cast<int>(session.revs().size()) == before + 1 && rig.app.song().listingSongs());
     // A on the song that is open shows its revs.
     rig.tap(DOWN);
@@ -602,10 +604,12 @@ void testRevs() {
     CHECK(session.songName() == name);
     rig.tap(A); // the top row: save a rev
     CHECK(static_cast<int>(session.revs().size()) == before + 2 && rig.app.song().listingRevs());
-    rig.tap(X); // X does it here as well, and the list shows the new one
+    rig.tap(X); // X does not
+    CHECK(static_cast<int>(session.revs().size()) == before + 2);
+    rig.tap(Y); // Y does it here as well, and the list shows the new one
     CHECK(static_cast<int>(session.revs().size()) == before + 3);
     rig.tap(DOWN, 50);
-    CHECK(rig.app.song().listCursor() == before + 3); // stops at the oldest
+    CHECK(rig.app.song().listCursor() == before + 4); // stops at the oldest (after SAVE A REV and NEW NAME)
     rig.tap(UP, 50);
     CHECK(rig.app.song().listCursor() == 0);
     // B goes back to the songs, not out.
@@ -670,7 +674,7 @@ void testRenamingAndDeletingSongs() {
     writeTextFile(folder + "/" + first + " two.song", text);
     writeTextFile(folder + "/" + first + " two.1.rev", text);
 
-    // ---- a new name: Y on the open song in the list ---------------------------------
+    // ---- a new name: NEW NAME in the open song's revs --------------------------------
     session.view = View::Song;
     // Put the list's cursor on a song, wherever the list has it just now.
     const auto goToSong = [&](const std::string& name) {
@@ -680,8 +684,17 @@ void testRenamingAndDeletingSongs() {
     };
     rig.tap(SELECT);
     goToSong(first);
-    rig.tap(Y);
+    rig.tap(Y); // Y on the open song is a rev now, not a name
+    CHECK(session.songName() == first && session.revs().size() == 3);
+    std::remove((folder + "/" + first + ".3.rev").c_str());
+    CHECK(session.revs().size() == 2);
+    rig.tap(A); // its revs
+    rig.tap(DOWN);
+    CHECK(song.listingRevs() && song.listCursor() == 1);
+    rig.tap(A); // NEW NAME
     const std::string second = session.songName();
+    CHECK(song.listingRevs());
+    rig.tap(B); // back to the songs
     CHECK(second != first && !exists(folder + "/" + first + ".song") && exists(folder + "/" + second + ".song"));
     CHECK(exists(folder + "/" + second + ".1.rev") && exists(folder + "/" + second + ".2.rev") && !exists(folder + "/" + first + ".1.rev"));
     CHECK(session.revs() == std::vector<int>({2, 1}));
@@ -690,10 +703,14 @@ void testRenamingAndDeletingSongs() {
     CHECK(exists(folder + "/" + first + " two.song") && exists(folder + "/" + first + " two.1.rev"));
     CHECK(song.listingSongs() && song.listedSongs()[static_cast<std::size_t>(song.listCursor() - 1)] == second); // the cursor is still on it
     CHECK(songText(rig.project()) == text);
-    rig.tap(Y); // again: another
+    rig.tap(A); // its revs again, NEW NAME again: another
+    rig.tap(DOWN);
+    rig.tap(A);
     CHECK(session.songName() != second && session.songName() != first);
     const std::string third = session.songName();
-    // Y on a song that is not the open one, or on NEW SONG, does nothing.
+    rig.tap(B);
+    CHECK(song.listingSongs() && song.listedSongs()[static_cast<std::size_t>(song.listCursor() - 1)] == third);
+    // Y elsewhere names nothing.
     rig.tap(UP, 9);
     rig.tap(Y);
     CHECK(session.songName() == third);

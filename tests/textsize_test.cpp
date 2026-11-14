@@ -1095,20 +1095,23 @@ void testTheOtherScreens() {
         few.frames(1);
         few.tap(SELECT);
         CHECK(few.app.song().listingSongs() && few.session().songNames().size() == 1);
-        few.tap(X); // a rev is saved: the heading says so, beside SONGS
+        few.tap(Y); // a rev is saved: the heading says so, beside SONGS
         holds(few, "the list of songs, a rev just saved");
         CHECK(!drew("KEPT AS YOU GO. NOTHING TO SAVE."));
         few.tap(DOWN);
         few.tap(A); // the open song's revs
         holds(few, "a song's revs");
-        CHECK(drew("+ SAVE A REV") && drew("THE SONG AS IT IS NOW"));
+        CHECK(drew("+ SAVE A REV") && drew("THE SONG AS IT IS NOW") && drew("+ NEW NAME") && drew("TWO OTHER WORDS"));
         // A clear gap between the two on that line at every size (at XL they met: the second is held at LARGE there).
-        float saveEnds = 0.f, whatStarts = 0.f;
+        float saveEnds = 0.f, whatStarts = 0.f, nameEnds = 0.f, otherStarts = 0.f;
         for (const textfit::Text& t : lastXl.texts) {
             if (t.words == "+ SAVE A REV") saveEnds = t.x + t.w;
             if (t.words == "THE SONG AS IT IS NOW") whatStarts = t.x;
+            if (t.words == "+ NEW NAME") nameEnds = t.x + t.w;
+            if (t.words == "TWO OTHER WORDS") otherStarts = t.x;
         }
         CHECK(saveEnds > 0.f && whatStarts - saveEnds >= 12.f);
+        CHECK(nameEnds > 0.f && otherStarts - nameEnds >= 12.f);
     }
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
