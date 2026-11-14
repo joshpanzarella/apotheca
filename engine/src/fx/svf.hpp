@@ -2,7 +2,8 @@
 // What the newer filters share (COMB, VOWEL, EQ): a state-variable filter, a
 // setting that sets off gently (Gentle), numbers slid to sample by sample
 // (Slide), and the TICK: settings that glide are worked out again every kTick samples, on
-// samples counted from the effect's start, so the sound is the same to the
+// samples counted from the effect's start (asleep too: each holds it, testComb/Vowel/Eq
+// tickCountsAsleep), so the sound is the same to the
 // last bit however the caller cuts it into blocks (CLAUDE.md, "a new effect's
 // sound does not depend on how it is cut into blocks").
 //

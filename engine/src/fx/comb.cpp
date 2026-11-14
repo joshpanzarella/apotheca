@@ -5,7 +5,9 @@
 //
 //   PITCH     the note it rings at: 25 choices, C2 to C4 (65 to 262 Hz), a
 //             semitone a push. A choice, not an amount: the D-pad lands on a
-//             note, never between two.
+//             note, never between two. Below 0 FEEDBACK it rings an octave
+//             lower, and PITCH READS that note (C1 to C3), so what the screen
+//             says is what sounds (reading() looks at FEEDBACK).
 //   FEEDBACK  -100% to +100% (it does 0.95 of what it reads, so it always
 //             dies away). Above 0 every harmonic of PITCH rings: bright,
 //             like a string. Below 0 only the odd ones, an octave lower:
@@ -187,10 +189,11 @@ private:
     Slide<3> loop_; // what the loop runs on: kFeedback, kCut, kDelay
 };
 
-void reading(int index, float v, const float*, char* out, int size) {
+void reading(int index, float v, const float* all, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
     if (index == 0) {
-        const int key = kLowestKey + noteOf(v);
+        // Below 0 FEEDBACK the loop rings an octave under the note (changed()): read the note that sounds.
+        const int key = kLowestKey + noteOf(v) - (all && feedbackOf(all[1]) < 0.f ? 12 : 0);
         std::snprintf(out, n, "%s%d", kKeyNames[key % 12], key / 12 - 1);
     } else if (index == 1) {
         const int percent = static_cast<int>(std::round(feedbackOf(v) * 100.f));

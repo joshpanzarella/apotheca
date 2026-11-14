@@ -857,7 +857,7 @@ Numbers 15, 16, 17; words `comb`, `vowel`, `eq`; in the list after FILTER.
 
 | Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15% in the same runs) |
 | --- | --- | --- | --- |
-| COMB | the sound fed back on itself one cycle of a note late: it rings at the note and its harmonics | PITCH (25 notes, C2 to C4, a choice), FEEDBACK (-100 to +100%: below 0 hollow, odd harmonics, an octave down), TONE (a high cut in the loop), MIX | 0.04% (0.07% in one run); 0.08 to 0.10% while PITCH moves |
+| COMB | the sound fed back on itself one cycle of a note late: it rings at the note and its harmonics | PITCH (25 notes, C2 to C4, a choice), FEEDBACK (-100 to +100%: below 0 hollow, odd harmonics, an octave down, and PITCH then reads the note an octave down, C1 to C3), TONE (a high cut in the loop), MIX | 0.04% (0.07% in one run); 0.08 to 0.10% while PITCH moves |
 | VOWEL | four narrow peaks at a bass voice's vowel places, morphing A E I O U | VOWEL (and every shade between), SHIFT (-12 to +12 semitones), RESONANCE (Q 3 to 24, named as FILTER's so TYPE keeps it), MIX | 0.08% (0.11% in one run); 0.13% while VOWEL moves |
 | EQ | three bands: a low shelf at 200 Hz, a bell, a high shelf at 5 kHz | LOW, MID, MID FREQ (125 Hz to 8 kHz), HIGH (-12 to +12 dB each; no MIX: every band at 0 dB is the sound untouched, to the bit) | 0.07% (0.09% in one run); 0.10% while MID FREQ moves |
 

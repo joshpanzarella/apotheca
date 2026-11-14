@@ -18,7 +18,8 @@
 //
 // The peaks are four of the old FILTER's band-pass, each at the height of
 // its vowel's level, made up by Q to the 3/4 so a narrow one is about as loud
-// as a wide one on a bright sound (a saw comes out 5 to 8 dB down; testVowel).
+// as a wide one on a bright sound (a 110 Hz saw comes out 3 to 7 dB down at
+// every vowel and RESONANCE: -3.1 to -7.2; testVowel).
 // A pure tone sitting on a peak comes out louder: up to 16 dB at RESONANCE full. They take the sound side by side
 // (in parallel) and add.
 //
@@ -54,7 +55,7 @@ const Shape kShapes[kVowels] = {
 };
 const char kLetters[kVowels + 1] = "AEIOU";
 constexpr float kSettle = 0.015f, kMixSettle = 0.02f; // VOWEL, SHIFT, RESONANCE: each of Gentle's two glides
-constexpr float kMakeUp = 0.7f; // times Q to the 3/4: a saw comes out about 6 dB down at any RESONANCE (testVowel)
+constexpr float kMakeUp = 0.7f; // times Q to the 3/4: a saw comes out 3 to 7 dB down at any RESONANCE (testVowel)
 
 float qOf(float v) { return 3.f * std::pow(8.f, clamp01(v)); }
 float shiftOf(float v) { return 24.f * clamp01(v) - 12.f; } // semitones

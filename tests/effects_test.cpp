@@ -8048,6 +8048,26 @@ static double ringsAt(const std::vector<float>& ir, double hz, int cents = 60) {
 }
 static double cents(double hz, double want) { return 1200.0 * std::log2(hz / want); }
 
+// THE TICK COUNTS WHILE ASLEEP (svf.hpp: ticks are counted from the effect's start). An effect that starts
+// asleep and is fed zeros 3 samples, or 3 and five ticks, then noise, then a setting turned, gives the same
+// to the bit; fed none first, the turn's glide lands on other samples (it is not the same).
+static void tickCountsAsleep(EffectKind kind, int turn, float to) {
+    const auto run = [&](int zeros) {
+        std::unique_ptr<Effect> e = fresh(kind);
+        std::vector<float> l(static_cast<std::size_t>(zeros) + 4800, 0.f), r;
+        Noise noise(5u);
+        for (std::size_t i = static_cast<std::size_t>(zeros); i < l.size(); ++i) l[i] = 0.25f * noise.next();
+        r = l;
+        if (zeros > 0) e->process(l.data(), r.data(), zeros);
+        e->process(l.data() + zeros, r.data() + zeros, 2400);
+        e->setParam(turn, to);
+        e->process(l.data() + zeros + 2400, r.data() + zeros + 2400, 2400);
+        return std::vector<float>(l.begin() + zeros, l.end());
+    };
+    const std::vector<float> three = run(3), later = run(3 + 5 * 16), none = run(0);
+    CHECK(three == later && three != none);
+}
+
 static void testComb() {
     const EffectKind comb = EffectKind::Comb;
     const EffectInfo& info = effectInfo(comb);
@@ -8060,6 +8080,12 @@ static void testComb() {
     // How it reads: a note, a signed percentage (0 is 0%), amounts.
     CHECK(reads(comb, 0, combNote(0)) == "C2" && reads(comb, 0, combNote(1)) == "C#2" && reads(comb, 0, combNote(9)) == "A2" && reads(comb, 0, combNote(12)) == "C3");
     CHECK(reads(comb, 0, combNote(24)) == "C4" && reads(comb, 0, 0.f) == "C2" && reads(comb, 0, 1.f) == "C4" && reads(comb, 0, combNote(23)) == "B3");
+    // Below 0 FEEDBACK it rings an octave down, and PITCH reads the note that sounds; at 0 and above, as set.
+    {
+        const float under[4] = {combNote(0), combFeedback(-0.01), 0.7f, 0.5f}, at0[4] = {combNote(0), 0.5f, 0.7f, 0.5f}, over[4] = {combNote(0), 1.f, 0.7f, 0.5f};
+        CHECK(reads(comb, 0, combNote(0), under) == "C1" && reads(comb, 0, combNote(12), under) == "C2" && reads(comb, 0, combNote(24), under) == "C3" && reads(comb, 0, combNote(9), under) == "A1");
+        CHECK(reads(comb, 0, combNote(0), at0) == "C2" && reads(comb, 0, combNote(24), over) == "C4" && reads(comb, 0, combNote(24)) == "C4");
+    }
     CHECK(reads(comb, 1, 0.f) == "-100%" && reads(comb, 1, 0.5f) == "0%" && reads(comb, 1, 0.85f) == "+70%" && reads(comb, 1, 1.f) == "+100%" && reads(comb, 1, 0.45f) == "-10%");
     CHECK(reads(comb, 2, 0.7f) == "70%" && reads(comb, 3, 0.5f) == "50%");
     CHECK(std::fabs(fx::combHz(combNote(9)) - 110.0) < 1e-6 && std::fabs(fx::combHz(combNote(12)) - 130.8128) < 1e-3 && std::fabs(fx::combHz(1.f) - 261.6256) < 1e-3);
@@ -8083,6 +8109,11 @@ static void testComb() {
                     std::unique_ptr<Effect> e = fresh(comb, combNote(note), combFeedback(below ? -0.9 : 0.9), tone, 1.f);
                     const std::vector<float> ir = impulseOf(*e, 1.0);
                     const double off = cents(ringsAt(ir, want), want);
+                    // ...and PITCH, read beside this FEEDBACK, names the note it rings at.
+                    const float all[4] = {combNote(note), combFeedback(below ? -0.9 : 0.9), tone, 1.f};
+                    const int key = static_cast<int>(std::lround(69.0 + 12.0 * std::log2(want / 440.0)));
+                    static const char* const names[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+                    CHECK(reads(comb, 0, combNote(note), all) == std::string(names[key % 12]) + std::to_string(key / 12 - 1));
                     SAY("comb     %-3s TONE %3.0f%% FEEDBACK %s90%%: rings %+.0f cents from %.1f Hz\n", reads(comb, 0, combNote(note)).c_str(), tone * 100.0, below ? "-" : "+", off, want);
                     worst = std::fmax(worst, std::fabs(off));
                     // ...and its harmonics: above 0 the second is there, below 0 the half's second (the note) is not.
@@ -8170,6 +8201,7 @@ static void testComb() {
     //   FEEDBACK      1.51     1.50         1.05     1.10
     //   TONE          1.00     1.00         1.00     1.01
     //   MIX           1.00     1.00         1.00     0.92
+    tickCountsAsleep(comb, 0, 0.9f);
     const RulesSeen seen = holdsTheRules(comb, set, other, 8.0);
     SAY("comb     C2, FEEDBACK +100%%, TONE full: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
     CHECK(std::fabs(seen.lastAfterClick - 7.02) < 0.1);
@@ -8288,6 +8320,7 @@ static void testVowel() {
     //   RESONANCE     1.00     1.00         1.00     1.00
     //   MIX           1.00     1.00         1.01     0.92
     // (With the peaks' numbers stepped once a tick and a plain Glide, VOWEL read corners of 3.95 and RESONANCE 4.41.)
+    tickCountsAsleep(vowel, 0, 0.9f);
     const RulesSeen seen = holdsTheRules(vowel, set, other, 2.0);
     SAY("vowel    A, RESONANCE full: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
     CHECK(std::fabs(seen.lastAfterClick - 0.32) < 0.03);
@@ -8390,6 +8423,7 @@ static void testEq() {
     //   MID FREQ      1.00     1.00         1.02     1.20
     //   HIGH          1.00     1.00         1.00     1.01
     const float set[4] = {1.f, 1.f, 0.25f, 1.f}, other[4] = {0.f, 0.2f, 0.9f, 0.4f};
+    tickCountsAsleep(eq, 0, 0.9f);
     const RulesSeen seen = holdsTheRules(eq, set, other, 2.0);
     SAY("eq       every band +12: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
     CHECK(seen.lastAfterClick < 0.1);
