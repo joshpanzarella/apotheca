@@ -97,7 +97,7 @@ inline int modRestart(int n) { return n >= 0 && n < kModRestarts ? n : kModResta
 // ---- the engine's tick ---------------------------------------------------------------------------
 // A MOD's value is worked out on a tick every kModTick samples, counted from each step's first
 // sample; a synth's macros only every kModMacroTicks'th (each change works a whole tone out
-// again: QMOD about a microsecond). Batch 1 uses them; they are here so the tests hold one number.
+// again: QMOD about a microsecond). The engine's runMods uses them; here so the tests hold one number.
 constexpr int kModTick = 64;
 constexpr int kModMacroTicks = 8;
 
@@ -117,6 +117,51 @@ struct ModSettings {
     bool on() const { return modKind(kind) != kModOff && modTargetKnown(target) && depth != 0.f; }
 };
 inline int modLength(int n) { return n < 1 ? 1 : (n > kModSteps ? kModSteps : n); }
+
+// ---- one field at a time: what the engine's SetMod carries (b = the field, value = its value) ----
+// The numbers are in commands, and batch 2's song file follows them: appended, never reordered.
+enum ModField {
+    kModFieldKind = 0, kModFieldTarget, kModFieldDepth, kModFieldRate, kModFieldShape, kModFieldRestart, kModFieldPhase,
+    kModFieldLength, kModFieldSlew, kModFieldChance, kModFields
+};
+// A float as a whole number, or -1 where it is none (not a number, or too far out to be one).
+inline int modWhole(float v) { return v >= -1e6f && v <= 1e6f ? static_cast<int>(std::floor(v + 0.5f)) : -1; }
+inline float modHeld(float v, float lo, float hi) { return v >= lo ? (v <= hi ? v : hi) : lo; } // not a number: lo
+// Set one field, held to what it can be (a number nobody knows reads as OFF, no target, 1 BAR,
+// SINE, PLAY, 0; a depth -1..1; a share 0..1; not a number as the least).
+inline void modSet(ModSettings& m, int field, float value) {
+    switch (field) {
+    case kModFieldKind: m.kind = modKind(modWhole(value)); break;
+    case kModFieldTarget: m.target = modTargetKnown(modWhole(value)) ? modWhole(value) : kModTargetNone; break;
+    case kModFieldDepth: m.depth = value == value ? modHeld(value, -1.f, 1.f) : 0.f; break;
+    case kModFieldRate: m.rate = modRate(modWhole(value)); break;
+    case kModFieldShape: m.shape = modShape(modWhole(value)); break;
+    case kModFieldRestart: m.restart = modRestart(modWhole(value)); break;
+    case kModFieldPhase: m.phase = modPhase(modWhole(value)); break;
+    case kModFieldLength: m.length = modLength(modWhole(value)); break;
+    case kModFieldSlew: m.slew = modHeld(value, 0.f, 1.f); break;
+    case kModFieldChance: m.chance = modHeld(value, 0.f, 1.f); break;
+    default: break;
+    }
+}
+inline float modGet(const ModSettings& m, int field) {
+    switch (field) {
+    case kModFieldKind: return static_cast<float>(m.kind);
+    case kModFieldTarget: return static_cast<float>(m.target);
+    case kModFieldDepth: return m.depth;
+    case kModFieldRate: return static_cast<float>(m.rate);
+    case kModFieldShape: return static_cast<float>(m.shape);
+    case kModFieldRestart: return static_cast<float>(m.restart);
+    case kModFieldPhase: return static_cast<float>(m.phase);
+    case kModFieldLength: return static_cast<float>(m.length);
+    case kModFieldSlew: return m.slew;
+    case kModFieldChance: return m.chance;
+    default: return 0.f;
+    }
+}
+inline void modSetStep(ModSettings& m, int step, float value) {
+    if (step >= 0 && step < kModSteps) m.steps[step] = value == value ? modHeld(value, -1.f, 1.f) : 0.f;
+}
 
 // ---- where the song is -------------------------------------------------------------------------
 // The position in steps since Play, from the engine's step clock: `stepsFired` steps begun (the
@@ -188,6 +233,16 @@ inline double stepValue(const ModSettings& m, double position, int track, int mo
     if (slew <= 0.f || index <= 0 || into >= slew) return now;
     const double before = stepperHeld(m, index - 1, track, mod);
     return before + (now - before) * (into / slew);
+}
+
+// The place of a STEPPER's row playing at a position (0..LENGTH-1), for the screen; -1 for an LFO.
+inline int stepperPlace(const ModSettings& m, double position) {
+    if (modKind(m.kind) != kModStepper) return -1;
+    const ModRateInfo& r = modRateInfo(modRate(m.rate));
+    const long index = modFloor(position * r.den / r.num);
+    const int length = modLength(m.length);
+    const long place = index % length;
+    return static_cast<int>(place < 0 ? place + length : place);
 }
 
 // What one MOD adds at a position: depth x its shape (0 when OFF or aimed at nothing).

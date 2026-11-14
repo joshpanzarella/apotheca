@@ -448,7 +448,37 @@ effect in those two groups and fails one that does not.
   identical, 2026-11-14). The centre is never the wobble: automation and Stop
   compare with it. A new way to set a macro, an effect setting or a send of a
   track goes through it, or a MOD on that lane is lost until its next tick.
-  Batch 0 (built): nothing sets an offset but `setModOffsetForTests`.
+  Only `runMods` sets an offset, and `stillLane` puts it back to 0.
+- **A MOD runs on a tick, and only while one is on** (batch 1, 2026-11-14;
+  `Engine::runMods`, `Track::mods`, `SetMod` / `SetModStep` / `ModAudition`).
+  The tick is every `kModTick` (64) samples **counted from each step's first
+  sample** (`sinceStep_`), the position read before the chunk is taken off
+  `untilStep_`; a synth's macros every `kModMacroTicks`'th tick (512), effect
+  settings and sends on each. `render()` cuts the chunk on the tick **only
+  while playing with `anyMod_`, or stopped with an audition**: a song with none
+  is cut as it always was, to the bit. `runMods` runs on the audio thread
+  before the tracks are shared out; a lane is given only when its offset
+  changed; two on one lane add. It passes by a slot held by the FX screen
+  (`autoWaits`) and a setting that is a choice (`slotChoices`, told in
+  `InstallEffect` by `Engine::setEffect`). **Stop, Panic, a MOD aimed
+  elsewhere or OFF, the hold, an effect put in a slot and a track taken away
+  let go** (`stillLane`: offset 0, the centre given); a track taken away has
+  its MODs OFF. **Anything new that stops the song, or changes what a lane
+  belongs to, lets go of the offset**, or the old wobble stays frozen on the
+  knob. `ModAudition` (X held while stopped) runs a track's MODs from the
+  moment X went down; it is not taken while playing. `mod_test` holds all of
+  it; `mod_test --measure` prints the figures.
+- **Under a MOD, an effect that glides a setting a CALL at a time is not the
+  same to the bit in other blocks** (CHORUS, COMP, DUCK, HALL, PING, PLATE,
+  SATURATE, SPRING, TAPE: `Glide::begin` in each `process()`). At most 0.0024
+  apart (about 46 dB down), held under 0.005 by `mod_test`. The TICK effects,
+  the old FILTER, the sends and the macros are exact, and helpers never change
+  a bit. Not mended (it would change those nine's glide): the owner's call. A
+  fast MOD on them is also mostly smoothed away (a 1/2 STEP SINE keeps 31 to
+  43% of its swing; the plan's section 13 has every rate).
+- **Phazed is not the same to the bit in blocks of one sample** (a note's
+  start, MOD or none, as on `main`): a block-exact test with Phazed starts at
+  blocks of 7.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -1379,6 +1409,8 @@ effect in those two groups and fails one that does not.
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin. The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
+| MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
+| Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
@@ -1391,7 +1423,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row); batches 1 (engine) and 2 (song) next.
+2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); batch 2 (song) next.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,

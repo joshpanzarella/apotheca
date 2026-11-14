@@ -1,8 +1,11 @@
-// MOD's groundwork (docs/plans/modulation-plan.md, batch 0): the rule (mod_rule.hpp) against
-// values worked out by hand, and the one way a lane's value goes out of the engine (giveLane),
-// with a MOD's offset put in by hand: no MOD runs yet.
-//   mod_test                 every check
-//   mod_test --only NAME...  just those tests
+// MOD (docs/plans/modulation-plan.md, batches 0 and 1): the rule (mod_rule.hpp) against values
+// worked out by hand; the one way a lane's value goes out of the engine (giveLane); and the engine
+// running MODs: the tick, the macros' tick, Play twice, a tempo change, any block length and any
+// helpers to the bit, the chunk cuts only while one runs, a scene move, a bounce against a live
+// loop, the FX screen's hold, choices, a track taken away, X held while stopped, and what the old
+// FILTER's stairs and a newer effect's glide do to a MOD (measured).
+//   mod_test                            every check
+//   mod_test [--measure] --only NAME... just those tests (--measure: print what is measured)
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +18,8 @@
 #include "apotheca/effect.hpp"
 #include "apotheca/engine.hpp"
 #include "apotheca/mod_rule.hpp"
+
+#include "../engine/src/fx/glide.hpp" // a newer effect's Glide, by itself
 
 using namespace apotheca;
 
@@ -275,7 +280,70 @@ static void testTheCombine() {
     CHECK(modGiven(0.5f, 0.3f + 0.4f) == 1.f && modGiven(0.5f, 0.3f - 0.4f) == 0.5f + (0.3f - 0.4f)); // two on one target add, then one clamp
 }
 
-// ---- the engine: one way out for a lane, with an offset put in by hand ----------------------------
+// One field at a time, as SetMod carries it: held to what it can be, and read back the same.
+static void testTheFields() {
+    CHECK(kModFieldKind == 0 && kModFieldTarget == 1 && kModFieldDepth == 2 && kModFieldRate == 3 && kModFieldShape == 4 && kModFieldRestart == 5 &&
+          kModFieldPhase == 6 && kModFieldLength == 7 && kModFieldSlew == 8 && kModFieldChance == 9 && kModFields == 10);
+    ModSettings m;
+    m.steps[3] = 0.25f;
+    const float values[kModFields] = {2.f, 13.f, -0.4f, 5.f, 6.f, 0.f, 3.f, 7.f, 0.3f, 0.6f};
+    for (int f = 0; f < kModFields; ++f) modSet(m, f, values[f]);
+    for (int f = 0; f < kModFields; ++f) CHECK(modGet(m, f) == values[f]);
+    CHECK(m.on());
+    // Held: a number nobody knows, not a number, too far out.
+    modSet(m, kModFieldKind, 3.f);
+    CHECK(m.kind == kModOff && !m.on());
+    modSet(m, kModFieldKind, std::nanf(""));
+    CHECK(m.kind == kModOff);
+    modSet(m, kModFieldKind, 1.4f);
+    CHECK(m.kind == kModLfo);
+    modSet(m, kModFieldKind, 1.6f); // the nearest whole number: a float sent as 2 that arrives as 1.9999 is still 2
+    CHECK(m.kind == kModStepper);
+    modSet(m, kModFieldKind, 1.f);
+    modSet(m, kModFieldTarget, 22.f);
+    CHECK(m.target == kModTargetNone);
+    modSet(m, kModFieldTarget, 1e30f);
+    CHECK(m.target == kModTargetNone);
+    modSet(m, kModFieldTarget, 21.f);
+    CHECK(m.target == 21);
+    modSet(m, kModFieldDepth, 3.f);
+    CHECK(m.depth == 1.f);
+    modSet(m, kModFieldDepth, -3.f);
+    CHECK(m.depth == -1.f);
+    modSet(m, kModFieldDepth, std::nanf(""));
+    CHECK(m.depth == 0.f);
+    modSet(m, kModFieldRate, 12.f);
+    CHECK(m.rate == kModRateBar);
+    modSet(m, kModFieldShape, -1.f);
+    CHECK(m.shape == kModSine);
+    modSet(m, kModFieldPhase, 4.f);
+    CHECK(m.phase == 0);
+    modSet(m, kModFieldLength, 40.f);
+    CHECK(m.length == 16);
+    modSet(m, kModFieldLength, -40.f);
+    CHECK(m.length == 1);
+    modSet(m, kModFieldSlew, 2.f);
+    modSet(m, kModFieldChance, std::nanf(""));
+    CHECK(m.slew == 1.f && m.chance == 0.f);
+    modSetStep(m, 3, 2.f);
+    modSetStep(m, 4, std::nanf(""));
+    modSetStep(m, 16, 0.5f); // no such place: nothing
+    modSetStep(m, -1, 0.5f);
+    CHECK(m.steps[3] == 1.f && m.steps[4] == 0.f && m.steps[15] == 0.f && m.steps[0] == 0.f);
+    // A STEPPER's place: its row round and round from Play, at its rate.
+    ModSettings s;
+    s.kind = kModStepper;
+    s.rate = kModRateEighth; // two steps a value
+    s.length = 3;
+    CHECK(stepperPlace(s, 0.0) == 0 && stepperPlace(s, 1.99) == 0 && stepperPlace(s, 2.0) == 1 && stepperPlace(s, 5.5) == 2 && stepperPlace(s, 6.0) == 0);
+    CHECK(stepperPlace(s, -0.5) == 2); // before Play: the place before the first
+    s.kind = kModLfo;
+    CHECK(stepperPlace(s, 3.0) == -1);
+}
+
+// ---- the engine ---------------------------------------------------------------------------------
+
+static bool measuring = false; // --measure: print what the measuring tests find
 
 static Command make(Command::Type type, int track = 0, int a = 0, int b = 0, float value = 0.f) {
     Command c;
@@ -286,10 +354,33 @@ static Command make(Command::Type type, int track = 0, int a = 0, int b = 0, flo
     c.value = value;
     return c;
 }
+// One MOD's settings: an LFO (a SQUARE eight bars long adds its depth, whole, for a minute at 120).
+static ModSettings lfo(int target, float depth, int shape = kModSquare, int rate = kModRateEightBars) {
+    ModSettings m;
+    m.kind = kModLfo;
+    m.target = target;
+    m.depth = depth;
+    m.shape = shape;
+    m.rate = rate;
+    return m;
+}
+static ModSettings stepper(int target, float depth, int rate, float chance, float slew = 0.f, int length = 8) {
+    ModSettings m;
+    m.kind = kModStepper;
+    m.target = target;
+    m.depth = depth;
+    m.rate = rate;
+    m.chance = chance;
+    m.slew = slew;
+    m.length = length;
+    for (int i = 0; i < kModSteps; ++i) m.steps[i] = static_cast<float>((i * 7) % 11) / 5.f - 1.f;
+    return m;
+}
 // A synth and an effect that make no sound and write down what they are given.
 struct Given {
     int what;
     float value;
+    bool operator==(const Given& o) const { return what == o.what && value == o.value; }
 };
 struct SpySynth : Instrument {
     std::vector<Given>* log;
@@ -311,12 +402,13 @@ struct SpyEffect : Effect {
     void setParam(int index, float value) override { log->push_back({index, value}); }
     void process(float*, float*, int) override {}
 };
+// Track 1 a synth that writes down its macros, its slot 2 an effect that writes down its settings.
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
     std::vector<Given> macros, params;
     Rig() {
-        macros.reserve(10000);
-        params.reserve(10000);
+        macros.reserve(400000);
+        params.reserve(400000);
         engine->prepare(48000.f);
         Command c = make(Command::InstallSynth, 1);
         c.pointer = new SpySynth(&macros);
@@ -326,13 +418,24 @@ struct Rig {
         macros.clear();
         params.clear();
     }
-    void frames(int n) {
-        std::vector<float> out(2 * 512);
-        for (; n > 0; n -= 512) engine->render(out.data(), n < 512 ? n : 512);
+    void frames(int n, int block = 512) {
+        std::vector<float> out(2 * static_cast<std::size_t>(block));
+        for (; n > 0; n -= block) engine->render(out.data(), n < block ? n : block);
     }
     void send(const Command& c) {
         CHECK(engine->send(c));
         frames(1);
+    }
+    void mod(int m, const ModSettings& s, int track = 1) {
+        CHECK(engine->setMod(track, m, s));
+        frames(1);
+    }
+    // Stopped: X held on the knob runs its MODs from now (the tick, macros too, comes at once).
+    void hear(unsigned mask, int track = 1) { send(make(Command::ModAudition, track, static_cast<int>(mask))); }
+    // A MOD set, and heard from now.
+    void modHeard(int m, const ModSettings& s, int track = 1) {
+        CHECK(engine->setMod(track, m, s));
+        hear(3, track);
     }
     // A lane written on every step of the first bar of scene 1.
     void write(int lane, float value) {
@@ -353,10 +456,15 @@ struct Rig {
             if (it->what == p) return it->value;
         return -99.f;
     }
+    int count(const std::vector<Given>& log, int what) const {
+        int n = 0;
+        for (const Given& g : log) n += g.what == what;
+        return n;
+    }
 };
 
 // A knob's own command (SetMacro, SetEffectParam, SetSend): with nothing added, the value goes out
-// as it is (out of 0..1 too, as before there were MODs); with an offset, centre plus offset held
+// as it is (out of 0..1 too, as before there were MODs); with a MOD, centre plus what it adds held
 // to 0..1, and the centre is the knob's value, never the wobble.
 static void testAKnobGoesOutThroughTheOneWay() {
     Rig rig;
@@ -379,32 +487,41 @@ static void testAKnobGoesOutThroughTheOneWay() {
     CHECK(rig.engine->sendGiven(1, 0) == 0.6f && rig.engine->laneCentre(1, echo) == 0.6f);
     rig.send(make(Command::SetSend, 1, 1, 0, 1.4f)); // a send is held to 0..1, centre and all, as before
     CHECK(rig.engine->sendGiven(1, 1) == 1.f && rig.engine->laneCentre(1, space) == 1.f);
+    // A MOD on, but stopped and nothing heard: nothing moves.
+    rig.mod(0, lfo(2, 0.25f));
+    rig.frames(2000);
+    CHECK(rig.lastMacro(2) == 1.6f && rig.engine->modOffsetForTests(1, 2) == 0.f && rig.engine->modShown(1, 0) == 0.f);
 
-    // With an offset: given at once about the centre, which stays.
-    rig.engine->setModOffsetForTests(1, 2, 0.25f);
-    CHECK(rig.lastMacro(2) == 1.f && rig.engine->laneCentre(1, 2) == 1.6f);
+    // Heard (X held on the knob): given at once about the centre, which stays.
+    rig.hear(1);
+    CHECK(rig.lastMacro(2) == 1.f && rig.engine->laneCentre(1, 2) == 1.6f && rig.engine->modShown(1, 0) == 0.25f);
     rig.send(make(Command::SetMacro, 1, 2, 0, 0.4f));
     CHECK(rig.lastMacro(2) == 0.65f && rig.engine->laneCentre(1, 2) == 0.4f);
-    rig.engine->setModOffsetForTests(1, 2, -0.5f);
+    rig.modHeard(0, lfo(2, -0.5f));
     CHECK(rig.lastMacro(2) == 0.f && rig.engine->laneCentre(1, 2) == 0.4f);
-    rig.engine->setModOffsetForTests(1, fx, 0.2f);
+    rig.modHeard(1, lfo(fx, 0.2f));
     CHECK(rig.lastParam(2) == 0.3f + 0.2f && rig.engine->laneCentre(1, fx) == 0.3f);
     p.b = 2;
     p.value = 0.9f;
     rig.send(p);
     CHECK(rig.lastParam(2) == 1.f && rig.engine->laneCentre(1, fx) == 0.9f);
     // A send: its given value held, its centre kept (automation and Stop compare with the centre).
-    rig.engine->setModOffsetForTests(1, echo, 0.3f);
+    // MOD 2 aimed at it now: what it added to the effect's setting goes, at once.
+    rig.mod(1, lfo(echo, 0.3f));
+    CHECK(rig.lastParam(2) == 0.9f && rig.engine->modOffsetForTests(1, fx) == 0.f);
+    rig.frames(64); // its next tick
     rig.send(make(Command::SetSend, 1, 0, 0, 0.9f));
     CHECK(rig.engine->sendGiven(1, 0) == 1.f && rig.engine->laneCentre(1, echo) == 0.9f);
     rig.send(make(Command::SetSend, 1, 0, 0, 0.2f));
     CHECK(rig.engine->sendGiven(1, 0) == 0.2f + 0.3f && rig.engine->laneCentre(1, echo) == 0.2f);
-    rig.engine->setModOffsetForTests(1, echo, -0.5f);
+    rig.modHeard(1, lfo(echo, -0.5f));
     CHECK(rig.engine->sendGiven(1, 0) == 0.f && rig.engine->laneCentre(1, echo) == 0.2f);
-    // Back to nothing added: the centre exactly.
-    rig.engine->setModOffsetForTests(1, echo, 0.f);
-    rig.engine->setModOffsetForTests(1, 2, 0.f);
+    // Turned off (depth 0): nothing added, the centre exactly.
+    rig.mod(1, lfo(echo, 0.f));
+    rig.mod(0, lfo(2, 0.f));
     CHECK(rig.engine->sendGiven(1, 0) == 0.2f && rig.lastMacro(2) == 0.4f);
+    CHECK(rig.engine->modOffsetForTests(1, echo) == 0.f && rig.engine->modOffsetForTests(1, 2) == 0.f);
+    CHECK(rig.engine->modShown(1, 0) == 0.f && rig.engine->modShown(1, 1) == 0.f);
 }
 
 // A centre not known yet (an effect put in a slot before its settings are told) is not moved
@@ -415,28 +532,30 @@ static void testAnUnknownCentreIsLeftAlone() {
     CHECK(rig.engine->laneCentre(1, lane) == kAutoNone);
     rig.engine->setTrackEffect(1, 0, std::unique_ptr<Effect>(new SpyEffect(&rig.params)));
     rig.params.clear();
-    rig.engine->setModOffsetForTests(1, lane, 0.3f);
+    rig.modHeard(0, lfo(lane, 0.3f));
     rig.frames(256);
     CHECK(rig.params.empty());
     rig.send(make(Command::SetEffectParam, 1, 0, 1, 0.25f));
     CHECK(rig.params.size() == 1 && rig.lastParam(1) == 0.25f + 0.3f);
 }
 
-// Automation moves the centre; the offset rides on it; Stop puts the centre back to the knob and
-// the offset still rides. The centre is what automation and Stop compare: written equal to the
+// Automation moves the centre; the MOD rides on it while the song plays; Stop gives every knob its
+// centre with nothing added. The centre is what automation and Stop compare: written equal to the
 // knob, nothing glides, whatever is added.
 static void testAutomationMovesTheCentre() {
     Rig rig;
     rig.send(make(Command::SetMacro, 1, 3, 0, 0.5f));
-    rig.engine->setModOffsetForTests(1, 3, 0.1f);
+    rig.mod(0, lfo(3, 0.1f));
     rig.write(3, 0.8f);
     rig.send(make(Command::Play, 0, 0, 1));
     rig.frames(6000); // a step: the glide takes its first half
     CHECK(rig.engine->laneCentre(1, 3) == 0.8f);
-    CHECK(near(rig.lastMacro(3), 0.9, 1e-6));
+    CHECK(near(rig.lastMacro(3), 0.9, 1e-6) && rig.engine->modShown(1, 0) == 0.1f);
     rig.send(make(Command::Stop));
-    CHECK(rig.engine->laneCentre(1, 3) == 0.5f && near(rig.lastMacro(3), 0.6, 1e-6));
-    // A lane written at the knob's value: nothing glides, so nothing is given while it plays.
+    CHECK(rig.engine->laneCentre(1, 3) == 0.5f && rig.lastMacro(3) == 0.5f && rig.engine->modShown(1, 0) == 0.f);
+    CHECK(rig.engine->modOffsetForTests(1, 3) == 0.f);
+    // A lane written at the knob's value, no MOD: nothing glides, so nothing is given while it plays.
+    rig.mod(0, lfo(3, 0.f));
     rig.write(3, 0.5f);
     rig.macros.clear();
     rig.send(make(Command::Play, 0, 0, 1));
@@ -447,13 +566,463 @@ static void testAutomationMovesTheCentre() {
     // A send's automation: the centre glides, the given value is the centre plus the offset, held.
     const int echo = autoLaneOfSend(0);
     rig.send(make(Command::SetSend, 1, 0, 0, 0.1f));
-    rig.engine->setModOffsetForTests(1, echo, 0.4f);
+    rig.mod(0, lfo(echo, 0.4f));
     rig.write(echo, 0.9f);
     rig.send(make(Command::Play, 0, 0, 1));
     rig.frames(6000);
     CHECK(rig.engine->laneCentre(1, echo) == 0.9f && rig.engine->sendGiven(1, 0) == 1.f);
     rig.send(make(Command::Stop));
-    CHECK(rig.engine->laneCentre(1, echo) == 0.1f && near(rig.engine->sendGiven(1, 0), 0.5, 1e-6));
+    CHECK(rig.engine->laneCentre(1, echo) == 0.1f && rig.engine->sendGiven(1, 0) == 0.1f);
+    // A panic stops the song as Stop does: nothing added (it does not put automation back, as before).
+    rig.send(make(Command::Play, 0, 0, 1));
+    rig.frames(6000);
+    CHECK(rig.engine->sendGiven(1, 0) == 1.f);
+    rig.send(make(Command::Panic, 0, 1));
+    CHECK(rig.engine->sendGiven(1, 0) == 0.9f && rig.engine->modShown(1, 0) == 0.f);
+    rig.send(make(Command::Panic, 0, 0));
+}
+
+// The tick: every kModTick samples from each step's first sample; a synth's macros on every
+// kModMacroTicks'th, an effect's settings and the sends on every one. The value given is the
+// rule's at the position of the tick's first sample.
+static void testTheTick() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f));
+    const ModSettings onMacro = lfo(3, 0.4f, kModSine, kModRateHalfStep), onFx = lfo(fx, 0.4f, kModSine, kModRateHalfStep);
+    rig.mod(0, onMacro);
+    rig.mod(1, onFx);
+    rig.macros.clear();
+    rig.params.clear();
+    rig.send(make(Command::Play, 0, 0, 1)); // its first sample: a tick, macros too
+    CHECK(rig.macros.size() == 0 && rig.params.size() == 0); // a SINE starts at 0: the centre is what each has
+    rig.frames(512);                                         // 513 samples since Play: the ticks at 64 ... 512
+    CHECK(rig.count(rig.params, 0) == 8 && rig.count(rig.macros, 3) == 1);
+    CHECK(rig.lastMacro(3) == modGiven(0.5f, modOffsetAt(onMacro, 512.0 / 6000.0, 1, 0)));
+    CHECK(rig.lastParam(0) == modGiven(0.5f, modOffsetAt(onFx, 512.0 / 6000.0, 1, 1)));
+    CHECK(rig.engine->modShown(1, 1) == modOffsetAt(onFx, 512.0 / 6000.0, 1, 1));
+    // Four whole steps: 94 ticks a step (93 of 64 and one of 48, counted from each step's start),
+    // the macros on 12 of them.
+    rig.macros.clear();
+    rig.params.clear();
+    rig.frames(4 * 6000);
+    CHECK(rig.count(rig.params, 0) == 4 * 94);
+    CHECK(rig.count(rig.macros, 3) == 4 * 12);
+    if (measuring) std::printf("ticks in four steps at 120: %d effect, %d macro\n", rig.count(rig.params, 0), rig.count(rig.macros, 3));
+    // A STEPPER held: nothing is given while its value stays.
+    rig.mod(1, stepper(fx, 0.5f, kModRateBar, 0.f));
+    rig.frames(6000);
+    CHECK(rig.lastParam(0) == 0.5f - 0.5f); // its first written value, -100%
+    rig.params.clear();
+    rig.frames(6000 * 4);
+    CHECK(rig.params.empty() && rig.engine->modPlace(1, 1) == 0 && rig.engine->modShown(1, 1) == 0.5f * -1.f);
+    rig.frames(6000 * 12);
+    CHECK(rig.engine->modPlace(1, 1) == 1 && rig.engine->modShown(1, 1) == 0.5f * (7.f / 5.f - 1.f)); // the next bar: the next
+}
+
+// Two MODs on one setting add, then one clamp; each shows what it adds by itself.
+static void testTwoOnOneSettingAdd() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.4f));
+    rig.mod(0, lfo(fx, 0.3f));
+    rig.mod(1, lfo(fx, -0.1f));
+    rig.send(make(Command::Play, 0, 0, 1));
+    CHECK(rig.lastParam(0) == 0.4f + (0.3f + -0.1f) && rig.engine->modShown(1, 0) == 0.3f && rig.engine->modShown(1, 1) == -0.1f);
+    rig.mod(1, lfo(fx, 0.5f));
+    rig.frames(64);
+    CHECK(rig.lastParam(0) == 1.f);
+    rig.mod(0, lfo(fx, 0.f)); // MOD 1 off: MOD 2 alone, from its next tick
+    rig.frames(64);
+    CHECK(rig.lastParam(0) == 0.4f + 0.5f);
+}
+
+// Play twice gives the same: every value given, in order, whatever the blocks.
+static void testPlayTwiceGivesTheSame() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 3);
+    rig.send(make(Command::SetEffectParam, 1, 1, 3, 0.5f));
+    rig.mod(0, lfo(4, 0.6f, kModRandom, kModRateQuarterTriplet));
+    rig.mod(1, stepper(fx, 0.7f, kModRateEighth, 0.6f, 0.4f, 5));
+    std::vector<Given> macros[2], params[2];
+    for (int round = 0; round < 2; ++round) {
+        rig.macros.clear();
+        rig.params.clear();
+        rig.send(make(Command::Play, 0, 0, 1));
+        rig.frames(6000 * 40, round == 0 ? 512 : 333);
+        macros[round] = rig.macros;
+        params[round] = rig.params;
+        rig.send(make(Command::Stop));
+    }
+    if (measuring) std::printf("play twice: %zu macros and %zu settings given in forty steps\n", macros[0].size(), params[0].size());
+    CHECK(macros[0].size() > 10 && params[0].size() > 50);
+    CHECK(macros[0] == macros[1] && params[0] == params[1]);
+}
+
+// A tempo change keeps the MOD on the beat: the position is the step clock's, which SetTempo keeps
+// in its place. A RAMP one bar long, the tempo moved in the bar's fourth step: at the next bar
+// line it starts again from its bottom.
+static void testATempoChangeKeepsThePhase() {
+    for (float to : {90.f, 171.f}) {
+        Rig rig;
+        const int echo = autoLaneOfSend(0);
+        rig.mod(0, lfo(echo, 0.5f, kModRampUp, kModRateBar));
+        rig.send(make(Command::Play, 0, 0, 1));
+        rig.frames(3 * 6000 + 2500);
+        rig.send(make(Command::SetTempo, 0, 0, 0, to));
+        int samples = 0;
+        while (rig.engine->playStep() != 0 && samples < 200000) rig.frames(1), ++samples;
+        CHECK(rig.engine->playStep() == 0);
+        CHECK(near(rig.engine->modShown(1, 0), -0.5, 1e-4)); // a sample into the bar: the ramp's start
+        if (measuring) std::printf("tempo to %.0f: at the bar line the ramp gives %.6f\n", to, rig.engine->modShown(1, 0));
+    }
+}
+
+// What a song puts out, in blocks of `block`, with `helpers`: drums through the old FILTER and
+// VOWEL, a Phazed through CHORUS, both sent to PING on ECHO; MODs on a macro, the old FILTER's
+// and VOWEL's settings and a send, of each kind and several shapes (`gliding`: on SATURATE's
+// DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL and no Twin (neither is
+// the same cut into other blocks), no automation (its glide moves at chunks).
+static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false) {
+    std::unique_ptr<Engine> e(new Engine);
+    e->prepare(48000.f);
+    std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
+    e->send(make(Command::SetTempo, 0, 0, 0, 133.f));
+    if (phazedToo) e->addSynthTrack(2, SynthKind::Phazed);
+    e->render(scratch.data(), 64);
+    e->setEffect(0, 0, EffectKind::Filter);
+    e->setEffect(0, 1, gliding ? EffectKind::Saturate : EffectKind::Vowel);
+    if (phazedToo) e->setEffect(2, 0, EffectKind::Chorus);
+    e->setEffect(kEchoBus, 0, EffectKind::Ping);
+    for (int lane = 0; lane < 4; ++lane)
+        for (int step = lane % 2; step < 16; step += 2) {
+            Command c = make(Command::SetStep, 0, lane, step, 0.8f);
+            e->send(c);
+        }
+    for (int n = 0; n < 4; ++n) {
+        Command c = make(Command::SetNote, 2, n, n * 4);
+        c.c = 48 + 5 * n;
+        c.d = 2;
+        c.value = 0.8f;
+        e->send(c);
+    }
+    e->send(make(Command::SetSend, 0, 0, 0, 0.3f));
+    e->send(make(Command::SetSend, 2, 0, 0, 0.2f));
+    e->render(scratch.data(), 256);
+    if (mods && !gliding) {
+        e->setMod(0, 0, lfo(autoLaneOfEffect(0, 0), 0.3f, kModSine, kModRateEighth));      // the old FILTER's CUTOFF
+        e->setMod(0, 1, lfo(autoLaneOfEffect(1, 1), 0.4f, kModTriangle, kModRateHalfStep)); // VOWEL's SHIFT
+        e->setMod(2, 0, lfo(phazed::Tone, 0.5f, kModDrift, kModRateQuarterTriplet));
+        e->setMod(2, 1, stepper(autoLaneOfSend(0), 0.4f, kModRateQuarter, 0.5f, 0.3f, 6));
+        if (!phazedToo) e->setMod(0, 1, stepper(autoLaneOfSend(0), 0.4f, kModRateQuarter, 0.5f, 0.3f, 6));
+    }
+    if (mods && gliding) {
+        e->setMod(0, 0, lfo(autoLaneOfEffect(1, 0), 0.3f, kModSine, kModRateEighth));      // SATURATE's DRIVE
+        e->setMod(2, 0, lfo(autoLaneOfEffect(0, 1), 0.4f, kModTriangle, kModRateHalfStep)); // CHORUS's DEPTH
+    }
+    e->render(scratch.data(), 256);
+    if (helpers) e->useWorkers(helpers);
+    e->send(make(Command::Play, 0, 0, 1));
+    for (int at = 0; at < frames; at += block) e->render(out.data() + 2 * at, frames - at < block ? frames - at : block);
+    return out;
+}
+
+// The same to the bit, cut into any blocks, on any number of helpers: every value is worked out
+// from where the song is, on ticks counted from each step's start. (Phazed is not the same in
+// blocks of ONE sample, MOD or none, as on main: a note's start. So blocks of 1 without it.)
+static void testTheSameInAnyBlocks() {
+    const int frames = 2 * 16 * 5414; // two bars at 133
+    for (bool mods : {false, true}) {
+        const std::vector<float> plain = song(64, 0, mods, frames);
+        for (int block : {7, 48, 333, 512}) {
+            const bool same = song(block, 0, mods, frames) == plain;
+            CHECK(same);
+            if (!same) std::printf("  blocks of %d differ (%s)\n", block, mods ? "MODs on" : "no MOD");
+        }
+        CHECK(song(256, 3, mods, frames) == plain);
+        CHECK(song(64, 3, mods, frames) == plain);
+        if (mods) CHECK(plain != song(64, 0, false, frames)); // (the MODs do something)
+        const std::vector<float> drums = song(64, 0, mods, frames, false);
+        CHECK(song(1, 0, mods, frames, false) == drums && song(333, 3, mods, frames, false) == drums);
+    }
+}
+
+// Known, not mended: an effect that glides a setting a CALL at a time (fx::Glide begun in each
+// process(): CHORUS, COMP, DUCK, HALL, PING, PLATE, SATURATE, SPRING, TAPE) is the same in other
+// blocks only once its settings are at rest, and a MOD never lets them rest. Cut otherwise, its
+// sound under a MOD differs a little (measured: under 0.003 on a peak of 0.5). The TICK effects
+// (COMB, VOWEL, EQ, ...), the old FILTER, the sends and the macros do not. Helpers never change it.
+static void testAGlidingEffectUnderAModIsCloseInOtherBlocks() {
+    const int frames = 2 * 16 * 5414;
+    const std::vector<float> a = song(64, 0, true, frames, true, true);
+    CHECK(song(64, 3, true, frames, true, true) == a);
+    for (int block : {7, 333}) {
+        const std::vector<float> b = song(block, 0, true, frames, true, true);
+        double most = 0.0;
+        for (std::size_t i = 0; i < a.size(); ++i) most = std::max(most, static_cast<double>(std::fabs(a[i] - b[i])));
+        CHECK(most > 0.0 && most < 0.005);
+        if (measuring) std::printf("SATURATE DRIVE and CHORUS DEPTH under a MOD, blocks of %d against 64: %.2g apart at most\n", block, most);
+    }
+}
+
+// The chunks are cut on the tick only while a MOD runs: a song with none, a MOD that is OFF, and a
+// MOD on with the song stopped are cut as they always were.
+static void testChunksAreCutOnlyWhileAModRuns() {
+    auto chunks = [](int state) { // 0 none, 1 OFF (depth 0), 2 on but stopped, 3 on and playing
+        Rig rig;
+        if (state >= 1) rig.mod(0, lfo(autoLaneOfSend(0), state == 1 ? 0.f : 0.4f, kModSine, kModRateBar));
+        if (state != 2) rig.send(make(Command::Play, 0, 0, 1));
+        const std::uint64_t before = rig.engine->chunksRendered();
+        rig.frames(6000 * 16);
+        return rig.engine->chunksRendered() - before;
+    };
+    const std::uint64_t none = chunks(0), off = chunks(1), stopped = chunks(2), on = chunks(3);
+    CHECK(none == off && off > 0);
+    CHECK(stopped == 96000 / 64);
+    CHECK(on > none);
+    if (measuring) std::printf("chunks in a bar at 120, blocks of 512: %llu with no MOD, %llu with one on\n", static_cast<unsigned long long>(none), static_cast<unsigned long long>(on));
+}
+
+// A scene put in while a MOD runs: the same, to the bit, as the song built with the scene in it
+// (the position counts from Play and holds no scene's number).
+static void testASceneMoveEqualsTheSongBuilt() {
+    auto hits = [](Engine& e, int scene, int lane, int first) {
+        for (int step = first; step < 16; step += 4) {
+            Command c = make(Command::SetStep, 0, lane, step, 0.9f);
+            c.scene = scene;
+            e.send(c);
+        }
+    };
+    std::unique_ptr<Engine> moved(new Engine), built(new Engine);
+    std::vector<float> scratch(1024);
+    for (Engine* e : {moved.get(), built.get()}) {
+        e->prepare(48000.f);
+        e->setEffect(0, 0, EffectKind::Saturate);
+        e->setEffect(kEchoBus, 0, EffectKind::Ping);
+        e->send(make(Command::SetSend, 0, 0, 0, 0.3f));
+        const bool three = e == built.get();
+        e->send(make(Command::SetSceneCount, 0, three ? 3 : 2));
+        hits(*e, 0, 0, 0);
+        hits(*e, 0, 1, 2);
+        if (three) hits(*e, 1, 0, 0), hits(*e, 1, 1, 2);
+        hits(*e, three ? 2 : 1, 2, 1);
+        e->render(scratch.data(), 256);
+        e->setMod(0, 0, lfo(autoLaneOfSend(0), 0.4f, kModSine, kModRateTwoBars));
+        e->setMod(0, 1, stepper(autoLaneOfEffect(0, 0), 0.5f, kModRateEighth, 0.5f));
+        e->render(scratch.data(), 256);
+        e->send(make(Command::Play));
+    }
+    const int frames = 5 * 16 * 6000;
+    std::vector<float> a(2 * frames), b(2 * frames);
+    int at = 0;
+    const int moveAt = 6000 * 9 + 123;
+    for (; at < moveAt; at += 256) {
+        const int n = moveAt - at < 256 ? moveAt - at : 256;
+        moved->render(a.data() + 2 * at, n);
+        built->render(b.data() + 2 * at, n);
+    }
+    at = moveAt;
+    std::unique_ptr<SceneImage> images[kNumTracks];
+    images[0].reset(new SceneImage);
+    for (int step = 0; step < 16; step += 4) images[0]->level[0][0][step] = 0.9f;
+    for (int step = 2; step < 16; step += 4) images[0]->level[0][1][step] = 0.9f;
+    CHECK(moved->moveScenes(1, 1, images, 3, 1, 0));
+    for (; at < frames; at += 256) {
+        const int n = frames - at < 256 ? frames - at : 256;
+        moved->render(a.data() + 2 * at, n);
+        built->render(b.data() + 2 * at, n);
+    }
+    CHECK(a == b);
+    CHECK(moved->playScene() == built->playScene());
+}
+
+// Play counts from the scene it starts on, a bounce from the first: a MOD longer than the scenes
+// before is in another phase in the bounce than in the scene looped live (the plan's call 22).
+// One bar long it is the same; four bars long it is not. Held both ways.
+static void testABounceAndALiveLoop() {
+    for (int rate : {kModRateBar, kModRateFourBars}) {
+        float shown[2] = {};
+        for (int bounce = 0; bounce < 2; ++bounce) {
+            Rig rig;
+            rig.send(make(Command::SetSceneCount, 0, 3));
+            rig.mod(0, lfo(autoLaneOfSend(0), 0.5f, kModRampUp, rate));
+            Command play = make(Command::Play, 0, bounce ? 0 : 2, bounce ? 0 : 1);
+            play.c = bounce;
+            CHECK(rig.engine->send(play));
+            if (bounce) rig.frames(2 * 16 * 6000 + 1);
+            else rig.frames(1);
+            CHECK(rig.engine->playScene() == 2 && rig.engine->playStep() == 0);
+            shown[bounce] = rig.engine->modShown(1, 0);
+        }
+        if (rate == kModRateBar) CHECK(shown[0] == -0.5f && shown[1] == -0.5f);
+        else CHECK(shown[0] == -0.5f && shown[1] == 0.f); // scene 3's top: the ramp's start live, its middle in the bounce
+    }
+}
+
+// The FX screen trying effects in a slot (HoldEffectAutomation): the slot's MOD waits too, with
+// nothing added, and comes back at its next tick when the hold is let go.
+static void testAHeldSlotWaits() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.4f));
+    rig.mod(0, lfo(fx, 0.3f));
+    rig.send(make(Command::Play, 0, 0, 1));
+    CHECK(rig.lastParam(0) == 0.4f + 0.3f);
+    rig.send(make(Command::HoldEffectAutomation, 1, 1, 1));
+    CHECK(rig.lastParam(0) == 0.4f && rig.engine->modOffsetForTests(1, fx) == 0.f);
+    rig.params.clear();
+    rig.frames(6000 * 2);
+    CHECK(rig.params.empty());
+    rig.send(make(Command::HoldEffectAutomation, 1, 1, 0));
+    rig.frames(64);
+    CHECK(rig.lastParam(0) == 0.4f + 0.3f);
+}
+
+// A setting that is a choice (FILTER's TYPE) is never moved; the same lane on an effect where it is
+// an amount (SATURATE's TONE) is. A MOD is never carried over to an effect put in the slot.
+static void testAChoiceIsNotMoved() {
+    std::unique_ptr<Engine> e(new Engine);
+    std::vector<float> out(1024);
+    e->setEffect(0, 0, EffectKind::Filter);
+    e->render(out.data(), 64);
+    const int type = autoLaneOfEffect(0, 2), cutoff = autoLaneOfEffect(0, 0);
+    e->setMod(0, 0, lfo(type, 0.3f));
+    e->setMod(0, 1, lfo(cutoff, 0.3f));
+    e->send(make(Command::Play));
+    for (int i = 0; i < 20; ++i) e->render(out.data(), 256);
+    CHECK(e->modOffsetForTests(0, type) == 0.f && e->modOffsetForTests(0, cutoff) == 0.3f);
+    e->setEffect(0, 0, EffectKind::Saturate);
+    e->render(out.data(), 1);
+    CHECK(e->laneCentre(0, type) == 0.8f);
+    e->render(out.data(), 128);
+    CHECK(e->modOffsetForTests(0, type) == 0.3f && e->modOffsetForTests(0, cutoff) == 0.3f);
+    const int second = autoLaneOfEffect(0, 1);
+    e->setMod(0, 1, lfo(second, 0.3f)); // SATURATE's TYPE: a choice
+    for (int i = 0; i < 4; ++i) e->render(out.data(), 256);
+    CHECK(e->modOffsetForTests(0, second) == 0.f);
+    // FILTER again: there it is RESONANCE, an amount, and moved. SATURATE again: what was added
+    // to RESONANCE is not carried on to TYPE.
+    e->setEffect(0, 0, EffectKind::Filter);
+    for (int i = 0; i < 4; ++i) e->render(out.data(), 256);
+    CHECK(e->modOffsetForTests(0, second) == 0.3f);
+    e->setEffect(0, 0, EffectKind::Saturate);
+    for (int i = 0; i < 4; ++i) e->render(out.data(), 256);
+    CHECK(e->modOffsetForTests(0, second) == 0.f && e->laneCentre(0, second) == 0.f);
+}
+
+// A track taken away: its MODs go OFF (as GLIDE FROM goes back to TOP), what they added comes off
+// the effects and sends it keeps, and an instrument put there next runs none.
+static void testATrackTakenAwayTurnsItsModsOff() {
+    std::unique_ptr<Engine> e(new Engine);
+    std::vector<float> out(1024);
+    e->addSynthTrack(2, SynthKind::Phazed);
+    e->render(out.data(), 64);
+    e->send(make(Command::SetSend, 2, 0, 0, 0.3f));
+    e->setMod(2, 0, lfo(autoLaneOfSend(0), 0.4f));
+    e->setMod(2, 1, lfo(phazed::Tone, 0.2f, kModSine, kModRateHalfStep));
+    e->send(make(Command::Play));
+    for (int i = 0; i < 20; ++i) e->render(out.data(), 256);
+    CHECK(e->sendGiven(2, 0) == 0.3f + 0.4f && e->modShown(2, 0) == 0.4f);
+    CHECK(e->removeTrack(2));
+    for (int i = 0; i < 4; ++i) e->render(out.data(), 256); // its 5 ms fade, if it sounded
+    CHECK(e->sendGiven(2, 0) == 0.3f && e->modOffsetForTests(2, autoLaneOfSend(0)) == 0.f && e->modShown(2, 0) == 0.f && e->modShown(2, 1) == 0.f);
+    e->addSynthTrack(2, SynthKind::Phazed);
+    for (int i = 0; i < 20; ++i) e->render(out.data(), 256);
+    CHECK(e->modShown(2, 0) == 0.f && e->modShown(2, 1) == 0.f && e->modOffsetForTests(2, autoLaneOfSend(0)) == 0.f);
+}
+
+// Stopped, X held on a modulated knob: its MODs run from the moment X went down, as from Play, and
+// the knob is given its centre when X is let go. Play and Stop let go too; while it plays the
+// song's MODs run and an audition is not taken.
+static void testHeardWhileStopped() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f));
+    const ModSettings ramp = lfo(fx, 0.5f, kModRampUp, kModRateHalfStep);
+    rig.mod(0, ramp);
+    rig.params.clear();
+    rig.frames(1000);
+    CHECK(rig.params.empty());
+    rig.hear(1);
+    CHECK(rig.lastParam(0) == 0.f); // the ramp's start, at the moment X went down
+    rig.frames(1499);               // 1500 since: the tick at 1472
+    CHECK(rig.lastParam(0) == modGiven(0.5f, modOffsetAt(ramp, 1472.0 / 6000.0, 1, 0)));
+    rig.hear(0);
+    CHECK(rig.lastParam(0) == 0.5f && rig.engine->modShown(1, 0) == 0.f);
+    rig.params.clear();
+    rig.frames(2000);
+    CHECK(rig.params.empty());
+    // Only the MODs asked for run.
+    rig.mod(1, lfo(autoLaneOfSend(0), 0.3f));
+    rig.hear(2);
+    CHECK(rig.params.empty() && rig.engine->sendGiven(1, 0) == 0.3f);
+    // Play lets go; so does Stop, and an audition sent while it plays is not taken.
+    rig.mod(0, lfo(fx, 0.3f)); // (a SQUARE: nothing given while it plays, unless something stills it)
+    rig.hear(3);
+    rig.send(make(Command::Play, 0, 0, 1));
+    rig.frames(3000);
+    rig.params.clear();
+    rig.send(make(Command::ModAudition, 1, 3)); // not taken: nothing is put back to its centre for a tick
+    rig.frames(3000);
+    CHECK(rig.params.empty());
+    rig.send(make(Command::Stop));
+    rig.params.clear();
+    rig.frames(3000);
+    CHECK(rig.params.empty() && rig.engine->sendGiven(1, 0) == 0.f && rig.engine->modShown(1, 0) == 0.f);
+}
+
+// The old FILTER takes its CUTOFF in stairs, a tick apart (its arithmetic is pinned: no glide may
+// be added). The largest stair a SINE at depth 50% makes, at each rate at 120 BPM, is held to
+// depth x 2 pi x 64 / the cycle's samples. Nobody has listened to it.
+static void testTheOldFiltersStairs() {
+    for (int rate = 0; rate <= kModRateBar; ++rate) {
+        Rig rig;
+        const int fx = autoLaneOfEffect(1, 0);
+        rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f));
+        rig.mod(0, lfo(fx, 0.5f, kModSine, rate));
+        rig.params.clear();
+        rig.send(make(Command::Play, 0, 0, 1));
+        const double cycle = modRateSteps(rate) * 6000.0;
+        rig.frames(static_cast<int>(cycle) + 6000);
+        double most = 0.0;
+        for (std::size_t i = 1; i < rig.params.size(); ++i) most = std::max(most, std::fabs(static_cast<double>(rig.params[i].value) - rig.params[i - 1].value));
+        const double bound = 0.5 * 2.0 * kPi * kModTick / cycle;
+        CHECK(most <= bound * 1.0001 + 1e-6 && most >= bound * 0.98);
+        if (measuring) std::printf("old FILTER CUTOFF, SINE 50%% at %-9s largest stair %.4f of the knob's travel (bound %.4f)\n", modRateInfo(rate).name, most, bound);
+    }
+}
+
+// A newer effect takes a setting through its own 20 to 30 ms Glide, a block (here a tick) at a
+// time: a fast MOD loses depth. What is kept of a SINE's swing, at 120 BPM, a 64-sample tick:
+// measured here, the figures in the plan. A 1 BAR SINE keeps all but a hair; a 1/2 STEP loses most.
+static double keptThroughAGlide(int rate, float seconds) {
+    const ModSettings m = lfo(8, 1.f, kModSine, rate);
+    fx::Glide g;
+    g.snap();
+    const double cycle = modRateSteps(rate) * 6000.0;
+    double lo = 1e9, hi = -1e9;
+    const long settle = static_cast<long>(4.0 * 48000.0), total = settle + static_cast<long>(2.0 * cycle) + 64;
+    for (long at = 0; at < total; at += kModTick) {
+        g.to = modOffsetAt(m, static_cast<double>(at) / 6000.0, 1, 0);
+        g.begin(kModTick, fx::glideK(kModTick, seconds, 48000.f));
+        for (int i = 0; i < kModTick; ++i) {
+            const float v = g.next();
+            if (at >= settle) lo = std::min(lo, static_cast<double>(v)), hi = std::max(hi, static_cast<double>(v));
+        }
+        g.done();
+    }
+    return (hi - lo) / 2.0;
+}
+static void testANewerEffectSoftensAFastMod() {
+    double last = 0.0;
+    for (int rate = 0; rate < kModRates; ++rate) {
+        const double kept20 = keptThroughAGlide(rate, 0.02f), kept30 = keptThroughAGlide(rate, 0.03f);
+        CHECK(kept30 <= kept20 + 1e-9 && kept20 >= last - 1e-9); // slower kept more; a longer glide less
+        last = kept20;
+        if (measuring) std::printf("a newer effect's Glide, SINE at %-9s keeps %5.1f%% (20 ms) %5.1f%% (30 ms)\n", modRateInfo(rate).name, 100.0 * kept20, 100.0 * kept30);
+    }
+    CHECK(keptThroughAGlide(kModRateBar, 0.03f) > 0.98);
+    CHECK(keptThroughAGlide(kModRateHalfStep, 0.03f) < 0.6);
 }
 
 int main(int argc, char** argv) {
@@ -468,14 +1037,32 @@ int main(int argc, char** argv) {
         {"testRandomAndDrift", testRandomAndDrift},
         {"testTheStepper", testTheStepper},
         {"testTheCombine", testTheCombine},
+        {"testTheFields", testTheFields},
         {"testAKnobGoesOutThroughTheOneWay", testAKnobGoesOutThroughTheOneWay},
         {"testAnUnknownCentreIsLeftAlone", testAnUnknownCentreIsLeftAlone},
         {"testAutomationMovesTheCentre", testAutomationMovesTheCentre},
+        {"testTheTick", testTheTick},
+        {"testTwoOnOneSettingAdd", testTwoOnOneSettingAdd},
+        {"testPlayTwiceGivesTheSame", testPlayTwiceGivesTheSame},
+        {"testATempoChangeKeepsThePhase", testATempoChangeKeepsThePhase},
+        {"testTheSameInAnyBlocks", testTheSameInAnyBlocks},
+        {"testAGlidingEffectUnderAModIsCloseInOtherBlocks", testAGlidingEffectUnderAModIsCloseInOtherBlocks},
+        {"testChunksAreCutOnlyWhileAModRuns", testChunksAreCutOnlyWhileAModRuns},
+        {"testASceneMoveEqualsTheSongBuilt", testASceneMoveEqualsTheSongBuilt},
+        {"testABounceAndALiveLoop", testABounceAndALiveLoop},
+        {"testAHeldSlotWaits", testAHeldSlotWaits},
+        {"testAChoiceIsNotMoved", testAChoiceIsNotMoved},
+        {"testATrackTakenAwayTurnsItsModsOff", testATrackTakenAwayTurnsItsModsOff},
+        {"testHeardWhileStopped", testHeardWhileStopped},
+        {"testTheOldFiltersStairs", testTheOldFiltersStairs},
+        {"testANewerEffectSoftensAFastMod", testANewerEffectSoftensAFastMod},
     };
-    const bool only = argc > 2 && std::strcmp(argv[1], "--only") == 0;
+    int first = 1;
+    if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) measuring = true, first = 2;
+    const bool only = argc > first + 1 && std::strcmp(argv[first], "--only") == 0;
     for (const Test& t : tests) {
         bool wanted = !only;
-        for (int i = 2; only && i < argc; ++i) wanted = wanted || std::strcmp(argv[i], t.name) == 0;
+        for (int i = first + 1; only && i < argc; ++i) wanted = wanted || std::strcmp(argv[i], t.name) == 0;
         if (wanted) t.run();
     }
     if (failures) {

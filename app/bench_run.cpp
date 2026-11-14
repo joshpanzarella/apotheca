@@ -314,15 +314,44 @@ static void busiestSong(Engine& e) {
     e.send(c);
 }
 
+// MODs on the busiest song: one, on the first drum track's ECHO send; or 24, two on every track
+// (a drum track's on its second slot's first setting and its ECHO send, a synth track's on its
+// first macro and its second slot's first setting), LFOs and STEPPERs of several rates.
+static ModSettings benchMod(int kind, int target, int rate, int shape) {
+    ModSettings m;
+    m.kind = kind;
+    m.target = target;
+    m.depth = 0.3f;
+    m.rate = rate;
+    m.shape = shape;
+    m.chance = 0.5f;
+    m.slew = 0.3f;
+    for (int i = 0; i < kModSteps; ++i) m.steps[i] = static_cast<float>((i * 5) % 9) / 4.f - 1.f;
+    return m;
+}
+static void busiestMods(Engine& e, int mods) {
+    if (mods <= 0) return;
+    if (mods == 1) {
+        e.setMod(0, 0, benchMod(kModLfo, autoLaneOfSend(0), kModRateQuarter, kModSine));
+        return;
+    }
+    for (int t = 0; t < kNumTracks; ++t) {
+        const bool drums = t < 6;
+        e.setMod(t, 0, benchMod(kModLfo, drums ? autoLaneOfEffect(1, 0) : 0, kModRateEighth + t % 4, t % kModShapes));
+        e.setMod(t, 1, benchMod(kModStepper, drums ? autoLaneOfSend(0) : autoLaneOfEffect(1, 0), kModRateStep + t % 3, 0));
+    }
+}
+
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) {
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
         std::unique_ptr<Engine> engine(new Engine);
         busiestSong(*engine);
+        busiestMods(*engine, mods);
         std::vector<float> out(512);
         for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
             engine->render(out.data(), 256);
@@ -333,6 +362,7 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) 
         const double blockMs = 256.0 / 48.0;
         const int blocks = static_cast<int>(seconds * 48000.0 / 256.0);
         std::vector<double> took(static_cast<std::size_t>(blocks > 0 ? blocks : 0));
+        const std::uint64_t chunksBefore = engine->chunksRendered();
         const std::chrono::microseconds each(5333);
         auto due = std::chrono::steady_clock::now();
         for (int b = 0; b < blocks; ++b) {
@@ -348,6 +378,7 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) 
         }
         times.blocks = blocks;
         if (blocks == 0) return;
+        times.chunksPerSecond = static_cast<double>(engine->chunksRendered() - chunksBefore) / (blocks * 256.0 / 48000.0);
         double sum = 0.0;
         for (double t : took) {
             sum += t;
@@ -389,7 +420,25 @@ static void macroCost(const char* name, Instrument& synth, int macro) {
                 100.0 * 24.0 * perSecondSlow * us / 1e6, kModTick * kModMacroTicks, 100.0 * 24.0 * perSecondFast * us / 1e6, kModTick);
 }
 
-WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds) { return playWholeSong(helpers, seconds, false); }
+WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds, int mods) { return playWholeSong(helpers, seconds, false, mods); }
+
+// What working MODs out costs, with next to nothing under it: twelve drum tracks that play no hit,
+// their MODs on the sends (no effect on the buses, so nothing wakes), the chunks a tick cuts
+// included. 0, 1 or 24 MODs; the difference is the MODs'.
+static double modsAlone(int mods) {
+    std::unique_ptr<Engine> engine(new Engine);
+    std::vector<float> out(512);
+    for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
+    engine->render(out.data(), 256);
+    for (int m = 0; m < mods; ++m) engine->setMod(m / 2, m % 2, benchMod(m % 2 ? kModStepper : kModLfo, autoLaneOfSend(m % 2), kModRateEighth + m % 5, m % kModShapes));
+    Command c;
+    c.type = Command::Play;
+    engine->send(c);
+    for (int i = 0; i < 40; ++i) engine->render(out.data(), 256);
+    double best = 1e30;
+    for (int run = 0; run < 5; ++run) best = std::min(best, ms([&] { engine->render(out.data(), 256); }, 600));
+    return 100.0 * best / (256.0 / 48.0);
+}
 
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
 // uses on this machine. Ten seconds each, in real time.
@@ -400,10 +449,31 @@ static void wholeSongRows() {
         const WholeSongTimes t = playWholeSong(h, 10.0, true);
         char name[40];
         std::snprintf(name, sizeof name, h == 0 ? "on the audio thread alone" : "with %d helper%s", t.helpers, t.helpers == 1 ? "" : "s");
-        std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late%s\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks,
-                    t.realtime ? "" : " (no realtime priority)");
+        std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late, %.0f chunks a second%s\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over,
+                    t.blocks, t.chunksPerSecond, t.realtime ? "" : " (no realtime priority)");
         if (h == helpers) break; // a machine of one core has no helpers: one row
     }
+}
+
+// MOD on the busiest song: one MOD, then 24, alone and with the helpers; and how many chunks a
+// second the engine cut the sound into (a tick cuts more, and each chunk wakes the helpers; the
+// rows above say how many with no MOD).
+static void wholeSongModRows() {
+    const int helpers = helpersFor(std::thread::hardware_concurrency());
+    std::printf("the busiest song with MODs running (a tick every %d samples, macros every %d):\n", kModTick, kModTick * kModMacroTicks);
+    for (int mods : {1, 24})
+        for (int h : {0, helpers}) {
+            const WholeSongTimes t = playWholeSong(h, 5.0, true, mods); // five seconds each: the SPEED TEST runs these too
+            char name[48];
+            std::snprintf(name, sizeof name, "%d MOD%s, %d helper%s", mods, mods == 1 ? "" : "s", t.helpers, t.helpers == 1 ? "" : "s");
+            std::printf("  %-28s %5.1f%% of a block, worst %.2f ms, %d of %d too late, %.0f chunks a second\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.worstMs, t.over, t.blocks, t.chunksPerSecond);
+            if (h == helpers) break;
+        }
+    std::printf("working MODs out, twelve silent drum tracks, MODs on the sends:\n");
+    const double none = modsAlone(0), one = modsAlone(1), all = modsAlone(24);
+    std::printf("  %-28s %5.3f%% of one core\n", "no MOD", none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "1 MOD", one, one - none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs", all, all - none);
 }
 
 int apotheca::runBench() {
@@ -435,6 +505,7 @@ int apotheca::runBench() {
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
     wholeSongRows();
+    wholeSongModRows();
     {
         std::printf("a macro changed (what a MOD on a macro costs), the synth alone, 8 notes held:\n");
         std::unique_ptr<Phazed> phazed(new Phazed);

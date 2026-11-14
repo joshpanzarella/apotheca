@@ -15,6 +15,8 @@ struct WholeSongTimes {
     double meanMs = 0.0, p99Ms = 0.0, worstMs = 0.0;
     int over = 0;            // blocks that took longer than a block lasts: heard as a gap
     float peak = 0.f;        // the loudest sample: it was playing
+    double chunksPerSecond = 0.0; // chunks the engine cut the sound into (a MOD's tick cuts more)
 };
-WholeSongTimes timeWholeSong(int helpers, double seconds);
+// `mods`: how many MODs run (0, 1, or 24: two on every track), for the bench's own rows.
+WholeSongTimes timeWholeSong(int helpers, double seconds, int mods = 0);
 }
