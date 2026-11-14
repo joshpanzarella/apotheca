@@ -128,13 +128,6 @@ inline float pwmWithPolyBLEP(float phase, float width, float dt) {
     return out;
 }
 
-inline float phaseWrapBlep(float phase, float dt) {
-    if (dt <= 0.f) return 0.f;
-    if (phase < dt) return polyBLEP(phase / dt);
-    if (phase > 1.f - dt) return polyBLEP((phase - 1.f) / dt);
-    return 0.f;
-}
-
 inline float skewedSin2Pi(float phase, float k) {
     const float p = phase - std::floor(phase);
     const float w = p < k ? 0.5f * p / k : 0.5f + 0.5f * (p - k) / (1.f - k);
