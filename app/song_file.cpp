@@ -14,6 +14,7 @@
 #include <sstream>
 #include <type_traits>
 
+#include "mods.hpp"
 #include "synth_spec.hpp"
 
 namespace apotheca {
@@ -28,6 +29,14 @@ std::uint64_t gTracksWritten = 0, gBytesRead = 0;
 int wholeIn(double v, int lo, int hi) { return !(v >= lo) ? lo : (v > hi ? hi : static_cast<int>(v)); } // (not a number: lo)
 float fractionIn(double v, float lo, float hi) { return !(v >= lo) ? lo : (v > hi ? hi : static_cast<float>(v)); }
 std::uint32_t seedIn(double v) { return !(v >= 0.0) ? 0u : (v > 4294967295.0 ? 4294967295u : static_cast<std::uint32_t>(v)); }
+
+// A MOD's DEPTH in a song file: 0..1, 0.5 no depth, 0 is -100% and 1 is +100% (the scale lanes 22
+// and 23 will automate it on: modulation-plan.md, section 5). The one place that says so.
+double depthToFile(float depth) { return (static_cast<double>(depth) + 1.0) * 0.5; }
+// (Held as a double, and made a float last: through a float first, 0.92 came back as 0.84000003 and not 0.84.)
+float depthFromFile(double v) { return v == v ? static_cast<float>(2.0 * (v > 0.0 ? (v < 1.0 ? v : 1.0) : 0.0) - 1.0) : 0.f; }
+// A value of a STEPPER's row, -1..1; not a number is 0.
+float rowIn(double v) { return v == v ? fractionIn(v, -1.f, 1.f) : 0.f; }
 
 void put(std::string& out, const char* format, double a) {
     char text[48];
@@ -62,6 +71,38 @@ void putEffects(std::string& out, const EffectData* effects, int slots) {
         out += "\n";
     }
 }
+
+} // namespace
+
+// mod N KIND TARGET DEPTH RATE SHAPE RESTART PHASE: MOD N (1 or 2) of the track. KIND 1 an LFO, 2 a
+// STEPPER; TARGET the automation lane it is aimed at (0-7 macros, 8 + slot * 4 + setting, 20 and 21
+// the sends); DEPTH 0..1 with 0.5 none (depthToFile); the rest by their numbers in mod_rule.hpp.
+// modsteps N LENGTH SLEW CHANCE v1..v16: its row (a STEPPER's), each value -1..1; left out when it
+// is as a new MOD's (16 long, no slew, no chance, every value 0). Both left out when the MOD is OFF.
+std::string modText(const ModSettings& mod, int index) {
+    std::string out;
+    if (modKind(mod.kind) == kModOff) return out;
+    put(out, "mod %.0f", index + 1);
+    put(out, " %.0f", mod.kind);
+    put(out, " %.0f", mod.target);
+    put(out, " %.6g", depthToFile(mod.depth));
+    put(out, " %.0f", mod.rate);
+    put(out, " %.0f", mod.shape);
+    put(out, " %.0f", mod.restart);
+    put(out, " %.0f\n", mod.phase);
+    bool row = mod.length != kModSteps || mod.slew != 0.f || mod.chance != 0.f;
+    for (float v : mod.steps) row = row || v != 0.f;
+    if (!row) return out;
+    put(out, "modsteps %.0f", index + 1);
+    put(out, " %.0f", mod.length);
+    put(out, " %.6g", mod.slew);
+    put(out, " %.6g", mod.chance);
+    for (float v : mod.steps) put(out, " %.6g", v);
+    out += "\n";
+    return out;
+}
+
+namespace {
 
 // One track of a song file: from its "track" line to the next one's.
 void putTrack(std::string& out, const TrackData& track) {
@@ -98,6 +139,7 @@ void putTrack(std::string& out, const TrackData& track) {
     }
     // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
     if (isSynth(track.kind) && track.glideFrom) put(out, "glidefrom %.0f\n", track.glideFrom);
+    for (int m = 0; m < kModsPerTrack; ++m) out += modText(track.mods[m], m); // (nothing for one that is OFF)
     if (track.kind == TrackKind::Drums) {
         out += "lanes";
         for (float level : track.laneLevel) put(out, " %.6g", level);
@@ -449,6 +491,34 @@ bool parseSong(const std::string& text, Project& project) {
             if (!(in >> type) || !(type >= 0.0) || type > 255.0) continue;
             if (!isSynth(track->kind)) continue; // (a drum track has none: one written there by hand would wait for the day it became a synth)
             track->glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
+        } else if (word == "mod") {
+            // (KIND and TARGET must be there; what is missing after them is as a new MOD's. A KIND or a
+            // TARGET nobody knows is OFF, and so is a target that does not fit the track: seen once the
+            // whole song is read, below, since the track's effects may be written after this line.)
+            double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0;
+            if (!(in >> n >> kind >> target) || !(n >= 1.0) || n > kModsPerTrack) continue;
+            if (!(in >> depth)) depth = 0.5;
+            else if (!(in >> rate)) rate = kModRateUsual;
+            else if (!(in >> shape)) shape = 0;
+            else if (!(in >> restart)) restart = 0;
+            else if (!(in >> phase)) phase = 0;
+            ModSettings& m = track->mods[static_cast<int>(n) - 1];
+            m.kind = modKind(wholeIn(kind, -1, 255));
+            const int lane = wholeIn(target, -1, 255);
+            m.target = modTargetKnown(lane) ? lane : kModTargetNone;
+            m.depth = depthFromFile(depth);
+            m.rate = modRate(wholeIn(rate, -1, 255));
+            m.shape = modShape(wholeIn(shape, -1, 255));
+            m.restart = modRestart(wholeIn(restart, -1, 255));
+            m.phase = modPhase(wholeIn(phase, -1, 255));
+        } else if (word == "modsteps") {
+            double n = 0, length = kModSteps, slew = 0, chance = 0, v = 0;
+            if (!(in >> n >> length) || !(n >= 1.0) || n > kModsPerTrack) continue;
+            ModSettings& m = track->mods[static_cast<int>(n) - 1];
+            m.length = wholeIn(length, 1, kModSteps);
+            if (in >> slew) m.slew = fractionIn(slew, 0.f, 1.f);
+            if (in >> chance) m.chance = fractionIn(chance, 0.f, 1.f);
+            for (int i = 0; i < kModSteps && (in >> v); ++i) m.steps[i] = rowIn(v);
         } else if (word == "mix") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -621,6 +691,9 @@ bool parseSong(const std::string& text, Project& project) {
         }
     }
     if (count == 0) song->tracks[0].kind = TrackKind::Drums; // a song always has its drum track
+    // A MOD whose target does not fit its track reads OFF: a slot that is empty, a setting that
+    // is not there or is a choice, a macro on a track with none (mods.hpp).
+    for (int t = 0; t < count; ++t) modsFit(song->tracks[t]);
     for (int s = 0; s < kMaxScenes; ++s) {
         // An old song's "13 steps to a bar": its bars but the last whole, and thirteen steps of the last.
         if (song->steps[s] == 0 && oldSteps[s] < kSteps) song->steps[s] = (song->sceneBars(s) - 1) * kSteps + oldSteps[s];

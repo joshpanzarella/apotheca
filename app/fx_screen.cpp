@@ -1,5 +1,7 @@
 #include "fx_screen.hpp"
 
+#include "mods.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -47,9 +49,17 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
         }
     }
 
+    // A MOD aimed at one of the old effect's settings follows it by name too, or goes OFF.
+    ModSettings mods[kModsPerTrack];
+    if (track >= 0)
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            mods[m] = session.modData(track, m);
+            mods[m].target = modTargetSlot(mods[m].target) == slot ? modTargetCarried(from, to, mods[m].target) : kModTargetNone;
+        }
+
     const bool writing = session.writing();
     session.setWriting(false); // none of this is the player moving a knob
-    session.setEffect(track, slot, to); // (clears all four of the slot's lanes, in every scene)
+    session.setEffect(track, slot, to); // (clears all four of the slot's lanes, in every scene, and puts OFF a MOD aimed at them)
     if (session.effectData(track, slot).kind != static_cast<int>(to)) {
         session.setWriting(writing);
         return false; // refused: everything is as it was
@@ -58,6 +68,9 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     effectCarry(from, to, was.param, busOfTrack(track) >= 0, now);
     for (int i = 0; i < info.params; ++i) session.setEffectParam(track, slot, i, now[i]);
     for (const Kept& k : kept) session.setAutomation(track, k.scene, autoLaneOfEffect(slot, k.index), k.step, k.value);
+    if (track >= 0)
+        for (int m = 0; m < kModsPerTrack; ++m)
+            if (mods[m].target != kModTargetNone) session.setMod(track, m, mods[m]);
     session.setWriting(writing);
     return true;
 }

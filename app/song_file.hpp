@@ -55,6 +55,10 @@ private:
     bool made_ = false;
 };
 
+// One MOD of a track as the song file writes it: its `mod` line and, where its row is not as a new
+// one's, its `modsteps` line. Empty when it is OFF. (Undo asks whether two MODs are the same by this.)
+std::string modText(const ModSettings& mod, int index);
+
 // How many tracks songText, trackText and SongTextCache have written, and how many bytes of text
 // parseSong has read, since the program began: for the tests, which hold what a gesture costs by them.
 std::uint64_t tracksWritten();

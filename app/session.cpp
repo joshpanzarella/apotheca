@@ -1,4 +1,5 @@
 // Session, part one of four (see session_parts.hpp for what is where).
+#include "mods.hpp"
 #include "session.hpp"
 #include "instruments.hpp"
 #include "ui.hpp"
@@ -109,6 +110,8 @@ bool Session::setTrackKind(int track, TrackKind kind) {
     for (auto& scene : t.automation)
         for (int lane = 0; lane < kSynthMacros; ++lane) // the macros' lanes; the effects' are still the same effects
             for (float& v : scene[lane]) v = kAutoNone;
+    for (ModSettings& m : t.mods) // a MOD on a macro goes with the macros; one on an effect or a send stays
+        if (modTargetIsMacro(m.target)) m = ModSettings();
     sendSong(); // the engine is given the song afresh, with the new instrument in its place
     // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).
     if (undoReady_) cellMark_ = cellMark(), soundMark_ = soundMark(); // (its new sound is not a step either)
@@ -645,6 +648,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.effects, sizeof track.effects);
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
+        mix(track.mods, sizeof track.mods);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -725,6 +729,12 @@ void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
             engine.send(c);
         }
         if (now.glideFrom != then.glideFrom) setGlideFrom(t, then.glideFrom);
+        // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;
+            now.mods[m] = then.mods[m];
+            sendMod(t, m);
+        }
         if (const SynthSpec* spec = specFor(now.kind)) {
             const int count = settingCount(now.kind);
             TrackData& thenData = const_cast<TrackData&>(then);
@@ -1143,6 +1153,42 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
     EffectData& data = effectData(track, slot);
     data.kind = static_cast<int>(kind);
     for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectDefault(kind, i, bus >= 0); // on a bus, LEVEL at full
+    // ...and so does a MOD aimed at one of them: it goes OFF. (Another TYPE of the same family
+    // carries it to the setting of the same name: changeEffectType, which sets it again after this.)
+    if (track >= 0)
+        for (int m = 0; m < kModsPerTrack; ++m)
+            if (modTargetSlot(project.tracks[track].mods[m].target) == slot) setMod(track, m, ModSettings());
+}
+
+const ModSettings& Session::modData(int track, int mod) const {
+    static const ModSettings none;
+    return track >= 0 && track < kNumTracks && mod >= 0 && mod < kModsPerTrack ? project.tracks[track].mods[mod] : none;
+}
+
+bool Session::setMod(int track, int mod, const ModSettings& settings) {
+    if (track < 0 || track >= kNumTracks || mod < 0 || mod >= kModsPerTrack || project.tracks[track].kind == TrackKind::None) return false;
+    const ModSettings held = modHeldFor(project.tracks[track], settings);
+    const bool taken = held.kind != kModOff || settings.kind == kModOff; // (asked for OFF and OFF: taken)
+    ModSettings& now = project.tracks[track].mods[mod];
+    if (std::memcmp(&now, &held, sizeof now) == 0) return taken;
+    now = held;
+    sendMod(track, mod); // (lost to a full queue: the whole song is sent again, this with it)
+    return taken;
+}
+
+void Session::sendMod(int track, int mod) {
+    const ModSettings& m = project.tracks[track].mods[mod];
+    if (m.kind != kModOff) {
+        engine.setMod(track, mod, m);
+        return;
+    }
+    Command c; // OFF: the one field says it
+    c.type = Command::SetMod;
+    c.track = track;
+    c.a = mod;
+    c.b = kModFieldKind;
+    c.value = static_cast<float>(kModOff);
+    engine.send(c);
 }
 
 void Session::setEffectParam(int track, int slot, int index, float value) {
@@ -1382,6 +1428,9 @@ void Session::sendSong() {
         c.a = isSynth(project.tracks[track].kind) ? project.tracks[track].glideFrom : 0;
         engine.send(c);
     }
+    // Every track's two MODs, the ones that are OFF too.
+    for (int track = 0; track < project.trackCount(); ++track)
+        for (int m = 0; m < kModsPerTrack; ++m) sendMod(track, m);
     for (int scene = 0; scene < kMaxScenes; ++scene) {
         c = Command();
         c.type = Command::SetSceneRepeats;

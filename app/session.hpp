@@ -155,6 +155,12 @@ public:
     // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
     // the rest, apotheca/glide_rule.hpp). A step of undo, as a send or a sound is.
     void setGlideFrom(int track, int type);
+    // MOD 1 or 2 of a track (mod 0 or 1): the whole of it, held to what it can be. One that is OFF,
+    // or aimed at something that does not fit the track (mods.hpp: an empty slot, a choice, a macro
+    // on a track with none), is stored OFF, blank. A step of undo, as GLIDE FROM is. True if the
+    // track holds what was asked for (false: it was put OFF, or there is no such track or MOD).
+    bool setMod(int track, int mod, const ModSettings& settings);
+    const ModSettings& modData(int track, int mod) const;
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the
@@ -547,6 +553,7 @@ private:
     std::uint32_t soundMark_ = 0;
     void restoreSounds(const Project& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
+    void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still

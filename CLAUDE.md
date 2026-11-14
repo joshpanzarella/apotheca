@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (34) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (35) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -87,6 +87,7 @@ Where things are in the app:
 | `screen.hpp` | the `Screen` base every screen derives from |
 | `app.cpp` | `App::screenNow()` picks the screen; SELECT/MENU/shoulder combos live here |
 | `session.cpp` | playing, tracks, patterns, mutes, undo, automation, effects, sending the song to the engine |
+| `mods.hpp` | a track's two MODs in the app: what one may be aimed at, held, carried by a TYPE change |
 | `session_songs.cpp` | songs on disk, revisions, settings files |
 | `session_synth.cpp` | sounds, presets, the designer page, USB keyboard |
 | `session_samples.cpp` | recordings, fitting to tempo, the WiFi page, updates |
@@ -739,8 +740,8 @@ effect in those two groups and fails one that does not.
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
   each track's effects, sends, sound (preset, settings, macros, a sampler's
-  settings) and GLIDE FROM, the master's effects and the buses' (LEVEL with
-  them)**. Those are seen changing by `Session::soundMark()` each frame, as the
+  settings), GLIDE FROM and its two MODs, the master's effects and the buses'
+  (LEVEL with them)**. Those are seen changing by `Session::soundMark()` each frame, as the
   cell is by `cellMark()`: no screen calls anything (the FX screen is
   untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ
   **as the song file writes them** (`sameAsText`, `effectSameAsText`: `%.6g`;
@@ -1170,6 +1171,28 @@ effect in those two groups and fails one that does not.
   `glide_test` holds the rule to the engine with a listening synth;
   `glideapp_test` holds `Project::glideLines` (what the roll draws) to the
   engine through the Session, chords included.
+- **A track's two MODs are in the song, and one rule says what a MOD may be
+  aimed at** (batch 2, 2026-11-14; `TrackData::mods`, `app/mods.hpp`,
+  `Session::setMod`, `tests/modapp_test.cpp`). `modTargetFits`: a send; a
+  slot's setting that is there and is an AMOUNT; a macro of a synth that is
+  not a choice (`macroIsChoice`: a new synth's threshold macros go there).
+  **A MOD that is OFF, or whose target does not fit, is a blank
+  `ModSettings()`**: nothing is kept of it, in memory or in the file.
+  Whatever changes what a lane belongs to must put its MOD OFF or carry it:
+  `Session::setEffect` puts OFF a MOD aimed at the slot, `changeEffectType`
+  carries it by the setting's NAME (`modTargetCarried`; a choice on the new
+  type: OFF), `setTrackKind` drops one on a macro. Only `Session::setMod`
+  writes `mods` outside a song being read (it tells the engine); `sendSong`
+  sends them all. Undo sees them through `soundMark()` and compares them as
+  the file writes them (`modText`).
+  - In a song file: `mod N KIND TARGET DEPTH RATE SHAPE RESTART PHASE`, then
+    `modsteps N LENGTH SLEW CHANCE v1..v16` where the row is not as a new
+    MOD's; **both left out when OFF**. TARGET is the automation lane's number.
+    **DEPTH is 0..1 with 0.5 none** (`depthToFile`; the row's values are
+    -1..1). The numbers are `mod_rule.hpp`'s: appended.
+  - **A song's MODs are made to fit after the WHOLE song is read**
+    (`modsFit` at the end of `parseSong`): a `mod` line may stand before the
+    `fx` line it is aimed at.
 - **GLIDE FROM is the track's choice of which key of the moment before**
   (owner, 2026-11-13: "I always like the option"; `glideFromKey` in
   `glide_rule.hpp`). The numbers are in songs, appended: 0 TOP (the highest,
@@ -1440,7 +1463,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2 (song) next.
+2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); batch 3 (the DEVICE knob) next, once the owner has seen its still.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
