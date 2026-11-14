@@ -14,6 +14,7 @@
 #include "apotheca/engine.hpp"
 #include "chords.hpp"
 #include "recorder.hpp"
+#include "song_file.hpp"
 #include "transfer.hpp"
 #include "midi.hpp"
 #include "designer.hpp"
@@ -441,6 +442,10 @@ private:
     std::string revPath(int rev) const;
     std::string freshName();
     std::string folder_, songName_ = "untitled", savedText_;
+    // The song's text as it is now (songText(project), to the byte), made again a track at a time
+    // where a track has changed since it was last asked. Valid until it is asked again.
+    const std::string& textNow() const { return textNow_.text(project); }
+    mutable SongTextCache textNow_;
     std::uint32_t nameSeed_ = 1;
     Uint32 nextSaveAt_ = 0;
 

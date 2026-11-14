@@ -90,7 +90,7 @@ std::vector<std::string> Session::songNames() const {
 
 void Session::saveNow() {
     if (folder_.empty()) return;
-    const std::string text = songText(project);
+    const std::string& text = textNow(); // (made again only where a track has changed: this comes round every two seconds)
     if (text == savedText_) return;
     // A song nobody has put anything in is not worth a file.
     static const std::string empty = [] { std::unique_ptr<Project> fresh(new Project); return songText(*fresh); }();

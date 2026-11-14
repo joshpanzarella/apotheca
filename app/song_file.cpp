@@ -12,12 +12,15 @@
 #include <cstring>
 #include <memory>
 #include <sstream>
+#include <type_traits>
 
 #include "synth_spec.hpp"
 
 namespace apotheca {
 
 namespace {
+
+std::uint64_t gTracksWritten = 0, gTracksRead = 0;
 
 // A number read from a file, held to its limits BEFORE it is made an int or a float: a double too
 // big for one ("repeats 1e300") made into one is undefined, and the desk and the handheld read it
@@ -62,6 +65,7 @@ void putEffects(std::string& out, const EffectData* effects, int slots) {
 
 // One track of a song file: from its "track" line to the next one's.
 void putTrack(std::string& out, const TrackData& track) {
+    ++gTracksWritten;
     out += std::string("track ") + instrument(track.kind)->word + "\n";
     if (track.name[0]) out += std::string("name ") + track.name + "\n";
     // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
@@ -232,16 +236,9 @@ void putTrack(std::string& out, const TrackData& track) {
     }
 }
 
-} // namespace
-
-std::string trackText(const TrackData& track) {
-    std::string out;
-    putTrack(out, track);
-    return out;
-}
-
-std::string songText(const Project& project) {
-    std::string out = "apotheca-song 1\n";
+// The song's own lines, before its tracks.
+void putHead(std::string& out, const Project& project) {
+    out += "apotheca-song 1\n";
     put(out, "tempo %.6g\n", project.tempo);
     out += "repeats";
     for (int r : project.repeats) put(out, " %.0f", r);
@@ -265,10 +262,79 @@ std::string songText(const Project& project) {
         for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", project.busEffects[bus].param[i]);
         out += "\n";
     }
+}
 
+// Are the two tracks the same, in every byte their text is made from? (The drum patterns of a
+// synth track, and the notes of a drum track, are not written: a difference there is not one.)
+// Whole bytes: two that differ in a byte the text does not show only make it written again.
+bool sameForText(const TrackData& a, const TrackData& b) {
+    static_assert(std::is_trivially_copyable<TrackData>::value, "a track is kept and compared as bytes");
+    const char* x = reinterpret_cast<const char*>(&a);
+    const char* y = reinterpret_cast<const char*>(&b);
+    const std::size_t drums = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.drums) - x);
+    const std::size_t notes = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.notes) - x);
+    const std::size_t after = static_cast<std::size_t>(reinterpret_cast<const char*>(&a.bars) - x);
+    if (notes != drums + sizeof a.drums || after != notes + sizeof a.notes) return false; // (laid out otherwise: never the same)
+    if (std::memcmp(x, y, drums) != 0) return false; // what comes before the patterns: the kind
+    if (std::memcmp(x + after, y + after, sizeof(TrackData) - after) != 0) return false; // everything after them
+    return a.kind == TrackKind::Drums ? std::memcmp(x + drums, y + drums, sizeof a.drums) == 0 : std::memcmp(x + notes, y + notes, sizeof a.notes) == 0;
+}
+
+} // namespace
+
+std::string trackText(const TrackData& track) {
+    std::string out;
+    putTrack(out, track);
+    return out;
+}
+
+std::string songText(const Project& project) {
+    std::string out;
+    putHead(out, project);
     for (int t = 0; t < project.trackCount(); ++t) putTrack(out, project.tracks[t]);
     return out;
 }
+
+const std::string& SongTextCache::text(const Project& project) {
+    std::string head;
+    putHead(head, project);
+    const int count = project.trackCount();
+    bool changed = !made_ || count != count_ || head != head_;
+    for (int t = 0; t < count; ++t) {
+        Part& part = parts_[t];
+        const TrackData& now = project.tracks[t];
+        if (part.seen && sameForText(*part.seen, now)) continue;
+        if (!part.seen) part.seen.reset(new TrackData);
+        std::memcpy(static_cast<void*>(part.seen.get()), &now, sizeof now); // byte for byte, what lies between the fields too
+        part.text.clear();
+        putTrack(part.text, now);
+        changed = true;
+    }
+    for (int t = count; t < kNumTracks; ++t) { // a track taken away: its copy goes too
+        parts_[t].seen.reset();
+        parts_[t].text.clear();
+    }
+    if (changed) {
+        head_.swap(head);
+        count_ = count;
+        made_ = true;
+        std::size_t size = head_.size();
+        for (int t = 0; t < count; ++t) size += parts_[t].text.size();
+        text_.clear();
+        text_.reserve(size);
+        text_ += head_;
+        for (int t = 0; t < count; ++t) text_ += parts_[t].text;
+    }
+    return text_;
+}
+
+const std::string& SongTextCache::track(int t) const {
+    static const std::string none;
+    return t >= 0 && t < count_ ? parts_[t].text : none;
+}
+
+std::uint64_t tracksWritten() { return gTracksWritten; }
+std::uint64_t tracksRead() { return gTracksRead; }
 
 bool parseSong(const std::string& text, Project& project) {
     std::istringstream lines(text);
@@ -335,6 +401,7 @@ bool parseSong(const std::string& text, Project& project) {
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
             track = &song->tracks[count++];
+            ++gTracksRead;
             *track = *blank;
             track->kind = k;
             if (const SynthSpec* spec = specFor(k)) spec->loadPreset(*track, 0);

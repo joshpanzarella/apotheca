@@ -19,6 +19,8 @@
 //
 // Lanes, steps and scenes are written from 1, as on screen.
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -30,6 +32,33 @@ namespace apotheca {
 std::string songText(const Project& project);
 // One track as the song file writes it (songText is these, after the song's own lines).
 std::string trackText(const TrackData& track);
+
+// songText, made a track at a time and remembered. A track whose bytes are as they were when its
+// text was made is not written again, so asking for the text of a song nothing has changed in costs
+// a compare of its tracks' memory, not the writing of it (a 2.5 MB song: 1 ms against 70 on the
+// desk). What comes back is songText(project) to the byte; nothing has to say what it changed.
+// The kept copies take a track's size each (about 1 MB) for the tracks the song has.
+class SongTextCache {
+public:
+    const std::string& text(const Project& project);
+    // Track t's part of the last text(): from its "track" line to the next one's. Empty past the song's last track.
+    const std::string& track(int t) const;
+
+private:
+    struct Part {
+        std::unique_ptr<TrackData> seen; // the track as it was when `text` was made
+        std::string text;
+    };
+    Part parts_[kNumTracks];
+    int count_ = 0;
+    std::string head_, text_;
+    bool made_ = false;
+};
+
+// How many tracks songText, trackText and SongTextCache have written, and parseSong has read, since
+// the program began: for the tests, which hold what a gesture costs by them.
+std::uint64_t tracksWritten();
+std::uint64_t tracksRead();
 
 // Fills `project` from text. Values out of range are held to their limits and
 // lines it does not understand are skipped. False (and `project` untouched)

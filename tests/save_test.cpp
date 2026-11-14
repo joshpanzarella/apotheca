@@ -969,7 +969,111 @@ void testParseSongOnASmallStack() {
     pthread_attr_destroy(&attr);
 }
 
+
+// A busy song of twelve tracks: drums and Phazed by turns, every scene, some automation.
+void fillBusy(Project& p, Session& session, int scenes, int bars) {
+    for (int t = 1; t < kNumTracks; ++t) session.addTrack(t % 2 ? TrackKind::Drums : TrackKind::Phazed);
+    for (int t = 0; t < kNumTracks; ++t)
+        for (int sc = 0; sc < scenes; ++sc) {
+            p.tracks[t].bars[sc] = bars;
+            for (int b = 0; b < bars; ++b) {
+                if (p.tracks[t].kind == TrackKind::Drums) {
+                    DrumPattern& d = p.tracks[t].drums[sc][b];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int st = lane % 2; st < kSteps; st += 2) d.level[lane][st] = 90.f / 127.f;
+                } else {
+                    NotePattern& n = p.tracks[t].notes[sc][b];
+                    for (int k = 0; k < 32; ++k) n.notes[k] = NoteEvent{k / 2, 48 + k, 1.f, 0.f, 0.8f};
+                }
+                for (int i = 0; i < kSteps; ++i) p.tracks[t].automation[sc][0][b * kSteps + i] = 0.123456f;
+            }
+        }
+    session.applyProject();
+}
+
+// The autosave comes round every two seconds. With nothing changed it writes no track out as
+// text: it used to make the whole song's text each time to find it the same (a 2.5 MB song:
+// 70 ms on the desk, every two seconds, with the screen and the buttons waiting).
+void testTheAutosaveWritesNothingOutWhenNothingChanged() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Project& p = rig.project();
+    fillBusy(p, rig.session(), 4, 2);
+    rig.frames(200); // saved, and every edit long settled
+    const std::string path = folder + "/" + rig.session().songName() + ".song";
+    std::string onDisk;
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p));
+    const std::uint64_t before = tracksWritten();
+    rig.frames(400); // six seconds: three autosaves
+    CHECK(tracksWritten() == before);
+    // One track changed: that track is written out again, and the file has the change.
+    p.tracks[3].drums[1][1].level[2][3] = 1.f;
+    rig.session().saveNow();
+    CHECK(tracksWritten() == before + 1);
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p));
+    // A change only in a setting of the song (no track): no track is written, the file has it.
+    const std::uint64_t then = tracksWritten();
+    p.tempo = 101.f;
+    rig.session().saveNow();
+    CHECK(tracksWritten() == then);
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p) && onDisk.find("tempo 101\n") != std::string::npos);
+}
+
+// The text kept a track at a time is the song's text to the byte, whatever is changed and however.
+void testTheTextKeptIsTheSongsText() {
+    std::unique_ptr<Project> p(new Project);
+    SongTextCache cache;
+    std::uint32_t seed = 12345u;
+    const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Sampler};
+    for (int t = 1; t < 6; ++t) {
+        p->tracks[t].kind = kinds[t % 5];
+        if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
+    }
+    CHECK(cache.text(*p) == songText(*p));
+    int checks = 0, wrong = 0;
+    for (int round = 0; round < 3000; ++round) {
+        TrackData& t = p->tracks[roll(8)];
+        const int scene = roll(kMaxScenes), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
+        switch (roll(17)) {
+        case 0: t.drums[scene][bar].level[lane][step] = roll(3) ? 0.25f * static_cast<float>(1 + roll(4)) : 0.f; break;
+        case 1: t.drums[scene][bar].fx[lane][step].ratchet = static_cast<std::uint8_t>(roll(4)); break;
+        case 2: t.notes[scene][bar].notes[roll(kMaxNotes)] = NoteEvent{step, 40 + roll(40), 1.f, 0.f, roll(2) ? 0.8f : 0.f}; break;
+        case 3: t.automation[scene][roll(kAutoLanes)][roll(kAutoSteps)] = roll(2) ? 0.001f * static_cast<float>(roll(1000)) : kAutoNone; break;
+        case 4: t.bars[scene] = 1 << roll(4); break;
+        case 5: t.muted = !t.muted; break;
+        case 6: t.solo = !t.solo; break; // not in the text: nothing to see, and nothing wrong
+        case 7: std::snprintf(t.name, sizeof t.name, "%s", roll(2) ? "BASS" : ""); break;
+        case 8: t.macro[roll(kSynthMacros)] = 0.01f * static_cast<float>(roll(100)); break;
+        case 9: t.effects[roll(kTrackSlots)].kind = roll(3); break;
+        case 10: t.send[roll(kBuses)] = 0.1f * static_cast<float>(roll(10)); break;
+        case 11: t.laneLevel[lane] = 0.1f * static_cast<float>(roll(10)); break;
+        case 12: std::snprintf(t.laneSample[lane], sizeof t.laneSample[lane], "%s", roll(2) ? "kicks/808" : ""); break;
+        case 13: p->tempo = static_cast<float>(60 + roll(100)); break;
+        case 14: p->repeats[scene] = 1 + roll(4); break;
+        case 15: { // another instrument, or none: the tracks after it then do not count
+            const int k = roll(7);
+            t.kind = k < 5 ? kinds[k] : (k == 5 ? TrackKind::None : TrackKind::Drums);
+            break;
+        }
+        default: t.glideFrom = static_cast<std::uint8_t>(roll(4)); break;
+        }
+        if (roll(3) == 0 || round == 2999) {
+            ++checks;
+            if (cache.text(*p) != songText(*p)) ++wrong;
+            for (int i = 0; i < kNumTracks; ++i)
+                if (cache.track(i) != (i < p->trackCount() ? trackText(p->tracks[i]) : std::string())) ++wrong;
+        }
+    }
+    CHECK(checks > 900 && wrong == 0);
+    // Asked again with nothing changed: no track written.
+    const std::uint64_t before = tracksWritten();
+    CHECK(cache.text(*p) == songText(*p) && tracksWritten() == before + static_cast<std::uint64_t>(p->trackCount()));
+}
+
 int main(int, char**) {
+    testTheAutosaveWritesNothingOutWhenNothingChanged();
+    testTheTextKeptIsTheSongsText();
     testTextRoundTrip();
     testBadFiles();
     testSavedAsYouGoAndBackAtTheNextStart();
