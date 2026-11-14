@@ -108,7 +108,8 @@ Where effects are, in the engine:
 | `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
-| `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
+| `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
+| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click |
 
 **Adding an effect**:
 1. an `EffectKind` at the **end** of the list in `effects.hpp`;
@@ -1257,6 +1258,13 @@ effect in those two groups and fails one that does not.
   two, for trying a change); `ctest` runs them all. `through()` there hits a
   drum five times a second, lanes 1 and 8, so the checks for every effect
   reach DUCK; no other effect hears it.
+- **The measuring tools are one copy, in `tests/measure.hpp`** (JX-3P plan,
+  batch 0): a tool that reads a run of samples and knows no Effect or Synth
+  goes there, not into a test program of its own. Moved out of `effects_test`
+  unchanged: `--measure` and `--print` gave the same lines before and after
+  (but for the block timings). The older copies in `engine_test`,
+  `phazed_test` and `twin_test` are other tools under the same names
+  (interleaved buffers, int places) and were left.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -1315,5 +1323,6 @@ step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
 2026-11-11): it has more features than it needs and is the costly synth; cut
 it down rather than tune it. **Decided (owner, 2026-11-13): Twin Analog becomes a
 faithful Roland JX-3P clone**, which is what it was meant to be; it grew past that
-in VCV Rack. Queued after the pit stop. The engine stays at 48 kHz: 44.1 would save about
+in VCV Rack. The plan is `docs/plans/jx3p-plan.md`; **batch 0 (the Service
+Notes' pages, the shared measuring tools) is done** on branch `jx3p`. The engine stays at 48 kHz: 44.1 would save about
 8%, which the owner judged not worth it.

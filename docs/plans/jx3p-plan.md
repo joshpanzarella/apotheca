@@ -1,8 +1,10 @@
 # JX-3P plan
 
 Written 2026-11-13, revised the same day after a sceptic's review (section 9
-lists each of their 28 points and what was done). Nothing here is built. Only
-the code was read and one throwaway timing program was run; nobody has heard
+lists each of their 28 points and what was done). **Batch 0 is done
+(2026-11-14)**: the Service Notes were read and every SN claim below has its
+page (section 0, "SN pages"), and the measuring tools are shared in
+`tests/measure.hpp`. Nothing of the synth is built yet; nobody has heard
 anything.
 
 ## The recommendation
@@ -35,7 +37,7 @@ what the plan guessed. Only the FAITHFUL ones say anything about the machine.
 
 | Short | Source | Read for this plan? |
 | --- | --- | --- |
-| **SN** | Roland JX-3P Service Notes, 27 July 1983 | Quoted below; **the page numbers are not recorded and the reviewer could not open it** (manualslib). Batch 0 finds a readable copy and fills the "SN page" column of every table, or marks the claim SELF |
+| **SN** | Roland JX-3P (PG-200) Service Notes, 27 July 1983 (3rd printing Oct. 1986), 18 pages: manualslib 3497592 | **Read in batch 0** (2026-11-14), through the site's OCR text of the scan, not the images: OCR garbles some words ("lOmS", "eOOmVp-p", "OCO-1"), so each figure below is the plain reading of a garbled one. The viewer's page numbers and the printed ones agree (6 and 7). Pages: 2-3 parts list, 4 block diagram, 6 circuit description (CPU, DCO, VCF), 7 circuit description (VCA, chorus) and adjustments, 8 on main board |
 | **OM** | JX-3P owner's manual (manualslib 1139203) | Pages cited where known. It confirms 32 ROM presets and 32 user patches (p.4) |
 | **NAM** | Roland, *PG-200 音のサンプル32* (NAM-0150), 1983, scanned | Read for the values; scanned images, so every value is checked twice by hand in batch 7 |
 | **WP** | Wikipedia, "Roland JX-3P" | Waves: "pulse at 50% and 10%" |
@@ -44,13 +46,50 @@ what the plan guessed. Only the FAITHFUL ones say anything about the machine.
 | **Polynominal** | polynominal.com, JX-3P page | Confirms the MN3009 BBDs |
 | Roland plug-out manual | manualslib 1461110 | **A model, not the machine.** Used only where nothing else speaks (DCO-2 TUNE in semitones) |
 
-Claims taken from the SN alone, waiting for their page: the 6 MHz master
-clock and 8253 counter, the over-charged saw for PULSE, METAL's two resets,
-the 10 ms CPU loop, the IR3109 with feedback, the VCA as a transistor
-resistor, the 40 to 200 kHz BBD clock, the 10 kHz filters, the 180° sweep,
-adjustment 5 (600 mV self-oscillation). A forum post says the VCA is a BA662;
-WP says discrete. The VCA's type does not change the plan: its taper is a
-guess either way.
+### SN pages (batch 0)
+
+Every claim this plan takes from the SN, with its page. Quotes are the OCR's
+words, mended where the misreading is plain ("lOmS" is 10mS). **FAITHFUL**
+tests may cite these; a claim marked SELF has no page and stays a guess.
+
+| Claim in this plan | SN page | What the page says |
+| --- | --- | --- |
+| Master clock about 6 MHz | **p.6** | "Master Oscillator mTR10(11) generate a frequency of approx. 6MHz" |
+| An 8253 divides it, one counter a DCO | **p.6**; p.3 (parts: M5L8253P-5) | "Programmable counter 8253 containing three 16-bit counters is capable of dividing high frequency signals"; dividing by 6000 gives "1kHz rectangular signals" |
+| SQUARE is the counter's raw output | **p.6** | "Output from Programmable Counter 8253 is a rectangular" |
+| The saw charges a capacitor, and its height is the same on every key | **p.6** | the DCO CV "keeps the sawtooth amplitude constant over the frequency range"; the charging current "is determined by the output from the S/H circuit of DCO CV" |
+| PULSE is an over-charged saw | **p.6** | "The CPU will add a bias to DCO CV to excessively increase charging current when the program needs a pulse like sawtooth". **The 10% is not on the page** (WP only); the clip at the top is this plan's reading |
+| SYNC: DCO-1 resets DCO-2 | **p.6** | "In SYNC mode, pulses from DCO-1 are applied to the gate of [the] counter in DCO-2 section as RESET pulses". **This settles SOS's wording: DCO-1 is the master** |
+| METAL: DCO-2 not synced, its saw reset on the falling edges of both | **p.6** | "DCO-2 programmable counter does not sync to DCO-1"; the saw's transistor "is clocked on every negative edge of both DCO-1 and 2 rectangulars"; likened to ring modulation |
+| NOISE stops DCO-2's clock | **p.6** | "NOISE ON signal is also routed to pin 1 of mIC37 to block DCO-2 master frequency" |
+| The CPU loop, about 10 ms | **p.6** | "The CPU cycles steps 1 to 6 within approx. 10mS": 1 the keyboard, 2 "Refresh the Envelope and LFO data", 3 the panel switches, 4 bender and EDIT, 5 "Write the control voltage data into DCO, VCF, VCA", 6 "Write the note data into the programmable counter in DCO section" |
+| ADSR and LFO are software | **p.6** | step 2 above |
+| DCO pitch steps once a loop | **p.6** | steps 5 and 6: the counter's divisor and the DCO CV are written once a loop |
+| Every CV comes from a D/A and is held | **p.6**; p.2 (HD14051 demultiplexers) | 0 to 4.7 V from the D/A, "sampled into correct channel in individual stages". The DCO CV's S/H is named; the hold for VCF and VCA is not, so **its 1 ms smoothing is SELF** |
+| 6 voices | **p.6** | "6-voice (12 VCOs)" |
+| VCF: 4-pole low-pass with feedback for resonance | **p.6** | "This is a 4-pole LPF composed of mIC102 and associated components"; "Feedback amount and the amplitude of resonance is controlled by mTR103, 104" |
+| The VCF chip is an IR3109 | **p.3** (parts: "IR3109 VCF") | not named in the description |
+| VCF CV is KCV, CUTOFF, LFO and ADSR | **p.6** | "a combination of KCV, CUTOFF, LFO and ADSR controls" |
+| VCA CV | **p.6** | "VCA CV - ADSR, LEVEL, MUTE" |
+| What the VCA is | **p.7**, **p.3** | p.7 describes a controlled resistance with "a minimum forward bias maintained by the CPU"; the parts list (p.3) names the part: **"BA662B VCA"**. A forum said BA662 and WP "discrete"; both pages here are Roland's own, so it is a BA662. The taper is still a guess |
+| HPF after the voices are summed, before the chorus | **p.4** (block diagram: MIXER, HPF, STEREO CHORUS) | the OCR keeps the labels, not the arrows; the order is read from where they stand. Nothing says how many poles: **one pole is SELF** |
+| Two MN3009 BBDs and an MN3101 driver | **p.3** (parts) | "MN3009 BBD", "MN3101 BBD DRIVER" |
+| BBD clock swept 40 to 200 kHz | **p.7** | "The VCO sweeps its frequency between 40k-200kHz" |
+| The other side 180° out of phase | **p.7** | the other channel's sweep is 180 degrees out of phase |
+| 10 kHz low-pass before and after the BBDs | **p.7** | two filters that "both have cutoff frequency at 10kHz". Their order and poles are not given: **2-pole is SELF** |
+| Chorus rate and depth | none | **SELF** |
+| Self-oscillation trimmed to 600 mV | **p.7**, adjustment 5-3 | "Depress a key, and adjust VR-103 (RESO) so that the sine wave is 600mVp-p" |
+| The saw's peak to peak at the same point | **none** | Adjustment 3-4 sets the D/A offset "for the maximum amplitude without clip"; **no saw figure is printed**. So the self-oscillation level against the saw **stays SELF** (6 dB under the saw's peak) |
+| The factory tuning | **p.7**, adjustment 2-4 | L1 (the master oscillator's coil) is set so **A4 reads 442 Hz**. The program stays at A440 (its own); said here because a recording of a real one may be at 442 |
+| Envelope times and curve, LFO rate and delay, cutoff in Hz, HPF corner, VCA taper | none | **SELF**, as section 2 says |
+
+What the SN does not settle stays as planned: PULSE's 10% (WP), METAL with
+DCO-2 on SQUARE (not written: a guess), DCO-2 TUNE's steps (the plug-out
+manual), and how near to 6 MHz "approx." is. **For the counter rounding**
+(section 8): the clock is confirmed as an 8253 fed by about 6 MHz, trimmed
+so A4 is in tune. The clone takes its clock as 440 × round(6 MHz / 440) =
+**5,999,840 Hz**, so A4 is exactly 13636 divisions at A440, as the real
+one's trim makes it in tune at 442. One constant, in batch 2.
 
 ## 1. The JX-3P, parameter by parameter
 
@@ -63,23 +102,23 @@ value to a tenth, so every factory value fits exactly.
 | Id | Section | Setting | Range | Fact it must meet | Source |
 | --- | --- | --- | --- | --- | --- |
 | 0 | DCO-1 | RANGE | 16', 8', 4' | 8' plays the written note; 16' an octave down | NAM, OM |
-| 1 | DCO-1 | WAVE | SAW, PULSE, SQUARE | Pulse is an over-driven, clipped saw **reading 10%**; square is the counter's raw output | SN, WP |
+| 1 | DCO-1 | WAVE | SAW, PULSE, SQUARE | Pulse is an over-driven, clipped saw **reading 10%**; square is the counter's raw output | SN p.6, WP (the 10%) |
 | 2 | DCO-1 | LFO | OFF, ON | The shared LFO DEPTH reaches this DCO | NAM |
 | 3 | DCO-1 | ENV | OFF, ON | The shared ENV DEPTH reaches this DCO | NAM |
 | 4 | DCO-2 | RANGE | 16', 8', 4' | | NAM |
-| 5 | DCO-2 | WAVE | SAW, PULSE, SQUARE, NOISE | Noise stops DCO-2's clock | NAM, SN |
-| 6 | DCO-2 | CROSS MOD | OFF, SYNC, METAL | SYNC: DCO-1 resets DCO-2. METAL: DCO-2's saw reset on both DCOs' falling edges | SN (page to fill), OM p.23 |
+| 5 | DCO-2 | WAVE | SAW, PULSE, SQUARE, NOISE | Noise stops DCO-2's clock | NAM, SN p.6 |
+| 6 | DCO-2 | CROSS MOD | OFF, SYNC, METAL | SYNC: DCO-1 resets DCO-2. METAL: DCO-2's saw reset on both DCOs' falling edges | SN p.6, OM p.23 |
 | 7 | DCO-2 | TUNE | 0-10 | **5.0 unison, 10 an octave up, 0 an octave down, in semitone steps** (7.9 is "a fifth") | OM, NAM, plug-out manual |
 | 8 | DCO-2 | FINE | 0-10 | ±50 cents, 5.0 centre, smooth | OM |
 | 9 | DCO-2 | LFO | OFF, ON | | NAM |
 | 10 | DCO-2 | ENV | OFF, ON | | NAM |
-| 11 | DCO | LFO DEPTH | 0-10 | Pitch moves in ~10 ms steps (software, into the counter) | SN |
-| 12 | DCO | ENV DEPTH | 0-10 | The same | SN |
+| 11 | DCO | LFO DEPTH | 0-10 | Pitch moves in ~10 ms steps (software, into the counter) | SN p.6 |
+| 12 | DCO | ENV DEPTH | 0-10 | The same | SN p.6 |
 | 13 | DCO | ENV POLARITY | NORMAL, INVERTED | | OM p.22 |
 | 14 | VCF | SOURCE MIX | 0-10 | **Linear amplitude crossfade**: 0 DCO-1, 10 DCO-2; 6.8 is 1:2, 7.4 to 7.8 is 1:3 | OM, NAM |
-| 15 | VCF | HPF | 0-10 | Non-resonant, after the voices are summed | NAM, SN diagram |
+| 15 | VCF | HPF | 0-10 | Non-resonant, after the voices are summed | NAM, SN p.4 (diagram) |
 | 16 | VCF | CUTOFF | 0-10 | Hz unknown | |
-| 17 | VCF | RESONANCE | 0-10 | **Self-oscillates at 10**, a sine | NAM Organ I, SN adj. 5 |
+| 17 | VCF | RESONANCE | 0-10 | **Self-oscillates at 10**, a sine | NAM Organ I, SN p.7 adj. 5-3 |
 | 18 | VCF | LFO MOD | 0-10 | | |
 | 19 | VCF | ENV MOD | 0-10 | | |
 | 20 | VCF | ENV POLARITY | NORMAL, INVERTED | Its own, apart from the DCO one | NAM (Planet), OM p.25 |
@@ -90,7 +129,7 @@ value to a tenth, so every factory value fits exactly.
 | 25 | LFO | DELAY | 0-10 | Time unknown | OM p.26 |
 | 26 | LFO | RATE | 0-10 | Hz unknown | OM p.26 |
 | 27-30 | ENV | ATTACK, DECAY, SUSTAIN, RELEASE | 0-10 each | All at 0 gives "an extremely short pulse" | OM p.27 |
-| 31 | CHORUS | | OFF, ON | One mode. Two BBDs swept 180° apart | SN |
+| 31 | CHORUS | | OFF, ON | One mode. Two BBDs swept 180° apart | SN p.7 |
 
 ### Track values: not in the patch
 
@@ -159,7 +198,7 @@ batches that build them never edit the same lines:
 
 ### The control tick: the JX-3P's own CPU
 
-The SN: "The CPU cycles steps 1 to 6 within approx. 10mS": read keys, work out
+The SN (p.6): "The CPU cycles steps 1 to 6 within approx. 10mS": read keys, work out
 ENV and LFO, read the panel, write the CVs, write the counters. **ADSR and LFO
 are software, and every CV is a step every 10 ms through a sample-and-hold.**
 That is part of the sound and is kept.
@@ -215,7 +254,7 @@ length, stolen or not.
 
 ### DCOs
 
-The real DCO (SN): a 6 MHz master clock, divided by a counter (8253) set by
+The real DCO (SN p.6): a 6 MHz master clock, divided by a counter (8253) set by
 the CPU; the counter's rectangle is the SQUARE; a saw is made by charging a
 capacitor at a current set by the pitch, so the saw's height is the same on
 every key.
@@ -224,17 +263,18 @@ every key.
 | --- | --- | --- |
 | SAW | A phase ramp, -1 to 1 | A BLEP (a short correction around a jump that takes the alias out) at the reset |
 | SQUARE | 50% rectangle | A BLEP at each edge |
-| PULSE | The saw times a gain over 1, clipped at the top, then DC-blocked: a ramp that hits the top early and stays there. The SN: "add a bias to DCO CV to excessively increase charging current". **Gain 10, so the ramp reaches the top in 10% of the cycle and the wave reads as WP's 10% pulse.** Fitted again from a recording in batch 9 | A BLEP at the reset, and a **BLAMP** (the same correction for a bend, not a jump) at the clip point, whose time is known exactly |
+| PULSE | The saw times a gain over 1, clipped at the top, then DC-blocked: a ramp that hits the top early and stays there. The SN (p.6): "add a bias to DCO CV to excessively increase charging current". **Gain 10, so the ramp reaches the top in 10% of the cycle and the wave reads as WP's 10% pulse.** Fitted again from a recording in batch 9 | A BLEP at the reset, and a **BLAMP** (the same correction for a bend, not a jump) at the clip point, whose time is known exactly |
 | NOISE | White, a xorshift seeded per voice | None needed |
 
 - **SYNC**: when DCO-1 wraps, DCO-2's phase is reset at the same fraction of a
   sample, and a BLEP of the size of the jump is put there. **Why DCO-1 is the
   master**: OM p.23 and NAM get pulse-width sweeps from SYNC by turning
   DCO-2's TUNE, which only works if DCO-2 is the one reset. SOS writes it the
-  other way round ("syncs DCO 1's frequency to DCO 2"); the SN page goes in
-  the sources table in batch 0.
+  other way round ("syncs DCO 1's frequency to DCO 2"); **the SN (p.6)
+  settles it: "pulses from DCO-1 are applied ... in DCO-2 section as RESET
+  pulses"**.
 - **METAL**: DCO-2 is not synced. Its saw is reset at every falling edge of
-  DCO-1's square **and** of DCO-2's own square (SN). Each reset is a jump with
+  DCO-1's square **and** of DCO-2's own square (SN p.6). Each reset is a jump with
   a BLEP. What METAL does with DCO-2 on SQUARE is not written anywhere: the
   clone resets the square's phase the same way, marked as a guess.
 - **DCO-2 TUNE is in semitone steps**: dial d plays `round((d - 5) × 2.4)`
@@ -245,20 +285,21 @@ every key.
   sweeps are made). The owner's call; one constant.
 - **Pitch**: the key, TUNE, FINE, LFO and ENV become one frequency on each
   tick (the key also per sample under GLIDE).
-- **Rounded to the counter** (owner's call, recommended once the SN's clock
-  figure is checked): the frequency is `clock / round(clock / f)`, as an 8253
-  can only divide by a whole number. At 6 MHz that is under 1 cent off at the
-  top notes. One constant; off until the clock is confirmed.
+- **Rounded to the counter** (owner's call, recommended; **the clock is
+  confirmed, SN p.6: about 6 MHz into an 8253**): the frequency is
+  `clock / round(clock / f)`, as an 8253 can only divide by a whole number.
+  At 6 MHz that is under 1 cent off at the top notes. One constant (the clock
+  taken as 5,999,840 Hz: see "SN pages").
 
 | Test | Measure | Pass | Kind |
 | --- | --- | --- | --- |
 | In tune | Pitch of each wave, each RANGE, notes 24 to 96 | Within 1 cent of the written note (8'), an octave down at 16', up at 4'. With the counter rounding on: exactly `clock / N` | SELF (A440 is the program's) |
-| Saw height | Peak of the saw at notes 24, 60, 96 | The same within 0.2 dB | FAITHFUL (SN: constant height) |
+| Saw height | Peak of the saw at notes 24, 60, 96 | The same within 0.2 dB | FAITHFUL (SN p.6: constant height) |
 | PULSE is 10% | Duty cycle after the DC block, notes 36, 60, 84 | 10% ±1 | **FAITHFUL (WP)** |
 | TUNE | DCO-2 against DCO-1 at TUNE 0, 2.5, 5, 7.9, 10 | -12, -6, 0, +7, +12 semitones within 1 cent; 7.9 a fifth, 10 an octave | **FAITHFUL (OM, NAM)**; the stepping itself is the plug-out's |
 | FINE | FINE 0 and 10 | -50 and +50 cents within 1 | FAITHFUL (OM) |
 | SYNC's width | DCO-2 on SQUARE, SYNC, TUNE from 5 down to 0 | The pulse's width is DCO-1's frequency over twice DCO-2's, within 1% | **FAITHFUL (OM p.23, NAM)** |
-| METAL | Count the saw's resets in one second, DCO-2 a fifth up | Falling edges of both DCOs, exactly | FAITHFUL (SN) |
+| METAL | Count the saw's resets in one second, DCO-2 a fifth up | Falling edges of both DCOs, exactly | FAITHFUL (SN p.6) |
 | Aliasing | Every wave, SYNC and METAL, notes up to 96 at 4', a spectrum | **Every part that is not a harmonic and falls under 15 kHz at least 50 dB under the fundamental** | SELF (the real DCO is analog and does not alias; this is the house's bar) |
 | Source mix | DCO-1 and DCO-2 levels at MIX 0, 5, 6.8, 7.6, 10 | 1:0, 1:1, 1:2, 1:3, 0:1 within 0.3 dB | FAITHFUL (OM, NAM) |
 
@@ -271,7 +312,7 @@ before going on.
 ### VCF: the IR3109
 
 Four transconductance stages (OTAs) in a row, each a one-pole low-pass, with
-feedback from the last to the first for resonance (SN: "4-pole LPF...
+feedback from the last to the first for resonance (SN p.6: "4-pole LPF...
 feedback amount... controlled by mTR103, 104").
 
 | Choice | Here | Why |
@@ -281,15 +322,15 @@ feedback amount... controlled by mTR103, 104").
 | Resonance | Feedback 0 to 4 (4 = the edge of oscillation in a 4-pole), mapped so dial 10 is just past it | NAM's Organ I uses res 10 as a pitched source |
 | Starting to sing | **At each note-on a fixed 1e-4 is put into stage 1.** A filter that is linear near zero stays at exact zero with nothing in, so without this res 10 on silence never starts | It is the same number every time, so the same bits |
 | Bass loss | **Not compensated**: the low end falls as resonance rises, by 1/(1 + feedback) | A trait of the IR3109 on the Juno-60, **not documented on the JX-3P**. The owner's call |
-| Self-oscillation level | **SELF until the SN figure is in hand**: a guess of 6 dB under the saw's peak. SN adjustment 5 trims it to 600 mV peak to peak; turning that into a ratio needs the saw's peak to peak from the same adjustment, which batch 0 looks for | SN adj. 5 |
-| Cutoff CV | Sum of CUTOFF, KEY FOLLOW × key, LFO, ENV (with its polarity), BRILLIANCE. Exponential: a volt an octave | SN: "KCV, CUTOFF, LFO and ADSR" |
+| Self-oscillation level | **SELF**: a guess of 6 dB under the saw's peak. SN adjustment 5-3 (p.7) trims it to 600 mV peak to peak, but **the SN prints no figure for the saw** (adjustment 3-4 sets the D/A "for the maximum amplitude without clip"), so there is no ratio to take. Batch 9's recordings can give it | SN p.7 |
+| Cutoff CV | Sum of CUTOFF, KEY FOLLOW × key, LFO, ENV (with its polarity), BRILLIANCE. Exponential: a volt an octave | SN p.6: "KCV, CUTOFF, LFO and ADSR" |
 | Cutoff in Hz | **A guess**: dial 0 to 10 covers 10 octaves, 15 Hz to 15 kHz, until a recording | No source gives it |
 | KEY FOLLOW's 100% | **9.8, chosen from NAM's text** (Organ I is at 9.8 and NAM says it plays in tune). The test pins this choice; it does not prove it | NAM |
 | The coefficient's cost | `exp2` and `tan` as short polynomials, not the maths library. The coefficient is worked out **only on samples where the cutoff CV moved** (a smoothing, a GLIDE, an LFO step) | The handheld's maths calls are slow; a FULL glide moves the cutoff for bars |
 
 | Test | Measure | Pass | Kind |
 | --- | --- | --- | --- |
-| A 24 dB slope | Noise through, res 0, two octaves over cutoff | 24 dB an octave within 2 dB | FAITHFUL (SN: 4-pole) |
+| A 24 dB slope | Noise through, res 0, two octaves over cutoff | 24 dB an octave within 2 dB | FAITHFUL (SN p.6: 4-pole) |
 | It starts to sing | Silence in, res 10, a note-on | A steady sine within 50 ms that never stops | FAITHFUL that it sings (NAM); the 50 ms is SELF |
 | Organ I | Preset A3 (res 10, KEY 9.8, CUTOFF 2.4), pitch read 200 ms in, at its steady level | A semitone for a semitone across three octaves, within 5 cents | SELF: it pins 9.8 = 100% |
 | KEY FOLLOW | Self-oscillating pitch at notes 36 and 84, KEY 0, 5, 8, 10 | A straight line in KEY | SELF |
@@ -299,7 +340,7 @@ feedback amount... controlled by mTR103, 104").
 
 ### HPF
 
-One filter for the summed voices, before the chorus (SN block diagram), not
+One filter for the summed voices, before the chorus (SN p.4, block diagram), not
 resonant. **A one-pole high-pass** (6 dB an octave) until a recording says
 otherwise; 0 is off, 10 is a guess of 1 kHz. Tests: the slope (SELF), and 0
 passes the sound untouched to the bit (SELF).
@@ -317,14 +358,14 @@ passes the sound untouched to the bit (SELF).
 | Test | Pass | Kind |
 | --- | --- | --- |
 | Times | Each of 0, 2.5, 5, 7.5, 10 for A, D and R lands on its table's time within one tick | SELF |
-| Stepped | The VCA's gain read off a steady tone moves once a tick | FAITHFUL (SN: 10 ms loop) |
+| Stepped | The VCA's gain read off a steady tone moves once a tick | FAITHFUL (SN p.6: 10 ms loop) |
 | All at 0 | A pulse one tick long | FAITHFUL (OM p.27) for "short"; one tick is this plan's reading |
 | A retrigger | No jump between samples larger than the wave's own | SELF |
 
 ### VCA
 
-SN: a transistor used as a voltage-controlled resistor (contested: see
-section 0). Gain = LEVEL × ENV, or LEVEL × the gate in GATE mode, times the
+SN: a voltage-controlled resistance (p.7); the part is a BA662B (p.3; see
+"SN pages"). Gain = LEVEL × ENV, or LEVEL × the gate in GATE mode, times the
 velocity curve with VELOCITY ON (1 at full velocity). **The taper is a guess**
 (exponential, a dial step of 1 is 4 dB). Above LEVEL 7 a soft clip comes in
 ("too high may cause distortion", OM p.26), also a guess in shape. GATE mode
@@ -357,11 +398,11 @@ and not this circuit) and not the CZ-1 model as it is, but built **the way
 `third_party/easycz/dsp/cz_chorus.c` is**: a fixed buffer, no allocation, one
 mono sample in and a pair out.
 
-| From the SN (pages to fill) | Here |
+| From the SN (p.3 and p.7) | Here |
 | --- | --- |
-| Two MN3009 BBDs (confirmed: Polynominal), one a side, clocked by one VCO sweeping **40 to 200 kHz** (SN only) | Two reads of one delay line. An MN3009 has 256 stages, so its delay is 256 / (2 × clock): **0.64 to 3.2 ms** |
+| Two MN3009 BBDs (confirmed: Polynominal), one a side, clocked by one VCO sweeping **40 to 200 kHz** (SN p.7; MN3009 and MN3101 in the parts, p.3) | Two reads of one delay line. An MN3009 has 256 stages, so its delay is 256 / (2 × clock): **0.64 to 3.2 ms** |
 | One triangle sweep, the other side **180° out of phase** | One triangle; left reads at d, right at the mirror of d |
-| **10 kHz** low-pass before and after (SN only) | A 2-pole low-pass at 10 kHz on the wet path, before and after (their order is a guess) |
+| **10 kHz** low-pass before and after (SN p.7) | A 2-pole low-pass at 10 kHz on the wet path, before and after (their order is a guess) |
 | Rate and depth | **Not published. A guess of 0.5 Hz** over the whole delay range. No source; batch 9 measures it |
 | Dry and wet | Each side is dry plus its own BBD (a guess; the real outputs are L, R and mono) |
 
@@ -372,8 +413,8 @@ zeros and does no work, and wakes as a fresh one.
 
 Tests: an impulse through finds the delay on each side; over a whole sweep
 the delay stays within 0.64 to 3.2 ms and left is longest when right is
-shortest (FAITHFUL, if the SN page holds); the wet path is 3 dB down at 10 kHz
-within 1 dB (FAITHFUL, the same); OFF is the dry sound to the bit, mono
+shortest (FAITHFUL, SN p.7); the wet path is 3 dB down at 10 kHz
+within 1 dB (FAITHFUL, SN p.7; its 2 poles are SELF); OFF is the dry sound to the bit, mono
 (SELF); the sweep rate (SELF).
 
 ### What every part must keep (house rules)
@@ -532,6 +573,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | Batch | What | Tests | Done when |
 | --- | --- | --- | --- |
 | 0 | **Sources and tools.** Find a readable SN; fill an "SN page" against every SN claim in this plan, and the saw's peak to peak at adjustment 5; mark any claim with no page SELF. Move the pitch reader, spectrum and level reader out of `effects_test` into `tests/measure.hpp`, shared | `effects_test` gives the same results with the shared header | Every SN claim has a page or is marked SELF; one copy of the tools |
+| | **Batch 0 DONE (2026-11-14, branch `jx3p`).** SN read (manualslib 3497592, OCR text): 27 claims paged, in "SN pages"; none is without a page but the speeds, the chorus rate and the saw's figure (not printed: the self-oscillation level stays SELF). Found on the way: SYNC's direction settled (DCO-1 resets DCO-2, p.6), the VCA is a BA662B (p.3), the factory tunes A4 to 442 Hz (p.7). `tests/measure.hpp` holds the level, spectrum (`harmonicsIn`, split out of `harmonicsOf`), pitch, checksum and no-click readers; `effects_test --measure` and `--print` give the same output before and after, line for line, but for the 15 lines that time blocks. Mutants in the header: 13 made, 12 killed; `Sum` survives by design (a changed checksum changes `mathsPrint` too, and the pinned sound falls back to loudness and peak, as it does on another machine) | | |
 | 1 | **Skeleton.** `jx3p.hpp/.cpp`, the 34 settings (32 patch, 2 track) and 8 macros with ranges, a start patch, 6 voices with the assigner and the steal rule, `allNotesOff`'s resets, seeded start phases, `jx3p/env.hpp` (tick, ADSR, S/H smoothing, VCA, velocity), DCO-1 saw only. `SynthKind::Jx3p`, the factory, the three `bench` rows | In tune, voices, steal, envelope times, the tick, `testBlocks`, `testPlayFromTheTop`, twice from fresh, no allocation, `testTooSmall` | A note sounds in tune through the engine and the bench row is under 1% |
 | 2 | **DCOs**, `jx3p/dco.hpp`: both DCOs, every wave, TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX, DCO pitch from ENV | `jx3p_dco_test`: the DCO table, **aliasing first**, and the table BLEP if needed | Every DCO test passes and the bench row is measured again |
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
@@ -554,7 +596,7 @@ joined one batch at a time.
 | Risk | What is done about it |
 | --- | --- |
 | **Most of the character is in figures nobody has published** (times, rates, Hz) | Each is one table with its guess named, its tests marked SELF. Batch 9 measures them. Until then the device says "speeds guessed" |
-| The SN figures cannot be checked here | Batch 0 finds the pages; anything without one becomes SELF |
+| The SN figures cannot be checked here | **Done in batch 0**: every SN claim has a page, read through OCR text (section 0). No saw figure is printed, so the self-oscillation level stays SELF |
 | NAM may not be the ROM | Said on the device; a ROM dump, if one turns up, replaces them |
 | The polynomial BLEP may not reach 50 dB under 15 kHz | A table BLEP, 0.3% budgeted, measured in batch 2 |
 | The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3 |
@@ -591,9 +633,9 @@ joined one batch at a time.
 | 3 | BRILLIANCE and VELOCITY would be reset by `loadPreset` | **Accepted.** Checked: `loadPreset` writes 0 to `kSettings`, and a factory preset replaces the whole patch. Ids 32 and 33 are track values that preset loading and saving skip, with a test |
 | 4 | Play from the top is not the same performance | **Accepted.** `allNotesOff` puts back the assigner, phases, seeds and LFO; start phase from a seed at note-on, no free-running; `testPlayFromTheTop` |
 | 5 | Juno-60 chorus rates misquoted | **Accepted.** The comparison is dropped; 0.5 Hz is a plain guess |
-| 6 | MN3009 confirmed; 40-200 kHz and 10 kHz are SN-only; give pages | **Accepted in part.** The SN pages are not in hand here; batch 0 fills them or marks the claim SELF |
-| 7 | SYNC direction ambiguous in the press | **Accepted.** Kept as DCO-1 the master, on the grounds that OM p.23 and NAM sweep pulse width with DCO-2's TUNE; SOS's wording noted; SN page in batch 0 |
-| 8 | The VCA type is contested | **Accepted.** Said in section 0; the design does not depend on it |
+| 6 | MN3009 confirmed; 40-200 kHz and 10 kHz are SN-only; give pages | **Accepted in part.** The SN pages are not in hand here; batch 0 fills them or marks the claim SELF. **Done: p.7 (40-200 kHz, 180°, 10 kHz), p.3 (MN3009, MN3101)** |
+| 7 | SYNC direction ambiguous in the press | **Accepted.** Kept as DCO-1 the master, on the grounds that OM p.23 and NAM sweep pulse width with DCO-2's TUNE; SOS's wording noted; SN page in batch 0 **Settled in batch 0: SN p.6 has DCO-1 reset DCO-2** |
+| 8 | The VCA type is contested | **Accepted.** Said in section 0; the design does not depend on it **Settled in batch 0: the parts list (SN p.3) says BA662B VCA** |
 | 9 | NAM probably the ROM, not proven | **Accepted.** Said on the device's folder line |
 | 10 | Self-oscillation cannot start from silence | **Accepted.** A fixed 1e-4 into stage 1 at note-on; tested to start within 50 ms |
 | 11 | "Solved together" with clips is not what was timed | **Accepted.** Linear solve, clips from the previous sample; that is what the prototype timed |
@@ -604,7 +646,7 @@ joined one batch at a time.
 | 16 | Voice stealing has no stated sound | **Accepted.** Retrigger from the current level, no fade, recommended; the owner's call; tested |
 | 17 | Most tests check the clone against its own guesses | **Accepted.** Every test marked FAITHFUL or SELF |
 | 18 | The Organ I test is circular | **Accepted.** Said plainly: 9.8 = 100% is chosen from NAM and the test pins the choice; pitch read at the steady level |
-| 19 | The 600 mV test needs the saw's figure | **Accepted.** The level is SELF until batch 0 finds the saw's peak to peak |
+| 19 | The 600 mV test needs the saw's figure | **Accepted.** The level is SELF until batch 0 finds the saw's peak to peak **Batch 0: the SN prints no saw figure (p.7, adjustment 3-4 is "maximum amplitude without clip"), so the level stays SELF until batch 9** |
 | 20 | Batch 9 has no source of recordings | **Accepted.** The owner's call, with the options; "speeds guessed" on the device |
 | 21 | `track twin` mapping changes a word's meaning | **Accepted** as the owner's call; the reader's rule stated; a real old song as a test; `.twin` files an owner's call |
 | 22 | HUMAN LEVEL does nothing with VELOCITY OFF | **Accepted, another way.** VELOCITY becomes a track value, ON for a new track; full velocity plays the patch as written. The owner's call |

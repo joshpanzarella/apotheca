@@ -29,6 +29,9 @@
 //      largestJump / sweepJump / swapJump          "no click" on a turn and on a swap
 //      effectsSong / swapSong                      the same on 0, 1, 2 and 3 helper threads
 //    ./build/effects_test --measure prints the numbers the comments quote.
+//    The tools that read a run of samples and know no Effect (level, spectrum,
+//    pitch, checksum, no click) are in tests/measure.hpp, shared with the
+//    synths' tests; the ones above that drive an Effect stay here.
 //
 // 4. FLUSH-TO-ZERO and 5. THE FADE when an effect is swapped.
 //
@@ -55,6 +58,7 @@
 #include "../engine/src/fx/glide.hpp"    // Glide, by itself
 #include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
 #include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
+#include "measure.hpp"                   // the shared measuring tools: level, spectrum, pitch, checksum
 
 using namespace apotheca;
 
@@ -68,22 +72,6 @@ static int failures = 0;
     } while (0)
 
 // ---- tools: checksums ----------------------------------------------------------------------
-
-// A checksum of every bit of a run of samples (FNV-1a, 64 bits).
-struct Sum {
-    std::uint64_t h = 1469598103934665603ull;
-    void add(const float* v, std::size_t count) {
-        for (std::size_t i = 0; i < count; ++i) {
-            std::uint32_t bits;
-            std::memcpy(&bits, &v[i], sizeof bits);
-            for (int b = 0; b < 4; ++b) {
-                h ^= (bits >> (8 * b)) & 0xffu;
-                h *= 1099511628211ull;
-            }
-        }
-    }
-    void add(const std::vector<float>& v) { add(v.data(), v.size()); }
-};
 
 // Which maths library this is, as a checksum of what it answers. The pinned
 // numbers hold only where this matches the machine they were made on.
@@ -117,16 +105,6 @@ struct Stereo {
     std::size_t frames() const { return l.size(); }
 };
 
-// Noise that is the same on every machine: -1..1.
-struct Noise {
-    std::uint32_t state;
-    explicit Noise(std::uint32_t seed) : state(seed) {}
-    float next() {
-        state = state * 1664525u + 1013904223u;
-        return static_cast<float>(static_cast<std::int32_t>(state >> 8) - 8388608) / 8388608.f;
-    }
-};
-
 // Through an effect in the engine's own chunks of 64 frames, as a slot runs it.
 // A drum is being played meanwhile, for the one effect that listens (DUCK;
 // the rest are deaf to it): lane 1 is hit five times a second (at frame 0,
@@ -140,18 +118,6 @@ static void through(Effect& effect, Stereo& io, std::size_t from = 0, std::size_
         if (at % kHitEvery == kHitEvery / 2) effect.drumHits(1u << 7);
         effect.process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
     }
-}
-
-static double rmsOf(const std::vector<float>& v, std::size_t from = 0, std::size_t to = static_cast<std::size_t>(-1)) {
-    if (to > v.size()) to = v.size();
-    double e = 0.0;
-    for (std::size_t i = from; i < to; ++i) e += static_cast<double>(v[i]) * v[i];
-    return to > from ? std::sqrt(e / static_cast<double>(to - from)) : 0.0;
-}
-static float peakOf(const std::vector<float>& v) {
-    float peak = 0.f;
-    for (float s : v) peak = std::fabs(s) > peak ? std::fabs(s) : peak;
-    return peak;
 }
 
 // ---- 1. the pinned sound ------------------------------------------------------------------------
@@ -537,33 +503,12 @@ static void testTheTable() {
 
 // ---- 3. the measuring tools ------------------------------------------------------------------
 
-static const double kPi = 3.141592653589793;
-static double dB(double ratio) { return ratio > 1e-30 ? 20.0 * std::log10(ratio) : -600.0; }
-
 // The setting called MIX, or -1.
 static int mixOf(EffectKind kind) {
     const EffectInfo& info = effectInfo(kind);
     for (int i = 0; i < info.params; ++i)
         if (std::string(info.paramNames[i]) == "MIX") return i;
     return -1;
-}
-
-static std::vector<float> sineOf(double hz, double amp, std::size_t frames, double rate = 48000.0) {
-    std::vector<float> v(frames);
-    for (std::size_t i = 0; i < frames; ++i) v[i] = static_cast<float>(amp * std::sin(2.0 * kPi * hz * static_cast<double>(i) / rate));
-    return v;
-}
-
-// How strong one frequency is in a run of samples: the size of a sine at `hz`
-// (so a sine of 0.5 reads 0.5). Exact when a whole number of its cycles fits.
-static double partAt(const float* v, std::size_t count, double hz, double rate = 48000.0) {
-    double re = 0.0, im = 0.0;
-    const double w = 2.0 * kPi * hz / rate;
-    for (std::size_t i = 0; i < count; ++i) {
-        re += v[i] * std::cos(w * static_cast<double>(i));
-        im += v[i] * std::sin(w * static_cast<double>(i));
-    }
-    return 2.0 * std::sqrt(re * re + im * im) / static_cast<double>(count);
 }
 
 // LEVEL IN AND OUT AT A FREQUENCY, in dB: a steady sine goes in, and after a
@@ -654,21 +599,8 @@ static double echoGain(const std::vector<float>& ir, std::size_t every, int whic
 }
 
 // A WAVESHAPER'S HARMONICS AND ITS ALIASING. A sine at `hz` (a whole number
-// of hertz, so one second holds whole cycles and every part is measured
-// exactly) goes in. What comes out is the sine, its harmonics (2, 3, 4...
-// times `hz`, up to half the sample rate), and aliasing: harmonics too high
-// for the sample rate, folded back down to where no harmonic is. All in dB
-// against the sine that went in.
-struct Harmonics {
-    double part[8] = {};   // [1] the sine itself, [2] the second harmonic...; -600: none, or above the top
-    double strongest = -600.0; // the loudest harmonic above the first
-    double alias = -600.0;     // the loudest fold-back
-    double aliasHz = 0.0;
-    double rest = -600.0;      // everything that is neither the sine nor a harmonic, added up
-    double aliasLow = -600.0;  // the loudest fold-back that lands under 19 kHz (above it a 2x stage is only part way shut, and nobody hears)
-    double aliasLowHz = 0.0;
-    double level = -600.0;     // all of it together, harmonics and the rest, against the sine that went in
-};
+// of hertz) goes in; the second second of what comes out is read by
+// harmonicsIn (measure.hpp), in dB against the sine that went in.
 static Harmonics harmonicsOf(Effect& effect, int hz, double amp) {
     const std::size_t n = 48000;
     Stereo io(2 * n);
@@ -676,51 +608,9 @@ static Harmonics harmonicsOf(Effect& effect, int hz, double amp) {
     effect.reset();
     through(effect, io);
     const float* out = io.l.data() + n; // the second second: settled
-    Harmonics h;
-    for (double& p : h.part) p = -600.0;
-    double mean = 0.0, total = 0.0, harmonic = 0.0;
-    for (std::size_t i = 0; i < n; ++i) mean += out[i];
-    mean /= static_cast<double>(n);
-    for (std::size_t i = 0; i < n; ++i) total += (out[i] - mean) * (out[i] - mean);
-    total /= static_cast<double>(n);
-    for (int k = 1; k * hz < 24000; ++k) {
-        const double a = partAt(out, n, static_cast<double>(k) * hz);
-        harmonic += 0.5 * a * a;
-        if (k < 8) h.part[k] = dB(a / amp);
-        if (k > 1 && dB(a / amp) > h.strongest) h.strongest = dB(a / amp);
-    }
-    for (int k = 24000 / hz + 1; k <= 80; ++k) {
-        int folded = (k * hz) % 48000;
-        if (folded > 24000) folded = 48000 - folded;
-        if (folded % hz == 0 || folded == 0 || folded == 24000) continue; // lands on a harmonic: cannot be told apart
-        const double a = dB(partAt(out, n, folded) / amp);
-        if (a > h.alias) {
-            h.alias = a;
-            h.aliasHz = folded;
-        }
-        if (folded < 19000 && a > h.aliasLow) {
-            h.aliasLow = a;
-            h.aliasLowHz = folded;
-        }
-    }
-    h.level = 10.0 * std::log10(total / (0.5 * amp * amp) + 1e-60);
-    const double rest = total - harmonic;
-    h.rest = rest > 0.0 ? 10.0 * std::log10(rest / (0.5 * amp * amp)) : -600.0;
-    return h;
+    return harmonicsIn(out, n, hz, amp);
 }
 
-// NO CLICK: the largest step from one sample to the next.
-static float largestJump(const float* v, std::size_t count) {
-    float jump = 0.f;
-    for (std::size_t i = 1; i < count; ++i) jump = std::fabs(v[i] - v[i - 1]) > jump ? std::fabs(v[i] - v[i - 1]) : jump;
-    return jump;
-}
-static float largestJump(const std::vector<float>& v, std::size_t from = 0, std::size_t to = static_cast<std::size_t>(-1)) {
-    if (to > v.size()) to = v.size();
-    return to > from ? largestJump(v.data() + from, to - from) : 0.f;
-}
-// The largest step a plain sine takes by itself.
-static double sineStep(double hz, double amp, double rate = 48000.0) { return amp * 2.0 * std::sin(kPi * hz / rate); }
 
 // NO CLICK ON A TURN: one setting swept end to end over a second, a little
 // each chunk as the engine would, under a 100 Hz sine. Returns the largest
@@ -1008,17 +898,6 @@ static double alike(const std::vector<float>& a, const std::vector<float>& b, st
         bb += static_cast<double>(b[i]) * b[i];
     }
     return aa > 0.0 && bb > 0.0 ? ab / std::sqrt(aa * bb) : 1.0;
-}
-// A SINE'S PITCH AS IT GOES: its frequency over each run of `cycles` cycles, from where it rises through zero.
-static std::vector<double> pitchAsItGoes(const std::vector<float>& v, std::size_t from, int cycles, std::vector<double>* when = nullptr, double rate = 48000.0) {
-    std::vector<double> rises, hz;
-    for (std::size_t i = from + 1; i < v.size(); ++i)
-        if (v[i - 1] < 0.f && v[i] >= 0.f) rises.push_back(static_cast<double>(i - 1) + static_cast<double>(-v[i - 1]) / static_cast<double>(v[i] - v[i - 1]));
-    for (std::size_t i = static_cast<std::size_t>(cycles); i < rises.size(); ++i) {
-        hz.push_back(cycles * rate / (rises[i] - rises[i - static_cast<std::size_t>(cycles)]));
-        if (when) when->push_back(0.5 * (rises[i] + rises[i - static_cast<std::size_t>(cycles)]) / rate);
-    }
-    return hz;
 }
 
 static const float kChorusType[4] = {0.1f, 0.3f, 0.6f, 0.9f}; // CHORUS, ENSEMBLE, VIBRATO, FLANGE
@@ -1544,21 +1423,6 @@ static Wander wanderOf(const std::vector<double>& track) {
     return result;
 }
 
-// THE PITCH of something close to a sine, between two places: by its upward crossings of zero.
-static double pitchOf(const std::vector<float>& v, std::size_t from, std::size_t to, double rate = 48000.0) {
-    double first = -1.0, last = -1.0;
-    int ups = 0;
-    for (std::size_t i = from + 1; i < to && i < v.size(); ++i) {
-        if (v[i - 1] < 0.f && v[i] >= 0.f) {
-            const double at = static_cast<double>(i - 1) + static_cast<double>(-v[i - 1]) / (static_cast<double>(v[i]) - v[i - 1]);
-            if (first < 0.0) first = at;
-            last = at;
-            ++ups;
-        }
-    }
-    return ups >= 2 ? (ups - 1) * rate / (last - first) : 0.0;
-}
-
 // How long a block takes, in microseconds, over `count` blocks of silence.
 // (The quickest of five runs: a busy machine takes the processor away for a moment, and that is
 // not the effect being slow. The whole test suite runs at once, and other builds may be going.)
@@ -1947,22 +1811,6 @@ static void testTape() {
 
 // ---- HALL -------------------------------------------------------------------------------------------
 
-// One band of a sound: what is within about half an octave of `hz` (a
-// band-pass, twice over), so a tail can be timed at one pitch.
-static std::vector<float> bandOf(const std::vector<float>& v, double hz, double rate = 48000.0) {
-    const double w = 2.0 * kPi * hz / rate, alpha = std::sin(w) / (2.0 * 2.0), a0 = 1.0 + alpha;
-    const double b0 = alpha / a0, a1 = -2.0 * std::cos(w) / a0, a2 = (1.0 - alpha) / a0;
-    std::vector<float> out(v.size());
-    double x1 = 0, x2 = 0, y1 = 0, y2 = 0, p1 = 0, p2 = 0, q1 = 0, q2 = 0;
-    for (std::size_t i = 0; i < v.size(); ++i) {
-        const double x = v[i], y = b0 * (x - x2) - a1 * y1 - a2 * y2;
-        x2 = x1, x1 = x, y2 = y1, y1 = y;
-        const double z = b0 * (y - p2) - a1 * q1 - a2 * q2;
-        p2 = p1, p1 = y, q2 = q1, q1 = z;
-        out[i] = static_cast<float>(z);
-    }
-    return out;
-}
 // A click in both sides (or one), both sides out.
 static Stereo clickBoth(Effect& effect, double seconds, float left = 1.f, float right = 1.f) {
     Stereo io(static_cast<std::size_t>(seconds * 48000.0));
