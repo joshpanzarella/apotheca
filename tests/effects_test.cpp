@@ -11378,6 +11378,21 @@ static void testShimmer() {
         SAY("shimmer  a held 300 Hz sine: its octave in the tail at %.2f Hz (%.2f of the note)\n", bestHz, best / partAt(tail.data(), tail.size(), 300.0));
         CHECK(std::fabs(1200.0 * std::log2(bestHz / 600.0)) < 2.5);
     }
+    // NOTHING FOLDS BACK DOWN: the shifter reads twice as fast, so what goes into it above 12 kHz would come out
+    // folded under 24 kHz (15 kHz to 18 kHz, 14 kHz to 20 kHz). A steady high sine, SHIMMER, TONE and MIX full: in
+    // 2 to 4 s (a Hann window), the folded tone against the tone itself. (42 dB down today; with the shifter's
+    // 7 kHz cut raised to 20 kHz, 11 dB.)
+    for (double hz : {14000.0, 15000.0}) {
+        Stereo io(4 * 48000);
+        const std::vector<float> s = sineOf(hz, 0.3, io.frames());
+        io.l = s, io.r = s;
+        through(*fresh(sh, 1.f, 0.6f, 1.f, 1.f), io);
+        std::vector<float> tail(io.l.begin() + 96000, io.l.end());
+        for (std::size_t i = 0; i < tail.size(); ++i) tail[i] *= static_cast<float>(0.5 - 0.5 * std::cos(2.0 * kPi * static_cast<double>(i) / static_cast<double>(tail.size())));
+        const double folded = 48000.0 - 2.0 * hz, below = dB(partAt(tail.data(), tail.size(), folded) / partAt(tail.data(), tail.size(), hz));
+        SAY("shimmer  a steady %.0f Hz: folded to %.0f Hz %.1f dB under the tone\n", hz, folded, -below);
+        CHECK(below < -30.0);
+    }
     // DECAY IS A REAL TIME: SHIMMER 0, a click, MIX full: the RT60 at 500 Hz against what DECAY reads. With SHIMMER at
     // full, the whole tail's RT60 against SHIMMER 0's (the octaves pay for their wait in the shifter: no slower; the
     // octaves climb past 7 kHz and are taken away, so a little faster: at DECAY 20 s 0.58 as long).

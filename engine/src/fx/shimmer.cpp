@@ -13,8 +13,12 @@
 //   MIX      from the sound alone to the reverb alone
 //
 // THE SHIFTER, kept clean: four of the tank's eight mixed sounds are each cut
-// above 7 kHz (four poles, so nothing over half the rate folds back down when
-// it is read twice as fast) and written to a short ring; two grains read it
+// above 7 kHz (four poles) and written to a short ring. Read twice as fast,
+// anything over 12 kHz folds back down; the four poles alone are only about
+// 19 dB down at 12 kHz, so most of the guard is the tank's own: its in-cut and
+// TONE's damping take the highs first. Together a steady 14 or 15 kHz comes
+// out folded 42 dB under itself at TONE full (testShimmer holds it under 30);
+// do not loosen the damping thinking the shifter is safe alone; two grains read it
 // at twice the speed it is written, half a window (60 ms) apart, each faded
 // in and out by sin^2 so the two always add to exactly 1 and neither is heard
 // where it jumps back. They read whole samples (twice as fast as the ring is

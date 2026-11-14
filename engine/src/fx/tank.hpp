@@ -142,7 +142,9 @@ public:
         if (kind_ == kBloom) {
             swellMask_ = ringFor(kBloomMost * sampleRate + 8.f) - 1;
             swell_.assign(static_cast<std::size_t>(swellMask_ + 1), 0.f);
-            bloomTaps(taps_);
+            BloomTap taps[kBloomTaps];
+            bloomTaps(taps);
+            for (int k = 0; k < kBloomTaps; ++k) tapAt_[k] = taps[k].at, tapGain_[k] = taps[k].gain;
             rest_ = swellMask_ + 1 > rest_ ? swellMask_ + 1 : rest_;
         } else {
             grain_ = 2 * static_cast<int>(std::lround(0.5f * kGrainSeconds * sampleRate)); // even, so the two windows add to 1
@@ -266,7 +268,7 @@ private:
     // The swell at rest: each tap's place worked out once (as the moving loop works it out, to the bit).
     void restTaps() {
         for (int k = 0; k < kBloomTaps; ++k) {
-            const float ago = taps_[k].at * shape_.now[kSwell];
+            const float ago = tapAt_[k] * shape_.now[kSwell];
             tapAgo_[k] = static_cast<int>(ago);
             tapFrac_[k] = ago - static_cast<float>(tapAgo_[k]);
         }
@@ -320,7 +322,7 @@ private:
         float cut = cutState_, swayC = swayC_, swayS = swayS_;
         int swayCount = swayCount_, phase = phase_, quiet = quiet_;
         unsigned at = at_;
-        const float swayMost = swayMost_, swayCos = swayCos_, swaySin = swaySin_;
+        const float swayCos = swayCos_, swaySin = swaySin_;
         const bool bloom = kind_ == kBloom, shimmer = kind_ == kShimmer;
         float* const swell = bloom ? swell_.data() : nullptr;
         const unsigned swellMask = static_cast<unsigned>(swellMask_);
@@ -354,15 +356,15 @@ private:
                 if (swellMoving) {
                     const float length = sh[kSwell];
                     for (int k = 0; k < kBloomTaps; ++k) {
-                        const float ago = taps_[k].at * length;
+                        const float ago = tapAt_[k] * length;
                         const int whole = static_cast<int>(ago);
                         const float f = ago - static_cast<float>(whole), a = swell[(at - static_cast<unsigned>(whole)) & swellMask];
-                        sum += taps_[k].gain * (a + f * (swell[(at - static_cast<unsigned>(whole) - 1u) & swellMask] - a));
+                        sum += tapGain_[k] * (a + f * (swell[(at - static_cast<unsigned>(whole) - 1u) & swellMask] - a));
                     }
                 } else {
                     for (int k = 0; k < kBloomTaps; ++k) {
                         const float a = swell[(at - static_cast<unsigned>(tapAgo_[k])) & swellMask];
-                        sum += taps_[k].gain * (a + tapFrac_[k] * (swell[(at - static_cast<unsigned>(tapAgo_[k]) - 1u) & swellMask] - a));
+                        sum += tapGain_[k] * (a + tapFrac_[k] * (swell[(at - static_cast<unsigned>(tapAgo_[k]) - 1u) & swellMask] - a));
                     }
                 }
                 swell[at & swellMask] = in;
@@ -493,7 +495,7 @@ private:
     float swayW_[4][4] = {};
     unsigned swayWhole_[4] = {};
     float swayMost_ = 5.f, swayTurn_ = 0.f, swayCos_ = 1.f, swaySin_ = 0.f, swayC_ = 1.f, swayS_ = 0.f;
-    BloomTap taps_[kBloomTaps] = {};
+    float tapAt_[kBloomTaps] = {}, tapGain_[kBloomTaps] = {}; // two plain arrays, not {at, gain} pairs: packed in a vector, the pairs read a spare lane (a denormal on x86 without DAZ)
     int tapAgo_[kBloomTaps] = {};
     float tapFrac_[kBloomTaps] = {};
     SvfShape cutA_, cutB_;

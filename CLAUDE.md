@@ -532,7 +532,7 @@ effect in those two groups and fails one that does not.
   **SHIMMER's way round never gains**: what goes up an octave is mixed with
   what stays at equal power, the two grains' lost quarter is given back, its
   wait in the shifter is paid for in DECAY, and the shifter takes nothing
-  under 40 Hz (an octave of a steady offset is itself) or over 7 kHz. The
+  under 40 Hz (an octave of a steady offset is itself) or over 7 kHz (with the tank's damping, a steady 14 or 15 kHz folds back 42 dB under itself; `testShimmer` holds it under 30). The
   octaves climb out past 7 kHz, so at SHIMMER full a 20 s tail is 0.58 as long
   (tested). A ceiling of 64 on a line is a guard only.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
