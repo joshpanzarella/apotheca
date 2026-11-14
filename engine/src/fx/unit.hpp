@@ -89,6 +89,9 @@ extern const EffectInfo kDuckInfo;   // duck.cpp
 extern const EffectInfo kPingInfo;   // ping.cpp
 extern const EffectInfo kSpringInfo; // spring.cpp
 extern const EffectInfo kPlateInfo;  // plate.cpp
+extern const EffectInfo kCombInfo;   // comb.cpp
+extern const EffectInfo kVowelInfo;  // vowel.cpp
+extern const EffectInfo kEqInfo;     // eq.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -99,6 +102,8 @@ float saturateCurve(int type, float x);
 float tapeTire(float setting);
 // One sample of TAPE's multiplier on its way to `to` (down gently, up at once): it lands exactly.
 float tapeTireStep(float tire, float to, float sampleRate);
+// The note COMB rings at for a PITCH setting, in hertz.
+double combHz(float pitch);
 
 } // namespace fx
 } // namespace apotheca

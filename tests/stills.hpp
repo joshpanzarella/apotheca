@@ -26,6 +26,7 @@ inline const char* const kViews[] = {
     "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-master", "fx-master --hold-a",
     "fx-duck", "fx-duck --hold-a", "fx-choice", "fx-choice --hold-a", "fx-auto", "fx-auto --hold-a", "fx-sends", "fx-sends --hold-a",
     "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a", "fx-ping", "fx-ping --hold-a", "fx-ping-bus", "fx-ping-bus --hold-a", "fx-spring", "fx-spring --hold-a", "fx-plate", "fx-plate --hold-a",
+    "fx-kind-comb", "fx-kind-comb --hold-a", "fx-kind-comb-1", "fx-kind-vowel", "fx-kind-vowel --hold-a", "fx-kind-vowel-1", "fx-kind-eq", "fx-kind-eq --hold-a", "fx-kind-eq-3",
     "fx-family-1 --hold-a", "fx-family-2 --hold-a", "fx-family-3 --hold-a", "fx-family-4 --hold-a", "fx-family-5 --hold-a", "fx-family-6 --hold-a", "fx-family-7 --hold-a",
     "fx-deleting", "fx-trying", "change-instrument", "song-deleting", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12",
     "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",

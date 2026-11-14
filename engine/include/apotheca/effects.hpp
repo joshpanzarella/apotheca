@@ -21,11 +21,16 @@
 //            echo that bounces left, right, left
 //   SPRING   DRIP (how strong the chirp is), DECAY (0.4 to 4 seconds), TONE, MIX
 //   PLATE    PRE (0 to 100 ms), DECAY (0.3 to 20 seconds), TONE, MIX
+//   COMB     PITCH (25 notes, C2 to C4), FEEDBACK (-100 to +100%), TONE, MIX:
+//            rings at a note
+//   VOWEL    VOWEL (A, E, I, O, U and between), SHIFT (-12 to +12 semitones),
+//            RESONANCE, MIX: a formant filter
+//   EQ       LOW, MID, MID FREQ (125 Hz to 8 kHz), HIGH: -12 to +12 dB each
 //
 // MIX at 0 is the sound untouched.
 //
 // FAMILIES AND TYPES (owner, 2026-11-13). A player picks from seven families,
-// in this order, each with a TYPE: FILTER (FILTER), DRIVE (DRIVE, SATURATE),
+// in this order, each with a TYPE: FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE),
 // CRUSH (CRUSH), MOD (CHORUS), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL,
 // SPRING, PLATE), LEVEL (COMP, DUCK). Underneath each type is its own effect,
 // with its own number and its own word in a song file, as it always was: a
@@ -47,7 +52,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 

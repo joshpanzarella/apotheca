@@ -2436,6 +2436,15 @@ static void testEffectsOneByOne() {
         const EffectInfo& info = effectInfo(kind);
         CHECK(info.params >= 3 && info.params <= kEffectParams && info.name[0]);
         if (kind == EffectKind::Duck) continue; // the one with no MIX, and it does nothing until a drum is hit: effects_test has it (testDuck)
+        if (kind == EffectKind::Eq) {
+            // No MIX either: every band at 0 dB (its usual) is the sound untouched, to the bit; LOW up is not (testEq has the rest).
+            std::unique_ptr<Effect> eq = makeEffect(kind, 48000.f, 120.f);
+            const std::vector<float> in = sine(330.f, 48000);
+            CHECK(through(*eq, in) == in);
+            eq->setParam(0, 1.f);
+            CHECK(through(*eq, in) != in);
+            continue;
+        }
         int mix = -1;
         for (int p = 0; p < info.params; ++p)
             if (std::string(info.paramNames[p]) == "MIX") mix = p;

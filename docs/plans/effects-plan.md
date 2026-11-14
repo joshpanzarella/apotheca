@@ -371,6 +371,9 @@ for this plan and gave sane numbers.
 | COMP | steady sines at eleven levels; a level step up, then down | the curve within 0.5 dB of threshold, ratio and knee; attack and release times within 20% |
 | DUCK | fire the source lane | dip of AMOUNT at the hit's sample, back up in RELEASE; nothing from other lanes |
 | LIMITER | loud drums | never over the top; 3 ms late, exactly |
+| COMB | an impulse: where it rings, how long; noise and a sine on a harmonic | within 3.5 cents of the note at every TONE (and an octave down below 0); rt60 as written; noise level within 0.5 dB to FEEDBACK 50%, 4.5 dB at 100% |
+| VOWEL | sines at each vowel's peaks and between; a saw and noise | each first peak +10.9 dB and 6 dB over the place between; SHIFT moves it by the octave; half way A-E at 490 Hz; a saw 2.7 to 7.6 dB down at any RESONANCE |
+| EQ | sines at 40 Hz to 15 kHz | each band's table within 0.1 dB; every band at 0 dB the sound to the bit |
 | SATURATE | 4186 Hz sine, 20 dB of drive, a spectrum | everything that is not a harmonic at least **50 dB** under the harmonics (measured now: 54). Level steady within 1 dB across DRIVE. TUBE has even harmonics, TAPE has none |
 | Sends | one track, send at half | the bus gets half; a muted track sends nothing; lanes 20 and 21 move it |
 | THROW | one thrown hit among others | the bus holds that hit and nothing from the step before or after |
@@ -848,3 +851,34 @@ planned names and made-up longer ones, at every size, and read off the pixels
   one type off a bus. If STUTTER is odd there, it needs a field in its row
   that `effectTypes` / `effectTypeAt` honour on a bus (and the carry and the
   bus's TYPE row with them).
+
+**Batch b1 built (2026-11-14, branch `newfx`): FILTER's COMB, VOWEL and EQ.**
+Numbers 15, 16, 17; words `comb`, `vowel`, `eq`; in the list after FILTER.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15% in the same runs) |
+| --- | --- | --- | --- |
+| COMB | the sound fed back on itself one cycle of a note late: it rings at the note and its harmonics | PITCH (25 notes, C2 to C4, a choice), FEEDBACK (-100 to +100%: below 0 hollow, odd harmonics, an octave down), TONE (a high cut in the loop), MIX | 0.04% (0.07% in one run); 0.08 to 0.10% while PITCH moves |
+| VOWEL | four narrow peaks at a bass voice's vowel places, morphing A E I O U | VOWEL (and every shade between), SHIFT (-12 to +12 semitones), RESONANCE (Q 3 to 24, named as FILTER's so TYPE keeps it), MIX | 0.08% (0.11% in one run); 0.13% while VOWEL moves |
+| EQ | three bands: a low shelf at 200 Hz, a bell, a high shelf at 5 kHz | LOW, MID, MID FREQ (125 Hz to 8 kHz), HIGH (-12 to +12 dB each; no MIX: every band at 0 dB is the sound untouched, to the bit) | 0.07% (0.09% in one run); 0.10% while MID FREQ moves |
+
+- **They share `fx/svf.hpp`**: the old FILTER's state-variable filter, the
+  TICK (what glides is worked out every 16 samples counted from the effect's
+  start, so the sound is the same to the bit however it is cut into blocks,
+  even while a setting moves), `Slide` (the tick's numbers reached sample by
+  sample) and `Gentle` (two Glides one after the other, so a turned setting
+  sets off slowly). A band of EQ turned from +12 to -12 dB at once clicked
+  with a plain Glide and numbers stepped once a tick: a corner of 790 times a
+  sine's (0.28); slid, 34; with Gentle, 2.2.
+- **Nothing overlaps an existing choice.** COMB is a tuned resonance, not a
+  delay (CLEAN is in time with the song, 1/16 and up; COMB is 4 to 15 ms, a
+  note). VOWEL's peaks are not FILTER's BAND PASS: four of them at once, at
+  a voice's places, moving together. EQ is the only type with no MIX.
+- **For the owner's eyes:** FILTER now has two rows that say TYPE on one
+  screen (the heading's FILTER / COMB / VOWEL / EQ, and FILTER's own TYPE:
+  LOW 12 DB...), as SATURATE and CHORUS did. COMB's FEEDBACK and EQ's bands
+  are signed, but their bars fill from the left like any amount (0 is the
+  middle). The list of effects' FILTER line now names its types ("filter,
+  comb, vowel, eq") where it said "low, band, high, DJ".
+- Stills: `fx-kind-comb`, `fx-kind-vowel`, `fx-kind-eq` (each with
+  `--hold-a`, and `-N` on a setting).
+

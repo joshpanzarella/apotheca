@@ -480,13 +480,14 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its seven families (FILTER, DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Drive, EffectKind::Saturate, EffectKind::Crush, EffectKind::Chorus, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Comp, EffectKind::Duck};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Drive, EffectKind::Saturate, EffectKind::Crush, EffectKind::Chorus, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Comp, EffectKind::Duck};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and the families in EffectFamily's order, so a family is never in two pieces (the list a player picks from has each once).
     for (int i = 2; i < effectListSize(); ++i) CHECK(static_cast<int>(effectInfo(effectAt(i - 1)).family) <= static_cast<int>(effectInfo(effectAt(i)).family));
     // The numbers of the new ones: fixed for good, as the old five's are.
     CHECK(static_cast<int>(EffectKind::Tape) == 6 && static_cast<int>(EffectKind::Hall) == 7 && static_cast<int>(EffectKind::Ping) == 12 && static_cast<int>(EffectKind::Spring) == 13 && static_cast<int>(EffectKind::Plate) == 14);
+    CHECK(static_cast<int>(EffectKind::Comb) == 15 && static_cast<int>(EffectKind::Vowel) == 16 && static_cast<int>(EffectKind::Eq) == 17);
     CHECK(std::string(effectInfo(EffectKind::Hall).word) == "hall" && effectFromWord("hall") == EffectKind::Hall);
     CHECK(std::string(effectInfo(EffectKind::Plate).word) == "plate" && effectFromWord("plate") == EffectKind::Plate && effectInfo(EffectKind::Plate).family == EffectFamily::Reverb);
     CHECK(effectInfo(EffectKind::Hall).family == EffectFamily::Reverb && effectChoices(EffectKind::Hall, 0) == 0 && effectChoices(EffectKind::Hall, 1) == 0);
@@ -794,7 +795,9 @@ static void testEveryEffect() {
         // Today, with full-scale noise in, the loudest sample out:
         //   FILTER 4.2   DRIVE 2.0   DELAY 4.8   REVERB 3.9   CRUSH 1.0   TAPE 2.9   HALL 2.6   SPRING 1.3   PLATE 2.9
         SAY("bounded  %-7s loudest %.2f\n", info.name, static_cast<double>(loudest));
-        CHECK(loudest < 8.f);
+        // (EQ with every band at +12 dB is the sound 24 dB up at the bottom, where the bell and the low
+        // shelf meet: 14.4. That is what it is asked for; the others make nothing that much louder.)
+        CHECK(loudest < (kind == EffectKind::Eq ? 16.f : 8.f));
         // A setting past either end is the end; one that is not a number is 0;
         // a setting that is not there is nothing. To the bit.
         {
@@ -812,7 +815,8 @@ static void testEveryEffect() {
             CHECK(sumWith(-1, 0.9f, true) == untouched && sumWith(kEffectParams, 0.9f, true) == untouched && sumWith(kEffectParams + 1, 0.9f, true) == untouched);
             for (int p = 0; p < info.params; ++p) {
                 CHECK(sumWith(p, 7.f, true) == sumWith(p, 1.f, true) && sumWith(p, -7.f, true) == sumWith(p, 0.f, true) && sumWith(p, std::nanf(""), true) == sumWith(p, 0.f, true));
-                CHECK(sumWith(p, 0.f, true) != sumWith(p, 1.f, true)); // and the setting does do something
+                // And the setting does do something. (EQ's MID FREQ moves a bell that is flat at its usual 0 dB: testEq.)
+                if (!(kind == EffectKind::Eq && p == 2)) CHECK(sumWith(p, 0.f, true) != sumWith(p, 1.f, true));
             }
         }
         // Repeats: twice from fresh, the same to the last bit.
@@ -859,6 +863,9 @@ static void testEveryEffect() {
         //   PING    TIME 1.4      FEEDBACK 0.7    TONE 0.7    MIX 1.0        0.7  (TIME bends the echoes' pitch on the way, as TAPE's)
         //   SPRING  DRIP 1.1      DECAY 1.0       TONE 1.0    MIX 1.0        1.0  (DRIP bends the springs' echoes on the way: testSpring)
         //   PLATE   PRE 1.5       DECAY 1.1       TONE 1.0    MIX 1.3        1.0  (PRE bends the gap's pitch on the way)
+        //   COMB    PITCH 1.6     FEEDBACK 1.0    TONE 0.8    MIX 1.0        0.8  (PITCH passes notes that ring with the sine: testComb)
+        //   VOWEL   VOWEL 0.20    SHIFT 0.22      RESONANCE 0.13  MIX 1.0    0.10 (a 100 Hz sine is under every vowel's peaks)
+        //   EQ      LOW 3.4       MID 1.0         MID FREQ 1.0  HIGH 1.0     1.0  (LOW at +12 dB is the sine four times as big)
         static const double today[kEffectKinds][kEffectParams + 1] = {
             {0, 0, 0, 0, 0},
             {1.15, 1.01, 18.1, 1.00, 1.00},
@@ -875,6 +882,9 @@ static void testEveryEffect() {
             {1.35, 0.65, 0.65, 1.00, 0.65},   // PING
             {1.14, 0.98, 0.95, 1.01, 0.95},   // SPRING
             {1.45, 1.07, 1.01, 1.27, 1.01},   // PLATE
+            {1.58, 1.00, 0.79, 1.00, 0.79},   // COMB
+            {0.20, 0.22, 0.13, 1.00, 0.10},   // VOWEL
+            {3.39, 1.03, 1.00, 1.00, 1.00},   // EQ
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -886,7 +896,10 @@ static void testEveryEffect() {
             // over that line come out steeper than the sine went in even held still at
             // the far end of the setting (the table above; testChorus and testSaturate
             // hold each to "no steeper than held still").
-            const bool steeperByDesign = (kind == EffectKind::Chorus && p == 1) || (kind == EffectKind::Saturate && p <= 1);
+            // COMB's PITCH passes notes whose harmonics sit on the sine, which ring it louder (testComb holds
+            // it to the loudest note held still), and EQ's LOW at +12 dB is the sine four times as big.
+            const bool steeperByDesign = (kind == EffectKind::Chorus && p == 1) || (kind == EffectKind::Saturate && p <= 1) || (kind == EffectKind::Comb && p == 0) ||
+                                         (kind == EffectKind::Eq && (p == 0 || p == 3));
             if (k > static_cast<int>(EffectKind::Crush) && !steeperByDesign) CHECK(jump < 1.5);
         }
     }
@@ -4546,9 +4559,9 @@ static void testSendsOnAnyHelperCount() {
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
     // Nothing moved underneath: the numbers and the song-file words of every effect, as they shipped.
-    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate"};
-    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE"};
-    CHECK(kEffectKinds == 15);
+    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq"};
+    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ"};
+    CHECK(kEffectKinds == 18);
     for (int k = 0; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         CHECK(std::string(effectInfo(kind).word) == words[k] && std::string(effectInfo(kind).name) == names[k]);
@@ -4557,7 +4570,10 @@ static void testFamiliesAndTypes() {
     // Every old kind in its family, as its type, in the families' order.
     struct Row { EffectKind kind; const char* family; const char* type; const char* shown; int types, index; EffectFamily id; };
     static const Row rows[] = {
-        {EffectKind::Filter, "FILTER", "FILTER", "", 1, 0, EffectFamily::Filter},
+        {EffectKind::Filter, "FILTER", "FILTER", "", 4, 0, EffectFamily::Filter},
+        {EffectKind::Comb, "FILTER", "COMB", "COMB", 4, 1, EffectFamily::Filter},
+        {EffectKind::Vowel, "FILTER", "VOWEL", "VOWEL", 4, 2, EffectFamily::Filter},
+        {EffectKind::Eq, "FILTER", "EQ", "EQ", 4, 3, EffectFamily::Filter},
         {EffectKind::Drive, "DRIVE", "DRIVE", "", 2, 0, EffectFamily::Drive},
         {EffectKind::Saturate, "DRIVE", "SATURATE", "SATURATE", 2, 1, EffectFamily::Drive},
         {EffectKind::Crush, "CRUSH", "CRUSH", "", 1, 0, EffectFamily::Crush},
@@ -4579,7 +4595,7 @@ static void testFamiliesAndTypes() {
         CHECK(std::string(effectTypeName(row.kind)) == row.type && std::string(effectTypeShown(row.kind)) == row.shown);
         CHECK(effectTypes(row.kind) == row.types && effectTypeIndex(row.kind) == row.index && effectTypeAt(row.kind, row.index) == row.kind);
         CHECK(effectPlace(row.kind) == i + 1); // the whole list, in this order
-        CHECK(effectFamilyNamesTypes(row.kind) == (row.types > 1 || row.shown[0] != 0)); // FILTER and CRUSH say their words
+        CHECK(effectFamilyNamesTypes(row.kind) == (row.types > 1 || row.shown[0] != 0)); // CRUSH says its words
     }
     CHECK(!effectFamilyNamesTypes(N) && !effectFamilyNamesTypes(static_cast<EffectKind>(77)));
     // Stepping the TYPE within each family: the types in order, ends that stop (None off either end).
@@ -4790,8 +4806,16 @@ static void testTypeChangeCarriesSettings() {
             }
             effectCarry(from, to, old, false, nullptr);
         }
-    // DELAY's three types: six pairs; REVERB's four: twelve; DRIVE's two and LEVEL's two: two each. Every pair both ways.
-    CHECK(pairs == 22 && carried == 52 && same > 250 && nearest >= 2);
+    // DELAY's three types: six pairs; REVERB's four and FILTER's four: twelve each; DRIVE's two and LEVEL's two: two each.
+    // Every pair both ways. FILTER's carry MIX among FILTER, COMB and VOWEL, and RESONANCE between FILTER and VOWEL: eight more.
+    CHECK(pairs == 34 && carried == 60 && same > 250 && nearest >= 2);
+    // FILTER and VOWEL read RESONANCE alike (a percentage): it goes over untouched, both ways, as MIX does; EQ shares nothing.
+    for (float v : {0.f, 0.2f, 0.37f, 1.f}) {
+        CHECK(effectCarryFrom(EffectKind::Filter, EffectKind::Vowel, 2) == 1 && effectCarryValue(EffectKind::Filter, 1, EffectKind::Vowel, 2, v) == v);
+        CHECK(effectCarryFrom(EffectKind::Vowel, EffectKind::Filter, 1) == 2 && effectCarryValue(EffectKind::Vowel, 2, EffectKind::Filter, 1, v) == v);
+        CHECK(effectCarryValue(EffectKind::Comb, 3, EffectKind::Vowel, 3, v) == v && effectCarryValue(EffectKind::Filter, 3, EffectKind::Comb, 3, v) == v);
+    }
+    for (int i = 0; i < 4; ++i) CHECK(effectCarryFrom(EffectKind::Filter, EffectKind::Eq, i) == -1 && effectCarryFrom(EffectKind::Eq, EffectKind::Comb, i) == -1);
     // DRIVE and SATURATE share DRIVE, TONE and MIX, on one scale (percentages): each goes over untouched, to the bit.
     // DRIVE's OUTPUT and SATURATE's TYPE start at their usual values.
     {
@@ -7841,6 +7865,541 @@ static void testPlate() {
     }
 }
 
+// ---- COMB, VOWEL, EQ: FILTER's newer types ------------------------------------------------------
+
+// THE RULES EVERY NEW EFFECT KEEPS, for a type with no bus: one set of settings `set` (and `other`, turned to
+// while it sounds). `sleepBy` is how long after a click it is asleep at the most, with `set`. Says what it
+// measured; each type's own test holds the numbers.
+struct RulesSeen {
+    double lastAfterClick = 0.0;  // seconds: the last sample that is not zero after a click
+    double stepDown[4] = {}, stepUp[4] = {}, cornerDown[4] = {}, cornerUp[4] = {}; // a setting turned at once (see below)
+};
+static RulesSeen holdsTheRules(EffectKind kind, const float* set, const float* other, double sleepBy) {
+    RulesSeen seen;
+    const EffectInfo& info = effectInfo(kind);
+    const auto make = [&](const float* p) { return fresh(kind, p[0], p[1], p[2], p[3]); };
+    const int mix = mixOf(kind);
+    // 1. HOWEVER IT IS CUT INTO BLOCKS, THE SAME TO THE LAST BIT, settings moving too: 30 s, four ways (blocks
+    // of 64, of 48, of 1 to 61 in turn, of 256). A burst of noise, then another at 2.9 s with every setting
+    // turned to `other` at 3.0 s (a sample no way's blocks have to end on), asleep, woken at 20 s by a
+    // sound far too faint to hear, asleep again.
+    {
+        const std::size_t second = 48000, turn = 3 * second + 17;
+        std::vector<float> in(30 * second, 0.f);
+        Noise noise(41u);
+        for (std::size_t i = 0; i < 4800; ++i) in[1000 + i] = 0.5f * noise.next();
+        for (std::size_t i = 0; i < 14400; ++i) in[2 * second + 43200 + i] = 0.5f * noise.next();
+        in[20 * second + 1237] = 5e-5f;
+        std::vector<float> ways[4];
+        const std::size_t sizes[4] = {64, 48, 0, 256};
+        for (int way = 0; way < 4; ++way) {
+            std::unique_ptr<Effect> e = make(set);
+            Stereo io(in.size());
+            io.l = io.r = in;
+            for (std::size_t i = 0; i < in.size(); ++i) io.r[i] = -0.5f * in[i];
+            bool turned = false;
+            for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
+                if (at + n > io.frames()) n = io.frames() - at;
+                if (!turned && at + n > turn) n = turn - at; // up to the turn, then on
+                e->process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
+                if (!turned && at + n == turn) {
+                    for (int p = 0; p < info.params; ++p) e->setParam(p, other[p]);
+                    turned = true;
+                }
+            }
+            ways[way] = io.l;
+            ways[way].insert(ways[way].end(), io.r.begin(), io.r.end());
+        }
+        bool same = true;
+        for (int way = 1; way < 4; ++way) same = same && ways[way] == ways[0];
+        CHECK(same);
+        const std::vector<float>& l = ways[0];
+        std::size_t lastBefore = 0, lastAfter = 0;
+        for (std::size_t i = 0; i < 20 * second; ++i) lastBefore = l[i] != 0.f ? i : lastBefore;
+        for (std::size_t i = 20 * second; i < 30 * second; ++i) lastAfter = l[i] != 0.f ? i : lastAfter;
+        CHECK(lastBefore > 3 * second && lastBefore < 19 * second && lastAfter > 20 * second && lastAfter < 29 * second); // it slept, woke and slept again
+        CHECK(rmsOf(l, 3 * second + 4800, 3 * second + 9600) > 1e-3); // (and it was sounding while the settings moved)
+    }
+    // 2. SILENCE IN, SILENCE OUT IN THE END, AND NOTHING TOO SMALL TO HOLD ON THE WAY (flush-to-zero off): a click
+    // and nothing after it; a click in sound itself too small to hold (another effect's dying tail); and a
+    // steady offset, under which a filter's band state falls away for good.
+    {
+        std::unique_ptr<Effect> e = make(set);
+        const TooSmall marks;
+        Stereo io(static_cast<std::size_t>((sleepBy + 2.0) * 48000.0));
+        io.l[0] = io.r[0] = 1.f;
+        through(*e, io);
+        CHECK(!marks.seen());
+        std::size_t last = 0;
+        for (std::size_t i = 1; i < io.frames(); ++i) last = io.l[i] != 0.f || io.r[i] != 0.f ? i : last;
+        seen.lastAfterClick = static_cast<double>(last) / 48000.0;
+        CHECK(seen.lastAfterClick < sleepBy && io.l.back() == 0.f && io.r.back() == 0.f);
+    }
+    {
+        std::unique_ptr<Effect> e = make(set);
+        Stereo io(3 * 48000);
+        io.l.assign(io.frames(), 1e-39f);
+        io.r.assign(io.frames(), -1e-39f);
+        io.l[0] = io.r[0] = 0.5f;
+        const TooSmall marks;
+        through(*e, io);
+        CHECK(!marks.seen() && peakOf(io.l) >= 0.f);
+    }
+    {
+        std::unique_ptr<Effect> e = make(set);
+        Stereo io(4 * 48000);
+        io.l.assign(io.frames(), 0.5f);
+        io.r.assign(io.frames(), -0.25f);
+        const TooSmall marks;
+        through(*e, io);
+        CHECK(!marks.seen());
+    }
+    CHECK(sameFlushed(kind, set[0], set[1], set[2], set[3], sleepBy)); // the same with the processor's flush-to-zero on or off, to the bit
+    // 3. Woken, it plays as one fresh from the box does, to the bit; a setting turned while it slept is simply
+    // there. Asleep, what comes out is what came in.
+    {
+        std::unique_ptr<Effect> slept = make(set), box = make(set), turned = make(other);
+        clickBoth(*slept, sleepBy + 0.5);
+        const Stereo a = clickBoth(*slept, 1.0, 0.5f, -0.25f), b = clickBoth(*box, 1.0, 0.5f, -0.25f);
+        CHECK(a.l == b.l && a.r == b.r && rmsOf(b.l) > 1e-4);
+        clickBoth(*turned, 0.05, 0.f, 0.f);
+        clickBoth(*turned, sleepBy + 0.5);
+        for (int p = 0; p < info.params; ++p) turned->setParam(p, set[p]);
+        const Stereo c = clickBoth(*turned, 1.0, 0.5f, -0.25f);
+        CHECK(c.l == b.l && c.r == b.r);
+        clickBoth(*slept, sleepBy + 0.5);
+        Stereo faint(256);
+        faint.l.assign(256, 1e-20f);
+        faint.r.assign(256, -0.f);
+        const Stereo before = faint;
+        through(*slept, faint);
+        CHECK(std::memcmp(faint.l.data(), before.l.data(), 256 * sizeof(float)) == 0 && std::memcmp(faint.r.data(), before.r.data(), 256 * sizeof(float)) == 0);
+    }
+    // 4. By the clock (the app's way, flush-to-zero OFF): a block of 64 is no slower late in a tail than early,
+    // and asleep it is next to nothing.
+    {
+        std::unique_ptr<Effect> e = make(set);
+        const TailTimes took = tailTimes(*e, static_cast<int>(sleepBy) + 2);
+        SAY("flush    %-6s (flush-to-zero OFF): a block takes %.2f us early, %.2f us at its slowest, %.2f us at the end (asleep)\n", info.name, took.early, took.slowest, took.late);
+        CHECK(took.slowest < 3.0 * took.early + 5.0 && took.late < 0.5 * took.early + 1.0);
+    }
+    // 5. MIX 0 (EQ: every band at 0 dB) IS THE SOUND UNTOUCHED, TO THE BIT, awake or asleep: noise, sound far too
+    // faint to be sound, a -0.
+    {
+        float still[kEffectParams];
+        for (int p = 0; p < kEffectParams; ++p) still[p] = set[p];
+        if (mix >= 0) still[mix] = 0.f;
+        else
+            for (int p : {0, 1, 3}) still[p] = 0.5f; // EQ's three bands at 0 dB
+        std::unique_ptr<Effect> e = make(still);
+        Stereo io(96000);
+        Noise noise(13u);
+        for (std::size_t i = 0; i < 48000; ++i) io.l[i] = 0.25f * noise.next(), io.r[i] = 0.25f * noise.next();
+        for (std::size_t i = 24000; i < 25000; ++i) io.l[i] *= 4e-16f, io.r[i] *= -4e-16f;
+        io.l[25000] = -0.f, io.r[25001] = 1e-39f, io.l[90000] = -0.f, io.r[90001] = 1e-39f, io.l[90002] = 3e-17f;
+        const Stereo in = io;
+        through(*e, io);
+        CHECK(std::memcmp(io.l.data(), in.l.data(), 96000 * sizeof(float)) == 0 && std::memcmp(io.r.data(), in.r.data(), 96000 * sizeof(float)) == 0);
+    }
+    // 6. A SETTING TURNED AT ONCE GLIDES: each turned end to end under a held 100 Hz sine (at MIX 50%). The largest
+    // step and the sharpest corner while it gets there, each against the same held still (the rougher of before
+    // and after). Each type's test holds the numbers.
+    for (int p = 0; p < info.params; ++p)
+        for (int up = 0; up < 2; ++up) {
+            float at[kEffectParams];
+            for (int q = 0; q < kEffectParams; ++q) at[q] = set[q];
+            if (mix >= 0 && p != mix) at[mix] = 0.5f;
+            at[p] = up ? 0.f : 1.f;
+            std::unique_ptr<Effect> e = make(at);
+            Stereo io(4 * 48000);
+            io.l = io.r = sineOf(100.0, 0.5, io.frames());
+            for (std::size_t i = 0; i < 4800; ++i) io.l[i] = io.r[i] = io.l[i] * static_cast<float>(i) / 4800.f;
+            through(*e, io, 0, 96000);
+            e->setParam(p, up ? 1.f : 0.f);
+            through(*e, io, 96000, io.frames());
+            const auto corner = [&](std::size_t from, std::size_t to) {
+                double most = 0.0;
+                for (std::size_t i = from + 2; i < to; ++i) most = std::fmax(most, std::fabs(static_cast<double>(io.l[i]) - 2.0 * io.l[i - 1] + io.l[i - 2]));
+                return most;
+            };
+            const double steady = std::fmax(largestJump(io.l, 48000, 96000), largestJump(io.l, 3 * 48000, 4 * 48000));
+            const double steadyCorner = std::fmax(corner(48000, 96000), corner(3 * 48000, 4 * 48000));
+            const double step = largestJump(io.l, 96000 - 1, 3 * 48000) / steady, sharp = corner(96000 - 2, 3 * 48000) / steadyCorner;
+            SAY("glide    %-6s %-9s turned %-4s at once: the largest step is %.2f of the steady one, the sharpest corner %.2f (%.1e)\n", info.name, info.paramNames[p], up ? "up" : "down", step, sharp, sharp * steadyCorner);
+            (up ? seen.stepUp : seen.stepDown)[p] = step;
+            (up ? seen.cornerUp : seen.cornerDown)[p] = sharp;
+        }
+    return seen;
+}
+
+// ---- COMB ----
+
+static float combNote(int note) { return (static_cast<float>(note) + 0.5f) / 25.f; } // the PITCH setting for a note, 0 (C2) to 24 (C4)
+static float combFeedback(double f) { return static_cast<float>((f + 1.0) / 2.0); } // the FEEDBACK setting that reads f (-1 to 1)
+
+// Where a comb rings: the strongest of `count` frequencies a cent apart about `hz`, in a click's ringing.
+static double ringsAt(const std::vector<float>& ir, double hz, int cents = 60) {
+    double best = 0.0, bestHz = hz;
+    for (int c = -cents; c <= cents; ++c) {
+        const double f = hz * std::pow(2.0, c / 1200.0), part = partAt(ir.data() + 1, ir.size() - 1, f);
+        if (part > best) best = part, bestHz = f;
+    }
+    return bestHz;
+}
+static double cents(double hz, double want) { return 1200.0 * std::log2(hz / want); }
+
+static void testComb() {
+    const EffectKind comb = EffectKind::Comb;
+    const EffectInfo& info = effectInfo(comb);
+    // Its row: what a song stores, and a TYPE of FILTER.
+    CHECK(static_cast<int>(comb) == 15 && std::string(info.word) == "comb" && effectFromWord("comb") == comb && std::string(info.name) == "COMB");
+    CHECK(info.family == EffectFamily::Filter && effectBus(comb) == -1 && std::string(effectFamily(comb)) == "FILTER" && std::string(effectTypeName(comb)) == "COMB" && info.params == 4);
+    CHECK(std::string(info.paramNames[0]) == "PITCH" && std::string(info.paramNames[1]) == "FEEDBACK" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(effectChoices(comb, 0) == 25 && effectChoices(comb, 1) == 0 && effectChoices(comb, 2) == 0 && effectChoices(comb, 3) == 0);
+    CHECK(info.defaults[0] == combNote(12) && info.defaults[1] == 0.85f && info.defaults[2] == 0.7f && info.defaults[3] == 0.5f);
+    // How it reads: a note, a signed percentage (0 is 0%), amounts.
+    CHECK(reads(comb, 0, combNote(0)) == "C2" && reads(comb, 0, combNote(1)) == "C#2" && reads(comb, 0, combNote(9)) == "A2" && reads(comb, 0, combNote(12)) == "C3");
+    CHECK(reads(comb, 0, combNote(24)) == "C4" && reads(comb, 0, 0.f) == "C2" && reads(comb, 0, 1.f) == "C4" && reads(comb, 0, combNote(23)) == "B3");
+    CHECK(reads(comb, 1, 0.f) == "-100%" && reads(comb, 1, 0.5f) == "0%" && reads(comb, 1, 0.85f) == "+70%" && reads(comb, 1, 1.f) == "+100%" && reads(comb, 1, 0.45f) == "-10%");
+    CHECK(reads(comb, 2, 0.7f) == "70%" && reads(comb, 3, 0.5f) == "50%");
+    CHECK(std::fabs(fx::combHz(combNote(9)) - 110.0) < 1e-6 && std::fabs(fx::combHz(combNote(12)) - 130.8128) < 1e-3 && std::fabs(fx::combHz(1.f) - 261.6256) < 1e-3);
+
+    // IN TUNE: a click, MIX full, FEEDBACK +90%: where it rings, in cents from the note. Above 0 at the note;
+    // below 0 an octave under it (odd harmonics only). At every TONE: the high cut's lateness is taken out.
+    //   note     TONE 0%    50%    100%     and FEEDBACK -90%, at the note's half: the same, but C4 -2 at TONE 0
+    //   C2         0         0       0
+    //   G2         0         0       0
+    //   C3        -1         0       0
+    //   G3        -2         0       0
+    //   C4        -3         0       0     (TONE 0 is a 500 Hz cut: it leans on the lowest harmonics, whose
+    //                                       lateness is not quite the note's)
+    // Left out, the high cut's lateness put C4 at TONE 0 a semitone flat.
+    {
+        double worst = 0.0;
+        for (int note : {0, 7, 12, 19, 24})
+            for (float tone : {0.f, 0.5f, 1.f})
+                for (int below = 0; below < 2; ++below) {
+                    const double hz = fx::combHz(combNote(note)), want = below ? hz / 2.0 : hz;
+                    std::unique_ptr<Effect> e = fresh(comb, combNote(note), combFeedback(below ? -0.9 : 0.9), tone, 1.f);
+                    const std::vector<float> ir = impulseOf(*e, 1.0);
+                    const double off = cents(ringsAt(ir, want), want);
+                    SAY("comb     %-3s TONE %3.0f%% FEEDBACK %s90%%: rings %+.0f cents from %.1f Hz\n", reads(comb, 0, combNote(note)).c_str(), tone * 100.0, below ? "-" : "+", off, want);
+                    worst = std::fmax(worst, std::fabs(off));
+                    // ...and its harmonics: above 0 the second is there, below 0 the half's second (the note) is not.
+                    const double second = partAt(ir.data() + 1, ir.size() - 1, 2.0 * want), first = partAt(ir.data() + 1, ir.size() - 1, want);
+                    if (below) CHECK(second < 0.1 * first);
+                    else CHECK(second > 0.2 * first);
+                }
+        CHECK(worst <= 3.5);
+    }
+    // HOW LONG IT RINGS: a click, MIX full, TONE full, the time to fall 60 dB (rt60), by note and FEEDBACK.
+    //   FEEDBACK   C2      C3      C4
+    //   +50%      0.12    0.06    0.03 s
+    //   +100%     1.84    0.92    0.45  (0.95 a trip round)
+    //   -100%     1.84            0.45
+    {
+        struct Row { int note; double feedback, rt; };
+        const Row rows[] = {{0, 0.5, 0.122}, {12, 0.5, 0.061}, {24, 0.5, 0.031}, {0, 1.0, 1.835}, {12, 1.0, 0.917}, {24, 1.0, 0.451}, {0, -1.0, 1.835}, {24, -1.0, 0.451}};
+        for (const Row& row : rows) {
+            std::unique_ptr<Effect> e = fresh(comb, combNote(row.note), combFeedback(row.feedback), 1.f, 1.f);
+            const double rt = rt60(impulseOf(*e, 5.0));
+            SAY("comb     %-3s FEEDBACK %+4.0f%%, TONE full: rt60 %.3f s\n", reads(comb, 0, combNote(row.note)).c_str(), row.feedback * 100.0, rt);
+            CHECK(std::fabs(rt - row.rt) < 0.05 * row.rt);
+        }
+        // Lower TONE, the high harmonics die first: C2 at +100%, its 16th harmonic (1046 Hz) by itself.
+        const double dark = rt60(bandOf(impulseOf(*fresh(comb, combNote(0), 1.f, 0.f, 1.f), 5.0), 16.0 * fx::combHz(combNote(0))));
+        const double bright = rt60(bandOf(impulseOf(*fresh(comb, combNote(0), 1.f, 1.f, 1.f), 5.0), 16.0 * fx::combHz(combNote(0))));
+        SAY("comb     C2 +100%%: its 16th harmonic rings %.3f s at TONE 0, %.3f s at TONE full\n", dark, bright);
+        CHECK(dark < 0.25 * bright);
+    }
+    // AS LOUD AT ANY FEEDBACK, on a full sound: noise, MIX full, TONE full, out against in in dB. A sine on
+    // the note's second harmonic: up by sqrt((1 + f) / (1 - f)), 16 dB at the most.
+    //   FEEDBACK          -100%    -50%    0%    +50%   +100%
+    //   noise             -3.8     -0.3    0.0   -0.3   -4.0 dB   (the high cut in the loop takes some)
+    //   a sine on C4     -15.9     -4.5    0.0   +4.5  +15.4 dB   (by the sum: 15.9, 4.5)
+    {
+        for (double f : {-1.0, -0.5, 0.0, 0.5, 1.0}) {
+            std::unique_ptr<Effect> e = fresh(comb, combNote(12), combFeedback(f), 1.f, 1.f);
+            Stereo io(3 * 48000);
+            Noise noise(3u);
+            for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.25f * noise.next();
+            const std::vector<float> in = io.l;
+            through(*e, io);
+            const double noiseDb = dB(rmsOf(io.l, 48000) / rmsOf(in, 48000));
+            const double hz = 2.0 * fx::combHz(combNote(12)), sineDb = levelAt(*fresh(comb, combNote(12), combFeedback(f), 1.f, 1.f), std::round(hz), 0.05);
+            const double g = 0.95 * f, want = 10.0 * std::log10((1.0 + std::fabs(g)) / (1.0 - std::fabs(g))) * (f >= 0.0 ? 1.0 : -1.0);
+            SAY("comb     FEEDBACK %+4.0f%%: noise %+.1f dB, a sine on C4 %+.1f dB (by the sum %+.1f)\n", f * 100.0, noiseDb, sineDb, want);
+            CHECK(std::fabs(noiseDb) < (std::fabs(f) > 0.9 ? 4.5 : 0.5));
+            // (130.81 * 2 is not a whole hertz: 262 Hz is 5 cents off the peak, a little short of it.)
+            if (f > 0.0) CHECK(sineDb > want - 3.0 && sineDb < want + 0.5);
+            if (f < 0.0) CHECK(sineDb < -3.0); // below 0 the note's own place is a notch
+        }
+    }
+    // MIX 50% IS HALF THE COMB ON THE PLAIN SOUND, aligned (the comb's own sound is not late): a click comes out at
+    // half itself plus half of what it puts on the line, to the sample.
+    {
+        const std::vector<float> full = impulseOf(*fresh(comb, combNote(5), 0.8f, 0.6f, 1.f), 0.5), half = impulseOf(*fresh(comb, combNote(5), 0.8f, 0.6f, 0.5f), 0.5);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < full.size(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(half[i]) - ((i == 0 ? 0.5 : 0.0) + 0.5 * full[i])));
+        CHECK(worst < 1e-6 && full[0] > 0.f && full[0] < 1.f);
+    }
+    // PITCH SWEPT (testEveryEffect): no steeper than the loudest note held still.
+    {
+        double loudest = 0.0;
+        for (int note = 0; note < 25; ++note) {
+            std::unique_ptr<Effect> e = fresh(comb, combNote(note));
+            Stereo io(96000);
+            io.l = io.r = sineOf(100.0, 0.5, 96000);
+            through(*e, io);
+            loudest = std::fmax(loudest, largestJump(io.l, 48000, 96000) / sineStep(100.0, 0.5));
+        }
+        const double swept = sweepJump(comb, 0);
+        SAY("comb     PITCH swept end to end: %.2f; the loudest note held still %.2f\n", swept, loudest);
+        CHECK(swept < 1.05 * loudest);
+    }
+    // THE RULES.
+    const float set[4] = {combNote(0), 1.f, 1.f, 1.f}, other[4] = {combNote(20), 0.1f, 0.3f, 0.6f};
+    // A click: asleep 7.0 s on (C2, FEEDBACK +100%, TONE full: it rings 240 dB down first).
+    // Turned at once, end to end, from C2 at +100% (testEveryEffect has it swept): the largest step and the
+    // sharpest corner while it moves, against held still. PITCH moves the 100 Hz sine on and off the comb's
+    // peaks (a note's 60 ms swoop, 1.9 at the most: louder, not a click); FEEDBACK from -100% to +100% rings
+    // the comb's harmonics a moment as it passes 0. Before PITCH, FEEDBACK and TONE set off gently (Gentle in
+    // svf.hpp) and the loop's numbers were slid to sample by sample, FEEDBACK up read a corner of 6.28 and PITCH up 3.34.
+    //              down: step  corner    up: step  corner
+    //   PITCH         1.55     1.48         1.88     2.72
+    //   FEEDBACK      1.51     1.50         1.05     1.10
+    //   TONE          1.00     1.00         1.00     1.01
+    //   MIX           1.00     1.00         1.00     0.92
+    const RulesSeen seen = holdsTheRules(comb, set, other, 8.0);
+    SAY("comb     C2, FEEDBACK +100%%, TONE full: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
+    CHECK(std::fabs(seen.lastAfterClick - 7.02) < 0.1);
+    const double was[4][4] = {{1.55, 1.48, 1.88, 2.72}, {1.51, 1.50, 1.05, 1.10}, {1.00, 1.00, 1.00, 1.01}, {1.00, 1.00, 1.00, 0.92}};
+    for (int p = 0; p < 4; ++p) {
+        CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
+        CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);
+    }
+}
+
+// ---- VOWEL ----
+
+static float vowelAt(int vowel) { return static_cast<float>(vowel) / 4.f; } // A 0, E 1, I 2, O 3, U 4
+static std::vector<float> sawOf(double hz, double amp, std::size_t frames) {
+    std::vector<float> v(frames);
+    for (std::size_t i = 0; i < frames; ++i) {
+        const double t = std::fmod(hz * static_cast<double>(i) / 48000.0, 1.0);
+        v[i] = static_cast<float>(amp * (2.0 * t - 1.0));
+    }
+    return v;
+}
+// Out against in, in dB, after the first half second.
+static double loudnessThrough(Effect& effect, const std::vector<float>& in) {
+    Stereo io(in.size());
+    io.l = io.r = in;
+    through(effect, io);
+    return dB(rmsOf(io.l, 24000) / rmsOf(in, 24000));
+}
+
+static void testVowel() {
+    const EffectKind vowel = EffectKind::Vowel;
+    const EffectInfo& info = effectInfo(vowel);
+    CHECK(static_cast<int>(vowel) == 16 && std::string(info.word) == "vowel" && effectFromWord("vowel") == vowel && std::string(info.name) == "VOWEL");
+    CHECK(info.family == EffectFamily::Filter && effectBus(vowel) == -1 && std::string(effectTypeName(vowel)) == "VOWEL" && info.params == 4);
+    CHECK(std::string(info.paramNames[0]) == "VOWEL" && std::string(info.paramNames[1]) == "SHIFT" && std::string(info.paramNames[2]) == "RESONANCE" && std::string(info.paramNames[3]) == "MIX");
+    for (int i = 0; i < 4; ++i) CHECK(effectChoices(vowel, i) == 0);
+    CHECK(info.defaults[0] == 0.f && info.defaults[1] == 0.5f && info.defaults[2] == 0.5f && info.defaults[3] == 1.f);
+    // How it reads: a vowel, or how far from one to the next (a D-pad push is a fifth of the way); SHIFT in semitones.
+    CHECK(reads(vowel, 0, 0.f) == "A" && reads(vowel, 0, 0.25f) == "E" && reads(vowel, 0, 0.5f) == "I" && reads(vowel, 0, 0.75f) == "O" && reads(vowel, 0, 1.f) == "U");
+    CHECK(reads(vowel, 0, 0.05f) == "A-E 20%" && reads(vowel, 0, 0.1f) == "A-E 40%" && reads(vowel, 0, 0.95f) == "O-U 80%" && reads(vowel, 0, 0.6f) == "I-O 40%");
+    CHECK(reads(vowel, 1, 0.f) == "-12 ST" && reads(vowel, 1, 0.5f) == "0 ST" && reads(vowel, 1, 1.f) == "+12 ST" && reads(vowel, 1, 0.55f) == "+1 ST");
+    CHECK(reads(vowel, 2, 0.5f) == "50%" && reads(vowel, 3, 1.f) == "100%");
+    for (int k = 0; k <= 20; ++k) CHECK(reads(vowel, 0, k / 20.f).size() <= 7);
+
+    // THE VOWELS: sines through it, MIX full, RESONANCE at its usual, in dB. Each vowel's first peak is +10.9 dB
+    // and stands out over a place between it and the next:
+    //   A  +10.9 at 600 Hz    +4.1 at 1040    -11.8 between, at 820
+    //   E  +10.8 at 400       -0.7 at 1620    -25.6 at 900
+    //   I  +10.8 at 250      -17.5 at 1750    -17.4 at 700
+    //   O  +10.9 at 400       +0.4 at 750      -8.0 at 560
+    //   U  +10.8 at 350       -5.6 at 600      -4.5 at 470   (U's two are close: its dip between is shallow)
+    struct Peaks { int vowel; double first, second, between; };
+    const Peaks peaks[] = {{0, 600, 1040, 820}, {1, 400, 1620, 900}, {2, 250, 1750, 700}, {3, 400, 750, 560}, {4, 350, 600, 470}};
+    for (const Peaks& p : peaks) {
+        std::unique_ptr<Effect> e = fresh(vowel, vowelAt(p.vowel));
+        const double a = levelAt(*e, p.first), b = levelAt(*e, p.second), c = levelAt(*e, p.between);
+        SAY("vowel    %s: %+.1f dB at %.0f Hz, %+.1f at %.0f, %+.1f between at %.0f\n", reads(vowel, 0, vowelAt(p.vowel)).c_str(), a, p.first, b, p.second, c, p.between);
+        CHECK(a > c + 6.0 && std::fabs(a - 10.9) < 0.5 && a > b);
+    }
+    // SHIFT moves every peak: +12 semitones puts A's first at 1200 Hz, -12 at 300.
+    {
+        const double plain = levelAt(*fresh(vowel, 0.f, 0.5f), 600), up = levelAt(*fresh(vowel, 0.f, 1.f), 1200), down = levelAt(*fresh(vowel, 0.f, 0.f), 300);
+        const double off = levelAt(*fresh(vowel, 0.f, 1.f), 600);
+        SAY("vowel    A's first peak: %+.1f dB at 600 Hz; shifted up an octave %+.1f at 1200 (and %+.1f at 600); down %+.1f at 300\n", plain, up, off, down);
+        CHECK(std::fabs(up - plain) < 1.0 && std::fabs(down - plain) < 1.0 && off < plain - 10.0);
+    }
+    // HALF WAY FROM A TO E the first peak is half way in pitch: sqrt(600 * 400) = 490 Hz.
+    {
+        double best = -1e9, at = 0.0;
+        for (double hz = 400.0; hz <= 600.0; hz += 5.0) {
+            const double l = levelAt(*fresh(vowel, 0.125f), hz);
+            if (l > best) best = l, at = hz;
+        }
+        SAY("vowel    A-E 50%%: the first peak at %.0f Hz\n", at);
+        CHECK(std::fabs(at - 490.0) < 6.0); // (in hertz it would be 500)
+    }
+    // RESONANCE: narrower peaks. A's first peak against 100 Hz either side of it.
+    {
+        for (float r : {0.f, 0.5f, 1.f}) {
+            std::unique_ptr<Effect> e = fresh(vowel, 0.f, 0.5f, r);
+            const double sharp = levelAt(*e, 600) - 0.5 * (levelAt(*e, 500) + levelAt(*e, 700));
+            SAY("vowel    RESONANCE %3.0f%%: A's first peak stands %.1f dB over 100 Hz either side\n", r * 100.0, sharp);
+        }
+        std::unique_ptr<Effect> low = fresh(vowel, 0.f, 0.5f, 0.f), high = fresh(vowel, 0.f, 0.5f, 1.f);
+        CHECK(levelAt(*high, 600) - levelAt(*high, 500) > levelAt(*low, 600) - levelAt(*low, 500) + 10.0);
+    }
+    // ABOUT AS LOUD AT ANY RESONANCE on a bright sound: a 110 Hz saw, each vowel, RESONANCE 0, 50%, 100%: -3.1 to
+    // -7.2 dB (U and I the loudest: their first peak takes the saw's strong low harmonics). Noise, whose most is
+    // up high where the vowels have little: -6.1 (A, full) to -16.7 dB (U, 0). The peaks are made up by Q to
+    // the 3/4: by sqrt(Q) the saw read -10 dB at RESONANCE 0 and -17 at full.
+    {
+        const std::vector<float> saw = sawOf(110.0, 0.5, 96000);
+        std::vector<float> noise(96000);
+        Noise n(9u);
+        for (float& v : noise) v = 0.5f * n.next();
+        for (float r : {0.f, 0.5f, 1.f}) {
+            for (int v = 0; v < 5; ++v) {
+                const double s = loudnessThrough(*fresh(vowel, vowelAt(v), 0.5f, r), saw), z = loudnessThrough(*fresh(vowel, vowelAt(v), 0.5f, r), noise);
+                SAY("vowel    RESONANCE %3.0f%% %s: a saw %+.1f dB, noise %+.1f dB\n", r * 100.0, reads(vowel, 0, vowelAt(v)).c_str(), s, z);
+                CHECK(s > -7.6 && s < -2.7 && z > -17.2 && z < -5.6);
+            }
+        }
+    }
+    // MIX 50% IS HALF THE PEAKS ON THE PLAIN SOUND, aligned: a click comes out at half itself and half the filter's, to the sample.
+    {
+        const std::vector<float> full = impulseOf(*fresh(vowel, 0.3f, 0.5f, 0.5f, 1.f), 0.5), half = impulseOf(*fresh(vowel, 0.3f, 0.5f, 0.5f, 0.5f), 0.5);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < full.size(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(half[i]) - ((i == 0 ? 0.5 : 0.0) + 0.5 * full[i])));
+        CHECK(worst < 1e-6);
+    }
+    const float set[4] = {0.f, 0.5f, 1.f, 1.f}, other[4] = {1.f, 0.9f, 0.2f, 0.4f};
+    // A click: asleep 0.32 s on (A, RESONANCE full). Turned at once, end to end (as COMB's):
+    //              down: step  corner    up: step  corner
+    //   VOWEL         1.02     1.12         1.02     1.13
+    //   SHIFT         1.00     1.00         0.99     0.99
+    //   RESONANCE     1.00     1.00         1.00     1.00
+    //   MIX           1.00     1.00         1.01     0.92
+    // (With the peaks' numbers stepped once a tick and a plain Glide, VOWEL read corners of 3.95 and RESONANCE 4.41.)
+    const RulesSeen seen = holdsTheRules(vowel, set, other, 2.0);
+    SAY("vowel    A, RESONANCE full: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
+    CHECK(std::fabs(seen.lastAfterClick - 0.32) < 0.03);
+    const double was[4][4] = {{1.02, 1.12, 1.02, 1.13}, {1.00, 1.00, 0.99, 0.99}, {1.00, 1.00, 1.00, 1.00}, {1.00, 1.00, 1.01, 0.92}};
+    for (int p = 0; p < 4; ++p) {
+        CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
+        CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);
+    }
+}
+
+// ---- EQ ----
+
+static float eqDb(double db) { return static_cast<float>((db / 12.0 + 1.0) / 2.0); } // the setting that reads `db`
+
+static void testEq() {
+    const EffectKind eq = EffectKind::Eq;
+    const EffectInfo& info = effectInfo(eq);
+    CHECK(static_cast<int>(eq) == 17 && std::string(info.word) == "eq" && effectFromWord("eq") == eq && std::string(info.name) == "EQ");
+    CHECK(info.family == EffectFamily::Filter && effectBus(eq) == -1 && std::string(effectTypeName(eq)) == "EQ" && info.params == 4 && mixOf(eq) == -1);
+    CHECK(std::string(info.paramNames[0]) == "LOW" && std::string(info.paramNames[1]) == "MID" && std::string(info.paramNames[2]) == "MID FREQ" && std::string(info.paramNames[3]) == "HIGH");
+    for (int i = 0; i < 4; ++i) CHECK(effectChoices(eq, i) == 0 && info.defaults[i] == 0.5f);
+    // How it reads: dB with a sign (a D-pad push is 1.2 dB), the bell's place in hertz.
+    CHECK(reads(eq, 0, 0.5f) == "0 DB" && reads(eq, 0, 1.f) == "+12 DB" && reads(eq, 0, 0.f) == "-12 DB" && reads(eq, 1, 0.55f) == "+1.2 DB" && reads(eq, 3, 0.45f) == "-1.2 DB");
+    CHECK(reads(eq, 3, 0.75f) == "+6 DB" && reads(eq, 1, 0.3f) == "-4.8 DB");
+    CHECK(reads(eq, 2, 0.f) == "125 HZ" && reads(eq, 2, 0.5f) == "1.0 KHZ" && reads(eq, 2, 1.f) == "8.0 KHZ" && reads(eq, 2, 0.25f) == "354 HZ");
+    for (int k = 0; k <= 20; ++k)
+        for (int p = 0; p < 4; ++p) CHECK(reads(eq, p, k / 20.f).size() <= 8);
+
+    // FLAT IS THE SOUND UNTOUCHED, TO THE BIT: every band at 0 dB, wherever MID FREQ is, ten seconds of noise.
+    for (float where : {0.f, 0.37f, 1.f}) {
+        std::unique_ptr<Effect> e = fresh(eq, 0.5f, 0.5f, where, 0.5f);
+        Stereo io(480000);
+        Noise noise(4u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = noise.next(), io.r[i] = 0.3f * noise.next();
+        const Stereo in = io;
+        through(*e, io);
+        CHECK(io.l == in.l && io.r == in.r);
+    }
+    // ...and turned back to flat it lands there, to the bit, within a second.
+    {
+        std::unique_ptr<Effect> e = fresh(eq, 1.f, 0.f, 0.2f, 0.8f);
+        Stereo io(96000);
+        Noise noise(6u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = 0.5f * noise.next();
+        const Stereo in = io;
+        through(*e, io, 0, 48000);
+        for (int p : {0, 1, 3}) e->setParam(p, 0.5f);
+        through(*e, io, 48000, 96000);
+        bool untouched = true;
+        for (std::size_t i = 72000; i < 96000; ++i) untouched = untouched && io.l[i] == in.l[i];
+        CHECK(untouched && io.l[47000] != in.l[47000]);
+    }
+
+    // THE BANDS, in dB, sines through it (the rest flat):
+    //                      40 Hz   200 Hz   1 kHz   5 kHz   15 kHz
+    //   LOW +12           +12.0    +6.0      0.0     0.0     0.0     a shelf: half way at its corner
+    //   LOW -12           -12.0    -6.0      0.0     0.0     0.0
+    //   MID +12 at 1 kHz    0.0    +0.8    +12.0    +0.7     0.0     a bell, a little over two octaves to half way
+    //   MID -12 at 1 kHz    0.0    -0.8    -12.0    -0.7     0.0
+    //   HIGH +12            0.0     0.0      0.0    +6.0   +12.0
+    //   HIGH -12            0.0     0.0      0.0    -6.0   -12.0
+    {
+        struct Row { float low, mid, freq, high; double at[5]; };
+        const double hz[5] = {40, 200, 1000, 5000, 15000};
+        const Row rows[] = {
+            {eqDb(12), 0.5f, 0.5f, 0.5f, {12.0, 6.0, 0.0, 0.0, 0.0}},  {eqDb(-12), 0.5f, 0.5f, 0.5f, {-12.0, -6.0, 0.0, 0.0, 0.0}},
+            {0.5f, eqDb(12), 0.5f, 0.5f, {0.0, 0.8, 12.0, 0.7, 0.0}},  {0.5f, eqDb(-12), 0.5f, 0.5f, {0.0, -0.8, -12.0, -0.7, 0.0}},
+            {0.5f, 0.5f, 0.5f, eqDb(12), {0.0, 0.0, 0.0, 6.0, 12.0}},  {0.5f, 0.5f, 0.5f, eqDb(-12), {0.0, 0.0, 0.0, -6.0, -12.0}},
+        };
+        for (const Row& row : rows) {
+            std::unique_ptr<Effect> e = fresh(eq, row.low, row.mid, row.freq, row.high);
+            double got[5];
+            for (int i = 0; i < 5; ++i) got[i] = levelAt(*e, hz[i]);
+            SAY("eq       LOW %s MID %s HIGH %s: %+.1f %+.1f %+.1f %+.1f %+.1f dB at 40, 200, 1k, 5k, 15k\n", reads(eq, 0, row.low).c_str(), reads(eq, 1, row.mid).c_str(), reads(eq, 3, row.high).c_str(), got[0], got[1], got[2], got[3], got[4]);
+            for (int i = 0; i < 5; ++i) CHECK(std::fabs(got[i] - row.at[i]) < 0.1);
+        }
+    }
+    // MID FREQ moves the bell: +12 dB at 125 Hz, 354 Hz, 1 kHz, 2.8 kHz, 8 kHz, each at its own place.
+    for (float where : {0.f, 0.25f, 0.5f, 0.75f, 1.f}) {
+        const double hz = std::round(125.0 * std::pow(64.0, where));
+        const double at = levelAt(*fresh(eq, 0.5f, 1.f, where, 0.5f), hz);
+        SAY("eq       MID +12 at %s: %+.1f dB at %.0f Hz\n", reads(eq, 2, where).c_str(), at, hz);
+        CHECK(std::fabs(at - 12.0) < 0.3);
+    }
+    CHECK(levelAt(*fresh(eq, 0.5f, 1.f, 0.f, 0.5f), 1000) < 3.0 && levelAt(*fresh(eq, 0.5f, 1.f, 1.f, 0.5f), 1000) < 3.0);
+    // Every band its own sound: MID FREQ does something once the bell is up (testEveryEffect leaves it out).
+    {
+        Stereo a = pinInput(48000.f), b = a;
+        through(*fresh(eq, 0.5f, 1.f, 0.f, 0.5f), a);
+        through(*fresh(eq, 0.5f, 1.f, 1.f, 0.5f), b);
+        CHECK(a.l != b.l);
+    }
+    // THE RULES. A click: asleep 0.04 s on, every band at +12 dB. Turned at once, end to end, under the 100 Hz sine
+    // (+12 dB at its usual, the bell at 354 Hz): LOW turned down is the sine going from four times its size to a
+    // quarter, setting off gently. With a plain Glide and the bands' numbers stepped once a tick, that read a
+    // step of 8.1 and a corner of 790 (0.28: a click), then with the numbers slid but a plain Glide, a corner of 34.
+    //              down: step  corner    up: step  corner
+    //   LOW           1.03     2.20         1.00     1.00
+    //   MID           0.99     1.44         1.00     1.00
+    //   MID FREQ      1.00     1.00         1.02     1.20
+    //   HIGH          1.00     1.00         1.00     1.01
+    const float set[4] = {1.f, 1.f, 0.25f, 1.f}, other[4] = {0.f, 0.2f, 0.9f, 0.4f};
+    const RulesSeen seen = holdsTheRules(eq, set, other, 2.0);
+    SAY("eq       every band +12: the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
+    CHECK(seen.lastAfterClick < 0.1);
+    const double was[4][4] = {{1.03, 2.20, 1.00, 1.00}, {0.99, 1.44, 1.00, 1.00}, {1.00, 1.00, 1.02, 1.20}, {1.00, 1.00, 1.00, 1.01}};
+    for (int p = 0; p < 4; ++p) {
+        CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
+        CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -7897,6 +8456,9 @@ int main(int argc, char** argv) {
         {"testPing", testPing},
         {"testSpring", testSpring},
         {"testPlate", testPlate},
+        {"testComb", testComb},
+        {"testVowel", testVowel},
+        {"testEq", testEq},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
     // so neither comes near its two minutes on a busy machine. Part 2 is everything from
