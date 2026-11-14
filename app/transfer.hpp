@@ -92,7 +92,8 @@ public:
     // since the autosave would write over it a moment later. Set by the session; any thread.
     void setOpenSong(const std::string& name);
     // Wrong numbers: after kWrongMost of them, counted for the whole server, every request is
-    // refused for lockoutMs (then kWrongMost more). A right number starts the count again.
+    // refused for lockoutMs (then kWrongMost more). A right number in between does not start the
+    // count again; lockoutMs with no wrong number does.
     static constexpr int kWrongMost = 5;
     static int lockoutMs; // 60000; tests make it short
     // For tests: behave as a card does that will not rename a file into another folder, so the
@@ -117,7 +118,8 @@ private:
     void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav"
     std::mutex changesMutex_, songFiles_, openMutex_;
     std::string openSong_; // under openMutex_
-    int wrong_ = 0;                // wrong numbers since the last lockout or right number (the server's thread only)
+    int wrong_ = 0;                // wrong numbers since the last lockout or quiet spell (the server's thread only)
+    long long lastWrongMs_ = 0;    // when the last one came, on the steady clock
     long long lockedUntilMs_ = 0;  // on the steady clock
     std::vector<Change> changes_;
     std::thread thread_;

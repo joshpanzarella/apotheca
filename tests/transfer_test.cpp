@@ -1258,9 +1258,12 @@ static void testTooManyWrongNumbers() {
     // Not a number: not a try (a browser asks for /favicon.ico by itself).
     for (int i = 0; i < 10; ++i) CHECK(get(port, "/favicon.ico").status == 403 && get(port, "/").status == 403);
     CHECK(get(port, door).status == 200);
-    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong + "/list").status == 403);
-    CHECK(get(port, door + "/list").status == 200); // a right one starts the count again
-    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    // A right one in between does not start the count again (review, 2026-11-14: the owner's own
+    // page asks with it all the time, and a guesser beside it was never stopped).
+    for (int i = 0; i < 2; ++i) CHECK(get(port, wrong + "/list").status == 403);
+    CHECK(get(port, door + "/list").status == 200);
+    for (int i = 0; i < 2; ++i) CHECK(get(port, wrong).status == 403);
+    CHECK(get(port, door + "/list").status == 200);
     Answer a = get(port, "/1234567"); // the fifth wrong one: any number
     CHECK(a.status == 429 && a.body == "too many wrong numbers: wait a minute\n");
     // Now every try is refused, the right number too, and it says why.
@@ -1275,6 +1278,12 @@ static void testTooManyWrongNumbers() {
     CHECK(get(port, wrong).status == 429 && get(port, door).status == 429);
     usleep(800000);
     CHECK(get(port, door).status == 200);
+    // A quiet spell as long as a lockout does start it again: a slip of the owner's a day is never five.
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    usleep(800000);
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    CHECK(get(port, door).status == 200);
+    usleep(800000);
     // Wrong tries count for the whole server, not one browser: and a fresh start (a new number) clears them.
     for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
     transfer.stop();

@@ -671,8 +671,9 @@ the same network.
   later. Open another song on the handheld first, or send it under a new name.
 - **Five wrong numbers** in the address, from anyone, and the page refuses
   every try for a minute ("too many wrong numbers: wait a minute"), the right
-  number too. Then five more. Turning WiFi off and on gives a new number and
-  starts the count again.
+  number too. Then five more. A right number in between does not start the
+  count again; a minute with no wrong number does. Turning WiFi off and on
+  gives a new number and starts the count again.
 - **A whole folder**: CHOOSE A FOLDER, or drop one on the page. Every `.wav`
   in it is sent, however deep its sub-folders go. The handheld keeps
   recordings one folder deep, so each sub-folder becomes one folder:

@@ -833,6 +833,7 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
     std::snprintf(pin, sizeof pin, "%04u", (seed >> 8) % 10000u);
     pin_ = pin;
     wrong_ = 0; // a new number: the count starts again
+    lastWrongMs_ = 0;
     lockedUntilMs_ = 0;
     stopping_.store(false);
     listening_ = fd;
@@ -912,14 +913,20 @@ void Transfer::answer(int fd) {
         // Only a number counts as a try: a browser asks for /favicon.ico by itself.
         const std::size_t ends = path.find('/', 1);
         const std::string first = path.substr(1, ends == std::string::npos ? std::string::npos : ends - 1);
-        if (!first.empty() && first.find_first_not_of("0123456789") == std::string::npos && ++wrong_ >= kWrongMost) {
-            wrong_ = 0;
-            lockedUntilMs_ = nowMs + lockoutMs;
-            return reply(fd, "429 Too Many", "text/plain", kTooManyWrong);
+        // A right number in between does not start the count again (the owner's page asks with it
+        // all the time, and a guesser beside it would never be stopped); a quiet minute does. So
+        // the most tries are kWrongMost a minute, either way.
+        if (!first.empty() && first.find_first_not_of("0123456789") == std::string::npos) {
+            if (nowMs - lastWrongMs_ >= lockoutMs) wrong_ = 0;
+            lastWrongMs_ = nowMs;
+            if (++wrong_ >= kWrongMost) {
+                wrong_ = 0;
+                lockedUntilMs_ = nowMs + lockoutMs;
+                return reply(fd, "429 Too Many", "text/plain", kTooManyWrong);
+            }
         }
         return reply(fd, "403 Forbidden", "text/plain", "Open the address shown on the Apotheca screen, with its four-digit number.\n");
     }
-    wrong_ = 0;
     path = path.substr(door.size());
 
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
