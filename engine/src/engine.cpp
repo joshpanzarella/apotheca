@@ -1148,6 +1148,7 @@ void Engine::apply(const Command& c) {
             }
             track.hasDrums = false;
             track.glideFrom = kFromTop;
+            track.autoHeld = 0; // (a track taken away, or the whole song sent again, holds nothing back)
             track.drums.reset();
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (!track.laneSamples[lane]) continue;

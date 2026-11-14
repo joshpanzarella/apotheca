@@ -489,8 +489,14 @@ effect in those two groups and fails one that does not.
     land on it exactly. LEFT / RIGHT is tried too, carried from the starting
     effect (not from what was passed over). The effect committed is installed
     afresh once more (a second fade, a tail heard while trying is cut): the
-    Session has no "put in without telling the engine". `app_test`
-    (`testTryingAnEffectKeepsIt`), `effects_test` (`testHeldAutomation`).
+    Session has no "put in without telling the engine". **The hold is let go
+    by the slot kept in `trySlot_`, after the commit** (letting go by
+    `tryRow_`, already -1 by then, left the slot's automation dead in the
+    engine for good: found in review, 2026-11-14). A hold is said again with
+    every effect tried, and `RemoveInstrument` clears it, so a song sent again
+    (a full queue) holds nothing back. `app_test` (`testTryingAnEffectKeepsIt`
+    reads `Engine::automationHeld` after every way out, and listens to a
+    committed PING's MIX automation), `effects_test` (`testHeldAutomation`).
   - **The list of effects is eight lines, EMPTY and the seven families**
     (`kPickLines`), each a family's name and, from `kPickTypesX`, its types
     in small letters with ", " between ("clean, tape, ping"), the slot's type
@@ -510,7 +516,11 @@ effect in those two groups and fails one that does not.
     program wraps tracks); the line and `last_` stay; an effect being tried
     is called off first. DEVICE keeps its own L1 / R1 (pages, record, slices).
     The list's hints were shortened to fit it (settings, effects, sends):
-    `testFxStepsTheTrack` holds every line and column to the bar.
+    `testFxStepsTheTrack` holds every line and column to the bar. **A panic
+    puts the track back** (`App::trackBeforeShoulders_`, as it puts back the
+    tab and the slices): the four shoulders are seldom down at once, and L1 or
+    R1 first stepped the track on the way. The help card does not say L1 / R1
+    here: it lists what is true on every screen, and it is full.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it

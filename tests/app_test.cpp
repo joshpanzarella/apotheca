@@ -4125,6 +4125,11 @@ float echoOfAHit(Rig& rig) {
     const std::vector<float> out = rig.render(30000);
     return Rig::peak(out, 11000, 16000);
 }
+// Which of track 1's slots the engine holds the automation of (a bit a slot), once what was sent has arrived.
+int heldOf(Rig& rig) {
+    rig.render(64);
+    return rig.engine->automationHeld(0);
+}
 } // namespace
 
 void testTryingAnEffectKeepsIt() {
@@ -4156,6 +4161,7 @@ void testTryingAnEffectKeepsIt() {
             rig.frames(1);
             rig.render(2000);
             CHECK(same(tunedOf(rig, 0, 0), was)); // passing over each: the slot itself untouched
+            CHECK(heldOf(rig) == 1);              // ...and its automation does not move what is tried
         }
         CHECK(fx.onLine(0).kind == static_cast<int>(familyAt(lines - 1)) && fx.trying());
         rig.tap(UP, lines);
@@ -4169,6 +4175,7 @@ void testTryingAnEffectKeepsIt() {
         rig.key(A, false);
         rig.frames(1);
         CHECK(same(tunedOf(rig, 0, 0), was) && !fx.picking());
+        CHECK(heldOf(rig) == 0);
         const float after = echoOfAHit(rig);
         CHECK(std::fabs(after - before) <= 0.01f * before); // heard as before
         if (std::fabs(after - before) > 0.01f * before) std::printf("    an echo of %.4f, as before %.4f\n", static_cast<double>(after), static_cast<double>(before));
@@ -4177,8 +4184,10 @@ void testTryingAnEffectKeepsIt() {
         rig.key(A, true);
         rig.tap(DOWN, 2);
         CHECK(fx.trying() && fx.onLine(0).kind == static_cast<int>(familyAt(tapeLine + 2)));
+        CHECK(heldOf(rig) == 1);
         rig.tap(B);
         CHECK(!fx.trying() && !fx.picking() && same(tunedOf(rig, 0, 0), was));
+        CHECK(heldOf(rig) == 0);
         rig.key(A, false);
         rig.frames(1);
         CHECK(same(tunedOf(rig, 0, 0), was));
@@ -4191,7 +4200,7 @@ void testTryingAnEffectKeepsIt() {
         CHECK(fx.trying());
         session.view = View::Pattern;
         rig.frames(1);
-        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was));
+        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was) && heldOf(rig) == 0);
         rig.key(A, false);
         session.view = View::Effects;
         rig.frames(1);
@@ -4207,7 +4216,7 @@ void testTryingAnEffectKeepsIt() {
         CHECK(fx.trying());
         rig.project().track = 1;
         rig.frames(1);
-        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was) && rig.project().tracks[1].effects[0].kind == 0);
+        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was) && rig.project().tracks[1].effects[0].kind == 0 && heldOf(rig) == 0);
         rig.key(A, false);
         rig.frames(1);
         CHECK(same(tunedOf(rig, 0, 0), was) && rig.project().tracks[1].effects[0].kind == 0);
@@ -4236,6 +4245,21 @@ void testTryingAnEffectKeepsIt() {
         CHECK(now.data.kind == tried.kind);
         for (int i = 0; i < kEffectParams; ++i) CHECK(now.data.param[i] == tried.param[i] && now.data.param[i] == effectDefault(static_cast<EffectKind>(tried.kind), i));
         CHECK(std::count(now.lanes.begin(), now.lanes.end(), kAutoNone) == static_cast<long>(now.lanes.size()));
+        CHECK(heldOf(rig) == 0); // what goes in is moved by its automation again (none yet, but written later, it is)
+        // A whole song sent again in the middle of trying (a full queue): the engine holds nothing then, and the
+        // next effect tried holds it again.
+        rig.key(A, true);
+        rig.tap(UP);
+        CHECK(fx.trying() && heldOf(rig) == 1);
+        session.applyProject();
+        rig.frames(1);
+        CHECK(fx.trying() && heldOf(rig) == 0);
+        rig.tap(UP);
+        CHECK(fx.trying() && heldOf(rig) == 1);
+        rig.tap(B);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(heldOf(rig) == 0 && session.effectData(0, 0).kind == tried.kind);
         // Another family's second type: what was heard goes in (its first type's usual settings, carried).
         rig.key(A, true);
         rig.tap(UP, lines);
@@ -4245,7 +4269,7 @@ void testTryingAnEffectKeepsIt() {
         CHECK(saturate.kind == static_cast<int>(EffectKind::Saturate));
         rig.key(A, false);
         rig.frames(1);
-        CHECK(session.effectData(0, 0).kind == static_cast<int>(EffectKind::Saturate));
+        CHECK(session.effectData(0, 0).kind == static_cast<int>(EffectKind::Saturate) && heldOf(rig) == 0);
         for (int i = 0; i < kEffectParams; ++i) CHECK(session.effectData(0, 0).param[i] == saturate.param[i]);
         // EMPTY, let go: the slot is empty.
         rig.key(A, true);
@@ -4280,6 +4304,17 @@ void testTryingAnEffectKeepsIt() {
         const auto lane = [&](const Tuned& t, int scene, int p, int step) { return t.lanes[static_cast<std::size_t>((scene * 4 + p) * kAutoSteps + step)]; };
         CHECK(lane(now, 0, 1, 3) >= 0.f && lane(now, 4, 2, 17) == kAutoNone && lane(now, kMaxScenes - 1, 3, kAutoSteps - 1) == 0.1f); // FEEDBACK moved, AGE gone, MIX kept
         CHECK(lane(was, 4, 2, 17) == 0.6f);
+        CHECK(heldOf(rig) == 0);
+        // ...and the engine plays it: MIX turned up, written to 0 on every step, no echo comes back.
+        session.setEffectParam(0, 0, 3, 0.9f);
+        for (int step = 0; step < kAutoSteps; ++step) session.setAutomation(0, 0, autoLaneOfEffect(0, 3), step, 0.f);
+        rig.frames(1);
+        if (!rig.project().playing) session.togglePlay(false);
+        rig.frames(1);
+        rig.render(48000);
+        const float echo = echoOfAHit(rig);
+        CHECK(echo < 0.001f);
+        if (echo >= 0.001f) std::printf("    an echo of %.5f with MIX written to 0\n", static_cast<double>(echo));
     }
     {
         // A bus and the master: the same.
@@ -4974,6 +5009,17 @@ void testTheFxScreenAsDrawn() {
     draw();
     CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
     rig.project().scene = 0;
+    // ...and not under a line trying another effect: that one's lanes are not what it has.
+    fx.goTo(0, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    draw();
+    CHECK(!canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    rig.tap(B);
+    rig.key(A, false);
+    draw();
+    CHECK(canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
 
     // THE SENDS, large: two rows, where each goes, and the automated one marked.
     session.setSend(0, 0, 0.35f);
@@ -7700,6 +7746,21 @@ void testFxStepsTheTrack() {
         rig.key(A, false);
     }
     ui::gHelpHint = "MENU: HELP";
+    // The four shoulders for a panic are seldom down at once: L1 or R1 first steps the track on the way, and the
+    // panic puts it back, as it puts back the tab the triggers turned.
+    for (int first = 0; first < 2; ++first) {
+        session.view = View::Effects;
+        rig.project().track = 1;
+        fx.goTo(1, 0);
+        rig.frames(1);
+        const SDL_Keycode order[2][4] = {{R1, L2, R2, L1}, {L2, L1, R2, R1}};
+        for (SDL_Keycode k : order[first]) rig.key(k, true), rig.frames(1);
+        CHECK(rig.app.panicNoteShowing() && rig.project().track == 1 && session.view == View::Effects);
+        for (SDL_Keycode k : order[first]) rig.key(k, false);
+        rig.frames(1);
+        CHECK(rig.project().track == 1 && session.view == View::Effects);
+        if (rig.project().track != 1) std::printf("    a panic left track %d\n", rig.project().track + 1);
+    }
 }
 
 // B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).

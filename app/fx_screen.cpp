@@ -104,7 +104,7 @@ bool sameEffect(const EffectData& a, const EffectData& b) {
 } // namespace
 
 void FxScreen::sendSlot(const EffectData& d) {
-    const int track = tryTrack_, slot = slotOf(tryRow_); // (whose it was: the track may have changed since)
+    const int track = tryTrack_, slot = trySlot_; // (whose it was: the track may have changed since)
     const EffectKind kind = static_cast<EffectKind>(d.kind);
     session_.engine.setEffect(track, slot, kind); // (a loss is counted, and mended by the song sent again)
     Command c;
@@ -119,12 +119,14 @@ void FxScreen::sendSlot(const EffectData& d) {
 }
 
 void FxScreen::holdAutomation(bool held) {
-    if (held == held_ || tryTrack_ < 0) return; // (the master and the buses have no automation)
+    // (The master and the buses have no automation.) A hold is said again with every slot tried: a song sent
+    // again in the middle (a full queue) let the engine's go.
+    if ((!held && !held_) || tryTrack_ < 0) return;
     held_ = held;
     Command c;
     c.type = Command::HoldEffectAutomation;
     c.track = tryTrack_;
-    c.a = slotOf(tryRow_);
+    c.a = trySlot_; // (kept: let go, the row is no longer the one tried)
     c.b = held ? 1 : 0;
     session_.engine.send(c);
 }
@@ -132,6 +134,7 @@ void FxScreen::holdAutomation(bool held) {
 void FxScreen::startTrying() {
     tryRow_ = row_;
     tryTrack_ = trackOf(row_);
+    trySlot_ = slotOf(row_);
     tried_ = session_.effectData(tryTrack_, slotOf(row_));
     away_ = false;
     held_ = false;

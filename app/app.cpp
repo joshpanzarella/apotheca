@@ -48,12 +48,14 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         if (down == 1) {
             viewBeforeShoulders_ = session_.view; // the first of them: the triggers may turn the tabs on the way
             slicingBeforeShoulders_ = drums_.slicing(); // ...and L1 may open or shut the slices
+            trackBeforeShoulders_ = session_.project.track; // ...or, on FX, L1 / R1 step the track
         }
         if (down == 4) {
             panicking_ = true;
             panicNote_ = true;
             session_.view = viewBeforeShoulders_;
             if (drums_.slicing() != slicingBeforeShoulders_) drums_.setSlicing(slicingBeforeShoulders_);
+            if (trackBeforeShoulders_ < session_.project.trackCount()) session_.project.track = trackBeforeShoulders_;
             session_.wantSlices = -1;
             session_.panic(true);
             return;

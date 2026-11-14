@@ -4412,6 +4412,18 @@ static void testHeldAutomation() {
     engine->send(make(Command::Stop));
     leftOf(*engine, 64);
     CHECK(second->lastParam == stayed && first->lastParam == 0.3f); // stopped while held: left where it is
+    // Held in the middle of a glide (step 1: 0.7 to 0.9 over half a step): it stops where it got to.
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 0));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 6000 + 1000);
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));
+    leftOf(*engine, 64);
+    const float midway = second->lastParam;
+    leftOf(*engine, 3000);
+    CHECK(midway > 0.7f && midway < 0.9f && second->lastParam == midway);
+    if (!(midway > 0.7f && midway < 0.9f && second->lastParam == midway)) std::printf("    held mid-glide at %.4f, then %.4f\n", static_cast<double>(midway), static_cast<double>(second->lastParam));
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
 }
 
 // Tracks have a third slot: it runs after the second, and lanes 16 to 19 are its settings.

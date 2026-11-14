@@ -224,6 +224,7 @@ private:
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
     int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
+    int trySlot_ = 0;                // and its slot, kept after tryRow_ is let go (the engine's hold is let go by it)
     EffectData tried_;               // what it is trying
     bool away_ = false;              // the engine's slot holds tried_, not the project's
     bool held_ = false;              // the engine was told to hold the slot's automation

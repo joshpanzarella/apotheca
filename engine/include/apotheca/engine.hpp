@@ -413,6 +413,9 @@ public:
     // What render() does with each timing. Public for the tests: `part` is
     // time taken over time available, for a block of `frames`.
     void noteLoad(float part, int frames);
+    // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
+    // tests: read between renders, never while one is under way.
+    int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
 
 private:
     struct DrumScene {
