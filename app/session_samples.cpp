@@ -66,7 +66,9 @@ void Session::recordingChanged(const std::string& from, const std::string& to) {
                 }
                 std::snprintf(name, kSampleNameRoom, "%s", to.c_str()); // the sound in the engine is the same one: it plays on
             }
-            if (!to.empty() && to == name && sounds_[t][lane].missing) read(); // the file it was waiting for is here
+            // The file it was waiting for is here; or one was sent from the page in place of the one it
+            // plays, and the new sound plays from now on (a rename leaves the sound as it is: the same file).
+            if (!to.empty() && to == name && (from.empty() || sounds_[t][lane].missing)) read();
         }
     }
     if (!to.empty()) findMissing(sampleLabel(to)); // or one of its base name, in another folder

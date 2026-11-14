@@ -723,7 +723,14 @@ static void testTheOpenSongFollows() {
     CHECK(!session.laneSound(0, 2).missing && std::abs(sounds(0, 2) - 4800) < 600);
     CHECK(session.laneSound(0, 3).missing && session.trackSound(1).missing && session.laneSound(0, 5).missing);
     CHECK(version(0, 3) == waiting); // and one still missing is not looked for each time some other file arrives
-    CHECK(version(0, 0) == before && sounds(0, 0) == thud); // one that is playing is not read again when its file is sent over
+    // One that is playing is read again when a new file is sent over it: the page said it would take
+    // its place. (It played the old sound until the song was opened again, and a bounce, which reads
+    // the card, had the new one.) The sampler track that plays it too.
+    CHECK(version(0, 0) != before && !session.laneSound(0, 0).missing && std::abs(sounds(0, 0) - 4800) < 600);
+    CHECK(std::abs(session.trackSound(2).seconds - 0.1f) < 0.01f);
+    CHECK(put(port, door + "/samples/kicks/big%20boom.wav", wavBytes(steady(0.5f), 48000)).status == 200); // and back as it was, for what follows
+    frames(1);
+    CHECK(sounds(0, 0) == thud);
     // A missing one whose file turns up under its name by a rename is read too.
     CHECK(put(port, door + "/samples/stray.wav", wavBytes(steady(0.4f), 48000)).status == 200);
     CHECK(post(port, door + "/samples/stray.wav", "never%20was.wav").status == 200);
