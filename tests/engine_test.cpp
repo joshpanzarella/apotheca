@@ -11,6 +11,7 @@
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
 #include "apotheca/twin.hpp"
+#include "apotheca/sampler.hpp"
 #include "apotheca/rate_converter.hpp"
 
 using namespace apotheca;
@@ -135,6 +136,10 @@ static void testVelocityIsLinearGain() {
     for (std::size_t i = 0; i < a.size(); ++i) half = half && std::fabs(b[i] - 0.5f * a[i]) < 1e-6f;
     CHECK(half);
     CHECK(peakOf(a) > 0.1f);
+    // A Trigger above full level plays at full level, to the sample.
+    Engine over;
+    over.send(trigger(SNARE, 2.f));
+    CHECK(renderFrames(over, 3000) == a);
 }
 
 static void testLanesAreDifferentSounds() {
@@ -3040,10 +3045,34 @@ static void testCellsOfSeveralBars() {
     CHECK(heard(3) == std::vector<int>({0, 16, 32}));
 }
 
+// Nine keys held on the sampler's eight voices: the ninth takes the OLDEST. Letting go of the first
+// key then fades nothing (it was taken), and letting go of the eighth fades one voice.
+static void testTheSamplerTakesTheOldest() {
+    Sampler s;
+    s.prepare(48000.f);
+    std::vector<float> one(480000, 1.f);
+    s.setSample(one.data(), static_cast<int>(one.size()));
+    s.setSetting(sampler::Attack, 0);
+    s.setSetting(sampler::Release, 0);
+    std::vector<float> left(4800), right(4800);
+    const auto level = [&] { s.render(left.data(), right.data(), 4800); return left[4799] / (0.8f * sampler::kVoiceGain); };
+    for (int i = 0; i < 8; ++i) s.noteOn(60 + i, 1.f);
+    CHECK(about(level(), 8.f));
+    s.noteOn(68, 1.f);
+    CHECK(about(level(), 8.f));
+    s.noteOff(60); // the oldest: already taken by the ninth
+    CHECK(about(level(), 8.f));
+    s.noteOff(67); // the newest of the first eight: still playing
+    CHECK(about(level(), 7.f));
+    s.noteOff(68);
+    CHECK(about(level(), 6.f));
+}
+
 int main() {
     testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();
     testTheSampler();
+    testTheSamplerTakesTheOldest();
     testEffectsOneByOne();
     testEffectsInTheEngine();
     testCatchingTheLastBar();
