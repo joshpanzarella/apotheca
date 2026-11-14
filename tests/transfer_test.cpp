@@ -811,10 +811,10 @@ static void testRenamingInSongText() {
     const std::string after = "apotheca-song 1\ntempo 97\nmystery thud\nsound thud\nsample 1 0 thud\ntrack drums\nsample 1 0 kicks/big boom\nsample 2 16 kicks/snap\n"
                               "sample 8 4 kicks/big boom\nsample 9 0 thud\nsample 0 0 thud\nsample 3 0 thudx\nsample 4 0 x/thud\nsample 6 0 thud \nsample 7 thud\nsound thud\n"
                               "future 1 2 thud\n\n  sample   5   0   kicks/big boom\ntrack sampler\nsound kicks/big boom\nsample 1 0 thud\nsampler 60 0 0\ntrack phazed\nsound thud\n"
-                              "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  thud\r\ntrack sampler\nsound\ttwo words/thud\n"
+                              "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  kicks/big boom\r\ntrack sampler\nsound\ttwo words/thud\n"
                               "track sampler\nsound kicks/big boom"; // and no line end is added to a file that had none
     std::string text = before;
-    CHECK(renameRecordings(text, one) && text == after);
+    CHECK(renameRecordings(text, one) && text == after); // ("sound  thud\r": a Windows line end, read as parseSong reads it)
     // What the program reads from it is the same song with the new name.
     std::unique_ptr<Project> was(new Project), now(new Project);
     CHECK(parseSong(before, *was) && parseSong(after, *now));

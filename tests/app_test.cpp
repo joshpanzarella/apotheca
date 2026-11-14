@@ -817,10 +817,12 @@ void testCellsOfSeveralBars() {
     told.tap(START);
     const std::vector<float> a = opened.render(4 * kBar), b = told.render(4 * kBar);
     CHECK(Rig::peak(a) > 0.05f && a == b);
-    // Lines that make no sense are left out: a bar the cell does not have, a length that is not one.
+    // Lines that make no sense are left out: a bar there is not, a length that is not one. A bar past
+    // the cell's end is one it hides (made shorter), and is kept, to come back if it is made longer.
     CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nbars 3\nbar 2\nhit 1 1 1\nbar 3\nhit 2 2 1\nbar 9\nhit 3 3 1\nbar 0\nhit 4 4 1\nscene 2\nhit 5 5 1\n", *back));
     CHECK(back->tracks[0].bars[0] == 2 && back->tracks[0].drums[0][1].level[0][0] == 1.f);
-    CHECK(back->tracks[0].drums[0][2].empty() && back->tracks[0].drums[0][0].empty()); // bars 3, 9 and 0 are not there
+    CHECK(back->tracks[0].drums[0][2].level[1][1] == 1.f && back->tracks[0].drums[0][0].empty()); // bar 3 hidden; bars 9 and 0 are not there
+    for (int bar = 3; bar < kMaxBars; ++bar) CHECK(back->tracks[0].drums[0][bar].empty());
     CHECK(back->tracks[0].drums[1][0].level[4][4] == 1.f && back->tracks[0].bars[1] == 1); // a new scene starts at its first bar
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 9 60 40 1\nscene 2\nbars 2\nnote 9 60 40 1\n", *back));
     CHECK(back->tracks[0].notes[0][0].notes[0].length == 8.f && back->tracks[0].notes[1][0].notes[0].length == 24.f);
