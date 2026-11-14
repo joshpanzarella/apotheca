@@ -440,10 +440,12 @@ effect in those two groups and fails one that does not.
   the bit (TAPE leaves what is under 240 dB down on its tape: 1e-9 apart).
   So a steady sine's samples at its zero crossings (under 1e-12) are not
   echoed. **Its tail leans left** (each right echo is FEEDBACK of the left before it:
-  7.8 dB over a tail at 45%; a sound hard right echoes first on the left; the
-  owner's call, pinned in `testPing`). Its FEEDBACK reads what it does, 0 to 90%: a twentieth is 4.5%, so
-  the D-pad's stops read 5, 9, 14, 18... (CLEAN reads 0 to 100% and does nine
-  tenths of it; TAPE reads to 120%. Three scales, carried as they read.)
+  7.8 dB over a tail at FEEDBACK 50%, each echo 0.45 of the last; a sound hard right echoes first on
+  the left; the owner's call, pinned in `testPing`). **Its FEEDBACK reads 0 to 100% and does nine
+  tenths of it, exactly as CLEAN's** (owner, 2026-11-14; it read 0 to 90%, and the D-pad's stops read
+  5, 9, 14, 18...). Only the reading changed: the same setting does what it did, so old songs sound
+  as they did. CLEAN and PING are one scale (carried to the bit); TAPE reads to 120% (carried as it
+  reads, 50% to 0.42). Its loop is still 0.9 at most: the tail always ends.
 - **A filter state does not reach zero by itself**: with a coefficient over a
   half it sticks at the smallest number there is. Snap it (`< 1e-20f`), or
   "silence in, silence out" fails and a processor without flush-to-zero crawls.
@@ -477,9 +479,35 @@ effect in those two groups and fails one that does not.
     `update()` only pulls the cursor in when the line has fewer settings now.
   - **Hold A on a slot's line opens the list of effects** (`picking()`), drawn
     from `familyAt`: DOWN is the next line of it, since it is seen (it was UP
-    when the list was stepped through blind). Left / right is the TYPE
-    (`changeEffectType`). The group jump is gone. On a setting, A + up / down
-    turns it as before, and left / right do nothing.
+    when the list was stepped through blind). Left / right is the TYPE. The
+    group jump is gone. On a setting, A + up / down turns it as before, and
+    left / right do nothing.
+  - **With A held the list only TRIES** (owner, 2026-11-14: passing over the
+    list threw a tuned effect away). The PROJECT is not touched while A is
+    held: `tryKind` sends the engine's slot the effect under the cursor
+    (`Engine::setEffect` and `SetEffectParam`: the usual 10 ms fade), and
+    `Command::HoldEffectAutomation` holds that slot's automation in the engine
+    so the pattern does not move the effect tried. `data(row)` (`onLine`) is
+    the tried one meanwhile. **Let go of A** (`letGo`): another family goes in
+    through `Session::setEffect` (its first type, then `changeEffectType` to the
+    type picked), another type of the same family through `changeEffectType`
+    from the effect it started with; what was heard is what goes in (the test
+    holds the two equal). **Let go on the effect it started on, B with A held,
+    another screen up (`App::update` calls `callOff`) or another track**: the
+    engine is sent what the project holds, so the slot is as it was to the bit
+    (its automation never moved). The family it started in is tried as the
+    effect it started with, not afresh, which is what lets "down and back up"
+    land on it exactly. LEFT / RIGHT is tried too, carried from the starting
+    effect (not from what was passed over). The effect committed is installed
+    afresh once more (a second fade, a tail heard while trying is cut): the
+    Session has no "put in without telling the engine". **The hold is let go
+    by the slot kept in `trySlot_`, after the commit** (letting go by
+    `tryRow_`, already -1 by then, left the slot's automation dead in the
+    engine for good: found in review, 2026-11-14). A hold is said again with
+    every effect tried, and `RemoveInstrument` clears it, so a song sent again
+    (a full queue) holds nothing back. `app_test` (`testTryingAnEffectKeepsIt`
+    reads `Engine::automationHeld` after every way out, and listens to a
+    committed PING's MIX automation), `effects_test` (`testHeldAutomation`).
   - **The list of effects is eight lines, EMPTY and the seven families**
     (`kPickLines`), each a family's name and, from `kPickTypesX`, its types
     in small letters with ", " between ("clean, tape, ping"), the slot's type
@@ -493,6 +521,17 @@ effect in those two groups and fails one that does not.
     row keeps for the LEFT / RIGHT key held or not). Today's all fit; six
     planned DELAYs at LARGE do not. A family of one shows its type all the
     same where it is not the family's word (MOD: TYPE CHORUS), with no key.
+  - **L1 / R1 is the track before / after** (owner, 2026-11-14: a send on
+    another track cost five presses). `FxScreen::stepTrack`: it stops at the
+    first and the last track, as the SONG screen's columns do (nothing in the
+    program wraps tracks); the line and `last_` stay; an effect being tried
+    is called off first. DEVICE keeps its own L1 / R1 (pages, record, slices).
+    The list's hints were shortened to fit it (settings, effects, sends):
+    `testFxStepsTheTrack` holds every line and column to the bar. **A panic
+    puts the track back** (`App::trackBeforeShoulders_`, as it puts back the
+    tab and the slices): the four shoulders are seldom down at once, and L1 or
+    R1 first stepped the track on the way. The help card does not say L1 / R1
+    here: it lists what is true on every screen, and it is full.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it

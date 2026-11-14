@@ -3354,46 +3354,47 @@ void testTheEffectsScreen() {
     rig.key(A, true);
     CHECK(fx.picking());
     rig.tap(DOWN);
-    CHECK(first.kind == static_cast<int>(EffectKind::Filter) && first.param[0] == effectInfo(EffectKind::Filter).defaults[0] && first.param[3] == 1.f);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Filter) && fx.onLine(0).param[0] == effectInfo(EffectKind::Filter).defaults[0] && fx.onLine(0).param[3] == 1.f);
     CHECK(rig.listen(4000) > 0.05f);
     // (Counted from the list, which has its own order and grows: an effect's place is not its number. A line is a FAMILY.)
     const int last = familyListSize() - 1, delayAt = familyPlace(EffectKind::Delay);
     CHECK(familyPlace(EffectKind::Filter) == 1 && delayAt > 1 && familyAt(last) == EffectKind::Comp);
     rig.tap(DOWN, delayAt - 1);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay)); // the family goes in as its first type
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay)); // the family goes in as its first type
     rig.tap(DOWN, last + 3);
-    CHECK(first.kind == static_cast<int>(EffectKind::Comp)); // the last one (LEVEL, as COMP): it stops
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Comp)); // the last one (LEVEL, as COMP): it stops
     rig.tap(UP, last - delayAt);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay));
     rig.tap(UP, delayAt);
-    CHECK(first.kind == static_cast<int>(EffectKind::None)); // up past the first effect: empty
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::None)); // up past the first effect: empty
     rig.tap(UP, 2);
-    CHECK(first.kind == static_cast<int>(EffectKind::None)); // and it stops there
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::None)); // and it stops there
     rig.tap(LEFT);
     rig.tap(RIGHT); // nothing has no TYPE
-    CHECK(first.kind == static_cast<int>(EffectKind::None) && fx.cursorColumn() == 0);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::None) && fx.cursorColumn() == 0);
     rig.tap(DOWN, delayAt);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay));
     // Sideways with A held is the TYPE: the cursor stays on the line, and the ends stop.
     rig.tap(LEFT);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay) && fx.cursorColumn() == 0);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay) && fx.cursorColumn() == 0);
     rig.render(100000);
     rig.tap(RIGHT);
-    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
     CHECK(rig.listen(4000) > 0.05f); // heard at once, as a new effect is
     rig.tap(RIGHT, 3);
-    CHECK(first.kind == static_cast<int>(EffectKind::Ping)); // the family's last type: it stops there
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Ping)); // the family's last type: it stops there
     rig.tap(LEFT);
-    CHECK(first.kind == static_cast<int>(EffectKind::Tape));
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape));
     rig.tap(LEFT);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay));
-    // Out of the family and back: it comes in afresh, at its usual settings.
-    session.setEffectParam(0, 0, 0, 0.05f);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay));
+    // Out of the family and back: it is tried afresh, at its usual settings. All the while the slot itself holds what it held.
     rig.tap(UP);
     rig.tap(DOWN);
-    CHECK(first.kind == static_cast<int>(EffectKind::Delay) && first.param[0] == effectInfo(EffectKind::Delay).defaults[0]);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay) && fx.onLine(0).param[0] == effectInfo(EffectKind::Delay).defaults[0]);
+    CHECK(first.kind == static_cast<int>(EffectKind::None) && fx.trying());
     rig.key(A, false);
-    CHECK(!fx.picking());
+    CHECK(!fx.picking() && !fx.trying());
+    CHECK(first.kind == static_cast<int>(EffectKind::Delay) && first.param[0] == effectInfo(EffectKind::Delay).defaults[0] && first.param[3] == effectInfo(EffectKind::Delay).defaults[3]); // let go: in
 
     // The delay is on the track: a rim shot comes back a quarter note later.
     rig.render(200000);
@@ -4079,6 +4080,283 @@ void testTheFxScreenShowsCompAtWork() {
 }
 
 // The FX screen's list: eight lines, all in view, walked with up and down alone; the sends; the buses.
+// TRYING AN EFFECT. With A held on a slot's line the list of effects only TRIES what the cursor passes over:
+// heard, but the slot's own effect, its settings and its automation are kept aside. Let go on the line it
+// started on, press B, leave the screen or the track: it is as it was, to the bit. Let go elsewhere: in.
+namespace {
+struct Tuned {
+    EffectData data;
+    std::vector<float> lanes; // the slot's four lanes, every scene
+};
+Tuned tunedOf(Rig& rig, int track, int slot) {
+    Tuned t;
+    t.data = rig.app.session().effectData(track, slot);
+    if (track >= 0)
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            for (int p = 0; p < 4; ++p)
+                for (int step = 0; step < kAutoSteps; ++step) t.lanes.push_back(rig.project().tracks[track].automation[scene][autoLaneOfEffect(slot, p)][step]);
+    return t;
+}
+bool same(const Tuned& a, const Tuned& b) {
+    if (a.data.kind != b.data.kind || a.lanes != b.lanes) return false;
+    for (int i = 0; i < kEffectParams; ++i)
+        if (a.data.param[i] != b.data.param[i]) return false;
+    return true;
+}
+// A TAPE in the track's first slot, turned, with automation in three scenes.
+void tuneTape(Rig& rig) {
+    Session& session = rig.app.session();
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffectParam(0, 0, 0, 0.3125f); // 1/8: a quarter of a 120 BPM bar, 12000 samples
+    session.setEffectParam(0, 0, 1, 0.4123f);
+    session.setEffectParam(0, 0, 2, 0.0777f);
+    session.setEffectParam(0, 0, 3, 0.8f);
+    session.setAutomation(0, 0, autoLaneOfEffect(0, 1), 3, 0.2f);
+    session.setAutomation(0, 4, autoLaneOfEffect(0, 2), 17, 0.6f);
+    session.setAutomation(0, kMaxScenes - 1, autoLaneOfEffect(0, 3), kAutoSteps - 1, 0.1f);
+    rig.frames(1);
+    rig.render(48000);
+}
+// A rim shot through track 1 and how loud its first echo is (TAPE's TIME, a quarter of a bar on).
+float echoOfAHit(Rig& rig) {
+    rig.render(96000); // anything tried has long gone
+    Command hit;
+    hit.type = Command::Trigger;
+    hit.a = 6;
+    hit.value = 1.f;
+    rig.engine->send(hit);
+    const std::vector<float> out = rig.render(30000);
+    return Rig::peak(out, 11000, 16000);
+}
+// Which of track 1's slots the engine holds the automation of (a bit a slot), once what was sent has arrived.
+int heldOf(Rig& rig) {
+    rig.render(64);
+    return rig.engine->automationHeld(0);
+}
+} // namespace
+
+void testTryingAnEffectKeepsIt() {
+    const int tapeLine = familyPlace(EffectKind::Tape), lines = familyListSize();
+    // The sound of the TAPE never browsed past, to hold the browsed one to.
+    float before = 0.f;
+    {
+        Rig rig;
+        tuneTape(rig);
+        rig.app.session().view = View::Effects;
+        rig.frames(1);
+        before = echoOfAHit(rig);
+        CHECK(before > 0.01f);
+    }
+    {
+        // Down the whole list and back up it, let go on the line it started on: the slot is as it was, and so is its sound.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        tuneTape(rig);
+        const Tuned was = tunedOf(rig, 0, 0);
+        session.view = View::Effects;
+        fx.goTo(0, 0);
+        rig.frames(1);
+        rig.key(A, true);
+        CHECK(fx.picking() && !fx.trying());
+        for (int i = 0; i < lines; ++i) {
+            rig.tap(DOWN);
+            rig.frames(1);
+            rig.render(2000);
+            CHECK(same(tunedOf(rig, 0, 0), was)); // passing over each: the slot itself untouched
+            CHECK(heldOf(rig) == 1);              // ...and its automation does not move what is tried
+        }
+        CHECK(fx.onLine(0).kind == static_cast<int>(familyAt(lines - 1)) && fx.trying());
+        rig.tap(UP, lines);
+        CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::None));
+        rig.tap(DOWN, tapeLine);
+        CHECK(!fx.trying() && fx.onLine(0).kind == static_cast<int>(EffectKind::Tape)); // back on its family's line: itself, as it was
+        rig.tap(RIGHT); // PING tried, and back
+        CHECK(fx.trying() && fx.onLine(0).kind == static_cast<int>(EffectKind::Ping));
+        rig.tap(LEFT);
+        CHECK(!fx.trying());
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(same(tunedOf(rig, 0, 0), was) && !fx.picking());
+        CHECK(heldOf(rig) == 0);
+        const float after = echoOfAHit(rig);
+        CHECK(std::fabs(after - before) <= 0.01f * before); // heard as before
+        if (std::fabs(after - before) > 0.01f * before) std::printf("    an echo of %.4f, as before %.4f\n", static_cast<double>(after), static_cast<double>(before));
+
+        // B with A held calls it off, wherever the cursor is in the list; A does nothing more until it is pressed again.
+        rig.key(A, true);
+        rig.tap(DOWN, 2);
+        CHECK(fx.trying() && fx.onLine(0).kind == static_cast<int>(familyAt(tapeLine + 2)));
+        CHECK(heldOf(rig) == 1);
+        rig.tap(B);
+        CHECK(!fx.trying() && !fx.picking() && same(tunedOf(rig, 0, 0), was));
+        CHECK(heldOf(rig) == 0);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(same(tunedOf(rig, 0, 0), was));
+        CHECK(std::fabs(echoOfAHit(rig) - before) <= 0.01f * before);
+
+        // Another screen up mid-hold: called off.
+        fx.goTo(0, 0);
+        rig.key(A, true);
+        rig.tap(UP);
+        CHECK(fx.trying());
+        session.view = View::Pattern;
+        rig.frames(1);
+        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was) && heldOf(rig) == 0);
+        rig.key(A, false);
+        session.view = View::Effects;
+        rig.frames(1);
+        CHECK(same(tunedOf(rig, 0, 0), was));
+        // The track changed under it mid-hold: called off, the first track's slot as it was.
+        addPhazed(rig);
+        session.view = View::Effects;
+        rig.project().track = 0;
+        fx.goTo(0, 0);
+        rig.frames(1);
+        rig.key(A, true);
+        rig.tap(UP);
+        CHECK(fx.trying());
+        rig.project().track = 1;
+        rig.frames(1);
+        CHECK(!fx.trying() && same(tunedOf(rig, 0, 0), was) && rig.project().tracks[1].effects[0].kind == 0 && heldOf(rig) == 0);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(same(tunedOf(rig, 0, 0), was) && rig.project().tracks[1].effects[0].kind == 0);
+        rig.project().track = 0;
+        rig.frames(1);
+        const float last = echoOfAHit(rig);
+        CHECK(std::fabs(last - before) <= 0.01f * before);
+        if (std::fabs(last - before) > 0.01f * before) std::printf("    an echo of %.4f, as before %.4f\n", static_cast<double>(last), static_cast<double>(before));
+    }
+    {
+        // Let go on another family: it goes in, at its usual settings, and the old automation goes, in every scene.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        tuneTape(rig);
+        session.view = View::Effects;
+        fx.goTo(0, 0);
+        rig.frames(1);
+        rig.key(A, true);
+        rig.tap(UP, 2);
+        const EffectData tried = fx.onLine(0);
+        CHECK(tried.kind == static_cast<int>(familyAt(tapeLine - 2)) && tried.kind != 0);
+        rig.key(A, false);
+        rig.frames(1);
+        const Tuned now = tunedOf(rig, 0, 0);
+        CHECK(now.data.kind == tried.kind);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(now.data.param[i] == tried.param[i] && now.data.param[i] == effectDefault(static_cast<EffectKind>(tried.kind), i));
+        CHECK(std::count(now.lanes.begin(), now.lanes.end(), kAutoNone) == static_cast<long>(now.lanes.size()));
+        CHECK(heldOf(rig) == 0); // what goes in is moved by its automation again (none yet, but written later, it is)
+        // A whole song sent again in the middle of trying (a full queue): the engine holds nothing then, and the
+        // next effect tried holds it again.
+        rig.key(A, true);
+        rig.tap(UP);
+        CHECK(fx.trying() && heldOf(rig) == 1);
+        session.applyProject();
+        rig.frames(1);
+        CHECK(fx.trying() && heldOf(rig) == 0);
+        rig.tap(UP);
+        CHECK(fx.trying() && heldOf(rig) == 1);
+        rig.tap(B);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(heldOf(rig) == 0 && session.effectData(0, 0).kind == tried.kind);
+        // Another family's second type: what was heard goes in (its first type's usual settings, carried).
+        rig.key(A, true);
+        rig.tap(UP, lines);
+        rig.tap(DOWN, familyPlace(EffectKind::Drive));
+        rig.tap(RIGHT);
+        const EffectData saturate = fx.onLine(0);
+        CHECK(saturate.kind == static_cast<int>(EffectKind::Saturate));
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.effectData(0, 0).kind == static_cast<int>(EffectKind::Saturate) && heldOf(rig) == 0);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(session.effectData(0, 0).param[i] == saturate.param[i]);
+        // EMPTY, let go: the slot is empty.
+        rig.key(A, true);
+        rig.tap(UP, lines);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.effectData(0, 0).kind == 0);
+    }
+    {
+        // Let go on another TYPE of its family: in, with the settings the two share as they read, and their automation moved.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        tuneTape(rig);
+        const Tuned was = tunedOf(rig, 0, 0);
+        session.view = View::Effects;
+        fx.goTo(0, 0);
+        rig.frames(1);
+        rig.key(A, true);
+        rig.tap(UP);
+        rig.tap(DOWN); // through another family and back: still carried from the TAPE as it is
+        rig.tap(RIGHT);
+        const EffectData tried = fx.onLine(0);
+        CHECK(tried.kind == static_cast<int>(EffectKind::Ping) && same(tunedOf(rig, 0, 0), was));
+        rig.key(A, false);
+        rig.frames(1);
+        const Tuned now = tunedOf(rig, 0, 0);
+        CHECK(now.data.kind == static_cast<int>(EffectKind::Ping));
+        for (int i = 0; i < kEffectParams; ++i) CHECK(now.data.param[i] == tried.param[i]); // what was heard is what went in
+        CHECK(now.data.param[0] == was.data.param[0] && now.data.param[3] == was.data.param[3]); // TIME and MIX: one scale
+        CHECK(now.data.param[2] == effectDefault(EffectKind::Ping, 2)); // AGE is not TONE
+        const auto lane = [&](const Tuned& t, int scene, int p, int step) { return t.lanes[static_cast<std::size_t>((scene * 4 + p) * kAutoSteps + step)]; };
+        CHECK(lane(now, 0, 1, 3) >= 0.f && lane(now, 4, 2, 17) == kAutoNone && lane(now, kMaxScenes - 1, 3, kAutoSteps - 1) == 0.1f); // FEEDBACK moved, AGE gone, MIX kept
+        CHECK(lane(was, 4, 2, 17) == 0.6f);
+        CHECK(heldOf(rig) == 0);
+        // ...and the engine plays it: MIX turned up, written to 0 on every step, no echo comes back.
+        session.setEffectParam(0, 0, 3, 0.9f);
+        for (int step = 0; step < kAutoSteps; ++step) session.setAutomation(0, 0, autoLaneOfEffect(0, 3), step, 0.f);
+        rig.frames(1);
+        if (!rig.project().playing) session.togglePlay(false);
+        rig.frames(1);
+        rig.render(48000);
+        const float echo = echoOfAHit(rig);
+        CHECK(echo < 0.001f);
+        if (echo >= 0.001f) std::printf("    an echo of %.5f with MIX written to 0\n", static_cast<double>(echo));
+    }
+    {
+        // A bus and the master: the same.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.setEffectParam(kSpaceBus, 0, 0, 0.31f);
+        session.setEffectParam(kSpaceBus, 0, 3, 0.6f);
+        session.setEffect(kMasterTrack, 1, EffectKind::Comp);
+        session.setEffectParam(kMasterTrack, 1, 0, 0.27f);
+        const Tuned bus = tunedOf(rig, kSpaceBus, 0), master = tunedOf(rig, kMasterTrack, 1);
+        session.view = View::Effects;
+        for (int row : {FxScreen::kBusRow + 1, FxScreen::kMasterRow + 1}) {
+            fx.goTo(row, 0);
+            rig.frames(1);
+            rig.key(A, true);
+            rig.tap(UP, 8);
+            CHECK(fx.trying() && fx.onLine(row).kind == 0);
+            rig.tap(DOWN, 8);
+            rig.tap(UP, 8);
+            rig.tap(B);
+            rig.key(A, false);
+            rig.frames(1);
+            rig.key(A, true);
+            rig.tap(UP, 8);
+            rig.tap(DOWN, row == FxScreen::kBusRow + 1 ? 1 : familyPlace(EffectKind::Comp));
+            rig.key(A, false);
+            rig.frames(1);
+        }
+        CHECK(same(tunedOf(rig, kSpaceBus, 0), bus) && same(tunedOf(rig, kMasterTrack, 1), master));
+        fx.goTo(FxScreen::kBusRow + 1, 0);
+        rig.key(A, true);
+        rig.tap(RIGHT);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.effectData(kSpaceBus, 0).kind == static_cast<int>(effectTypeAt(EffectKind::Hall, effectTypeIndex(EffectKind::Hall) + 1)) && session.effectData(kSpaceBus, 0).param[effectMixParam(static_cast<EffectKind>(session.effectData(kSpaceBus, 0).kind))] == 0.6f); // LEVEL carried
+    }
+}
+
 void testTheFxScreensList() {
     Rig rig;
     Session& session = rig.app.session();
@@ -4318,32 +4596,34 @@ void testTheFxScreensList() {
     rig.tap(DOWN, 7);
     CHECK(project.busEffects[0].kind == tape); // on its family already, the end of its list: nothing is put in afresh
     rig.tap(UP);
-    CHECK(project.busEffects[0].kind == 0 && project.busEffects[1].kind == hall);
+    CHECK(fx.onLine(4).kind == 0 && project.busEffects[1].kind == hall);
     rig.tap(UP, 3);
     rig.tap(RIGHT); // nothing has no TYPE
-    CHECK(project.busEffects[0].kind == 0 && fx.cursorRow() == 4 && fx.cursorColumn() == 0);
+    CHECK(fx.onLine(4).kind == 0 && fx.cursorRow() == 4 && fx.cursorColumn() == 0);
     rig.tap(DOWN);
-    CHECK(project.busEffects[0].kind == delay && project.busEffects[0].param[3] == 1.f); // the family's first type, at its usual settings, LEVEL full
+    // Back on the family it started in: what it started with, as it was (TAPE, not the family's first type).
+    CHECK(fx.onLine(4).kind == tape && !fx.trying());
+    for (int i = 0; i < kEffectParams; ++i) CHECK(fx.onLine(4).param[i] == project.busEffects[0].param[i]);
     for (int i = 0; i < 4; ++i) {
         rig.tap(DOWN);
         rig.tap(RIGHT);
-        CHECK(effectBus(static_cast<EffectKind>(project.busEffects[0].kind)) == 0);
+        CHECK(effectBus(static_cast<EffectKind>(fx.onLine(4).kind)) == 0);
     }
-    CHECK(project.busEffects[0].kind == static_cast<int>(EffectKind::Ping) && project.busEffects[0].param[3] == 1.f); // the DELAY's last type
+    CHECK(fx.onLine(4).kind == static_cast<int>(EffectKind::Ping) && fx.onLine(4).param[3] == 1.f); // the DELAY's last type
     rig.tap(LEFT, 5);
-    CHECK(project.busEffects[0].kind == delay);
+    CHECK(fx.onLine(4).kind == delay);
     rig.key(A, false);
     fx.goTo(5, 0);
     holdB(rig);
     CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == delay);
     rig.key(A, true);
     rig.tap(DOWN);
-    CHECK(project.busEffects[1].kind == reverb && project.busEffects[1].param[2] == 1.f);
+    CHECK(fx.onLine(5).kind == reverb && fx.onLine(5).param[2] == 1.f);
     rig.tap(DOWN, 4);
     rig.tap(RIGHT, 4);
-    CHECK(project.busEffects[1].kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && project.busEffects[1].param[3] == 1.f); // the last of its types, and no further
+    CHECK(fx.onLine(5).kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && fx.onLine(5).param[3] == 1.f); // the last of its types, and no further
     rig.tap(LEFT, effectTypes(EffectKind::Reverb) - 2);
-    CHECK(project.busEffects[1].kind == hall && project.busEffects[1].param[3] == 1.f);
+    CHECK(fx.onLine(5).kind == hall && fx.onLine(5).param[3] == 1.f);
     rig.key(A, false);
     // The Session refuses the other family on a bus, whoever asks.
     session.setEffect(kEchoBus, 0, EffectKind::Hall);
@@ -4390,7 +4670,7 @@ void testTheFxScreensList() {
 
     // The stick with A held on a line: one push, one step of the list; sideways, one type.
     fx.goTo(0, 0);
-    const auto kindNow = [&] { return static_cast<EffectKind>(project.tracks[0].effects[0].kind); };
+    const auto kindNow = [&] { return static_cast<EffectKind>(fx.onLine(0).kind); };
     const auto flick = [&](SDL_Keycode way) {
         rig.key(way, true);
         rig.frames(1);
@@ -4408,18 +4688,17 @@ void testTheFxScreensList() {
     CHECK(kindNow() == EffectKind::Drive);
     flick(STICK_UP);
     CHECK(kindNow() == EffectKind::Filter);
-    // Stopping at an end is doing nothing: the effect there is not put in afresh, so its settings stay as they were turned.
+    // Stopping at an end is doing nothing: the effect there is not tried afresh.
     rig.tap(DOWN, familyListSize());
     CHECK(kindNow() == EffectKind::Comp); // LEVEL, as its first type
-    session.setEffectParam(0, 0, 0, 0.123f);
     rig.tap(DOWN);
     rig.tap(LEFT); // (COMP is LEVEL's first type: that end too)
-    CHECK(kindNow() == EffectKind::Comp && project.tracks[0].effects[0].param[0] == 0.123f);
+    CHECK(kindNow() == EffectKind::Comp);
     rig.tap(RIGHT); // DUCK, and at the other end it stops
     rig.tap(RIGHT);
     CHECK(kindNow() == EffectKind::Duck);
     rig.tap(LEFT);
-    CHECK(kindNow() == EffectKind::Comp && project.tracks[0].effects[0].param[0] == effectDefault(EffectKind::Comp, 0)); // (no setting shared: its usual values)
+    CHECK(kindNow() == EffectKind::Comp && fx.onLine(0).param[0] == effectDefault(EffectKind::Comp, 0)); // (no setting shared: its usual values)
     // A held D-pad steps through the list slowly enough to see each one: five a second.
     rig.tap(UP, familyListSize());
     CHECK(kindNow() == EffectKind::None);
@@ -4611,7 +4890,7 @@ void testTheFxScreenAsDrawn() {
     // Down four: MOD goes in (CHORUS), the cursor is on its line, its one type lit; the heading and the list on the left say so.
     rig.tap(DOWN, 4);
     draw();
-    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Chorus));
+    CHECK(fx.onLine(1).kind == static_cast<int>(EffectKind::Chorus));
     CHECK(pickName(4, "MOD", kBrass) && pickName(0, "EMPTY", kText) && canvas.is(F::kPaneX + 3, pickY(4) + 10, kBrass) && !canvas.is(F::kPaneX + 3, pickY(0) + 10, kBrass));
     CHECK(typesOn(4, 0) && typesOn(5, -1));
     CHECK(heading("MOD", kBrass) && lineName(1, "MOD", kText) && inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("MOD") + 7.f, F::lineY(1) + smallMid + 1.f, "CHORUS", kDim));
@@ -4634,13 +4913,13 @@ void testTheFxScreenAsDrawn() {
     draw();
     const float typeX = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f, typeY = F::kPaneY + 64.f;
     const float tapeX = typeX + fonts.small.width("CLEAN") + 20.f;
-    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Delay) && heading("DELAY", kBrass) && pickName(5, "DELAY", kBrass) && typesOn(5, 0));
+    CHECK(fx.onLine(1).kind == static_cast<int>(EffectKind::Delay) && heading("DELAY", kBrass) && pickName(5, "DELAY", kBrass) && typesOn(5, 0));
     CHECK(keyInk() > 10);
     CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, typeY, "TYPE", kDim) && inked(canvas, scratch, 0, typeX, typeY, "CLEAN", kBg) && inked(canvas, scratch, 0, tapeX, typeY, "TAPE", kDim));
     CHECK(canvas.is(static_cast<int>(typeX) - 5, static_cast<int>(typeY) - 4, kBrass) && !canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kBrass));
     rig.tap(RIGHT); // the TYPE: TAPE
     draw();
-    CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Tape) && heading("DELAY", kBrass) && pickName(5, "DELAY", kBrass) && typesOn(5, 1) && !typesOn(5, 0));
+    CHECK(fx.onLine(1).kind == static_cast<int>(EffectKind::Tape) && heading("DELAY", kBrass) && pickName(5, "DELAY", kBrass) && typesOn(5, 1) && !typesOn(5, 0));
     CHECK(inked(canvas, scratch, 0, typeX, typeY, "CLEAN", kDim) && inked(canvas, scratch, 0, tapeX, typeY, "TAPE", kBg) && canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kBrass));
     CHECK(inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DELAY") + 7.f, F::lineY(1) + smallMid + 1.f, "TAPE", kDim));
     rig.key(A, false);
@@ -4733,6 +5012,17 @@ void testTheFxScreenAsDrawn() {
     draw();
     CHECK(!canvas.is(F::kPaneX + 50, setY(1) + F::kSetH - 3, kPurple) && !canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
     rig.project().scene = 0;
+    // ...and not under a line trying another effect: that one's lanes are not what it has.
+    fx.goTo(0, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    draw();
+    CHECK(!canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
+    rig.tap(B);
+    rig.key(A, false);
+    draw();
+    CHECK(canvas.is(F::kListX + 50, F::lineY(0) + F::kLineH - 3, kPurple));
 
     // THE SENDS, large: two rows, where each goes, and the automated one marked.
     session.setSend(0, 0, 0.35f);
@@ -4784,17 +5074,17 @@ void testTheFxScreenAsDrawn() {
     };
     fx.goTo(0, 0);
     draw();
-    const bool barFound = hinted("pick effect");
+    const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("its settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
-        CHECK(!hinted("its settings") && hinted("pick effect")); // an empty slot has none to go into
+        CHECK(!hinted("settings") && hinted("effects")); // an empty slot has none to go into
         fx.goTo(F::kSendsRow, 0);
         draw();
-        CHECK(hinted("the sends") && hinted("send nothing") && !hinted("pick effect"));
+        CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
         CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default value"));
@@ -7614,6 +7904,106 @@ void testTheHintsFitAndSayWhatTheyDo() {
     ui::gHelpHint = "MENU: HELP";
 }
 
+// L1 / R1 on the FX screen: the track before / after, stopping at the first and the last (as the SONG screen's
+// columns do). The cursor stays on its line and setting; an effect being tried is called off. The bar says so and fits.
+void testFxStepsTheTrack() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    addPhazed(rig);
+    addPhazed(rig);
+    CHECK(rig.project().trackCount() == 3);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffect(1, 1, EffectKind::Tape);
+    session.setEffect(2, 1, EffectKind::Comp);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    fx.goTo(1, 3);
+    rig.frames(1);
+    rig.tap(L1);
+    CHECK(rig.project().track == 0 && fx.cursorRow() == 1 && fx.cursorColumn() == 3); // the first: it stops
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 1 && fx.cursorRow() == 1 && fx.cursorColumn() == 3 && session.view == View::Effects);
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 2 && fx.cursorRow() == 1 && fx.cursorColumn() == 3);
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 2); // the last: it stops
+    // A line with fewer settings on the next track: the nearest; the one last used is not forgotten.
+    session.setEffect(1, 1, EffectKind::Crush);
+    fx.goTo(1, 4);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(rig.project().track == 1 && fx.cursorColumn() == effectInfo(EffectKind::Crush).params && fx.remembered(1) == 4);
+    // The sends and the buses: the same line.
+    fx.goTo(FxScreen::kSendsRow, 2);
+    rig.tap(L1);
+    CHECK(rig.project().track == 0 && fx.cursorRow() == FxScreen::kSendsRow && fx.cursorColumn() == 2);
+    // Trying an effect: called off, the old track's slot as it was.
+    const EffectData was = session.effectData(0, 1);
+    fx.goTo(1, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    rig.tap(R1);
+    CHECK(!fx.trying() && !fx.picking() && rig.project().track == 1 && session.effectData(0, 1).kind == was.kind && session.effectData(1, 1).kind == static_cast<int>(EffectKind::Crush));
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.effectData(0, 1).kind == was.kind && session.effectData(1, 1).kind == static_cast<int>(EffectKind::Crush));
+    // The top bar and the list's heading name the new track at once.
+    char name[24];
+    ui::trackName(rig.project(), 1, name, sizeof name);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(inked(canvas, scratch, 0, FxScreen::kListX + 1.f, FxScreen::lineY(0) - 19 + 3.f, name, ui::kText));
+    // The bar says it, and fits, in every state of the screen, with either help.
+    for (int menu = 0; menu < 2; ++menu) {
+        const auto draw = [&] {
+            rig.frames(1);
+            ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            return ui::gHintsOver == 0.f;
+        };
+        for (int row = 0; row < FxScreen::kRows; ++row)
+            for (int column = 0; column < 3; ++column) {
+                fx.goTo(row, column);
+                CHECK(draw() && hintKeyed(canvas, scratch, "L1 / R1", "track"));
+                if (!draw()) std::printf("    row %d column %d: %.0f pixels over\n", row, column, static_cast<double>(ui::gHintsOver));
+                rig.key(A, true);
+                CHECK(draw());
+                rig.key(A, false);
+            }
+        fx.goTo(1, 0);
+        rig.key(A, true);
+        rig.tap(DOWN);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "as it was"));
+        rig.key(A, false);
+    }
+    ui::gHelpHint = "MENU: HELP";
+    // The four shoulders for a panic are seldom down at once: L1 or R1 first steps the track on the way, and the
+    // panic puts it back, as it puts back the tab the triggers turned.
+    for (int first = 0; first < 2; ++first) {
+        session.view = View::Effects;
+        rig.project().track = 1;
+        fx.goTo(1, 0);
+        rig.frames(1);
+        const SDL_Keycode order[2][4] = {{R1, L2, R2, L1}, {L2, L1, R2, R1}};
+        for (SDL_Keycode k : order[first]) rig.key(k, true), rig.frames(1);
+        CHECK(rig.app.panicNoteShowing() && rig.project().track == 1 && session.view == View::Effects);
+        for (SDL_Keycode k : order[first]) rig.key(k, false);
+        rig.frames(1);
+        CHECK(rig.project().track == 1 && session.view == View::Effects);
+        if (rig.project().track != 1) std::printf("    a panic left track %d\n", rig.project().track + 1);
+    }
+}
+
 // B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).
 void testDeletingATrackSaysItCannotBeUndone() {
     Canvas canvas, scratch;
@@ -7749,6 +8139,8 @@ int main(int argc, char** argv) {
     }
     if (argc > 1 && std::string(argv[1]) == "--fx") { // just the FX screen and its list of effects (for trying a change)
         testTheEffectsScreen();
+        testTryingAnEffectKeepsIt();
+        testFxStepsTheTrack();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
@@ -7838,6 +8230,8 @@ int main(int argc, char** argv) {
     testTheStickSpeedAndTheVolume();
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
+    testTryingAnEffectKeepsIt();
+    testFxStepsTheTrack();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensList();

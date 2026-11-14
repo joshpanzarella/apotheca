@@ -89,6 +89,7 @@ private:
     Uint32 panicNoteUntil_ = 0, now_ = 0;
     View viewBeforeShoulders_ = View::Pattern;
     bool slicingBeforeShoulders_ = false;
+    int trackBeforeShoulders_ = 0;
     NoteScreen notes_;
     KitScreen kit_;
     FxScreen fx_;

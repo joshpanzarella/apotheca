@@ -184,9 +184,12 @@ struct Command {
         StopAudition,   // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
                         //   out over the choke's 3 ms: track, a = lane. A pattern's hits on the lane, and a
                         //   ratchet's pieces still waiting that are not the audition's, are left alone.
-        SetTrackPan     // where a track (or kMasterTrack) stands left to right: value = -1 (hard left) .. 1 (hard
+        SetTrackPan,    // where a track (or kMasterTrack) stands left to right: value = -1 (hard left) .. 1 (hard
                         //   right), 0 the middle. Equal power, the middle untouched (panGains). Taken with the
                         //   level, before the sends; it glides as the level does.
+        HoldEffectAutomation // the FX screen's list of effects is open on a track's slot, and the slot sounds what
+                        //   the cursor is on: track, a = slot, b = 1 held (the slot's automation is not applied,
+                        //   so it does not move the effect being tried), 0 let go (it is, from the next step).
     };
     Type type = Trigger;
     int track = 0;
@@ -224,6 +227,7 @@ constexpr int kAutoSendLane = 20;                  // the ECHO send's lane; SPAC
 constexpr int kAutoSteps = kMaxBars * kSteps;      // a cell at its longest
 constexpr float kAutoNone = -1.f;
 inline int autoLaneOfEffect(int slot, int param) { return 8 + slot * 4 + param; }
+inline int autoSlotOfLane(int lane) { return lane >= 8 && lane < 8 + 4 * kTrackSlots ? (lane - 8) / 4 : -1; } // -1: not an effect's lane
 inline int autoLaneOfSend(int bus) { return kAutoSendLane + bus; }
 
 struct TrackImage {
@@ -422,6 +426,9 @@ public:
     // What render() does with each timing. Public for the tests: `part` is
     // time taken over time available, for a block of `frames`.
     void noteLoad(float part, int frames);
+    // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
+    // tests: read between renders, never while one is under way.
+    int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
 
 private:
     struct DrumScene {
@@ -527,6 +534,8 @@ private:
         float autoNow[kAutoLanes];  // what the synth or effect has been given
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
         bool autoGliding[kAutoLanes] = {};
+        std::uint8_t autoHeld = 0; // a bit a slot: its automation waits (HoldEffectAutomation)
+        bool autoWaits(int lane) const { const int slot = autoSlotOfLane(lane); return slot >= 0 && ((autoHeld >> slot) & 1); }
         float* autoAt(int scene, int lane) { return scenes[scene]->automation + lane * kAutoSteps; }
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.

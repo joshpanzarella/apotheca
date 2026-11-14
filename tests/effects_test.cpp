@@ -4376,6 +4376,56 @@ static void testBusEffectsInTheEngine() {
     }
 }
 
+// The FX screen trying an effect (A held on a slot's line): the slot's automation is held, so the pattern does
+// not move the effect being tried; let go, it moves it again from the next step. Only that slot's.
+static void testHeldAutomation() {
+    std::unique_ptr<Engine> engine = sineEngine();
+    Probe* first = new Probe;
+    Probe* second = new Probe;
+    engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(first));
+    engine->setTrackEffect(0, 1, std::unique_ptr<Effect>(second));
+    engine->send(make(Command::SetEffectParam, 0, 0, 2, 0.3f));
+    engine->send(make(Command::SetEffectParam, 0, 1, 2, 0.3f));
+    for (int step = 0; step < kSteps; ++step) {
+        engine->send(make(Command::SetAutomation, 0, autoLaneOfEffect(0, 2), step, step % 2 ? 0.9f : 0.7f));
+        engine->send(make(Command::SetAutomation, 0, autoLaneOfEffect(1, 2), step, step % 2 ? 0.9f : 0.7f));
+    }
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 4 * 6000);
+    CHECK(first->lastIndex == 2 && first->lastParam > 0.6f);                       // moved by its lanes
+    CHECK(second->lastIndex == 2 && second->lastParam == 0.3f);                    // held: where its knob is
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
+    CHECK(second->lastParam == 0.3f && first->lastParam == 0.3f);                  // stopped: back to the knob (the held one never left it)
+    engine->send(make(Command::HoldEffectAutomation, 0, 5, 0));                    // no such slot: nothing
+    engine->send(make(Command::HoldEffectAutomation, kMasterTrack, 1, 0));
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 0));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 4 * 6000);
+    CHECK(second->lastIndex == 2 && second->lastParam > 0.6f);                     // let go: its lanes move it again
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));                    // held while it plays: it stays where it got to
+    leftOf(*engine, 64);
+    const float stayed = second->lastParam;
+    leftOf(*engine, 4 * 6000);
+    CHECK(second->lastParam == stayed && first->lastParam > 0.6f);
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
+    CHECK(second->lastParam == stayed && first->lastParam == 0.3f); // stopped while held: left where it is
+    // Held in the middle of a glide (step 1: 0.7 to 0.9 over half a step): it stops where it got to.
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 0));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 6000 + 1000);
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));
+    leftOf(*engine, 64);
+    const float midway = second->lastParam;
+    leftOf(*engine, 3000);
+    CHECK(midway > 0.7f && midway < 0.9f && second->lastParam == midway);
+    if (!(midway > 0.7f && midway < 0.9f && second->lastParam == midway)) std::printf("    held mid-glide at %.4f, then %.4f\n", static_cast<double>(midway), static_cast<double>(second->lastParam));
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
+}
+
 // Tracks have a third slot: it runs after the second, and lanes 16 to 19 are its settings.
 static void testThirdSlot() {
     CHECK(kTrackSlots == 3 && kMasterSlots == 2 && slotsOf(0) == 3 && slotsOf(kMasterTrack) == 2 && slotsOf(kEchoBus) == 1 && slotsOf(kSpaceBus) == 1);
@@ -5992,15 +6042,19 @@ static void testPing() {
     CHECK(info.params == 4 && std::string(info.paramNames[0]) == "TIME" && std::string(info.paramNames[1]) == "FEEDBACK" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
     CHECK(info.defaults[0] == 0.5625f && info.defaults[1] == 0.5f && info.defaults[2] == 0.6f && info.defaults[3] == 0.35f);
     CHECK(effectChoices(ping, 0) == 8 && effectChoices(ping, 1) == 0 && effectChoices(ping, 2) == 0 && effectChoices(ping, 3) == 0);
-    // How it reads. TIME is TAPE's eight; FEEDBACK reads what it does, 90% at its most.
+    // How it reads. TIME is TAPE's eight; FEEDBACK reads 0 to 100% as CLEAN's does (and does nine tenths of it, kPingMost at full).
     const char* names[8] = {"1/16", "1/8 TRIP", "1/8", "1/4 TRIP", "1/8 DOT", "1/4", "1/4 DOT", "1/2"};
     for (int i = 0; i < 8; ++i) CHECK(reads(ping, 0, tapeTime(i)) == names[i] && reads(ping, 0, tapeTime(i)) == reads(tape, 0, tapeTime(i)));
     CHECK(reads(ping, 0, 0.f) == "1/16" && reads(ping, 0, 1.f) == "1/2" && reads(ping, 0, info.defaults[0]) == "1/8 DOT");
-    CHECK(reads(ping, 1, 0.f) == "0%" && reads(ping, 1, 1.f) == "90%" && reads(ping, 1, 0.5f) == "45%" && reads(ping, 2, 0.6f) == "60%" && reads(ping, 3, 0.35f) == "35%" && reads(ping, 3, 1.f) == "100%");
-    for (int k = 1; k <= 20; ++k) CHECK(reads(ping, 1, static_cast<float>(k) / 20.f) != reads(ping, 1, static_cast<float>(k - 1) / 20.f)); // every push of the D-pad is seen
+    CHECK(reads(ping, 1, 0.f) == "0%" && reads(ping, 1, 1.f) == "100%" && reads(ping, 1, 0.5f) == "50%" && reads(ping, 2, 0.6f) == "60%" && reads(ping, 3, 0.35f) == "35%" && reads(ping, 3, 1.f) == "100%");
+    for (int k = 0; k <= 20; ++k) { // every push of the D-pad reads a round 5%, and reads as CLEAN's at the same place
+        char five[8];
+        std::snprintf(five, sizeof five, "%d%%", 5 * k);
+        CHECK(reads(ping, 1, static_cast<float>(k) / 20.f) == five && reads(ping, 1, static_cast<float>(k) / 20.f) == reads(delay, 1, static_cast<float>(k) / 20.f));
+    }
 
     // WHEN EACH ECHO LANDS, AND ON WHICH SIDE. A click in the middle (both sides alike), FEEDBACK
-    // 45%, TONE full. The step length to the sample, at three tempos, each of the eight choices
+    // 50% (each echo 0.45 of the last), TONE full. The step length to the sample, at three tempos, each of the eight choices
     // (in thirds of a step: 3 4 6 8 9 12 18 24): the first echo is on the LEFT one TIME after the
     // click and is the click itself, to the bit; the second is on the RIGHT two TIMEs after; the
     // third on the left again; and between its own echoes a side is silent, to the exact zero.
@@ -6022,7 +6076,7 @@ static void testPing() {
     // A quarter note at 120 is 24000 samples; a dotted eighth (where it starts) 18000.
     CHECK(echoAt(clickOf(*fresh(ping), 0.5, 0.1f), 0) == 18000);
 
-    // ECHOES SWAP SIDES. Noise for 50 ms in the middle, a sixteenth (6000 samples), FEEDBACK 90%,
+    // ECHOES SWAP SIDES. Noise for 50 ms in the middle, a sixteenth (6000 samples), FEEDBACK 100% (0.9),
     // TONE full: the first eight echoes, each in its own window. All of echo n is on one side (the
     // other is exact zeros there): left for 1, 3, 5, 7 and right for 2, 4, 6, 8.
     //   echo        1      2      3      4      5      6      7      8
@@ -6062,7 +6116,7 @@ static void testPing() {
         CHECK(io.l[0] == 0.2f && io.r[0] == -0.2f && echoAt(io.l, 0) == -1 && echoAt(io.r, 0) == -1);
     }
 
-    // HOW MUCH QUIETER EACH ECHO IS: FEEDBACK, as it reads (0 to 90%), and what TONE's high cut
+    // HOW MUCH QUIETER EACH ECHO IS: FEEDBACK, as it reads (0 to 100%, doing nine tenths of it), and what TONE's high cut
     // takes (6 dB an octave; its corner 600 Hz at TONE 0, 3.3 kHz at 50%, 4.6 kHz at 60%, 18 kHz
     // at full). A small click, echoes a quarter note apart, both sides added. In dB a repeat,
     // against FEEDBACK:
@@ -6078,7 +6132,7 @@ static void testPing() {
             const std::vector<float> ir = bothOf(clickBoth(*fresh(ping, tapeTime(5), feedback, tone, 1.f), 3.0, 0.01f, 0.01f));
             const double reads = kPingMost * feedback;
             CHECK(std::fabs(echoGain(ir, 24000, 1) - reads) < 0.002 && std::fabs(echoGain(ir, 24000, 2) - reads) < 0.002 && std::fabs(echoGain(ir, 24000, 3) - reads) < 0.002);
-            if (feedback == 0.5f) SAY("ping     tone %3.0f%% (corner %5.0f Hz): each echo's sum x %.4f (FEEDBACK reads 45%%)\n", tone * 100.0, corner, echoGain(ir, 24000, 1));
+            if (feedback == 0.5f) SAY("ping     tone %3.0f%% (corner %5.0f Hz): each echo's sum x %.4f (FEEDBACK reads 50%%: 0.45)\n", tone * 100.0, corner, echoGain(ir, 24000, 1));
             for (double hz : {100.0, 1000.0, 6000.0}) {
                 const double want = reads * cutAt(corner, hz), got = echoGainAt(ir, 24000, hz, 1), next = echoGainAt(ir, 24000, hz, 2);
                 if (feedback == 0.5f) SAY("ping     tone %3.0f%% at %5.0f Hz: each echo x %.4f (%.2f dB against FEEDBACK)\n", tone * 100.0, hz, got, dB(got / reads));
@@ -6181,7 +6235,7 @@ static void testPing() {
         CHECK(echoAt(clickOf(*fresh(ping, 1.f, 0.f, 1.f, 1.f, kMinTempo), 3.2, 0.1f), 0) == 144000);
     }
 
-    // IT CANNOT RING FOR GOOD. FEEDBACK at its most (90%), a sixteenth, TONE full, a burst of
+    // IT CANNOT RING FOR GOOD. FEEDBACK at its most (100%: 0.9), a sixteenth, TONE full, a burst of
     // noise and then nothing: eight echoes a second, each nine tenths of the last, is 7.32 dB a
     // second, to nothing at all. Measured: 8.3 dB a second from 2 s (the top of the noise goes
     // faster: TONE's cut, eight times a second), 7.43 from 20 s; silent (the exact zero) from 31.2 s.
@@ -6198,13 +6252,13 @@ static void testPing() {
         const double early = dB(level(3, 4) / level(2, 3)), late = dB(level(21, 22) / level(20, 21));
         std::size_t last = 0;
         for (std::size_t i = 0; i < wet.size(); ++i) last = wet[i] != 0.f ? i : last;
-        SAY("ping     feedback 90%%: %.2f dB a second from 2 s, %.2f dB a second from 20 s; loudest %.2f; silent from %.1f s\n", early, late, static_cast<double>(peakOf(wet)), static_cast<double>(last) / 48000.0);
+        SAY("ping     feedback 100%% (0.9): %.2f dB a second from 2 s, %.2f dB a second from 20 s; loudest %.2f; silent from %.1f s\n", early, late, static_cast<double>(peakOf(wet)), static_cast<double>(last) / 48000.0);
         CHECK(early < -7.3 && early > -9.0 && late < -7.3 && late > -7.6);
         CHECK(peakOf(wet) < 1.5f); // the echoes pile up while the burst lasts, and no further
         CHECK(last > 28 * 48000 && last < 36 * 48000 && silentIn(wet, 36 * 48000, wet.size()));
     }
 
-    // SILENCE IN, SILENCE OUT, and no slower on the way. A full-scale click, FEEDBACK 45%, a
+    // SILENCE IN, SILENCE OUT, and no slower on the way. A full-scale click, FEEDBACK 50% (0.45), a
     // sixteenth, TONE full: each echo is 6.9 dB under the last. Nothing under 240 dB down goes
     // on a line (an exact zero does instead), so the last echo is the 33rd, 4.125 s in (the click
     // would be 240 dB down at the 35th; TONE has spread each echo out, and lower, by then); a
@@ -6217,7 +6271,7 @@ static void testPing() {
         for (std::size_t i = 1; i < ir.size(); ++i) last = ir[i] != 0.f ? i : last;
         float smallest = 1.f;
         for (float v : ir) smallest = v != 0.f ? std::fmin(smallest, std::fabs(v)) : smallest;
-        SAY("ping     a click at 45%%: the last sample that is not zero is %.3f s in; the smallest that came out %.1e\n", static_cast<double>(last) / 48000.0, static_cast<double>(smallest));
+        SAY("ping     a click at FEEDBACK 50%%: the last sample that is not zero is %.3f s in; the smallest that came out %.1e\n", static_cast<double>(last) / 48000.0, static_cast<double>(smallest));
         CHECK(last > 4 * 48000 && last < 5 * 48000 && smallest >= 1e-12f);
         // Half way down it is still all there, not cut short: the 17th echo's sum is 0.45 to the 16th of the click (2.83e-6).
         double mid = 0.0;
@@ -6379,7 +6433,7 @@ static void testPing() {
 
     // EVERY SETTING SLIDES SAMPLE BY SAMPLE, ON BOTH SIDES: never still for a block and then a step
     // (blocks of 64 here; that zipper is heard: MIX turned under a sine made steps 41% larger).
-    // A steady level on the way in (0.5 both sides, FEEDBACK 45%, a sixteenth, TONE full) makes every
+    // A steady level on the way in (0.5 both sides, FEEDBACK 50% (0.45), a sixteenth, TONE full) makes every
     // echo steady too. MIX turned moves both echoes by a little every sample at once; FEEDBACK turned
     // moves them a sixteenth later, when what it scaled comes off the lines. Each sample's move is
     // from 0.5 to 2 times the one before it, in the same direction, through the first 10 blocks.
@@ -6461,7 +6515,7 @@ static void testPing() {
     // the left has 1 / FEEDBACK squared of the right's energy: 20 log10(1 / FEEDBACK) dB, and a
     // little more for what TONE takes off noise on the way across. 50 ms of noise in the middle,
     // TONE full, a sixteenth at 120 BPM. Measured, left over right:
-    //   FEEDBACK reads    0%               23%     45%     67%     90%
+    //   FEEDBACK reads    0%               25%     50%     75%     100%   (doing 0, 0.225, 0.45, 0.675, 0.9)
     //   left over right   (right silent)   13.8    7.8     4.25    1.64 dB
     //   1 / FEEDBACK^2    -                13.0    6.9     3.4     0.9 dB
     {
@@ -6539,7 +6593,7 @@ static void testPing() {
         // The bus comes to rest (testATailAlwaysEnds has every setting at 40 BPM; this is its most at 120).
         const float most[4] = {0.f, 1.f, 1.f, 1.f};
         const double seconds = secondsToRest(ping, most, 120.f, 100.0);
-        SAY("ping     on a bus, a sixteenth at 120 BPM, FEEDBACK 90%%: at rest %.1f s after the last sound\n", seconds);
+        SAY("ping     on a bus, a sixteenth at 120 BPM, FEEDBACK 100%% (0.9): at rest %.1f s after the last sound\n", seconds);
         CHECK(seconds > 20.0 && seconds < 35.0); // 120 dB at 7.5 dB a second is 16 s, and the 10 s of quiet before a bus rests
     }
 
@@ -6557,13 +6611,15 @@ static void testPing() {
     }
     for (int c = 0; c < 6; ++c) CHECK(time(delay, ping, (c + 0.5f) / 6.f) == reads(delay, 0, (c + 0.5f) / 6.f)); // every one of CLEAN's is here
     CHECK(time(ping, delay, tapeTime(1)) == "1/16" && time(ping, delay, tapeTime(3)) == "1/8 DOT" && time(ping, delay, tapeTime(7)) == "1/2");
-    // FEEDBACK as it READS: 45% stays 45% on all three scales (to 90% here, 100% on CLEAN, 120% on TAPE), on the roundest value.
-    CHECK(effectCarryValue(ping, 1, delay, 1, 0.5f) == 0.45f && effectCarryValue(delay, 1, ping, 1, 0.45f) == 0.5f);
-    CHECK(effectCarryValue(ping, 1, tape, 1, 0.5f) == 0.375f && effectCarryValue(tape, 1, ping, 1, 0.375f) == 0.5f);
+    // FEEDBACK as it READS. With CLEAN it is one scale (0 to 100%): not touched, to the bit, so a CLEAN and a PING at
+    // the same reading do the same (each echo 0.9 of the reading). With TAPE (to 120%): the same reading, on the roundest value.
+    for (float v : {0.f, 0.05f, 0.123456f, 0.45f, 0.5f, 0.987654f, 1.f}) CHECK(effectCarryValue(delay, 1, ping, 1, v) == v && effectCarryValue(ping, 1, delay, 1, v) == v);
+    CHECK(effectCarryValue(ping, 1, tape, 1, 0.5f) == 0.42f && reads(tape, 1, 0.42f) == "50%" && effectCarryValue(tape, 1, ping, 1, 0.42f) == 0.5f);
+    CHECK(reads(tape, 1, 0.375f) == "45%" && effectCarryValue(tape, 1, ping, 1, 0.375f) == 0.45f);
     CHECK(reads(tape, 1, 0.4f) == "48%" && reads(ping, 1, effectCarryValue(tape, 1, ping, 1, 0.4f)) == "48%" && effectCarryValue(ping, 1, tape, 1, effectCarryValue(tape, 1, ping, 1, 0.4f)) == 0.4f);
-    // More than PING has: its most.
-    CHECK(reads(ping, 1, effectCarryValue(tape, 1, ping, 1, 1.f)) == "90%" && reads(ping, 1, effectCarryValue(delay, 1, ping, 1, 1.f)) == "90%");
-    CHECK(effectCarryValue(delay, 1, ping, 1, 0.f) == 0.f && effectCarryValue(ping, 1, tape, 1, 1.f) == 0.75f);
+    // More than PING reads (TAPE over 100%): its most. All PING reads, TAPE can.
+    CHECK(reads(ping, 1, effectCarryValue(tape, 1, ping, 1, 1.f)) == "100%" && effectCarryValue(tape, 1, ping, 1, 1.f) == 1.f);
+    CHECK(reads(tape, 1, effectCarryValue(ping, 1, tape, 1, 1.f)) == "100%" && effectCarryValue(ping, 1, tape, 1, 0.f) == 0.f);
     // TONE (with CLEAN) and MIX (with both) are one scale: not touched, to the bit.
     for (float v : {0.f, 0.123456f, 0.5f, 0.987654f, 1.f}) {
         CHECK(effectCarryValue(delay, 2, ping, 2, v) == v && effectCarryValue(ping, 2, delay, 2, v) == v);
@@ -6574,7 +6630,7 @@ static void testPing() {
         const float was[4] = {tapeTime(2), 0.4f, 0.9f, 0.2f};
         float now[4];
         effectCarry(tape, ping, was, false, now);
-        CHECK(now[0] == tapeTime(2) && reads(ping, 1, now[1]) == "48%" && now[2] == 0.6f && now[3] == 0.2f);
+        CHECK(now[0] == tapeTime(2) && reads(ping, 1, now[1]) == "48%" && now[1] == 0.48f && now[2] == 0.6f && now[3] == 0.2f);
         effectCarry(tape, ping, nullptr, true, now);
         CHECK(now[0] == 0.5625f && now[1] == 0.5f && now[2] == 0.6f && now[3] == 1.f);
     }
@@ -7826,6 +7882,7 @@ int main(int argc, char** argv) {
         {"testBusRests", testBusRests},
         {"testBusEffectsInTheEngine", testBusEffectsInTheEngine},
         {"testThirdSlot", testThirdSlot},
+        {"testHeldAutomation", testHeldAutomation},
         {"testSendsOnAnyHelperCount", testSendsOnAnyHelperCount},
         {"testFamiliesAndTypes", testFamiliesAndTypes},
         {"testTypeChangeCarriesSettings", testTypeChangeCarriesSettings},
