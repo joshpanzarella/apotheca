@@ -9832,6 +9832,66 @@ static void testFlanger() {
         through(*e, io);
         CHECK(peakOf(io.r) == 0.f && rmsOf(io.l) > 0.05);
     }
+    // THE PITCH NEVER BENDS MORE THAN AT 2 HZ, NOT EVEN AS RATE OR DEPTH IS THROWN: a slow saw through it (FEEDBACK 0,
+    // MIX 100%) comes out as itself less half its slope times the delay, so the delay is read off every sample, and how
+    // fast it moves is the bend (0.1 samples a sample is 10% sharp or flat). At rest at 2 Hz, DEPTH 100%, is the most;
+    // RATE thrown from 0.1 to 8 Hz, and DEPTH from 0 to 100% at 8 Hz, stay under it. (Before the sweep's reach was
+    // held to its whole way in a second, and the sweep's speed to what that reach allows, RATE thrown so moved the delay 0.33 samples a sample for 25 ms as the
+    // sweep closed up: five semitones.)
+    {
+        const auto bendOf = [&](float rate0, float depth0, float rate1, float depth1, double* afterwards, std::size_t change = 2 * 48000) {
+            std::unique_ptr<Effect> e = fresh(flanger, rate0, depth0, 0.5f, 1.f);
+            const std::size_t period = 4800;
+            Stereo io(change + 2 * 48000);
+            for (std::size_t n = 0; n < io.frames(); ++n) io.l[n] = io.r[n] = -0.5f + static_cast<float>(n % period) / static_cast<float>(period);
+            const std::vector<float> in = io.l;
+            through(*e, io, 0, change);
+            e->setParam(0, rate1);
+            e->setParam(1, depth1);
+            through(*e, io, change, io.frames());
+            double most = 0.0, prev = -1.0;
+            *afterwards = 0.0;
+            for (std::size_t n = 48000; n < io.frames(); ++n) {
+                if (n % period < 400) {
+                    prev = -1.0;
+                    continue;
+                }
+                const double delay = 2.0 * static_cast<double>(period) * (static_cast<double>(in[n]) - io.l[n]);
+                if (prev >= 0.0) {
+                    const double speed = std::fabs(delay - prev);
+                    if (n >= change) most = std::fmax(most, speed);
+                    if (n >= change + 48000) *afterwards = std::fmax(*afterwards, speed);
+                }
+                prev = delay;
+            }
+            return most;
+        };
+        double at2 = 0.0, rest8 = 0.0, restDepth = 0.0;
+        bendOf(modRate(2.0), 1.f, modRate(2.0), 1.f, &at2);
+        const double rateThrown = bendOf(0.f, 1.f, 1.f, 1.f, &rest8), rateBack = bendOf(1.f, 1.f, 0.f, 1.f, &restDepth);
+        const double depthThrown = bendOf(1.f, 0.f, 1.f, 1.f, &restDepth);
+        SAY("flanger  the delay's speed (samples a sample): at rest at 2 Hz %.4f; RATE 0.1 to 8 Hz at once %.4f (at rest after %.4f); 8 to 0.1 Hz %.4f; DEPTH 0 to 100%% at 8 Hz %.4f\n", at2, rateThrown, rest8, rateBack, depthThrown);
+        CHECK(at2 > 0.05 && rest8 > 0.4 * at2 && rest8 < 1.05 * at2);
+        CHECK(rateThrown < at2 && rateBack < at2 && depthThrown < at2);
+        // The reach moves its whole way in a second, no faster: DEPTH 0 to 100% at 0.1 Hz, turned at the top of a turn
+        // (ten seconds in: the sweep itself barely moving, at its long end) bends the pitch about half a percent. (Its
+        // whole way in a third of a second, or in two, is caught.)
+        double slow = 0.0;
+        const double depthSlow = bendOf(0.f, 0.f, 0.f, 1.f, &slow, 10 * 48000);
+        SAY("flanger  DEPTH 0 to 100%% at 0.1 Hz: the delay's speed %.4f\n", depthSlow);
+        CHECK(depthSlow > 0.0035 && depthSlow < 0.009); // (0.0051)
+        // ...and it LANDS, to the bit: DEPTH turned from 70% to 10% sounds, a second on, as one made at 10%.
+        std::unique_ptr<Effect> turned = fresh(flanger), made = fresh(flanger, -1.f, 0.1f);
+        Stereo a(3 * 48000), b(3 * 48000);
+        a.l = a.r = b.l = b.r = sineOf(220.0, 0.5, a.frames());
+        through(*turned, a, 0, 48000);
+        turned->setParam(1, 0.1f);
+        through(*turned, a, 48000, a.frames());
+        through(*made, b);
+        bool same = true;
+        for (std::size_t i = 2 * 48000 + 24000; i < a.frames(); ++i) same = same && a.l[i] == b.l[i];
+        CHECK(same);
+    }
     const float faintAt[4] = {0.3f, 1.f, 1.f, 1.f};
     CHECK(faintAfterANote(flanger, faintAt));
     const float at[4] = {0.3f, 0.7f, 0.8f, 0.f};
@@ -10216,6 +10276,13 @@ static void testTremolo() {
         through(*e, io, 12000 + 2000, io.frames());
         SAY("tremolo  SINE to SQUARE where they are %.2f apart: the largest step %.5f (all at once: %.2f)\n", 1.0 - io.l[14000] * 2.0, static_cast<double>(largestJump(io.l, 13990, 15000)), 0.5 * (1.0 - io.l[14000] * 2.0));
         CHECK(largestJump(io.l, 13990, 15000) < 0.5f / 480.f * 1.1f);
+        // ...and it takes the 10 ms: the level gets to the square's top (0.5 here) about 480 samples after the turn,
+        // and is half way there after 240. (A 3 ms fade passed the step's bound above: the two are only 0.25 apart.)
+        std::size_t arrived = 15000;
+        while (arrived > 14000 && std::fabs(io.l[arrived - 1] - 0.5f) < 1e-5f) --arrived;
+        const double halfWay = (io.l[14240] - io.l[14000]) / (0.5 - io.l[14000]);
+        SAY("tremolo  SINE to SQUARE: at the square %zu samples after the turn; %.2f of the way there after 240\n", arrived - 14000, halfWay);
+        CHECK(arrived >= 14000 + 470 && arrived <= 14000 + 500 && halfWay > 0.35 && halfWay < 0.65);
     }
     // A NEW SHAPE'S SMOOTHING STARTS WHERE THE SOUND IS: SINE to RAMP half a turn in (the sine at its bottom, the ramp
     // half way up): no corner in the level as the fade begins (a smoothing left where it last was, at the top, bent the

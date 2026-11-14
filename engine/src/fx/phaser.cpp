@@ -25,6 +25,9 @@
 // exact zero on the tick; asleep (mod.hpp's rest rule) once nothing has come
 // in for 4 s and every stage holds an exact zero. The turned sound kept at
 // the same loudness as FEEDBACK rises (scaled by sqrt(1 - feedback^2)).
+// That holds for noise; a steady tone sat on a peak still rings louder, as a
+// phaser should: +8.5 dB at FEEDBACK +100%, +4.7 at -100% (MIX 100%, DEPTH 0,
+// the loudest sine from 40 Hz to 16 kHz; measured in review, 2026-11-14).
 
 #include <initializer_list>
 

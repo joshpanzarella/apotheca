@@ -494,7 +494,11 @@ effect in those two groups and fails one that does not.
 - **An effect with a wave that runs by itself sleeps by the rest rule** (RING,
   WEAR, and MOD's four: `kModRestSeconds`, 4 s of nothing, AND its memory
   exact zeros). FLANGER's, ENSEMBLE's and PHASER's sweeps and TREMOLO's wave
-  start again from their start when they wake. **TREMOLO is in time, not on
+  start again from their start when they wake. **FLANGER's reach (DEPTH,
+  narrowed above 2 Hz) moves at most its whole way a second, and the sweep
+  goes only as fast as that reach allows** (`reach_` x Hz <= 2): with the
+  narrowing worked out at once, RATE thrown from slow to 8 Hz bent the pitch
+  five semitones for 25 ms as the sweep closed up (review, 2026-11-14). **TREMOLO is in time, not on
   the beat**: an effect is told the tempo, not where the bar is, so its wave
   starts where the first sound after a rest is.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's

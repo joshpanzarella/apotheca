@@ -1038,7 +1038,7 @@ rest rule (4 s of nothing and memory all zeros, as RING).
 
 | Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in the same four runs) |
 | --- | --- | --- | --- |
-| FLANGER | the sound and a copy 0.35 to 7.3 ms late, the delay swept by octaves (a triangle rounded at its turns), fed back either way: the jet | RATE (0.1 to 8 Hz), DEPTH (to 4.4 octaves of sweep; narrower above 2 Hz), FEEDBACK (-100 to +100%: 0.95 at the ends; the copy scaled by sqrt(1 - f^2) so noise is as loud at any FEEDBACK), MIX (100% is half and half: the notches all the way down) | 0.07% (the same while DEPTH turns) |
+| FLANGER | the sound and a copy 0.35 to 7.3 ms late, the delay swept by octaves (a triangle rounded at its turns), fed back either way: the jet | RATE (0.1 to 8 Hz), DEPTH (to 4.4 octaves of sweep; narrower above 2 Hz; the reach moves its whole way in a second at most, and the sweep is held to what that reach allows, so RATE or DEPTH thrown never bends the pitch more than 2 Hz at rest does), FEEDBACK (-100 to +100%: 0.95 at the ends; the copy scaled by sqrt(1 - f^2) so noise is as loud at any FEEDBACK), MIX (100% is half and half: the notches all the way down) | 0.07% (the same while DEPTH turns) |
 | ENSEMBLE | the string machine's chorus: three copies at one place (9 ms), a third of a turn apart on two waves at once (a slow swirl at RATE and a shimmer at 9.7 times it, at most 10 Hz), darkened from 7 kHz | RATE, DEPTH (swirl 1.8 ms, shimmer 0.14 ms at 100%), SPREAD (the right's waves up to half a turn on), MIX (CHORUS's law) | 0.16 to 0.17% (as CHORUS: six reads between samples a sample; on locals no quicker) |
 | PHASER | six allpass stages swept from 640 Hz, 2.6 octaves each way at 100%, laid over the plain sound: three notches; the right a quarter turn behind | RATE, DEPTH, FEEDBACK (-100 to +100%: 0.9 at the ends, scaled as FLANGER's), MIX | 0.09 to 0.11% |
 | TREMOLO | the level moved by a wave a note length long, following the tempo | RATE (1/32 to 1 BAR, ten, triplets and 1/8 DOT), DEPTH, SHAPE (SINE, SQUARE, RAMP: the pump, RANDOM: a new level a turn by a roll), SPREAD (the right's wave up to half a turn behind: auto-pan). No MIX: DEPTH 0 is the sound to the bit | 0.07% (0.11% in one run); 0.06% at RANDOM. The plan said 0.02: two sines a sample and a double-precision place in the turn |
@@ -1054,6 +1054,11 @@ rest rule (4 s of nothing and memory all zeros, as RING).
     samples at DEPTH 100%, measured) so the pitch drifts. Here the three share
     a place and pull against each other: their centre moves under a sample,
     the pitch stays the note's own, and the shimmer is on top.
+  - **Loud at the ends of FEEDBACK** (review, 2026-11-14): noise comes out
+    about as loud at any FEEDBACK, but a steady tone on a peak rings up:
+    FLANGER +11 dB at +100% (+8.4 at -100%), PHASER +8.5 dB at +100% (+4.7
+    at -100%), at MIX 100%. What a flanger and a phaser do; worth knowing
+    before turning FEEDBACK to its ends.
   - **The same word twice**: MOD's line says ENSEMBLE as a type, and CHORUS's
     own TYPE setting has an ENSEMBLE too (and FLANGE beside FLANGER). Renaming
     CHORUS's kinds would change only what the screen says (the number and the
