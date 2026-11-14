@@ -1200,6 +1200,29 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **AT END: a song played as a song LOOPs (as it always did) or STOPs**
+  (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
+  song file `songend 1` among the song's own lines (`cutSong` knows it),
+  **left out at LOOP**, so a looping song is written as before and an old
+  program plays it round. In undo with the song (`restorePatterns`); told to
+  the engine by `syncSong` (`Command::SetSongEnd`, `sentSongEnd_`, live: it
+  may be switched while the song plays). **LOOP is the engine as it was, to
+  the bit** (`effects_test --print` and a busy song against `main`, the
+  same). STOP: the engine asks nothing early of the top at the last step
+  (`playsOnce()`, as a bounce's `once_`), and on the first sample of the step
+  after the last step of scene `sceneCount_` (its last time round) it stops
+  exactly as `Command::Stop` does (`stopPlaying`, `songEndsNow`, checked in
+  `render()` before anything of that sample). Not for a scene alone, not for
+  a bounce (`once_`: it stops itself, so a STOP song bounces to the same
+  file). **The engine says it stopped, the app does not guess**: it counts
+  the Plays it takes (`playsTaken_`) and keeps the one that ended in
+  `songEnded()`; the Session counts the Plays it sent (`playsSent_`) and
+  takes `project.playing` down only when the two are equal, so a START
+  pressed just after the end is never lost. The place: the PLAYS box of the
+  first empty row (`SongScreen::songEndRow`, `onSongEnd`) shows a loop arrow
+  (dim) or a square (brass); A switches, B puts LOOP back; that box had a
+  repeat count of a scene with nothing in it, which it no longer shows.
+  Tests: `tests/songend_test.cpp`; stills `song-end-loop`, `song-end-stop`.
 - **The mixer (owner, 2026-11-14): hold A on a track's head on SONG, or on
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:

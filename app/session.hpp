@@ -395,6 +395,10 @@ public:
     // (-kPanMost..kPanMost); `track` may be kMasterTrack. Held to their limits; a step of undo.
     // Nothing else below zero is a track: a bus or a number past the tracks does nothing.
     void setMix(int track, int db, int pan);
+    // AT END (kSongLoop, kSongStop): what the song does at its end, played as a song. A step of
+    // undo; the engine is told by syncSong. The engine says when a song stopped by itself, and
+    // update() then takes project.playing down (songEnded, playsSent_).
+    void setSongEnd(int end);
     int mixDb(int track) const { return track == kMasterTrack ? project.masterDb : (track >= 0 && track < kNumTracks ? project.tracks[track].mixDb : 0); }
     int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
     void sendMix(int track); // what the engine is told for it: its level and its pan
@@ -478,6 +482,8 @@ private:
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;
     int sentSceneCount_ = 1;
+    int sentSongEnd_ = -1;    // what the engine was last told of AT END (-1: nothing yet)
+    unsigned playsSent_ = 0;  // Command::Play sent and taken into the queue (Engine::songEnded)
 
     std::string pathOf(const std::string& name) const;
     std::string revPath(int rev) const;

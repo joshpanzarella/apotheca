@@ -35,7 +35,7 @@ inline const char* const kViews[] = {
     "fx-kind-stutter", "fx-kind-stutter --hold-a", "fx-kind-stutter-2",
     "fx-kind-bloom", "fx-kind-bloom --hold-a", "fx-kind-bloom-1", "fx-kind-shimmer", "fx-kind-shimmer --hold-a", "fx-kind-shimmer-1",
     "fx-family-1 --hold-a", "fx-family-2 --hold-a", "fx-family-3 --hold-a", "fx-family-4 --hold-a", "fx-family-5 --hold-a", "fx-family-6 --hold-a", "fx-family-7 --hold-a",
-    "fx-deleting", "fx-trying", "change-instrument", "song-deleting", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12",
+    "fx-deleting", "fx-trying", "change-instrument", "song-deleting", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12", "song-end-loop", "song-end-stop",
     "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "twin", "twin0", "twin1", "twin2", "twin3", "twin4",
     "kit", "slices", "slices-32", "slices-name", "slices-throw", "starts", "picker",

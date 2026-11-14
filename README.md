@@ -619,10 +619,21 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
+| The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
 | + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
-The song runs to the last scene with anything in it, then comes round.
+The song runs to the last scene with anything in it. Then, by its **song end**:
+
+- **LOOP** (the usual): it comes round to the first scene, for good.
+- **STOP**: it stops on the step after the last scene's last step, as START
+  stopping it would: notes let go, echoes and tails ring out. The next START
+  plays from the scene you are on, as always.
+
+The song end is kept with the song and undone like any edit. It is for the
+song only: a scene played alone (START on PATTERN) goes round as before, and
+a bounce plays the song once whatever it says. With all 16 rows holding
+scenes there is no empty row, so no place to change it.
 
 #### The mixer: a track's LEVEL and PAN
 

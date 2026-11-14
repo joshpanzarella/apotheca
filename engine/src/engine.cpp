@@ -1027,6 +1027,7 @@ void Engine::apply(const Command& c) {
         break;
     case Command::Play:
         playing_ = true;
+        ++playsTaken_; // (songEnded says which one stopped at its end)
         askedFollowing_ = -1; // nothing asked ahead yet in this playing
         loopScene_ = c.b != 0;
         once_ = c.c == 1 && !loopScene_;
@@ -1047,12 +1048,10 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::Stop:
-        playing_ = false;
-        clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
-        letGoOfNotes();
-        settleAutomation(); // every automated setting back to where its knob was left
-        playStep_.store(-1, std::memory_order_relaxed);
-        tellScene(-1);
+        stopPlaying();
+        break;
+    case Command::SetSongEnd:
+        songStop_ = c.a == 1;
         break;
     case Command::Panic:
         panicHeld_ = c.a != 0;
@@ -1339,6 +1338,22 @@ int Engine::sceneSteps(int scene) const {
     return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
 }
 
+void Engine::stopPlaying() {
+    playing_ = false;
+    clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
+    letGoOfNotes();
+    settleAutomation(); // every automated setting back to where its knob was left
+    playStep_.store(-1, std::memory_order_relaxed);
+    tellScene(-1);
+}
+
+// AT END STOP: the step about to begin is the one after the song's last (the last scene's last
+// bar, its last time round). Not for a scene alone, and not for a bounce, which stops itself.
+bool Engine::songEndsNow() const {
+    return songStop_ && !loopScene_ && !once_ && !firstStep_ && nextStep_ == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) &&
+           repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+}
+
 Engine::Position Engine::afterThisBar() const {
     if ((bar_ + 1) * kSteps < sceneSteps(scene_)) return {scene_, repeat_, bar_ + 1}; // further into the scene
     if (loopScene_) return {scene_, repeat_, 0};
@@ -1391,7 +1406,7 @@ void Engine::askAgain() {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
-    const bool pastEnd = once_ && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
     const double elapsed = samplesPerStep_ - untilStep_ > 0.0 ? samplesPerStep_ - untilStep_ : 0.0;
     const double now = static_cast<double>(stepsFired_ - 1); // the step playing
     for (Track& track : tracks_) {
@@ -1470,9 +1485,9 @@ void Engine::fireStep() {
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
-    // Played once through (a bounce), the song's last step asks for nothing of its first: an
+    // Played once through (a bounce, or a song that stops at its end), the song's last step asks for nothing of its first: an
     // early hit or note there would sound in the song's last moments, and ring on after them.
-    const bool pastEnd = once_ && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
 
     for (Track& track : tracks_) {
         if (track.hasDrums) {
@@ -1692,6 +1707,12 @@ void Engine::render(float* interleaved, int frames) {
         // step begins. Drum hits that are waiting come on theirs whether
         // the song is playing or not (a ratchet heard by hand has its later
         // hits waiting).
+        // A song that stops at its end stops on the first sample of the step after its last, exactly
+        // as a Stop taken there would (before anything of that sample: a Stop is taken first).
+        if (playing_ && untilStep_ <= 0.0 && songEndsNow()) {
+            stopPlaying();
+            songEnded_.store(playsTaken_, std::memory_order_relaxed);
+        }
         firePending();
         double next = 1e18;
         if (playing_) {

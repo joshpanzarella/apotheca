@@ -193,9 +193,12 @@ struct Command {
         SetTrackPan,    // where a track (or kMasterTrack) stands left to right: value = -1 (hard left) .. 1 (hard
                         //   right), 0 the middle. Equal power, the middle untouched (panGains). Taken with the
                         //   level, before the sends; it glides as the level does.
-        HoldEffectAutomation // the FX screen's list of effects is open on a track's slot, and the slot sounds what
+        HoldEffectAutomation, // the FX screen's list of effects is open on a track's slot, and the slot sounds what
                         //   the cursor is on: track, a = slot, b = 1 held (the slot's automation is not applied,
                         //   so it does not move the effect being tried), 0 let go (it is, from the next step).
+        SetSongEnd      // what the song does at its end, played as a song (not a scene alone, not a bounce):
+                        //   a = 0 LOOP, round to its first scene (as it always did); 1 STOP: playing stops on
+                        //   the step after the last step of the last scene, as Stop does (Engine::songEnded)
     };
     Type type = Trigger;
     int track = 0;
@@ -378,6 +381,11 @@ public:
         if (movesHeard) *movesHeard = both >> 8;
         return static_cast<int>(both & 255u) - 1;
     }
+    // AT END STOP: each Play taken is counted, and when a song stops by itself at its end this
+    // says which Play it was (0: none yet). The app counts the Plays it sent: the two equal, the
+    // playing it started has ended. (A Play sent after the end is a later number, so no race.)
+    unsigned songEnded() const { return songEnded_.load(std::memory_order_relaxed); }
+    bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
     int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
 
@@ -717,6 +725,14 @@ private:
     bool playing_ = false;
     bool loopScene_ = false;
     bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
+    bool songStop_ = false; // AT END STOP (SetSongEnd): the song, played as a song, stops by itself at its end
+    unsigned playsTaken_ = 0; // Command::Play taken so far (the audio thread's)
+    std::atomic<unsigned> songEnded_{0}; // the playsTaken_ of the playing that stopped at its end
+    // Nothing of the song's start is asked for at its end: a bounce, or a song that stops there.
+    bool playsOnce() const { return once_ || (songStop_ && !loopScene_); }
+    // The step after the song's last: a song that stops at its end stops here (render()).
+    bool songEndsNow() const;
+    void stopPlaying(); // Command::Stop, and a song stopping at its end
     bool firstStep_ = true; // the step about to fire is the first since Play
     bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
     bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)

@@ -272,7 +272,8 @@ void testRepeatCounts() {
     rig.tap(B);
     CHECK(rig.project().repeats[0] == 1);
     CHECK(rig.app.song().cursorScene() == 0); // none of that moved the cursor
-    // Each scene has its own.
+    // Each scene has its own. (Scene 2 given a hit: the row just past the last scene is the song's end, AT END, not a count.)
+    rig.project().tracks[0].drums[1][0].level[0][0] = 0.9f;
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.project().repeats[1] == 2 && rig.project().repeats[0] == 1);
@@ -7924,6 +7925,13 @@ void testTheHintsFitAndSayWhatTheyDo() {
         CHECK(draw());
         rig.app.song().moveCursorTo(0, -1);
         CHECK(draw());
+        // ...on the PLAYS box where the song ends (AT END): what it does there, LOOP or STOP.
+        rig.app.song().moveCursorTo(rig.app.song().songEndRow(), -1);
+        CHECK(rig.app.song().onSongEnd() && draw() && hintKeyed(canvas, scratch, "A", "song end: loop"));
+        rig.tap(A);
+        CHECK(draw() && hintKeyed(canvas, scratch, "A", "song end: stop") && !hintKeyed(canvas, scratch, "A", "song end: loop"));
+        rig.tap(B);
+        CHECK(rig.project().songEnd == kSongLoop);
         // The drum grid, on a hit and on an empty step, on a lane of the kit.
         session.view = View::Pattern;
         rig.project().track = 0;

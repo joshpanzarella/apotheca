@@ -383,6 +383,8 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
                 choosing_ = true;
                 changing_ = -1;
                 choice_ = 1; // Phazed: the likelier second track
+            } else if (onSongEnd()) {
+                session_.setSongEnd(project_.songEnd == kSongStop ? kSongLoop : kSongStop); // at once; nothing held
             } else if (column_ == kRepeatColumn) {
                 holding_ = true;
                 turned_ = false;
@@ -448,6 +450,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         trackHoldTimed_ = false;
         trackHoldPart_ = 0.f;
         if (onCell()) clearCell(column_, scene_);
+        else if (onSongEnd()) session_.setSongEnd(kSongLoop); // back to the usual
         else if (column_ == kRepeatColumn) setRepeats(1);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         project_.scene = scene_;
@@ -557,6 +560,23 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     }
 }
 
+SDL_Rect SongScreen::repeatBox(int scene) const {
+    if (scene < top_ || scene >= top_ + kVisibleRows) return SDL_Rect{0, 0, 0, 0};
+    return SDL_Rect{8 + kNumberW, kRowsTop + (scene - top_) * kRowH, kRepeatW - 4, kRowH - 4};
+}
+
+// LOOP: a ring that goes round to an arrowhead (the song goes round to its top). STOP: a square,
+// the stop key's own mark. Plain filled shapes, in the one colour: they read at every theme.
+void SongScreen::drawSongEnd(SDL_Renderer* r, int cx, int cy, int end, SDL_Color color) {
+    if (end == kSongStop) {
+        fill(r, cx - 6, cy - 6, 12, 12, color);
+        return;
+    }
+    outline(r, cx - 9, cy - 5, 18, 12, color, 2);
+    fill(r, cx + 1, cy - 5, 6, 2, kBg); // a gap in the ring's top, where it comes round...
+    for (int i = 0; i < 5; ++i) fill(r, cx + 1 + i, cy - 8 + i, 1, 9 - 2 * i, color); // ...to an arrowhead pointing on
+}
+
 void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[96];
     const int tracks = project_.trackCount();
@@ -655,8 +675,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int repeats = project_.repeats[scene];
         std::snprintf(text, sizeof text, "x%d", repeats);
         const bool odd = project_.sceneSteps(scene) != project_.sceneBars(scene) * kSteps; // a scene cut short says how many steps it lasts, under its count
-        fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere || odd ? 6.f : 15.f), text, inSong ? kText : kDim);
-        if (odd && !playingHere) {
+        const bool end = scene == songEndRow(); // where the song ends: what it does there, not a count
+        if (end) drawSongEnd(r, rx + (kRepeatW - 4) / 2, y + (kRowH - 4) / 2, project_.songEnd, project_.songEnd == kSongStop ? kBrass : kDim);
+        else fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + (playingHere || odd ? 6.f : 15.f), text, inSong ? kText : kDim);
+        if (odd && !playingHere && !end) {
             std::snprintf(text, sizeof text, "%d", project_.sceneSteps(scene));
             fonts.small.drawCentered(r, rx + (kRepeatW - 4) / 2.f, y + 22.f, text, kBrass);
         }
@@ -924,6 +946,9 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "times the scene plays");
         hint("TAP A", "1 > 2 > 4 > 8");
         hint("LEFT / RIGHT", "steps in a bar");
+    } else if (onSongEnd()) {
+        hint("A", project_.songEnd == kSongStop ? "song end: stop" : "song end: loop");
+        hint("START", project_.playing ? "stop" : "play song");
     } else if (column_ == kRepeatColumn) {
         hint("HOLD A", "times it plays");
         hint("TAP A", "1 > 2 > 4 > 8");

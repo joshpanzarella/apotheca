@@ -256,6 +256,9 @@ void putHead(std::string& out, const Project& project) {
     }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
+    // songend N: what the song does at its end (1: STOP). Left out at LOOP, so a song that loops is
+    // written as it always was, and a program from before (which skips the line) plays it round.
+    if (project.songEnd != kSongLoop) put(out, "songend %.0f\n", project.songEnd);
     // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
     if (project.masterDb != 0 || project.masterPan != 0) {
         put(out, "master %.0f", project.masterDb);
@@ -394,6 +397,9 @@ bool parseSong(const std::string& text, Project& project) {
             data.kind = static_cast<int>(kind);
             for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
+        } else if (word == "songend") {
+            double end = 0;
+            if (in >> end) song->songEnd = wholeIn(end, kSongLoop, kSongStop);
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -648,7 +654,7 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
     std::size_t from = 0; // where the part being read began
     bool inTrack = false;
     int count = 0;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;
