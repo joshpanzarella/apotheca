@@ -417,7 +417,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 const Font& familyFont = familySmall ? set.small : set.medium;
                 const float setTy = y + (kLineH - set.small.capHeight()) / 2.f - 1.f, setMy = y + (kLineH - familyFont.capHeight()) / 2.f - 1.f;
                 if (typeAlone) {
-                    set.medium.draw(r, static_cast<float>(kNameX), setMy, effectTypeShown(kind), kText); // (DRIVE SATURATE does not fit: SATURATE)
+                    set.medium.draw(r, static_cast<float>(kNameX), y + (kLineH - set.medium.capHeight()) / 2.f - 1.f, effectTypeShown(kind), kText); // (DRIVE SATURATE does not fit: SATURATE)
                 } else {
                     familyFont.draw(r, static_cast<float>(kNameX), familySmall ? setTy + 1.f : setMy, family, kText);
                     set.small.draw(r, kNameX + familyFont.width(family) + gap, setTy + 1.f, effectTypeShown(kind), kDim);

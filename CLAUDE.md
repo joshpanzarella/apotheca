@@ -515,7 +515,8 @@ effect in those two groups and fails one that does not.
     list. WRITE itself is said by the top bar.
   - The places things are drawn are constants in `fx_screen.hpp`, so the
     tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
-    is this text drawn here in this colour).
+    is this text drawn here in this colour). `app_test --fx` runs just the FX
+    screen's tests (about 9 s).
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.

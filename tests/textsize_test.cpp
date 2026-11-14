@@ -1386,7 +1386,14 @@ void testTheFxScreen() {
         const EffectInfo& info = effectInfo(kind);
         // In its line of the list a family with a type ends clear of the mark at every size, 7 after its family:
         // the family drawn small, or the two held at LARGE (REVERB SPRING).
-        // (A pair too long even so, DRIVE SATURATE, is its type alone, in the family's lettering.)
+        // (A pair too long even so, DRIVE SATURATE, is its type alone, in the family's lettering.) A line with no type
+        // shown (FILTER, CRUSH, DRIVE's DRIVE) is its family alone, as chosen at every size.
+        for (int size = 0; size < kTextSizes && !effectTypeShown(kind)[0]; ++size) {
+            const Fonts& chosen = *screens().at[size];
+            float gap = 0.f;
+            bool familySmall = true, typeAlone = true;
+            CHECK(&FxScreen::lineFonts(chosen, kind, &gap, &familySmall, &typeAlone) == &chosen && !familySmall && !typeAlone);
+        }
         for (int size = 0; size < kTextSizes && effectTypeShown(kind)[0]; ++size) {
             const Fonts& chosen = *screens().at[size];
             float gap = 0.f;

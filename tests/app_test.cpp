@@ -4532,6 +4532,19 @@ void testTheFxScreenAsDrawn() {
         session.setEffect(kSpaceBus, 0, EffectKind::Hall);
         draw();
     }
+    {
+        // DRIVE SATURATE is too long for a line even with both small: the line says SATURATE, in the family's lettering.
+        // A type that is its family's own word is not said twice: FILTER, DRIVE.
+        session.setEffect(0, 1, EffectKind::Saturate);
+        draw();
+        CHECK(lineName(1, "SATURATE", kText) && !lineName(1, "DRIVE", kText) && !inked(canvas, scratch, 0, static_cast<float>(F::kNameX), F::lineY(1) + smallMid + 1.f, "DRIVE", kText));
+        session.setEffect(0, 1, EffectKind::Drive);
+        draw();
+        CHECK(lineName(1, "DRIVE", kText) && !inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("DRIVE") + 7.f, F::lineY(1) + smallMid + 1.f, "DRIVE", kDim));
+        CHECK(lineName(2, "FILTER", kText) && !inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("FILTER") + 7.f, F::lineY(2) + smallMid + 1.f, "FILTER", kDim));
+        session.setEffect(0, 1, EffectKind::None);
+        draw();
+    }
     // ...the tags and the three headings.
     const char* tags[8] = {"1", "2", "3", "SENDS", "ECHO", "SPACE", "1", "2"};
     for (int line = 0; line < 8; ++line) CHECK(inked(canvas, scratch, 0, F::kListX + 8.f, F::lineY(line) + smallMid, tags[line], line == 1 ? kText : kDim));
@@ -4603,12 +4616,22 @@ void testTheFxScreenAsDrawn() {
         const float x = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f;
         CHECK(inked(canvas, scratch, 0, x, F::kPaneY + 64.f, "CHORUS", kBg) && canvas.is(static_cast<int>(x) - 5, F::kPaneY + 60, kBrass));
     }
+    // The LEFT / RIGHT key at the TYPE row's end: none for MOD (one type), there for DELAY (below).
+    const auto keyInk = [&] {
+        int ink = 0;
+        const int kx = static_cast<int>(F::kPaneX + F::kPaneW - 12.f - ui::keyWidth(fonts, "LEFT / RIGHT")) - 2;
+        for (int y = F::kPaneY + 58; y < F::kPaneY + 64 + static_cast<int>(fonts.small.capHeight()) + 6; ++y)
+            for (int x = kx; x < F::kPaneX + F::kPaneW - 8; ++x) ink += canvas.is(x, y, kText) ? 1 : 0;
+        return ink;
+    };
+    CHECK(keyInk() == 0);
     // Down one: DELAY, a family with types. Its TYPE row is in the heading, the one it is on a brass plate.
     rig.tap(DOWN);
     draw();
     const float typeX = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f, typeY = F::kPaneY + 64.f;
     const float tapeX = typeX + fonts.small.width("CLEAN") + 20.f;
     CHECK(session.effectData(0, 1).kind == static_cast<int>(EffectKind::Delay) && heading("DELAY", kBrass) && pickName(5, "DELAY", kBrass) && typesOn(5, 0));
+    CHECK(keyInk() > 10);
     CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, typeY, "TYPE", kDim) && inked(canvas, scratch, 0, typeX, typeY, "CLEAN", kBg) && inked(canvas, scratch, 0, tapeX, typeY, "TAPE", kDim));
     CHECK(canvas.is(static_cast<int>(typeX) - 5, static_cast<int>(typeY) - 4, kBrass) && !canvas.is(static_cast<int>(tapeX) - 5, static_cast<int>(typeY) - 4, kBrass));
     rig.tap(RIGHT); // the TYPE: TAPE
@@ -4727,6 +4750,11 @@ void testTheFxScreenAsDrawn() {
     CHECK(canvas.is(F::kPaneX + 50, sendY(1) + F::kSendLineY, kPurple) && !canvas.is(F::kPaneX + 50, sendY(0) + F::kSendLineY, kPurple) && canvas.is(F::kListX + 50, F::lineY(3) + F::kLineH - 3, kPurple));
     CHECK(canvas.is(F::kPaneX - 1, sendY(0) + 20, kTeal) && !canvas.is(F::kPaneX - 1, sendY(1) + 20, kTeal));
     CHECK(sendY(1) + F::kSendH == F::kPageBottom && canvas.is(F::kPaneX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kPaneX + 50, F::kPageBottom, kBg)); // to the page's foot
+    {
+        // In the taller row the value stands about midway between the row's name and its bar (within 10 pixels).
+        const float between = (12.f + fonts.small.capHeight() + F::kSendBarY) / 2.f, value = F::kSendValueY + fonts.large.capHeight() / 2.f;
+        CHECK(std::fabs(value - between) <= 10.f);
+    }
     // The two little bars on the list's line say the same.
     CHECK(canvas.run(F::kNameX + 14, F::lineY(3) + F::kLineH / 2, kText) == static_cast<int>(std::round(38 * 0.35f)) && canvas.run(F::kNameX + 62 + 14, F::lineY(3) + F::kLineH / 2, kText) == static_cast<int>(std::round(38 * 0.1f)));
     // An empty bus says so, where the send would go.
@@ -7472,6 +7500,19 @@ int main(int argc, char** argv) {
         testNextSceneTakenBackReadsTheStepWhole();
         testUndoIsAsItWasReadWhole();
         if (failures == 0) std::printf("app tests passed (undo kept only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--fx") { // just the FX screen and its list of effects (for trying a change)
+        testTheEffectsScreen();
+        testTheFxScreensList();
+        testTheFxScreenAsDrawn();
+        testChangingTypeKeepsWhatIsShared();
+        testFxTextsFit();
+        testTheFxScreenHoldsUp();
+        testTheFxScreenSecondReview();
+        testSongFilesAreAsTheyWere();
+        testTheFxScreenShowsCompAtWork();
+        if (failures == 0) std::printf("app tests passed (FX only)\n");
         return failures == 0 ? 0 : 1;
     }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
