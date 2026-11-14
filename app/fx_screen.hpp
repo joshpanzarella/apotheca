@@ -186,6 +186,12 @@ public:
     static float typeRowRoom(const Fonts& fonts, int types);
     static float typeRowX(const Fonts& fonts) { return kPaneX + 12.f + fonts.small.width("TYPE") + 12.f; } // where the first type (or "...") stands
     static void typesInView(const Font& font, const std::vector<std::string>& names, int at, float room, int* from, int* to);
+    // How wide the row is with the types `from` to before `to` in view (and "..." at a cut end).
+    static float typeRowWidth(const Font& font, const std::vector<std::string>& names, int from, int to);
+    // WHICH ARE IN VIEW IS LARGE'S AT EVERY SIZE (MOD's five do not all fit at LARGE: a smaller size showing more would
+    // be other words): those LARGE shows (typesInView at LARGE); the set the row is drawn in is the one given if they
+    // fit its room, else LARGE, the row's "TYPE" and key with it (XL).
+    static const Fonts& typeRowView(const Fonts& fonts, const std::vector<std::string>& names, int at, int* from, int* to);
     // What the screen draws with, asked with names alone so a test can draw names no effect has yet (the fifteen
     // planned, and longer): a family's types on its line of the list of effects (its top at `y`, the one at `lit`
     // in brass, -1 none; a family's words are one name), and the heading's TYPE row (on `at`, the key with A held).

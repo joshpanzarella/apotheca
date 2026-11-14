@@ -433,6 +433,10 @@ int apotheca::runBench() {
         if (kind == EffectKind::Wear) effect("WEAR, WOW TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Limiter) effect("LIMITER, +20 DB", kind, 0, 1.f);
         if (kind == EffectKind::Snap) effect("SNAP, ATTACK TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Flanger) effect("FLANGER, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Ensemble) effect("ENSEMBLE, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Phaser) effect("PHASER, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Tremolo) effect("TREMOLO, RANDOM", kind, 2, 0.9f);
     }
 
     // The send buses, as what they add to a song of twelve busy drum tracks.

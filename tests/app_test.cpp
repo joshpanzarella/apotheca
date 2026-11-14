@@ -4899,11 +4899,11 @@ void testTheFxScreenAsDrawn() {
     CHECK(typesOn(4, 0) && typesOn(5, -1));
     CHECK(heading("MOD", kBrass) && lineName(1, "MOD", kText) && inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("MOD") + 7.f, F::lineY(1) + smallMid + 1.f, "CHORUS", kDim));
     {
-        // MOD's one type is named in the heading's TYPE row all the same, on its plate; there is no other to go to, so no arrows.
+        // MOD's first type is named in the heading's TYPE row, on its plate (CHORUS; FLANGER, ENSEMBLE, PHASER and TREMOLO since batch c1).
         const float x = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f;
         CHECK(inked(canvas, scratch, 0, x, F::kPaneY + 64.f, "CHORUS", kBg) && canvas.is(static_cast<int>(x) - 5, F::kPaneY + 60, kBrass));
     }
-    // The LEFT / RIGHT key at the TYPE row's end: none for MOD (one type), there for DELAY (below).
+    // The LEFT / RIGHT key at the TYPE row's end: there for MOD (five types; none when it had one), and for DELAY (below).
     const auto keyInk = [&] {
         int ink = 0;
         const int kx = static_cast<int>(F::kPaneX + F::kPaneW - 12.f - ui::keyWidth(fonts, "LEFT / RIGHT")) - 2;
@@ -4911,7 +4911,7 @@ void testTheFxScreenAsDrawn() {
             for (int x = kx; x < F::kPaneX + F::kPaneW - 8; ++x) ink += canvas.is(x, y, kText) ? 1 : 0;
         return ink;
     };
-    CHECK(keyInk() == 0);
+    CHECK(keyInk() > 0);
     // Down one: DELAY, a family with types. Its TYPE row is in the heading, the one it is on a brass plate.
     rig.tap(DOWN);
     draw();
@@ -5109,7 +5109,7 @@ void testTheFxScreenAsDrawn() {
         session.setEffect(0, 2, EffectKind::Chorus);
         rig.key(A, true);
         draw();
-        CHECK(hinted("effect") && !hinted("type")); // MOD has one (CRUSH has RING too)
+        CHECK(hinted("effect") && hinted("type")); // MOD has five since batch c1: every family has types now
         rig.key(A, false);
         rig.frames(1);
     }
@@ -5302,11 +5302,13 @@ void testFxTextsFit() {
         float types = fonts.small.width("TYPE") + 12.f;
         std::vector<std::string> typeNames;
         for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f, typeNames.push_back(effectTypeName(effectTypeAt(kind, t)));
-        CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
+        // (MOD's five do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
+        if (effectInfo(kind).family != EffectFamily::Mod) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
         {
-            int from = -1, to = -1; // today's types are all in view
-            F::typesInView(fonts.small, typeNames, effectTypeIndex(kind), F::typeRowRoom(fonts, effectTypes(kind)), &from, &to);
-            CHECK(from == 0 && to == effectTypes(kind));
+            int from = -1, to = -1; // today's types are all in view, but MOD's
+            const Fonts& drawn = F::typeRowView(fonts, typeNames, effectTypeIndex(kind), &from, &to);
+            CHECK(F::typeRowWidth(drawn.small, typeNames, from, to) <= F::typeRowRoom(drawn, effectTypes(kind)) && from <= effectTypeIndex(kind) && effectTypeIndex(kind) < to);
+            CHECK((from == 0 && to == effectTypes(kind)) == (effectInfo(kind).family != EffectFamily::Mod));
         }
         // In the list of effects: the family, then its types or its words, each in its own column.
         CHECK(F::kPickNameX + fonts.medium.width(effectFamily(kind)) <= F::kPickTypesX - 8);

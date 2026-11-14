@@ -29,6 +29,8 @@ inline const char* const kViews[] = {
     "fx-kind-comb", "fx-kind-comb --hold-a", "fx-kind-comb-1", "fx-kind-vowel", "fx-kind-vowel --hold-a", "fx-kind-vowel-1", "fx-kind-eq", "fx-kind-eq --hold-a", "fx-kind-eq-3",
     "fx-kind-fold", "fx-kind-fold --hold-a", "fx-kind-fold-2", "fx-kind-fuzz", "fx-kind-fuzz --hold-a", "fx-kind-fuzz-3", "fx-kind-ring", "fx-kind-ring --hold-a", "fx-kind-ring-2",
     "fx-kind-wear", "fx-kind-wear --hold-a", "fx-kind-wear-2", "fx-kind-limiter", "fx-kind-limiter --hold-a", "fx-kind-limiter-1", "fx-kind-snap", "fx-kind-snap --hold-a", "fx-kind-snap-1",
+    "fx-kind-flanger", "fx-kind-flanger --hold-a", "fx-kind-flanger-3", "fx-kind-ensemble", "fx-kind-ensemble --hold-a", "fx-kind-ensemble-3",
+    "fx-kind-phaser", "fx-kind-phaser --hold-a", "fx-kind-phaser-3", "fx-kind-tremolo", "fx-kind-tremolo --hold-a", "fx-kind-tremolo-1", "fx-kind-tremolo-3",
     "fx-family-1 --hold-a", "fx-family-2 --hold-a", "fx-family-3 --hold-a", "fx-family-4 --hold-a", "fx-family-5 --hold-a", "fx-family-6 --hold-a", "fx-family-7 --hold-a",
     "fx-deleting", "fx-trying", "change-instrument", "song-deleting", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12",
     "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",

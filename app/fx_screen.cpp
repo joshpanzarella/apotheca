@@ -209,11 +209,7 @@ float FxScreen::typeRowRoom(const Fonts& fonts, int types) {
 void FxScreen::typesInView(const Font& font, const std::vector<std::string>& names, int at, float room, int* from, int* to) {
     const int count = static_cast<int>(names.size());
     at = at < 0 ? 0 : (at >= count ? count - 1 : at);
-    const auto wide = [&](int a, int b) {
-        float w = (a > 0 ? font.width(kTypeMore) + kTypeGapX : 0.f) + (b < count ? font.width(kTypeMore) + kTypeGapX : 0.f);
-        for (int t = a; t < b; ++t) w += font.width(names[t].c_str()) + (t + 1 < b ? kTypeGapX : 0.f);
-        return w;
-    };
+    const auto wide = [&](int a, int b) { return typeRowWidth(font, names, a, b); };
     int a = at, b = count > 0 ? at + 1 : 0;
     for (bool grew = true; grew;) {
         grew = false;
@@ -221,6 +217,20 @@ void FxScreen::typesInView(const Font& font, const std::vector<std::string>& nam
         if (a > 0 && wide(a - 1, b) <= room) --a, grew = true;
     }
     *from = a, *to = b;
+}
+
+float FxScreen::typeRowWidth(const Font& font, const std::vector<std::string>& names, int from, int to) {
+    const int count = static_cast<int>(names.size());
+    float w = (from > 0 ? font.width(kTypeMore) + kTypeGapX : 0.f) + (to < count ? font.width(kTypeMore) + kTypeGapX : 0.f);
+    for (int t = from; t < to; ++t) w += font.width(names[t].c_str()) + (t + 1 < to ? kTypeGapX : 0.f);
+    return w;
+}
+
+const Fonts& FxScreen::typeRowView(const Fonts& fonts, const std::vector<std::string>& names, int at, int* from, int* to) {
+    const Fonts& large = fonts.fixed();
+    const int count = static_cast<int>(names.size());
+    typesInView(large.small, names, at, typeRowRoom(large, count), from, to);
+    return typeRowWidth(fonts.small, names, *from, *to) <= typeRowRoom(fonts, count) ? fonts : large;
 }
 
 std::vector<std::string> FxScreen::typeWords(EffectKind kind) {
@@ -714,13 +724,13 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
 
 // The heading's TYPE row: as many as fit about the one it is, "..." for the rest (six DELAYs at LARGE do not all
 // fit beside the key), and with A held the key that gives another. The room for the key is kept, held or not.
-void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list) {
+void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& chosen, const std::vector<std::string>& names, int at, bool list) {
     const int types = static_cast<int>(names.size());
     const float ty = static_cast<float>(kTypeRowY);
+    int from = 0, to = types;
+    const Fonts& fonts = typeRowView(chosen, names, at, &from, &to); // (held at LARGE, with its row, where LARGE's do not fit)
     fonts.small.draw(r, kPaneX + 12.f, ty, "TYPE", kDim);
     float tx = typeRowX(fonts);
-    int from = 0, to = types;
-    typesInView(fonts.small, names, at, typeRowRoom(fonts, types), &from, &to);
     if (from > 0) {
         fonts.small.draw(r, tx, ty, kTypeMore, kDim);
         tx += fonts.small.width(kTypeMore) + kTypeGapX;

@@ -1027,3 +1027,57 @@ is drawn with its family small, as REVERB SPRING is (its meter's mark keeps
 | WEAR | a 1 kHz sine's pitch at WOW 100%, 30%, 0 and 1%; its flutter, sway and drift; DIRT on a sine: the dirt's level, crackles counted, half a second after, under 300 Hz; dropouts counted in 40 ms pieces at DROPS 100%, 20%, 0; TONE at 10 kHz, 1 kHz, 40 Hz; hits 2 s apart with zeros or faint noise between, and 4.5 s apart; a click with no DIRT; WOW turned at once 0 to 100%, 100% to 0, 0 to 30%; the left's and right's dirt on one sine | 20 to 45 cents, the mean within 1, 30% a fifth to two fifths of it, 0 none; as smooth as the sine; flutter 1.5 to 5 cents rms, sway over 6, drift over 3; -26 to -12 dB, 8 to 20 a second, 20 dB further down, under 0.08; 80 to 200, 1 to 15, 0, no step over the sine's; under -12 dB, over -2, under -3; new dice near, the same far, the two 1e-4 apart; nothing too small; strays under 1.6 times its sway at rest (0.8 for 30%), there in 0.9 to 1.3 s; alike under 0.5 |
 | LIMITER | noise through at GAIN 0, CEILING 0, at 48, 44.1 and 96 kHz; noise, clicks and a sweep at +20 dB at four ceilings and two RELEASEs; a click on a quiet sine; a 100 Hz sine 12 dB in at three RELEASEs; the meter; the time back from 12 dB down; a loud side; a quiet sine after a loud second with zeros or faint noise between; the meter on one block loud at first and quiet at its end | exactly 3 ms late, to the bit; never over the ceiling, to 1e-7; the click at the ceiling, the sine turned down 1.5 ms before, untouched 3.1 ms before; harmonics 2 to 9 under -35 / -50 / -18 dB; 14 dB; under 80 / 150 to 350 / 1500 to 3500 ms; the other side down as much; the same to 1e-6; 14 dB (the block's most) |
 | SNAP | a drum (noise falling 60 dB in 0.3 s) at five settings: its first ms, 4 to 6 ms, 20 to 40, 100 to 250; the same 40 dB down; MIX 50%; steady sines at 100 Hz and 1 kHz at every end; a hit on one side; ATTACK and SUSTAIN turned at once under hits; one drum on both sides at MIX 25, 50, 80% | +11 to +12.8, +6.5 to 8.5 dB, falling, the tail untouched; -12.5 to -14; tail +5 to +7 / -5 to -7; within 0.5 dB of the loud one; the two added; within 0.5 dB, harmonics under -25 / -45 dB; the other side up 1.5 times; under 0.25 of the way in 3 ms, 0.85 at 60 to 80 ms, there by 300; the sides the same to the bit, the plain and shaped laid together to 1e-5 |
+
+**Batch c1 built (2026-11-14, branch `newfx2`): MOD's FLANGER, ENSEMBLE, PHASER and TREMOLO.**
+Numbers 24, 25, 26, 27; words `flanger`, `ensemble`, `phaser`, `tremolo`; in
+the list after CHORUS. They share `fx/mod.hpp` (CHORUS's RATE scale, so RATE,
+DEPTH and MIX carry among CHORUS, FLANGER, ENSEMBLE and PHASER to the bit;
+FEEDBACK between FLANGER and PHASER; SPREAD between ENSEMBLE and TREMOLO;
+TREMOLO's RATE is note lengths, not carried), keep the TICK, and sleep by the
+rest rule (4 s of nothing and memory all zeros, as RING).
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in the same four runs) |
+| --- | --- | --- | --- |
+| FLANGER | the sound and a copy 0.35 to 7.3 ms late, the delay swept by octaves (a triangle rounded at its turns), fed back either way: the jet | RATE (0.1 to 8 Hz), DEPTH (to 4.4 octaves of sweep; narrower above 2 Hz), FEEDBACK (-100 to +100%: 0.95 at the ends; the copy scaled by sqrt(1 - f^2) so noise is as loud at any FEEDBACK), MIX (100% is half and half: the notches all the way down) | 0.07% (the same while DEPTH turns) |
+| ENSEMBLE | the string machine's chorus: three copies at one place (9 ms), a third of a turn apart on two waves at once (a slow swirl at RATE and a shimmer at 9.7 times it, at most 10 Hz), darkened from 7 kHz | RATE, DEPTH (swirl 1.8 ms, shimmer 0.14 ms at 100%), SPREAD (the right's waves up to half a turn on), MIX (CHORUS's law) | 0.16 to 0.17% (as CHORUS: six reads between samples a sample; on locals no quicker) |
+| PHASER | six allpass stages swept from 640 Hz, 2.6 octaves each way at 100%, laid over the plain sound: three notches; the right a quarter turn behind | RATE, DEPTH, FEEDBACK (-100 to +100%: 0.9 at the ends, scaled as FLANGER's), MIX | 0.09 to 0.11% |
+| TREMOLO | the level moved by a wave a note length long, following the tempo | RATE (1/32 to 1 BAR, ten, triplets and 1/8 DOT), DEPTH, SHAPE (SINE, SQUARE, RAMP: the pump, RANDOM: a new level a turn by a roll), SPREAD (the right's wave up to half a turn behind: auto-pan). No MIX: DEPTH 0 is the sound to the bit | 0.07% (0.11% in one run); 0.06% at RANDOM. The plan said 0.02: two sines a sample and a double-precision place in the turn |
+
+- **Each against what CHORUS already has** (for the owner's ears):
+  - FLANGER is not CHORUS's FLANGE kind: FLANGE is one copy at 2.2 ms swung
+    1.9 ms by a sine (0.3 to 4.1 ms, lingering at the ends), a fixed
+    feedback of 0.6, the right a quarter turn behind. FLANGER sweeps 4.4
+    octaves at an even speed in pitch, its feedback is yours either way to
+    95%, and both sides sweep together (the jet in the middle).
+  - ENSEMBLE is not CHORUS's ENSEMBLE kind: that is three copies at 7, 10.5
+    and 14 ms, each on one wave at its own speed; their centre wanders (219
+    samples at DEPTH 100%, measured) so the pitch drifts. Here the three share
+    a place and pull against each other: their centre moves under a sample,
+    the pitch stays the note's own, and the shimmer is on top.
+  - **The same word twice**: MOD's line says ENSEMBLE as a type, and CHORUS's
+    own TYPE setting has an ENSEMBLE too (and FLANGE beside FLANGER). Renaming
+    CHORUS's kinds would change only what the screen says (the number and the
+    song file stay): the owner's call.
+- **TREMOLO is in time, not on the beat.** An effect is told the tempo, not
+  where the bar is: its wave starts at its top (RAMP at its bottom) when sound
+  arrives after 4 s of nothing, and runs on. Locking it to the bar needs the
+  engine to tell the slot where the step is: more than a row.
+- **The heading's TYPE row now shows LARGE's choice at every size**
+  (`FxScreen::typeRowView`): MOD's five do not all fit at LARGE ("... ENSEMBLE
+  PHASER TREMOLO" on TREMOLO), and at SMALL it showed all five: other words,
+  which `textsize` fails. At XL, where LARGE's choice does not fit, the row is
+  held at LARGE.
+- Mutants: 53 tried, 49 killed. Survivors, each looked at: FLANGER's and
+  ENSEMBLE's sleep also asking that the line (and ENSEMBLE's high cut) be
+  empty, and ENSEMBLE's count of empty samples on its line (the 4 s rest is
+  far longer than any of them holds anything: kept as guards); TREMOLO's
+  `depth != 0` skip (the same numbers either way: a saving).
+- Stills: `fx-kind-flanger`, `fx-kind-ensemble`, `fx-kind-phaser`,
+  `fx-kind-tremolo` (each with `--hold-a`, and `-N` on a setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| FLANGER | the sweep by itself at its top, bottom, middle, at 4 Hz, and its turns; clicks 25 ms apart at 0.24 Hz; an impulse at DEPTH 0, FEEDBACK +-100%; sines at 312.5 and 625 Hz at MIX 100 and 50%; noise at three FEEDBACKs; noise on one side | 7.352 to 0.348 ms, 1.6 at DEPTH 0, half as far at 4 Hz; even speed in octaves within 15%, the first 2% from the top under a quarter of 2% in the middle; each copy on the sweep to 0.01 octave, 16.7 to 352.9 samples; the copy 0.156, the next +-0.95 of it; the notch under -40 dB, the peak 0 dB, -6 dB at 50%; -2.5 to -5 dB; the other side silent |
+| ENSEMBLE | clicks 20 ms apart: the copies' centre and spread at DEPTH 0, 100% at 0.58 Hz and 8 Hz, against CHORUS's ENSEMBLE; noise at SPREAD 0, 50, 100%; what the copies add at 333 Hz and 12 kHz; MIX 50% at 333 Hz; noise at its usual settings | centre 432.67 samples (9 ms and the cut's 0.67), moving under 1.5 samples (CHORUS's 219); spread^2 (swirl^2 + shimmer^2) / 2 within 5%, swinging by 2 swirl x shimmer within 15%; the sides the same to the bit at 0, copies 0.04 and 0.03 alike; 0 and -5.1 dB; +2.32 dB (cos and sin of 22.5 degrees); -1.5 to -3 dB |
+| PHASER | sines at the three notches and between at DEPTH 0; between at FEEDBACK -100, 0, +100%; 640 Hz swept at 1 Hz on both sides; noise at three FEEDBACKs; noise on one side at +100% | under -40 dB, 0 dB within 0.05; -4.2, 0, +7.8 dB; from -33 to 0 dB, the right 0.250 s behind; -1 to -2 dB; the other side silent |
+| TREMOLO | a steady 0.5 through: SINE at every RATE at 120 and 90 BPM; DEPTH 50%; SQUARE at 1 BAR and 1/32; RAMP at 1/4; RANDOM for 30 s, again, at SPREAD 100%, after a sleep; SPREAD 100 and 50%; a new tempo and RATE; SINE to SQUARE and to RAMP; hits 1.5 s and 6 s apart | 0.5 + 0.5 cos to 7e-6; 0.5 to 1; falls counted, up half the time, 99% to 1% in 187 samples, no step past 0.0128; 0, 0.43, 0.75, 1, 0.02; levels 0.004 to 0.999, the same twice, the right the left's half a turn on, a fresh one's after waking; the sides adding to 1, a quarter turn to 2e-6; a turn of 24000 after, no step past the wave's own; steps under the fade's, no corner as the fade starts; 0 then the top again |

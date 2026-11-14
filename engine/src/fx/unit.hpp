@@ -98,6 +98,10 @@ extern const EffectInfo kRingInfo;   // ring.cpp
 extern const EffectInfo kWearInfo;   // wear.cpp
 extern const EffectInfo kLimiterInfo; // limiter.cpp
 extern const EffectInfo kSnapInfo;   // snap.cpp
+extern const EffectInfo kFlangerInfo; // flanger.cpp
+extern const EffectInfo kEnsembleInfo; // ensemble.cpp
+extern const EffectInfo kPhaserInfo; // phaser.cpp
+extern const EffectInfo kTremoloInfo; // tremolo.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -116,6 +120,10 @@ float foldCurve(float x);
 float fuzzCurve(float x, float gate);
 // RING's carrier: 0 SINE, 1 TRIANGLE, 2 SQUARE, at `at` of its turn (0 to 1), `dt` a sample's share of a turn.
 float ringCarrier(int wave, float at, float dt);
+// FLANGER's delay in ms for DEPTH and RATE settings, at `at` of the sweep's turn (0: its start, the longest).
+float flangerDelayMs(float depth, float rate, double at);
+// TREMOLO's wave, 0 to 1, before its jumps are smoothed: 0 SINE, 1 SQUARE, 2 RAMP, 3 RANDOM, at `at` of turn `turn` (since it woke).
+float tremoloWave(int shape, double at, long turn);
 
 } // namespace fx
 } // namespace apotheca

@@ -44,6 +44,10 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kWearInfo,   // 21
     &fx::kLimiterInfo, // 22
     &fx::kSnapInfo,   // 23
+    &fx::kFlangerInfo, // 24
+    &fx::kEnsembleInfo, // 25
+    &fx::kPhaserInfo, // 26
+    &fx::kTremoloInfo, // 27
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -64,6 +68,10 @@ const EffectKind kList[] = {
     EffectKind::Ring,     //         RING
     EffectKind::Wear,     //         WEAR
     EffectKind::Chorus,   // MOD:    CHORUS
+    EffectKind::Flanger,  //         FLANGER
+    EffectKind::Ensemble, //         ENSEMBLE
+    EffectKind::Phaser,   //         PHASER
+    EffectKind::Tremolo,  //         TREMOLO
     EffectKind::Delay,    // DELAY:  CLEAN
     EffectKind::Tape,     //         TAPE
     EffectKind::Ping,     //         PING

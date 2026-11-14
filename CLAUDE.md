@@ -106,6 +106,7 @@ Where effects are, in the engine:
 | `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
 | `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
+| `engine/src/fx/mod.hpp` | what MOD's newer types share (FLANGER, ENSEMBLE, PHASER, TREMOLO): CHORUS's RATE scale, a signed amount, a sine from a place in a turn, a delay line read between samples, the 4 s rest rule |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
@@ -206,13 +207,13 @@ effect in those two groups and fails one that does not.
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
-  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS),
+  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO),
   DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
   DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
   the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
-  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`). The screen asks `effectFamily`,
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO (branch `newfx2`). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
@@ -490,6 +491,12 @@ effect in those two groups and fails one that does not.
   meant for the master, where everything is late alike. A swap into or out of
   it lays the sine over itself 3 ms apart for the fade (2.10 of a step,
   allowed 2.3 in `testSwapFade`).
+- **An effect with a wave that runs by itself sleeps by the rest rule** (RING,
+  WEAR, and MOD's four: `kModRestSeconds`, 4 s of nothing, AND its memory
+  exact zeros). FLANGER's, ENSEMBLE's and PHASER's sweeps and TREMOLO's wave
+  start again from their start when they wake. **TREMOLO is in time, not on
+  the beat**: an effect is told the tempo, not where the bar is, so its wave
+  starts where the first sound after a rest is.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
@@ -560,8 +567,11 @@ effect in those two groups and fails one that does not.
     holds the fifteen planned types to it at every size.
   - **The heading's TYPE row shows as many types as fit** about the one the
     slot is, "..." (`kTypeMore`) for the rest (`typesInView`, in the room the
-    row keeps for the LEFT / RIGHT key held or not). Today's all fit; six
-    planned DELAYs at LARGE do not. A family of one shows its type all the
+    row keeps for the LEFT / RIGHT key held or not). **Which are in view is
+    LARGE's at every size** (`typeRowView`): MOD's five do not all fit at
+    LARGE, and SMALL showing more was other words (`textsize` fails that);
+    drawn at the size chosen where they fit it, else held at LARGE, its row
+    with it (XL). A family of one shows its type all the
     same where it is not the family's word (MOD: TYPE CHORUS), with no key.
   - **L1 / R1 is the track before / after** (owner, 2026-11-14: a send on
     another track cost five presses). `FxScreen::stepTrack`: it stops at the
@@ -1289,6 +1299,8 @@ effect in those two groups and fails one that does not.
 | ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.66 to 0.67% (0.32 at twice the rate) / 0.20 to 0.22% / 0.04% (0.06% in one run); 0.04% |
 | WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
 | ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
+| FLANGER / ENSEMBLE / PHASER / TREMOLO (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in all) | 0.07% / 0.16 to 0.17% / 0.09 to 0.11% / 0.07% (0.11% in one run) |
+| ...FLANGER's, ENSEMBLE's and PHASER's DEPTH turned all the while; TREMOLO at RANDOM | 0.07% / 0.16 to 0.17% / 0.09 to 0.11%; 0.06% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
@@ -1307,7 +1319,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`).
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER and TREMOLO (branch `newfx2`).
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
