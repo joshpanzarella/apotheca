@@ -1402,9 +1402,11 @@ static void testWhereAHitStarts() {
     engine->send(make(Command::Play));
     out = renderFrames(*engine, 8 * kStep);
     CHECK(onsetOf(out) >= 2 * kStep && onsetOf(out) <= 2 * kStep + 1 && soundingFrames(out) <= 500 && soundingFrames(out) >= 498);
-    // And removing the track forgets them.
+    // And removing the track forgets them. (It was still sounding: it fades for 5 ms before it goes,
+    // and what is sent after waits for that. A block lets it go, so the song below starts on time.)
     engine->send(make(Command::Stop));
     CHECK(engine->removeTrack(0));
+    renderFrames(*engine, 1000);
     CHECK(engine->addDrumTrack(0));
     CHECK(engine->setLaneSample(0, 0, twoHalves(1000, 0.2f, 0.4f)));
     engine->send(step(0, 2, 1.f));
@@ -1720,6 +1722,70 @@ static void testStepEffectCut() {
     engine->send(make(Command::Stop));
 }
 
+// A track taken away while it sounds fades over 5 ms (its instrument and its effects' tails), no
+// click; then it is gone. Beside a twin engine where it stays, the sound is the same times the fade.
+static void testATrackTakenAwayFades() {
+    for (int kind = 0; kind < 2; ++kind) {
+        const int t = kind == 0 ? 1 : 0;
+        std::unique_ptr<Engine> a(new Engine), b(new Engine);
+        for (Engine* e : {a.get(), b.get()}) {
+            if (kind == 0) { // a synth holding a note, with a reverb on its slot
+                CHECK(e->addSynthTrack(t, SynthKind::Phazed));
+                e->setTrackEffect(t, 0, makeEffect(EffectKind::Reverb, 48000.f, 120.f));
+                e->send(make(Command::NoteOn, t, 57, 0, 0.8f));
+            } else { // a drum's long tail
+                e->addDrumTrack(t); // (a new engine has its drums on track 1 already)
+                CHECK(e->setLaneSample(t, 0, slope()));
+                e->send(hitWith(0, 0, false, 0));
+            }
+            renderFrames(*e, 3000);
+        }
+        CHECK(a->removeTrack(t));
+        const std::vector<float> gone = renderFrames(*a, 1000), kept = renderFrames(*b, 1000);
+        const int fade = static_cast<int>(Engine::kGoneFadeSeconds * 48000.f);
+        CHECK(fade == 240);
+        float loud = 0.f, ownStep = 0.f, step = 0.f;
+        int off = 0;
+        for (int i = 0; i < 1000; ++i)
+            for (int ch = 0; ch < 2; ++ch) {
+                const std::size_t at = static_cast<std::size_t>(2 * i + ch);
+                const float g = i < fade ? 1.f - static_cast<float>(i + 1) / fade : 0.f;
+                off += std::fabs(gone[at] - kept[at] * g) > 1e-4f;
+                if (i < fade) loud = std::max(loud, std::fabs(kept[at]));
+                if (i > 0) {
+                    ownStep = std::max(ownStep, std::fabs(kept[at] - kept[at - 2]));
+                    step = std::max(step, std::fabs(gone[at] - gone[at - 2]));
+                }
+            }
+        CHECK(loud > 0.05f); // it was sounding
+        CHECK(off == 0);
+        // No step bigger than the sound's own and what the fade takes off a sample.
+        const float first = std::max(std::fabs(kept[0] - kept[0] * (1.f - 1.f / fade)), std::fabs(kept[1]) / fade);
+        CHECK(step <= ownStep + loud / fade + 1e-4f && first < 0.01f);
+        // Gone: silent, and a new instrument there plays (what was sent after waited for the fade:
+        // here, sent before the fade began, it is heard from the fade's last sample on).
+        CHECK(peakOf(renderFrames(*a, 1000)) == 0.f);
+        CHECK(a->removeTrack(t) == false); // (nothing there to take away)
+        CHECK(a->addSynthTrack(t, SynthKind::Phazed));
+        a->send(make(Command::NoteOn, t, 60, 0, 0.8f));
+        CHECK(peakOf(renderFrames(*a, 2000)) > 0.05f);
+    }
+    // A track taken away that is silent goes at once, and what follows is not held up.
+    std::unique_ptr<Engine> e(new Engine);
+    CHECK(e->addSynthTrack(1, SynthKind::Phazed));
+    renderFrames(*e, 1000);
+    CHECK(e->removeTrack(1) && e->addSynthTrack(1, SynthKind::Phazed));
+    e->send(make(Command::NoteOn, 1, 60, 0, 0.8f));
+    CHECK(peakOf(renderFrames(*e, 2000)) > 0.05f && e->caughtUp());
+    // Taken away while sounding, the rest of the queue waits, and caughtUp() says so.
+    e->send(make(Command::Stop));
+    CHECK(e->removeTrack(1) && e->addSynthTrack(1, SynthKind::Phazed));
+    renderFrames(*e, 100);
+    CHECK(!e->caughtUp());
+    renderFrames(*e, 200);
+    CHECK(e->caughtUp()); // the fade ended in that block (at 240): the rest went then, not a block later
+}
+
 static void testStepEffectRatchet() {
     std::unique_ptr<Engine> engine(new Engine);
     CHECK(engine->setLaneSample(0, 0, click()));
@@ -1760,6 +1826,18 @@ static void testStepEffectRatchet() {
     renderFrames(*engine, 12 * kStep + 2000); // two of the four have played
     engine->send(make(Command::Stop));
     CHECK(clicksIn(renderFrames(*engine, 4 * kStep)).empty());
+
+    // The tempo changed part-way through a ratchet: the pieces still to come keep their places in
+    // the step, as the step clock does (half the tempo: what was left of the gap is twice as long).
+    engine->send(make(Command::Play));
+    std::vector<float> before = renderFrames(*engine, 12 * kStep + 1000); // the first of four has played
+    engine->send(make(Command::SetTempo, 0, 0, 0, 60.f));
+    out = renderFrames(*engine, 2 * kStep);
+    CHECK(clicksIn(before).size() == 7 && clicksIn(before).back() == 12 * kStep);
+    CHECK((clicksIn(out) == std::vector<int>{1000, 4000, 7000}));
+    engine->send(make(Command::Stop));
+    engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    renderFrames(*engine, 4000);
 
     // A chance is rolled once for the whole ratchet: all of its hits or none.
     engine->send(make(Command::SetStepChance, 0, 0, 12, 0.5f));
@@ -1835,8 +1913,9 @@ static void testStepEffectsTravel() {
     CHECK(about(out[2 * (2 * kStep + 3000)], slopeAt(16 * kStep - 1 - 1500)));
     CHECK(out[2 * (3 * kStep - 5)] != 0.f && out[2 * (3 * kStep + 60)] == 0.f);
     engine->send(make(Command::Stop));
-    // And removing the track forgets them.
+    // And removing the track forgets them. (Still sounding: it fades 5 ms first; a block lets it go.)
     CHECK(engine->removeTrack(0));
+    renderFrames(*engine, 1000);
     CHECK(engine->addDrumTrack(0));
     CHECK(engine->setLaneSample(0, 0, slope()));
     engine->send(step(0, 2, 1.f));
@@ -3185,6 +3264,7 @@ int main() {
     testStepEffectReverse();
     testStepEffectCut();
     testStepEffectRatchet();
+    testATrackTakenAwayFades();
     testStepEffectsTravel();
     testANoteRatchets();
     testRatchetsHoldUp();

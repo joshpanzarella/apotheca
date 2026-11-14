@@ -237,11 +237,9 @@ effect in those two groups and fails one that does not.
   a slot and **moves the automation of each kept setting to its new lane**
   (REVERB's MIX is its third setting, HALL's its fourth), read the same way,
   in every scene (a step written as 0 is a step); the rest of the slot's
-  lanes are cleared. **Undo after a TYPE change is wrong and not fixed**
-  (found in review, 2026-11-13): undo puts the patterns' automation back in
-  the old type's lanes and the effect stays the new type (effects are not in
-  undo; `main` has the same fault when an effect is changed or emptied). The
-  mend is in `session.*` and is the owner's call. Another FAMILY
+  lanes are cleared. **Undo after a TYPE change puts back the old type, its
+  settings and its lanes together** (mended 2026-11-14: effects are in undo
+  now, next rule; it was wrong from 2026-11-13). Another FAMILY
   put in a slot (`Session::setEffect`) still clears all four.
 
 ### The engine and its threads
@@ -264,6 +262,19 @@ effect in those two groups and fails one that does not.
   held.** Setting the stop flag without it hung the quit.
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
+- **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,
+  `Track::going`, `kGoneFadeSeconds`; owner, 2026-11-14): its instrument, its
+  effects' tails and its thrown hits go down together, then `takeAway` does
+  what the command always did. Silent in its last block (`kGoneQuiet`, -100 dB):
+  at once, as before. **What was sent after waits for the fade** (`held_`,
+  `takeCommands`), and comes at the chunk the fade ends on, in the order sent;
+  other takings away fade beside it (a new song takes all twelve at once).
+  `caughtUp()` counts the held command. A test that takes a sounding track away
+  and wants the next thing at once renders 5 ms first (`engine_test`
+  `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+- **A tempo change keeps every place in the step** (`SetTempo`): what is left
+  of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
+  waiting are all scaled by the same amount, so the arpeggio stays on the beat.
 - **An effect going into or out of a slot fades for 10 ms**
   (`Engine::swapEffect`, `runSlot`): the old one and the new both run, and
   the sound slides between them. Outside a fade a slot runs exactly as it did.
@@ -544,9 +555,25 @@ effect in those two groups and fails one that does not.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
-- **Undo is a text snapshot of the patterns** (`songText`), one step per burst
+- **Undo is a text snapshot of the song** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
-  `noteEdit()`. Sounds, effects and track deletes are not undone.
+  `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
+  each track's effects, sends, sound (preset, settings, macros, a sampler's
+  settings) and GLIDE FROM, the master's effects and the buses' (LEVEL with
+  them)**. Those are seen changing by `Session::soundMark()` each frame, as the
+  cell is by `cellMark()`: no screen calls anything (the FX screen is
+  untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ
+  **as the song file writes them** (`sameAsText`, `effectSameAsText`: `%.6g`;
+  a third reads back as 0.333332986, and compared as numbers every undo
+  rounded such a setting, send or macro and told the engine, a synth's whole
+  patch, the master and the buses on every undo; `testUndoLeavesWhatTheTextRounds`),
+  through the engine's usual commands (`restoreEffect`: another kind is
+  `Engine::setEffect` then its settings; the same kind, only the settings
+  that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
+  image and never an `Effect` from this thread. Automation is a pattern, so a
+  TYPE change taken back has its lanes back with it. Tempo, mutes, names, the
+  kit's recordings and track deletes are not undone. After a restore the
+  marks are taken again (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song
   with `sendSong()` and keep the steps: a delete takes its track out of every
@@ -613,7 +640,7 @@ effect in those two groups and fails one that does not.
   pairs, held to twelve blocks past the last key (a busy machine made minutes
   of sound otherwise). It is clean under the thread sanitizer
   (`-fsanitize=thread`, about nine minutes; sixteen with its build, on a busy
-  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
+  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; clean 2026-11-14 with the scene move's asking again, nineteen minutes for the run alone on a shared desk; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
   what a scene move hands over.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
@@ -635,15 +662,28 @@ effect in those two groups and fails one that does not.
   left alone while one scene goes round, and beside a song built with the
   copy in it while the song plays through (press, undo, redo; also with a
   later scene playing, and with a real audio thread making blocks back to back).
-- **A known fault, not mended, on `main` too** (found in review,
-  2026-11-13): the song plays through, and a copy is taken back during the
-  LAST STEP of the scene it was copied from. That step has already asked a
-  step ahead for the early notes and humanised chords of the bar that
-  follows, which was the copy; the first step of the scene that now follows
-  plays wrong (0.28 from the song left alone; taken back half a step sooner,
-  0). One sixteenth note wide. `nextscene_test --edge` prints it; it is not
-  in `ctest`. The mend is in what `fireStep` has asked ahead, and is the
-  owner's call.
+- **A copy taken back during the LAST STEP of the scene it was copied from
+  is mended in the engine** (found in review 2026-11-13, mended 2026-11-14).
+  That step has asked a step ahead for the early notes, hits and chords of the
+  bar that follows, which was the copy. Everything asked ahead is marked
+  (`ahead` on a waiting note, a drum hit waiting, an arpeggio, a PAIRED
+  `Coming`; `asking_` while it is asked), and each track keeps where it was
+  asked from (`askedFrom`, `askedBar`) and what the asking changed
+  (`strokesBefore`, `lastChordBefore`, `chordAskedBefore`). `ScenesMoved` ends
+  with `askAgain`: where another scene's bar follows now, the marked things
+  are dropped, those three put back, and the step asked again from the new
+  bar (`askAheadHits`, `askAheadNotes`, the same code `fireStep` asks with),
+  as far into the step as the playing is. A new step clears the marks first.
+  **One thing it cannot mend**: an early note of the copy already heard
+  (here from 61.7 of the step on: 0.28 from the song left alone, as before),
+  and the next scene's notes whose moment has gone by are not played late.
+  `nextscene_test` `testTakenBackOnTheLastStep` (in ctest) holds 0 up to there
+  for `fill` and for a song with more asked ahead (`addEdges`);
+  `nextscene_test --edge` prints the figures. **One line no test reaches**
+  (its mutant survives): `GlideTrail::aheadIsNow` in `fireStep`, clearing the
+  PAIRED marks at a new step. Kept: a mark left on would let a move forget a
+  moment's own keys, but the keys begin before any note of their moment can
+  ask, so no song found shows it.
 - **What the program remembers it sent is set only when the send went**
   (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
   full queue left the engine with the old song length for good: the song sent
@@ -992,7 +1032,7 @@ effect in those two groups and fails one that does not.
     `Session::setGlideFrom`, `Command::SetGlideFrom`. Not in a track image,
     not in a scene, so a scene move carries nothing for it. `applyProject`
     tells every track's. `RemoveInstrument` puts the engine's back to TOP.
-    **Not in undo** (like a send; the owner's call). In a song file:
+    **In undo** since 2026-11-14 (a step of its own). In a song file:
     `glidefrom N`, a line of a synth track's own, left out at TOP; under a
     drum track it is read and not taken.
   - **The gesture: X held on a note, L1 back, R1 on**, a click, stopping at
@@ -1032,13 +1072,24 @@ effect in those two groups and fails one that does not.
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
-  be accepted on the device (hold A). **Once accepted, the hints bar's end says
-  RESTART TO UPDATE in brass until the program starts again** (owner,
+  be accepted on the device (hold A). **Five wrong numbers lock it for a
+  minute** (`Transfer::kWrongMost`, `lockoutMs`), counted for the whole server,
+  every request refused with 429 meanwhile, the right number too. Only a path
+  whose first part is all digits is a try (a browser asks for `/favicon.ico`
+  by itself). **A right number does not begin the count again** (the owner's
+  page asks with it all the time: a guesser beside it was never stopped); a
+  minute with no wrong number does, and so does a fresh `start`. **An update,
+  once accepted, makes the hints bar's end say RESTART TO UPDATE in brass until the program starts again** (owner,
   2026-11-14; `Session::updateReady`, `ui::gUpdateReady`): it takes the help
   words' place and is always drawn, the hints (and a strip's chips, the dice
   at the end too) giving way to it (`hintsEnd`). MENU still opens the help.
   `ui_test` (`testTheBarSaysAnUpdateWaits`) and `transfer_test` hold it;
   stills `update-ready`, `update-ready-drums`, `update-accepted`.
+- **A song sent under the open song's name is refused** (409, "that song is
+  open on the handheld", case not counted: a card may not tell them apart).
+  The Session tells the server the name (`Transfer::setOpenSong`, from
+  `update()` when it changes and when WiFi goes on). **`saveNow` holds
+  `Transfer::songFiles()` while it writes**, as the server does.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from
@@ -1135,7 +1186,8 @@ effect in those two groups and fails one that does not.
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
-| Undo plus redo | 20 ms |
+| Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
+| ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
 
 **Twin Analog is the costly one**, and its time is spread over plain
 arithmetic with no single hot spot. Do not "optimise" it blind: any change

@@ -2402,9 +2402,12 @@ void testUndoAndRedo() {
     CHECK(session.undo() && rig.project().tracks[1].bars[0] == 1);
     CHECK(session.undo() && bar.empty());
     CHECK(session.redo() && bar.at(60, 2) >= 0 && bar.at(60, 3) >= 0);
-    // Sounds and settings are not part of it: a preset chosen since stays chosen.
+    // A sound is part of it too (owner, 2026-11-14): a preset chosen since is a step of its own.
+    const int presetWas = rig.project().tracks[1].preset;
     rig.app.session().chooseSynthPreset(1, 4);
-    CHECK(session.undo() && rig.project().tracks[1].preset == 4 && bar.empty());
+    settle();
+    CHECK(session.undo() && rig.project().tracks[1].preset == presetWas && !bar.empty());
+    CHECK(session.undo() && bar.empty());
 
     // Twenty deep and no deeper: the oldest steps fall off the end.
     session.view = View::Pattern;
@@ -6982,6 +6985,244 @@ void testATrackDeletedOrChangedKeepsUndo() {
     }
 }
 
+// From silence: a hit on track 0's lane 1, or a note on track 1 let go after 20000 frames. 150000 frames.
+std::vector<float> heardFromSilence(Rig& rig, bool note) {
+    rig.render(500000); // every tail out first, and the buses at rest (ten seconds of nothing)
+    Command c;
+    c.track = 1;
+    c.a = note ? 57 : 0;
+    c.value = 0.8f;
+    c.type = note ? Command::NoteOn : Command::Trigger;
+    if (!note) c.track = 0;
+    rig.engine->send(c);
+    std::vector<float> out = rig.render(20000);
+    c.type = Command::NoteOff;
+    if (note) rig.engine->send(c);
+    const std::vector<float> rest = rig.render(130000);
+    out.insert(out.end(), rest.begin(), rest.end());
+    return out;
+}
+
+// Undo covers a track's effects, sends, sound and GLIDE FROM, the master's effects and the buses'
+// (owner, 2026-11-14): each change is a step (a burst is one), and undo and redo put it back in the
+// project and in the engine. Nothing on the FX screen says so: the session sees the change itself.
+// The engine is held to the project by sound, beside a song opened from the same text: a drum hit
+// through the effects, sends and buses, sample for sample (to 1e-4 of its peak: the old FILTER's
+// state does not quite reach zero). The synth's note is held to itself before the changes, by its
+// loudness in four windows (its own clocks run apart; and a sound set live is not heard the same as
+// one opened from text, on main too: its attack differs), where the sound changed here is far more
+// than the 25% allowed.
+void testUndoCoversSounds() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    addPhazed(rig);
+    session.view = View::Effects;
+    rig.frames(60);
+    rig.render(512);
+    const auto settle = [&] { rig.frames(50); };
+    const auto windows = [](const std::vector<float>& a) {
+        const int edges[] = {0, 4000, 30000, 60000, 150000};
+        std::vector<double> e(4, 0.0);
+        for (int w = 0; w < 4; ++w)
+            for (int i = 2 * edges[w]; i < 2 * edges[w + 1]; ++i) e[static_cast<std::size_t>(w)] += double(a[i]) * a[i];
+        return e;
+    };
+    const auto alike = [](const std::vector<double>& a, const std::vector<double>& b) {
+        bool same = true;
+        for (std::size_t w = 0; w < a.size(); ++w) same = same && ((a[w] < 1e-6 && b[w] < 1e-6) || std::fabs(a[w] - b[w]) <= 0.25 * std::max(a[w], b[w]));
+        return same;
+    };
+    const auto sameHit = [](const std::vector<float>& a, const std::vector<float>& b) {
+        float most = 0.f;
+        for (std::size_t i = 0; i < a.size(); ++i) most = std::max(most, std::fabs(a[i] - b[i]));
+        return Rig::peak(a) > 0.01f && most <= 1e-4f * Rig::peak(a);
+    };
+    const auto heardAsTheProject = [&] {
+        Rig opened;
+        std::unique_ptr<Project> copy(new Project);
+        CHECK(parseSong(songText(project), *copy));
+        opened.project() = *copy;
+        opened.app.session().applyProject();
+        opened.frames(2);
+        return sameHit(heardFromSilence(rig, false), heardFromSilence(opened, false));
+    };
+    CHECK(heardAsTheProject());
+    // A setting turned on an effect that stays (the master's FILTER): undo tells the engine the old
+    // value. (Here, before any TAPE or HALL: they are not the same from one hit to the next.)
+    {
+        const int before = session.undoSteps();
+        session.setEffect(kMasterTrack, 0, EffectKind::Filter);
+        session.setEffectParam(kMasterTrack, 0, 0, 0.3f);
+        settle();
+        const std::vector<float> asSet = heardFromSilence(rig, false);
+        CHECK(sameHit(heardFromSilence(rig, false), asSet)); // (the same twice: the check can be trusted)
+        session.setEffectParam(kMasterTrack, 0, 0, 0.8f);
+        settle();
+        CHECK(!sameHit(heardFromSilence(rig, false), asSet));
+        CHECK(session.undo() && project.masterEffects[0].param[0] == 0.3f);
+        CHECK(sameHit(heardFromSilence(rig, false), asSet) && heardAsTheProject());
+        CHECK(session.undo() && project.masterEffects[0].kind == 0 && session.undoSteps() == before);
+        CHECK(heardAsTheProject());
+    }
+    const std::string start = songText(project);
+    const std::vector<float> hitAtStart = heardFromSilence(rig, false);
+    const std::vector<double> noteAtStart = windows(heardFromSilence(rig, true));
+    const int steps = session.undoSteps();
+
+    // An effect put in, turned (one burst: one step), a send, a bus's LEVEL, the master, GLIDE FROM, a sound.
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffectParam(0, 0, 1, 0.3f);
+    session.setEffectParam(0, 0, 1, 0.35f);
+    settle();
+    CHECK(session.undoSteps() == steps + 1);
+    session.setSend(0, 1, 0.6f);
+    settle();
+    session.setEffectParam(kEchoBus, 0, 3, 0.4f); // the ECHO bus's LEVEL
+    session.setSend(0, 0, 0.5f);
+    settle();
+    session.setEffect(kMasterTrack, 1, EffectKind::Filter);
+    session.setEffectParam(kMasterTrack, 1, 0, 0.3f);
+    settle();
+    session.setGlideFrom(1, kFromPaired);
+    settle();
+    session.chooseSynthPreset(1, 3);
+    session.setSynthMacro(1, 2, 0.8f);
+    settle();
+    session.setSynthSetting(1, 5, project.tracks[1].patch.value[5] + 1);
+    settle();
+    CHECK(session.undoSteps() == steps + 7);
+    const std::string end = songText(project);
+    CHECK(heardAsTheProject());
+    CHECK(!sameHit(heardFromSilence(rig, false), hitAtStart) && !alike(windows(heardFromSilence(rig, true)), noteAtStart)); // (the checks can tell)
+
+    // Back, one at a time; and the engine with it.
+    const unsigned images = session.imagesSent();
+    CHECK(session.undo() && session.undo()); // the setting, then the preset and macro
+    CHECK(project.tracks[1].preset != 3 && project.tracks[1].macro[2] == 0.5f);
+    CHECK(session.undo() && project.tracks[1].glideFrom == kFromTop);
+    CHECK(session.undo() && project.masterEffects[1].kind == 0);
+    CHECK(session.undo() && project.busEffects[0].param[3] == 1.f && project.tracks[0].send[0] == 0.f);
+    CHECK(session.undo() && project.tracks[0].send[1] == 0.f);
+    CHECK(session.undo() && project.tracks[0].effects[0].kind == 0);
+    CHECK(session.undoSteps() == steps && songText(project) == start);
+    CHECK(session.imagesSent() == images); // none of it is a pattern: no track sent whole
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps); // putting it back is not itself an edit
+    CHECK(heardAsTheProject());
+    CHECK(sameHit(heardFromSilence(rig, false), hitAtStart) && alike(windows(heardFromSilence(rig, true)), noteAtStart));
+    // ...and forward again.
+    for (int i = 0; i < 7; ++i) CHECK(session.redo());
+    CHECK(songText(project) == end && session.imagesSent() == images);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 7 && session.redoSteps() == 0);
+    CHECK(heardAsTheProject());
+
+    // A TYPE change taken back: the old type, its settings and its automation lanes, together. (HALL is
+    // not the same to the sample from one hit to the next, as it is not from one way of cutting the
+    // sound into blocks to another (CLAUDE.md): it is held by loudness, as the note is.)
+    TrackData& track = project.tracks[0];
+    session.setEffect(0, 2, EffectKind::Hall);
+    session.setEffectParam(0, 2, 0, 0.9f);
+    session.setEffectParam(0, 2, 3, 0.6f); // HALL's MIX: its fourth
+    session.setAutomation(0, 0, autoLaneOfEffect(2, 3), 6, 0.3f);
+    settle();
+    const EffectData hall = track.effects[2];
+    const std::vector<double> asHall = windows(heardFromSilence(rig, false));
+    const int typeSteps = session.undoSteps();
+    CHECK(changeEffectType(session, 0, 2, EffectKind::Reverb));
+    settle();
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Reverb) && track.automation[0][autoLaneOfEffect(2, 2)][6] == 0.3f && track.automation[0][autoLaneOfEffect(2, 3)][6] < 0.f);
+    CHECK(session.undoSteps() == typeSteps + 1);
+    const std::vector<double> asReverb = windows(heardFromSilence(rig, false));
+    CHECK(!alike(asHall, asReverb));
+    CHECK(session.undo());
+    CHECK(track.effects[2].kind == static_cast<int>(EffectKind::Hall) && track.effects[2].param[0] == hall.param[0] && track.effects[2].param[3] == hall.param[3]);
+    CHECK(track.automation[0][autoLaneOfEffect(2, 3)][6] == 0.3f && track.automation[0][autoLaneOfEffect(2, 2)][6] < 0.f); // MIX's lane is HALL's again
+    CHECK(alike(windows(heardFromSilence(rig, false)), asHall)); // and the engine has HALL again
+    CHECK(session.redo() && track.effects[2].kind == static_cast<int>(EffectKind::Reverb) && track.automation[0][autoLaneOfEffect(2, 2)][6] == 0.3f);
+    CHECK(alike(windows(heardFromSilence(rig, false)), asReverb));
+    // An effect emptied comes back, settings and all.
+    session.setEffect(0, 2, EffectKind::None);
+    settle();
+    CHECK(!alike(windows(heardFromSilence(rig, false)), asReverb));
+    CHECK(session.undo() && track.effects[2].kind == static_cast<int>(EffectKind::Reverb) && track.automation[0][autoLaneOfEffect(2, 2)][6] == 0.3f);
+    CHECK(alike(windows(heardFromSilence(rig, false)), asReverb));
+}
+
+// What undo covers besides the patterns is compared as the song file writes it too (review,
+// 2026-11-14): a third read back from the step's text is 0.333332986, not 0.333333343, and an undo of
+// one hit rounded every such effect setting, send and macro and told the engine (a synth's whole
+// patch; the master and the buses on every undo). Now each is left alone, to the last bit.
+void testUndoLeavesWhatTheTextRounds() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    addPhazed(rig); // track 1
+    CHECK(session.addTrack(TrackKind::Phazed)); // track 2
+    rig.frames(60);
+    rig.render(512);
+    const float third = 1.f / 3.f;
+    session.setEffect(0, 0, EffectKind::Filter);
+    session.setEffectParam(0, 0, 0, third);
+    session.setSend(0, 0, third);
+    session.setEffect(kMasterTrack, 0, EffectKind::Filter);
+    session.setEffectParam(kMasterTrack, 0, 0, third);
+    session.setEffectParam(kEchoBus, 0, 0, third);
+    session.setSynthMacro(1, 2, third);
+    rig.frames(60);
+    rig.render(512);
+    placeAndSettle(rig, 0, 1, 0);
+    project.tracks[2].notes[0][0].notes[0] = NoteEvent{0, 60, 1.f, 0.f, 0.8f};
+    session.sendNotePattern(2, 0);
+    rig.frames(60);
+    rig.render(512);
+    const unsigned images = session.imagesSent();
+    CHECK(session.undo() && session.undo());
+    CHECK(project.tracks[0].drums[0][0].level[1][0] == 0.f && project.tracks[2].notes[0][0].notes[0].velocity == 0.f);
+    CHECK(session.imagesSent() - images == 2);
+    CHECK(project.tracks[0].effects[0].param[0] == third); // to the last bit: not read back from the text
+    CHECK(project.tracks[0].send[0] == third);
+    CHECK(project.masterEffects[0].param[0] == third);
+    CHECK(project.busEffects[0].param[0] == third);
+    CHECK(project.tracks[1].macro[2] == third);
+    // ...and a value that did change is still put back (as the text holds it).
+    session.setSynthMacro(1, 2, 0.9f);
+    session.setEffectParam(kMasterTrack, 0, 0, 0.9f);
+    rig.frames(60);
+    CHECK(session.undo() && std::fabs(project.tracks[1].macro[2] - third) < 1e-6f && std::fabs(project.masterEffects[0].param[0] - third) < 1e-6f);
+}
+
+// A bus's effect or LEVEL changed by itself is a step of undo, and a Sampler track's settings are
+// one too, put back on undo and on redo (the review's surviving mutants: each shared a burst with
+// something else, or was not tried).
+void testUndoCoversABusAndASampler() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Sampler)); // track 1
+    rig.frames(60);
+    rig.render(512);
+    const int steps = session.undoSteps();
+    session.setEffectParam(kEchoBus, 0, 3, 0.4f); // the ECHO bus's LEVEL, alone
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    const int kind = project.busEffects[1].kind;
+    session.setEffect(kSpaceBus, 0, EffectKind::None); // the SPACE bus emptied, alone
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 2);
+    const int was = project.tracks[1].sampler[sampler::Tune];
+    session.setSamplerSetting(1, sampler::Tune, was + 37);
+    session.setSamplerSetting(1, sampler::Level, 20);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 3);
+    CHECK(session.undo() && project.tracks[1].sampler[sampler::Tune] == was && project.tracks[1].sampler[sampler::Level] == sampler::settingDefault(sampler::Level));
+    CHECK(session.undo() && project.busEffects[1].kind == kind && kind != 0);
+    CHECK(session.undo() && project.busEffects[0].param[3] == 1.f && session.undoSteps() == steps);
+    CHECK(session.redo() && session.redo() && session.redo());
+    CHECK(project.busEffects[0].param[3] == 0.4f && project.busEffects[1].kind == 0 && project.tracks[1].sampler[sampler::Tune] == was + 37 && project.tracks[1].sampler[sampler::Level] == 20);
+}
+
 // An undo of one hit sends the one track it changed. The others are compared as the song file
 // writes them: a keyboard's 90/127 or a setting written with WRITE on is not the number the text
 // reads back to the last bit, and each such track was sent whole and its values rounded.
@@ -7500,6 +7741,9 @@ int main(int argc, char** argv) {
         testUndoWorksOnTheTrackItChanged();
         testNextSceneTakenBackReadsTheStepWhole();
         testUndoIsAsItWasReadWhole();
+        testUndoCoversSounds();
+        testUndoLeavesWhatTheTextRounds();
+        testUndoCoversABusAndASampler();
         if (failures == 0) std::printf("app tests passed (undo kept only)\n");
         return failures == 0 ? 0 : 1;
     }
@@ -7531,6 +7775,9 @@ int main(int argc, char** argv) {
     testUndoWorksOnTheTrackItChanged();
     testNextSceneTakenBackReadsTheStepWhole();
     testUndoIsAsItWasReadWhole();
+    testUndoCoversSounds();
+    testUndoLeavesWhatTheTextRounds();
+    testUndoCoversABusAndASampler();
     testHoldBDeletesAnEffect();
     testTheHintsFitAndSayWhatTheyDo();
     testDeletingATrackSaysItCannotBeUndone();

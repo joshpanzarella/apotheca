@@ -115,8 +115,9 @@ private:
     void cancelSelectTap() { selectAlone_ = false; }
     bool revsOpen_ = false; // ...and inside it, the open song's revs
     std::vector<int> revs_; // newest first
-    int revCursor_ = 0;     // 0 is SAVE A REV
-    int savedRev_ = 0;      // the rev X just saved, to say so
+    int revCursor_ = 0;     // 0 is SAVE A REV, 1 NEW NAME, then the revs
+    static constexpr int kNewNameRow = 1, kRevsFirst = 2;
+    int savedRev_ = 0;      // the rev Y just saved, to say so
     void openRevList();
     bool selectAlone_ = false; // SELECT went down and nothing else has since
 

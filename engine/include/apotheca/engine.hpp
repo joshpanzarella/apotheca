@@ -325,7 +325,10 @@ public:
     // to wait (trashLost; never seen, it would take thousands in one frame).
     int trashHeld() const { return heldNow_.load(std::memory_order_relaxed); }
     unsigned trashLost() const { return trashLost_.load(std::memory_order_relaxed); }
-    bool caughtUp() const { return commands_.empty(); }
+    bool caughtUp() const { return commands_.empty() && !holding_.load(std::memory_order_acquire); }
+    // A track taken away while it sounds fades over this long first (no click). Commands sent
+    // after the taking away wait for the fade: they are applied in the order sent.
+    static constexpr float kGoneFadeSeconds = 0.005f;
     // A second way in, for ONE other thread (the one reading a USB keyboard):
     // notes and drum hits to play now, and nothing else. They are taken up
     // at the start of the next render(), after everything sent with send().
@@ -519,7 +522,7 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; std::uint8_t how = 0; };
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; std::uint8_t how = 0; bool ahead = false; };
         GlideTrail trail; // the notes the track last began, for a glide to start from (none since Play)
         std::uint8_t glideFrom = 0; // GLIDE FROM: which of them (kFromTop and the rest, glide_rule.hpp)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
@@ -545,6 +548,7 @@ private:
             long next = 0;                // that note's number: 0 the first
             int slot = -1, step = -1;     // where its chord is written: which bar of the song, which step
             bool look = false;            // that bar has been written to: see that the chord is still there
+            bool ahead = false;           // asked a step ahead, from the step after the one playing
         };
         Arp arps[3];
         // The step (counted from Play) whose chord has been asked for a step ahead: that chord
@@ -552,6 +556,13 @@ private:
         long chordAsked = -1;
         std::uint32_t lastChord = 0; // the chord the track last began (its seed), and how many it has
         long strokes = -1;           // begun since Play, less one: UP-DOWN strums up on the even ones
+        // What the step playing asked a step ahead for came from here (fireStep): the scene's store
+        // and the bar of the cell. If a scene move puts another there, what was asked is dropped
+        // and asked again (Engine::askAgain), and these put back as they were before the asking.
+        const void* askedFrom = nullptr;
+        int askedBar = -1;
+        long strokesBefore = -1, chordAskedBefore = -1;
+        std::uint32_t lastChordBefore = 0;
         double offIn[128];
         Track() {
             for (double& off : offIn) off = kNoNote;
@@ -568,6 +579,7 @@ private:
             float velocity = 0.f, start = 0.f, part = -1.f;
             HitPlay how;
             int more = 0;
+            bool ahead = false; // an early hit of the step after the one playing
         };
         Pending pending[kDrumLanes][3];
         // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
@@ -586,6 +598,10 @@ private:
         SlotFade fades[kTrackSlots];
         std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
         std::atomic<float> peak{0.f};
+        // Taken away while it still sounded: it fades to nothing over kGoneFadeSeconds (its
+        // effects' tails too), and only then is its instrument taken away (Engine::takeAway).
+        bool going = false;
+        float goingGain = 1.f;
         bool hasInstrument() const { return hasDrums || synth; }
     };
     struct Position { int scene, repeat, bar; };
@@ -602,6 +618,11 @@ private:
     void fireArps();
 
     void apply(const Command& command);
+    void takeAway(int t);      // RemoveInstrument's work, at once (after its fade, if it sounded)
+    void takeCommands();       // the queue, in order, up to a command that waits for a fade
+    int going_ = 0;            // tracks fading before they are taken away (the audio thread's)
+    Command held_;             // the first command after a taking away, waiting for the fade
+    std::atomic<bool> holding_{false};
     Position afterThisBar() const;
     void fireStep();
     void applyAuto(Track& track, int lane, float value);
@@ -670,6 +691,14 @@ private:
     bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
     bool firstStep_ = true; // the step about to fire is the first since Play
     bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
+    bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)
+    int askedFollowing_ = -1; // the step after the one playing, as fireStep worked it out (-1: none asked)
+    // The early notes, hits and chords of the step after the one playing, asked from where it is.
+    void askAheadHits(Track& track, const DrumScene& then, int following, double elapsed);
+    void askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed);
+    // After a scene move: the step after the one playing is another scene's now? Then what was
+    // asked from the one it was is dropped, and asked again from the one it is.
+    void askAgain();
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;

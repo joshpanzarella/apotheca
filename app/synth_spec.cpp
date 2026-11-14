@@ -105,7 +105,7 @@ void item(int page, int index, int& id, const char*& name) {
         id = index;
         name = names[index];
     } else if (page <= 3) {
-        static const char* names[kLineHead] = {"WAVE", "SECOND WAVE", "VOLUME KEY FOLLOW", "WAVE KEY FOLLOW"};
+        static const char* names[kLineHead] = {"WAVE", "SECOND WAVE", "LEVEL KEY FOLLOW", "WAVE KEY FOLLOW"};
         id = lineSetting(page - 2, index);
         name = names[index];
     } else {

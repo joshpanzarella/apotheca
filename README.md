@@ -106,8 +106,12 @@ hit, a chord) its button takes the place of the words about the help card.
 step is one burst of editing: a paint stroke, a roll of the dice, a cell
 emptied, a chord placed, a pass of automation. It covers what is in the
 patterns (hits, notes, chords, automation, how long each cell is, how often
-each scene plays); sounds, effects
-and settings are not part of it. The song keeps playing while you undo.
+each scene plays), and also each track's effects and their settings (a
+TYPE changed comes back with its old settings and automation), its sends,
+its sound (preset, settings, macros), its GLIDE FROM, the master's effects
+and the buses' (their LEVEL too). Tempo, mutes, names, the kit's recordings
+and a track deleted or given another instrument are not. The song keeps
+playing while you undo.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
@@ -646,7 +650,10 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 
 In the list:
 
-- **Y on the open song** gives it a new two-word name. Press again for another.
+- **Y** saves a rev of the open song, wherever the cursor is (X hears, so it
+  saves nothing).
+- **A on the open song** lists its revs. Its second row, **NEW NAME**, gives
+  the song a new two-word name. Press again for another.
 - **Hold B on a song for a second** deletes it; the row fills as you hold and
   says CANNOT BE UNDONE (nothing on the handheld brings it back). A
   tap of B only closes the list. A deleted song and its revs are moved to a
@@ -677,6 +684,15 @@ the same network.
   they go one after another, each with a bar and a result: `saved`, or
   `refused` and why. A recording is on the kit screen at once; a chord pack
   is in the chord button's list on the next frame.
+- **The song open on the handheld is not sent over.** A song sent under its
+  name is refused ("that song is open on the handheld"): the handheld saves
+  the song it has as you go, and would write over the one sent a moment
+  later. Open another song on the handheld first, or send it under a new name.
+- **Five wrong numbers** in the address, from anyone, and the page refuses
+  every try for a minute ("too many wrong numbers: wait a minute"), the right
+  number too. Then five more. A right number in between does not start the
+  count again; a minute with no wrong number does. Turning WiFi off and on
+  gives a new number and starts the count again.
 - **A whole folder**: CHOOSE A FOLDER, or drop one on the page. Every `.wav`
   in it is sent, however deep its sub-folders go. The handheld keeps
   recordings one folder deep, so each sub-folder becomes one folder:
@@ -772,7 +788,7 @@ Apotheca-only system image.
 A rev is a snapshot: the song as it is now, kept beside it and never written
 to again.
 
-- **SELECT, then X** saves a rev.
+- **SELECT, then Y** saves a rev (in the list of revs too).
 - **SELECT, then A on the open song** lists its revs. A on one goes back to it.
 - **Going back loses nothing.** If no rev holds the song as it is now, it is
   kept as a new rev first.
@@ -1082,7 +1098,7 @@ step). A single note after a single note is the same under every type.
 | RANDOM on the roll | The lines are as they are the first time the scene plays after Play. Later times round roll anew. |
 | The strip, X held | GLIDE FROM and its value: dim while this note has no glide, brass when it is not TOP. |
 | The dice | Leave it alone. It is the track's. |
-| Undo | Does not take it back (like a send or a sound). One click puts it back. |
+| Undo | Takes it back, as a step of its own (SELECT + B). |
 | In the song file | `glidefrom 1` (PAIRED), `2` (NEAREST), `3` (RANDOM), on a line of the track's own. Nothing at TOP. |
 | Not on a chord | X held on a chord shows the chord's six effects; L1 / R1 there are as they were. |
 | A known oddity | PAIRED, two notes under half a millisecond apart with a step line between them: the first is taken as a note alone (from the top). |

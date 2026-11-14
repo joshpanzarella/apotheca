@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -28,6 +29,8 @@ namespace apotheca {
 extern const char* const kDesignPage; // design_page.cpp
 
 namespace {
+
+const char* const kTooManyWrong = "too many wrong numbers: wait a minute\n";
 
 const char* const kPage = R"page(<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -176,7 +179,7 @@ $('clear').onclick = () => { for (const li of [...$('log').children]) if (!li.cl
 
 // ---- what is on the handheld ----
 async function list() {
-  try { all = await (await fetch(base + '/list')).json(); } catch (e) { note('the handheld', 'no answer: is the WiFi page still on?', 'no'); return; }
+  try { const r = await fetch(base + '/list'); if (!r.ok) { note('the handheld', (await r.text()).trim(), 'no'); return; } all = await r.json(); } catch (e) { note('the handheld', 'no answer: is the WiFi page still on?', 'no'); return; }
   all.sizes = all.sizes || {};
   for (const f of [...made]) if ((all.folders || []).includes(f)) made.delete(f);
   if (first) { first = false; if (all.samples.filter(n => !n.includes('/')).length <= 60) open.add(''); }
@@ -796,6 +799,13 @@ std::vector<Transfer::Change> Transfer::takeChanges() {
     return taken;
 }
 
+int Transfer::lockoutMs = 60000;
+
+void Transfer::setOpenSong(const std::string& name) {
+    std::lock_guard<std::mutex> hold(openMutex_);
+    openSong_ = name;
+}
+
 std::string Transfer::folderFor(const std::string& kind) const { return kind == "samples" ? samples_ : kind == "songs" ? songs_ : kind == "chords" ? chords_ : kind == "bounces" ? bounces_ : ""; }
 
 bool Transfer::start(const std::string& sampleFolder, const std::string& songFolder, const std::string& chordFolder, int port, unsigned seed) {
@@ -822,6 +832,9 @@ bool Transfer::start(const std::string& sampleFolder, const std::string& songFol
     char pin[8];
     std::snprintf(pin, sizeof pin, "%04u", (seed >> 8) % 10000u);
     pin_ = pin;
+    wrong_ = 0; // a new number: the count starts again
+    lastWrongMs_ = 0;
+    lockedUntilMs_ = 0;
     stopping_.store(false);
     listening_ = fd;
     thread_ = std::thread([this] { serve(); });
@@ -891,10 +904,29 @@ void Transfer::answer(int fd) {
     std::string path = head.substr(space + 1, space2 - space - 1);
     if (const std::size_t query = path.find('?'); query != std::string::npos) path.resize(query);
 
-    // The number from the device's screen comes first, or nothing is said.
+    // The number from the device's screen comes first, or nothing is said. Too many wrong ones
+    // (from anyone: guessing is guessing) and nothing is said to anyone for a minute.
+    const long long nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (nowMs < lockedUntilMs_) return reply(fd, "429 Too Many", "text/plain", kTooManyWrong);
     const std::string door = "/" + pin_;
-    if (path.compare(0, door.size(), door) != 0 || (path.size() > door.size() && path[door.size()] != '/'))
+    if (path.compare(0, door.size(), door) != 0 || (path.size() > door.size() && path[door.size()] != '/')) {
+        // Only a number counts as a try: a browser asks for /favicon.ico by itself.
+        const std::size_t ends = path.find('/', 1);
+        const std::string first = path.substr(1, ends == std::string::npos ? std::string::npos : ends - 1);
+        // A right number in between does not start the count again (the owner's page asks with it
+        // all the time, and a guesser beside it would never be stopped); a quiet minute does. So
+        // the most tries are kWrongMost a minute, either way.
+        if (!first.empty() && first.find_first_not_of("0123456789") == std::string::npos) {
+            if (nowMs - lastWrongMs_ >= lockoutMs) wrong_ = 0;
+            lastWrongMs_ = nowMs;
+            if (++wrong_ >= kWrongMost) {
+                wrong_ = 0;
+                lockedUntilMs_ = nowMs + lockoutMs;
+                return reply(fd, "429 Too Many", "text/plain", kTooManyWrong);
+            }
+        }
         return reply(fd, "403 Forbidden", "text/plain", "Open the address shown on the Apotheca screen, with its four-digit number.\n");
+    }
     path = path.substr(door.size());
 
     if (method == "GET" && (path.empty() || path == "/")) return reply(fd, "200 OK", "text/html; charset=utf-8", kPage);
@@ -1052,6 +1084,20 @@ void Transfer::answer(int fd) {
         const ssize_t got = recv(fd, block, sizeof block, 0);
         if (got <= 0) return; // gave up part-way: nothing is kept
         body.append(block, std::min(static_cast<std::size_t>(got), static_cast<std::size_t>(length) - body.size()));
+    }
+
+    // The song open on the handheld is not written over from here: the autosave would put the
+    // handheld's back a moment later, and the one sent would be lost without a word.
+    if (kind == "songs") {
+        std::string open;
+        {
+            std::lock_guard<std::mutex> hold(openMutex_);
+            open = openSong_.empty() ? "" : openSong_ + ".song";
+        }
+        std::string a = name, b = open; // a card may not tell "Quiet Road" from "quiet road"
+        for (char& c : a) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        for (char& c : b) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+        if (!b.empty() && a == b) return reply(fd, "409 Open", "text/plain", "that song is open on the handheld\n");
     }
 
     // Is it what it says it is?

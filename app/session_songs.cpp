@@ -95,7 +95,11 @@ void Session::saveNow() {
     // A song nobody has put anything in is not worth a file.
     static const std::string empty = [] { std::unique_ptr<Project> fresh(new Project); return songText(*fresh); }();
     if (text == empty && !fileExists(pathOf(songName_))) return;
-    if (!writeTextFile(pathOf(songName_), text)) return; // try again next time
+    {
+        // Not while the WiFi page writes or deletes a song (Transfer::songFiles).
+        std::lock_guard<std::mutex> hold(transfer_.songFiles());
+        if (!writeTextFile(pathOf(songName_), text)) return; // try again next time
+    }
     savedText_ = text;
     writeTextFile(folder_ + "/last.txt", songName_ + "\n");
 }

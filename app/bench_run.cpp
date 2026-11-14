@@ -479,6 +479,22 @@ int apotheca::runBench() {
         }
         std::printf("  %-28s %7.3f ms\n", "undo, then redo", spent / rounds);
     }
+    {
+        // A knob turned on one track (an effect's setting) and a hit on another, then undo and redo.
+        double spent = 0.0;
+        const int rounds = 10;
+        session.setEffect(3, 0, EffectKind::Drive);
+        app.update(input, clock += 800);
+        for (int i = 0; i < rounds; ++i) {
+            session.setEffectParam(3, 0, 0, (i % 2) ? 0.25f : 0.75f);
+            p.tracks[4].drums[0][0].level[1][3] = (i % 2) ? 0.f : 0.9f;
+            session.noteEdit();
+            app.update(input, clock += 800);
+            spent += ms([&] { session.undo(); session.redo(); }, 1);
+            for (int k = 0; k < 300; ++k) drain();
+        }
+        std::printf("  %-28s %7.3f ms\n", "...a knob and a hit, undone", spent / rounds);
+    }
     std::printf("  %-28s %7.3f ms\n", "a bar of notes to the engine", ms([&] { session.sendNoteBar(1, 0, 0); drain(); }, 200));
     std::printf("sizes: Project %zu KB, TrackData %zu KB, Engine %zu KB, a Command %zu bytes\n", sizeof(Project) / 1024, sizeof(TrackData) / 1024, sizeof(Engine) / 1024, sizeof(Command));
     return 0;

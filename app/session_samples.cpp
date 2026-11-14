@@ -180,6 +180,8 @@ bool Session::toggleTransfer(unsigned seed) {
     // 8080 if it is free (easy to type), else whatever is.
     transfer_.setDesk(&designer_);
     transfer_.setBounceFolder(bounceFolder_);
+    transfer_.setOpenSong(songName_); // (and again from update() whenever it changes)
+    toldOpenSong_ = songName_;
     const bool on = transfer_.start(sampleFolder_, folder_, chords, 8080, seed) || transfer_.start(sampleFolder_, folder_, chords, 0, seed);
     if (on) std::printf("files over wifi: http://%s\n", transfer_.address().c_str()); // in the log too, for whoever is setting it up
     return on;

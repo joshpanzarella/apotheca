@@ -13,6 +13,7 @@
 //   7. THROW and DUCK on one track: a thrown hit is not ducked, a thrown note is
 //   8. a hit thrown into a tape that howls: the tail still ends
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -689,7 +690,7 @@ static void testStopAndPanic() {
         rig.play();
         rig.render(2 * kStep);
         CHECK(rig.engine->removeTrack(1));
-        rig.render(64);
+        rig.render(512); // (sounding: it fades for 5 ms before it goes, its send with it)
         rig.engine->collectGarbage();
         CHECK(rig.engine->addSynthTrack(1, SynthKind::Phazed));
         const std::size_t at = rig.echo->fed.size();
@@ -994,6 +995,37 @@ static void testThrownIntoAHowl() {
     CHECK(twice > once + 20.0 && twice < once + 30.0 && twice < kLongestTailSeconds);
 }
 
+// A drum track taken away while a thrown hit rings fades its copy into the bus with the track, over
+// the same 5 ms (review, 2026-11-14): cut, the bus was handed a click. Beside a twin where the
+// track stays, what the bus is given is the same times the fade, then nothing.
+static void testATrackTakenAwayFadesItsThrows() {
+    Rig gone, kept;
+    for (Rig* r : {&gone, &kept}) {
+        r->hit(1, 0, 0.9f, kThrowEcho | kThrowSpace);
+        r->play();
+        r->render(1024);
+    }
+    CHECK(gone.engine->removeTrack(0));
+    gone.render(2048);
+    kept.render(2048);
+    const int fade = static_cast<int>(Engine::kGoneFadeSeconds * 48000.f);
+    int off = 0;
+    float loud = 0.f;
+    for (int b = 0; b < 2; ++b) {
+        const Probe* pg = b == 0 ? gone.echo : gone.space;
+        const Probe* pk = b == 0 ? kept.echo : kept.space;
+        for (long i = 1024; i < 1024 + 2048; ++i) {
+            const long k = i - 1024;
+            const float g = k < fade ? 1.f - static_cast<float>(k + 1) / fade : 0.f;
+            const float want = kept.fedAt(pk, i) * g;
+            off += std::fabs(gone.fedAt(pg, i) - want) > 1e-6f;
+            if (k < fade) loud = std::max(loud, std::fabs(kept.fedAt(pk, i)));
+        }
+    }
+    CHECK(loud > 0.05f); // it was ringing into both buses
+    CHECK(off == 0);
+}
+
 int main() {
     testDrumMachine();
     testThrownHit();
@@ -1003,6 +1035,7 @@ int main() {
     testOnAnyHelperCount();
     testWithDuck();
     testThrownIntoAHowl();
+    testATrackTakenAwayFadesItsThrows();
     if (failures == 0) std::printf("throw_test: all passed\n");
     return failures == 0 ? 0 : 1;
 }

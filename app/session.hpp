@@ -152,7 +152,7 @@ public:
     // How much of a track goes to a bus (0 ECHO, 1 SPACE), 0..1. Written as automation like any setting.
     void setSend(int track, int bus, float value);
     // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
-    // the rest, apotheca/glide_rule.hpp). Like a send or a sound, it is not in undo.
+    // the rest, apotheca/glide_rule.hpp). A step of undo, as a send or a sound is.
     void setGlideFrom(int track, int type);
 
     // ---- recordings on drum lanes ----------------------------------------------------
@@ -230,6 +230,7 @@ public:
     bool toggleTransfer(unsigned seed);  // true if it is now on
     bool transferOn() const { return transfer_.running(); }
     std::string transferAddress() const { return transfer_.address(); } // what to type into the browser
+    std::mutex& songFiles() { return transfer_.songFiles(); } // held while a song file is written (saveNow) or sent
 
     // ---- updating Apotheca over WiFi ----------------------------------------------------
     // A new program sent to the page is only set aside. It is installed
@@ -345,7 +346,8 @@ public:
     // put forward again. One step is one burst of editing: everything
     // changed until nothing has changed for seven tenths of a second (a
     // whole paint stroke, a roll of the dice, a cell emptied). The song
-    // keeps playing. Sounds, effects and settings are not part of it.
+    // keeps playing. It covers the patterns and each track's effects, sends, sound and GLIDE FROM,
+    // the master's effects and the buses' (soundMark_, restoreSounds).
     static constexpr int kUndoLevels = 20;
     bool undo();
     bool redo();
@@ -527,6 +529,14 @@ private:
     static bool patternsSameAsText(const TrackData& now, const TrackData& then);
     bool readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole);
     bool readUndoWhole_ = false;
+    // Undo covers more than the patterns: each track's effects, sends, sound (preset, settings,
+    // macros, a sampler's settings) and GLIDE FROM, the master's effects and the buses' (their
+    // LEVEL with them). Whatever changes them is seen here, as the cell is (cellMark): no screen
+    // has to say so. restoreSounds puts them back from a step, through the engine's usual commands.
+    std::uint32_t soundMark() const;
+    std::uint32_t soundMark_ = 0;
+    void restoreSounds(const Project& was, const bool same[kNumTracks]);
+    void restoreEffect(int track, int slot, const EffectData& then);
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still
@@ -562,6 +572,7 @@ private:
     bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
+    std::string toldOpenSong_; // the song name the WiFi page was last told (it refuses one sent under it)
     std::string chordFolder_;
     AudioInput* input_ = nullptr;
     Recorder recorder_;

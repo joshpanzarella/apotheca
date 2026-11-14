@@ -2869,7 +2869,7 @@ static void testComp() {
         leftOf(*engine, 24000);
         CHECK(engine->effectMeter(1, 1) > 8.f);
         CHECK(engine->removeTrack(1));
-        leftOf(*engine, 64);
+        leftOf(*engine, 512); // (sounding: it fades for 5 ms before it goes)
         CHECK(engine->effectMeter(1, 1) == 0.f);
         // On the master, in either slot.
         CHECK(engine->setEffect(kMasterTrack, 1, kind));

@@ -79,6 +79,7 @@ bool Session::removeTrack(int track) {
         else dropTrackText(settled_, track);
         editing_ = false;
         cellMark_ = cellMark();
+        soundMark_ = soundMark(); // the tracks after it moved up: not an edit
     }
     return true;
 }
@@ -94,6 +95,7 @@ bool Session::addTrack(TrackKind kind) {
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
+    if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;
 }
 
@@ -109,7 +111,7 @@ bool Session::setTrackKind(int track, TrackKind kind) {
             for (float& v : scene[lane]) v = kAutoNone;
     sendSong(); // the engine is given the song afresh, with the new instrument in its place
     // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).
-    if (undoReady_) cellMark_ = cellMark();
+    if (undoReady_) cellMark_ = cellMark(), soundMark_ = soundMark(); // (its new sound is not a step either)
     return true;
 }
 
@@ -269,9 +271,14 @@ void Session::update(Uint32 nowMs) {
         undoReady_ = true;
         settled_ = patternsNow();
         cellMark_ = cellMark();
+        soundMark_ = soundMark();
     }
     if (const std::uint32_t mark = cellMark(); mark != cellMark_) {
         cellMark_ = mark;
+        noteEdit();
+    }
+    if (const std::uint32_t mark = soundMark(); mark != soundMark_) {
+        soundMark_ = mark;
         noteEdit();
     }
     if (editing_ && nowMs - editedAt_ >= 700) {
@@ -279,6 +286,11 @@ void Session::update(Uint32 nowMs) {
         settled_ = patternsNow();
     }
 
+    // The WiFi page refuses a song sent under the open one's name: it is told which that is.
+    if (songName_ != toldOpenSong_) {
+        toldOpenSong_ = songName_;
+        transfer_.setOpenSong(songName_);
+    }
     // A new program has arrived: ask whoever is holding the handheld.
     if (transfer_.updatesArrived() != seenUpdates_) {
         seenUpdates_ = transfer_.updatesArrived();
@@ -619,6 +631,123 @@ std::uint32_t Session::cellMark() const {
     return h;
 }
 
+// Everything undo covers besides the patterns (see soundMark_ in session.hpp), as one number.
+std::uint32_t Session::soundMark() const {
+    std::uint32_t h = 2166136261u;
+    const auto mix = [&](const void* data, std::size_t size) {
+        const unsigned char* bytes = static_cast<const unsigned char*>(data);
+        for (std::size_t i = 0; i < size; ++i) h = (h ^ bytes[i]) * 16777619u;
+    };
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& track = project.tracks[t];
+        if (track.kind == TrackKind::None) continue;
+        mix(&t, sizeof t);
+        mix(track.effects, sizeof track.effects);
+        mix(track.send, sizeof track.send);
+        mix(&track.glideFrom, sizeof track.glideFrom);
+        if (const SynthSpec* spec = specFor(track.kind)) {
+            mix(&track.preset, sizeof track.preset);
+            mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
+            mix(track.macro, sizeof track.macro);
+        }
+        if (track.kind == TrackKind::Sampler) mix(track.sampler, sizeof track.sampler);
+    }
+    mix(project.masterEffects, sizeof project.masterEffects);
+    mix(project.busEffects, sizeof project.busEffects);
+    return h;
+}
+
+namespace {
+// Two values the same as the song file writes them (" %.6g"). A step of undo is read back from
+// text, and a value the text cannot hold (a third) reads back a hair off: compared as numbers, every
+// undo found it changed, rounded it and told the engine (a synth's whole patch, the master, the buses).
+bool sameAsText(float a, float b) {
+    if (a == b) return true;
+    char x[32], y[32];
+    std::snprintf(x, sizeof x, "%.6g", a);
+    std::snprintf(y, sizeof y, "%.6g", b);
+    return std::strcmp(x, y) == 0;
+}
+bool knownEffect(int kind) { return kind >= 0 && kind < static_cast<int>(kEffectKinds); }
+// A slot the same as the song file writes it: its kind, and the settings that kind has.
+bool effectSameAsText(const EffectData& a, const EffectData& b) {
+    if (a.kind != b.kind) return false;
+    if (!knownEffect(a.kind)) return true;
+    for (int i = 0; i < effectInfo(static_cast<EffectKind>(a.kind)).params; ++i)
+        if (!sameAsText(a.param[i], b.param[i])) return false;
+    return true;
+}
+} // namespace
+
+// One slot as it was in a step of undo: another kind goes in (with its settings as they were), the
+// same kind has only the settings that differ as the text writes them told (and changed: one the
+// text only rounds keeps its own number). Nothing here touches automation: that is in the
+// patterns, put back with them (so a TYPE change taken back has its old lanes again too).
+void Session::restoreEffect(int track, int slot, const EffectData& then) {
+    EffectData& now = effectData(track, slot);
+    const EffectKind kind = knownEffect(then.kind) ? static_cast<EffectKind>(then.kind) : EffectKind::None;
+    const bool other = now.kind != static_cast<int>(kind);
+    if (other && !engine.setEffect(track, slot, kind)) return;
+    Command c;
+    c.type = Command::SetEffectParam;
+    c.track = track;
+    c.a = slot;
+    for (int i = 0; i < kEffectParams; ++i) {
+        const bool has = i < effectInfo(kind).params;
+        if (!other && (!has || sameAsText(now.param[i], then.param[i]))) continue;
+        now.param[i] = then.param[i];
+        if (!has) continue;
+        c.b = i;
+        c.value = then.param[i];
+        engine.send(c);
+    }
+    now.kind = static_cast<int>(kind);
+}
+
+// The rest of a step of undo: what undo covers besides the patterns, put back where it differs as
+// the song file writes it (sameAsText). A track whose text is the step's (same[t]) is as it was,
+// and is not looked at.
+void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& now = project.tracks[t];
+        const TrackData& then = was.tracks[t];
+        if (same[t] || now.kind == TrackKind::None || now.kind != then.kind) continue;
+        for (int slot = 0; slot < kTrackSlots; ++slot)
+            if (!effectSameAsText(now.effects[slot], then.effects[slot])) restoreEffect(t, slot, then.effects[slot]);
+        for (int bus = 0; bus < kBuses; ++bus) {
+            if (sameAsText(now.send[bus], then.send[bus])) continue;
+            now.send[bus] = then.send[bus];
+            Command c;
+            c.type = Command::SetSend;
+            c.track = t;
+            c.a = bus;
+            c.value = then.send[bus];
+            engine.send(c);
+        }
+        if (now.glideFrom != then.glideFrom) setGlideFrom(t, then.glideFrom);
+        if (const SynthSpec* spec = specFor(now.kind)) {
+            const int count = settingCount(now.kind);
+            TrackData& thenData = const_cast<TrackData&>(then);
+            bool macros = true;
+            for (int m = 0; m < kSynthMacros; ++m) macros = macros && sameAsText(now.macro[m], then.macro[m]);
+            if (now.preset != then.preset || std::memcmp(spec->values(now), spec->values(thenData), sizeof(int) * static_cast<std::size_t>(count)) != 0 || !macros) {
+                now.preset = then.preset;
+                std::memcpy(spec->values(now), spec->values(thenData), sizeof(int) * static_cast<std::size_t>(count));
+                for (int m = 0; m < kSynthMacros; ++m)
+                    if (!sameAsText(now.macro[m], then.macro[m])) now.macro[m] = then.macro[m];
+                sendSynthPatch(t); // every setting and macro: the engine's sound is the step's, whatever preset it was on
+            }
+        }
+        if (now.kind == TrackKind::Sampler)
+            for (int id = 0; id < sampler::kSettings; ++id)
+                if (now.sampler[id] != then.sampler[id]) setSamplerSetting(t, id, then.sampler[id]);
+    }
+    for (int slot = 0; slot < kMasterSlots; ++slot)
+        if (!effectSameAsText(project.masterEffects[slot], was.masterEffects[slot])) restoreEffect(kMasterTrack, slot, was.masterEffects[slot]);
+    for (int bus = 0; bus < kBuses; ++bus)
+        if (!effectSameAsText(project.busEffects[bus], was.busEffects[bus])) restoreEffect(busTrack(bus), 0, was.busEffects[bus]);
+}
+
 // Called when a pattern has just changed. The first change after a still
 // moment begins a step: what there was at that still moment goes on the pile.
 void Session::noteEdit() {
@@ -854,12 +983,14 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         c.a = project.steps[scene];
         engine.send(c);
     }
+    restoreSounds(*was, same); // effects, sends, sounds, GLIDE FROM, the master and the buses
     if (project.bar >= project.current().bars[project.scene]) project.bar = 0;
     syncSong();
     restoring_ = false;
     settled_ = text;
     editing_ = false;
     cellMark_ = cellMark();
+    soundMark_ = soundMark(); // what was put back is not an edit
 }
 
 bool Session::undo() {
