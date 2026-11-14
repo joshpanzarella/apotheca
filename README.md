@@ -589,13 +589,38 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a tap: let go without turning anything) types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
+| MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
 The song runs to the last scene with anything in it, then comes round.
+
+#### The mixer: a track's LEVEL and PAN
+
+On a track's head, or on MASTER, **hold A**. A card comes up under the head
+with the level and the pan, in words and as two bars.
+
+| With A held | Does |
+| --- | --- |
+| UP / DOWN | LEVEL, one dB a press, from -40 DB to +6 DB. 0 DB is the level a track always had. Held, it runs on. |
+| LEFT / RIGHT | PAN, one step a press, from L 50 to R 50. MIDDLE is the usual. |
+| The stick | The same, in big moves. |
+| B | Back to the usual: 0 DB and MIDDLE. (B on a head without A still only deletes, held.) |
+
+- **A head not at its usual level or pan has a small brass square** in its
+  top left corner, so a changed track can be seen at a glance.
+- PAN keeps the loudness even as it moves (equal power): hard to one side,
+  that side is 3 dB up and the other silent. In the middle nothing changes.
+- MASTER is everything, after the master's effects, before the soft limit at
+  the very end. Its level and pan work as a track's.
+- A change is a step of undo (SEL + B), and the song keeps it. A song from
+  before the mixer opens with every track at 0 DB in the middle.
+- **Not automated**: a level or pan cannot be written as knob moves yet.
+- With eleven or twelve tracks the columns are a little narrower, since
+  MASTER takes one: a drum track's head reads DRUM.
 
 ### Longer phrases
 

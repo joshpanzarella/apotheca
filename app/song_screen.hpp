@@ -15,6 +15,11 @@
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
 //   on + TRACK         A, then pick the instrument: drums, Phazed or Twin Analog.
+//   on a track's head  (up from the top scene) tap A: its name. R1: its instrument. Hold B: delete it.
+//                      Hold A + UP / DOWN: its LEVEL, a dB a press; + LEFT / RIGHT: its PAN.
+//                      The stick, with A held, for big moves. B with A held: back to the usual
+//                      level and pan (0 DB, the middle). A changed one has a brass mark on its head.
+//   on MASTER          (the head at the right-hand end) the same: hold A, the master's level and pan.
 //   START              play the song from the cursor's scene
 //   SELECT             the list of songs: start a new one, or open another.
 //                      There is no "save": the song is kept as you go.
@@ -46,8 +51,14 @@ namespace apotheca {
 extern const char* const kTrackNames[];
 extern const int kTrackNameCount;
 
+// What the mixer card says: "-6 DB", "0 DB", "+3 DB"; "L 30", "MIDDLE", "R 12".
+void mixLevelWords(int db, char* out, int size);
+void mixPanWords(int pan, char* out, int size);
+
 class SongScreen : public Screen {
 public:
+    // A head not at its usual level or pan: a brass square this big, this far in from its top left corner.
+    static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
     // What the hints bar says while the head fills (the head has room for one word).
@@ -70,6 +81,14 @@ public:
     int topScene() const { return top_; } // the first scene shown
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
+    bool cursorOnMaster() const { return onMaster_; }
+    bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the mixer card is up
+    void moveToMaster() { onHead_ = false, onMaster_ = true; }
+    // The mixer card while A is held on a head: placed under the head (for the tests to read).
+    static constexpr int kMixCardW = 136, kMixCardH = 62;
+    struct Place { int x, y; };
+    Place mixCard() const;
+    SDL_Rect headRect(int track) const; // a track's head (or MASTER's, kMasterTrack) as it is drawn
     bool choosing() const { return choosing_; }
     bool listingSongs() const { return listing_; }
     bool listingRevs() const { return listing_ && revsOpen_; }
@@ -84,7 +103,10 @@ private:
 
     int addColumn() const { return project_.trackCount() < kNumTracks ? project_.trackCount() : -2; } // -2: no such column
     int lastColumn() const { return project_.trackCount() < kNumTracks ? project_.trackCount() : kNumTracks - 1; }
-    bool onCell() const { return column_ >= 0 && column_ < project_.trackCount(); }
+    bool onCell() const { return !onMaster_ && column_ >= 0 && column_ < project_.trackCount(); }
+    int masterX() const; // where the MASTER head starts
+    int mixTrack() const { return onMaster_ ? kMasterTrack : column_; }
+    void mixStep(Button direction); // A held on a head: a dB up or down, a step of pan left or right
     void moveCursor(Button direction, bool pressed = false); // pressed: a press of the D-pad itself, not a run of it or the stick
     void setRepeats(int count);
     void stepBars(int by);
@@ -96,6 +118,10 @@ private:
     Project& project_;
     int changing_ = -1;   // the instrument list is up to change this track's (-1: to add a track)
     bool onHead_ = false; // the cursor is on a track's head (its name), above the top scene
+    bool onMaster_ = false; // ...or on MASTER, the head at the right-hand end
+    bool mixing_ = false;   // A is held on a head: the directions turn its level and pan
+    bool mixTurned_ = false; // ...and something was turned, so letting go is not a tap (a tap on a track's head names it)
+    float mixSavedDb_ = 0.f, mixSavedPan_ = 0.f; // the stick's part-steps saved up
     int scene_ = 0;
     int column_ = 0;
     int top_ = 0; // first scene shown

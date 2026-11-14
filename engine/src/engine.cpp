@@ -7,8 +7,28 @@
 
 namespace apotheca {
 
+void panGains(float pan, float& left, float& right) {
+    if (!(pan == pan) || pan == 0.f) { // the middle (and not a number): untouched
+        left = right = 1.f;
+        return;
+    }
+    pan = pan < -1.f ? -1.f : (pan > 1.f ? 1.f : pan);
+    const double angle = (pan + 1.0) * (3.14159265358979323846 / 4.0); // 0 hard left, a quarter turn hard right
+    left = static_cast<float>(std::sqrt(2.0) * std::cos(angle));
+    right = static_cast<float>(std::sqrt(2.0) * std::sin(angle));
+    if (pan == -1.f) right = 0.f; // (exactly nothing, not 1e-17)
+    if (pan == 1.f) left = 0.f;
+}
+
 namespace {
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
+// One step of a glide toward `to`, kSendGlideSeconds for the whole of 0 to 1 (as a send moves).
+inline void glideToward(float& now, float to, float step) {
+    if (now == to) return;
+    const bool up = now < to;
+    now += up ? step : -step;
+    if ((now > to) == up) now = to; // arrived (or stepped past)
+}
 bool validScene(int scene) { return scene >= 0 && scene < kMaxScenes; }
 // A bar of a scene, as the pattern commands name it. -1 if there is no such bar.
 int slotFor(const Command& c) { return validScene(c.scene) && c.bar >= 0 && c.bar < kMaxBars ? c.scene * kMaxBars + c.bar : -1; }
@@ -1060,7 +1080,14 @@ void Engine::apply(const Command& c) {
         }
         break;
     case Command::SetTrackLevel:
-        if (validTrack(c.track) && std::isfinite(c.value)) tracks_[c.track].level = c.value;
+        if (!std::isfinite(c.value)) break;
+        if (validTrack(c.track)) tracks_[c.track].level = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+        else if (c.track == kMasterTrack) masterLevel_ = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+        break;
+    case Command::SetTrackPan:
+        if (!std::isfinite(c.value)) break;
+        if (validTrack(c.track)) panGains(c.value, tracks_[c.track].panL, tracks_[c.track].panR);
+        else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
         break;
     case Command::SetTrackHeard:
         if (validTrack(c.track)) tracks_[c.track].heard = c.a != 0;
@@ -1132,6 +1159,8 @@ void Engine::apply(const Command& c) {
             }
             track.hasDrums = false;
             track.glideFrom = kFromTop;
+            track.level = track.levelNow = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
+            track.panL = track.panR = track.panLNow = track.panRNow = 1.f;
             track.drums.reset();
             for (int lane = 0; lane < kDrumLanes; ++lane) {
                 if (!track.laneSamples[lane]) continue;
@@ -1601,19 +1630,45 @@ void Engine::renderTrack(int t) {
     }
     float peak = chunkPeaks_[t];
     const float gateTo = track.heard ? 1.f : 0.f, gateStep = 1.f / (0.005f * sampleRate_);
+    const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
+    // The mixer's level and pan: at rest and in the middle, the loop below is the one there always was.
+    const bool mixed = track.levelNow != track.level || track.panL != 1.f || track.panR != 1.f || track.panLNow != 1.f || track.panRNow != 1.f;
     if (thrown) {
         // A thrown hit goes to the bus at the track's level, and not at all from a muted track:
         // the same level and the same gate as the loop below gives the track, sample for sample.
         // (A loop of its own, so that a track that throws nothing runs the one below as it was.)
-        float gate = track.gate;
+        // Not its pan: a thrown hit is one sound for both sides of the bus.
+        float gate = track.gate, level = track.levelNow;
         for (int i = 0; i < frames; ++i) {
             if (gate != gateTo) {
                 gate += gate < gateTo ? gateStep : -gateStep;
                 if ((gate > gateTo) == track.heard) gate = gateTo;
             }
-            if (thrown & 1) thrown_[t][0][i] *= track.level * gate;
-            if (thrown & 2) thrown_[t][1][i] *= track.level * gate;
+            glideToward(level, track.level, glide);
+            if (thrown & 1) thrown_[t][0][i] *= level * gate;
+            if (thrown & 2) thrown_[t][1][i] *= level * gate;
         }
+    }
+    if (mixed) {
+        float level = track.levelNow, panL = track.panLNow, panR = track.panRNow;
+        for (int i = 0; i < frames; ++i) {
+            if (track.gate != gateTo) {
+                track.gate += track.gate < gateTo ? gateStep : -gateStep;
+                if ((track.gate > gateTo) == track.heard) track.gate = gateTo;
+            }
+            glideToward(level, track.level, glide);
+            glideToward(panL, track.panL, glide);
+            glideToward(panR, track.panR, glide);
+            left[i] *= level * track.gate * panL;
+            right[i] *= level * track.gate * panR;
+            const float a = std::fabs(left[i]) > std::fabs(right[i]) ? std::fabs(left[i]) : std::fabs(right[i]);
+            if (a > peak) peak = a;
+        }
+        track.levelNow = level;
+        track.panLNow = panL;
+        track.panRNow = panR;
+        chunkPeaks_[t] = peak;
+        return;
     }
     for (int i = 0; i < frames; ++i) {
         if (track.gate != gateTo) {
@@ -1812,6 +1867,19 @@ void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBloc
     }
 }
 
+// The master's level and pan, after its slots. At its usual (1, the middle) and still, it is not run.
+void Engine::runMaster(float* mixL, float* mixR, int frames) {
+    if (masterLevel_ == 1.f && masterLevelNow_ == 1.f && masterPanL_ == 1.f && masterPanR_ == 1.f && masterPanLNow_ == 1.f && masterPanRNow_ == 1.f) return;
+    const float glide = 1.f / (kSendGlideSeconds * sampleRate_);
+    for (int f = 0; f < frames; ++f) {
+        glideToward(masterLevelNow_, masterLevel_, glide);
+        glideToward(masterPanLNow_, masterPanL_, glide);
+        glideToward(masterPanRNow_, masterPanR_, glide);
+        mixL[f] *= masterLevelNow_ * masterPanLNow_;
+        mixR[f] *= masterLevelNow_ * masterPanRNow_;
+    }
+}
+
 void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     if (playing_) glideAutomation(frames);
     float mixL[kMaxBlock] = {};
@@ -1870,6 +1938,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames, false, chunkHits_);
         masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);
     }
+    runMaster(mixL, mixR, frames);
     // Effects whose fade out has ended go to the trash. Here, not in
     // renderTrack: the helpers are done, and the trash takes from this thread alone.
     for (int i = 0; i < count; ++i)

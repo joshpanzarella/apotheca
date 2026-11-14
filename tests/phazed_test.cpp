@@ -269,6 +269,7 @@ static void testDrumsAndSynthTogether() {
     level.track = 1;
     level.value = 0.f;
     engine.send(level);
+    renderFrames(engine, 4000); // (it glides there over 5 ms: this peak still has the start of that)
     renderFrames(engine, 4000);
     CHECK(engine.trackPeak(1) == 0.f);
 }

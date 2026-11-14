@@ -983,6 +983,7 @@ static void testTempo() {
 static void testTrackLevel() {
     Engine engine;
     engine.send(make(Command::SetTrackLevel, 0, 0, 0, 0.f));
+    renderFrames(engine, 480); // a level glides there (kSendGlideSeconds), so it does not click
     engine.send(trigger(KICK));
     CHECK(peakOf(renderFrames(engine, 1000)) == 0.f);
 }

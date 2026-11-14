@@ -367,6 +367,15 @@ public:
     // at most. Empty puts back its instrument's name.
     void setTrackName(int track, const std::string& name);
     void hearTrack(int track); // X on the SONG screen: its kick, or a middle C
+
+    // ---- the mixer (the SONG screen's heads) -----------------------------------------
+    // A track's level, in whole dB from its usual (kMixLeastDb..kMixMostDb), and its pan
+    // (-kPanMost..kPanMost); `track` may be kMasterTrack. Held to their limits; a step of undo.
+    // Nothing else below zero is a track: a bus or a number past the tracks does nothing.
+    void setMix(int track, int db, int pan);
+    int mixDb(int track) const { return track == kMasterTrack ? project.masterDb : (track >= 0 && track < kNumTracks ? project.tracks[track].mixDb : 0); }
+    int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
+    void sendMix(int track); // what the engine is told for it: its level and its pan
     void sendEffects(int track); // every slot of a track, the master or a bus, to the engine
     void sendMutes(); // tell the engine how things stand (after a song is opened)
 
