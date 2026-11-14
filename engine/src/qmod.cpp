@@ -137,6 +137,7 @@ void Qmod::prepare(float sampleRate) {
 // Work out everything the voices read from the patch and the macros. Called
 // when a setting or a macro changes; the generator is a few hundred sums.
 void Qmod::apply() {
+    ++applied_;
     State& s = *state_;
     const int* p = s.patch.value;
     const float* m = s.macro;
@@ -214,7 +215,9 @@ void Qmod::setSetting(int id, int value) {
 
 void Qmod::setMacro(int macro, float value) {
     if (macro < 0 || macro >= kMacros || !(value == value)) return;
-    state_->macro[macro] = clampf(value, 0.f, 1.f);
+    value = clampf(value, 0.f, 1.f);
+    if (state_->macro[macro] == value) return; // apply() is the whole wiring worked out again (about 1 us): a MOD gives the same value often
+    state_->macro[macro] = value;
     apply();
 }
 

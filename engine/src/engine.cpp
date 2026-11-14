@@ -1,5 +1,6 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/denormals.hpp"
+#include "apotheca/mod_rule.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -1118,9 +1119,9 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && c.a >= 0 && c.a < kBuses && c.value == c.value) {
             Track& track = tracks_[c.track];
             const int lane = autoLaneOfSend(c.a);
-            track.send[c.a] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
-            track.autoBase[lane] = track.autoNow[lane] = track.send[c.a]; // the knob itself: where it rests when nothing automates it
+            track.autoBase[lane] = track.autoNow[lane] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value); // the knob itself: where it rests when nothing automates it
             track.autoGliding[lane] = false;
+            giveLane(track, lane); // a MOD's wobble about it, held to 0..1; the centre kept as it is
         }
         break;
     case Command::SetTrackLevel:
@@ -1154,10 +1155,12 @@ void Engine::apply(const Command& c) {
     case Command::SetMacro:
         if (validTrack(c.track) && tracks_[c.track].synth) {
             Track& track = tracks_[c.track];
-            track.synth->setMacro(c.a, c.value);
             if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
                 track.autoBase[c.a] = track.autoNow[c.a] = c.value;
                 track.autoGliding[c.a] = false;
+                giveLane(track, c.a);
+            } else {
+                track.synth->setMacro(c.a, c.value);
             }
         }
         break;
@@ -1230,14 +1233,14 @@ void Engine::apply(const Command& c) {
             if (c.value == c.value) busLevel_[bus] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
             break;
         }
-        if (*place) (*place)->setParam(c.b, c.value);
-        if (validTrack(c.track)) {
+        if (validTrack(c.track) && c.b >= 0 && c.b < 4) {
             Track& track = tracks_[c.track];
-            if (c.b >= 0 && c.b < 4) {
-                const int lane = autoLaneOfEffect(c.a, c.b);
-                track.autoBase[lane] = track.autoNow[lane] = c.value;
-                track.autoGliding[lane] = false;
-            }
+            const int lane = autoLaneOfEffect(c.a, c.b);
+            track.autoBase[lane] = track.autoNow[lane] = c.value;
+            track.autoGliding[lane] = false;
+            giveLane(track, lane);
+        } else if (*place) {
+            (*place)->setParam(c.b, c.value); // the master's, or a setting no lane has
         }
         break;
     }
@@ -1756,9 +1759,22 @@ void Engine::render(float* interleaved, int frames) {
     for (int t = 0; t < kNumTracks; ++t) tracks_[t].peak.store(peaks[t], std::memory_order_relaxed);
 }
 
-// Give a lane's value to what it belongs to: a macro of the synth, or a setting of an effect.
+// A lane's centre moves (automation, Stop): give it on.
 void Engine::applyAuto(Track& track, int lane, float value) {
     track.autoNow[lane] = value;
+    giveLane(track, lane);
+}
+
+// Give a lane to what it belongs to: a macro of the synth, a setting of an effect, or a send.
+// The one way a lane's value goes out (automation, Stop, a knob's own command, a MOD's tick):
+// its centre plus what the MODs add, held to 0..1 (modGiven). With nothing added it is the
+// centre as it is, in the same call as before there were MODs: a song with no MOD is the same
+// to the bit. The centre itself is never changed here, so automation and Stop still compare
+// with the knob's value, never the wobble.
+void Engine::giveLane(Track& track, int lane) {
+    const float offset = track.modOffset[lane], centre = track.autoNow[lane];
+    if (offset != 0.f && !(centre >= 0.f)) return; // a centre not known yet (an effect not told its settings): nothing to move about
+    const float value = modGiven(centre, offset);
     if (lane < 8) {
         if (track.synth) track.synth->setMacro(lane, value);
     } else if (lane < 8 + kTrackSlots * 4) {
@@ -1766,6 +1782,12 @@ void Engine::applyAuto(Track& track, int lane, float value) {
     } else if (lane < kAutoSendLane + kBuses) {
         track.send[lane - kAutoSendLane] = value < 0.f ? 0.f : (value > 1.f ? 1.f : value); // it glides from there by itself (feedBuses)
     } // (the last two lanes are spare)
+}
+
+void Engine::setModOffsetForTests(int track, int lane, float offset) {
+    if (!validTrack(track) || lane < 0 || lane >= kAutoLanes) return;
+    tracks_[track].modOffset[lane] = offset;
+    giveLane(tracks_[track], lane);
 }
 
 // Move every gliding lane on. The glide takes the first half of a step, in

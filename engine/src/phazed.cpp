@@ -101,7 +101,9 @@ constexpr int kTwinTrim = -3; // dB, when DETUNE gives a one-line sound its twin
 
 int bent(int value, float by) { return clampInt(static_cast<int>(std::lround(value + by)), 0, 99); }
 
-void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& levelTrim) {
+// keepTwin: a one-line sound that DETUNE had made a twin stays a twin at the middle (detuned by
+// nothing), because notes are sounding: going back to one line would cut them (Phazed::apply).
+void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& levelTrim, bool keepTwin) {
     using namespace phazed;
     const float tone = macro[Tone] - 0.5f, motion = macro[Motion] - 0.5f, attack = macro[Attack] - 0.5f,
                 release = macro[Release] - 0.5f, detune = macro[Detune] - 0.5f, vibrato = macro[Vibrato] - 0.5f;
@@ -127,7 +129,7 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& level
     // where the preset has it. Only heard when two lines play. The patch
     // keeps a direction and a size; they are added up as one signed amount
     // (60 to a semitone) so that down from "no detune" is flat, not nothing.
-    if (detune != 0.f) {
+    if (detune != 0.f || keepTwin) {
         // A sound with one line has nothing to detune against, and the
         // macro would do nothing at all. So off the middle, such a sound
         // gets a twin of its line to tune (the machine's own "1 + 1'"
@@ -264,7 +266,16 @@ void Phazed::apply(bool newSound) {
     toPanel(patch_, panel);
     int chorus = patch_.value[phazed::ChorusOn];
     int levelTrim = 0;
-    applyMacros(macro_, panel, chorus, levelTrim);
+    // DETUNE off the middle makes a one-line sound a twin (two lines, 1 + 1'), and at the middle
+    // it is one line again. That is another layout of the synth's voices, and the CZ fades every
+    // voice for it: a note held while DETUNE passed 0.5 was cut. So while anything sounds, a
+    // twin made by DETUNE stays a twin at the middle, its second line not detuned (as loud as
+    // just off the middle), and it goes back to one line before the next note that finds the
+    // synth silent (noteOn). With nothing sounding the middle is one line, as it always was.
+    const bool oneLine = panel.line_select == CZ_LINE_1 || panel.line_select == CZ_LINE_2;
+    const bool keepTwin = !newSound && oneLine && twinByDetune_ && sounding();
+    applyMacros(macro_, panel, chorus, levelTrim, keepTwin);
+    twinByDetune_ = oneLine && panel.line_select == CZ_LINE_1_1;
     cz_tone_t tone;
     cz_tone_from_panel(&panel, &tone);
     if (newSound) cz_synth_select_tone(&state_->synth, &tone);
@@ -297,8 +308,21 @@ void Phazed::setMacro(int macro, float value) {
     apply(false);
 }
 
+// A twin kept for notes that were sounding (apply) goes back to one line once they are gone.
+void Phazed::lineBack() {
+    if (twinByDetune_ && macro_[phazed::Detune] == 0.5f && !sounding()) apply(false);
+}
+
+bool Phazed::sounding() const {
+    const cz_synth_t& s = state_->synth;
+    for (int vi = 0; vi < CZ_VOICES; ++vi)
+        if (s.voice[vi].active || s.voice[vi].fading) return true;
+    return false;
+}
+
 void Phazed::noteOn(int note, float velocity) {
     if (!ok_ || note < 0 || note > 127 || !(velocity > 0.f)) return; // also drops NaN
+    lineBack();
     int v = static_cast<int>(std::lround(velocity * 127.f));
     v = v < 1 ? 1 : (v > 127 ? 127 : v);
     // A plain note never glides, though the CZ's portamento is left on once a note has glided
@@ -323,6 +347,7 @@ void Phazed::noteOn(int note, float velocity) {
 // it off for themselves (noteOn).
 void Phazed::noteOnFrom(int note, float velocity, int from, float seconds) {
     if (!ok_ || note < 0 || note > 127 || !(velocity > 0.f)) return;
+    lineBack();
     int v = static_cast<int>(std::lround(velocity * 127.f));
     v = v < 1 ? 1 : (v > 127 ? 127 : v);
     cz_synth_t& s = state_->synth;

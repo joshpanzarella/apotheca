@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (33) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (34) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -437,6 +437,18 @@ effect in those two groups and fails one that does not.
   track would depend on which helper got to the drums first. A new way to
   trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
   hits by hand); a bus's slot is not told.
+- **A lane's value goes out through `Engine::giveLane`, and only there**
+  (MOD, `docs/plans/modulation-plan.md`; `engine/include/apotheca/mod_rule.hpp`
+  is the rule, no SDL, `tests/mod_test.cpp`). Automation, Stop and
+  the knob's own commands (`SetMacro`, `SetEffectParam`, `SetSend`) all set the
+  lane's CENTRE (`autoNow`, `autoBase`) and call it; it gives
+  `modGiven(centre, Track::modOffset[lane])`. **An offset of exactly 0 gives
+  the centre as it is, in the same call as before** (not even clamped): that
+  is why a song with no MOD is the same to the bit (`effects_test --print`
+  identical, 2026-11-14). The centre is never the wobble: automation and Stop
+  compare with it. A new way to set a macro, an effect setting or a send of a
+  track goes through it, or a MOD on that lane is lost until its next tick.
+  Batch 0 (built): nothing sets an offset but `setModOffsetForTests`.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -1186,6 +1198,17 @@ effect in those two groups and fails one that does not.
   (`GLIDE_PRINT=1 ./build/glideapp_test`; not timed on the handheld). `glideapp_test`
   reads the lines and the strip **off the drawn screen**
   (`testTheLinesOnTheScreen`, a software renderer and the real lettering).
+- **Phazed's DETUNE keeps a twin at its middle while notes sound** (MOD
+  batch 0, 2026-11-14; `keepTwin`, `lineBack` in `engine/src/phazed.cpp`). Off
+  the middle it makes a one-line sound a twin, and the CZ fades every voice
+  for a change of line layout: a note held while DETUNE passed 0.5 was cut
+  (RMS 0.087 to 0.008). A twin made by DETUNE stays one at 0.5 while any voice
+  sounds and goes back to one line before the next note into silence.
+  Moving OFF the middle with a one-line note held still cuts it, once.
+  `phazed_test` (`testDetuneThroughTheMiddleKeepsTheNote`).
+- **QMOD's `setMacro` returns early on the value it has**, as Phazed's and
+  Twin's do: its `apply()` is the whole wiring again, about 1 us
+  (`Qmod::applied()` counts them for `qmod_test`).
 - **Phazed's glide is the CZ's portamento given a rate**
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played
@@ -1289,6 +1312,11 @@ effect in those two groups and fails one that does not.
 - **Do not compare audio sample for sample across separate notes** unless the
   engine is fresh; compare loudness, attack, or zero crossings. Let auditions
   end before listening.
+- **An `Engine` is about 1.4 MB: a test keeps at most three on the stack
+  at once** (`std::unique_ptr` for more). Six were 8.37 MB, over the main
+  thread's 8 MB once MOD grew the Engine by a kilobyte, and `engine_test`
+  crashed with no word, five runs in six (2026-11-14). `g++ -fstack-usage`
+  on a test file says each function's frame.
 - **Every test has a two-minute limit**, so a hang is a failure. A new ctest
   entry gets its `TIMEOUT 120` in CMakeLists.txt (launcher and words had none
   until 2026-11-14). **`effects_test` runs as two halves** (`--part 1`,
@@ -1350,6 +1378,7 @@ effect in those two groups and fails one that does not.
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
+| A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin. The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
@@ -1362,7 +1391,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track.
+2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row); batches 1 (engine) and 2 (song) next.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,

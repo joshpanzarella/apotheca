@@ -12,3 +12,15 @@ these unless they are put back.
   A note that waits for its slot keeps the rate and the key to slide from
   that it was played with (`pending_rate16`, `pending_from`): two gliding
   notes played at one moment each took the other's.
+- Phazed DETUNE no longer cuts held notes at its middle (2026-11-14). **No file
+  under `third_party/` changed**: the mend is in Apotheca's wrapper,
+  `engine/src/phazed.cpp` (`keepTwin`, `lineBack`). Recorded here because it
+  works round the copied `cz_synth_edit_tone`, which fades every voice when a
+  tone's line select changes. DETUNE off the middle makes a one-line sound a
+  twin (1 + 1'), and at exactly 0.5 one line again: a held note fell from RMS
+  0.087 to 0.008. Now a twin made by DETUNE stays a twin at the middle (not
+  detuned) while any voice sounds, and goes back to one line before the next
+  note that finds the synth silent. Moving DETUNE OFF the middle with notes
+  held still changes the layout and fades them, once. Held by `phazed_test`
+  (`testDetuneThroughTheMiddleKeepsTheNote`). A fresh copy of `cz_synth.c`
+  keeps it, since the copy is not touched.

@@ -2,8 +2,8 @@
 
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
-here, then revised the same day after a review (section 11). **Nothing here
-is built or heard.** The code at 0.442 was read. The review timed `setMacro`
+here, then revised the same day after a review (section 11). **Batch 0 is
+built (section 12); nothing else is, and nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -416,7 +416,7 @@ or Twin Analog** (neither is block-exact; section 9); drawn checks through
 
 | Batch | One agent does | Ends with |
 | --- | --- | --- |
-| **0 Groundwork** | (a) `engine/include/apotheca/mod_rule.hpp`, no SDL: target ids, rate table, shapes, `lfoValue(settings, position)`, `stepValue(settings, steps, position, seed)` with SLEW and CHANCE, `kRollMod = 6`, the combine and clamp, positions on a fractional step. `tests/mod_test.cpp` against hand-worked values. (b) **`giveLane`: `applyAuto`, `SetMacro`, `SetEffectParam` and `SetSend` all give `clamp(centre + offset)` through it**, offset fixed at 0; centre below 0 skipped; a send's given value clamped while `autoNow` keeps the centre (tested with a fake offset in the test build). (c) **Phazed DETUNE**: no fade on a line-select change from DETUNE, a `third_party/CHANGES.md` line, the held-note test. (d) QMOD `setMacro` returns early on an equal value. (e) The review's `setMacro` timing program as a `bench` row | ctest green; **`effects_test --print` identical**; the DETUNE test fails with the mend taken out. **Nothing on screen; no sound change but the DETUNE cut** |
+| **0 Groundwork** (**built 2026-11-14, branch `mods`: section 12**) | (a) `engine/include/apotheca/mod_rule.hpp`, no SDL: target ids, rate table, shapes, `lfoValue(settings, position)`, `stepValue(settings, steps, position, seed)` with SLEW and CHANCE, `kRollMod = 6`, the combine and clamp, positions on a fractional step. `tests/mod_test.cpp` against hand-worked values. (b) **`giveLane`: `applyAuto`, `SetMacro`, `SetEffectParam` and `SetSend` all give `clamp(centre + offset)` through it**, offset fixed at 0; centre below 0 skipped; a send's given value clamped while `autoNow` keeps the centre (tested with a fake offset in the test build). (c) **Phazed DETUNE**: no fade on a line-select change from DETUNE, a `third_party/CHANGES.md` line, the held-note test. (d) QMOD `setMacro` returns early on an equal value. (e) The review's `setMacro` timing program as a `bench` row | ctest green; **`effects_test --print` identical**; the DETUNE test fails with the mend taken out. **Nothing on screen; no sound change but the DETUNE cut** |
 | 1 Engine | `Track::Mod mods[2]`, `SetMod`, `SetModStep`, `ModAudition`, the tick and its cuts under `anyMod_`, macros every 8th tick, `runMods`, waiting on held slots, OFF on `RemoveInstrument`, offsets to 0 on Stop, `modShown` | Same bits across blocks and helpers **on tracks without HALL or Twin** (section 9); Play twice gives the same; tempo change keeps phase; scene move with a MOD running equals the song built; bounce against live phase; chunks a second counted; old FILTER's steps and the new effects' softening measured |
 | 2 Song | `ModData mods[2]` on `TrackData`, `Session::setMod`, `applyProject` sends them, `mod` / `modsteps` words, undo through `soundMark`, the TYPE carry, another family or a choice clears (on load too). `tests/modapp_test.cpp` | Old songs and everykind as they were; round trip; NaN and 1e300 held |
 | 3 DEVICE knob | The X-held fields in LIVE OUTPUT's place (once the owner has seen the still), MODS FULL, hold B delete, the dice, the MOD heard while stopped, X checked before Y and the stick | `under_test`, the three order tests (section 7), stills, hints at 0, `textviews`, `themeviews`, `ctest -R words` |
@@ -511,3 +511,53 @@ faster); the music design's stepper memory.
 
 Nothing was rejected. Nothing above was built, run on the handheld or heard;
 the review's two measurements were made in a copy on the desk.
+
+## 12. Batch 0, as built (2026-11-14, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** No screen
+changed. The owner's calls were taken at the recommended answers (two MODs,
+two kinds, PLAY restart, DETUNE mended).
+
+| Part | What is there |
+| --- | --- |
+| (a) The rule | `engine/include/apotheca/mod_rule.hpp`: kinds (OFF 0, LFO 1, STEPPER 2), targets = lanes 0-21 (`modTargetKnown`; 22 / 23 never; LEVEL 32, PAN 33 named, not taken), twelve rates by number with their steps as a fraction (`modRateInfo`; the order a player sees is `modRateAt`, the same today), seven shapes, PHASE in quarters, RESTART (PLAY only), `kModTick` 64 and `kModMacroTicks` 8, `ModSettings`, `modPosition`, `lfoValue`, `stepValue` (SLEW, CHANCE), `modOffsetAt`, `modGiven`. `kRollMod = 6` in `ChordRoll`. Unknown numbers read as OFF, SINE, 1 BAR |
+| Its choices, made here | SINE and TRIANGLE start at 0 going up (so a MOD at Play gives the centre); the RAMPs and SQUARE start at an edge. RANDOM rolls `chordSeed(track, 1, 0, cycle)`; a STEPPER `chordSeed(track, 0, place, timesRound)`; `which` is `mod * 32 + what` (0 the chance roll, 1 the value). DRIFT is a cosine from one cycle's roll to the next. SLEW is a straight line over that share of the held time, from the value before worked out again; **the first value after Play does not glide in**. `ModSettings::on()` is false at depth 0 |
+| (b) `giveLane` | `Engine::giveLane(track, lane)` is the one way out: `applyAuto` (automation, Stop) calls it, and so do `SetMacro`, `SetEffectParam` and `SetSend` for a lane they own (a macro over 7 and a master's or bus's setting go straight, as before). It gives `modGiven(autoNow, modOffset)`: **offset exactly 0 gives the centre as it is** (not clamped: a macro command of 1.6 still reaches the synth as 1.6, as before), else centre + offset held to 0..1. A centre below 0 with an offset gives nothing. `autoNow` is the centre and is never the wobble; a send's centre is held to 0..1 as before, its given value too. `Track::modOffset[24]`, all 0: only `Engine::setModOffsetForTests` sets it (batch 1's `runMods` will, and should take that hook's place) |
+| (c) DETUNE | Mended in Apotheca's `engine/src/phazed.cpp`, no file under `third_party/` changed (a `CHANGES.md` line says why it is listed). A one-line sound DETUNE made a twin **stays a twin at 0.5 while any voice sounds** (its second line not detuned, so as loud as just off the middle), and goes back to one line before the next note that finds the synth silent (`lineBack` in `noteOn` / `noteOnFrom`). **Still a cut, once**: DETUNE moved OFF the middle while a one-line note sounds (the layout changes from one line to two). With nothing sounding, 0.5 is one line exactly as before |
+| (d) QMOD | `setMacro` returns early on the value it has (after the clamp). `Qmod::applied()` counts the wirings worked out, for the test |
+| (e) The cost row | `bench`: "a macro changed", the synth alone, 8 notes held, best of five |
+| Found on the way | `engine_test` crashed with no word (5 runs in 6): `testNudgeMovesAHitOffTheGrid` kept six Engines on the stack, 8.37 MB, over the main thread's 8 MB once the Engine grew by 1.1 KB. Its three and `testLaneLevel`'s three are on the heap now; the largest test frame anywhere is 4.2 MB. **Batch 1 grows the Engine again**: keep it that way |
+
+**Measured** (desk, one `bench` run, a second build running beside it):
+
+| Thing | Figure |
+| --- | --- |
+| Phazed, a macro changed | 0.358 us a call (0.002 the same value). 24 MODs: 0.08% of a core at 512 samples, 0.64% at 64 |
+| QMOD | 0.949 us a call (0.002 the same value, was a whole apply). 24 MODs: 0.21% at 512, 1.71% at 64 |
+| Twin Analog | 0.053 us (0.002). 24 MODs: 0.01% at 512, 0.10% at 64 |
+| In the same run | Phazed 8 notes 0.7%, QMOD 8 notes 2.8%, DRIVE 0.12%; the busiest song 23.3% of a block alone, 15.1% with 2 helpers (a busy desk) |
+| `effects_test --print` | identical before and after, every line, the whole song's checksum too |
+| ctest | 34 of 34 (the new `mod`, `TIMEOUT 120`) |
+
+**Mutants** (each made, seen to fail, put back): `mod_test` killed 22 of 22
+(giveLane ignoring the offset; an unknown centre given; a send's centre taking
+the wobble; each of the four paths going round `giveLane`; no clamp; a clamp
+with nothing added; the position a step late; PHASE backwards; RANDOM from
+the next cycle; DRIFT straight (survived at first: the test now checks a
+quarter in and that it leaves a value gently); a STEPPER rolled by its index,
+not its time round; CHANCE ignored; the first value gliding in; no SLEW; the
+time round before Play; a written value not held; depth not held; TRIANGLE
+from the bottom; a rate's length). `phazed_test` killed 3 of 3 (no twin kept;
+`lineBack` doing nothing; "sounding" not counting playing voices). `qmod_test`
+killed the early return taken out.
+
+**What only the tests saw**: everything. The DETUNE mend's sound (a twin at
+the middle, 3 dB over one line alone, the same as just off it) is measured by
+RMS against a twin engine, not heard. The owner's call 21 is taken: old songs
+whose DETUNE passed 0.5 with notes held no longer cut them there.
+
+**For batch 1**: `runMods` replaces `setModOffsetForTests` (writes
+`modOffset`, then `giveLane` where the given value changed); `modPosition` is
+read before `untilStep_` is taken off. Stop puts the offsets to 0 and gives the
+centre (`settleAutomation` only gives a lane whose centre moved: with an
+offset that is not enough).

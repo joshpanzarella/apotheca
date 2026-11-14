@@ -25,6 +25,9 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/mod_rule.hpp"
+#include "apotheca/phazed.hpp"
+#include "apotheca/qmod.hpp"
 #include "apotheca/twin.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -359,6 +362,33 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) 
     return times;
 }
 
+// What one macro change costs a synth, a call (a MOD on a macro hands one over every
+// kModTick * kModMacroTicks samples): the synth on its own, eight notes held, the value moved
+// every call between two values that are not the middle; the best of five runs, so the cache is
+// warm and this is a floor. Then what 24 MODs (12 tracks x 2) on that synth's macros would cost
+// at the macro tick (512 samples) and at the effects' tick (64), and a call that gives the value
+// the synth already has.
+static void macroCost(const char* name, Instrument& synth, int macro) {
+    synth.prepare(48000.f);
+    synth.selectPreset(0);
+    for (int n = 0; n < 8; ++n) synth.noteOn(40 + 3 * n, 0.8f);
+    std::vector<float> left(256), right(256);
+    for (int i = 0; i < 20; ++i) synth.render(left.data(), right.data(), 256);
+    const int calls = 4000;
+    double best = 1e30, bestSame = 1e30;
+    for (int run = 0; run < 5; ++run) {
+        int k = 0;
+        best = std::min(best, ms([&] { synth.setMacro(macro, (++k & 1) ? 0.62f : 0.38f); }, calls));
+        synth.render(left.data(), right.data(), 256);
+        bestSame = std::min(bestSame, ms([&] { synth.setMacro(macro, 0.38f); }, calls));
+        synth.render(left.data(), right.data(), 256);
+    }
+    const double us = best * 1000.0, same = bestSame * 1000.0;
+    const double perSecondSlow = 48000.0 / (kModTick * kModMacroTicks), perSecondFast = 48000.0 / kModTick;
+    std::printf("  %-28s %6.3f us a call (%5.3f the same value); 24 MODs: %5.2f%% of one core at %d samples, %5.2f%% at %d\n", name, us, same,
+                100.0 * 24.0 * perSecondSlow * us / 1e6, kModTick * kModMacroTicks, 100.0 * 24.0 * perSecondFast * us / 1e6, kModTick);
+}
+
 WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds) { return playWholeSong(helpers, seconds, false); }
 
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
@@ -405,6 +435,15 @@ int apotheca::runBench() {
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
     wholeSongRows();
+    {
+        std::printf("a macro changed (what a MOD on a macro costs), the synth alone, 8 notes held:\n");
+        std::unique_ptr<Phazed> phazed(new Phazed);
+        std::unique_ptr<Qmod> qmod(new Qmod);
+        std::unique_ptr<Twin> twinSynth(new Twin);
+        macroCost("Phazed, TONE", *phazed, phazed::Tone);
+        macroCost("QMOD, TENSION", *qmod, qmod::MacroTension);
+        macroCost("Twin Analog, macro 1", *twinSynth, 0);
+    }
 
     // Chord effects: the clock's work, with next to no sound under it.
     std::printf("chord effects, eleven silent tracks, four chords of four keys a bar on each:\n");

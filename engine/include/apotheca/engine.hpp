@@ -435,6 +435,12 @@ public:
     // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
     // tests: read between renders, never while one is under way.
     int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
+    // For the tests, between renders, never while one is under way: what a MOD adds to a lane
+    // (its value is given at once, as a MOD's tick will give it), a lane's centre (the knob or
+    // its automation), and what a track's send has been given.
+    void setModOffsetForTests(int track, int lane, float offset);
+    float laneCentre(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].autoNow[lane] : kAutoNone; }
+    float sendGiven(int track, int bus) const { return track >= 0 && track < kNumTracks && bus >= 0 && bus < kBuses ? tracks_[track].send[bus] : 0.f; }
 
 private:
     struct DrumScene {
@@ -537,7 +543,11 @@ private:
             float& operator[](int i) const { return scenes[i / (kAutoLanes * kAutoSteps)]->automation[i % (kAutoLanes * kAutoSteps)]; }
         } automation{scenes};
         float autoBase[kAutoLanes]; // where each knob was left; below zero: not known (an effect not yet told)
-        float autoNow[kAutoLanes];  // what the synth or effect has been given
+        float autoNow[kAutoLanes];  // the CENTRE: where the knob or its automation has the lane (a MOD moves around it)
+        // What the track's MODs add to each lane (mod_rule.hpp). Exactly 0 where no MOD is aimed:
+        // then the lane is given autoNow itself, in the same calls as before there were MODs.
+        // Nothing sets it yet but the tests (batch 0); runMods will (batch 1).
+        float modOffset[kAutoLanes] = {};
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
         bool autoGliding[kAutoLanes] = {};
         std::uint8_t autoHeld = 0; // a bit a slot: its automation waits (HoldEffectAutomation)
@@ -654,6 +664,7 @@ private:
     Position afterThisBar() const;
     void fireStep();
     void applyAuto(Track& track, int lane, float value);
+    void giveLane(Track& track, int lane);
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1

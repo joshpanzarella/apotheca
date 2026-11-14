@@ -228,7 +228,8 @@ static void testCeiling() {
 }
 
 static void testLaneLevel() {
-    Engine full, half, muted;
+    std::unique_ptr<Engine> own[3] = {std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine)}; // on the heap: 1.4 MB each
+    Engine &full = *own[0], &half = *own[1], &muted = *own[2];
     half.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.5f));
     muted.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.f));
     for (Engine* e : {&full, &half, &muted}) e->send(trigger(SNARE));
@@ -795,7 +796,10 @@ static void testPatternPlaysOnTheExactSample() {
 
 static void testNudgeMovesAHitOffTheGrid() {
     const int quarter = kStep / 4;
-    Engine late, early, wrapped;
+    // On the heap: an Engine is 1.4 MB, and this test's six on the stack were 8.37 MB, over the
+    // main thread's 8 MB once the Engine grew by a kilobyte (MOD's offsets): a crash with no word.
+    std::unique_ptr<Engine> own[3] = {std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine)};
+    Engine &late = *own[0], &early = *own[1], &wrapped = *own[2];
     late.send(step(RIM, 4, 1.f));
     late.send(make(Command::SetStepNudge, 0, RIM, 4, 0.25f));
     early.send(step(RIM, 4, 1.f));

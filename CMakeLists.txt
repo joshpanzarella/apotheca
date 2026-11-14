@@ -73,7 +73,10 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(chordfx_test PRIVATE apotheca_engine)
   add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx PROPERTIES TIMEOUT 120)
+  add_executable(mod_test tests/mod_test.cpp)
+  target_link_libraries(mod_test PRIVATE apotheca_engine)
+  add_test(NAME mod COMMAND mod_test)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx mod PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

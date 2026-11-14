@@ -97,12 +97,15 @@ public:
 private:
     struct State;
     void apply(bool newSound);
+    bool sounding() const; // any voice playing or fading
+    void lineBack();       // a twin kept at DETUNE's middle for sounding notes goes back to one line, if none sound
 
     std::unique_ptr<State> state_;
     bool ok_ = false;
     int preset_ = 0;
     PhazedPatch patch_;
     float macro_[phazed::kMacros];
+    bool twinByDetune_ = false; // the synth has a one-line sound made a twin by DETUNE
 };
 
 } // namespace apotheca

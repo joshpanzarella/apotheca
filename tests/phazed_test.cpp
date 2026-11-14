@@ -506,6 +506,58 @@ static void testEachMacroDoesItsJob() {
     CHECK(std::fabs(1200.0 * std::log2(hz(0.f) / middle) + 1200.0) < 10.0);
 }
 
+// DETUNE makes a one-line sound a twin off the middle and one line at it. Passing through the
+// middle while a note was held cut the note (the CZ fades every voice for a new layout of its
+// lines): it fell from RMS 0.087 to 0.008. Now the twin stays while the note sounds, and the
+// next note played into silence is one line again, as a sound with DETUNE at the middle always was.
+static double rmsOf(const std::vector<float>& v, int fromFrame, int toFrame) { return std::sqrt(energyOf(v, fromFrame, toFrame) / (2.0 * (toFrame - fromFrame))); }
+static void testDetuneThroughTheMiddleKeepsTheNote() {
+    using namespace phazed;
+    int tried = 0;
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        const PhazedPatch patch = Phazed::presetPatch(preset);
+        if (patch.value[LineSelect] >= 2 || patch.value[envSustain(patch.value[LineSelect], AmpEnv)] == 0) continue; // one line, held
+        // The same note in two engines: DETUNE through the middle, and DETUNE never moved from 0.52.
+        // (Compared with the twin left alone, so a sound that dies away by itself does not count.)
+        std::vector<float> heard[2][3];
+        std::unique_ptr<Engine> engines[2];
+        for (int way = 0; way < 2; ++way) {
+            engines[way].reset(new Engine);
+            Engine& engine = *engines[way];
+            engine.prepare(44100.f);
+            engine.addSynthTrack(1);
+            engine.send(make(Command::SelectPreset, 1, preset));
+            engine.send(macro(Detune, 0.52f));
+            renderFrames(engine, 22050);
+            engine.send(make(Command::NoteOn, 1, 60, 1.f));
+            heard[way][0] = renderFrames(engine, 22050);
+            engine.send(macro(Detune, way == 0 ? 0.5f : 0.52f));
+            heard[way][1] = renderFrames(engine, 4410);
+            engine.send(macro(Detune, 0.52f));
+            heard[way][2] = renderFrames(engine, 22050);
+        }
+        Engine& engine = *engines[0];
+        if (rmsOf(heard[1][0], 11025, 22050) < 0.01) continue; // too quiet by then to say anything
+        ++tried;
+        const double middle = rmsOf(heard[0][1], 2205, 4410) / rmsOf(heard[1][1], 2205, 4410);
+        const double after = rmsOf(heard[0][2], 11025, 22050) / rmsOf(heard[1][2], 11025, 22050);
+        if (std::getenv("DETUNE_PRINT")) std::printf("preset %d: through the middle %.3f, after %.3f of the twin left alone\n", preset, middle, after);
+        // Not cut (it was a tenth). Louder is the slow beat of the two lines in another place.
+        CHECK(middle > 0.7);
+        CHECK(after > 0.7);
+        // Let go and fall silent: the next note, with DETUNE at the middle, is one line again,
+        // as loud as one played with DETUNE never moved (a twin would be 3 dB up).
+        engine.send(make(Command::NoteOff, 1, 60));
+        engine.send(macro(Detune, 0.5f));
+        renderFrames(engine, 44100 * 8);
+        engine.send(make(Command::NoteOn, 1, 60, 1.f));
+        const std::vector<float> again = renderFrames(engine, 22050);
+        const double plain = rmsOf(playNote(preset, {}).held, 11025, 22050);
+        CHECK(std::fabs(rmsOf(again, 11025, 22050) / plain - 1.0) < 0.1);
+    }
+    CHECK(tried >= 3); // the review measured presets 7, 9 and 12
+}
+
 static void testChoosingAPresetClearsTheMacros() {
     const int preset = organPreset();
     Engine engine;
@@ -706,6 +758,7 @@ int main(int argc, char** argv) {
     testSettingsAreHeldToTheirLimits();
     testMacrosInTheMiddleChangeNothing();
     testEachMacroDoesItsJob();
+    testDetuneThroughTheMiddleKeepsTheNote();
     testChoosingAPresetClearsTheMacros();
     testAGlideTakesItsLength();
     testAWaitingGlideKeepsItsOwnLength();
