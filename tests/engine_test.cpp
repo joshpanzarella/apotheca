@@ -1154,6 +1154,70 @@ static void testBadCommandsAreIgnored() {
     CHECK(peakOf(renderFrames(engine, 17 * kStep)) == 0.f);
 }
 
+// ---- what the audio thread hands back -------------------------------------------------
+
+static std::unique_ptr<SampleData> steadySample(int frames, float value) {
+    std::unique_ptr<SampleData> s(new SampleData);
+    s->data.assign(static_cast<std::size_t>(frames), value);
+    return s;
+}
+
+// A track given another instrument always drops the old one, however much the
+// app has to free. Opening a song takes every track away and gives each its
+// instrument again in one frame, before the trash is emptied: eight drum tracks
+// with a recording on every lane (64 things to free) and four synths used to
+// fill a trash of 63, and the four synth tracks kept their old synths and
+// ignored the drums they were given.
+static void testOpeningASongDropsEveryOldInstrument() {
+    std::unique_ptr<Engine> engine(new Engine);
+    for (int t = 1; t < 8; ++t) CHECK(engine->addDrumTrack(t));
+    for (int t = 8; t < kNumTracks; ++t) CHECK(engine->addSynthTrack(t, SynthKind::Phazed));
+    renderFrames(*engine, 64);
+    for (int t = 0; t < 8; ++t)
+        for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(engine->setLaneSample(t, lane, steadySample(4800, 0.5f)));
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    // The other song, as Session::applyProject sends it: all of it in one frame.
+    for (int t = 0; t < kNumTracks; ++t) CHECK(engine->removeTrack(t));
+    for (int t = 0; t < kNumTracks; ++t) CHECK(engine->addDrumTrack(t));
+    renderFrames(*engine, 64);
+    for (int t = 0; t < kNumTracks; ++t) engine->send(trigger(KICK, 1.f, t));
+    renderFrames(*engine, 64);
+    for (int t = 0; t < kNumTracks; ++t) CHECK(engine->trackPeak(t) > 0.1f); // every track's kick: the built-in drum now
+    engine->collectGarbage();
+    CHECK(engine->trashHeld() == 0 && engine->trashLost() == 0);
+}
+
+// More than the trash holds in one frame: what does not fit waits with the
+// audio thread and is handed on at the end of a chunk, once the app has emptied
+// the trash. Nothing is kept in the engine and nothing is lost.
+static void testTrashThatDoesNotFitWaits() {
+    std::unique_ptr<Engine> engine(new Engine);
+    CHECK(engine->addSynthTrack(1, SynthKind::Phazed));
+    renderFrames(*engine, 64);
+    engine->collectGarbage();
+    // 1100 recordings put on one lane in turn: each one put there frees the one before.
+    for (int i = 0; i < 1100; ++i) CHECK(engine->setLaneSample(0, KICK, steadySample(16, 0.5f)));
+    CHECK(engine->dropped() == 0);
+    renderFrames(*engine, 64);
+    const int waiting = engine->trashHeld();
+    CHECK(waiting > 0 && waiting < 1100); // the trash took most; the rest wait
+    // Still no collectGarbage: the synth on track 1 is taken away and drums put there.
+    CHECK(engine->removeTrack(1) && engine->addDrumTrack(1));
+    renderFrames(*engine, 64);
+    CHECK(engine->trashHeld() == waiting + 1); // the synth waits too: it is not kept on the track
+    engine->send(trigger(KICK, 1.f, 1));
+    renderFrames(*engine, 64);
+    CHECK(engine->trackPeak(1) > 0.1f); // the drums, not the old synth
+    // The app empties the trash; the next chunk hands on what waited; the next frame frees it.
+    engine->collectGarbage();
+    CHECK(engine->trashHeld() == waiting + 1);
+    renderFrames(*engine, 64);
+    CHECK(engine->trashHeld() == 0);
+    engine->collectGarbage();
+    CHECK(engine->trashLost() == 0);
+}
+
 // ---- recordings on drum lanes ---------------------------------------------------------
 
 // A recording that is easy to measure: steady at `first` for its first half,
@@ -3092,6 +3156,8 @@ int main() {
     testBlockSizeDoesNotChangeTheSound();
     testRateConverter();
     testBadCommandsAreIgnored();
+    testOpeningASongDropsEveryOldInstrument();
+    testTrashThatDoesNotFitWaits();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
