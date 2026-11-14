@@ -196,8 +196,9 @@ to the sound just now.
 | --- | --- | --- |
 | The list | Up / down | The next line. All eight, round the ends. |
 | | Right | Into the line's settings, **at the one last used there** |
-| | **Hold A** | **The list of effects opens on the right**: the seven families, each line naming its types. Up / down steps through it, and the family goes in at once as its first type, at its usual settings. |
-| | Hold A + left / right | The **TYPE**, for an effect that has types |
+| | **Hold A** | **The list of effects opens on the right**: the seven families, each line naming its types. Up / down steps through it, and you **hear** each one at once, but it is only **tried**: the effect that was in the slot, its settings and its automation are kept aside. **Let go of A** and the one you are on goes in (another family at its usual settings, its automation gone). Let go on the effect you started on and it is back exactly as it was. |
+| | Hold A + left / right | The **TYPE**, for an effect that has types. Tried too, with the settings the two types share; let go and it goes in, its automation moved with it |
+| | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
 | | Left | Back to the list, on the same line |

@@ -174,9 +174,12 @@ struct Command {
         SetGlideFrom,   // GLIDE FROM, which key of the moment before a synth track's glides come from:
                         //   track, a = kFromTop, kFromPaired, kFromNearest, kFromRandom (glide_rule.hpp;
                         //   a number not known is TOP). Notes that begin after it is taken go by it.
-        StopAudition    // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
+        StopAudition,   // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
                         //   out over the choke's 3 ms: track, a = lane. A pattern's hits on the lane, and a
                         //   ratchet's pieces still waiting that are not the audition's, are left alone.
+        HoldEffectAutomation // the FX screen's list of effects is open on a track's slot, and the slot sounds what
+                        //   the cursor is on: track, a = slot, b = 1 held (the slot's automation is not applied,
+                        //   so it does not move the effect being tried), 0 let go (it is, from the next step).
     };
     Type type = Trigger;
     int track = 0;
@@ -214,6 +217,7 @@ constexpr int kAutoSendLane = 20;                  // the ECHO send's lane; SPAC
 constexpr int kAutoSteps = kMaxBars * kSteps;      // a cell at its longest
 constexpr float kAutoNone = -1.f;
 inline int autoLaneOfEffect(int slot, int param) { return 8 + slot * 4 + param; }
+inline int autoSlotOfLane(int lane) { return lane >= 8 && lane < 8 + 4 * kTrackSlots ? (lane - 8) / 4 : -1; } // -1: not an effect's lane
 inline int autoLaneOfSend(int bus) { return kAutoSendLane + bus; }
 
 struct TrackImage {
@@ -514,6 +518,8 @@ private:
         float autoNow[kAutoLanes];  // what the synth or effect has been given
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
         bool autoGliding[kAutoLanes] = {};
+        std::uint8_t autoHeld = 0; // a bit a slot: its automation waits (HoldEffectAutomation)
+        bool autoWaits(int lane) const { const int slot = autoSlotOfLane(lane); return slot >= 0 && ((autoHeld >> slot) & 1); }
         float* autoAt(int scene, int lane) { return scenes[scene]->automation + lane * kAutoSteps; }
         // Synth notes sounding from the pattern: samples until each is let
         // go, to the sample. kNoNote: that key is not sounding.

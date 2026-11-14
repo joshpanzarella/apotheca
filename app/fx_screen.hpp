@@ -21,10 +21,17 @@
 //   in the list      up / down: the next line (round the ends). Right: into
 //                    the line's settings, at the one last used there.
 //                    Hold A: the list of effects opens on the right. With A
-//                    held, up / down steps through it (the effect goes in at
-//                    once, at its usual settings; a bus offers only its own
-//                    family) and left / right changes the TYPE, keeping the
-//                    settings the two types share.
+//                    held, up / down steps through it (a bus offers only its
+//                    own family) and left / right through the TYPEs. What the
+//                    cursor is on is HEARD at once, but only TRIED: the slot's
+//                    own effect, its settings and its automation are kept
+//                    aside. Let go of A and what the cursor is on goes in
+//                    (another family at its usual settings, its automation
+//                    gone; another type of the same family with the settings
+//                    the two share, its automation moved); let go on the
+//                    effect it started on, or press B, or leave the screen or
+//                    the track, and the effect that was there is back as it
+//                    was, every setting and all its automation.
 //                    Hold B on an effect's line: a bar fills, and when it
 //                    is full (a second) the effect is deleted, with its
 //                    settings and its automation. It cannot be undone, and
@@ -34,6 +41,8 @@
 //                    Hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice. B: its usual value
 //                    (a send: nothing sent).
+//   L1 / R1          the track before / after (it stops at the first and the
+//                    last, as the SONG screen's columns do); the cursor stays
 //   X                hear the track (a recording on it, on lane 1 or the sampler:
 //                    for as long as X is held; a tap for a moment)
 //   START            play / stop
@@ -83,6 +92,15 @@ public:
     int remembered(int row) const { return row < 0 || row >= kRows ? 1 : last_[row]; }
     // A is held on a slot's line: the list of effects is open on the right.
     bool picking() const { return holding_ && column_ == 0 && !sends(row_); }
+    // With A held there, what the slot is TRYING (heard, drawn on the right and lit in the list) while the
+    // project keeps what it had: `trying()` is true once the engine has been sent another effect than the
+    // project's. What the slot holds in the project is data(row) only when nothing is being tried there.
+    bool trying() const { return tryRow_ >= 0 && away_; }
+    const EffectData& tried() const { return tried_; }
+    const EffectData& onLine(int row) const { return data(row); } // what a slot's line shows: what it tries, with A held
+    // Nothing is tried any more and the slot sounds what the project holds (B with A held, another screen,
+    // another track). The App calls it whenever this is not the screen up.
+    void callOff();
     // B held on an effect's line: how far the bar has filled, 0..1. Full, the effect is deleted.
     static constexpr Uint32 kDeleteHoldMs = 1000;
     static constexpr const char* kDeletingWords = "DELETING: CANNOT BE UNDONE"; // in the heading while the bar fills
@@ -179,8 +197,17 @@ private:
     static int busOf(int row) { return row >= kBusRow && row < kMasterRow ? row - kBusRow : -1; } // -1: not a bus's line
     int trackOf(int row) const { return row < kBusRow ? project_.track : (row < kMasterRow ? busTrack(row - kBusRow) : kMasterTrack); }
     static int slotOf(int row) { return row < kTrackSlots ? row : (row >= kMasterRow ? row - kMasterRow : 0); }
-    // What a slot's line holds. (Not for the sends line, which is not a slot.)
-    const EffectData& data(int row) const { return session_.effectData(trackOf(row), slotOf(row)); }
+    // What a slot's line holds, or is trying with A held. (Not for the sends line, which is not a slot.)
+    const EffectData& data(int row) const { return row == tryRow_ && away_ && trackOf(row) == tryTrack_ ? tried_ : session_.effectData(trackOf(row), slotOf(row)); }
+    // The slot's line is trying something other than what the project holds: what the project's automation
+    // and settings say is not what is heard.
+    bool tryingOn(int row) const { return row == tryRow_ && away_; }
+    void startTrying();
+    void tryKind(EffectKind kind);   // the slot sounds `kind`, at the settings it would go in with
+    void letGo();                    // A let go: what is tried goes in, or the slot is as it was
+    void sendSlot(const EffectData& d); // the engine's slot to `d` (the project untouched)
+    void holdAutomation(bool held);
+    void stepTrack(int by);
     float send(int bus) const { return project_.current().send[bus]; }
     void press(Button direction);
     void turn(float amount);
@@ -196,6 +223,10 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
+    int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
+    EffectData tried_;               // what it is trying
+    bool away_ = false;              // the engine's slot holds tried_, not the project's
+    bool held_ = false;              // the engine was told to hold the slot's automation
     bool deleting_ = false, deleteTimed_ = false; // B held on an effect's line
     int deleteRow_ = -1;
     Uint32 deleteSince_ = 0;

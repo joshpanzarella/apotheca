@@ -466,9 +466,29 @@ effect in those two groups and fails one that does not.
     `update()` only pulls the cursor in when the line has fewer settings now.
   - **Hold A on a slot's line opens the list of effects** (`picking()`), drawn
     from `familyAt`: DOWN is the next line of it, since it is seen (it was UP
-    when the list was stepped through blind). Left / right is the TYPE
-    (`changeEffectType`). The group jump is gone. On a setting, A + up / down
-    turns it as before, and left / right do nothing.
+    when the list was stepped through blind). Left / right is the TYPE. The
+    group jump is gone. On a setting, A + up / down turns it as before, and
+    left / right do nothing.
+  - **With A held the list only TRIES** (owner, 2026-11-14: passing over the
+    list threw a tuned effect away). The PROJECT is not touched while A is
+    held: `tryKind` sends the engine's slot the effect under the cursor
+    (`Engine::setEffect` and `SetEffectParam`: the usual 10 ms fade), and
+    `Command::HoldEffectAutomation` holds that slot's automation in the engine
+    so the pattern does not move the effect tried. `data(row)` (`onLine`) is
+    the tried one meanwhile. **Let go of A** (`letGo`): another family goes in
+    through `Session::setEffect` (its first type, then `changeEffectType` to the
+    type picked), another type of the same family through `changeEffectType`
+    from the effect it started with; what was heard is what goes in (the test
+    holds the two equal). **Let go on the effect it started on, B with A held,
+    another screen up (`App::update` calls `callOff`) or another track**: the
+    engine is sent what the project holds, so the slot is as it was to the bit
+    (its automation never moved). The family it started in is tried as the
+    effect it started with, not afresh, which is what lets "down and back up"
+    land on it exactly. LEFT / RIGHT is tried too, carried from the starting
+    effect (not from what was passed over). The effect committed is installed
+    afresh once more (a second fade, a tail heard while trying is cut): the
+    Session has no "put in without telling the engine". `app_test`
+    (`testTryingAnEffectKeepsIt`), `effects_test` (`testHeldAutomation`).
   - **The list of effects is eight lines, EMPTY and the seven families**
     (`kPickLines`), each a family's name and, from `kPickTypesX`, its types
     in small letters with ", " between ("clean, tape, ping"), the slot's type

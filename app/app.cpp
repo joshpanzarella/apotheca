@@ -266,6 +266,8 @@ void App::update(const Input& input, Uint32 nowMs) {
         undoSaidUntil_ = nowMs + 4000;
     }
     session_.engine.setScopeTrack(project_->track);
+    // An effect being tried on the FX screen (A held on a slot's line) is called off when another screen is up.
+    if (&screenNow() != &fx_) fx_.callOff();
     screenNow().update(input, nowMs);
 }
 

@@ -62,6 +62,120 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     return true;
 }
 
+// ---- trying an effect with A held ----------------------------------------------------------
+//
+// With A held on a slot's line the list of effects is open, and up / down / left / right try what the cursor
+// comes to. The PROJECT is not touched while A is held: only the engine's slot is sent the effect tried
+// (through the usual commands, so it fades in over 10 ms and nothing here holds an Effect), and the slot's
+// automation is held in the engine so it does not move the effect being tried. Let go: what is tried goes in
+// through the Session, as a pick always did. Called off: the slot is sent what the project holds.
+
+namespace {
+// What a slot holding `start` would hold with `to` put in by the list of effects: `to` itself, with the
+// settings it shares with `start` carried by name (another type of the same family), or at its usual
+// settings (another family; its first type's carried to the type picked, as stepping there always did).
+EffectData wouldGoIn(const EffectData& start, EffectKind to, bool onBus) {
+    EffectData d;
+    d.kind = static_cast<int>(to);
+    const EffectKind from = static_cast<EffectKind>(start.kind);
+    if (to == from) return start;
+    if (to == EffectKind::None) return d;
+    if (from != EffectKind::None && std::strcmp(effectFamily(from), effectFamily(to)) == 0) {
+        effectCarry(from, to, start.param, onBus, d.param);
+        return d;
+    }
+    const EffectKind first = effectTypeAt(to, 0);
+    float usual[kEffectParams];
+    for (int i = 0; i < kEffectParams; ++i) usual[i] = effectDefault(first, i, onBus);
+    if (first == to) {
+        for (int i = 0; i < kEffectParams; ++i) d.param[i] = usual[i];
+    } else {
+        effectCarry(first, to, usual, onBus, d.param);
+    }
+    return d;
+}
+
+bool sameEffect(const EffectData& a, const EffectData& b) {
+    if (a.kind != b.kind) return false;
+    for (int i = 0; i < kEffectParams; ++i)
+        if (a.param[i] != b.param[i]) return false;
+    return true;
+}
+} // namespace
+
+void FxScreen::sendSlot(const EffectData& d) {
+    const int track = tryTrack_, slot = slotOf(tryRow_); // (whose it was: the track may have changed since)
+    const EffectKind kind = static_cast<EffectKind>(d.kind);
+    session_.engine.setEffect(track, slot, kind); // (a loss is counted, and mended by the song sent again)
+    Command c;
+    c.type = Command::SetEffectParam;
+    c.track = track;
+    c.a = slot;
+    for (int i = 0; i < effectInfo(kind).params; ++i) {
+        c.b = i;
+        c.value = d.param[i];
+        session_.engine.send(c);
+    }
+}
+
+void FxScreen::holdAutomation(bool held) {
+    if (held == held_ || tryTrack_ < 0) return; // (the master and the buses have no automation)
+    held_ = held;
+    Command c;
+    c.type = Command::HoldEffectAutomation;
+    c.track = tryTrack_;
+    c.a = slotOf(tryRow_);
+    c.b = held ? 1 : 0;
+    session_.engine.send(c);
+}
+
+void FxScreen::startTrying() {
+    tryRow_ = row_;
+    tryTrack_ = trackOf(row_);
+    tried_ = session_.effectData(tryTrack_, slotOf(row_));
+    away_ = false;
+    held_ = false;
+}
+
+void FxScreen::tryKind(EffectKind kind) {
+    if (tryRow_ < 0) return;
+    const EffectData& start = session_.effectData(tryTrack_, slotOf(tryRow_));
+    tried_ = wouldGoIn(start, kind, busOf(tryRow_) >= 0);
+    if (!away_ && sameEffect(tried_, start)) return; // (the engine has it already)
+    holdAutomation(true);
+    sendSlot(tried_);
+    away_ = !sameEffect(tried_, start);
+}
+
+void FxScreen::callOff() {
+    if (tryRow_ < 0) return;
+    if (away_) sendSlot(session_.effectData(tryTrack_, slotOf(tryRow_)));
+    holdAutomation(false);
+    tryRow_ = -1;
+    away_ = false;
+}
+
+void FxScreen::letGo() {
+    if (tryRow_ < 0) return;
+    const int track = tryTrack_, slot = slotOf(tryRow_);
+    const EffectData start = session_.effectData(track, slot);
+    const EffectKind from = static_cast<EffectKind>(start.kind), to = static_cast<EffectKind>(tried_.kind);
+    if (!away_ || to == from) {
+        callOff(); // the one it started on: as it was
+        return;
+    }
+    tryRow_ = -1; // (data() is the project's again)
+    away_ = false;
+    if (to != EffectKind::None && from != EffectKind::None && std::strcmp(effectFamily(from), effectFamily(to)) == 0) {
+        changeEffectType(session_, track, slot, to); // the settings the two share, and their automation, go with it
+    } else {
+        const EffectKind first = to == EffectKind::None ? to : effectTypeAt(to, 0);
+        session_.setEffect(track, slot, first); // (its automation is cleared: it meant nothing to this one)
+        if (first != to) changeEffectType(session_, track, slot, to);
+    }
+    holdAutomation(false);
+}
+
 float FxScreen::typesWidth(const Font& font, const std::vector<std::string>& names, int from, int to) {
     float w = 0.f;
     for (int t = from; t < to; ++t) w += font.width(names[t].c_str()) + (t + 1 < to ? font.width(kPickComma) : 0.f);
@@ -190,16 +304,20 @@ void FxScreen::press(Button b) {
         if (sends(row_)) return; // the sends are turned one at a time, on the right
         const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
         const int bus = busOf(row_);
+        if (tryRow_ != row_) startTrying();
         if (upDown) {
-            // The list of effects, which is drawn as this is held: down is the next line of it.
-            // A family goes in as its first type, at its usual settings. The ends stop.
+            // The list of effects, which is drawn as this is held: down is the next line of it. A family is
+            // tried as its first type, at its usual settings (as the one it started on, at its own). The ends stop.
             const int from = familyPlace(kind, bus), to = from + (b == Button::Down ? 1 : -1);
             if (to < 0 || to >= familyListSize(bus)) return;
-            session_.setEffect(trackOf(row_), slotOf(row_), familyAt(to, bus));
+            const EffectKind family = familyAt(to, bus);
+            const EffectKind started = static_cast<EffectKind>(session_.effectData(tryTrack_, slotOf(row_)).kind);
+            tryKind(family != EffectKind::None && started != EffectKind::None && std::strcmp(effectFamily(family), effectFamily(started)) == 0 ? started : family);
         } else {
-            // Its TYPE: the next of the family's, or the one before. The ends stop.
+            // Its TYPE: the next of the family's, or the one before, with the settings they share. The ends stop.
             const EffectKind next = effectTypeAt(kind, effectTypeIndex(kind) + (b == Button::Right ? 1 : -1));
-            if (next == EffectKind::None || !changeEffectType(session_, trackOf(row_), slotOf(row_), next)) return;
+            if (next == EffectKind::None || kind == EffectKind::None) return;
+            tryKind(next);
         }
         if (!project_.playing) hear();
         return;
@@ -244,7 +362,9 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (event.down && b != Button::B) deleting_ = false, deletePart_ = 0.f; // any other press calls a held B off
     if (b == Button::A) {
+        if (!event.down && tryRow_ >= 0) letGo(); // what is tried goes in (or, on the one it started on, it is as it was)
         holding_ = event.down;
+        if (event.down && column_ == 0 && !sends(row_)) startTrying();
         saved_ = 0.f;
         stickWas_ = false;
         return;
@@ -257,7 +377,10 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         press(b);
         repeating_ = b;
         repeatAt_ = 0;
-    } else if (b == Button::B && !holding_) {
+    } else if (b == Button::B && holding_) {
+        // B with A held calls it off: the slot is as it was, and A does nothing more until it is pressed again.
+        if (tryRow_ >= 0) callOff(), holding_ = false;
+    } else if (b == Button::B) {
         if (sends(row_)) {
             // On the line: nothing sent to either bus. On a send: that one.
             for (int bus = 0; bus < kBuses; ++bus)
@@ -288,6 +411,8 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
+    if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
     // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
     // moved off the line, or A held: nothing is deleted.
     if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_ || sends(row_)) deleting_ = false;
@@ -430,7 +555,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 // a meter (COMP, DUCK) what it is doing just now, down from the top.
                 const int mh = kLineH - 14, top = y + 7, mix = effectMixParam(kind), track = trackOf(row);
                 if (mix >= 0) {
-                    const float level = track >= 0 ? session_.automated(track, autoLaneOfEffect(slotOf(row), mix), d.param[mix]) : d.param[mix];
+                    const float level = track >= 0 && !tryingOn(row) ? session_.automated(track, autoLaneOfEffect(slotOf(row), mix), d.param[mix]) : d.param[mix];
                     const int lit = static_cast<int>(std::round(static_cast<float>(mh) * level));
                     fill(r, kMarkX, top, 4, mh, kLine);
                     fill(r, kMarkX, top + mh - lit, 4, lit, here ? kText : kDim);
@@ -439,7 +564,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                     fill(r, kMarkX - 7, top, 4, mh, kLine);
                     fill(r, kMarkX - 7, top, 4, meterPixels(meterOf(row), mh), kBrass);
                 }
-                for (int p = 0; p < effectInfo(kind).params && track >= 0; ++p) moves = moves || session_.hasAutomation(track, project_.scene, autoLaneOfEffect(slotOf(row), p));
+                for (int p = 0; p < effectInfo(kind).params && track >= 0 && !tryingOn(row); ++p) moves = moves || session_.hasAutomation(track, project_.scene, autoLaneOfEffect(slotOf(row), p));
             }
         }
         if (moves) fill(r, kListX + 1, y + kLineH - 3, kListW - 2, 2, kPurple);
@@ -637,6 +762,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         } else if (!onSends) {
             hint("UP / DOWN", "effect");
             if (effectTypes(kind) > 1) hint("LEFT / RIGHT", "type");
+            hint("B", "as it was");
         }
     } else if (column_ == 0) {
         if (settings(row_) > 0) hint("RIGHT", onSends ? "the sends" : "its settings");

@@ -1058,6 +1058,14 @@ void Engine::apply(const Command& c) {
     case Command::SetGlideFrom:
         if (validTrack(c.track)) tracks_[c.track].glideFrom = static_cast<std::uint8_t>(glideFromKind(c.a));
         break;
+    case Command::HoldEffectAutomation:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kTrackSlots) {
+            Track& track = tracks_[c.track];
+            if (c.b) track.autoHeld = static_cast<std::uint8_t>(track.autoHeld | (1 << c.a));
+            else track.autoHeld = static_cast<std::uint8_t>(track.autoHeld & ~(1 << c.a));
+            for (int i = 0; i < 4 && c.b; ++i) track.autoGliding[autoLaneOfEffect(c.a, i)] = false; // a glide under way stops where it is
+        }
+        break;
     case Command::SetSend:
         if (validTrack(c.track) && c.a >= 0 && c.a < kBuses && c.value == c.value) {
             Track& track = tracks_[c.track];
@@ -1424,6 +1432,10 @@ void Engine::fireStep() {
         if (!track.hasInstrument()) continue;
         const int at = (slotOf(track, scene_, bar_) % kMaxBars) * kSteps + nextStep_;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
+            if (track.autoWaits(lane)) { // the FX screen is trying another effect in the slot
+                track.autoGliding[lane] = false;
+                continue;
+            }
             const float written = track.autoAt(scene_, lane)[at];
             const float to = written >= 0.f ? written : track.autoBase[lane];
             if (to < 0.f || to == track.autoNow[lane]) {
@@ -1582,7 +1594,7 @@ void Engine::settleAutomation() {
     for (Track& track : tracks_)
         for (int lane = 0; lane < kAutoLanes; ++lane) {
             track.autoGliding[lane] = false;
-            if (track.autoBase[lane] >= 0.f && track.autoNow[lane] != track.autoBase[lane]) applyAuto(track, lane, track.autoBase[lane]);
+            if (track.autoBase[lane] >= 0.f && track.autoNow[lane] != track.autoBase[lane] && !track.autoWaits(lane)) applyAuto(track, lane, track.autoBase[lane]);
         }
 }
 

@@ -4376,6 +4376,44 @@ static void testBusEffectsInTheEngine() {
     }
 }
 
+// The FX screen trying an effect (A held on a slot's line): the slot's automation is held, so the pattern does
+// not move the effect being tried; let go, it moves it again from the next step. Only that slot's.
+static void testHeldAutomation() {
+    std::unique_ptr<Engine> engine = sineEngine();
+    Probe* first = new Probe;
+    Probe* second = new Probe;
+    engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(first));
+    engine->setTrackEffect(0, 1, std::unique_ptr<Effect>(second));
+    engine->send(make(Command::SetEffectParam, 0, 0, 2, 0.3f));
+    engine->send(make(Command::SetEffectParam, 0, 1, 2, 0.3f));
+    for (int step = 0; step < kSteps; ++step) {
+        engine->send(make(Command::SetAutomation, 0, autoLaneOfEffect(0, 2), step, step % 2 ? 0.9f : 0.7f));
+        engine->send(make(Command::SetAutomation, 0, autoLaneOfEffect(1, 2), step, step % 2 ? 0.9f : 0.7f));
+    }
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 4 * 6000);
+    CHECK(first->lastIndex == 2 && first->lastParam > 0.6f);                       // moved by its lanes
+    CHECK(second->lastIndex == 2 && second->lastParam == 0.3f);                    // held: where its knob is
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
+    CHECK(second->lastParam == 0.3f && first->lastParam == 0.3f);                  // stopped: back to the knob (the held one never left it)
+    engine->send(make(Command::HoldEffectAutomation, 0, 5, 0));                    // no such slot: nothing
+    engine->send(make(Command::HoldEffectAutomation, kMasterTrack, 1, 0));
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 0));
+    engine->send(make(Command::Play, 0, 0, 1));
+    leftOf(*engine, 4 * 6000);
+    CHECK(second->lastIndex == 2 && second->lastParam > 0.6f);                     // let go: its lanes move it again
+    engine->send(make(Command::HoldEffectAutomation, 0, 1, 1));                    // held while it plays: it stays where it got to
+    leftOf(*engine, 64);
+    const float stayed = second->lastParam;
+    leftOf(*engine, 4 * 6000);
+    CHECK(second->lastParam == stayed && first->lastParam > 0.6f);
+    engine->send(make(Command::Stop));
+    leftOf(*engine, 64);
+    CHECK(second->lastParam == stayed && first->lastParam == 0.3f); // stopped while held: left where it is
+}
+
 // Tracks have a third slot: it runs after the second, and lanes 16 to 19 are its settings.
 static void testThirdSlot() {
     CHECK(kTrackSlots == 3 && kMasterSlots == 2 && slotsOf(0) == 3 && slotsOf(kMasterTrack) == 2 && slotsOf(kEchoBus) == 1 && slotsOf(kSpaceBus) == 1);
@@ -7826,6 +7864,7 @@ int main(int argc, char** argv) {
         {"testBusRests", testBusRests},
         {"testBusEffectsInTheEngine", testBusEffectsInTheEngine},
         {"testThirdSlot", testThirdSlot},
+        {"testHeldAutomation", testHeldAutomation},
         {"testSendsOnAnyHelperCount", testSendsOnAnyHelperCount},
         {"testFamiliesAndTypes", testFamiliesAndTypes},
         {"testTypeChangeCarriesSettings", testTypeChangeCarriesSettings},
