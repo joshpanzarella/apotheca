@@ -182,6 +182,11 @@ void Session::update(Uint32 nowMs) {
         settled_ = patternsNow();
     }
 
+    // The WiFi page refuses a song sent under the open one's name: it is told which that is.
+    if (songName_ != toldOpenSong_) {
+        toldOpenSong_ = songName_;
+        transfer_.setOpenSong(songName_);
+    }
     // A new program has arrived: ask whoever is holding the handheld.
     if (transfer_.updatesArrived() != seenUpdates_) {
         seenUpdates_ = transfer_.updatesArrived();

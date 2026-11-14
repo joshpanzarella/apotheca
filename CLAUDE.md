@@ -965,7 +965,16 @@ effect in those two groups and fails one that does not.
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
-  be accepted on the device (hold A).
+  be accepted on the device (hold A). **Five wrong numbers lock it for a
+  minute** (`Transfer::kWrongMost`, `lockoutMs`), counted for the whole server,
+  every request refused with 429 meanwhile, the right number too. Only a path
+  whose first part is all digits is a try (a browser asks for `/favicon.ico`
+  by itself); a right number and a fresh `start` begin the count again.
+- **A song sent under the open song's name is refused** (409, "that song is
+  open on the handheld", case not counted: a card may not tell them apart).
+  The Session tells the server the name (`Transfer::setOpenSong`, from
+  `update()` when it changes and when WiFi goes on). **`saveNow` holds
+  `Transfer::songFiles()` while it writes**, as the server does.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from

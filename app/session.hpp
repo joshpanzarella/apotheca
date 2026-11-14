@@ -213,6 +213,7 @@ public:
     bool toggleTransfer(unsigned seed);  // true if it is now on
     bool transferOn() const { return transfer_.running(); }
     std::string transferAddress() const { return transfer_.address(); } // what to type into the browser
+    std::mutex& songFiles() { return transfer_.songFiles(); } // held while a song file is written (saveNow) or sent
 
     // ---- updating Apotheca over WiFi ----------------------------------------------------
     // A new program sent to the page is only set aside. It is installed
@@ -533,6 +534,7 @@ private:
     bool updateWaiting_ = false;
     float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
+    std::string toldOpenSong_; // the song name the WiFi page was last told (it refuses one sent under it)
     std::string chordFolder_;
     AudioInput* input_ = nullptr;
     Recorder recorder_;

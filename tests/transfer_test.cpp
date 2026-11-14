@@ -1184,7 +1184,111 @@ static void testTheServerWaitsForTheSongs() {
     transfer.stop();
 }
 
+// The song open on the handheld is refused from the page: the autosave would write over it.
+static void testTheOpenSongIsRefused() {
+    const std::string root = tempFolder(), songs = root + "/songs";
+    mkdir(songs.c_str(), 0755);
+    CHECK(writeTextFile(songs + "/quiet road.song", "apotheca-song 1\ntempo 97\n"));
+    Transfer transfer;
+    CHECK(transfer.start(root + "/samples", songs, root + "/chords", 0, 12345));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    const std::string sent = "apotheca-song 1\ntempo 120\n";
+    CHECK(put(port, door + "/songs/quiet%20road.song", sent).status == 200); // nothing is open yet
+    transfer.setOpenSong("quiet road");
+    CHECK(writeTextFile(songs + "/quiet road.song", "apotheca-song 1\ntempo 97\n"));
+    Answer a = put(port, door + "/songs/quiet%20road.song", sent);
+    CHECK(a.status == 409 && a.body == "that song is open on the handheld\n");
+    CHECK(put(port, door + "/songs/Quiet%20Road.song", sent).status == 409); // a card may take the two for one
+    std::string kept;
+    CHECK(readTextFile(songs + "/quiet road.song", kept) && kept == "apotheca-song 1\ntempo 97\n" && !exists(songs + "/Quiet Road.song"));
+    CHECK(transfer.received() == 1);
+    CHECK(put(port, door + "/songs/quiet%20roads.song", sent).status == 200); // a name beside it is not it
+    CHECK(put(port, door + "/samples/quiet%20road.wav", aWav()).status == 200); // nor a recording of that name
+    transfer.setOpenSong("other");
+    CHECK(put(port, door + "/songs/quiet%20road.song", sent).status == 200);
+    transfer.stop();
+
+    // Through the Session: it tells the server which song is open, and again when that changes.
+    std::unique_ptr<Engine> engine(new Engine);
+    Input input;
+    App app(*engine);
+    Session& session = app.session();
+    session.useSongFolder(root + "/songs2", 3);
+    session.useSampleFolder(root + "/samples2");
+    CHECK(session.toggleTransfer(5));
+    const std::string address = session.transferAddress();
+    const int p2 = std::atoi(address.c_str() + address.find(':') + 1);
+    const std::string d2 = address.substr(address.find('/'));
+    const std::string first = session.songName();
+    std::string url = first;
+    for (std::size_t i; (i = url.find(' ')) != std::string::npos;) url.replace(i, 1, "%20");
+    a = put(p2, d2 + "/songs/" + url + ".song", sent);
+    CHECK(a.status == 409 && a.body == "that song is open on the handheld\n");
+    session.newSong();
+    app.update(input, 1000);
+    CHECK(session.songName() != first && put(p2, d2 + "/songs/" + url + ".song", sent).status == 200);
+    url = session.songName();
+    for (std::size_t i; (i = url.find(' ')) != std::string::npos;) url.replace(i, 1, "%20");
+    CHECK(put(p2, d2 + "/songs/" + url + ".song", sent).status == 409);
+
+    // The autosave holds the song files while it writes, as the server does.
+    session.project.tempo = 133.f; // something worth a file
+    std::unique_lock<std::mutex> held(session.songFiles());
+    std::atomic<bool> saved{false};
+    std::thread saver([&] { session.saveNow(); saved = true; });
+    usleep(200000);
+    CHECK(!saved && !exists(root + "/songs2/" + session.songName() + ".song"));
+    held.unlock();
+    saver.join();
+    CHECK(saved && exists(root + "/songs2/" + session.songName() + ".song"));
+}
+
+// Five wrong numbers and every try is refused for a while, then five more.
+static void testTooManyWrongNumbers() {
+    const std::string root = tempFolder();
+    Transfer::lockoutMs = 700;
+    Transfer transfer;
+    CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 12345));
+    const int port = transfer.port();
+    const std::string door = "/" + transfer.pin();
+    std::string wrongNumber = transfer.pin();
+    wrongNumber[0] = wrongNumber[0] == '9' ? '0' : static_cast<char>(wrongNumber[0] + 1);
+    const std::string wrong = "/" + wrongNumber;
+    // Not a number: not a try (a browser asks for /favicon.ico by itself).
+    for (int i = 0; i < 10; ++i) CHECK(get(port, "/favicon.ico").status == 403 && get(port, "/").status == 403);
+    CHECK(get(port, door).status == 200);
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong + "/list").status == 403);
+    CHECK(get(port, door + "/list").status == 200); // a right one starts the count again
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    Answer a = get(port, "/1234567"); // the fifth wrong one: any number
+    CHECK(a.status == 429 && a.body == "too many wrong numbers: wait a minute\n");
+    // Now every try is refused, the right number too, and it says why.
+    a = get(port, door + "/list");
+    CHECK(a.status == 429 && a.body == "too many wrong numbers: wait a minute\n");
+    CHECK(put(port, door + "/samples/kick.wav", aWav()).status == 429 && !exists(root + "/samples/kick.wav"));
+    CHECK(get(port, door).status == 429 && get(port, wrong).status == 429);
+    usleep(800000);
+    CHECK(get(port, door + "/list").status == 200);
+    // Then five more.
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    CHECK(get(port, wrong).status == 429 && get(port, door).status == 429);
+    usleep(800000);
+    CHECK(get(port, door).status == 200);
+    // Wrong tries count for the whole server, not one browser: and a fresh start (a new number) clears them.
+    for (int i = 0; i < 4; ++i) CHECK(get(port, wrong).status == 403);
+    transfer.stop();
+    CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 12345));
+    const int port2 = transfer.port();
+    CHECK(get(port2, wrong).status == 403 && get(port2, "/" + transfer.pin()).status == 200);
+    transfer.stop();
+    Transfer::lockoutMs = 60000;
+    CHECK(Transfer::kWrongMost == 5);
+}
+
 int main(int, char**) {
+    testTheOpenSongIsRefused();
+    testTooManyWrongNumbers();
     testTheSpeedTest();
     testTheServerWaitsForTheSongs();
     testRenamingInSongText();

@@ -88,6 +88,13 @@ public:
     // Held by the server while it writes or deletes a song file, and by the session while it
     // goes through the saved songs (Session::savedSongsFollow): neither undoes the other's work.
     std::mutex& songFiles() { return songFiles_; }
+    // The song open on the handheld (its name, no ".song"): a song sent under that name is refused,
+    // since the autosave would write over it a moment later. Set by the session; any thread.
+    void setOpenSong(const std::string& name);
+    // Wrong numbers: after kWrongMost of them, counted for the whole server, every request is
+    // refused for lockoutMs (then kWrongMost more). A right number starts the count again.
+    static constexpr int kWrongMost = 5;
+    static int lockoutMs; // 60000; tests make it short
     // For tests: behave as a card does that will not rename a file into another folder, so the
     // long way round (write it again, then take the old one away) is the one that runs.
     static bool renameBroken;
@@ -108,7 +115,10 @@ private:
     std::atomic<bool> stopping_{false};
     std::atomic<unsigned> received_{0};
     void noteChange(const std::string& fromFile, const std::string& toFile); // file names, with their ".wav"
-    std::mutex changesMutex_, songFiles_;
+    std::mutex changesMutex_, songFiles_, openMutex_;
+    std::string openSong_; // under openMutex_
+    int wrong_ = 0;                // wrong numbers since the last lockout or right number (the server's thread only)
+    long long lockedUntilMs_ = 0;  // on the steady clock
     std::vector<Change> changes_;
     std::thread thread_;
 };
