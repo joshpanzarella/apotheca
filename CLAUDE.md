@@ -214,7 +214,10 @@ effect in those two groups and fails one that does not.
 
 ### The engine and its threads
 - **The audio thread never allocates, locks for long, or frees.** Things it
-  is done with go to the trash queue; `collectGarbage()` frees them.
+  is done with go to the trash queue (`bin()`); `collectGarbage()` frees them,
+  once a frame. What finds it full waits with the audio thread and is handed
+  on at the end of a chunk (`binHeld`). **Nothing is kept in the engine for
+  want of room**: a synth kept so played the next song's notes.
 - **Commands go through a queue that can fill.** `Engine::send` returns false
   and counts the loss (`dropped()`). `Session::update` notices and sends the
   whole song again (`applyProject`). Callers that hand over a pointer must
