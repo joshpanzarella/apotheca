@@ -617,6 +617,56 @@ static void testAutomation() {
     }
 }
 
+// A built-in preset puts the macros back to the middle, so that is where they REST: a scene with nothing
+// written on a macro's lane goes back there. The engine kept the old sound's knob as the rest, so a song that
+// wrapped from a scene with macro automation into one without played the OLD sound's macros (owner,
+// 2026-11-14: "went back to a previous sound I was using" as the song looped). The same song beside an engine
+// whose knobs were never turned must be the same to the sample, after the wrap and after Stop.
+static void testAPresetPutsTheMacrosRestBack() {
+    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod};
+    for (SynthKind kind : kinds) {
+        const auto rig = [kind](bool turned) {
+            std::unique_ptr<Engine> engine(new Engine);
+            CHECK(engine->addSynthTrack(1, kind));
+            if (turned)
+                for (int m = 0; m < 8; ++m) engine->send(make(Command::SetMacro, 1, m, 0, m % 2 ? 0.95f : 0.05f));
+            engine->send(make(Command::SelectPreset, 1, 1));
+            engine->send(make(Command::SetSceneCount, 0, 2));
+            for (int scene = 0; scene < 2; ++scene) { // a note in each scene; the second's rings over the wrap
+                Command note = make(Command::SetNote, 1, 0, scene == 0 ? 0 : 8, 0.8f);
+                note.scene = scene;
+                note.c = 48;
+                note.d = scene == 0 ? 6 : 16;
+                engine->send(note);
+            }
+            for (int m = 0; m < 8; ++m) // every macro written in the second scene only
+                for (int i = 0; i < 16; ++i) {
+                    Command c = make(Command::SetAutomation, 1, m, i, 0.3f);
+                    c.scene = 1;
+                    engine->send(c);
+                }
+            return engine;
+        };
+        std::unique_ptr<Engine> fresh = rig(false), stale = rig(true);
+        fresh->send(make(Command::Play));
+        stale->send(make(Command::Play));
+        // Scene 1, scene 2, then scene 1 again: the second time round is where the old knobs came back.
+        const std::vector<float> a = renderFrames(*fresh, 48 * kStep), b = renderFrames(*stale, 48 * kStep);
+        CHECK(peakOf(std::vector<float>(a.begin() + 2 * 32 * kStep, a.end())) > 0.01f);
+        CHECK(a == b);
+        // Stopped: the macros settle where the knob rests, and a note played by hand is the same sound too.
+        fresh->send(make(Command::Stop));
+        stale->send(make(Command::Stop));
+        renderFrames(*fresh, 96000);
+        renderFrames(*stale, 96000);
+        fresh->send(make(Command::NoteOn, 1, 48, 0, 0.8f));
+        stale->send(make(Command::NoteOn, 1, 48, 0, 0.8f));
+        const std::vector<float> c = renderFrames(*fresh, 2 * kStep), d = renderFrames(*stale, 2 * kStep);
+        CHECK(peakOf(c) > 0.01f);
+        CHECK(c == d);
+    }
+}
+
 // The envelope every synth shares (envelope.hpp).
 static void testTheSharedEnvelope() {
     using namespace envelope;
@@ -3289,6 +3339,7 @@ static void testTheSamplerTakesTheOldest() {
 }
 
 int main() {
+    testAPresetPutsTheMacrosRestBack();
     testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();
     testTheSampler();
