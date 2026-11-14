@@ -5025,17 +5025,17 @@ void testTheFxScreenAsDrawn() {
     };
     fx.goTo(0, 0);
     draw();
-    const bool barFound = hinted("pick effect");
+    const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("its settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
-        CHECK(!hinted("its settings") && hinted("pick effect")); // an empty slot has none to go into
+        CHECK(!hinted("settings") && hinted("effects")); // an empty slot has none to go into
         fx.goTo(F::kSendsRow, 0);
         draw();
-        CHECK(hinted("the sends") && hinted("send nothing") && !hinted("pick effect"));
+        CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
         CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default value"));
@@ -7617,6 +7617,91 @@ void testTheHintsFitAndSayWhatTheyDo() {
     ui::gHelpHint = "MENU: HELP";
 }
 
+// L1 / R1 on the FX screen: the track before / after, stopping at the first and the last (as the SONG screen's
+// columns do). The cursor stays on its line and setting; an effect being tried is called off. The bar says so and fits.
+void testFxStepsTheTrack() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    addPhazed(rig);
+    addPhazed(rig);
+    CHECK(rig.project().trackCount() == 3);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setEffect(1, 1, EffectKind::Tape);
+    session.setEffect(2, 1, EffectKind::Comp);
+    session.view = View::Effects;
+    rig.project().track = 0;
+    fx.goTo(1, 3);
+    rig.frames(1);
+    rig.tap(L1);
+    CHECK(rig.project().track == 0 && fx.cursorRow() == 1 && fx.cursorColumn() == 3); // the first: it stops
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 1 && fx.cursorRow() == 1 && fx.cursorColumn() == 3 && session.view == View::Effects);
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 2 && fx.cursorRow() == 1 && fx.cursorColumn() == 3);
+    rig.tap(R1);
+    rig.frames(1);
+    CHECK(rig.project().track == 2); // the last: it stops
+    // A line with fewer settings on the next track: the nearest; the one last used is not forgotten.
+    session.setEffect(1, 1, EffectKind::Crush);
+    fx.goTo(1, 4);
+    rig.tap(L1);
+    rig.frames(1);
+    CHECK(rig.project().track == 1 && fx.cursorColumn() == effectInfo(EffectKind::Crush).params && fx.remembered(1) == 4);
+    // The sends and the buses: the same line.
+    fx.goTo(FxScreen::kSendsRow, 2);
+    rig.tap(L1);
+    CHECK(rig.project().track == 0 && fx.cursorRow() == FxScreen::kSendsRow && fx.cursorColumn() == 2);
+    // Trying an effect: called off, the old track's slot as it was.
+    const EffectData was = session.effectData(0, 1);
+    fx.goTo(1, 0);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    CHECK(fx.trying());
+    rig.tap(R1);
+    CHECK(!fx.trying() && !fx.picking() && rig.project().track == 1 && session.effectData(0, 1).kind == was.kind && session.effectData(1, 1).kind == static_cast<int>(EffectKind::Crush));
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.effectData(0, 1).kind == was.kind && session.effectData(1, 1).kind == static_cast<int>(EffectKind::Crush));
+    // The top bar and the list's heading name the new track at once.
+    char name[24];
+    ui::trackName(rig.project(), 1, name, sizeof name);
+    canvas.clear();
+    rig.app.draw(canvas.r, fonts);
+    CHECK(inked(canvas, scratch, 0, FxScreen::kListX + 1.f, FxScreen::lineY(0) - 19 + 3.f, name, ui::kText));
+    // The bar says it, and fits, in every state of the screen, with either help.
+    for (int menu = 0; menu < 2; ++menu) {
+        const auto draw = [&] {
+            rig.frames(1);
+            ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            return ui::gHintsOver == 0.f;
+        };
+        for (int row = 0; row < FxScreen::kRows; ++row)
+            for (int column = 0; column < 3; ++column) {
+                fx.goTo(row, column);
+                CHECK(draw() && hintKeyed(canvas, scratch, "L1 / R1", "track"));
+                if (!draw()) std::printf("    row %d column %d: %.0f pixels over\n", row, column, static_cast<double>(ui::gHintsOver));
+                rig.key(A, true);
+                CHECK(draw());
+                rig.key(A, false);
+            }
+        fx.goTo(1, 0);
+        rig.key(A, true);
+        rig.tap(DOWN);
+        CHECK(draw() && hintKeyed(canvas, scratch, "B", "as it was"));
+        rig.key(A, false);
+    }
+    ui::gHelpHint = "MENU: HELP";
+}
+
 // B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).
 void testDeletingATrackSaysItCannotBeUndone() {
     Canvas canvas, scratch;
@@ -7750,6 +7835,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--fx") { // just the FX screen and its list of effects (for trying a change)
         testTheEffectsScreen();
         testTryingAnEffectKeepsIt();
+        testFxStepsTheTrack();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
@@ -7837,6 +7923,7 @@ int main(int argc, char** argv) {
     testTheTempoFromAnyScreen();
     testTheEffectsScreen();
     testTryingAnEffectKeepsIt();
+    testFxStepsTheTrack();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensList();

@@ -373,7 +373,9 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (b == repeating_) repeating_ = Button::None;
         return;
     }
-    if (isDirection(b)) {
+    if (b == Button::L1 || b == Button::R1) {
+        stepTrack(b == Button::R1 ? 1 : -1);
+    } else if (isDirection(b)) {
         press(b);
         repeating_ = b;
         repeatAt_ = 0;
@@ -405,6 +407,16 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
+}
+
+// L1 / R1: the track before / after, on the same line and setting. It stops at the first and the last, as the
+// SONG screen's columns do. An effect being tried is called off first (it is the old track's).
+void FxScreen::stepTrack(int by) {
+    callOff();
+    holding_ = false;
+    const int to = project_.track + by;
+    if (to < 0 || to >= project_.trackCount()) return;
+    project_.track = to; // (the line stays; a setting it no longer has: the nearest, in update())
 }
 
 void FxScreen::update(const Input& input, Uint32 nowMs) {
@@ -765,15 +777,17 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             hint("B", "as it was");
         }
     } else if (column_ == 0) {
-        if (settings(row_) > 0) hint("RIGHT", onSends ? "the sends" : "its settings");
-        if (!onSends) hint("HOLD A", "pick effect");
+        if (settings(row_) > 0) hint("RIGHT", onSends ? "sends" : "settings");
+        if (!onSends) hint("HOLD A", "effects");
         if (onSends) hint("B", "send nothing");
         else if (kind != EffectKind::None) hint("HOLD B", "delete");
+        hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("LEFT", "list");
         hint("HOLD A", "turn");
         hint("B", onSends ? "none" : "default value");
+        hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     }
     hints(r, fonts, list, count);

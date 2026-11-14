@@ -502,6 +502,13 @@ effect in those two groups and fails one that does not.
     row keeps for the LEFT / RIGHT key held or not). Today's all fit; six
     planned DELAYs at LARGE do not. A family of one shows its type all the
     same where it is not the family's word (MOD: TYPE CHORUS), with no key.
+  - **L1 / R1 is the track before / after** (owner, 2026-11-14: a send on
+    another track cost five presses). `FxScreen::stepTrack`: it stops at the
+    first and the last track, as the SONG screen's columns do (nothing in the
+    program wraps tracks); the line and `last_` stay; an effect being tried
+    is called off first. DEVICE keeps its own L1 / R1 (pages, record, slices).
+    The list's hints were shortened to fit it (settings, effects, sends):
+    `testFxStepsTheTrack` holds every line and column to the bar.
   - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
     `kDeleteHoldMs`, a second, on the line and the heading, which says
     `kDeletingWords`; a tap does nothing; any other button or a move calls it

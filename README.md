@@ -205,6 +205,10 @@ to the sound just now.
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
 | | B | Its usual value. A send: nothing sent. |
 
+**L1 / R1** is the track before / after, from the list or from a setting: the
+cursor stays on the same line and setting, and the top bar names the new
+track. It stops at the first and the last track, as the SONG screen does.
+
 X hears the track and START plays, as everywhere (a recording, on lane 1 or
 the sampler, plays for as long as X is held). Y does nothing here.
 
