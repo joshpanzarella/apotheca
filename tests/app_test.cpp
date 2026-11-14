@@ -6580,8 +6580,7 @@ void testNamingATrackFromTheSongScreen() {
     rig.tap(B); // the list of instruments came up, and is put away
     CHECK(rig.project().trackCount() == 2);
     rig.tap(LEFT);
-    CHECK(song.cursorColumn() == 1 && !song.cursorOnHead());
-    rig.tap(UP);
+    CHECK(song.cursorColumn() == 1 && song.cursorOnHead()); // back along the heads (owner, 2026-11-14), not into the cell
     rig.tap(LEFT, 2);
     CHECK(!song.cursorOnHead() && song.cursorColumn() == -1);
     song.moveCursorTo(0, 1);

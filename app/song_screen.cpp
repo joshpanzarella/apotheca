@@ -77,7 +77,7 @@ void SongScreen::mixStep(Button direction) {
 }
 
 void SongScreen::moveCursorTo(int scene, int column) {
-    onHead_ = onMaster_ = false;
+    onHead_ = onMaster_ = addFromHeads_ = false;
     scene_ = scene < 0 ? 0 : (scene >= kMaxScenes ? kMaxScenes - 1 : scene);
     column_ = column < kRepeatColumn ? kRepeatColumn : (column > lastColumn() ? lastColumn() : column);
     if (scene_ < top_) top_ = scene_;
@@ -108,7 +108,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     // MASTER, the head at the right-hand end: back left to + TRACK, or the last track's head.
     if (onMaster_) {
         if (direction == Button::Left) {
-            if (addColumn() >= 0) moveCursorTo(scene_, addColumn());
+            if (addColumn() >= 0) moveCursorTo(scene_, addColumn()), addFromHeads_ = true;
             else {
                 onMaster_ = false;
                 onHead_ = true;
@@ -128,7 +128,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         }
         if (direction == Button::Right) {
             if (column_ + 1 < project_.trackCount()) ++column_;
-            else if (addColumn() >= 0) moveCursorTo(scene_, addColumn());
+            else if (addColumn() >= 0) moveCursorTo(scene_, addColumn()), addFromHeads_ = true;
             else moveToMaster(); // twelve tracks: no + TRACK between
         }
         return;
@@ -136,6 +136,14 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     // Right of + TRACK (drawn at the heads' height) is MASTER.
     if (direction == Button::Right && column_ == addColumn() && !copying_) {
         moveToMaster();
+        return;
+    }
+    // Left of + TRACK, come to from the heads (MASTER or the last head): back along the heads, not down into
+    // the last track's cell (owner, 2026-11-14). Come to from a cell, left goes back to that cell's row.
+    if (direction == Button::Left && column_ == addColumn() && addFromHeads_ && !copying_ && project_.trackCount() > 0) {
+        onHead_ = true;
+        column_ = project_.trackCount() - 1;
+        addFromHeads_ = false;
         return;
     }
     // Only by a press of the D-pad: the stick, or a held D-pad, running up the scenes stops at the top one.

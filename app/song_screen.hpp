@@ -124,6 +124,7 @@ private:
     int changing_ = -1;   // the instrument list is up to change this track's (-1: to add a track)
     bool onHead_ = false; // the cursor is on a track's head (its name), above the top scene
     bool onMaster_ = false; // ...or on MASTER, the head at the right-hand end
+    bool addFromHeads_ = false; // on + TRACK, come to along the heads: left goes back to the last head, not its cell
     bool mixing_ = false;   // A is held on a head: the directions turn its level and pan
     bool mixTurned_ = false; // ...and something was turned, so letting go is not a tap (a tap on a track's head names it)
     bool mixShown_ = false, mixTimed_ = false; // ...held kMixCardMs: the card is up, and letting go is not a tap either
