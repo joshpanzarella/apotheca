@@ -67,9 +67,10 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 //   0  the patch as a player meets it (batch 7: A1 String I, chorus on; until then the start patch)
 //   1  the worst patch (batch 7: B12 Sync Sweep; until then one like it: DCO-2's pulse synced to
 //      DCO-1's, a fifth up, the envelope sweeping DCO-2's pitch, both DCOs heard, and the envelope
-//      moving all the while: a slow attack, a decay, each key played again every half second)
-//   2  a moving cutoff: every note a glide all the while (and, from batch 4, the LFO on the cutoff),
-//      so whatever is worked out from the pitch is worked out every sample
+//      moving all the while: a slow attack, a decay, each key played again every half second; and
+//      from batch 3 the envelope on the VCF, RESONANCE 5, so its cutoff moves after every tick)
+//   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8 (and, from batch 4, the LFO
+//      on the cutoff), so whatever is worked out from the pitch and the cutoff is worked out every sample
 static void jx3pRow(const char* name, int how) {
     std::unique_ptr<Jx3p> synth(new Jx3p);
     synth->prepare(48000.f);
@@ -84,6 +85,14 @@ static void jx3pRow(const char* name, int how) {
         synth->setSetting(jx3p::Dco2Env, 1);
         synth->setSetting(jx3p::DcoEnvDepth, 60);
         synth->setSetting(jx3p::SourceMix, 50);
+        synth->setSetting(jx3p::Cutoff, 30);
+        synth->setSetting(jx3p::Resonance, 50);
+        synth->setSetting(jx3p::VcfEnv, 70);
+    }
+    if (how == 2) {
+        synth->setSetting(jx3p::Cutoff, 40);
+        synth->setSetting(jx3p::Resonance, 50);
+        synth->setSetting(jx3p::KeyFollow, 98);
     }
     std::vector<float> l(256), r(256);
     const int keys[6] = {48, 52, 55, 60, 64, 67};

@@ -158,10 +158,10 @@ struct Adsr {
 struct Hold {
     float value = 0.f, target = 0.f;
     bool still() const { return value == target; }
-    float next(float k) {
+    float next(float k, float lands = kHoldLands) {
         if (value != target) {
             value += (target - value) * k;
-            if (std::fabs(target - value) < kHoldLands) value = target;
+            if (std::fabs(target - value) < lands) value = target;
         }
         return value;
     }

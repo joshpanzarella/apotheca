@@ -221,15 +221,16 @@ static void testThroughTheEngine() {
 
 // THE TOP (SELF): a DCO is held under 0.45 of the sample rate (kHighestStep), where its corrections
 // still have room. Key 127 at 4' (25.1 kHz written) plays at 21.6 kHz, not folded down to 22.9 kHz as
-// an unheld one would be. (The corrections' own band-limit takes 21.6 kHz down: 0.011 is heard
-// there, measured 2026-11-14; the folded place 0.000004.)
+// an unheld one would be. (The corrections' own band-limit takes 21.6 kHz down: 0.011 was heard
+// there, measured 2026-11-14; the folded place 0.000004. Since batch 3 the VCF at its top, 20 kHz,
+// takes it down again: 0.0007 there, 0.000003 at the folded place.)
 static void testTheTopIsHeld() {
-    std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, 2}}));
+    std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, 2}, {KeyFollow, 100}})); // (the VCF at its top, 20 kHz: batch 3)
     j->noteOn(127, 1.f);
     const std::vector<float> out = play(*j, 48000 + 4800);
     const double held = partAt(out.data() + 4800, 48000, 0.45 * 48000.0), folded = partAt(out.data() + 4800, 48000, 48000.0 - j->voiceHz(0));
     if (failures || std::getenv("JX3P_PRINT")) std::printf("  the top: %.4f at 21.6 kHz, %.6f at 22.9 kHz\n", held, folded);
-    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.01);
+    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.0005);
 }
 
 // ---- the voices -----------------------------------------------------------------------------------
@@ -567,7 +568,8 @@ static void testGlide() {
 // ---- the house rules ------------------------------------------------------------------------------
 
 // A phrase with every part built so far moving: keys, steals, glides, knobs, macros, VELOCITY, the
-// DCOs (waves, cross mod, TUNE, FINE, MIX, ENV on them),
+// DCOs (waves, cross mod, TUNE, FINE, MIX, ENV on them), the VCF and HPF (CUTOFF, RESONANCE, ENV MOD
+// and its polarity, KEY FOLLOW, HPF, BRILLIANCE),
 // GATE, RANGE, allNotesOff. Each event at its sample.
 struct Event { long at; std::function<void(Jx3p&)> act; };
 static std::vector<Event> phrase(double seconds) {
@@ -583,6 +585,7 @@ static std::vector<Event> phrase(double seconds) {
         const float velocity = 0.2f + 0.08f * roll(11);
         const int a = roll(4), b = roll(101), c = roll(8), d = roll(11), e = roll(2), f = roll(3), g = roll(2), h = 40 + roll(61);
         const int w1 = roll(3), w2 = roll(4), x = roll(3), tune = roll(101), mix = roll(101), depth = roll(101), sw = roll(4); // the DCOs (batch 2)
+        const int cut = roll(101), res = roll(101), envMod = roll(101), key = roll(101), hpf = roll(3) * 40, bright = roll(101); // the VCF and HPF (batch 3)
         if (kind < 6) ev.push_back({t, [=](Jx3p& j) { j.noteOn(note, velocity); }});
         else if (kind < 8) ev.push_back({t, [=](Jx3p& j) { j.noteOnFrom(note, velocity, note - 7, 0.15f); }});
         else if (kind == 8) ev.push_back({t, [=](Jx3p& j) { j.setSetting(Attack + a, b); }});
@@ -591,7 +594,9 @@ static std::vector<Event> phrase(double seconds) {
         else if (kind == 11 && sw < 3) ev.push_back({t, [=](Jx3p& j) {
             j.setSetting(Dco1Wave, w1); j.setSetting(Dco2Wave, w2); j.setSetting(Dco2CrossMod, x); j.setSetting(Dco2Tune, tune);
             j.setSetting(SourceMix, mix); j.setSetting(DcoEnvDepth, depth); j.setSetting(Dco1Env, sw & 1); j.setSetting(Dco2Env, (sw + 1) & 1);
-            j.setSetting(DcoEnvPolarity, depth & 1); j.setSetting(Dco2Range, f); j.setSetting(Dco2Fine, mix); }});
+            j.setSetting(DcoEnvPolarity, depth & 1); j.setSetting(Dco2Range, f); j.setSetting(Dco2Fine, mix);
+            j.setSetting(Cutoff, cut); j.setSetting(Resonance, res); j.setSetting(VcfEnv, envMod); j.setSetting(VcfEnvPolarity, cut & 1);
+            j.setSetting(KeyFollow, key); j.setSetting(Hpf, hpf); j.setSetting(Brilliance, bright); }});
         else ev.push_back({t, [](Jx3p& j) { j.allNotesOff(); }});
         const long off = t + 600 + roll(30000);
         ev.push_back({off, [=](Jx3p& j) { j.noteOff(note); }});

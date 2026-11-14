@@ -11,8 +11,12 @@ DCO-1's saw through the voices, the tick, the envelope and the VCA
 the batch table. **Batch 2 is done (2026-11-14)**: both DCOs, every wave,
 TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX and ENV on the DCOs
 (`engine/src/jx3p/dco.hpp`, `tests/jx3p_dco_test.cpp`), with minimum-phase
-BLEP and BLAMP tables; what it learned is under the batch table too. Nobody
-has heard anything: every figure is a test's.
+BLEP and BLAMP tables; what it learned is under the batch table too. **Batch
+3 is done (2026-11-14)**: the VCF, the HPF and BRILLIANCE
+(`engine/src/jx3p/ir3109.hpp`, `tests/jx3p_vcf_test.cpp`); the filter bends
+only its feedback, not each stage (see "Batch 3: what it learned"). Its SPEED
+TEST on the handheld waits on the owner. Nobody has heard anything: every
+figure is a test's.
 
 ## The recommendation
 
@@ -588,6 +592,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 2 | **DCOs**, `jx3p/dco.hpp`: both DCOs, every wave, TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX, DCO pitch from ENV | `jx3p_dco_test`: the DCO table, **aliasing first**, and the table BLEP if needed | Every DCO test passes and the bench row is measured again |
 | | **Batch 2 DONE (2026-11-14, branch `jx3p`).** The polynomial BLEP was tried first, as planned, and fails the bar (a saw at 4186 Hz: -35.3 dB of aliasing under 15 kHz; 1760 Hz: -42.6). Built instead: **minimum-phase** BLEP and BLAMP tables, 16 samples, 64 points a sample (`engine/src/jx3p/blep_table.hpp`, made by `tools/jx3p_blep.py`), so nothing is late. Every wave, SYNC and METAL, notes 36 to 96 at 4': **the worst aliasing under 15 kHz is -86.3 dB** (METAL on the pulse); the bar is -50. `jx3p_dco_test` (in ctest, TIMEOUT 120, about 1.5 s): 20 tests. `jx3p_test`: 28 (its alias baseline moved here). **Bench** (desk, two runs, synth alone): 6 notes **0.21 / 0.22%** (0.08 in batch 1), the worst row (now DCO-2's pulse synced a fifth up, ENV on its pitch, both heard) 0.30%, moving cutoff 0.63 / 0.68% (0.40); in the same runs Phazed 0.7 / 1.1, QMOD 2.8, Twin x1 4.1 / 4.5. Mutants: 38 in the last round, **38 killed** (see "Batch 2: what it learned") | | |
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
+| | **Batch 3 DONE (2026-11-14, branch `jx3p`)**, but for the SPEED TEST on the handheld, which **waits on the owner** (the three JX-3P rows are in `bench` and in SPEED TEST). The VCF: four trapezoidal one-poles solved as one sum each sample, the feedback's soft clip from the sample before; its coefficient from polynomials, only when its CV moved. The HPF: one pole on the summed voices, off and untouched at 0. BRILLIANCE: plus or minus 2 octaves on every voice's cutoff. `jx3p_vcf_test` (in ctest, TIMEOUT 120, about 1.5 s): 17 tests. `jx3p_test`'s phrase moves every VCF and HPF setting too (`testBlocks`, `testTooSmall`, twice from fresh, the helpers). **Organ I**: a semitone a semitone within 2.2 cents over notes 48 to 84 (the bar is 5). **Bench** (desk, four runs on a busy machine, the synth alone): 6 notes **0.43 to 0.46%** (0.21 in batch 2), the worst row (now with ENV on the VCF and RESONANCE 5) 0.80 to 0.87% (0.30), moving cutoff (KEY FOLLOW 9.8, every note gliding, so the coefficient is worked out every sample) **1.56 to 1.67%** (0.63 to 0.68); in the same runs Phazed 0.7 to 1.2, QMOD 2.8 to 2.9, Twin x1 4.1 to 5.4. The moving-cutoff row is under the 2.0% ceiling but over the 1.2% target, with the LFO and the chorus still to come: see "Batch 3: what it learned". Mutants: 35 made, 34 killed |
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
 | 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jx3p` and the `twin` reading, `.jx3p` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
@@ -687,6 +692,49 @@ it, and that line was taken out.
 
 **What only the tests saw**: everything. Nothing here has been heard.
 
+### Batch 3: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "One soft clip where the feedback meets the input, and one per stage" | **One, on the feedback only** (`kFeedbackKnee` 2.75), taken from the sample before as a gain | Tried both ways first. A bend on what goes INTO each stage made a full saw at RESONANCE 0 lose 2 dB at its peaks and moved SOURCE MIX's 1:2 by 0.16 dB (`testSourceMix` failed). A bend on what is ACROSS each OTA (the stage before less its own output) left slow sounds alone but, where the filter sings, lowered every stage's cutoff: 4 semitones flat at 79 Hz with the knee set for the level, still 16 cents off a semitone a semitone over Organ I with the knee at 4. The feedback's bend scales the loop's gain, not a cutoff, so it holds the level and moves no pitch, and it keeps every sound bounded (`testStaysBounded`: the filter alone fed a square of 10 never passes 14) |
+| Feedback 0 to 4, dial 10 "just past it" | 0 to **4.6** (`kResTop`), straight in the dial: it sings from 8.7 | At 4.4 the kick would take about 60 ms to grow at 1 kHz (worked out from the poles, not run); at 4.6 it is within 1 dB of its level in 50 ms at 1 and 4 kHz (`testItSings`). Higher sharpens its pitch more |
+| Self-oscillation 6 dB under the saw's peak (SELF) | So: 6.0 / 6.1 / 6.4 / 6.5 dB at 80 Hz / 300 Hz / 1 kHz / 4 kHz | `kFeedbackKnee` set for it |
+| Its pitch | **It sings sharp of its cutoff**: 0.7 cents at 80 Hz, 3 at 300 Hz, 10 at 1 kHz, 30 at 4 kHz | The bend taken from the sample before lags a sample. Organ I's notes (cutoff 39 to 316 Hz) are within 2.2 cents of a semitone a semitone. KEY FOLLOW's CV is a straight line exactly; what it sings over four octaves at KEY 10 is 17 cents off it (`testKeyFollow` allows 20) |
+| Organ I's pitch "read 200 ms in" | Read from **0.5 s** | At 40 Hz it is still growing at 0.2 s and reads 13 cents sharp there |
+| KEY FOLLOW's pitch read through the synth | The CV read from the synth, the singing from the filter alone at those cutoffs | Through the synth the saw's own partials near the cutoff pull the singing onto them (KEY 5: 183 cents off) |
+| The cutoff in Hz | 15 Hz to 15 kHz at **note 60** (`kKeyFollowNote`, SELF), held under 20 kHz and 0.45 of the rate | KEY FOLLOW turns about one key; the plan named none. **Organ I at C4 sings at 79 Hz**, two octaves and a third under the key: in tune with itself, not with the DCO. A cutoff table anchored so CUTOFF 2.4 at KEY 9.8 sings the key played is another reading of NAM's "plays in tune": the owner's call (section 8) |
+| ENV MOD's size, BRILLIANCE's | 10 octaves at ENV MOD 10 (`kVcfEnvOctaves`), plus or minus 2 at BRILLIANCE 0 and 10 (`kBrillianceOctaves`) | SELF: no source |
+| The S/H's smoothing "lands exactly" (1e-5, the VCA's) | The cutoff's CV (in octaves) lands at **1e-3 of an octave** (`kVcfCvLands`, 1.2 cents) | At 1e-5 a step of an octave slides for 11.5 ms (worked out), longer than the tick (`testTheCvSteps` fails), and the coefficient is worked out on every sample it slides |
+| `tan` and `exp2` "as short polynomials" | `exp2Poly` (a fitted polynomial, the whole part by its bits: no `floor`, no `ldexp`), `sinPoly` and `cosPoly` (their series, every step a multiply), G = sin / (sin + cos): one division | `floor` and `ldexp` are calls to the library, and a division by a constant (`x2 / 6.0`) is a real division. With them, and the bend's own division, the moving-cutoff row was 2.1%; without, 1.6 |
+| The coefficient only when the CV moves | So, and its powers with it (`VcfCoef`): each stage's output is written out from the input and the states, so the four are worked out side by side | A sample of the filter is a chain each sample waits on (15 ns, 13 after); the shorter it is, the quicker |
+| HPF: 0 off, 10 a guess of 1 kHz | 0 off; 0.1 to 10 is **10 Hz to 1 kHz** even in octaves (`kHpfLowHz`); its corner through a hold of 1 ms, set when the knob moves (the synth has no tick of its own until the LFO's) | Turned to 0, it slides down to 10 Hz and is then let go, with what it held (the sound under 10 Hz): from that sample the sound is untouched (`testHpfOffIsUntouched`) |
+| A fresh voice's filter | Emptied when a free voice takes a key, and its CVs set where they are going on its first tick (no slide from the last note's) | `testAVoiceTakenAgainIsFresh`, `testTheCvSteps` |
+| Bass loss (the owner's call: kept) | Kept: RESONANCE 8 takes the low end down 13.4 dB, 1 / (1 + 3.68); through the synth 13.2 (the feedback's bend gives a little back where the saw rings the filter) | `kBassLoss` false lifts the input by 1 + feedback; not built into a test, since it is a constant |
+
+**The kick (1e-4 into stage 1 at each key) is built, but in the synth no test
+reaches it**: the DCOs always feed the filter, so a key never meets a filter
+with nothing coming in. Its mutant in the synth survives; in the filter alone
+(`testItSings`) it is killed. Kept because the plan asks it and it costs nothing.
+
+**The cost, and what is left for it.** The 6-note row doubled (0.21 to about
+0.45%): the filter's sample is a chain of about 13 ns a voice. The moving
+cutoff, 1.6%, is the filter's sample, its coefficient (about 11 ns each time)
+and the DCOs' glide. Batches 4 and 5 add the LFO and the chorus on top. If the
+handheld's SPEED TEST says it is too much, the next step is to run the six
+voices' filters side by side, a sample of all six at a time, so their chains
+overlap (not tried: a rewrite of the voice loop).
+
+**Mutants (batch 3)**: 35 made, **34 killed** (the bend's shape and flat top,
+the feedback's sign, each stage's state, the kick in the filter, the
+polynomials, the top, the edge, the HPF's every part, the KCV and the glide,
+KEY FOLLOW's 100%, ENV MOD and its polarity, BRILLIANCE, the fresh voice, the
+hold's landing, the coefficient's recompute, the bass loss, the HPF's tail,
+its slide). Survived: the kick in the synth (above). Three mutants first hung or
+crashed the test (a filter that never sings gave a pitch of 0 to the
+harmonics' reader): it now fails instead.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
 ## 7. Risks
 
 | Risk | What is done about it |
@@ -695,7 +743,7 @@ it, and that line was taken out.
 | The SN figures cannot be checked here | **Done in batch 0**: every SN claim has a page, read through OCR text (section 0). No saw figure is printed, so the self-oscillation level stays SELF |
 | NAM may not be the ROM | Said on the device; a ROM dump, if one turns up, replaces them |
 | The polynomial BLEP may not reach 50 dB under 15 kHz | **Batch 2: it did not (-35 dB).** Minimum-phase tables reach -86 dB; the whole of batch 2 costs 0.13% more than batch 1 at six notes |
-| The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3 |
+| The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3. **Batch 3: 1.6% on the desk for the moving cutoff (target 1.2, ceiling 2.0); the SPEED TEST waits on the owner** |
 | The 10 ms steps may sound rough to anyone used to Twin | It is the real machine's. The tick is one constant |
 | 6 voices: chords of 7 or more, fast strums with long releases, PAIRED glides over a chord steal | The steal is a retrigger with no click (or a fade: the owner's call). A glide's pitch is not changed by a steal; the old note's sound is. The owner may pick 8 |
 | Twin's load watch is removed | No other synth needs it; if one ever does, it is in git |
@@ -716,6 +764,7 @@ it, and that line was taken out.
 | Which voice is stolen: the oldest whose key is up (ringing in its release), or the oldest sounding, held or not (not documented) | **The oldest let go first** (`kStealLetGoFirst`): a held key is cut only when every voice is held |
 | After Stop and Play, the last notes' releases ring on beside six fresh voices (up to twelve for a release's length), so Play from the top is the same performance; or they take voices from the new notes (faithful to six, but every Play after a long pad differs) | **Ring beside** (`kTailVoices`) |
 | KEY FOLLOW: 9.8 is 100% (from NAM's Organ I) | Yes, until a recording says otherwise |
+| Where the cutoff's Hz sit (batch 3): CUTOFF 0 to 10 is 15 Hz to 15 kHz at note 60 (Organ I at C4 sings at 79 Hz, in tune with itself), or anchored so Organ I sings the key played (CUTOFF 2.4, KEY 9.8: the cutoff is the key's own pitch) | 15 Hz to 15 kHz, as planned, until a recording. One constant each (`kVcfLowHz`, `kVcfHighHz`, `kKeyFollowNote`) |
 | Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | Keep it until a recording says otherwise |
 | Note starts on the CPU's 10 ms grid (faithful, up to 10 ms late) or on the sample | On the sample |
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |

@@ -12,8 +12,10 @@
 // their ranges, a start patch, six voices with the assigner and the steal,
 // what allNotesOff puts back, seeded start phases, the tick, the ADSR, the
 // sample-and-hold, the VCA with VELOCITY. Batch 2: both DCOs, every wave, TUNE,
-// FINE, SYNC, METAL, NOISE, SOURCE MIX, ENV on the DCOs (engine/src/jx3p/dco.hpp).
-// Every other setting is kept and read back, and does nothing yet.
+// FINE, SYNC, METAL, NOISE, SOURCE MIX, ENV on the DCOs (engine/src/jx3p/dco.hpp). Batch 3: the
+// VCF (CUTOFF, RESONANCE, ENV MOD and its polarity, KEY FOLLOW), the HPF, BRILLIANCE
+// (engine/src/jx3p/ir3109.hpp). Every other setting (the LFO's, CHORUS) is kept and read back, and
+// does nothing yet.
 //
 // Every knob reads 0 to 10 on the PG-200; it is kept as 0..100, tenths of the
 // dial. A switch is 0, 1 (, 2, 3) in the order written beside it.
@@ -88,8 +90,9 @@ constexpr double kCounterClockHz = 5999840.0; // 440 x round(6 MHz / 440): A4 is
 constexpr bool kStealLetGoFirst = true;     // a steal takes the oldest voice whose key is up (ringing in
                                             // its release) before the oldest key still held; false: the
                                             // oldest sounding, held or not (the plan's first words)
-constexpr int kKeyFollowFull = 98;          // KEY FOLLOW 9.8 is 100% (batch 3)
-constexpr bool kBassLoss = true;            // the low end falls as resonance rises (batch 3)
+constexpr int kKeyFollowFull = 98;          // KEY FOLLOW 9.8 is 100% (read by the voices' tick, jx3p.cpp)
+constexpr bool kBassLoss = true;            // the low end falls as resonance rises, by 1 / (1 + feedback); false:
+                                            // the input is lifted by 1 + feedback (jx3p.cpp, renderVoice)
 constexpr bool kKeysOnTheSample = true;     // a key starts (and lets go) on its own sample; false: on the
                                             // 10 ms grid of one CPU loop, as the real one (up to 10 ms late)
 constexpr bool kBbdHiss = false;            // the chorus's hiss is not copied (batch 5)
@@ -135,6 +138,7 @@ public:
     float voiceVca(int voice) const;    // the VCA's CV after the hold
     double voiceHz(int voice) const;    // DCO-1's frequency now
     double voiceHz2(int voice) const;   // DCO-2's
+    double voiceCutoffHz(int voice) const; // the VCF's cutoff now (0 before its first sample)
     bool voiceHeld(int voice) const;
     int tailsRinging() const;           // voices handed over by allNotesOff still ringing out
 

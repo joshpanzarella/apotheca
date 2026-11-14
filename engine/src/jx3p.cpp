@@ -9,6 +9,7 @@
 #include "apotheca/slide.hpp"
 #include "jx3p/dco.hpp"
 #include "jx3p/env.hpp"
+#include "jx3p/ir3109.hpp"
 
 namespace apotheca {
 
@@ -102,6 +103,15 @@ struct Jx3p::State {
         double envSemis1 = 0.0, envSemis2 = 0.0; // what ENV DEPTH adds to each DCO's pitch, set on the tick
         double over1 = 1.0, over2 = 1.0; // the key's frequency over each DCO's: RANGE, TUNE, FINE, ENV (set on the tick)
         float mix = 0.f;      // SOURCE MIX, 0..1, read on the tick
+        // The VCF (jx3p/ir3109.hpp). Its CV, in octaves over kVcfLowHz, is the tick's part (CUTOFF, ENV,
+        // BRILLIANCE) through the S/H, plus the key's part, which moves per sample under GLIDE.
+        Ir3109 vcf;
+        Hold vcfCv, vcfRes;   // the tick's part of the cutoff (octaves), and the feedback
+        float vcfKey = 0.f;   // KEY FOLLOW's part (octaves), set with the pitch
+        float keyFollow = 0.f;// octaves of cutoff an octave of key, read on the tick
+        float vcfAt = NAN;    // the CV the coefficient was last worked out for (not a number: none yet)
+        VcfCoef vcfG;         // a stage's coefficient at that CV, and its powers
+        bool vcfFresh = true; // the voice's first tick sets its CVs where they are going, with no slide
         Slide slide;          // GLIDE: how far it still is from its own key, in semitones
         bool landing = false; // the glide came to its key on the last sample
         std::uint64_t startedAt = 0, silentSince = 0; // the sample clock, for the assigner
@@ -116,6 +126,15 @@ struct Jx3p::State {
     float levelGain = 1.f, clipFrom = 1.f;
     double tune2 = 0.0;       // DCO-2's TUNE and FINE together, in semitones
     double clockSteps = kCounterClockHz / 48000.0; // the counter's clock in steps a sample
+    float vcfOctaves = 0.f;   // CUTOFF and BRILLIANCE together, in octaves: what every voice's tick reads
+    float vcfEnvOctaves = 0.f;// ENV MOD with its polarity: octaves at the envelope's top
+    float resK = 0.f;         // RESONANCE as the feedback
+    // The HPF, after the voices are summed (one for the synth). Its corner through a hold of its own,
+    // set when the knob moves (the synth has no tick of its own until the LFO's, batch 4).
+    HighPass hpf;
+    Hold hpfCv;               // its corner in octaves over kHpfLowHz
+    bool hpfOn = false;       // HPF over 0 (at 0, and once its corner has come down, it is not run)
+    float hpfAt = NAN, hpfG = 0.f;
     std::uint64_t clock = 0;  // samples since allNotesOff (or since made)
     std::uint32_t keys = 0;   // note-ons since allNotesOff
     Voice voices[kVoices];
@@ -148,6 +167,7 @@ struct Jx3p::State {
         const double period = std::exp2((69.0 - v.note - semitones) / 12.0) / 440.0; // the key's
         v.dco.one.dt = stepOf(period * v.over1, v.count1);
         v.dco.two.dt = stepOf(period * v.over2, v.count2);
+        v.vcfKey = v.keyFollow * static_cast<float>((v.note + semitones - kKeyFollowNote) / 12.0); // the KCV: the key as it sounds, a glide too
     }
     // The waves, the cross mod and the mix as the panel has them: read on the tick.
     void readDcos(Voice& v, bool fresh) {
@@ -169,11 +189,17 @@ struct Jx3p::State {
         v.envSemis2 = eff[Dco2Env] >= 0.5f ? env : 0.0;
         setTimes(v);
         readDcos(v, false);
+        // The VCF's CVs, stepped and then held (SN p.6: "KCV, CUTOFF, LFO and ADSR"; the LFO is batch 4).
+        v.keyFollow = eff[KeyFollow] / static_cast<float>(kKeyFollowFull);
+        v.vcfCv.target = vcfOctaves + v.env.level * vcfEnvOctaves;
+        v.vcfRes.target = resK;
+        if (v.vcfFresh) v.vcfCv.value = v.vcfCv.target, v.vcfRes.value = v.vcfRes.target, v.vcfFresh = false;
         const float opened = eff[VcaMode] >= 0.5f ? (v.held ? 1.f : 0.f) : v.env.level;
         v.vca.target = levelGain * opened * (eff[Velocity] >= 0.5f ? velocityGain(v.velocity) : 1.f);
         if (v.slide.semitones == 0.f) setPitch(v, 0.0);
     }
     void renderVoice(Voice& v, float* out, int frames);
+    void runHpf(float* x, int frames);
 };
 
 Jx3p::Jx3p() : state_(new State) {
@@ -219,6 +245,11 @@ void Jx3p::apply() {
     s.levelGain = vcaGain(s.eff[VcaLevel]);
     s.clipFrom = vcaGain(kVcaClipDial);
     s.tune2 = tuneSemitones(s.eff[Dco2Tune], kTuneStepped, kTuneSemitonesPerDial) + fineSemitones(s.eff[Dco2Fine]);
+    s.vcfOctaves = static_cast<float>(cutoffOctaves(s.eff[Cutoff]) + (s.eff[Brilliance] - 50.0) / 50.0 * kBrillianceOctaves);
+    s.vcfEnvOctaves = static_cast<float>(s.eff[VcfEnv] / 100.0 * kVcfEnvOctaves * (s.eff[VcfEnvPolarity] >= 0.5f ? -1.0 : 1.0));
+    s.resK = resFeedback(s.eff[Resonance]);
+    s.hpfCv.target = static_cast<float>(hpfOctaves(s.eff[Hpf]));
+    if (s.eff[Hpf] > 0.f) s.hpfOn = true; // (turned to 0, it is let go once its corner has come down: runHpf)
 }
 
 void Jx3p::selectPreset(int index) {
@@ -276,6 +307,9 @@ int Jx3p::noteOnVoice(int note, float velocity) {
         s.readDcos(v, true);
         v.vca = Hold();
         v.env.stop();
+        v.vcf.reset();
+        v.vcfFresh = true;
+        v.vcfAt = NAN;
     }
     // THE STEAL (and a key played again): a retrigger from where the voice is. Its envelope starts
     // its attack from its level now (software on the real one, so it is not set back to 0), its
@@ -289,6 +323,7 @@ int Jx3p::noteOnVoice(int note, float velocity) {
     v.env.on();
     v.startedAt = s.clock;
     v.toTick = s.keyWait();
+    v.vcf.kick(); // a key puts a fixed small number into stage 1, so RESONANCE 10 sings from silence too
     s.setPitch(v, 0.0);
     ++s.keys;
     return chosen;
@@ -355,8 +390,16 @@ void Jx3p::State::renderVoice(Voice& v, float* out, int frames) {
             v.landing = false;
         }
         const float source = v.dco.next(v.mix); // both DCOs, mixed (jx3p/dco.hpp)
+        // The VCF: its coefficient worked out again only when its CV moved.
+        const float cv = v.vcfCv.next(holdK, kVcfCvLands) + v.vcfKey;
+        if (cv != v.vcfAt) {
+            v.vcfAt = cv;
+            v.vcfG.set(onePoleG(cornerHz(cv, kVcfLowHz, sampleRate), sampleRate));
+        }
+        const float k = v.vcfRes.next(holdK);
+        const float filtered = v.vcf.run(kBassLoss ? source : source * (1.f + k), v.vcfG, k);
         const float gain = v.vca.next(holdK);
-        out[i] += vcaClip(source * gain, clipFrom);
+        out[i] += vcaClip(filtered * gain, clipFrom);
         if (!v.held && gain == 0.f && v.vca.target == 0.f && (v.env.idle() || eff[VcaMode] >= 0.5f)) {
             // Silent, and nothing to open it again: the voice is free. Nothing of a free voice
             // moves, so how long it stays free cannot change the sound.
@@ -378,6 +421,9 @@ void Jx3p::render(float* left, float* right, int frames) {
     for (State::Voice& v : s.tails) // (added after the six: the six's sum is a fresh synth's, to the bit)
         if (v.note >= 0) s.renderVoice(v, left, frames), any = true;
     s.clock += static_cast<std::uint64_t>(frames);
+    // The HPF (its own tail rings out after the voices). With no voice, nothing left in it and its
+    // corner at rest, running it would change nothing: it is skipped.
+    if (s.hpfOn && (any || s.hpf.s != 0.f || !s.hpfCv.still())) s.runHpf(left, frames), any = true;
     if (!any) {
         for (int i = 0; i < frames; ++i) right[i] = 0.f;
         return;
@@ -385,11 +431,35 @@ void Jx3p::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) right[i] = left[i] = left[i] * kOutputGain; // mono until the chorus (batch 5)
 }
 
+// THE HPF over the summed voices. Off (and not run, the sound untouched to the bit) once HPF is at 0
+// and its corner has come down to the bottom: from that sample on, and what it still held (the
+// sound's own lowest part, under 10 Hz) is let go. On silence its state runs down to 0 by itself (it
+// is snapped there, kSnap), and then render() skips it.
+void Jx3p::State::runHpf(float* x, int frames) {
+    for (int i = 0; i < frames; ++i) {
+        const float cv = hpfCv.next(holdK);
+        if (eff[Hpf] <= 0.f && hpfCv.still()) {
+            hpfOn = false;
+            hpf.s = 0.f;
+            return;
+        }
+        if (cv != hpfAt) {
+            hpfAt = cv;
+            hpfG = onePoleG(cornerHz(cv, kHpfLowHz, sampleRate), sampleRate);
+        }
+        x[i] = hpf.run(x[i], hpfG);
+    }
+}
+
 int Jx3p::voiceNote(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].note : -1; }
 float Jx3p::voiceEnv(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].env.level : 0.f; }
 float Jx3p::voiceVca(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].vca.value : 0.f; }
 double Jx3p::voiceHz(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count1) : 0.0; }
 double Jx3p::voiceHz2(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count2) : 0.0; }
+double Jx3p::voiceCutoffHz(int voice) const {
+    const State::Voice* v = voice >= 0 && voice < kVoices ? &state_->voices[voice] : nullptr;
+    return v && v->vcfAt == v->vcfAt ? cornerHz(v->vcfAt, kVcfLowHz, state_->sampleRate) : 0.0;
+}
 bool Jx3p::voiceHeld(int voice) const { return voice >= 0 && voice < kVoices && state_->voices[voice].held; }
 int Jx3p::tailsRinging() const {
     int n = 0;

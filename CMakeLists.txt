@@ -84,7 +84,12 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_dco_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_dco_test PRIVATE engine/src tests)
   add_test(NAME jx3p_dco COMMAND jx3p_dco_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco PROPERTIES TIMEOUT 120)
+  # The JX-3P's VCF and HPF (plan batch 3, engine/src/jx3p/ir3109.hpp): the VCF table, the HPF, BRILLIANCE.
+  add_executable(jx3p_vcf_test tests/jx3p_vcf_test.cpp)
+  target_link_libraries(jx3p_vcf_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_vcf_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_vcf COMMAND jx3p_vcf_test)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco jx3p_vcf PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
