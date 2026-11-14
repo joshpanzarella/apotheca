@@ -3,12 +3,12 @@
 // stereo samples, so it can be tested on its own.
 //
 // Signal path:
-//   track instrument -> slot 0 -> slot 1 -> slot 2 -> level, mute -+-> mix
-//   (up to 12)                                                     |
-//                                              x its ECHO amount  -+-> ECHO bus  -> its effect -+
-//                                              x its SPACE amount -+-> SPACE bus -> its effect -+-> mix
+//   track instrument -> slot 0 -> slot 1 -> slot 2 -> level, pan, mute -+-> mix
+//   (up to 12)                                                          |
+//                                                   x its ECHO amount  -+-> ECHO bus  -> its effect -+
+//                                                   x its SPACE amount -+-> SPACE bus -> its effect -+-> mix
 //
-//   mix -> master slot 0 -> master slot 1 -> ceiling -> out
+//   mix -> master slot 0 -> master slot 1 -> master level, pan -> ceiling -> out
 //
 // The two buses are shared: every track has an amount it sends to each (0 to
 // start), and each bus holds one effect which gives back its echoes or its
@@ -90,6 +90,12 @@ constexpr float kBusLoudest = 1e8f; // sent to a bus, anything beyond this (or n
 // HALL 44 s, REVERB 36 s. At 120 BPM the two delays take a third as long.
 // (SPRING, 2026-11-13: 18.5 s.)
 constexpr float kLongestTailSeconds = 450.f;
+// A track's level as it always was (0.65: one full hit stays clean). The mixer's 0 dB.
+constexpr float kUsualTrackLevel = 0.65f;
+// PAN: the gains of the two sides for a place from -1 (hard left) to 1 (hard right). Equal power
+// (the two gains squared add to 2 everywhere), with the middle at exactly 1 and 1: a track in the
+// middle is not touched to the last bit. Hard to one side is that side at +3 dB, the other at nothing.
+void panGains(float pan, float& left, float& right);
 constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new setting over this long, so it does not click
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
@@ -125,7 +131,8 @@ struct Command {
                         //   open again, once what is left has died away (or the next thing is played).
         SetTempo,       // value = beats per minute
         SetVolume,      // the last thing before the output: value = linear gain, 0..1. Catch hears the sound before it.
-        SetTrackLevel,  // track, value = linear gain
+        SetTrackLevel,  // track (or kMasterTrack), value = linear gain. It glides over kSendGlideSeconds, so it does not
+                        //   click. A track's usual is kUsualTrackLevel; the master's is 1, after its slots, before the ceiling.
         SetSceneSteps,  // how many steps the scene lasts: scene, a = that many (23 is one bar and seven steps
                         //   of the next); 0, or as many as its longest cell has: all of them
         SetAutomation,  // one step of a lane: track, scene, a = lane, b = bar * 16 + step, value = 0..1 (below 0: nothing there)
@@ -174,9 +181,12 @@ struct Command {
         SetGlideFrom,   // GLIDE FROM, which key of the moment before a synth track's glides come from:
                         //   track, a = kFromTop, kFromPaired, kFromNearest, kFromRandom (glide_rule.hpp;
                         //   a number not known is TOP). Notes that begin after it is taken go by it.
-        StopAudition    // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
+        StopAudition,   // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
                         //   out over the choke's 3 ms: track, a = lane. A pattern's hits on the lane, and a
                         //   ratchet's pieces still waiting that are not the audition's, are left alone.
+        SetTrackPan     // where a track (or kMasterTrack) stands left to right: value = -1 (hard left) .. 1 (hard
+                        //   right), 0 the middle. Equal power, the middle untouched (panGains). Taken with the
+                        //   level, before the sends; it glides as the level does.
     };
     Type type = Trigger;
     int track = 0;
@@ -586,7 +596,10 @@ private:
         // always lands on a chunk's first sample (render() ends a chunk where the
         // next one is due), so "which lanes" is all there is to say.
         unsigned hitsNow = 0;
-        float level = 0.65f; // one full hit stays clean; hits that land together push the master
+        float level = kUsualTrackLevel; // one full hit stays clean; hits that land together push the master
+        float levelNow = kUsualTrackLevel; // ...as it is this sample: it glides to `level` over kSendGlideSeconds
+        float panL = 1.f, panR = 1.f;       // PAN: the two sides' gains it is set to (panGains; 1 and 1: the middle)
+        float panLNow = 1.f, panRNow = 1.f; // ...as they are this sample, gliding as the level does
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
@@ -730,6 +743,11 @@ private:
     int busyBlocks_ = 0;      // blocks in a row that took nearly all their time
     long long calmFrames_ = 0; // frames in a row with time to spare
 
+    // The master's level and pan (the mixer): after its slots, before the ceiling. At 1, 1 and 1
+    // it is not run at all, so a song left alone comes out as it did to the bit.
+    float masterLevel_ = 1.f, masterLevelNow_ = 1.f;
+    float masterPanL_ = 1.f, masterPanR_ = 1.f, masterPanLNow_ = 1.f, masterPanRNow_ = 1.f;
+    void runMaster(float* mixL, float* mixR, int frames);
     float volume_ = 1.f, volumeNow_ = 1.f; // where it is going, and where it has got to (it glides, so a change does not click)
     std::unique_ptr<std::atomic<float>[]> caught_; // a ring of kCatchFrames
     std::atomic<std::uint64_t> caughtCount_{0};    // frames ever written to it

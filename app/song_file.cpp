@@ -84,6 +84,11 @@ void putTrack(std::string& out, const TrackData& track) {
             out += line + "\n";
         }
     if (track.muted) out += "muted\n";
+    // mix DB PAN: the track's level on the mixer, in dB from its usual, and its pan (-50 left .. 50 right). Left out at 0 0.
+    if (track.mixDb != 0 || track.mixPan != 0) {
+        put(out, "mix %.0f", track.mixDb);
+        put(out, " %.0f\n", track.mixPan);
+    }
     putEffects(out, track.effects, kTrackSlots);
     // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
     for (int bus = 0; bus < kBuses; ++bus) {
@@ -251,6 +256,11 @@ void putHead(std::string& out, const Project& project) {
     }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
+    // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
+    if (project.masterDb != 0 || project.masterPan != 0) {
+        put(out, "master %.0f", project.masterDb);
+        put(out, " %.0f\n", project.masterPan);
+    }
     // fx SLOT NAME and its settings. Before any track: the master's.
     putEffects(out, project.masterEffects, kMasterSlots);
     // busfx BUS NAME and its settings: what the ECHO (1) and the SPACE (2) bus hold. Always both, an
@@ -384,6 +394,12 @@ bool parseSong(const std::string& text, Project& project) {
             data.kind = static_cast<int>(kind);
             for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
+        } else if (word == "master") {
+            double db = 0, pan = 0;
+            if (!(in >> db)) continue;
+            if (!(in >> pan)) pan = 0;
+            song->masterDb = wholeIn(db, kMixLeastDb, kMixMostDb);
+            song->masterPan = wholeIn(pan, -kPanMost, kPanMost);
         } else if (word == "busfx") {
             double bus, value;
             std::string name;
@@ -433,6 +449,12 @@ bool parseSong(const std::string& text, Project& project) {
             if (!(in >> type) || !(type >= 0.0) || type > 255.0) continue;
             if (!isSynth(track->kind)) continue; // (a drum track has none: one written there by hand would wait for the day it became a synth)
             track->glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
+        } else if (word == "mix") {
+            double db = 0, pan = 0;
+            if (!(in >> db)) continue;
+            if (!(in >> pan)) pan = 0;
+            track->mixDb = wholeIn(db, kMixLeastDb, kMixMostDb);
+            track->mixPan = wholeIn(pan, -kPanMost, kPanMost);
         } else if (word == "muted") {
             track->muted = true;
         } else if (word == "lanes") {
@@ -626,7 +648,7 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
     std::size_t from = 0; // where the part being read began
     bool inTrack = false;
     int count = 0;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

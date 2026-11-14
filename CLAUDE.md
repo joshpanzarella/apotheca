@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (31) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -1071,6 +1071,31 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **The mixer (owner, 2026-11-14): hold A on a track's head on SONG, or on
+  MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
+  B with A held puts both back.** A tap of A on a head still names the track:
+  it acts on letting go, as on a cell, and **only if no other button was
+  pressed while A was held** (`mixTurned_`); while A is held on a head every
+  other button but START does nothing (Y there muted the track under the
+  card). **A pressed while B's delete is filling calls the delete off**, on a
+  head and on a cell (`update()`), and is then no tap. `TrackData::mixDb` (whole dB from the
+  usual, -40..+6) and `mixPan` (-50..50), `Project::masterDb` / `masterPan`;
+  `Session::setMix(track, db, pan)` takes `kMasterTrack` and nothing else
+  below zero, calls `noteEdit()` (a step of undo: `restorePatterns` puts them
+  back, from the head for the master and from each track's text read).
+  In a song file `mix DB PAN` on a track and `master DB PAN` among the song's
+  own lines (`cutSong` knows it), each **left out at 0 0**. **0 DB is
+  `kUsualTrackLevel` (0.65) exactly** (`mixGain`), and the engine's PAN is
+  `panGains`: equal power, the middle exactly 1 and 1. Level and pan glide
+  for `kSendGlideSeconds`; at rest in the middle a track runs the loop it
+  always ran, and the master at 1 and the middle is not run at all
+  (`runMaster`), so a song left alone is the same to the bit (`effects_test
+  --print` the same before and after). The thrown copy of a drum hit takes
+  the level's glide but not the pan (it is one sound for both sides of a bus).
+  Not automated. MASTER takes a column, so with 11 or 12 tracks the heads are
+  42 px, their numbers held at LARGE, and DRUMS reads DRUM. Tests:
+  `tests/mixer_test.cpp`; stills `song-mixer`, `song-mixer-master`, each also
+  `-12`.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
   be accepted on the device (hold A). **Five wrong numbers lock it for a
   minute** (`Transfer::kWrongMost`, `lockoutMs`), counted for the whole server,

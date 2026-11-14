@@ -12,7 +12,8 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a song already made: drums and two Phazed tracks
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
-//                  add-track, change-instrument, song-deleting, fx-deleting (B held: take
+//                  add-track, change-instrument, song-deleting, song-mixer, song-mixer-master
+//                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
@@ -214,14 +215,9 @@ void fillDemoSong(App& app) {
         c.a = repeats[scene];
         session.engine.send(c);
     }
-    const float levels[3] = {0.5f, 0.35f, 0.2f}; // room under the ceiling for three tracks
-    for (int track = 0; track < 3; ++track) {
-        Command c;
-        c.type = Command::SetTrackLevel;
-        c.track = track;
-        c.value = levels[track];
-        session.engine.send(c);
-    }
+    // Room under the ceiling for three tracks, on the mixer (0.5, 0.35 and 0.2 as they were, to the nearest dB).
+    const int levels[3] = {-2, -5, -10};
+    for (int track = 0; track < 3; ++track) session.setMix(track, levels[track], 0);
 }
 
 } // namespace
@@ -782,6 +778,27 @@ int main(int argc, char** argv) {
         tapKey(SDLK_UP);
         tapKey(SDLK_w);
         tapKey(SDLK_DOWN);
+    } else if (std::strncmp(view, "song-mixer", 10) == 0) {
+        // The mixer, on four tracks: A held on track 2's head (-6 DB, L 30), or on MASTER (-3 DB); "-12" with twelve tracks.
+        app.session().view = View::Song;
+        const bool master = std::strstr(view, "-master") != nullptr;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMix(11, 3, 50);
+            app.session().setMix(6, 0, -20);
+        } else {
+            app.session().addTrack(TrackKind::Qmod); // four tracks
+        }
+        app.session().setMix(1, -6, -30);
+        if (master) {
+            app.session().setMix(kMasterTrack, -3, 0);
+            app.song().moveToMaster();
+        } else {
+            app.song().moveCursorTo(0, std::strstr(view, "-12") ? kNumTracks - 1 : 1);
+            tapKey(SDLK_UP); // onto its head
+        }
+        pushKey(SDLK_x, true); // A, held
     } else if (std::strcmp(view, "song-deleting") == 0) {
         // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
         app.session().view = View::Song;

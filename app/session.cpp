@@ -942,6 +942,17 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
     // found different for that alone would have its every pattern sent, a megabyte for the
     // audio thread to copy. (The patterns alone: a knob turned since is in the song's text too.)
     const bool asItWas = movedBy != 0 && patternsAre(*was);
+    // The mixer: the master's level and pan (the song's own lines are always read), and each track's
+    // whose text was read. A track whose text is the step's has them as they were already.
+    const auto mixBack = [this](int track, int db, int pan) {
+        if (db == mixDb(track) && pan == mixPan(track)) return;
+        (track == kMasterTrack ? project.masterDb : project.tracks[track].mixDb) = db;
+        (track == kMasterTrack ? project.masterPan : project.tracks[track].mixPan) = pan;
+        sendMix(track);
+    };
+    mixBack(kMasterTrack, was->masterDb, was->masterPan);
+    for (int t = 0; t < kNumTracks; ++t)
+        if (!same[t] && project.tracks[t].kind != TrackKind::None && project.tracks[t].kind == was->tracks[t].kind) mixBack(t, was->tracks[t].mixDb, was->tracks[t].mixPan);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {
         TrackData& now = project.tracks[t];
         const TrackData& then = was->tracks[t];
@@ -1064,6 +1075,34 @@ void Session::setSolo(int track, bool solo) {
     if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
     project.tracks[track].solo = solo;
     sendMutes();
+}
+
+// ---- the mixer -----------------------------------------------------------------------
+
+void Session::setMix(int track, int db, int pan) {
+    const bool master = track == kMasterTrack;
+    if (!master && (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None)) return;
+    db = db < kMixLeastDb ? kMixLeastDb : (db > kMixMostDb ? kMixMostDb : db);
+    pan = pan < -kPanMost ? -kPanMost : (pan > kPanMost ? kPanMost : pan);
+    int& nowDb = master ? project.masterDb : project.tracks[track].mixDb;
+    int& nowPan = master ? project.masterPan : project.tracks[track].mixPan;
+    if (db == nowDb && pan == nowPan) return;
+    nowDb = db;
+    nowPan = pan;
+    noteEdit(); // a step of undo, as an edit to a pattern is
+    sendMix(track);
+}
+
+void Session::sendMix(int track) {
+    if (track != kMasterTrack && (track < 0 || track >= kNumTracks)) return;
+    Command c;
+    c.type = Command::SetTrackLevel;
+    c.track = track;
+    c.value = mixGain(mixDb(track), track == kMasterTrack);
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+    c.type = Command::SetTrackPan;
+    c.value = panAmount(mixPan(track));
+    engine.send(c);
 }
 
 void Session::hearTrack(int track) {
@@ -1333,6 +1372,8 @@ void Session::sendSong() {
             c.value = project.tracks[track].send[bus];
             engine.send(c);
         }
+    // Every track's level and pan, and the master's: the usual ones too.
+    for (int track = kMasterTrack; track < kNumTracks; ++track) sendMix(track);
     // Every track's GLIDE FROM, TOP too. (A drum track has none.)
     for (int track = 0; track < kNumTracks; ++track) {
         c = Command();

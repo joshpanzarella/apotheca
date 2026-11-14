@@ -963,7 +963,7 @@ void testThePianoRollsRows() {
     rig.session().setOctavesShown(2);
 }
 
-const int kLastWholeWord = 5; // the most tracks whose heads have room for DELETING whole; past it, DEL
+const int kLastWholeWord = 4; // the most tracks whose heads have room for DELETING whole; past it, DEL (5 before MASTER took a column)
 
 // B held on a track of SONG: frames go by until its head says what is coming (the words flash).
 void holdUntilItSays(Rig& rig) {
@@ -1003,11 +1003,12 @@ void testTheOtherScreens() {
     rig.frames(2);
     holds(rig, "SONG, twelve tracks with long names");
     {
-        // The four-bar cell's count, over its little picture: at LARGE whatever is chosen. (The scene's own number 4 follows the setting.)
+        // The four-bar cell's count, over its little picture: at LARGE whatever is chosen, and so is track 4's number
+        // on its narrow head (beside the S or M mark). The scene's own number 4 follows the setting.
         int held = 0, follows = 0;
         for (const textfit::Text& t : lastXl.texts)
             if (t.words == "4") (t.cap == screens().at[kTextLarge]->small.capHeight() ? held : follows) += 1;
-        CHECK(held == 1 && follows >= 1);
+        CHECK(held == 2 && follows >= 1);
     }
     rig.app.song().moveCursorTo(0, 1);
     rig.key(B, true); // deleting a track: its head says so
