@@ -189,14 +189,14 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     std::snprintf(text, sizeof text, "%s / KIT", name);
     topBar(r, fonts, View::Device, text, project_);
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
-    const int rowH = 37, top = 50, soundX = 8, soundW = 250, fitX = 262, fitW = 96, waveX = 366, waveW = 266;
+    const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = 262, fitW = 96, waveX = 366, waveW = 266;
 
     fonts.small.draw(r, soundX + 2.f, 34.f, "SOUND", kDim);
     fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
     if (said_.empty()) fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
     else fonts.within(&Fonts::small, said_.c_str(), waveW - 4.f).draw(r, waveX + 2.f, 34.f, said_.c_str(), kBrass);
     for (int lane = 0; lane < kDrumLanes; ++lane) {
-        const int y = top + lane * rowH, h = rowH - 4;
+        const int y = top + lane * rowH, h = rowH - kLaneGap;
         const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
         const char* file = trk().laneSample[lane];
         const bool here = lane == lane_;
@@ -250,8 +250,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.small.drawRight(r, waveX + waveW - 2.f, y + (h - fonts.small.capHeight()) / 2.f, text, sound.waiting ? kBrass : kDim);
         }
     }
-    const int below = top + kDrumLanes * rowH + 4;
-    scope(r, session_.engine, 322, below, 310, kScreenH - kHintsH - below - 6);
+    scopeStrip(r, fonts, session_.engine);
 
     Hint list[8];
     int count = 0;

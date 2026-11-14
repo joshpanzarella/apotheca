@@ -308,30 +308,30 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     if (page_ == 0) {
         // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        valueBox(r, fonts, 8, 36, 200, 50, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        valueBox(r, fonts, 8, kPresetY, 200, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
         std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
-        valueBox(r, fonts, 216, 36, 416, 50, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
+        valueBox(r, fonts, 216, kPresetY, 416, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
         std::snprintf(text, sizeof text, "%d / %d", t.preset + 1, spec_.presetCount());
-        fonts.small.drawRight(r, 622.f, 43.f, text, kDim);
+        fonts.small.drawRight(r, 622.f, kPresetY + 7.f, text, kDim);
 
         for (int m = 0; m < kMacros; ++m) {
-            const int x = 8 + (m % 4) * 157, y = 98 + (m / 4) * 76;
+            const int x = 8 + (m % 4) * kMacroPitchX, y = kMacroY + (m / 4) * (kMacroH + kMacroGap);
             // While the song plays an automated macro shows where the pattern has it, not where its knob rests.
             const float v = session_.automated(project_.track, m, t.macro[m]);
             spec_.macroText(m, v, text, sizeof text);
-            macroBox(r, fonts, x, y, 153, 70, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
+            macroBox(r, fonts, x, y, kMacroW, kMacroH, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
             // A purple bar along the bottom: this macro has automation in the cell being worked on.
-            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + 70 - 3, 151, 2, kPurple);
+            if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + kMacroH - 3, kMacroW - 2, 2, kPurple);
         }
-        box(r, 8, 252, 153, 40, kPanel2, kLine);
-        fonts.medium.draw(r, 20.f, 252.f + (40 - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
-        if (cursor_ == kAdvanced) outline(r, 7, 251, 155, 42, kTeal, 2);
+        box(r, 8, kAdvancedY, kMacroW, kAdvancedH, kPanel2, kLine);
+        fonts.medium.draw(r, 20.f, kAdvancedY + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);
+        if (cursor_ == kAdvanced) outline(r, 7, kAdvancedY - 1, kMacroW + 2, kAdvancedH + 2, kTeal, 2);
+        const float middle = kAdvancedY + kAdvancedH / 2.f;
         std::snprintf(text, sizeof text, "Every setting of this sound, on %d pages.", spec_.pages - 1);
-        fonts.small.draw(r, 174.f, 258.f, text, kDim);
-        fonts.small.draw(r, 174.f, 274.f, "The macros above bend the sound and leave it as it was made.", kDim);
+        fonts.small.draw(r, 174.f, middle - 14.f, text, kDim);
+        fonts.small.draw(r, 174.f, middle + 2.f, "The macros above bend the sound and leave it as it was made.", kDim);
 
-        fonts.small.draw(r, 322.f, 306.f, "LIVE OUTPUT", kDim);
-        scope(r, session_.engine, 322, 322, 310, 124);
+        scopeStrip(r, fonts, session_.engine);
 
         if (holding_) {
             if (cursor_ == kFolder) hint("UP / DOWN", "next / previous folder");
@@ -354,16 +354,17 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.medium.draw(r, 8.f, 36.f, spec_.pageNames[page_], kText);
 
     if (!envelopePage()) {
+        const int rowH = settingH((itemCount() + 3) / 4);
         for (int i = 0; i < itemCount(); ++i) {
             const Item it = item(i);
-            const int x = 8 + (i % 4) * 157, y = 60 + (i / 4) * 76;
+            const int x = 8 + (i % 4) * kMacroPitchX, y = kSettingY + (i / 4) * (rowH + kSettingGap);
             const int value = values()[it.id];
             spec_.settingText(it.id, value, text, sizeof text);
             const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
             const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
-            valueBox(r, fonts, x, y, 153, 70, it.name, text, part, i == cursor_, holding_);
+            valueBox(r, fonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_);
         }
-        scope(r, session_.engine, 322, 372, 310, 74);
+        scopeStrip(r, fonts, session_.engine);
     } else {
         // An envelope: eight steps, each a speed and a level to reach.
         const int line = (page_ - 4) / 3, env = (page_ - 4) % 3;

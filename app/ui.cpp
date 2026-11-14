@@ -93,7 +93,7 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     box(r, x, y, w, h, turned ? kPanel2 : kPanel, kLine);
     // (A name or a value too wide for the box at XL is held at LARGE: Fonts::within. The picture has the name's last 27 pixels.)
     fonts.within(&Fonts::small, name, picture ? w - 14.f - 27.f : w - 14.f).draw(r, x + 7.f, y + 7.f, name, turned || cursor ? kText : kDim);
-    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : (turned ? kText : kDim));
+    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f + boxValueDrop(h), value, cursor ? accent : (turned ? kText : kDim));
     if (picture) {
         const SDL_Color c = turned || cursor ? family : faded(family, 110);
         SDL_SetRenderDrawColor(r, c.r, c.g, c.b, c.a);
@@ -440,7 +440,7 @@ void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     box(r, x, y, w, h, kPanel, kLine);
     const SDL_Color accent = held ? kBrass : kTeal;
     fonts.within(&Fonts::small, name, w - 14.f).draw(r, x + 7.f, y + 7.f, name, kDim);
-    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f, value, cursor ? accent : kText);
+    fonts.within(&Fonts::large, value, w - 14.f).draw(r, x + 7.f, y + 7.f + fonts.small.capHeight() + 8.f + boxValueDrop(h), value, cursor ? accent : kText);
     if (part >= 0.f) {
         const int bx = x + 7, bw = w - 14, by = y + h - 10;
         fill(r, bx, by, bw, 4, kLine);
@@ -456,8 +456,15 @@ void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
 
-void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h) {
-    box(r, x, y, w, h, kPanel, kLine);
+void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
+    const int y = kScopeY, h = kScopeH;
+    box(r, kScopeX, y, kScopeW, h, kPanel, kLine);
+    const char* label = "LIVE OUTPUT";
+    const Font& font = fonts.within(&Fonts::small, label, kScopeLabelW - 14.f);
+    font.draw(r, kScopeX + 7.f, y + (h - font.capHeight()) / 2.f, label, kDim);
+    // The line, in the rest of the strip.
+    const int x = kScopeX + kScopeLabelW, w = kScopeW - kScopeLabelW;
+    fill(r, x - 1, y + 1, 1, h - 2, kLine); // the label's room ends
     fill(r, x + 1, y + h / 2, w - 2, 1, kLine);
     const int count = 512;
     float samples[512];

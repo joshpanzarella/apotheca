@@ -204,6 +204,12 @@ void hintsUnder(SDL_Renderer* r, const Fonts& fonts, const char* dice, const Hin
 // setup, with a line that fills (`part`, 0..1) as a button is held. A tight row: always at LARGE.
 void relearnOffer(SDL_Renderer* r, const Fonts& fonts, float part);
 
+// A box taller than kBoxUsualH (what the boxes were laid out at) keeps its name at the top and its
+// bar at the bottom, and its value goes down by half of the extra height, so it is not left at the
+// top of an empty box. At kBoxUsualH or under, nothing moves.
+constexpr int kBoxUsualH = 70;
+constexpr float boxValueDrop(int h) { return h > kBoxUsualH ? static_cast<float>((h - kBoxUsualH) / 2) : 0.f; }
+
 // A named value in a box. `part` 0..1 draws a bar; below 0 draws none.
 // `centre` draws the bar outward from the middle (for values that go both ways).
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
@@ -219,8 +225,18 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
 // `play` is the pass it is on (from 0) and `step` the step within it.
 void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int play, int step, int steps = kSteps); // `steps` in one pass
 
-// One track's latest output as a line.
-void scope(SDL_Renderer* r, const Engine& engine, int x, int y, int w, int h);
+// LIVE OUTPUT: the track's latest output as a line, in a thin strip across the whole width of a
+// DEVICE page, just above the hints bar (owner, 2026-11-14: the half-width box in the bottom right
+// was too big and left room unused). Its label is inside it at the left; the line runs in the rest.
+// Every DEVICE page that shows it (the synths' MAIN and settings pages, the sampler, the kit) ends
+// its controls at kAboveScope and spreads them down to it. The places are here so the tests can read
+// the drawn screen.
+constexpr int kScopeH = 36;
+constexpr int kScopeX = 8, kScopeW = kScreenW - 2 * kScopeX;
+constexpr int kScopeY = kScreenH - kHintsH - 4 - kScopeH; // 416: 4 pixels clear of the hints bar
+constexpr int kScopeLabelW = 120;                         // the label's room, inside the strip at its left
+constexpr int kAboveScope = kScopeY - 10;                 // 406: where the controls above it end
+void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine);
 
 // The name a track goes by on screen: "2 PHAZED".
 void trackName(const Project& project, int track, char* out, int size);

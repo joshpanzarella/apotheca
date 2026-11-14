@@ -45,6 +45,23 @@ public:
     // The setting under the cursor on an advanced page, or -1.
     int settingHere() const;
 
+    // Where MAIN's rows are, from the top down to the LIVE OUTPUT strip (ui::kAboveScope), which
+    // they fill: FOLDER and PRESET, two rows of four macros, ADVANCED. For the tests too.
+    static constexpr int kPresetY = 36, kPresetH = 60;
+    static constexpr int kMacroY = kPresetY + kPresetH + 10, kMacroW = 153, kMacroPitchX = 157, kMacroGap = 6;
+    static constexpr int kAdvancedH = 56;
+    static constexpr int kMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kMacroY) / 2;
+    static constexpr int kAdvancedY = kMacroY + 2 * kMacroH + kMacroGap + 10;
+    // An advanced page that is not an envelope: rows of four settings, spread down to the strip,
+    // but never taller than a macro (a page of one or two rows keeps room under it: Phazed's LINE
+    // pages, and QMOD's and Twin's shorter ones).
+    static constexpr int kSettingY = 60, kSettingGap = 6;
+    static constexpr int settingH(int rows) {
+        if (rows < 1) return kMacroH;
+        const int spread = (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
+        return spread < kMacroH ? spread : kMacroH;
+    }
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 

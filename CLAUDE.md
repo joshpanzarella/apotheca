@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (30) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (31) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -517,6 +517,20 @@ effect in those two groups and fails one that does not.
     tests can read the drawn screen (`testTheFxScreenAsDrawn`, with `inked`:
     is this text drawn here in this colour). `app_test --fx` runs just the FX
     screen's tests (about 9 s).
+- **LIVE OUTPUT is a thin strip across the DEVICE page, just above the hints
+  bar** (owner, 2026-11-14: the half-width box in the bottom right was too big
+  and left room unused). `ui::scopeStrip`, its places in `ui.hpp` (`kScopeY`
+  416, `kScopeH` 36, its label inside at the left in `kScopeLabelW`). The
+  synths' MAIN and settings pages, the sampler and the kit end their controls
+  at `ui::kAboveScope` (406) and spread them down to it: MAIN's macros are
+  `SynthScreen::kMacroH` 114 (was 70), a settings page's rows `settingH(rows)`
+  (four rows 82, three 111, fewer never taller than a macro, so Phazed's LINE
+  pages and QMOD's keep room under them), the kit's lanes `kLaneRowH` 45 (was
+  37), the sampler's settings 109 and its recording's picture `kWaveH` 80
+  (was 40). A box taller than `kBoxUsualH` (70) moves its value down by half
+  the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
+  pages never had the scope and do not. `scope_test` reads it all off the
+  drawn screen in BROWN and PAPER.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
