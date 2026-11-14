@@ -1669,17 +1669,18 @@ void testWhereABounceEnds() {
         }
         return tail.seen();
     };
-    // Nothing at all (a dry song that ended on its last step): four seconds are listened to, half a second is kept.
+    // Nothing at all (a dry song that ended on its last step): seven seconds are listened to, half a second is kept.
     {
         BounceTail tail(48000.f);
-        CHECK(run(tail, 0.0, 0.f) == 4 * 48000 && tail.keep() == kAfter && !tail.capped());
-        CHECK(kBounceQuietSeconds == 4.f && kBounceAfterSeconds == 0.5f && kBounceFloor == 3.1e-5f);
+        const long long took = run(tail, 0.0, 0.f);
+        CHECK(took >= 7 * 48000 && took < 7 * 48000 + block && tail.keep() == kAfter && !tail.capped());
+        CHECK(kBounceQuietSeconds == 7.f && kBounceAfterSeconds == 0.5f && kBounceFloor == 3.1e-5f);
     }
     // A long tail: all of it, and half a second.
     for (double seconds : {0.001, 2.75, 10.0, 100.0}) {
         BounceTail tail(48000.f);
         const long long sounding = static_cast<long long>(seconds * 48000.0), took = run(tail, seconds, 0.01f);
-        CHECK(took >= sounding + 4 * 48000 && took < sounding + 4 * 48000 + block && tail.keep() == sounding + static_cast<long long>(kAfter) && !tail.capped());
+        CHECK(took >= sounding + 7 * 48000 && took < sounding + 7 * 48000 + block && tail.keep() == sounding + static_cast<long long>(kAfter) && !tail.capped());
     }
     // As it goes, what belongs in the file never runs ahead of what has been heard, and never goes back.
     {
@@ -1707,16 +1708,16 @@ void testWhereABounceEnds() {
         CHECK(tail.keep() == (one.sound ? block + 101 + static_cast<long long>(kAfter) : static_cast<long long>(kAfter)) || tail.keep() == tail.seen());
         io.assign(2 * block, 0.f);
         while (tail.take(io.data(), block)) {}
-        CHECK(tail.seen() >= (one.sound ? block + 101 : 0) + 4 * 48000 && tail.seen() < (one.sound ? block + 101 : 0) + 4 * 48000 + block);
+        CHECK(tail.seen() >= (one.sound ? block + 101 : 0) + 7 * 48000 && tail.seen() < (one.sound ? block + 101 : 0) + 7 * 48000 + block);
         CHECK(tail.keep() == (one.sound ? block + 101 : 0) + static_cast<long long>(kAfter));
     }
-    // ECHOES FAR APART are one tail: a click every 3.9 seconds is not ended by the gaps. The longest
-    // gap a delay can leave is 3 seconds (half a bar at the slowest tempo), and four is more than that.
+    // ECHOES FAR APART are one tail: a click every 6.9 seconds is not ended by the gaps. The longest
+    // gap a delay can leave is 6 seconds (REVERSE: two half-note windows at the slowest tempo), and seven is more.
     {
-        CHECK(kBounceQuietSeconds > 8.f * 15.f / kMinTempo + 0.5f);
+        CHECK(kBounceQuietSeconds > kLongestEchoGapSeconds + 0.5f && kLongestEchoGapSeconds == 6.f);
         BounceTail tail(48000.f);
         std::vector<float> io(2 * block, 0.f);
-        const long long gap = 187200; // 3.9 s
+        const long long gap = 331200; // 6.9 s
         long long last = 0;
         bool more = true;
         while (more) {
@@ -1725,7 +1726,41 @@ void testWhereABounceEnds() {
                 if ((tail.seen() + i) % gap == 0 && tail.seen() + i <= 5 * gap) io[2 * i] = 0.5f, last = tail.seen() + i;
             more = tail.take(io.data(), block);
         }
-        CHECK(last == 5 * gap && tail.keep() == last + 1 + static_cast<long long>(kAfter) && tail.seen() >= last + 4 * 48000);
+        CHECK(last == 5 * gap && tail.keep() == last + 1 + static_cast<long long>(kAfter) && tail.seen() >= last + 7 * 48000);
+    }
+    // REVERSE'S LAST ECHO IS IN THE FILE: TIME 1/2, FEEDBACK 0, 40 BPM (three-second windows). Hits on steps 0 and 4,
+    // the song ending after step 5: the hit on step 4 is at a window's start, and comes back two windows later, six
+    // seconds of nothing after it. With four seconds of quiet the bounce ended 1.62 s after the song and lost it.
+    {
+        std::unique_ptr<Effect> rev = makeEffect(EffectKind::Reverse, 48000.f, kMinTempo);
+        rev->setParam(0, 1.f), rev->setParam(1, 0.f), rev->setParam(2, 1.f);
+        const std::size_t step = 18000, songEnd = 5 * step;
+        std::vector<float> l(songEnd, 0.f);
+        for (std::size_t k : {std::size_t(0), std::size_t(4)})
+            for (std::size_t j = 0; j < 2400; ++j) l[k * step + j] = 0.8f * std::exp(-static_cast<float>(j) / 300.f);
+        std::vector<float> r = l;
+        rev->process(l.data(), r.data(), static_cast<int>(songEnd));
+        BounceTail tail(48000.f);
+        std::vector<float> lb(block), rb(block), io(2 * block);
+        long long lastLoud = -1;
+        for (bool more = true; more;) {
+            std::fill(lb.begin(), lb.end(), 0.f), std::fill(rb.begin(), rb.end(), 0.f);
+            rev->process(lb.data(), rb.data(), block);
+            for (int i = 0; i < block; ++i) {
+                io[2 * i] = lb[i], io[2 * i + 1] = rb[i];
+                if (std::fabs(lb[i]) > 0.1f) lastLoud = tail.seen() + i;
+            }
+            more = tail.take(io.data(), block);
+        }
+        // What the effect still gives once the bounce has stopped: nothing.
+        float after = 0.f;
+        for (int b = 0; b < 20 * 48000 / block; ++b) {
+            std::fill(lb.begin(), lb.end(), 0.f), std::fill(rb.begin(), rb.end(), 0.f);
+            rev->process(lb.data(), rb.data(), block);
+            for (int i = 0; i < block; ++i) after = std::fmax(after, std::fabs(lb[i]));
+        }
+        std::printf("bounce   REVERSE 1/2 at 40 BPM: the last echo %.2f s after the song, the file ends %.2f s after it, then %g\n", lastLoud / 48000.0, tail.keep() / 48000.0, after);
+        CHECK(lastLoud > 5 * 48000 && tail.keep() > lastLoud && after < kBounceFloor);
     }
     // THE CAP: a tail that never ends is cut there, and faded out over its last second so that it is no click.
     for (float cap : {3.f, 10.f}) {
@@ -3381,9 +3416,9 @@ void testTheEffectsScreen() {
     rig.tap(RIGHT);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
     CHECK(rig.listen(4000) > 0.05f); // heard at once, as a new effect is
-    rig.tap(RIGHT, 3);
-    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Ping)); // the family's last type: it stops there
-    rig.tap(LEFT);
+    rig.tap(RIGHT, 6);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Stutter)); // the family's last type: it stops there
+    rig.tap(LEFT, 4);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape));
     rig.tap(LEFT);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay));
@@ -4611,7 +4646,7 @@ void testTheFxScreensList() {
         rig.tap(RIGHT);
         CHECK(effectBus(static_cast<EffectKind>(fx.onLine(4).kind)) == 0);
     }
-    CHECK(fx.onLine(4).kind == static_cast<int>(EffectKind::Ping) && fx.onLine(4).param[3] == 1.f); // the DELAY's last type
+    CHECK(fx.onLine(4).kind == static_cast<int>(EffectKind::Stutter) && fx.onLine(4).param[3] == 1.f); // the DELAY's last type
     rig.tap(LEFT, 5);
     CHECK(fx.onLine(4).kind == delay);
     rig.key(A, false);
@@ -4622,7 +4657,7 @@ void testTheFxScreensList() {
     rig.tap(DOWN);
     CHECK(fx.onLine(5).kind == reverb && fx.onLine(5).param[2] == 1.f);
     rig.tap(DOWN, 4);
-    rig.tap(RIGHT, 4);
+    rig.tap(RIGHT, effectTypes(EffectKind::Reverb) - 1);
     CHECK(fx.onLine(5).kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && fx.onLine(5).param[3] == 1.f); // the last of its types, and no further
     rig.tap(LEFT, effectTypes(EffectKind::Reverb) - 2);
     CHECK(fx.onLine(5).kind == hall && fx.onLine(5).param[3] == 1.f);
@@ -4899,11 +4934,11 @@ void testTheFxScreenAsDrawn() {
     CHECK(typesOn(4, 0) && typesOn(5, -1));
     CHECK(heading("MOD", kBrass) && lineName(1, "MOD", kText) && inked(canvas, scratch, 0, F::kNameX + fonts.medium.width("MOD") + 7.f, F::lineY(1) + smallMid + 1.f, "CHORUS", kDim));
     {
-        // MOD's one type is named in the heading's TYPE row all the same, on its plate; there is no other to go to, so no arrows.
+        // MOD's first type is named in the heading's TYPE row, on its plate (CHORUS; FLANGER, ENSEMBLE, PHASER and TREMOLO since batch c1).
         const float x = F::kPaneX + 12.f + fonts.small.width("TYPE") + 12.f;
         CHECK(inked(canvas, scratch, 0, x, F::kPaneY + 64.f, "CHORUS", kBg) && canvas.is(static_cast<int>(x) - 5, F::kPaneY + 60, kBrass));
     }
-    // The LEFT / RIGHT key at the TYPE row's end: none for MOD (one type), there for DELAY (below).
+    // The LEFT / RIGHT key at the TYPE row's end: there for MOD (five types; none when it had one), and for DELAY (below).
     const auto keyInk = [&] {
         int ink = 0;
         const int kx = static_cast<int>(F::kPaneX + F::kPaneW - 12.f - ui::keyWidth(fonts, "LEFT / RIGHT")) - 2;
@@ -4911,7 +4946,7 @@ void testTheFxScreenAsDrawn() {
             for (int x = kx; x < F::kPaneX + F::kPaneW - 8; ++x) ink += canvas.is(x, y, kText) ? 1 : 0;
         return ink;
     };
-    CHECK(keyInk() == 0);
+    CHECK(keyInk() > 0);
     // Down one: DELAY, a family with types. Its TYPE row is in the heading, the one it is on a brass plate.
     rig.tap(DOWN);
     draw();
@@ -5109,7 +5144,7 @@ void testTheFxScreenAsDrawn() {
         session.setEffect(0, 2, EffectKind::Chorus);
         rig.key(A, true);
         draw();
-        CHECK(hinted("effect") && !hinted("type")); // MOD has one (CRUSH has RING too)
+        CHECK(hinted("effect") && hinted("type")); // MOD has five since batch c1: every family has types now
         rig.key(A, false);
         rig.frames(1);
     }
@@ -5289,8 +5324,8 @@ void testFxTextsFit() {
         bool familySmall = false;
         bool typeAlone = true;
         CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall, &typeAlone) == &fonts && gap == 7.f);
-        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more)
-        CHECK(typeAlone == (kind == EffectKind::Saturate)); // DRIVE SATURATE, both small, is 4 pixels too long: SATURATE alone
+        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter || kind == EffectKind::Bloom || kind == EffectKind::Shimmer)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more; DELAY REVERSE, DELAY STUTTER and REVERB BLOOM as REVERB SPRING)
+        CHECK(typeAlone == (kind == EffectKind::Saturate || kind == EffectKind::Shimmer)); // DRIVE SATURATE and REVERB SHIMMER, both small, are too long: SATURATE, SHIMMER alone
         const float nameEnds = typeAlone ? F::kNameX + fonts.medium.width(effectTypeShown(kind))
                                          : F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeShown(kind)[0] ? gap + fonts.small.width(effectTypeShown(kind)) : 0.f);
         CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3 + 0.01f);
@@ -5302,11 +5337,14 @@ void testFxTextsFit() {
         float types = fonts.small.width("TYPE") + 12.f;
         std::vector<std::string> typeNames;
         for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f, typeNames.push_back(effectTypeName(effectTypeAt(kind, t)));
-        CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
+        // (MOD's five and DELAY's and REVERB's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
+        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay || effectInfo(kind).family == EffectFamily::Reverb;
+        if (!crowded) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
         {
-            int from = -1, to = -1; // today's types are all in view
-            F::typesInView(fonts.small, typeNames, effectTypeIndex(kind), F::typeRowRoom(fonts, effectTypes(kind)), &from, &to);
-            CHECK(from == 0 && to == effectTypes(kind));
+            int from = -1, to = -1; // today's types are all in view, but MOD's, DELAY's and REVERB's
+            const Fonts& drawn = F::typeRowView(fonts, typeNames, effectTypeIndex(kind), &from, &to);
+            CHECK(F::typeRowWidth(drawn.small, typeNames, from, to) <= F::typeRowRoom(drawn, effectTypes(kind)) && from <= effectTypeIndex(kind) && effectTypeIndex(kind) < to);
+            CHECK((from == 0 && to == effectTypes(kind)) == !crowded);
         }
         // In the list of effects: the family, then its types or its words, each in its own column.
         CHECK(F::kPickNameX + fonts.medium.width(effectFamily(kind)) <= F::kPickTypesX - 8);

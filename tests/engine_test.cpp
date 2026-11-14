@@ -2467,6 +2467,16 @@ static void testEffectsOneByOne() {
             CHECK(through(*eq, in) != in);
             continue;
         }
+        if (kind == EffectKind::Tremolo) {
+            // No MIX: DEPTH 0 is the sound untouched, to the bit; as it comes (DEPTH 50%) it is not (effects_test, testTremolo).
+            std::unique_ptr<Effect> trem = makeEffect(kind, 48000.f, 120.f);
+            const std::vector<float> in = sine(330.f, 48000);
+            CHECK(through(*trem, in) != in);
+            trem = makeEffect(kind, 48000.f, 120.f);
+            trem->setParam(1, 0.f);
+            CHECK(through(*trem, in) == in);
+            continue;
+        }
         int mix = -1;
         for (int p = 0; p < info.params; ++p)
             if (std::string(info.paramNames[p]) == "MIX") mix = p;

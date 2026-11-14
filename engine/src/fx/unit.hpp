@@ -32,6 +32,7 @@
 // scripts/build-handheld.sh both take every .cpp in this folder).
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 
 #include "apotheca/effects.hpp"
@@ -98,6 +99,15 @@ extern const EffectInfo kRingInfo;   // ring.cpp
 extern const EffectInfo kWearInfo;   // wear.cpp
 extern const EffectInfo kLimiterInfo; // limiter.cpp
 extern const EffectInfo kSnapInfo;   // snap.cpp
+extern const EffectInfo kFlangerInfo; // flanger.cpp
+extern const EffectInfo kEnsembleInfo; // ensemble.cpp
+extern const EffectInfo kPhaserInfo; // phaser.cpp
+extern const EffectInfo kTremoloInfo; // tremolo.cpp
+extern const EffectInfo kDubInfo;    // dub.cpp
+extern const EffectInfo kReverseInfo; // reverse.cpp
+extern const EffectInfo kStutterInfo; // stutter.cpp
+extern const EffectInfo kBloomInfo;   // bloom.cpp
+extern const EffectInfo kShimmerInfo; // shimmer.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -116,6 +126,17 @@ float foldCurve(float x);
 float fuzzCurve(float x, float gate);
 // RING's carrier: 0 SINE, 1 TRIANGLE, 2 SQUARE, at `at` of its turn (0 to 1), `dt` a sample's share of a turn.
 float ringCarrier(int wave, float at, float dt);
+// FLANGER's delay in ms for DEPTH and RATE settings, at `at` of the sweep's turn (0: its start, the longest).
+float flangerDelayMs(float depth, float rate, double at);
+// TREMOLO's wave, 0 to 1, before its jumps are smoothed: 0 SINE, 1 SQUARE, 2 RAMP, 3 RANDOM, at `at` of turn `turn` (since it woke).
+float tremoloWave(int shape, double at, long turn);
+// DUB's band centre in hertz for a TONE setting, and what its FEEDBACK is multiplied by once left alone (1, or what brings it to 85%).
+float dubToneHz(float tone);
+float dubTireOf(float setting);
+// STUTTER's roll for a place (0 to 1): it stutters there when this is under CHANCE.
+float stutterRoll(std::uint32_t place);
+// BLOOM's swell: where its tap `k` (0 to 63) reads, as a share of BLOOM, and how loud (signed).
+void bloomTapAt(int k, float* at, float* gain);
 
 } // namespace fx
 } // namespace apotheca

@@ -100,6 +100,12 @@ constexpr float kSendGlideSeconds = 0.005f; // a send amount moves to a new sett
 constexpr int kMaxBlock = 64;     // internal chunk size, in frames
 constexpr float kSwapFadeSeconds = 0.010f; // an effect put in a slot, changed or taken out fades over this long
 constexpr float kMinTempo = 40.f;
+// The longest silence a delay leaves between two sounds of one tail: REVERSE at TIME 1/2 and 40 BPM, where a hit
+// just after a window begins comes back at the end of the next window, two windows (6 s) later. A delay with no
+// window waits one TIME at most (3 s). What waits for a tail to end must wait longer than this: the rest of a bus
+// (kBusRestSeconds) and a bounce's quiet (kBounceQuietSeconds, app/session.hpp). effects_test measures every delay.
+constexpr float kLongestEchoGapSeconds = 2.f * 8.f * 15.f / kMinTempo;
+static_assert(kBusRestSeconds > kLongestEchoGapSeconds + 1.f, "a bus at rest must have waited longer than any gap in a tail");
 constexpr float kMaxTempo = 240.f;
 constexpr int kMaxScenes = 16;
 constexpr int kMaxRepeats = 16;

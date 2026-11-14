@@ -608,7 +608,7 @@ For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and 
 | --- | --- |
 | Before | Three seconds after the song's last step, always. A long HALL or TAPE tail was cut |
 | What is sound | Anything at or over **-90 dB** (`kBounceFloor`, 3.1e-5: one step of a 16-bit file; less is not in the file anyway), on either side |
-| When it is over | **No sound for 4 seconds** (`kBounceQuietSeconds`). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and a gap would have been taken for the end. Four is longer than that, as the bus's ten are |
+| When it is over | **No sound for 7 seconds** (`kBounceQuietSeconds`; 4 until REVERSE, 2026-11-14). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and REVERSE there 6 (a hit at a window's start comes back two windows later: `kLongestEchoGapSeconds`), and a gap would have been taken for the end. Seven is longer than that, as the bus's ten are |
 | Where the file ends | **Half a second after the last sound** (`kBounceAfterSeconds`). A dry song is now shorter than it was: its last drum rings out, half a second, done (it had three seconds whatever was in them). Nothing a dry song plays is cut: the end is measured, not guessed |
 | The cap | `kBounceCapSeconds`. A tail that reaches it is faded out in a straight line over its last second (`kBounceFadeSeconds`) |
 | Each track | The files of an EACH TRACK bounce are padded with silence to the longest, so they still line up and are the same length |
@@ -1027,3 +1027,225 @@ is drawn with its family small, as REVERB SPRING is (its meter's mark keeps
 | WEAR | a 1 kHz sine's pitch at WOW 100%, 30%, 0 and 1%; its flutter, sway and drift; DIRT on a sine: the dirt's level, crackles counted, half a second after, under 300 Hz; dropouts counted in 40 ms pieces at DROPS 100%, 20%, 0; TONE at 10 kHz, 1 kHz, 40 Hz; hits 2 s apart with zeros or faint noise between, and 4.5 s apart; a click with no DIRT; WOW turned at once 0 to 100%, 100% to 0, 0 to 30%; the left's and right's dirt on one sine | 20 to 45 cents, the mean within 1, 30% a fifth to two fifths of it, 0 none; as smooth as the sine; flutter 1.5 to 5 cents rms, sway over 6, drift over 3; -26 to -12 dB, 8 to 20 a second, 20 dB further down, under 0.08; 80 to 200, 1 to 15, 0, no step over the sine's; under -12 dB, over -2, under -3; new dice near, the same far, the two 1e-4 apart; nothing too small; strays under 1.6 times its sway at rest (0.8 for 30%), there in 0.9 to 1.3 s; alike under 0.5 |
 | LIMITER | noise through at GAIN 0, CEILING 0, at 48, 44.1 and 96 kHz; noise, clicks and a sweep at +20 dB at four ceilings and two RELEASEs; a click on a quiet sine; a 100 Hz sine 12 dB in at three RELEASEs; the meter; the time back from 12 dB down; a loud side; a quiet sine after a loud second with zeros or faint noise between; the meter on one block loud at first and quiet at its end | exactly 3 ms late, to the bit; never over the ceiling, to 1e-7; the click at the ceiling, the sine turned down 1.5 ms before, untouched 3.1 ms before; harmonics 2 to 9 under -35 / -50 / -18 dB; 14 dB; under 80 / 150 to 350 / 1500 to 3500 ms; the other side down as much; the same to 1e-6; 14 dB (the block's most) |
 | SNAP | a drum (noise falling 60 dB in 0.3 s) at five settings: its first ms, 4 to 6 ms, 20 to 40, 100 to 250; the same 40 dB down; MIX 50%; steady sines at 100 Hz and 1 kHz at every end; a hit on one side; ATTACK and SUSTAIN turned at once under hits; one drum on both sides at MIX 25, 50, 80% | +11 to +12.8, +6.5 to 8.5 dB, falling, the tail untouched; -12.5 to -14; tail +5 to +7 / -5 to -7; within 0.5 dB of the loud one; the two added; within 0.5 dB, harmonics under -25 / -45 dB; the other side up 1.5 times; under 0.25 of the way in 3 ms, 0.85 at 60 to 80 ms, there by 300; the sides the same to the bit, the plain and shaped laid together to 1e-5 |
+
+**Batch c1 built (2026-11-14, branch `newfx2`): MOD's FLANGER, ENSEMBLE, PHASER and TREMOLO.**
+Numbers 24, 25, 26, 27; words `flanger`, `ensemble`, `phaser`, `tremolo`; in
+the list after CHORUS. They share `fx/mod.hpp` (CHORUS's RATE scale, so RATE,
+DEPTH and MIX carry among CHORUS, FLANGER, ENSEMBLE and PHASER to the bit;
+FEEDBACK between FLANGER and PHASER; SPREAD between ENSEMBLE and TREMOLO;
+TREMOLO's RATE is note lengths, not carried), keep the TICK, and sleep by the
+rest rule (4 s of nothing and memory all zeros, as RING).
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in the same four runs) |
+| --- | --- | --- | --- |
+| FLANGER | the sound and a copy 0.35 to 7.3 ms late, the delay swept by octaves (a triangle rounded at its turns), fed back either way: the jet | RATE (0.1 to 8 Hz), DEPTH (to 4.4 octaves of sweep; narrower above 2 Hz; the reach moves its whole way in a second at most, and the sweep is held to what that reach allows, so RATE or DEPTH thrown never bends the pitch more than 2 Hz at rest does), FEEDBACK (-100 to +100%: 0.95 at the ends; the copy scaled by sqrt(1 - f^2) so noise is as loud at any FEEDBACK), MIX (100% is half and half: the notches all the way down) | 0.07% (the same while DEPTH turns) |
+| ENSEMBLE | the string machine's chorus: three copies at one place (9 ms), a third of a turn apart on two waves at once (a slow swirl at RATE and a shimmer at 9.7 times it, at most 10 Hz), darkened from 7 kHz | RATE, DEPTH (swirl 1.8 ms, shimmer 0.14 ms at 100%), SPREAD (the right's waves up to half a turn on), MIX (CHORUS's law) | 0.16 to 0.17% (as CHORUS: six reads between samples a sample; on locals no quicker) |
+| PHASER | six allpass stages swept from 640 Hz, 2.6 octaves each way at 100%, laid over the plain sound: three notches; the right a quarter turn behind | RATE, DEPTH, FEEDBACK (-100 to +100%: 0.9 at the ends, scaled as FLANGER's), MIX | 0.09 to 0.11% |
+| TREMOLO | the level moved by a wave a note length long, following the tempo | RATE (1/32 to 1 BAR, ten, triplets and 1/8 DOT), DEPTH, SHAPE (SINE, SQUARE, RAMP: the pump, RANDOM: a new level a turn by a roll), SPREAD (the right's wave up to half a turn behind: auto-pan). No MIX: DEPTH 0 is the sound to the bit | 0.07% (0.11% in one run); 0.06% at RANDOM. The plan said 0.02: two sines a sample and a double-precision place in the turn |
+
+- **Each against what CHORUS already has** (for the owner's ears):
+  - FLANGER is not CHORUS's FLANGE kind: FLANGE is one copy at 2.2 ms swung
+    1.9 ms by a sine (0.3 to 4.1 ms, lingering at the ends), a fixed
+    feedback of 0.6, the right a quarter turn behind. FLANGER sweeps 4.4
+    octaves at an even speed in pitch, its feedback is yours either way to
+    95%, and both sides sweep together (the jet in the middle).
+  - ENSEMBLE is not CHORUS's ENSEMBLE kind: that is three copies at 7, 10.5
+    and 14 ms, each on one wave at its own speed; their centre wanders (219
+    samples at DEPTH 100%, measured) so the pitch drifts. Here the three share
+    a place and pull against each other: their centre moves under a sample,
+    the pitch stays the note's own, and the shimmer is on top.
+  - **Loud at the ends of FEEDBACK** (review, 2026-11-14): noise comes out
+    about as loud at any FEEDBACK, but a steady tone on a peak rings up:
+    FLANGER +11 dB at +100% (+8.4 at -100%), PHASER +8.5 dB at +100% (+4.7
+    at -100%), at MIX 100%. What a flanger and a phaser do; worth knowing
+    before turning FEEDBACK to its ends.
+  - **The same word twice**: MOD's line says ENSEMBLE as a type, and CHORUS's
+    own TYPE setting has an ENSEMBLE too (and FLANGE beside FLANGER). Renaming
+    CHORUS's kinds would change only what the screen says (the number and the
+    song file stay): the owner's call.
+- **TREMOLO is in time, not on the beat.** An effect is told the tempo, not
+  where the bar is: its wave starts at its top (RAMP at its bottom) when sound
+  arrives after 4 s of nothing, and runs on. Locking it to the bar needs the
+  engine to tell the slot where the step is: more than a row.
+- **The heading's TYPE row now shows LARGE's choice at every size**
+  (`FxScreen::typeRowView`): MOD's five do not all fit at LARGE ("... ENSEMBLE
+  PHASER TREMOLO" on TREMOLO), and at SMALL it showed all five: other words,
+  which `textsize` fails. At XL, where LARGE's choice does not fit, the row is
+  held at LARGE.
+- Mutants: 53 tried, 49 killed. Survivors, each looked at: FLANGER's and
+  ENSEMBLE's sleep also asking that the line (and ENSEMBLE's high cut) be
+  empty, and ENSEMBLE's count of empty samples on its line (the 4 s rest is
+  far longer than any of them holds anything: kept as guards); TREMOLO's
+  `depth != 0` skip (the same numbers either way: a saving).
+- Stills: `fx-kind-flanger`, `fx-kind-ensemble`, `fx-kind-phaser`,
+  `fx-kind-tremolo` (each with `--hold-a`, and `-N` on a setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| FLANGER | the sweep by itself at its top, bottom, middle, at 4 Hz, and its turns; clicks 25 ms apart at 0.24 Hz; an impulse at DEPTH 0, FEEDBACK +-100%; sines at 312.5 and 625 Hz at MIX 100 and 50%; noise at three FEEDBACKs; noise on one side | 7.352 to 0.348 ms, 1.6 at DEPTH 0, half as far at 4 Hz; even speed in octaves within 15%, the first 2% from the top under a quarter of 2% in the middle; each copy on the sweep to 0.01 octave, 16.7 to 352.9 samples; the copy 0.156, the next +-0.95 of it; the notch under -40 dB, the peak 0 dB, -6 dB at 50%; -2.5 to -5 dB; the other side silent |
+| ENSEMBLE | clicks 20 ms apart: the copies' centre and spread at DEPTH 0, 100% at 0.58 Hz and 8 Hz, against CHORUS's ENSEMBLE; noise at SPREAD 0, 50, 100%; what the copies add at 333 Hz and 12 kHz; MIX 50% at 333 Hz; noise at its usual settings | centre 432.67 samples (9 ms and the cut's 0.67), moving under 1.5 samples (CHORUS's 219); spread^2 (swirl^2 + shimmer^2) / 2 within 5%, swinging by 2 swirl x shimmer within 15%; the sides the same to the bit at 0, copies 0.04 and 0.03 alike; 0 and -5.1 dB; +2.32 dB (cos and sin of 22.5 degrees); -1.5 to -3 dB |
+| PHASER | sines at the three notches and between at DEPTH 0; between at FEEDBACK -100, 0, +100%; 640 Hz swept at 1 Hz on both sides; noise at three FEEDBACKs; noise on one side at +100% | under -40 dB, 0 dB within 0.05; -4.2, 0, +7.8 dB; from -33 to 0 dB, the right 0.250 s behind; -1 to -2 dB; the other side silent |
+| TREMOLO | a steady 0.5 through: SINE at every RATE at 120 and 90 BPM; DEPTH 50%; SQUARE at 1 BAR and 1/32; RAMP at 1/4; RANDOM for 30 s, again, at SPREAD 100%, after a sleep; SPREAD 100 and 50%; a new tempo and RATE; SINE to SQUARE and to RAMP; hits 1.5 s and 6 s apart | 0.5 + 0.5 cos to 7e-6; 0.5 to 1; falls counted, up half the time, 99% to 1% in 187 samples, no step past 0.0128; 0, 0.43, 0.75, 1, 0.02; levels 0.004 to 0.999, the same twice, the right the left's half a turn on, a fresh one's after waking; the sides adding to 1, a quarter turn to 2e-6; a turn of 24000 after, no step past the wave's own; steps under the fade's, no corner as the fade starts; 0 then the top again |
+
+**Batch c2 built (2026-11-14, branch `newfx2`): DELAY's DUB, REVERSE and STUTTER.**
+Numbers 28, 29, 30; words `dub`, `reverse`, `stutter`; in the list after PING,
+and on the ECHO bus with the rest of the family. They share `fx/echo.hpp`
+(TAPE's and PING's eight TIMEs, so TIME carries among PING, TAPE, DUB and
+REVERSE to the bit, and from CLEAN by its steps; a crossfade's curve; the 4 s
+rest), keep the TICK and count every time in samples: the same to the bit
+however the sound is cut into blocks, settings moving too.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in the same three runs) |
+| --- | --- | --- | --- |
+| DUB | a dark echo whose loop is a band (Q 0.7) at TONE: each repeat darker and narrower; past 100% it rises into a held roar about TONE, under a ceiling, and comes down by itself when left alone | TIME (the eight), FEEDBACK (0 to 150%; left alone 30 s, over 85% eases to 85%), TONE (the band, 250 Hz to 4 kHz, read as a percentage so TYPE carries PING's and CLEAN's), MIX | 0.05%; howling 0.05 to 0.07%; TONE turned all the while 0.05 to 0.06% |
+| REVERSE | each echo the sound backwards: a hit comes back as a swell rising into it (the first hit after a rest: its peak exactly one TIME after it; a later one 0 to 2 TIMEs after it, by where it fell in its window, and hits in one window come back in reverse order), then forwards, backwards... | TIME (the eight: how long a backwards piece is), FEEDBACK (0 to 100%, doing 90%, as CLEAN's), MIX. Three settings: nothing a fourth would do was worth a knob | 0.03% |
+| STUTTER | now and then, by chance, a slice caught and played again in its place, in time: a retrigger | LENGTH (1/32 to 1/2, eight), REPEATS (2, 3, 4, 6, 8 times, the first included), CHANCE (each place: REPEATS slices from waking, rolled by its number), MIX (100% as it comes: the slice in the sound's place) | 0.03 to 0.04% |
+
+- **How each differs from what was there:**
+  - DUB against TAPE: TAPE's loop passes 40 Hz to 12 kHz (narrowed by AGE),
+    sways (wow), goes to 120%, two sides apart. DUB's is a two-octave band at
+    one place: three repeats in it is a muffled thump (what is near 6 kHz
+    falls 0.21, 0.064, 0.020, 0.010 of each echo); it goes to 150% so it
+    rises into the howl in a second; the howl sits about TONE (turn TONE
+    while it howls: the siren); no wow; TIME glides twice as slowly (0.3 s:
+    a long swoop); one echo for both sides, in the middle.
+  - **DUB's howl is a roar, not one clean note**: with a band this wide many
+    of the loop's notes are over 1 at once, so it is a band of sound about
+    TONE (all of it within an octave of TONE, its middle within 4 semitones;
+    497 Hz for 500, 1918 for 2000). A narrower band would ring one note but
+    make every echo thin. The owner's ears decide.
+  - REVERSE and STUTTER have no near neighbour (the drum grid's REVERSE step
+    effect plays one hit's recording backwards; this is the echo of
+    anything, in time).
+- **STUTTER on the ECHO bus: kept there.** On a bus it gives back only the
+  repeats: what was sent is heard once from its track, and when the dice say
+  so its slice comes back REPEATS - 1 more times right after it, as loud as it
+  went in, then stops. A THROW of a hit there is "a throw that repeats
+  exactly and does not die away" (tested through the engine: a hit sent at
+  full, CHANCE 100%, comes back three times a sixteenth apart, the same
+  level, then nothing). Odd only in that the dice are the bus's, for
+  everything sent to it together, and its places count from the first sound
+  after 4 s of nothing on the bus.
+- **In time, not on the beat** (as TREMOLO): REVERSE's windows and STUTTER's
+  places start where the first sound after a rest is. A loop that starts on
+  its beat has them on the beat.
+- **Every splice ENDS on an edge.** STUTTER's crossfades (4 ms) run up to a
+  slice's start through the 4 ms that came before it, so a hit's attack is
+  heard whole every repeat; REVERSE puts the sound that wakes it in the middle
+  of a window, so its attack is never in a window's 4 ms fade.
+- Tails (testATailAlwaysEnds, 40 BPM, worst setting): DUB 295 s, REVERSE
+  406 s, STUTTER 31 s (450 is the promise; TAPE 418, CLEAN and PING 388).
+- Mutants: 54 tried, 50 killed. Survivors, each looked at: DUB's sleep also
+  asking that its band be empty, and its band emptied on waking (the line is
+  zeros for its whole length first: the band has long rung out; guards);
+  STUTTER's dice compared with `<=` (the same but where a roll equals CHANCE
+  exactly); its 4 ms ring emptied on waking (4 s of nothing filled it with
+  zeros already).
+- **Review, mended (2026-11-14).** STUTTER's slices were whole rounded
+  samples added up; where a step is not whole (133 BPM: 5413.53) its places
+  ran half a sample a slice late, and from 9.7 s on (140 BPM: 30 s) the
+  downbeat's place caught the offbeat hit. Each edge is now the whole sample
+  at or before the exact one, counted from waking: no downbeat lost at 93,
+  120, 127, 133, 133.7 or 140 BPM over 45 s to 2 min, every repeat's top
+  within two samples of its step. REVERSE leaves up to two windows of silence
+  (6 s at 1/2 and 40 BPM), and a bounce's 4 s of quiet cut its last echo off:
+  the quiet is 7 s now (`kBounceQuietSeconds`, against
+  `kLongestEchoGapSeconds`). REVERSE's "one TIME later" is the first hit's
+  alone; a later hit comes back 0 to 2 TIMEs after it (pinned). Pinned too:
+  STUTTER's 4 s rest (a 3.5 s gap keeps the places' count, 4.5 s starts
+  again) and DUB's fed edge (1e-4 exactly is fed). Left: DUB's ceiling
+  straight under 1e-5 (moved to 1e-2 it changes a sample by 1.5e-7 at most:
+  not a sound).
+- **Not heard by anyone.** Every number here is from the tests; the owner's
+  ears decide whether DUB's roar is the sound wanted and whether 4 ms splices
+  are smooth enough on a vocal.
+- Stills: `fx-kind-dub`, `fx-kind-reverse`, `fx-kind-stutter` (each with
+  `--hold-a`, and `-N` on a setting). In the list DELAY REVERSE and DELAY
+  STUTTER draw the family small, as REVERB SPRING does; the heading's TYPE row
+  shows "... PING DUB REVERSE STUTTER" from PING on.
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| DUB | a howl fed 3e-5, 3e-4, or a burst at 34 s; a faint sine at the band's top, FEEDBACK 60%; a click on the right alone, a click in a slot, sound that cancels on a bus; TIME 1/16 to 1/8 with clicks, and to 1/2 under a 1 kHz sine; a click at three tempos and three TIMEs; a steady sine at TONE's place and two octaves either side (25, 50, 75%); noise: what is near 6 kHz echo by echo; FEEDBACK 150% at TONE 25 and 75%: where the howl is, its peak at 10 and 29 s, at 36 and 45 s, when silent, fed again at 70 s; 85% left alone 31 to 40 s against one fed all along; 70 s cut four ways, on a bus too; MIX's glide | stops / howls on / howls again; echoes 1.000 and 0.600 of the last; half on both sides, the sides alike, nothing; on the new TIME from 2.9 s (2 to 4.5), down to 500 Hz and no lower; on the step to the sample, nothing after 0.1 s; 0 dB, -9 dB (-9.8 over at 2 kHz); each under 0.7 of the last; middle within 4 semitones, 85% within an octave; 0.5 to 1.6 and held to 5%; under 0.2 and 1e-3 of it; before 70 s; as loud again; 1e-3 of the echo; the same to the bit; as FOLD's |
+| REVERSE | a falling hit, FEEDBACK 50%, at three tempos and three TIMEs, and 40 BPM 1/2; a steady 97 Hz sine's echo alone; a click at a window's start at 40 BPM; a click in a slot on both sides; TIME turned in a window; 30 s cut four ways, on a bus too; MIX's glide | the hit backwards sample for sample, its top at T - 1 (T even) or T, then forwards at 0.45 from exactly 2T, nothing between, both sides; no step over 1.05 of the sine's, no corner over 2.5 (1.99); back 287999 later; each side's own echo; the window keeps its length; the same to the bit; as FOLD's (early 0.009) |
+| STUTTER | a falling hit on a bus, CHANCE 100%, two tempos, three LENGTHs, three REPEATS, and 1/2 eight times at 40 BPM; two places in a slot worked out by hand, each side its own sine; MIX 0 with -0 in; a sine in a slot at MIX 100%; CHANCE 0 in a slot and on a bus; 60 places at CHANCE 50% and 20%, and the same after 6 s of nothing; a hit sent through the engine to ECHO; 20 s cut four ways, on a bus too; MIX's glide | exactly the hit REPEATS - 1 more times a slice apart, nothing else; within 1e-6 (2.3e-8); to the bit; the slice again and again to the bit, then the sound; no step over 1.3 of the sine's (1.06); untouched to the bit, nothing; exactly the places whose roll is under CHANCE (29 and 14 of 60), the same again; three repeats as loud as the hit, then nothing; the same to the bit; as FOLD's |
+
+**Batch c3 built (2026-11-14, branch `newfx2`): REVERB's BLOOM and SHIMMER.**
+Numbers 31, 32; words `bloom`, `shimmer`; in the list after PLATE, and on the SPACE
+bus with the rest of the family. The plan above had one BLOOM, "HALL with an
+octave up fed back": that is SHIMMER now, and BLOOM is the swell (the batch's
+brief). Both share one tank, `fx/tank.hpp`: eight lines (44 to 89 ms, swaying
+0.12 ms at 0.6 Hz), mixed eight into eight every trip, DECAY a real time per
+line, TONE PLATE's shelf, four smearing stages on the way in. They keep the
+TICK; nothing under 1e-12 goes on a line, so asleep is "every ring zeros" and a
+woken one is a fresh one to the bit.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in the same three runs) |
+| --- | --- | --- | --- |
+| BLOOM | a reverb that swells in after the sound: the sound goes in through 64 taps spread unevenly over the last BLOOM seconds, each louder than the one before, so the reverb rises for BLOOM and then falls by DECAY | BLOOM (the swell, 0.05 to 4 s), DECAY (0.3 to 20 s, HALL's), TONE (PLATE's), MIX | 0.55%; BLOOM turned all the while 0.67% |
+| SHIMMER | a reverb whose tail rises: four of the tank's eight mixed sounds go round an octave-up shifter each trip, by SHIMMER | SHIMMER (at full, 30% of those four's sound, at equal power, goes up an octave each trip), DECAY, TONE, MIX | 0.35% (0.34% at SHIMMER 0); DECAY turned all the while 0.39 to 0.40% |
+
+- **Why DECAY and not SIZE** (the brief said SIZE): DECAY is a real time you
+  hear, read as HALL's and PLATE's, so a TYPE change carries it to the bit
+  from HALL, PLATE and each other (and from SPRING as it reads). A SIZE beside
+  it would be a fifth setting; with four, the swell and the shimmer had to have
+  their own. ROOM's SIZE is not carried (ROOM shares MIX alone).
+- **Cost: both are over the 0.15% line**, looked at as WEAR's was: the
+  per-sample work is on locals, the sway's weights are worked out once a tick
+  (it moves 0.007 of a sample a tick). What is left: BLOOM's 64 taps (each two
+  reads, 0.2%), the eight swaying lines (0.15%), SHIMMER's four 4-pole cuts and
+  grains (0.15%). Fewer taps would make a long swell over a short DECAY pulse
+  (taps 125 ms apart at 32). The owner pares down.
+- **SHIMMER's octave**: each of the four is cut above 7 kHz (four poles: its
+  octave is under 14 kHz and nothing folds down) and under 40 Hz (an octave of
+  a steady offset is itself, and would build), written to a short ring, and
+  read by two grains at twice the speed, half a window (60 ms) apart, sin^2
+  windows that add to exactly 1. Reads are whole samples (two a sample): no
+  smear. Two grains of unrelated sound lose a quarter of its power: given back
+  (x 1.155), and what goes up is mixed with what stays at equal power, so the
+  tail keeps its power. Its wait in the shifter is paid for in DECAY.
+- **The octaves climb out of the tail.** Each trip lifts what goes the
+  shifter's way another octave until it passes 7 kHz and is cut, so a
+  shimmered tail is shorter than a plain one at long DECAYs: at SHIMMER full,
+  0.99 as long at 0.3 s, 0.93 at 2.45 s, 0.82 at 7 s, **0.58 at 20 s**. At
+  SHIMMER 30% per trip (full) the climb is about an octave a second; much more
+  and the tail was gone in a second or two (tried: 100% a trip).
+- **How each differs from what was there:** BLOOM has no near neighbour
+  (HALL and PLATE are loudest in their first 100 ms; BLOOM's loudest 50 ms is
+  at its BLOOM time, 0.35 s for 0.29 s ... 4.0 s for 4 s). SHIMMER at 0 is a
+  plain hall-like reverb; CHORUS's and the MOD types do not shift pitch.
+- **BLOOM turned while sounding** moves its taps at most half a sample a
+  sample: the swell's sound bends down (at most an octave) on the way, as
+  PLATE's PRE does; 0.05 s to 4 s takes about 8 seconds.
+- **BLOOM sleeps 5.5 s after its tail** (its swell's ring, 4 s and a little,
+  must be all zeros); SHIMMER 0.17 s after.
+- Tails (testATailAlwaysEnds, 40 BPM, worst setting): BLOOM 50 s, SHIMMER
+  105 s (450 is the promise).
+- In the list REVERB BLOOM draws its family small (as REVERB SPRING); REVERB
+  SHIMMER is too long even both small, so its line says SHIMMER alone (as DRIVE
+  SATURATE says SATURATE). The heading's TYPE row shows "... PLATE BLOOM
+  SHIMMER" from PLATE on. `FxScreen::lineFonts` now draws a family small when
+  the pair would end inside the 3-pixel clearance before the mark (BLOOM
+  ended 1.4 into it); no type before it changes.
+- Mutants: 55 tried, 43 killed (two more turned the speeds of BLOOM's and
+  DECAY's glides; nothing could tell, so those two speeds were taken out:
+  every setting glides as fast now). The twelve survivors, each looked at: the "anything
+  stirred" marks for sleep (lines, damping, cut, smears, shifter: each is
+  redundant with another, and two taken out together are caught, the
+  shifter's three together are not, since its ring is half the lines' and is
+  emptied inside their wait); the shifter's write gate under 1e-12 (a guard);
+  the sway put back on its circle every 4096th (drifts 1e-7 a turn: no test
+  is long enough); the window's second half written as 1 minus the first (the
+  same within a float's grain); a grain read a sample further back (the same
+  pitch, a sample later).
+- **Not heard by anyone.** Every number here is from the tests: the owner's
+  ears decide whether the swell is smooth at long BLOOM and short DECAY, and
+  whether the octave is clean enough on a held note (60 ms grains beat a
+  little with a single sine; in a wash it is the usual shimmer).
+- Stills: `fx-kind-bloom`, `fx-kind-shimmer` (each with `--hold-a`, and `-1`
+  on its first setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| BLOOM | its row, readings, the carry with HALL, PLATE, SPRING, SHIMMER, ROOM; a click at five BLOOMs, HALL and PLATE beside; a click at five DECAYs, BLOOM 0.12 s; held noise at four DECAYs; left and right; MIX 30, 50, 100%; on a bus, asleep on a bus, told it is on a bus while sounding, a click of 20; the 64 taps; BLOOM turned a little under a 9 kHz sine; BLOOM 0.05 to 4 s, a click at 6 s and 9 s; MIX's glide; a note then a faint offset; holdsTheRules; on a bus at its longest | loudest 50 ms at BLOOM (within -10% and +120 ms), the swell's first quarter 17 to 24 dB under its last; HALL and PLATE in their first 100 ms; RT60 at 500 Hz within 10%, at 8 kHz 0.81 to 0.50 of DECAY within 0.04, over 1000 echoes in 100 ms; -5.5 to -0.5 dB; alike under 0.1; cos and sin of MIX x 90 degrees to 2e-6; no dry, the same as a slot to the bit, 0.3 of it, nothing, the reverb alone within 1e-5, twenty times to 1e-4; in their own 64ths, 20 to 44 negative, spacing 0.24 to 1.72, squares 1; no step over 1.3 of before (0.78); still moving at 6 s, the same to the bit at 9 s; as FOLD's; clean; steps under 1.4, corners under 1.5 (1.26); 40 to 120 s (50.3) |
+| SHIMMER | a 440 Hz burst at SHIMMER 0, 50, 100%: an octave up, two, an octave down in the tail; a held 300 Hz sine's octave; a click at five DECAYs at SHIMMER 0 and full; a steady 0.5 for 20 s at full, DECAY 20 s; held noise; left and right; the bus checks above; MIX's glide; a note then a faint offset; holdsTheRules; on a bus at its longest | -43, -13, -8 dB up and rising by 3 dB or more, under -35 dB down; within 2.5 cents of 600 Hz (600.35); RT60 at 500 Hz within 10%, the whole tail 0.988 / 0.968 / 0.925 / 0.818 / 0.581 of SHIMMER 0's within 0.03; as steady at 20 s as at 10 within 1 dB, under 4; -5.5 to -0.5 dB; under 0.1; as BLOOM's; clean; steps under 1.4, corners under 1.5; 20 to 120 s (28.7) |

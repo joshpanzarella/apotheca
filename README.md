@@ -477,11 +477,12 @@ carry on (even play) while it works, and it does not have to keep up:
 than the handheld can play live.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
-been no sound for four seconds, and the file ends half a second after the last
+been no sound for seven seconds, and the file ends half a second after the last
 sound. "Sound" is anything a 16-bit file can hold (90 dB under full). So a
 dry song ends just after its last drum has rung out, and a long HALL or a
 TAPE with its FEEDBACK up is all there, however long it takes. Echoes far
-apart (a half note at 40 BPM is three seconds) count as one tail.
+apart (a half note at 40 BPM is three seconds; a REVERSE echo there can come
+six seconds after its hit) count as one tail.
 
 There is a cap: **a tail is never longer than eight minutes**. One that would
 be is faded out over its last second. No one delay or reverb rings that

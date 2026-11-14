@@ -433,6 +433,17 @@ int apotheca::runBench() {
         if (kind == EffectKind::Wear) effect("WEAR, WOW TURNING", kind, 0, 0.f, true);
         if (kind == EffectKind::Limiter) effect("LIMITER, +20 DB", kind, 0, 1.f);
         if (kind == EffectKind::Snap) effect("SNAP, ATTACK TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Flanger) effect("FLANGER, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Ensemble) effect("ENSEMBLE, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Phaser) effect("PHASER, DEPTH TURNING", kind, 1, 0.f, true);
+        if (kind == EffectKind::Tremolo) effect("TREMOLO, RANDOM", kind, 2, 0.9f);
+        if (kind == EffectKind::Dub) effect("DUB, HOWLING (150%)", kind, 1, 1.f);
+        if (kind == EffectKind::Dub) effect("DUB, TONE TURNING", kind, 2, 0.f, true);
+        if (kind == EffectKind::Reverse) effect("REVERSE, FEEDBACK 100%", kind, 1, 1.f);
+        if (kind == EffectKind::Stutter) effect("STUTTER, CHANCE 100%", kind, 2, 1.f);
+        if (kind == EffectKind::Bloom) effect("BLOOM, BLOOM TURNING", kind, 0, 0.f, true);
+        if (kind == EffectKind::Shimmer) effect("SHIMMER, SHIMMER 0%", kind, 0, 0.f);
+        if (kind == EffectKind::Shimmer) effect("SHIMMER, DECAY TURNING", kind, 1, 0.f, true);
     }
 
     // The send buses, as what they add to a song of twelve busy drum tracks.
