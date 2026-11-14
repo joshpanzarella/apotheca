@@ -23,7 +23,7 @@ inline const char* const kViews[] = {
     "notefx-from", "notefx-from-paired", "notefx-from-nearest", "notefx-from-random",
     "notefx-from-held", "notefx-from-paired-held", "notefx-from-nearest-held", "notefx-from-random-held",
     "under", "songs", "sampler", "bars", "bars-roll",
-    "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-master", "fx-master --hold-a",
+    "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-switch", "fx-master", "fx-master --hold-a",
     "fx-duck", "fx-duck --hold-a", "fx-choice", "fx-choice --hold-a", "fx-auto", "fx-auto --hold-a", "fx-sends", "fx-sends --hold-a",
     "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a", "fx-ping", "fx-ping --hold-a", "fx-ping-bus", "fx-ping-bus --hold-a", "fx-spring", "fx-spring --hold-a", "fx-plate", "fx-plate --hold-a",
     "fx-kind-comb", "fx-kind-comb --hold-a", "fx-kind-comb-1", "fx-kind-vowel", "fx-kind-vowel --hold-a", "fx-kind-vowel-1", "fx-kind-eq", "fx-kind-eq --hold-a", "fx-kind-eq-3",

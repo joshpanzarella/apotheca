@@ -57,7 +57,11 @@ Engine::Engine() {
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
     for (Track& track : tracks_)
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
+    for (Track& track : tracks_)
+        for (auto& k : track.kinds) k.store(0, std::memory_order_relaxed);
     for (auto& m : masterMeters_) m.store(0.f, std::memory_order_relaxed);
+    for (auto& k : masterKinds_) k.store(0, std::memory_order_relaxed);
+    for (auto& k : busKinds_) k.store(0, std::memory_order_relaxed);
     tracks_[0].hasDrums = true;
     for (Track& track : tracks_) {
         for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
@@ -450,6 +454,12 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
 float Engine::effectMeter(int track, int slot) const {
     if (slot < 0 || slot >= slotsOf(track) || busOfTrack(track) >= 0) return 0.f; // a bus holds a delay or a reverb: nothing to show
     return (track == kMasterTrack ? masterMeters_[slot] : tracks_[track].meters[slot]).load(std::memory_order_relaxed);
+}
+
+int Engine::effectKindIn(int track, int slot) const {
+    if (slot < 0 || slot >= slotsOf(track)) return 0;
+    if (busOfTrack(track) >= 0) return busKinds_[busOfTrack(track)].load(std::memory_order_relaxed);
+    return (track == kMasterTrack ? masterKinds_[slot] : tracks_[track].kinds[slot]).load(std::memory_order_relaxed);
 }
 
 float Engine::trackPeak(int track) const {
@@ -1810,6 +1820,7 @@ void Engine::renderTrack(int t) {
     for (int slot = 0; slot < kTrackSlots; ++slot) {
         runSlot(track.effects[slot], track.fades[slot], left, right, frames, false, chunkHits_);
         track.meters[slot].store(track.effects[slot] ? track.effects[slot]->meter() : 0.f, std::memory_order_relaxed);
+        track.kinds[slot].store(track.effects[slot] ? track.effects[slot]->madeAs : 0, std::memory_order_relaxed);
     }
     if (t == chunkScope_) {
         unsigned written = scopeWritten_.load(std::memory_order_relaxed);
@@ -2026,6 +2037,7 @@ void Engine::runBuses(int frames, float busL[][kMaxBlock], float busR[][kMaxBloc
             awake = true;
             busQuietFrames_[bus] = 0;
         }
+        busKinds_[bus].store(busEffects_[bus] ? busEffects_[bus]->madeAs : 0, std::memory_order_relaxed); // (at rest too)
         const bool fading = busFades_[bus].left > 0;
         if (!busEffects_[bus] && !fading) awake = false; // it holds no effect: it gives nothing back, and is not run
         if (!awake) {
@@ -2142,6 +2154,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     for (int slot = 0; slot < kMasterSlots; ++slot) {
         runSlot(masterEffects_[slot], masterFades_[slot], mixL, mixR, frames, false, chunkHits_);
         masterMeters_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->meter() : 0.f, std::memory_order_relaxed);
+        masterKinds_[slot].store(masterEffects_[slot] ? masterEffects_[slot]->madeAs : 0, std::memory_order_relaxed);
     }
     runMaster(mixL, mixR, frames);
     // Effects whose fade out has ended go to the trash. Here, not in

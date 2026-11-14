@@ -684,6 +684,7 @@ int main(int argc, char** argv) {
         //   fx-type     the same; with --hold-a its TYPE row and the list of effects
         //   fx-pick     on an empty slot; with --hold-a the list of effects is open
         //   fx-comp     COMP on the track, on its THRESHOLD, with its meter
+        //   fx-switch   COMP on the track, on its second setting: LEFT / RIGHT there switch its TYPE (the key in the heading)
         //   fx-master   COMP on the master, on its THRESHOLD
         //   fx-duck     DUCK on the track, on its SOURCE (a choice: one piece for each)
         //   fx-choice   FILTER's TYPE (a choice)
@@ -720,6 +721,7 @@ int main(int argc, char** argv) {
             s.setEffect(0, 1, EffectKind::None);
             fx.goTo(1, 0);
         } else if (std::strcmp(view, "fx-comp") == 0) fx.goTo(2, 1);
+        else if (std::strcmp(view, "fx-switch") == 0) fx.goTo(2, 2);
         else if (std::strcmp(view, "fx-master") == 0) fx.goTo(FxScreen::kMasterRow, 1);
         else if (std::strcmp(view, "fx-bus") == 0) fx.goTo(FxScreen::kBusRow + 1, 0);
         else if (std::strcmp(view, "fx-level") == 0) fx.goTo(FxScreen::kBusRow, 4);

@@ -150,6 +150,15 @@ public:
     const EffectData& effectData(int track, int slot) const { return busOfTrack(track) >= 0 ? project.busEffects[busOfTrack(track)] : (track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]); }
     void setEffect(int track, int slot, EffectKind kind); // goes in at its usual settings
     void setEffectParam(int track, int slot, int index, float value); // 0..1
+    // EACH TYPE'S OWN SETTINGS (owner, 2026-11-14): a slot remembers the settings of each type of its family it
+    // has been switched away from (COMP -> DUCK -> COMP gives the COMP back as it was left, to the bit). Kept
+    // in memory only, never in the song file: forgotten when another family or EMPTY goes in the slot
+    // (setEffect), when another song opens (applyProject), when the track is given another instrument, and
+    // with the track when it is deleted (the tracks after it take theirs with them). The FX screen asks it
+    // (switchEffectType in fx_screen.hpp). `track` as effectData's: a track, kMasterTrack, or a bus.
+    void rememberType(int track, int slot, const EffectData& settings); // under settings.kind
+    bool rememberedType(int track, int slot, EffectKind kind, float out[kEffectParams]) const; // false: none kept
+    void forgetTypes(int track, int slot);
     // How much of a track goes to a bus (0 ECHO, 1 SPACE), 0..1. Written as automation like any setting.
     void setSend(int track, int bus, float value);
     // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
@@ -463,6 +472,15 @@ public:
     void setCellBars(int track, int scene, int bars);
 
 private:
+    // What rememberType keeps: for each slot (every track's, the master's, the buses'), each kind's settings.
+    struct TypeMemory {
+        bool has[kEffectKinds] = {};
+        float param[kEffectKinds][kEffectParams] = {};
+    };
+    static constexpr int kMemorySlots = kNumTracks * kTrackSlots + kMasterSlots + kBuses;
+    static int memorySlot(int track, int slot); // -1: no such slot
+    TypeMemory typeMemory_[kMemorySlots];
+    void forgetTrackTypes(int track) { for (int s = 0; s < kTrackSlots; ++s) forgetTypes(track, s); }
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it

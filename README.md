@@ -202,9 +202,21 @@ to the sound just now.
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
-| | Left | Back to the list, on the same line |
+| | **Right** | **The next TYPE** of the effect (COMP to DUCK), at once: the cursor stays on its row. The last type stops. |
+| | **Left** | On the first setting: back to the list, on the same line. On any other: **the TYPE before** (the first stops). On SENDS: back to the list. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
 | | B | Its usual value. A send: nothing sent. |
+
+**A slot remembers each type's own settings.** Turn a COMP, switch to the
+DUCK, then back: the COMP is exactly as you left it, not rebuilt from the
+DUCK. A type the slot has not held yet starts with what it shares with the
+one before. This holds for Hold A + left / right in the list too. It is kept
+only while the program runs, not in the song file, and it is forgotten when
+another family or EMPTY goes in the slot, another song opens, or the track is
+deleted or given another instrument. Automation does not come back with a
+type: it follows the settings the two types share, as any change of TYPE
+does. Undo after a switch puts back the type before, with its settings.
+The heading's TYPE row shows the key (RIGHT, or LEFT / RIGHT) where it works.
 
 **L1 / R1** is the track before / after, from the list or from a setting: the
 cursor stays on the same line and setting, and the top bar names the new

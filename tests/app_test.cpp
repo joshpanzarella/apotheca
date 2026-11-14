@@ -3445,8 +3445,12 @@ void testTheEffectsScreen() {
     // Right: into its settings. TIME is a choice: the D-pad steps to the next one.
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0);
-    rig.tap(RIGHT); // there is nothing further right
-    CHECK(fx.cursorColumn() == 1);
+    rig.tap(RIGHT); // the next TYPE, the TAPE; the cursor stays (testFxSwitchesType)
+    CHECK(fx.cursorColumn() == 1 && first.kind == static_cast<int>(EffectKind::Tape));
+    rig.tap(DOWN);
+    rig.tap(LEFT); // back to CLEAN (LEFT on the first setting is the list)
+    rig.tap(UP);
+    CHECK(fx.cursorColumn() == 1 && first.kind == static_cast<int>(EffectKind::Delay) && first.param[0] == effectInfo(EffectKind::Delay).defaults[0]);
     rig.key(A, true);
     CHECK(!fx.picking()); // on a setting A turns it: no list
     rig.tap(UP);
@@ -3486,16 +3490,22 @@ void testTheEffectsScreen() {
     CHECK(fx.cursorColumn() == 4 && fx.cursorRow() == 0); // four settings, no more: the end stops
     rig.tap(UP, 9);
     CHECK(fx.cursorColumn() == 1 && fx.cursorRow() == 0); // and the top
-    // Left: back to the list, on the same line. Right: back to the setting last used there.
+    // Left on the first setting: back to the list, on the same line. Right: back to the setting last used
+    // there. (Left on a lower setting is the TYPE before: CLEAN is DELAY's first, so it stops. testFxSwitchesType.)
     rig.tap(DOWN, 2);
     CHECK(fx.cursorColumn() == 3);
     rig.tap(LEFT);
-    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 3);
+    CHECK(fx.cursorColumn() == 3 && first.kind == static_cast<int>(EffectKind::Delay));
+    rig.tap(UP, 2);
+    rig.tap(LEFT);
+    CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0 && fx.remembered(0) == 1);
     rig.tap(LEFT); // nothing further left
     CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == 0);
+    fx.goTo(0, 3); // (the setting last used: the third)
+    fx.goTo(0, 0);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 3);
-    rig.tap(LEFT);
+    fx.goTo(0, 0);
 
     // Down the list: the track's second and third, its sends, the buses and the master's two, and round.
     rig.tap(DOWN);
@@ -3507,6 +3517,7 @@ void testTheEffectsScreen() {
     rig.tap(RIGHT);
     rig.tap(DOWN, 9);
     CHECK(fx.cursorColumn() == 3 && fx.cursorRow() == 1); // the room reverb has three
+    rig.tap(UP, 2);
     rig.tap(LEFT);
     rig.tap(DOWN);
     CHECK(fx.cursorRow() == 2 && fx.cursorColumn() == 0);
@@ -3531,7 +3542,13 @@ void testTheEffectsScreen() {
     rig.key(STICK_RIGHT, false);
     rig.frames(1);
     CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 3);
-    rig.key(STICK_LEFT, true);
+    rig.key(STICK_LEFT, true); // on the third setting: the TYPE before, and CLEAN is the first
+    rig.frames(1);
+    rig.key(STICK_LEFT, false);
+    rig.frames(1);
+    CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 3 && first.kind == static_cast<int>(EffectKind::Delay));
+    fx.goTo(0, 1);
+    rig.key(STICK_LEFT, true); // on the first: back to the list
     rig.frames(1);
     rig.key(STICK_LEFT, false);
     rig.frames(1);
@@ -3557,7 +3574,7 @@ void testTheEffectsScreen() {
     CHECK(rig.project().masterEffects[0].kind == static_cast<int>(EffectKind::Comp));
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 4); // what was last used on the line is not forgotten by a change of track
-    rig.tap(LEFT);
+    fx.goTo(0, 0);
     // X hears a synth track by a note.
     rig.render(200000);
     rig.tap(X);
@@ -4442,19 +4459,21 @@ void testTheFxScreensList() {
     CHECK(fx.cursorColumn() == 1);
     rig.tap(LEFT);
     CHECK(fx.cursorRow() == 3 && fx.cursorColumn() == 0);
-    // Each line remembers its own last setting.
+    // Each line remembers its own last setting. (Back to the list by goTo: LEFT below the first setting is
+    // the TYPE before.)
+    const auto backToList = [&] { fx.goTo(fx.cursorRow(), 0); };
     fx.goTo(4, 3); // ECHO's TAPE: AGE
-    rig.tap(LEFT);
+    backToList();
     rig.tap(DOWN);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 1); // SPACE's: never used, its first
     rig.tap(DOWN, 9);
     CHECK(fx.cursorColumn() == 4); // HALL has four
-    rig.tap(LEFT);
+    backToList();
     rig.tap(UP);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 4 && fx.cursorColumn() == 3);
-    rig.tap(LEFT);
+    backToList();
     rig.tap(DOWN);
     rig.tap(RIGHT);
     CHECK(fx.cursorRow() == 5 && fx.cursorColumn() == 4 && fx.remembered(5) == 4 && fx.remembered(4) == 3 && fx.remembered(0) == 1);
@@ -4471,7 +4490,7 @@ void testTheFxScreensList() {
     session.setEffect(kSpaceBus, 0, EffectKind::Hall);
     rig.tap(RIGHT);
     CHECK(fx.cursorColumn() == 4); // (what the line last used is still known)
-    rig.tap(LEFT);
+    backToList();
     // goTo keeps to what there is.
     fx.goTo(6, 3);
     CHECK(fx.cursorRow() == 6 && fx.cursorColumn() == 0);
@@ -4591,7 +4610,7 @@ void testTheFxScreensList() {
     rig.tap(B); // B: its usual value, the automation of this cell gone, and that not written either
     CHECK(!session.hasAutomation(0, 0, autoLaneOfEffect(0, 1)) && project.tracks[0].effects[0].param[1] == effectInfo(EffectKind::Filter).defaults[1]);
     // Picking an effect and changing a TYPE are not knobs: WRITE records nothing of them.
-    rig.tap(LEFT);
+    fx.goTo(0, 0);
     rig.key(A, true);
     rig.tap(DOWN, familyPlace(EffectKind::Delay) - familyPlace(EffectKind::Filter)); // DELAY
     rig.tap(RIGHT); // its TAPE
@@ -5116,7 +5135,7 @@ void testTheFxScreenAsDrawn() {
     const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
@@ -5126,10 +5145,10 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default value"));
+        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default"));
         fx.goTo(0, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn") && hinted("default value"));
+        CHECK(hinted("turn") && hinted("default") && hinted("type") && !hinted("list") /* DELAY: on its second setting LEFT / RIGHT switch the type */);
         rig.key(A, true);
         draw();
         CHECK(hinted("turn it") && !hinted("list") && !hinted("effect"));
@@ -5563,7 +5582,9 @@ void testTheFxScreenSecondReview() {
     rig.tap(DOWN, 2);
     CHECK(reads(1) == "40%");
     rig.key(A, false);
-    // The same from the TAPE's usual 48%, and on the TAPE itself every push is seen.
+    // The same from the TAPE's usual 48%, and on the TAPE itself every push is seen. (Emptied first: the slot
+    // would otherwise give back the DELAY it remembers, as it was left, testFxSwitchesType.)
+    session.setEffect(0, 0, EffectKind::None);
     session.setEffect(0, 0, EffectKind::Tape);
     CHECK(slot.param[1] == 0.4f && reads(1) == "48%");
     fx.goTo(0, 0);
@@ -5577,6 +5598,7 @@ void testTheFxScreenSecondReview() {
         for (SDL_Keycode way : {UP, DOWN}) {
             if (slot.kind != static_cast<int>(EffectKind::Delay)) { fx.goTo(0, 0); type(LEFT); }
             session.setEffectParam(0, 0, 1, static_cast<float>(k) / 20.f);
+            session.forgetTypes(0, 0); // (carried, not the TAPE the slot remembers)
             fx.goTo(0, 0);
             type(RIGHT);
             const std::string was = reads(1);
@@ -7953,6 +7975,332 @@ void testTheHintsFitAndSayWhatTheyDo() {
 
 // L1 / R1 on the FX screen: the track before / after, stopping at the first and the last (as the SONG screen's
 // columns do). The cursor stays on its line and setting; an effect being tried is called off. The bar says so and fits.
+// SWITCHING TYPE FROM THE SETTINGS (owner, 2026-11-14, option A). In a slot's settings RIGHT is the next TYPE of
+// its family and LEFT the one before (LEFT on the first setting is the list, as it was); the ends stop and the
+// cursor keeps its row. The slot remembers each type's own settings: COMP -> DUCK -> COMP gives the COMP back as it
+// was left, to the bit. Forgotten on another family or EMPTY, another song, another instrument, a track deleted.
+namespace {
+bool sameParams(const EffectData& a, const EffectData& b) {
+    if (a.kind != b.kind) return false;
+    for (int i = 0; i < kEffectParams; ++i)
+        if (a.param[i] != b.param[i]) return false;
+    return true;
+}
+// What the engine runs in a slot, once what was sent has arrived.
+int engineKind(Rig& rig, int track, int slot) {
+    rig.render(1024);
+    return rig.engine->effectKindIn(track, slot);
+}
+// A COMP in the track's first slot, every setting turned to a value no carry would make.
+EffectData turnedComp(Rig& rig) {
+    Session& session = rig.app.session();
+    session.setEffect(0, 0, EffectKind::Comp);
+    const float odd[kEffectParams] = {0.3137f, 0.7771f, 0.1234f, 0.6543f};
+    for (int i = 0; i < effectInfo(EffectKind::Comp).params; ++i) session.setEffectParam(0, 0, i, odd[i]);
+    return session.effectData(0, 0);
+}
+} // namespace
+
+void testFxSwitchesType() {
+    const int comp = static_cast<int>(EffectKind::Comp), duck = static_cast<int>(EffectKind::Duck);
+    const int levels = effectTypes(EffectKind::Comp);
+    CHECK(effectTypeAt(EffectKind::Comp, 0) == EffectKind::Comp && effectTypeAt(EffectKind::Comp, 1) == EffectKind::Duck && levels >= 3);
+    CHECK(effectInfo(EffectKind::Comp).params >= 2 && effectInfo(EffectKind::Duck).params >= 2);
+    {
+        // The gesture both ways, the memory, the engine's slot after each step.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        rig.frames(1);
+        fx.goTo(0, 2);
+        rig.tap(RIGHT);
+        const EffectData& slot = session.effectData(0, 0);
+        float carried[kEffectParams];
+        effectCarry(EffectKind::Comp, EffectKind::Duck, compWas.param, false, carried);
+        CHECK(slot.kind == duck && fx.cursorRow() == 0 && fx.cursorColumn() == 2); // the row stays
+        for (int i = 0; i < kEffectParams; ++i) CHECK(slot.param[i] == carried[i]); // never DUCKed here: carried, as changeEffectType
+        CHECK(engineKind(rig, 0, 0) == duck);
+        session.setEffectParam(0, 0, 1, 0.8642f); // the DUCK turned
+        const EffectData duckWas = slot;
+        rig.tap(LEFT);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2); // the COMP as it was left, to the bit
+        CHECK(engineKind(rig, 0, 0) == comp);
+        rig.tap(RIGHT);
+        CHECK(sameParams(slot, duckWas)); // and the DUCK as it was left
+        CHECK(engineKind(rig, 0, 0) == duck);
+        // The ends stop: LEFT on the first type, RIGHT on the last.
+        rig.tap(LEFT);
+        rig.tap(LEFT);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2);
+        rig.tap(RIGHT, levels + 3);
+        const EffectKind lastType = effectTypeAt(EffectKind::Comp, levels - 1);
+        CHECK(slot.kind == static_cast<int>(lastType) && engineKind(rig, 0, 0) == static_cast<int>(lastType));
+        rig.tap(LEFT, levels - 1);
+        CHECK(sameParams(slot, compWas));
+        // The first setting: LEFT is the list, the slot untouched; RIGHT the next type, the cursor kept.
+        fx.goTo(0, 1);
+        rig.tap(LEFT);
+        CHECK(fx.cursorColumn() == 0 && sameParams(slot, compWas));
+        rig.tap(RIGHT); // (into the settings: the first, where it was last)
+        CHECK(fx.cursorColumn() == 1 && slot.kind == comp);
+        rig.tap(RIGHT);
+        CHECK(fx.cursorColumn() == 1 && sameParams(slot, duckWas));
+        // The stick does it too, one at a push.
+        fx.goTo(0, 2);
+        rig.key(STICK_LEFT, true);
+        rig.frames(1);
+        rig.key(STICK_LEFT, false);
+        rig.frames(1);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2);
+        // Held, at the pace of a list (a TYPE is a choice), not a cursor's: a third of a second is not the end.
+        rig.key(RIGHT, true);
+        rig.frames(14); // (a list's pace: the press and one repeat; a cursor's would be at the end)
+        rig.key(RIGHT, false);
+        CHECK(slot.kind != comp && slot.kind != static_cast<int>(lastType));
+        rig.key(LEFT, true);
+        rig.frames(14);
+        rig.key(LEFT, false);
+        rig.tap(LEFT, levels);
+        CHECK(sameParams(slot, compWas));
+        rig.key(STICK_RIGHT, true);
+        rig.frames(20);
+        rig.key(STICK_RIGHT, false);
+        rig.frames(1);
+        CHECK(slot.kind != comp && slot.kind != static_cast<int>(lastType));
+        rig.tap(LEFT, levels);
+        CHECK(sameParams(slot, compWas));
+        // With A held on a setting LEFT / RIGHT do nothing, as before.
+        rig.key(A, true);
+        rig.tap(RIGHT);
+        rig.key(A, false);
+        CHECK(sameParams(slot, compWas));
+        // A type with fewer settings: the cursor is pulled in to its last. (Any family's pair that has one.)
+        for (int place = 1; place + 1 < effectListSize(); ++place) {
+            const EffectKind k = effectAt(place), next = effectTypeAt(k, effectTypeIndex(k) + 1);
+            if (next == EffectKind::None || effectInfo(next).params >= effectInfo(k).params) continue;
+            session.setEffect(0, 0, EffectKind::None);
+            session.setEffect(0, 0, k);
+            fx.goTo(0, effectInfo(k).params);
+            rig.tap(RIGHT);
+            CHECK(session.effectData(0, 0).kind == static_cast<int>(next) && fx.cursorColumn() == effectInfo(next).params);
+            break;
+        }
+        // The sends switch nothing: LEFT is the list from either, RIGHT does nothing.
+        fx.goTo(FxScreen::kSendsRow, 2);
+        rig.tap(RIGHT);
+        CHECK(fx.cursorColumn() == 2);
+        rig.tap(LEFT);
+        CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == FxScreen::kSendsRow);
+        // An empty slot has no settings to be in.
+        session.setEffect(0, 1, EffectKind::None);
+        fx.goTo(1, 2);
+        rig.tap(RIGHT);
+        CHECK(fx.cursorColumn() == 0 && session.effectData(0, 1).kind == 0);
+    }
+    {
+        // Forgotten: another family, EMPTY, another song, another instrument; a deleted track takes its own.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const auto switchedAway = [&] { // a turned COMP to the DUCK: the COMP is remembered
+            turnedComp(rig);
+            fx.goTo(0, 2);
+            rig.tap(RIGHT);
+            float back[kEffectParams];
+            return session.effectData(0, 0).kind == duck && session.rememberedType(0, 0, EffectKind::Comp, back);
+        };
+        float back[kEffectParams];
+        CHECK(switchedAway());
+        session.setEffect(0, 0, EffectKind::Limiter); // another type put in by hand: the same family, still known (the DUCK left so is not a switch)
+        CHECK(session.rememberedType(0, 0, EffectKind::Comp, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        session.setEffect(0, 0, EffectKind::Filter); // another family
+        CHECK(!session.rememberedType(0, 0, EffectKind::Comp, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        session.setEffect(0, 0, EffectKind::Duck);
+        fx.goTo(0, 2);
+        rig.tap(LEFT); // the COMP comes from the DUCK's usual settings, carried: not the one turned before
+        float carried[kEffectParams], usual[kEffectParams];
+        for (int i = 0; i < kEffectParams; ++i) usual[i] = effectDefault(EffectKind::Duck, i, false);
+        effectCarry(EffectKind::Duck, EffectKind::Comp, usual, false, carried);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(session.effectData(0, 0).param[i] == carried[i]);
+        CHECK(switchedAway());
+        fx.goTo(0, 0);
+        holdB(rig); // EMPTY
+        CHECK(session.effectData(0, 0).kind == 0 && !session.rememberedType(0, 0, EffectKind::Comp, back));
+        CHECK(switchedAway());
+        session.applyProject(); // another song
+        CHECK(!session.rememberedType(0, 0, EffectKind::Comp, back));
+        // The master's and the buses' slots remember apart from the tracks', and are forgotten the same way.
+        session.rememberType(kMasterTrack, 1, session.effectData(0, 0));
+        session.rememberType(kSpaceBus, 0, session.effectData(0, 0));
+        CHECK(session.rememberedType(kMasterTrack, 1, EffectKind::Duck, back) && !session.rememberedType(kMasterTrack, 0, EffectKind::Duck, back));
+        CHECK(session.rememberedType(kSpaceBus, 0, EffectKind::Duck, back) && !session.rememberedType(kEchoBus, 0, EffectKind::Duck, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        EffectData hall, tape; // a bus's own, and neither of the master's two
+        hall.kind = static_cast<int>(EffectKind::Hall), tape.kind = static_cast<int>(EffectKind::Tape);
+        session.rememberType(kSpaceBus, 0, hall);
+        session.rememberType(kEchoBus, 0, tape);
+        CHECK(session.rememberedType(kSpaceBus, 0, EffectKind::Hall, back) && session.rememberedType(kEchoBus, 0, EffectKind::Tape, back));
+        CHECK(!session.rememberedType(kMasterTrack, 0, EffectKind::Hall, back) && !session.rememberedType(kMasterTrack, 1, EffectKind::Hall, back));
+        CHECK(!session.rememberedType(kMasterTrack, 0, EffectKind::Tape, back) && !session.rememberedType(kMasterTrack, 1, EffectKind::Tape, back));
+        CHECK(!session.rememberedType(kEchoBus, 0, EffectKind::Hall, back) && !session.rememberedType(kSpaceBus, 0, EffectKind::Tape, back));
+        session.applyProject();
+        CHECK(!session.rememberedType(kMasterTrack, 1, EffectKind::Duck, back) && !session.rememberedType(kSpaceBus, 0, EffectKind::Duck, back));
+        // Tracks: another instrument forgets; a deleted track's go with it, and the ones after move up.
+        CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums)); // tracks 1 and 2
+        EffectData a, b;
+        a.kind = comp, a.param[0] = 0.11f;
+        b.kind = comp, b.param[0] = 0.22f;
+        session.rememberType(1, 2, a);
+        session.rememberType(2, 2, b);
+        CHECK(session.removeTrack(1));
+        CHECK(session.rememberedType(1, 2, EffectKind::Comp, back) && back[0] == 0.22f && !session.rememberedType(2, 2, EffectKind::Comp, back));
+        session.rememberType(0, 1, a);
+        CHECK(session.setTrackKind(0, TrackKind::Phazed));
+        CHECK(!session.rememberedType(0, 1, EffectKind::Comp, back) && session.rememberedType(1, 2, EffectKind::Comp, back));
+        session.rememberType(2, 2, a); // (no track there: nothing in the program does this, but a new track must not find it)
+        CHECK(session.addTrack(TrackKind::Drums)); // a new track starts with nothing remembered
+        CHECK(!session.rememberedType(2, 2, EffectKind::Comp, back));
+    }
+    {
+        // The buses and the master: the same gesture, the same memory, the engine's slot after each step.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectKind next = effectTypeAt(EffectKind::Tape, effectTypeIndex(EffectKind::Tape) + 1);
+        CHECK(session.effectData(kEchoBus, 0).kind == static_cast<int>(EffectKind::Tape) && next != EffectKind::None);
+        session.setEffectParam(kEchoBus, 0, 1, 0.5432f);
+        session.setEffectParam(kEchoBus, 0, 3, 0.6f); // its LEVEL
+        const EffectData tapeWas = session.effectData(kEchoBus, 0);
+        fx.goTo(FxScreen::kBusRow, 2);
+        rig.tap(RIGHT);
+        CHECK(session.effectData(kEchoBus, 0).kind == static_cast<int>(next) && engineKind(rig, kEchoBus, 0) == static_cast<int>(next));
+        rig.tap(LEFT);
+        CHECK(sameParams(session.effectData(kEchoBus, 0), tapeWas) && engineKind(rig, kEchoBus, 0) == static_cast<int>(EffectKind::Tape));
+        session.setEffect(kMasterTrack, 1, EffectKind::Comp);
+        session.setEffectParam(kMasterTrack, 1, 0, 0.2468f);
+        const EffectData masterWas = session.effectData(kMasterTrack, 1);
+        fx.goTo(FxScreen::kMasterRow + 1, 2);
+        rig.tap(RIGHT);
+        CHECK(session.effectData(kMasterTrack, 1).kind == duck && engineKind(rig, kMasterTrack, 1) == duck);
+        CHECK(session.effectData(0, 0).kind == 0); // (the track's own slot untouched)
+        rig.tap(LEFT);
+        CHECK(sameParams(session.effectData(kMasterTrack, 1), masterWas) && engineKind(rig, kMasterTrack, 1) == comp);
+    }
+    {
+        // Undo: a switch is a step, and undo puts back the type it left with its settings; the engine follows.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        rig.frames(60);
+        const int steps = session.undoSteps();
+        fx.goTo(0, 2);
+        rig.tap(RIGHT);
+        rig.frames(60);
+        CHECK(session.undoSteps() == steps + 1 && session.effectData(0, 0).kind == duck);
+        CHECK(session.undo() && sameParams(session.effectData(0, 0), compWas) && engineKind(rig, 0, 0) == comp);
+        CHECK(session.redo() && session.effectData(0, 0).kind == duck && engineKind(rig, 0, 0) == duck);
+    }
+    {
+        // Automation: what changeEffectType does with it, both ways, whatever is remembered; WRITE writes nothing.
+        Rig rig, twin;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        for (Rig* r : {&rig, &twin}) {
+            turnedComp(*r);
+            for (int p = 0; p < kEffectParams; ++p) r->app.session().setAutomation(0, p % 3, autoLaneOfEffect(0, p), 2 + p, 0.1f + 0.2f * static_cast<float>(p));
+            r->frames(1);
+        }
+        session.setWriting(true);
+        rig.tap(START);
+        rig.render(kStep * 2);
+        rig.frames(1);
+        CHECK(rig.project().playing);
+        fx.goTo(0, 2);
+        rig.tap(RIGHT);
+        CHECK(changeEffectType(twin.app.session(), 0, 0, EffectKind::Duck));
+        CHECK(same(tunedOf(rig, 0, 0), tunedOf(twin, 0, 0)));
+        rig.tap(LEFT); // the COMP's settings are remembered; its lanes are those the DUCK's moved back
+        CHECK(changeEffectType(twin.app.session(), 0, 0, EffectKind::Comp));
+        CHECK(tunedOf(rig, 0, 0).lanes == tunedOf(twin, 0, 0).lanes && session.writing());
+    }
+    {
+        // The heading's TYPE row shows the key where it switches (RIGHT on the first setting, LEFT / RIGHT below
+        // it), not in the list with A up nor while A turns a setting; the bar says it, and still fits.
+        Canvas canvas, scratch;
+        CHECK(canvas.ok && scratch.ok);
+        if (canvas.ok && scratch.ok) {
+            using F = FxScreen;
+            const Fonts& fonts = *canvas.fonts;
+            Rig rig;
+            Session& session = rig.app.session();
+            FxScreen& fx = rig.app.fx();
+            session.view = View::Effects;
+            turnedComp(rig);
+            const auto draw = [&] {
+                rig.frames(1);
+                canvas.clear();
+                rig.app.draw(canvas.r, fonts);
+                return ui::gHintsOver == 0.f;
+            };
+            const int keyX = static_cast<int>(F::kPaneX + F::kPaneW - 12.f - ui::keyWidth(fonts, "LEFT / RIGHT"));
+            const auto keyInk = [&] { // pixels that are not the heading's panel, where the key stands
+                int n = 0;
+                for (int y = F::kTypeRowY - 4; y < F::kTypeRowY + fonts.small.capHeight() + 4; ++y)
+                    for (int x = keyX; x < F::kPaneX + F::kPaneW - 12; ++x) n += canvas.is(x, y, ui::kPanel) ? 0 : 1;
+                return n;
+            };
+            fx.goTo(0, 0);
+            CHECK(draw() && keyInk() == 0);
+            fx.goTo(0, 1);
+            CHECK(draw() && keyInk() > 0 && hintKeyed(canvas, scratch, "RIGHT", "type") && hintKeyed(canvas, scratch, "LEFT", "list"));
+            const int right = keyInk();
+            fx.goTo(0, 2);
+            CHECK(draw() && keyInk() > right && hintKeyed(canvas, scratch, "LEFT / RIGHT", "type") && !hintKeyed(canvas, scratch, "LEFT", "list"));
+            rig.key(A, true);
+            CHECK(draw() && keyInk() == 0);
+            rig.key(A, false);
+            fx.goTo(F::kSendsRow, 2);
+            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "RIGHT", "type"));
+        }
+    }
+    {
+        // With A held in the list, LEFT / RIGHT try a remembered type as it was left, and that is what goes in.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        fx.goTo(0, 2);
+        rig.tap(RIGHT);
+        session.setEffectParam(0, 0, 1, 0.8642f);
+        const EffectData duckWas = session.effectData(0, 0);
+        fx.goTo(0, 0);
+        rig.key(A, true);
+        rig.tap(LEFT);
+        CHECK(fx.trying() && sameParams(fx.tried(), compWas) && session.effectData(0, 0).kind == duck);
+        CHECK(engineKind(rig, 0, 0) == comp);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(sameParams(session.effectData(0, 0), compWas)); // what was heard went in
+        rig.key(A, true);
+        rig.tap(RIGHT, 2); // past the DUCK to the third: let go there, the COMP is remembered as it is
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.effectData(0, 0).kind == static_cast<int>(effectTypeAt(EffectKind::Comp, 2)));
+        fx.goTo(0, 2);
+        rig.tap(LEFT);
+        CHECK(sameParams(session.effectData(0, 0), duckWas)); // the DUCK, as it was left two switches ago
+        rig.tap(LEFT);
+        CHECK(sameParams(session.effectData(0, 0), compWas));
+    }
+}
+
 void testFxStepsTheTrack() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -8188,6 +8536,7 @@ int main(int argc, char** argv) {
         testTheEffectsScreen();
         testTryingAnEffectKeepsIt();
         testFxStepsTheTrack();
+        testFxSwitchesType();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
@@ -8279,6 +8628,7 @@ int main(int argc, char** argv) {
     testTheEffectsScreen();
     testTryingAnEffectKeepsIt();
     testFxStepsTheTrack();
+    testFxSwitchesType();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensList();

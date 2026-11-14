@@ -368,6 +368,9 @@ public:
     // empty slot and for an effect with nothing to show. `track` may be
     // kMasterTrack. As of the last chunk rendered; no lock, any thread.
     float effectMeter(int track, int slot) const;
+    // Which EffectKind the slot holds, as the audio thread last ran it (0: none). `track` may be kMasterTrack
+    // or a bus. For the tests: what the engine plays, not what the project says. No lock, any thread.
+    int effectKindIn(int track, int slot) const;
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
     // 0..15, or -1 when stopped. With it, in one read, how many Command::ScenesMoved the audio
     // thread has taken so far (counted round at kMovesHeardRound): a caller that has sent more
@@ -625,6 +628,7 @@ private:
         std::unique_ptr<Effect> effects[kTrackSlots];
         SlotFade fades[kTrackSlots];
         std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
+        std::atomic<int> kinds[kTrackSlots];    // and what it is (effectKindIn)
         std::atomic<float> peak{0.f};
         // Taken away while it still sounded: it fades to nothing over kGoneFadeSeconds (its
         // effects' tails too), and only then is its instrument taken away (Engine::takeAway).
@@ -697,6 +701,7 @@ private:
     std::unique_ptr<Effect> masterEffects_[kMasterSlots];
     SlotFade masterFades_[kMasterSlots];
     std::atomic<float> masterMeters_[kMasterSlots];
+    std::atomic<int> masterKinds_[kMasterSlots], busKinds_[kBuses]; // effectKindIn
     // The send buses: one effect each, wet only.
     std::unique_ptr<Effect> busEffects_[kBuses];
     SlotFade busFades_[kBuses];
