@@ -53,16 +53,17 @@ struct Page {
 const Page kPages[] = {
     {"phazed MAIN", TrackKind::Phazed, 0, true}, {"phazed SOUND", TrackKind::Phazed, 1, true},
     {"phazed LINE 1", TrackKind::Phazed, 2, true}, {"phazed LINE 2", TrackKind::Phazed, 3, true},
-    {"twin MAIN", TrackKind::Twin, 0, true}, {"twin OSCILLATORS", TrackKind::Twin, 1, true},
-    {"twin CHARACTER", TrackKind::Twin, 2, true}, {"twin ENVELOPE", TrackKind::Twin, 3, true},
-    {"twin 4", TrackKind::Twin, 4, true},
+    {"twin MAIN", TrackKind::Jx3p, 0, true}, {"twin DCO-1", TrackKind::Jx3p, 1, true},
+    {"twin DCO-2", TrackKind::Jx3p, 2, true}, {"twin VCF", TrackKind::Jx3p, 3, true},
+    {"twin VCA AND ENVELOPE", TrackKind::Jx3p, 4, true}, {"twin LFO AND CHORUS", TrackKind::Jx3p, 5, true},
+    {"twin 6", TrackKind::Jx3p, 6, true},
     {"qmod MAIN", TrackKind::Qmod, 0, true}, {"qmod SOUND", TrackKind::Qmod, 1, true},
     {"qmod CHARACTER", TrackKind::Qmod, 2, true}, {"qmod ENVELOPE", TrackKind::Qmod, 3, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Twin ? &rig.app.twin() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.twin() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.

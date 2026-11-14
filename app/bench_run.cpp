@@ -436,9 +436,9 @@ int apotheca::runBench() {
     instrument("Twin Analog x2, 8 notes", SynthKind::Twin, 8, twin::Oversample, 1);
     instrument("Twin Analog x8, 8 notes", SynthKind::Twin, 8, twin::Oversample, 3);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
-    jx3pRow("JX-3P, 6 notes", 0);
-    jx3pRow("JX-3P, 6, worst patch", 1);
-    jx3pRow("JX-3P, 6, moving cutoff", 2);
+    jx3pRow("JAX-EP, 6 notes", 0);
+    jx3pRow("JAX-EP, 6, worst patch", 1);
+    jx3pRow("JAX-EP, 6, moving cutoff", 2);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);
@@ -526,7 +526,7 @@ int apotheca::runBench() {
     App app(*engine);
     Session& session = app.session();
     // A full song: twelve tracks, eight scenes, notes and hits in every cell, some automation.
-    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Drums};
+    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) session.addTrack(kinds[t % 4]);
     Project& p = app.project();
     for (int t = 0; t < kNumTracks; ++t)

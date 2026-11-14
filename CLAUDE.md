@@ -196,6 +196,28 @@ effect in those two groups and fails one that does not.
   Session and the WiFi page share. Renamed over, the first one's revs paired
   with the second song.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
+- **The JX-3P clone is JAX-EP wherever a player reads** (owner, 2026-11-14):
+  "a virtual analog synth modeled after a popular DCO synth". **No maker's or
+  model's name** (Roland, JX-3P, PG-200, Juno) in a text of `app/`, on the two
+  web pages or in README.md; `ctest -R words` fails one, with its own plants.
+  Code, file names, tests and `docs/plans` keep `jx3p` / `Jx3p`. Its song-file
+  word is `jaxep` and its presets are `NAME.jaxep` (`jx3p` was never written
+  by anything released and is not read). The list to pick from says "virtual
+  analog, after a popular DCO synth" with no count: the line holds about 42
+  letters.
+- **`track twin` is the one word whose meaning changed** (owner, 2026-11-14;
+  nothing was released): it reads as a JAX-EP track without its sound
+  (`trackKindFromWord`'s `old`, `parseSong`'s `oldSound`: no `preset`,
+  `macros`, `settings`, no automation on lanes 0 to 7; everything else kept).
+  It is never written. `tests/twinsong_main.inc` is a song `main` wrote with
+  one: **not to be remade**. An old `NAME.twin` preset is left on the card,
+  unlisted.
+- **A preset holds `presetSettingCount(kind)` settings, a song
+  `settingCount(kind)`.** They differ for JAX-EP: ids 32 and 33 (VELOCITY,
+  BRILLIANCE) are the track's own, so `loadPreset` (built-in and the player's
+  own) and `savePreset` stop at 32, and a new `TrackData` starts with them
+  (`Jx3p::presetPatch(0)`). A new track value of any synth goes after its
+  patch's ids and is kept out the same way.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
 - **The five old effects are pinned to the bit** (FILTER, DRIVE, DELAY,
@@ -1409,6 +1431,7 @@ effect in those two groups and fails one that does not.
 | JX-3P with the VCF and HPF (batch 3), 6 notes / a synced pulse with ENV on DCO-2's pitch and on the VCF / every note gliding, KEY FOLLOW 9.8 (2026-11-14, four runs on a busy desk: Phazed 0.7 to 1.2%, Twin x1 4.1 to 5.4% in them). **Not yet run on the handheld** | 0.43 to 0.46% / 0.80 to 0.87% / 1.56 to 1.67% |
 | JX-3P with the LFO (batch 4), 6 notes / the worst row / moving cutoff, now with the LFO on the cutoff and DCO-1 (2026-11-14, two runs: Phazed 0.8%, QMOD 2.8 / 3.2%, Twin x1 4.2 / 4.0% in them). **Not yet run on the handheld** | 0.43% / 0.86 to 0.87% / 1.67 to 1.68% |
 | JX-3P with the chorus (batch 5), 6 notes / the worst row / moving cutoff (2026-11-14, the quietest of five runs on a busy desk: Phazed 0.7%, QMOD 2.8 to 3.2%, Twin x1 4.1 / 4.2% in them). **Not yet run on the handheld** | 0.52 to 0.53% / 0.96 to 0.97% / 1.77 to 1.78% |
+| JAX-EP after batch 6a (the app; the engine not touched), `bench`'s three rows (2026-11-14, the two quieter of three runs: Phazed 0.7 to 0.8%, QMOD 2.8 to 3.1%, Twin x1 4.1% in them) | 0.53% / 0.98 to 1.07% / 1.79 to 1.80% |
 | JX-3P with both DCOs (batch 2), 6 notes / a synced pulse with ENV on DCO-2's pitch / every note gliding (2026-11-14, two runs: Phazed 0.7 / 1.1%, Twin x1 4.1 / 4.5% in them) | 0.21 to 0.22% / 0.30% / 0.63 to 0.68% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
@@ -1454,7 +1477,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
-2. Twin Analog becomes a JX-3P clone (`docs/plans/jx3p-plan.md`; branch `jx3p`, engine batches under way).
+2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine and batch 6a, the song and files, are done; 6b, the screens, is next).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
@@ -1470,8 +1493,9 @@ Notes' pages, the shared measuring tools), batch 1 (the skeleton:
 `jx3p/dco.hpp`, `jx3p_dco_test`), batch 3 (the VCF and HPF, BRILLIANCE:
 `jx3p/ir3109.hpp`, `jx3p_vcf_test`) and batch 4 (the LFO and its routes:
 `jx3p/lfo.hpp`, `jx3p_lfo_test`) and batch 5 (the chorus: `jx3p/chorus.hpp`,
-`jx3p_chorus_test`) are done** on branch `jx3p`; batch 3's
-SPEED TEST on the handheld waits on the owner. The new synth is built beside Twin, which is untouched until 6a / 8b.
+`jx3p_chorus_test`) and batch 6a (the app's song and files: the track is
+JAX-EP, Twin Analog is no longer offered) are done** on branch `jx3p`; batch 3's
+SPEED TEST on the handheld waits on the owner. Twin's engine code, its tests and its `bench` rows stay until 8a / 8b.
 The owner's calls (plan section 8) are taken at the recommended answers, each
 one constant in `jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at 48 kHz: 44.1 would save about
 8%, which the owner judged not worth it.

@@ -1353,7 +1353,7 @@ void testDeletingATrack() {
     // Four tracks, each with something of its own: drums, Phazed (named), Twin, QMOD.
     rig.app.drums().setStep(0, 0, 1.f);
     session.addTrack(TrackKind::Phazed);
-    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Jx3p);
     session.addTrack(TrackKind::Qmod);
     session.setTrackName(1, "BASS");
     rig.project().tracks[2].notes[0][0].notes[0] = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
@@ -1383,7 +1383,7 @@ void testDeletingATrack() {
     rig.frames(130);
     rig.key(B, false);
     CHECK(rig.project().trackCount() == 3);
-    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Twin && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Jx3p && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
     CHECK(rig.project().tracks[1].name[0] == 0 && rig.project().tracks[1].notes[0][0].at(62, 4) >= 0 && near(rig.project().tracks[1].automation[0][3][5], 0.25f));
     CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].qmod.value[qmod::Sound] == 4321 && rig.project().tracks[2].muted);
     CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 1.f && rig.project().track == 2 && !rig.project().playing);
@@ -1554,7 +1554,7 @@ void testBouncing() {
     // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a Twin track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
     rig.project().repeats[0] = 2;
-    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Jx3p);
     NotePattern& bar = rig.project().tracks[1].notes[0][0];
     bar.notes[0].step = 8;
     bar.notes[0].pitch = 57;
@@ -1562,7 +1562,7 @@ void testBouncing() {
     bar.notes[0].velocity = 0.8f;
     session.sendNotePattern(1, 0);
     session.setTrackName(1, "LEAD");
-    const int oversample = rig.project().tracks[1].twin.value[twin::Oversample];
+    const Jx3pPatch asItWas = rig.project().tracks[1].jx3p;
     rig.frames(2);
 
     // The whole song: one file, as long as the song and its tail (the last kick ringing out, and half a second), with sound where the song has it.
@@ -1583,8 +1583,8 @@ void testBouncing() {
     CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the Twin note
     CHECK(peakIn(song, body + tail - kAfter, body + tail) < 0.001f);      // the tail has died away: nothing started again
     CHECK(peakIn(song, body + 4000, body + 24000) < peakIn(song, 0, 2000)); // no kick after the song's end
-    // The song itself was only read: Twin's own oversampling setting is as it was, and nothing is playing.
-    CHECK(rig.project().tracks[1].twin.value[twin::Oversample] == oversample && !rig.project().playing);
+    // The song itself was only read: the synth's settings are as they were, and nothing is playing.
+    CHECK(std::equal(asItWas.value, asItWas.value + jx3p::kSettings, rig.project().tracks[1].jx3p.value) && !rig.project().playing);
 
     // Each track: a file apiece, named for its track, and each has only its own sound.
     sleep(1); // the files are named by the second
@@ -5810,7 +5810,7 @@ Rig* onPhazed() {
 // into one without played the old sound's macros there (owner, 2026-11-14, "went back to a previous sound").
 // The song, through the Session, beside one whose knobs were never turned: the same to the sample, after the wrap.
 void testABuiltInPresetRestsTheMacrosWhereTheyShow() {
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod};
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod};
     for (TrackKind kind : kinds) {
         const auto song = [kind](bool turned) {
             Rig* rig = new Rig;
@@ -5833,7 +5833,7 @@ void testABuiltInPresetRestsTheMacrosWhereTheyShow() {
                 for (int m = 0; m < kSynthMacros; ++m) s.setSynthMacro(1, m, m % 2 ? 0.95f : 0.05f);
                 rig->frames(2);
             }
-            s.chooseSynthPreset(1, 1);
+            s.chooseSynthPreset(1, 1 % specFor(kind)->presetCount()); // (the JX-3P has one until the plan's batch 7: the first again)
             rig->frames(2);
             CHECK(p.tracks[1].macro[0] == 0.5f && p.sceneCount() == 2);
             s.togglePlay(true);
@@ -6098,14 +6098,14 @@ void testEveryPatchSettingIsOnSomePage() {
     for (bool s : seen) CHECK(s);
 }
 
-// ---- Twin Analog, through the same screens ------------------------------------------
+// ---- JAX-EP (it took Twin Analog's place), through the same screens ------------------------------------------
 
 Rig* onTwin() {
     Rig* rig = new Rig;
     rig->app.session().view = View::Song;
     rig->app.song().moveCursorTo(0, rig->project().trackCount());
     rig->tap(A);    // + TRACK
-    rig->tap(DOWN); // from PHAZED down to TWIN ANALOG
+    rig->tap(DOWN); // from PHAZED down to JAX-EP
     rig->tap(A);
     return rig;
 }
@@ -6113,15 +6113,35 @@ Rig* onTwin() {
 void testAddingTwinAnalog() {
     std::unique_ptr<Rig> rig(onTwin());
     CHECK(rig->project().trackCount() == 2);
-    CHECK(rig->project().tracks[1].kind == TrackKind::Twin);
-    // Its first preset is loaded into the project, as the engine has it.
-    const TwinPatch first = Twin::presetPatch(0);
-    for (int id = 0; id < twin::kSettings; ++id) CHECK(rig->project().tracks[1].twin.value[id] == first.value[id]);
+    CHECK(rig->project().tracks[1].kind == TrackKind::Jx3p);
+    // JAX-EP (owner, 2026-11-14; jx3p-plan.md): the name on the device, a new word in a song file, and
+    // the old Twin Analog is not in the list to pick from (its word is read, never offered or written).
+    // No maker's or model's name where a player reads.
+    const InstrumentInfo* info = instrument(TrackKind::Jx3p);
+    CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
+          std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
+    CHECK(kInstrumentCount == 5);
+    for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin" && kInstruments[i].synth != SynthKind::Twin);
+    bool old = false;
+    CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
+    old = true;
+    CHECK(trackKindFromWord("jaxep", &old) == TrackKind::Jx3p && !old && trackKindFromWord("twins") == TrackKind::None);
+    CHECK(trackKindFromWord("jx3p") == TrackKind::None); // the plan's first word: never written by anything released
+    CHECK(std::string(info->shortName) == "JAX" && std::string(info->about) == "virtual analog, after a popular DCO synth" && !info->countPresets);
+    for (int i = 0; i < kInstrumentCount; ++i)
+        for (const char* text : {kInstruments[i].name, kInstruments[i].shortName, kInstruments[i].listName, kInstruments[i].about})
+            for (const char* maker : {"TWIN", "Twin", "JX", "Roland", "ROLAND", "PG-200", "Juno", "JUNO"}) CHECK(std::string(text).find(maker) == std::string::npos);
+    CHECK(std::string(jx3pSpec().name) == "JAX-EP");
+    // Its first preset is loaded into the project, as the engine has it: VELOCITY on and BRILLIANCE
+    // in the middle, a new track's.
+    const Jx3pPatch first = Jx3p::presetPatch(0);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(rig->project().tracks[1].jx3p.value[id] == first.value[id]);
+    CHECK(first.value[jx3p::Velocity] == 1 && first.value[jx3p::Brilliance] == 50);
     // The chooser goes round all five.
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 4); // PHAZED > TWIN > SAMPLER > QMOD > DRUMS
+    rig->tap(DOWN, 4); // PHAZED > JAX-EP > SAMPLER > QMOD > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
@@ -6147,28 +6167,31 @@ void testTwinsDeviceScreen() {
     rig->tap(R2); // and its device
     SynthScreen& screen = rig->app.twin();
     TrackData& track = rig->project().tracks[1];
-    CHECK(rig->view() == View::Device && screen.pageCount() == 4);
+    CHECK(rig->view() == View::Device && screen.pageCount() == 6);
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
 
-    // Presets: sixteen, and round.
+    // Presets, and round. (One until the plan's batch 7 brings the factory 32.)
+    const int presets = Jx3p::presetCount();
     rig->key(A, true);
     rig->tap(UP);
-    CHECK(track.preset == 1);
-    for (int id = 0; id < twin::kSettings; ++id) CHECK(track.twin.value[id] == Twin::presetPatch(1).value[id]);
+    CHECK(track.preset == 1 % presets);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(track.jx3p.value[id] == Jx3p::presetPatch(1 % presets).value[id]);
     rig->tap(DOWN, 2);
-    CHECK(track.preset == Twin::presetCount() - 1);
+    CHECK(track.preset == presets - 1);
     rig->tap(UP);
     rig->key(A, false);
+    CHECK(track.preset == 0);
 
     // A macro.
-    screen.goTo(0, SynthScreen::kFirstMacro + twin::Blend);
+    screen.goTo(0, SynthScreen::kFirstMacro + jx3p::MacroMix);
     rig->key(A, true);
     rig->tap(UP, 3);
     rig->key(A, false);
-    CHECK(near(track.macro[twin::Blend], 0.65f));
+    CHECK(near(track.macro[jx3p::MacroMix], 0.65f));
+    CHECK(std::string(jx3pSpec().macroNames[jx3p::MacroCutoff]) == "CUTOFF" && std::string(jx3pSpec().macroNames[jx3p::MacroRelease]) == "RELEASE");
 
-    // Three advanced pages hold all twenty-three settings, each once.
-    int seen[twin::kSettings] = {};
+    // Five advanced pages hold all thirty-four settings, each once.
+    int seen[jx3p::kSettings] = {};
     for (int page = 1; page < screen.pageCount(); ++page) {
         for (int stop = 0; stop < 40; ++stop) {
             screen.goTo(page, stop);
@@ -6177,54 +6200,149 @@ void testTwinsDeviceScreen() {
     }
     for (int count : seen) CHECK(count == 1);
     screen.goTo(9, 0);
-    CHECK(screen.page() == 3); // there is no page nine here
+    CHECK(screen.page() == 5); // there is no page nine here
     rig->tap(R1);
     CHECK(screen.page() == 1); // round
     rig->tap(L1);
-    CHECK(screen.page() == 3);
+    CHECK(screen.page() == 5);
 
     // A setting changes the project and stops at its limits.
     screen.goTo(1, 0);
-    CHECK(screen.settingHere() == twin::VOctave);
+    CHECK(screen.settingHere() == jx3p::Dco1Range);
     rig->key(A, true);
     rig->tap(UP, 9);
-    CHECK(track.twin.value[twin::VOctave] == 2);
+    CHECK(track.jx3p.value[jx3p::Dco1Range] == 2);
     rig->tap(DOWN, 9);
-    CHECK(track.twin.value[twin::VOctave] == -2);
+    CHECK(track.jx3p.value[jx3p::Dco1Range] == 0);
     rig->key(A, false);
     CHECK(track.patch.value[phazed::Octave] == 0); // and never touches the other synth's patch
 }
 
+// How loud a note at `velocity` is on the Rig's track 2, the JX-3P, as it stands.
+float jxLoud(Rig& rig, float velocity) {
+    rig.render(48000); // whatever sounded before has rung out
+    Command c;
+    c.type = Command::NoteOn;
+    c.track = 1;
+    c.a = 57;
+    c.value = velocity;
+    rig.engine->send(c);
+    rig.render(9600);
+    const float peak = Rig::peak(rig.render(9600));
+    c.type = Command::NoteOff;
+    rig.engine->send(c);
+    return peak;
+}
+
 void testTheEngineHearsTwinsSettings() {
-    // The level setting, 12 dB down, is a quarter as loud.
-    const auto loudness = [](int steps) {
+    // The VCA's LEVEL: a step of the dial is 4 dB (the plan's taper, a guess), so three steps down is a quarter as loud.
+    const auto loudness = [](int down) {
         std::unique_ptr<Rig> rig(onTwin());
         rig->tap(A);
         rig->tap(R2);
-        rig->app.twin().goTo(3, 4);
-        CHECK(rig->app.twin().settingHere() == twin::Level);
+        rig->app.twin().goTo(4, 1);
+        CHECK(rig->app.twin().settingHere() == jx3p::VcaLevel);
+        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 60);
         rig->key(A, true);
-        rig->tap(DOWN, steps);
+        rig->tap(DOWN, down);
         rig->key(A, false);
-        // Vintage off, so the bus colour is out of the way of the measurement.
-        Command off;
-        off.type = Command::SetSetting;
-        off.track = 1;
-        off.a = twin::Vintage;
-        off.b = 0;
-        rig->engine->send(off);
-        Command c;
-        c.type = Command::NoteOn;
-        c.track = 1;
-        c.a = 57;
-        c.value = 1.f;
-        rig->engine->send(c);
-        rig->render(9600);
-        return Rig::peak(rig->render(9600));
+        const int level = rig->project().tracks[1].jx3p.value[jx3p::VcaLevel];
+        CHECK(down == 0 ? level == 60 : level < 60);
+        const float loud = jxLoud(*rig, 1.f);
+        return std::pair<float, int>(loud, level);
     };
-    const float full = loudness(0), down = loudness(12);
-    CHECK(full > 0.01f);
-    CHECK(std::fabs(down / full - 0.251f) < 0.03f);
+    const std::pair<float, int> full = loudness(0), down = loudness(6);
+    CHECK(full.first > 0.01f);
+    const float expected = std::pow(10.f, -0.4f * static_cast<float>(full.second - down.second) / 20.f);
+    CHECK(down.second < full.second && std::fabs(down.first / full.first - expected) < 0.05f * expected);
+}
+
+// A PRESET PICKED KEEPS BRILLIANCE AND VELOCITY (the plan, section 1): they are the track's, as
+// BRILLIANCE is a knob on the real one's panel. Everything else is the preset's.
+void testAPresetKeepsTheTracksOwnValues() {
+    std::unique_ptr<Rig> rig(onTwin());
+    Session& session = rig->app.session();
+    TrackData& track = rig->project().tracks[1];
+    CHECK(jx3p::kPatchSettings == 32 && presetSettingCount(TrackKind::Jx3p) == 32 && settingCount(TrackKind::Jx3p) == 34);
+    CHECK(presetSettingCount(TrackKind::Phazed) == settingCount(TrackKind::Phazed) && presetSettingCount(TrackKind::Qmod) == settingCount(TrackKind::Qmod));
+    // With VELOCITY on, as a new track has it, a soft note is quieter than a full one.
+    const float fullOn = jxLoud(*rig, 1.f), softOn = jxLoud(*rig, 0.3f);
+    CHECK(fullOn > 0.01f && softOn < 0.3f * fullOn);
+    // Both turned, and a setting of the patch with them.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 23);
+    session.setSynthSetting(1, jx3p::Resonance, 77);
+    session.setSynthSetting(1, jx3p::Chorus, 0);
+    rig->frames(1);
+    // A built-in preset, picked on the screen.
+    rig->tap(A);
+    rig->tap(R2);
+    rig->app.twin().goTo(0, SynthScreen::kPreset);
+    rig->key(A, true);
+    rig->tap(UP, Jx3p::presetCount()); // all the way round, back to the first
+    rig->key(A, false);
+    if (Jx3p::presetCount() == 1) session.chooseSynthPreset(1, 0); // (one preset until the plan's batch 7: the screen has no other to come back from)
+    const Jx3pPatch first = Jx3p::presetPatch(0);
+    CHECK(track.preset == 0);
+    for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(track.jx3p.value[id] == first.value[id]); // RESONANCE and CHORUS are the preset's again
+    CHECK(track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 23);          // ...and these two the track's still
+    // The engine too: with VELOCITY off a soft note is as loud as a full one. (Within a quarter: the
+    // chorus is at another place in its sweep for each note, and a peak moves 8% with it. With
+    // VELOCITY on the soft note is a tenth of the full one.)
+    const float fullOff = jxLoud(*rig, 1.f), softOff = jxLoud(*rig, 0.3f);
+    CHECK(softOff > 0.75f * fullOff && softOff < 1.33f * fullOff);
+    // One of the player's own, saved with them turned another way: its file does not hold them...
+    char folder[] = "/tmp/apotheca-keeps-XXXXXX";
+    CHECK(mkdtemp(folder) != nullptr);
+    session.usePresetFolder(folder);
+    session.setSynthSetting(1, jx3p::Resonance, 41);
+    session.setSynthSetting(1, jx3p::Velocity, 1);
+    session.setSynthSetting(1, jx3p::Brilliance, 88);
+    CHECK(session.savePreset(1, "MINE"));
+    std::string file;
+    CHECK(readTextFile(std::string(folder) + "/MINE.jaxep", file) && file.find("synth jaxep\n") != std::string::npos);
+    {
+        std::istringstream in(file.substr(file.find("settings") + 8));
+        int v = 0, count = 0, at17 = -1;
+        while (in >> v) {
+            if (count == jx3p::Resonance) at17 = v;
+            ++count;
+        }
+        CHECK(count == jx3p::kPatchSettings && at17 == 41);
+    }
+    CHECK(track.preset == Jx3p::presetCount() && userPresets(TrackKind::Jx3p).size() == 1);
+    // ...and picking it, with the track's two turned again, leaves them be.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 12);
+    session.chooseSynthPreset(1, 0);
+    CHECK(track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
+    session.chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(track.jx3p.value[jx3p::Resonance] == 41 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+    const float fullMine = jxLoud(*rig, 1.f), softMine = jxLoud(*rig, 0.3f);
+    CHECK(softMine > 0.75f * fullMine && softMine < 1.33f * fullMine);
+    // A file written by hand with 34 numbers: the last two are not a preset's, and are not taken.
+    std::string hand = "apotheca-preset 1\nsynth jaxep\nmacros 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5\nsettings";
+    for (int id = 0; id < jx3p::kSettings; ++id) hand += id == jx3p::Velocity ? " 1" : id == jx3p::Brilliance ? " 99" : id == jx3p::Resonance ? " 9" : " 0";
+    CHECK(writeTextFile(std::string(folder) + "/HAND.jaxep", hand + "\n"));
+    // An old Twin Analog preset on the card is left there and not listed.
+    CHECK(writeTextFile(std::string(folder) + "/OLD.twin", "apotheca-preset 1\nsynth twin\nmacros 0.5\nsettings 1 2 3\n"));
+    session.usePresetFolder(folder);
+    CHECK(userPresets(TrackKind::Jx3p).size() == 2 && userPresets(TrackKind::Jx3p)[0].name == "HAND" && userPresets(TrackKind::Phazed).empty() && userPresets(TrackKind::Qmod).empty());
+    session.chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(track.jx3p.value[jx3p::Resonance] == 9 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+    std::string still;
+    CHECK(readTextFile(std::string(folder) + "/OLD.twin", still) && still.find("synth twin") != std::string::npos);
+    // The track made another instrument and back: the two are the track's still.
+    CHECK(session.setTrackKind(1, TrackKind::Phazed) && session.setTrackKind(1, TrackKind::Jx3p));
+    CHECK(track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12 && track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
+    // A track taken away leaves a new track's values behind it for the next one.
+    session.removeTrack(1);
+    CHECK(session.addTrack(TrackKind::Jx3p) && rig->project().tracks[1].jx3p.value[jx3p::Velocity] == 1 && rig->project().tracks[1].jx3p.value[jx3p::Brilliance] == 50);
+    setUserPresets(TrackKind::Jx3p, {});
+    std::remove((std::string(folder) + "/MINE.jaxep").c_str());
+    std::remove((std::string(folder) + "/HAND.jaxep").c_str());
+    std::remove((std::string(folder) + "/OLD.twin").c_str());
+    rmdir(folder);
 }
 
 } // namespace
@@ -6716,12 +6834,12 @@ void testChangingATracksInstrument() {
     rig.tap(R1);
     rig.tap(A);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[1].macro[3] == 0.9f);
-    // Down one and A: it is a Twin Analog now. No track was added.
+    // Down one and A: it is a JAX-EP now. No track was added.
     rig.tap(R1);
     rig.tap(DOWN);
     rig.tap(A);
     TrackData& t = rig.project().tracks[1];
-    CHECK(t.kind == TrackKind::Twin && rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
+    CHECK(t.kind == TrackKind::Jx3p && rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
     // Its notes, name and effect stay; it is on its first sound, with its macros in the middle.
     CHECK(t.notes[0][0].notes[0].velocity == 0.8f && std::string(t.name) == "LEAD" && t.effects[0].kind == static_cast<int>(EffectKind::Delay));
     CHECK(t.preset == 0 && t.macro[3] == 0.5f);
@@ -8155,7 +8273,7 @@ void testChangingAnInstrumentSaysWhatGoes() {
     rig.tap(UP);
     rig.tap(R1); // the list, on PHAZED: the one it has
     CHECK(!says());
-    rig.tap(DOWN); // TWIN ANALOG
+    rig.tap(DOWN); // JAX-EP
     CHECK(says());
     // Inside the list's box, clear of the hints bar.
     CHECK(70 + 46 + kInstrumentCount * 52 + SongScreen::kChangeLostH <= ui::kScreenH - ui::kHintsH);
@@ -8348,6 +8466,7 @@ int main(int argc, char** argv) {
     testAddingTwinAnalog();
     testTwinsDeviceScreen();
     testTheEngineHearsTwinsSettings();
+    testAPresetKeepsTheTracksOwnValues();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

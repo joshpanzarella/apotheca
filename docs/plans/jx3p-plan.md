@@ -19,8 +19,11 @@ TEST on the handheld waits on the owner. **Batch 4 is done (2026-11-14)**: the
 LFO, its DELAY and its routes (`engine/src/jx3p/lfo.hpp`,
 `tests/jx3p_lfo_test.cpp`); see "Batch 4: what it learned". **Batch 5 is done
 (2026-11-14)**: the chorus (`engine/src/jx3p/chorus.hpp`,
-`tests/jx3p_chorus_test.cpp`); see "Batch 5: what it learned". Nobody has heard
-anything: every figure is a test's.
+`tests/jx3p_chorus_test.cpp`); see "Batch 5: what it learned". **Batch 6a is
+done (2026-11-14)**: the synth is in the app as **JAX-EP** (the owner's name,
+the same day), in Twin Analog's place; songs and presets are written `jaxep`
+and an old `track twin` is read; see "Batch 6a: what it learned". Nobody has
+heard anything: every figure is a test's.
 
 ## The recommendation
 
@@ -36,7 +39,7 @@ needs a new row.
 | What is added | Only what the program needs to fit: 8 macros, GLIDE (the engine's), and two **track values** kept out of the patch: VELOCITY and BRILLIANCE (section 1) |
 | Voices | **6**, as the real one (the owner's call; 8 is one constant) |
 | Presets | **The 32 factory patches**, A1 to B16, from Roland's 1983 booklet of PG-200 settings. About a third hold a guess (section 4). **Right settings, guessed speeds** until batch 9, and the device says so |
-| Name on the device | **Keep TWIN ANALOG** (recommended). The owner's call |
+| Name on the device | **JAX-EP** (owner, 2026-11-14), said on the device as "a virtual analog synth modeled after a popular DCO synth". No maker's or model's name on the device, the WiFi page or the README's manual |
 | Old songs | **Load.** `track twin` reads as the new synth on its first preset; Twin's settings, preset, macros and macro automation are dropped. Notes, scenes, effects, sends stay. The owner's call (section 5) |
 | Cost | Target **1.2% of a desk core for 6 notes** (Twin x1 measured 4.1% today, Phazed 0.7%, QMOD 2.7%). A plain version timed for this plan: 0.68% |
 | Oversampling | **None.** Band-limited oscillators instead. Twin's load watch and "BUSY: OVERSAMPLING DOWN" lose their only user and go |
@@ -159,7 +162,7 @@ be kept apart from the patch's ids.
 | 33 | BRILLIANCE | 0-10, 5.0 centre | A panel knob on the real one that moves every voice's cutoff. A track is the nearest thing to "the panel" |
 
 - **`kPatchSettings` is 32.** `loadPreset` (factory and own) writes ids 0 to
-  31 only; saving a `.jx3p` preset writes ids 0 to 31 only. Ids 32 and 33
+  31 only; saving a `.jaxep` preset writes ids 0 to 31 only. Ids 32 and 33
   stay as the track had them. A test picks a preset after turning both, and
   reads a saved preset file for them.
 - Both are still settings with ids (appended, in the song file's `settings`
@@ -551,15 +554,25 @@ printed value is stored exactly.
 
 ### The name
 
-| Choice | For | Against |
-| --- | --- | --- |
-| **Keep TWIN ANALOG** (recommended) | Two oscillators still; nothing new to learn; no maker's name on the device, as Phazed and QMOD | It no longer says what it is |
-| JX-3P | Says exactly what it is | Roland's name on the device |
-| A new name of the owner's | | One more thing to choose |
+**JAX-EP** (decided by the owner, 2026-11-14; the plan had recommended keeping
+TWIN ANALOG). Where an instrument says what it is, it says **"a virtual analog
+synth modeled after a popular DCO synth"**.
 
-Inside the code it is `Jx3p` either way (`jx3p.hpp`, `SynthKind::Jx3p`), with
-the file word `jx3p` and the preset ending `.jx3p`. The line under the name in
-the picker: "two DCOs, a filter, a chorus".
+| Where | What is written |
+| --- | --- |
+| A track's head, the top bar, a bounce's file name, the list to pick from, the WiFi designer page | JAX-EP |
+| A narrow SONG column (11 or 12 tracks) | JAX (as PHZD, SMPL, QMOD: this plan's choice, the owner may want another) |
+| The line under the name in the list to pick from | "virtual analog, after a popular DCO synth": the owner's words shortened, since the line holds about 42 letters at LARGE (DRUMS' fills it). The count of presets does not fit after it and is left off this one line |
+| README | The owner's words in full |
+| A song file, a preset file | `track jaxep`, `synth jaxep`, `NAME.jaxep` |
+
+**No maker's or model's name anywhere a player reads**: the device's screens,
+preset and folder names, the WiFi pages, README. `ctest -R words` holds it
+(Roland, JX-3P, PG-200, Juno, in any text of `app/`, the two web pages and
+README.md). Inside the code it is still `Jx3p` (`jx3p.hpp`, `SynthKind::Jx3p`,
+`TrackKind::Jx3p`), and tests and plans may say JX-3P. TWIN ANALOG is no
+longer a name on the device once Twin's code is out (batch 8b: `bench`'s Twin
+rows and "BUSY: OVERSAMPLING DOWN" are the last).
 
 ## 5. Song files and ids
 
@@ -567,21 +580,19 @@ the picker: "two DCOs, a filter, a chorus".
 
 | Line | After |
 | --- | --- |
-| `track jx3p` | The new synth. What every song is written with from now on |
-| `track twin` | **Read as a JX-3P track.** Its `preset`, `macros` and `settings` lines are skipped and its automation lanes 0 to 7 are dropped, so it plays A1 String I with the macros at 0.5 and the track values at their new-track defaults. Its name, notes, scenes, `glidefrom`, effects, sends and lanes 8 and up load as they are. Saved again, it is written `track jx3p` |
-| An old `.twin` preset file | Left on the card, not listed (the folder lists `.jx3p`). The README and the update's notes say so |
+| `track jaxep` | The new synth. What every song is written with from now on. (This plan first said `track jx3p` and `.jx3p`; nothing was released under them, and the program does not read them) |
+| `track twin` | **Read as a JAX-EP track.** Its `preset`, `macros` and `settings` lines are skipped and its automation lanes 0 to 7 are dropped, so it plays the first preset (A1 String I from batch 7) with the macros at 0.5 and the track values at their new-track defaults. Its name, notes, scenes, `glidefrom`, `mix`, effects, sends and lanes 8 and up load as they are. Saved again, it is written `track jaxep` |
+| An old `.twin` preset file | Left on the card, not listed (the folder lists `.jaxep`). The README says so |
 
 **This changes what `twin` means**, which the house rule forbids. It is
-defended only because nothing is released, so it is **the owner's call**.
-The alternative that keeps the rule whole: an old `track twin` is skipped as
-an unknown instrument (its notes are lost). The recommendation keeps the
-notes.
+defended only because nothing is released; **the owner took it** (section 8,
+at the recommended answer).
 
 Test (batch 6a): a real song file written by `main` today with a Twin track
 that has a preset, its settings, its macros and lanes 0 to 7 and 8 and up
 automated, kept as `tests/twinsong_main.inc` in the manner of
 `everykind_main.inc` (not remade): it loads as A1, notes and lanes 8 and up
-whole, lanes 0 to 7 empty, and saves as `track jx3p`.
+whole, lanes 0 to 7 empty, and saves as `track jaxep`.
 
 `TrackKind::Twin` becomes `Jx3p` (memory only); the word `twin` lives on only
 in `trackKindFromWord`. `SynthKind` is memory only and is renamed freely.
@@ -605,7 +616,8 @@ One batch for one agent each. Each ends with `ctest` green (with
 | | **Batch 4 DONE (2026-11-14, branch `jx3p`).** One LFO for the synth on a 10 ms tick of its own, counted from allNotesOff; SINE, SQUARE, RANDOM; RATE 0.1 to 20 Hz; DELAY 0 to 5 s, a straight fade from a key with no other key held; LFO DEPTH to each DCO by its own switch (12 semitones at 10, as the dial squared), LFO MOD to the VCF (4 octaves at 10, straight); the LFO macro moves both (batch 1's survivor is killed). Every figure is a guess, in one table at the top of `lfo.hpp`. `jx3p_lfo_test` (in ctest, TIMEOUT 120, under a second): 11 tests, one FAITHFUL (stepped, SN p.6). `jx3p_test`'s phrase moves every LFO setting too (`testBlocks`, `testTooSmall`, twice from fresh), its helpers' song has an LFO on each track, and its Play-from-the-top song a RANDOM LFO with a DELAY. **Bench** (desk, two runs, the synth alone): 6 notes **0.43%**, the worst row 0.86 / 0.87%, moving cutoff (now with the LFO on the cutoff and on DCO-1) **1.67 / 1.68%**: no change from batch 3 that shows; in the same runs Phazed 0.8, QMOD 2.8 / 3.2, Twin x1 4.2 / 4.0. Mutants: 31 made, 29 killed, the other 2 equivalent |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
 | | **Batch 5 DONE (2026-11-14, branch `jx3p`).** One line read twice, the left's BBD clock a triangle from 40 to 200 kHz and back in 2 s, the right's its mirror (the two always add to 240 kHz), so each side's delay is 128 / clock: 0.64 to 3.2 ms; a 2-pole 10 kHz low-pass before the line and one after each side; each side dry plus its BBD at 0.71 each; a 20 ms fade on the switch; asleep when empty. Every guess in one table at the top of `chorus.hpp`. `jx3p_chorus_test` (in ctest, TIMEOUT 120, under a second): 13 tests, three FAITHFUL (the clock's range and the 180° worked out and found by impulses, the 10 kHz filters: SN p.7). `jx3p_test`'s phrase switches CHORUS too (`testBlocks` now holds both sides). **Bench** (desk, a busy machine; the quietest of five runs): 6 notes **0.52 / 0.53%** (batch 4: 0.43; the chorus about 0.1), the worst row 0.96 / 0.97%, moving cutoff 1.77 / 1.78%; in the same runs Phazed 0.7, QMOD 2.8 to 3.2, Twin x1 4.1 / 4.2. **The 6-note row is under the 1.2% bar.** Mutants: 30 made, **30 killed** (six survived the first round and each got a test) |
-| 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jx3p` and the `twin` reading, `.jx3p` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
+| 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jaxep` and the `twin` reading, `.jaxep` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
+| | **Batch 6a DONE (2026-11-14, branch `jx3p`).** `TrackKind::Twin` is `Jx3p`; the instruments row is JAX-EP's (word `jaxep`, presets `NAME.jaxep`); `track twin` is read as planned (`trackKindFromWord`'s `old`, `parseSong`'s `oldSound`); a preset, built-in or the player's own, writes and keeps ids 0 to 31 (`presetSettingCount`), a song keeps all 34. The spec's five pages, its macro names and `settingText` in dial tenths were written here too, since Twin's spec could not stay: 6b checks them at every size and adds the folder line and the views. `tests/twinsong_main.inc` is the old song (not to be remade). **Tests**: `ctest` 38 of 38; `save_test` `testAnOldTwinSong`, `app_test` `testAPresetKeepsTheTracksOwnValues` and the three JAX-EP screen tests, `design_test`'s page test, `words` with the makers' rule. **Mutants: 27 made, 27 killed** (23 in the app, 4 in the words test). The sound is not touched; `bench`'s rows are under "Batch 6a: what it learned" | | |
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
@@ -822,6 +834,40 @@ while fading, `sounded`): each has a test now.
 
 **What only the tests saw**: everything. Nothing here has been heard.
 
+### Batch 6a: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| The name stays TWIN ANALOG; `track jx3p`, `.jx3p` | **JAX-EP; `track jaxep`, `NAME.jaxep`** | The owner, 2026-11-14 |
+| The picker's line: "two DCOs, a filter, a chorus" | "virtual analog, after a popular DCO synth", no count of presets | The owner's sentence is 56 letters; the line holds about 42 |
+| 6a: the song and files; 6b: the spec pages | The spec (pages, macro names, `settingText`) is in 6a | `twinSpec()` read `TrackData::twin`, which is gone; a track must have a spec to load a preset at all |
+| The bounce's x8 goes in 8b | Gone here | It named `TrackKind::Twin` |
+| "the README and the update's notes say so" (old `.twin` files) | README says so | There are no update's notes in the repo |
+
+**Left for later batches, on purpose**: the still views are still called `twin`,
+`twin0` to `twin5` (6b renames them); `App::twin()` and `twin_` (8b);
+`bench`'s "Twin Analog x1 / x2 / x8" rows and the busiest song's two Twin
+tracks, and "BUSY: OVERSAMPLING DOWN" (8a, 8b); README's engineering half
+still describes Twin's envelope, its oversampling watch and its port (8c).
+JAX-EP has one preset ("Start") until batch 7, so README gives it no count.
+
+**The old song.** `twinsong_main.inc` was written by the first builder of this
+batch from `main` at 0.464 and could not be made again here (no program on
+this branch writes `track twin`). What holds it to `main`'s format: read and
+written back, every line but the track's word and its three sound lines comes
+out byte for byte (`testAnOldTwinSong`), and its `settings` line has Twin's 23
+numbers.
+
+**Bench** (desk, three runs on a busy machine; the engine is not touched, the
+rows are now named JAX-EP): 6 notes 0.70 / 0.53 / 0.53%, the worst patch 1.02
+/ 1.07 / 0.98%, moving cutoff 1.84 / 1.80 / 1.79%; in the same runs Phazed 0.7
+to 0.8, QMOD 2.8 to 3.3, Twin x1 4.1. As batch 5's.
+
+**What only the tests and stills saw**: all of it. Stills looked at: the list to
+pick from at SMALL, LARGE and XL (BROWN and PAPER), the SONG screen with twelve
+tracks (JAX in the narrow heads), JAX-EP's MAIN page and its last page.
+Nothing was heard, and nothing was run on the handheld.
+
 ### Batches 2 to 5: the review's mend (2026-11-14)
 
 A review measured the four batches with its own harness (blocks, allocation, small numbers, Play
@@ -863,7 +909,7 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 
 | Question | Recommended |
 | --- | --- |
-| The name on the device | Keep TWIN ANALOG |
+| The name on the device | **JAX-EP** (decided by the owner, 2026-11-14): "a virtual analog synth modeled after a popular DCO synth" |
 | 6 voices or 8 | 6, as the real one |
 | VELOCITY: a track value, ON for a new track (full velocity = the patch as written), or ignore velocity as the real one (then HUMAN LEVEL and soft notes do nothing on this synth) | **A track value, ON**. Faithful at full velocity, and the program's chord effects still work |
 | BRILLIANCE: per track (kept through a preset change) or per patch | **Per track**, as the real one's panel knob |

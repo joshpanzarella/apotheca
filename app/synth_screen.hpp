@@ -1,5 +1,5 @@
 #pragma once
-// The Device screen for a synth: Phazed or Twin Analog. Each is described
+// The Device screen for a synth: Phazed, JAX-EP or QMOD. Each is described
 // by a SynthSpec (synth_spec.hpp); the screen itself is the same.
 //
 // MAIN is all most sounds need: the folder, the preset, eight macros, and a
@@ -14,7 +14,7 @@
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
-// drawn out. For Twin Analog, three. L1 and R1 turn the pages; B goes back
+// drawn out. For JAX-EP, five. L1 and R1 turn the pages; B goes back
 // to MAIN.
 
 #include "screen.hpp"

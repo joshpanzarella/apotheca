@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -134,7 +135,7 @@ void fillSong(Rig& rig) {
     drums.moveCursorTo(0, 0);
 
     rig.session().addTrack(TrackKind::Phazed);
-    rig.session().addTrack(TrackKind::Twin);
+    rig.session().addTrack(TrackKind::Jx3p);
     p.track = 1;
     rig.app.notes().moveCursorTo(48, 0);
     rig.tap(A);
@@ -169,9 +170,17 @@ void fillSong(Rig& rig) {
     rig.key(A, true);
     rig.tap(UP, 4);
     rig.key(A, false);
-    rig.app.twin().goTo(1, 2); // V SHAPE
+    rig.app.twin().goTo(3, 3); // RESONANCE
     rig.key(A, true);
     rig.tap(UP, 7);
+    rig.key(A, false);
+    rig.app.twin().goTo(5, 4); // BRILLIANCE, the track's own
+    rig.key(A, true);
+    rig.tap(DOWN, 4);
+    rig.key(A, false);
+    rig.app.twin().goTo(5, 5); // VELOCITY, the same
+    rig.key(A, true);
+    rig.tap(DOWN, 1);
     rig.key(A, false);
 
     p.scene = 0;
@@ -195,7 +204,7 @@ void testTextRoundTrip() {
     rig.project().tracks[0].drums[0][0].diceSeed[2] = 123456789u;
     const std::string text = songText(rig.project());
     CHECK(text.compare(0, 16, "apotheca-song 1\n") == 0);
-    CHECK(text.find("track drums") != std::string::npos && text.find("track phazed") != std::string::npos && text.find("track twin") != std::string::npos);
+    CHECK(text.find("track drums") != std::string::npos && text.find("track phazed") != std::string::npos && text.find("track jaxep") != std::string::npos && text.find("twin") == std::string::npos);
     CHECK(text.find("tempo 97") != std::string::npos);
 
     std::unique_ptr<Project> back(new Project);
@@ -217,9 +226,19 @@ void testTextRoundTrip() {
     CHECK(one.patch.value[phazed::Level] == Phazed::presetPatch(9).value[phazed::Level] - 3);
     CHECK(one.notes[0][0].at(48, 3) >= 0 && one.notes[0][0].at(48, 4) < 0 && one.notes[0][0].at(55, 8) >= 0);
     const TrackData& two = back->tracks[2];
-    CHECK(two.kind == TrackKind::Twin && two.preset == 4);
-    CHECK(two.twin.value[twin::VShape] == rig.project().tracks[2].twin.value[twin::VShape]);
-    CHECK(two.twin.value[twin::VShape] != Twin::presetPatch(4).value[twin::VShape]);
+    const int preset = 4 % Jx3p::presetCount(); // (one preset until the plan's batch 7: round to the first)
+    CHECK(two.kind == TrackKind::Jx3p && two.preset == preset);
+    CHECK(two.jx3p.value[jx3p::Resonance] == rig.project().tracks[2].jx3p.value[jx3p::Resonance]);
+    CHECK(two.jx3p.value[jx3p::Resonance] != Jx3p::presetPatch(preset).value[jx3p::Resonance]);
+    // The track's own two are in the song, after the patch's 32 on its settings line: BRILLIANCE and VELOCITY, both turned.
+    CHECK(two.jx3p.value[jx3p::Brilliance] == rig.project().tracks[2].jx3p.value[jx3p::Brilliance] && two.jx3p.value[jx3p::Brilliance] < 50 && two.jx3p.value[jx3p::Velocity] == 0);
+    {
+        const std::size_t at = text.find("settings", text.find("track jaxep"));
+        std::istringstream in(text.substr(at + 8, text.find('\n', at) - at - 8));
+        int v = 0, n = 0, last = -1, lastButOne = -1;
+        while (in >> v) lastButOne = last, last = v, ++n;
+        CHECK(n == jx3p::kSettings && last == two.jx3p.value[jx3p::Brilliance] && lastButOne == 0);
+    }
     CHECK(two.notes[1][0].at(60, 0) >= 0 && two.notes[1][0].at(64, 0) >= 0 && two.notes[0][0].empty());
 }
 
@@ -281,7 +300,7 @@ void testBadFiles() {
     std::string many = "apotheca-song 1\n";
     for (int i = 0; i < 15; ++i) many += "track drums\n";
     CHECK(parseSong(many, *p) && p->trackCount() == kNumTracks);
-    std::string crowded = "apotheca-song 1\ntrack twin\nscene 1\n";
+    std::string crowded = "apotheca-song 1\ntrack jaxep\nscene 1\n";
     for (int i = 0; i < 80; ++i) crowded += "note " + std::to_string(i % 16 + 1) + " " + std::to_string(30 + i) + " 1 1\n";
     CHECK(parseSong(crowded, *p));
     int kept = 0;
@@ -380,7 +399,7 @@ void testNewSongAndTheList() {
     rig.engine->send(note);
     CHECK(peakOf(rig.render(4000)) == 0.f);
     // And its tracks can be used again.
-    CHECK(rig.session().addTrack(TrackKind::Twin));
+    CHECK(rig.session().addTrack(TrackKind::Jx3p));
     rig.engine->send(note);
     CHECK(peakOf(rig.render(4000)) > 0.f);
     rig.project().playing = true; // silent placing
@@ -404,7 +423,7 @@ void testNewSongAndTheList() {
     CHECK(!rig.session().openSong("no such song"));
     CHECK(rig.session().songName() == first);
     std::string onDisk;
-    CHECK(readTextFile(folder + "/" + second + ".song", onDisk) && onDisk.find("track twin") != std::string::npos);
+    CHECK(readTextFile(folder + "/" + second + ".song", onDisk) && onDisk.find("track jaxep") != std::string::npos);
     CHECK(onDisk.find("hit 6 6 1") != std::string::npos);
     // The next start opens the one that was open last.
     Rig next(folder, 5);
@@ -1066,13 +1085,139 @@ void testTheAutosaveWritesNothingOutWhenNothingChanged() {
     CHECK(readTextFile(path, onDisk) && onDisk == songText(p) && onDisk.find("tempo 101\n") != std::string::npos);
 }
 
+// AN OLD SONG'S TWIN ANALOG TRACK IS READ AS A JAX-EP TRACK (jx3p-plan.md, section 5; the owner's
+// call, section 8). The file is one main wrote before the change (tests/twinsong_main.inc: not to be
+// remade). Its sound was another synth's and is not read: no preset, no settings, no macros, no
+// automation of the macros. Everything else is: the name, the notes and chords, the scenes, GLIDE
+// FROM, the effects, the sends, the mix, and the automation of effects and sends (lanes 8 and up).
+// Saved again it is a `track jaxep`.
+void testAnOldTwinSong() {
+    static const char* const asMainWroteIt =
+#include "twinsong_main.inc"
+        ;
+    const std::string old = asMainWroteIt;
+    CHECK(old.find("\ntrack twin\n") != std::string::npos && old.find("\npreset 5\n") != std::string::npos);
+    // (Presets of the player's own on the list, so that there is a fifth for the old file's "preset 5" to
+    // mean if it were read: it is not.)
+    {
+        std::vector<UserPreset> own;
+        for (int i = 0; i < 5; ++i) own.push_back(UserPreset{"OWN " + std::to_string(i), std::vector<int>(jx3p::kPatchSettings, 1), {}});
+        setUserPresets(TrackKind::Jx3p, own);
+    }
+    std::unique_ptr<Project> p(new Project);
+    CHECK(parseSong(old, *p));
+    setUserPresets(TrackKind::Jx3p, {});
+    CHECK(p->trackCount() == 3 && p->tracks[0].kind == TrackKind::Drums && p->tracks[1].kind == TrackKind::Jx3p && p->tracks[2].kind == TrackKind::Phazed);
+    const TrackData& t = p->tracks[1];
+    // Its sound: the first preset (A1 once the factory patches are in), the knobs in the middle, a new track's VELOCITY and BRILLIANCE.
+    const Jx3pPatch first = Jx3p::presetPatch(0);
+    CHECK(t.preset == 0);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(t.jx3p.value[id] == first.value[id]);
+    CHECK(t.jx3p.value[jx3p::Velocity] == jx3p::kNewTrackVelocity && t.jx3p.value[jx3p::Brilliance] == jx3p::kNewTrackBrilliance);
+    for (float m : t.macro) CHECK(m == 0.5f);
+    // Lanes 0 to 7 are empty in every scene; lanes 8 and up are whole.
+    int low = 0, high = 0;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int step = 0; step < kAutoSteps; ++step)
+                if (t.automation[scene][lane][step] != kAutoNone) ++(lane < kSynthMacros ? low : high);
+    CHECK(low == 0 && high == 5);
+    const auto is = [](float a, float b) { return std::fabs(a - b) < 1e-6f; };
+    CHECK(is(t.automation[0][8][0], 0.15f) && is(t.automation[0][8][5], 0.85f) && is(t.automation[0][17][3], 0.55f) &&
+          is(t.automation[1][20][2], 0.75f) && is(t.automation[1][21][9], 0.65f));
+    // The rest of the track.
+    CHECK(std::string(t.name) == "PAD" && t.glideFrom == 1 && is(t.send[0], 0.25f) && is(t.send[1], 0.5f) && t.mixDb == -4 && t.mixPan == 12);
+    CHECK(t.effects[0].kind == static_cast<int>(EffectKind::Filter) && is(t.effects[0].param[0], 0.4f) && t.effects[1].kind == 0 &&
+          t.effects[2].kind == static_cast<int>(EffectKind::Delay) && is(t.effects[2].param[3], 0.6f));
+    const NotePattern& one = t.notes[0][0];
+    CHECK(one.at(60, 0) >= 0 && one.at(64, 4) >= 0 && one.at(67, 8) >= 0);
+    if (one.at(64, 4) >= 0 && one.at(67, 8) >= 0) {
+        const NoteEvent& b = one.notes[one.at(64, 4)];
+        const NoteEvent& c = one.notes[one.at(67, 8)];
+        CHECK(b.ratchet == 3 && is(b.nudge, -0.25f) && is(b.length, 1.5f) && is(b.velocity, 0.6f) && c.glide == 5 && c.throwTo == 1 && is(c.length, 3.f));
+    }
+    CHECK(t.bars[0] == 1 && t.bars[1] == 2 && t.notes[1][0].at(72, 12) >= 0);
+    const ChordEvent& chord = t.notes[1][1].chords[0];
+    CHECK(chord.velocity > 0.f && chord.step == 2 && chord.root == 57 && chord.count == 3 && chord.intervals[1] == 3 && chord.intervals[2] == 7 &&
+          std::string(chord.name) == "Am" && chord.play.strum == 1 && chord.play.level == 40);
+    // The tracks beside it are read as ever: Phazed's own preset, macros and their automation.
+    const TrackData& z = p->tracks[2];
+    CHECK(z.preset == 3 && is(z.macro[0], 0.25f) && is(z.automation[0][0][1], 0.33f) && z.patch.value[phazed::Level] == Phazed::presetPatch(3).value[phazed::Level]);
+    CHECK(is(p->tracks[0].drums[0][0].level[0][0], 0.8f) && is(p->tracks[0].drums[0][0].level[2][4], 0.6f));
+
+    // Saved again: the old file line for line, but for the track's word, its sound and the macros' lanes.
+    const std::string now = songText(*p);
+    CHECK(now.find("twin") == std::string::npos && now.find("\ntrack jaxep\n") != std::string::npos);
+    std::string expected;
+    {
+        std::istringstream lines(old);
+        std::string line;
+        bool inTwin = false;
+        while (std::getline(lines, line)) {
+            std::istringstream in(line);
+            std::string word;
+            in >> word;
+            if (word == "track") inTwin = line == "track twin";
+            if (inTwin) {
+                double scene = 0, lane = 0;
+                if (line == "track twin") line = "track jaxep";
+                else if (word == "auto" && (in >> scene >> lane) && lane < kSynthMacros) continue;
+                else if (word == "preset") line = "preset 1";
+                else if (word == "macros") line = "macros 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5";
+                else if (word == "settings") {
+                    line = "settings";
+                    for (int id = 0; id < jx3p::kSettings; ++id) line += " " + std::to_string(first.value[id]);
+                }
+            }
+            expected += line + "\n";
+        }
+    }
+    CHECK(now == expected);
+    // ...and that reads back as itself.
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(now, *back) && songText(*back) == now);
+
+    // What else reads a song's text counts the old word as a track, as parseSong does: the cut a
+    // step of undo is read by, a track taken out of it, a recording's rename.
+    std::string head;
+    std::vector<std::string> tracks;
+    CHECK(cutSong(old, head, tracks) && tracks.size() == 3 && tracks[1].compare(0, 11, "track twin\n") == 0);
+    std::string dropped = old;
+    CHECK(dropTrackText(dropped, 1) && dropped.find("track twin") == std::string::npos && dropped.find("track phazed") != std::string::npos && dropped.find("name PAD") == std::string::npos);
+    std::string same = old;
+    CHECK(!renameRecordings(same, {{"kick", "boom"}}) && same == old);
+
+    // Through the program: the file on the card opens, the track plays, and the autosave writes the new word.
+    const std::string folder = tempFolder();
+    CHECK(writeTextFile(folder + "/old one.song", old));
+    Rig rig(folder);
+    CHECK(rig.session().openSong("old one"));
+    CHECK(rig.project().trackCount() == 3 && rig.project().tracks[1].kind == TrackKind::Jx3p && rig.project().tracks[1].preset == 0);
+    rig.frames(2);
+    rig.render(4800);
+    Command note;
+    note.type = Command::NoteOn;
+    note.track = 1;
+    note.a = 60;
+    note.value = 1.f;
+    rig.engine->send(note);
+    rig.render(9600);
+    CHECK(rig.engine->trackPeak(1) > 0.01f);
+    rig.project().playing = true; // silent placing
+    rig.app.drums().setStep(5, 5, 1.f);
+    rig.project().playing = false;
+    rig.session().saveNow();
+    std::string onDisk;
+    CHECK(readTextFile(folder + "/old one.song", onDisk) && onDisk.find("track jaxep") != std::string::npos && onDisk.find("twin") == std::string::npos && onDisk.find("name PAD") != std::string::npos);
+}
+
 // The text kept a track at a time is the song's text to the byte, whatever is changed and however.
 void testTheTextKeptIsTheSongsText() {
     std::unique_ptr<Project> p(new Project);
     SongTextCache cache;
     std::uint32_t seed = 12345u;
     const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
-    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Sampler};
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Sampler};
     for (int t = 1; t < 6; ++t) {
         p->tracks[t].kind = kinds[t % 5];
         if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
@@ -1159,6 +1304,7 @@ int main(int, char**) {
     testTheAutosaveWritesNothingOutWhenNothingChanged();
     testTheTextKeptIsTheSongsText();
     testTextRoundTrip();
+    testAnOldTwinSong();
     testBadFiles();
     testSavedAsYouGoAndBackAtTheNextStart();
     testAnOpenedSongSoundsLikeTheOneSaved();

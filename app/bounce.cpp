@@ -2,11 +2,9 @@
 //
 // A bounce is not recorded from the output as the song plays. It is worked
 // out again from the beginning, by a second engine that nobody is listening
-// to, as fast as the handheld can go. That has two consequences:
-//   - the handheld can be used (and can go on playing) while it happens
-//   - it does not have to keep up, so Twin Analog is bounced at its best
-//     oversampling (x8) whatever the track is set to, even where that is
-//     more than the handheld could play
+// to, as fast as the handheld can go. So the handheld can be used (and can go
+// on playing) while it happens. (It used to turn Twin Analog's oversampling up
+// to x8 for the bounce; the JX-3P that took its place has none to turn.)
 //
 // The song is bounced from its first scene to its last, each as many times
 // as it plays, and then for as long as echoes and tails take to die away
@@ -232,9 +230,6 @@ bool Session::startBounce(Bounce what) {
             if (!job->sampleFolder.empty()) offline.useSampleFolder(job->sampleFolder);
             offline.applyProject();
             offline.finishStretching();
-            // Not in real time, so nothing need be held back: Twin Analog at its best.
-            for (int t = 0; t < copy->trackCount(); ++t)
-                if (copy->tracks[t].kind == TrackKind::Twin) offline.setSynthSetting(t, twin::Oversample, 3);
             // A moment of nothing first, thrown away: the engine takes everything in (mutes fade
             // over a few milliseconds, and must have finished before the first note).
             {
