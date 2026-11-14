@@ -19,8 +19,12 @@ namespace apotheca {
 
 namespace {
 
-float clampf(float v, float lo, float hi) { return v != v ? lo : (v < lo ? lo : (v > hi ? hi : v)); } // NaN goes to lo
-int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+// A number read from a file, held to its limits BEFORE it is made an int or a float: a double too
+// big for one ("repeats 1e300") made into one is undefined, and the desk and the handheld read it
+// differently (one 1, the other 16). In range, the same as making it one and then holding it.
+int wholeIn(double v, int lo, int hi) { return !(v >= lo) ? lo : (v > hi ? hi : static_cast<int>(v)); } // (not a number: lo)
+float fractionIn(double v, float lo, float hi) { return !(v >= lo) ? lo : (v > hi ? hi : static_cast<float>(v)); }
+std::uint32_t seedIn(double v) { return !(v >= 0.0) ? 0u : (v > 4294967295.0 ? 4294967295u : static_cast<std::uint32_t>(v)); }
 
 void put(std::string& out, const char* format, double a) {
     char text[48];
@@ -286,17 +290,17 @@ bool parseSong(const std::string& text, Project& project) {
 
         if (word == "tempo") {
             double tempo = 120;
-            if (in >> tempo) song->tempo = clampf(static_cast<float>(tempo), kMinTempo, kMaxTempo);
+            if (in >> tempo) song->tempo = fractionIn(tempo, kMinTempo, kMaxTempo);
         } else if (word == "length") {
             double n;
-            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = clampi(static_cast<int>(n), 0, kMaxBars * kSteps);
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) song->steps[i] = wholeIn(n, 0, kMaxBars * kSteps);
         } else if (word == "steps") {
             // As songs were kept before: steps to a BAR, 1..16. Turned into a length once the cells' bars are known (below).
             double n;
-            for (int i = 0; i < kMaxScenes && (in >> n); ++i) oldSteps[i] = clampi(static_cast<int>(n), 1, kSteps);
+            for (int i = 0; i < kMaxScenes && (in >> n); ++i) oldSteps[i] = wholeIn(n, 1, kSteps);
         } else if (word == "repeats") {
             double r;
-            for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = clampi(static_cast<int>(r), 1, kMaxRepeats);
+            for (int i = 0; i < kMaxScenes && (in >> r); ++i) song->repeats[i] = wholeIn(r, 1, kMaxRepeats);
         } else if (word == "pack") {
             std::string name;
             std::getline(in >> std::ws, name);
@@ -311,7 +315,7 @@ bool parseSong(const std::string& text, Project& project) {
             const EffectInfo& info = effectInfo(kind);
             data.kind = static_cast<int>(kind);
             for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
-            for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
+            for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
         } else if (word == "busfx") {
             double bus, value;
             std::string name;
@@ -321,7 +325,7 @@ bool parseSong(const std::string& text, Project& project) {
             // An effect this version does not have, or one that is not for this bus: the bus keeps what it had.
             if (kind == EffectKind::None ? name != "none" : effectBus(kind) != b) continue;
             song->setBusEffect(b, kind);
-            for (int i = 0; i < effectInfo(kind).params && (in >> value); ++i) song->busEffects[b].param[i] = clampf(static_cast<float>(value), 0.f, 1.f);
+            for (int i = 0; i < effectInfo(kind).params && (in >> value); ++i) song->busEffects[b].param[i] = fractionIn(value, 0.f, 1.f);
         } else if (word == "track") {
             std::string kind;
             in >> kind;
@@ -365,7 +369,7 @@ bool parseSong(const std::string& text, Project& project) {
             track->muted = true;
         } else if (word == "lanes") {
             double level;
-            for (int i = 0; i < kDrumLanes && (in >> level); ++i) track->laneLevel[i] = clampf(static_cast<float>(level), 0.f, 1.f);
+            for (int i = 0; i < kDrumLanes && (in >> level); ++i) track->laneLevel[i] = fractionIn(level, 0.f, 1.f);
         } else if (word == "sample" && track->kind == TrackKind::Drums) {
             double lane, fit;
             std::string name;
@@ -374,7 +378,7 @@ bool parseSong(const std::string& text, Project& project) {
             if (!sampleNameOk(name)) continue; // a name, or a folder and a name: not a path out of the samples folder
             const int l = static_cast<int>(lane) - 1;
             std::snprintf(track->laneSample[l], sizeof track->laneSample[l], "%s", name.c_str());
-            track->laneFit[l] = clampi(static_cast<int>(fit), 0, 64);
+            track->laneFit[l] = wholeIn(fit, 0, 64);
         } else if (word == "oneslice" && track->kind == TrackKind::Drums) {
             double lane;
             while (in >> lane)
@@ -386,24 +390,24 @@ bool parseSong(const std::string& text, Project& project) {
             std::snprintf(track->sample, sizeof track->sample, "%s", name.c_str());
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
             double v;
-            for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = clampi(static_cast<int>(v), sampler::settingMin(id), sampler::settingMax(id));
+            for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);
             if (spec && (in >> preset)) {
-                track->preset = clampi(static_cast<int>(preset) - 1, 0, spec->presetCount() - 1);
+                track->preset = wholeIn(preset - 1.0, 0, spec->presetCount() - 1);
                 spec->loadPreset(*track, track->preset); // "settings", if it follows, overrides
             }
         } else if (word == "macros") {
             double m;
-            for (int i = 0; i < kSynthMacros && (in >> m); ++i) track->macro[i] = clampf(static_cast<float>(m), 0.f, 1.f);
+            for (int i = 0; i < kSynthMacros && (in >> m); ++i) track->macro[i] = fractionIn(m, 0.f, 1.f);
         } else if (word == "settings") {
             const SynthSpec* spec = specFor(track->kind);
             if (!spec) continue;
             int* values = spec->values(*track);
             double v;
             for (int i = 0; i < settingCount(track->kind) && (in >> v); ++i) {
-                values[i] = clampi(static_cast<int>(v), spec->settingMin(i), spec->settingMax(i));
+                values[i] = wholeIn(v, spec->settingMin(i), spec->settingMax(i));
             }
         } else if (word == "scene") {
             double s;
@@ -421,7 +425,7 @@ bool parseSong(const std::string& text, Project& project) {
             continue; // lines for a bar there is not (a bar past the cell's end is one it hides: kept)
         } else if (word == "seeds" && track->kind == TrackKind::Drums) {
             double seed;
-            for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene][bar].diceSeed[i] = static_cast<std::uint32_t>(seed);
+            for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene][bar].diceSeed[i] = seedIn(seed);
         } else if (word == "hit" && track->kind == TrackKind::Drums) {
             double lane, step, level, nudge = 0, chance = 1, dice = 0, start = 0;
             if (!(in >> lane >> step >> level)) continue;
@@ -429,19 +433,19 @@ bool parseSong(const std::string& text, Project& project) {
             if (lane < 1 || lane > kDrumLanes || step < 1 || step > kSteps || !(level > 0)) continue;
             DrumPattern& p = track->drums[scene][bar];
             const int l = static_cast<int>(lane) - 1, s = static_cast<int>(step) - 1;
-            p.level[l][s] = clampf(static_cast<float>(level), 0.05f, 1.f);
-            p.nudge[l][s] = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
-            p.chance[l][s] = clampf(static_cast<float>(chance), 0.05f, 1.f);
+            p.level[l][s] = fractionIn(level, 0.05f, 1.f);
+            p.nudge[l][s] = fractionIn(nudge, -0.5f, 0.5f);
+            p.chance[l][s] = fractionIn(chance, 0.05f, 1.f);
             p.fromDice[l][s] = dice != 0;
-            p.start[l][s] = clampf(static_cast<float>(start), 0.f, 1.f);
+            p.start[l][s] = fractionIn(start, 0.f, 1.f);
         } else if (word == "stepfx" && track->kind == TrackKind::Drums) {
             double lane, step, pitch = 0, ratchet = 1, reverse = 0, cut = 0, thrown = 0;
             if (!(in >> lane >> step)) continue;
             in >> pitch >> ratchet >> reverse >> cut >> thrown;
             if (lane < 1 || lane > kDrumLanes || step < 1 || step > kSteps) continue;
             StepFx& fx = track->drums[scene][bar].fx[static_cast<int>(lane) - 1][static_cast<int>(step) - 1];
-            fx.pitch = static_cast<std::int8_t>(clampi(static_cast<int>(pitch), -kMaxStepPitch, kMaxStepPitch));
-            fx.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+            fx.pitch = static_cast<std::int8_t>(wholeIn(pitch, -kMaxStepPitch, kMaxStepPitch));
+            fx.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? wholeIn(ratchet, 2, kMaxRatchet) : 0);
             fx.reverse = reverse != 0 ? 1 : 0;
             fx.cut = static_cast<std::uint8_t>(cut >= 1 && cut < kCutChoices ? cut : 0);
             fx.throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
@@ -456,9 +460,9 @@ bool parseSong(const std::string& text, Project& project) {
             const int s = static_cast<int>(step) - 1;
             p.notes[slot].step = s;
             p.notes[slot].pitch = static_cast<int>(pitch);
-            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, longestFrom(*track, scene, bar, s)); // to the end of the cell: a note may run on over the bar lines
-            p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
-            p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
+            p.notes[slot].length = fractionIn(length, kShortestNote, longestFrom(*track, scene, bar, s)); // to the end of the cell: a note may run on over the bar lines
+            p.notes[slot].velocity = fractionIn(level, 0.05f, 1.f);
+            p.notes[slot].nudge = fractionIn(nudge, -0.5f, 0.5f);
             p.notes[slot].throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
         } else if (word == "notefx" && isSynth(track->kind)) {
             // For the note of this bar that starts on that step and key (it comes just before this line).
@@ -470,7 +474,7 @@ bool parseSong(const std::string& text, Project& project) {
             // there first, and a longer note held over this one hid it, so its effect was lost.)
             for (NoteEvent& n : track->notes[scene][bar].notes) {
                 if (n.velocity <= 0.f || n.pitch != static_cast<int>(pitch) || n.step != static_cast<int>(step) - 1) continue;
-                n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+                n.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? wholeIn(ratchet, 2, kMaxRatchet) : 0);
                 n.glide = static_cast<std::uint8_t>(glide == 0 ? kGlideOff : (glide >= 1 && glide < 256 ? glideKind(static_cast<int>(glide)) : kGlideHalf)); // (a number not known: on, as it was)
                 break;
             }
@@ -480,7 +484,7 @@ bool parseSong(const std::string& text, Project& project) {
             in >> thrown;
             for (ChordEvent& c : track->notes[scene][bar].chords) {
                 if (c.velocity <= 0.f || c.step != static_cast<int>(step) - 1) continue;
-                c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? clampi(static_cast<int>(ratchet), 2, kMaxRatchet) : 0);
+                c.ratchet = static_cast<std::uint8_t>(ratchet >= 2 ? wholeIn(ratchet, 2, kMaxRatchet) : 0);
                 c.throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
             }
         } else if (word == "chordplay" && isSynth(track->kind)) {
@@ -502,9 +506,9 @@ bool parseSong(const std::string& text, Project& project) {
             NotePattern& p = track->notes[scene][bar];
             ChordEvent c;
             c.step = static_cast<int>(step) - 1;
-            c.length = clampf(static_cast<float>(length), kShortestNote, longestFrom(*track, scene, bar, c.step));
-            c.velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
-            c.inversion = clampi(static_cast<int>(inversion), -kMaxInversion, kMaxInversion);
+            c.length = fractionIn(length, kShortestNote, longestFrom(*track, scene, bar, c.step));
+            c.velocity = fractionIn(level, 0.05f, 1.f);
+            c.inversion = wholeIn(inversion, -kMaxInversion, kMaxInversion);
             c.root = static_cast<int>(root);
             std::snprintf(c.name, sizeof c.name, "%s", name == "?" ? "" : name.c_str());
             while (c.count < kChordNotes && (in >> interval)) {
@@ -514,7 +518,7 @@ bool parseSong(const std::string& text, Project& project) {
             in.clear();
             std::string extra;
             double nudge = 0;
-            if ((in >> extra) && extra == "nudge" && (in >> nudge)) c.nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
+            if ((in >> extra) && extra == "nudge" && (in >> nudge)) c.nudge = fractionIn(nudge, -0.5f, 0.5f);
             // Not one with no notes, not a seventeenth, not two at once, and
             // not past the sixty-four notes.
             int keys[kChordNotes];

@@ -17,6 +17,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "song_file.hpp"
+#include "synth_spec.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -919,6 +920,34 @@ void testWindowsLineEnds() {
     CHECK(renamed.find("tempo 97\r\n") != std::string::npos);
 }
 
+// Numbers too big for an int or a float, in a file made by hand or damaged: each is held to its
+// limits, the same on every machine. (Made into an int first, "repeats 1e300" read as 1 on the
+// desk and as 16 on the handheld, and "preset -1e300" as the last preset.)
+void testHugeNumbersAreHeldToTheirLimits() {
+    std::unique_ptr<Project> song(new Project);
+    CHECK(parseSong("apotheca-song 1\ntempo 1e300\nrepeats 1e300 -1e300 3\nlength 1e300\n"
+                    "track drums\nlanes 1e300 -1e300\nsample 1 1e300 kick\nscene 1\nseeds 1e300 -1e300 77\nhit 1 1 1e300 -1e300 1e300 0 1e300\nstepfx 1 1 1e300 1e300 0 0\n"
+                    "track phazed\npreset -1e300\nmacros 1e300 -1e300\nsettings 1e300 -1e300\nscene 1\nnote 1 60 1e300 1e300 -1e300\nchord 5 1e300 1e300 -1e300 60 C 0 4 7\n"
+                    "track sampler\nsampler 1e300 -1e300\n",
+                    *song));
+    const TrackData& drums = song->tracks[0];
+    const TrackData& synth = song->tracks[1];
+    CHECK(song->tempo == kMaxTempo);
+    CHECK(song->repeats[0] == kMaxRepeats && song->repeats[1] == 1 && song->repeats[2] == 3);
+    CHECK(song->steps[0] == 0); // all of them
+    CHECK(drums.laneLevel[0] == 1.f && drums.laneLevel[1] == 0.f && drums.laneFit[0] == 64);
+    CHECK(drums.drums[0][0].diceSeed[0] == 4294967295u && drums.drums[0][0].diceSeed[1] == 0u && drums.drums[0][0].diceSeed[2] == 77u);
+    CHECK(drums.drums[0][0].level[0][0] == 1.f && drums.drums[0][0].nudge[0][0] == -0.5f && drums.drums[0][0].chance[0][0] == 1.f && drums.drums[0][0].start[0][0] == 1.f);
+    CHECK(drums.drums[0][0].fx[0][0].pitch == kMaxStepPitch && drums.drums[0][0].fx[0][0].ratchet == kMaxRatchet);
+    CHECK(synth.preset == 0 && synth.macro[0] == 1.f && synth.macro[1] == 0.f);
+    const SynthSpec* spec = specFor(TrackKind::Phazed);
+    const int* values = spec->values(const_cast<TrackData&>(synth));
+    CHECK(values[0] == spec->settingMax(0) && values[1] == spec->settingMin(1));
+    CHECK(synth.notes[0][0].notes[0].velocity == 1.f && synth.notes[0][0].notes[0].nudge == -0.5f && synth.notes[0][0].notes[0].length == 16.f);
+    CHECK(synth.notes[0][0].chords[0].velocity == 1.f && synth.notes[0][0].chords[0].inversion == -kMaxInversion && synth.notes[0][0].chords[0].length == 12.f);
+    CHECK(song->tracks[2].sampler[0] == sampler::settingMax(0) && song->tracks[2].sampler[1] == sampler::settingMin(1));
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -931,6 +960,7 @@ int main(int, char**) {
     testSavedToTheCardBeforeItIsMoved();
     testADeletedSongIsNeverWrittenOver();
     testWindowsLineEnds();
+    testHugeNumbersAreHeldToTheirLimits();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();
