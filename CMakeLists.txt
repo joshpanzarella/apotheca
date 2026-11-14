@@ -61,7 +61,9 @@ if(APOTHECA_BUILD_TESTS)
   add_test(NAME song COMMAND song_test)
   add_executable(effects_test tests/effects_test.cpp)
   target_link_libraries(effects_test PRIVATE apotheca_engine)
-  add_test(NAME effects COMMAND effects_test)
+  # In two halves (--part), each about half the time: whole, it was near its two minutes on a busy machine.
+  add_test(NAME effects1 COMMAND effects_test --part 1)
+  add_test(NAME effects2 COMMAND effects_test --part 2)
   add_executable(throw_test tests/throw_test.cpp)
   target_link_libraries(throw_test PRIVATE apotheca_engine)
   add_executable(glide_test tests/glide_test.cpp)
@@ -71,7 +73,7 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(chordfx_test PRIVATE apotheca_engine)
   add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
-  set_tests_properties(engine phazed twin qmod song effects throw glide chordfx PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -85,7 +87,7 @@ if(APOTHECA_BUILD_APP)
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
   add_library(apotheca_app STATIC app/app.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
-      app/text.cpp app/ui.cpp
+      app/text.cpp app/ui.cpp app/realtime.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)
   target_compile_options(apotheca_app PRIVATE -Wall -Wextra)
@@ -99,7 +101,7 @@ if(APOTHECA_BUILD_APP)
     target_link_libraries(apotheca_app PUBLIC apotheca_engine ${SDL2_LIBRARIES} Threads::Threads)
   endif()
 
-  add_executable(apotheca app/main.cpp app/realtime.cpp)
+  add_executable(apotheca app/main.cpp)
   target_compile_options(apotheca PRIVATE -Wall -Wextra)
   target_link_libraries(apotheca PRIVATE apotheca_app)
 
@@ -138,5 +140,6 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
     # SELECT is drawn as SEL: no text the device shows spells it out.
     add_test(NAME words COMMAND sh ${CMAKE_SOURCE_DIR}/tests/words_test.sh ${CMAKE_SOURCE_DIR}/app)
+    set_tests_properties(launcher words PROPERTIES TIMEOUT 120)
   endif()
 endif()

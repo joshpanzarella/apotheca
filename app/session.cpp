@@ -68,7 +68,17 @@ bool Session::removeTrack(int track) {
     }
     if (project.track > track || project.track >= count - 1) project.track = project.track > 0 ? project.track - 1 : 0;
     project.bar = 0;
-    applyProject(); // every track told to the engine afresh, in its new place
+    sendSong(); // every track told to the engine afresh, in its new place
+    // Undo keeps what the other tracks did: each step loses the track, and the ones after it move
+    // up a place with it. (The delete itself is not undone: the steps no longer hold the track.)
+    for (UndoStep& step : undo_) dropTrackText(step.text, track);
+    for (UndoStep& step : redo_) dropTrackText(step.text, track);
+    if (undoReady_) {
+        if (editing_) settled_ = patternsNow(); // the burst of edits ends here
+        else dropTrackText(settled_, track);
+        editing_ = false;
+        cellMark_ = cellMark();
+    }
     return true;
 }
 
@@ -96,7 +106,9 @@ bool Session::setTrackKind(int track, TrackKind kind) {
     for (auto& scene : t.automation)
         for (int lane = 0; lane < kSynthMacros; ++lane) // the macros' lanes; the effects' are still the same effects
             for (float& v : scene[lane]) v = kAutoNone;
-    applyProject(); // the engine is given the song afresh, with the new instrument in its place
+    sendSong(); // the engine is given the song afresh, with the new instrument in its place
+    // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).
+    if (undoReady_) cellMark_ = cellMark();
     return true;
 }
 
@@ -145,7 +157,7 @@ void Session::update(Uint32 nowMs) {
     // too, dropped() moves again and this comes round once more.
     if (const unsigned lost = engine.dropped(); lost != droppedSeen_ && engine.caughtUp()) {
         droppedSeen_ = lost;
-        applyProject();
+        sendSong(); // the same song: undo and redo are kept
         ++resyncs_;
     }
 
@@ -336,6 +348,36 @@ void Session::sendDrumPattern(int track, int scene) {
     }
 }
 
+// One hit, as the drum grid sends one: its level and everything else it carries. A keyboard
+// recording drums sends this, not the whole cell: eight pads at once on a busy eight-bar cell
+// were sixteen thousand commands, the queue filled, and the song was stopped and sent again.
+void Session::sendDrumHit(int track, int scene, int bar, int lane, int step) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || bar < 0 || bar >= kMaxBars || lane < 0 || lane >= kDrumLanes ||
+        step < 0 || step >= kSteps)
+        return;
+    noteEdit();
+    const DrumPattern& p = project.tracks[track].drums[scene][bar];
+    Command c;
+    c.track = track;
+    c.scene = scene;
+    c.bar = bar;
+    c.a = lane;
+    c.b = step;
+    c.type = Command::SetStep;
+    c.value = p.level[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepNudge;
+    c.value = p.nudge[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepChance;
+    c.value = p.chance[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepStart;
+    c.value = p.start[lane][step];
+    engine.send(c);
+    engine.send(stepFxCommand(track, scene, bar, lane, step, p.fx[lane][step]));
+}
+
 void Session::sendNotePattern(int track, int scene) {
     noteEdit();
     Command c;
@@ -458,7 +500,7 @@ void Session::recordAutomation(int track, int lane, float value) {
 
 // The patterns, as the song file writes them. (The whole song's text: only
 // the patterns are taken back out of it.)
-std::string Session::patternsNow() const { return songText(project); }
+std::string Session::patternsNow() const { return textNow(); }
 
 std::uint32_t Session::cellMark() const {
     const TrackData& t = project.current();
@@ -625,11 +667,51 @@ bool Session::patternsAre(const Project& was) const {
     return songText(*here) == songText(was);
 }
 
+// Are the patterns of `now` those of `then` (a track read from a song's text), as the song file writes them?
+bool Session::patternsSameAsText(const TrackData& now, const TrackData& then) {
+    std::unique_ptr<TrackData> here(new TrackData(then)); // `then`, with the patterns of `now` (large: not on the stack)
+    std::memcpy(here->bars, now.bars, sizeof here->bars);
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            here->drums[scene][bar] = now.drums[scene][bar];
+            here->notes[scene][bar] = now.notes[scene][bar];
+        }
+    std::memcpy(here->automation, now.automation, sizeof here->automation);
+    return trackText(*here) == trackText(then);
+}
+
 int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
+
+// A step of undo read back into `was`. A track whose text in the step is its text now (most are:
+// an edit is to one track) is not read: in its place `was` gets a line or two that give it its kind
+// and its cells' lengths (what the scenes' lengths are worked out from), and `same` says so. What
+// is read is read by parseSong, as the whole was. (Read whole, a 2.5 MB song's step took 80 ms on
+// the desk to give back one track.) A scene move reads it whole: it takes the sixteenth scene from it.
+bool Session::readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole) {
+    for (int t = 0; t < kNumTracks; ++t) same[t] = false;
+    std::string head;
+    std::vector<std::string> parts;
+    if (whole || readUndoWhole_ || !cutSong(text, head, parts)) return parseSong(text, was);
+    textNow(); // (each track's text as it is now)
+    std::string read = head;
+    for (std::size_t t = 0; t < parts.size(); ++t) {
+        const TrackData& now = project.tracks[t];
+        if (parts[t] != textNow_.track(static_cast<int>(t))) {
+            read += parts[t];
+            continue;
+        }
+        same[t] = true;
+        read.append(parts[t], 0, parts[t].find('\n') + 1); // its "track" line
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            if (now.bars[scene] > 1) read += "scene " + std::to_string(scene + 1) + "\nbars " + std::to_string(now.bars[scene]) + "\n";
+    }
+    return parseSong(read, was);
+}
 
 void Session::restorePatterns(const std::string& text, int movedFrom, int movedBy) {
     std::unique_ptr<Project> was(new Project);
-    if (!parseSong(text, *was)) return;
+    bool same[kNumTracks];
+    if (!readStep(text, *was, same, movedBy != 0)) return;
     restoring_ = true;
     if (movedBy != 0) {
         // A "next scene" taken back or put back: the scenes move, here and in the engine, and
@@ -646,12 +728,18 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         TrackData& now = project.tracks[t];
         const TrackData& then = was->tracks[t];
         if (now.kind == TrackKind::None || now.kind != then.kind) continue; // a track added since stays as it is
+        if (same[t]) continue; // its text is the step's: as it was (and not read: `then` is not it)
         // A track that is the same then as now is left alone. Most are: an edit is
         // to one track, and sending a track's every pattern again is the costly part.
         if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && std::memcmp(now.drums, then.drums, sizeof now.drums) == 0 &&
             std::memcmp(now.notes, then.notes, sizeof now.notes) == 0 && std::memcmp(now.automation, then.automation, sizeof now.automation) == 0) {
             continue;
         }
+        // Numbers that differ only as the text rounds them (a keyboard's 90/127, a setting
+        // written with WRITE on) are the same patterns: the track is as it was, and is left
+        // alone, unrounded. Compared as above, every such track was sent whole on an undo
+        // of one hit on another, and its values rounded.
+        if (patternsSameAsText(now, then)) continue;
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             now.bars[scene] = then.bars[scene];
             for (int bar = 0; bar < kMaxBars; ++bar) {
@@ -946,6 +1034,15 @@ void Session::sendEffects(int track) {
 }
 
 void Session::applyProject() {
+    sendSong();
+    // Another song: nothing of the last one to go back to.
+    undo_.clear();
+    redo_.clear();
+    editing_ = false;
+    undoReady_ = false;
+}
+
+void Session::sendSong() {
     collectJob(true); // nothing half-made carries over
     Command c;
     c.type = Command::Stop;
@@ -1039,11 +1136,6 @@ void Session::applyProject() {
     engine.send(c);
     syncSong(); // the song's length, if it differs from the last one's
     sendMutes(); // the song's mutes; nothing is soloed in a song just opened
-    // Another song: nothing of the last one to go back to.
-    undo_.clear();
-    redo_.clear();
-    editing_ = false;
-    undoReady_ = false;
 }
 
 } // namespace apotheca

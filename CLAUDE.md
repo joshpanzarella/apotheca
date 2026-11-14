@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (29) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (30) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -163,6 +163,27 @@ effect in those two groups and fails one that does not.
   purpose: a bus nobody has touched holds the same thing in every song. `songText` always writes both `busfx` lines, an empty bus
   as `busfx 2 none`, so "none" is never mistaken for "old". A track's send is
   a `send BUS AMOUNT` line, left out at 0; `fx 3` is its third slot.
+- **A cell made shorter keeps its hidden bars, in the file too.** They are
+  written after a `bar K` past the cell's end (`hidesBars` in song_file.cpp);
+  a program from before reads no line for a bar the cell does not have, so it
+  skips them. A note there may run to where the longest cell would end.
+- **A song file is read with Windows line ends too**: `parseSong` takes a
+  trailing `\r` off each line (a name ending in one was refused, and every
+  recording dropped); `renameRecordings` reads lines the same way and writes
+  the `\r` back.
+- **A number from a file is held to its limits as a double, before it is
+  made an int, a uint32 or a float** (`wholeIn`, `fractionIn`, `seedIn` in
+  song_file.cpp). "repeats 1e300" cast first is undefined behaviour, and the
+  desk and the handheld read it differently. Anything new read from a file
+  goes through them.
+- **A song, a rev, a settings file or a preset is written with `writeTextFile`**: `NAME.part`, flushed and
+  fsynced, renamed over `NAME`, and the folder fsynced (a flat battery left
+  an empty song). `save_test` checks the order on Linux. Its cost on the
+  handheld's card is not measured.
+- **A deleted song goes to `deleted/` under a name nothing there has** (song
+  or rev: "ash well", else "ash well 2"), through `binSong`, which the
+  Session and the WiFi page share. Renamed over, the first one's revs paired
+  with the second song.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -214,11 +235,16 @@ effect in those two groups and fails one that does not.
 
 ### The engine and its threads
 - **The audio thread never allocates, locks for long, or frees.** Things it
-  is done with go to the trash queue; `collectGarbage()` frees them.
+  is done with go to the trash queue (`bin()`); `collectGarbage()` frees them,
+  once a frame. What finds it full waits with the audio thread and is handed
+  on at the end of a chunk (`binHeld`). **Nothing is kept in the engine for
+  want of room**: a synth kept so played the next song's notes.
 - **Commands go through a queue that can fill.** `Engine::send` returns false
   and counts the loss (`dropped()`). `Session::update` notices and sends the
   whole song again (`applyProject`). Callers that hand over a pointer must
-  check the return themselves.
+  check the return themselves. **Every push goes through `send()`**, the
+  ones that carry a recording or an effect too: a loss it does not count is
+  never mended.
 - **A test that never renders never empties the queue.** Render alongside
   frames (`rig.frames(n); rig.render(...)`), or commands pile up and drop.
 - **Helper threads** (`useWorkers`): tracks are rendered side by side and
@@ -360,6 +386,9 @@ effect in those two groups and fails one that does not.
   trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
   hits by hand); a bus's slot is not told.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
+- **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
+  never the whole cell again: a keyboard's eight pads at once on a busy
+  eight-bar cell filled the command queue (`midi_test`).
 - **What an effect shows goes through `Engine::effectMeter(track, slot)`**
   (COMP: the dB it is turning down). The audio thread reads the effect's
   `meter()` after each chunk and keeps it in an atomic; the screen asks the
@@ -429,8 +458,12 @@ effect in those two groups and fails one that does not.
     when the list was stepped through blind). Left / right is the TYPE
     (`changeEffectType`). The group jump is gone. On a setting, A + up / down
     turns it as before, and left / right do nothing.
-  - B empties a line (SENDS: both sends), and on a setting gives its usual
-    value; a bus's LEVEL goes back to full (`effectDefault(kind, i, true)`).
+  - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
+    `kDeleteHoldMs`, a second, on the line and the heading, which says
+    `kDeletingWords`; a tap does nothing; any other button or a move calls it
+    off; pit stop 2026-11-14; `app_test --hands` runs these tests). A tap of B on SENDS still empties both sends,
+    and on a setting gives its usual value; a bus's LEVEL goes back to full
+    (`effectDefault(kind, i, true)`).
   - A choice has no bar: one piece for each choice, the one it is lit
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
@@ -451,14 +484,40 @@ effect in those two groups and fails one that does not.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
-- **`Project` is nearly 10 MB. Never put one on the stack**, nor a `TrackData`
-  (821 KB). `std::unique_ptr<Project>`.
+- **`Project` is about 12 MB. Never put one on the stack**, nor a `TrackData`
+  (about 1 MB; measured 2026-11-14: 12,061,000 and 1,005,060 bytes).
+  `std::unique_ptr<Project>`. Not even a temporary: `x = TrackData()` is one
+  on the stack (`parseSong` took 1 MB of stack that way, and it runs on the
+  WiFi server's thread too); copy a blank one kept on the heap.
+  `save_test` reads a song on a thread with a 256 KB stack.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
 - **Undo is a text snapshot of the patterns** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
   `noteEdit()`. Sounds, effects and track deletes are not undone.
+  **Only another song clears undo** (`applyProject`). A resync after a full
+  queue, a track deleted and a track given another instrument send the song
+  with `sendSong()` and keep the steps: a delete takes its track out of every
+  step's text (`dropTrackText`), and another instrument is passed by (its kind
+  differs). The delete itself is still not undone.
+- **The song's text is made a track at a time** (`SongTextCache`,
+  `Session::textNow()`): a track whose bytes are as they were when its text
+  was made is not written again. The autosave, the end of a burst of edits and
+  undo all use it, so with nothing changed the autosave is a compare of memory
+  (2.5 MB of text: 0.8 ms on the desk, was 68). The copies it keeps cost
+  about 1 MB a track (11.8 MB for twelve). **An undo reads back only the
+  tracks whose text differs from the step's** (`Session::readStep`; the rest
+  get a stand-in line that gives their kind and cells' lengths). A scene move
+  reads the step whole (it takes the sixteenth scene from it).
+  `readUndoWhole(true)` reads every step whole, as before: `app_test`
+  (`testUndoIsAsItWasReadWhole`) holds the two the same. **A track whose
+  numbers differ from the step's but whose text is the same is left alone**
+  (compared by `trackText`, as the file writes it): a value the text rounds
+  (a keyboard's 90/127) made one undo send all twelve tracks whole.
+  `app_test --undo` runs the undo tests alone. Do not give the cache
+  a count of changes instead: the screens write into the project in many
+  places, and one that forgot to count is work never saved.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an
@@ -579,7 +638,13 @@ effect in those two groups and fails one that does not.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
   that, shorten the words. The bar draws `HOLD` as `HLD`, `SELECT` as `SEL`,
   directions as arrows, and the one word `dice` as a die (`ui.cpp`): write
-  hints in full.
+  hints in full. `ui::gHintsOver` says how many pixels the last bar was
+  short of holding every hint and the help: `app_test`
+  (`testTheHintsFitAndSayWhatTheyDo`) holds the SONG screen and the drum grid
+  to 0 with either help (pit stop, 2026-11-14: SONG's cell leaves mute and
+  solo to the head, the drum grid lists a hit's own jobs on a hit and the
+  brushes on an empty step). **The piano roll on a note is still 48 to 69
+  pixels over** (its help is not drawn): not mended.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
   field's label says it; the dice alone at the left (a chord: at the right). On a note the
@@ -681,6 +746,9 @@ effect in those two groups and fails one that does not.
 - **The SET page shows twelve rows and moves one row at a time**
   (`SettingsScreen::firstShown`, `rowNowY`): thirteen since THEME. A new row
   costs nothing more than its place in `Row`.
+  A row's bar starts after its value's words and ends short of what is said
+  at the right, at every text size (`SettingsScreen::barPlace`: BOUNCE's
+  WORKING 37% / TAIL 12 S; VOLUME's and STICK's stay at 250, 110 wide).
 - **A check of what is DRAWN uses `tests/canvas.hpp`**: a 640x480 screen in
   memory with the program's lettering. `ui_test` looks at the hints bar's
   pixels and `app_test` at the help card's boxes; a check of the text alone
@@ -690,7 +758,9 @@ effect in those two groups and fails one that does not.
   The check for X held comes before A's own jobs, so A alone still places.
   **The dice do not throw**, and do not take a THROW away (owner's decision).
   **Hold X + L1 / R1 on a note is the track's GLIDE FROM** (the glide rules, below).
-- **Sample names from `wavNames` have no `.wav` ending.**
+- **Sample names from `wavNames` have no `.wav` ending.** The file may end
+  `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
+  `recordingThere`, `deleteSample`).
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no
@@ -904,7 +974,8 @@ effect in those two groups and fails one that does not.
   recording goes on a list (`Transfer::takeChanges`), put there BEFORE
   `received()` goes up; `Session::update` reads it and calls
   `recordingChanged`. A rename changes the name only: reading the file again
-  would cut the sound.
+  would cut the sound. A recording SENT (no old name) is read again on every
+  lane and sampler track that names it, so a replaced file is heard at once.
 - **A missing recording is looked for by base name, and taken only if there
   is exactly one** (`Session::findMissing`, run after a song or a rev opens,
   not from `applyProject`). It lists the samples folder once, and not at all
@@ -940,7 +1011,12 @@ effect in those two groups and fails one that does not.
 - **Do not compare audio sample for sample across separate notes** unless the
   engine is fresh; compare loudness, attack, or zero crossings. Let auditions
   end before listening.
-- **Every test has a two-minute limit**, so a hang is a failure.
+- **Every test has a two-minute limit**, so a hang is a failure. A new ctest
+  entry gets its `TIMEOUT 120` in CMakeLists.txt (launcher and words had none
+  until 2026-11-14). **`effects_test` runs as two halves** (`--part 1`,
+  `--part 2`; part 2 from `testFamiliesAndTypes`, so a test added at the end
+  is in part 2; about 34 s each on a quiet desk, 2026-11-14). Move that line
+  if one half grows much longer than the other.
 - **Checksums of sound only hold on the machine's own maths library**
   (`tanh`, `pow`, `exp` differ in the last bit elsewhere, and compilers join
   a multiply and an add differently on ARM). `effects_test` checks which it is
@@ -983,6 +1059,7 @@ effect in those two groups and fails one that does not.
 | ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
+| The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

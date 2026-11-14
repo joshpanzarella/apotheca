@@ -13,16 +13,22 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <thread>
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/chord_rule.hpp"
+#include "apotheca/twin.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
+#include "realtime.hpp"
 #include "song_file.hpp"
 
 using namespace apotheca;
@@ -201,6 +207,174 @@ static double chordSong(ChordPlay play, int ratchet, int from = -1) {
     return 100.0 * best / (256.0 / 48.0);
 }
 
+// THE BUSIEST SONG (the pit stop audit's, 2026-11-14): 140 BPM, twelve tracks. Six drum
+// tracks, every lane on every other step, ratchets of four on three lanes, every hit thrown to
+// both buses. Two Twin Analog (x2), two QMOD and two Phazed, each four chords of four keys a
+// bar, half WIDE STRUM and half arpeggios at a quarter step, RANDOM, human at 100%, thrown;
+// a ratchet of two on the strummed ones. COMP, then SATURATE or CHORUS, then HALL or PLATE on
+// every track; TAPE and PLATE on the buses, every track sending 0.4 to each; COMP and SATURATE
+// on the master. Flush-to-zero on, as in the program. Twin stays at full quality: the
+// program would make it plainer if it fell behind (watchLoad), and this is to see whether
+// it has to.
+static void busiestSong(Engine& e) {
+    std::vector<float> scratch(512);
+    const auto settle = [&](int blocks) {
+        for (int r = 0; r < blocks; ++r) e.render(scratch.data(), 256);
+    };
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = 140.f;
+    e.send(c);
+    for (int t = 1; t < 6; ++t) e.addDrumTrack(t); // (track 1 has drums from the start)
+    const SynthKind kinds[6] = {SynthKind::Twin, SynthKind::Twin, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
+    for (int i = 0; i < 6; ++i) e.addSynthTrack(6 + i, kinds[i]);
+    settle(4);
+    for (int i = 0; i < 6; ++i)
+        if (kinds[i] == SynthKind::Twin) {
+            c = Command();
+            c.type = Command::SetSetting;
+            c.track = 6 + i;
+            c.a = twin::Oversample;
+            c.b = 1; // x2
+            e.send(c);
+        }
+    for (int t = 0; t < 6; ++t) {
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int step = (t + lane) % 2; step < kSteps; step += 2) {
+                c = Command();
+                c.type = Command::SetStep;
+                c.track = t;
+                c.value = 1.f;
+                c.a = lane;
+                c.b = step;
+                e.send(c);
+                StepFx fx;
+                fx.throwTo = kThrowEcho | kThrowSpace;
+                c = Command();
+                c.type = Command::SetStepFx;
+                c.track = t;
+                c.a = lane;
+                c.b = step;
+                c.extra = fx.cutAndThrow();
+                c.d = (lane < 3 && step % 4 < 2) ? 4 : 0; // the ratchet
+                e.send(c);
+            }
+        settle(2);
+    }
+    for (int i = 0; i < 6; ++i) {
+        const int t = 6 + i;
+        ChordPlay play = i % 2 == 0 ? chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 100) : chordPlayOf(kStrumQuarter, kOrderRandom, 100, 100, 100);
+        for (int chord = 0; chord < 4; ++chord) {
+            for (int key = 0; key < 4; ++key) {
+                c = Command();
+                c.type = Command::SetNote;
+                c.track = t;
+                c.a = chord * 4 + key;
+                c.b = chord * 4;
+                c.c = 48 + i + 4 * key + (chord % 2) * 3;
+                c.d = 4;
+                c.e = (i % 2 == 0 ? 2 : 0) + 512 + 1024; // a ratchet of two on the strummed; thrown to both
+                c.value = 0.8f;
+                c.play = play;
+                c.play.index = static_cast<std::uint8_t>(key);
+                c.play.count = 4;
+                e.send(c);
+            }
+            settle(1);
+        }
+    }
+    for (int t = 0; t < kNumTracks; ++t) {
+        e.setEffect(t, 0, EffectKind::Comp);
+        e.setEffect(t, 1, t % 2 ? EffectKind::Chorus : EffectKind::Saturate);
+        e.setEffect(t, 2, t % 2 ? EffectKind::Plate : EffectKind::Hall);
+        settle(2);
+    }
+    e.setEffect(kMasterTrack, 0, EffectKind::Comp);
+    e.setEffect(kMasterTrack, 1, EffectKind::Saturate);
+    e.setEffect(kEchoBus, 0, EffectKind::Tape);
+    e.setEffect(kSpaceBus, 0, EffectKind::Plate);
+    for (int t = 0; t < kNumTracks; ++t)
+        for (int bus = 0; bus < kBuses; ++bus) {
+            c = Command();
+            c.type = Command::SetSend;
+            c.track = t;
+            c.a = bus;
+            c.value = 0.4f;
+            e.send(c);
+        }
+    settle(20);
+    e.collectGarbage();
+    e.setFlushDenormals(true);
+    c = Command();
+    c.type = Command::Play;
+    e.send(c);
+}
+
+// The busiest song in real time: a block is worked out, then the thread sleeps until the next
+// is due, as the sound card's thread does. On its own thread, which asks for realtime priority
+// as the program's audio thread does (`realtime`), and the helpers as the program's do.
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) {
+    WholeSongTimes times;
+    std::thread player([&] {
+        if (realtime) times.realtime = makeThreadRealtime(70);
+        std::unique_ptr<Engine> engine(new Engine);
+        busiestSong(*engine);
+        std::vector<float> out(512);
+        for (int i = 0; i < 400; ++i) { // two seconds, so every tail and bus is going
+            engine->render(out.data(), 256);
+            engine->collectGarbage();
+        }
+        if (helpers > 0) engine->useWorkers(helpers, realtime ? static_cast<void (*)()>([] { makeThreadRealtime(69); }) : nullptr);
+        times.helpers = engine->workers();
+        const double blockMs = 256.0 / 48.0;
+        const int blocks = static_cast<int>(seconds * 48000.0 / 256.0);
+        std::vector<double> took(static_cast<std::size_t>(blocks > 0 ? blocks : 0));
+        const std::chrono::microseconds each(5333);
+        auto due = std::chrono::steady_clock::now();
+        for (int b = 0; b < blocks; ++b) {
+            const auto t0 = std::chrono::steady_clock::now();
+            engine->render(out.data(), 256);
+            const auto t1 = std::chrono::steady_clock::now();
+            took[static_cast<std::size_t>(b)] = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            for (float v : out) times.peak = std::max(times.peak, std::fabs(v));
+            engine->collectGarbage(); // (the program's screen thread does this, once a frame)
+            due += each;
+            if (std::chrono::steady_clock::now() < due) std::this_thread::sleep_until(due);
+            else due = std::chrono::steady_clock::now(); // behind: the card asks for the next at once
+        }
+        times.blocks = blocks;
+        if (blocks == 0) return;
+        double sum = 0.0;
+        for (double t : took) {
+            sum += t;
+            if (t > blockMs) ++times.over;
+        }
+        times.meanMs = sum / blocks;
+        std::sort(took.begin(), took.end());
+        times.p99Ms = took[static_cast<std::size_t>(blocks) * 99 / 100];
+        times.worstMs = took.back();
+    });
+    player.join();
+    return times;
+}
+
+WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds) { return playWholeSong(helpers, seconds, false); }
+
+// The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
+// uses on this machine. Ten seconds each, in real time.
+static void wholeSongRows() {
+    const int helpers = helpersFor(std::thread::hardware_concurrency());
+    std::printf("the busiest song (12 tracks, chords, throws, 3 effects a track, buses), in real time, a block %.2f ms:\n", 256.0 / 48.0);
+    for (int h : {0, helpers}) {
+        const WholeSongTimes t = playWholeSong(h, 10.0, true);
+        char name[40];
+        std::snprintf(name, sizeof name, h == 0 ? "on the audio thread alone" : "with %d helper%s", t.helpers, t.helpers == 1 ? "" : "s");
+        std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late%s\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks,
+                    t.realtime ? "" : " (no realtime priority)");
+        if (h == helpers) break; // a machine of one core has no helpers: one row
+    }
+}
+
 int apotheca::runBench() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
@@ -229,6 +403,7 @@ int apotheca::runBench() {
         const double block = ms([&] { engine->render(out.data(), 256); }, 2000);
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
+    wholeSongRows();
 
     // Chord effects: the clock's work, with next to no sound under it.
     std::printf("chord effects, eleven silent tracks, four chords of four keys a bar on each:\n");

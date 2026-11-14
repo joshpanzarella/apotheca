@@ -342,7 +342,7 @@ void Session::hearMidi() {
             const int lane = midiDrumLane(event.note);
             pattern.level[lane][step] = event.velocity < 0.05f ? 0.05f : event.velocity;
             pattern.fromDice[lane][step] = false; // played by hand: the player's own
-            sendDrumPattern(project.track, scene);
+            sendDrumHit(project.track, scene, bar, lane, step); // the one hit: the whole cell for each filled the queue
         } else if (isSynth(kind)) {
             NotePattern& pattern = track.notes[scene][bar];
             int slot = pattern.at(event.note, step);

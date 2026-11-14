@@ -475,6 +475,45 @@ void testRecordingDrums() {
     CHECK(early == 0.f && hit > 0.1f);
 }
 
+// Drums played into a busy cell send the one hit, not the cell. Sent whole for each hit, eight
+// pads at once on an eight-bar cell full of hits were some sixteen thousand commands: the queue
+// filled, and the song was stopped and sent again (and undo was lost with it).
+void testRecordingDrumsIntoABusyCell() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Pattern;
+    session.setMidiRecording(true);
+    rig.frames(2);
+    session.setCellBars(0, 0, 8);
+    for (int bar = 0; bar < 8; ++bar)
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int step = 0; step < kSteps; step += 2) rig.project().tracks[0].drums[0][bar].level[lane][step] = 0.8f;
+    session.sendDrumPattern(0, 0);
+    rig.render(512);
+    rig.frames(40);
+    rig.render(512);
+    rig.frames(40);
+    const unsigned dropped = rig.engine->dropped();
+    rig.tap(SDLK_RETURN);
+    rig.render(kStep + kStep / 2); // into step 1, which is empty on every lane
+    rig.frames(1);
+    CHECK(rig.project().playing && rig.project().playStep == 1);
+    std::vector<unsigned char> pads;
+    for (int note = 36; note < 36 + kDrumLanes; ++note) { pads.push_back(0x90); pads.push_back(static_cast<unsigned char>(note)); pads.push_back(100); }
+    CHECK(write(rig.keys.fd, pads.data(), pads.size()) == static_cast<ssize_t>(pads.size()));
+    usleep(100000); // all eight read before the next frame: one burst
+    rig.frames(1);
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.project().tracks[0].drums[0][0].level[lane][1] > 0.f);
+    CHECK(rig.engine->dropped() == dropped); // nothing lost
+    rig.render(512);
+    rig.frames(1);
+    rig.render(512);
+    rig.frames(1);
+    CHECK(session.resyncs() == 0);
+    CHECK(rig.project().playing); // the take goes on
+    CHECK(session.undoSteps() >= 1);
+}
+
 } // namespace
 
 int main() {
@@ -485,6 +524,7 @@ int main() {
     testRecordingASynth();
     testAKeyHeldThroughNextScene();
     testRecordingDrums();
+    testRecordingDrumsIntoABusyCell();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

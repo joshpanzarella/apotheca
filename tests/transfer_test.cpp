@@ -289,6 +289,12 @@ void testDeletingAndMoving() {
     CHECK(readTextFile(songs + "/deleted/quiet road.song", kept) && kept == song && exists(songs + "/deleted/quiet road.1.rev") && exists(songs + "/deleted/quiet road.12.rev"));
     CHECK(exists(songs + "/quiet roadster.song") && exists(songs + "/quiet roadster.1.rev") && exists(songs + "/quiet road.x.rev") && exists(songs + "/loud roads.1.rev")); // that last name is as long as the deleted song's
     CHECK(del(port, door + "/songs/quiet%20road.song").status == 404);
+    // Another "quiet road", sent and deleted: the first one in "deleted" is not written over.
+    const std::string second = "apotheca-song 1\ntempo 150\n";
+    CHECK(put(port, door + "/songs/quiet%20road.song", second).status == 200);
+    CHECK(del(port, door + "/songs/quiet%20road.song").status == 200 && !exists(songs + "/quiet road.song"));
+    CHECK(readTextFile(songs + "/deleted/quiet road.song", kept) && kept == song);
+    CHECK(readTextFile(songs + "/deleted/quiet road 2.song", kept) && kept == second);
     // A chord pack and a bounce.
     CHECK(del(port, door + "/chords/sent.json").status == 200 && !exists(chords + "/sent.json") && exists(chords));
     CHECK(put(port, door + "/bounces/new.wav", wav).status == 405 && !exists(bounces + "/new.wav")); // nothing is sent there
@@ -723,7 +729,14 @@ static void testTheOpenSongFollows() {
     CHECK(!session.laneSound(0, 2).missing && std::abs(sounds(0, 2) - 4800) < 600);
     CHECK(session.laneSound(0, 3).missing && session.trackSound(1).missing && session.laneSound(0, 5).missing);
     CHECK(version(0, 3) == waiting); // and one still missing is not looked for each time some other file arrives
-    CHECK(version(0, 0) == before && sounds(0, 0) == thud); // one that is playing is not read again when its file is sent over
+    // One that is playing is read again when a new file is sent over it: the page said it would take
+    // its place. (It played the old sound until the song was opened again, and a bounce, which reads
+    // the card, had the new one.) The sampler track that plays it too.
+    CHECK(version(0, 0) != before && !session.laneSound(0, 0).missing && std::abs(sounds(0, 0) - 4800) < 600);
+    CHECK(std::abs(session.trackSound(2).seconds - 0.1f) < 0.01f);
+    CHECK(put(port, door + "/samples/kicks/big%20boom.wav", wavBytes(steady(0.5f), 48000)).status == 200); // and back as it was, for what follows
+    frames(1);
+    CHECK(sounds(0, 0) == thud);
     // A missing one whose file turns up under its name by a rename is read too.
     CHECK(put(port, door + "/samples/stray.wav", wavBytes(steady(0.4f), 48000)).status == 200);
     CHECK(post(port, door + "/samples/stray.wav", "never%20was.wav").status == 200);
@@ -798,10 +811,10 @@ static void testRenamingInSongText() {
     const std::string after = "apotheca-song 1\ntempo 97\nmystery thud\nsound thud\nsample 1 0 thud\ntrack drums\nsample 1 0 kicks/big boom\nsample 2 16 kicks/snap\n"
                               "sample 8 4 kicks/big boom\nsample 9 0 thud\nsample 0 0 thud\nsample 3 0 thudx\nsample 4 0 x/thud\nsample 6 0 thud \nsample 7 thud\nsound thud\n"
                               "future 1 2 thud\n\n  sample   5   0   kicks/big boom\ntrack sampler\nsound kicks/big boom\nsample 1 0 thud\nsampler 60 0 0\ntrack phazed\nsound thud\n"
-                              "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  thud\r\ntrack sampler\nsound\ttwo words/thud\n"
+                              "sample 1 0 thud\ntrack fromthefuture\nsound thud\nsample 1 0 thud\ntrack sampler\nsound  kicks/big boom\r\ntrack sampler\nsound\ttwo words/thud\n"
                               "track sampler\nsound kicks/big boom"; // and no line end is added to a file that had none
     std::string text = before;
-    CHECK(renameRecordings(text, one) && text == after);
+    CHECK(renameRecordings(text, one) && text == after); // ("sound  thud\r": a Windows line end, read as parseSong reads it)
     // What the program reads from it is the same song with the new name.
     std::unique_ptr<Project> was(new Project), now(new Project);
     CHECK(parseSong(before, *was) && parseSong(after, *now));

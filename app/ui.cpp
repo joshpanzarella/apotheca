@@ -374,12 +374,18 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
     // Nothing is ever drawn past the right-hand end: a
     // hint that does not fit is left out, and so are the ones after it. The
     // lists are written most useful first.
+    float whole = kHintsLeft; // where the bar would end with all of it in, the help too
+    bool cut = false;
     for (int i = 0; i < count; ++i) {
         if (!list[i].key || !list[i].does) continue;
         const float keyW = hintChipWidth(fonts, list[i].key);
         const bool die = isDice(list[i].does);
         const float doesW = die ? static_cast<float>(kDie) : doesWidth(fonts, list[i].does);
-        if (x + keyW + 5.f + doesW > kHintsLimit) break;
+        whole += keyW + 5.f + doesW + 11.f;
+        if (cut || x + keyW + 5.f + doesW > kHintsLimit) {
+            cut = true;
+            continue;
+        }
         hintChip(r, fonts, x, textY, list[i].key);
         x += keyW + 5.f;
         if (die) hintDie(r, x);
@@ -387,6 +393,8 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
         x += doesW + 11.f;
     }
     hintHelp(r, fonts, x, textY);
+    const float over = whole + 6.f + fonts.small.width(gHelpHint) - kHintsLimit;
+    gHintsOver = over > 0.f ? over : 0.f;
 }
 
 void relearnOffer(SDL_Renderer* r, const Fonts& chosen, float part) {

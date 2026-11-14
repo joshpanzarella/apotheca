@@ -3,6 +3,7 @@
 
 #include <SDL.h>
 
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -17,6 +18,38 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "song_file.hpp"
+#include "synth_spec.hpp"
+
+#ifdef __linux__
+#include <fcntl.h>
+#include <limits.h>
+#include <mutex>
+#include <sys/syscall.h>
+
+// What reaches the card, in order: fsync and rename are caught here on their way to the
+// kernel (a definition in the program is the one the program's own code calls).
+static std::mutex gDiskMutex;
+static std::vector<std::string> gDisk;
+static std::string fdPath(int fd) {
+    char buf[PATH_MAX];
+    const ssize_t n = readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), buf, sizeof buf - 1);
+    return n > 0 ? std::string(buf, static_cast<std::size_t>(n)) : "?";
+}
+extern "C" int fsync(int fd) {
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.push_back("fsync " + fdPath(fd));
+    }
+    return static_cast<int>(syscall(SYS_fsync, fd));
+}
+extern "C" int rename(const char* from, const char* to) {
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.push_back(std::string("rename ") + from + " > " + to);
+    }
+    return static_cast<int>(syscall(SYS_renameat, AT_FDCWD, from, AT_FDCWD, to));
+}
+#endif
 
 using namespace apotheca;
 
@@ -453,6 +486,36 @@ void testFreeNoteLengthsAreKept() {
     CHECK(parseSong(text, *again) && songText(*again) == text);
 }
 
+// Chords end to end: one ends on the step the next begins. The writer goes through the slots in
+// order and the reader puts each in the first free slot, so a chord placed at step 5 and then one at
+// step 1 is written later-chord-first. Both must come back.
+void testChordsEndToEndLoadBack() {
+    NotePattern bar;
+    bar.chords[0].step = 4; // step 5
+    bar.chords[1].step = 0; // step 1, ending where the other begins
+    for (int i = 0; i < 2; ++i) {
+        ChordEvent& c = bar.chords[i];
+        c.length = 4.f;
+        c.velocity = 0.8f;
+        c.root = 60;
+        c.count = 3;
+        c.intervals[1] = 4;
+        c.intervals[2] = 7;
+    }
+    std::unique_ptr<Project> song(new Project);
+    song->tracks[1].kind = TrackKind::Phazed;
+    song->tracks[1].notes[0][0] = bar;
+    const std::string text = songText(*song);
+    CHECK(text.find("chord 5 4 ") < text.find("chord 1 4 "));
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(text, *again));
+    const NotePattern& back = again->tracks[1].notes[0][0];
+    int found = 0;
+    for (const ChordEvent& c : back.chords)
+        if (c.velocity > 0.f) found += (c.step == 0 || c.step == 4) && c.length == 4.f ? 1 : 100;
+    CHECK(found == 2);
+}
+
 void testRevs() {
     const std::string folder = tempFolder();
     Rig rig(folder);
@@ -729,7 +792,355 @@ void testNamesDoNotRepeat() {
 
 } // namespace
 
+// A cell made shorter hides its last bars; made longer again they come back as they were. That
+// holds through the file (save and open), and through undo, which reads the song from its text.
+void testHiddenBarsAreKept() {
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.frames(2);
+    session.setCellBars(0, 0, 2);
+    session.setCellBars(1, 0, 4);
+    project.tracks[0].drums[0][0].level[0][0] = 0.9f;
+    project.tracks[0].drums[0][1].level[1][4] = 0.7f; // a snare in bar 2 only
+    project.tracks[0].drums[0][1].fx[1][4].ratchet = 3;
+    session.sendDrumPattern(0, 0);
+    project.tracks[0].drums[1][1].level[2][2] = 0.4f; // and in scene 2, a one-bar cell with nothing in its one bar: its hidden bar still goes in the file
+    session.sendDrumPattern(0, 1);
+    NotePattern& third = project.tracks[1].notes[0][2];
+    third.notes[0].step = 2;
+    third.notes[0].pitch = 64;
+    third.notes[0].length = 20.f; // over the bar line, into the fourth
+    third.notes[0].velocity = 0.6f;
+    third.chords[0].step = 8;
+    third.chords[0].length = 4.f;
+    third.chords[0].velocity = 0.5f;
+    third.chords[0].root = 60;
+    third.chords[0].count = 3;
+    third.chords[0].intervals[1] = 4;
+    third.chords[0].intervals[2] = 7;
+    session.sendNotePattern(1, 0);
+    rig.frames(60);
+    session.setCellBars(0, 0, 1);
+    session.setCellBars(1, 0, 2);
+    rig.frames(60);
+
+    const std::string text = songText(project);
+    std::unique_ptr<Project> opened(new Project);
+    CHECK(parseSong(text, *opened));
+    CHECK(opened->tracks[0].bars[0] == 1 && opened->tracks[1].bars[0] == 2);
+    CHECK(opened->tracks[0].drums[0][1].level[1][4] == 0.7f && opened->tracks[0].drums[0][1].fx[1][4].ratchet == 3);
+    CHECK(opened->tracks[1].notes[0][2].notes[0].velocity == 0.6f && opened->tracks[1].notes[0][2].notes[0].length == 20.f);
+    CHECK(opened->tracks[1].notes[0][2].chords[0].velocity == 0.5f && opened->tracks[1].notes[0][2].chords[0].count == 3);
+    CHECK(opened->tracks[0].bars[1] == 1 && opened->tracks[0].drums[1][1].level[2][2] == 0.4f);
+    CHECK(songText(*opened) == text);
+    // Written after a "bar K" past the cell's end: a program from before reads no line of them.
+    const std::size_t hidden = text.find("bar 2\nseeds");
+    CHECK(hidden != std::string::npos && text.find("hit 2 5 0.7", hidden) != std::string::npos);
+    // A song with no hidden bars is written as it always was.
+    {
+        std::unique_ptr<Project> plain(new Project);
+        CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nseeds 0 0 0 0 0 0 0 0\nhit 1 1 0.9 0 1 0\n", *plain));
+        CHECK(songText(*plain).find("bar") == std::string::npos);
+    }
+
+    // Undo of an edit on the same track leaves the hidden bar where it is.
+    project.tracks[0].drums[0][0].level[3][8] = 0.5f;
+    session.sendDrumPattern(0, 0);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[0].drums[0][0].level[3][8] == 0.f);
+    CHECK(project.tracks[0].drums[0][1].level[1][4] == 0.7f);
+    CHECK(project.tracks[1].notes[0][2].notes[0].velocity == 0.6f);
+
+    // Opened again and made longer: the bar comes back as it was, not a copy of the first.
+    {
+        Rig other;
+        other.project() = *opened;
+        other.session().applyProject();
+        other.frames(2);
+        other.session().setCellBars(0, 0, 2);
+        other.session().setCellBars(1, 0, 4);
+        CHECK(other.project().tracks[0].drums[0][1].level[1][4] == 0.7f && other.project().tracks[0].drums[0][1].level[0][0] == 0.f);
+        CHECK(other.project().tracks[1].notes[0][2].notes[0].pitch == 64 && other.project().tracks[1].notes[0][2].notes[0].length == 20.f);
+    }
+}
+
+// A song (and settings, a rev: everything written by writeTextFile) is on the card before it
+// takes the old file's place, and the move is on the card after. Without the first, a flat
+// battery could leave the song empty: the card may be given the move before the words.
+void testSavedToTheCardBeforeItIsMoved() {
+#ifdef __linux__
+    char real[PATH_MAX];
+    const std::string made = tempFolder();
+    const std::string folder = realpath(made.c_str(), real) ? real : made;
+    const auto steps = [&](const std::string& path) {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        int synced = -1, moved = -1, folderSynced = -1;
+        for (int i = 0; i < static_cast<int>(gDisk.size()); ++i) {
+            if (gDisk[i] == "fsync " + path + ".part" && synced < 0) synced = i;
+            if (gDisk[i] == "rename " + path + ".part > " + path && moved < 0) moved = i;
+            if (gDisk[i] == "fsync " + folder && moved >= 0 && folderSynced < 0) folderSynced = i;
+        }
+        return synced >= 0 && moved > synced && folderSynced > moved;
+    };
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.clear();
+    }
+    CHECK(writeTextFile(folder + "/a.song", "apotheca-song 1\n"));
+    CHECK(steps(folder + "/a.song"));
+    std::string back;
+    CHECK(readTextFile(folder + "/a.song", back) && back == "apotheca-song 1\n");
+    // The autosave goes that way.
+    Rig rig(folder);
+    rig.project().tempo = 97.f;
+    rig.session().saveNow();
+    CHECK(steps(folder + "/" + rig.session().songName() + ".song"));
+#else
+    std::printf("(fsync's order is checked on Linux only)\n");
+#endif
+}
+
+// A deleted song goes to "deleted" with its revs, under a name nothing there has: new songs reuse
+// the names of deleted ones, and the second "ash well" deleted wrote over the first.
+void testADeletedSongIsNeverWrittenOver() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Session& session = rig.session();
+    const std::string name = session.songName();
+    rig.project().tempo = 90.f;
+    session.saveNow();
+    CHECK(session.saveRev() == 1);
+    session.newSong();
+    CHECK(session.deleteSong(name));
+    // The same name again, with another song in it and a rev of its own.
+    CHECK(writeTextFile(folder + "/" + name + ".song", "apotheca-song 1\ntempo 150\n") && writeTextFile(folder + "/" + name + ".3.rev", "apotheca-song 1\ntempo 151\n"));
+    CHECK(session.deleteSong(name) && !exists(folder + "/" + name + ".song") && !exists(folder + "/" + name + ".3.rev"));
+    std::string text;
+    CHECK(readTextFile(folder + "/deleted/" + name + ".song", text) && text.find("tempo 90\n") != std::string::npos);
+    CHECK(exists(folder + "/deleted/" + name + ".1.rev") && !exists(folder + "/deleted/" + name + ".3.rev"));
+    CHECK(readTextFile(folder + "/deleted/" + name + " 2.song", text) && text == "apotheca-song 1\ntempo 150\n");
+    CHECK(readTextFile(folder + "/deleted/" + name + " 2.3.rev", text) && text == "apotheca-song 1\ntempo 151\n");
+    // A name whose only trace there is a rev is taken too.
+    CHECK(writeTextFile(folder + "/deleted/lone.7.rev", "apotheca-song 1\n") && writeTextFile(folder + "/lone.song", "apotheca-song 1\ntempo 60\n"));
+    CHECK(binSong(folder, "lone") && exists(folder + "/deleted/lone 2.song") && !exists(folder + "/deleted/lone.song"));
+    CHECK(!binSong(folder, "never was"));
+}
+
+// A song kept with Windows' line ends (edited on a computer, sent from the page) reads as the same
+// song: its recordings, its sampler's sound, its chord pack and its names. They were dropped, as
+// a name that ends in the line end's \r is not a name.
+void testWindowsLineEnds() {
+    const std::string plain = "apotheca-song 1\ntempo 97\npack jazz\ntrack drums\nname BEATS\nsample 1 0 kick\nscene 1\nhit 1 1 0.8\n"
+                              "track sampler\nsound pads/warm\n";
+    std::string windows;
+    for (char c : plain) {
+        if (c == '\n') windows += '\r';
+        windows += c;
+    }
+    std::unique_ptr<Project> a(new Project), b(new Project);
+    CHECK(parseSong(plain, *a) && parseSong(windows, *b));
+    CHECK(std::string(b->tracks[0].laneSample[0]) == "kick" && std::string(b->tracks[1].sample) == "pads/warm");
+    CHECK(std::string(b->chordPack) == "jazz" && std::string(b->tracks[0].name) == "BEATS" && b->tracks[0].drums[0][0].level[0][0] == 0.8f);
+    CHECK(songText(*a) == songText(*b));
+    // A rename follows into such a file, and leaves its line ends as they were.
+    std::string renamed = windows;
+    CHECK(renameRecordings(renamed, {{"kick", "kicks/808"}, {"pads/warm", "soft"}}));
+    CHECK(renamed.find("sample 1 0 kicks/808\r\n") != std::string::npos && renamed.find("sound soft\r\n") != std::string::npos);
+    CHECK(renamed.find("tempo 97\r\n") != std::string::npos);
+}
+
+// Numbers too big for an int or a float, in a file made by hand or damaged: each is held to its
+// limits, the same on every machine. (Made into an int first, "repeats 1e300" read as 1 on the
+// desk and as 16 on the handheld, and "preset -1e300" as the last preset.)
+void testHugeNumbersAreHeldToTheirLimits() {
+    std::unique_ptr<Project> song(new Project);
+    CHECK(parseSong("apotheca-song 1\ntempo 1e300\nrepeats 1e300 -1e300 3\nlength 1e300\n"
+                    "track drums\nlanes 1e300 -1e300\nsample 1 1e300 kick\nscene 1\nseeds 1e300 -1e300 77\nhit 1 1 1e300 -1e300 1e300 0 1e300\nstepfx 1 1 1e300 1e300 0 0\n"
+                    "track phazed\npreset -1e300\nmacros 1e300 -1e300\nsettings 1e300 -1e300\nscene 1\nnote 1 60 1e300 1e300 -1e300\nchord 5 1e300 1e300 -1e300 60 C 0 4 7\n"
+                    "track sampler\nsampler 1e300 -1e300\n",
+                    *song));
+    const TrackData& drums = song->tracks[0];
+    const TrackData& synth = song->tracks[1];
+    CHECK(song->tempo == kMaxTempo);
+    CHECK(song->repeats[0] == kMaxRepeats && song->repeats[1] == 1 && song->repeats[2] == 3);
+    CHECK(song->steps[0] == 0); // all of them
+    CHECK(drums.laneLevel[0] == 1.f && drums.laneLevel[1] == 0.f && drums.laneFit[0] == 64);
+    CHECK(drums.drums[0][0].diceSeed[0] == 4294967295u && drums.drums[0][0].diceSeed[1] == 0u && drums.drums[0][0].diceSeed[2] == 77u);
+    CHECK(drums.drums[0][0].level[0][0] == 1.f && drums.drums[0][0].nudge[0][0] == -0.5f && drums.drums[0][0].chance[0][0] == 1.f && drums.drums[0][0].start[0][0] == 1.f);
+    CHECK(drums.drums[0][0].fx[0][0].pitch == kMaxStepPitch && drums.drums[0][0].fx[0][0].ratchet == kMaxRatchet);
+    CHECK(synth.preset == 0 && synth.macro[0] == 1.f && synth.macro[1] == 0.f);
+    const SynthSpec* spec = specFor(TrackKind::Phazed);
+    const int* values = spec->values(const_cast<TrackData&>(synth));
+    CHECK(values[0] == spec->settingMax(0) && values[1] == spec->settingMin(1));
+    CHECK(synth.notes[0][0].notes[0].velocity == 1.f && synth.notes[0][0].notes[0].nudge == -0.5f && synth.notes[0][0].notes[0].length == 16.f);
+    CHECK(synth.notes[0][0].chords[0].velocity == 1.f && synth.notes[0][0].chords[0].inversion == -kMaxInversion && synth.notes[0][0].chords[0].length == 12.f);
+    CHECK(song->tracks[2].sampler[0] == sampler::settingMax(0) && song->tracks[2].sampler[1] == sampler::settingMin(1));
+}
+
+// parseSong runs on the WiFi server's thread too (every song sent is checked), and in undo. It
+// keeps a TrackData (821 KB) off the stack: with one there it took a megabyte, and a thread with
+// a smaller stack than glibc's eight megabytes crashed. Here it reads a song on a 256 KB stack.
+void* readOnASmallStack(void* text) {
+    std::unique_ptr<Project> song(new Project);
+    const bool read = parseSong(*static_cast<const std::string*>(text), *song) && song->trackCount() == 3 && song->tempo == 99.f;
+    return read ? text : nullptr;
+}
+void testParseSongOnASmallStack() {
+    const std::string text = "apotheca-song 1\ntempo 99\ntrack drums\nscene 1\nhit 1 1 0.8\ntrack phazed\nscene 1\nnote 1 60 1 0.8\ntrack sampler\n";
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    CHECK(pthread_attr_setstacksize(&attr, 256 * 1024) == 0);
+    pthread_t thread;
+    void* result = nullptr;
+    CHECK(pthread_create(&thread, &attr, readOnASmallStack, const_cast<std::string*>(&text)) == 0 && pthread_join(thread, &result) == 0);
+    CHECK(result == &text);
+    pthread_attr_destroy(&attr);
+}
+
+
+// A busy song of twelve tracks: drums and Phazed by turns, every scene, some automation.
+void fillBusy(Project& p, Session& session, int scenes, int bars) {
+    for (int t = 1; t < kNumTracks; ++t) session.addTrack(t % 2 ? TrackKind::Drums : TrackKind::Phazed);
+    for (int t = 0; t < kNumTracks; ++t)
+        for (int sc = 0; sc < scenes; ++sc) {
+            p.tracks[t].bars[sc] = bars;
+            for (int b = 0; b < bars; ++b) {
+                if (p.tracks[t].kind == TrackKind::Drums) {
+                    DrumPattern& d = p.tracks[t].drums[sc][b];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int st = lane % 2; st < kSteps; st += 2) d.level[lane][st] = 90.f / 127.f;
+                } else {
+                    NotePattern& n = p.tracks[t].notes[sc][b];
+                    for (int k = 0; k < 32; ++k) n.notes[k] = NoteEvent{k / 2, 48 + k, 1.f, 0.f, 0.8f};
+                }
+                for (int i = 0; i < kSteps; ++i) p.tracks[t].automation[sc][0][b * kSteps + i] = 0.123456f;
+            }
+        }
+    session.applyProject();
+}
+
+// The autosave comes round every two seconds. With nothing changed it writes no track out as
+// text: it used to make the whole song's text each time to find it the same (a 2.5 MB song:
+// 70 ms on the desk, every two seconds, with the screen and the buttons waiting).
+void testTheAutosaveWritesNothingOutWhenNothingChanged() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Project& p = rig.project();
+    fillBusy(p, rig.session(), 4, 2);
+    rig.frames(200); // saved, and every edit long settled
+    const std::string path = folder + "/" + rig.session().songName() + ".song";
+    std::string onDisk;
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p));
+    const std::uint64_t before = tracksWritten();
+    rig.frames(400); // six seconds: three autosaves
+    CHECK(tracksWritten() == before);
+    // One track changed: that track is written out again, and the file has the change.
+    p.tracks[3].drums[1][1].level[2][3] = 1.f;
+    rig.session().saveNow();
+    CHECK(tracksWritten() == before + 1);
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p));
+    // A change only in a setting of the song (no track): no track is written, the file has it.
+    const std::uint64_t then = tracksWritten();
+    p.tempo = 101.f;
+    rig.session().saveNow();
+    CHECK(tracksWritten() == then);
+    CHECK(readTextFile(path, onDisk) && onDisk == songText(p) && onDisk.find("tempo 101\n") != std::string::npos);
+}
+
+// The text kept a track at a time is the song's text to the byte, whatever is changed and however.
+void testTheTextKeptIsTheSongsText() {
+    std::unique_ptr<Project> p(new Project);
+    SongTextCache cache;
+    std::uint32_t seed = 12345u;
+    const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Sampler};
+    for (int t = 1; t < 6; ++t) {
+        p->tracks[t].kind = kinds[t % 5];
+        if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
+    }
+    CHECK(cache.text(*p) == songText(*p));
+    int checks = 0, wrong = 0;
+    for (int round = 0; round < 3000; ++round) {
+        TrackData& t = p->tracks[roll(8)];
+        const int scene = roll(kMaxScenes), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
+        switch (roll(17)) {
+        case 0: t.drums[scene][bar].level[lane][step] = roll(3) ? 0.25f * static_cast<float>(1 + roll(4)) : 0.f; break;
+        case 1: t.drums[scene][bar].fx[lane][step].ratchet = static_cast<std::uint8_t>(roll(4)); break;
+        case 2: t.notes[scene][bar].notes[roll(kMaxNotes)] = NoteEvent{step, 40 + roll(40), 1.f, 0.f, roll(2) ? 0.8f : 0.f}; break;
+        case 3: t.automation[scene][roll(kAutoLanes)][roll(kAutoSteps)] = roll(2) ? 0.001f * static_cast<float>(roll(1000)) : kAutoNone; break;
+        case 4: t.bars[scene] = 1 << roll(4); break;
+        case 5: t.muted = !t.muted; break;
+        case 6: t.solo = !t.solo; break; // not in the text: nothing to see, and nothing wrong
+        case 7: std::snprintf(t.name, sizeof t.name, "%s", roll(2) ? "BASS" : ""); break;
+        case 8: t.macro[roll(kSynthMacros)] = 0.01f * static_cast<float>(roll(100)); break;
+        case 9: t.effects[roll(kTrackSlots)].kind = roll(3); break;
+        case 10: t.send[roll(kBuses)] = 0.1f * static_cast<float>(roll(10)); break;
+        case 11: t.laneLevel[lane] = 0.1f * static_cast<float>(roll(10)); break;
+        case 12: std::snprintf(t.laneSample[lane], sizeof t.laneSample[lane], "%s", roll(2) ? "kicks/808" : ""); break;
+        case 13: p->tempo = static_cast<float>(60 + roll(100)); break;
+        case 14: p->repeats[scene] = 1 + roll(4); break;
+        case 15: { // another instrument, or none: the tracks after it then do not count
+            const int k = roll(7);
+            t.kind = k < 5 ? kinds[k] : (k == 5 ? TrackKind::None : TrackKind::Drums);
+            break;
+        }
+        default: t.glideFrom = static_cast<std::uint8_t>(roll(4)); break;
+        }
+        if (roll(3) == 0 || round == 2999) {
+            ++checks;
+            if (cache.text(*p) != songText(*p)) ++wrong;
+            for (int i = 0; i < kNumTracks; ++i)
+                if (cache.track(i) != (i < p->trackCount() ? trackText(p->tracks[i]) : std::string())) ++wrong;
+        }
+    }
+    CHECK(checks > 900 && wrong == 0);
+    // Asked again with nothing changed: no track written.
+    const std::uint64_t before = tracksWritten();
+    CHECK(cache.text(*p) == songText(*p) && tracksWritten() == before + static_cast<std::uint64_t>(p->trackCount()));
+}
+
+// A song's text cut into its own lines and its tracks', where parseSong cuts it; and not cut where
+// a part would not read alone as it reads in the whole (undo then reads the step whole).
+void testCuttingASong() {
+    std::unique_ptr<Project> p(new Project);
+    p->tracks[1].kind = TrackKind::Phazed;
+    specFor(TrackKind::Phazed)->loadPreset(p->tracks[1], 0);
+    p->tracks[2].kind = TrackKind::Drums;
+    p->tracks[0].drums[0][0].level[0][0] = 1.f;
+    p->tracks[2].automation[1][3][5] = 0.5f;
+    p->masterEffects[0].kind = 1;
+    const std::string text = songText(*p);
+    std::string head;
+    std::vector<std::string> parts;
+    CHECK(cutSong(text, head, parts) && parts.size() == 3);
+    std::string joined = head;
+    for (std::size_t t = 0; t < parts.size(); ++t) {
+        joined += parts[t];
+        CHECK(parts[t] == trackText(p->tracks[t]));
+    }
+    CHECK(joined == text && head.compare(0, 13, "apotheca-song") == 0 && head.find("track") == std::string::npos);
+    // A "track" line is a word, wherever it stands on its line, as parseSong reads it.
+    CHECK(cutSong("apotheca-song 1\n  track drums\nscene 1\n\ttrack\tphazed\n", head, parts) && parts.size() == 2 && parts[1] == "\ttrack\tphazed\n");
+    CHECK(cutSong("apotheca-song 1\ntempo 90\ntrack drums", head, parts) && head == "apotheca-song 1\ntempo 90\n" && parts.size() == 1 && parts[0] == "track drums");
+    CHECK(cutSong("apotheca-song 1\n", head, parts) && parts.empty());
+    CHECK(cutSong("apotheca-song 1\ntrack drums\ntracks 3\n", head, parts) && parts.size() == 1); // (a word that begins "track" is not one)
+    // Not cut: a song's own line among a track's, a kind not known, a thirteenth track, not a song.
+    for (const char* own : {"tempo 80", "length 3", "steps 5", "repeats 2", "pack x", "busfx 1 none"}) CHECK(!cutSong(std::string("apotheca-song 1\ntrack drums\n") + own + "\n", head, parts));
+    CHECK(cutSong("apotheca-song 1\ntrack drums\nfx 1 filter 0.5\nname X\n", head, parts)); // (a track's own)
+    CHECK(!cutSong("apotheca-song 1\ntrack drums\ntrack banjo\nscene 1\n", head, parts));
+    std::string twelve = "apotheca-song 1\n";
+    for (int t = 0; t < kNumTracks; ++t) twelve += "track drums\n";
+    CHECK(cutSong(twelve, head, parts) && static_cast<int>(parts.size()) == kNumTracks);
+    CHECK(!cutSong(twelve + "track drums\n", head, parts));
+    CHECK(!cutSong("track drums\n", head, parts) && !cutSong("", head, parts));
+}
+
 int main(int, char**) {
+    testCuttingASong();
+    testTheAutosaveWritesNothingOutWhenNothingChanged();
+    testTheTextKeptIsTheSongsText();
     testTextRoundTrip();
     testBadFiles();
     testSavedAsYouGoAndBackAtTheNextStart();
@@ -737,6 +1148,13 @@ int main(int, char**) {
     testNewSongAndTheList();
     testTheSongListOnScreen();
     testFreeNoteLengthsAreKept();
+    testChordsEndToEndLoadBack();
+    testHiddenBarsAreKept();
+    testSavedToTheCardBeforeItIsMoved();
+    testADeletedSongIsNeverWrittenOver();
+    testWindowsLineEnds();
+    testHugeNumbersAreHeldToTheirLimits();
+    testParseSongOnASmallStack();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

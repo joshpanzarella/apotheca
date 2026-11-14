@@ -415,6 +415,7 @@ void testSavingAPreset() {
     writeTextFile(rig.root + "/presets/BROKEN.phazed", "this is not a preset\n");
     writeTextFile(rig.root + "/presets/WILD.phazed", "apotheca-preset 1\nsynth phazed\nmacros 9 -9\nsettings 99 99 99\n");
     writeTextFile(rig.root + "/presets/notes.txt", "apotheca-preset 1\nsettings 1 2 3\n");
+    writeTextFile(rig.root + "/presets/HALF.phazed", "apotheca-preset 1\nsynth phazed\nmacros 0.2 0.3\n"); // cut short: no settings, so not a preset
     setUserPresets(TrackKind::Phazed, {});
     CHECK(spec.presetCount() == builtIn);
     session.usePresetFolder(rig.root + "/presets");

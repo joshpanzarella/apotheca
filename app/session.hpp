@@ -14,6 +14,7 @@
 #include "apotheca/engine.hpp"
 #include "chords.hpp"
 #include "recorder.hpp"
+#include "song_file.hpp"
 #include "transfer.hpp"
 #include "midi.hpp"
 #include "designer.hpp"
@@ -332,6 +333,7 @@ public:
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    void readUndoWhole(bool on) { readUndoWhole_ = on; } // the tests: every step of undo read back whole, as it was before (to hold the two the same)
 
     // ---- next scene ---------------------------------------------------------------------
     // The scene being worked on, copied whole (every track's cell with its length, the
@@ -410,14 +412,18 @@ public:
     // as a new rev first, so going back loses nothing.
     bool openRev(int rev);
 
-    // Tell the engine everything in the project, from nothing.
+    // Tell the engine everything in the project, from nothing. Another song: undo starts again.
     void applyProject();
+    // The engine half of it: the song is the same song (a resync, a track deleted or given
+    // another instrument), so undo and redo are kept.
+    void sendSong();
     // How many times the engine fell behind (a full command queue) and was sent the whole song again.
     int resyncs() const { return resyncs_; }
 
     // Write a whole cell to the engine (every bar of it, and its length),
     // replacing what it had.
     void sendDrumPattern(int track, int scene);
+    void sendDrumHit(int track, int scene, int bar, int lane, int step); // one hit of it, all of what it is: what a keyboard records
     void sendNotePattern(int track, int scene);
     void sendNoteBar(int track, int scene, int bar); // one bar of it: what the piano roll changes
     // How long a track's cell is in a scene: 1, 2, 4 or 8 bars.
@@ -437,6 +443,10 @@ private:
     std::string revPath(int rev) const;
     std::string freshName();
     std::string folder_, songName_ = "untitled", savedText_;
+    // The song's text as it is now (songText(project), to the byte), made again a track at a time
+    // where a track has changed since it was last asked. Valid until it is asked again.
+    const std::string& textNow() const { return textNow_.text(project); }
+    mutable SongTextCache textNow_;
     std::uint32_t nameSeed_ = 1;
     Uint32 nextSaveAt_ = 0;
 
@@ -486,6 +496,9 @@ private:
     // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
+    static bool patternsSameAsText(const TrackData& now, const TrackData& then);
+    bool readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole);
+    bool readUndoWhole_ = false;
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still

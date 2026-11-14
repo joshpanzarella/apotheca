@@ -291,12 +291,15 @@ public:
     // It does not click: the sound slides from what was in the slot to what
     // is there now over kSwapFadeSeconds, and the old one's tail goes with it.
     // Its settings are then SetEffectParam, each 0..1 (see effects.hpp).
+    // A full queue is counted in dropped(), for the starting settings too (so
+    // true can still mean those were lost; dropped() says, and the app resends).
     bool setEffect(int track, int slot, EffectKind kind);
     // Put a recording on one lane of a drum track in place of the built-in
-    // drum, or nullptr to bring the drum back. False if the track has no drums.
+    // drum, or nullptr to bring the drum back. False if the track has no drums,
+    // or the queue is full (counted in dropped(), as every lost command is).
     bool setLaneSample(int track, int lane, std::unique_ptr<SampleData> sample);
     // Give a synth track's instrument a recording to play (the sampler), or
-    // nullptr to take it away. False if the track has no synth.
+    // nullptr to take it away. False if the track has no synth, or the queue is full (counted).
     bool setTrackSample(int track, std::unique_ptr<SampleData> sample);
     // Free what the audio thread has handed back (removed synths, used
     // images). Call now and then from the control thread.
@@ -313,6 +316,11 @@ public:
     // thread has stood still for seconds. When it does move, the engine no longer
     // matches what was sent: the caller sends everything again once caughtUp().
     unsigned dropped() const { return dropped_.load(std::memory_order_relaxed); }
+    // Things the audio thread handed back that found the trash full: waiting to
+    // be handed on (trashHeld), or lost to a leak because there was no room even
+    // to wait (trashLost; never seen, it would take thousands in one frame).
+    int trashHeld() const { return heldNow_.load(std::memory_order_relaxed); }
+    unsigned trashLost() const { return trashLost_.load(std::memory_order_relaxed); }
     bool caughtUp() const { return commands_.empty(); }
     // A second way in, for ONE other thread (the one reading a USB keyboard):
     // notes and drum hits to play now, and nothing else. They are taken up
@@ -707,10 +715,24 @@ private:
     SpscQueue<Command, 1024> live_;      // from the keyboard's thread (sendLive)
     std::atomic<unsigned> dropped_{0};   // commands lost to a full queue
 
-    // Things the audio thread no longer needs and must not free itself.
+    // Things the audio thread no longer needs and must not free itself. Emptied
+    // once a frame (collectGarbage). One song opened throws away at most about
+    // 150 (12 tracks: a synth and its recording, or eight lane recordings; 12
+    // track images; 40 effects fading out), so this holds several of those.
     struct Trash { bool isImage = false; void* pointer = nullptr; bool isSample = false; bool isEffect = false; bool isMove = false; };
-    SpscQueue<Trash, 64> trash_;
+    SpscQueue<Trash, 1024> trash_;
     static void destroy(const Trash& trash);
+    // What found the trash full waits here (the audio thread's alone) and is
+    // handed on at the end of a chunk (binHeld), as an effect fading out is.
+    // Only if this is full too is a thing lost (leaked, and counted): never
+    // kept in the engine, so a track never keeps an instrument it was told to drop.
+    static const int kHeldTrash = 256;
+    Trash heldTrash_[kHeldTrash];
+    int heldCount_ = 0;
+    std::atomic<int> heldNow_{0};
+    std::atomic<unsigned> trashLost_{0};
+    void bin(const Trash& trash); // the audio thread only, with no helper at work
+    void binHeld();               // the same
 };
 
 } // namespace apotheca

@@ -21,8 +21,10 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "battery.hpp"
+#include "bench_run.hpp"
 #include "canvas.hpp"
 #include "controls.hpp"
+#include "instruments.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 
@@ -79,6 +81,14 @@ const SDL_Keycode STICK_UP = SDLK_i, STICK_DOWN = SDLK_k, STICK_LEFT = SDLK_j, S
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 
 bool near(float a, float b) { return std::fabs(a - b) < 1e-4f; }
+
+// B held long enough to delete for good (an effect: a second; the rig's frames are 16 ms).
+void holdB(Rig& rig) {
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(1);
+}
 
 // A rig on the Song screen with a Phazed track added as track 2.
 void addPhazed(Rig& rig) {
@@ -266,6 +276,15 @@ void testRepeatCounts() {
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.project().repeats[1] == 2 && rig.project().repeats[0] == 1);
+    // A change of REPEATS is a step of undo of its own, and undo puts the count back.
+    rig.frames(60);
+    Session& session = rig.app.session();
+    const int steps = session.undoSteps();
+    rig.tap(A);
+    CHECK(rig.project().repeats[1] == 4);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    CHECK(session.undo() && rig.project().repeats[1] == 2);
 }
 
 // Scene n gets one rim hit on step n + 1, so a bar tells which scene it was.
@@ -817,10 +836,12 @@ void testCellsOfSeveralBars() {
     told.tap(START);
     const std::vector<float> a = opened.render(4 * kBar), b = told.render(4 * kBar);
     CHECK(Rig::peak(a) > 0.05f && a == b);
-    // Lines that make no sense are left out: a bar the cell does not have, a length that is not one.
+    // Lines that make no sense are left out: a bar there is not, a length that is not one. A bar past
+    // the cell's end is one it hides (made shorter), and is kept, to come back if it is made longer.
     CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nbars 3\nbar 2\nhit 1 1 1\nbar 3\nhit 2 2 1\nbar 9\nhit 3 3 1\nbar 0\nhit 4 4 1\nscene 2\nhit 5 5 1\n", *back));
     CHECK(back->tracks[0].bars[0] == 2 && back->tracks[0].drums[0][1].level[0][0] == 1.f);
-    CHECK(back->tracks[0].drums[0][2].empty() && back->tracks[0].drums[0][0].empty()); // bars 3, 9 and 0 are not there
+    CHECK(back->tracks[0].drums[0][2].level[1][1] == 1.f && back->tracks[0].drums[0][0].empty()); // bar 3 hidden; bars 9 and 0 are not there
+    for (int bar = 3; bar < kMaxBars; ++bar) CHECK(back->tracks[0].drums[0][bar].empty());
     CHECK(back->tracks[0].drums[1][0].level[4][4] == 1.f && back->tracks[0].bars[1] == 1); // a new scene starts at its first bar
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 9 60 40 1\nscene 2\nbars 2\nnote 9 60 40 1\n", *back));
     CHECK(back->tracks[0].notes[0][0].notes[0].length == 8.f && back->tracks[0].notes[1][0].notes[0].length == 24.f);
@@ -3476,7 +3497,9 @@ void testTheEffectsScreen() {
     rig.key(STICK_LEFT, false);
     rig.frames(1);
     CHECK(fx.cursorRow() == 0 && fx.cursorColumn() == 0);
-    rig.tap(B);
+    rig.key(B, true); // held: deleted when the bar is full
+    rig.frames(70);
+    rig.key(B, false);
     CHECK(first.kind == 0 && first.param[0] == 0.f);
 
     // The first lines are whichever track is being worked on; the master's stay.
@@ -4281,7 +4304,7 @@ void testTheFxScreensList() {
     rig.tap(DOWN);
     rig.key(A, false);
     CHECK(project.tracks[0].effects[2].kind == filter && project.tracks[0].effects[0].kind == 0 && project.tracks[0].effects[1].kind == 0);
-    rig.tap(B);
+    holdB(rig); // held: deleted when its bar is full
     CHECK(project.tracks[0].effects[2].kind == 0);
 
     // A bus offers its own family only: EMPTY and DELAY on ECHO, EMPTY and REVERB on SPACE; left and right its types.
@@ -4308,7 +4331,7 @@ void testTheFxScreensList() {
     CHECK(project.busEffects[0].kind == delay);
     rig.key(A, false);
     fx.goTo(5, 0);
-    rig.tap(B);
+    holdB(rig);
     CHECK(project.busEffects[1].kind == 0 && project.busEffects[0].kind == delay);
     rig.key(A, true);
     rig.tap(DOWN);
@@ -4357,9 +4380,9 @@ void testTheFxScreensList() {
     rig.key(A, false);
     CHECK(project.masterEffects[1].kind == tape && project.masterEffects[0].kind == filter); // the master takes any family, and its types
     fx.goTo(6, 0);
-    rig.tap(B);
+    holdB(rig);
     fx.goTo(7, 0);
-    rig.tap(B);
+    holdB(rig);
     CHECK(project.masterEffects[0].kind == 0 && project.masterEffects[1].kind == 0);
 
     // The stick with A held on a line: one push, one step of the list; sideways, one type.
@@ -4692,7 +4715,7 @@ void testTheFxScreenAsDrawn() {
     const bool barFound = hinted("pick effect");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("its settings") && hinted("empty it") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        CHECK(hinted("its settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
@@ -5739,6 +5762,18 @@ void testTheEngineHearsTwinsSettings() {
 }
 
 } // namespace
+
+// The SPEED TEST plays the busiest song with the helpers the program uses, as well as without
+// (the handheld cannot otherwise tell whether they carry it). Briefly here: that it plays, and
+// that the helpers asked for are the ones at work.
+void testTheSpeedTestPlaysTheBusiestSongWithHelpers() {
+    const WholeSongTimes alone = timeWholeSong(0, 0.3), helped = timeWholeSong(2, 0.3);
+    CHECK(alone.helpers == 0 && helped.helpers == 2);
+    CHECK(alone.blocks == 56 && helped.blocks == 56); // 0.3 s in blocks of 256 frames
+    CHECK(alone.peak > 0.05f && helped.peak > 0.05f); // a song playing, not silence
+    CHECK(alone.meanMs > 0.0 && alone.worstMs >= alone.p99Ms && alone.p99Ms >= 0.0 && helped.worstMs >= helped.p99Ms);
+    CHECK(!alone.realtime && !helped.realtime); // not asked for outside the SPEED TEST itself
+}
 
 // A full command queue loses commands (it takes the audio thread standing
 // still for seconds). The app notices, waits for the queue to empty, and
@@ -6796,6 +6831,581 @@ void testNoteEffects() {
     }
 }
 
+// ---- undo kept where the song is the same song ----------------------------------------------
+
+// A hit placed on a track by the code, as an edit is: a step of undo, then still for a while.
+void placeAndSettle(Rig& rig, int track, int lane, int step) {
+    rig.project().tracks[track].drums[0][0].level[lane][step] = 0.8f;
+    rig.app.session().sendDrumPattern(track, 0);
+    rig.frames(60); // a second: the burst of edits is over
+    rig.render(512);
+}
+
+// A full queue makes the song be sent again (a resync). It is the same song: undo stays.
+void testAResyncKeepsUndo() {
+    Rig rig;
+    Session& session = rig.app.session();
+    rig.frames(2);
+    placeAndSettle(rig, 0, 2, 4);
+    CHECK(session.undoSteps() == 1);
+    Command c;
+    c.type = Command::SetTempo;
+    c.value = 120.f;
+    for (int i = 0; i < 20000; ++i) rig.engine->send(c); // more than the queue holds
+    CHECK(rig.engine->dropped() > 0);
+    rig.render(512);
+    rig.frames(2);
+    CHECK(session.resyncs() == 1);
+    CHECK(session.undoSteps() == 1);
+    CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[2][4] == 0.f);
+    CHECK(session.redo() && rig.project().tracks[0].drums[0][0].level[2][4] > 0.f);
+}
+
+// Deleting a track, or giving one another instrument, keeps what undo knew of the other tracks.
+void testATrackDeletedOrChangedKeepsUndo() {
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums));
+        rig.project().tracks[1].drums[0][0].level[5][12] = 0.8f; // the track that goes: its hit must not land on the one after it
+        session.sendDrumPattern(1, 0);
+        rig.frames(2);
+        placeAndSettle(rig, 0, 1, 0);
+        placeAndSettle(rig, 2, 3, 8);
+        CHECK(session.undoSteps() == 2);
+        CHECK(session.removeTrack(1) && rig.project().trackCount() == 2);
+        rig.frames(60);
+        CHECK(session.undoSteps() == 2);
+        // An edit after the delete: its step is the song as it was just after it.
+        placeAndSettle(rig, 0, 6, 6);
+        CHECK(session.undoSteps() == 3);
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[6][6] == 0.f && rig.project().tracks[1].drums[0][0].level[3][8] > 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        // The third track is the second now, and its step of undo went with it.
+        CHECK(session.undo() && rig.project().tracks[1].drums[0][0].level[3][8] == 0.f && rig.project().tracks[0].drums[0][0].level[1][0] > 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[1][0] == 0.f);
+        CHECK(rig.project().tracks[1].drums[0][0].level[5][12] == 0.f);
+        CHECK(rig.project().trackCount() == 2); // the delete itself is not undone
+        CHECK(session.redo() && session.redo() && rig.project().tracks[1].drums[0][0].level[3][8] > 0.f);
+    }
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums));
+        rig.frames(2);
+        placeAndSettle(rig, 0, 1, 0);
+        placeAndSettle(rig, 1, 3, 8);
+        CHECK(session.setTrackKind(1, TrackKind::Phazed));
+        rig.frames(60);
+        CHECK(session.undoSteps() == 2);
+        CHECK(session.undo() && rig.project().tracks[1].kind == TrackKind::Phazed); // passed by: another kind now
+        CHECK(session.undo() && rig.project().tracks[0].drums[0][0].level[1][0] == 0.f);
+    }
+}
+
+// An undo of one hit sends the one track it changed. The others are compared as the song file
+// writes them: a keyboard's 90/127 or a setting written with WRITE on is not the number the text
+// reads back to the last bit, and each such track was sent whole and its values rounded.
+void testUndoSendsOnlyTheTrackItChanged() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums));
+    rig.frames(2);
+    project.tracks[1].drums[0][0].level[0][0] = 90.f / 127.f; // as a keyboard plays it
+    session.sendDrumPattern(1, 0);
+    session.setAutomation(2, 0, 9, 0, 0.123456f); // as WRITE writes it
+    rig.frames(60);
+    rig.render(512);
+    const float hit = project.tracks[1].drums[0][0].level[0][0], written = project.tracks[2].automation[0][9][0];
+    placeAndSettle(rig, 0, 3, 3);
+    const unsigned sent = session.imagesSent();
+    CHECK(session.undo() && project.tracks[0].drums[0][0].level[3][3] == 0.f);
+    CHECK(session.imagesSent() - sent == 1);
+    CHECK(project.tracks[1].drums[0][0].level[0][0] == hit && project.tracks[2].automation[0][9][0] == written); // to the last bit
+    // A track that did change is still put back and sent.
+    const unsigned again = session.imagesSent();
+    CHECK(session.redo() && project.tracks[0].drums[0][0].level[3][3] > 0.f && session.imagesSent() - again == 1);
+    // What is compared is every part of the patterns: automation, a cell's length, notes.
+    session.setAutomation(2, 0, 9, 4, 0.5f);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[2].automation[0][9][4] < 0.f);
+    session.setCellBars(1, 0, 2);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[1].bars[0] == 1);
+    session.setCellBars(2, 1, 2); // an empty cell: its length is all that changes
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[2].bars[1] == 1);
+}
+
+
+// A busy song of twelve tracks: drums and Phazed by turns, `scenes` scenes of `bars` bars, and
+// values as a keyboard and WRITE leave them (that the text rounds).
+void fillBusySong(Rig& rig, int scenes, int bars) {
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    for (int t = 1; t < kNumTracks; ++t) session.addTrack(t % 2 ? TrackKind::Drums : TrackKind::Phazed);
+    for (int t = 0; t < kNumTracks; ++t)
+        for (int sc = 0; sc < scenes; ++sc) {
+            p.tracks[t].bars[sc] = bars;
+            for (int b = 0; b < bars; ++b) {
+                if (p.tracks[t].kind == TrackKind::Drums) {
+                    DrumPattern& d = p.tracks[t].drums[sc][b];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int st = lane % 2; st < kSteps; st += 2) d.level[lane][st] = 90.f / 127.f;
+                } else {
+                    NotePattern& n = p.tracks[t].notes[sc][b];
+                    for (int k = 0; k < 32; ++k) n.notes[k] = NoteEvent{k / 2, 48 + k, 1.f, 0.f, 100.f / 127.f};
+                }
+                for (int i = 0; i < kSteps; ++i) p.tracks[t].automation[sc][0][b * kSteps + i] = 0.123456f;
+            }
+        }
+    session.applyProject();
+    rig.frames(60);
+    rig.render(512);
+}
+
+// The end of a burst of edits to one track, and an undo and a redo of it, write out as text and
+// read back that track, not the song. They did the whole song each time, on the screen's thread:
+// on the desk, at 2.5 MB of text, 87 ms at the end of an edit and 160 ms an undo.
+void testUndoWorksOnTheTrackItChanged() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    fillBusySong(rig, 4, 2);
+    const std::size_t size = songText(p).size();
+    std::uint64_t written = tracksWritten();
+    p.tracks[3].drums[1][1].level[1][1] = 0.5f;
+    session.sendDrumPattern(3, 1);
+    session.noteEdit();
+    rig.frames(60);
+    CHECK(session.undoSteps() == 1 && tracksWritten() - written == 1);
+    written = tracksWritten();
+    std::uint64_t read = bytesRead();
+    CHECK(session.undo() && std::fabs(p.tracks[3].drums[1][1].level[1][1] - 90.f / 127.f) < 1e-6f);
+    CHECK(tracksWritten() - written <= 2); // (the track compared with the step, as text: two)
+    CHECK(bytesRead() - read < size / 6);
+    written = tracksWritten();
+    read = bytesRead();
+    CHECK(session.redo() && p.tracks[3].drums[1][1].level[1][1] == 0.5f);
+    CHECK(tracksWritten() - written <= 3); // (and the track as it was, for the step of undo)
+    CHECK(bytesRead() - read < size / 6);
+    CHECK(songText(p).find("hit 2 2 0.5") != std::string::npos);
+    // A scene's length, where the longest cell in it is on a track the undo does not read: still its length.
+    session.setCellBars(5, 0, 8);
+    session.setSceneSteps(0, 100);
+    rig.frames(60);
+    p.tracks[3].drums[0][0].level[0][1] = 1.f;
+    session.sendDrumPattern(3, 0);
+    session.noteEdit();
+    rig.frames(60);
+    CHECK(p.steps[0] == 100 && session.undo() && p.steps[0] == 100 && p.tracks[3].drums[0][0].level[0][1] == 0.f && p.tracks[5].bars[0] == 8);
+}
+
+// NEXT SCENE taken back reads the step whole: the sixteenth scene comes from it. A track that the
+// move left as it was (the same in every scene from the one copied on) keeps its sixteenth.
+void testNextSceneTakenBackReadsTheStepWhole() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    CHECK(session.addTrack(TrackKind::Drums));
+    rig.frames(2);
+    for (int scene = 0; scene < kMaxScenes; ++scene) session.setAutomation(1, scene, 2, 0, 0.25f);
+    placeAndSettle(rig, 0, 1, 1);
+    CHECK(session.nextScene() == 1);
+    rig.frames(60);
+    CHECK(session.undo() && p.tracks[1].automation[kMaxScenes - 1][2][0] == 0.25f && p.tracks[0].drums[1][0].level[1][1] == 0.f);
+}
+
+// An undo that reads back only the tracks that changed does what it did reading the step whole:
+// two of the same song, the same edits, undos and redos, one of them reading every step whole.
+void testUndoIsAsItWasReadWhole() {
+    Rig a, b;
+    b.app.session().readUndoWhole(true);
+    Rig* both[2] = {&a, &b};
+    for (Rig* rig : both) fillBusySong(*rig, 3, 2);
+    std::uint32_t seed = std::getenv("UNDO_SEED") ? static_cast<std::uint32_t>(std::atoi(std::getenv("UNDO_SEED"))) : 777u;
+    const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
+    int checked = 0, wrong = 0, undone = 0;
+    for (int round = 0; round < 200; ++round) {
+        const int op = roll(14), t = roll(a.project().trackCount()), scene = roll(4), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
+        // (A level the program can make: 0.05 and up. One under it, that no gesture makes, the file holds
+        // as 0.05, so a track with one is not its text read back. Read whole, such a track was put back
+        // as the text has it on an undo of any other track; read in parts, it is left as it is.)
+        const float level = roll(3) ? static_cast<float>(7 + roll(121)) / 127.f : 0.f;
+        const float value = static_cast<float>(roll(1000)) / 997.f;
+        const int kindRoll = roll(2), bars = 1 << roll(4), steps = roll(3) ? 0 : 1 + roll(40), repeats = 1 + roll(4), autoLane = roll(2);
+        const bool settle = roll(2) == 0 && op < 7; // the burst of edits over, or more of it to come
+        bool didUndo = false;
+        for (Rig* rig : both) {
+            Session& session = rig->app.session();
+            Project& p = rig->project();
+            TrackData& track = p.tracks[t];
+            switch (op) {
+            case 0: case 1: case 2:
+                if (track.kind == TrackKind::Drums) {
+                    track.drums[scene][bar].level[lane][step] = level;
+                    session.sendDrumPattern(t, scene);
+                } else {
+                    track.notes[scene][bar].notes[lane * 8 + step % 8] = NoteEvent{step, 40 + lane, 1.f, 0.f, level};
+                    session.sendNotePattern(t, scene);
+                }
+                session.noteEdit();
+                break;
+            case 3: session.setAutomation(t, scene, autoLane, bar * kSteps + step, value); break;
+            case 4: session.setCellBars(t, scene, bars); break;
+            case 5: session.setSceneSteps(scene, steps); break;
+            case 6: p.repeats[scene] = repeats; session.noteEdit(); break;
+            case 7: case 8: case 9: didUndo = session.undo(); break;
+            case 10: case 11: session.redo(); break;
+            case 12: if (t > 0) session.setTrackKind(t, kindRoll ? TrackKind::Drums : TrackKind::Phazed); break;
+            default: if (t > 0 && p.trackCount() > 8) session.removeTrack(t); else session.addTrack(kindRoll ? TrackKind::Drums : TrackKind::Phazed); break;
+            }
+            rig->frames(settle ? 60 : 3);
+            rig->render(256);
+            rig->engine->collectGarbage();
+        }
+        undone += didUndo;
+        const Project& x = a.project();
+        const Project& y = b.project();
+        bool same = std::memcmp(x.repeats, y.repeats, sizeof x.repeats) == 0 && std::memcmp(x.steps, y.steps, sizeof x.steps) == 0;
+        for (int i = 0; i < kNumTracks; ++i) {
+            const TrackData& u = x.tracks[i];
+            const TrackData& v = y.tracks[i];
+            same = same && u.kind == v.kind && std::memcmp(u.bars, v.bars, sizeof u.bars) == 0 && std::memcmp(u.drums, v.drums, sizeof u.drums) == 0 &&
+                   std::memcmp(u.notes, v.notes, sizeof u.notes) == 0 && std::memcmp(u.automation, v.automation, sizeof u.automation) == 0;
+        }
+        same = same && a.app.session().undoSteps() == b.app.session().undoSteps() && a.app.session().redoSteps() == b.app.session().redoSteps() &&
+               a.app.session().imagesSent() == b.app.session().imagesSent();
+        ++checked;
+        if (!same) {
+            ++wrong;
+            if (wrong == 1) {
+                std::printf("    undo read in parts differs from read whole after round %d (op %d)\n", round, op);
+                if (std::getenv("UNDO_DEBUG")) {
+                    for (int i = 0; i < kNumTracks; ++i) {
+                        const TrackData& u = x.tracks[i];
+                        const TrackData& v = y.tracks[i];
+                        if (u.kind != v.kind) std::printf("     track %d kind %d %d\n", i, int(u.kind), int(v.kind));
+                        if (std::memcmp(u.bars, v.bars, sizeof u.bars)) std::printf("     track %d bars\n", i);
+                        if (std::memcmp(u.drums, v.drums, sizeof u.drums)) std::printf("     track %d drums\n", i);
+                        if (std::memcmp(u.notes, v.notes, sizeof u.notes)) std::printf("     track %d notes\n", i);
+                        if (std::memcmp(u.automation, v.automation, sizeof u.automation)) std::printf("     track %d auto\n", i);
+                    }
+                    std::printf("     steps %d repeats %d undo %d %d redo %d %d images %u %u text %d\n", std::memcmp(x.steps, y.steps, sizeof x.steps), std::memcmp(x.repeats, y.repeats, sizeof x.repeats),
+                                a.app.session().undoSteps(), b.app.session().undoSteps(), a.app.session().redoSteps(), b.app.session().redoSteps(), a.app.session().imagesSent(), b.app.session().imagesSent(), songText(x) == songText(y));
+                }
+            }
+        }
+    }
+    CHECK(checked == 200 && wrong == 0 && undone > 20);
+    CHECK(songText(a.project()) == songText(b.project()));
+}
+
+// ---- the pit stop: the button standards ------------------------------------------
+
+// Is this text drawn in the hints bar, in the hint's own colour, somewhere along it?
+bool hintedOn(const Canvas& canvas, Canvas& scratch, const char* words) {
+    const Fonts& fonts = *canvas.fonts;
+    for (float x = 4.f; x < ui::kScreenW - 40.f; x += 0.0625f)
+        if (inked(canvas, scratch, 0, x, ui::kScreenH - ui::kHintsH + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f, words, ui::kDim)) return true;
+    return false;
+}
+
+// HOLD B deletes an effect for good, with a bar that fills and says it cannot be undone. A tap does nothing.
+void testHoldBDeletesAnEffect() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    typedef FxScreen F;
+    Rig rig;
+    Session& session = rig.app.session();
+    FxScreen& fx = rig.app.fx();
+    const Fonts& fonts = *canvas.fonts;
+    session.view = View::Effects;
+    session.setEffect(0, 0, EffectKind::Tape);
+    session.setEffectParam(0, 0, 1, 0.9f);
+    session.setEffect(0, 1, EffectKind::Filter);
+    session.setAutomation(0, 2, autoLaneOfEffect(0, 1), 5, 0.25f);
+    const EffectData& first = rig.project().tracks[0].effects[0];
+    const auto draw = [&] {
+        canvas.clear();
+        fx.draw(canvas.r, fonts);
+    };
+    fx.goTo(0, 0);
+    rig.frames(1);
+    draw();
+    CHECK(hintedOn(canvas, scratch, "delete") && !hintedOn(canvas, scratch, "empty it"));
+    // A tap: nothing goes.
+    rig.tap(B);
+    rig.frames(100);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && near(first.param[1], 0.9f) && fx.deletePart() == 0.f);
+    // Held: the bar fills, and the heading says it cannot be undone; let go before it is full and it stays.
+    rig.key(B, true);
+    rig.frames(40);
+    CHECK(fx.deletePart() > 0.5f && fx.deletePart() < 1.f && first.kind == static_cast<int>(EffectKind::Tape));
+    draw();
+    CHECK(inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText));
+    CHECK(!canvas.is(F::kListX + 4, F::lineY(0) + F::kLineH / 2, ui::kPanel2)); // the line fills too
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(fx.deletePart() == 0.f && first.kind == static_cast<int>(EffectKind::Tape));
+    draw();
+    CHECK(!inked(canvas, scratch, 0, F::kPaneX + 12.f, F::kPaneY + 10.f, F::kDeletingWords, ui::kText) && canvas.is(F::kListX + 4, F::lineY(0) + F::kLineH / 2, ui::kPanel2));
+    // Held and moved off the line, by the D-pad or by the stick: nothing goes.
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(DOWN);
+    rig.frames(60);
+    rig.key(B, false);
+    rig.tap(UP);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    rig.key(B, true);
+    rig.frames(30);
+    rig.key(STICK_DOWN, true);
+    rig.frames(1);
+    rig.key(STICK_DOWN, false);
+    rig.frames(60);
+    rig.key(B, false);
+    CHECK(fx.cursorRow() == 1 && rig.project().tracks[0].effects[1].kind == static_cast<int>(EffectKind::Filter)); // nor the line it is on now
+    rig.tap(UP);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.cursorRow() == 0);
+    // Any other button pressed while it fills calls it off (X: heard, not deleted).
+    rig.key(B, true);
+    rig.frames(30);
+    rig.tap(X);
+    rig.frames(60);
+    CHECK(first.kind == static_cast<int>(EffectKind::Tape) && fx.deletePart() == 0.f);
+    rig.key(B, false);
+    // Held the whole second: the effect, its settings and its automation go.
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    rig.frames(1);
+    CHECK(first.kind == 0 && !session.hasAutomation(0, 2, autoLaneOfEffect(0, 1)));
+    // An empty line says nothing of B, and holding it there does nothing.
+    draw();
+    CHECK(!hintedOn(canvas, scratch, "delete"));
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    CHECK(fx.deletePart() == 0.f && first.kind == 0);
+    // On a setting a tap still gives its usual value.
+    session.setEffect(0, 0, EffectKind::Delay);
+    session.setEffectParam(0, 0, 1, 0.9f);
+    fx.goTo(0, 2);
+    rig.tap(B);
+    CHECK(near(first.param[1], effectInfo(EffectKind::Delay).defaults[1]) && first.kind == static_cast<int>(EffectKind::Delay));
+    // A bus's line: the same.
+    const EffectData& echo = session.effectData(kEchoBus, 0);
+    CHECK(echo.kind != 0);
+    fx.goTo(F::kBusRow, 0);
+    rig.tap(B);
+    rig.frames(100);
+    CHECK(echo.kind != 0);
+    rig.key(B, true);
+    rig.frames(70);
+    rig.key(B, false);
+    CHECK(echo.kind == 0);
+    // SENDS: a tap still sends nothing.
+    session.setSend(0, 0, 0.5f);
+    fx.goTo(F::kSendsRow, 0);
+    rig.tap(B);
+    CHECK(rig.project().tracks[0].send[0] == 0.f);
+}
+
+// Is `words` drawn in the hints bar with the chip `key` just before it (its left edge where that chip's would be)?
+bool hintKeyed(const Canvas& canvas, Canvas& scratch, const char* key, const char* words) {
+    const Fonts& fonts = *canvas.fonts;
+    const float textY = ui::kScreenH - ui::kHintsH + (ui::kHintsH - fonts.small.capHeight()) / 2.f + 1.f;
+    const int chipY = ui::kScreenH - ui::kHintsH + 6; // the chip's top row, above its letters
+    for (float x = 4.f; x < ui::kScreenW - 40.f; x += 0.0625f) {
+        if (!inked(canvas, scratch, 0, x, textY, words, ui::kDim)) continue;
+        const int left = static_cast<int>(x - 5.f - (ui::keyWidth(fonts, key) + 8.f));
+        for (int at = left - 1; at <= left + 1; ++at)
+            if (canvas.is(at, chipY, ui::kText) && !canvas.is(at - 1, chipY, ui::kText)) return true;
+    }
+    return false;
+}
+
+// Every hint the SONG screen's cell and the drum grid list is drawn, and the help at the end, with
+// either help ("MENU: HELP", "HLD SEL: HELP"). A tap of B on a hit deletes it, and the bar says B,
+// not HOLD B, as the piano roll does on a note; on an empty step HOLD B (dragged over) on both.
+void testTheHintsFitAndSayWhatTheyDo() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    for (int menu = 0; menu < 2; ++menu) {
+        Rig rig;
+        Session& session = rig.app.session();
+        addPhazed(rig);
+        rig.app.drums().setStep(0, 0, 1.f);
+        const auto draw = [&] {
+            rig.frames(1);
+            ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP"; // (App sets it each frame from the controls)
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            return ui::gHintsOver == 0.f;
+        };
+        // SONG, on a cell: the way to the songs is in it; so on a muted, soloed track.
+        session.view = View::Song;
+        rig.app.song().moveCursorTo(0, 0);
+        CHECK(draw());
+        CHECK(hintedOn(canvas, scratch, "songs") && hintKeyed(canvas, scratch, "HOLD B", "delete track") && hintKeyed(canvas, scratch, "B", "empty"));
+        session.setMuted(0, true);
+        session.setSolo(0, true);
+        CHECK(draw());
+        session.setMuted(0, false);
+        session.setSolo(0, false);
+        // ...on a head (mute and solo are said there), on + TRACK, on a repeat count.
+        rig.tap(UP);
+        CHECK(rig.app.song().cursorOnHead() && draw() && hintedOn(canvas, scratch, "mute") && hintedOn(canvas, scratch, "solo"));
+        rig.tap(DOWN);
+        rig.app.song().moveCursorTo(0, rig.project().trackCount());
+        CHECK(draw());
+        rig.app.song().moveCursorTo(0, -1);
+        CHECK(draw());
+        // The drum grid, on a hit and on an empty step, on a lane of the kit.
+        session.view = View::Pattern;
+        rig.project().track = 0;
+        rig.app.drums().moveCursorTo(0, 0);
+        CHECK(draw());
+        CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete") && hintKeyed(canvas, scratch, "HOLD X", "fx"));
+        CHECK(hintKeyed(canvas, scratch, "HOLD R1", "paint")); // R1 held on a hit paints at its level, as it did on main
+        rig.app.drums().moveCursorTo(0, 1);
+        CHECK(draw());
+        CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete") && !hintKeyed(canvas, scratch, "B", "delete") && hintedOn(canvas, scratch, "random") && hintedOn(canvas, scratch, "paint"));
+        // What they say is what they do: a tap of B on the hit deletes it.
+        rig.app.drums().moveCursorTo(0, 0);
+        rig.tap(B);
+        CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 0.f);
+        // The piano roll says it the same way.
+        rig.project().track = 1;
+        session.view = View::Pattern;
+        rig.app.notes().moveCursorTo(60, 0);
+        rig.tap(A);
+        draw(); // (the roll on a note does not hold its help yet: found in the pit stop, not one of its items)
+        CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete"));
+        rig.app.notes().moveCursorTo(60, 8);
+        CHECK(draw());
+        CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete") && !hintKeyed(canvas, scratch, "B", "delete"));
+    }
+    ui::gHelpHint = "MENU: HELP";
+}
+
+// B held on a track: the hints bar says it cannot be undone while the head fills (the head has room for one word).
+void testDeletingATrackSaysItCannotBeUndone() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Phazed);
+    rig.app.session().view = View::Song;
+    for (int head = 0; head < 2; ++head) {
+        rig.app.song().moveCursorTo(0, 1);
+        if (head) rig.tap(UP);
+        CHECK(rig.app.song().cursorOnHead() == (head == 1));
+        const auto draw = [&] {
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            return ui::gHintsOver == 0.f;
+        };
+        rig.frames(1);
+        CHECK(draw() && !hintedOn(canvas, scratch, SongScreen::kTrackDeletingWords));
+        rig.key(B, true);
+        rig.frames(20); // the wait: the head is as it was, and so is the bar
+        CHECK(draw() && !hintedOn(canvas, scratch, SongScreen::kTrackDeletingWords));
+        rig.frames(40);
+        CHECK(rig.app.song().trackDeletePart() > 0.f && draw() && hintKeyed(canvas, scratch, "HOLD B", SongScreen::kTrackDeletingWords));
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(rig.project().trackCount() == 2 && draw() && !hintedOn(canvas, scratch, SongScreen::kTrackDeletingWords));
+        if (head) rig.tap(DOWN);
+    }
+}
+
+// Another instrument for a track: the list says what goes with the old one, and that it cannot be
+// undone; not when the cursor is on the one it has (A there changes nothing), nor when adding a track.
+void testChangingAnInstrumentSaysWhatGoes() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    Rig rig;
+    Session& session = rig.app.session();
+    session.addTrack(TrackKind::Phazed);
+    session.view = View::Song;
+    const int w = 340, x = (ui::kScreenW - w) / 2, ly = 70 + 36 + kInstrumentCount * 52 + 4;
+    const auto says = [&] {
+        rig.frames(1);
+        canvas.clear();
+        rig.app.draw(canvas.r, fonts);
+        const bool first = inked(canvas, scratch, 0, x + 12.f, static_cast<float>(ly), SongScreen::kChangeLostWords[0], ui::kBrass);
+        const bool second = inked(canvas, scratch, 0, x + 12.f, ly + 20.f, SongScreen::kChangeLostWords[1], ui::kBrass);
+        CHECK(first == second);
+        return first;
+    };
+    rig.app.song().moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.tap(R1); // the list, on PHAZED: the one it has
+    CHECK(!says());
+    rig.tap(DOWN); // TWIN ANALOG
+    CHECK(says());
+    // Inside the list's box, clear of the hints bar.
+    CHECK(70 + 46 + kInstrumentCount * 52 + SongScreen::kChangeLostH <= ui::kScreenH - ui::kHintsH);
+    CHECK(ly + 20 + fonts.small.capHeight() < 70 + 46 + kInstrumentCount * 52 + SongScreen::kChangeLostH);
+    rig.tap(B);
+    CHECK(!says() && rig.project().tracks[1].kind == TrackKind::Phazed);
+    // Adding a track loses nothing: nothing said.
+    rig.tap(DOWN);
+    rig.app.song().moveCursorTo(0, rig.project().trackCount());
+    rig.tap(A);
+    CHECK(!says());
+    rig.tap(DOWN);
+    CHECK(!says());
+    rig.tap(B);
+}
+
+// B held on a song in the list: its row says it cannot be undone (nothing on the handheld brings it back).
+void testDeletingASongSaysItCannotBeUndone() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    char pattern[] = "/tmp/apotheca-delsong-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    {
+        Rig rig;
+        Session& session = rig.app.session();
+        session.useSongFolder(folder + "/songs", 7u);
+        rig.app.drums().setStep(0, 0, 0.8f); // (a song with nothing in it is never written)
+        session.view = View::Song;
+        rig.frames(2);
+        rig.tap(SELECT);
+        CHECK(rig.app.song().listingSongs());
+        rig.tap(DOWN); // the song
+        const int w = 360, x = (ui::kScreenW - w) / 2, by = 60 + 32 + 34;
+        const float right = x + w - 22.f, left = right - fonts.small.width(SongScreen::kSongDeletingWords);
+        const auto says = [&] {
+            canvas.clear();
+            rig.app.draw(canvas.r, fonts);
+            return inked(canvas, scratch, 0, left, by + 10.f, SongScreen::kSongDeletingWords, ui::kBrass);
+        };
+        rig.frames(1);
+        CHECK(!says());
+        rig.key(B, true);
+        rig.frames(30);
+        CHECK(says() && session.songNames().size() == 1);
+        rig.key(B, false);
+        rig.frames(1);
+        CHECK(session.songNames().size() == 1);
+    }
+    std::system(("rm -rf '" + folder + "'").c_str());
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
@@ -6805,6 +7415,36 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
+        testAResyncKeepsUndo();
+        testATrackDeletedOrChangedKeepsUndo();
+        testUndoSendsOnlyTheTrackItChanged();
+        testUndoWorksOnTheTrackItChanged();
+        testNextSceneTakenBackReadsTheStepWhole();
+        testUndoIsAsItWasReadWhole();
+        if (failures == 0) std::printf("app tests passed (undo kept only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop
+        testHoldBDeletesAnEffect();
+        testTheHintsFitAndSayWhatTheyDo();
+        testDeletingATrackSaysItCannotBeUndone();
+        testChangingAnInstrumentSaysWhatGoes();
+        testDeletingASongSaysItCannotBeUndone();
+        if (failures == 0) std::printf("app tests passed (hands only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    testAResyncKeepsUndo();
+    testATrackDeletedOrChangedKeepsUndo();
+    testUndoSendsOnlyTheTrackItChanged();
+    testUndoWorksOnTheTrackItChanged();
+    testNextSceneTakenBackReadsTheStepWhole();
+    testUndoIsAsItWasReadWhole();
+    testHoldBDeletesAnEffect();
+    testTheHintsFitAndSayWhatTheyDo();
+    testDeletingATrackSaysItCannotBeUndone();
+    testChangingAnInstrumentSaysWhatGoes();
+    testDeletingASongSaysItCannotBeUndone();
     testTabs();
     testNoteEffects();
     testNoteEffectsHoldUp();
@@ -6816,6 +7456,7 @@ int main(int argc, char** argv) {
     testNamingATrackFromTheSongScreen();
     testStepEffects();
     testAFullQueueIsRecoveredFrom();
+    testTheSpeedTestPlaysTheBusiestSongWithHelpers();
     testANewProjectIsOneDrumTrack();
     testAddingTracks();
     testOpeningACellWorksOnThatScene();

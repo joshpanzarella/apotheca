@@ -1053,6 +1053,17 @@ void testTheOtherScreens() {
         holds(few, "SONG, the list of instruments");
         CHECK(drew("8 lanes: built-in drums or your recordings") && capAtXl("8 lanes: built-in drums or your recordings") == 12.f && capAtXl("FM you roll like dice, not program") == 13.f);
         few.tap(B);
+        // Another instrument for track 1: under the list, what goes with the old one.
+        few.app.song().moveCursorTo(0, 0);
+        few.tap(UP);
+        few.tap(R1);
+        few.tap(DOWN);
+        few.frames(1);
+        holds(few, "SONG, another instrument for a track");
+        CHECK(drew(SongScreen::kChangeLostWords[0]) && drew(SongScreen::kChangeLostWords[1]));
+        few.tap(B);
+        few.tap(DOWN);
+        few.app.song().moveCursorTo(0, 1);
         // The list of songs, and a song's revs: with the WiFi page off and on.
         mkdir((folder + "/songs").c_str(), 0755);
         few.session().useSongFolder(folder + "/songs", 7u);
@@ -1075,6 +1086,15 @@ void testTheOtherScreens() {
         CHECK(address);
         few.tap(L1);
         CHECK(!few.session().transferOn());
+        few.tap(DOWN); // B held on the song: its row says it cannot be undone
+        few.key(B, true);
+        few.frames(30);
+        holds(few, "the list of songs, B held on one");
+        CHECK(drew(SongScreen::kSongDeletingWords));
+        few.key(B, false); // (let go sooner than a second: only a tap, which closes the list)
+        few.frames(1);
+        few.tap(SELECT);
+        CHECK(few.app.song().listingSongs() && few.session().songNames().size() == 1);
         few.tap(X); // a rev is saved: the heading says so, beside SONGS
         holds(few, "the list of songs, a rev just saved");
         CHECK(!drew("KEPT AS YOU GO. NOTHING TO SAVE."));
@@ -1335,6 +1355,18 @@ void testTheFxScreen() {
         CHECK(drew("THIS TRACK") && capAtXl("THIS TRACK") == 12.f && capAtXl("BUSES") == 13.f);
     }
     session.setTrackName(project.track, "WWWWWWWWWW");
+    // B held on an effect's line: the bar fills, and the heading says it cannot be undone.
+    for (int row : {0, FxScreen::kBusRow, FxScreen::kMasterRow}) {
+        session.setEffect(row == 0 ? project.track : row == FxScreen::kBusRow ? kEchoBus : kMasterTrack, 0, row == FxScreen::kBusRow ? EffectKind::Tape : EffectKind::Saturate);
+        fx.goTo(row, 0);
+        rig.key(B, true);
+        rig.frames(30);
+        std::snprintf(what, sizeof what, "FX, B held on line %d", row + 1);
+        holds(rig, what);
+        CHECK(drew(FxScreen::kDeletingWords) && fx.deletePart() > 0.f);
+        rig.key(B, false);
+        rig.frames(1);
+    }
     // Every line of the list, on the line and on each of its settings, with A held and not.
     for (int row = 0; row < FxScreen::kRows; ++row)
         for (int column = 0; column <= 4; ++column)
@@ -1591,10 +1623,114 @@ void testTheOfferAtTheStart() {
     }
 }
 
+// ---- the SET page's bars: never through the words beside them -----------------------------------
+// BOUNCE under way has a bar and a long value (WORKING 37%, TAIL 12 S): at every size the bar stands
+// clear of the value and of what is said at the right. VOLUME's stays where it always was.
+void testTheBounceBarClearsItsWords() {
+    typedef SettingsScreen S;
+    Screens& s = screens();
+    if (!s.canvas.ok) return;
+    Rig rig;
+    rig.session().view = View::Settings;
+    const struct { float progress, tail; } states[] = {{0.37f, -1.f}, {1.f, -1.f}, {0.f, -1.f}, {1.f, 12.4f}, {1.f, 479.9f}};
+    for (int size = 0; size < kTextSizes; ++size)
+        for (const auto& state : states)
+            for (int here = 0; here < 2; ++here) {
+                rig.app.settings().goTo(here ? S::kBounce : S::kVolume);
+                rig.session().pretendBounce(state.progress, state.tail);
+                rig.frames(1);
+                rig.session().pretendBounce(state.progress, state.tail);
+                const Drawn drawn = rig.draw(s.at[size].get());
+                const auto barIn = [&](int row, float* x, float* w) {
+                    const float top = static_cast<float>(rig.app.settings().rowNowY(row));
+                    for (const textfit::Box& b : drawn.frame.boxes)
+                        if (b.h == 4.f && b.y == top + S::kRowH - 16) { *x = b.x, *w = b.w; return true; } // (the first: the bar's whole length)
+                    return false;
+                };
+                const float top = static_cast<float>(rig.app.settings().rowNowY(S::kBounce));
+                float valueEnd = 0.f, noteStart = 0.f, barX = 0.f, barW = 0.f;
+                for (const textfit::Text& t : drawn.frame.texts) {
+                    if (t.y < top || t.y > top + S::kRowH) continue;
+                    if (t.x == S::kValueX) valueEnd = t.x + t.w;
+                    if (std::fabs(t.x + t.w - S::kNoteRight) < 0.01f) noteStart = t.x;
+                }
+                const bool bar = barIn(S::kBounce, &barX, &barW);
+                CHECK(bar && valueEnd > S::kValueX && noteStart > valueEnd);
+                CHECK(barX >= valueEnd + S::kBarGap - 1.f && barX + barW <= noteStart - S::kNoteGap + 1.f && barW >= 40.f);
+                if (!(barX >= valueEnd + S::kBarGap - 1.f && barX + barW <= noteStart - S::kNoteGap + 1.f))
+                    std::printf("    BOUNCE at %s: value to %.1f, bar %.1f to %.1f, words from %.1f\n", kTextSizeNames[size], valueEnd, barX, barX + barW, noteStart);
+                float volX = 0.f, volW = 0.f;
+                CHECK(barIn(S::kVolume, &volX, &volW) && volX == S::kBarX && volW == S::kBarW);
+            }
+}
+
+// The step numbers of a scene of 25 steps, bar 2: they count through the cell (17 to 25) and a step
+// past the scene's end reads "-" (26 to 32: seven of them), on the drum grid, its slice view and the
+// piano roll alike. Read off what is drawn, at LARGE.
+void testTheStepNumbersOfAShortScene() {
+    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    std::vector<float> sound(48000);
+    for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
+    CHECK(writeWav(folder + "/loop.wav", sound, 48000));
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    session.useSampleFolder(folder);
+    CHECK(session.addTrack(TrackKind::Phazed));
+    session.setLaneSample(0, 5, "loop");
+    session.finishStretching();
+    session.setCellBars(0, 0, 2);
+    session.setCellBars(1, 0, 2);
+    session.view = View::Pattern;
+    rig.frames(2);
+    // How many times each of these words is drawn now.
+    const auto count = [&](const char* words) {
+        const Drawn now = rig.draw(screens().at[kTextLarge].get());
+        int n = 0;
+        for (const textfit::Text& t : now.frame.texts) n += t.words == words ? 1 : 0;
+        return n;
+    };
+    PatternScreen& drums = rig.app.drums();
+    const auto look = [&](const char* what) {
+        project.bar = 1;
+        rig.frames(2);
+        session.setSceneSteps(0, 2 * kSteps); // every step (kept as 0)
+        rig.frames(2);
+        const int dashes = count("-");
+        CHECK(count("17") >= 1 && count("32") >= 1 && count("26") >= 1);
+        session.setSceneSteps(0, 25);
+        rig.frames(2);
+        const bool right = count("17") >= 1 && count("25") >= 1 && count("26") == 0 && count("32") == 0 && count("-") == dashes + 7;
+        if (!right) std::printf("    %s: a scene of 25 steps, bar 2: not 17 to 25 and seven dashes\n", what);
+        CHECK(right);
+        session.setSceneSteps(0, 2 * kSteps);
+        rig.frames(2);
+    };
+    project.track = 0;
+    drums.moveCursorTo(5, 2);
+    rig.frames(2);
+    look("the drum grid");
+    rig.tap(L1);
+    CHECK(drums.slicing());
+    look("the slice view");
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    project.track = 1;
+    rig.frames(2);
+    look("the piano roll");
+    CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
     CHECK(screens().canvas.ok);
+    if (argc >= 2 && std::strcmp(argv[1], "--bounce") == 0) { // just the SET page's bars (ctest runs everything)
+        testTheBounceBarClearsItsWords();
+        std::printf(failures ? "%d check(s) failed\n" : "text size: bounce bar passed\n", failures);
+        return failures ? 1 : 0;
+    }
     testTheMeasure();
     testTheSizes();
     testWithin();
@@ -1602,6 +1738,7 @@ int main(int argc, char** argv) {
     testTheSettingIsKept();
     testTheRow();
     testTheDrumGridsRows();
+    testTheStepNumbersOfAShortScene();
     testThePianoRollsRows();
     testTheOtherScreens();
     testWhatOnlyLargeHadRoomFor();
@@ -1610,6 +1747,7 @@ int main(int argc, char** argv) {
     testTheControlsSetup();
     testTheUpdateNotice();
     testTheFxScreen();
+    testTheBounceBarClearsItsWords();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

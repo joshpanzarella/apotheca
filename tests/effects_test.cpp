@@ -42,6 +42,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -7791,13 +7792,33 @@ int main(int argc, char** argv) {
         {"testSpring", testSpring},
         {"testPlate", testPlate},
     };
+    // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
+    // so neither comes near its two minutes on a busy machine. Part 2 is everything from
+    // kSecondPartFrom on, so a test added at the end goes in part 2. (2026-11-14, a quiet desk:
+    // 34 s each.) Move the line if one part grows much longer than the other.
+    static const char* const kSecondPartFrom = "testFamiliesAndTypes";
+    int part = 0;
+    if (argc > 2 && std::string(argv[1]) == "--part") {
+        part = std::atoi(argv[2]);
+        if (part != 1 && part != 2) {
+            std::printf("effects_test: --part 1 or --part 2\n");
+            return 1;
+        }
+    }
     const int first = gMeasure ? 2 : 1; // where "--only" would be
-    const bool only = argc > first + 1 && std::string(argv[first]) == "--only";
-    int ran = 0;
+    const bool only = part == 0 && argc > first + 1 && std::string(argv[first]) == "--only";
+    int ran = 0, inSecond = 0;
+    bool second = false;
     for (const Named& test : tests) {
-        bool wanted = !only;
-        for (int a = first + 1; a < argc && !wanted; ++a) wanted = std::string(argv[a]) == test.name;
+        second = second || std::string(test.name) == kSecondPartFrom;
+        inSecond += second ? 1 : 0;
+        bool wanted = !only && (part == 0 || (part == 2) == second);
+        for (int a = first + 1; a < argc && !wanted && only; ++a) wanted = std::string(argv[a]) == test.name;
         if (wanted) test.run(), ++ran;
+    }
+    if (inSecond == 0 || inSecond == static_cast<int>(sizeof tests / sizeof tests[0])) {
+        std::printf("effects_test: %s is not a test here, so the two parts are not halves\n", kSecondPartFrom);
+        return 1;
     }
     if (ran == 0) {
         std::printf("effects_test: no such test\n");

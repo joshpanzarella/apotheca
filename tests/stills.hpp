@@ -26,6 +26,7 @@ inline const char* const kViews[] = {
     "fx", "fx --hold-a", "fx-type", "fx-type --hold-a", "fx-pick", "fx-pick --hold-a", "fx-comp", "fx-comp --hold-a", "fx-master", "fx-master --hold-a",
     "fx-duck", "fx-duck --hold-a", "fx-choice", "fx-choice --hold-a", "fx-auto", "fx-auto --hold-a", "fx-sends", "fx-sends --hold-a",
     "fx-bus", "fx-bus --hold-a", "fx-level", "fx-level --hold-a", "fx-ping", "fx-ping --hold-a", "fx-ping-bus", "fx-ping-bus --hold-a", "fx-spring", "fx-spring --hold-a", "fx-plate", "fx-plate --hold-a",
+    "fx-deleting", "change-instrument", "song-deleting",
     "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "twin", "twin0", "twin1", "twin2", "twin3", "twin4",
     "kit", "slices", "slices-32", "slices-name", "slices-throw", "starts", "picker",

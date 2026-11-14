@@ -22,6 +22,7 @@
 // is stuck down.
 
 #include "screen.hpp"
+#include <cmath>
 #include <SDL.h>
 
 #include <string>
@@ -53,6 +54,16 @@ public:
     static constexpr float kNoteGap = 8.f; // the least there is between a value and what is said about it
     static constexpr int rowY(int row, int first = 0) { return kRowsTop + (row - first) * kRowH + (row >= kVolume ? kHandheldGap : 0); }
     int rowNowY(int row) const { return rowY(row, first_); } // where it is drawn just now
+    // A row's bar (VOLUME, STICK, a BOUNCE under way): from kBarX, kBarW long, unless the value drawn
+    // `valueW` wide would reach it: then kBarGap after the value, and never closer than kNoteGap to what
+    // is said (`noteW` wide, at the right; 0: nothing said).
+    static constexpr int kBarX = 250, kBarW = 110, kBarGap = 12;
+    static void barPlace(float valueW, float noteW, int* x, int* w) {
+        const float after = kValueX + valueW + kBarGap, limit = kNoteRight - (noteW > 0.f ? noteW + kNoteGap : 0.f);
+        *x = after > kBarX ? static_cast<int>(std::ceil(after)) : kBarX;
+        const int room = static_cast<int>(std::floor(limit)) - *x;
+        *w = room < kBarW ? (room > 0 ? room : 0) : kBarW;
+    }
     int firstShown() const { return first_; }
     bool shown(int row) const { return row >= first_ && row < first_ + kRowsShown; }
 
