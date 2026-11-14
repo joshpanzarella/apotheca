@@ -50,6 +50,9 @@ public:
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
     enum { kSound, kFit };
+    // The lanes' rows, from under the column heads down to the LIVE OUTPUT strip (ui::kAboveScope).
+    static constexpr int kLaneTop = 50, kLaneGap = 4;
+    static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
     SamplePicker& picker() { return picker_; }
 
 private:

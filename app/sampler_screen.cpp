@@ -220,7 +220,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const Session::LaneSound& sound = session_.trackSound(project_.track);
 
     // ---- the recording ------------------------------------------------------------
-    const int sx = 8, sy = 36, sw = 624, sh = 96;
+    const int sx = 8, sy = kSoundY, sw = 624, sh = kSoundH;
     box(r, sx, sy, sw, sh, kPanel, kLine);
     fonts.small.draw(r, sx + 7.f, sy + 7.f, said_.empty() ? "SOUND" : said_.c_str(), said_.empty() ? kDim : kBrass);
     char upper[80];
@@ -230,12 +230,15 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
     fonts.within(&Fonts::large, upper, sw - 14.f).draw( // (a name that just fits the box at LARGE: held at LARGE at XL)
         r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
+    // With no picture, what is said stands in the middle of the picture's room (not at its top, with
+    // the room under it left empty).
+    const float wordsY = kWaveY + (kWaveH - fonts.small.capHeight()) / 2.f;
     if (sound.missing) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
+        fonts.small.draw(r, sx + 7.f, wordsY, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
     } else if (!t.sample[0]) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
+        fonts.small.draw(r, sx + 7.f, wordsY, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
     } else if (!sound.peaks.empty()) {
-        const int wx = sx + 7, wy = sy + 48, ww = sw - 14, wh = 40;
+        const int wx = sx + 7, wy = kWaveY, ww = sw - 14, wh = kWaveH;
         const int count = static_cast<int>(sound.peaks.size());
         const float start = static_cast<float>(t.sampler[sampler::Start]) / 100.f;
         for (int i = 0; i < count; ++i) {
@@ -251,13 +254,13 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the settings -------------------------------------------------------------
     for (int id = 0; id < sampler::kSettings; ++id) {
-        const int x = 8 + (id % 4) * 157, y = 142 + (id / 4) * 76;
+        const int x = 8 + (id % 4) * 157, y = kSettingY + (id / 4) * (kSettingH + kSettingGap);
         samplerSettingText(id, t.sampler[id], text, sizeof text);
         const float range = static_cast<float>(sampler::settingMax(id) - sampler::settingMin(id));
-        valueBox(r, fonts, x, y, 153, 70, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == id + 1,
+        valueBox(r, fonts, x, y, 153, kSettingH, kNames[id], text, (id == sampler::Root ? static_cast<float>(sampler::settingMax(id) - t.sampler[id]) : static_cast<float>(t.sampler[id] - sampler::settingMin(id))) / range, stop_ == id + 1,
                  holding_, id == sampler::Tune);
     }
-    scope(r, session_.engine, 322, 300, 310, 146);
+    scopeStrip(r, fonts, session_.engine);
 
     Hint list[8];
     int count = 0;

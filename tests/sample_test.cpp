@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app.hpp"
+#include "canvas.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
@@ -900,6 +901,38 @@ void testCatch() {
     bare.tap(START);
     bare.render(20 * kStep);
     CHECK(bare.session().catchLastBar(0, 5).empty() && bare.project().tracks[0].laneSample[5][0] == 0);
+}
+
+// The recording's picture takes the room the LIVE OUTPUT box left (owner, 2026-11-14): read off
+// the drawn screen, it is as tall as kWaveH allows, not the 40 rows it was.
+void testTheSamplersPictureIsTall() {
+    const std::string folder = tempFolder();
+    writeWav(folder + "/alpha.wav", tone(0.5f, 0.95f), 48000); // nearly full: its picture nearly the height
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.project().track = 1;
+    session.view = View::Device;
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(std::strcmp(rig.project().tracks[1].sample, "alpha") == 0);
+    rig.frames(2);
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const int top = SamplerScreen::kSoundY + 48, x = 400; // a column well inside the recording (it starts at 0)
+    int rows = 0, lowest = 0;
+    for (int y = top - 2; y < SamplerScreen::kSoundY + SamplerScreen::kSoundH; ++y)
+        for (int across = x; across < x + 20; ++across) // (its columns have gaps between them)
+            if (canvas.is(across, y, ui::kText)) {
+                ++rows, lowest = y;
+                break;
+            }
+    if (!(rows > 40 && rows <= SamplerScreen::kWaveH)) std::printf("  the picture is %d rows at x %d\n", rows, x);
+    CHECK(rows > 40 && rows <= SamplerScreen::kWaveH);
+    CHECK(lowest < SamplerScreen::kSoundY + SamplerScreen::kSoundH - 6); // inside its box, clear of its edge
 }
 
 void testTheSamplerTrack() {
@@ -2129,6 +2162,7 @@ int main(int, char**) {
     testTheKitScreen();
     testCatch();
     testTheSamplerTrack();
+    testTheSamplersPictureIsTall();
     testTheRecorder();
     testRecordingOntoALane();
     if (failures) {
