@@ -59,6 +59,7 @@ struct HitPlay {
     bool reverse = false;
     int life = 0;         // frames it may sound before it is faded out. 0: as long as it lasts
     int throwTo = 0;      // THROW: which buses this hit is also written out for (kThrowEcho, kThrowSpace)
+    bool audition = false; // heard with X held: letGo() fades it. A pattern's hit never is one.
 };
 
 // A recording to play on a lane in place of the kit's drum: mono, at the
@@ -109,6 +110,11 @@ public:
     // ringing too. Survives reset().
     void setLaneLevel(int lane, float level);
 
+    // X let go: what a held audition started on this lane (a hit with `how.audition`) fades out
+    // over the choke's few milliseconds. Nothing else on the lane is touched: a pattern's hit,
+    // or a hit that has carried the audition's sound on, plays as it would have.
+    void letGo(int lane);
+
     // Writes `frames` samples (replacing what was there).
     //
     // THROW: `echo` and `space`, if given, are a second way out, one for each
@@ -136,6 +142,7 @@ private:
         float riseStep = 0.f;
         float thrown[2] = {};   // THROW: how much of it goes to each bus, as it is this sample...
         float thrownTo[2] = {}; // ...and where that is heading: 1 thrown, 0 not
+        bool audition = false;  // started by a held audition (HitPlay::audition): letGo() fades it
     };
 
     template <bool kThrown>

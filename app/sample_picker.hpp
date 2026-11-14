@@ -16,7 +16,8 @@
 //   hold B         for a second: DELETE the recording under the cursor from the
 //                  handheld, for good (a bad catch, a take not wanted). Not the
 //                  first row. Hold B is "delete for good" on every screen.
-//   X              hear it again
+//   X              hear it again, for as long as X is held (to its end); a tap
+//                  is heard for a moment, as before
 //
 // The list knows nothing of lanes or samplers: it is given the names and
 // three things it can do (use this one, play it, tell me about it).
@@ -37,7 +38,7 @@ class SamplePicker {
 public:
     struct Jobs {
         std::function<void(const std::string&)> use;       // put this recording on ("" is the first row: none)
-        std::function<void()> hear;                        // play what is on now
+        std::function<void(bool held)> hear;               // play what is on now; held: X is down, and it sounds until X is let go
         std::function<const Session::LaneSound*()> sound;  // what is on now, for its picture; may be empty
         std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
         std::function<const ui::Playhead*()> playhead;     // where the sound being heard has got to, for a line across its picture

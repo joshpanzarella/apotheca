@@ -629,6 +629,7 @@ void NoteScreen::onButton(const ButtonEvent& event, const Input& input) {
         eraseHere();
     } else if (b == Button::X) {
         if (const ChordEvent* chord = chordHere()) hearChord(*chord);
+        else if (!noteHere() && project_.current().kind == TrackKind::Sampler) session_.auditionHeld(project_.track, pitch_, kNewLevel, this); // a recording: for as long as X is held
         else session_.audition(project_.track, pitch_, noteHere() ? noteHere()->velocity : kNewLevel);
         // On a note or a chord it is also a hold: the stick or D-pad then sets what it does besides play.
         fxHeld_ = (noteHere() || chordHere()) && !shaping_ && !painting_ && !picking_ && carrying_ == Carry::Nothing;

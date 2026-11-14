@@ -115,6 +115,23 @@ public:
 
     // Hear a synth note for a moment. update() lets go of it.
     void audition(int track, int pitch, float velocity);
+
+    // X HELD (owner, 2026-11-14): a recording is heard for as long as X is held, to its end, and
+    // stops when X is let go: the sampler's note is let go (its RELEASE runs), a drum lane's
+    // audition fades in 3 ms (Command::StopAudition). A tap still sounds kAuditionMs. Pressed
+    // again, it starts again from the top. `owner` is the screen that asked: App lets go when
+    // X is not held, when another screen is up or another track is picked (keepHearing), and
+    // Play, a new song and panic let go too.
+    static constexpr Uint32 kAuditionMs = 350;
+    void auditionHeld(int track, int pitch, float velocity, const void* owner);  // a synth track (the sampler): this key
+    void hearLaneHeld(int track, int lane, float level, const void* owner, float start = 0.f, float part = 0.f); // a drum lane
+    void letGoHeard();
+    void keepHearing(bool xHeld, const void* screen);
+    bool hearingHeld() const { return heard_.track >= 0 && heard_.held; }
+    // When what X held stops, or stopped (now, for one cut by panic or a new song); 0 while X is
+    // still held, when nothing has been heard, or when nothing stops it (the built-in drum tapped:
+    // heard whole). The line across a recording's picture ends there.
+    Uint32 heardEnds() const { return heard_.held ? 0 : heard_.ends; }
     void update(Uint32 nowMs);
 
     // ---- chord packs ----------------------------------------------------------------
@@ -436,6 +453,15 @@ public:
 private:
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
+    static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it
+    // What X holds (or last held). lane -1: a synth key (`pitch`), its Sounding held at kHeldOn.
+    struct Heard { int track = -1, lane = -1, pitch = 0; Uint32 since = 0, ends = 0; const void* owner = nullptr; bool held = false; };
+    Heard heard_;
+    struct LaneStop { int track = -1, lane = 0; Uint32 at = 0; }; // a drum lane's audition, let go, to be stopped at `at`
+    LaneStop laneStops_[4]; // taps on four lanes in a moment; a fifth stops the soonest now
+    void stopLane(int track, int lane);
+    void endHearing();  // what is due to stop now, stopped
+    void dropHearing(); // panic, a new song: nothing held, nothing waiting to stop
     Uint32 now_ = 0;
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;

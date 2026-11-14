@@ -41,15 +41,22 @@ void samplerSettingText(int id, int value, char* out, int size) {
 // recording is heard at its own pitch until ROOT or TUNE is moved, and then
 // the move is heard. (It used to be played at the root key, whatever that
 // was, which is the one key where moving ROOT changes nothing.)
-void SamplerScreen::hear() {
+//
+// X held: it sounds for as long as X is held (to the recording's end), and is let go with X; a tap
+// sounds as long as it always did (Session::kAuditionMs). A setting turned while X holds it is
+// heard on the held note.
+void SamplerScreen::hear(bool held) {
     ++timesHeard_;
     // A line runs across the recording's picture while it sounds: from START, at the speed ROOT and
     // TUNE give middle C, until the key is let go and the release has run.
     const TrackData& t = trk();
     const float speed = std::pow(2.f, static_cast<float>(kHearKey - t.sampler[sampler::Root]) / 12.f + static_cast<float>(t.sampler[sampler::Tune]) / 1200.f);
-    const float release = 0.002f * std::pow(10000.f, static_cast<float>(t.sampler[sampler::Release]) / 100.f);
-    head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed, 0.35f + release);
-    session_.audition(project_.track, kHearKey, 0.8f);
+    release_ = 0.002f * std::pow(10000.f, static_cast<float>(t.sampler[sampler::Release]) / 100.f);
+    headHeld_ = held || (headHeld_ && session_.hearingHeld());
+    head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed,
+                headHeld_ ? 0.f : static_cast<float>(Session::kAuditionMs) / 1000.f + release_); // held: until it is let go (update)
+    if (held) session_.auditionHeld(project_.track, kHearKey, 0.8f, this);
+    else session_.audition(project_.track, kHearKey, 0.8f);
 }
 
 // A setting, changed: kept, and heard if the song is not playing. Not more
@@ -93,7 +100,7 @@ void SamplerScreen::openPicker() {
     const int track = project_.track;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
-    jobs.hear = [this] { hear(); };
+    jobs.hear = [this](bool held) { hear(held); };
     jobs.playhead = [this] { return &head_; };
     jobs.sound = [this, track] { return &session_.trackSound(track); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
@@ -139,7 +146,7 @@ void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
         else if (now == Session::Rec::Idle && session_.lastRecorded().empty()) said_ = "NOTHING RECORDED: NO SOUND CAME IN";
         saidUntil_ = lastMs_ + 3000;
     } else if (b == Button::X) {
-        hear();
+        hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -154,6 +161,11 @@ void SamplerScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
+    if (headHeld_ && !session_.hearingHeld()) {
+        // X let go (App told the Session): the line goes on for what is still heard, and the release.
+        headHeld_ = false;
+        head_.lasts = (session_.heardEnds() > head_.since ? static_cast<float>(session_.heardEnds() - head_.since) / 1000.f : 0.f) + release_; // (release_ is above 0: never "to the end")
+    }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
     // While recording, the line says how it is going.

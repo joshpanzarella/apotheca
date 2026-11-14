@@ -34,7 +34,8 @@
 //                    Hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice. B: its usual value
 //                    (a send: nothing sent).
-//   X                hear the track
+//   X                hear the track (a recording on it, on lane 1 or the sampler:
+//                    for as long as X is held; a tap for a moment)
 //   START            play / stop
 //   (Y does nothing here.)
 
@@ -183,7 +184,7 @@ private:
     float send(int bus) const { return project_.current().send[bus]; }
     void press(Button direction);
     void turn(float amount);
-    void hear();
+    void hear(bool held = false); // held: X is down; a recording (a drum lane, the sampler) sounds until it is let go
     void emptySend(int bus);
     void drawList(SDL_Renderer* r, const Fonts& fonts) const;
     void drawSends(SDL_Renderer* r, const Fonts& fonts) const;

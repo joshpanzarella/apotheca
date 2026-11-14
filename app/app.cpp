@@ -257,6 +257,9 @@ void App::update(const Input& input, Uint32 nowMs) {
     }
     if (updateSaid_ != 0 && nowMs >= updateSaidUntil_) updateSaid_ = 0;
     session_.update(nowMs);
+    // X held hears a recording until it is let go. Let go, or another screen or track up while it
+    // is held (the screen that asked would never hear of the let go): it stops.
+    session_.keepHearing(input.held(Button::X), &screenNow());
     if (session_.resyncs() != resyncsSeen_) { // the engine fell behind and was sent the song again; that stops it
         resyncsSeen_ = session_.resyncs();
         std::snprintf(undoSaid_, sizeof undoSaid_, "SOUND FELL BEHIND AND WAS RESET: PRESS START");

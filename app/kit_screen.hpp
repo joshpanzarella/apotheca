@@ -19,7 +19,8 @@
 //           to start (it waits for sound), again to stop. Ten seconds at most.
 //   L1      SLICES: the PATTERN tab, zoomed into this lane's recording cut
 //           into slices, for chopping a break (pattern_screen.hpp)
-//   X       hear the lane
+//   X       hear the lane, for as long as X is held (to the recording's end);
+//           let go, it fades. A tap is heard for a moment (Session::kAuditionMs).
 //   START   play / stop
 
 #include "screen.hpp"
@@ -61,7 +62,7 @@ private:
     void press(Button direction);
     void stepSound(int by);
     void stepFit(int by);
-    void hear();
+    void hear(bool held = false); // held: X is down, and it sounds until X is let go
 
     Session& session_;
     Project& project_;
@@ -73,6 +74,7 @@ private:
     std::vector<std::string> names_; // the recordings there were when A went down
     ui::Playhead head_; // where the lane last heard has got to
     int headLane_ = -1;
+    bool headHeld_ = false; // head_ runs for as long as X holds the sound
     std::string said_; // what the last catch came to, shown for a moment
     Uint32 saidUntil_ = 0;
     bool wasRecording_ = false;

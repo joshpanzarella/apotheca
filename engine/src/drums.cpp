@@ -234,6 +234,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         old.life = how.life;
         old.gainTo = velocity;
         old.fadeStep = 0.f;
+        old.audition = how.audition; // the sound is this hit's now
         for (int bus = 0; bus < 2; ++bus) old.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f; // it slides there (render)
         if (old.fade < 1.f) { // back up from where the fade had got to
             old.rise *= old.fade;
@@ -247,6 +248,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     fresh.end = end;
     fresh.life = how.life > 0 ? how.life : 0;
     fresh.gain = fresh.gainTo = velocity;
+    fresh.audition = how.audition;
     for (int bus = 0; bus < 2; ++bus) fresh.thrown[bus] = fresh.thrownTo[bus] = (how.throwTo >> bus) & 1 ? 1.f : 0.f;
     if (how.reverse) {
         // From the last sample it would have played, back to the first.
@@ -264,6 +266,12 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
     }
     next_[lane] = 1 - next_[lane];
+}
+
+void DrumMachine::letGo(int lane) {
+    if (lane < 0 || lane >= kDrumLanes) return;
+    for (Voice& v : voices_[lane])
+        if (v.audition && v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
 }
 
 // One voice's part of a block, added to `left`. Written once and built twice: `kThrown` false is
