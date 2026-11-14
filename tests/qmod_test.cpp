@@ -297,6 +297,8 @@ void testAnEqualMacroCostsNothing() {
     q.setMacro(MacroTension, 3.f); // held to 1: a new value
     q.setMacro(MacroTension, 1.f); // the same, once held
     CHECK(q.applied() == at + 2);
+    q.setMacro(MacroTension, 3.f); // over 1 again: held first, then the same as it has
+    CHECK(q.applied() == at + 2);
     q.setMacro(MacroTension, std::nanf("")); // not a number: nothing
     CHECK(q.applied() == at + 2);
     // The same sound as a synth given the value once.

@@ -3,7 +3,7 @@
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
 here, then revised the same day after a review (section 11). **Batches 0 and
-1 are built (sections 12 and 13); nothing else is, and nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
+1 are built (sections 12 and 13) and their review mended (section 14); nothing else is, and nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -595,9 +595,13 @@ too). The owner's calls stay at the recommended answers.
   REVERB types, LIMITER, SNAP, RING, WEAR), the old FILTER, the sends and the
   synths' macros are the same to the bit. Not mended: it would change how
   those nine glide, which is their sound. **Owner's call.**
-- **Phazed is not the same to the bit in blocks of ONE sample, with or
-  without a MOD** (a note's start, about 4e-4 apart; the same on `main`).
-  Blocks of 7 and up are. The block test runs blocks of 1 without Phazed.
+- **A song at a tempo whose step is not a whole number of samples is not
+  always the same to the bit in other blocks, with or without a MOD, as on
+  `main`** (corrected in review, section 14: this was blamed on Phazed). At
+  133 BPM a step is 5413.5 samples, and a note that ends or waits then lands
+  a sample apart by how the sound is cut (about 4e-4 at a note's start). At
+  120 (6000 samples) Phazed is exact in blocks of 1. The block test runs
+  blocks of 1 at 133 without the Phazed track, and with it at 120.
 - **Helpers never change a bit**, MOD or none (0 and 3, every song tried).
 
 **Measured** (desk; `bench` twice, a second build running beside it the
@@ -640,4 +644,66 @@ lane out again).
 (`applyProject`, undo); `RemoveInstrument` already puts them OFF in the
 engine. The choice rule on load and on a TYPE change is the app's (the engine
 only refuses to move a choice; it does not turn the MOD off).
+
+## 14. The review of batches 0 and 1, mended (2026-11-14, branch `mods`)
+
+**All five findings were real. Three are mended in code, one in the words,
+one by running what was only worked out. Nothing heard, nothing on the
+handheld, no screen changed.** `effects_test --print` is still identical to
+the merge base (42 lines, the whole song's checksum too).
+
+| # | Finding | Fate |
+| --- | --- | --- |
+| 1 | A preset chosen while a MOD runs on a macro dropped the MOD, then moved it about the old knob | **Mended.** `Command::SelectPreset` sets the eight macro lanes' centre to the middle (`kPresetMacro` 0.5, where every synth's `selectPreset` puts its macros and `Session::chooseSynthPreset` the project's) and gives each lane a MOD is adding to, at once. With nothing added no macro is given. `mod_test` `testAPresetUnderAModMovesAboutTheMiddle` (a spy synth that resets on a preset, as the real ones) |
+| 2 | A legato Phazed part stayed 3 dB up after DETUNE came back to exactly 0.5 | **Mended, with a call for the owner.** A note that BEGINS on a twin kept at the middle has its two lines in tune and in phase (6 dB over one line, not the 3 a detuned pair averages), so from that note's start the twin is trimmed 3 dB more (`kTwinInTuneTrim` in `phazed.cpp`; 0 turns it off), and the trim is given back when DETUNE leaves the middle. Not taken when DETUNE merely reaches or passes the middle: a held note's lines are wherever their beat left them, and trimmed there it fell to 0.61 to 0.80. The CZ glides its volume over 10 ms, so no click. Measured: a legato part at the middle +0.02 dB against DETUNE never moved (17 presets, plain notes and glided; it was +3.02) |
+| 3 | Ten of 18 mutants survived | **Tests added; 9 of the 10 are killed now, one is equivalent.** See below |
+| 4 | "Phazed is not the same in blocks of 1" was the tempo, not Phazed | **Words mended** (section 13, CLAUDE.md, the test's comment); `testTheSameInAnyBlocks` also runs the song WITH Phazed at 120 in blocks of 1, 64 and 333 with 3 helpers, MODs and none |
+| 5 | The "24 MODs on macros" cost was arithmetic | **Run now**: `bench` has "24 MODs on macros, run" (twelve silent tracks of the synth, a SINE and a STEPPER on two macros of each, through the engine). The worked-out row stays beside it |
+
+**The owner's call in finding 2.** Just off the middle (DETUNE 0.52) a
+twin's short notes are already 1.2 to 3.0 dB over one line, on `main` too:
+they begin with their lines together and the beat is slow. So a part at
+exactly 0.5 on a kept twin could be left like its neighbours (3 dB up, no
+trim) or made as loud as the patch (the trim, what `main` gave once its cut
+was over). **Taken: as loud as the patch.** `kTwinInTuneTrim = 0` is the
+other answer.
+
+**Also changed by finding 1, said plainly**: a built-in preset chosen while
+the song plays now resets the automation centre of the eight macros too
+(with no MOD: no macro given, the synth is already there). Before, the
+engine still held the old knob as the centre, and Stop could give it back to
+a synth the project had at the middle. A song loaded and played is untouched
+(`applyProject` sends every macro after the preset).
+
+**Mutants** (each made, built, seen to fail, put back; `git diff` read before
+the commit), 20 this round, **19 killed, 1 equivalent**:
+
+| Mutant | Killed by |
+| --- | --- |
+| `stillLane` giving an unknown centre | `mod_test` (`testAnUnknownCentreIsLeftAlone`: an audition and a Stop on an effect that has said nothing) |
+| Ticks while stopped whenever a MOD is on; `takeAway` keeping the audition | `mod_test` `testStoppedIsCutAsAlways` (100 chunks for 6400 frames, after an audition let go part way into a tick) |
+| `takeAway` not counting the MODs again | `mod_test` `testTheLastModTakenAwayStopsTheCuts` (chunk for chunk as an engine that never had one) |
+| No instrument check in `runMods` | `mod_test` `testATrackWithNothingRunsNoMod` |
+| `keepTwin` on a new sound; `noteOn` / `noteOnFrom` not going back to one line | `phazed_test` `testATwinKeptAtTheMiddleGoesBack` (`Phazed::twinned()`) |
+| QMOD comparing before the clamp | `qmod_test` (3.0 twice) |
+| The preset: centre not followed; the MOD not given at once; every macro given; only lane 0 | `mod_test` `testAPresetUnderAModMovesAboutTheMiddle` |
+| The trim: not taken in `noteOn`, in `noteOnFrom`; kept off the middle; taken as DETUNE lands; taken on any twin; forgotten when another macro turns | `phazed_test` (`testALegatoPartAtTheMiddleIsAsLoudAsTheMiddle`, `testTheInTuneTrimIsGivenBack`, `testDetuneThroughTheMiddleKeepsTheNote`) |
+| `sounding()` ignoring fading voices | **Equivalent**: in `cz_synth.c` a voice is only ever marked fading while active, and both are cleared together (every write read). No test can see it |
+| A send's given value not clamped (the review's own) | Equivalent, as the review said: the centre is already held to 0..1 |
+
+**Measured** (desk, a second build running beside it; `bench` twice):
+
+| Thing | Figure |
+| --- | --- |
+| 24 MODs on QMOD macros, run: twelve silent QMOD tracks, none / 24 | 0.71 / 0.98% and 0.73 / 0.99% of a core: **+0.26 to +0.27%** (worked out from one call: 0.21%; the rest is the tick's extra chunks) |
+| ...on Phazed macros | 2.41 / 2.56% and 2.32 / 2.67%: **+0.15 and +0.36%** (worked out: 0.08%). Twelve silent Phazed tracks cost 2.3 to 2.4% by themselves, so this row is noisy |
+| MODs worked out on the sends, 1 / 24 | +0.028 / +0.086% in the quieter run (as batch 1) |
+| A legato Phazed part at the middle against DETUNE never moved | +0.02 dB, every one of 17 presets, plain and glided (was +3.02) |
+| DETUNE off the middle again, or only passing it | 0.00 dB against a twin left alone |
+| A held note as DETUNE reaches the middle | 0.86 to 1.10 of the twin left alone (the beat); with the trim taken there it was 0.61 to 0.80 |
+| `phazed_test` | about 17 s (the legato parts are most of it) |
+
+**Left for the owner**: `kTwinInTuneTrim` (above); the nine effects that
+glide a call at a time under a MOD (section 13); the cost over the plan's
+targets (batch 9).
 

@@ -384,11 +384,19 @@ struct Given {
 };
 struct SpySynth : Instrument {
     std::vector<Given>* log;
-    explicit SpySynth(std::vector<Given>* to) : log(to) {}
+    float now[8]; // each macro as the synth has it: a preset puts them back to the middle, as Phazed's and QMOD's do
+    explicit SpySynth(std::vector<Given>* to) : log(to) {
+        for (float& m : now) m = 0.5f;
+    }
     void prepare(float) override {}
-    void selectPreset(int) override {}
+    void selectPreset(int) override {
+        for (float& m : now) m = 0.5f;
+    }
     void setSetting(int, int) override {}
-    void setMacro(int macro, float value) override { log->push_back({macro, value}); }
+    void setMacro(int macro, float value) override {
+        log->push_back({macro, value});
+        if (macro >= 0 && macro < 8) now[macro] = value;
+    }
     void noteOn(int, float) override {}
     void noteOff(int) override {}
     void allNotesOff() override {}
@@ -406,12 +414,13 @@ struct SpyEffect : Effect {
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
     std::vector<Given> macros, params;
+    SpySynth* synth = nullptr; // the engine's (read only, between renders)
     Rig() {
         macros.reserve(400000);
         params.reserve(400000);
         engine->prepare(48000.f);
         Command c = make(Command::InstallSynth, 1);
-        c.pointer = new SpySynth(&macros);
+        c.pointer = synth = new SpySynth(&macros);
         CHECK(engine->send(c));
         frames(64);
         engine->setTrackEffect(1, 1, std::unique_ptr<Effect>(new SpyEffect(&params)));
@@ -537,6 +546,23 @@ static void testAnUnknownCentreIsLeftAlone() {
     CHECK(rig.params.empty());
     rig.send(make(Command::SetEffectParam, 1, 0, 1, 0.25f));
     CHECK(rig.params.size() == 1 && rig.lastParam(1) == 0.25f + 0.3f);
+    // Let go (X up, Stop) of a MOD whose effect has still said nothing: nothing given, not the
+    // unknown centre (-1) either.
+    std::vector<Given> other;
+    rig.engine->setTrackEffect(1, 2, std::unique_ptr<Effect>(new SpyEffect(&other)));
+    const int third = autoLaneOfEffect(2, 0);
+    rig.mod(1, lfo(third, 0.4f));
+    rig.hear(3);
+    rig.frames(256);
+    CHECK(rig.engine->modOffsetForTests(1, third) == 0.4f && other.empty());
+    rig.hear(0);
+    CHECK(rig.engine->modOffsetForTests(1, third) == 0.f && other.empty());
+    rig.hear(3);
+    rig.frames(256);
+    rig.send(make(Command::Play));
+    rig.frames(256);
+    rig.send(make(Command::Stop));
+    CHECK(other.empty());
 }
 
 // Automation moves the centre; the MOD rides on it while the song plays; Stop gives every knob its
@@ -683,11 +709,11 @@ static void testATempoChangeKeepsThePhase() {
 // and VOWEL's settings and a send, of each kind and several shapes (`gliding`: on SATURATE's
 // DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL and no Twin (neither is
 // the same cut into other blocks), no automation (its glide moves at chunks).
-static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false) {
+static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f) {
     std::unique_ptr<Engine> e(new Engine);
     e->prepare(48000.f);
     std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
-    e->send(make(Command::SetTempo, 0, 0, 0, 133.f));
+    e->send(make(Command::SetTempo, 0, 0, 0, bpm));
     if (phazedToo) e->addSynthTrack(2, SynthKind::Phazed);
     e->render(scratch.data(), 64);
     e->setEffect(0, 0, EffectKind::Filter);
@@ -728,8 +754,11 @@ static std::vector<float> song(int block, int helpers, bool mods, int frames, bo
 }
 
 // The same to the bit, cut into any blocks, on any number of helpers: every value is worked out
-// from where the song is, on ticks counted from each step's start. (Phazed is not the same in
-// blocks of ONE sample, MOD or none, as on main: a note's start. So blocks of 1 without it.)
+// from where the song is, on ticks counted from each step's start. (At 133 BPM a step is not a
+// whole number of samples, 5413.5, and a song with notes that end or wait is then not the same in
+// blocks of ONE sample, MOD or none, as on main: so blocks of 1 there without the Phazed track,
+// and with it at 120, where a step is 6000 samples. Found in review, 2026-11-14: it is the tempo,
+// not Phazed.)
 static void testTheSameInAnyBlocks() {
     const int frames = 2 * 16 * 5414; // two bars at 133
     for (bool mods : {false, true}) {
@@ -744,6 +773,9 @@ static void testTheSameInAnyBlocks() {
         if (mods) CHECK(plain != song(64, 0, false, frames)); // (the MODs do something)
         const std::vector<float> drums = song(64, 0, mods, frames, false);
         CHECK(song(1, 0, mods, frames, false) == drums && song(333, 3, mods, frames, false) == drums);
+        const int whole = 2 * 16 * 6000; // two bars at 120
+        const std::vector<float> at120 = song(64, 0, mods, whole, true, false, 120.f);
+        CHECK(song(1, 0, mods, whole, true, false, 120.f) == at120 && song(333, 3, mods, whole, true, false, 120.f) == at120);
     }
 }
 
@@ -1025,6 +1057,98 @@ static void testANewerEffectSoftensAFastMod() {
     CHECK(keptThroughAGlide(kModRateHalfStep, 0.03f) < 0.6);
 }
 
+// A preset chosen while a MOD runs on a macro (review, 2026-11-14): the synth puts every macro back
+// to the middle (Instrument::selectPreset), and so does the app's project. That is the centre now:
+// the MOD is given about it at once, not left out until its offset changes (a SQUARE eight bars
+// long: bars of nothing) and not moved about the knob the old sound had. With no MOD, no macro is
+// given: the synth already has the middle.
+static void testAPresetUnderAModMovesAboutTheMiddle() {
+    Rig rig;
+    rig.send(make(Command::SetMacro, 1, 0, 0, 0.2f));
+    rig.send(make(Command::SetMacro, 1, 1, 0, 0.9f));
+    rig.mod(0, lfo(0, 0.3f));
+    rig.send(make(Command::Play, 0, 0, 1));
+    rig.frames(6000);
+    CHECK(near(rig.synth->now[0], 0.2f + 0.3f, 1e-6));
+    rig.macros.clear();
+    rig.send(make(Command::SelectPreset, 1, 3));
+    CHECK(rig.synth->now[0] == modGiven(0.5f, 0.3f) && rig.engine->laneCentre(1, 0) == 0.5f);
+    CHECK(rig.count(rig.macros, 0) == 1 && rig.count(rig.macros, 1) == 0); // macro 1 has no MOD: left at the preset's middle
+    CHECK(rig.synth->now[1] == 0.5f && rig.engine->laneCentre(1, 1) == 0.5f);
+    rig.frames(6000 * 32);
+    CHECK(rig.synth->now[0] == modGiven(0.5f, 0.3f));
+    rig.send(make(Command::Stop)); // the centre the preset left, not the old knob
+    CHECK(rig.synth->now[0] == 0.5f && rig.synth->now[1] == 0.5f);
+    // A STEPPER: after the preset, each value about the middle.
+    ModSettings st = stepper(0, 0.25f, kModRateStep, 0.f);
+    rig.send(make(Command::SetMacro, 1, 0, 0, 0.2f));
+    rig.mod(0, st);
+    rig.send(make(Command::Play, 0, 0, 1));
+    rig.frames(6000 * 2 + 100);
+    rig.send(make(Command::SelectPreset, 1, 4));
+    for (int step = 0; step < 4; ++step) {
+        rig.frames(3000);
+        CHECK(near(rig.synth->now[0], modGiven(0.5f, rig.engine->modShown(1, 0)), 1e-6));
+        rig.frames(3000);
+    }
+    // No MOD: a preset gives no macro at all.
+    rig.mod(0, ModSettings());
+    rig.macros.clear();
+    rig.send(make(Command::SelectPreset, 1, 5));
+    rig.frames(6000);
+    CHECK(rig.macros.empty());
+}
+
+// A track taken away has its MODs OFF, and when it held the last MOD on, the song is cut as one
+// with none again: chunk for chunk as an engine that never had one.
+static void testTheLastModTakenAwayStopsTheCuts() {
+    auto chunks = [](bool modded) {
+        std::unique_ptr<Engine> e(new Engine);
+        std::vector<float> out(1024);
+        e->addSynthTrack(2, SynthKind::Phazed);
+        e->render(out.data(), 64);
+        if (modded) e->setMod(2, 0, lfo(autoLaneOfSend(0), 0.4f, kModSine, kModRateBar));
+        e->send(make(Command::Play));
+        for (int i = 0; i < 20; ++i) e->render(out.data(), 256);
+        CHECK(e->removeTrack(2));
+        for (int i = 0; i < 4; ++i) e->render(out.data(), 256);
+        const std::uint64_t before = e->chunksRendered();
+        for (int i = 0; i < 200; ++i) e->render(out.data(), 256);
+        return e->chunksRendered() - before;
+    };
+    CHECK(chunks(true) == chunks(false));
+}
+
+// Stopped, the chunks are cut as they always were, whatever was heard before: with a MOD on, after
+// an audition let go (X up, or Stop) part way into a tick, and with the audition's track taken away
+// while X was held.
+static void testStoppedIsCutAsAlways() {
+    for (int way = 0; way < 3; ++way) {
+        Rig rig;
+        rig.mod(0, lfo(autoLaneOfSend(0), 0.4f, kModSine, kModRateBar));
+        rig.hear(1);
+        rig.frames(100);
+        if (way == 0) rig.hear(0);
+        else if (way == 1) rig.send(make(Command::Stop)); // X still down: Stop lets go, part way into a tick
+        else {
+            rig.send(make(Command::RemoveInstrument, 1)); // (the rig put its synth in by hand: removeTrack does not know it)
+            rig.frames(512);
+        }
+        const std::uint64_t before = rig.engine->chunksRendered();
+        rig.frames(6400, 64);
+        CHECK(rig.engine->chunksRendered() - before == 100);
+    }
+}
+
+// A MOD told to a track with no instrument does nothing: nothing worked out, nothing shown.
+static void testATrackWithNothingRunsNoMod() {
+    Rig rig;
+    rig.mod(0, lfo(autoLaneOfSend(0), 0.4f), 5);
+    rig.send(make(Command::Play, 0, 0, 1));
+    rig.frames(6000 * 2);
+    CHECK(rig.engine->modShown(5, 0) == 0.f && rig.engine->modOffsetForTests(5, autoLaneOfSend(0)) == 0.f && rig.engine->modShown(1, 0) == 0.f);
+}
+
 int main(int argc, char** argv) {
     struct Test {
         const char* name;
@@ -1056,6 +1180,10 @@ int main(int argc, char** argv) {
         {"testHeardWhileStopped", testHeardWhileStopped},
         {"testTheOldFiltersStairs", testTheOldFiltersStairs},
         {"testANewerEffectSoftensAFastMod", testANewerEffectSoftensAFastMod},
+        {"testAPresetUnderAModMovesAboutTheMiddle", testAPresetUnderAModMovesAboutTheMiddle},
+        {"testTheLastModTakenAwayStopsTheCuts", testTheLastModTakenAwayStopsTheCuts},
+        {"testStoppedIsCutAsAlways", testStoppedIsCutAsAlways},
+        {"testATrackWithNothingRunsNoMod", testATrackWithNothingRunsNoMod},
     };
     int first = 1;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) measuring = true, first = 2;

@@ -440,6 +440,28 @@ static double modsAlone(int mods) {
     return 100.0 * best / (256.0 / 48.0);
 }
 
+// 24 MODs on macros, run through the engine (not worked out from one call): twelve tracks of one
+// synth, no note held (a synth that sounds costs the same with or without them, and its own time
+// would bury these), each track's MOD 1 a SINE on macro 1 and MOD 2 a STEPPER on macro 2, both
+// moving at every macro tick. 0 or 2 MODs a track; the difference is the macro ticks' whole cost.
+static double macroModsRun(SynthKind kind, bool mods) {
+    std::unique_ptr<Engine> engine(new Engine);
+    std::vector<float> out(512);
+    for (int t = 0; t < kNumTracks; ++t) engine->addSynthTrack(t, kind);
+    engine->render(out.data(), 256);
+    for (int t = 0; t < kNumTracks && mods; ++t) {
+        engine->setMod(t, 0, benchMod(kModLfo, 0, kModRateHalfStep, kModSine));
+        engine->setMod(t, 1, benchMod(kModStepper, 1, kModRateHalfStep, 0));
+    }
+    Command c;
+    c.type = Command::Play;
+    engine->send(c);
+    for (int i = 0; i < 40; ++i) engine->render(out.data(), 256);
+    double best = 1e30;
+    for (int run = 0; run < 5; ++run) best = std::min(best, ms([&] { engine->render(out.data(), 256); }, 600));
+    return 100.0 * best / (256.0 / 48.0);
+}
+
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
 // uses on this machine. Ten seconds each, in real time.
 static void wholeSongRows() {
@@ -514,6 +536,12 @@ int apotheca::runBench() {
         macroCost("Phazed, TONE", *phazed, phazed::Tone);
         macroCost("QMOD, TENSION", *qmod, qmod::MacroTension);
         macroCost("Twin Analog, macro 1", *twinSynth, 0);
+        std::printf("24 MODs on macros, run (twelve silent tracks of the synth, a SINE and a STEPPER each):\n");
+        const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"QMOD", SynthKind::Qmod}};
+        for (const auto& one : synths) {
+            const double none = macroModsRun(one.kind, false), all = macroModsRun(one.kind, true);
+            std::printf("  %-28s %5.3f%% of one core with none, %5.3f%% with 24 (%+.3f%%)\n", one.name, none, all, all - none);
+        }
     }
 
     // Chord effects: the clock's work, with next to no sound under it.

@@ -23,6 +23,7 @@ void panGains(float pan, float& left, float& right) {
 
 namespace {
 constexpr float kGoneQuiet = 1e-5f; // a track taken away that made nothing louder in its last block (-100 dB) goes at once
+constexpr float kPresetMacro = 0.5f; // where Instrument::selectPreset puts every macro: "as the patch says"
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 // One step of a glide toward `to`, kSendGlideSeconds for the whole of 0 to 1 (as a send moves).
 inline void glideToward(float& now, float to, float step) {
@@ -1193,7 +1194,19 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
         break;
     case Command::SelectPreset:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            track.synth->selectPreset(c.a);
+            // The synth's macros are back at the middle (Instrument::selectPreset), as the project's
+            // are: that is the centre now. A MOD on a macro is given about it at once, not left at the
+            // bare middle until its offset next changes, nor moved about the knob the old sound had.
+            // With nothing added no macro is given: the synth already has it (a song with no MOD is
+            // the same to the bit; applyProject sends every macro after the preset anyway).
+            for (int lane = 0; lane < 8; ++lane) {
+                track.autoBase[lane] = track.autoNow[lane] = kPresetMacro;
+                if (track.modOffset[lane] != 0.f) giveLane(track, lane);
+            }
+        }
         break;
     case Command::SetMacro:
         if (validTrack(c.track) && tracks_[c.track].synth) {

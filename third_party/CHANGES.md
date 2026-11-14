@@ -20,7 +20,11 @@ these unless they are put back.
   twin (1 + 1'), and at exactly 0.5 one line again: a held note fell from RMS
   0.087 to 0.008. Now a twin made by DETUNE stays a twin at the middle (not
   detuned) while any voice sounds, and goes back to one line before the next
-  note that finds the synth silent. Moving DETUNE OFF the middle with notes
-  held still changes the layout and fades them, once. Held by `phazed_test`
+  note that finds the synth silent. A note that BEGINS on the kept twin (a
+  legato part never falls silent) has its lines in tune and in phase, 3 dB
+  over the patch: from that note on the twin is trimmed 3 dB more
+  (`kTwinInTuneTrim`, `trimInTune`), given back when DETUNE leaves the middle.
+  Moving DETUNE OFF the middle with notes held still changes the layout and
+  fades them, once. Held by `phazed_test`
   (`testDetuneThroughTheMiddleKeepsTheNote`). A fresh copy of `cz_synth.c`
   keeps it, since the copy is not touched.

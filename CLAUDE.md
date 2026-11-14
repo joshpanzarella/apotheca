@@ -476,9 +476,18 @@ effect in those two groups and fails one that does not.
   a bit. Not mended (it would change those nine's glide): the owner's call. A
   fast MOD on them is also mostly smoothed away (a 1/2 STEP SINE keeps 31 to
   43% of its swing; the plan's section 13 has every rate).
-- **Phazed is not the same to the bit in blocks of one sample** (a note's
-  start, MOD or none, as on `main`): a block-exact test with Phazed starts at
-  blocks of 7.
+- **A song is the same to the bit in any blocks only at a tempo whose step is
+  a whole number of samples** (120 BPM: 6000), MOD or none, as on `main`
+  (review, 2026-11-14: it was blamed on Phazed). At 133 (5413.5) a note that
+  ends or waits, a nudge, a ratchet or a glide can land a sample apart by how
+  the sound is cut. A block-exact test says its tempo: `mod_test` runs blocks
+  of 1 with Phazed at 120, and without it at 133.
+- **A preset chosen puts the eight macro lanes' centre at the middle**
+  (`Command::SelectPreset`, `kPresetMacro`): every synth's `selectPreset` puts
+  its macros there, and the engine's centre must agree or a MOD moves about
+  the old knob. A lane a MOD is adding to is given at once; with nothing
+  added no macro is given. **A new `Instrument` keeps that promise**
+  (`selectPreset`: macros to 0.5), or the engine's centre is wrong for it.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -1236,6 +1245,13 @@ effect in those two groups and fails one that does not.
   sounds and goes back to one line before the next note into silence.
   Moving OFF the middle with a one-line note held still cuts it, once.
   `phazed_test` (`testDetuneThroughTheMiddleKeepsTheNote`).
+  **A note that begins on the kept twin is trimmed 3 dB more**
+  (`kTwinInTuneTrim`, `trimInTune`: its lines start in tune and in phase; a
+  legato part never falls silent and stayed 3 dB up), from that note's start,
+  given back when DETUNE leaves the middle. Never taken as DETUNE merely
+  reaches the middle: a held note fell to 0.61 of itself. 0 turns it off (the
+  owner's call: a twin's short notes just off the middle are 1.2 to 3 dB up
+  too, as on `main`).
 - **QMOD's `setMacro` returns early on the value it has**, as Phazed's and
   Twin's do: its `apply()` is the whole wiring again, about 1 us
   (`Qmod::applied()` counts them for `qmod_test`).
@@ -1410,6 +1426,7 @@ effect in those two groups and fails one that does not.
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin. The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
 | MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
+| 24 MODs on macros RUN through the engine, twelve silent tracks of the synth, a SINE and a STEPPER each (2026-11-14, two runs, a build beside them): QMOD / Phazed, over none | +0.26 to +0.27% / +0.15 and +0.36% (twelve silent Phazed tracks are 2.3 to 2.4% by themselves: noisy) |
 | Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
@@ -1423,7 +1440,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); batch 2 (song) next.
+2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2 (song) next.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
