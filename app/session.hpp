@@ -424,7 +424,8 @@ public:
     // ROLL: a new generated sound, on a synth that has such a thing (QMOD). False on the others.
     bool rollSynth(int track, unsigned seed);
     void sendSynthPatch(int track);
-    // The player's own presets: files in this folder, "NAME.phazed" and "NAME.twin".
+    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's) and "NAME.qmod".
+    // (An old "NAME.twin", the Twin Analog that went, is left on the card and not listed.)
     void usePresetFolder(const std::string& folder);
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.

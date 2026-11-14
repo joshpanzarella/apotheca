@@ -10,8 +10,8 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, twinOnes, qmodOnes;
-    return kind == TrackKind::Twin ? twinOnes : kind == TrackKind::Qmod ? qmodOnes : phazedOnes;
+    static std::vector<UserPreset> phazedOnes, jx3pOnes, qmodOnes;
+    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Qmod ? qmodOnes : phazedOnes;
 }
 
 // The preset functions every spec uses: the built-in presets first, then the
@@ -118,74 +118,77 @@ void item(int page, int index, int& id, const char*& name) {
 }
 } // namespace pz
 
-// ---- Twin Analog ---------------------------------------------------------------------
+// ---- JAX-EP (Jx3p in the code) ----------------------------------------------------------
+// The plan: docs/plans/jx3p-plan.md, section 4. Batch 6a wrote this much so that a track plays, saves
+// and loads; how each value reads at every size, and the folder's line, are batch 6b's.
 
-namespace tw {
-using namespace twin;
+namespace jx {
+using namespace jx3p;
 
-const char* const kPages[4] = {"MAIN", "OSCILLATORS", "FORMANT AND CHARACTER", "ENVELOPE"};
-const int kOscillators[] = {VOctave, VFine, VShape, Crossfade, ZSemitone, ZFine, ZShape, Waveform, CrossSync, ReverseSync, CrossfadeMode};
-const char* const kOscillatorNames[] = {"V OCTAVE", "V FINE", "V SHAPE", "CROSSFADE", "Z SEMITONE", "Z FINE", "Z SHAPE", "WAVE",
-                                        "CROSS SYNC", "REVERSE SYNC", "CROSSFADE MODE"};
-const int kCharacter[] = {FormantDepth, FormantRatio, Asymmetry, Width, Vintage, Noise, Oversample};
-const char* const kCharacterNames[] = {"FORMANT DEPTH", "FORMANT RATIO", "ASYMMETRY", "WIDTH", "VINTAGE", "NOISE", "OVERSAMPLING"};
-const int kEnvelope[] = {Attack, Decay, Sustain, Release, Level};
-const char* const kEnvelopeNames[] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE", "LEVEL"};
+// Grouped like the PG-200's panel, one page a section. The two depths the DCOs share stand on
+// DCO-1's page, as they stand at the left of the PG-200's DCO block.
+const char* const kPages[6] = {"MAIN", "DCO-1", "DCO-2", "VCF", "VCA AND ENVELOPE", "LFO AND CHORUS"};
+struct Item { int id; const char* name; };
+const Item kDco1[] = {{Dco1Range, "RANGE"}, {Dco1Wave, "WAVE"}, {Dco1Lfo, "LFO"}, {Dco1Env, "ENV"},
+                      {DcoLfoDepth, "LFO DEPTH"}, {DcoEnvDepth, "ENV DEPTH"}, {DcoEnvPolarity, "ENV POLARITY"}};
+const Item kDco2[] = {{Dco2Range, "RANGE"}, {Dco2Wave, "WAVE"}, {Dco2CrossMod, "CROSS MOD"}, {Dco2Tune, "TUNE"},
+                      {Dco2Fine, "FINE"}, {Dco2Lfo, "LFO"}, {Dco2Env, "ENV"}};
+const Item kVcf[] = {{SourceMix, "MIX"}, {Hpf, "HPF"}, {Cutoff, "CUTOFF"}, {Resonance, "RESONANCE"},
+                     {VcfLfo, "LFO MOD"}, {VcfEnv, "ENV MOD"}, {VcfEnvPolarity, "ENV POLARITY"}, {KeyFollow, "KEY FOLLOW"}};
+const Item kVca[] = {{VcaMode, "MODE"}, {VcaLevel, "LEVEL"}, {Attack, "ATTACK"}, {Decay, "DECAY"}, {Sustain, "SUSTAIN"}, {Release, "RELEASE"}};
+const Item kLfo[] = {{LfoWave, "WAVE"}, {LfoDelay, "DELAY"}, {LfoRate, "RATE"}, {Chorus, "CHORUS"}, {Brilliance, "BRILLIANCE"}, {Velocity, "VELOCITY"}};
+struct Page { const Item* items; int count; };
+const Page kPageItems[6] = {{nullptr, 0}, {kDco1, 7}, {kDco2, 7}, {kVcf, 8}, {kVca, 6}, {kLfo, 6}};
+static_assert(7 + 7 + 8 + 6 + 6 == kSettings, "every setting is on one page");
 
+// A PRESET WRITES IDS 0 TO 31 ONLY (jx3p::kPatchSettings). VELOCITY and BRILLIANCE, ids 32 and 33,
+// are the track's own, as BRILLIANCE is a knob on the real one's panel and not in its patch: they
+// stay as the track has them, whichever preset is picked, built-in or the player's own.
 void loadPreset(TrackData& t, int index) {
-    if (const std::vector<int>* own = Presets<Twin, TrackKind::Twin>::own(index)) {
-        for (int id = 0; id < twin::kSettings && id < static_cast<int>(own->size()); ++id) {
+    if (const std::vector<int>* own = Presets<Jx3p, TrackKind::Jx3p>::own(index)) {
+        for (int id = 0; id < kPatchSettings && id < static_cast<int>(own->size()); ++id) {
             const int v = (*own)[id];
-            t.twin.value[id] = v < twin::settingMin(id) ? twin::settingMin(id) : (v > twin::settingMax(id) ? twin::settingMax(id) : v);
+            t.jx3p.value[id] = v < settingMin(id) ? settingMin(id) : (v > settingMax(id) ? settingMax(id) : v);
         }
     } else {
-        t.twin = Twin::presetPatch(index);
+        const Jx3pPatch preset = Jx3p::presetPatch(index);
+        for (int id = 0; id < kPatchSettings; ++id) t.jx3p.value[id] = preset.value[id];
     }
 }
-int* values(TrackData& t) { return t.twin.value; }
+int* values(TrackData& t) { return t.jx3p.value; }
 
 void settingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
+    const auto one = [&](const char* const* names, int count) { std::snprintf(out, n, "%s", names[value < 0 ? 0 : (value >= count ? count - 1 : value)]); };
+    static const char* const ranges[3] = {"16'", "8'", "4'"};
+    static const char* const waves[4] = {"SAW", "PULSE", "SQUARE", "NOISE"};
+    static const char* const cross[3] = {"OFF", "SYNC", "METAL"};
+    static const char* const onOff[2] = {"OFF", "ON"};
+    static const char* const polarity[2] = {"NORMAL", "INVERTED"};
+    static const char* const modes[2] = {"ENV", "GATE"};
+    static const char* const lfoWaves[3] = {"SINE", "SQUARE", "RANDOM"};
     switch (id) {
-    case VOctave: std::snprintf(out, n, "%+d", value); break;
-    case ZSemitone: std::snprintf(out, n, "%+d ST", value); break;
-    case VFine: case ZFine: std::snprintf(out, n, "%+d CENTS", value); break;
-    case Crossfade:
-        if (value == 0) std::snprintf(out, n, "ALL V");
-        else if (value == 100) std::snprintf(out, n, "ALL Z");
-        else std::snprintf(out, n, "V %d : Z %d", 100 - value, value);
-        break;
-    case CrossSync: std::snprintf(out, n, "%s", value ? "ON" : "OFF"); break;
-    case ReverseSync: std::snprintf(out, n, "%s", value == 0 ? "OFF" : value == 1 ? "ON" : "MUTUAL"); break;
-    case Waveform: std::snprintf(out, n, "%s", value ? "PULSE" : "SIGMOID SAW"); break;
-    case CrossfadeMode: std::snprintf(out, n, "%s", value ? "STEREO SWAP" : "EQUAL POWER"); break;
-    case FormantRatio: {
-        static const char* ratios[8] = {"x0.5", "x1", "x1.5", "x2", "x3", "x4", "x5", "x7"};
-        std::snprintf(out, n, "%s", ratios[value & 7]);
-        break;
-    }
-    case Width: std::snprintf(out, n, "%d%%", value * 2); break; // 50 is natural: 100%
-    case Oversample: std::snprintf(out, n, "x%d", 1 << value); break;
-    case Attack: case Decay: case Release: {
-        const float seconds = id == Attack ? envelope::attackSeconds(static_cast<float>(value)) : envelope::fallSeconds(static_cast<float>(value));
-        if (seconds < 1.f) std::snprintf(out, n, "%d MS", static_cast<int>(std::round(seconds * 1000.f)));
-        else std::snprintf(out, n, "%.1f S", seconds);
-        break;
-    }
-    case Level: std::snprintf(out, n, "%+d dB", value); break;
-    default: std::snprintf(out, n, "%d%%", value); break;
+    case Dco1Range: case Dco2Range: one(ranges, 3); break;
+    case Dco1Wave: one(waves, 3); break;
+    case Dco2Wave: one(waves, 4); break;
+    case Dco2CrossMod: one(cross, 3); break;
+    case Dco1Lfo: case Dco1Env: case Dco2Lfo: case Dco2Env: case Chorus: case Velocity: one(onOff, 2); break;
+    case DcoEnvPolarity: case VcfEnvPolarity: one(polarity, 2); break;
+    case VcaMode: one(modes, 2); break;
+    case LfoWave: one(lfoWaves, 3); break;
+    default: std::snprintf(out, n, "%d.%d", value / 10, value % 10); break; // a knob, as the PG-200's dial reads: 0.0 to 10.0
     }
 }
 
 void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
 bool envelopePage(int) { return false; }
-int itemCount(int page) { return page == 1 ? 11 : page == 2 ? 7 : 5; }
+int itemCount(int page) { return page >= 1 && page < 6 ? kPageItems[page].count : 0; }
 void item(int page, int index, int& id, const char*& name) {
-    if (page == 1) { id = kOscillators[index]; name = kOscillatorNames[index]; }
-    else if (page == 2) { id = kCharacter[index]; name = kCharacterNames[index]; }
-    else { id = kEnvelope[index]; name = kEnvelopeNames[index]; }
+    const Item& it = kPageItems[page].items[index];
+    id = it.id;
+    name = it.name;
 }
-} // namespace tw
+} // namespace jx
 
 // ---- QMOD -----------------------------------------------------------------------------
 
@@ -258,21 +261,24 @@ const SynthSpec& phazedSpec() {
     return spec;
 }
 
-const SynthSpec& twinSpec() {
-    static const SynthSpec spec = {"TWIN", Presets<Twin, TrackKind::Twin>::count, Presets<Twin, TrackKind::Twin>::name, Presets<Twin, TrackKind::Twin>::category, tw::loadPreset, tw::values,
-                                   twin::settingMin, twin::settingMax, tw::settingText,
-                                   {"SHAPE", "BLEND", "FORMANT", "WIDTH", "DETUNE", "VINTAGE", "ATTACK", "RELEASE"}, tw::macroText,
-                                   4, tw::kPages, tw::itemCount, tw::item, tw::envelopePage, nullptr};
+const SynthSpec& jx3pSpec() {
+    static const SynthSpec spec = {"JAX-EP", Presets<Jx3p, TrackKind::Jx3p>::count, Presets<Jx3p, TrackKind::Jx3p>::name, Presets<Jx3p, TrackKind::Jx3p>::category, jx::loadPreset, jx::values,
+                                   jx3p::settingMin, jx3p::settingMax, jx::settingText,
+                                   {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"}, jx::macroText,
+                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, nullptr};
     return spec;
 }
 
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(kind) = std::move(presets); }
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
 int builtInPresets(TrackKind kind) {
-    return kind == TrackKind::Twin ? Twin::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Qmod ? Qmod::presetCount() : 0;
+    return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Qmod ? Qmod::presetCount() : 0;
 }
 int settingCount(TrackKind kind) {
-    return kind == TrackKind::Twin ? static_cast<int>(twin::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Qmod ? static_cast<int>(qmod::kSettings) : 0;
+    return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Qmod ? static_cast<int>(qmod::kSettings) : 0;
+}
+int presetSettingCount(TrackKind kind) {
+    return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kPatchSettings) : settingCount(kind);
 }
 
 const SynthSpec& qmodSpec() {
@@ -284,7 +290,7 @@ const SynthSpec& qmodSpec() {
 }
 
 const SynthSpec* specFor(TrackKind kind) {
-    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Twin ? &twinSpec() : kind == TrackKind::Qmod ? &qmodSpec() : nullptr;
+    return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Qmod ? &qmodSpec() : nullptr;
 }
 
 } // namespace apotheca

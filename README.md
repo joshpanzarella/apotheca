@@ -6,9 +6,9 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), Twin
-Analog (two morphing oscillators, 16 presets) or QMOD (FM rolled from a
-number, 24 presets). Up to sixteen scenes of
+kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), JAX-EP
+(a virtual analog synth modeled after a popular DCO synth) or QMOD (FM rolled
+from a number, 24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -17,7 +17,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, three for Twin Analog).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -424,7 +424,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED or TWIN track. Move to another track there and the page follows.
+  PHAZED, JAX-EP or QMOD track. Move to another track there and the page follows.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -433,7 +433,18 @@ designer".
 - **SAVE AS PRESET** keeps the sound, macros included, under a name. It
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
-  `NAME.twin`). Saving under the same name again replaces it.
+  `NAME.jaxep`, `NAME.qmod`). Saving under the same name again replaces it.
+- **JAX-EP stands where Twin Analog stood**, and is another synth, so what
+  was made for Twin Analog does not carry over:
+  - **An old `NAME.twin` preset stays on the card but is not listed.** Nothing
+    reads it. Delete it from the card if you want the room.
+  - **An old song still opens.** Its Twin Analog tracks become JAX-EP tracks
+    and keep their notes, chords, scenes, effects, sends, level and pan, and
+    the automation of effects and sends. Their sound is not kept: each plays
+    JAX-EP's first preset, with the macros in the middle and no macro
+    automation. Saved again, the song is written for JAX-EP.
+  - A JAX-EP preset does not hold VELOCITY or BRILLIANCE. Those two belong
+    to the track, and stay as set when another preset is picked.
 - TRACK NAME on the page can be anything; on the handheld it is picked from
   a list (SETUP).
 
@@ -488,9 +499,7 @@ You have a loop going and want the next part of the song to start from it.
 
 A bounce is **not recorded as the song plays**. A second engine works the
 song out again from the start, as fast as the handheld can. So you can
-carry on (even play) while it works, and it does not have to keep up:
-**Twin Analog is always bounced at x8 oversampling**, even where that is more
-than the handheld can play live.
+carry on (even play) while it works.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
 been no sound for seven seconds, and the file ends half a second after the last
@@ -639,7 +648,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
-| + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
+| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER or QMOD | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
 The song runs to the last scene with anything in it. Then, by its **song end**:
@@ -1252,8 +1261,8 @@ before chord effects skips the line and plays the chord plain.
 ### DEVICE, a synth
 
 MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
-MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. Twin Analog's are
-SHAPE, BLEND, FORMANT, WIDTH, DETUNE, VINTAGE, ATTACK, RELEASE. Hold A + stick turns the one under
+MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. JAX-EP's are
+CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
@@ -1268,8 +1277,8 @@ moment fade out once, and such a sound then plays four notes at a time
 instead of eight.
 
 ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
-each line's volume, wave and pitch envelopes drawn out). Twin Analog has
-three (oscillators, formant and character, envelope). L1 and R1 turn the pages; B
+each line's volume, wave and pitch envelopes drawn out). JAX-EP has
+five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). L1 and R1 turn the pages; B
 goes back to MAIN.
 
 How fast the drum grid moves is set in one place, `Feel` in

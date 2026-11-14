@@ -1,5 +1,7 @@
 #!/bin/sh
 # SELECT is drawn as SEL on the device (the owner's, 2026-11-12).
+# And no maker's or model's name is shown (the owner's, 2026-11-14: the synth
+# is JAX-EP): none in a text of the app, on the two web pages or in README.md.
 #
 # This reads the app's sources for every piece of text that says SELECT (in
 # any case) and fails on one the screen would show spelled out.
@@ -36,6 +38,9 @@ scan() {
                 if (!have) return
                 have = 0
                 low = tolower(str)
+                # No name of a maker or of a model where a player reads (owner, 2026-11-14: the synth is JAX-EP).
+                # (The name of a file in an #include is not on the screen.)
+                if (low ~ /roland|jx-?3p|pg-?200|juno/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
                 if (low !~ /(^|[^a-z])select([^a-z]|$)/) return
                 ok = 0
                 if (ctx ~ /hint\($/) ok = 1                                                    # hint("SELECT...", ...)
@@ -114,9 +119,18 @@ scan() {
     done
 }
 
-bad=$(scan "$app")
+# The two web pages and the manual are read by a player too. They keep SELECT in full, so scan()
+# leaves them out; a maker's or a model's name is looked for in them here, comments and all.
+makers() {
+    for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md; do
+        [ -f "$f" ] || continue
+        grep -n -i -E 'roland|jx-?3p|pg-?200|juno' "$f" | sed "s|^|$f:|"
+    done
+}
+
+bad=$(scan "$app"; makers "$app")
 if [ -n "$bad" ]; then
-    echo "The device would show SELECT spelled out (it is drawn as SEL):"
+    echo "The device would show SELECT spelled out (it is drawn as SEL), or a maker's name (the synth is JAX-EP):"
     echo "$bad"
     exit 1
 fi
@@ -131,7 +145,7 @@ fails=0
 plant() { # plant NAME FILE WANT(caught|clean) : the text comes on stdin
     mkdir -p "$tmp/$1"
     cat > "$tmp/$1/$2"
-    got=$(scan "$tmp/$1")
+    got=$(scan "$tmp/$1"; makers "$tmp/$1")
     if [ "$3" = caught ] && [ -z "$got" ]; then echo "words_test: not caught: $1"; fails=$((fails + 1)); fi
     if [ "$3" = clean ] && [ -n "$got" ]; then echo "words_test: caught, and should not be: $1: $got"; fails=$((fails + 1)); fi
 }
@@ -183,7 +197,29 @@ PLANT
 plant the-file-word-after-strokes x.cpp caught <<'PLANT'
     std::snprintf(text, sizeof text, "a//b %s", buttonName(last));
 PLANT
+plant a-makers-name x.cpp caught <<'PLANT'
+    {TrackKind::Jx3p, "JAX-EP", "JAX", "JAX-EP", "a copy of the Roland", false, "jaxep", SynthKind::Jx3p, ".jaxep"},
+PLANT
+plant a-models-name x.cpp caught <<'PLANT'
+    jx3pRow("JX-3P, 6 notes", 0);
+PLANT
+plant a-models-name-small x.hpp caught <<'PLANT'
+constexpr const char* kEnding = ".jx3p";
+PLANT
+plant the-programmers-name x.cpp caught <<'PLANT'
+    fonts.small.draw(r, x, y, "AS THE PG-200 READS", kDim);
+PLANT
+plant a-makers-name-on-the-page design_page.cpp caught <<'PLANT'
+<div id="nothing" hidden>Move to a PHAZED or JX-3P track.</div>
+PLANT
+plant a-makers-name-on-the-wifi-page transfer.cpp caught <<'PLANT'
+const char* const kPage = R"page(<p>Presets for the Juno are kept here.</p>
+)page";
+PLANT
 plant what-is-allowed app.cpp clean <<'PLANT'
+#include "apotheca/jx3p.hpp"
+// "the JX-3P" in a comment is not on the screen
+    const Jx3pPatch first = Jx3p::presetPatch(0); // "PG-200"
 // "SELECT + Y" in a comment is not on the screen
 /* nor "SELECT" here,
    nor "SELECT" on its second line */

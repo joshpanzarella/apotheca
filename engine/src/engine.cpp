@@ -438,6 +438,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     if (kind == SynthKind::Twin) synth.reset(new Twin);
     else if (kind == SynthKind::Sampler) synth.reset(new Sampler);
     else if (kind == SynthKind::Qmod) synth.reset(new Qmod);
+    else if (kind == SynthKind::Jx3p) synth.reset(new Jx3p);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);

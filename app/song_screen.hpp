@@ -14,7 +14,7 @@
 //                      Hold R1 and drag: copy it into every cell crossed.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
-//   on + TRACK         A, then pick the instrument: drums, Phazed or Twin Analog.
+//   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its name. R1: its instrument. Hold B: delete it.
 //                      Hold A + UP / DOWN: its LEVEL, a dB a press; + LEFT / RIGHT: its PAN.
 //                      The stick, with A held, for big moves. B with A held: back to the usual
@@ -140,7 +140,7 @@ private:
     int column_ = 0;
     int top_ = 0; // first scene shown
     bool choosing_ = false; // the instrument list is open
-    int choice_ = 0;        // 0 drums, 1 Phazed, 2 Twin Analog
+    int choice_ = 0;        // its place in kInstruments
 
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap

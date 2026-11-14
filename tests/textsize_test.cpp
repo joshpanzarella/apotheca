@@ -991,7 +991,7 @@ void testTheOtherScreens() {
     const std::string longest = "a folder with a long name/a recording with a very long name indeed";
 
     // SONG: twelve tracks, the narrowest columns there are, every one with a name of ten wide letters.
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Sampler, TrackKind::Drums};
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Sampler, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 5]));
     session.view = View::Song;
     rig.frames(2);
@@ -1117,7 +1117,7 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Twin, &rig.app.twin(), "TWIN"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.twin(), "TWIN"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {

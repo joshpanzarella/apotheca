@@ -32,7 +32,7 @@ struct SynthSpec {
 };
 
 const SynthSpec& phazedSpec();
-const SynthSpec& twinSpec();
+const SynthSpec& jx3pSpec(); // JAX-EP on the device
 const SynthSpec& qmodSpec();
 
 // Presets the player has made (on the sound-designer page) and saved. They
@@ -47,7 +47,10 @@ struct UserPreset {
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets);
 const std::vector<UserPreset>& userPresets(TrackKind kind);
 int builtInPresets(TrackKind kind); // how many presets the synth comes with
-int settingCount(TrackKind kind);   // how many settings its patch has
+int settingCount(TrackKind kind);   // how many settings it has (what a song keeps for a track)
+// How many of them, from id 0, a preset holds: what picking one writes and what saving one keeps. All
+// of them, but for JAX-EP: its last two (VELOCITY, BRILLIANCE) are the track's own, not the patch's.
+int presetSettingCount(TrackKind kind);
 
 // The spec for a track's instrument, or nullptr for drums and empty tracks.
 const SynthSpec* specFor(TrackKind kind);

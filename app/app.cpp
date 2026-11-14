@@ -15,7 +15,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 
 App::App(Engine& engine)
     : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_), settings_(session_),
-      phazed_(session_, phazedSpec()), twin_(session_, twinSpec()), qmod_(session_, qmodSpec()) {}
+      phazed_(session_, phazedSpec()), twin_(session_, jx3pSpec()), qmod_(session_, qmodSpec()) {}
 
 // The one screen that is up: by the tab, and for PATTERN and DEVICE by the
 // track's instrument.
@@ -28,7 +28,7 @@ Screen& App::screenNow() {
         return drums_;
     case View::Device:
         if (kind == TrackKind::Phazed) return phazed_;
-        if (kind == TrackKind::Twin) return twin_;
+        if (kind == TrackKind::Jx3p) return twin_;
         if (kind == TrackKind::Qmod) return qmod_;
         if (kind == TrackKind::Sampler) return sampler_;
         return kit_;

@@ -26,6 +26,7 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
 #include "apotheca/twin.hpp"
+#include "apotheca/jx3p.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -60,6 +61,58 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
     }
     const double block = ms([&] { engine->render(out.data(), 256); }, 600);
     std::printf("  %-28s %5.1f%% of one core\n", name, 100.0 * block / (256.0 / 48.0));
+}
+
+// The JX-3P (docs/plans/jx3p-plan.md, section 3): six notes, the most it plays. `how`:
+//   0  the patch as a player meets it (batch 7: A1 String I, chorus on; until then the start patch)
+//   1  the worst patch (batch 7: B12 Sync Sweep; until then one like it: DCO-2's pulse synced to
+//      DCO-1's, a fifth up, the envelope sweeping DCO-2's pitch, both DCOs heard, and the envelope
+//      moving all the while: a slow attack, a decay, each key played again every half second; and
+//      from batch 3 the envelope on the VCF, RESONANCE 5, so its cutoff moves after every tick)
+//   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8, and (from batch 4) the LFO
+//      on the cutoff and on DCO-1, so whatever is worked out from the pitch and the cutoff is worked out every sample
+static void jx3pRow(const char* name, int how) {
+    std::unique_ptr<Jx3p> synth(new Jx3p);
+    synth->prepare(48000.f);
+    if (how == 1) {
+        synth->setSetting(jx3p::Attack, 40);
+        synth->setSetting(jx3p::Decay, 60);
+        synth->setSetting(jx3p::Sustain, 30);
+        synth->setSetting(jx3p::Dco1Wave, 1);
+        synth->setSetting(jx3p::Dco2Wave, 1);
+        synth->setSetting(jx3p::Dco2CrossMod, 1);
+        synth->setSetting(jx3p::Dco2Tune, 79);
+        synth->setSetting(jx3p::Dco2Env, 1);
+        synth->setSetting(jx3p::DcoEnvDepth, 60);
+        synth->setSetting(jx3p::SourceMix, 50);
+        synth->setSetting(jx3p::Cutoff, 30);
+        synth->setSetting(jx3p::Resonance, 50);
+        synth->setSetting(jx3p::VcfEnv, 70);
+    }
+    if (how == 2) {
+        synth->setSetting(jx3p::Cutoff, 40);
+        synth->setSetting(jx3p::Resonance, 50);
+        synth->setSetting(jx3p::KeyFollow, 98);
+        synth->setSetting(jx3p::VcfLfo, 30);   // the LFO on the cutoff (batch 4): a sine at RATE 7
+        synth->setSetting(jx3p::LfoRate, 70);
+        synth->setSetting(jx3p::DcoLfoDepth, 20);
+        synth->setSetting(jx3p::Dco1Lfo, 1);
+    }
+    std::vector<float> l(256), r(256);
+    const int keys[6] = {48, 52, 55, 60, 64, 67};
+    for (int k : keys) synth->noteOn(k, 0.8f);
+    synth->render(l.data(), r.data(), 256);
+    int block = 0;
+    const double each = ms([&] {
+        if (how > 0 && block % 94 == 0) // every half second
+            for (int k : keys) {
+                if (how == 2) synth->noteOnFrom(k, 0.8f, k - 12, 0.5f);
+                else synth->noteOn(k, 0.8f);
+            }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
 }
 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
@@ -383,6 +436,9 @@ int apotheca::runBench() {
     instrument("Twin Analog x2, 8 notes", SynthKind::Twin, 8, twin::Oversample, 1);
     instrument("Twin Analog x8, 8 notes", SynthKind::Twin, 8, twin::Oversample, 3);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
+    jx3pRow("JAX-EP, 6 notes", 0);
+    jx3pRow("JAX-EP, 6, worst patch", 1);
+    jx3pRow("JAX-EP, 6, moving cutoff", 2);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);
@@ -470,7 +526,7 @@ int apotheca::runBench() {
     App app(*engine);
     Session& session = app.session();
     // A full song: twelve tracks, eight scenes, notes and hits in every cell, some automation.
-    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Drums};
+    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) session.addTrack(kinds[t % 4]);
     Project& p = app.project();
     for (int t = 0; t < kNumTracks; ++t)

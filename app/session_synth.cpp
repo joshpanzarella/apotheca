@@ -191,7 +191,8 @@ bool Session::savePreset(int track, const std::string& typed) {
     for (float m : t.macro) std::snprintf(number, sizeof number, " %.6g", m), text += number;
     text += "\nsettings";
     const int* values = spec->values(t);
-    for (int id = 0; id < settingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
+    // (What a preset holds, not everything the track has: the JX-3P's VELOCITY and BRILLIANCE are not in the file.)
+    for (int id = 0; id < presetSettingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
     text += "\n";
     if (!writeTextFile(presetFolder_ + "/" + name + info->presetEnding, text)) return false;
     // It is in the list now; the track is on it. The sound itself has not changed.

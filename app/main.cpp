@@ -15,7 +15,7 @@
 //                  add-track, change-instrument, song-deleting, song-mixer, song-mixer-master
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
-//                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
+//                  twin, twin1 .. twin5 (JAX-EP's main panel and pages; the views keep the old word until batch 6b)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -801,7 +801,7 @@ int main(int argc, char** argv) {
         app.session().view = View::Song;
         const bool master = std::strstr(view, "-master") != nullptr;
         if (std::strstr(view, "-12")) {
-            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Drums};
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
             for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
             app.session().setMix(11, 3, 50);
             app.session().setMix(6, 0, -20);
@@ -857,8 +857,8 @@ int main(int argc, char** argv) {
         app.session().view = View::Device;
         app.phazed().goTo(std::atoi(view + 4), 1);
     } else if (std::strncmp(view, "twin", 4) == 0) {
-        // A Twin Analog track, added the way the Song screen adds one.
-        app.session().addTrack(TrackKind::Twin);
+        // A JAX-EP track, added the way the Song screen adds one.
+        app.session().addTrack(TrackKind::Jx3p);
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
         app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : SynthScreen::kFirstMacro + 1);

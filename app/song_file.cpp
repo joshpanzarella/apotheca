@@ -358,6 +358,7 @@ bool parseSong(const std::string& text, Project& project) {
     std::unique_ptr<Project> song(new Project);
     const std::unique_ptr<const TrackData> blank(new TrackData); // a track as new (821 KB: never on the stack)
     song->tracks[0] = *blank; // no tracks until the file names them
+    bool oldSound = false; // the track being read was written as `track twin`: its notes are read, its sound is not
     int count = 0, scene = -1, bar = 0;
     int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
     for (int& n : oldSteps) n = kSteps;
@@ -419,7 +420,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "track") {
             std::string kind;
             in >> kind;
-            const TrackKind k = trackKindFromWord(kind.c_str());
+            const TrackKind k = trackKindFromWord(kind.c_str(), &oldSound);
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
@@ -442,6 +443,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "auto") {
             double sceneNumber = 0, lane = -1, index = 0, value = 0;
             if (!(in >> sceneNumber >> lane) || sceneNumber < 1 || sceneNumber > kMaxScenes || lane < 0 || lane >= kAutoLanes) continue;
+            if (oldSound && lane < kSynthMacros) continue; // another synth's macros: they would turn knobs that are not theirs
             while (in >> index >> value) {
                 if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
                 track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
@@ -487,6 +489,8 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
             double v;
             for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
+        } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
+            continue; // an old Twin Analog track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);

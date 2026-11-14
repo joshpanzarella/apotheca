@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -106,7 +107,7 @@ struct Rig {
     }
     ~Rig() {
         setUserPresets(TrackKind::Phazed, {});
-        setUserPresets(TrackKind::Twin, {});
+        setUserPresets(TrackKind::Jx3p, {});
         setUserPresets(TrackKind::Qmod, {});
     }
     void frames(int n) { for (int i = 0; i < n; ++i) app.update(input, clock += 16); }
@@ -420,7 +421,7 @@ void testSavingAPreset() {
     CHECK(spec.presetCount() == builtIn);
     session.usePresetFolder(rig.root + "/presets");
     CHECK(spec.presetCount() == builtIn + 3 && std::string(spec.presetName(builtIn + 2)) == "WILD");
-    CHECK(userPresets(TrackKind::Twin).empty());
+    CHECK(userPresets(TrackKind::Jx3p).empty());
     rig.tell("preset " + std::to_string(builtIn + 2));
     CHECK(rig.track().patch.value[phazed::LineSelect] == 3 && rig.track().patch.value[phazed::Octave] == 1 && rig.track().patch.value[phazed::DetuneSign] == 1);
     CHECK(rig.track().macro[0] == 1.f && rig.track().macro[1] == 0.f && rig.track().macro[2] == 0.5f);
@@ -471,37 +472,54 @@ void testQmodFromThePage() {
     CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.track().patch.value));
 }
 
+// JAX-EP, where Twin Analog stood (jx3p-plan.md, batch 6a).
 void testTwinFromThePage() {
     Rig rig;
     rig.addSynth(true);
-    CHECK(rig.track().kind == TrackKind::Twin);
+    CHECK(rig.track().kind == TrackKind::Jx3p);
     const std::string spec = rig.get("/design/spec").body;
-    CHECK(has(spec, "\"name\":\"TWIN\"") && has(spec, "\"macros\":[\"SHAPE\",\"BLEND\"") && count(spec, "\"env\":") == 3 && !has(spec, "\"env\":true"));
-    CHECK(count(spec, "\"id\":") == twin::kSettings);
-    rig.tell("set " + std::to_string(twin::Level) + " 0");
+    CHECK(has(spec, "\"name\":\"JAX-EP\"") && has(spec, "\"macros\":[\"CUTOFF\",\"RESO\"") && count(spec, "\"env\":") == 5 && !has(spec, "\"env\":true"));
+    CHECK(count(spec, "\"id\":") == jx3p::kSettings);
+    CHECK(has(spec, "\"texts\":[\"OFF\",\"SYNC\",\"METAL\"]") && has(spec, "\"texts\":[\"SAW\",\"PULSE\",\"SQUARE\",\"NOISE\"]"));
+    rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 70");
     const float before = rig.loud();
-    CHECK(rig.tell("set " + std::to_string(twin::VShape) + " 100") && rig.track().twin.value[twin::VShape] == 100);
-    rig.tell("set " + std::to_string(twin::Level) + " -20");
+    CHECK(rig.tell("set " + std::to_string(jx3p::Resonance) + " 30") && rig.track().jx3p.value[jx3p::Resonance] == 30);
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 20"); // five steps of the dial: 20 dB down
     CHECK(rig.loud() < 0.2f * before);
-    rig.tell("set " + std::to_string(twin::VShape) + " 500");
-    CHECK(rig.track().twin.value[twin::VShape] == 100);
-    const TwinPatch made = rig.track().twin;
+    rig.tell("set " + std::to_string(jx3p::Resonance) + " 500");
+    CHECK(rig.track().jx3p.value[jx3p::Resonance] == 100);
+    rig.tell("set " + std::to_string(jx3p::Resonance) + " 30");
+    // The track's own two, turned before the save: a preset does not hold them.
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 61");
+    rig.tell("set " + std::to_string(jx3p::Velocity) + " 0");
+    const Jx3pPatch made = rig.track().jx3p;
     const float sound = rig.loud();
     CHECK(rig.tell("save wide saw"));
-    CHECK(exists(rig.root + "/presets/WIDE SAW.twin") && !exists(rig.root + "/presets/WIDE SAW.phazed"));
-    CHECK(twinSpec().presetCount() == Twin::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // Twin's list, not Phazed's
-    rig.tell("preset 2");
-    rig.tell("set " + std::to_string(twin::Level) + " 0");
+    CHECK(exists(rig.root + "/presets/WIDE SAW.jaxep") && !exists(rig.root + "/presets/WIDE SAW.phazed") && !exists(rig.root + "/presets/WIDE SAW.twin"));
+    std::string file;
+    CHECK(readTextFile(rig.root + "/presets/WIDE SAW.jaxep", file));
+    {
+        std::istringstream in(file.substr(file.find("settings") + 8));
+        int v = 0, n = 0;
+        while (in >> v) ++n;
+        CHECK(n == jx3p::kPatchSettings); // ids 0 to 31
+    }
+    CHECK(jx3pSpec().presetCount() == Jx3p::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // its own list, not Phazed's
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
+    rig.tell("preset 0"); // the first built-in one
+    CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
     CHECK(rig.loud() > 3.f * sound);
-    rig.tell("preset " + std::to_string(Twin::presetCount()));
-    CHECK(std::equal(made.value, made.value + twin::kSettings, rig.track().twin.value) && rig.sameLoudness(rig.loud(), sound));
+    rig.tell("preset " + std::to_string(Jx3p::presetCount()));
+    CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value) && rig.sameLoudness(rig.loud(), sound));
+    CHECK(rig.track().jx3p.value[jx3p::Brilliance] == 39 && rig.track().jx3p.value[jx3p::Velocity] == 0); // as the track had them, not as they were at the save
     // The page follows the handheld to another track: a different synth, a different page.
     rig.app.project().track = 0;
     rig.frames(1);
     CHECK(has(rig.get("/design/spec").body, "\"name\":\"\""));
     rig.app.project().track = 1;
     rig.frames(1);
-    CHECK(has(rig.get("/design/spec").body, "\"name\":\"TWIN\""));
+    CHECK(has(rig.get("/design/spec").body, "\"name\":\"JAX-EP\""));
 }
 
 } // namespace

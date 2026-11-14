@@ -56,7 +56,7 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
   <a id="files" href="#">files</a>
 </header>
 <div id="said" class="dim">The handheld makes the sound. Turn it up, or plug headphones into it.</div>
-<div id="nothing" hidden>The track being worked on is not a synth. On the handheld, go to the SONG screen and move to a PHAZED or TWIN track (or add one with + TRACK).</div>
+<div id="nothing" hidden>The track being worked on is not a synth. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP or QMOD track (or add one with + TRACK).</div>
 <div id="all"></div>
 <div id="keys">
   <div class="row"><span>PLAY: click the keys, or use the computer keyboard: A W S E D F T G Y H U J K. Z and X: octave down / up.</span><span id="oct"></span></div>

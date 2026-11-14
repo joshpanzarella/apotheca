@@ -35,7 +35,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
@@ -73,7 +73,33 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(chordfx_test PRIVATE apotheca_engine)
   add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx PROPERTIES TIMEOUT 120)
+  # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
+  # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
+  add_executable(jx3p_test tests/jx3p_test.cpp)
+  target_link_libraries(jx3p_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_test PRIVATE engine/src tests)
+  add_test(NAME jx3p COMMAND jx3p_test)
+  # The JX-3P's DCOs (plan batch 2, engine/src/jx3p/dco.hpp): aliasing, the DCO table.
+  add_executable(jx3p_dco_test tests/jx3p_dco_test.cpp)
+  target_link_libraries(jx3p_dco_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_dco_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_dco COMMAND jx3p_dco_test)
+  # The JX-3P's VCF and HPF (plan batch 3, engine/src/jx3p/ir3109.hpp): the VCF table, the HPF, BRILLIANCE.
+  add_executable(jx3p_vcf_test tests/jx3p_vcf_test.cpp)
+  target_link_libraries(jx3p_vcf_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_vcf_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_vcf COMMAND jx3p_vcf_test)
+  # The JX-3P's LFO (plan batch 4, engine/src/jx3p/lfo.hpp): its table, shapes, delay and routes.
+  add_executable(jx3p_lfo_test tests/jx3p_lfo_test.cpp)
+  target_link_libraries(jx3p_lfo_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_lfo_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_lfo COMMAND jx3p_lfo_test)
+  # The JX-3P's chorus (plan batch 5, engine/src/jx3p/chorus.hpp): its delays, sweep, filters, fade and sleep.
+  add_executable(jx3p_chorus_test tests/jx3p_chorus_test.cpp)
+  target_link_libraries(jx3p_chorus_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_chorus_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_chorus COMMAND jx3p_chorus_test)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

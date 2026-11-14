@@ -55,6 +55,7 @@
 #include "apotheca/sampler.hpp"
 #include "apotheca/qmod.hpp"
 #include "apotheca/twin.hpp"
+#include "apotheca/jx3p.hpp"
 #include "apotheca/spsc_queue.hpp"
 
 namespace apotheca {
