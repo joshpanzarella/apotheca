@@ -106,8 +106,12 @@ hit, a chord) its button takes the place of the words about the help card.
 step is one burst of editing: a paint stroke, a roll of the dice, a cell
 emptied, a chord placed, a pass of automation. It covers what is in the
 patterns (hits, notes, chords, automation, how long each cell is, how often
-each scene plays); sounds, effects
-and settings are not part of it. The song keeps playing while you undo.
+each scene plays), and also each track's effects and their settings (a
+TYPE changed comes back with its old settings and automation), its sends,
+its sound (preset, settings, macros), its GLIDE FROM, the master's effects
+and the buses' (their LEVEL too). Tempo, mutes, names, the kit's recordings
+and a track deleted or given another instrument are not. The song keeps
+playing while you undo.
 
 **L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
@@ -1065,7 +1069,7 @@ step). A single note after a single note is the same under every type.
 | RANDOM on the roll | The lines are as they are the first time the scene plays after Play. Later times round roll anew. |
 | The strip, X held | GLIDE FROM and its value: dim while this note has no glide, brass when it is not TOP. |
 | The dice | Leave it alone. It is the track's. |
-| Undo | Does not take it back (like a send or a sound). One click puts it back. |
+| Undo | Takes it back, as a step of its own (SELECT + B). |
 | In the song file | `glidefrom 1` (PAIRED), `2` (NEAREST), `3` (RANDOM), on a line of the track's own. Nothing at TOP. |
 | Not on a chord | X held on a chord shows the chord's six effects; L1 / R1 there are as they were. |
 | A known oddity | PAIRED, two notes under half a millisecond apart with a step line between them: the first is taken as a note alone (from the top). |

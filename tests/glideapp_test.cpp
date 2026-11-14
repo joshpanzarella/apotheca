@@ -411,7 +411,7 @@ void testGlideFromIsTheTracks() {
     session.setCellBars(1, 0, 2);
     CHECK(session.imagesSent() > images && lowFrom() == 48);
     session.setCellBars(1, 0, 1);
-    // Undo and redo are the patterns': GLIDE FROM is not in them, and stays as it was set.
+    // GLIDE FROM is a step of undo of its own (owner, 2026-11-14), and undo tells the engine.
     session.noteEdit();
     rig.frames(50); // (a burst of edits is over after 700 ms)
     rig.render(40000);
@@ -420,14 +420,17 @@ void testGlideFromIsTheTracks() {
     session.noteEdit();
     rig.frames(50); // (a burst of edits is over after 700 ms)
     rig.render(40000);
-    session.setGlideFrom(1, kFromNearest);
+    session.setGlideFrom(1, kFromTop);
+    rig.frames(1); // (the change is seen on the next frame, as any is)
+    CHECK(session.undo() && p.notes[3].pitch == 72 && project.tracks[1].glideFrom == kFromPaired && lowFrom() == 48); // (at TOP it would be 60)
+    CHECK(session.redo() && project.tracks[1].glideFrom == kFromTop && lowFrom() == 60);
+    CHECK(session.undo() && project.tracks[1].glideFrom == kFromPaired);
     CHECK(session.undo() && p.notes[3].pitch == 70);
-    CHECK(project.tracks[1].glideFrom == kFromNearest && lowFrom() == 48);
+    CHECK(project.tracks[1].glideFrom == kFromPaired && lowFrom() == 48);
     std::vector<GlideLine> lines(kMaxBars * kMaxNotes);
     project.glideLines(1, 0, lines.data());
     CHECK(lines[2].from == 48 && lines[3].from == 60); // the roll and the engine still agree
-    CHECK(session.redo() && p.notes[3].pitch == 72 && project.tracks[1].glideFrom == kFromNearest);
-    session.setGlideFrom(1, kFromPaired);
+    CHECK(session.redo() && p.notes[3].pitch == 72 && project.tracks[1].glideFrom == kFromPaired);
     // A NEXT SCENE, and it taken back: the track's choice goes on, and no track is sent whole.
     rig.frames(2);
     rig.render(2000);

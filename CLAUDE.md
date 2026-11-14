@@ -226,11 +226,9 @@ effect in those two groups and fails one that does not.
   a slot and **moves the automation of each kept setting to its new lane**
   (REVERB's MIX is its third setting, HALL's its fourth), read the same way,
   in every scene (a step written as 0 is a step); the rest of the slot's
-  lanes are cleared. **Undo after a TYPE change is wrong and not fixed**
-  (found in review, 2026-11-13): undo puts the patterns' automation back in
-  the old type's lanes and the effect stays the new type (effects are not in
-  undo; `main` has the same fault when an effect is changed or emptied). The
-  mend is in `session.*` and is the owner's call. Another FAMILY
+  lanes are cleared. **Undo after a TYPE change puts back the old type, its
+  settings and its lanes together** (mended 2026-11-14: effects are in undo
+  now, next rule; it was wrong from 2026-11-13). Another FAMILY
   put in a slot (`Session::setEffect`) still clears all four.
 
 ### The engine and its threads
@@ -506,9 +504,21 @@ effect in those two groups and fails one that does not.
 - **Every screen's `update()` re-reads held buttons from `input` each frame**
   and drops its own "held" flags when they are not held. Trusting the release
   event left A "stuck down" after a screen change.
-- **Undo is a text snapshot of the patterns** (`songText`), one step per burst
+- **Undo is a text snapshot of the song** (`songText`), one step per burst
   of edits, 20 deep. Anything that changes a pattern outside the grids calls
-  `noteEdit()`. Sounds, effects and track deletes are not undone.
+  `noteEdit()`. **It puts back the patterns and, since 2026-11-14 (owner),
+  each track's effects, sends, sound (preset, settings, macros, a sampler's
+  settings) and GLIDE FROM, the master's effects and the buses' (LEVEL with
+  them)**. Those are seen changing by `Session::soundMark()` each frame, as the
+  cell is by `cellMark()`: no screen calls anything (the FX screen is
+  untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ,
+  through the engine's usual commands (`restoreEffect`: another kind is
+  `Engine::setEffect` then its settings; the same kind, only the settings
+  that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
+  image and never an `Effect` from this thread. Automation is a pattern, so a
+  TYPE change taken back has its lanes back with it. Tempo, mutes, names, the
+  kit's recordings and track deletes are not undone. After a restore the
+  marks are taken again (putting back is not an edit).
   **Only another song clears undo** (`applyProject`). A resync after a full
   queue, a track deleted and a track given another instrument send the song
   with `sendSong()` and keep the steps: a delete takes its track out of every
@@ -938,7 +948,7 @@ effect in those two groups and fails one that does not.
     `Session::setGlideFrom`, `Command::SetGlideFrom`. Not in a track image,
     not in a scene, so a scene move carries nothing for it. `applyProject`
     tells every track's. `RemoveInstrument` puts the engine's back to TOP.
-    **Not in undo** (like a send; the owner's call). In a song file:
+    **In undo** since 2026-11-14 (a step of its own). In a song file:
     `glidefrom N`, a line of a synth track's own, left out at TOP; under a
     drum track it is read and not taken.
   - **The gesture: X held on a note, L1 back, R1 on**, a click, stopping at
@@ -1084,7 +1094,8 @@ effect in those two groups and fails one that does not.
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
-| Undo plus redo | 20 ms |
+| Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
+| ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
 
 **Twin Analog is the costly one**, and its time is spread over plain
 arithmetic with no single hot spot. Do not "optimise" it blind: any change
