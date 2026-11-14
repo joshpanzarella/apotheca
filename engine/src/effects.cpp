@@ -51,6 +51,8 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kDubInfo,    // 28
     &fx::kReverseInfo, // 29
     &fx::kStutterInfo, // 30
+    &fx::kBloomInfo,  // 31
+    &fx::kShimmerInfo, // 32
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -85,6 +87,8 @@ const EffectKind kList[] = {
     EffectKind::Hall,     //         HALL
     EffectKind::Spring,   //         SPRING
     EffectKind::Plate,    //         PLATE
+    EffectKind::Bloom,    //         BLOOM
+    EffectKind::Shimmer,  //         SHIMMER
     EffectKind::Comp,     // LEVEL:  COMP
     EffectKind::Duck,     //         DUCK
     EffectKind::Limiter,  //         LIMITER

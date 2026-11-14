@@ -1406,8 +1406,8 @@ void testTheFxScreen() {
             const float ends = typeAlone ? FxScreen::kNameX + set.medium.width(effectTypeShown(kind))
                                          : FxScreen::kNameX + (familySmall ? set.small : set.medium).width(effectFamily(kind)) + gap + set.small.width(effectTypeShown(kind));
             CHECK(gap == 7.f && ends <= FxScreen::nameEnd(kind) - (familySmall ? FxScreen::kNameClear : 0) + 0.01f);
-            CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
-            CHECK(typeAlone == (kind == EffectKind::Saturate));
+            CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter || kind == EffectKind::Bloom || kind == EffectKind::Shimmer)); // small only where it must be at LARGE, and then at every size (a bigger setting never draws it smaller)
+            CHECK(typeAlone == (kind == EffectKind::Saturate || kind == EffectKind::Shimmer));
             if (kind == EffectKind::Spring) CHECK((&set == &chosen) == (size <= kTextLarge)); // REVERB SPRING: as chosen to LARGE, held at LARGE at XL
             CHECK(&set == &chosen || &set == &chosen.fixed());
         }
@@ -1434,16 +1434,18 @@ void testTheFxScreen() {
             }
             // On SPACE's line of the list (the only REVERB under the buses' heading): a type that fits at XL is
             // drawn at XL; REVERB SPRING and REVERB PLATE do not, and the family and the type are both held at LARGE
-            // (SPRING's family in its smaller lettering, PLATE's as it always is).
+            // (SPRING's family in its smaller lettering, PLATE's as it always is). REVERB BLOOM fits at XL with its family
+            // small; SHIMMER is drawn alone (as DRIVE SATURATE is).
             if (onBus && effectBus(kind) == 1) {
                 const float below = static_cast<float>(FxScreen::lineY(FxScreen::kBusRow + 1)) - 2.f;
                 float gap = 0.f;
-                bool familySmall = false;
-                const bool held = &FxScreen::lineFonts(*screens().at[kTextXl], kind, &gap, &familySmall) != screens().at[kTextXl].get();
-                CHECK(held == (kind == EffectKind::Spring || kind == EffectKind::Plate) && familySmall == (kind == EffectKind::Spring));
+                bool familySmall = false, alone = false;
+                const bool held = &FxScreen::lineFonts(*screens().at[kTextXl], kind, &gap, &familySmall, &alone) != screens().at[kTextXl].get();
+                CHECK(held == (kind == EffectKind::Spring || kind == EffectKind::Plate) && familySmall == (kind == EffectKind::Spring || kind == EffectKind::Bloom || kind == EffectKind::Shimmer));
+                CHECK(alone == (kind == EffectKind::Shimmer)); // REVERB SHIMMER is too long even both small: SHIMMER alone, in the family's lettering
                 const Fonts& at = *screens().at[held ? kTextLarge : kTextXl];
-                CHECK(drew(effectTypeName(kind)) && capAtXl(effectTypeName(kind), below) == at.small.capHeight());
-                CHECK(capAtXl("REVERB", below) == (familySmall ? at.small : at.medium).capHeight()); // (REVERB in SPRING's smaller lettering)
+                CHECK(drew(effectTypeName(kind)) && capAtXl(effectTypeName(kind), below) == (alone ? at.medium : at.small).capHeight());
+                if (!alone) CHECK(capAtXl("REVERB", below) == (familySmall ? at.small : at.medium).capHeight()); // (REVERB in SPRING's and BLOOM's smaller lettering)
                 if (held) CHECK(asAtLarge(effectTypeName(kind), below) && asAtLarge("REVERB", below));
             }
             // A setting that moves with the pattern says so under its row.

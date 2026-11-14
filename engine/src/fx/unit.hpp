@@ -106,6 +106,8 @@ extern const EffectInfo kTremoloInfo; // tremolo.cpp
 extern const EffectInfo kDubInfo;    // dub.cpp
 extern const EffectInfo kReverseInfo; // reverse.cpp
 extern const EffectInfo kStutterInfo; // stutter.cpp
+extern const EffectInfo kBloomInfo;   // bloom.cpp
+extern const EffectInfo kShimmerInfo; // shimmer.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -133,6 +135,8 @@ float dubToneHz(float tone);
 float dubTireOf(float setting);
 // STUTTER's roll for a place (0 to 1): it stutters there when this is under CHANCE.
 float stutterRoll(std::uint32_t place);
+// BLOOM's swell: where its tap `k` (0 to 63) reads, as a share of BLOOM, and how loud (signed).
+void bloomTapAt(int k, float* at, float* gain);
 
 } // namespace fx
 } // namespace apotheca

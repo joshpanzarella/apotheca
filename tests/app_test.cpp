@@ -4657,7 +4657,7 @@ void testTheFxScreensList() {
     rig.tap(DOWN);
     CHECK(fx.onLine(5).kind == reverb && fx.onLine(5).param[2] == 1.f);
     rig.tap(DOWN, 4);
-    rig.tap(RIGHT, 4);
+    rig.tap(RIGHT, effectTypes(EffectKind::Reverb) - 1);
     CHECK(fx.onLine(5).kind == static_cast<int>(effectTypeAt(EffectKind::Reverb, effectTypes(EffectKind::Reverb) - 1)) && fx.onLine(5).param[3] == 1.f); // the last of its types, and no further
     rig.tap(LEFT, effectTypes(EffectKind::Reverb) - 2);
     CHECK(fx.onLine(5).kind == hall && fx.onLine(5).param[3] == 1.f);
@@ -5324,8 +5324,8 @@ void testFxTextsFit() {
         bool familySmall = false;
         bool typeAlone = true;
         CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall, &typeAlone) == &fonts && gap == 7.f);
-        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more; DELAY REVERSE and DELAY STUTTER as REVERB SPRING)
-        CHECK(typeAlone == (kind == EffectKind::Saturate)); // DRIVE SATURATE, both small, is 4 pixels too long: SATURATE alone
+        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter || kind == EffectKind::Bloom || kind == EffectKind::Shimmer)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more; DELAY REVERSE, DELAY STUTTER and REVERB BLOOM as REVERB SPRING)
+        CHECK(typeAlone == (kind == EffectKind::Saturate || kind == EffectKind::Shimmer)); // DRIVE SATURATE and REVERB SHIMMER, both small, are too long: SATURATE, SHIMMER alone
         const float nameEnds = typeAlone ? F::kNameX + fonts.medium.width(effectTypeShown(kind))
                                          : F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeShown(kind)[0] ? gap + fonts.small.width(effectTypeShown(kind)) : 0.f);
         CHECK(nameEnds <= F::kMarkX - (effectMeterParam(kind) >= 0 ? 7 : 0) - 3 + 0.01f);
@@ -5337,11 +5337,11 @@ void testFxTextsFit() {
         float types = fonts.small.width("TYPE") + 12.f;
         std::vector<std::string> typeNames;
         for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f, typeNames.push_back(effectTypeName(effectTypeAt(kind, t)));
-        // (MOD's five and DELAY's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
-        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay;
+        // (MOD's five and DELAY's and REVERB's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
+        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay || effectInfo(kind).family == EffectFamily::Reverb;
         if (!crowded) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
         {
-            int from = -1, to = -1; // today's types are all in view, but MOD's and DELAY's
+            int from = -1, to = -1; // today's types are all in view, but MOD's, DELAY's and REVERB's
             const Fonts& drawn = F::typeRowView(fonts, typeNames, effectTypeIndex(kind), &from, &to);
             CHECK(F::typeRowWidth(drawn.small, typeNames, from, to) <= F::typeRowRoom(drawn, effectTypes(kind)) && from <= effectTypeIndex(kind) && effectTypeIndex(kind) < to);
             CHECK((from == 0 && to == effectTypes(kind)) == !crowded);

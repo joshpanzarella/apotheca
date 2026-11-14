@@ -108,6 +108,7 @@ Where effects are, in the engine:
 | `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
 | `engine/src/fx/mod.hpp` | what MOD's newer types share (FLANGER, ENSEMBLE, PHASER, TREMOLO): CHORUS's RATE scale, a signed amount, a sine from a place in a turn, a delay line read between samples, the 4 s rest rule |
 | `engine/src/fx/echo.hpp` | what DELAY's newer types share (DUB, REVERSE, STUTTER): TAPE's eight TIMEs, a crossfade's curve, the 4 s rest |
+| `engine/src/fx/tank.hpp` | what REVERB's newer types share (BLOOM, SHIMMER): one tank of eight lines mixed eight into eight, DECAY a real time per line, PLATE's TONE, the sway; BLOOM's 64-tap swell and SHIMMER's octave shifter |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
@@ -209,12 +210,12 @@ effect in those two groups and fails one that does not.
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
   from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO),
-  DELAY (CLEAN, TAPE, PING, DUB, REVERSE, STUTTER), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
+  DELAY (CLEAN, TAPE, PING, DUB, REVERSE, STUTTER), REVERB (ROOM, HALL, SPRING, PLATE, BLOOM, SHIMMER), LEVEL (COMP,
   DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
   the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
-  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO, DUB, REVERSE and STUTTER (branch `newfx2`). The screen asks `effectFamily`,
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO, DUB, REVERSE and STUTTER, BLOOM and SHIMMER (branch `newfx2`). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
@@ -523,6 +524,17 @@ effect in those two groups and fails one that does not.
   (REPEATS slices) by its number since waking (`stutterRoll`); on ECHO it gives
   back only the repeats. A slot's output there is `in * (1 - mix * a) + mix *
   rep`, never `in + mix * (rep - in)`: that one is not the slice to the bit.
+- **REVERB's newer types (BLOOM, SHIMMER) share `fx/tank.hpp`** and keep the
+  TICK; nothing under kQuiet goes on a line, so a woken one is fresh to the
+  bit. **BLOOM sleeps 5.5 s after its tail** (its swell's 4 s ring must be all
+  zeros). BLOOM turned moves its taps at most half a sample a sample (0.05 s
+  to 4 s takes 8 s; the swell bends down an octave at most on the way).
+  **SHIMMER's way round never gains**: what goes up an octave is mixed with
+  what stays at equal power, the two grains' lost quarter is given back, its
+  wait in the shifter is paid for in DECAY, and the shifter takes nothing
+  under 40 Hz (an octave of a steady offset is itself) or over 7 kHz. The
+  octaves climb out past 7 kHz, so at SHIMMER full a 20 s tail is 0.58 as long
+  (tested). A ceiling of 64 on a line is a guard only.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
@@ -627,7 +639,7 @@ effect in those two groups and fails one that does not.
     at 2.9 REVERB SPRING read as one word (`app_test` counts the empty
     columns). A pair too long even with both small at LARGE is drawn as its
     type alone, in the family's lettering (`typeAlone`: DRIVE SATURATE is 4
-    pixels over, and the line says SATURATE: the owner is content with that, 2026-11-14). The tests ask the same
+    pixels over, and the line says SATURATE: the owner is content with that, 2026-11-14). A pair that would end inside the 3-pixel clearance before the mark draws its family small too (REVERB BLOOM, 1.4 in; before batch c3 only one past the mark did). REVERB SHIMMER is drawn as SHIMMER alone, as SATURATE. The tests ask the same
     function. A new type's name is checked there at every size.
   - **The page goes down to `kPageBottom`** (449: 7 above the hints bar, as
     its top is 7 under the top bar; owner, 2026-11-13: it stopped 40 short).
@@ -1329,6 +1341,8 @@ effect in those two groups and fails one that does not.
 | ...FLANGER's, ENSEMBLE's and PHASER's DEPTH turned all the while; TREMOLO at RANDOM | 0.07% / 0.16 to 0.17% / 0.09 to 0.11%; 0.06% |
 | DUB / REVERSE / STUTTER (2026-11-14, three runs: DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in all) | 0.05% / 0.03% / 0.03 to 0.04% |
 | ...DUB howling (FEEDBACK 150%) or its TONE turned all the while; REVERSE at FEEDBACK 100%; STUTTER at CHANCE 100% | 0.05 to 0.07% / 0.03% / 0.04% |
+| BLOOM / SHIMMER (2026-11-14, three runs: DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in all; on locals, the sway's weights once a tick: they were 0.74% / 0.56%) | 0.55 to 0.56% / 0.35% |
+| ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
@@ -1347,7 +1361,7 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE and STUTTER (branch `newfx2`).
+1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
 2. LFO and random stepper per track.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

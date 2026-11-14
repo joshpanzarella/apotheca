@@ -1169,3 +1169,83 @@ however the sound is cut into blocks, settings moving too.
 | DUB | a howl fed 3e-5, 3e-4, or a burst at 34 s; a faint sine at the band's top, FEEDBACK 60%; a click on the right alone, a click in a slot, sound that cancels on a bus; TIME 1/16 to 1/8 with clicks, and to 1/2 under a 1 kHz sine; a click at three tempos and three TIMEs; a steady sine at TONE's place and two octaves either side (25, 50, 75%); noise: what is near 6 kHz echo by echo; FEEDBACK 150% at TONE 25 and 75%: where the howl is, its peak at 10 and 29 s, at 36 and 45 s, when silent, fed again at 70 s; 85% left alone 31 to 40 s against one fed all along; 70 s cut four ways, on a bus too; MIX's glide | stops / howls on / howls again; echoes 1.000 and 0.600 of the last; half on both sides, the sides alike, nothing; on the new TIME from 2.9 s (2 to 4.5), down to 500 Hz and no lower; on the step to the sample, nothing after 0.1 s; 0 dB, -9 dB (-9.8 over at 2 kHz); each under 0.7 of the last; middle within 4 semitones, 85% within an octave; 0.5 to 1.6 and held to 5%; under 0.2 and 1e-3 of it; before 70 s; as loud again; 1e-3 of the echo; the same to the bit; as FOLD's |
 | REVERSE | a falling hit, FEEDBACK 50%, at three tempos and three TIMEs, and 40 BPM 1/2; a steady 97 Hz sine's echo alone; a click at a window's start at 40 BPM; a click in a slot on both sides; TIME turned in a window; 30 s cut four ways, on a bus too; MIX's glide | the hit backwards sample for sample, its top at T - 1 (T even) or T, then forwards at 0.45 from exactly 2T, nothing between, both sides; no step over 1.05 of the sine's, no corner over 2.5 (1.99); back 287999 later; each side's own echo; the window keeps its length; the same to the bit; as FOLD's (early 0.009) |
 | STUTTER | a falling hit on a bus, CHANCE 100%, two tempos, three LENGTHs, three REPEATS, and 1/2 eight times at 40 BPM; two places in a slot worked out by hand, each side its own sine; MIX 0 with -0 in; a sine in a slot at MIX 100%; CHANCE 0 in a slot and on a bus; 60 places at CHANCE 50% and 20%, and the same after 6 s of nothing; a hit sent through the engine to ECHO; 20 s cut four ways, on a bus too; MIX's glide | exactly the hit REPEATS - 1 more times a slice apart, nothing else; within 1e-6 (2.3e-8); to the bit; the slice again and again to the bit, then the sound; no step over 1.3 of the sine's (1.06); untouched to the bit, nothing; exactly the places whose roll is under CHANCE (29 and 14 of 60), the same again; three repeats as loud as the hit, then nothing; the same to the bit; as FOLD's |
+
+**Batch c3 built (2026-11-14, branch `newfx2`): REVERB's BLOOM and SHIMMER.**
+Numbers 31, 32; words `bloom`, `shimmer`; in the list after PLATE, and on the SPACE
+bus with the rest of the family. The plan above had one BLOOM, "HALL with an
+octave up fed back": that is SHIMMER now, and BLOOM is the swell (the batch's
+brief). Both share one tank, `fx/tank.hpp`: eight lines (44 to 89 ms, swaying
+0.12 ms at 0.6 Hz), mixed eight into eight every trip, DECAY a real time per
+line, TONE PLATE's shelf, four smearing stages on the way in. They keep the
+TICK; nothing under 1e-12 goes on a line, so asleep is "every ring zeros" and a
+woken one is a fresh one to the bit.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in the same three runs) |
+| --- | --- | --- | --- |
+| BLOOM | a reverb that swells in after the sound: the sound goes in through 64 taps spread unevenly over the last BLOOM seconds, each louder than the one before, so the reverb rises for BLOOM and then falls by DECAY | BLOOM (the swell, 0.05 to 4 s), DECAY (0.3 to 20 s, HALL's), TONE (PLATE's), MIX | 0.55%; BLOOM turned all the while 0.67% |
+| SHIMMER | a reverb whose tail rises: four of the tank's eight mixed sounds go round an octave-up shifter each trip, by SHIMMER | SHIMMER (at full, 30% of those four's sound, at equal power, goes up an octave each trip), DECAY, TONE, MIX | 0.35% (0.34% at SHIMMER 0); DECAY turned all the while 0.39 to 0.40% |
+
+- **Why DECAY and not SIZE** (the brief said SIZE): DECAY is a real time you
+  hear, read as HALL's and PLATE's, so a TYPE change carries it to the bit
+  from HALL, PLATE and each other (and from SPRING as it reads). A SIZE beside
+  it would be a fifth setting; with four, the swell and the shimmer had to have
+  their own. ROOM's SIZE is not carried (ROOM shares MIX alone).
+- **Cost: both are over the 0.15% line**, looked at as WEAR's was: the
+  per-sample work is on locals, the sway's weights are worked out once a tick
+  (it moves 0.007 of a sample a tick). What is left: BLOOM's 64 taps (each two
+  reads, 0.2%), the eight swaying lines (0.15%), SHIMMER's four 4-pole cuts and
+  grains (0.15%). Fewer taps would make a long swell over a short DECAY pulse
+  (taps 125 ms apart at 32). The owner pares down.
+- **SHIMMER's octave**: each of the four is cut above 7 kHz (four poles: its
+  octave is under 14 kHz and nothing folds down) and under 40 Hz (an octave of
+  a steady offset is itself, and would build), written to a short ring, and
+  read by two grains at twice the speed, half a window (60 ms) apart, sin^2
+  windows that add to exactly 1. Reads are whole samples (two a sample): no
+  smear. Two grains of unrelated sound lose a quarter of its power: given back
+  (x 1.155), and what goes up is mixed with what stays at equal power, so the
+  tail keeps its power. Its wait in the shifter is paid for in DECAY.
+- **The octaves climb out of the tail.** Each trip lifts what goes the
+  shifter's way another octave until it passes 7 kHz and is cut, so a
+  shimmered tail is shorter than a plain one at long DECAYs: at SHIMMER full,
+  0.99 as long at 0.3 s, 0.93 at 2.45 s, 0.82 at 7 s, **0.58 at 20 s**. At
+  SHIMMER 30% per trip (full) the climb is about an octave a second; much more
+  and the tail was gone in a second or two (tried: 100% a trip).
+- **How each differs from what was there:** BLOOM has no near neighbour
+  (HALL and PLATE are loudest in their first 100 ms; BLOOM's loudest 50 ms is
+  at its BLOOM time, 0.35 s for 0.29 s ... 4.0 s for 4 s). SHIMMER at 0 is a
+  plain hall-like reverb; CHORUS's and the MOD types do not shift pitch.
+- **BLOOM turned while sounding** moves its taps at most half a sample a
+  sample: the swell's sound bends down (at most an octave) on the way, as
+  PLATE's PRE does; 0.05 s to 4 s takes about 8 seconds.
+- **BLOOM sleeps 5.5 s after its tail** (its swell's ring, 4 s and a little,
+  must be all zeros); SHIMMER 0.17 s after.
+- Tails (testATailAlwaysEnds, 40 BPM, worst setting): BLOOM 50 s, SHIMMER
+  105 s (450 is the promise).
+- In the list REVERB BLOOM draws its family small (as REVERB SPRING); REVERB
+  SHIMMER is too long even both small, so its line says SHIMMER alone (as DRIVE
+  SATURATE says SATURATE). The heading's TYPE row shows "... PLATE BLOOM
+  SHIMMER" from PLATE on. `FxScreen::lineFonts` now draws a family small when
+  the pair would end inside the 3-pixel clearance before the mark (BLOOM
+  ended 1.4 into it); no type before it changes.
+- Mutants: 55 tried, 43 killed (two more turned the speeds of BLOOM's and
+  DECAY's glides; nothing could tell, so those two speeds were taken out:
+  every setting glides as fast now). The twelve survivors, each looked at: the "anything
+  stirred" marks for sleep (lines, damping, cut, smears, shifter: each is
+  redundant with another, and two taken out together are caught, the
+  shifter's three together are not, since its ring is half the lines' and is
+  emptied inside their wait); the shifter's write gate under 1e-12 (a guard);
+  the sway put back on its circle every 4096th (drifts 1e-7 a turn: no test
+  is long enough); the window's second half written as 1 minus the first (the
+  same within a float's grain); a grain read a sample further back (the same
+  pitch, a sample later).
+- **Not heard by anyone.** Every number here is from the tests: the owner's
+  ears decide whether the swell is smooth at long BLOOM and short DECAY, and
+  whether the octave is clean enough on a held note (60 ms grains beat a
+  little with a single sine; in a wash it is the usual shimmer).
+- Stills: `fx-kind-bloom`, `fx-kind-shimmer` (each with `--hold-a`, and `-1`
+  on its first setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| BLOOM | its row, readings, the carry with HALL, PLATE, SPRING, SHIMMER, ROOM; a click at five BLOOMs, HALL and PLATE beside; a click at five DECAYs, BLOOM 0.12 s; held noise at four DECAYs; left and right; MIX 30, 50, 100%; on a bus, asleep on a bus, told it is on a bus while sounding, a click of 20; the 64 taps; BLOOM turned a little under a 9 kHz sine; BLOOM 0.05 to 4 s, a click at 6 s and 9 s; MIX's glide; a note then a faint offset; holdsTheRules; on a bus at its longest | loudest 50 ms at BLOOM (within -10% and +120 ms), the swell's first quarter 17 to 24 dB under its last; HALL and PLATE in their first 100 ms; RT60 at 500 Hz within 10%, at 8 kHz 0.81 to 0.50 of DECAY within 0.04, over 1000 echoes in 100 ms; -5.5 to -0.5 dB; alike under 0.1; cos and sin of MIX x 90 degrees to 2e-6; no dry, the same as a slot to the bit, 0.3 of it, nothing, the reverb alone within 1e-5, twenty times to 1e-4; in their own 64ths, 20 to 44 negative, spacing 0.24 to 1.72, squares 1; no step over 1.3 of before (0.78); still moving at 6 s, the same to the bit at 9 s; as FOLD's; clean; steps under 1.4, corners under 1.5 (1.26); 40 to 120 s (50.3) |
+| SHIMMER | a 440 Hz burst at SHIMMER 0, 50, 100%: an octave up, two, an octave down in the tail; a held 300 Hz sine's octave; a click at five DECAYs at SHIMMER 0 and full; a steady 0.5 for 20 s at full, DECAY 20 s; held noise; left and right; the bus checks above; MIX's glide; a note then a faint offset; holdsTheRules; on a bus at its longest | -43, -13, -8 dB up and rising by 3 dB or more, under -35 dB down; within 2.5 cents of 600 Hz (600.35); RT60 at 500 Hz within 10%, the whole tail 0.988 / 0.968 / 0.925 / 0.818 / 0.581 of SHIMMER 0's within 0.03; as steady at 20 s as at 10 within 1 dB, under 4; -5.5 to -0.5 dB; under 0.1; as BLOOM's; clean; steps under 1.4, corners under 1.5; 20 to 120 s (28.7) |

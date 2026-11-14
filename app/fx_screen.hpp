@@ -152,7 +152,7 @@ public:
         const char* type = effectTypeShown(kind);
         const Fonts& large = fonts.fixed();
         *gap = static_cast<float>(kTypeGap);
-        *familySmall = type[0] && kNameX + large.medium.width(family) + *gap + large.small.width(type) > nameEnd(kind);
+        *familySmall = type[0] && kNameX + large.medium.width(family) + *gap + large.small.width(type) > nameEnd(kind) - kNameClear; // (REVERB BLOOM ended 1.4 into the clearance)
         const auto fits = [&](const Fonts& set) {
             return kNameX + (*familySmall ? set.small : set.medium).width(family) + *gap + set.small.width(type) <= nameEnd(kind) - (*familySmall ? kNameClear : 0);
         };
