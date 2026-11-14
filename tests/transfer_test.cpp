@@ -522,6 +522,7 @@ void testUpdatingOverWiFi() {
     frames(2);
     tap(SDLK_RIGHT); // the buttons are the screen's again
     CHECK(app.drums().cursorStep() == 1 && app.updateSaid() == 0);
+    CHECK(!session.updateReady() && !ui::gUpdateReady); // thrown away: nothing waits for a start
 
     // Sent again, and A held for the whole second: accepted. It is in place
     // for the next start; the one running is untouched.
@@ -539,8 +540,10 @@ void testUpdatingOverWiFi() {
     CHECK(readTextFile(programs + "/apotheca.new", kept) && kept == newer && !exists(programs + "/apotheca.pending"));
     CHECK(readTextFile(programs + "/apotheca", kept) && kept == "the one running now");
     CHECK(app.drums().level(0, 1) == 0.f); // letting go of A did not place a hit
+    CHECK(session.updateReady());
     frames(320);
     CHECK(app.updateSaid() == 0); // the message goes after a few seconds
+    CHECK(session.updateReady() && ui::gUpdateReady); // but the bar says RESTART TO UPDATE until the next start
 
     // One nobody answers goes when WiFi is turned off.
     CHECK(put(port, door + "/update/apotheca", program).status == 200);
@@ -548,6 +551,7 @@ void testUpdatingOverWiFi() {
     CHECK(session.updateWaiting());
     session.toggleTransfer(1);
     CHECK(!session.updateWaiting() && !exists(programs + "/apotheca.pending"));
+    CHECK(session.updateReady()); // the one accepted before is still in place
     // The volume is kept beside the program, and comes back at the next start.
     session.loadVolume(0.4f);
     CHECK(std::fabs(session.volume() - 0.4f) < 1e-4f && !exists(programs + "/volume.txt")); // nothing kept yet: the quiet default
@@ -557,6 +561,9 @@ void testUpdatingOverWiFi() {
         std::unique_ptr<Engine> next(new Engine);
         App later(*next);
         later.session().useProgramFolder(programs);
+        CHECK(!later.session().updateReady()); // a new start: nothing to say
+        later.update(input, clock += 16);
+        CHECK(!ui::gUpdateReady);
         later.session().loadVolume(0.4f);
         CHECK(std::fabs(later.session().volume() - 0.7f) < 1e-4f);
     }

@@ -32,7 +32,7 @@ inline const char* const kViews[] = {
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "twin", "twin0", "twin1", "twin2", "twin3", "twin4",
     "kit", "slices", "slices-32", "slices-name", "slices-throw", "starts", "picker",
     "setup", "buttons", "typing", "qmod", "qmod0", "qmod1", "qmod2", "qmod3", "help",
-    "next-scene", "next-scene-notes", "next-scene-full", "volume", "nomenu", "help-nomenu", "kit-old",
+    "next-scene", "next-scene-notes", "next-scene-full", "volume", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",
 };

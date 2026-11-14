@@ -116,6 +116,12 @@ inline float gStickSpeed = 0.75f;
 // What the end of the hint bar says about the help card: "MENU: HELP", or
 // "HLD SEL: HELP" on a handheld whose MENU button the firmware keeps.
 inline const char* gHelpHint = "MENU: HELP";
+// An update has been accepted and waits for the next start (owner,
+// 2026-11-14): the end of the bar says kUpdateReadyHint in brass instead of
+// the help, and it is always drawn, the hints giving way to it, until the
+// program is started again. MENU still opens the help card.
+inline bool gUpdateReady = false;
+inline constexpr const char* kUpdateReadyHint = "RESTART TO UPDATE";
 
 void fill(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c);
 void outline(SDL_Renderer* r, int x, int y, int w, int h, SDL_Color c, int thickness = 1);

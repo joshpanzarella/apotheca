@@ -197,7 +197,9 @@ void Session::useProgramFolder(const std::string& folder) {
 bool Session::acceptUpdate() {
     if (!updateWaiting_) return false;
     updateWaiting_ = false;
-    return std::rename((programFolder_ + "/apotheca.pending").c_str(), (programFolder_ + "/apotheca.new").c_str()) == 0;
+    if (std::rename((programFolder_ + "/apotheca.pending").c_str(), (programFolder_ + "/apotheca.new").c_str()) != 0) return false;
+    updateReady_ = true;
+    return true;
 }
 
 void Session::discardUpdate() {

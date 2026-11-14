@@ -71,6 +71,7 @@ public:
     // nothing else) or four seconds have gone by.
     bool panicNoteShowing() const { return panicNote_; }
     int updateSaid() const { return updateSaid_; } // 0 nothing, 1 "accepted", 2 "could not"
+    void sayUpdateAcceptedForStill() { updateSaid_ = 1, updateSaidUntil_ = ~0u; } // (--view update-accepted)
 
 private:
     Screen& screenNow();

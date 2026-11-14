@@ -1149,6 +1149,60 @@ static void testTheBarSaysWhatItLeftOut() {
     CHECK(over(full, 1) > 0.f); // drawn, but the help is not
 }
 
+// An update accepted and waiting for the next start (owner, 2026-11-14): the bar's end says
+// RESTART TO UPDATE in brass, on every bar, however full; the hints give way to it.
+static void testTheBarSaysAnUpdateWaits() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const int barTop = ui::kScreenH - ui::kHintsH, chipRow = barTop + 5;
+    const int wordsLeft = static_cast<int>(ui::kScreenW - 6.f - fonts.small.width(ui::kUpdateReadyHint));
+    const auto brassFrom = [&](int x0) { // a pixel of the words' brass right of x0, in the bar
+        for (int y = barTop + 1; y < ui::kScreenH; ++y)
+            for (int x = x0; x < ui::kScreenW; ++x)
+                if (canvas.is(x, y, ui::kBrass)) return true;
+        return false;
+    };
+    const auto lastChipEnd = [&] { // the right-hand end of the last cream box
+        int end = 0;
+        for (int x = 0; x < ui::kScreenW; ++x)
+            if (canvas.is(x, chipRow, ui::kText)) end = x + 1;
+        return end;
+    };
+    std::vector<ui::Hint> many;
+    for (int i = 0; i < 12; ++i) many.push_back(i % 2 ? ui::Hint{"HOLD R1", "paint random"} : ui::Hint{"B", "delete"});
+    // Not ready: the help, dim, and no brass.
+    canvas.clear();
+    ui::hints(canvas.r, fonts, many.data(), 3);
+    CHECK(!brassFrom(wordsLeft - 2));
+    ui::gUpdateReady = true;
+    for (int count : {0, 1, 3, 12}) {
+        canvas.clear();
+        ui::hints(canvas.r, fonts, many.data(), count);
+        CHECK(brassFrom(wordsLeft - 1) && !brassFrom(ui::kScreenW - 5)); // there, and inside the bar's end
+        CHECK(lastChipEnd() <= wordsLeft - 6); // no hint runs into it
+    }
+    // A hint that fits only without the words gives way to them.
+    canvas.clear();
+    const ui::Hint late[] = {{"A", "open"}, {"B", "a long way along the bar to the right"}};
+    ui::hints(canvas.r, fonts, late, 2);
+    CHECK(brassFrom(wordsLeft - 1) && lastChipEnd() <= wordsLeft - 6);
+    // A strip's chips: the one that would stand on the words is left out.
+    canvas.clear();
+    const ui::HintUnder chips[] = {{160.f, "A"}, {static_cast<float>(wordsLeft + 10), "B"}};
+    ui::hintsUnder(canvas.r, fonts, nullptr, chips, 2);
+    CHECK(brassFrom(wordsLeft - 1) && lastChipEnd() > 160 && lastChipEnd() <= wordsLeft - 6);
+    // The dice at the end (a chord's strip) stand short of the words.
+    canvas.clear();
+    ui::hintsUnder(canvas.r, fonts, "Y", chips, 1, true);
+    CHECK(brassFrom(wordsLeft - 1) && lastChipEnd() <= wordsLeft - 6 - 13 - 5);
+    ui::gUpdateReady = false;
+    canvas.clear();
+    ui::hints(canvas.r, fonts, many.data(), 3);
+    CHECK(!brassFrom(wordsLeft - 2));
+}
+
 // The bar as a strip of fields is being set (ui::hintsUnder): a chip under each field, no words,
 // the dice alone at the left. Read off the screen.
 static void testTheBarUnderAStrip() {
@@ -1503,6 +1557,7 @@ int main(int, char**) {
     testTheBarDrawsSelForSelect();
     testTheBarDrawsSelOnTheScreen();
     testTheBarSaysWhatItLeftOut();
+    testTheBarSaysAnUpdateWaits();
     testTheBarUnderAStrip();
     testThePlainBarIsAsItWas();
     testAHintThatJustDoesNotFit();

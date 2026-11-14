@@ -223,6 +223,8 @@ public:
     bool updateWaiting() const { return updateWaiting_; }   // one has arrived and wants an answer
     float updateMegabytes() const { return updateMegabytes_; }
     bool acceptUpdate();   // true if it is now in place for the next start
+    bool updateReady() const { return updateReady_; } // accepted: used when Apotheca next starts
+    void markUpdateReadyForStill() { updateReady_ = true; } // (--view update-ready: no file is touched)
     void discardUpdate();
     void startedFine();    // call once the program has been running a few seconds: this start worked
 
@@ -531,6 +533,7 @@ private:
     std::string programFolder_;
     unsigned seenUpdates_ = 0;
     bool updateWaiting_ = false;
+    bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
     std::string chordFolder_;

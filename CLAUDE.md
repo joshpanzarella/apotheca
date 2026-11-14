@@ -1001,7 +1001,13 @@ effect in those two groups and fails one that does not.
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
 - **The WiFi page is PIN-gated and checks every file.** A program update must
-  be accepted on the device (hold A).
+  be accepted on the device (hold A). **Once accepted, the hints bar's end says
+  RESTART TO UPDATE in brass until the program starts again** (owner,
+  2026-11-14; `Session::updateReady`, `ui::gUpdateReady`): it takes the help
+  words' place and is always drawn, the hints (and a strip's chips, the dice
+  at the end too) giving way to it (`hintsEnd`). MENU still opens the help.
+  `ui_test` (`testTheBarSaysAnUpdateWaits`) and `transfer_test` hold it;
+  stills `update-ready`, `update-ready-drums`, `update-accepted`.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from

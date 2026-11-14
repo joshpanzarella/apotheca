@@ -15,7 +15,8 @@
 //                  add-track, change-instrument, song-deleting, fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
-//                  help, volume (the SET page, on VOLUME), nomenu and help-nomenu
+//                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
+//                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
@@ -908,6 +909,13 @@ int main(int argc, char** argv) {
         pushKey(SDLK_BACKSPACE, true); // SELECT, held
         tapKey(SDLK_a, std::strcmp(view + 10, "-full") == 0 ? kMaxScenes : 1); // Y
         pushKey(SDLK_BACKSPACE, false);
+    } else if (std::strcmp(view, "update-ready") == 0 || std::strcmp(view, "update-ready-drums") == 0) {
+        // An update accepted, waiting for the next start: the bar's end says so.
+        app.session().markUpdateReadyForStill();
+        app.session().view = std::strcmp(view, "update-ready") == 0 ? View::Song : View::Pattern;
+    } else if (std::strcmp(view, "update-accepted") == 0) {
+        app.session().markUpdateReadyForStill();
+        app.sayUpdateAcceptedForStill();
     } else if (std::strcmp(view, "volume") == 0) {
         app.session().view = View::Settings;
         app.settings().goTo(SettingsScreen::kVolume);

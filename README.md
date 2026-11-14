@@ -748,7 +748,9 @@ zip).
 2. The handheld shows AN UPDATE HAS ARRIVED. **Hold A for a second** to
    accept, or B to throw it away. Nothing else responds until it is answered.
 3. Accepted, it is used the next time Apotheca starts. The program that was
-   running is kept.
+   running is kept. Until then the right-hand end of the hints bar says
+   **RESTART TO UPDATE**, on every screen. SELECT + START quits; start
+   Apotheca again and the new one runs.
 4. If the new one does not get going (it has to run for three seconds), the
    launcher goes back to the one before by itself and starts that.
 

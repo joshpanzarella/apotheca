@@ -362,8 +362,16 @@ void hintChip(SDL_Renderer* r, const Fonts& fonts, float x, float textY, const c
 void hintDie(SDL_Renderer* r, float x) { drawDie(r, static_cast<int>(x), kScreenH - kHintsH + (kHintsH - kDie) / 2 + 1, kDim); }
 // In what room is left at the end, after what ends at x: how to see the help card.
 void hintHelp(SDL_Renderer* r, const Fonts& fonts, float x, float textY) {
+    if (gUpdateReady) { // always there: the hints left it its room
+        fonts.small.drawRight(r, kHintsLimit, textY, kUpdateReadyHint, kBrass);
+        return;
+    }
     const char* help = gHelpHint;
     if (x + 6.f + fonts.small.width(help) <= kHintsLimit) fonts.small.drawRight(r, kHintsLimit, textY, help, faded(kDim, 170));
+}
+// Where the hints must end: the bar's end, or short of the update's words.
+float hintsEnd(const Fonts& fonts) {
+    return gUpdateReady ? kHintsLimit - 6.f - fonts.small.width(kUpdateReadyHint) : kHintsLimit;
 }
 } // namespace
 
@@ -382,7 +390,7 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
         const bool die = isDice(list[i].does);
         const float doesW = die ? static_cast<float>(kDie) : doesWidth(fonts, list[i].does);
         whole += keyW + 5.f + doesW + 11.f;
-        if (cut || x + keyW + 5.f + doesW > kHintsLimit) {
+        if (cut || x + keyW + 5.f + doesW > hintsEnd(fonts)) {
             cut = true;
             continue;
         }
@@ -407,14 +415,15 @@ void relearnOffer(SDL_Renderer* r, const Fonts& chosen, float part) {
 }
 
 float hintDiceEndX(const Fonts& chosen, const char* dice) {
-    return std::floor(kHintsLimit - kDie - 5.f - hintChipWidth(chosen.fixed(), dice)); // the bar's own lettering, always LARGE
+    const Fonts& fonts = chosen.fixed(); // the bar's own lettering, always LARGE
+    return std::floor(hintsEnd(fonts) - kDie - 5.f - hintChipWidth(fonts, dice)); // (short of RESTART TO UPDATE when it is there)
 }
 
 void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const HintUnder* list, int count, bool diceAtEnd) {
     const Fonts& fonts = chosen.fixed(); // a tight row: each chip stands under a field of a strip that is itself at LARGE
     const float textY = hintsBar(r, fonts);
     float end = kHintsLeft - kHintUnderGap; // where the last thing drawn ends
-    const float limit = dice && diceAtEnd ? hintDiceEndX(fonts, dice) - kHintUnderGap : kHintsLimit;
+    const float limit = dice && diceAtEnd ? hintDiceEndX(fonts, dice) - kHintUnderGap : hintsEnd(fonts);
     if (dice && diceAtEnd) {
         const float x = hintDiceEndX(fonts, dice);
         hintChip(r, fonts, x, textY, dice);
@@ -432,7 +441,7 @@ void hintsUnder(SDL_Renderer* r, const Fonts& chosen, const char* dice, const Hi
         hintChip(r, fonts, list[i].x, textY, list[i].key);
         end = list[i].x + keyW;
     }
-    if (!(dice && diceAtEnd)) hintHelp(r, fonts, end + 5.f, textY); // (eleven clear of the last chip)
+    if (!(dice && diceAtEnd) || gUpdateReady) hintHelp(r, fonts, end + 5.f, textY); // (eleven clear of the last chip)
 }
 
 void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,

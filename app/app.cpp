@@ -232,6 +232,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     const bool busy = session_.view == View::Settings && (settings_.testing() || settings_.typing());
     const bool menu = input.has(Button::Menu);
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+    ui::gUpdateReady = session_.updateReady();
     if (menu) {
         help_ = input.held(Button::Menu) && !busy;
     } else if (!input.held(Button::Select)) {
@@ -299,6 +300,8 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             fonts.medium.draw(renderer, x + 18.f, y + 46.f, "It will be used the next time Apotheca starts.", kText);
             fonts.small.draw(renderer, x + 18.f, y + 74.f, "The one running now is kept. If the new one does not", kDim);
             fonts.small.draw(renderer, x + 18.f, y + 90.f, "start, Apotheca goes back to this one by itself.", kDim);
+            const char* now = "To update now: SEL + START quits; then start it again.";
+            fonts.within(&Fonts::small, now, w - 36.f).draw(renderer, x + 18.f, y + 116.f, now, kText);
         } else if (updateSaid_ == 2) {
             fonts.large.draw(renderer, x + 18.f, y + 16.f, "COULD NOT KEEP THE UPDATE", kBrass);
             fonts.medium.draw(renderer, x + 18.f, y + 46.f, "Nothing was changed. Is the card full?", kText);
