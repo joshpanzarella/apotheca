@@ -28,6 +28,16 @@ constexpr int kPeaks = 512;      // points in a recording's outline (the slice v
 constexpr int kMaxFitSteps = 64; // four bars
 const char* const kCatchFolder = "catches";    // where a caught bar is kept, inside the samples folder
 const char* const kRecordedFolder = "recorded"; // and a take from a microphone
+
+// A recording's file may end .wav or .WAV (the list shows both by the one name, the page takes
+// both): whichever is there, as deleteSample does. On a card that tells them apart, one ending
+// .WAV was listed and never played.
+bool readRecording(const std::string& folder, const std::string& name, std::vector<float>& out) {
+    return readWav(folder + "/" + name + ".wav", out) || readWav(folder + "/" + name + ".WAV", out);
+}
+bool recordingThere(const std::string& folder, const std::string& name) {
+    return fileExists(folder + "/" + name + ".wav") || fileExists(folder + "/" + name + ".WAV");
+}
 }
 
 std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
@@ -134,7 +144,7 @@ void Session::loadLane(int track, int lane) {
         return;
     }
     std::shared_ptr<std::vector<float>> recording(new std::vector<float>);
-    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", *recording) || recording->empty()) {
+    if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, *recording) || recording->empty()) {
         sound.missing = true; // the drum plays in its place, and the song keeps the name
         engine.setLaneSample(track, lane, nullptr);
         return;
@@ -231,7 +241,7 @@ void Session::finishRecording() {
     std::string name;
     for (int number = 1; number < 10000; ++number) {
         name = std::string(kRecordedFolder) + "/rec " + std::to_string(number);
-        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+        if (!recordingThere(sampleFolder_, name)) break;
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", take, static_cast<int>(kSampleRate))) return;
     lastRecorded_ = name;
@@ -251,7 +261,7 @@ void Session::loadTrackSample(int track) {
         return;
     }
     std::unique_ptr<SampleData> data(new SampleData);
-    if (sampleFolder_.empty() || !readWav(sampleFolder_ + "/" + name + ".wav", data->data) || data->data.empty()) {
+    if (sampleFolder_.empty() || !readRecording(sampleFolder_, name, data->data) || data->data.empty()) {
         sound.missing = true;
         engine.setTrackSample(track, nullptr);
         return;
@@ -299,7 +309,7 @@ std::string Session::catchLastBar(int track, int lane) {
     std::string name;
     for (int number = 1; number < 10000; ++number) {
         name = std::string(kCatchFolder) + "/catch " + std::to_string(number);
-        if (!fileExists(sampleFolder_ + "/" + name + ".wav")) break;
+        if (!recordingThere(sampleFolder_, name)) break;
     }
     if (!writeWav(sampleFolder_ + "/" + name + ".wav", bar, static_cast<int>(kSampleRate))) return "";
     if (sampler) {

@@ -699,7 +699,9 @@ effect in those two groups and fails one that does not.
   The check for X held comes before A's own jobs, so A alone still places.
   **The dice do not throw**, and do not take a THROW away (owner's decision).
   **Hold X + L1 / R1 on a note is the track's GLIDE FROM** (the glide rules, below).
-- **Sample names from `wavNames` have no `.wav` ending.**
+- **Sample names from `wavNames` have no `.wav` ending.** The file may end
+  `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
+  `recordingThere`, `deleteSample`).
 - **The slice view is a mode of the drum grid** (`PatternScreen::slicing()`,
   drawn by `pattern_slices.cpp`), not a screen of its own, so every grid
   gesture works in it unchanged. A hit's slice is its `start`; there is no

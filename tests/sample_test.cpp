@@ -2083,6 +2083,34 @@ void testThePlayhead() {
     CHECK(screen.playhead().at(rig.clock) > 0.5f);
 }
 
+// A recording whose file ends .WAV is listed by its name and plays, on a lane and on a sampler
+// track. (On a card that tells the two apart it was listed and loaded as missing.) A new take
+// is not given the name of one there under .WAV.
+void testARecordingEndingInCapitals() {
+    const std::string folder = tempFolder();
+    writeWav(folder + "/Snare.WAV", steady(0.5f, 0.25f), 48000);
+    mkdir((folder + "/kicks").c_str(), 0755);
+    writeWav(folder + "/kicks/Low.WAV", steady(0.25f, 0.25f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.sampleNames() == std::vector<std::string>({"Snare", "kicks/Low"}));
+    session.setLaneSample(0, 2, "Snare");
+    session.setLaneSample(0, 3, "kicks/Low");
+    CHECK(!session.laneSound(0, 2).missing && std::fabs(session.laneSound(0, 2).seconds - 0.5f) < 1e-3f);
+    CHECK(!session.laneSound(0, 3).missing && rig.hit(3) == 12000);
+    CHECK(session.addTrack(TrackKind::Sampler));
+    session.setTrackSample(1, "Snare");
+    CHECK(!session.trackSound(1).missing && std::fabs(session.trackSound(1).seconds - 0.5f) < 1e-3f);
+    // A bar caught is not given the name of a recording there under .WAV.
+    mkdir((folder + "/catches").c_str(), 0755);
+    writeWav(folder + "/catches/catch 1.WAV", steady(0.1f, 0.25f), 48000);
+    rig.app.drums().setStep(0, 0, 1.f);
+    rig.tap(SDLK_RETURN);
+    rig.render(24 * 6000);
+    CHECK(session.catchLastBar(0, 5) == "catches/catch 2");
+    rig.tap(SDLK_RETURN);
+}
+
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
@@ -2093,6 +2121,7 @@ int main(int, char**) {
     testStretching();
     testFittingWithSignalsmith();
     testARecordingOnALane();
+    testARecordingEndingInCapitals();
     testFittingToTheTempo();
     testTheSongKeepsItsRecordings();
     testWhereAHitStarts();
