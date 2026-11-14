@@ -524,10 +524,11 @@ effect in those two groups and fails one that does not.
   synths' MAIN and settings pages, the sampler and the kit end their controls
   at `ui::kAboveScope` (406) and spread them down to it: MAIN's macros are
   `SynthScreen::kMacroH` 114 (was 70), a settings page's rows `settingH(rows)`
-  (four rows 82, three 111, fewer never taller than a macro, so Phazed's LINE
-  pages and QMOD's keep room under them), the kit's lanes `kLaneRowH` 45 (was
-  37), the sampler's settings 109 and its recording's picture `kWaveH` 80
-  (was 40). A box taller than `kBoxUsualH` (70) moves its value down by half
+  (four rows 82, three 111, two 170, one 346: however few, they reach the
+  strip; no empty band), the kit's lanes `kLaneRowH` 45 (was 37), the
+  sampler's settings 109 and its recording's picture `kWaveH` 80 (was 40;
+  with no recording its words stand in that room's middle). The line is
+  placed by `ui::scopeLineY` (full scale 4 rows inside the strip's edges). A box taller than `kBoxUsualH` (70) moves its value down by half
   the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.

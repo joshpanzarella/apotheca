@@ -237,6 +237,11 @@ constexpr int kScopeY = kScreenH - kHintsH - 4 - kScopeH; // 416: 4 pixels clear
 constexpr int kScopeLabelW = 120;                         // the label's room, inside the strip at its left
 constexpr int kAboveScope = kScopeY - 10;                 // 406: where the controls above it end
 void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine);
+// Where the line is drawn for a sample (already turned up and held to -1..1): the strip's middle,
+// and full scale 4 pixels inside its top and bottom edges, never on them.
+constexpr int kScopeMiddle = kScopeY + kScopeH / 2;
+constexpr float kScopeHalf = (kScopeH - 8) / 2.f;
+int scopeLineY(float sample);
 
 // The name a track goes by on screen: "2 PHAZED".
 void trackName(const Project& project, int track, char* out, int size);

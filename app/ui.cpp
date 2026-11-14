@@ -470,17 +470,19 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     float samples[512];
     engine.readScope(samples, count);
     SDL_SetRenderDrawColor(r, kTeal.r, kTeal.g, kTeal.b, 255);
-    const float half = (h - 8) / 2.f;
-    int lastX = x + 1, lastY = y + h / 2;
+    int lastX = x + 1, lastY = kScopeMiddle;
     for (int i = 0; i < count; ++i) {
-        float s = samples[i] * 1.5f;
-        s = s < -1.f ? -1.f : (s > 1.f ? 1.f : s);
         const int px = x + 1 + (w - 3) * i / (count - 1);
-        const int py = y + h / 2 - static_cast<int>(std::round(s * half));
+        const int py = scopeLineY(samples[i] * 1.5f);
         if (i > 0) SDL_RenderDrawLine(r, lastX, lastY, px, py);
         lastX = px;
         lastY = py;
     }
+}
+
+int scopeLineY(float sample) {
+    const float s = sample < -1.f ? -1.f : (sample > 1.f ? 1.f : sample);
+    return kScopeMiddle - static_cast<int>(std::round(s * kScopeHalf));
 }
 
 void trackName(const Project& project, int track, char* out, int size) {

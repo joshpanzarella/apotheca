@@ -230,12 +230,15 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     for (char* c = upper; *c; ++c) *c = static_cast<char>(*c >= 'a' && *c <= 'z' ? *c - 32 : *c);
     fonts.within(&Fonts::large, upper, sw - 14.f).draw( // (a name that just fits the box at LARGE: held at LARGE at XL)
         r, sx + 7.f, sy + 23.f, upper, stop_ == 0 ? accent : (t.sample[0] ? kText : kDim));
+    // With no picture, what is said stands in the middle of the picture's room (not at its top, with
+    // the room under it left empty).
+    const float wordsY = kWaveY + (kWaveH - fonts.small.capHeight()) / 2.f;
     if (sound.missing) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
+        fonts.small.draw(r, sx + 7.f, wordsY, "NOT IN THE SAMPLES FOLDER. THIS TRACK IS SILENT UNTIL IT IS.", kBrass);
     } else if (!t.sample[0]) {
-        fonts.small.draw(r, sx + 7.f, sy + 58.f, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
+        fonts.small.draw(r, sx + 7.f, wordsY, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
     } else if (!sound.peaks.empty()) {
-        const int wx = sx + 7, wy = sy + 48, ww = sw - 14, wh = kWaveH;
+        const int wx = sx + 7, wy = kWaveY, ww = sw - 14, wh = kWaveH;
         const int count = static_cast<int>(sound.peaks.size());
         const float start = static_cast<float>(t.sampler[sampler::Start]) / 100.f;
         for (int i = 0; i < count; ++i) {

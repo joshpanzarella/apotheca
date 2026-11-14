@@ -52,14 +52,12 @@ public:
     static constexpr int kAdvancedH = 56;
     static constexpr int kMacroH = (ui::kAboveScope - 10 - kAdvancedH - kMacroGap - kMacroY) / 2;
     static constexpr int kAdvancedY = kMacroY + 2 * kMacroH + kMacroGap + 10;
-    // An advanced page that is not an envelope: rows of four settings, spread down to the strip,
-    // but never taller than a macro (a page of one or two rows keeps room under it: Phazed's LINE
-    // pages, and QMOD's and Twin's shorter ones).
+    // An advanced page that is not an envelope: rows of four settings, spread down to the strip
+    // however few they are (owner's decision: no large empty band on these pages), so one row is
+    // one tall box a setting, its value in the middle and its bar at the bottom.
     static constexpr int kSettingY = 60, kSettingGap = 6;
     static constexpr int settingH(int rows) {
-        if (rows < 1) return kMacroH;
-        const int spread = (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
-        return spread < kMacroH ? spread : kMacroH;
+        return rows < 1 ? kMacroH : (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
     }
 
     // Cursor stops on MAIN.

@@ -49,7 +49,7 @@ public:
 
     // Where things are, for the tests too: the recording's box at the top (its picture is as tall as
     // the box allows), then two rows of settings, down to the LIVE OUTPUT strip (ui::kAboveScope).
-    static constexpr int kSoundY = 36, kSoundH = 136, kWaveH = kSoundH - 56;
+    static constexpr int kSoundY = 36, kSoundH = 136, kWaveY = kSoundY + 48, kWaveH = kSoundH - 56;
     static constexpr int kSettingY = kSoundY + kSoundH + 10, kSettingGap = 6;
     static constexpr int kSettingH = (ui::kAboveScope - kSettingY - kSettingGap) / 2;
 
