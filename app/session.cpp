@@ -336,6 +336,36 @@ void Session::sendDrumPattern(int track, int scene) {
     }
 }
 
+// One hit, as the drum grid sends one: its level and everything else it carries. A keyboard
+// recording drums sends this, not the whole cell: eight pads at once on a busy eight-bar cell
+// were sixteen thousand commands, the queue filled, and the song was stopped and sent again.
+void Session::sendDrumHit(int track, int scene, int bar, int lane, int step) {
+    if (track < 0 || track >= kNumTracks || scene < 0 || scene >= kMaxScenes || bar < 0 || bar >= kMaxBars || lane < 0 || lane >= kDrumLanes ||
+        step < 0 || step >= kSteps)
+        return;
+    noteEdit();
+    const DrumPattern& p = project.tracks[track].drums[scene][bar];
+    Command c;
+    c.track = track;
+    c.scene = scene;
+    c.bar = bar;
+    c.a = lane;
+    c.b = step;
+    c.type = Command::SetStep;
+    c.value = p.level[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepNudge;
+    c.value = p.nudge[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepChance;
+    c.value = p.chance[lane][step];
+    engine.send(c);
+    c.type = Command::SetStepStart;
+    c.value = p.start[lane][step];
+    engine.send(c);
+    engine.send(stepFxCommand(track, scene, bar, lane, step, p.fx[lane][step]));
+}
+
 void Session::sendNotePattern(int track, int scene) {
     noteEdit();
     Command c;
