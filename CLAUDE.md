@@ -511,7 +511,11 @@ effect in those two groups and fails one that does not.
   settings) and GLIDE FROM, the master's effects and the buses' (LEVEL with
   them)**. Those are seen changing by `Session::soundMark()` each frame, as the
   cell is by `cellMark()`: no screen calls anything (the FX screen is
-  untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ,
+  untouched; a change is a step from the frame after it). `restoreSounds` puts them back only where they differ
+  **as the song file writes them** (`sameAsText`, `effectSameAsText`: `%.6g`;
+  a third reads back as 0.333332986, and compared as numbers every undo
+  rounded such a setting, send or macro and told the engine, a synth's whole
+  patch, the master and the buses on every undo; `testUndoLeavesWhatTheTextRounds`),
   through the engine's usual commands (`restoreEffect`: another kind is
   `Engine::setEffect` then its settings; the same kind, only the settings
   that differ; `SetSend`, `setGlideFrom`, `sendSynthPatch`), never a track
@@ -1005,7 +1009,9 @@ effect in those two groups and fails one that does not.
   minute** (`Transfer::kWrongMost`, `lockoutMs`), counted for the whole server,
   every request refused with 429 meanwhile, the right number too. Only a path
   whose first part is all digits is a try (a browser asks for `/favicon.ico`
-  by itself); a right number and a fresh `start` begin the count again.
+  by itself). **A right number does not begin the count again** (the owner's
+  page asks with it all the time: a guesser beside it was never stopped); a
+  minute with no wrong number does, and so does a fresh `start`.
 - **A song sent under the open song's name is refused** (409, "that song is
   open on the handheld", case not counted: a card may not tell them apart).
   The Session tells the server the name (`Transfer::setOpenSong`, from
