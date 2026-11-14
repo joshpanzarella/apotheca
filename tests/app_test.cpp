@@ -8260,11 +8260,19 @@ void testFxSwitchesType() {
             fx.goTo(0, 1);
             CHECK(draw() && keyInk() > 0 && hintKeyed(canvas, scratch, "RIGHT", "type") && hintKeyed(canvas, scratch, "LEFT", "list"));
             const int right = keyInk();
+            // Below the first setting on the family's FIRST type LEFT stops: the key is RIGHT alone, the same ink.
             fx.goTo(0, 2);
+            CHECK(draw() && keyInk() == right && hintKeyed(canvas, scratch, "RIGHT", "type") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "type") && !hintKeyed(canvas, scratch, "LEFT", "list"));
+            CHECK(std::strcmp(fx.typeKey(), "RIGHT") == 0);
+            rig.tap(RIGHT); // the DUCK, a type in the middle: both
             CHECK(draw() && keyInk() > right && hintKeyed(canvas, scratch, "LEFT / RIGHT", "type") && !hintKeyed(canvas, scratch, "LEFT", "list"));
             rig.key(A, true);
             CHECK(draw() && keyInk() == 0);
             rig.key(A, false);
+            rig.tap(RIGHT, levels); // the family's LAST type: LEFT alone; on its first setting no key at all
+            CHECK(draw() && keyInk() == right && std::strcmp(fx.typeKey(), "LEFT") == 0 && hintKeyed(canvas, scratch, "LEFT", "type") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "type")); // (the two arrows are one width and one ink: typeKey says which)
+            fx.goTo(0, 1);
+            CHECK(draw() && keyInk() == 0 && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "RIGHT", "type") && fx.typeKey() == nullptr);
             fx.goTo(F::kSendsRow, 2);
             CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "list") && !hintKeyed(canvas, scratch, "RIGHT", "type"));
         }
@@ -8298,6 +8306,154 @@ void testFxSwitchesType() {
         CHECK(sameParams(session.effectData(0, 0), duckWas)); // the DUCK, as it was left two switches ago
         rig.tap(LEFT);
         CHECK(sameParams(session.effectData(0, 0), compWas));
+    }
+}
+
+// What the review of the TYPE switch found (2026-11-14).
+void testFxSwitchMends() {
+    const int comp = static_cast<int>(EffectKind::Comp), duck = static_cast<int>(EffectKind::Duck);
+    const int levels = effectTypes(EffectKind::Comp);
+    {
+        // RIGHT held on from the list goes into the settings and switches NOTHING, however long it is held (the
+        // D-pad's repeat and the stick alike): a slightly long press made a COMP a DUCK, a LIMITER, a SNAP.
+        // Let go, the next RIGHT is the next TYPE, and held it runs on as before.
+        for (const SDL_Keycode right : {RIGHT, STICK_RIGHT}) {
+            Rig rig;
+            Session& session = rig.app.session();
+            FxScreen& fx = rig.app.fx();
+            session.view = View::Effects;
+            const EffectData compWas = turnedComp(rig);
+            rig.frames(1);
+            for (const int held : {8, 12, 20, 40, 120}) { // 128 ms to two seconds
+                fx.goTo(0, 0);
+                rig.key(right, true);
+                rig.frames(held);
+                CHECK(fx.cursorColumn() >= 1 && sameParams(session.effectData(0, 0), compWas));
+                rig.key(right, false);
+                rig.frames(1);
+                CHECK(sameParams(session.effectData(0, 0), compWas) && engineKind(rig, 0, 0) == comp);
+            }
+            // Other directions pressed meanwhile do not let it through.
+            fx.goTo(0, 0);
+            rig.key(right, true);
+            rig.frames(2);
+            rig.tap(DOWN);
+            rig.tap(UP);
+            rig.frames(40);
+            CHECK(sameParams(session.effectData(0, 0), compWas));
+            rig.key(right, false);
+            rig.frames(1);
+            // Let go: a push of its own switches, and held it goes on (not to the end in a third of a second).
+            rig.key(right, true);
+            rig.frames(1);
+            CHECK(session.effectData(0, 0).kind == duck);
+            rig.frames(60);
+            rig.key(right, false);
+            rig.frames(1);
+            CHECK(session.effectData(0, 0).kind == static_cast<int>(effectTypeAt(EffectKind::Comp, levels - 1)));
+            // LEFT from the first setting to the list, then RIGHT held: in again, the type as it is.
+            const int last = session.effectData(0, 0).kind;
+            fx.goTo(0, 1);
+            rig.tap(LEFT);
+            CHECK(fx.cursorColumn() == 0);
+            rig.tap(LEFT, 3);
+            CHECK(session.effectData(0, 0).kind == last);
+        }
+        // The D-pad's RIGHT let go while the stick is still pushed right is not "let go"; the stick let go is.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        fx.goTo(0, 0);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(3);
+        rig.tap(RIGHT); // (a D-pad press under it: still the push that came in)
+        rig.frames(40);
+        CHECK(fx.cursorColumn() >= 1 && sameParams(session.effectData(0, 0), compWas));
+        rig.key(STICK_RIGHT, false);
+        rig.frames(1);
+        rig.tap(RIGHT);
+        CHECK(session.effectData(0, 0).kind == duck);
+    }
+    {
+        // A track's three slots each remember apart, and one track's are not another's.
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums));
+        EffectData a;
+        a.kind = comp, a.param[0] = 0.11f;
+        float back[kEffectParams];
+        for (int track = 0; track < 2; ++track)
+            for (int slot = 0; slot < kTrackSlots; ++slot) {
+                session.rememberType(track, slot, a);
+                for (int t = 0; t < 2; ++t)
+                    for (int s = 0; s < kTrackSlots; ++s) CHECK(session.rememberedType(t, s, EffectKind::Comp, back) == (t == track && s == slot));
+                session.forgetTypes(track, slot);
+                CHECK(!session.rememberedType(track, slot, EffectKind::Comp, back));
+            }
+        // Through the gesture too: a COMP switched away in slot 1 is not what slot 2's DUCK goes back to.
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        rig.project().track = 0;
+        const EffectData compWas = turnedComp(rig);
+        fx.goTo(0, 2);
+        rig.tap(RIGHT);
+        session.setEffect(0, 1, EffectKind::Duck);
+        fx.goTo(1, 2);
+        rig.tap(LEFT);
+        CHECK(session.effectData(0, 1).kind == comp && !sameParams(session.effectData(0, 1), compWas));
+    }
+    {
+        // A switch is heard when the song is stopped (the track is sounded through the new type), a switch that
+        // an end stops is not, and nothing is sounded by hand while the song plays.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        session.setEffect(0, 0, EffectKind::Comp);
+        rig.frames(30);
+        rig.render(96000);
+        fx.goTo(0, 2);
+        CHECK(rig.listen(8000) == 0.f);
+        rig.tap(RIGHT);
+        CHECK(session.effectData(0, 0).kind == duck && rig.listen(8000) > 0.01f);
+        rig.frames(30);
+        rig.render(96000);
+        rig.tap(LEFT);
+        CHECK(session.effectData(0, 0).kind == comp && rig.listen(8000) > 0.01f);
+        rig.frames(30);
+        rig.render(96000);
+        rig.tap(LEFT); // the first type: stopped, nothing switched, nothing sounded
+        CHECK(session.effectData(0, 0).kind == comp && rig.listen(8000) == 0.f);
+        // Playing (an empty pattern, so anything heard would be a hit by hand).
+        Rig playing;
+        Session& ps = playing.app.session();
+        ps.view = View::Effects;
+        ps.setEffect(0, 0, EffectKind::Comp);
+        playing.frames(1);
+        playing.tap(START);
+        playing.frames(1);
+        CHECK(playing.project().playing && playing.listen(48000) == 0.f);
+        playing.app.fx().goTo(0, 2);
+        playing.tap(RIGHT);
+        playing.frames(1);
+        CHECK(ps.effectData(0, 0).kind == duck && playing.listen(48000) == 0.f);
+    }
+    {
+        // A family of one (none today) switches nothing and shows no key; LEFT below the first setting is then
+        // the list. Asked with numbers, since no family can be put in a slot to try it.
+        using F = FxScreen;
+        CHECK(F::typeKeyFor(1, 1, 0) == nullptr && F::typeKeyFor(2, 1, 0) == nullptr && F::typeKeyFor(4, 1, 0) == nullptr);
+        CHECK(F::typeKeyFor(0, 4, 1) == nullptr); // the list
+        CHECK(std::strcmp(F::typeKeyFor(1, 2, 0), "RIGHT") == 0 && F::typeKeyFor(1, 2, 1) == nullptr);
+        CHECK(std::strcmp(F::typeKeyFor(2, 2, 0), "RIGHT") == 0 && std::strcmp(F::typeKeyFor(2, 2, 1), "LEFT") == 0);
+        CHECK(std::strcmp(F::typeKeyFor(1, 3, 1), "RIGHT") == 0 && std::strcmp(F::typeKeyFor(3, 3, 1), "LEFT / RIGHT") == 0);
+        // Below the first setting only a family of one has no key: every real type there has one.
+        for (int place = 1; place < effectListSize(); ++place) {
+            const EffectKind k = effectAt(place);
+            CHECK(effectTypes(k) >= 2 && F::typeKeyFor(2, effectTypes(k), effectTypeIndex(k)) != nullptr);
+        }
     }
 }
 
@@ -8537,6 +8693,7 @@ int main(int argc, char** argv) {
         testTryingAnEffectKeepsIt();
         testFxStepsTheTrack();
         testFxSwitchesType();
+        testFxSwitchMends();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
@@ -8629,6 +8786,7 @@ int main(int argc, char** argv) {
     testTryingAnEffectKeepsIt();
     testFxStepsTheTrack();
     testFxSwitchesType();
+    testFxSwitchMends();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensList();

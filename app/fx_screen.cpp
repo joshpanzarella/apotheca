@@ -327,13 +327,15 @@ void FxScreen::press(Button b) {
             // In the list: up and down through its lines; right into the line's settings, where it was last.
             if (b == Button::Up) goTo(row_ - 1, 0);
             if (b == Button::Down) goTo(row_ + 1, 0);
-            if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]);
+            // (That RIGHT, held on, must not go on to switch the TYPE there: cameIn_, until it is let go.)
+            if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]), cameIn_ = true;
         } else {
             // In the settings: up and down through them (the ends stop). Right: the slot's next TYPE; left: the
             // type before, but on the first setting (or where left / right switch no type) back to the list.
             if (b == Button::Up && column_ > 1) goTo(row_, column_ - 1);
             if (b == Button::Down) goTo(row_, column_ + 1);
             const bool types = typeKey() != nullptr;
+            if (b == Button::Right && cameIn_) return; // still the push that came in from the list
             if (b == Button::Left && (column_ == 1 || !types)) column_ = 0;
             else if ((b == Button::Left || b == Button::Right) && types && stepType(b == Button::Right ? 1 : -1) && !project_.playing) hear();
         }
@@ -410,6 +412,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
+        if (b == Button::Right && !(input.stickX() > 0.f)) cameIn_ = false; // let go: the next RIGHT is a push of its own
         return;
     }
     if (b == Button::L1 || b == Button::R1) {
@@ -458,9 +461,16 @@ bool FxScreen::stepType(int by) {
     return true;
 }
 
+const char* FxScreen::typeKeyFor(int column, int types, int at) {
+    if (column < 1) return nullptr; // the list. (A family of one: neither way is true, so no key.)
+    const bool right = at + 1 < types, left = column > 1 && at > 0; // (LEFT on the first setting is the list)
+    return left && right ? "LEFT / RIGHT" : (right ? "RIGHT" : (left ? "LEFT" : nullptr));
+}
+
 const char* FxScreen::typeKey() const {
-    if (holding_ || column_ == 0 || sends(row_) || effectTypes(static_cast<EffectKind>(data(row_).kind)) < 2) return nullptr;
-    return column_ == 1 ? "RIGHT" : "LEFT / RIGHT";
+    if (holding_ || column_ == 0 || sends(row_)) return nullptr;
+    const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
+    return typeKeyFor(column_, effectTypes(kind), effectTypeIndex(kind));
 }
 
 // L1 / R1: the track before / after, on the same line and setting. It stops at the first and the last, as the
@@ -477,6 +487,8 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
+    if (cameIn_ && !input.held(Button::Right) && !(input.stickX() > 0.f)) cameIn_ = false;
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
     // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,

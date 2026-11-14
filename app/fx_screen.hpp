@@ -209,9 +209,14 @@ public:
     // `key`: the key drawn at the row's right end where it is not the list's ("RIGHT" on a setting's first row,
     // "LEFT / RIGHT" on the others: switching TYPE from the settings); with the list open it is "LEFT / RIGHT".
     static void drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list, const char* key = nullptr);
-    // The key that switches TYPE from where the cursor is, in a slot's settings with A not held ("RIGHT" on the
-    // first setting, "LEFT / RIGHT" on the others), or nullptr where LEFT / RIGHT do not switch it.
+    // The key that switches TYPE from where the cursor is, in a slot's settings with A not held, or nullptr where
+    // neither LEFT nor RIGHT switches it. It names only what does something: no RIGHT on the family's last type,
+    // no LEFT on its first, nor on the first setting (there LEFT is the list).
     const char* typeKey() const;
+    // The same, asked with numbers (a test can ask for a family of one, which no family is today): the cursor's
+    // column (0 the list), how many types the family has, and which of them the slot is. Below the first setting
+    // it is nullptr only for a family of one, and that is what sends LEFT back to the list from there.
+    static const char* typeKeyFor(int column, int types, int at);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }
@@ -245,6 +250,8 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
+    bool cameIn_ = false;            // RIGHT (D-pad or stick) came into the settings from the list and is still held:
+                                     // it switches no TYPE until it is let go (a slightly long press made a COMP a SNAP)
     int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
     int trySlot_ = 0;                // and its slot, kept after tryRow_ is let go (the engine's hold is let go by it)
     EffectData tried_;               // what it is trying
