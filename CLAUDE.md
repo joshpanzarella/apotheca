@@ -440,6 +440,14 @@ effect in those two groups and fails one that does not.
   track would depend on which helper got to the drums first. A new way to
   trigger a drum must set the mark too. Every trigger counts (ratchet pieces,
   hits by hand); a bus's slot is not told.
+- **The JX-3P's `allNotesOff` hands every sounding voice to a tail**
+  (`kTailVoices`, `engine/src/jx3p.cpp`): it rings out its release beside the
+  six, which start again as from fresh, so Play from the top is the same
+  performance after Stop however long the release (`jx3p_test`
+  `testPlayFromTheTopWhileRinging`). Play and Stop let notes go, never cut
+  them; a fresh voice is `State::Voice()`, so anything new a voice remembers
+  is put back with it. Its steal takes a key let go before a key held
+  (`kStealLetGoFirst`).
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy

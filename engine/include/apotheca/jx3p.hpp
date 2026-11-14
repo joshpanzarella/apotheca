@@ -82,13 +82,21 @@ constexpr bool kTuneStepped = true;         // DCO-2 TUNE in semitone steps (bat
 constexpr double kTuneSemitonesPerDial = 2.4; // ...a step of the dial (10 tenths) is 2.4 semitones, rounded
 constexpr bool kRoundToCounter = true;      // DCO pitch is the 8253's clock over a whole number
 constexpr double kCounterClockHz = 5999840.0; // 440 x round(6 MHz / 440): A4 is 13636 divisions (SN p.6: about 6 MHz)
-// A stolen voice retriggers from its level with no fade: that is Jx3p::steal() in jx3p.cpp, the
-// one place. (The other answer, a 2 ms fade of the old note first, is not built.)
+// A stolen voice retriggers from its level with no fade: that is Jx3p::noteOnVoice() in jx3p.cpp,
+// the one place. (The other answer, a 2 ms fade of the old note first, is not built.)
+constexpr bool kStealLetGoFirst = true;     // a steal takes the oldest voice whose key is up (ringing in
+                                            // its release) before the oldest key still held; false: the
+                                            // oldest sounding, held or not (the plan's first words)
 constexpr int kKeyFollowFull = 98;          // KEY FOLLOW 9.8 is 100% (batch 3)
 constexpr bool kBassLoss = true;            // the low end falls as resonance rises (batch 3)
 constexpr bool kKeysOnTheSample = true;     // a key starts (and lets go) on its own sample; false: on the
                                             // 10 ms grid of one CPU loop, as the real one (up to 10 ms late)
 constexpr bool kBbdHiss = false;            // the chorus's hiss is not copied (batch 5)
+// Not an owner's call, a house rule's cost: Play, Stop and panic hand every sounding voice to one
+// of these, where it rings out its release beside the six, which start again as from fresh (so
+// Play from the top is the same performance however long the last notes ring). Twice six, so a
+// Stop and a Play inside one release both fit; past that a voice stays where it is.
+constexpr int kTailVoices = 2 * kVoices;
 // Kept outside the engine: the name on the device (TWIN ANALOG) and `track twin` read as A1 (batch 6a).
 
 } // namespace jx3p
@@ -126,6 +134,7 @@ public:
     float voiceVca(int voice) const;    // the VCA's CV after the hold
     double voiceHz(int voice) const;    // DCO-1's frequency now
     bool voiceHeld(int voice) const;
+    int tailsRinging() const;           // voices handed over by allNotesOff still ringing out
 
 private:
     struct State;

@@ -119,9 +119,10 @@ static void testAPresetKeepsTheTracksOwn() {
     j->selectPreset(0);
     CHECK(j->setting(Velocity) == 0 && j->setting(Brilliance) == 73);
     CHECK(j->setting(Attack) == Jx3p::presetPatch(0).value[Attack] && j->setting(VcaLevel) == 70);
-    // And a macro goes back to the middle: ATTACK's macro turned to 0 is the patch's ATTACK again.
+    // And a macro goes back to the middle: ATTACK's macro turned up to 10 is the patch's ATTACK again
+    // (up, not down: the start patch's ATTACK is 0, which the macro at 0 gives too).
     std::unique_ptr<Jx3p> a = synth(held({{Attack, 60}})), b = synth(held({{Attack, 60}}));
-    a->setMacro(MacroAttack, 0.f);
+    a->setMacro(MacroAttack, 1.f);
     a->selectPreset(0);
     b->selectPreset(0);
     for (Jx3p* x : {a.get(), b.get()}) x->noteOn(60, 1.f);
@@ -131,13 +132,14 @@ static void testAPresetKeepsTheTracksOwn() {
 
 // ---- in tune --------------------------------------------------------------------------------------
 
-// IN TUNE (SELF: A440 is the program's): DCO-1's saw, every RANGE, notes 24 to 96. Within 1 cent of
-// the written note, and, with the pitch rounded to the counter (kRoundToCounter), the 8253's clock
+// IN TUNE (SELF: A440 is the program's): DCO-1's saw, every RANGE, notes 21 to 108 (the piano's).
+// Within 1 cent of the written note (0.90 at worst, note 106 at 4': the counter's rounding grows
+// toward the top; the plan's section 8, "under 1 cent at the top"), and, with the pitch rounded to the counter (kRoundToCounter), the 8253's clock
 // over a whole number of divisions, to the measuring's own error.
 static void testInTune() {
     double worstWritten = 0.0, worstCounter = 0.0, counterOff = 0.0;
     for (int range = 0; range < 3; ++range) {
-        for (int note = 24; note <= 96; note += (range == 1 ? 3 : 12)) {
+        for (int note = 21; note <= 108; ++note) {
             std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, range}}));
             j->noteOn(note, 1.f);
             const std::vector<float> out = play(*j, 48000 + 4800);
@@ -148,7 +150,7 @@ static void testInTune() {
             counterOff = std::fmax(counterOff, std::fabs(cents(counterHz(want), want)));
         }
     }
-    CHECK(worstWritten < 1.0);
+    CHECK(worstWritten < 1.0 && worstWritten > 0.85); // (> 0.85: the top was reached)
     CHECK(worstCounter < 0.02);
     CHECK(counterOff > 0.1); // (so the line above can tell the counter's pitch from the written one)
     // A4 is exactly 13636 divisions of the clock taken: exactly 440 Hz.
@@ -156,6 +158,23 @@ static void testInTune() {
     j->noteOn(69, 1.f);
     CHECK(j->voiceHz(0) == 440.0 && kCounterClockHz / 13636.0 == 440.0);
     if (failures || std::getenv("JX3P_PRINT")) std::printf("  in tune: worst %.4f cents from the written note, %.4f from the counter's (which is %.3f off at most)\n", worstWritten, worstCounter, counterOff);
+}
+
+// A KNOB TURNED DURING A NOTE IS READ ON THE TICK (FAITHFUL: SN p.6, step 3 reads the panel each
+// loop): RANGE from 8' to 4' under a held key, and the pitch is an octave up from the voice's next
+// tick, not before.
+static void testRangeTurnedDuringANote() {
+    std::unique_ptr<Jx3p> j = synth(held());
+    j->noteOn(57, 1.f);
+    play(*j, 100);
+    CHECK(j->voiceHz(0) == counterHz(220.0));
+    j->setSetting(Dco1Range, 2);
+    play(*j, kTick - 100); // up to its next tick, not on it
+    CHECK(j->voiceHz(0) == counterHz(220.0));
+    play(*j, 1);
+    CHECK(j->voiceHz(0) == counterHz(440.0));
+    const std::vector<float> out = play(*j, 48000);
+    CHECK(std::fabs(cents(pitchOf(out, 0, out.size()), 440.0)) < 1.0);
 }
 
 // A NOTE THROUGH THE ENGINE, written in a pattern and played: in tune (SELF).
@@ -196,6 +215,32 @@ static void testThroughTheEngine() {
     const double got = pitchOf(out, 4800, 2 * 48000);
     CHECK(std::fabs(cents(got, 220.0)) < 1.0);
     CHECK(peakOf(out) > 0.05f && peakOf(out) < 1.f);
+}
+
+// THE TOP (SELF): a DCO is held under 0.45 of the sample rate (kHighestStep), where the saw's
+// two-sample correction still works. Key 127 at 4' (25.1 kHz written) plays at 21.6 kHz, not folded
+// down to 22.9 kHz as an unheld one would be.
+static void testTheTopIsHeld() {
+    std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, 2}}));
+    j->noteOn(127, 1.f);
+    const std::vector<float> out = play(*j, 48000 + 4800);
+    const double held = partAt(out.data() + 4800, 48000, 0.45 * 48000.0), folded = partAt(out.data() + 4800, 48000, 48000.0 - j->voiceHz(0));
+    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.05);
+}
+
+// ALIASING, A BASELINE FOR BATCH 2 (SELF: no figure for the real one; the plan's target is 50 dB
+// under 15 kHz, which this saw is far from): a held 1760 Hz saw (A6, 3409 divisions: exactly 1760),
+// all that is neither the fundamental nor a harmonic, added up, against the fundamental. Measured
+// 2026-11-14: -27.2 dB (the loudest fold-back -31.2 dB, at 23360 Hz); with the correction's sign
+// wrong, -13.2 (-23.0). Batch 2 replaces this saw and this test.
+static void testAliasBaseline() {
+    std::unique_ptr<Jx3p> j = synth(held());
+    j->noteOn(93, 1.f);
+    CHECK(j->voiceHz(0) == 1760.0);
+    const std::vector<float> out = play(*j, 4800 + 48000);
+    const Harmonics h = harmonicsIn(out.data() + 4800, 48000, 1760, partAt(out.data() + 4800, 48000, 1760.0));
+    if (failures || std::getenv("JX3P_PRINT")) std::printf("  alias baseline: loudest fold-back %.1f dB at %.0f Hz, the rest %.1f dB\n", h.alias, h.aliasHz, h.rest);
+    CHECK(h.rest < -22.0);
 }
 
 // ---- the voices -----------------------------------------------------------------------------------
@@ -241,6 +286,27 @@ static void testVoices() {
     CHECK(voiceOf(*j, 41) == 3);
     j->noteOn(42, 1.f);
     CHECK(voiceOf(*j, 42) == 2);
+}
+
+// A STEAL TAKES A KEY LET GO BEFORE A KEY HELD (SELF; kStealLetGoFirst, put to the owner): six keys,
+// the last three let go and ringing in a long release; a seventh takes the oldest of those three,
+// not the oldest key still down. With all six held it is the oldest of all (testVoices).
+static void testStealLetGoFirst() {
+    std::unique_ptr<Jx3p> j = synth(held({{Release, 80}}));
+    for (int n = 0; n < 6; ++n) {
+        j->noteOn(60 + n, 1.f);
+        play(*j, 100);
+    }
+    for (int k : {64, 63, 65}) j->noteOff(k); // (let go out of order: the oldest is still 63, by its key)
+    play(*j, 100);
+    j->noteOn(80, 1.f);
+    CHECK(kStealLetGoFirst && voiceOf(*j, 80) == 3 && voiceOf(*j, 60) == 0 && j->voiceHeld(0));
+    j->noteOn(81, 1.f); // then the next oldest let go
+    CHECK(voiceOf(*j, 81) == 4);
+    j->noteOn(82, 1.f);
+    CHECK(voiceOf(*j, 82) == 5);
+    j->noteOn(83, 1.f); // none let go now: the oldest held
+    CHECK(voiceOf(*j, 83) == 0);
 }
 
 // A STEAL IS A RETRIGGER FROM WHERE THE VOICE IS (SELF; the owner's call, plan section 8): its
@@ -418,6 +484,36 @@ static void testVca() {
         j->noteOff(57);
         play(*j, 960);
         CHECK(j->voiceVca(0) == 0.f && j->voiceNote(0) == -1);
+    }
+}
+
+// GATE AT LEVEL 0 (SELF): a key held in GATE mode with LEVEL at 0 is silent but its voice stays its
+// own: LEVEL turned up while the key is down, and it is heard.
+static void testGateHeldAtLevelZero() {
+    std::unique_ptr<Jx3p> j = synth(held({{VcaMode, 1}, {VcaLevel, 0}}));
+    j->noteOn(57, 1.f);
+    CHECK(peakOf(play(*j, 4800)) == 0.f && voiceOf(*j, 57) == 0);
+    j->setSetting(VcaLevel, 70);
+    CHECK(peakOf(play(*j, 4800)) > 0.05f);
+}
+
+// NOT A NUMBER (SELF: a house rule, a float input guards NaN itself): a key at a velocity that is
+// not a number is velocity 0, a soft note that ends; its voice is freed and the output stays finite.
+// (A NaN once made the VCA's target NaN: the hold never landed, the voice was never freed, and the
+// track gave NaN for good.)
+static void testNotANumber() {
+    for (int velocityOn = 0; velocityOn < 2; ++velocityOn) {
+        std::unique_ptr<Jx3p> j = synth(held({{Velocity, velocityOn}, {Release, 30}}));
+        j->noteOn(60, std::nanf(""));
+        std::vector<float> out = play(*j, 9600);
+        j->noteOff(60);
+        const std::vector<float> rest = play(*j, 5 * 48000);
+        out.insert(out.end(), rest.begin(), rest.end());
+        bool finite = true;
+        for (float x : out) finite = finite && std::isfinite(x);
+        CHECK(finite && voiceOf(*j, 60) == -1);
+        if (velocityOn) CHECK(peakOf(out) < 0.05f); // velocity 0: the curve's floor
+        else CHECK(peakOf(out) > 0.05f);            // OFF: every velocity plays as full
     }
 }
 
@@ -602,6 +698,53 @@ static void testPlayFromTheTop() {
     CHECK(fresh == after);
 }
 
+// ...AND WHILE THE LAST NOTES RING (SELF: plan section 2). A long release (RELEASE 7, 1.25 s), a
+// phrase, Stop, then Play 64, 4800 and 48000 samples later: what follows is the fresh synth's
+// performance plus the tails, to a float's rounding. Through the engine, and the synth by itself.
+static std::vector<float> ringingSong(int stop, int gap, bool playAgain, int release = 70) {
+    std::unique_ptr<Engine> e(new Engine);
+    CHECK(e->addSynthTrack(1, SynthKind::Jx3p));
+    e->send(make(Command::SetSetting, 1, Release, release));
+    e->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    for (int n = 0; n <= 10; ++n) e->send(noteAt(n, n, 48 + 3 * n, 1.f));
+    renderEngine(*e, 480);
+    if (stop) {
+        e->send(make(Command::Play, 0, 0, 1));
+        renderEngine(*e, 48000);
+        e->send(make(Command::Stop));
+        renderEngine(*e, gap);
+    }
+    if (playAgain) e->send(make(Command::Play, 0, 0, 1));
+    return renderEngine(*e, 2 * 48000);
+}
+static void testPlayFromTheTopWhileRinging() {
+    const std::vector<float> fresh = ringingSong(0, 0, true);
+    CHECK(peakOf(fresh) > 0.05f);
+    for (int gap : {64, 4800, 48000}) {
+        const std::vector<float> after = ringingSong(1, gap, true), tails = ringingSong(1, gap, false);
+        float worst = 0.f;
+        for (std::size_t i = 0; i < fresh.size(); ++i) worst = std::fmax(worst, std::fabs(after[i] - (fresh[i] + tails[i])));
+        CHECK(peakOf(tails) > 1e-4f); // (there is a tail to hear)
+        CHECK(worst < 1e-6f);
+        if (failures || std::getenv("JX3P_PRINT")) std::printf("  from the top %d samples after Stop: tails peak %.3f, off fresh + tails by %.2g\n", gap, peakOf(tails), worst);
+    }
+    // The synth by itself: six keys ringing and a seventh, then allNotesOff; the six start again as
+    // from fresh (the same bits where no tail is left), and the tails ring out and are let go.
+    std::unique_ptr<Jx3p> a = synth(held({{Release, 70}})), b = synth(held({{Release, 70}}));
+    for (int n = 0; n < 7; ++n) a->noteOn(50 + n, 0.8f);
+    play(*a, 4800);
+    a->noteOff(51);
+    play(*a, 480);
+    a->allNotesOff();
+    CHECK(a->tailsRinging() == 6);
+    for (int v = 0; v < kVoices; ++v) CHECK(a->voiceNote(v) == -1);
+    for (Jx3p* x : {a.get(), b.get()}) x->noteOn(64, 1.f), x->noteOn(67, 1.f);
+    std::vector<float> sa = play(*a, 4 * 48000), sb = play(*b, 4 * 48000);
+    CHECK(a->tailsRinging() == 0);
+    CHECK(std::vector<float>(sa.end() - 48000, sa.end()) == std::vector<float>(sb.end() - 48000, sb.end()));
+    CHECK(sa != sb);
+}
+
 // THE START PHASE IS SEEDED (SELF: plan section 2): a silent voice's DCO starts at a phase from the
 // count of keys since allNotesOff. So the same key on the same voice starts the same
 // after allNotesOff, and elsewhere in the wave on the next key without it.
@@ -736,7 +879,9 @@ int main(int argc, char** argv) {
     struct Test { const char* name; void (*run)(); };
     const Test tests[] = {
         {"testSettings", testSettings}, {"testAPresetKeepsTheTracksOwn", testAPresetKeepsTheTracksOwn}, {"testInTune", testInTune},
-        {"testThroughTheEngine", testThroughTheEngine}, {"testVoices", testVoices}, {"testSteal", testSteal}, {"testTick", testTick},
+        {"testThroughTheEngine", testThroughTheEngine}, {"testVoices", testVoices}, {"testStealLetGoFirst", testStealLetGoFirst}, {"testSteal", testSteal},
+        {"testRangeTurnedDuringANote", testRangeTurnedDuringANote}, {"testGateHeldAtLevelZero", testGateHeldAtLevelZero}, {"testNotANumber", testNotANumber},
+        {"testPlayFromTheTopWhileRinging", testPlayFromTheTopWhileRinging}, {"testTheTopIsHeld", testTheTopIsHeld}, {"testAliasBaseline", testAliasBaseline}, {"testTick", testTick},
         {"testEnvelopeTimes", testEnvelopeTimes}, {"testAllAtZero", testAllAtZero}, {"testAKeyStartsOnItsSample", testAKeyStartsOnItsSample},
         {"testVca", testVca}, {"testVelocity", testVelocity}, {"testMacros", testMacros}, {"testGlide", testGlide}, {"testBlocks", testBlocks},
         {"testTwiceFromFresh", testTwiceFromFresh}, {"testPlayFromTheTop", testPlayFromTheTop}, {"testSilence", testSilence}, {"testSeededPhase", testSeededPhase},

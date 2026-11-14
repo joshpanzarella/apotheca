@@ -240,7 +240,9 @@ the top, gives the same bits as Play from the top on a fresh engine.
 ### Voice stealing
 
 Assigner: the same key if it is sounding, else the free voice longest silent,
-else the oldest sounding voice.
+else the oldest voice whose key is up (ringing in its release), else the
+oldest held (`kStealLetGoFirst`; added after the batch 1 review: a steal cut a
+key still held while quieter tails rang on. The owner's call, section 8).
 
 **A steal is a retrigger from where the voice is**: the envelope starts its
 attack from its current level (it is software on the real one, so it is not
@@ -427,7 +429,7 @@ within 1 dB (FAITHFUL, SN p.7; its 2 poles are SELF); OFF is the dry sound to th
 | No allocation, lock or free outside the constructor and `prepare` | The engine's counted `new`, as the other synths |
 | The same sound however the blocks are cut | `testBlocks`: a 20 s phrase with every part moving, cut 1, 48, 64, 100, 512 and at random: the same bits. **Twin fails this today; the new one must not** |
 | The same on any helper count and twice from fresh | Joins the synth trio in `chordfx_test`, `effects_test`, `throw_test`, `engine_test` |
-| Play from the top is the same performance | `testPlayFromTheTop` (above) |
+| Play from the top is the same performance | `testPlayFromTheTop` (above), and `testPlayFromTheTopWhileRinging` (the last notes still in their release: the fresh performance plus the tails) |
 | Silence in, silence out | All voices finished and the chorus asleep: exact zeros, and the voice loop skipped |
 | **Every state looks after its small numbers** | Snapped to 0 under 1e-20 or gated at `kQuiet`: the four VCF stages, the HPF, the S/H smoothers, the four 10 kHz chorus filters, the chorus line, the DC block of PULSE. **Every smoother and fade lands exactly** (the `Glide` rule). `testTooSmall`: the whole synth, flush-to-zero off, every preset through its release: no number too small to hold, as `TooSmall` in `effects_test` |
 | GLIDE | `glide_test`'s `testEverySynthTakesTheLength` and `engine_test`'s glide test, without a JX exception |
@@ -605,7 +607,9 @@ with the same words.
 | Start phase from a seed of the voice's number and the count of keys | **The count of keys alone** (since `allNotesOff`) | The count is new at every key, so the voice's number added nothing: its mutant survived |
 | The phase set "at each note-on" | Set when a FREE voice takes a key. **A sounding voice taken again (the same key, or a steal) keeps its phase** | A reset there is a jump in the wave; carrying on is just as repeatable, since the phase it has came from a seed |
 | `allNotesOff` puts the DCO phases back to 0 | Not done: a free voice's phase is set from the seed at its next key, so it was dead code (its mutant survived) | |
-| `allNotesOff` puts back everything | It lets the keys go and puts back the count of keys, the sample clock and every voice's age. **A voice still ringing rings out** (Play and Stop let notes go; they do not cut them). So "Play from the top is the same" holds once the audition has rung out; `testPlayFromTheTop` lets it | |
+| `allNotesOff` puts back everything | It lets the keys go and puts back the count of keys, the sample clock and every voice's age. **A voice still sounding is handed to a tail** (`kTailVoices`, twice six) and rings out its release there, beside the six, which start again as from fresh. So Play from the top is the fresh performance plus the tails, to a float's rounding, however long the release (`testPlayFromTheTopWhileRinging`: Stop, then Play 64, 4800, 48000 samples on, RELEASE 7: off by 7.5e-8 at worst; before the mend, 0.84). Up to twelve voices sound for a release's length after Stop and Play; a third handover inside one release finds no tail free and the voice rings on among the six, as before | Mended after the review (2026-11-14). Play and Stop let notes go, they do not cut them, so the tails must ring somewhere other than the six |
+| A steal takes the oldest sounding voice | **The oldest let go first** (`kStealLetGoFirst`), then the oldest held | The review: a seventh key cut a key still down while three released tails rang on |
+| A velocity in [0, 1] | **A NaN velocity is 0** (at `noteOnVoice`, the one way in) | The review: NaN made the VCA's target NaN, the hold never landed, the voice was never freed, and the track gave NaN for good; Twin and Phazed survive it |
 | The hold lands "within 1e-6" | **Within 1e-5** (`kHoldLands`) | A one-pole of 1 ms in float, heading for 1, stops moving 1.4e-6 short (a step of k times the gap is under half a float step there), so 1e-6 never came: the voice was never freed |
 | VCA: 4 dB a dial step, a soft clip above LEVEL 7 | LEVEL 7.0 is 0 dB (`kVcaUnityDial`), and a full wave there just meets the clip; it bends toward 1.5 times that at most (`kVcaClipCeiling`) | With 0 dB at 8, the start patch was already in the clip; a ceiling of exactly the clip point divided by zero |
 | ADSR "times" | **A time is the time to land**: the attack from 0 to the top (the key's own tick counts as the first), a decay from the top to SUSTAIN 0, a release from the top to silence; a fall lands when 80 dB from its target (`kEnvLand`) | One meaning for "lands within one tick" |
@@ -617,8 +621,21 @@ with the same words.
 octave more at 16'). The real DCO must divide again after the counter (an
 octave stage), or switch ranges another way; the SN pages read do not say.
 Today the rounding is `clock / round(clock / f)` with no limit on the count,
-which is under 0.4 cents from the written note everywhere tested (24 to 96,
-every RANGE) and exactly the counter's pitch.
+which is 0.90 cents from the written note at worst over the piano's keys (21
+to 108, every RANGE: note 106 at 4'; under 0.4 for 24 to 96) and exactly the
+counter's pitch. The lowest 8' note whose count fits 16 bits is 42 (F#2).
+**The alias baseline for batch 2** (`testAliasBaseline`, a held 1760 Hz saw,
+everything that is not a harmonic against the fundamental): -27.2 dB, the
+loudest fold-back -31.2 dB at 23360 Hz; with the BLEP's sign flipped -13.2
+(-23.0). The review's figures, by another measure: 33.5 / 28.4 / 25.9 dB at
+notes 84 / 96 / 103. The plan's 50 dB is far off: batch 2's job.
+
+**The review's mend (2026-11-14)**: 12 mutants made on what it touched and
+what the review found untested (the tail handover three ways, the tails
+rendered, the steal's order two ways, NaN velocity, the tick's retune of a
+RANGE turned under a held key, GATE at LEVEL 0 keeping its voice, a preset
+putting the macros back, the top's clamp, the BLEP's sign): **12 killed**.
+`jx3p_test` is 29 tests. The bench rows did not move (0.08 / 0.10 / 0.40%).
 
 **Mutants (batch 1): 32 in the last round, 29 killed** (two more, earlier, survived because their code was dead, and it was taken out: the voice's number in the seed, and `allNotesOff` setting free voices' phases to 0). Survived: `allNotesOff` not
 putting the sample clock back (it only matters with `kKeysOnTheSample` off,
@@ -654,6 +671,8 @@ LFO DEPTH too (nothing reads it until batch 4).
 | DCO-2 TUNE in semitone steps (Roland's plug-out says so) or smooth (no source) | **Stepped**. The TUNE macro and a SYNC sweep by TUNE then move in semitones; smooth sweeps come from FINE, ENV and LFO |
 | DCO pitch rounded to the counter's whole divisions (faithful; under 1 cent off at the top) or exact | **Rounded**, once batch 0 confirms the 6 MHz clock |
 | A stolen voice: retrigger from its level with no fade (how a software envelope behaves; not documented) or a 2 ms fade | **Retrigger, no fade** |
+| Which voice is stolen: the oldest whose key is up (ringing in its release), or the oldest sounding, held or not (not documented) | **The oldest let go first** (`kStealLetGoFirst`): a held key is cut only when every voice is held |
+| After Stop and Play, the last notes' releases ring on beside six fresh voices (up to twelve for a release's length), so Play from the top is the same performance; or they take voices from the new notes (faithful to six, but every Play after a long pad differs) | **Ring beside** (`kTailVoices`) |
 | KEY FOLLOW: 9.8 is 100% (from NAM's Organ I) | Yes, until a recording says otherwise |
 | Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | Keep it until a recording says otherwise |
 | Note starts on the CPU's 10 ms grid (faithful, up to 10 ms late) or on the sample | On the sample |

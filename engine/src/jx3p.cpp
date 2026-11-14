@@ -114,6 +114,7 @@ struct Jx3p::State {
     std::uint64_t clock = 0;  // samples since allNotesOff (or since made)
     std::uint32_t keys = 0;   // note-ons since allNotesOff
     Voice voices[kVoices];
+    Voice tails[kTailVoices]; // let go by allNotesOff, ringing out beside the six (kTailVoices)
 
     // DCO-1's frequency for a key (with a glide's offset), as the counter can make it.
     double dcoHz(const Voice& v, double semitones) const {
@@ -139,6 +140,7 @@ struct Jx3p::State {
         v.vca.target = levelGain * opened * (eff[Velocity] >= 0.5f ? velocityGain(v.velocity) : 1.f);
         if (v.slide.semitones == 0.f) setPitch(v, 0.0);
     }
+    void renderVoice(Voice& v, float* out, int frames);
 };
 
 Jx3p::Jx3p() : state_(new State) {
@@ -220,11 +222,10 @@ int Jx3p::noteOnVoice(int note, float velocity) {
             for (int j = i + 1; j < kVoices; ++j)
                 if (s.voices[j].note < 0 && s.voices[j].silentSince < s.voices[chosen].silentSince) chosen = j;
         }
-    if (chosen < 0) {
-        chosen = 0;
-        for (int i = 1; i < kVoices; ++i)
-            if (s.voices[i].startedAt < s.voices[chosen].startedAt) chosen = i;
-    }
+    // The steal: the oldest voice whose key is up (kStealLetGoFirst), else the oldest of all.
+    for (int pass = kStealLetGoFirst ? 0 : 1; pass < 2 && chosen < 0; ++pass)
+        for (int i = 0; i < kVoices; ++i)
+            if ((pass == 1 || !s.voices[i].held) && (chosen < 0 || s.voices[i].startedAt < s.voices[chosen].startedAt)) chosen = i;
     State::Voice& v = s.voices[chosen];
     if (v.note < 0) {
         // A silent voice starts its DCO at a phase from a seed: the count of keys since allNotesOff
@@ -241,7 +242,7 @@ int Jx3p::noteOnVoice(int note, float velocity) {
     // sample the key is taken. No fade. (The owner's call; the other answer is a 2 ms fade.)
     v.note = note;
     v.held = true;
-    v.velocity = clampf(velocity, 0.f, 1.f);
+    v.velocity = velocity > 0.f ? (velocity < 1.f ? velocity : 1.f) : 0.f; // not a number: 0, never a stuck voice
     v.slide.stop();
     v.landing = false;
     v.env.on();
@@ -272,7 +273,9 @@ void Jx3p::noteOff(int note) {
 }
 
 // Play, Stop, panic: every key let go, and what remembers the past put back, so Play from the top
-// is the same performance (the plan, section 2). A voice still ringing rings out.
+// is the same performance (the plan, section 2). A voice still sounding is not cut (Play and Stop
+// let notes go): it is handed to a tail, rings out there, and its place among the six starts again
+// as from fresh. So what comes after is the same bits as from a fresh synth, plus the tails.
 void Jx3p::allNotesOff() {
     State& s = *state_;
     for (State::Voice& v : s.voices) {
@@ -281,57 +284,69 @@ void Jx3p::allNotesOff() {
             v.env.off();
             v.toTick = 0;
         }
-        v.startedAt = v.silentSince = 0; // (a free voice's phase is set again from the seed at its next key)
+        if (v.note >= 0)
+            for (State::Voice& t : s.tails)
+                if (t.note < 0) {
+                    t = v;
+                    v = State::Voice();
+                    break;
+                }
+        v.startedAt = v.silentSince = 0; // (a free voice's phase is set again from the seed at its next key;
+                                         // one with no tail free to take it rings on here, as before tails)
     }
     s.clock = 0;
     s.keys = 0;
+}
+
+// One voice's `frames` added into `out`; it is set free (and stops) when silent with nothing to open it.
+void Jx3p::State::renderVoice(Voice& v, float* out, int frames) {
+    for (int i = 0; i < frames; ++i) {
+        if (v.toTick <= 0) {
+            tick(v);
+            v.toTick += tickLength;
+        }
+        --v.toTick;
+        if (v.slide.semitones != 0.f) {
+            setPitch(v, v.slide.take(1));
+            v.landing = v.slide.semitones == 0.f;
+        } else if (v.landing) {
+            setPitch(v, 0.0); // the glide is over: on its own key from this sample, not from the next tick
+            v.landing = false;
+        }
+        // DCO-1's saw (batch 1: the plain two-sample BLEP, as Twin's; batch 2 builds the DCOs).
+        const double t = v.phase, dt = v.step;
+        float saw = static_cast<float>(2.0 * t - 1.0);
+        if (t < dt) {
+            const double x = t / dt;
+            saw -= static_cast<float>(x + x - x * x - 1.0);
+        } else if (t > 1.0 - dt) {
+            const double x = (t - 1.0) / dt;
+            saw -= static_cast<float>(x * x + x + x + 1.0);
+        }
+        v.phase += dt;
+        if (v.phase >= 1.0) v.phase -= 1.0;
+        const float gain = v.vca.next(holdK);
+        out[i] += vcaClip(saw * gain, clipFrom);
+        if (!v.held && gain == 0.f && v.vca.target == 0.f && (v.env.idle() || eff[VcaMode] >= 0.5f)) {
+            // Silent, and nothing to open it again: the voice is free. Nothing of a free voice
+            // moves, so how long it stays free cannot change the sound.
+            v.note = -1;
+            v.env.stop();
+            v.slide.stop();
+            v.silentSince = clock + static_cast<std::uint64_t>(i) + 1;
+            return;
+        }
+    }
 }
 
 void Jx3p::render(float* left, float* right, int frames) {
     State& s = *state_;
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     bool any = false;
-    for (State::Voice& v : s.voices) {
-        if (v.note < 0) continue;
-        any = true;
-        for (int i = 0; i < frames; ++i) {
-            if (v.toTick <= 0) {
-                s.tick(v);
-                v.toTick += s.tickLength;
-            }
-            --v.toTick;
-            if (v.slide.semitones != 0.f) {
-                s.setPitch(v, v.slide.take(1));
-                v.landing = v.slide.semitones == 0.f;
-            } else if (v.landing) {
-                s.setPitch(v, 0.0); // the glide is over: on its own key from this sample, not from the next tick
-                v.landing = false;
-            }
-            // DCO-1's saw (batch 1: the plain two-sample BLEP, as Twin's; batch 2 builds the DCOs).
-            const double t = v.phase, dt = v.step;
-            float saw = static_cast<float>(2.0 * t - 1.0);
-            if (t < dt) {
-                const double x = t / dt;
-                saw -= static_cast<float>(x + x - x * x - 1.0);
-            } else if (t > 1.0 - dt) {
-                const double x = (t - 1.0) / dt;
-                saw -= static_cast<float>(x * x + x + x + 1.0);
-            }
-            v.phase += dt;
-            if (v.phase >= 1.0) v.phase -= 1.0;
-            const float gain = v.vca.next(s.holdK);
-            left[i] += vcaClip(saw * gain, s.clipFrom);
-            if (!v.held && gain == 0.f && v.vca.target == 0.f && (v.env.idle() || s.eff[VcaMode] >= 0.5f)) {
-                // Silent, and nothing to open it again: the voice is free. Nothing of a free voice
-                // moves, so how long it stays free cannot change the sound.
-                v.note = -1;
-                v.env.stop();
-                v.slide.stop();
-                v.silentSince = s.clock + static_cast<std::uint64_t>(i) + 1;
-                break;
-            }
-        }
-    }
+    for (State::Voice& v : s.voices)
+        if (v.note >= 0) s.renderVoice(v, left, frames), any = true;
+    for (State::Voice& v : s.tails) // (added after the six: the six's sum is a fresh synth's, to the bit)
+        if (v.note >= 0) s.renderVoice(v, left, frames), any = true;
     s.clock += static_cast<std::uint64_t>(frames);
     if (!any) {
         for (int i = 0; i < frames; ++i) right[i] = 0.f;
@@ -345,5 +360,10 @@ float Jx3p::voiceEnv(int voice) const { return voice >= 0 && voice < kVoices ? s
 float Jx3p::voiceVca(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].vca.value : 0.f; }
 double Jx3p::voiceHz(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].hz : 0.0; }
 bool Jx3p::voiceHeld(int voice) const { return voice >= 0 && voice < kVoices && state_->voices[voice].held; }
+int Jx3p::tailsRinging() const {
+    int n = 0;
+    for (const State::Voice& v : state_->tails) n += v.note >= 0 ? 1 : 0;
+    return n;
+}
 
 } // namespace apotheca
