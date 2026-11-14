@@ -24,8 +24,10 @@
 // SATURATE's FOLD at every push). It also goes twice as far (12 times against
 // six), and it has SYMMETRY, which SATURATE has not.
 //
-// Worked out at twice the sample rate (bend.hpp, halfband.hpp), with the
-// plain sound made as late to match. The loudness is held level as DRIVE and
+// Worked out at FOUR times the sample rate (bend.hpp's BendSide4,
+// halfband.hpp), with the plain sound made as late to match. At twice, as
+// SATURATE is, full DRIVE on a note above about 2.5 kHz came out mostly as
+// notes that were never played (testFold has what is left). The loudness is held level as DRIVE and
 // SYMMETRY move, as SATURATE's is (a sine at half scale comes out as loud as
 // it went in), and the bias SYMMETRY adds is taken off again, so silence in is
 // silence out. Every setting glides on the TICK (svf.hpp: worked out every 16
@@ -76,7 +78,7 @@ public:
         reset();
     }
     void reset() override {
-        for (BendSide& s : side_) s.reset();
+        for (BendSide4& s : side_) s.reset();
         tone_[0] = tone_[1] = 0.f;
         quietIn_ = 0;
         asleep_ = true;
@@ -146,7 +148,7 @@ private:
             loudest = std::fmax(loudest, std::fmax(side_[c].loudest(), std::fabs(tone_[c])));
         }
         if (quietIn_ >= kTick && loudest < kQuiet) { // nothing came in all this tick, and nothing is left in it
-            for (BendSide& s : side_) s.reset();
+            for (BendSide4& s : side_) s.reset();
             tone_[0] = tone_[1] = 0.f;
             asleep_ = true;
         }
@@ -170,7 +172,7 @@ private:
         shape_.snap();
     }
 
-    BendSide side_[2];
+    BendSide4 side_[2]; // four times the rate: a fold pushed hard has overtones far past what twice has room for
     float tone_[2] = {}, keep_ = 1.f;
     Slide<kShapes> shape_;
     Gentle drive_, symmetry_, toneSet_;

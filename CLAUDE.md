@@ -106,7 +106,7 @@ Where effects are, in the engine:
 | `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
 | `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
-| `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
+| `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
 
@@ -408,12 +408,23 @@ effect in those two groups and fails one that does not.
   the first cut the fading curve off: a click.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
-  the last sound was. **One exception, kept (review 2026-11-14): a setting
+  the last sound was. **So one whose sound hangs on a clock that runs on
+  (RING's carrier; WEAR's sway and its dice, rolled by the count of samples)
+  sleeps only after `kRestSeconds` (4 s) of nothing.** It
+  slept after a third of a millisecond of exact zeros at first: every drum hit
+  met the carrier at its top, and a slow ring did nothing, unlike the same
+  hits with sound too faint to hear between them. **One exception, kept (review 2026-11-14): a setting
   turned within a glide of waking.** The TICK counts from the effect's start,
   asleep too (`tickCountsAsleep` pins it), so its 16-sample grid falls where
   the silence's length put it, and such a glide moves on ticks up to 15
   samples apart from a fresh one's (WEAR 1e-4, SNAP 0.002, LIMITER 0.02 apart;
   RING, COMB and FUZZ alike). With settings at rest, exact.
+- **A DRIVE type that evens out its loudness does it without its gate**
+  (FUZZ: GATE only takes away), and **a fuzz is matched where it lands**, a
+  sine at 0.18, not half scale: it brings everything to about one level, and
+  matched at half scale a quiet note came out 17 dB over DRIVE. A tone's
+  make-up is for the share squares A1 to A7 keep, averaged, not one pitch
+  (made up for 220 Hz alone, a high note came out 14 dB louder).
 - **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
   lane 1). A hit always lands on a chunk's first sample (`render()` ends a
   chunk where the next is due), so the engine marks it where it triggers the
@@ -469,7 +480,7 @@ effect in those two groups and fails one that does not.
   came in.** Two samples late is half a wave at 12 kHz, and the two cancel (a
   comb filter). SATURATE's 2x stage does this; its plain sound goes through
   `Halfband::late` first, except at MIX 0 exactly; FOLD and FUZZ do the same
-  through `BendSide::plain` (`fx/bend.hpp`). Test a new effect's
+  through `BendSide::plain` / `BendSide4::plain` (`fx/bend.hpp`). Test a new effect's
   response at MIX 50%, not only at 0 and 100%.
 - **An effect that is late by design has no MIX** (LIMITER: always exactly
   3 ms late, `kLookSeconds`, 144 samples at 48 kHz; a MIX would lay the plain
@@ -1274,8 +1285,8 @@ effect in those two groups and fails one that does not.
 | PLATE (2026-11-13, six runs: HALL 0.15 to 0.16%, TAPE 0.09 to 0.10% in the same) | 0.14 to 0.15% |
 | COMB / VOWEL / EQ (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, FILTER 0.03% in all) | 0.04% / 0.08% / 0.07% (one run 0.07 / 0.11 / 0.09) |
 | ...each with a setting turned all the while (PITCH, VOWEL, MID FREQ: worked out again every 16 samples) | 0.08 to 0.10% / 0.13% / 0.10% |
-| FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches) | 0.23 to 0.24% / 0.17 to 0.18% / 0.04% |
-| ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.32 to 0.33% / 0.21 to 0.22% / 0.04% (0.06% in one run); 0.04% |
+| FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches; 0.58% since it runs at four times the rate, two runs, DRIVE 0.12%) | 0.58% / 0.16 to 0.18% / 0.03 to 0.04% |
+| ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.66 to 0.67% (0.32 at twice the rate) / 0.20 to 0.22% / 0.04% (0.06% in one run); 0.04% |
 | WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
 | ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |

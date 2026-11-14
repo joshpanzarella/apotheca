@@ -20,7 +20,9 @@
 // The carrier starts at its top (a quarter turn in), so the first moment of a
 // drum hit comes through whole rather than being swallowed, and it starts
 // there again whenever it wakes (a sleeping effect that wakes starts as a
-// fresh one): every hit after silence sounds the same. The square's two jumps
+// fresh one): every hit after four seconds of silence (kRestSeconds) sounds
+// the same. Hits closer together than that meet the carrier wherever it has
+// got to, as they would with any sound between them. The square's two jumps
 // are smoothed over a sample (polyBLEP), so a fast square does not fold back
 // as notes that were never there; the triangle is left plain (its overtones
 // fall fast; effects_test, testRing, has how far down what folds back is).
@@ -28,8 +30,9 @@
 // time, the last asked for winning (as SATURATE's TYPE). FREQ and SPREAD set
 // off gently (svf.hpp's Gentle) and slide sample by sample on the TICK, so the
 // sound does not depend on how it is cut into blocks. It remembers nothing
-// but where the carrier is: with nothing coming in for a tick it is asleep (what
-// comes out is what came in).
+// but where the carrier is: with nothing coming in for kRestSeconds it is
+// asleep (what comes out is what came in; awake, silence in is silence out
+// all the same).
 
 #include <initializer_list>
 
@@ -48,6 +51,12 @@ constexpr float kStart = 0.25f;     // where the carrier starts: its top
 constexpr float kMostSpread = 0.25f; // of a turn
 constexpr float kWaveFade = 0.01f;  // seconds
 constexpr float kSettle = 0.012f, kMixSettle = 0.02f;
+// How long nothing must come in before it sleeps (and so before the carrier starts again at its top): 4 s,
+// as long as a bounce waits for quiet. It slept after one tick of exact zeros at first (a third of a
+// millisecond), so a drum hit after the digital silence between two hits always met the carrier at its top:
+// a slow FREQ never moved on from hit to hit, and SPREAD never swung, while the same hits with sound far too
+// faint to hear between them did both.
+constexpr float kRestSeconds = 4.f;
 enum { kStepOf, kBehind, kShapes };
 
 float hzOf(float v) { return std::pow(4000.f, clamp01(v)); }
@@ -89,6 +98,7 @@ public:
     Ring() : Unit(kRingInfo) {}
     void prepare(float sampleRate) override {
         sr_ = sampleRate;
+        restAfter_ = static_cast<int>(kRestSeconds * sr_);
         changed();
         reset();
     }
@@ -161,7 +171,7 @@ private:
         tick_ = 0;
         mix_.done();
         shape_.land();
-        if (quietIn_ >= kTick) asleep_ = true; // nothing came in all this tick: it holds nothing else
+        if (quietIn_ >= restAfter_) asleep_ = true; // nothing has come in for kRestSeconds: it holds nothing else
     }
     void shape() {
         shape_.to[kStepOf] = hzOf(freq_.now()) / sr_;
@@ -186,7 +196,7 @@ private:
     Glide mix_;
     float at_ = kStart; // where the left carrier is in its turn, 0 to 1
     int wave_ = 0, wanted_ = 0, oldWave_ = 0, fade_ = 0, fadeLength_ = 1;
-    int tick_ = 0, quietIn_ = 0;
+    int tick_ = 0, quietIn_ = 0, restAfter_ = 1;
     bool asleep_ = true;
 };
 

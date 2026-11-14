@@ -63,6 +63,54 @@ struct BendSide {
         return y;
     }
 };
+// The same at FOUR times the rate (FOLD): twice the rate, and twice that again inside it. A folder pushed
+// twelve times makes overtones far past what twice the rate has room for: at full DRIVE a 5 kHz note came out
+// mostly as notes that were never played (12 dB under the rest, against 24 for SATURATE's FOLD at 2x). The
+// plain sound goes the same way with nothing bent (up, the inner stage's late() at twice the rate, down), so
+// it is exactly as late at every pitch.
+struct BendSide4 {
+    Halfband up, down, up2, down2, lateUp, lateDown, late2; // the plain sound has its own up and down
+    float dcIn = 0.f, dcOut = 0.f;
+    void reset() {
+        up.reset(), down.reset(), up2.reset(), down2.reset(), lateUp.reset(), lateDown.reset(), late2.reset();
+        dcIn = dcOut = 0.f;
+    }
+    // The stages are settled every SAMPLE (twice(), plain()), not on the tick as BendSide's are. A stage whose
+    // number is small (0.08) shrinks what it holds 0.08 times a step: 16 steps from 1e-20 is 2.8e-38, a hair
+    // over the smallest number a float holds, and the inner stages take 32 steps a tick. On the tick, the
+    // plain sound's last stage was handed a number too small to hold (TooSmall saw it). Here only the
+    // centring is settled.
+    void settle() {
+        if (std::fabs(dcOut) < kTiny) dcOut = 0.f;
+        if (std::fabs(dcIn) < kTiny) dcIn = 0.f;
+    }
+    float loudest() const {
+        const float a = std::fmax(std::fmax(up.loudest(), down.loudest()), std::fmax(up2.loudest(), down2.loudest()));
+        const float b = std::fmax(std::fmax(std::fmax(lateUp.loudest(), lateDown.loudest()), late2.loudest()), std::fmax(std::fabs(dcIn), std::fabs(dcOut)));
+        return std::fmax(a, b);
+    }
+    template <class Bend>
+    float twice(float x, const Bend& bend, float keep) {
+        float two[2], four[4], y;
+        up.up(&x, two, 1);
+        up2.up(two, four, 2);
+        for (float& v : four) v = bend(v);
+        down2.down(four, two, 2);
+        down.down(two, &y, 1);
+        up.settle(), up2.settle(), down2.settle(), down.settle(); // every sample: see settle() above
+        dcOut = y - dcIn + keep * dcOut;
+        dcIn = y;
+        return dcOut;
+    }
+    float plain(float x) {
+        float two[2], y;
+        lateUp.up(&x, two, 1);
+        late2.late(two, two, 2);
+        lateDown.down(two, &y, 1);
+        lateUp.settle(), late2.settle(), lateDown.settle();
+        return y;
+    }
+};
 inline float dcKeep(float rate) { return 1.f - 6.2831853f * kBendDcHz / rate; }
 
 // A sine at half scale, 32 points: what a curve's level is evened out by.
@@ -79,17 +127,19 @@ constexpr float kBendReference = 0.5f; // the sine that comes out as loud as it 
 // back on centre). Never more than kBendMostLevel (a curve that lets almost nothing of it through, FUZZ's
 // GATE at its top, is not made up from nothing), and 1 if it comes out as nothing at all.
 constexpr float kBendMostLevel = 4.f;
+// `reference`: the sine's size (FUZZ evens out a smaller one: a fuzz brings everything to about one level, so
+// the level it brings it to is where it is matched).
 template <class Bend>
-float bendLevel(const Bend& bend) {
+float bendLevel(const Bend& bend, float reference = kBendReference) {
     float sum = 0.f, squares = 0.f;
     for (float s : kBendSines.v) {
-        const float y = bend(kBendReference * s);
+        const float y = bend(reference * s);
         sum += y;
         squares += y * y;
     }
     const float mean = sum / 32.f, power = squares / 32.f - mean * mean;
     if (!(power > 1e-8f)) return 1.f;
-    const float level = kBendReference * 0.70710678f / std::sqrt(power);
+    const float level = reference * 0.70710678f / std::sqrt(power);
     return level < kBendMostLevel ? level : kBendMostLevel;
 }
 
