@@ -8,7 +8,11 @@ page (section 0, "SN pages"), and the measuring tools are shared in
 DCO-1's saw through the voices, the tick, the envelope and the VCA
 (`engine/include/apotheca/jx3p.hpp`, `engine/src/jx3p.cpp`,
 `engine/src/jx3p/env.hpp`, `tests/jx3p_test.cpp`); what it learned is under
-the batch table. Nobody has heard anything: every figure is a test's.
+the batch table. **Batch 2 is done (2026-11-14)**: both DCOs, every wave,
+TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX and ENV on the DCOs
+(`engine/src/jx3p/dco.hpp`, `tests/jx3p_dco_test.cpp`), with minimum-phase
+BLEP and BLAMP tables; what it learned is under the batch table too. Nobody
+has heard anything: every figure is a test's.
 
 ## The recommendation
 
@@ -582,6 +586,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 1 | **Skeleton.** `jx3p.hpp/.cpp`, the 34 settings (32 patch, 2 track) and 8 macros with ranges, a start patch, 6 voices with the assigner and the steal rule, `allNotesOff`'s resets, seeded start phases, `jx3p/env.hpp` (tick, ADSR, S/H smoothing, VCA, velocity), DCO-1 saw only. `SynthKind::Jx3p`, the factory, the three `bench` rows | In tune, voices, steal, envelope times, the tick, `testBlocks`, `testPlayFromTheTop`, twice from fresh, no allocation, `testTooSmall` | A note sounds in tune through the engine and the bench row is under 1% |
 | | **Batch 1 DONE (2026-11-14, branch `jx3p`).** Built beside Twin (Twin untouched; `SynthKind::Jx3p` appended, made by `Engine::addSynthTrack`; not in the app's instruments yet, that is 6a). `jx3p_test` (in ctest, TIMEOUT 120, under a second): 22 tests, each marked FAITHFUL or SELF. It also joined `glide_test`'s `testEverySynthTakesTheLength` (plain 440 Hz; 1/4 440, 1/2 440, 1 381, 2 293, FULL 253) and `engine_test`'s helpers' song (a sixth track). **Bench** (desk, one run, synth alone, 256-frame blocks): 6 notes **0.08%**, the worst row (a moving envelope, keys again every half second) 0.10%, moving cutoff (six notes gliding all the while, so the pitch is worked out every sample) **0.40%**; in the same run Phazed 0.9, QMOD 2.8, Twin x1 4.3. The start patch's note is 1.6 dB over Twin's first preset's (RMS 0.095 against 0.079). Mutants: see "Batch 1: what it learned" | | |
 | 2 | **DCOs**, `jx3p/dco.hpp`: both DCOs, every wave, TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX, DCO pitch from ENV | `jx3p_dco_test`: the DCO table, **aliasing first**, and the table BLEP if needed | Every DCO test passes and the bench row is measured again |
+| | **Batch 2 DONE (2026-11-14, branch `jx3p`).** The polynomial BLEP was tried first, as planned, and fails the bar (a saw at 4186 Hz: -35.3 dB of aliasing under 15 kHz; 1760 Hz: -42.6). Built instead: **minimum-phase** BLEP and BLAMP tables, 16 samples, 64 points a sample (`engine/src/jx3p/blep_table.hpp`, made by `tools/jx3p_blep.py`), so nothing is late. Every wave, SYNC and METAL, notes 36 to 96 at 4': **the worst aliasing under 15 kHz is -86.3 dB** (METAL on the pulse); the bar is -50. `jx3p_dco_test` (in ctest, TIMEOUT 120, about 1.5 s): 20 tests. `jx3p_test`: 28 (its alias baseline moved here). **Bench** (desk, two runs, synth alone): 6 notes **0.21 / 0.22%** (0.08 in batch 1), the worst row (now DCO-2's pulse synced a fifth up, ENV on its pitch, both heard) 0.30%, moving cutoff 0.63 / 0.68% (0.40); in the same runs Phazed 0.7 / 1.1, QMOD 2.8, Twin x1 4.1 / 4.5. Mutants: 38 in the last round, **38 killed** (see "Batch 2: what it learned") | | |
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
@@ -645,6 +650,43 @@ LFO DEPTH too (nothing reads it until batch 4).
 
 **What only the tests saw**: everything. Nothing here has been heard.
 
+### Batch 2: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| A table BLEP, "16 samples a side" (so 16 samples late) | **Minimum-phase**, 16 samples, all after the jump (`blep_table.hpp`) | A key sounds on its own sample (`testAKeyStartsOnItsSample`, the owner's call): a linear-phase table makes every note 0.33 ms late. Measured in a numpy prototype before choosing: with 16 zero crossings a side cut to 16 samples, -56 dB (saw) / -43 (pulse) at 4186 Hz; with **8 a side, -98 / -91**: the shorter filter's minimum-phase version fits in 16 samples. Cutoff 0.45 of the rate, Kaiser beta 9: -0.1 dB at 15 kHz, -3 at 20 kHz |
+| The table "computed" | **Written out as numbers** by `tools/jx3p_blep.py` (numpy) | No maths library runs on it at play time, so every machine plays the same bits. Run the script again only to change it |
+| BLAMP at PULSE's clip | A BLAMP at every bend (the clip, a reset from the flat top), and **`kBlampCarry`**: a minimum-phase filter is late at the bottom, so a bend's correction does not die away; it leaves a constant (-2.23 samples times the bend). Kept as a state (the carry is that constant times the slope's distance from the wave's plain slope), never summed, so nothing drifts | Without it the pulse fails the alias bar (its mutant fails 33 of the aliasing checks) |
+| PULSE "DC-blocked" | **Its own mean taken off** (`kPulseMean`, 0.9): exact, no filter, nothing to settle at a note's start, nothing too small to hold | A DC-blocking filter starting at each key would thump: the DCOs do not free-run. A SYNCed or METAL pulse keeps whatever mean its resets give it |
+| PULSE is 10%: "duty cycle after the DC block" | Held two ways: **its harmonics** (2nd to 8th under 15 kHz, notes 36, 60, 84) are a 10% ramp's within 0.000 dB measured (0.05 allowed; 9% or 11% at least 1.24 dB off), and by time at notes 36 and 60 (twice the share under its middle: 9.88, 9.73) | A band-limited edge 46 samples a cycle long (note 84) reads 8.5 or 11.6 by counting samples, whichever line is drawn. The harmonics say what the wave is |
+| The saw's height "peak at notes 24, 60, 96 within 0.2 dB" | **Its fundamental** (2 / pi of its height) | A band-limited saw's peak is its ringing, not its height. Measured: 0.00 dB apart |
+| SOURCE MIX: "6.8 is 1:2, 7.6 is 1:3, within 0.3 dB", and "linear" | Straight, held to 0.05 dB; NAM's two readings held to 0.6 dB | A straight crossfade gives 1:2 at 6.67 and 1:3 at 7.5, so 6.8 is 0.53 dB over 1:2 and 7.6 0.47 over 1:3: the plan's 0.3 dB and its own straight line cannot both hold. NAM prints a dial to a tenth; 6.8 is a tenth and a third from 6.67 |
+| Each voice's noise seed "from the voice's number" | **From the count of keys**, as the start phases (batch 1) | One rule for every seed; allNotesOff puts the count back, so it is put back with it (`testFromTheTopWithBothDcos`) |
+| DCO-2's start phase | Its own, from the same count of keys hashed another way | The real counters run free and apart. With both at one phase the two DCOs at unison were always one saw (its mutant); apart, eight keys read 0.50 to 0.92 of the in-phase level |
+| METAL with DCO-2 on SQUARE: "resets the square's phase the same way" | Every DCO-2 wave is read from the reset ramp, the counter keeps time: a square starts low again at each reset | SELF, as planned |
+| ENV DEPTH | 10 is 24 semitones (`kDcoEnvSemitones`), straight in the dial, stepped on the tick | **SELF**: no source gives it |
+| The pitch "per tick, and per sample under GLIDE" | So; the key's period is worked out with one power of two a sample, and each DCO's count with one division | A glide works it out every sample: the moving-cutoff row was 0.78% with two powers and three divisions a DCO, 0.63 to 0.68 now |
+
+**A bug the mutants found** (fixed, tested): an edge or a bend that falls exactly on a sample's end
+was worked out to a hair past it and passed by, so the wave jumped raw. Its time is now held to the
+sample (`testAnEdgeOnTheSamplesEnd`).
+
+**The pulse after its mean is taken off swings from -1.9 to +0.1**, so at LEVEL 7 (where a full saw
+just meets the VCA's soft clip) its short part is bent by the clip. The clip's shape is a guess
+(batch 1); batch 3's filter will change the peaks anyway. For the owner: whether LEVEL 7 should
+leave a pulse unbent.
+
+**The top** (`testTheTopIsHeld`): at 21.6 kHz the tables' own band-limit leaves 0.011 of the
+fundamental (it was 0.064 with the polynomial BLEP); nothing folds back (0.000004).
+
+**Mutants (batch 2)**: 37 in the first round, 31 killed; the six survivors each got a test (the saw's
+direction, a wave turned under a held key, a fresh DCO owing nothing, DCO-2's own start phase, a
+freed voice's stale ENV, the 44.1 kHz clock) and one found the bug above. Last round: **38 made, 38
+killed**. One more (holding the edge's time to 1 before the compare) was equivalent to the clamp after
+it, and that line was taken out.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
 ## 7. Risks
 
 | Risk | What is done about it |
@@ -652,7 +694,7 @@ LFO DEPTH too (nothing reads it until batch 4).
 | **Most of the character is in figures nobody has published** (times, rates, Hz) | Each is one table with its guess named, its tests marked SELF. Batch 9 measures them. Until then the device says "speeds guessed" |
 | The SN figures cannot be checked here | **Done in batch 0**: every SN claim has a page, read through OCR text (section 0). No saw figure is printed, so the self-oscillation level stays SELF |
 | NAM may not be the ROM | Said on the device; a ROM dump, if one turns up, replaces them |
-| The polynomial BLEP may not reach 50 dB under 15 kHz | A table BLEP, 0.3% budgeted, measured in batch 2 |
+| The polynomial BLEP may not reach 50 dB under 15 kHz | **Batch 2: it did not (-35 dB).** Minimum-phase tables reach -86 dB; the whole of batch 2 costs 0.13% more than batch 1 at six notes |
 | The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3 |
 | The 10 ms steps may sound rough to anyone used to Twin | It is the real machine's. The tick is one constant |
 | 6 voices: chords of 7 or more, fast strums with long releases, PAIRED glides over a chord steal | The steal is a retrigger with no click (or a fade: the owner's call). A glide's pitch is not changed by a steal; the old note's sound is. The owner may pick 8 |

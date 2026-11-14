@@ -11,8 +11,9 @@
 // BUILT SO FAR (batch 1, the skeleton): the 34 settings and 8 macros with
 // their ranges, a start patch, six voices with the assigner and the steal,
 // what allNotesOff puts back, seeded start phases, the tick, the ADSR, the
-// sample-and-hold, the VCA with VELOCITY, and DCO-1's saw. Every other setting
-// is kept and read back, and does nothing yet.
+// sample-and-hold, the VCA with VELOCITY. Batch 2: both DCOs, every wave, TUNE,
+// FINE, SYNC, METAL, NOISE, SOURCE MIX, ENV on the DCOs (engine/src/jx3p/dco.hpp).
+// Every other setting is kept and read back, and does nothing yet.
 //
 // Every knob reads 0 to 10 on the PG-200; it is kept as 0..100, tenths of the
 // dial. A switch is 0, 1 (, 2, 3) in the order written beside it.
@@ -133,6 +134,7 @@ public:
     float voiceEnv(int voice) const;    // the envelope's level, as worked out on the last tick
     float voiceVca(int voice) const;    // the VCA's CV after the hold
     double voiceHz(int voice) const;    // DCO-1's frequency now
+    double voiceHz2(int voice) const;   // DCO-2's
     bool voiceHeld(int voice) const;
     int tailsRinging() const;           // voices handed over by allNotesOff still ringing out
 

@@ -144,7 +144,9 @@ static void testInTune() {
             j->noteOn(note, 1.f);
             const std::vector<float> out = play(*j, 48000 + 4800);
             const double want = keyHz(note) * (range == 0 ? 0.5 : range == 2 ? 2.0 : 1.0);
-            const double got = pitchOf(out, 4800, out.size());
+            // Over 3 kHz through a band-pass first: a band-limited saw's ringing crosses zero by itself
+            // there. (Not under: a band-pass at 14 Hz has not settled in a second.)
+            const double got = want < 3000.0 ? pitchOf(out, 4800, out.size()) : pitchOf(bandOf(out, counterHz(want)), 4800, out.size());
             worstWritten = std::fmax(worstWritten, std::fabs(cents(got, want)));
             worstCounter = std::fmax(worstCounter, std::fabs(cents(got, counterHz(want))));
             counterOff = std::fmax(counterOff, std::fabs(cents(counterHz(want), want)));
@@ -217,30 +219,17 @@ static void testThroughTheEngine() {
     CHECK(peakOf(out) > 0.05f && peakOf(out) < 1.f);
 }
 
-// THE TOP (SELF): a DCO is held under 0.45 of the sample rate (kHighestStep), where the saw's
-// two-sample correction still works. Key 127 at 4' (25.1 kHz written) plays at 21.6 kHz, not folded
-// down to 22.9 kHz as an unheld one would be.
+// THE TOP (SELF): a DCO is held under 0.45 of the sample rate (kHighestStep), where its corrections
+// still have room. Key 127 at 4' (25.1 kHz written) plays at 21.6 kHz, not folded down to 22.9 kHz as
+// an unheld one would be. (The corrections' own band-limit takes 21.6 kHz down: 0.011 is heard
+// there, measured 2026-11-14; the folded place 0.000004.)
 static void testTheTopIsHeld() {
     std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, 2}}));
     j->noteOn(127, 1.f);
     const std::vector<float> out = play(*j, 48000 + 4800);
     const double held = partAt(out.data() + 4800, 48000, 0.45 * 48000.0), folded = partAt(out.data() + 4800, 48000, 48000.0 - j->voiceHz(0));
-    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.05);
-}
-
-// ALIASING, A BASELINE FOR BATCH 2 (SELF: no figure for the real one; the plan's target is 50 dB
-// under 15 kHz, which this saw is far from): a held 1760 Hz saw (A6, 3409 divisions: exactly 1760),
-// all that is neither the fundamental nor a harmonic, added up, against the fundamental. Measured
-// 2026-11-14: -27.2 dB (the loudest fold-back -31.2 dB, at 23360 Hz); with the correction's sign
-// wrong, -13.2 (-23.0). Batch 2 replaces this saw and this test.
-static void testAliasBaseline() {
-    std::unique_ptr<Jx3p> j = synth(held());
-    j->noteOn(93, 1.f);
-    CHECK(j->voiceHz(0) == 1760.0);
-    const std::vector<float> out = play(*j, 4800 + 48000);
-    const Harmonics h = harmonicsIn(out.data() + 4800, 48000, 1760, partAt(out.data() + 4800, 48000, 1760.0));
-    if (failures || std::getenv("JX3P_PRINT")) std::printf("  alias baseline: loudest fold-back %.1f dB at %.0f Hz, the rest %.1f dB\n", h.alias, h.aliasHz, h.rest);
-    CHECK(h.rest < -22.0);
+    if (failures || std::getenv("JX3P_PRINT")) std::printf("  the top: %.4f at 21.6 kHz, %.6f at 22.9 kHz\n", held, folded);
+    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.01);
 }
 
 // ---- the voices -----------------------------------------------------------------------------------
@@ -577,7 +566,8 @@ static void testGlide() {
 
 // ---- the house rules ------------------------------------------------------------------------------
 
-// A phrase with every part built so far moving: keys, steals, glides, knobs, macros, VELOCITY,
+// A phrase with every part built so far moving: keys, steals, glides, knobs, macros, VELOCITY, the
+// DCOs (waves, cross mod, TUNE, FINE, MIX, ENV on them),
 // GATE, RANGE, allNotesOff. Each event at its sample.
 struct Event { long at; std::function<void(Jx3p&)> act; };
 static std::vector<Event> phrase(double seconds) {
@@ -589,14 +579,19 @@ static std::vector<Event> phrase(double seconds) {
     };
     const long end = static_cast<long>(seconds * 48000.0);
     for (long t = 0; t < end; t += 1200 + roll(9000)) {
-        const int note = 36 + roll(48), kind = roll(12);
+        const int note = 36 + roll(48), kind = roll(13);
         const float velocity = 0.2f + 0.08f * roll(11);
         const int a = roll(4), b = roll(101), c = roll(8), d = roll(11), e = roll(2), f = roll(3), g = roll(2), h = 40 + roll(61);
+        const int w1 = roll(3), w2 = roll(4), x = roll(3), tune = roll(101), mix = roll(101), depth = roll(101), sw = roll(4); // the DCOs (batch 2)
         if (kind < 6) ev.push_back({t, [=](Jx3p& j) { j.noteOn(note, velocity); }});
         else if (kind < 8) ev.push_back({t, [=](Jx3p& j) { j.noteOnFrom(note, velocity, note - 7, 0.15f); }});
         else if (kind == 8) ev.push_back({t, [=](Jx3p& j) { j.setSetting(Attack + a, b); }});
         else if (kind == 9) ev.push_back({t, [=](Jx3p& j) { j.setMacro(c, 0.1f * d); }});
         else if (kind == 10) ev.push_back({t, [=](Jx3p& j) { j.setSetting(VcaMode, e); j.setSetting(Dco1Range, f); j.setSetting(Velocity, g); j.setSetting(VcaLevel, h); }});
+        else if (kind == 11 && sw < 3) ev.push_back({t, [=](Jx3p& j) {
+            j.setSetting(Dco1Wave, w1); j.setSetting(Dco2Wave, w2); j.setSetting(Dco2CrossMod, x); j.setSetting(Dco2Tune, tune);
+            j.setSetting(SourceMix, mix); j.setSetting(DcoEnvDepth, depth); j.setSetting(Dco1Env, sw & 1); j.setSetting(Dco2Env, (sw + 1) & 1);
+            j.setSetting(DcoEnvPolarity, depth & 1); j.setSetting(Dco2Range, f); j.setSetting(Dco2Fine, mix); }});
         else ev.push_back({t, [](Jx3p& j) { j.allNotesOff(); }});
         const long off = t + 600 + roll(30000);
         ev.push_back({off, [=](Jx3p& j) { j.noteOff(note); }});
@@ -881,7 +876,7 @@ int main(int argc, char** argv) {
         {"testSettings", testSettings}, {"testAPresetKeepsTheTracksOwn", testAPresetKeepsTheTracksOwn}, {"testInTune", testInTune},
         {"testThroughTheEngine", testThroughTheEngine}, {"testVoices", testVoices}, {"testStealLetGoFirst", testStealLetGoFirst}, {"testSteal", testSteal},
         {"testRangeTurnedDuringANote", testRangeTurnedDuringANote}, {"testGateHeldAtLevelZero", testGateHeldAtLevelZero}, {"testNotANumber", testNotANumber},
-        {"testPlayFromTheTopWhileRinging", testPlayFromTheTopWhileRinging}, {"testTheTopIsHeld", testTheTopIsHeld}, {"testAliasBaseline", testAliasBaseline}, {"testTick", testTick},
+        {"testPlayFromTheTopWhileRinging", testPlayFromTheTopWhileRinging}, {"testTheTopIsHeld", testTheTopIsHeld}, {"testTick", testTick},
         {"testEnvelopeTimes", testEnvelopeTimes}, {"testAllAtZero", testAllAtZero}, {"testAKeyStartsOnItsSample", testAKeyStartsOnItsSample},
         {"testVca", testVca}, {"testVelocity", testVelocity}, {"testMacros", testMacros}, {"testGlide", testGlide}, {"testBlocks", testBlocks},
         {"testTwiceFromFresh", testTwiceFromFresh}, {"testPlayFromTheTop", testPlayFromTheTop}, {"testSilence", testSilence}, {"testSeededPhase", testSeededPhase},

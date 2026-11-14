@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "apotheca/slide.hpp"
+#include "jx3p/dco.hpp"
 #include "jx3p/env.hpp"
 
 namespace apotheca {
@@ -22,7 +23,7 @@ float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : 
 // what Twin gives, so a track swapped to it is not much louder or quieter (the start patch's note
 // measured 1.6 dB over Twin's first preset's, 2026-11-14).
 constexpr float kOutputGain = 0.3f;
-// The highest a DCO is let go: a little under half the sample rate (the saw's correction needs it).
+// The highest a DCO is let go: a little under half the sample rate (its corrections need room).
 constexpr double kHighestStep = 0.45;
 
 struct Preset {
@@ -96,9 +97,11 @@ struct Jx3p::State {
         Adsr env;
         Hold vca;
         int toTick = 0;       // samples to the voice's next tick (0: on the next sample)
-        double phase = 0.0;   // DCO-1, 0..1
-        double step = 0.0;    // DCO-1's phase step a sample
-        double hz = 0.0;
+        DcoPair dco;          // both DCOs, the cross mod and the noise (jx3p/dco.hpp)
+        double count1 = 0.0, count2 = 0.0; // DCO-1's and DCO-2's counts of the clock (kRoundToCounter; else their Hz)
+        double envSemis1 = 0.0, envSemis2 = 0.0; // what ENV DEPTH adds to each DCO's pitch, set on the tick
+        double over1 = 1.0, over2 = 1.0; // the key's frequency over each DCO's: RANGE, TUNE, FINE, ENV (set on the tick)
+        float mix = 0.f;      // SOURCE MIX, 0..1, read on the tick
         Slide slide;          // GLIDE: how far it still is from its own key, in semitones
         bool landing = false; // the glide came to its key on the last sample
         std::uint64_t startedAt = 0, silentSince = 0; // the sample clock, for the assigner
@@ -111,24 +114,48 @@ struct Jx3p::State {
     float holdK = 0.f;
     EnvTimes times;
     float levelGain = 1.f, clipFrom = 1.f;
+    double tune2 = 0.0;       // DCO-2's TUNE and FINE together, in semitones
+    double clockSteps = kCounterClockHz / 48000.0; // the counter's clock in steps a sample
     std::uint64_t clock = 0;  // samples since allNotesOff (or since made)
     std::uint32_t keys = 0;   // note-ons since allNotesOff
     Voice voices[kVoices];
     Voice tails[kTailVoices]; // let go by allNotesOff, ringing out beside the six (kTailVoices)
 
-    // DCO-1's frequency for a key (with a glide's offset), as the counter can make it.
-    double dcoHz(const Voice& v, double semitones) const {
-        double hz = 440.0 * std::exp2((v.note + semitones - 69.0) / 12.0) * rangeFactor(static_cast<int>(eff[Dco1Range]));
-        if (kRoundToCounter) {
-            const double divisions = std::floor(kCounterClockHz / hz + 0.5);
-            hz = kCounterClockHz / (divisions < 1.0 ? 1.0 : divisions);
-        }
-        return hz;
+    // What the tick sets of each DCO's pitch: RANGE, TUNE and FINE, and ENV, as the key's frequency
+    // over the DCO's (so a glide, which moves the key every sample, works out one power of two, not two).
+    void setTimes(Voice& v) {
+        v.over1 = 1.0 / (rangeFactor(static_cast<int>(eff[Dco1Range])) * std::exp2(v.envSemis1 / 12.0));
+        v.over2 = 1.0 / (rangeFactor(static_cast<int>(eff[Dco2Range])) * std::exp2((tune2 + v.envSemis2) / 12.0));
     }
+    // A DCO's step a sample for a period of `period` seconds wanted: as its counter can make it, the
+    // clock over a whole number of counts (kRoundToCounter), kept in `count`. One division, not three:
+    // a glide works this out every sample.
+    double stepOf(double period, double& count) const {
+        double step;
+        if (kRoundToCounter) {
+            count = std::floor(kCounterClockHz * period + 0.5);
+            if (count < 1.0) count = 1.0;
+            step = clockSteps / count;
+        } else {
+            count = 1.0 / period;
+            step = count / sampleRate;
+        }
+        return step > kHighestStep ? kHighestStep : step;
+    }
+    static double hzOf(double count) { return kRoundToCounter ? (count > 0.0 ? kCounterClockHz / count : 0.0) : count; }
+    // Both DCOs' pitch: the key, a glide's offset (per sample), and what the tick set.
     void setPitch(Voice& v, double semitones) {
-        v.hz = dcoHz(v, semitones);
-        v.step = v.hz / sampleRate;
-        if (v.step > kHighestStep) v.step = kHighestStep;
+        const double period = std::exp2((69.0 - v.note - semitones) / 12.0) / 440.0; // the key's
+        v.dco.one.dt = stepOf(period * v.over1, v.count1);
+        v.dco.two.dt = stepOf(period * v.over2, v.count2);
+    }
+    // The waves, the cross mod and the mix as the panel has them: read on the tick.
+    void readDcos(Voice& v, bool fresh) {
+        const int wave1 = static_cast<int>(eff[Dco1Wave]), wave2 = static_cast<int>(eff[Dco2Wave]);
+        if (fresh) v.dco.one.wave = wave1, v.dco.two.wave = wave2;
+        else v.dco.one.setWave(wave1), v.dco.two.setWave(wave2);
+        v.dco.cross = static_cast<int>(eff[Dco2CrossMod]);
+        v.mix = eff[SourceMix] / 100.f;
     }
     // Samples from now to where a key is taken: now, or the next 10 ms of the one loop (kKeysOnTheSample).
     int keyWait() const { return kKeysOnTheSample ? 0 : static_cast<int>((tickLength - clock % static_cast<std::uint64_t>(tickLength)) % static_cast<std::uint64_t>(tickLength)); }
@@ -136,6 +163,12 @@ struct Jx3p::State {
     // One tick of one voice: the CPU's loop. The envelope moves, the knobs are read, the CVs are written.
     void tick(Voice& v) {
         v.env.tick(times);
+        // ENV on the DCOs: stepped, as the real one writes the counters once a loop (SN p.6, step 6).
+        const double env = v.env.level * eff[DcoEnvDepth] / 100.0 * kDcoEnvSemitones * (eff[DcoEnvPolarity] >= 0.5f ? -1.0 : 1.0);
+        v.envSemis1 = eff[Dco1Env] >= 0.5f ? env : 0.0;
+        v.envSemis2 = eff[Dco2Env] >= 0.5f ? env : 0.0;
+        setTimes(v);
+        readDcos(v, false);
         const float opened = eff[VcaMode] >= 0.5f ? (v.held ? 1.f : 0.f) : v.env.level;
         v.vca.target = levelGain * opened * (eff[Velocity] >= 0.5f ? velocityGain(v.velocity) : 1.f);
         if (v.slide.semitones == 0.f) setPitch(v, 0.0);
@@ -168,6 +201,7 @@ void Jx3p::prepare(float sampleRate) {
     s.tickLength = static_cast<int>(std::lround(kTickSeconds * s.sampleRate));
     if (s.tickLength < 1) s.tickLength = 1;
     s.holdK = holdCoef(s.sampleRate);
+    s.clockSteps = kCounterClockHz / s.sampleRate;
     apply();
 }
 
@@ -184,6 +218,7 @@ void Jx3p::apply() {
     s.times.set(s.eff[Attack], s.eff[Decay], s.eff[Sustain], s.eff[Release]);
     s.levelGain = vcaGain(s.eff[VcaLevel]);
     s.clipFrom = vcaGain(kVcaClipDial);
+    s.tune2 = tuneSemitones(s.eff[Dco2Tune], kTuneStepped, kTuneSemitonesPerDial) + fineSemitones(s.eff[Dco2Fine]);
 }
 
 void Jx3p::selectPreset(int index) {
@@ -232,7 +267,13 @@ int Jx3p::noteOnVoice(int note, float velocity) {
         // (new at every key, so the voice's number would add nothing). The real counters run free,
         // so a note's phase there is as good as random; this gives the same spread, and the same
         // bits every time.
-        v.phase = static_cast<double>(mixBits(0x85EBCA6Bu * (s.keys + 1u)) >> 8) / 16777216.0;
+        const std::uint32_t seed = mixBits(0x85EBCA6Bu * (s.keys + 1u));
+        v.dco.one.start(static_cast<double>(seed >> 8) / 16777216.0);
+        v.dco.two.start(static_cast<double>(mixBits(seed ^ 0x27D4EB2Fu) >> 8) / 16777216.0); // its own counter, as free as DCO-1's
+        v.dco.noise.seed(mixBits(seed ^ 0x165667B1u));
+        v.envSemis1 = v.envSemis2 = 0.0;
+        s.setTimes(v);
+        s.readDcos(v, true);
         v.vca = Hold();
         v.env.stop();
     }
@@ -313,20 +354,9 @@ void Jx3p::State::renderVoice(Voice& v, float* out, int frames) {
             setPitch(v, 0.0); // the glide is over: on its own key from this sample, not from the next tick
             v.landing = false;
         }
-        // DCO-1's saw (batch 1: the plain two-sample BLEP, as Twin's; batch 2 builds the DCOs).
-        const double t = v.phase, dt = v.step;
-        float saw = static_cast<float>(2.0 * t - 1.0);
-        if (t < dt) {
-            const double x = t / dt;
-            saw -= static_cast<float>(x + x - x * x - 1.0);
-        } else if (t > 1.0 - dt) {
-            const double x = (t - 1.0) / dt;
-            saw -= static_cast<float>(x * x + x + x + 1.0);
-        }
-        v.phase += dt;
-        if (v.phase >= 1.0) v.phase -= 1.0;
+        const float source = v.dco.next(v.mix); // both DCOs, mixed (jx3p/dco.hpp)
         const float gain = v.vca.next(holdK);
-        out[i] += vcaClip(saw * gain, clipFrom);
+        out[i] += vcaClip(source * gain, clipFrom);
         if (!v.held && gain == 0.f && v.vca.target == 0.f && (v.env.idle() || eff[VcaMode] >= 0.5f)) {
             // Silent, and nothing to open it again: the voice is free. Nothing of a free voice
             // moves, so how long it stays free cannot change the sound.
@@ -358,7 +388,8 @@ void Jx3p::render(float* left, float* right, int frames) {
 int Jx3p::voiceNote(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].note : -1; }
 float Jx3p::voiceEnv(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].env.level : 0.f; }
 float Jx3p::voiceVca(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].vca.value : 0.f; }
-double Jx3p::voiceHz(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].hz : 0.0; }
+double Jx3p::voiceHz(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count1) : 0.0; }
+double Jx3p::voiceHz2(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count2) : 0.0; }
 bool Jx3p::voiceHeld(int voice) const { return voice >= 0 && voice < kVoices && state_->voices[voice].held; }
 int Jx3p::tailsRinging() const {
     int n = 0;

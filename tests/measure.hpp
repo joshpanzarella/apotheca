@@ -14,6 +14,10 @@
 //   pitchOf, pitchAsItGoes    the pitch reader, by upward crossings of zero
 //   largestJump, sineStep     "no click": the largest step between samples
 //   bandOf                    one band of a sound (half an octave about a pitch)
+//   partNear                  one frequency's size, through a window: right for
+//                             any frequency, not only one whose cycles fit whole
+//   asideOf                   the loudest part that is not a harmonic, under a
+//                             frequency: an oscillator's aliasing (JX-3P batch 2)
 //
 // Header only; no framework, no CHECK (each test program keeps its own).
 
@@ -24,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 // ---- checksums ------------------------------------------------------------------------------
@@ -143,6 +148,78 @@ inline Harmonics harmonicsIn(const float* out, std::size_t n, int hz, double amp
     const double rest = total - harmonic;
     h.rest = rest > 0.0 ? 10.0 * std::log10(rest / (0.5 * amp * amp)) : -600.0;
     return h;
+}
+
+// One frequency's size (a sine of 0.5 reads 0.5) through a Hann window, so it need not fit whole
+// cycles; anything 50 or more of its bins (rate / count) away leaks in at under -100 dB.
+inline double partNear(const float* v, std::size_t count, double hz, double rate = 48000.0) {
+    double re = 0.0, im = 0.0, sum = 0.0;
+    const double w = 2.0 * kPi * hz / rate;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double window = 0.5 - 0.5 * std::cos(2.0 * kPi * static_cast<double>(i) / static_cast<double>(count));
+        re += window * v[i] * std::cos(w * static_cast<double>(i));
+        im += window * v[i] * std::sin(w * static_cast<double>(i));
+        sum += window;
+    }
+    return 2.0 * std::sqrt(re * re + im * im) / sum;
+}
+
+// The size of each bin of a run of `count` samples (a power of two) through a four-term
+// Blackman-Harris window (its side lobes are 92 dB down), in bins of rate / count.
+inline std::vector<double> spectrumOf(const float* v, std::size_t count) {
+    std::vector<double> re(count), im(count, 0.0);
+    double mean = 0.0;
+    for (std::size_t i = 0; i < count; ++i) mean += v[i];
+    mean /= static_cast<double>(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double x = 2.0 * kPi * static_cast<double>(i) / static_cast<double>(count);
+        re[i] = (v[i] - mean) * (0.35875 - 0.48829 * std::cos(x) + 0.14128 * std::cos(2.0 * x) - 0.01168 * std::cos(3.0 * x));
+    }
+    for (std::size_t i = 1, j = 0; i < count; ++i) { // the bit-reversed order
+        std::size_t bit = count >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(re[i], re[j]), std::swap(im[i], im[j]);
+    }
+    for (std::size_t len = 2; len <= count; len <<= 1) {
+        const double a = -2.0 * kPi / static_cast<double>(len);
+        for (std::size_t i = 0; i < count; i += len)
+            for (std::size_t k = 0; k < len / 2; ++k) {
+                const double c = std::cos(a * static_cast<double>(k)), s = std::sin(a * static_cast<double>(k));
+                const std::size_t u = i + k, t = i + k + len / 2;
+                const double tr = re[t] * c - im[t] * s, ti = re[t] * s + im[t] * c;
+                re[t] = re[u] - tr, im[t] = im[u] - ti;
+                re[u] += tr, im[u] += ti;
+            }
+    }
+    std::vector<double> size(count / 2);
+    for (std::size_t i = 0; i < count / 2; ++i) size[i] = std::sqrt(re[i] * re[i] + im[i] * im[i]);
+    return size;
+}
+
+// AN OSCILLATOR'S ALIASING: the loudest part of `count` samples (a power of two) that is not a
+// harmonic of `hz` (more than 6 bins from every whole multiple of it) and lies between 20 Hz and
+// `below`, in dB against the part at `reference` (its fundamental, or another harmonic named).
+struct Aside {
+    double dB = -600.0;
+    double hz = 0.0;
+};
+inline Aside asideOf(const float* v, std::size_t count, double hz, double below, double reference, double rate = 48000.0) {
+    const std::vector<double> size = spectrumOf(v, count);
+    const double bin = rate / static_cast<double>(count);
+    double ref = 0.0;
+    for (std::size_t i = 0; i < size.size(); ++i)
+        if (std::fabs(static_cast<double>(i) * bin - reference) <= 3.0 * bin && size[i] > ref) ref = size[i];
+    Aside a;
+    for (std::size_t i = 0; i < size.size(); ++i) {
+        const double f = static_cast<double>(i) * bin;
+        if (f < 20.0 || f >= below) continue;
+        const double k = std::floor(f / hz + 0.5);
+        if (k >= 1.0 && std::fabs(f - k * hz) <= 6.0 * bin) continue;
+        const double level = dB(size[i] / ref);
+        if (level > a.dB) a.dB = level, a.hz = f;
+    }
+    return a;
 }
 
 // One band of a sound: what is within about half an octave of `hz` (a

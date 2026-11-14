@@ -65,7 +65,8 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 
 // The JX-3P (docs/plans/jx3p-plan.md, section 3): six notes, the most it plays. `how`:
 //   0  the patch as a player meets it (batch 7: A1 String I, chorus on; until then the start patch)
-//   1  the worst patch (batch 7: B12 Sync Sweep; until then the start patch with its envelope
+//   1  the worst patch (batch 7: B12 Sync Sweep; until then one like it: DCO-2's pulse synced to
+//      DCO-1's, a fifth up, the envelope sweeping DCO-2's pitch, both DCOs heard, and the envelope
 //      moving all the while: a slow attack, a decay, each key played again every half second)
 //   2  a moving cutoff: every note a glide all the while (and, from batch 4, the LFO on the cutoff),
 //      so whatever is worked out from the pitch is worked out every sample
@@ -76,6 +77,13 @@ static void jx3pRow(const char* name, int how) {
         synth->setSetting(jx3p::Attack, 40);
         synth->setSetting(jx3p::Decay, 60);
         synth->setSetting(jx3p::Sustain, 30);
+        synth->setSetting(jx3p::Dco1Wave, 1);
+        synth->setSetting(jx3p::Dco2Wave, 1);
+        synth->setSetting(jx3p::Dco2CrossMod, 1);
+        synth->setSetting(jx3p::Dco2Tune, 79);
+        synth->setSetting(jx3p::Dco2Env, 1);
+        synth->setSetting(jx3p::DcoEnvDepth, 60);
+        synth->setSetting(jx3p::SourceMix, 50);
     }
     std::vector<float> l(256), r(256);
     const int keys[6] = {48, 52, 55, 60, 64, 67};

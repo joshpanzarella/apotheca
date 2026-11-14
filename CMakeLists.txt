@@ -79,7 +79,12 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_test PRIVATE engine/src tests)
   add_test(NAME jx3p COMMAND jx3p_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p PROPERTIES TIMEOUT 120)
+  # The JX-3P's DCOs (plan batch 2, engine/src/jx3p/dco.hpp): aliasing, the DCO table.
+  add_executable(jx3p_dco_test tests/jx3p_dco_test.cpp)
+  target_link_libraries(jx3p_dco_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_dco_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_dco COMMAND jx3p_dco_test)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
