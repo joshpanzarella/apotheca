@@ -5805,6 +5805,53 @@ Rig* onPhazed() {
     return rig;
 }
 
+// A built-in sound picked after the macros were turned: the engine must rest the macros where the screen shows
+// them (the middle). It kept the old sound's knobs, and a song that wrapped from a scene with macro automation
+// into one without played the old sound's macros there (owner, 2026-11-14, "went back to a previous sound").
+// The song, through the Session, beside one whose knobs were never turned: the same to the sample, after the wrap.
+void testABuiltInPresetRestsTheMacrosWhereTheyShow() {
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod};
+    for (TrackKind kind : kinds) {
+        const auto song = [kind](bool turned) {
+            Rig* rig = new Rig;
+            Session& s = rig->app.session();
+            Project& p = rig->project();
+            s.addTrack(kind);
+            rig->frames(2);
+            s.setEffect(1, 0, EffectKind::Filter);
+            s.setEffectParam(1, 0, 0, 0.3f);
+            TrackData& synth = p.tracks[1];
+            synth.notes[0][0].notes[0] = NoteEvent{0, 48, 6.f, 0.f, 0.8f, 0, 0, 0, 0};
+            synth.notes[1][0].notes[0] = NoteEvent{8, 48, 16.f, 0.f, 0.8f, 0, 0, 0, 0}; // rings over the wrap
+            for (int m = 0; m < kSynthMacros; ++m)
+                for (int step = 0; step < 16; ++step) synth.automation[1][m][step] = 0.3f; // the second scene only
+            p.scene = 0;
+            p.track = 1;
+            s.applyProject();
+            rig->frames(2);
+            if (turned) {
+                for (int m = 0; m < kSynthMacros; ++m) s.setSynthMacro(1, m, m % 2 ? 0.95f : 0.05f);
+                rig->frames(2);
+            }
+            s.chooseSynthPreset(1, 1);
+            rig->frames(2);
+            CHECK(p.tracks[1].macro[0] == 0.5f && p.sceneCount() == 2);
+            s.togglePlay(true);
+            std::vector<float> out;
+            for (int b = 0; b < 48 * 6000 / 768; ++b) { // scene 1, scene 2 and scene 1 again, a frame at a time
+                const std::vector<float> got = rig->render(768);
+                out.insert(out.end(), got.begin(), got.end());
+                rig->frames(1);
+            }
+            delete rig;
+            return out;
+        };
+        const std::vector<float> plain = song(false), turned = song(true);
+        CHECK(Rig::peak(plain, 32 * 6000) > 0.005f);
+        CHECK(plain == turned);
+    }
+}
+
 void testPresetsAndFolders() {
     std::unique_ptr<Rig> rig(onPhazed());
     SynthScreen& screen = rig->app.phazed();
@@ -8293,6 +8340,7 @@ int main(int argc, char** argv) {
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();
     testPresetsAndFolders();
+    testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();

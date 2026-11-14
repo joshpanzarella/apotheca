@@ -1149,7 +1149,16 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOff(c.a);
         break;
     case Command::SelectPreset:
-        if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->selectPreset(c.a);
+        if (validTrack(c.track) && tracks_[c.track].synth) {
+            Track& track = tracks_[c.track];
+            track.synth->selectPreset(c.a);
+            // The preset puts its macros back to the middle, so that is where they rest now. Left as
+            // they were, a scene with nothing written on a macro's lane took the OLD sound's knob back.
+            for (int m = 0; m < 8; ++m) {
+                track.autoBase[m] = track.autoNow[m] = track.autoFrom[m] = track.autoTo[m] = 0.5f;
+                track.autoGliding[m] = false;
+            }
+        }
         break;
     case Command::SetMacro:
         if (validTrack(c.track) && tracks_[c.track].synth) {
