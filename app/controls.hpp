@@ -34,25 +34,6 @@ struct ControlMap {
     bool parse(const std::string& text); // false if it is not one, or has no way to move or act
 };
 
-// A way back into the setup that needs no button to be understood: in the
-// first few seconds after starting, hold ANY button down for two seconds.
-// It reads what the device sends raw, so it works when the learned controls
-// are wrong in every way.
-class RelearnHold {
-public:
-    static constexpr Uint32 kWindowMs = 5000, kHoldMs = 2000;
-    void handle(const SDL_Event& event);
-    // True once, when a press that began in the window has lasted two seconds.
-    bool update(Uint32 nowMs);
-    bool offering() const { return began_ == 0 || now_ - began_ < kWindowMs || holding_; } // show the notice
-    float part() const { return holding_ ? static_cast<float>(now_ - since_) / kHoldMs : 0.f; }
-
-private:
-    Uint32 began_ = 0, now_ = 0, since_ = 0;
-    bool holding_ = false, wants_ = false, done_ = false;
-    int kind_ = 0, index_ = 0; // what is being held, so only ITS letting go ends the hold
-};
-
 // Asks for each control in turn and builds a ControlMap from the answers.
 class ControlLearner {
 public:

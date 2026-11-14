@@ -10,7 +10,7 @@
 //
 // The song is bounced from its first scene to its last, each as many times
 // as it plays, and then for as long as echoes and tails take to die away
-// (BounceTail, session.hpp: until there has been no sound for four seconds,
+// (BounceTail, session.hpp: until there has been no sound for seven seconds,
 // and never past the cap). Muted tracks are left out of a song bounce, as
 // they are when it plays. The tracks of an EACH TRACK bounce are all made as
 // long as the longest of them, so they line up.
@@ -148,7 +148,7 @@ long long songFrames(const Project& project, float sampleRate) {
 
 // The cap is for what is broken and for effects in a row, not for a long tail: it is past the longest any one delay or reverb takes.
 static_assert(kBounceCapSeconds > kLongestTailSeconds, "a bounce's cap must be longer than the longest tail a bus can hold");
-static_assert(kBounceQuietSeconds > 8.f * 15.f / kMinTempo, "the quiet that ends a bounce must be longer than the longest gap between two echoes");
+static_assert(kBounceQuietSeconds > kLongestEchoGapSeconds + 0.5f, "the quiet that ends a bounce must be longer than the longest gap between two echoes");
 
 BounceTail::BounceTail(float sampleRate, float capSeconds) {
     const double rate = sampleRate > 0.f ? sampleRate : 48000.0;
@@ -267,7 +267,7 @@ bool Session::startBounce(Bounce what) {
                 job->progress.store((static_cast<float>(n) + static_cast<float>(at) / static_cast<float>(body)) / static_cast<float>(stems.size()));
             }
             // The song's last sample has gone by: stop, and let the tails ring for as long as they do.
-            // What is not yet known to belong in the file waits in `held` (four seconds of it at most).
+            // What is not yet known to belong in the file waits in `held` (seven seconds of it at most).
             c.type = Command::Stop;
             engine->send(c);
             BounceTail tail(rate, job->cap);

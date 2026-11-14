@@ -405,15 +405,6 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
     gHintsOver = over > 0.f ? over : 0.f;
 }
 
-void relearnOffer(SDL_Renderer* r, const Fonts& chosen, float part) {
-    const Fonts& fonts = chosen.fixed(); // a tight row: its words run the screen's width at LARGE
-    const int y = kScreenH - kHintsH;
-    fill(r, 0, y, kScreenW, kHintsH, kPanel2);
-    fill(r, 0, y, static_cast<int>(kScreenW * part), 3, kBrass);
-    fonts.small.drawCentered(r, kScreenW / 2.f, y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f,
-                             "BUTTONS NOT WORKING? HOLD ANY BUTTON FOR 2 SECONDS NOW TO SET THEM UP AGAIN", kBrass);
-}
-
 float hintDiceEndX(const Fonts& chosen, const char* dice) {
     const Fonts& fonts = chosen.fixed(); // the bar's own lettering, always LARGE
     return std::floor(hintsEnd(fonts) - kDie - 5.f - hintChipWidth(fonts, dice)); // (short of RESTART TO UPDATE when it is there)

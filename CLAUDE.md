@@ -106,6 +106,9 @@ Where effects are, in the engine:
 | `engine/src/fx/glide.hpp` | what the newer effects share: a setting that slides (`Glide`, the one such helper), a delay read between samples, the going-to-sleep rule |
 | `engine/src/fx/halfband.hpp` | twice the sample rate and back, for an effect that bends the wave (SATURATE) |
 | `engine/src/fx/svf.hpp` | what the newer filters share (COMB, VOWEL, EQ): the state-variable filter, the TICK, `Slide`, `Gentle` |
+| `engine/src/fx/mod.hpp` | what MOD's newer types share (FLANGER, ENSEMBLE, PHASER, TREMOLO): CHORUS's RATE scale, a signed amount, a sine from a place in a turn, a delay line read between samples, the 4 s rest rule |
+| `engine/src/fx/echo.hpp` | what DELAY's newer types share (DUB, REVERSE, STUTTER): TAPE's eight TIMEs, a crossfade's curve, the 4 s rest |
+| `engine/src/fx/tank.hpp` | what REVERB's newer types share (BLOOM, SHIMMER): one tank of eight lines mixed eight into eight, DECAY a real time per line, PLATE's TONE, the sway; BLOOM's 64-tap swell and SHIMMER's octave shifter |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
 | `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
@@ -207,13 +210,13 @@ effect in those two groups and fails one that does not.
   one for another (`effectAt` / `effectPlace` / `effectFromWord`).
 - **A family is only how the list is shown** (owner, 2026-11-12: "TAPE should
   just be one of the delays"; 2026-11-13: seven families). The player picks
-  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS),
-  DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL, SPRING, PLATE), LEVEL (COMP,
+  from FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE, FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO),
+  DELAY (CLEAN, TAPE, PING, DUB, REVERSE, STUTTER), REVERB (ROOM, HALL, SPRING, PLATE, BLOOM, SHIMMER), LEVEL (COMP,
   DUCK, LIMITER, SNAP), in that order (`EffectFamily`; the old groups, DIRT and MOVING, are
   gone). Underneath each type is the `EffectKind` it always was, with its
   number and its word, and `info.name` is still its own ("TAPE": bench and
   the tests use it). Fifteen more types were planned (effects-plan.md, "Seven
-  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`). The screen asks `effectFamily`,
+  families"); each is a row. COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`); FLANGER, ENSEMBLE, PHASER and TREMOLO, DUB, REVERSE and STUTTER, BLOOM and SHIMMER (branch `newfx2`). The screen asks `effectFamily`,
   `effectTypeName` (what the type is called: CLEAN, FILTER), `effectTypeShown`
   (the same, but "" where it is the family's own word: a line says FILTER,
   not FILTER FILTER, and DRIVE, not DRIVE DRIVE), `effectTypes` /
@@ -275,6 +278,17 @@ effect in those two groups and fails one that does not.
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
   `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+- **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
+  and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
+  the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
+  left (owner's report, 2026-11-14). That is the design; whether an unwritten scene should HOLD the last
+  value instead is the owner's call, not made. **Whatever changes a knob in the engine sets its rest
+  too**: `SetMacro`, `SetEffectParam`, `SetSend`, and `SelectPreset`, which puts all eight macros' rest
+  at the middle as the synth does (it left the old sound's knobs as the rest, and the song played the
+  old sound's macros after every wrap into a scene with none written: `engine_test`
+  `testAPresetPutsTheMacrosRestBack`). The app sends the macros after a built-in preset too
+  (`chooseSynthPreset`), as `sendSong` does: the engine is told the project's knobs, never left to agree
+  by itself (`app_test` `testABuiltInPresetRestsTheMacrosWhereTheyShow`).
 - **A tempo change keeps every place in the step** (`SetTempo`): what is left
   of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
   waiting are all scaled by the same amount, so the arpeggio stays on the beat.
@@ -324,7 +338,7 @@ effect in those two groups and fails one that does not.
     three; do not move the thrown copy after the slots.
   - **A bounce ends the song with Stop, and Stop shuts a thrown note's send**
     but not a thrown drum hit, which rings out into its bus. The tail after
-    a last-step throw is kept by the bounce's own rule (four seconds of
+    a last-step throw is kept by the bounce's own rule (seven seconds of
     quiet); `throwapp_test` bounces a hit, a note and a howling TAPE there.
 - **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
   why a song with no sends is the same to the last bit as before there were
@@ -554,6 +568,48 @@ effect in those two groups and fails one that does not.
   meant for the master, where everything is late alike. A swap into or out of
   it lays the sine over itself 3 ms apart for the fade (2.10 of a step,
   allowed 2.3 in `testSwapFade`).
+- **An effect with a wave that runs by itself sleeps by the rest rule** (RING,
+  WEAR, and MOD's four: `kModRestSeconds`, 4 s of nothing, AND its memory
+  exact zeros). FLANGER's, ENSEMBLE's and PHASER's sweeps and TREMOLO's wave
+  start again from their start when they wake. **FLANGER's reach (DEPTH,
+  narrowed above 2 Hz) moves at most its whole way a second, and the sweep
+  goes only as fast as that reach allows** (`reach_` x Hz <= 2): with the
+  narrowing worked out at once, RATE thrown from slow to 8 Hz bent the pitch
+  five semitones for 25 ms as the sweep closed up (review, 2026-11-14). **TREMOLO is in time, not on
+  the beat**: an effect is told the tempo, not where the bar is, so its wave
+  starts where the first sound after a rest is.
+- **DELAY's newer types (DUB, REVERSE, STUTTER) keep the TICK and count
+  time in samples** (`fx/echo.hpp`). **DUB goes to 150% and has its own way
+  down** (TAPE's rule: left alone 30 s, a FEEDBACK over 85% eases to 85%,
+  `dubTireOf`; 85% or under is never touched, to the bit): its loop is a band
+  (Q 0.7) at TONE, so its howl is a roar about TONE, one echo for both sides.
+  **REVERSE plays each window of TIME backwards through the next**; the sound
+  that wakes it is put in the middle of a window, so THAT hit's backwards echo
+  peaks exactly one TIME after it (`T - 1` for an even T); a later hit comes
+  back 0 to 2 TIMEs after it, by where it fell in its window. **Its longest
+  gap is two windows** (6 s at 1/2 and 40 BPM: `kLongestEchoGapSeconds` in
+  engine.hpp), so a bounce's quiet is 7 s (`kBounceQuietSeconds`; it was 4 and
+  cut REVERSE's last echo off) and a bus's rest 10. Its windows fade 4 ms
+  at each edge; TIME is taken at a window's start. **STUTTER's splices END on
+  a slice's edge** (into its start through the 4 ms before it, kept in a
+  ring), so a hit's attack is heard whole every repeat; **its slice edges are
+  the whole sample at or before the exact edge, counted from waking**, never
+  a sum of rounded slices (those drifted off the steps: at 133 BPM the
+  offbeat was caught from 9.7 s on); its dice roll a place
+  (REPEATS slices) by its number since waking (`stutterRoll`); on ECHO it gives
+  back only the repeats. A slot's output there is `in * (1 - mix * a) + mix *
+  rep`, never `in + mix * (rep - in)`: that one is not the slice to the bit.
+- **REVERB's newer types (BLOOM, SHIMMER) share `fx/tank.hpp`** and keep the
+  TICK; nothing under kQuiet goes on a line, so a woken one is fresh to the
+  bit. **BLOOM sleeps 5.5 s after its tail** (its swell's 4 s ring must be all
+  zeros). BLOOM turned moves its taps at most half a sample a sample (0.05 s
+  to 4 s takes 8 s; the swell bends down an octave at most on the way).
+  **SHIMMER's way round never gains**: what goes up an octave is mixed with
+  what stays at equal power, the two grains' lost quarter is given back, its
+  wait in the shifter is paid for in DECAY, and the shifter takes nothing
+  under 40 Hz (an octave of a steady offset is itself) or over 7 kHz (with the tank's damping, a steady 14 or 15 kHz folds back 42 dB under itself; `testShimmer` holds it under 30). The
+  octaves climb out past 7 kHz, so at SHIMMER full a 20 s tail is 0.58 as long
+  (tested). A ceiling of 64 on a line is a guard only.
 - **A per-sample loop works on locals** (WEAR's `stretch`: up to the tick's
   end, everything the samples change copied in, worked on, copied back).
   Written straight on the effect's own numbers WEAR cost 0.40% of a core; the
@@ -624,8 +680,11 @@ effect in those two groups and fails one that does not.
     holds the fifteen planned types to it at every size.
   - **The heading's TYPE row shows as many types as fit** about the one the
     slot is, "..." (`kTypeMore`) for the rest (`typesInView`, in the room the
-    row keeps for the LEFT / RIGHT key held or not). Today's all fit; six
-    planned DELAYs at LARGE do not. A family of one shows its type all the
+    row keeps for the LEFT / RIGHT key held or not). **Which are in view is
+    LARGE's at every size** (`typeRowView`): MOD's five do not all fit at
+    LARGE, and SMALL showing more was other words (`textsize` fails that);
+    drawn at the size chosen where they fit it, else held at LARGE, its row
+    with it (XL). A family of one shows its type all the
     same where it is not the family's word (MOD: TYPE CHORUS), with no key.
   - **L1 / R1 is the track before / after** (owner, 2026-11-14: a send on
     another track cost five presses). `FxScreen::stepTrack`: it stops at the
@@ -655,7 +714,7 @@ effect in those two groups and fails one that does not.
     at 2.9 REVERB SPRING read as one word (`app_test` counts the empty
     columns). A pair too long even with both small at LARGE is drawn as its
     type alone, in the family's lettering (`typeAlone`: DRIVE SATURATE is 4
-    pixels over, and the line says SATURATE: the owner is content with that, 2026-11-14). The tests ask the same
+    pixels over, and the line says SATURATE: the owner is content with that, 2026-11-14). A pair that would end inside the 3-pixel clearance before the mark draws its family small too (REVERB BLOOM, 1.4 in; before batch c3 only one past the mark did). REVERB SHIMMER is drawn as SHIMMER alone, as SATURATE. The tests ask the same
     function. A new type's name is checked there at every size.
   - **The page goes down to `kPageBottom`** (449: 7 above the hints bar, as
     its top is 7 under the top bar; owner, 2026-11-13: it stopped 40 short).
@@ -914,9 +973,9 @@ effect in those two groups and fails one that does not.
     at every size: the top bar (and the tempo's box), the hints bar and
     `hintsUnder` (inside `ui.cpp`: hand them the set you were given), the
     strip under the drum grid and under the piano roll (`tight` in both),
-    anything written over a little picture (a cell's bar count on SONG, a
+    anything written over a little picture (a
     recording's seconds in the list), the heads of narrow SONG columns, the
-    controls setup, the offer at the start (`ui::relearnOffer`). The tests that read a strip or a bar off the screen
+    controls setup. The tests that read a strip or a bar off the screen
     draw at LARGE and hold at every size for that reason.
   - **Everything else follows the setting, and a new text is checked at XL.**
     Where it would not fit its room at XL it is drawn with
@@ -1220,7 +1279,8 @@ effect in those two groups and fails one that does not.
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:
   it acts on letting go, as on a cell, and **only if no other button was
-  pressed while A was held** (`mixTurned_`); while A is held on a head every
+  pressed while A was held** (`mixTurned_`) **and it was let go before the card came up**
+  (`kMixCardMs`, 300 ms: `mixShown_`; owner, 2026-11-14: a look at the level opened the keyboard); while A is held on a head every
   other button but START does nothing (Y there muted the track under the
   card). **A pressed while B's delete is filling calls the delete off**, on a
   head and on a cell (`update()`), and is then no tap. `TrackData::mixDb` (whole dB from the
@@ -1369,6 +1429,12 @@ effect in those two groups and fails one that does not.
 | ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.66 to 0.67% (0.32 at twice the rate) / 0.20 to 0.22% / 0.04% (0.06% in one run); 0.04% |
 | WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
 | ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
+| FLANGER / ENSEMBLE / PHASER / TREMOLO (2026-11-14, four runs: DRIVE 0.12%, HALL 0.15%, CHORUS 0.15% in all) | 0.07% / 0.16 to 0.17% / 0.09 to 0.11% / 0.07% (0.11% in one run) |
+| ...FLANGER's, ENSEMBLE's and PHASER's DEPTH turned all the while; TREMOLO at RANDOM | 0.07% / 0.16 to 0.17% / 0.09 to 0.11%; 0.06% |
+| DUB / REVERSE / STUTTER (2026-11-14, three runs: DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in all) | 0.05% / 0.03% / 0.03 to 0.04% |
+| ...DUB howling (FEEDBACK 150%) or its TONE turned all the while; REVERSE at FEEDBACK 100%; STUTTER at CHANCE 100% | 0.05 to 0.07% / 0.03% / 0.04% |
+| BLOOM / SHIMMER (2026-11-14, three runs: DRIVE 0.12%, HALL 0.15%, PLATE 0.14 to 0.15% in all; on locals, the sway's weights once a tick: they were 0.74% / 0.56%) | 0.55 to 0.56% / 0.35% |
+| ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
@@ -1387,8 +1453,11 @@ there is a change to the sound, and needs the owner's ears.
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`).
-2. LFO and random stepper per track.
+1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
+2. Twin Analog becomes a JX-3P clone (`docs/plans/jx3p-plan.md`; branch `jx3p`, engine batches under way).
+3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
+4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
+5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,

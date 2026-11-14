@@ -54,12 +54,9 @@ device that has none or keeps MENU for itself. The answers are kept in
 `controls.txt` in the `apotheca` folder.
 
 **To set them up again** (another handheld, or a button learned wrongly),
-any of three ways:
+either of two ways:
 
 - **SETUP screen, CONTROLS row:** hold A for a second.
-- **Just after Apotheca starts,** hold any button for two seconds. A brass
-  line at the bottom of the screen says so for the first five seconds. This
-  reads the buttons raw, so it works even when none of them is understood.
 - Delete `controls.txt`.
 
 The setup learns triggers that rest at one end of their travel (many L2 / R2
@@ -477,11 +474,12 @@ carry on (even play) while it works, and it does not have to keep up:
 than the handheld can play live.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
-been no sound for four seconds, and the file ends half a second after the last
+been no sound for seven seconds, and the file ends half a second after the last
 sound. "Sound" is anything a 16-bit file can hold (90 dB under full). So a
 dry song ends just after its last drum has rung out, and a long HALL or a
 TAPE with its FEEDBACK up is all there, however long it takes. Echoes far
-apart (a half note at 40 BPM is three seconds) count as one tail.
+apart (a half note at 40 BPM is three seconds; a REVERSE echo there can come
+six seconds after its hit) count as one tail.
 
 There is a cap: **a tail is never longer than eight minutes**. One that would
 be is faded out over its last second. No one delay or reverb rings that
@@ -617,7 +615,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a tap: let go without turning anything) types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
@@ -667,7 +665,7 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - **The scene lasts as long as its longest cell.** A shorter cell goes round
   under it: a one-bar drum loop plays four times under a four-bar part.
 - A shorter cell is drawn again for each time it goes round, a little dimmer,
-  with a thin line where it starts over. A long cell shows its length in the corner.
+  with a thin line where it starts over.
 - **The repeat count is whole passes of the scene.** A four-bar scene at x2
   is eight bars.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end

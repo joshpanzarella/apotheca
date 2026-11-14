@@ -59,7 +59,9 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     const int filled = static_cast<int>(std::round((kNameW - 2) * trk().laneLevel[lane_]));
     fill(r, kNameX + 1, kWaveY + 1, filled, kWaveH - 2, onName && shaping_ ? faded(kBrass, 110) : kPanel);
     if (onName) outline(r, kNameX - 1, kWaveY - 1, kNameW + 2, kWaveH + 2, cursorColor, 2);
-    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 12 ? fonts.medium : fonts.small).draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
+    // Medium if it fits both at the size chosen and at LARGE, else small: so a smaller size never draws it bigger than
+    // LARGE does (it did at MEDIUM once MEDIUM was made smaller: the name fitted there in medium, at LARGE it did not).
+    (fonts.medium.width(laneLabel(lane_)) <= kNameW - 12 && fonts.fixed().medium.width(laneLabel(lane_)) <= kNameW - 12 ? fonts.medium : fonts.small).draw(r, 15.f, kWaveY + 10.f, laneLabel(lane_), kTeal);
     fonts.small.draw(r, 15.f, kWaveY + 44.f, "EACH HIT", kDim);
     fonts.small.draw(r, 15.f, kWaveY + 60.f, "PLAYS", kDim);
     const char* plays = trk().laneOneSlice[lane_] ? "ONE SLICE" : "RUNS ON";

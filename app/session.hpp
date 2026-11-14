@@ -31,16 +31,17 @@ long long songFrames(const Project& project, float sampleRate);
 //   - Sound is anything at or over kBounceFloor: one step of a 16-bit file,
 //     90 dB under full. Less than that is not in the file anyway.
 //   - It is over when there has been none for kBounceQuietSeconds. That must
-//     stay longer than the longest gap between two echoes (3 seconds: half a
-//     bar at 40 BPM, the longest DELAY and TAPE go), or a sparse echo would
-//     be taken for the end.
+//     stay longer than the longest gap between two echoes
+//     (kLongestEchoGapSeconds, 6 seconds: REVERSE at a half note and 40 BPM
+//     gives a hit back two windows later; DELAY and TAPE wait 3 at most), or a
+//     sparse echo would be taken for the end. It was 4 until REVERSE came.
 //   - The file ends kBounceAfterSeconds after the last sound.
 //   - A tail never runs past kBounceCapSeconds: the last kBounceFadeSeconds
 //     before the cap are faded out, so it is not a click. The cap is longer
 //     than any delay or reverb takes to die away at any setting
 //     (kLongestTailSeconds in the engine: effects_test measures it).
 constexpr float kBounceFloor = 3.1e-5f;
-constexpr float kBounceQuietSeconds = 4.f;
+constexpr float kBounceQuietSeconds = 7.f;
 constexpr float kBounceAfterSeconds = 0.5f;
 constexpr float kBounceCapSeconds = 480.f;
 constexpr float kBounceFadeSeconds = 1.f;

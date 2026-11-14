@@ -815,6 +815,7 @@ int main(int argc, char** argv) {
             tapKey(SDLK_UP); // onto its head
         }
         pushKey(SDLK_x, true); // A, held
+        app.song().showMixCardForStill();
     } else if (std::strcmp(view, "song-deleting") == 0) {
         // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
         app.session().view = View::Song;
@@ -1012,7 +1013,6 @@ int main(int argc, char** argv) {
 
     int rawLogged = 0;
     // Start the controls setup again, whatever state the controls are in.
-    RelearnHold relearnHold;
     const auto learnAgain = [&](const char* why) {
         std::printf("controls: setting up again (%s)\n", why);
         if (pad) SDL_GameControllerClose(pad), pad = nullptr;
@@ -1040,7 +1040,6 @@ int main(int argc, char** argv) {
                 app.changeVolume(event.key.keysym.sym == SDLK_VOLUMEUP ? 0.1f : -0.1f);
                 continue;
             }
-            if (mapped && !learning) relearnHold.handle(event);
             if (learning) {
                 // The setup has the controls to itself until it is done.
                 const std::string before = learner.saw();
@@ -1069,7 +1068,6 @@ int main(int argc, char** argv) {
         }
         if (!learning) app.update(input, SDL_GetTicks());
         if (!learning && app.settings().takeRelearn()) learnAgain("asked for on the SETUP screen");
-        if (!learning && mapped && relearnHold.update(SDL_GetTicks())) learnAgain("a button was held at the start");
         // Three seconds in and still going: this start worked. (After an
         // update, that is what tells the launcher to keep the new program.)
         if (!startedFine && SDL_GetTicks() - start > 3000) {
@@ -1098,9 +1096,6 @@ int main(int argc, char** argv) {
         ui::useTheme(app.session().theme()); // (App::draw does the same; the setup draws without it)
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
         else app.draw(renderer, fonts);
-        if (!learning && mapped && !shot && relearnHold.offering()) {
-            ui::relearnOffer(renderer, fonts, relearnHold.part()); // a few seconds at the start: the way back into the setup
-        }
         if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
             // The same moment drawn once at each text size, and what each drew written down:

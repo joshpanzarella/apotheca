@@ -77,7 +77,7 @@ void SongScreen::mixStep(Button direction) {
 }
 
 void SongScreen::moveCursorTo(int scene, int column) {
-    onHead_ = onMaster_ = false;
+    onHead_ = onMaster_ = addFromHeads_ = false;
     scene_ = scene < 0 ? 0 : (scene >= kMaxScenes ? kMaxScenes - 1 : scene);
     column_ = column < kRepeatColumn ? kRepeatColumn : (column > lastColumn() ? lastColumn() : column);
     if (scene_ < top_) top_ = scene_;
@@ -108,7 +108,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     // MASTER, the head at the right-hand end: back left to + TRACK, or the last track's head.
     if (onMaster_) {
         if (direction == Button::Left) {
-            if (addColumn() >= 0) moveCursorTo(scene_, addColumn());
+            if (addColumn() >= 0) moveCursorTo(scene_, addColumn()), addFromHeads_ = true;
             else {
                 onMaster_ = false;
                 onHead_ = true;
@@ -128,7 +128,7 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
         }
         if (direction == Button::Right) {
             if (column_ + 1 < project_.trackCount()) ++column_;
-            else if (addColumn() >= 0) moveCursorTo(scene_, addColumn());
+            else if (addColumn() >= 0) moveCursorTo(scene_, addColumn()), addFromHeads_ = true;
             else moveToMaster(); // twelve tracks: no + TRACK between
         }
         return;
@@ -136,6 +136,14 @@ void SongScreen::moveCursor(Button direction, bool pressed) {
     // Right of + TRACK (drawn at the heads' height) is MASTER.
     if (direction == Button::Right && column_ == addColumn() && !copying_) {
         moveToMaster();
+        return;
+    }
+    // Left of + TRACK, come to from the heads (MASTER or the last head): back along the heads, not down into
+    // the last track's cell (owner, 2026-11-14). Come to from a cell, left goes back to that cell's row.
+    if (direction == Button::Left && column_ == addColumn() && addFromHeads_ && !copying_ && project_.trackCount() > 0) {
+        onHead_ = true;
+        column_ = project_.trackCount() - 1;
+        addFromHeads_ = false;
         return;
     }
     // Only by a press of the D-pad: the stick, or a held D-pad, running up the scenes stops at the top one.
@@ -325,8 +333,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
             mixing_ = true;
             mixTurned_ = trackHold_ && input.held(Button::B); // A pressed while B was deleting the track calls the delete off (update()), and is no tap
             mixSavedDb_ = mixSavedPan_ = 0.f;
+            mixShown_ = mixTimed_ = false;
         } else {
-            if (mixing_ && !mixTurned_ && onHead_) {
+            if (mixing_ && !mixTurned_ && !mixShown_ && onHead_) { // a tap: let go before the card came up
                 project_.track = column_;
                 session_.wantTrackName = true;
                 session_.view = View::Settings;
@@ -459,6 +468,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
     if (!input.held(Button::A) || (!onHead_ && !onMaster_) || listing_ || choosing_) mixing_ = false;
+    if (mixing_ && !mixTimed_) mixTimed_ = true, mixSince_ = nowMs; // (the hold's clock starts on the frame after A)
+    if (mixing_ && mixTimed_ && nowMs - mixSince_ >= kMixCardMs) mixShown_ = true;
     if (!input.held(Button::R1)) copying_ = false;
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
@@ -565,7 +576,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     topBar(r, fonts, View::Song, text, project_);
 
     const int colW = columnWidth(tracks);
-    const bool held = holding_ || copying_ || mixing_;
+    const bool held = holding_ || copying_ || mixCardUp();
     const SDL_Color cursorColor = held ? kBrass : kTeal;
     const int playScene = session_.playScene(), playStep = session_.engine.playStep();
 
@@ -716,10 +727,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                     }
                 }
             }
-            if (cellBars > 1) { // how long it is, in the corner
-                std::snprintf(text, sizeof text, "%d", cellBars);
-                fonts.fixed().small.drawRight(r, x + colW - 4.f, y + 3.f, text, kDim); // (over the cell's little picture, to the pixel: always at LARGE)
-            }
+            // (No bar count in the corner: it hid the notes, and the bar lines say it. Owner, 2026-11-14.)
             // Where the cell has got to: a short one goes round under a long scene.
             if (playingHere && playStep >= 0) {
                 const int at = session_.engine.playBar() * kSteps + playStep;
@@ -739,7 +747,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- the mixer card: A held on a head --------------------------------------------
     // Under the head, over the top scene: the level and the pan, in words and as two bars. In the
     // fixed lettering (it sits on the grid's rows, to the pixel), brass where it is not the usual.
-    if (mixing_ && !listing_ && !choosing_) {
+    if (mixCardUp() && !listing_ && !choosing_) {
         const Place card = mixCard();
         const Fonts& tight = fonts.fixed();
         const int track = mixTrack();
@@ -902,7 +910,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (trackHoldPart_ > 0.f) {
         // B held on a track, its head filling: what is coming, said where it is confirmed.
         hint("HOLD B", kTrackDeletingWords);
-    } else if (mixing_) {
+    } else if (mixCardUp()) {
         hint("UP / DOWN", "level");
         hint("LEFT / RIGHT", "pan");
         hint("B", "back to 0 DB, middle");
