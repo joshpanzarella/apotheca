@@ -4596,6 +4596,7 @@ void testTheFxScreenAsDrawn() {
         }
         CHECK(canvas.is(F::kPaneX + 3, pickY(place) + 10, kBrass) == (place == 0));
         CHECK(pickY(place) + F::kPickLineH <= F::kPageBottom); // clear of the hints
+        CHECK(canvas.is(F::kPaneX + 20, pickY(place), kLine) == (place > 0)); // a line between each two, EMPTY's too
     }
     CHECK(typesOn(2, -1) && typesOn(4, -1) && typesOn(5, -1) && typesOn(6, -1) && typesOn(7, -1) && !typesOn(5, 1)); // (the check can tell)
     CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(1) + pickSmallMid, "low, band, high, DJ", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(3) + pickSmallMid, "fewer bits", kDim));

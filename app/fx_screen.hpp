@@ -163,8 +163,15 @@ public:
     // kTypeMore standing for the rest at a cut end. The room is the same with A held or not (the key's is kept).
     static constexpr float kTypeGapX = 20.f;
     static constexpr const char* kTypeMore = "...";
+    static constexpr int kTypeRowY = kPaneY + 64;
     static float typeRowRoom(const Fonts& fonts, int types);
+    static float typeRowX(const Fonts& fonts) { return kPaneX + 12.f + fonts.small.width("TYPE") + 12.f; } // where the first type (or "...") stands
     static void typesInView(const Font& font, const std::vector<std::string>& names, int at, float room, int* from, int* to);
+    // What the screen draws with, asked with names alone so a test can draw names no effect has yet (the fifteen
+    // planned, and longer): a family's types on its line of the list of effects (its top at `y`, the one at `lit`
+    // in brass, -1 none; a family's words are one name), and the heading's TYPE row (on `at`, the key with A held).
+    static void drawPickTypes(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int lit, int y);
+    static void drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }

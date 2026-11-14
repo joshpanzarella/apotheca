@@ -73,7 +73,7 @@ FxScreen::PickRows FxScreen::pickRows(const Fonts& fonts, const std::vector<std:
     const float room = static_cast<float>(kPickTypesRoom);
     if (typesWidth(fonts.small, names, 0, count) <= room) return {&fonts, 1, count};
     const Fonts& large = fonts.fixed();
-    if (typesWidth(large.small, names, 0, count) <= room) return {&large, 1, count};
+    if (count <= 1 || typesWidth(large.small, names, 0, count) <= room) return {&large, 1, count}; // (one name is never split)
     // Two rows: where the longer of the two is shortest.
     int split = 1;
     float best = -1.f;
@@ -503,34 +503,10 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     meterWords(kind, meterOf(row_), text, sizeof text);
     fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, kPaneY + 36.f, text, kBrass);
     if (const int types = effectTypes(kind); effectFamilyNamesTypes(kind)) {
-        // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.) As many
-        // as fit, about the one it is, "..." for the rest (six DELAYs at LARGE do not all fit beside the key).
-        float tx = kPaneX + 12.f;
-        const float ty = kPaneY + 64.f;
-        fonts.small.draw(r, tx, ty, "TYPE", kDim);
-        tx += fonts.small.width("TYPE") + 12.f;
+        // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.)
         std::vector<std::string> names;
         for (int t = 0; t < types; ++t) names.push_back(effectTypeName(effectTypeAt(kind, t)));
-        int from = 0, to = types;
-        typesInView(fonts.small, names, effectTypeIndex(kind), typeRowRoom(fonts, types), &from, &to);
-        if (from > 0) {
-            fonts.small.draw(r, tx, ty, kTypeMore, kDim);
-            tx += fonts.small.width(kTypeMore) + kTypeGapX;
-        }
-        for (int t = from; t < to; ++t) {
-            const char* type = names[t].c_str();
-            const float w = fonts.small.width(type);
-            if (t == effectTypeIndex(kind)) {
-                fill(r, static_cast<int>(tx) - 6, static_cast<int>(ty) - 5, static_cast<int>(w) + 12, static_cast<int>(fonts.small.capHeight()) + 11, list ? kBrass : kText);
-                fonts.small.draw(r, tx, ty, type, kBg);
-            } else {
-                fonts.small.draw(r, tx, ty, type, kDim);
-            }
-            tx += w + kTypeGapX;
-        }
-        if (to < types) fonts.small.draw(r, tx, ty, kTypeMore, kDim);
-        // Which way gives another, while A is held.
-        if (list && types > 1) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, "LEFT / RIGHT"), ty, "LEFT / RIGHT", kText);
+        drawTypeRow(r, fonts, names, effectTypeIndex(kind), list);
     }
     if (list) outline(r, kPaneX - 1, kPaneY - 1, kPaneW + 2, kHeadH + 2, kBrass, 2);
 
@@ -552,24 +528,9 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.medium.draw(r, static_cast<float>(kPickNameX), my, i == 0 ? "EMPTY" : effectFamily(family), cursor ? kBrass : kText);
             if (!effectFamilyNamesTypes(family)) {
                 effectFamilySays(family, text, sizeof text);
-                const Font& font = fonts.within(&Fonts::small, text, static_cast<float>(kPickTypesRoom));
-                font.draw(r, static_cast<float>(kPickTypesX), y + (kPickLineH - font.capHeight()) / 2.f - 1.f, text, kDim);
-                continue;
-            }
-            const std::vector<std::string> words = typeWords(family);
-            const PickRows rows = pickRows(fonts, words);
-            const Font& font = rows.set->small;
-            const float rowsH = rows.rows * font.capHeight() + (rows.rows - 1) * kPickRowGap;
-            float tx = static_cast<float>(kPickTypesX), ty = y + (kPickLineH - rowsH) / 2.f - 1.f;
-            for (int t = 0; t < static_cast<int>(words.size()); ++t) {
-                if (t == rows.split && t > 0) tx = static_cast<float>(kPickTypesX), ty += font.capHeight() + kPickRowGap;
-                const bool lit = cursor && t == effectTypeIndex(kind);
-                font.draw(r, tx, ty, words[t].c_str(), lit ? kBrass : kDim);
-                tx += font.width(words[t].c_str());
-                if (t + 1 < static_cast<int>(words.size()) && t + 1 != rows.split) {
-                    font.draw(r, tx, ty, kPickComma, kDim);
-                    tx += font.width(kPickComma);
-                }
+                drawPickTypes(r, fonts, {std::string(text)}, -1, y);
+            } else {
+                drawPickTypes(r, fonts, typeWords(family), cursor ? effectTypeIndex(kind) : -1, y);
             }
         }
         return;
@@ -604,6 +565,52 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
             if (px > 0) fill(r, kBarX + kBarW - px, barY + kBarH + 5, px, 4, kBrass);
         }
         if (cursor) outline(r, kPaneX - 1, y - 1, kPaneW + 2, kSetH + 2, accent, 2);
+    }
+}
+
+// The heading's TYPE row: as many as fit about the one it is, "..." for the rest (six DELAYs at LARGE do not all
+// fit beside the key), and with A held the key that gives another. The room for the key is kept, held or not.
+void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list) {
+    const int types = static_cast<int>(names.size());
+    const float ty = static_cast<float>(kTypeRowY);
+    fonts.small.draw(r, kPaneX + 12.f, ty, "TYPE", kDim);
+    float tx = typeRowX(fonts);
+    int from = 0, to = types;
+    typesInView(fonts.small, names, at, typeRowRoom(fonts, types), &from, &to);
+    if (from > 0) {
+        fonts.small.draw(r, tx, ty, kTypeMore, kDim);
+        tx += fonts.small.width(kTypeMore) + kTypeGapX;
+    }
+    for (int t = from; t < to; ++t) {
+        const char* type = names[t].c_str();
+        const float w = fonts.small.width(type);
+        if (t == at) {
+            fill(r, static_cast<int>(tx) - 6, static_cast<int>(ty) - 5, static_cast<int>(w) + 12, static_cast<int>(fonts.small.capHeight()) + 11, list ? kBrass : kText);
+            fonts.small.draw(r, tx, ty, type, kBg);
+        } else {
+            fonts.small.draw(r, tx, ty, type, kDim);
+        }
+        tx += w + kTypeGapX;
+    }
+    if (to < types) fonts.small.draw(r, tx, ty, kTypeMore, kDim);
+    if (list && types > 1) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, "LEFT / RIGHT"), ty, "LEFT / RIGHT", kText);
+}
+
+// A family's types on its line of the list of effects, ", " between: one row, or two at LARGE (pickRows).
+void FxScreen::drawPickTypes(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int lit, int y) {
+    const PickRows rows = pickRows(fonts, names);
+    const Font& font = rows.set->small;
+    const int count = static_cast<int>(names.size());
+    const float rowsH = rows.rows * font.capHeight() + (rows.rows - 1) * kPickRowGap;
+    float tx = static_cast<float>(kPickTypesX), ty = y + (kPickLineH - rowsH) / 2.f - 1.f;
+    for (int t = 0; t < count; ++t) {
+        if (t == rows.split && t > 0) tx = static_cast<float>(kPickTypesX), ty += font.capHeight() + kPickRowGap;
+        font.draw(r, tx, ty, names[t].c_str(), t == lit ? kBrass : kDim);
+        tx += font.width(names[t].c_str());
+        if (t + 1 < count && t + 1 != rows.split) {
+            font.draw(r, tx, ty, kPickComma, kDim);
+            tx += font.width(kPickComma);
+        }
     }
 }
 
