@@ -23,7 +23,11 @@
 //                    once, at its usual settings; a bus offers only its own
 //                    family) and left / right changes the TYPE, keeping the
 //                    settings the two types share.
-//                    B: empties the line (on SENDS: nothing sent).
+//                    Hold B on an effect's line: a bar fills, and when it
+//                    is full (a second) the effect is deleted, with its
+//                    settings and its automation. It cannot be undone, and
+//                    the heading says so while the bar fills. Let go sooner
+//                    and nothing goes. (On SENDS a tap of B: nothing sent.)
 //   in the settings  up / down: the next setting. Left: back to the list.
 //                    Hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice. B: its usual value
@@ -73,6 +77,10 @@ public:
     int remembered(int row) const { return row < 0 || row >= kRows ? 1 : last_[row]; }
     // A is held on a slot's line: the list of effects is open on the right.
     bool picking() const { return holding_ && column_ == 0 && !sends(row_); }
+    // B held on an effect's line: how far the bar has filled, 0..1. Full, the effect is deleted.
+    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr const char* kDeletingWords = "DELETING: CANNOT BE UNDONE"; // in the heading while the bar fills
+    float deletePart() const { return deletePart_; }
     // What the effect on a line is showing just now (COMP: the dB it is turning
     // the sound down), from the engine; 0 for a line with nothing to show. And
     // how long the strip that draws it is, on a bar `width` wide: nothing at
@@ -139,6 +147,10 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
+    bool deleting_ = false, deleteTimed_ = false; // B held on an effect's line
+    int deleteRow_ = -1;
+    Uint32 deleteSince_ = 0;
+    float deletePart_ = 0.f;
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;

@@ -367,8 +367,12 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         valueFont.draw(r, kValueX, y + (rowH - 6 - valueFont.capHeight()) / 2.f, text, here ? kTeal : kText);
         if (note[0]) noteFont.drawRight(r, kNoteRight, y + (rowH - 6 - noteFont.capHeight()) / 2.f, note, kDim);
         if (part >= 0.f) {
-            fill(r, 250, y + rowH - 16, 110, 4, kLine);
-            fill(r, 250, y + rowH - 16, static_cast<int>(std::round(110.f * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);
+            // The bar, between the value and what is said: at 250 as it always was, or further right where
+            // the value is longer (BOUNCE's WORKING 37%), and shorter where the words beside it need the room.
+            int bx = 0, bw = 0;
+            barPlace(valueFont.width(text), note[0] ? noteFont.width(note) : 0.f, &bx, &bw);
+            fill(r, bx, y + rowH - 16, bw, 4, kLine);
+            fill(r, bx, y + rowH - 16, static_cast<int>(std::round(bw * (part > 1.f ? 1.f : part))), 4, here ? kTeal : kDim);
         }
         if (here) outline(r, 15, y - 1, w + 2, rowH - 4, holdPart_ > 0.f ? kBrass : kTeal, 2);
         if (here && row == kControls && holdPart_ > 0.f) fill(r, 16, y + rowH - 10, static_cast<int>(w * (holdPart_ > 1.f ? 1.f : holdPart_)), 4, kBrass);

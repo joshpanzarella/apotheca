@@ -696,10 +696,12 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
                 if (bHeld_ && bDownAt_ != 0 && i == bRow_) {
                     const float part = static_cast<float>(lastMs_ - bDownAt_) / static_cast<float>(kDeleteHoldMs);
                     fill(r, x + 13, by + 1, static_cast<int>((w - 26) * (part > 1.f ? 1.f : part)), rowH - 6, faded(kBrass, 120));
-                    // On a patch of its own, so it is never written over the song's name.
-                    const float tw = fonts.small.width("HOLD TO DELETE");
+                    // On a patch of its own, so it is never written over the song's name. It says it cannot be
+                    // undone: nothing on the handheld brings it back (it goes to "deleted" on the card).
+                    const Font& font = fonts.within(&Fonts::small, kSongDeletingWords, w - 44.f);
+                    const float tw = font.width(kSongDeletingWords);
                     fill(r, static_cast<int>(x + w - 22.f - tw - 8.f), by + 3, static_cast<int>(tw + 14.f), rowH - 10, kPanel);
-                    fonts.small.drawRight(r, x + w - 22.f, by + 10.f, "HOLD TO DELETE", kBrass);
+                    font.drawRight(r, x + w - 22.f, by + 10.f, kSongDeletingWords, kBrass);
                 }
             }
             if (i == listCursor_) outline(r, x + 11, by - 1, w - 22, rowH - 2, kTeal, 2);
@@ -713,7 +715,8 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     // ---- the instrument list -----------------------------------------------------
     if (choosing_) {
-        const int w = 340, h = 46 + kInstrumentCount * 52, x = (kScreenW - w) / 2, y = 70;
+        // Another instrument for a track that is there: what goes is said under the list (it cannot be undone).
+        const int w = 340, h = 46 + kInstrumentCount * 52 + (changing_ >= 0 ? kChangeLostH : 0), x = (kScreenW - w) / 2, y = 70;
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, h, kPanel, kLine);
         if (changing_ >= 0) std::snprintf(text, sizeof text, "TRACK %d: CHANGE ITS INSTRUMENT", changing_ + 1);
@@ -730,6 +733,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             fonts.within(&Fonts::small, about, w - 48.f).draw(r, x + 24.f, by + 29.f, about, kDim); // (the longest at XL: held at LARGE)
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
         }
+        if (changing_ >= 0 && kInstruments[choice_].kind != project_.tracks[changing_].kind) { // (A on the one it has changes nothing)
+            const float ly = y + 36.f + kInstrumentCount * 52.f + 4.f;
+            for (int line = 0; line < 2; ++line)
+                fonts.within(&Fonts::small, kChangeLostWords[line], w - 24.f).draw(r, x + 12.f, ly + line * 20.f, kChangeLostWords[line], kBrass);
+        }
         const Hint list[] = {{"A", changing_ >= 0 ? "change to it" : "add the track"}, {"B", "cancel"}};
         hints(r, fonts, list, 2);
         return;
@@ -739,7 +747,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     Hint list[8];
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
-    if (onHead_) {
+    if (trackHoldPart_ > 0.f) {
+        // B held on a track, its head filling: what is coming, said where it is confirmed.
+        hint("HOLD B", kTrackDeletingWords);
+    } else if (onHead_) {
         hint("A", "name");
         hint("R1", "instrument");
         hint("HOLD B", "delete");
@@ -762,12 +773,11 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("A", "add a track");
         hint("START", project_.playing ? "stop" : "play song");
     } else {
+        // All of these fit, with the help at the end (the bar is not left to drop any). Mute and solo
+        // are the head's, where its hints say them; "hold A + a direction changes it" is the help card's.
         hint("A", "open");
-        hint("HOLD A", "bars");
         hint("B", "empty");
         hint("HOLD B", "delete track");
-        hint("Y", project_.tracks[column_].muted ? "unmute" : "mute");
-        hint("L1", project_.tracks[column_].solo ? "unsolo" : "solo");
         hint("HOLD R1", "copy");
         hint("SELECT", "songs");
     }

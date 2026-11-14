@@ -1089,13 +1089,22 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("TAP Y", "roll");
         if (canSlice(lane_)) hint("L1", "slices");
     } else {
-        hint("A", hitHere() ? "level / nudge" : "place");
-        hint("Y", hitHere() ? "chance / start" : "maybe");
-        if (hitHere()) hint("HOLD X", "effects");
-        hint("HOLD B", "delete");
-        hint("HOLD R1", "paint");
-        if (canSlice(lane_)) hint("L1", "slices"); // on a recording, this is worth more room than the random brush
-        else hint("R1 + R2", "paint random");
+        // As on the piano roll: on a hit, what is done to it (a tap of B deletes it); on an empty step,
+        // the brushes, which start there, and HOLD B, which deletes what it is dragged over. Every list
+        // here fits with the help at the end.
+        if (hitHere()) {
+            hint("A", "level / nudge");
+            hint("Y", "chance / start");
+            hint("HOLD X", "effects");
+            hint("B", "delete");
+        } else {
+            hint("A", "place");
+            hint("Y", "maybe");
+            hint("HOLD B", "delete");
+            hint("HOLD R1", "paint");
+            if (canSlice(lane_)) hint("L1", "slices"); // on a recording, this is worth more room than the random brush
+            else hint("R1 + R2", "random");
+        }
     }
     ui::hints(r, fonts, hints, count);
 }

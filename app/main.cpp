@@ -12,7 +12,8 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a song already made: drums and two Phazed tracks
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
-//                  add-track, page1 .. page9 (Phazed's advanced pages), or
+//                  add-track, change-instrument, song-deleting, fx-deleting (B held: take
+//                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  twin, twin1 .. twin3 (Twin Analog's main panel and pages)
 //                  help, volume (the SET page, on VOLUME), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -743,6 +744,10 @@ int main(int argc, char** argv) {
         } else if (std::strcmp(view, "fx-plate") == 0) {
             s.setEffect(0, 1, EffectKind::Plate);
             fx.goTo(1, 0);
+        } else if (std::strcmp(view, "fx-deleting") == 0) {
+            // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).
+            fx.goTo(0, 0);
+            pushKey(SDLK_z, true);
         } else fx.goTo(0, 0);
     } else if (std::strcmp(view, "bounce") == 0 || std::strcmp(view, "bounce-tail") == 0) {
         // The BOUNCE row while one is under way: part-way through the song, or 12 seconds into its tail.
@@ -763,6 +768,20 @@ int main(int argc, char** argv) {
         tapKey(SDLK_s, 2);      // X twice: two revs
         tapKey(SDLK_DOWN);
         tapKey(SDLK_x);         // A on the open song: its revs
+    } else if (std::strcmp(view, "change-instrument") == 0) {
+        // R1 on track 2's head: the list of instruments, on the next one, saying what goes with the old.
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
+        tapKey(SDLK_w);
+        tapKey(SDLK_DOWN);
+    } else if (std::strcmp(view, "song-deleting") == 0) {
+        // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
+        app.session().view = View::Song;
+        tapKey(SDLK_BACKSPACE); // SELECT: the list
+        tapKey(SDLK_s);         // X: a rev, so the song is on the card
+        tapKey(SDLK_DOWN);
+        pushKey(SDLK_z, true);
     } else if (std::strcmp(view, "add-track") == 0) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
@@ -905,7 +924,7 @@ int main(int argc, char** argv) {
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
-    } else if (demo && std::strcmp(view, "add-track") != 0) {
+    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr) { // (another press calls a held B off)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
     // A gesture held on the drum grid.

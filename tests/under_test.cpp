@@ -184,7 +184,7 @@ struct TempFolder {
 // ---- the drum grid ----------------------------------------------------------------------------
 
 // What the bar says on a hit with nothing held (pattern_screen.cpp's last list).
-const ui::Hint kOnAHit[] = {{"A", "level / nudge"}, {"Y", "chance / start"}, {"HOLD X", "effects"}, {"HOLD B", "delete"}, {"HOLD R1", "paint"}, {"R1 + R2", "paint random"}};
+const ui::Hint kOnAHit[] = {{"A", "level / nudge"}, {"Y", "chance / start"}, {"HOLD X", "effects"}, {"B", "delete"}}; // (the brushes are said on an empty step)
 
 void heldOnAHit(Rig& rig) {
     using namespace pattern_layout;
@@ -213,7 +213,7 @@ void testTheDrumGrid() {
     drums.moveCursorTo(1, 4);
     // Nothing held: the plain bar, pixel for pixel.
     rig.draw();
-    CHECK(rig.plainBar(kOnAHit, 6));
+    CHECK(rig.plainBar(kOnAHit, 4));
     CHECK(rig.label(190.f, pattern_layout::kStripY, "LEVEL") && !rig.label(pattern_layout::kFxPitchX, pattern_layout::kStripY, "PITCH"));
     // X held: a chip under each field.
     rig.key(X, true);
@@ -227,12 +227,12 @@ void testTheDrumGrid() {
     // Let go: the plain bar again.
     rig.key(X, false);
     rig.draw();
-    CHECK(!drums.effecting() && rig.plainBar(kOnAHit, 6));
+    CHECK(!drums.effecting() && rig.plainBar(kOnAHit, 4));
     // X held where there is no hit: nothing to set, and the bar is the plain one for an empty step.
     drums.moveCursorTo(1, 5);
     rig.key(X, true);
     rig.draw();
-    const ui::Hint empty[] = {{"A", "place"}, {"Y", "maybe"}, {"HOLD B", "delete"}, {"HOLD R1", "paint"}, {"R1 + R2", "paint random"}};
+    const ui::Hint empty[] = {{"A", "place"}, {"Y", "maybe"}, {"HOLD B", "delete"}, {"HOLD R1", "paint"}, {"R1 + R2", "random"}};
     CHECK(!drums.effecting() && rig.plainBar(empty, 5));
     rig.key(X, false);
 
@@ -246,7 +246,7 @@ void testTheDrumGrid() {
     heldOnAHit(rig);
     rig.key(X, false);
     rig.draw();
-    CHECK(rig.plainBar(kOnAHit, 6));
+    CHECK(rig.plainBar(kOnAHit, 4));
     rig.input.useMap(nullptr);
     rig.frames(1);
     CHECK(std::strcmp(ui::gHelpHint, "MENU: HELP") == 0);

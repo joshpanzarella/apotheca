@@ -50,6 +50,13 @@ class SongScreen : public Screen {
 public:
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
+    // What the hints bar says while the head fills (the head has room for one word).
+    static constexpr const char* kTrackDeletingWords = "deleting the track: cannot be undone";
+    // Under the list of instruments when a track's is being changed: what goes with the old one.
+    static constexpr const char* kChangeLostWords[2] = {"ITS SOUND AND ITS KNOB MOVES GO.", "THIS CANNOT BE UNDONE."};
+    static constexpr int kChangeLostH = 44;
+    // On a song's row while B is held on it.
+    static constexpr const char* kSongDeletingWords = "CANNOT BE UNDONE"; // (short: the song's name shares the row)
     float trackDeletePart() const { return trackHoldPart_; }
     explicit SongScreen(Session& session) : session_(session), project_(session.project) {}
 

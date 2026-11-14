@@ -192,6 +192,7 @@ void FxScreen::turn(float amount) {
 
 void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    if (event.down && b != Button::B) deleting_ = false, deletePart_ = 0.f; // any other press calls a held B off
     if (b == Button::A) {
         holding_ = event.down;
         saved_ = 0.f;
@@ -212,7 +213,11 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
             for (int bus = 0; bus < kBuses; ++bus)
                 if (column_ == 0 || column_ == bus + 1) emptySend(bus);
         } else if (column_ == 0) {
-            session_.setEffect(trackOf(row_), slotOf(row_), EffectKind::None);
+            // Held, it deletes the effect for good (update(), when the bar is full); a tap does nothing.
+            deleting_ = data(row_).kind != static_cast<int>(EffectKind::None);
+            deleteTimed_ = false;
+            deletePart_ = 0.f;
+            deleteRow_ = row_;
         } else {
             const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
             // Its default value (on a bus, LEVEL's is full), and whatever automation it had in this cell goes.
@@ -233,6 +238,19 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
+    // moved off the line, or A held: nothing is deleted.
+    if (!input.held(Button::B) || holding_ || column_ != 0 || row_ != deleteRow_ || sends(row_)) deleting_ = false;
+    if (!deleting_) deletePart_ = 0.f;
+    else {
+        if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
+        deletePart_ = static_cast<float>(nowMs - deleteSince_) / static_cast<float>(kDeleteHoldMs);
+        if (deletePart_ >= 1.f) {
+            deleting_ = false;
+            deletePart_ = 0.f;
+            session_.setEffect(trackOf(row_), slotOf(row_), EffectKind::None);
+        }
+    }
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -324,6 +342,7 @@ void FxScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
         const int y = lineY(row);
         const bool here = row == row_, cursor = here && column_ == 0;
         box(r, kListX, y, kListW, kLineH, here ? kPanel2 : kPanel, here && !cursor ? kDim : kLine);
+        if (here && deletePart_ > 0.f) fill(r, kListX + 1, y + 1, static_cast<int>((kListW - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), kLineH - 2, faded(kStop, 150)); // B held: it fills
         const float ty = y + (kLineH - fonts.small.capHeight()) / 2.f - 1.f;
         const float my = y + (kLineH - fonts.medium.capHeight()) / 2.f - 1.f;
         fonts.within(&Fonts::small, tags[row], kNameX - 5.f - (kListX + 8.f)).draw(r, kListX + 8.f, ty, tags[row], here ? kText : kDim); // ("SENDS" at XL: held at LARGE)
@@ -422,7 +441,14 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     if (bus >= 0) std::snprintf(text, sizeof text, "%s BUS: WHAT THE TRACKS SEND TO %s", bus == 0 ? "ECHO" : "SPACE", bus == 0 ? "ECHO" : "SPACE");
     else if (track == kMasterTrack) std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slot + 1);
     else std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slot + 1);
-    fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, text, kDim);
+    if (deletePart_ > 0.f) {
+        // B held on the line: a bar along the heading's foot fills as the line does, and the heading says what is
+        // coming in place of where it is. (A strip, not the whole heading: nothing the heading says is drawn in it.)
+        fill(r, kPaneX + 1, kPaneY + kHeadH - 6, static_cast<int>((kPaneW - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
+        fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, kDeletingWords, kText);
+    } else {
+        fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, text, kDim);
+    }
     fonts.large.draw(r, kPaneX + 12.f, kPaneY + 30.f, empty ? "EMPTY" : effectFamily(kind), list ? kBrass : (empty ? kDim : kText));
     meterWords(kind, meterOf(row_), text, sizeof text);
     fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, kPaneY + 36.f, text, kBrass);
@@ -527,7 +553,8 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (column_ == 0) {
         if (settings(row_) > 0) hint("RIGHT", onSends ? "the sends" : "its settings");
         if (!onSends) hint("HOLD A", "pick effect");
-        hint("B", onSends ? "send nothing" : "empty it");
+        if (onSends) hint("B", "send nothing");
+        else if (kind != EffectKind::None) hint("HOLD B", "delete");
         hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("LEFT", "list");

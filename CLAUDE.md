@@ -433,8 +433,12 @@ effect in those two groups and fails one that does not.
     when the list was stepped through blind). Left / right is the TYPE
     (`changeEffectType`). The group jump is gone. On a setting, A + up / down
     turns it as before, and left / right do nothing.
-  - B empties a line (SENDS: both sends), and on a setting gives its usual
-    value; a bus's LEVEL goes back to full (`effectDefault(kind, i, true)`).
+  - **Hold B deletes an effect** (a slot's line or a bus's: a bar fills for
+    `kDeleteHoldMs`, a second, on the line and the heading, which says
+    `kDeletingWords`; a tap does nothing; any other button or a move calls it
+    off; pit stop 2026-11-14). A tap of B on SENDS still empties both sends,
+    and on a setting gives its usual value; a bus's LEVEL goes back to full
+    (`effectDefault(kind, i, true)`).
   - A choice has no bar: one piece for each choice, the one it is lit
     (`wideBar`). A value is drawn in the largest lettering that fits
     `kValueRoom` (`Fonts::fit`); `app_test` (`testFxTextsFit`) draws every
@@ -600,7 +604,13 @@ effect in those two groups and fails one that does not.
 - **Hints must fit.** The hints bar drops what does not fit; do not rely on
   that, shorten the words. The bar draws `HOLD` as `HLD`, `SELECT` as `SEL`,
   directions as arrows, and the one word `dice` as a die (`ui.cpp`): write
-  hints in full.
+  hints in full. `ui::gHintsOver` says how many pixels the last bar was
+  short of holding every hint and the help: `app_test`
+  (`testTheHintsFitAndSayWhatTheyDo`) holds the SONG screen and the drum grid
+  to 0 with either help (pit stop, 2026-11-14: SONG's cell leaves mute and
+  solo to the head, the drum grid lists a hit's own jobs on a hit and the
+  brushes on an empty step). **The piano roll on a note is still 48 to 69
+  pixels over** (its help is not drawn): not mended.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
   field's label says it; the dice alone at the left (a chord: at the right). On a note the

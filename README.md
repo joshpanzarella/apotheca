@@ -189,7 +189,7 @@ to the sound just now.
 | | Right | Into the line's settings, **at the one last used there** |
 | | **Hold A** | **The list of effects opens on the right.** Up / down steps through it, and the effect goes in at once at its usual settings. |
 | | Hold A + left / right | The **TYPE**, for an effect that has types |
-| | B | Empties the line. On SENDS: nothing sent. |
+| | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
 | | Left | Back to the list, on the same line |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
@@ -242,7 +242,7 @@ SPACE holds a reverb. Each track says how much of itself goes to each, from
   are the delay's and the reverb's, but for the last: **LEVEL**, how loud the
   echoes or the room come back. It starts at 100%.
 - ECHO takes only a DELAY (CLEAN, TAPE or PING) and SPACE only a REVERB (ROOM,
-  HALL, SPRING or PLATE): hold A there and that is all the list offers. B empties one.
+  HALL, SPRING or PLATE): hold A there and that is all the list offers. Hold B deletes one.
 - On ECHO or SPACE an effect gives back only what it adds: the echoes or the
   room, never the sound itself a second time.
 - **LEVEL turned right down keeps the echoes going round.** Turn it up again
@@ -587,9 +587,9 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
-| A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
+| A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
 
@@ -626,7 +626,8 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 In the list:
 
 - **Y on the open song** gives it a new two-word name. Press again for another.
-- **Hold B on a song for a second** deletes it; the row fills as you hold. A
+- **Hold B on a song for a second** deletes it; the row fills as you hold and
+  says CANNOT BE UNDONE (nothing on the handheld brings it back). A
   tap of B only closes the list. A deleted song and its revs are moved to a
   `deleted` folder inside `songs`, not destroyed. One deleted under a name
   that is already there is kept beside it as `NAME 2` (then `NAME 3`).
