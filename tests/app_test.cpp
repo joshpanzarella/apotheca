@@ -1669,17 +1669,18 @@ void testWhereABounceEnds() {
         }
         return tail.seen();
     };
-    // Nothing at all (a dry song that ended on its last step): four seconds are listened to, half a second is kept.
+    // Nothing at all (a dry song that ended on its last step): seven seconds are listened to, half a second is kept.
     {
         BounceTail tail(48000.f);
-        CHECK(run(tail, 0.0, 0.f) == 4 * 48000 && tail.keep() == kAfter && !tail.capped());
-        CHECK(kBounceQuietSeconds == 4.f && kBounceAfterSeconds == 0.5f && kBounceFloor == 3.1e-5f);
+        const long long took = run(tail, 0.0, 0.f);
+        CHECK(took >= 7 * 48000 && took < 7 * 48000 + block && tail.keep() == kAfter && !tail.capped());
+        CHECK(kBounceQuietSeconds == 7.f && kBounceAfterSeconds == 0.5f && kBounceFloor == 3.1e-5f);
     }
     // A long tail: all of it, and half a second.
     for (double seconds : {0.001, 2.75, 10.0, 100.0}) {
         BounceTail tail(48000.f);
         const long long sounding = static_cast<long long>(seconds * 48000.0), took = run(tail, seconds, 0.01f);
-        CHECK(took >= sounding + 4 * 48000 && took < sounding + 4 * 48000 + block && tail.keep() == sounding + static_cast<long long>(kAfter) && !tail.capped());
+        CHECK(took >= sounding + 7 * 48000 && took < sounding + 7 * 48000 + block && tail.keep() == sounding + static_cast<long long>(kAfter) && !tail.capped());
     }
     // As it goes, what belongs in the file never runs ahead of what has been heard, and never goes back.
     {
@@ -1707,16 +1708,16 @@ void testWhereABounceEnds() {
         CHECK(tail.keep() == (one.sound ? block + 101 + static_cast<long long>(kAfter) : static_cast<long long>(kAfter)) || tail.keep() == tail.seen());
         io.assign(2 * block, 0.f);
         while (tail.take(io.data(), block)) {}
-        CHECK(tail.seen() >= (one.sound ? block + 101 : 0) + 4 * 48000 && tail.seen() < (one.sound ? block + 101 : 0) + 4 * 48000 + block);
+        CHECK(tail.seen() >= (one.sound ? block + 101 : 0) + 7 * 48000 && tail.seen() < (one.sound ? block + 101 : 0) + 7 * 48000 + block);
         CHECK(tail.keep() == (one.sound ? block + 101 : 0) + static_cast<long long>(kAfter));
     }
-    // ECHOES FAR APART are one tail: a click every 3.9 seconds is not ended by the gaps. The longest
-    // gap a delay can leave is 3 seconds (half a bar at the slowest tempo), and four is more than that.
+    // ECHOES FAR APART are one tail: a click every 6.9 seconds is not ended by the gaps. The longest
+    // gap a delay can leave is 6 seconds (REVERSE: two half-note windows at the slowest tempo), and seven is more.
     {
-        CHECK(kBounceQuietSeconds > 8.f * 15.f / kMinTempo + 0.5f);
+        CHECK(kBounceQuietSeconds > kLongestEchoGapSeconds + 0.5f && kLongestEchoGapSeconds == 6.f);
         BounceTail tail(48000.f);
         std::vector<float> io(2 * block, 0.f);
-        const long long gap = 187200; // 3.9 s
+        const long long gap = 331200; // 6.9 s
         long long last = 0;
         bool more = true;
         while (more) {
@@ -1725,7 +1726,41 @@ void testWhereABounceEnds() {
                 if ((tail.seen() + i) % gap == 0 && tail.seen() + i <= 5 * gap) io[2 * i] = 0.5f, last = tail.seen() + i;
             more = tail.take(io.data(), block);
         }
-        CHECK(last == 5 * gap && tail.keep() == last + 1 + static_cast<long long>(kAfter) && tail.seen() >= last + 4 * 48000);
+        CHECK(last == 5 * gap && tail.keep() == last + 1 + static_cast<long long>(kAfter) && tail.seen() >= last + 7 * 48000);
+    }
+    // REVERSE'S LAST ECHO IS IN THE FILE: TIME 1/2, FEEDBACK 0, 40 BPM (three-second windows). Hits on steps 0 and 4,
+    // the song ending after step 5: the hit on step 4 is at a window's start, and comes back two windows later, six
+    // seconds of nothing after it. With four seconds of quiet the bounce ended 1.62 s after the song and lost it.
+    {
+        std::unique_ptr<Effect> rev = makeEffect(EffectKind::Reverse, 48000.f, kMinTempo);
+        rev->setParam(0, 1.f), rev->setParam(1, 0.f), rev->setParam(2, 1.f);
+        const std::size_t step = 18000, songEnd = 5 * step;
+        std::vector<float> l(songEnd, 0.f);
+        for (std::size_t k : {std::size_t(0), std::size_t(4)})
+            for (std::size_t j = 0; j < 2400; ++j) l[k * step + j] = 0.8f * std::exp(-static_cast<float>(j) / 300.f);
+        std::vector<float> r = l;
+        rev->process(l.data(), r.data(), static_cast<int>(songEnd));
+        BounceTail tail(48000.f);
+        std::vector<float> lb(block), rb(block), io(2 * block);
+        long long lastLoud = -1;
+        for (bool more = true; more;) {
+            std::fill(lb.begin(), lb.end(), 0.f), std::fill(rb.begin(), rb.end(), 0.f);
+            rev->process(lb.data(), rb.data(), block);
+            for (int i = 0; i < block; ++i) {
+                io[2 * i] = lb[i], io[2 * i + 1] = rb[i];
+                if (std::fabs(lb[i]) > 0.1f) lastLoud = tail.seen() + i;
+            }
+            more = tail.take(io.data(), block);
+        }
+        // What the effect still gives once the bounce has stopped: nothing.
+        float after = 0.f;
+        for (int b = 0; b < 20 * 48000 / block; ++b) {
+            std::fill(lb.begin(), lb.end(), 0.f), std::fill(rb.begin(), rb.end(), 0.f);
+            rev->process(lb.data(), rb.data(), block);
+            for (int i = 0; i < block; ++i) after = std::fmax(after, std::fabs(lb[i]));
+        }
+        std::printf("bounce   REVERSE 1/2 at 40 BPM: the last echo %.2f s after the song, the file ends %.2f s after it, then %g\n", lastLoud / 48000.0, tail.keep() / 48000.0, after);
+        CHECK(lastLoud > 5 * 48000 && tail.keep() > lastLoud && after < kBounceFloor);
     }
     // THE CAP: a tail that never ends is cut there, and faded out over its last second so that it is no click.
     for (float cap : {3.f, 10.f}) {

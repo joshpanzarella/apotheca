@@ -325,7 +325,7 @@ effect in those two groups and fails one that does not.
     three; do not move the thrown copy after the slots.
   - **A bounce ends the song with Stop, and Stop shuts a thrown note's send**
     but not a thrown drum hit, which rings out into its bus. The tail after
-    a last-step throw is kept by the bounce's own rule (four seconds of
+    a last-step throw is kept by the bounce's own rule (seven seconds of
     quiet); `throwapp_test` bounces a hit, a note and a howling TAPE there.
 - **A bus at rest is skipped whole and adds nothing, not even zeros.** That is
   why a song with no sends is the same to the last bit as before there were
@@ -508,11 +508,18 @@ effect in those two groups and fails one that does not.
   `dubTireOf`; 85% or under is never touched, to the bit): its loop is a band
   (Q 0.7) at TONE, so its howl is a roar about TONE, one echo for both sides.
   **REVERSE plays each window of TIME backwards through the next**; the sound
-  that wakes it is put in the middle of a window, so a hit's backwards echo
-  peaks exactly one TIME after it (`T - 1` for an even T); its windows fade 4 ms
+  that wakes it is put in the middle of a window, so THAT hit's backwards echo
+  peaks exactly one TIME after it (`T - 1` for an even T); a later hit comes
+  back 0 to 2 TIMEs after it, by where it fell in its window. **Its longest
+  gap is two windows** (6 s at 1/2 and 40 BPM: `kLongestEchoGapSeconds` in
+  engine.hpp), so a bounce's quiet is 7 s (`kBounceQuietSeconds`; it was 4 and
+  cut REVERSE's last echo off) and a bus's rest 10. Its windows fade 4 ms
   at each edge; TIME is taken at a window's start. **STUTTER's splices END on
   a slice's edge** (into its start through the 4 ms before it, kept in a
-  ring), so a hit's attack is heard whole every repeat; its dice roll a place
+  ring), so a hit's attack is heard whole every repeat; **its slice edges are
+  the whole sample at or before the exact edge, counted from waking**, never
+  a sum of rounded slices (those drifted off the steps: at 133 BPM the
+  offbeat was caught from 9.7 s on); its dice roll a place
   (REPEATS slices) by its number since waking (`stutterRoll`); on ECHO it gives
   back only the repeats. A slot's output there is `in * (1 - mix * a) + mix *
   rep`, never `in + mix * (rep - in)`: that one is not the slice to the bit.

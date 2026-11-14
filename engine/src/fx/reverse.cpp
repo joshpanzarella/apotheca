@@ -1,5 +1,6 @@
 // REVERSE: a TYPE of DELAY. Every echo is the sound played backwards: a hit
-// comes back as a swell that rises into it, landing one TIME after the hit.
+// comes back as a swell that rises into it, anywhere from just after the hit
+// to two TIMEs after it (where the hit fell in its window: see IN TIME).
 //
 //   TIME      eight choices, in time with the song (TAPE's and PING's eight):
 //             how long each backwards piece is, and how late its peak lands
@@ -19,7 +20,14 @@
 // before: the sound's start then sits in the middle of a window, so its
 // backwards echo has its peak (the hit's attack) exactly one TIME after the
 // hit, with the hit's tail swelling up before it, and the next forwards echo
-// two TIMEs after. A TIME turned (or a new tempo) is taken at the next
+// two TIMEs after. THAT IS TRUE OF THE FIRST SOUND ONLY. A later hit p samples
+// into its window comes back at the next window's end less p: 2 TIMEs after
+// it at a window's start, about 1 TIME in the middle, at once near the end.
+// Hits inside one window come back in reverse order (a reverse delay's way).
+// A hit right at a window's start has its attack at the very end of the
+// backwards window, in the 4 ms fade, so it comes back softer (0.8 in, 0.44
+// back). The longest silence it leaves in a tail is two windows (6 s at TIME
+// 1/2 and 40 BPM: kLongestEchoGapSeconds, which a bounce waits out). A TIME turned (or a new tempo) is taken at the next
 // window's start; the windows' fades keep that from clicking, so it needs no
 // glide. FEEDBACK and MIX set off gently on the TICK (svf.hpp) and slide.
 //

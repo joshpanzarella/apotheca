@@ -3998,7 +3998,7 @@ static void testEffectsOnABus() {
             CHECK(begun != silentByDesign && !late);
         }
         SAY("%s on a bus: the longest silence between two sounds %.2f s (the rest rule waits %.0f)\n", effectInfo(kind).name, longestGap, static_cast<double>(kBusRestSeconds));
-        CHECK(longestGap < 0.8 * kBusRestSeconds);
+        CHECK(longestGap < 0.8 * kBusRestSeconds && longestGap <= kLongestEchoGapSeconds);
     }
     CHECK(found >= 2);
     // DELAY on a bus: a click in, its echoes out, and no click. Each echo is LEVEL times FEEDBACK's share.
@@ -10390,12 +10390,12 @@ static void delayRow(EffectKind kind, int number, const char* word, const char* 
 }
 
 // The same input cut into blocks four ways (64, 48, 1 to 61 in turn, 256), with every setting `set`: the same to the bit?
-static bool sameAnyBlocks(EffectKind kind, const float* set, const Stereo& in, bool bus = false) {
+static bool sameAnyBlocks(EffectKind kind, const float* set, const Stereo& in, bool bus = false, float tempo = 120.f) {
     std::vector<float> first;
     bool same = true;
     const std::size_t sizes[4] = {64, 48, 0, 256};
     for (int way = 0; way < 4; ++way) {
-        std::unique_ptr<Effect> e = fresh(kind, set[0], set[1], set[2], set[3]);
+        std::unique_ptr<Effect> e = fresh(kind, set[0], set[1], set[2], set[3], tempo);
         e->setOnBus(bus);
         Stereo io = in;
         for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
@@ -10534,9 +10534,10 @@ static void testDub() {
     }
     // SOUND UNDER 80 DB DOWN DOES NOT COUNT AS FED (kFedLevel): a howl with a faint offset of 3e-5 fed all along still
     // tires and stops; with 3e-4 it never does. (The band takes the offset itself away.) And sound coming in while it
-    // comes down (a burst at 34 s) puts FEEDBACK back: it howls again.
-    for (int way = 0; way < 3; ++way) {
-        const float offset = way == 0 ? 3e-5f : (way == 1 ? 3e-4f : 0.f);
+    // comes down (a burst at 34 s) puts FEEDBACK back: it howls again. At the edge: 1e-4 exactly is fed, a hair under it
+    // is not.
+    for (int way = 0; way < 5; ++way) {
+        const float offset = way == 0 ? 3e-5f : (way == 1 ? 3e-4f : (way == 3 ? 1e-4f : (way == 4 ? std::nextafter(1e-4f, 0.f) : 0.f)));
         std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 1.f, 0.5f, 1.f);
         e->setOnBus(true);
         Stereo io(45 * 48000);
@@ -10547,8 +10548,9 @@ static void testDub() {
             for (std::size_t i = 34 * 48000; i < 34 * 48000 + 480; ++i) io.l[i] = io.r[i] = 0.3f * noise.next();
         through(*e, io);
         const double late = peakBetween(io.l, 44.0, 45.0);
-        SAY("dub      a howl, %s: its peak at 44 s %.3e\n", way == 0 ? "3e-5 fed all along" : (way == 1 ? "3e-4 fed all along" : "fed again at 34 s"), late);
-        CHECK(way == 0 ? late < 1e-3 : late > 0.5);
+        static const char* const kWays[5] = {"3e-5 fed all along", "3e-4 fed all along", "fed again at 34 s", "1e-4 fed all along", "under 1e-4 fed all along"};
+        SAY("dub      a howl, %s: its peak at 44 s %.3e\n", kWays[way], late);
+        CHECK(way == 0 || way == 4 ? late < 1e-3 : late > 0.5);
     }
     // FEEDBACK IS WHAT IT READS at the top of the band: a faint sine at TONE's place, FEEDBACK 60%: each echo 0.6 of the last.
     {
@@ -10735,6 +10737,23 @@ static void testReverse() {
         through(*e, io);
         SAY("reverse  40 BPM: %g at 143999, %g at 359999, the next sound after 144000 at %ld\n", io.l[143999], io.l[359999], echoAt(io.l, 144000));
         CHECK(io.l[143999] == 1.f && io.l[359999] > 0.f && io.l[359999] < 0.01f && echoAt(io.l, 144000) == 359999); // (at the very edge of a window: in its fade)
+        // That is the longest gap a tail can have (kLongestEchoGapSeconds: a bounce's quiet and a bus's rest wait longer).
+        const double gap = (359999 - 72000) / 48000.0;
+        CHECK(gap <= kLongestEchoGapSeconds && gap > kLongestEchoGapSeconds - 0.01);
+    }
+    // ONE TIME LATER IS THE FIRST HIT'S ALONE: TIME 1/8 DOT (three steps), clicks on steps 0, 1 and 2 at 120 BPM. The
+    // first (it wakes it, mid-window) comes back three steps later; the second, late in that window, a step later
+    // (before the first's); the third, early in the next window, five steps later.
+    {
+        std::unique_ptr<Effect> e = fresh(rev, echoTime(4), 0.f, 1.f);
+        e->setOnBus(true);
+        Stereo io(60000);
+        for (std::size_t at : {std::size_t(0), std::size_t(6000), std::size_t(12000)}) io.l[at] = io.r[at] = 1.f;
+        through(*e, io);
+        std::vector<std::size_t> back;
+        for (std::size_t i = 0; i < io.frames(); ++i)
+            if (io.l[i] != 0.f) back.push_back(i);
+        CHECK(back.size() == 3 && back[0] == 11999 && back[1] == 17999 && back[2] == 41999 && io.l[11999] == 1.f && io.l[17999] == 1.f && io.l[41999] == 1.f);
     }
     // IN A SLOT: each side's echo laid on its own side.
     {
@@ -10794,14 +10813,16 @@ static void testStutter() {
             for (int rep : {0, 2, 4}) {
                 std::unique_ptr<Effect> e = fresh(st, (len + 0.5f) / 8.f, (rep + 0.5f) / 5.f, 1.f, 1.f, tempo);
                 e->setOnBus(true);
-                const long L = std::lround(kSixth[len] * 2.5 / tempo * 48000.0);
+                const double L = kSixth[len] * 2.5 / tempo * 48000.0; // (at 90 BPM 1/4 TRIP: 26666.67; each repeat starts at the whole sample at or before its time)
                 const std::size_t frames = static_cast<std::size_t>(L * (kRepeat[rep] + 2));
                 const Stereo in = hitOf(frames);
                 Stereo io = in;
                 through(*e, io);
                 Stereo want(frames);
-                for (int r = 1; r < kRepeat[rep]; ++r)
-                    for (std::size_t k = 0; k < 300; ++k) want.l[static_cast<std::size_t>(r * L) + k] = in.l[k], want.r[static_cast<std::size_t>(r * L) + k] = in.r[k];
+                for (int r = 1; r < kRepeat[rep]; ++r) {
+                    const std::size_t at = static_cast<std::size_t>(std::floor(r * L));
+                    for (std::size_t k = 0; k < 300; ++k) want.l[at + k] = in.l[k], want.r[at + k] = in.r[k];
+                }
                 CHECK(io.l == want.l && io.r == want.r);
             }
     // ON A BUS AT 40 BPM, LENGTH 1/2 EIGHT TIMES (3 s slices: 24 s), nothing coming in after the hit: all seven repeats.
@@ -10815,9 +10836,13 @@ static void testStutter() {
         CHECK(all && peakOf(std::vector<float>(io.l.begin() + 8 * 144000, io.l.end())) == 0.f);
     }
     // IN A SLOT, AS WORKED OUT BY HAND: two places (1/16 four times, CHANCE 100%, MIX 100%), each side its own sine.
-    {
-        std::unique_ptr<Effect> e = fresh(st, 0.3125f, 0.5f, 1.f, 1.f);
-        const std::size_t L = 6000, F = 192;
+    // At 133 BPM a slice is 5413.53: each edge on the whole sample at or before where it falls, so a repeat may be a
+    // sample longer than the slice it plays, and its last sample is the one that came just after the slice.
+    for (float tempo : {120.f, 133.f}) {
+        std::unique_ptr<Effect> e = fresh(st, 0.3125f, 0.5f, 1.f, 1.f, tempo);
+        const double L = 6.0 * 2.5 / tempo * 48000.0;
+        const std::size_t F = 192;
+        const auto edge = [&](std::size_t slice) { return static_cast<std::size_t>(std::floor(static_cast<double>(slice) * L)); };
         Stereo in(48000);
         for (std::size_t i = 0; i < in.frames(); ++i) {
             in.l[i] = static_cast<float>(0.3 * std::cos(2.0 * kPi * 331.0 * static_cast<double>(i) / 48000.0));
@@ -10830,8 +10855,10 @@ static void testStutter() {
             const std::vector<float>& x = side ? in.r : in.l;
             const std::vector<float>& y = side ? io.r : io.l;
             for (std::size_t t = 0; t < 48000; ++t) {
-                const std::size_t place = t / (4 * L) * 4 * L, s = (t - place) / L, n = (t - place) % L;
-                const long m = static_cast<long>(n) - static_cast<long>(L - F);
+                std::size_t slice = static_cast<std::size_t>(static_cast<double>(t) / L) + 1;
+                while (edge(slice) > t) --slice;
+                const std::size_t place = edge(slice / 4 * 4), s = slice % 4, n = t - edge(slice), length = edge(slice + 1) - edge(slice);
+                const long m = static_cast<long>(n) - static_cast<long>(length - F);
                 const float w = m >= 0 ? fx::echoCurve((static_cast<float>(m) + 0.5f) / static_cast<float>(F)) : 0.f;
                 const auto before = [&](long k) { return place >= F ? x[place - F + static_cast<std::size_t>(k)] : 0.f; }; // the 4 ms before the place
                 double want;
@@ -10849,7 +10876,7 @@ static void testStutter() {
                 worst = std::fmax(worst, std::fabs(want - y[t]));
             }
         }
-        SAY("stutter  two places by hand: %.1e at most from it\n", worst);
+        SAY("stutter  %.0f BPM, two places by hand: %.1e at most from it\n", tempo, worst);
         CHECK(worst < 1e-6);
     }
     // MIX 0 while it stutters: the sound untouched, to the bit, -0 included.
@@ -10915,6 +10942,53 @@ static void testStutter() {
         SAY("stutter  CHANCE %.0f%%: %d places of 60 stuttered\n", chance * 100.0, hits);
         CHECK(asRolled && again && hits > static_cast<int>(60 * chance * 0.5) && hits < static_cast<int>(60 * chance * 1.6) + 2);
     }
+    // A GAP UNDER FOUR SECONDS DOES NOT START IT AGAIN: noise for ten places, then 3.5 s of nothing (seven places), then
+    // noise: the places go on being counted (the eighteenth stutters as the eighteenth's roll says). After 4.5 s of
+    // nothing it slept, and the noise after it starts again from the first place.
+    for (int gapPlaces : {7, 9}) { // (3.5 s and 4.5 s)
+        const std::size_t place = 4 * 6000, before = 10, after = 24;
+        const std::size_t again = (before + gapPlaces) * place;
+        Stereo in(again + after * place);
+        Noise noise(41u);
+        for (std::size_t i = 0; i < before * place; ++i) in.l[i] = in.r[i] = 0.4f * noise.next();
+        for (std::size_t i = again; i < in.frames(); ++i) in.l[i] = in.r[i] = 0.4f * noise.next();
+        Stereo io = in;
+        through(*fresh(st, 0.3125f, 0.5f, 0.5f, 1.f), io);
+        const std::uint32_t first = gapPlaces == 7 ? static_cast<std::uint32_t>(before + gapPlaces) : 0u;
+        bool asRolled = true;
+        for (std::size_t p = 0; p < after; ++p) {
+            const std::size_t from = again + p * place + 6000;
+            const bool changed = !std::equal(io.l.begin() + static_cast<long>(from), io.l.begin() + static_cast<long>(from + 3 * 6000 - 192), in.l.begin() + static_cast<long>(from));
+            asRolled = asRolled && changed == (fx::stutterRoll(first + static_cast<std::uint32_t>(p)) < 0.5f);
+        }
+        CHECK(asRolled);
+    }
+    // IN TIME FOR MINUTES, AT ANY TEMPO: a step is rarely a whole number of samples (133 BPM: 5413.53), and the engine
+    // starts each on the first sample at or after its time. A hit on every step, loud on the even ones and quiet on the
+    // odd; 1/16 twice, CHANCE 100%: every loud hit is heard as it is, on its own sample, and each odd step is the loud
+    // hit again (its top within two samples of where the quiet one was). Counted in whole rounded slices, the places
+    // ran half a sample a slice late at 133 BPM, and from 9.7 s on the offbeat was caught in the downbeat's place.
+    for (float tempo : {93.f, 120.f, 127.f, 133.f, 133.7f, 140.f}) {
+        const double step = 15.0 / tempo * 48000.0;
+        const std::size_t frames = static_cast<std::size_t>((tempo == 93.f ? 120 : 45) * 48000);
+        Stereo io(frames);
+        std::vector<std::size_t> hits;
+        for (long k = 0;; ++k) {
+            const std::size_t at = static_cast<std::size_t>(std::ceil(k * step));
+            if (at + 200 >= frames) break;
+            hits.push_back(at);
+            for (std::size_t j = 0; j < 200; ++j) io.l[at + j] = io.r[at + j] = (k % 2 ? 0.3f : 1.f) * std::exp(-static_cast<float>(j) / 30.f);
+        }
+        through(*fresh(st, 0.3125f, 0.f, 1.f, 1.f, tempo), io);
+        int lost = 0, again = 0, pairs = 0;
+        for (std::size_t k = 0; k + 1 < hits.size(); k += 2, ++pairs) {
+            lost += io.l[hits[k]] == 1.f ? 0 : 1;
+            const std::size_t at = hits[k + 1];
+            again += peakOf(std::vector<float>(io.l.begin() + static_cast<long>(at - 2), io.l.begin() + static_cast<long>(at + 3))) == 1.f ? 1 : 0;
+        }
+        SAY("stutter  %.1f BPM: %d of %d downbeats lost, %d repeated\n", tempo, lost, pairs, again);
+        CHECK(pairs > 100 && lost == 0 && again == pairs);
+    }
     // ON THE ECHO BUS, THROUGH THE ENGINE: a track sends one hit, its send full; STUTTER on ECHO (CHANCE 100%, its
     // usual 1/16 four times) gives back the hit three more times, a sixteenth apart, and then nothing.
     {
@@ -10955,6 +11029,7 @@ static void testStutter() {
         for (std::size_t i = 0; i < 10 * 48000; ++i) in.l[i] = 0.5f * noise.next(), in.r[i] = 0.3f * noise.next();
         const float busy[4] = {0.1f, 0.9f, 0.7f, 0.8f};
         CHECK(sameAnyBlocks(st, busy, in) && sameAnyBlocks(st, busy, in, true));
+        CHECK(sameAnyBlocks(st, busy, in, false, 133.7f) && sameAnyBlocks(st, busy, in, true, 133.7f)); // (slices not whole)
     }
     const float set[4] = {0.3125f, 0.5f, 0.8f, 0.7f}, other[4] = {0.1f, 0.1f, 0.3f, 1.f};
     const RulesSeen seen = holdsTheRules(st, set, other, 5.0); // it sleeps four seconds after the last sound

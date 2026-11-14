@@ -9,7 +9,11 @@
 //   MIX      0 is the sound untouched; 100% the slice in its place
 //
 // HOW: time is cut into PLACES, each REPEATS slices long, counted from when
-// sound arrives after a rest (4 s of nothing). At the start of each place the
+// sound arrives after a rest (4 s of nothing). A slice is rarely a whole
+// number of samples (133 BPM's sixteenth is 5413.53), so each edge is the
+// whole sample at or before where it falls EXACTLY, counted from waking
+// (`beginSlice`), never a sum of rounded slices: those ran half a sample a
+// slice late and in 10 s the offbeat hit was the one caught. At the start of each place the
 // dice are rolled (a roll for that place's number, never a generator walked:
 // the same sound after a rest gets the same stutters, in a bounce as live).
 // On a hit the first slice plays as it is and is caught, and the rest of the
@@ -34,6 +38,7 @@
 // It holds nothing longer than a place (REPEATS slices: 4 s at 1/2 x 8 at
 // 120 BPM, 24 s at 40 BPM), so its tail always ends: it has no feedback.
 
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <vector>
@@ -64,7 +69,7 @@ int repeatsOf(float v) {
     const int i = static_cast<int>(clamp01(v) * kRepeatChoices);
     return kRepeats[i > kRepeatChoices - 1 ? kRepeatChoices - 1 : i];
 }
-long sliceFrames(float length, float tempo, float rate) { return std::lround(kSixths[lengthOf(length)] * 2.5 / tempo * rate); }
+double sliceFrames(float length, float tempo, float rate) { return kSixths[lengthOf(length)] * 2.5 / tempo * rate; } // (not whole: 133 BPM's sixteenth is 5413.53)
 
 class Stutter : public Unit {
 public:
@@ -109,6 +114,7 @@ public:
             if (tick_ == 0) beginTick();
             shape_.next();
             if (n_ == 0 && slice_ == 0) beginPlace();
+            if (n_ == 0) beginSlice();
             // What the stutter plays (`repL`, `repR`), and how much of the sound it takes the place of (`a`).
             // Every splice ENDS on a slice's edge, so a slice's first sample (a hit's attack) is always heard whole.
             float repL = 0.f, repR = 0.f, a = 0.f;
@@ -118,6 +124,7 @@ public:
                 float w = 0.f;
                 const int m = n_ - last;
                 if (m >= 0) w = echoCurve((static_cast<float>(m) + 0.5f) / static_cast<float>(fade_));
+                if (slice_ == 1 && n_ == 0) cL[fade_ + first_] = inL, cR[fade_ + first_] = inR; // a sample past the slice: a repeat a sample longer than it plays it
                 if (slice_ == 0) {
                     cL[fade_ + n_] = inL, cR[fade_ + n_] = inR; // the slice, caught as it plays
                     if (m >= 0 && repeats_ > 1) {
@@ -155,6 +162,7 @@ public:
                     slice_ = 0;
                     stutter_ = false;
                     ++place_;
+                    placeAt_ += repeats_ * exact_;
                 }
             }
             quietIn_ = none ? quietIn_ + 1 : 0;
@@ -168,14 +176,23 @@ protected:
 private:
     enum { kMixAt, kShapes };
     void beginPlace() {
-        long frames = sliceFrames(p_[0], tempo_, sr_);
-        const long least = 3L * fade_, most = size_ - fade_ - 4; // (a slice holds at least three fades)
-        length_ = static_cast<int>(frames < least ? least : (frames > most ? most : frames));
+        const double frames = sliceFrames(p_[0], tempo_, sr_);
+        const double least = 3.0 * fade_, most = size_ - fade_ - 6; // (a slice holds at least three fades)
+        exact_ = frames < least ? least : (frames > most ? most : frames);
         repeats_ = repeatsOf(p_[1]);
         stutter_ = modRoll(place_, kDice) < p_[2];
         if (stutter_) // what came just before the slice, oldest first: the splices into its start go through it
             for (int c = 0; c < 2; ++c)
                 for (int k = 0; k < fade_; ++k) caught_[c][static_cast<std::size_t>(k)] = pre_[c][static_cast<std::size_t>((preAt_ + k) % fade_)];
+    }
+    // A slice's edges are counted from where it woke, each to the whole sample at or before where it falls exactly,
+    // so the places never drift off the song's steps (the engine starts a step on the first sample at or after its
+    // time: a hit is on its slice's first sample, or a sample or two after it, never before). Slices of one place
+    // differ by a sample at most.
+    void beginSlice() {
+        const long from = static_cast<long>(std::floor(placeAt_ + slice_ * exact_)), to = static_cast<long>(std::floor(placeAt_ + (slice_ + 1) * exact_));
+        length_ = static_cast<int>(to - from);
+        if (slice_ == 0) first_ = length_;
     }
     void beginTick() {
         if (mix_.moving()) mix_.tick(glideK(kTick, kSettle, sr_));
@@ -195,6 +212,7 @@ private:
     void arrive() {
         mix_.snap();
         place_ = 0, slice_ = 0, n_ = 0;
+        placeAt_ = 0.0;
         stutter_ = false;
         preAt_ = 0;
         for (auto& p : pre_) p.assign(p.size(), 0.f);
@@ -206,7 +224,8 @@ private:
     std::vector<float> pre_[2];    // the last fade's worth of sound, a ring
     int preAt_ = 0;
     int size_ = 0, fade_ = 192, tick_ = 0;
-    int length_ = 6000, repeats_ = 4, slice_ = 0, n_ = 0;
+    int length_ = 6000, first_ = 6000, repeats_ = 4, slice_ = 0, n_ = 0;
+    double exact_ = 6000.0, placeAt_ = 0.0; // a slice, exactly; where this place began, exactly, in samples since it woke
     std::uint32_t place_ = 0; // places since it woke
     long quietIn_ = 0, restAfter_ = 1;
     bool asleep_ = true, stutter_ = false;

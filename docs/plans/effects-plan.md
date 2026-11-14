@@ -608,7 +608,7 @@ For the owner's ears: the 3 ms fall (shorter is tighter but nearer a click, and 
 | --- | --- |
 | Before | Three seconds after the song's last step, always. A long HALL or TAPE tail was cut |
 | What is sound | Anything at or over **-90 dB** (`kBounceFloor`, 3.1e-5: one step of a 16-bit file; less is not in the file anyway), on either side |
-| When it is over | **No sound for 4 seconds** (`kBounceQuietSeconds`). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and a gap would have been taken for the end. Four is longer than that, as the bus's ten are |
+| When it is over | **No sound for 7 seconds** (`kBounceQuietSeconds`; 4 until REVERSE, 2026-11-14). Half a second was the first thought and is wrong: a DELAY or TAPE at a half note and 40 BPM leaves 3 seconds between echoes, and REVERSE there 6 (a hit at a window's start comes back two windows later: `kLongestEchoGapSeconds`), and a gap would have been taken for the end. Seven is longer than that, as the bus's ten are |
 | Where the file ends | **Half a second after the last sound** (`kBounceAfterSeconds`). A dry song is now shorter than it was: its last drum rings out, half a second, done (it had three seconds whatever was in them). Nothing a dry song plays is cut: the end is measured, not guessed |
 | The cap | `kBounceCapSeconds`. A tail that reaches it is faded out in a straight line over its last second (`kBounceFadeSeconds`) |
 | Each track | The files of an EACH TRACK bounce are padded with silence to the longest, so they still line up and are the same length |
@@ -1098,7 +1098,7 @@ however the sound is cut into blocks, settings moving too.
 | Type | What it is | Settings | Cost (desk; DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in the same three runs) |
 | --- | --- | --- | --- |
 | DUB | a dark echo whose loop is a band (Q 0.7) at TONE: each repeat darker and narrower; past 100% it rises into a held roar about TONE, under a ceiling, and comes down by itself when left alone | TIME (the eight), FEEDBACK (0 to 150%; left alone 30 s, over 85% eases to 85%), TONE (the band, 250 Hz to 4 kHz, read as a percentage so TYPE carries PING's and CLEAN's), MIX | 0.05%; howling 0.05 to 0.07%; TONE turned all the while 0.05 to 0.06% |
-| REVERSE | each echo the sound backwards: a hit comes back as a swell rising into it, its peak exactly one TIME after the hit, then forwards, backwards... | TIME (the eight: how long a backwards piece is), FEEDBACK (0 to 100%, doing 90%, as CLEAN's), MIX. Three settings: nothing a fourth would do was worth a knob | 0.03% |
+| REVERSE | each echo the sound backwards: a hit comes back as a swell rising into it (the first hit after a rest: its peak exactly one TIME after it; a later one 0 to 2 TIMEs after it, by where it fell in its window, and hits in one window come back in reverse order), then forwards, backwards... | TIME (the eight: how long a backwards piece is), FEEDBACK (0 to 100%, doing 90%, as CLEAN's), MIX. Three settings: nothing a fourth would do was worth a knob | 0.03% |
 | STUTTER | now and then, by chance, a slice caught and played again in its place, in time: a retrigger | LENGTH (1/32 to 1/2, eight), REPEATS (2, 3, 4, 6, 8 times, the first included), CHANCE (each place: REPEATS slices from waking, rolled by its number), MIX (100% as it comes: the slice in the sound's place) | 0.03 to 0.04% |
 
 - **How each differs from what was there:**
@@ -1141,6 +1141,21 @@ however the sound is cut into blocks, settings moving too.
   STUTTER's dice compared with `<=` (the same but where a roll equals CHANCE
   exactly); its 4 ms ring emptied on waking (4 s of nothing filled it with
   zeros already).
+- **Review, mended (2026-11-14).** STUTTER's slices were whole rounded
+  samples added up; where a step is not whole (133 BPM: 5413.53) its places
+  ran half a sample a slice late, and from 9.7 s on (140 BPM: 30 s) the
+  downbeat's place caught the offbeat hit. Each edge is now the whole sample
+  at or before the exact one, counted from waking: no downbeat lost at 93,
+  120, 127, 133, 133.7 or 140 BPM over 45 s to 2 min, every repeat's top
+  within two samples of its step. REVERSE leaves up to two windows of silence
+  (6 s at 1/2 and 40 BPM), and a bounce's 4 s of quiet cut its last echo off:
+  the quiet is 7 s now (`kBounceQuietSeconds`, against
+  `kLongestEchoGapSeconds`). REVERSE's "one TIME later" is the first hit's
+  alone; a later hit comes back 0 to 2 TIMEs after it (pinned). Pinned too:
+  STUTTER's 4 s rest (a 3.5 s gap keeps the places' count, 4.5 s starts
+  again) and DUB's fed edge (1e-4 exactly is fed). Left: DUB's ceiling
+  straight under 1e-5 (moved to 1e-2 it changes a sample by 1.5e-7 at most:
+  not a sound).
 - **Not heard by anyone.** Every number here is from the tests; the owner's
   ears decide whether DUB's roar is the sound wanted and whether 4 ms splices
   are smooth enough on a vocal.
