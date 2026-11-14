@@ -66,6 +66,13 @@ public:
         for (float& v : y_)
             if (std::fabs(v) < 1e-20f) v = 0.f;
     }
+    // The largest thing it remembers (for going to sleep: FOLD, FUZZ). Each stage's other memory is the
+    // stage before it's output (in y_) or the sound coming in, so y_ is all that needs looking at.
+    float loudest() const {
+        float most = 0.f;
+        for (float v : y_) most = std::fmax(most, std::fabs(v));
+        return most;
+    }
     // `frames` in, `frames` out: what up() and then down() would give with
     // nothing done between (to the last bit or two). For the plain sound, so
     // that it lines up with the bent one. Its own Halfband, not one that

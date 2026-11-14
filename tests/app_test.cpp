@@ -4882,8 +4882,8 @@ void testTheFxScreenAsDrawn() {
         CHECK(canvas.is(F::kPaneX + 20, pickY(place), kLine) == (place > 0)); // a line between each two, EMPTY's too
     }
     CHECK(typesOn(2, -1) && typesOn(4, -1) && typesOn(5, -1) && typesOn(6, -1) && typesOn(7, -1) && !typesOn(5, 1)); // (the check can tell)
-    // FILTER names its types since COMB, VOWEL and EQ (it said "low, band, high, DJ"); CRUSH still says its words.
-    CHECK(typesOn(1, -1) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(1) + pickSmallMid, "filter", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(3) + pickSmallMid, "fewer bits", kDim));
+    // FILTER names its types since COMB, VOWEL and EQ (it said "low, band, high, DJ"); CRUSH since RING (it said "fewer bits").
+    CHECK(typesOn(1, -1) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(1) + pickSmallMid, "filter", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(3) + pickSmallMid, "crush", kDim));
     CHECK(inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(5) + pickSmallMid, "clean", kDim) && inked(canvas, scratch, 0, static_cast<float>(F::kPickTypesX), pickY(4) + pickSmallMid, "chorus", kDim));
     // The box goes down to the page's foot, the last line in it.
     CHECK(canvas.is(F::kPaneX + 50, F::kPageBottom - 1, kLine) && canvas.is(F::kPaneX + 50, F::kPageBottom, kBg) && pickY(7) + F::kPickLineH + F::kPickPad == F::kPageBottom);
@@ -5104,10 +5104,10 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("effect") && hinted("type")); // FILTER has COMB, VOWEL and EQ too
         rig.key(A, false);
         rig.frames(1);
-        session.setEffect(0, 2, EffectKind::Crush);
+        session.setEffect(0, 2, EffectKind::Chorus);
         rig.key(A, true);
         draw();
-        CHECK(hinted("effect") && !hinted("type")); // CRUSH has none
+        CHECK(hinted("effect") && !hinted("type")); // MOD has one (CRUSH has RING too)
         rig.key(A, false);
         rig.frames(1);
     }

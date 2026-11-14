@@ -882,3 +882,42 @@ Numbers 15, 16, 17; words `comb`, `vowel`, `eq`; in the list after FILTER.
 - Stills: `fx-kind-comb`, `fx-kind-vowel`, `fx-kind-eq` (each with
   `--hold-a`, and `-N` on a setting).
 
+**Batch b2 built (2026-11-14, branch `newfx`): DRIVE's FOLD and FUZZ, CRUSH's RING.**
+Numbers 18, 19, 20; words `fold`, `fuzz`, `ring`; in the list after SATURATE
+(FOLD, FUZZ) and after CRUSH (RING). CRUSH's line now names its types
+("crush, ring") where it said "fewer bits".
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in the same runs) |
+| --- | --- | --- | --- |
+| FOLD | a wavefolder: past the top the wave folds back down, again and again as it is pushed | DRIVE (1.5 to 12 times; SATURATE's name, so TYPE keeps it), SYMMETRY (-100 to +100%: the folds off centre, even overtones), TONE (SATURATE's low-pass, kept to the bit), MIX | 0.23 to 0.24% (0.30% before its triangle lost its branches); 0.32 to 0.33% while DRIVE moves (its level is worked out again each tick) |
+| FUZZ | a fuzz pedal: turned up until nearly square, one side clipped harder than the other, a GATE that makes a dying note sputter and stop | FUZZ (6 to 48 dB, its own name: starts at 70%), TONE (a Big Muff's: dark, scooped, thin; what it takes from a fuzzed note made up), GATE, MIX | 0.17 to 0.18%; 0.21 to 0.22% while TONE moves |
+| RING | a ring modulator: every note comes out as two, the carrier's pitch above and below it, the note itself gone | FREQ (1 Hz to 4 kHz), WAVE (SINE, TRIANGLE, SQUARE), SPREAD (the right carrier up to a quarter turn behind), MIX (CRUSH's, kept) | 0.04% (SQUARE, or FREQ moving, the same) |
+
+- **FOLD is not SATURATE's FOLD.** SATURATE's is a sine of the input: every
+  turn rounded, a soft bell. FOLD is a triangle with only the top 30% of each
+  fold rounded: steep straight sides, so far more high overtones (harmonics
+  10 to 40 of a 220 Hz sine at the same push: -57 to -26 dB of the sound,
+  against -160 to -69 for SATURATE's FOLD), twice the push (12 times against
+  6), and SYMMETRY, which SATURATE has not.
+- **FUZZ is not DRIVE, SATURATE's HARD or TUBE.** Those keep the shape of a
+  quiet sound; FUZZ is 48 dB at most and nearly square from 35%; its GATE
+  is a step the sound must get past (a note dying away 40 dB a second:
+  at GATE 50% nothing over -60 dB after 0.77 s, with no gate 2.0 s), and its TONE is a scoop, not a low-pass.
+- **RING has no note-tracking.** An effect is not told the notes played, so
+  FREQ is in hertz. Tracking would need the engine to hand the slot the
+  track's pitch: more than a row.
+- They share `fx/bend.hpp` (FOLD, FUZZ): one side bent at twice the rate a
+  sample at a time, so the TICK holds and the sound is the same to the bit
+  however it is cut into blocks, even while a setting moves (SATURATE is
+  only once at rest), the plain sound made as late to match.
+- **A fault found by the tests and mended before it shipped**: RING's square
+  read 2 (twice full scale) for one sample whenever the carrier stood at
+  0.49999997 of its turn (0.49999997 + 0.5 is 1 in a float).
+- Stills: `fx-kind-fold`, `fx-kind-fuzz`, `fx-kind-ring` (each with
+  `--hold-a`, and `-N` on a setting).
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| FOLD | the folder by itself; a 220 Hz sine's harmonics 10 to 40 against SATURATE's FOLD; SYMMETRY's 2nd harmonic; the reference sine's level; 4186 Hz's fold-back; 12 kHz at MIX 50% | the table to 1e-5, no corner; 40 dB more than SATURATE's at every push; under -90 dB at 0, over -30 off it; within -1 / +0.5 dB everywhere; 40 dB under the strongest harmonic; within 0.5 dB of MIX 100% |
+| FUZZ | the clip by itself; a 220 Hz sine's harmonics at four FUZZ; the reference sine at FUZZ 35 to 100% and every TONE; TONE on quiet sines; a dying note at three GATEs; 12 kHz at MIX 50% | 2nd over -35 dB at 35%; within -3.5 / +0.6 dB; a scoop of 3 dB at 1 kHz, 15 dB from end to end; GATE ends it 0.3 s and more sooner; in step to 0.3 dB |
+| RING | the carrier at every place and pitch; 1 kHz by 300 Hz; what folds back of a 2.9 kHz carrier; SPREAD at 2 Hz; a click after silence; WAVE changed twice in 2 ms | never past 1; 0.25 at 700 and 1300 Hz (SQUARE 4/pi of it), nothing at 1 kHz; SINE -62, TRIANGLE -35, SQUARE -28 dB; the right is the left 1/8 s later; the click whole every time; SQUARE's own sound after 30 ms, to the bit |

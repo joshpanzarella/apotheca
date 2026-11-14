@@ -26,12 +26,16 @@
 //   VOWEL    VOWEL (A, E, I, O, U and between), SHIFT (-12 to +12 semitones),
 //            RESONANCE, MIX: a formant filter
 //   EQ       LOW, MID, MID FREQ (125 Hz to 8 kHz), HIGH: -12 to +12 dB each
+//   FOLD     DRIVE, SYMMETRY (-100 to +100%), TONE, MIX: a wavefolder
+//   FUZZ     FUZZ (6 to 48 dB), TONE (dark, scooped, thin), GATE, MIX: a fuzz pedal
+//   RING     FREQ (1 Hz to 4 kHz), WAVE (sine / triangle / square), SPREAD,
+//            MIX: a ring modulator
 //
 // MIX at 0 is the sound untouched.
 //
 // FAMILIES AND TYPES (owner, 2026-11-13). A player picks from seven families,
-// in this order, each with a TYPE: FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE),
-// CRUSH (CRUSH), MOD (CHORUS), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL,
+// in this order, each with a TYPE: FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE,
+// FOLD, FUZZ), CRUSH (CRUSH, RING), MOD (CHORUS), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL,
 // SPRING, PLATE), LEVEL (COMP, DUCK). Underneath each type is its own effect,
 // with its own number and its own word in a song file, as it always was: a
 // family is only how the list is shown. A new type is a new effect
@@ -52,7 +56,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Fold /* 18 */, Fuzz /* 19 */, Ring /* 20 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 
@@ -124,9 +128,9 @@ int effectTypes(EffectKind kind);
 EffectKind effectTypeAt(EffectKind kind, int index); // None off either end
 int effectTypeIndex(EffectKind kind);                // which of them this one is
 // Whether the list a player picks from names the family's types on its line
-// (DELAY: clean, tape, ping; MOD: chorus), or says its words (FILTER: "low,
-// band, high, DJ"): its types are named when there is more than one, or when
-// the one is not called by the family's own word.
+// (DELAY: clean, tape, ping; MOD: chorus), or says its words: its types are
+// named when there is more than one, or when the one is not called by the
+// family's own word. Since RING joined CRUSH every family names its types.
 bool effectFamilyNamesTypes(EffectKind kind);
 // The list a player picks from: one line a family, place 0 NONE. `bus` 0 or 1
 // gives a bus's own short list (NONE and the one family it may hold); anything
