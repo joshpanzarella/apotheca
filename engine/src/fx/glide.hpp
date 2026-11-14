@@ -35,6 +35,15 @@ struct Glide {
         if (end == now) end = to; // (cannot happen while kLeast is more than a float's grain; kept as the last word)
         return step = (end - now) / static_cast<float>(frames);
     }
+    // The same, but never more than `most` in the block: for a setting whose SPEED is heard, not only where it
+    // goes (WEAR's WOW sets how late the sound is read, so the faster it moves the further the pitch bends while
+    // it does). Far from `to` it moves at `most` a block, a straight line; near it, as begin() above, and lands.
+    float begin(int frames, float k, float most) {
+        const float left = to - now;
+        if (std::fabs(k * left) <= most) return begin(frames, k);
+        end = now + (left < 0.f ? -most : most); // (|left| > most here, since k < 1: never past `to`)
+        return step = (end - now) / static_cast<float>(frames);
+    }
     float next() { return now += step; }
     void done() { now = end, step = 0.f; }
 };

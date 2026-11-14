@@ -4,7 +4,10 @@
 //
 //   WOW    the pitch swaying: a slow sway (0.55 Hz), a faster flutter
 //          (6.3 Hz) and a slow drift that never repeats. At 100% about
-//          30 cents either way at worst; at 30% a faint seasick lean
+//          30 cents either way at worst; at 30% a faint seasick lean.
+//          Turned, it moves at most all of its way in a second
+//          (kWowPerSecond), so turning it bends the pitch no more than
+//          its sway does
 //   DIRT   hiss and crackle. Both ride on the sound: they come with it and
 //          fade out with it (about 0.15 s after), so silence stays silence.
 //          At 100% the hiss is about 20 dB under the sound and it crackles
@@ -53,6 +56,10 @@ constexpr float kDropEvery = 0.04f; // seconds: a roll for a dropout each
 constexpr float kDropMost = 0.3f;   // the chance at DROPS 100%
 constexpr float kRestSeconds = 4.f;
 constexpr float kSettle = 0.02f;
+// WOW moves at most this much a second (all of it in a second). It sets how late the sound is read, and a delay
+// that moves is a pitch that bends: on kSettle alone 0 to 100% swooped 500 cents down in 0.1 s (a tape-speed
+// dive), against the 30 cents it sways at rest. At this speed the move bends at most 1% (17 cents) more.
+constexpr float kWowPerSecond = 1.f;
 constexpr float kFaint = 1e-15f; // what fades is nothing under this (300 dB down), made so once a tick
 enum { kLow, kHigh, kWorn, kShapes };
 
@@ -240,7 +247,8 @@ private:
     }
     void beginTick() {
         const float k = glideK(kTick, kSettle, sr_);
-        wow_.begin(kTick, k), dirt_.begin(kTick, k), drops_.begin(kTick, k);
+        wow_.begin(kTick, k, kWowPerSecond * static_cast<float>(kTick) / sr_);
+        dirt_.begin(kTick, k), drops_.begin(kTick, k);
         if (!tone_Set_.moving()) return;
         tone_Set_.tick(k);
         shape();

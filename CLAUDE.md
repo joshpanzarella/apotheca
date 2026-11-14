@@ -408,7 +408,12 @@ effect in those two groups and fails one that does not.
   the first cut the fading curve off: a click.
 - **A sleeping effect that wakes starts as a fresh one** (settings snap, the
   wow and the bend start again), so a render does not depend on how long ago
-  the last sound was.
+  the last sound was. **One exception, kept (review 2026-11-14): a setting
+  turned within a glide of waking.** The TICK counts from the effect's start,
+  asleep too (`tickCountsAsleep` pins it), so its 16-sample grid falls where
+  the silence's length put it, and such a glide moves on ticks up to 15
+  samples apart from a fresh one's (WEAR 1e-4, SNAP 0.002, LIMITER 0.02 apart;
+  RING, COMB and FUZZ alike). With settings at rest, exact.
 - **DUCK is told the hits, it does not listen** (`Effect::drumHits`, bit 0 is
   lane 1). A hit always lands on a chunk's first sample (`render()` ends a
   chunk where the next is due), so the engine marks it where it triggers the
@@ -1271,8 +1276,8 @@ effect in those two groups and fails one that does not.
 | ...each with a setting turned all the while (PITCH, VOWEL, MID FREQ: worked out again every 16 samples) | 0.08 to 0.10% / 0.13% / 0.10% |
 | FOLD / FUZZ / RING (2026-11-14, four runs: DRIVE 0.12%, SATURATE 0.14 to 0.15%, HALL 0.15% in all; FOLD was 0.30% before its triangle lost its branches) | 0.23 to 0.24% / 0.17 to 0.18% / 0.04% |
 | ...FOLD's DRIVE, FUZZ's TONE and RING's FREQ turned all the while (FUZZ's TONE was 0.61% before its making up was summed once); RING with a SQUARE | 0.32 to 0.33% / 0.21 to 0.22% / 0.04% (0.06% in one run); 0.04% |
-| WEAR / LIMITER / SNAP (2026-11-14, three runs: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.10%, RING 0.03% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% / 0.08% |
-| ...WEAR at DIRT 100%, or its WOW turned all the while; LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
+| WEAR / LIMITER / SNAP (2026-11-14, ten runs on two desks: DRIVE 0.12 to 0.13%, HALL 0.15%, COMP 0.09 to 0.13% in all) | 0.15 to 0.16% (0.40% before its loop worked on locals) / 0.05% (0.09% in one run) / 0.08% |
+| ...WEAR at DIRT 100%, or its WOW turned all the while (0.23% in one run); LIMITER at +20 dB (turning down all the while); SNAP's ATTACK turned all the while | 0.15% / 0.12 to 0.13% / 0.08% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |

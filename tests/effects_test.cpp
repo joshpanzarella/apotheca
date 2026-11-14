@@ -9054,6 +9054,39 @@ static void testWear() {
         SAY("wear     WOW 1%%: the largest step %.4f of the sine's\n", largestJump(io.l, 4800, io.frames()) / sineStep(1000.0, 0.5));
         CHECK(largestJump(io.l, 4800, io.frames()) < 1.01 * sineStep(1000.0, 0.5));
     }
+    // ...and TURNING WOW does not dive: WOW sets how late the sound is read, so a WOW that moves fast bends the
+    // pitch while it moves (on the usual 20 ms glide, 0 to 100% swooped 500 cents down, 0 to 30% 143, 100% to 0
+    // 120 up: a tape-speed dive on every automated step). It moves at most all its way in a second, so turned
+    // at once the pitch strays at most about as far as it sways at rest (30 cents at 100%), over the whole move.
+    // A 1 kHz sine's pitch every 4 ms, worst from the turn to 3 s after it; and how long WOW takes to get there.
+    {
+        const auto turned = [&](float from, float to, double* there) {
+            std::unique_ptr<Effect> e = fresh(wear, from, 0.f, 0.f, 0.f);
+            Stereo io(5 * 48000);
+            io.l = io.r = sineOf(1000.0, 0.5, io.frames());
+            through(*e, io, 0, 2 * 48000);
+            e->setParam(0, to);
+            through(*e, io, 2 * 48000, io.frames());
+            std::vector<double> when;
+            const std::vector<double> hz = pitchAsItGoes(io.l, 2 * 48000 - 480, 4, &when);
+            double worst = 0.0;
+            for (double h : hz) worst = std::fmax(worst, std::fabs(cents(h, 1000.0)));
+            if (there) { // how late the sine is read, from where it crosses zero, against a WEAR left at `to`
+                std::unique_ptr<Effect> still = fresh(wear, to, 0.f, 0.f, 0.f);
+                Stereo s(io.frames());
+                s.l = s.r = sineOf(1000.0, 0.5, s.frames());
+                through(*still, s);
+                *there = 0.0;
+                for (std::size_t i = 2 * 48000; i < io.frames(); ++i)
+                    if (std::fabs(io.l[i] - s.l[i]) > 1e-4f) *there = static_cast<double>(i - 2 * 48000) / 48000.0;
+            }
+            return worst;
+        };
+        double there = 0.0;
+        const double up = turned(0.f, 1.f, &there), down = turned(1.f, 0.f, nullptr), usual = turned(0.f, 0.3f, nullptr), restFull = swayCents(*fresh(wear, 1.f, 0.f, 0.f, 0.f));
+        SAY("wear     WOW turned at once: 0 to 100%% strays %.1f cents at worst (there in %.2f s), 100%% to 0 %.1f, 0 to 30%% %.1f (at rest at 100%% it sways %.1f)\n", up, there, down, usual, restFull);
+        CHECK(up < 1.6 * restFull && down < 1.6 * restFull && usual < 0.8 * restFull && there > 0.9 && there < 1.3);
+    }
     // DIRT: hiss and crackle on the sound, and only while there is sound. A 330 Hz sine at half scale for two
     // seconds, then nothing (WOW, DROPS and TONE at 0, so what is not the sine is the dirt).
     {
@@ -9087,6 +9120,23 @@ static void testWear() {
         SAY("wear     the hiss under 300 Hz: %.3f of it\n", lowShare);
         CHECK(hiss[1] > -26.0 && hiss[1] < -12.0 && crackles[1] >= 8 && crackles[1] <= 20 && after[1] < hiss[1] - 20.0 && lowShare < 0.08);
         CHECK(std::fabs(hiss[0] - (hiss[1] - 24.1)) < 3.0 && crackles[0] <= 6);
+    }
+    // THE HISS IS STEREO: the same sine on both sides, DIRT 100%; what is added on the left and on the right are
+    // two hisses, not one. Their likeness (1 the same, 0 nothing alike) is the crackles that land on both sides.
+    {
+        std::unique_ptr<Effect> e = fresh(wear, 0.f, 1.f, 0.f, 0.f);
+        Stereo io(2 * 48000);
+        io.l = io.r = sineOf(330.0, 0.5, io.frames());
+        const Stereo in = io;
+        through(*e, io);
+        double lr = 0.0, ll = 0.0, rr = 0.0;
+        for (std::size_t i = 48000; i < io.frames(); ++i) {
+            const double a = static_cast<double>(io.l[i]) - in.l[i], b = static_cast<double>(io.r[i]) - in.r[i];
+            lr += a * b, ll += a * a, rr += b * b;
+        }
+        const double alike = lr / std::sqrt(ll * rr);
+        SAY("wear     DIRT 100%%: the left's and the right's dirt alike by %.2f\n", alike);
+        CHECK(alike > -0.2 && alike < 0.5);
     }
     // DROPS: dropouts on a steady sine, counted in 40 ms pieces at least 5 dB under the sound. 100%: most of
     // a third of the pieces; 20% (as it comes): a few in 20 s; 0: none. Each sinks smoothly (no step over the
@@ -9154,7 +9204,9 @@ static void testWear() {
     CHECK(seen.lastAfterClick > 3.9); // the hiss rides on, ever fainter, until it sleeps
     for (int p = 0; p < 4; ++p) SAY("wear     turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
     // Each setting turned at once, end to end (down: step, corner; up: step, corner), against the steady sound:
-    const double was[4][4] = {{1.15, 1.11, 0.98, 1.10}, {0.32, 0.50, 1.03, 1.03}, {1.18, 1.11, 1.38, 1.10}, {1.18, 1.16, 0.58, 0.84}};
+    // (WOW up's step was 0.98 when WOW got there in 20 ms; moving at most all its way a second it is 1.20 at any such
+    // speed, 0.5 to 2 a second, and its corner is as it was: under DIRT, a crackle meets the sine at another place.)
+    const double was[4][4] = {{1.14, 1.11, 1.20, 1.11}, {0.32, 0.50, 1.03, 1.03}, {1.18, 1.11, 1.38, 1.10}, {1.18, 1.16, 0.58, 0.84}};
     for (int p = 0; p < 4; ++p) {
         CHECK(seen.stepDown[p] < 1.1 * was[p][0] && seen.cornerDown[p] < 1.1 * was[p][1]);
         CHECK(seen.stepUp[p] < 1.1 * was[p][2] && seen.cornerUp[p] < 1.1 * was[p][3]);
@@ -9247,6 +9299,18 @@ static void testLimiter() {
         io.l = io.r = sineOf(220.0, 0.5, 48000);
         through(*e, io);
         SAY("limiter  the meter on a sine 14 dB over: %.2f dB\n", e->meter());
+        CHECK(std::fabs(e->meter() - 13.98f) < 0.2f);
+    }
+    // ...and it is the MOST it turned down in the block, not where the block ended: one block of 1.5 s, the loud
+    // sine for its first half second and then a quiet one (RELEASE 20 ms: long let go by the block's end). The
+    // meter reads the 14 dB; a meter that read the last sample would read 0 and miss every peak between.
+    {
+        std::unique_ptr<Effect> e = fresh(lim, 1.f, 1.f, 0.f);
+        std::vector<float> l = sineOf(220.0, 0.5, 72000), r;
+        for (std::size_t i = 24000; i < l.size(); ++i) l[i] *= 0.01f;
+        r = l;
+        e->process(l.data(), r.data(), static_cast<int>(l.size()));
+        SAY("limiter  the meter on a block loud at first and quiet at its end: %.2f dB\n", e->meter());
         CHECK(std::fabs(e->meter() - 13.98f) < 0.2f);
     }
     // RELEASE: after a second of loud sound, a quiet one comes back to full in about RELEASE times 2.5 (to
@@ -9381,6 +9445,23 @@ static void testSnap() {
         const double half = snapOnAHit(1.f, 0.5f, 0.0, 1.0, 0.5f), want = 20.0 * std::log10(0.5 + 0.5 * std::pow(10.0, rows[0].first / 20.0));
         SAY("snap     MIX 50%%, ATTACK +100%%: the first ms %+.2f dB (the two added: %+.2f)\n", half, want);
         CHECK(std::fabs(half - want) < 0.5);
+    }
+    // ...ON BOTH SIDES, at every MIX between: the same drum on left and right comes out the same on both, to the
+    // bit (a right side that dropped the plain sound at MIX 50% was 6 dB quiet, and the checks above, on the
+    // left, did not hear it). And the right side at MIX 50% is the plain sound and the shaped one added, halved.
+    for (float mix : {0.25f, 0.5f, 0.8f}) {
+        Stereo io(48000), shaped(48000);
+        Noise noise(23u);
+        for (std::size_t i = 0; i < io.frames(); ++i) io.l[i] = io.r[i] = static_cast<float>(0.8 * std::pow(10.0, -3.0 * static_cast<double>(i % 12000) / 48000.0 / 0.3)) * noise.next();
+        shaped = io;
+        const Stereo in = io;
+        std::unique_ptr<Effect> e = fresh(snap, 1.f, 0.f, mix), full = fresh(snap, 1.f, 0.f, 1.f);
+        through(*e, io);
+        through(*full, shaped);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < io.frames(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(io.r[i]) - (in.r[i] + mix * (static_cast<double>(shaped.r[i]) - in.r[i]))));
+        SAY("snap     MIX %.0f%%: left and right %s; the right off the plain and the shaped laid together by %.1e\n", mix * 100.0, io.l == io.r ? "the same" : "APART", worst);
+        CHECK(io.l == io.r && worst < 1e-5);
     }
     // A STEADY SOUND IS LEFT ALONE: a 100 Hz and a 1 kHz sine at half scale, every end of ATTACK and SUSTAIN,
     // after its first half second, within 0.5 dB of what went in, and hardly bent (harmonics 2 to 9).
