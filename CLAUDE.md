@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (33) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (34) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -1211,6 +1211,45 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **AT END: a song played as a song LOOPs (as it always did) or STOPs**
+  (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
+  song file `songend 1` among the song's own lines (`cutSong` knows it),
+  **left out at LOOP**, so a looping song is written as before and an old
+  program plays it round. In undo with the song (`restorePatterns`); told to
+  the engine by `syncSong` (`Command::SetSongEnd`, `sentSongEnd_`, live: it
+  may be switched while the song plays). **LOOP is the engine as it was, to
+  the bit** (`effects_test --print` and a busy song against `main`, the
+  same). STOP: the engine asks nothing early of the top at the last step
+  (`playsOnce()`, as a bounce's `once_`), and on the first sample of the step
+  after the last step of scene `sceneCount_` (its last time round) it stops
+  exactly as `Command::Stop` does (`stopPlaying`, `songEndsNow`, checked in
+  `render()` before anything of that sample). Not for a scene alone, not for
+  a bounce (`once_`: it stops itself, so a STOP song bounces to the same
+  file). **The engine says it stopped, the app does not guess**: it counts
+  the Plays it takes (`playsTaken_`) and keeps the one that ended in
+  `songEnded()`; the Session counts the Plays it sent (`playsSent_`) and
+  takes `project.playing` down only when the two are equal, so a START
+  pressed just after the end is never lost. The place: the PLAYS box of the
+  first empty row (`SongScreen::songEndRow`, `onSongEnd`) shows a loop arrow
+  (dim) or a square (brass); A switches, B puts LOOP back; that box had a
+  repeat count of a scene with nothing in it, which it no longer shows.
+  Tests: `tests/songend_test.cpp`; stills `song-end-loop`, `song-end-stop`.
+  - **A `songend` number nobody knows is LOOP** (`songEndKind`), as an unknown
+    GLIDE FROM is TOP: a later program's third choice plays round here.
+  - **Where the song stops is a bar line for Catch** (`Engine::barLine`, called
+    by `fireStep` and before `stopPlaying` in `render()`): a bar's end is
+    marked where the next begins, and a stopped song begins none. Without it
+    Catch after the end gave the bar before the last. (A Stop by hand exactly
+    on a bar line still gives the bar before: as on `main`.)
+  - **AT END switched during the song's LAST step asks that step again**
+    (`askAgain(true)` from `SetSongEnd`, only when `playsOnce()` flips and only
+    on that step): to LOOP, the top's early hits and notes are asked for (it
+    is LOOP all along, to the bit, if none was due yet); to STOP, those not
+    yet begun are taken back. On any other step, or told what it already is,
+    nothing is asked again: a ratchet's waiting pieces would be dropped.
+  - **Only Plays that went are counted** (`togglePlay`: not a Stop, not a
+    Play lost to a full queue), and `playsSent_ != 0` keeps a play mark set
+    by hand in the tests ("as if playing") from being taken down.
 - **The mixer (owner, 2026-11-14): hold A on a track's head on SONG, or on
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:

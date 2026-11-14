@@ -250,6 +250,12 @@ struct TrackData {
 // new song should start with other effects.
 constexpr EffectKind kNewSongBus[kBuses] = {EffectKind::Tape, EffectKind::Hall};
 
+// What a song played as a song does at its end (Project::songEnd). The numbers are in song files: appended.
+constexpr int kSongLoop = 0;
+constexpr int kSongStop = 1;
+// A number nobody knows (a later program's) is the usual, LOOP, as an unknown GLIDE FROM is TOP.
+inline int songEndKind(int number) { return number == kSongStop ? kSongStop : kSongLoop; }
+
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
@@ -258,6 +264,7 @@ struct Project {
     EffectData busEffects[kBuses];          // what the ECHO and the SPACE bus hold: one effect each, its MIX read as LEVEL
     float tempo = 120.f;
     int masterDb = 0, masterPan = 0; // the master's level and pan on the mixer, as a track's are
+    int songEnd = 0; // AT END, played as a song: kSongLoop round to the first scene (as it always did), kSongStop stop there
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;

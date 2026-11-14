@@ -816,6 +816,11 @@ int main(int argc, char** argv) {
         }
         pushKey(SDLK_x, true); // A, held
         app.song().showMixCardForStill();
+    } else if (std::strcmp(view, "song-end-loop") == 0 || std::strcmp(view, "song-end-stop") == 0) {
+        // AT END: the cursor on the PLAYS box of the row just past the last scene, where the song ends.
+        app.session().view = View::Song;
+        if (view[9] == 's') app.session().setSongEnd(kSongStop);
+        app.song().moveCursorTo(app.song().songEndRow(), -1);
     } else if (std::strcmp(view, "song-deleting") == 0) {
         // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
         app.session().view = View::Song;

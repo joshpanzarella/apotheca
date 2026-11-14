@@ -35,8 +35,15 @@ void Session::togglePlay(bool song) {
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
     c.b = song ? 0 : 1;
-    engine.send(c);
+    if (engine.send(c) && c.type == Command::Play) ++playsSent_;
     project.playLoop = !song;
+}
+
+void Session::setSongEnd(int end) {
+    end = songEndKind(end);
+    if (end == project.songEnd) return;
+    project.songEnd = end;
+    noteEdit(); // a step of undo: it is a line of the song (the engine is told by update's syncSong, this frame)
 }
 
 void Session::panic(bool held) {
@@ -51,6 +58,12 @@ void Session::panic(bool held) {
 }
 
 void Session::syncSong() {
+    if (project.songEnd != sentSongEnd_) {
+        Command c;
+        c.type = Command::SetSongEnd;
+        c.a = project.songEnd;
+        if (engine.send(c)) sentSongEnd_ = project.songEnd; // (lost to a full queue: not sent, so sent again)
+    }
     const int count = project.sceneCount();
     if (count == sentSceneCount_) return;
     Command c;
@@ -246,6 +259,8 @@ void Session::update(Uint32 nowMs) {
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
     project.playBar = engine.playBar();
+    // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
+    if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     project.silenced = engine.silenced();
     project.busy = engine.qualityLimit() < 3;
 
@@ -951,6 +966,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         sendMix(track);
     };
     mixBack(kMasterTrack, was->masterDb, was->masterPan);
+    project.songEnd = was->songEnd; // (the song's own lines are always read; the engine is told by update's syncSong)
     for (int t = 0; t < kNumTracks; ++t)
         if (!same[t] && project.tracks[t].kind != TrackKind::None && project.tracks[t].kind == was->tracks[t].kind) mixBack(t, was->tracks[t].mixDb, was->tracks[t].mixPan);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {
