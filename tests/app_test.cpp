@@ -7272,7 +7272,8 @@ void testTheHintsFitAndSayWhatTheyDo() {
         rig.project().track = 0;
         rig.app.drums().moveCursorTo(0, 0);
         CHECK(draw());
-        CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete") && hintedOn(canvas, scratch, "effects"));
+        CHECK(hintKeyed(canvas, scratch, "B", "delete") && !hintKeyed(canvas, scratch, "HOLD B", "delete") && hintKeyed(canvas, scratch, "HOLD X", "fx"));
+        CHECK(hintKeyed(canvas, scratch, "HOLD R1", "paint")); // R1 held on a hit paints at its level, as it did on main
         rig.app.drums().moveCursorTo(0, 1);
         CHECK(draw());
         CHECK(hintKeyed(canvas, scratch, "HOLD B", "delete") && !hintKeyed(canvas, scratch, "B", "delete") && hintedOn(canvas, scratch, "random") && hintedOn(canvas, scratch, "paint"));

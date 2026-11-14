@@ -1089,14 +1089,16 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("TAP Y", "roll");
         if (canSlice(lane_)) hint("L1", "slices");
     } else {
-        // As on the piano roll: on a hit, what is done to it (a tap of B deletes it); on an empty step,
-        // the brushes, which start there, and HOLD B, which deletes what it is dragged over. Every list
-        // here fits with the help at the end.
+        // As on the piano roll: on a hit, what is done to it (a tap of B deletes it, HOLD R1 paints at its
+        // level); on an empty step, the brushes, which start there, and HOLD B, which deletes what it is
+        // dragged over. Every list here fits with the help at the end, HLD SEL: HELP too: on a hit that
+        // takes "fx" for "effects" (34 pixels: with "effects" the list was 14 over).
         if (hitHere()) {
             hint("A", "level / nudge");
             hint("Y", "chance / start");
-            hint("HOLD X", "effects");
+            hint("HOLD X", "fx");
             hint("B", "delete");
+            hint("HOLD R1", "paint");
         } else {
             hint("A", "place");
             hint("Y", "maybe");
