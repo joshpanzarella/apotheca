@@ -1153,9 +1153,29 @@ void testMuteSoloAndNames() {
     rig.render(2000);
     levels(d, p);
     CHECK(d > 0.05f && !rig.project().tracks[0].muted);
-    // L1: soloed. Only it is heard, and a muted track that is soloed is heard too.
+    // L1 HELD: soloed. Only it is heard, and a muted track that is soloed is heard too. A tap of L1 does
+    // nothing (owner, 2026-11-14), nor does a hold let go just short, or one carried to another track.
+    const auto holdL1 = [&](int ms) { rig.key(L1, true); rig.frames(ms / 16 + 2); rig.key(L1, false); rig.frames(1); };
+    const int solo = static_cast<int>(SongScreen::kSoloHoldMs);
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(L1);
+    rig.frames(40);
+    CHECK(!rig.project().tracks[1].solo);
+    holdL1(solo - 100);
+    CHECK(!rig.project().tracks[1].solo);
+    rig.key(L1, true);
+    rig.frames(10);
+    rig.tap(LEFT);
+    rig.frames(40);
+    rig.key(L1, false);
+    CHECK(!rig.project().tracks[0].solo && !rig.project().tracks[1].solo);
+    rig.app.song().moveCursorTo(0, 1);
+    rig.key(L1, true);
+    rig.frames(solo / 16 + 2);
+    CHECK(rig.project().tracks[1].solo); // at the hold's end, before L1 is let go
+    rig.frames(60);
+    CHECK(rig.project().tracks[1].solo); // once: kept held, it does not flip back
+    rig.key(L1, false);
     CHECK(rig.project().tracks[1].solo && session.heard(1) && !session.heard(0));
     rig.render(2000);
     levels(d, p);
@@ -1163,11 +1183,11 @@ void testMuteSoloAndNames() {
     rig.tap(Y); // muted as well: solo still wins while it is on
     CHECK(session.heard(1));
     rig.app.song().moveCursorTo(0, 0);
-    rig.tap(L1); // both soloed: both heard
+    holdL1(solo); // both soloed: both heard
     CHECK(session.heard(0) && session.heard(1));
-    rig.tap(L1);
+    holdL1(solo);
     rig.app.song().moveCursorTo(0, 1);
-    rig.tap(L1); // no solo left: the mute shows again
+    holdL1(solo); // no solo left: the mute shows again
     CHECK(session.heard(0) && !session.heard(1));
     rig.render(2000);
     levels(d, p);
@@ -1176,11 +1196,11 @@ void testMuteSoloAndNames() {
     // Not on the repeat counts or + TRACK: nothing to mute there, and nothing breaks.
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(Y);
-    rig.tap(L1);
+    holdL1(solo);
     rig.tap(X);
     rig.app.song().moveCursorTo(0, 2);
     rig.tap(Y);
-    rig.tap(L1);
+    holdL1(solo);
     CHECK(session.heard(0) && session.heard(1) && !rig.app.song().listingSongs());
     rig.tap(START);
     rig.render(96000);

@@ -61,6 +61,9 @@ public:
     static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
+    // L1 held this long on a track solos it, or takes its solo off (owner, 2026-11-14: a tap of L1 soloed a
+    // track by mistake too easily). A tap does nothing.
+    static constexpr Uint32 kSoloHoldMs = 400;
     // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
     // names the track, turned or not (owner, 2026-11-14: a look at the level opened the keyboard).
     static constexpr Uint32 kMixCardMs = 300;
@@ -162,6 +165,9 @@ private:
     bool selectAlone_ = false; // SELECT went down and nothing else has since
 
     bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
+    bool soloHold_ = false, soloHoldTimed_ = false;   // L1 is being kept held on a track: its solo, at kSoloHoldMs
+    int soloColumn_ = 0;
+    Uint32 soloHoldSince_ = 0;
     Uint32 trackHoldSince_ = 0;
     float trackHoldPart_ = 0.f;
     bool copying_ = false;  // R1 is held: the brush carries a cell
