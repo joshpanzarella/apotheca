@@ -486,6 +486,36 @@ void testFreeNoteLengthsAreKept() {
     CHECK(parseSong(text, *again) && songText(*again) == text);
 }
 
+// Chords end to end: one ends on the step the next begins. The writer goes through the slots in
+// order and the reader puts each in the first free slot, so a chord placed at step 5 and then one at
+// step 1 is written later-chord-first. Both must come back.
+void testChordsEndToEndLoadBack() {
+    NotePattern bar;
+    bar.chords[0].step = 4; // step 5
+    bar.chords[1].step = 0; // step 1, ending where the other begins
+    for (int i = 0; i < 2; ++i) {
+        ChordEvent& c = bar.chords[i];
+        c.length = 4.f;
+        c.velocity = 0.8f;
+        c.root = 60;
+        c.count = 3;
+        c.intervals[1] = 4;
+        c.intervals[2] = 7;
+    }
+    std::unique_ptr<Project> song(new Project);
+    song->tracks[1].kind = TrackKind::Phazed;
+    song->tracks[1].notes[0][0] = bar;
+    const std::string text = songText(*song);
+    CHECK(text.find("chord 5 4 ") < text.find("chord 1 4 "));
+    std::unique_ptr<Project> again(new Project);
+    CHECK(parseSong(text, *again));
+    const NotePattern& back = again->tracks[1].notes[0][0];
+    int found = 0;
+    for (const ChordEvent& c : back.chords)
+        if (c.velocity > 0.f) found += (c.step == 0 || c.step == 4) && c.length == 4.f ? 1 : 100;
+    CHECK(found == 2);
+}
+
 void testRevs() {
     const std::string folder = tempFolder();
     Rig rig(folder);
@@ -1118,6 +1148,7 @@ int main(int, char**) {
     testNewSongAndTheList();
     testTheSongListOnScreen();
     testFreeNoteLengthsAreKept();
+    testChordsEndToEndLoadBack();
     testHiddenBarsAreKept();
     testSavedToTheCardBeforeItIsMoved();
     testADeletedSongIsNeverWrittenOver();

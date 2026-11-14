@@ -275,6 +275,15 @@ void testRepeatCounts() {
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.project().repeats[1] == 2 && rig.project().repeats[0] == 1);
+    // A change of REPEATS is a step of undo of its own, and undo puts the count back.
+    rig.frames(60);
+    Session& session = rig.app.session();
+    const int steps = session.undoSteps();
+    rig.tap(A);
+    CHECK(rig.project().repeats[1] == 4);
+    rig.frames(60);
+    CHECK(session.undoSteps() == steps + 1);
+    CHECK(session.undo() && rig.project().repeats[1] == 2);
 }
 
 // Scene n gets one rim hit on step n + 1, so a bar tells which scene it was.
