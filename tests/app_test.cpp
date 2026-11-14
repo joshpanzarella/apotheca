@@ -3381,9 +3381,9 @@ void testTheEffectsScreen() {
     rig.tap(RIGHT);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape) && fx.cursorColumn() == 0);
     CHECK(rig.listen(4000) > 0.05f); // heard at once, as a new effect is
-    rig.tap(RIGHT, 3);
-    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Ping)); // the family's last type: it stops there
-    rig.tap(LEFT);
+    rig.tap(RIGHT, 6);
+    CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Stutter)); // the family's last type: it stops there
+    rig.tap(LEFT, 4);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Tape));
     rig.tap(LEFT);
     CHECK(fx.onLine(0).kind == static_cast<int>(EffectKind::Delay));
@@ -4611,7 +4611,7 @@ void testTheFxScreensList() {
         rig.tap(RIGHT);
         CHECK(effectBus(static_cast<EffectKind>(fx.onLine(4).kind)) == 0);
     }
-    CHECK(fx.onLine(4).kind == static_cast<int>(EffectKind::Ping) && fx.onLine(4).param[3] == 1.f); // the DELAY's last type
+    CHECK(fx.onLine(4).kind == static_cast<int>(EffectKind::Stutter) && fx.onLine(4).param[3] == 1.f); // the DELAY's last type
     rig.tap(LEFT, 5);
     CHECK(fx.onLine(4).kind == delay);
     rig.key(A, false);
@@ -5289,7 +5289,7 @@ void testFxTextsFit() {
         bool familySmall = false;
         bool typeAlone = true;
         CHECK(&F::lineFonts(fonts, kind, &gap, &familySmall, &typeAlone) == &fonts && gap == 7.f);
-        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more)
+        CHECK(familySmall == (kind == EffectKind::Spring || kind == EffectKind::Saturate || kind == EffectKind::Limiter || kind == EffectKind::Reverse || kind == EffectKind::Stutter)); // the others as they were (LEVEL LIMITER: its meter's mark keeps 7 more; DELAY REVERSE and DELAY STUTTER as REVERB SPRING)
         CHECK(typeAlone == (kind == EffectKind::Saturate)); // DRIVE SATURATE, both small, is 4 pixels too long: SATURATE alone
         const float nameEnds = typeAlone ? F::kNameX + fonts.medium.width(effectTypeShown(kind))
                                          : F::kNameX + (familySmall ? fonts.small : fonts.medium).width(effectFamily(kind)) + (effectTypeShown(kind)[0] ? gap + fonts.small.width(effectTypeShown(kind)) : 0.f);
@@ -5302,13 +5302,14 @@ void testFxTextsFit() {
         float types = fonts.small.width("TYPE") + 12.f;
         std::vector<std::string> typeNames;
         for (int t = 0; t < effectTypes(kind); ++t) types += fonts.small.width(effectTypeName(effectTypeAt(kind, t))) + 20.f, typeNames.push_back(effectTypeName(effectTypeAt(kind, t)));
-        // (MOD's five do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
-        if (effectInfo(kind).family != EffectFamily::Mod) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
+        // (MOD's five and DELAY's six do not all fit: its row shows as many as fit at LARGE, "..." for the rest; textsize_test has it.)
+        const bool crowded = effectInfo(kind).family == EffectFamily::Mod || effectInfo(kind).family == EffectFamily::Delay;
+        if (!crowded) CHECK(types + ui::keyWidth(fonts, "LEFT / RIGHT") <= headRoom);
         {
-            int from = -1, to = -1; // today's types are all in view, but MOD's
+            int from = -1, to = -1; // today's types are all in view, but MOD's and DELAY's
             const Fonts& drawn = F::typeRowView(fonts, typeNames, effectTypeIndex(kind), &from, &to);
             CHECK(F::typeRowWidth(drawn.small, typeNames, from, to) <= F::typeRowRoom(drawn, effectTypes(kind)) && from <= effectTypeIndex(kind) && effectTypeIndex(kind) < to);
-            CHECK((from == 0 && to == effectTypes(kind)) == (effectInfo(kind).family != EffectFamily::Mod));
+            CHECK((from == 0 && to == effectTypes(kind)) == !crowded);
         }
         // In the list of effects: the family, then its types or its words, each in its own column.
         CHECK(F::kPickNameX + fonts.medium.width(effectFamily(kind)) <= F::kPickTypesX - 8);

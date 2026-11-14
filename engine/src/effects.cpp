@@ -48,6 +48,9 @@ const EffectInfo* const kTable[kEffectKinds] = {
     &fx::kEnsembleInfo, // 25
     &fx::kPhaserInfo, // 26
     &fx::kTremoloInfo, // 27
+    &fx::kDubInfo,    // 28
+    &fx::kReverseInfo, // 29
+    &fx::kStutterInfo, // 30
 };
 
 // The order a player meets them in: the families in EffectFamily's order, and
@@ -75,6 +78,9 @@ const EffectKind kList[] = {
     EffectKind::Delay,    // DELAY:  CLEAN
     EffectKind::Tape,     //         TAPE
     EffectKind::Ping,     //         PING
+    EffectKind::Dub,      //         DUB
+    EffectKind::Reverse,  //         REVERSE
+    EffectKind::Stutter,  //         STUTTER
     EffectKind::Reverb,   // REVERB: ROOM
     EffectKind::Hall,     //         HALL
     EffectKind::Spring,   //         SPRING

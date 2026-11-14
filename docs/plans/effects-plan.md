@@ -1086,3 +1086,71 @@ rest rule (4 s of nothing and memory all zeros, as RING).
 | ENSEMBLE | clicks 20 ms apart: the copies' centre and spread at DEPTH 0, 100% at 0.58 Hz and 8 Hz, against CHORUS's ENSEMBLE; noise at SPREAD 0, 50, 100%; what the copies add at 333 Hz and 12 kHz; MIX 50% at 333 Hz; noise at its usual settings | centre 432.67 samples (9 ms and the cut's 0.67), moving under 1.5 samples (CHORUS's 219); spread^2 (swirl^2 + shimmer^2) / 2 within 5%, swinging by 2 swirl x shimmer within 15%; the sides the same to the bit at 0, copies 0.04 and 0.03 alike; 0 and -5.1 dB; +2.32 dB (cos and sin of 22.5 degrees); -1.5 to -3 dB |
 | PHASER | sines at the three notches and between at DEPTH 0; between at FEEDBACK -100, 0, +100%; 640 Hz swept at 1 Hz on both sides; noise at three FEEDBACKs; noise on one side at +100% | under -40 dB, 0 dB within 0.05; -4.2, 0, +7.8 dB; from -33 to 0 dB, the right 0.250 s behind; -1 to -2 dB; the other side silent |
 | TREMOLO | a steady 0.5 through: SINE at every RATE at 120 and 90 BPM; DEPTH 50%; SQUARE at 1 BAR and 1/32; RAMP at 1/4; RANDOM for 30 s, again, at SPREAD 100%, after a sleep; SPREAD 100 and 50%; a new tempo and RATE; SINE to SQUARE and to RAMP; hits 1.5 s and 6 s apart | 0.5 + 0.5 cos to 7e-6; 0.5 to 1; falls counted, up half the time, 99% to 1% in 187 samples, no step past 0.0128; 0, 0.43, 0.75, 1, 0.02; levels 0.004 to 0.999, the same twice, the right the left's half a turn on, a fresh one's after waking; the sides adding to 1, a quarter turn to 2e-6; a turn of 24000 after, no step past the wave's own; steps under the fade's, no corner as the fade starts; 0 then the top again |
+
+**Batch c2 built (2026-11-14, branch `newfx2`): DELAY's DUB, REVERSE and STUTTER.**
+Numbers 28, 29, 30; words `dub`, `reverse`, `stutter`; in the list after PING,
+and on the ECHO bus with the rest of the family. They share `fx/echo.hpp`
+(TAPE's and PING's eight TIMEs, so TIME carries among PING, TAPE, DUB and
+REVERSE to the bit, and from CLEAN by its steps; a crossfade's curve; the 4 s
+rest), keep the TICK and count every time in samples: the same to the bit
+however the sound is cut into blocks, settings moving too.
+
+| Type | What it is | Settings | Cost (desk; DRIVE 0.12%, TAPE 0.10%, PING 0.02%, HALL 0.15 to 0.21% in the same three runs) |
+| --- | --- | --- | --- |
+| DUB | a dark echo whose loop is a band (Q 0.7) at TONE: each repeat darker and narrower; past 100% it rises into a held roar about TONE, under a ceiling, and comes down by itself when left alone | TIME (the eight), FEEDBACK (0 to 150%; left alone 30 s, over 85% eases to 85%), TONE (the band, 250 Hz to 4 kHz, read as a percentage so TYPE carries PING's and CLEAN's), MIX | 0.05%; howling 0.05 to 0.07%; TONE turned all the while 0.05 to 0.06% |
+| REVERSE | each echo the sound backwards: a hit comes back as a swell rising into it, its peak exactly one TIME after the hit, then forwards, backwards... | TIME (the eight: how long a backwards piece is), FEEDBACK (0 to 100%, doing 90%, as CLEAN's), MIX. Three settings: nothing a fourth would do was worth a knob | 0.03% |
+| STUTTER | now and then, by chance, a slice caught and played again in its place, in time: a retrigger | LENGTH (1/32 to 1/2, eight), REPEATS (2, 3, 4, 6, 8 times, the first included), CHANCE (each place: REPEATS slices from waking, rolled by its number), MIX (100% as it comes: the slice in the sound's place) | 0.03 to 0.04% |
+
+- **How each differs from what was there:**
+  - DUB against TAPE: TAPE's loop passes 40 Hz to 12 kHz (narrowed by AGE),
+    sways (wow), goes to 120%, two sides apart. DUB's is a two-octave band at
+    one place: three repeats in it is a muffled thump (what is near 6 kHz
+    falls 0.21, 0.064, 0.020, 0.010 of each echo); it goes to 150% so it
+    rises into the howl in a second; the howl sits about TONE (turn TONE
+    while it howls: the siren); no wow; TIME glides twice as slowly (0.3 s:
+    a long swoop); one echo for both sides, in the middle.
+  - **DUB's howl is a roar, not one clean note**: with a band this wide many
+    of the loop's notes are over 1 at once, so it is a band of sound about
+    TONE (all of it within an octave of TONE, its middle within 4 semitones;
+    497 Hz for 500, 1918 for 2000). A narrower band would ring one note but
+    make every echo thin. The owner's ears decide.
+  - REVERSE and STUTTER have no near neighbour (the drum grid's REVERSE step
+    effect plays one hit's recording backwards; this is the echo of
+    anything, in time).
+- **STUTTER on the ECHO bus: kept there.** On a bus it gives back only the
+  repeats: what was sent is heard once from its track, and when the dice say
+  so its slice comes back REPEATS - 1 more times right after it, as loud as it
+  went in, then stops. A THROW of a hit there is "a throw that repeats
+  exactly and does not die away" (tested through the engine: a hit sent at
+  full, CHANCE 100%, comes back three times a sixteenth apart, the same
+  level, then nothing). Odd only in that the dice are the bus's, for
+  everything sent to it together, and its places count from the first sound
+  after 4 s of nothing on the bus.
+- **In time, not on the beat** (as TREMOLO): REVERSE's windows and STUTTER's
+  places start where the first sound after a rest is. A loop that starts on
+  its beat has them on the beat.
+- **Every splice ENDS on an edge.** STUTTER's crossfades (4 ms) run up to a
+  slice's start through the 4 ms that came before it, so a hit's attack is
+  heard whole every repeat; REVERSE puts the sound that wakes it in the middle
+  of a window, so its attack is never in a window's 4 ms fade.
+- Tails (testATailAlwaysEnds, 40 BPM, worst setting): DUB 295 s, REVERSE
+  406 s, STUTTER 31 s (450 is the promise; TAPE 418, CLEAN and PING 388).
+- Mutants: 54 tried, 50 killed. Survivors, each looked at: DUB's sleep also
+  asking that its band be empty, and its band emptied on waking (the line is
+  zeros for its whole length first: the band has long rung out; guards);
+  STUTTER's dice compared with `<=` (the same but where a roll equals CHANCE
+  exactly); its 4 ms ring emptied on waking (4 s of nothing filled it with
+  zeros already).
+- **Not heard by anyone.** Every number here is from the tests; the owner's
+  ears decide whether DUB's roar is the sound wanted and whether 4 ms splices
+  are smooth enough on a vocal.
+- Stills: `fx-kind-dub`, `fx-kind-reverse`, `fx-kind-stutter` (each with
+  `--hold-a`, and `-N` on a setting). In the list DELAY REVERSE and DELAY
+  STUTTER draw the family small, as REVERB SPRING does; the heading's TYPE row
+  shows "... PING DUB REVERSE STUTTER" from PING on.
+
+| Type | Measure | Pass |
+| --- | --- | --- |
+| DUB | a howl fed 3e-5, 3e-4, or a burst at 34 s; a faint sine at the band's top, FEEDBACK 60%; a click on the right alone, a click in a slot, sound that cancels on a bus; TIME 1/16 to 1/8 with clicks, and to 1/2 under a 1 kHz sine; a click at three tempos and three TIMEs; a steady sine at TONE's place and two octaves either side (25, 50, 75%); noise: what is near 6 kHz echo by echo; FEEDBACK 150% at TONE 25 and 75%: where the howl is, its peak at 10 and 29 s, at 36 and 45 s, when silent, fed again at 70 s; 85% left alone 31 to 40 s against one fed all along; 70 s cut four ways, on a bus too; MIX's glide | stops / howls on / howls again; echoes 1.000 and 0.600 of the last; half on both sides, the sides alike, nothing; on the new TIME from 2.9 s (2 to 4.5), down to 500 Hz and no lower; on the step to the sample, nothing after 0.1 s; 0 dB, -9 dB (-9.8 over at 2 kHz); each under 0.7 of the last; middle within 4 semitones, 85% within an octave; 0.5 to 1.6 and held to 5%; under 0.2 and 1e-3 of it; before 70 s; as loud again; 1e-3 of the echo; the same to the bit; as FOLD's |
+| REVERSE | a falling hit, FEEDBACK 50%, at three tempos and three TIMEs, and 40 BPM 1/2; a steady 97 Hz sine's echo alone; a click at a window's start at 40 BPM; a click in a slot on both sides; TIME turned in a window; 30 s cut four ways, on a bus too; MIX's glide | the hit backwards sample for sample, its top at T - 1 (T even) or T, then forwards at 0.45 from exactly 2T, nothing between, both sides; no step over 1.05 of the sine's, no corner over 2.5 (1.99); back 287999 later; each side's own echo; the window keeps its length; the same to the bit; as FOLD's (early 0.009) |
+| STUTTER | a falling hit on a bus, CHANCE 100%, two tempos, three LENGTHs, three REPEATS, and 1/2 eight times at 40 BPM; two places in a slot worked out by hand, each side its own sine; MIX 0 with -0 in; a sine in a slot at MIX 100%; CHANCE 0 in a slot and on a bus; 60 places at CHANCE 50% and 20%, and the same after 6 s of nothing; a hit sent through the engine to ECHO; 20 s cut four ways, on a bus too; MIX's glide | exactly the hit REPEATS - 1 more times a slice apart, nothing else; within 1e-6 (2.3e-8); to the bit; the slice again and again to the bit, then the sound; no step over 1.3 of the sine's (1.06); untouched to the bit, nothing; exactly the places whose roll is under CHANCE (29 and 14 of 60), the same again; three repeats as loud as the hit, then nothing; the same to the bit; as FOLD's |

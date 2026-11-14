@@ -41,12 +41,19 @@
 //            notches sweeping
 //   TREMOLO  RATE (ten note lengths, in time), DEPTH, SHAPE (sine / square /
 //            ramp / random), SPREAD (auto-pan): the level pulsing
+//   DUB      TIME (TAPE's eight), FEEDBACK (to 150%: it howls, and comes down
+//            by itself when left alone), TONE (the loop's band, 250 Hz to
+//            4 kHz), MIX: a dark echo that sings
+//   REVERSE  TIME (TAPE's eight), FEEDBACK (to 100%, doing 90%), MIX: each
+//            echo backwards, its peak one TIME after the sound
+//   STUTTER  LENGTH (eight note lengths), REPEATS (2 to 8), CHANCE, MIX: a
+//            slice caught by chance and played again, in time
 //
 // MIX at 0 is the sound untouched.
 //
 // FAMILIES AND TYPES (owner, 2026-11-13). A player picks from seven families,
 // in this order, each with a TYPE: FILTER (FILTER, COMB, VOWEL, EQ), DRIVE (DRIVE, SATURATE,
-// FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO), DELAY (CLEAN, TAPE, PING), REVERB (ROOM, HALL,
+// FOLD, FUZZ), CRUSH (CRUSH, RING, WEAR), MOD (CHORUS, FLANGER, ENSEMBLE, PHASER, TREMOLO), DELAY (CLEAN, TAPE, PING, DUB, REVERSE, STUTTER), REVERB (ROOM, HALL,
 // SPRING, PLATE), LEVEL (COMP, DUCK, LIMITER, SNAP). Underneath each type is its own effect,
 // with its own number and its own word in a song file, as it always was: a
 // family is only how the list is shown. A new type is a new effect
@@ -67,7 +74,7 @@ namespace apotheca {
 
 // An effect's number: what a song in memory and a command call it. NEVER
 // reordered, never reused: new ones go at the end, before Count.
-enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Fold /* 18 */, Fuzz /* 19 */, Ring /* 20 */, Wear /* 21 */, Limiter /* 22 */, Snap /* 23 */, Flanger /* 24 */, Ensemble /* 25 */, Phaser /* 26 */, Tremolo /* 27 */, Count };
+enum class EffectKind { None, Filter, Drive, Delay, Reverb, Crush, Tape /* 6 */, Hall /* 7 */, Chorus /* 8 */, Comp /* 9 */, Saturate /* 10 */, Duck /* 11 */, Ping /* 12 */, Spring /* 13 */, Plate /* 14 */, Comb /* 15 */, Vowel /* 16 */, Eq /* 17 */, Fold /* 18 */, Fuzz /* 19 */, Ring /* 20 */, Wear /* 21 */, Limiter /* 22 */, Snap /* 23 */, Flanger /* 24 */, Ensemble /* 25 */, Phaser /* 26 */, Tremolo /* 27 */, Dub /* 28 */, Reverse /* 29 */, Stutter /* 30 */, Count };
 constexpr int kEffectKinds = static_cast<int>(EffectKind::Count);
 constexpr int kEffectParams = 4;
 

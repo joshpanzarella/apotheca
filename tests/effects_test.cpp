@@ -35,6 +35,7 @@
 // No framework: each CHECK prints its line on failure and the program exits
 // non-zero if any failed.
 
+#include <algorithm>
 #include <atomic>
 #include <cfenv>
 #include <cfloat>
@@ -55,6 +56,7 @@
 #include "../engine/src/fx/glide.hpp"    // Glide, by itself
 #include "../engine/src/fx/halfband.hpp" // the 2x stage, measured by itself
 #include "../engine/src/fx/unit.hpp"     // makeSaturatePlain: SATURATE without it
+#include "../engine/src/fx/echo.hpp"     // DELAY's newer types: TAPE's eight TIMEs
 
 using namespace apotheca;
 
@@ -480,7 +482,7 @@ static void testTheTable() {
     CHECK(effectChoices(EffectKind::Filter, -1) == 0 && effectChoices(EffectKind::Filter, 4) == 0 && effectChoices(EffectKind::None, 0) == 0);
     CHECK(effectChoices(static_cast<EffectKind>(77), 0) == 0);
     // The list as it is today, in its seven families (FILTER, DRIVE, CRUSH, MOD, DELAY, REVERB, LEVEL), the types of a family side by side.
-    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
+    static const EffectKind list[] = {EffectKind::None, EffectKind::Filter, EffectKind::Comb, EffectKind::Vowel, EffectKind::Eq, EffectKind::Drive, EffectKind::Saturate, EffectKind::Fold, EffectKind::Fuzz, EffectKind::Crush, EffectKind::Ring, EffectKind::Wear, EffectKind::Chorus, EffectKind::Flanger, EffectKind::Ensemble, EffectKind::Phaser, EffectKind::Tremolo, EffectKind::Delay, EffectKind::Tape, EffectKind::Ping, EffectKind::Dub, EffectKind::Reverse, EffectKind::Stutter, EffectKind::Reverb, EffectKind::Hall, EffectKind::Spring, EffectKind::Plate, EffectKind::Comp, EffectKind::Duck, EffectKind::Limiter, EffectKind::Snap};
     CHECK(effectListSize() == static_cast<int>(sizeof list / sizeof list[0]));
     for (int i = 0; i < effectListSize(); ++i) CHECK(effectAt(i) == list[i]);
     // ...and the families in EffectFamily's order, so a family is never in two pieces (the list a player picks from has each once).
@@ -491,6 +493,7 @@ static void testTheTable() {
     CHECK(static_cast<int>(EffectKind::Fold) == 18 && static_cast<int>(EffectKind::Fuzz) == 19 && static_cast<int>(EffectKind::Ring) == 20);
     CHECK(static_cast<int>(EffectKind::Wear) == 21 && static_cast<int>(EffectKind::Limiter) == 22 && static_cast<int>(EffectKind::Snap) == 23);
     CHECK(static_cast<int>(EffectKind::Flanger) == 24 && static_cast<int>(EffectKind::Ensemble) == 25 && static_cast<int>(EffectKind::Phaser) == 26 && static_cast<int>(EffectKind::Tremolo) == 27);
+    CHECK(static_cast<int>(EffectKind::Dub) == 28 && static_cast<int>(EffectKind::Reverse) == 29 && static_cast<int>(EffectKind::Stutter) == 30);
     CHECK(std::string(effectInfo(EffectKind::Hall).word) == "hall" && effectFromWord("hall") == EffectKind::Hall);
     CHECK(std::string(effectInfo(EffectKind::Plate).word) == "plate" && effectFromWord("plate") == EffectKind::Plate && effectInfo(EffectKind::Plate).family == EffectFamily::Reverb);
     CHECK(effectInfo(EffectKind::Hall).family == EffectFamily::Reverb && effectChoices(EffectKind::Hall, 0) == 0 && effectChoices(EffectKind::Hall, 1) == 0);
@@ -879,6 +882,10 @@ static void testEveryEffect() {
         //   ENSEMBLE RATE 1.4     DEPTH 1.4       SPREAD 1.3  MIX 1.3        1.3  (the same: three copies of a low note add up)
         //   PHASER  RATE 1.3      DEPTH 1.3       FEEDBACK 1.4  MIX 1.2      1.3  (FEEDBACK +50% rings a little at 100 Hz)
         //   TREMOLO RATE 1.0      DEPTH 1.0       SHAPE 1.0   SPREAD 1.0     1.0  (it only turns the sine down, 1/8 at 50%)
+        //   DUB     TIME 1.0      FEEDBACK 1.0    TONE 1.0    MIX 1.0        1.0  (a 100 Hz sine is under its band: the echoes are faint)
+        //   REVERSE TIME 1.6      FEEDBACK 1.6    MIX 2.3                    1.6  (the sine backwards laid on the sine: up to twice as
+        //                                                 big at MIX 100%, which is where MIX's sweep ends; no window edge clicks: testReverse)
+        //   STUTTER LENGTH 1.0    REPEATS 1.2     CHANCE 1.0  MIX 1.0        1.2  (its splices are 4 ms crossfades of the sine to itself)
         // (FOLD, FUZZ, RING, WEAR and LIMITER's GAIN: their own tests hold each turn to no rougher than held
         // still where the turn ends.)
         static const double today[kEffectKinds][kEffectParams + 1] = {
@@ -910,6 +917,9 @@ static void testEveryEffect() {
             {1.35, 1.35, 1.28, 1.29, 1.28},   // ENSEMBLE
             {1.33, 1.26, 1.39, 1.24, 1.29},   // PHASER
             {1.00, 1.00, 1.00, 1.00, 1.00},   // TREMOLO
+            {1.04, 0.99, 1.00, 1.00, 0.99},   // DUB
+            {1.55, 1.64, 2.33, 0, 1.55},      // REVERSE
+            {1.00, 1.19, 1.00, 1.00, 1.19},   // STUTTER
         };
         for (int p = 0; p < info.params; ++p) {
             double steady = 0.0;
@@ -926,7 +936,7 @@ static void testEveryEffect() {
             const bool steeperByDesign = (kind == EffectKind::Chorus && p == 1) || (kind == EffectKind::Saturate && p <= 1) || (kind == EffectKind::Comb && p == 0) ||
                                          (kind == EffectKind::Eq && (p == 0 || p == 3)) ||
                                          kind == EffectKind::Fold || kind == EffectKind::Fuzz || kind == EffectKind::Ring ||
-                                         kind == EffectKind::Wear || (kind == EffectKind::Limiter && p == 0);
+                                         kind == EffectKind::Wear || (kind == EffectKind::Limiter && p == 0) || kind == EffectKind::Reverse;
             if (k > static_cast<int>(EffectKind::Crush) && !steeperByDesign) CHECK(jump < 1.5);
         }
     }
@@ -3909,8 +3919,9 @@ static void testEffectsOnABus() {
         }
         CHECK(busEffectPlace(bus, EffectKind::Filter) == 0 && busEffectPlace(bus, EffectKind::None) == 0);
     }
-    // DELAY, TAPE and PING on ECHO, REVERB, HALL, SPRING and PLATE on SPACE, in the main list's order.
-    CHECK(busListSize(0) == 4 && busEffectAt(0, 1) == EffectKind::Delay && busEffectAt(0, 2) == EffectKind::Tape && busEffectAt(0, 3) == EffectKind::Ping);
+    // DELAY, TAPE, PING, DUB, REVERSE and STUTTER on ECHO, REVERB, HALL, SPRING and PLATE on SPACE, in the main list's order.
+    CHECK(busListSize(0) == 7 && busEffectAt(0, 1) == EffectKind::Delay && busEffectAt(0, 2) == EffectKind::Tape && busEffectAt(0, 3) == EffectKind::Ping);
+    CHECK(busEffectAt(0, 4) == EffectKind::Dub && busEffectAt(0, 5) == EffectKind::Reverse && busEffectAt(0, 6) == EffectKind::Stutter);
     CHECK(busListSize(1) == 5 && busEffectAt(1, 1) == EffectKind::Reverb && busEffectAt(1, 2) == EffectKind::Hall && busEffectAt(1, 3) == EffectKind::Spring && busEffectAt(1, 4) == EffectKind::Plate);
     CHECK(busEffectPlace(0, EffectKind::Reverb) == 0 && busEffectPlace(1, EffectKind::Delay) == 0);
     CHECK(busListSize(-1) == 1 && busListSize(kBuses) == 1 && busEffectAt(-1, 1) == EffectKind::None);
@@ -3982,7 +3993,9 @@ static void testEffectsOnABus() {
                     ++quiet;
                 }
             }
-            CHECK(begun && !late);
+            // (STUTTER at CHANCE 0 never stutters, and on a bus gives back nothing at all.)
+            const bool silentByDesign = kind == EffectKind::Stutter && !((corner >> 2) & 1);
+            CHECK(begun != silentByDesign && !late);
         }
         SAY("%s on a bus: the longest silence between two sounds %.2f s (the rest rule waits %.0f)\n", effectInfo(kind).name, longestGap, static_cast<double>(kBusRestSeconds));
         CHECK(longestGap < 0.8 * kBusRestSeconds);
@@ -4597,9 +4610,9 @@ static void testSendsOnAnyHelperCount() {
 static void testFamiliesAndTypes() {
     const EffectKind N = EffectKind::None, D = EffectKind::Delay, T = EffectKind::Tape, R = EffectKind::Reverb, H = EffectKind::Hall;
     // Nothing moved underneath: the numbers and the song-file words of every effect, as they shipped.
-    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo"};
-    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO"};
-    CHECK(kEffectKinds == 28);
+    static const char* const words[kEffectKinds] = {"", "filter", "drive", "delay", "reverb", "crush", "tape", "hall", "chorus", "comp", "saturate", "duck", "ping", "spring", "plate", "comb", "vowel", "eq", "fold", "fuzz", "ring", "wear", "limiter", "snap", "flanger", "ensemble", "phaser", "tremolo", "dub", "reverse", "stutter"};
+    static const char* const names[kEffectKinds] = {"NONE", "FILTER", "DRIVE", "DELAY", "REVERB", "CRUSH", "TAPE", "HALL", "CHORUS", "COMP", "SATURATE", "DUCK", "PING", "SPRING", "PLATE", "COMB", "VOWEL", "EQ", "FOLD", "FUZZ", "RING", "WEAR", "LIMITER", "SNAP", "FLANGER", "ENSEMBLE", "PHASER", "TREMOLO", "DUB", "REVERSE", "STUTTER"};
+    CHECK(kEffectKinds == 31);
     for (int k = 0; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         CHECK(std::string(effectInfo(kind).word) == words[k] && std::string(effectInfo(kind).name) == names[k]);
@@ -4624,9 +4637,12 @@ static void testFamiliesAndTypes() {
         {EffectKind::Ensemble, "MOD", "ENSEMBLE", "ENSEMBLE", 5, 2, EffectFamily::Mod},
         {EffectKind::Phaser, "MOD", "PHASER", "PHASER", 5, 3, EffectFamily::Mod},
         {EffectKind::Tremolo, "MOD", "TREMOLO", "TREMOLO", 5, 4, EffectFamily::Mod},
-        {D, "DELAY", "CLEAN", "CLEAN", 3, 0, EffectFamily::Delay},
-        {T, "DELAY", "TAPE", "TAPE", 3, 1, EffectFamily::Delay},
-        {EffectKind::Ping, "DELAY", "PING", "PING", 3, 2, EffectFamily::Delay},
+        {D, "DELAY", "CLEAN", "CLEAN", 6, 0, EffectFamily::Delay},
+        {T, "DELAY", "TAPE", "TAPE", 6, 1, EffectFamily::Delay},
+        {EffectKind::Ping, "DELAY", "PING", "PING", 6, 2, EffectFamily::Delay},
+        {EffectKind::Dub, "DELAY", "DUB", "DUB", 6, 3, EffectFamily::Delay},
+        {EffectKind::Reverse, "DELAY", "REVERSE", "REVERSE", 6, 4, EffectFamily::Delay},
+        {EffectKind::Stutter, "DELAY", "STUTTER", "STUTTER", 6, 5, EffectFamily::Delay},
         {R, "REVERB", "ROOM", "ROOM", 4, 0, EffectFamily::Reverb},
         {H, "REVERB", "HALL", "HALL", 4, 1, EffectFamily::Reverb},
         {EffectKind::Spring, "REVERB", "SPRING", "SPRING", 4, 2, EffectFamily::Reverb},
@@ -4860,8 +4876,11 @@ static void testTypeChangeCarriesSettings() {
     // MIX with each of them (12); CRUSH and RING share MIX (2), WEAR nothing; COMP and SNAP share MIX, DUCK and
     // LIMITER RELEASE (4). MOD's five: twenty pairs; CHORUS, FLANGER, ENSEMBLE and PHASER share RATE, DEPTH and MIX
     // (36), FLANGER and PHASER FEEDBACK (2), TREMOLO DEPTH with each (8) and SPREAD with ENSEMBLE (2); its RATE is
-    // a choice of note lengths, the others' an amount in hertz, so it is not carried.
-    CHECK(pairs == 80 && carried == 138 && same > 250 && nearest >= 2);
+    // a choice of note lengths, the others' an amount in hertz, so it is not carried. DELAY's six since batch c2:
+    // thirty pairs, twenty-four of them new; DUB shares TIME, FEEDBACK, TONE and MIX with CLEAN and PING and three
+    // with TAPE (22), REVERSE TIME, FEEDBACK and MIX with each of the four (24), STUTTER only MIX with each (10):
+    // its LENGTH is a slice, not an echo's time.
+    CHECK(pairs == 104 && carried == 194 && same > 250 && nearest >= 2);
     // FILTER and VOWEL read RESONANCE alike (a percentage): it goes over untouched, both ways, as MIX does; EQ shares nothing.
     for (float v : {0.f, 0.2f, 0.37f, 1.f}) {
         CHECK(effectCarryFrom(EffectKind::Filter, EffectKind::Vowel, 2) == 1 && effectCarryValue(EffectKind::Filter, 1, EffectKind::Vowel, 2, v) == v);
@@ -5083,7 +5102,7 @@ static void testABusTakesItsOwnKind() {
             engine->collectGarbage();
         }
     }
-    CHECK(taken == 4 + 5 && refused == 2 * kEffectKinds - 9); // ECHO: NONE and its three; SPACE: NONE and its four; everything else is turned away
+    CHECK(taken == 7 + 5 && refused == 2 * kEffectKinds - 12); // ECHO: NONE and its six; SPACE: NONE and its four; everything else is turned away
     CHECK(effectBus(EffectKind::Tape) == 0 && effectBus(EffectKind::Hall) == 1 && effectBus(EffectKind::Chorus) == -1 && effectBus(EffectKind::Comp) == -1 && effectBus(EffectKind::Saturate) == -1);
 }
 
@@ -5116,7 +5135,7 @@ static void testBusLevel() {
             }
             CHECK(loudest > 0.05 && worst < 1e-6);
         }
-    CHECK(tried == 7); // TAPE, DELAY, HALL, REVERB, PING, SPRING, PLATE
+    CHECK(tried == 10); // TAPE, DELAY, HALL, REVERB, PING, SPRING, PLATE, DUB, REVERSE, STUTTER
     // PARKED AT LEVEL 0 WITH ECHOES IN IT. The rule used to listen after the
     // level: it heard nothing, and after ten seconds cleared the echoes away.
     {
@@ -8126,6 +8145,24 @@ static void tickCountsAsleep(EffectKind kind, int turn, float to) {
     CHECK(three == later && three != none);
 }
 
+// The same with settings `at`, and long enough for an echo: 24000 samples of noise, the turn half way.
+static void tickCountsAsleepAt(EffectKind kind, const float* at, int turn, float to) {
+    const auto run = [&](int zeros) {
+        std::unique_ptr<Effect> e = fresh(kind, at[0], at[1], at[2], at[3]);
+        std::vector<float> l(static_cast<std::size_t>(zeros) + 48000, 0.f), r;
+        Noise noise(5u);
+        for (std::size_t i = static_cast<std::size_t>(zeros); i < l.size(); ++i) l[i] = 0.25f * noise.next();
+        r = l;
+        if (zeros > 0) e->process(l.data(), r.data(), zeros);
+        e->process(l.data() + zeros, r.data() + zeros, 24000);
+        e->setParam(turn, to);
+        e->process(l.data() + zeros + 24000, r.data() + zeros + 24000, 24000);
+        return std::vector<float>(l.begin() + zeros, l.end());
+    };
+    const std::vector<float> three = run(3), later = run(3 + 5 * 16), none = run(0);
+    CHECK(three == later && three != none);
+}
+
 static void testComb() {
     const EffectKind comb = EffectKind::Comb;
     const EffectInfo& info = effectInfo(comb);
@@ -10339,6 +10376,596 @@ static void testTremolo() {
     for (int p : {1, 3}) CHECK(seen.stepDown[p] < 1.2 && seen.stepUp[p] < 1.2 && seen.cornerDown[p] < 2.0 && seen.cornerUp[p] < 2.0);
 }
 
+// ---- DUB, REVERSE, STUTTER: DELAY's newer types ---------------------------------------------------
+
+static float echoTime(int choice) { return (static_cast<float>(choice) + 0.5f) / 8.f; } // TIME as TAPE's eight: 0 1/16 ... 7 1/2
+
+// THE TYPES' NAMES, NUMBERS AND WORDS, and that each is DELAY's, on ECHO.
+static void delayRow(EffectKind kind, int number, const char* word, const char* name, int index) {
+    const EffectInfo& info = effectInfo(kind);
+    CHECK(static_cast<int>(kind) == number && std::string(info.word) == word && effectFromWord(word) == kind && std::string(info.name) == name);
+    CHECK(info.family == EffectFamily::Delay && effectBus(kind) == 0 && effectMeterParam(kind) == -1 && effectMixParam(kind) == mixOf(kind) && mixOf(kind) >= 0);
+    CHECK(std::string(effectTypeName(kind)) == name && effectTypes(kind) == 6 && effectTypeIndex(kind) == index && effectTypeAt(EffectKind::Delay, index) == kind);
+    CHECK(busEffectAt(0, index + 1) == kind && busEffectPlace(0, kind) == index + 1);
+}
+
+// The same input cut into blocks four ways (64, 48, 1 to 61 in turn, 256), with every setting `set`: the same to the bit?
+static bool sameAnyBlocks(EffectKind kind, const float* set, const Stereo& in, bool bus = false) {
+    std::vector<float> first;
+    bool same = true;
+    const std::size_t sizes[4] = {64, 48, 0, 256};
+    for (int way = 0; way < 4; ++way) {
+        std::unique_ptr<Effect> e = fresh(kind, set[0], set[1], set[2], set[3]);
+        e->setOnBus(bus);
+        Stereo io = in;
+        for (std::size_t at = 0, n = sizes[way] ? sizes[way] : 1; at < io.frames(); at += n, n = sizes[way] ? sizes[way] : n % 61 + 1) {
+            if (at + n > io.frames()) n = io.frames() - at;
+            e->process(io.l.data() + at, io.r.data() + at, static_cast<int>(n));
+        }
+        std::vector<float> both = io.l;
+        both.insert(both.end(), io.r.begin(), io.r.end());
+        if (way == 0) first = both;
+        else same = same && both == first;
+    }
+    return same;
+}
+static double peakBetween(const std::vector<float>& v, double from, double to) {
+    float most = 0.f;
+    for (std::size_t i = static_cast<std::size_t>(from * 48000.0); i < static_cast<std::size_t>(to * 48000.0) && i < v.size(); ++i) most = std::fmax(most, std::fabs(v[i]));
+    return most;
+}
+
+static void testDub() {
+    const EffectKind dub = EffectKind::Dub;
+    const EffectInfo& info = effectInfo(dub);
+    delayRow(dub, 28, "dub", "DUB", 3);
+    CHECK(std::string(info.paramNames[0]) == "TIME" && std::string(info.paramNames[1]) == "FEEDBACK" && std::string(info.paramNames[2]) == "TONE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(effectChoices(dub, 0) == 8 && effectChoices(dub, 1) == 0);
+    CHECK(reads(dub, 0, 0.f) == "1/16" && reads(dub, 0, 1.f) == "1/2" && reads(dub, 1, 1.f) == "150%" && reads(dub, 1, 0.48f) == "72%" && reads(dub, 2, 0.45f) == "45%");
+    // TIME and TONE are PING's to the bit (TONE reads as a percentage in both); FEEDBACK as it reads (PING's 50% is DUB's 50%).
+    for (float v : {0.f, 0.13f, 0.5f, 1.f}) CHECK(effectCarryValue(EffectKind::Ping, 2, dub, 2, v) == v && effectCarryValue(EffectKind::Ping, 3, dub, 3, v) == v);
+    for (int c = 0; c < 8; ++c) CHECK(effectCarryValue(EffectKind::Ping, 0, dub, 0, echoTime(c)) == echoTime(c) && effectCarryValue(dub, 0, EffectKind::Tape, 0, echoTime(c)) == echoTime(c));
+    CHECK(reads(dub, 1, effectCarryValue(EffectKind::Ping, 1, dub, 1, 0.5f)) == "50%" && effectCarryFrom(EffectKind::Tape, dub, 2) == -1); // TAPE's AGE is not TONE
+    // The band: 250 Hz to 4 kHz.
+    CHECK(std::fabs(fx::dubToneHz(0.f) - 250.f) < 1e-3f && std::fabs(fx::dubToneHz(1.f) - 4000.f) < 0.05f && std::fabs(fx::dubToneHz(0.5f) - 1000.f) < 0.01f);
+    // The way down: 85% and under never touched; over it, brought to 85% exactly.
+    CHECK(fx::dubTireOf(0.f) == 1.f && fx::dubTireOf(0.5f) == 1.f && fx::dubTireOf(0.85f / 1.5f) == 1.f && fx::dubTireOf(0.85f / 1.5f + 2e-4f) < 1.f);
+    CHECK(std::fabs(fx::dubTireOf(1.f) * 1.5f - 0.85f) < 1e-6f && std::fabs(fx::dubTireOf(0.8f) * 1.5f * 0.8f - 0.85f) < 1e-6f);
+    // THE ECHO LANDS ON TIME, at three tempos: a click on a bus, FEEDBACK 0. Nothing before it, and one echo only.
+    for (float tempo : {90.f, 120.f, 155.f})
+        for (int choice : {0, 4, 7}) {
+            std::unique_ptr<Effect> e = fresh(dub, echoTime(choice), 0.f, 0.5f, 1.f, tempo);
+            e->setOnBus(true);
+            Stereo io(static_cast<std::size_t>(2.5 * 48000.0));
+            io.l[0] = io.r[0] = 1.f;
+            through(*e, io);
+            const long want = std::lround(fx::kEchoThirds[choice] * 5.0 / tempo * 48000.0);
+            CHECK(echoAt(io.l, 0) == want && io.l[0] == 0.f && io.r == io.l);
+            CHECK(peakOf(std::vector<float>(io.l.begin() + want + 4800, io.l.end())) < 1e-6f); // (the band's ring under the echo, gone in 0.1 s)
+        }
+    // THE BAND: a steady sine, FEEDBACK 0, on a bus (the echo alone). At TONE's place it comes back as it went in; two
+    // octaves either side a second-order band with Q 0.7 has it 9.0 dB down (1 / sqrt(1 + 0.49 x 3.75^2)).
+    for (float tone : {0.25f, 0.5f, 0.75f}) {
+        const double centre = fx::dubToneHz(tone);
+        const auto echoLevel = [&](double hz) {
+            std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 0.f, tone, 1.f);
+            e->setOnBus(true);
+            return steadyLevel(*e, hz);
+        };
+        const double at = echoLevel(centre), below = echoLevel(centre / 4.0), above = echoLevel(centre * 4.0);
+        SAY("dub      TONE %.0f%% (%.0f Hz): a sine there %+.2f dB, two octaves under %+.2f dB, over %+.2f dB\n", tone * 100.0, centre, at, below, above);
+        CHECK(std::fabs(at) < 0.1 && std::fabs(below + 9.0) < 0.5 && above < -8.5 && above > -10.5); // (over it a little more: the filter's top is squeezed toward 24 kHz)
+    }
+    // EACH REPEAT DARKER: noise in, FEEDBACK 50% (75%): the share of the echo over 3 kHz falls echo by echo (TONE 45%, 870 Hz).
+    {
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(2), 0.5f, 0.45f, 1.f); // 1/8: 12000 frames
+        e->setOnBus(true);
+        Stereo io(5 * 12000);
+        Noise noise(3u);
+        for (std::size_t i = 0; i < 2400; ++i) io.l[i] = io.r[i] = 0.5f * noise.next();
+        through(*e, io);
+        double was = 1.0;
+        for (int echo = 1; echo <= 4; ++echo) {
+            const std::vector<float> part(io.l.begin() + echo * 12000, io.l.begin() + echo * 12000 + 6000);
+            const double high = rmsOf(bandOf(part, 6000.0)) / rmsOf(part);
+            SAY("dub      echo %d: what is near 6 kHz is %.4f of it\n", echo, high);
+            CHECK(high < 0.7 * was);
+            was = high;
+        }
+    }
+    // PAST 100% IT HOWLS AT TONE, HELD UNDER ITS CEILING; LEFT ALONE IT COMES DOWN AND SLEEPS; FED AGAIN IT HOWLS AGAIN.
+    for (float tone : {0.25f, 0.75f}) {
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 1.f, tone, 1.f);
+        e->setOnBus(true);
+        Stereo io(85 * 48000);
+        Noise noise(9u);
+        for (std::size_t i = 0; i < 480; ++i) io.l[i] = io.r[i] = 0.3f * noise.next();
+        for (std::size_t i = 70 * 48000; i < 70 * 48000 + 480; ++i) io.l[i] = io.r[i] = 0.3f * noise.next();
+        through(*e, io);
+        // Where the howl is: the middle of its power, in octaves, over 1/24-octave steps from 100 Hz to 16 kHz.
+        double sum = 0.0, weighted = 0.0, near = 0.0;
+        const double want = fx::dubToneHz(tone);
+        for (double oct = 0.0; oct < 7.32; oct += 1.0 / 24.0) {
+            const double f = 100.0 * std::pow(2.0, oct), p = partAt(io.l.data() + 20 * 48000, 12000, f);
+            sum += p * p, weighted += p * p * oct;
+            near += std::fabs(std::log2(f / want)) < 1.0 ? p * p : 0.0;
+        }
+        const double hz = 100.0 * std::pow(2.0, weighted / sum);
+        const double held = peakBetween(io.l, 10.0, 11.0), still = peakBetween(io.l, 29.0, 30.0), down = peakBetween(io.l, 36.0, 37.0);
+        const double again = peakBetween(io.l, 82.0, 83.0);
+        long last = 0;
+        for (std::size_t i = 0; i < 70 * 48000; ++i) last = io.l[i] != 0.f ? static_cast<long>(i) : last;
+        SAY("dub      FEEDBACK 150%%, TONE %.0f%%: howls about %.0f Hz (TONE's %.0f; %.0f%% of it within an octave), peak %.3f at 10 s, %.3f at 29 s, %.2e at 36 s, silent from %.2f s; fed again at 70 s: %.3f at 82 s\n", tone * 100.0, hz, want, 100.0 * near / sum, held, still, down, last / 48000.0, again);
+        CHECK(std::fabs(cents(hz, want)) < 400.0 && near > 0.85 * sum);
+        CHECK(held > 1.15 && held < 1.21 && std::fabs(still - held) < 0.05 * held && down < 0.2 * held && peakBetween(io.l, 45.0, 46.0) < 1e-3 * held);
+        CHECK(last > 32 * 48000 && last < 70 * 48000 && std::fabs(again - held) < 0.05 * held);
+    }
+    // ...and the tiring is a sample at a time: 70 s of it cut into blocks four ways, the same to the bit.
+    {
+        Stereo in(70 * 48000);
+        Noise noise(19u);
+        for (std::size_t i = 0; i < 480; ++i) in.l[i] = 0.3f * noise.next(), in.r[i] = -0.2f * noise.next();
+        in.l[33 * 48000 + 77] = 0.01f; // fed again while coming down
+        const float set[4] = {echoTime(1), 1.f, 0.6f, 0.8f};
+        CHECK(sameAnyBlocks(dub, set, in) && sameAnyBlocks(dub, set, in, true));
+    }
+    // A FEEDBACK OF 85% OR LESS IS NEVER TOUCHED: at 85%, half a bar at 40 BPM, a faint click on a bus, left alone
+    // past the 30 s hold, against the same click with a faint steady offset fed all along (so it never counts as left
+    // alone) less that offset's own echoes (the band takes all but its first moment away: it is all but linear here).
+    {
+        const float fb = 0.85f / 1.5f;
+        const auto run = [&](float click, float offset) {
+            std::unique_ptr<Effect> e = fresh(dub, echoTime(7), fb, 0.5f, 1.f, 40.f);
+            e->setOnBus(true);
+            Stereo io(40 * 48000);
+            io.l.assign(io.frames(), offset), io.r.assign(io.frames(), offset);
+            io.l[0] += click, io.r[0] += click;
+            through(*e, io);
+            return io.l;
+        };
+        const std::vector<float> alone = run(0.01f, 0.f), fed = run(0.01f, 2e-4f), offset = run(0.f, 2e-4f);
+        double worst = 0.0, size = 0.0;
+        for (std::size_t i = 31 * 48000; i < alone.size(); ++i) {
+            worst = std::fmax(worst, std::fabs(static_cast<double>(fed[i]) - offset[i] - alone[i]));
+            size = std::fmax(size, std::fabs(static_cast<double>(alone[i])));
+        }
+        SAY("dub      FEEDBACK 85%%, left alone 31 to 40 s: %.2e from one fed all along (its echoes %.2e)\n", worst, size);
+        CHECK(size > 1e-5 && worst < 1e-3 * size);
+    }
+    // SOUND UNDER 80 DB DOWN DOES NOT COUNT AS FED (kFedLevel): a howl with a faint offset of 3e-5 fed all along still
+    // tires and stops; with 3e-4 it never does. (The band takes the offset itself away.) And sound coming in while it
+    // comes down (a burst at 34 s) puts FEEDBACK back: it howls again.
+    for (int way = 0; way < 3; ++way) {
+        const float offset = way == 0 ? 3e-5f : (way == 1 ? 3e-4f : 0.f);
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 1.f, 0.5f, 1.f);
+        e->setOnBus(true);
+        Stereo io(45 * 48000);
+        io.l.assign(io.frames(), offset), io.r.assign(io.frames(), offset);
+        Noise noise(9u);
+        for (std::size_t i = 0; i < 480; ++i) io.l[i] = io.r[i] = 0.3f * noise.next();
+        if (way == 2)
+            for (std::size_t i = 34 * 48000; i < 34 * 48000 + 480; ++i) io.l[i] = io.r[i] = 0.3f * noise.next();
+        through(*e, io);
+        const double late = peakBetween(io.l, 44.0, 45.0);
+        SAY("dub      a howl, %s: its peak at 44 s %.3e\n", way == 0 ? "3e-5 fed all along" : (way == 1 ? "3e-4 fed all along" : "fed again at 34 s"), late);
+        CHECK(way == 0 ? late < 1e-3 : late > 0.5);
+    }
+    // FEEDBACK IS WHAT IT READS at the top of the band: a faint sine at TONE's place, FEEDBACK 60%: each echo 0.6 of the last.
+    {
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(5), 0.4f, 0.5f, 1.f); // 1/4: 24000 frames; the band at 1 kHz
+        e->setOnBus(true);
+        Stereo io(72000);
+        const std::vector<float> sine = sineOf(1000.0, 0.01, 14400);
+        for (std::size_t i = 0; i < 14400; ++i) io.l[i] = io.r[i] = sine[i];
+        through(*e, io);
+        const double first = partAt(io.l.data() + 26400, 9600, 1000.0), second = partAt(io.l.data() + 50400, 9600, 1000.0);
+        SAY("dub      FEEDBACK 60%%: the first echo %.5f of the sine, the next %.5f of the first\n", first / 0.01, second / first);
+        CHECK(std::fabs(first / 0.01 - 1.0) < 0.005 && std::fabs(second / first - 0.6) < 0.005);
+    }
+    // ONE ECHO FOR BOTH SIDES: a click on the right alone echoes on both, half as big (the two sides are halved and
+    // added); in a slot the echo is laid on each side alike; on a bus, sound that cancels to nothing (left = -right)
+    // gives back nothing at all.
+    {
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 0.f, 0.5f, 1.f);
+        e->setOnBus(true);
+        const Stereo right = clickBoth(*e, 0.5, 0.f, 1.f);
+        std::unique_ptr<Effect> both = fresh(dub, echoTime(0), 0.f, 0.5f, 1.f);
+        both->setOnBus(true);
+        const Stereo whole = clickBoth(*both, 0.5, 1.f, 1.f);
+        double worst = 0.0;
+        for (std::size_t i = 0; i < right.frames(); ++i) worst = std::fmax(worst, std::fabs(right.l[i] - 0.5 * whole.l[i]) + std::fabs(right.r[i] - 0.5 * whole.l[i]));
+        CHECK(worst < 1e-7 && peakOf(whole.l) > 0.1f);
+        std::unique_ptr<Effect> slot = fresh(dub, echoTime(0), 0.5f, 0.5f, 1.f);
+        const Stereo laid = clickBoth(*slot, 1.0, 0.5f, -0.25f);
+        bool alike = true;
+        for (std::size_t i = 1; i < laid.frames(); ++i) alike = alike && laid.l[i] == laid.r[i];
+        CHECK(alike && laid.l[0] == 0.5f && laid.r[0] == -0.25f && peakOf(laid.l) > 0.05f);
+        std::unique_ptr<Effect> cancel = fresh(dub, echoTime(0), 0.5f, 0.5f, 1.f);
+        cancel->setOnBus(true);
+        Stereo io(4800);
+        const std::vector<float> sine = sineOf(300.0, 0.5, 4800);
+        for (std::size_t i = 0; i < 4800; ++i) io.l[i] = sine[i], io.r[i] = -sine[i];
+        through(*cancel, io);
+        CHECK(peakOf(io.l) == 0.f && peakOf(io.r) == 0.f);
+    }
+    // TIME TURNED GLIDES OVER SECONDS (kInertia, 0.3 s: twice TAPE's): from 1/16 to 1/8 at once, clicks every 0.1 s on a
+    // bus; the first click whose echo lands on the new TIME (to half a sample, and every one after) comes 2 to 4.5 s after the turn.
+    // And never faster than double or half speed: from 1/16 to 1/2, a 1 kHz sine's echo bends down to 500 Hz and no lower.
+    {
+        std::unique_ptr<Effect> e = fresh(dub, echoTime(0), 0.f, 1.f, 1.f);
+        e->setOnBus(true);
+        Stereo io(10 * 48000);
+        for (std::size_t i = 0; i < io.frames(); i += 4800) io.l[i] = io.r[i] = 1.f;
+        through(*e, io, 0, 48000);
+        e->setParam(0, echoTime(2)); // 12000 frames
+        through(*e, io, 48000, io.frames());
+        // (Each echo's peak against one held at 1/8 all along: the band puts it a few samples after the echo's start.)
+        std::unique_ptr<Effect> held = fresh(dub, echoTime(2), 0.f, 1.f, 1.f);
+        held->setOnBus(true);
+        Stereo ref(io.frames());
+        for (std::size_t i = 0; i < ref.frames(); i += 4800) ref.l[i] = ref.r[i] = 1.f;
+        through(*held, ref);
+        double arrived = -1.0;
+        for (std::size_t at = 48000; at + 12000 + 4800 < io.frames(); at += 4800) {
+            if (peakAt(io.l, at + 9000, at + 15000) != peakAt(ref.l, at + 9000, at + 15000)) arrived = -1.0;
+            else if (arrived < 0.0) arrived = (static_cast<double>(at) - 48000.0) / 48000.0;
+        }
+        SAY("dub      TIME turned 1/16 to 1/8: on the new TIME (to half a sample) from %.1f s after the turn\n", arrived);
+        CHECK(arrived > 2.0 && arrived < 4.5);
+        std::unique_ptr<Effect> f = fresh(dub, echoTime(0), 0.f, 1.f, 1.f);
+        f->setOnBus(true);
+        Stereo bend(3 * 48000);
+        bend.l = bend.r = sineOf(1000.0, 0.3, bend.frames());
+        through(*f, bend, 0, 24000);
+        f->setParam(0, echoTime(7));
+        through(*f, bend, 24000, bend.frames());
+        double lowest = 1e9;
+        for (std::size_t at = 30000; at + 480 < bend.frames(); at += 480) lowest = std::fmin(lowest, pitchOf(bend.l, at, at + 480));
+        SAY("dub      TIME turned 1/16 to 1/2: the echo bends down to %.1f Hz (a 1 kHz sine)\n", lowest);
+        CHECK(lowest > 490.0 && lowest < 515.0);
+    }
+    // THE MIX GLIDES; a note then a faint offset is nothing too small to hold; turned settings land.
+    {
+        const float at[4] = {echoTime(0), 0.3f, 0.5f, 0.f};
+        const MixGot g = mixGlides(dub, at);
+        CHECK(g.early > 0.01 && g.early < 0.2 && g.later > 0.9 && g.later < 0.99 && std::fabs(g.late - 1.0) < 1e-5);
+        CHECK(faintAfterANote(dub, at));
+    }
+    // (turnedLands is not for a delay with FEEDBACK: what was in the loop before the turn is still in it.)
+    {
+        const float at[4] = {echoTime(0), 0.3f, 0.5f, 0.7f};
+        tickCountsAsleepAt(dub, at, 2, 0.9f);
+    }
+    const float set[4] = {echoTime(0), 0.3f, 0.5f, 0.7f}, other[4] = {echoTime(5), 0.1f, 0.1f, 0.3f};
+    const RulesSeen seen = holdsTheRules(dub, set, other, 9.0);
+    SAY("dub      the last sample that is not zero %.2f s after a click (FEEDBACK 45%%)\n", seen.lastAfterClick);
+    CHECK(seen.lastAfterClick > 1.0 && seen.lastAfterClick < 6.0);
+    // (TIME bends the echoes' pitch while the line glides, up to an octave: its corners are the swoop, 4.2 and 2.8 today.)
+    for (int p = 0; p < 4; ++p) {
+        SAY("dub      turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
+        const double corner = p == 0 ? 5.0 : 2.0;
+        CHECK(seen.stepDown[p] < 1.5 && seen.stepUp[p] < 1.5 && seen.cornerDown[p] < corner && seen.cornerUp[p] < corner);
+    }
+}
+
+static void testReverse() {
+    const EffectKind rev = EffectKind::Reverse;
+    const EffectInfo& info = effectInfo(rev);
+    delayRow(rev, 29, "reverse", "REVERSE", 4);
+    CHECK(info.params == 3 && std::string(info.paramNames[0]) == "TIME" && std::string(info.paramNames[1]) == "FEEDBACK" && std::string(info.paramNames[2]) == "MIX");
+    CHECK(effectChoices(rev, 0) == 8 && reads(rev, 0, echoTime(4)) == "1/8 DOT" && reads(rev, 1, 1.f) == "100%");
+    // FEEDBACK and MIX are CLEAN's and PING's to the bit; TIME PING's to the bit, CLEAN's by its steps.
+    for (float v : {0.f, 0.13f, 0.5f, 1.f}) {
+        CHECK(effectCarryValue(EffectKind::Delay, 1, rev, 1, v) == v && effectCarryValue(EffectKind::Ping, 1, rev, 1, v) == v && effectCarryValue(EffectKind::Delay, 3, rev, 2, v) == v);
+    }
+    for (int c = 0; c < 8; ++c) CHECK(effectCarryValue(EffectKind::Ping, 0, rev, 0, echoTime(c)) == echoTime(c) && effectCarryValue(rev, 0, EffectKind::Dub, 0, echoTime(c)) == echoTime(c));
+    CHECK(reads(rev, 0, effectCarryValue(EffectKind::Delay, 0, rev, 0, 0.4f)) == "1/8 DOT");
+    // A HIT COMES BACK BACKWARDS, ITS PEAK ONE TIME LATER: a hit falling from 1 to 0 over 600 samples, on a bus,
+    // FEEDBACK 50% (each trip 0.45), at three tempos and TIMEs. The first echo is the hit backwards, sample for sample,
+    // its last sample (the hit's top) one TIME after the hit (to a sample: T - 1 for an even TIME); the second is the
+    // first backwards again (forwards), 0.45 of it, its top exactly two TIMEs after the hit.
+    for (float tempo : {40.f, 90.f, 120.f, 155.f})
+        for (int choice : {0, 4, 7}) {
+            if (tempo < 50.f && choice != 7) continue; // (40 BPM: the longest window there is)
+            std::unique_ptr<Effect> e = fresh(rev, echoTime(choice), 0.5f, 1.f, -1.f, tempo);
+            e->setOnBus(true);
+            const long T = std::lround(fx::kEchoThirds[choice] * 5.0 / tempo * 48000.0);
+            Stereo io(static_cast<std::size_t>(2 * T + 2000));
+            for (int k = 0; k < 600; ++k) io.l[k] = 1.f - k / 600.f, io.r[k] = -0.5f * io.l[k];
+            const Stereo in = io;
+            through(*e, io);
+            const long top = T - 1 + (T & 1); // where the hit's top lands
+            bool backwards = true, forwards = true;
+            for (int k = 0; k < 600; ++k) {
+                backwards = backwards && io.l[static_cast<std::size_t>(top - k)] == in.l[static_cast<std::size_t>(k)] && io.r[static_cast<std::size_t>(top - k)] == in.r[static_cast<std::size_t>(k)];
+                forwards = forwards && std::fabs(io.l[static_cast<std::size_t>(2 * T + k)] - 0.45f * in.l[static_cast<std::size_t>(k)]) < 1e-6f;
+                forwards = forwards && std::fabs(io.r[static_cast<std::size_t>(2 * T + k)] - 0.45f * in.r[static_cast<std::size_t>(k)]) < 1e-6f;
+            }
+            CHECK(backwards && forwards && echoAt(io.l, 0) == top - 599);
+            CHECK(peakOf(std::vector<float>(io.l.begin() + top + 1, io.l.begin() + 2 * T)) == 0.f); // nothing between the two
+        }
+    // NO CLICK AT A WINDOW'S EDGE: a steady 100 Hz sine, its echo alone (a bus, FEEDBACK 0): no step bigger than the
+    // sine's own, and at each edge the echo fades to nothing and back in 4 ms.
+    {
+        std::unique_ptr<Effect> e = fresh(rev, echoTime(2), 0.f, 1.f);
+        e->setOnBus(true);
+        Stereo io(3 * 48000);
+        io.l = io.r = sineOf(97.0, 0.5, io.frames()); // (not a whole number of turns a window: its edges fall anywhere on the sine)
+        through(*e, io);
+        const double step = largestJump(io.l, 12000, io.frames()) / sineStep(97.0, 0.5);
+        // (From 13000 on: the sine's own start, a corner, comes back backwards at 12000.)
+        double corner = 0.0;
+        for (std::size_t i = 13002; i < io.frames(); ++i) corner = std::fmax(corner, std::fabs(static_cast<double>(io.l[i]) - 2.0 * io.l[i - 1] + io.l[i - 2]));
+        const double sineCorner = 0.5 * std::pow(2.0 * kPi * 97.0 / 48000.0, 2.0);
+        SAY("reverse  a 97 Hz sine backwards: its largest step %.2f of the sine's, its sharpest corner %.2f of the sine's\n", step, corner / sineCorner);
+        CHECK(step < 1.05 && corner < 2.5 * sineCorner);
+    }
+    // TIME TURNED IS TAKEN AT THE NEXT WINDOW'S START: a window already begun keeps its length.
+    {
+        std::unique_ptr<Effect> e = fresh(rev, echoTime(2), 0.f, 1.f), still = fresh(rev, echoTime(2), 0.f, 1.f);
+        e->setOnBus(true), still->setOnBus(true);
+        Stereo a(30000), b(30000);
+        a.l[0] = a.r[0] = b.l[0] = b.r[0] = 1.f; // wakes it: a window of 12000 began 6000 ago
+        through(*e, a, 0, 3000);
+        e->setParam(0, echoTime(7));
+        through(*e, a, 3000, a.frames());
+        through(*still, b);
+        // the echo of the click, at the end of the next window, is where it would have been
+        CHECK(a.l[11999] == 1.f && b.l[11999] == 1.f && std::equal(a.l.begin(), a.l.begin() + 12000, b.l.begin()));
+        // ...and the next window has it: a click in the middle of that window (now 48000 long, from 6000) is echoed
+        // 48000 later, at its mirror place in the window after.
+        std::unique_ptr<Effect> g = fresh(rev, echoTime(2), 0.f, 1.f);
+        g->setOnBus(true);
+        Stereo c(110000);
+        c.l[0] = c.r[0] = 1.f;
+        c.l[30000] = c.r[30000] = 1.f;
+        through(*g, c, 0, 3000);
+        g->setParam(0, echoTime(7));
+        through(*g, c, 3000, c.frames());
+        CHECK(c.l[77999] == 1.f);
+    }
+    // A WINDOW'S START IS READ AT THE NEXT ONE'S END, two windows later: at 40 BPM, TIME 1/2 (144000), a click when it
+    // wakes and another at a window's start, 72000 later: the second comes back 287999 samples after it.
+    {
+        std::unique_ptr<Effect> e = fresh(rev, echoTime(7), 0.f, 1.f, -1.f, 40.f);
+        e->setOnBus(true);
+        Stereo io(400000);
+        io.l[0] = io.r[0] = 1.f;
+        io.l[72000] = io.r[72000] = 1.f;
+        through(*e, io);
+        SAY("reverse  40 BPM: %g at 143999, %g at 359999, the next sound after 144000 at %ld\n", io.l[143999], io.l[359999], echoAt(io.l, 144000));
+        CHECK(io.l[143999] == 1.f && io.l[359999] > 0.f && io.l[359999] < 0.01f && echoAt(io.l, 144000) == 359999); // (at the very edge of a window: in its fade)
+    }
+    // IN A SLOT: each side's echo laid on its own side.
+    {
+        std::unique_ptr<Effect> e = fresh(rev, echoTime(2), 0.f, 1.f);
+        const Stereo io = clickBoth(*e, 0.5, 1.f, -0.5f);
+        CHECK(io.l[0] == 1.f && io.r[0] == -0.5f && io.l[11999] == 1.f && io.r[11999] == -0.5f);
+    }
+    {
+        const float at[4] = {echoTime(0), 0.3f, 0.f, 0.f};
+        const MixGot g = mixGlides(rev, at);
+        CHECK(g.early > 0.003 && g.early < 0.2 && g.later > 0.9 && g.later < 0.99 && std::fabs(g.late - 1.0) < 1e-5);
+        CHECK(faintAfterANote(rev, at));
+    }
+    turnedLands(rev, 0, 1); // MIX (TIME: the windows fall elsewhere; FEEDBACK: what was in the loop is still in it)
+    {
+        const float at[4] = {echoTime(0), 0.3f, 0.7f, 0.f};
+        tickCountsAsleepAt(rev, at, 2, 0.1f);
+    }
+    {
+        Stereo in(30 * 48000);
+        Noise noise(23u);
+        for (std::size_t i = 0; i < 4800; ++i) in.l[i] = 0.5f * noise.next(), in.r[i] = 0.3f * noise.next();
+        const float loud[4] = {echoTime(3), 1.f, 1.f, 0.f};
+        CHECK(sameAnyBlocks(rev, loud, in) && sameAnyBlocks(rev, loud, in, true));
+    }
+    const float set[4] = {echoTime(0), 0.3f, 0.7f, 0.f}, other[4] = {echoTime(2), 0.1f, 0.3f, 0.f};
+    const RulesSeen seen = holdsTheRules(rev, set, other, 10.0);
+    SAY("reverse  the last sample that is not zero %.2f s after a click (FEEDBACK 30%%)\n", seen.lastAfterClick);
+    CHECK(seen.lastAfterClick > 1.0 && seen.lastAfterClick < 5.0);
+    for (int p = 0; p < 3; ++p) {
+        SAY("reverse  turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
+        CHECK(seen.stepDown[p] < 2.5 && seen.stepUp[p] < 2.5 && seen.cornerDown[p] < 4.0 && seen.cornerUp[p] < 4.0);
+    }
+}
+
+// A slice that is a hit: falling from 1 to 0 over 300 samples, then nothing.
+static Stereo hitOf(std::size_t frames, std::size_t at = 0) {
+    Stereo io(frames);
+    for (std::size_t k = 0; k < 300; ++k) io.l[at + k] = 1.f - static_cast<float>(k) / 300.f, io.r[at + k] = -0.5f * io.l[at + k];
+    return io;
+}
+
+static void testStutter() {
+    const EffectKind st = EffectKind::Stutter;
+    const EffectInfo& info = effectInfo(st);
+    delayRow(st, 30, "stutter", "STUTTER", 5);
+    CHECK(std::string(info.paramNames[0]) == "LENGTH" && std::string(info.paramNames[1]) == "REPEATS" && std::string(info.paramNames[2]) == "CHANCE" && std::string(info.paramNames[3]) == "MIX");
+    CHECK(effectChoices(st, 0) == 8 && effectChoices(st, 1) == 5 && effectChoices(st, 2) == 0);
+    CHECK(reads(st, 0, 0.f) == "1/32" && reads(st, 0, 0.3125f) == "1/16" && reads(st, 0, 1.f) == "1/2" && reads(st, 1, 0.f) == "2 TIMES" && reads(st, 1, 1.f) == "8 TIMES" && reads(st, 2, 0.5f) == "50%");
+    CHECK(effectCarryFrom(EffectKind::Delay, st, 0) == -1 && effectCarryFrom(EffectKind::Delay, st, 3) == 3); // a slice is not an echo's time; MIX is MIX
+    static const int kRepeat[5] = {2, 3, 4, 6, 8};
+    static const int kSixth[8] = {3, 4, 6, 8, 12, 16, 24, 48};
+    // ON THE BUS, CHANCE 100%: a hit comes back REPEATS - 1 more times, each a slice later, as it went in, to the bit;
+    // nothing else at all (the splice into each starts with what came just before the hit: nothing).
+    for (float tempo : {90.f, 120.f})
+        for (int len : {0, 2, 5})
+            for (int rep : {0, 2, 4}) {
+                std::unique_ptr<Effect> e = fresh(st, (len + 0.5f) / 8.f, (rep + 0.5f) / 5.f, 1.f, 1.f, tempo);
+                e->setOnBus(true);
+                const long L = std::lround(kSixth[len] * 2.5 / tempo * 48000.0);
+                const std::size_t frames = static_cast<std::size_t>(L * (kRepeat[rep] + 2));
+                const Stereo in = hitOf(frames);
+                Stereo io = in;
+                through(*e, io);
+                Stereo want(frames);
+                for (int r = 1; r < kRepeat[rep]; ++r)
+                    for (std::size_t k = 0; k < 300; ++k) want.l[static_cast<std::size_t>(r * L) + k] = in.l[k], want.r[static_cast<std::size_t>(r * L) + k] = in.r[k];
+                CHECK(io.l == want.l && io.r == want.r);
+            }
+    // ON A BUS AT 40 BPM, LENGTH 1/2 EIGHT TIMES (3 s slices: 24 s), nothing coming in after the hit: all seven repeats.
+    {
+        std::unique_ptr<Effect> e = fresh(st, 1.f, 1.f, 1.f, 1.f, 40.f);
+        e->setOnBus(true);
+        Stereo io = hitOf(26 * 48000);
+        through(*e, io);
+        bool all = true;
+        for (int r = 1; r < 8; ++r) all = all && io.l[static_cast<std::size_t>(r) * 144000] == 1.f;
+        CHECK(all && peakOf(std::vector<float>(io.l.begin() + 8 * 144000, io.l.end())) == 0.f);
+    }
+    // IN A SLOT, AS WORKED OUT BY HAND: two places (1/16 four times, CHANCE 100%, MIX 100%), each side its own sine.
+    {
+        std::unique_ptr<Effect> e = fresh(st, 0.3125f, 0.5f, 1.f, 1.f);
+        const std::size_t L = 6000, F = 192;
+        Stereo in(48000);
+        for (std::size_t i = 0; i < in.frames(); ++i) {
+            in.l[i] = static_cast<float>(0.3 * std::cos(2.0 * kPi * 331.0 * static_cast<double>(i) / 48000.0));
+            in.r[i] = static_cast<float>(0.2 * std::cos(2.0 * kPi * 523.0 * static_cast<double>(i) / 48000.0));
+        }
+        Stereo io = in;
+        through(*e, io);
+        double worst = 0.0;
+        for (int side = 0; side < 2; ++side) {
+            const std::vector<float>& x = side ? in.r : in.l;
+            const std::vector<float>& y = side ? io.r : io.l;
+            for (std::size_t t = 0; t < 48000; ++t) {
+                const std::size_t place = t / (4 * L) * 4 * L, s = (t - place) / L, n = (t - place) % L;
+                const long m = static_cast<long>(n) - static_cast<long>(L - F);
+                const float w = m >= 0 ? fx::echoCurve((static_cast<float>(m) + 0.5f) / static_cast<float>(F)) : 0.f;
+                const auto before = [&](long k) { return place >= F ? x[place - F + static_cast<std::size_t>(k)] : 0.f; }; // the 4 ms before the place
+                double want;
+                if (s == 0) want = m < 0 ? x[t] : x[t] * (1.0 - w) + before(m) * w;
+                else {
+                    double r = x[place + n];
+                    double a = 1.0;
+                    if (m >= 0) {
+                        r *= 1.0 - w;
+                        if (s < 3) r += w * before(m);
+                        else a = 1.0 - w;
+                    }
+                    want = x[t] * (1.0 - a) + r;
+                }
+                worst = std::fmax(worst, std::fabs(want - y[t]));
+            }
+        }
+        SAY("stutter  two places by hand: %.1e at most from it\n", worst);
+        CHECK(worst < 1e-6);
+    }
+    // MIX 0 while it stutters: the sound untouched, to the bit, -0 included.
+    {
+        Stereo in(48000);
+        Noise noise(43u);
+        for (std::size_t i = 0; i < in.frames(); ++i) in.l[i] = i % 7 == 3 ? -0.f : 0.3f * noise.next(), in.r[i] = in.l[i];
+        Stereo io = in;
+        through(*fresh(st, 0.3125f, 0.5f, 1.f, 0.f), io);
+        CHECK(std::memcmp(io.l.data(), in.l.data(), 48000 * sizeof(float)) == 0 && std::memcmp(io.r.data(), in.r.data(), 48000 * sizeof(float)) == 0);
+    }
+    // IN A SLOT, MIX 100%: the hit's place is the slice again and again; then the sound as it was, to the bit.
+    {
+        std::unique_ptr<Effect> e = fresh(st, 0.3125f, 0.5f, 1.f, 1.f); // 1/16 (6000), four times
+        Stereo in(48000);
+        for (std::size_t i = 0; i < 48000; ++i) in.l[i] = in.r[i] = static_cast<float>(0.3 * std::cos(2.0 * kPi * 331.0 * static_cast<double>(i) / 48000.0)); // (not 0 at the first sample: it wakes there; and no sample under kNothing, which is caught as nothing)
+        Stereo io = in;
+        through(*e, io);
+        bool repeated = true;
+        for (int r = 1; r < 4; ++r)
+            for (std::size_t k = 0; k < 6000 - 192; ++k) repeated = repeated && io.l[static_cast<std::size_t>(r) * 6000 + k] == in.l[k];
+        CHECK(repeated && std::equal(io.l.begin(), io.l.begin() + 6000 - 192, in.l.begin()) && std::equal(io.l.begin() + 24000, io.l.begin() + 30000 - 192, in.l.begin() + 24000));
+        CHECK(!std::equal(io.l.begin() + 6000, io.l.begin() + 24000, in.l.begin() + 6000));
+        // The splices: no step over 1.3 of the sine's own (a crossfade between two places of one sine). From the second
+        // place on: the first's slice starts where the sine did (from nothing: a click, played again whole each time).
+        const double step = largestJump(io.l, 24000, 48000) / sineStep(331.0, 0.3);
+        SAY("stutter  a 331 Hz sine stuttered: its largest step %.2f of the sine's\n", step);
+        CHECK(step < 1.3);
+    }
+    // CHANCE 0: the sound untouched, to the bit; on a bus nothing at all.
+    {
+        Stereo in(96000), bus(96000);
+        Noise noise(31u);
+        for (std::size_t i = 0; i < in.frames(); ++i) in.l[i] = bus.l[i] = 0.4f * noise.next(), in.r[i] = bus.r[i] = 0.4f * noise.next();
+        Stereo io = in;
+        through(*fresh(st, 0.3125f, 0.5f, 0.f, 1.f), io);
+        CHECK(io.l == in.l && io.r == in.r);
+        std::unique_ptr<Effect> b = fresh(st, 0.3125f, 0.5f, 0.f, 1.f);
+        b->setOnBus(true);
+        through(*b, bus);
+        CHECK(peakOf(bus.l) == 0.f && peakOf(bus.r) == 0.f);
+    }
+    // THE DICE: place p (REPEATS slices, counted from waking) stutters exactly when its roll is under CHANCE. Steady
+    // noise for 60 places at CHANCE 50% and 20%; then the same after 6 s of nothing (it slept): the same places again.
+    for (float chance : {0.5f, 0.2f}) {
+        const std::size_t place = 4 * 6000, places = 60;
+        Stereo in(2 * places * place + 6 * 48000);
+        Noise noise(37u);
+        for (std::size_t i = 0; i < places * place; ++i) in.l[i] = in.r[i] = 0.4f * noise.next();
+        for (std::size_t i = 0; i < places * place; ++i) in.l[places * place + 6 * 48000 + i] = in.r[places * place + 6 * 48000 + i] = in.l[i];
+        Stereo io = in;
+        through(*fresh(st, 0.3125f, 0.5f, chance, 1.f), io);
+        int hits = 0;
+        bool asRolled = true, again = true;
+        for (std::size_t p = 0; p < places; ++p) {
+            const std::size_t from = p * place + 6000; // its repeats
+            const bool changed = !std::equal(io.l.begin() + static_cast<long>(from), io.l.begin() + static_cast<long>(from + 3 * 6000 - 192), in.l.begin() + static_cast<long>(from));
+            asRolled = asRolled && changed == (fx::stutterRoll(static_cast<std::uint32_t>(p)) < chance);
+            hits += changed ? 1 : 0;
+            const std::size_t later = places * place + 6 * 48000;
+            again = again && std::equal(io.l.begin() + static_cast<long>(p * place), io.l.begin() + static_cast<long>((p + 1) * place), io.l.begin() + static_cast<long>(later + p * place));
+        }
+        SAY("stutter  CHANCE %.0f%%: %d places of 60 stuttered\n", chance * 100.0, hits);
+        CHECK(asRolled && again && hits > static_cast<int>(60 * chance * 0.5) && hits < static_cast<int>(60 * chance * 1.6) + 2);
+    }
+    // ON THE ECHO BUS, THROUGH THE ENGINE: a track sends one hit, its send full; STUTTER on ECHO (CHANCE 100%, its
+    // usual 1/16 four times) gives back the hit three more times, a sixteenth apart, and then nothing.
+    {
+        struct LateHit : Effect {
+            long at = 0;
+            void setParam(int, float) override {}
+            void process(float* l, float* r, int n) override {
+                for (int i = 0; i < n; ++i, ++at) l[i] = r[i] = at >= 4800 && at < 5100 ? 0.5f * (1.f - static_cast<float>(at - 4800) / 300.f) : 0.f;
+            }
+        };
+        std::unique_ptr<Engine> engine(new Engine);
+        engine->setTrackEffect(0, 0, std::unique_ptr<Effect>(new LateHit));
+        engine->send(make(Command::SetTrackLevel, 0, 0, 0, 1.f));
+        CHECK(engine->setEffect(kEchoBus, 0, st));
+        engine->send(make(Command::SetEffectParam, kEchoBus, 0, 2, 1.f));
+        engine->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        const std::vector<float> out = leftOf(*engine, 48000);
+        // The hit at 4800 itself, then at 10800, 16800 and 22800 (the bus's places count from the hit), then nothing.
+        const auto loud = [&](std::size_t from) { return peakOf(std::vector<float>(out.begin() + static_cast<long>(from), out.begin() + static_cast<long>(from + 300))); };
+        const float hit = loud(4800);
+        SAY("stutter  on ECHO: the hit %.3f, its repeats %.3f %.3f %.3f, then %.2e\n", hit, loud(10800), loud(16800), loud(22800), peakOf(std::vector<float>(out.begin() + 23200, out.end())));
+        CHECK(hit > 0.2f && std::fabs(loud(10800) - hit) < 1e-3f && std::fabs(loud(16800) - hit) < 1e-3f && std::fabs(loud(22800) - hit) < 1e-3f);
+        CHECK(peakOf(std::vector<float>(out.begin() + 5200, out.begin() + 10700)) < 1e-6f && peakOf(std::vector<float>(out.begin() + 23200, out.end())) < 1e-6f);
+    }
+    {
+        const float at[4] = {0.0625f, 0.3f, 1.f, 0.f}; // 1/32 three times: the turn falls in a repeat, and a repeat is not the sine in step
+        const MixGot g = mixGlides(st, at);
+        CHECK(g.early > 0.01 && g.early < 0.2 && g.later > 0.9 && g.later < 0.99 && std::fabs(g.late - 1.0) < 1e-5);
+        CHECK(faintAfterANote(st, at));
+    }
+    {
+        const float at[4] = {0.3125f, 0.3f, 1.f, 1.f};
+        tickCountsAsleepAt(st, at, 3, 0.2f);
+    }
+    {
+        Stereo in(20 * 48000);
+        Noise noise(29u);
+        for (std::size_t i = 0; i < 10 * 48000; ++i) in.l[i] = 0.5f * noise.next(), in.r[i] = 0.3f * noise.next();
+        const float busy[4] = {0.1f, 0.9f, 0.7f, 0.8f};
+        CHECK(sameAnyBlocks(st, busy, in) && sameAnyBlocks(st, busy, in, true));
+    }
+    const float set[4] = {0.3125f, 0.5f, 0.8f, 0.7f}, other[4] = {0.1f, 0.1f, 0.3f, 1.f};
+    const RulesSeen seen = holdsTheRules(st, set, other, 5.0); // it sleeps four seconds after the last sound
+    SAY("stutter  the last sample that is not zero %.2f s after a click\n", seen.lastAfterClick);
+    CHECK(seen.lastAfterClick < 1.0);
+    for (int p = 0; p < 4; ++p) {
+        SAY("stutter  turned at once %-9s down: step %.2f corner %.2f   up: step %.2f corner %.2f\n", info.paramNames[p], seen.stepDown[p], seen.cornerDown[p], seen.stepUp[p], seen.cornerUp[p]);
+        CHECK(seen.stepDown[p] < 2.0 && seen.stepUp[p] < 2.0 && seen.cornerDown[p] < 4.0 && seen.cornerUp[p] < 4.0);
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--print") {
         printPins();
@@ -10408,6 +11035,9 @@ int main(int argc, char** argv) {
         {"testEnsemble", testEnsemble},
         {"testPhaser", testPhaser},
         {"testTremolo", testTremolo},
+        {"testDub", testDub},
+        {"testReverse", testReverse},
+        {"testStutter", testStutter},
     };
     // `effects_test --part 1` and `--part 2`: ctest runs it as two tests, each about half the time,
     // so neither comes near its two minutes on a busy machine. Part 2 is everything from

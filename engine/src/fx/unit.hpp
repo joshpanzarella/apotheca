@@ -32,6 +32,7 @@
 // scripts/build-handheld.sh both take every .cpp in this folder).
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 
 #include "apotheca/effects.hpp"
@@ -102,6 +103,9 @@ extern const EffectInfo kFlangerInfo; // flanger.cpp
 extern const EffectInfo kEnsembleInfo; // ensemble.cpp
 extern const EffectInfo kPhaserInfo; // phaser.cpp
 extern const EffectInfo kTremoloInfo; // tremolo.cpp
+extern const EffectInfo kDubInfo;    // dub.cpp
+extern const EffectInfo kReverseInfo; // reverse.cpp
+extern const EffectInfo kStutterInfo; // stutter.cpp
 
 // For the tests (tests/effects_test.cpp); nothing in the program uses these.
 // SATURATE with its 2x stage left out, not prepared: to measure what the stage buys.
@@ -124,6 +128,11 @@ float ringCarrier(int wave, float at, float dt);
 float flangerDelayMs(float depth, float rate, double at);
 // TREMOLO's wave, 0 to 1, before its jumps are smoothed: 0 SINE, 1 SQUARE, 2 RAMP, 3 RANDOM, at `at` of turn `turn` (since it woke).
 float tremoloWave(int shape, double at, long turn);
+// DUB's band centre in hertz for a TONE setting, and what its FEEDBACK is multiplied by once left alone (1, or what brings it to 85%).
+float dubToneHz(float tone);
+float dubTireOf(float setting);
+// STUTTER's roll for a place (0 to 1): it stutters there when this is under CHANCE.
+float stutterRoll(std::uint32_t place);
 
 } // namespace fx
 } // namespace apotheca
