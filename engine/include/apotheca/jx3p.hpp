@@ -15,8 +15,8 @@
 // FINE, SYNC, METAL, NOISE, SOURCE MIX, ENV on the DCOs (engine/src/jx3p/dco.hpp). Batch 3: the
 // VCF (CUTOFF, RESONANCE, ENV MOD and its polarity, KEY FOLLOW), the HPF, BRILLIANCE
 // (engine/src/jx3p/ir3109.hpp). Batch 4: the LFO (WAVE, RATE, DELAY) and its routes (LFO DEPTH and
-// each DCO's switch, LFO MOD on the VCF; engine/src/jx3p/lfo.hpp). CHORUS is kept and read back, and
-// does nothing yet.
+// each DCO's switch, LFO MOD on the VCF; engine/src/jx3p/lfo.hpp). Batch 5: the chorus (CHORUS on or off;
+// engine/src/jx3p/chorus.hpp): two BBD reads swept 180 degrees apart, stereo when on.
 //
 // Every knob reads 0 to 10 on the PG-200; it is kept as 0..100, tenths of the
 // dial. A switch is 0, 1 (, 2, 3) in the order written beside it.
@@ -96,7 +96,7 @@ constexpr bool kBassLoss = true;            // the low end falls as resonance ri
                                             // the input is lifted by 1 + feedback (jx3p.cpp, renderVoice)
 constexpr bool kKeysOnTheSample = true;     // a key starts (and lets go) on its own sample; false: on the
                                             // 10 ms grid of one CPU loop, as the real one (up to 10 ms late)
-constexpr bool kBbdHiss = false;            // the chorus's hiss is not copied (batch 5)
+constexpr bool kBbdHiss = false;            // the chorus's hiss is not copied (not built: jx3p/chorus.hpp)
 // Not an owner's call, a house rule's cost: Play, Stop and panic hand every sounding voice to one
 // of these, where it rings out its release beside the six, which start again as from fresh (so
 // Play from the top is the same performance however long the last notes ring). Twice six, so a

@@ -61,9 +61,10 @@ static const int kTick = 480; // 10 ms at 48 kHz
 
 struct Set { int id, value; };
 
-// A plain sound to measure on: the start patch, held at the top.
+// A plain sound to measure on: the start patch, held at the top, the chorus off (batch 5: it is
+// measured by jx3p_chorus_test; here it would move every pitch and level read off the sound).
 static std::vector<Set> held(std::vector<Set> more = {}) {
-    std::vector<Set> s = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 70}, {Dco1Range, 1}};
+    std::vector<Set> s = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 70}, {Dco1Range, 1}, {Chorus, 0}};
     s.insert(s.end(), more.begin(), more.end());
     return s;
 }
@@ -73,7 +74,7 @@ static std::unique_ptr<Jx3p> synth(const std::vector<Set>& sets = {}) {
     for (const Set& s : sets) j->setSetting(s.id, s.value);
     return j;
 }
-// `frames` of its sound (left only: it is mono until the chorus).
+// `frames` of its sound (left only; with the chorus off it is mono).
 static std::vector<float> play(Jx3p& j, int frames, std::vector<float>* right = nullptr) {
     std::vector<float> l(static_cast<std::size_t>(frames), 99.f), r(static_cast<std::size_t>(frames), 99.f); // 99: an unwritten sample shows
     j.render(l.data(), r.data(), frames);
@@ -570,7 +571,7 @@ static void testGlide() {
 // A phrase with every part built so far moving: keys, steals, glides, knobs, macros, VELOCITY, the
 // DCOs (waves, cross mod, TUNE, FINE, MIX, ENV on them), the VCF and HPF (CUTOFF, RESONANCE, ENV MOD
 // and its polarity, KEY FOLLOW, HPF, BRILLIANCE), the LFO (WAVE, RATE, DELAY, LFO MOD, LFO DEPTH and
-// each DCO's switch),
+// each DCO's switch), the chorus (on, off, its fade),
 // GATE, RANGE, allNotesOff. Each event at its sample.
 struct Event { long at; std::function<void(Jx3p&)> act; };
 static std::vector<Event> phrase(double seconds) {
@@ -592,7 +593,8 @@ static std::vector<Event> phrase(double seconds) {
         else if (kind < 8) ev.push_back({t, [=](Jx3p& j) { j.noteOnFrom(note, velocity, note - 7, 0.15f); }});
         else if (kind == 8) ev.push_back({t, [=](Jx3p& j) { j.setSetting(Attack + a, b); }});
         else if (kind == 9) ev.push_back({t, [=](Jx3p& j) { j.setMacro(c, 0.1f * d); }});
-        else if (kind == 10) ev.push_back({t, [=](Jx3p& j) { j.setSetting(VcaMode, e); j.setSetting(Dco1Range, f); j.setSetting(Velocity, g); j.setSetting(VcaLevel, h); }});
+        else if (kind == 10) ev.push_back({t, [=](Jx3p& j) { j.setSetting(VcaMode, e); j.setSetting(Dco1Range, f); j.setSetting(Velocity, g); j.setSetting(VcaLevel, h);
+            j.setSetting(Chorus, (h + b) & 1); }}); // CHORUS (batch 5) switched, often while sounding
         else if (kind == 11 && sw < 3) ev.push_back({t, [=](Jx3p& j) {
             j.setSetting(Dco1Wave, w1); j.setSetting(Dco2Wave, w2); j.setSetting(Dco2CrossMod, x); j.setSetting(Dco2Tune, tune);
             j.setSetting(SourceMix, mix); j.setSetting(DcoEnvDepth, depth); j.setSetting(Dco1Env, sw & 1); j.setSetting(Dco2Env, (sw + 1) & 1);
@@ -635,11 +637,11 @@ static std::vector<float> phraseIn(int block, double seconds = 20.0, std::vector
 // THE SAME SOUND HOWEVER THE BLOCKS ARE CUT (SELF: a house rule; Twin fails it, this must not): 20 s,
 // cut 1, 48, 64, 100, 512 and at random, the same bits. And twice from fresh, the same bits.
 static void testBlocks() {
-    std::vector<float> right;
+    std::vector<float> right, r;
     const std::vector<float> whole = phraseIn(64, 20.0, &right);
-    CHECK(peakOf(whole) > 0.1f && whole == right);
-    for (int block : {1, 48, 100, 512, 0}) CHECK(phraseIn(block) == whole);
-    CHECK(phraseIn(64) == whole); // twice from fresh
+    CHECK(peakOf(whole) > 0.1f && whole != right); // (the chorus is on: two sides)
+    for (int block : {1, 48, 100, 512, 0}) CHECK(phraseIn(block, 20.0, &r) == whole && r == right);
+    CHECK(phraseIn(64, 20.0, &r) == whole && r == right); // twice from fresh
 }
 
 // TWICE FROM FRESH, ON ANY NUMBER OF HELPERS (SELF: a house rule): a song of JX-3P tracks through the
@@ -715,10 +717,14 @@ static void testPlayFromTheTop() {
 // ...AND WHILE THE LAST NOTES RING (SELF: plan section 2). A long release (RELEASE 7, 1.25 s), a
 // phrase, Stop, then Play 64, 4800 and 48000 samples later: what follows is the fresh synth's
 // performance plus the tails, to a float's rounding. Through the engine, and the synth by itself.
-static std::vector<float> ringingSong(int stop, int gap, bool playAgain, int release = 70) {
+// The chorus is off here (batch 5): the tails hear its sweep start again at Play, as they hear the
+// LFO, so with it on Play after Stop differs from Stop alone in the tails (jx3p_chorus_test
+// testFromTheTop holds the chorus on once the tails have rung out).
+static std::vector<float> ringingSong(int stop, int gap, bool playAgain, int release = 70, int chorus = 0) {
     std::unique_ptr<Engine> e(new Engine);
     CHECK(e->addSynthTrack(1, SynthKind::Jx3p));
     e->send(make(Command::SetSetting, 1, Release, release));
+    e->send(make(Command::SetSetting, 1, Chorus, chorus));
     e->send(make(Command::SetTempo, 0, 0, 0, 120.f));
     for (int n = 0; n <= 10; ++n) e->send(noteAt(n, n, 48 + 3 * n, 1.f));
     renderEngine(*e, 480);

@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (37) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (38) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -470,6 +470,16 @@ effect in those two groups and fails one that does not.
   only on its tick; a key with no other key held starts the DELAY again, and the
   LFO reads 0 from that sample (`startDelay`). RANDOM is a hash of the count of
   cycles (`kLfoSeed`, pinned): never a generator walked.
+- **The JX-3P's chorus sweeps from the synth's clock, and is switched at once
+  before the first sample** (`engine/src/jx3p/chorus.hpp`). Its place is the
+  samples since allNotesOff, counted whole, so it is the same however the
+  sound is cut, Play from the top is the same sweep, and it can sleep (exact
+  zeros, skipped) and wake as a fresh one. **It is not skipped while its fade
+  is under way**, or a switch in silence would wait for the next sound. Until
+  the synth's first sample after it is made, set up or allNotesOff'd
+  (`sounded`), a switch of CHORUS lands at once. The tests that measure
+  another part turn it off (`held()` and the plain patches); the house rules'
+  tests keep it on. Tails hear its sweep start again, as they hear the LFO.
 - **The JX-3P's DCOs correct every jump and every bend where it falls in the
   sample** (`engine/src/jx3p/dco.hpp`): minimum-phase BLEP and BLAMP tables, so
   nothing is late and a key still sounds on its own sample. The tables are
@@ -1330,6 +1340,7 @@ effect in those two groups and fails one that does not.
 | JX-3P skeleton (batch 1: DCO-1's saw, envelope, VCA; no filter or chorus yet), 6 notes / a moving envelope / every note gliding (2026-11-14, one run: Phazed 0.9%, Twin x1 4.3% in it) | 0.08% / 0.10% / 0.40% |
 | JX-3P with the VCF and HPF (batch 3), 6 notes / a synced pulse with ENV on DCO-2's pitch and on the VCF / every note gliding, KEY FOLLOW 9.8 (2026-11-14, four runs on a busy desk: Phazed 0.7 to 1.2%, Twin x1 4.1 to 5.4% in them). **Not yet run on the handheld** | 0.43 to 0.46% / 0.80 to 0.87% / 1.56 to 1.67% |
 | JX-3P with the LFO (batch 4), 6 notes / the worst row / moving cutoff, now with the LFO on the cutoff and DCO-1 (2026-11-14, two runs: Phazed 0.8%, QMOD 2.8 / 3.2%, Twin x1 4.2 / 4.0% in them). **Not yet run on the handheld** | 0.43% / 0.86 to 0.87% / 1.67 to 1.68% |
+| JX-3P with the chorus (batch 5), 6 notes / the worst row / moving cutoff (2026-11-14, the quietest of five runs on a busy desk: Phazed 0.7%, QMOD 2.8 to 3.2%, Twin x1 4.1 / 4.2% in them). **Not yet run on the handheld** | 0.52 to 0.53% / 0.96 to 0.97% / 1.77 to 1.78% |
 | JX-3P with both DCOs (batch 2), 6 notes / a synced pulse with ENV on DCO-2's pitch / every note gliding (2026-11-14, two runs: Phazed 0.7 / 1.1%, Twin x1 4.1 / 4.5% in them) | 0.21 to 0.22% / 0.30% / 0.63 to 0.68% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
@@ -1381,7 +1392,8 @@ Notes' pages, the shared measuring tools), batch 1 (the skeleton:
 `jx3p.hpp`, `jx3p.cpp`, `jx3p/env.hpp`, `jx3p_test`), batch 2 (the DCOs:
 `jx3p/dco.hpp`, `jx3p_dco_test`), batch 3 (the VCF and HPF, BRILLIANCE:
 `jx3p/ir3109.hpp`, `jx3p_vcf_test`) and batch 4 (the LFO and its routes:
-`jx3p/lfo.hpp`, `jx3p_lfo_test`) are done** on branch `jx3p`; batch 3's
+`jx3p/lfo.hpp`, `jx3p_lfo_test`) and batch 5 (the chorus: `jx3p/chorus.hpp`,
+`jx3p_chorus_test`) are done** on branch `jx3p`; batch 3's
 SPEED TEST on the handheld waits on the owner. The new synth is built beside Twin, which is untouched until 6a / 8b.
 The owner's calls (plan section 8) are taken at the recommended answers, each
 one constant in `jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at 48 kHz: 44.1 would save about

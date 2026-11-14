@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "apotheca/slide.hpp"
+#include "jx3p/chorus.hpp"
 #include "jx3p/dco.hpp"
 #include "jx3p/env.hpp"
 #include "jx3p/ir3109.hpp"
@@ -144,6 +145,10 @@ struct Jx3p::State {
     Hold hpfCv;               // its corner in octaves over kHpfLowHz
     bool hpfOn = false;       // HPF over 0 (at 0, and once its corner has come down, it is not run)
     float hpfAt = NAN, hpfG = 0.f;
+    // THE CHORUS (jx3p/chorus.hpp), after the HPF: its sweep runs from `clock`, as the LFO does.
+    BbdChorus chorus;
+    bool sounded = false;     // a sample made since the synth was made, set up or allNotesOff'd: until
+                              // then a switch of the chorus lands at once (it starts where the settings are)
     std::uint64_t clock = 0;  // samples since allNotesOff (or since made)
     std::uint32_t keys = 0;   // note-ons since allNotesOff
     Voice voices[kVoices];
@@ -241,6 +246,8 @@ void Jx3p::prepare(float sampleRate) {
     if (s.tickLength < 1) s.tickLength = 1;
     s.holdK = holdCoef(s.sampleRate);
     s.clockSteps = kCounterClockHz / s.sampleRate;
+    s.chorus.prepare(s.sampleRate);
+    s.sounded = false; // made or set up: the chorus is where its switch is, no fade
     apply(); // (the LFO's step a tick is the tick's own length in seconds, so it follows the rate)
 }
 
@@ -267,6 +274,8 @@ void Jx3p::apply() {
     s.vcfLfoOctaves = static_cast<float>(vcfLfoOctaves(s.eff[VcfLfo]));
     s.hpfCv.target = static_cast<float>(hpfOctaves(s.eff[Hpf]));
     if (s.eff[Hpf] > 0.f) s.hpfOn = true; // (turned to 0, it is let go once its corner has come down: runHpf)
+    s.chorus.on = s.eff[Chorus] >= 0.5f;    // switched: it fades in or out over 20 ms...
+    if (!s.sounded) s.chorus.snap();         // ...but before the first sample, it is there at once
 }
 
 void Jx3p::selectPreset(int index) {
@@ -395,6 +404,9 @@ void Jx3p::allNotesOff() {
     s.clock = 0;
     s.keys = 0;
     s.lfo.reset(); // its tick, phase, delay and RANDOM's count, from the start (the tails hear it so too)
+    s.sounded = false;
+    s.chorus.snap(); // a fade under way lands at once, as on a fresh synth. Its sweep starts again with
+                     // `clock`; what is on its line (the tails' sound) stays and rings out
 }
 
 // One voice's `frames` added into `out`; it is set free (and stops) when silent with nothing to open it.
@@ -439,6 +451,8 @@ void Jx3p::render(float* left, float* right, int frames) {
     State& s = *state_;
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     bool any = false;
+    s.sounded = s.sounded || frames > 0;
+    const std::uint64_t start = s.clock; // the chorus's sweep: where this block starts
     // The block in pieces that end where the LFO ticks, so its value is one number through each piece
     // and a voice's tick reads it as of its own sample, however the sound is cut into blocks. The LFO
     // runs whether anything sounds or not: its place hangs on the time since allNotesOff alone.
@@ -459,11 +473,20 @@ void Jx3p::render(float* left, float* right, int frames) {
     // The HPF (its own tail rings out after the voices). With no voice, nothing left in it and its
     // corner at rest, running it would change nothing: it is skipped.
     if (s.hpfOn && (any || s.hpf.s != 0.f || !s.hpfCv.still())) s.runHpf(left, frames), any = true;
-    if (!any) {
+    // THE CHORUS: run while it is on (or fading out), with sound coming in or its own still in it, or its
+    // fade under way (so the fade moves on its samples however the blocks are cut). Off, or asleep with
+    // nothing coming in, it is not run: off, the sound is the voices' own, mono, to the bit.
+    const bool chorus = s.chorus.active() && (any || !s.chorus.idle() || s.chorus.fading());
+    if (!any && !chorus) {
         for (int i = 0; i < frames; ++i) right[i] = 0.f;
         return;
     }
-    for (int i = 0; i < frames; ++i) right[i] = left[i] = left[i] * kOutputGain; // mono until the chorus (batch 5)
+    if (chorus) {
+        s.chorus.run(left, right, frames, start);
+        for (int i = 0; i < frames; ++i) left[i] *= kOutputGain, right[i] *= kOutputGain;
+    } else {
+        for (int i = 0; i < frames; ++i) right[i] = left[i] = left[i] * kOutputGain;
+    }
 }
 
 // THE HPF over the summed voices. Off (and not run, the sound untouched to the bit) once HPF is at 0

@@ -66,7 +66,7 @@ struct Set { int id, value; };
 static std::unique_ptr<Jx3p> synth(std::vector<Set> sets) {
     std::unique_ptr<Jx3p> j(new Jx3p);
     j->prepare(48000.f);
-    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 50}, {Dco1Range, 1}, {Dco2Range, 1}, {SourceMix, 0}};
+    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 50}, {Dco1Range, 1}, {Dco2Range, 1}, {SourceMix, 0}, {Chorus, 0}};
     for (const Set& s : plain) j->setSetting(s.id, s.value);
     for (const Set& s : sets) j->setSetting(s.id, s.value);
     return j;
@@ -567,7 +567,7 @@ static void testAnotherRate() {
     for (int mix : {0, 100}) {
         std::unique_ptr<Jx3p> j(new Jx3p);
         j->prepare(44100.f);
-        const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {SourceMix, mix}, {Dco2Tune, 100}};
+        const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {SourceMix, mix}, {Dco2Tune, 100}, {Chorus, 0}};
         for (const Set& s : plain) j->setSetting(s.id, s.value);
         j->noteOn(57, 1.f);
         play(*j, 4410);

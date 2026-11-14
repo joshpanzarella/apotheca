@@ -17,7 +17,9 @@ BLEP and BLAMP tables; what it learned is under the batch table too. **Batch
 only its feedback, not each stage (see "Batch 3: what it learned"). Its SPEED
 TEST on the handheld waits on the owner. **Batch 4 is done (2026-11-14)**: the
 LFO, its DELAY and its routes (`engine/src/jx3p/lfo.hpp`,
-`tests/jx3p_lfo_test.cpp`); see "Batch 4: what it learned". Nobody has heard
+`tests/jx3p_lfo_test.cpp`); see "Batch 4: what it learned". **Batch 5 is done
+(2026-11-14)**: the chorus (`engine/src/jx3p/chorus.hpp`,
+`tests/jx3p_chorus_test.cpp`); see "Batch 5: what it learned". Nobody has heard
 anything: every figure is a test's.
 
 ## The recommendation
@@ -428,8 +430,9 @@ zeros and does no work, and wakes as a fresh one.
 
 Tests: an impulse through finds the delay on each side; over a whole sweep
 the delay stays within 0.64 to 3.2 ms and left is longest when right is
-shortest (FAITHFUL, SN p.7); the wet path is 3 dB down at 10 kHz
-within 1 dB (FAITHFUL, SN p.7; its 2 poles are SELF); OFF is the dry sound to the bit, mono
+shortest (FAITHFUL, SN p.7); each filter is 3 dB down at 10 kHz, so the wet
+path is 6 dB down there within 1 dB (FAITHFUL, SN p.7; its 2 poles are SELF;
+built so in batch 5, which found the "3 dB" line read two filters as one); OFF is the dry sound to the bit, mono
 (SELF); the sweep rate (SELF).
 
 ### What every part must keep (house rules)
@@ -598,6 +601,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
 | | **Batch 4 DONE (2026-11-14, branch `jx3p`).** One LFO for the synth on a 10 ms tick of its own, counted from allNotesOff; SINE, SQUARE, RANDOM; RATE 0.1 to 20 Hz; DELAY 0 to 5 s, a straight fade from a key with no other key held; LFO DEPTH to each DCO by its own switch (12 semitones at 10, as the dial squared), LFO MOD to the VCF (4 octaves at 10, straight); the LFO macro moves both (batch 1's survivor is killed). Every figure is a guess, in one table at the top of `lfo.hpp`. `jx3p_lfo_test` (in ctest, TIMEOUT 120, under a second): 11 tests, one FAITHFUL (stepped, SN p.6). `jx3p_test`'s phrase moves every LFO setting too (`testBlocks`, `testTooSmall`, twice from fresh), its helpers' song has an LFO on each track, and its Play-from-the-top song a RANDOM LFO with a DELAY. **Bench** (desk, two runs, the synth alone): 6 notes **0.43%**, the worst row 0.86 / 0.87%, moving cutoff (now with the LFO on the cutoff and on DCO-1) **1.67 / 1.68%**: no change from batch 3 that shows; in the same runs Phazed 0.8, QMOD 2.8 / 3.2, Twin x1 4.2 / 4.0. Mutants: 31 made, 29 killed, the other 2 equivalent |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
+| | **Batch 5 DONE (2026-11-14, branch `jx3p`).** One line read twice, the left's BBD clock a triangle from 40 to 200 kHz and back in 2 s, the right's its mirror (the two always add to 240 kHz), so each side's delay is 128 / clock: 0.64 to 3.2 ms; a 2-pole 10 kHz low-pass before the line and one after each side; each side dry plus its BBD at 0.71 each; a 20 ms fade on the switch; asleep when empty. Every guess in one table at the top of `chorus.hpp`. `jx3p_chorus_test` (in ctest, TIMEOUT 120, under a second): 13 tests, three FAITHFUL (the clock's range and the 180° worked out and found by impulses, the 10 kHz filters: SN p.7). `jx3p_test`'s phrase switches CHORUS too (`testBlocks` now holds both sides). **Bench** (desk, a busy machine; the quietest of five runs): 6 notes **0.52 / 0.53%** (batch 4: 0.43; the chorus about 0.1), the worst row 0.96 / 0.97%, moving cutoff 1.77 / 1.78%; in the same runs Phazed 0.7, QMOD 2.8 to 3.2, Twin x1 4.1 / 4.2. **The 6-note row is under the 1.2% bar.** Mutants: 30 made, **30 killed** (six survived the first round and each got a test) |
 | 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jx3p` and the `twin` reading, `.jx3p` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
@@ -771,6 +775,47 @@ switch and its sign, the VCF's route, the rate's step through the synth, the pie
 ticks, the macro's second setting, DELAY read, the wave read). Equivalent: the fade's `>=` against
 `>` (at `sinceKey == delayTicks` the fraction is exactly 1 too) and the step as `0.01` of a cycle a
 tick at the rate (the tick is a whole 480 or 441 samples at 48 and 44.1 kHz, so 10 ms exactly).
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 5: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "Two reads of one delay line", "a 2-pole low-pass at 10 kHz on the wet path, before and after" | One line and **one filter before it** for both sides (the two BBDs hear the same sound), one after each side: three filters, not the four the house-rules table lists | Two identical filters on one input are one filter twice |
+| "The wet path is 3 dB down at 10 kHz within 1 dB" | **Each filter** is 3.01 dB down at 10 kHz (held within 0.05); the wet path, through two of them, **6.29 dB** (held to 6 within 1; the cubic read takes the 0.27) | The SN gives each filter's corner; two in a row are 6 dB down there. The plan's line read the two as one |
+| "One triangle; left reads at d, right at the mirror of d" | The triangle sweeps **the BBD's clock** (what the VCO's CV moves), so a side's delay is 128 / clock: it lingers near 0.64 ms and hurries near 3.2 ms (`kSweepOnClock`; false sweeps the delay straight) | SELF. The SN says the VCO's frequency is what is swept |
+| "An impulse through finds the delay" | Found within 0.05 of a sample, **at the moment the impulse comes out**: an impulse in at 3.2 ms comes out after 3.16 ms | A BBD's delay is its clock's as the sound leaves it; at 40 kHz the delay shortens 0.0128 of a sample a sample |
+| Rate 0.5 Hz | So, and **its place is the synth's clock** (samples since allNotesOff, counted whole), as the LFO's | The same however the blocks are cut, Play from the top is the same sweep, and a chorus that slept is where one that never slept is (`testSleep`: woken, the same bits as a fresh one) |
+| Dry plus wet | **0.71 each** (`kChorusDry`, `kChorusWet`): a chord of saws on is 0.28 / 0.37 dB under off (left / right) | SELF |
+| The fade "lands exactly" | Counted in whole samples (960 at 48 kHz); faded out, the chorus is emptied. **Before the synth's first sample (made, set up, allNotesOff) a switch lands at once** (`sounded`), and allNotesOff lands a fade under way | A track whose CHORUS is set off as it is made must not fade a chorus nobody heard out over its first note |
+| Sleep | Nothing under `kChorusQuiet` (1e-12) goes on the line, filters snap under 1e-20; idle when the line has been fed zeros for its longest read and its taps (157 samples at 48 kHz) and every filter is 0: **189 samples after the last sound**. The synth then skips it. It is not skipped while its fade is under way, so a switch in silence is done by the next key, however the silence is cut (`testSwitchInTheSynth`) | |
+| Off is "the dry sound to the bit, mono" | So: left equals right, and the synth's sum is written as before | |
+
+**The tests that measure other parts turn the chorus off** (`held()` in `jx3p_test`, the plain
+patches of `jx3p_dco_test` and `jx3p_vcf_test`): with it on, a pitch read off the sound moved
+(DCO-1 at 220 Hz read 1824 cents off at first), and SOURCE MIX's levels by up to 1.5 dB. The house
+rules' tests (`testBlocks`, `testTooSmall`, `testSilence`, twice from fresh, the helpers' song, Play
+from the top) keep the start patch's chorus on.
+
+**Known: a tail hears the chorus's sweep start again**, as it hears the LFO (batch 4): allNotesOff
+puts the sweep back to its start, and the tails' sound on the line rides the new sweep.
+`testPlayFromTheTopWhileRinging` holds "fresh plus tails" with the chorus off (with it on, Play
+after Stop differed from Stop alone by 0.05 to 0.09 in the tails); `jx3p_chorus_test`
+`testFromTheTop` holds that once the tails have rung out the sound is a fresh synth's to the bit,
+both sides, with it on.
+
+**Not copied**: the BBDs' hiss (`kBbdHiss`, the owner's call), their clock's leak, and the loss
+of top along the bucket chain.
+
+**Mutants (batch 5)**: 30 made, **30 killed** (the stages, the mirror, the triangle, the delay's
+constant, the cubic's base tap, the read's index, each filter, the filters' Q, the quiet gate, the
+filters' snap, the quiet count, the reach, the fade's step, the clear at the fade's end, the dry
+share, the sweep from the clock, its rate, its wrap, the guard when off, snap's clear, the left's
+delay, allNotesOff's snap, the snap before the first sample, running while fading, running while
+not idle, the block's start, the switch read, the `sounded` flag, the right side's gain). Six
+survived the first round (the quiet gate, the dry share, snap's clear, allNotesOff's snap, running
+while fading, `sounded`): each has a test now.
 
 **What only the tests saw**: everything. Nothing here has been heard.
 
