@@ -2449,7 +2449,10 @@ void measure() {
 // the count of strokes is left one on), and an early PAIRED note; its last step a WIDE STRUM with
 // HUMAN TIME, asked a step ahead and still sounding its last keys when the copy is taken back
 // (they are that step's own by then, and are not dropped); and scene 3's first step a strum on the
-// synth track that is not asked ahead (begun on its step: a "chord asked" left over would skip it).
+// synth track that is not asked ahead (begun on its step: a "chord asked" left over would skip it),
+// and an early hit (at 61.8) asked again from it, at its own moment, however far into the step the
+// copy was taken back (review, 2026-11-14: asked again a step's length on from the asking, it
+// played late).
 void addEdges(Rig& rig) {
     Project& p = rig.project();
     TrackData& drums = p.tracks[0];
@@ -2457,6 +2460,8 @@ void addEdges(Rig& rig) {
     TrackData& chords = p.tracks[2];
     drums.drums[1][0].level[2][0] = 0.7f;
     drums.drums[1][0].nudge[2][0] = -0.3f;
+    drums.drums[2][0].level[3][0] = 0.6f;
+    drums.drums[2][0].nudge[3][0] = -0.2f;
     synth.notes[1][0].chords[0] = chordOf(0, 2.f, 64, 3, kStrumQuarter, kOrderUp, 0, 0, 0, 0, 0, -0.2f);
     synth.notes[1][0].chords[1] = chordOf(15, 1.f, 67, 3, kStrumWide, kOrderUp, 100, 0, 0);
     chords.notes[1][0].chords[2] = chordOf(0, 2.f, 52, 3, kStrumWide, kOrderUpDown, 0, 0, 0, 0, 0, -0.2f);
