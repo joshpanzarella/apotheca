@@ -28,6 +28,8 @@ float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : 
 constexpr float kOutputGain = 0.3f;
 // The highest a DCO is let go: a little under half the sample rate (its corrections need room).
 constexpr double kHighestStep = 0.45;
+// The keys there are: a note outside them is refused (noteOn, noteOnFrom).
+constexpr int kLowestKey = 0, kHighestKey = 127;
 
 struct Preset {
     const char* name;
@@ -173,7 +175,13 @@ struct Jx3p::State {
             count = 1.0 / period;
             step = count / sampleRate;
         }
-        return step > kHighestStep ? kHighestStep : step;
+        if (step > kHighestStep) {
+            // Held at the top: `count` then says what is played, so voiceHz is the DCO's pitch
+            // (key 125 at 4' plays 21600 Hz, not the 22387 the counter was asked for).
+            step = kHighestStep;
+            count = kRoundToCounter ? clockSteps / step : step * sampleRate;
+        }
+        return step;
     }
     static double hzOf(double count) { return kRoundToCounter ? (count > 0.0 ? kCounterClockHz / count : 0.0) : count; }
     // Both DCOs' pitch: the key, a glide's offset (per sample), and what the tick set.
@@ -360,9 +368,15 @@ int Jx3p::noteOnVoice(int note, float velocity) {
     return chosen;
 }
 
-void Jx3p::noteOn(int note, float velocity) { noteOnVoice(note, velocity); }
+// A key outside 0..127 is not a key (kLowestKey, kHighestKey): refused. Below 0 it read as "free"
+// while held, never sounded and never let go, and stopped every later key starting the LFO's DELAY.
+void Jx3p::noteOn(int note, float velocity) {
+    if (note < kLowestKey || note > kHighestKey) return;
+    noteOnVoice(note, velocity);
+}
 
 void Jx3p::noteOnFrom(int note, float velocity, int from, float seconds) {
+    if (note < kLowestKey || note > kHighestKey) return;
     State& s = *state_;
     State::Voice& v = s.voices[noteOnVoice(note, velocity)];
     v.slide.start(from, note, seconds, static_cast<float>(s.sampleRate));
@@ -520,6 +534,7 @@ double Jx3p::voiceCutoffHz(int voice) const {
 }
 bool Jx3p::voiceHeld(int voice) const { return voice >= 0 && voice < kVoices && state_->voices[voice].held; }
 float Jx3p::lfoNow() const { return state_->lfo.out; }
+bool Jx3p::hpfLanded() const { return state_->hpfCv.still(); }
 int Jx3p::tailsRinging() const {
     int n = 0;
     for (const State::Voice& v : state_->tails) n += v.note >= 0 ? 1 : 0;

@@ -396,7 +396,15 @@ effect in those two groups and fails one that does not.
   step.** Heading for 1, a 1 ms smoothing at 48 kHz stops moving 1.4e-6 short
   (k times the gap is under half a float step there), so a landing at 1e-6
   never came and the JX-3P's voice was never freed. Its hold lands at 1e-5
-  (`jx3p::kHoldLands`); a new smoother picks its gap the same way.
+  (`jx3p::kHoldLands`); a new smoother picks its gap the same way. **And it
+  lands when a step no longer moves it** (`Hold::next`): a float's step grows
+  with the value, so a fixed gap is right only near 1. The HPF's hold, over 4,
+  stuck 1.1e-5 short and the HPF and chorus ran on silence for good.
+- **A minimum-phase BLEP makes the jumps late (2.23 samples at the bottom), so
+  every slope of the wave carries the same lateness** (`kBlampCarry` in
+  `Dco::take`, the saw's too). A saw that did not had a mean of 4.47 x dt:
+  37% of its peak at the top keys. **A test that takes the mean off cannot
+  see an offset**: `testNoOffset` reads the mean itself.
 - **A `Glide` always lands, at any block length** (never slower than `kLeast`
   a sample). A fraction of what is left falls below what a float can add in
   blocks of 8 frames and under, and `moving()` then stayed true for good.

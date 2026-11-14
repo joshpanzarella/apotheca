@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "apotheca/jx3p.hpp"
@@ -164,10 +165,67 @@ static void testAWaveTurnedIsCorrected() {
     d.setWave(WaveSquare);
     d.run();
     const float at = d.take();
-    CHECK(std::fabs(before - (-0.019f)) < 0.002f && std::fabs(at - before) < 0.1f * std::fabs(-1.f - before));
+    // (Before the turn: the saw 0.4905 up its ramp, -0.019, and its slope's carry, kBlampCarry x 2 x dt.)
+    CHECK(std::fabs(before - static_cast<float>(-0.019 + kBlampCarry * 2.0 * d.dt)) < 0.0005f && std::fabs(at - before) < 0.1f * std::fabs(-1.f - before));
     for (int i = 0; i < kBlepLength; ++i) d.run(), d.take();
     d.run();
     CHECK(std::fabs(d.take() + 1.f) < 1e-6f);
+}
+
+// NO OFFSET (SELF: what a saw, a square and a 10% pulse with its mean taken off are): each wave's
+// mean is 0 at every pitch, and a synced saw's is the mean of the shape it makes. Each DCO runs a whole
+// number of its own cycles (its period a whole number of samples), so the mean is exact but for the
+// corrections. Found in review (2026-11-14): the saw carried nothing (kBlampCarry), and its mean was
+// 4.47 x dt over 0 (0.006 at 65 Hz, 0.39 at 4186 Hz: 19% of the output's peak at key 96, and it
+// stepped with the pitch at the tick under ENV). Measured with the carry: under 1e-5 everywhere.
+static void testNoOffset() {
+    double worst = 0.0;
+    for (int wave : {WaveSaw, WavePulse, WaveSquare}) {
+        for (int period : {734, 183, 46, 12, 6}) { // 65 Hz to 8 kHz
+            Dco d;
+            d.dt = 1.0 / period;
+            d.wave = wave;
+            d.start(0.3);
+            const int cycles = 48000 / period + 1;
+            for (int i = 0; i < kBlepLength; ++i) d.run(), d.take(); // (past the first sample's corrections settling in)
+            double sum = 0.0;
+            for (int i = 0; i < cycles * period; ++i) d.run(), sum += d.take();
+            const double mean = sum / (cycles * period);
+            worst = std::fmax(worst, std::fabs(mean));
+            CHECK(std::fabs(mean) < 1e-4);
+            if (std::fabs(mean) >= 1e-4 && printing()) std::printf("  wave %d, a period of %d: mean %.6f\n", wave, period, mean);
+        }
+    }
+    // A synced saw, DCO-2 at 1.7 times DCO-1 (2 kHz): its ramp runs a whole cycle and 0.7 of one, so
+    // its mean is -0.3 x 0.7 / 1.7.
+    DcoPair p;
+    p.one.dt = 1.0 / 24.0;
+    p.two.dt = 1.7 / 24.0;
+    p.one.start(0.0);
+    p.two.start(0.0);
+    p.cross = CrossSync;
+    for (int i = 0; i < kBlepLength; ++i) p.next(1.f);
+    double sum = 0.0;
+    const int frames = 24 * 2000;
+    for (int i = 0; i < frames; ++i) sum += p.next(1.f);
+    const double synced = sum / frames, ideal = -0.3 * 0.7 / 1.7;
+    if (printing()) std::printf("  no offset: worst mean %.7f; a synced saw %.5f (its shape's %.5f)\n", worst, synced, ideal);
+    CHECK(std::fabs(synced - ideal) < 1e-3);
+    // Through the synth (the chorus off, the VCF open): a saw's mean against its peak, low and at the
+    // top of the keys. It was 1.0% at key 48, 19.5% at key 96 and 37.3% at key 96 at 4'.
+    double worstShare = 0.0;
+    for (const auto& at : {std::pair<int, int>{48, 1}, {96, 1}, {96, 2}}) {
+        std::unique_ptr<Jx3p> j = synth({{Dco1Range, at.second}, {Cutoff, 100}, {KeyFollow, 100}});
+        j->noteOn(at.first, 1.f);
+        play(*j, 4800);
+        const std::vector<float> out = play(*j, 48000);
+        double mean = 0.0, peak = 0.0;
+        for (float x : out) mean += x, peak = std::fmax(peak, std::fabs(x));
+        const double share = std::fabs(mean / out.size()) / peak;
+        worstShare = std::fmax(worstShare, share);
+        CHECK(peak > 0.01 && share < 0.003);
+    }
+    if (printing()) std::printf("  through the synth: a saw's mean %.4f of its peak at worst\n", worstShare);
 }
 
 // THE TWO DCOS START APART (SELF: plan section 2, a seeded phase stands for the free-running
@@ -586,7 +644,7 @@ int main(int argc, char** argv) {
         {"testSourceMix", testSourceMix}, {"testEnvOnTheDcos", testEnvOnTheDcos}, {"testAWaveTurnedDuringANote", testAWaveTurnedDuringANote},
         {"testFromTheTopWithBothDcos", testFromTheTopWithBothDcos}, {"testAnotherRate", testAnotherRate},
         {"testAnEdgeOnTheSamplesEnd", testAnEdgeOnTheSamplesEnd}, {"testSawRises", testSawRises}, {"testAWaveTurnedIsCorrected", testAWaveTurnedIsCorrected},
-        {"testTheDcosStartApart", testTheDcosStartApart},
+        {"testTheDcosStartApart", testTheDcosStartApart}, {"testNoOffset", testNoOffset},
     };
     bool any = false;
     for (int a = 1; a < argc; ++a)

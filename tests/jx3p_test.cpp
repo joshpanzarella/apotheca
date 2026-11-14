@@ -225,13 +225,55 @@ static void testThroughTheEngine() {
 // an unheld one would be. (The corrections' own band-limit takes 21.6 kHz down: 0.011 was heard
 // there, measured 2026-11-14; the folded place 0.000004. Since batch 3 the VCF at its top, 20 kHz,
 // takes it down again: 0.0007 there, 0.000003 at the folded place.)
+static int voiceOf(const Jx3p& j, int note);
+static std::vector<Set> held_(std::vector<Set> more = {}) { return held(more); }
 static void testTheTopIsHeld() {
     std::unique_ptr<Jx3p> j = synth(held({{Dco1Range, 2}, {KeyFollow, 100}})); // (the VCF at its top, 20 kHz: batch 3)
     j->noteOn(127, 1.f);
     const std::vector<float> out = play(*j, 48000 + 4800);
-    const double held = partAt(out.data() + 4800, 48000, 0.45 * 48000.0), folded = partAt(out.data() + 4800, 48000, 48000.0 - j->voiceHz(0));
-    if (failures || std::getenv("JX3P_PRINT")) std::printf("  the top: %.4f at 21.6 kHz, %.6f at 22.9 kHz\n", held, folded);
-    CHECK(j->voiceHz(0) > 25000.0 && held > 10.0 * folded && held > 0.0005);
+    // (Held, its second harmonic, 43.2 kHz, would fold to 4.8 kHz.)
+    const double held = partAt(out.data() + 4800, 48000, 0.45 * 48000.0), folded = partAt(out.data() + 4800, 48000, 48000.0 - 2.0 * 0.45 * 48000.0);
+    if (failures || std::getenv("JX3P_PRINT")) std::printf("  the top: %.4f at 21.6 kHz, %.6f at 4.8 kHz\n", held, folded);
+    CHECK(held > 10.0 * folded && held > 0.0005);
+    CHECK(j->voiceHz(0) == 0.45 * 48000.0); // what it plays (it said 25104, what was asked: review, 2026-11-14)
+}
+
+// EVERY KEY AS IT PLAYS (SELF: the counter's rounding, the plan's DCO section): all 128 keys at every
+// RANGE. voiceHz is the counter's pitch, and under the top it is within 3 cents of the written note
+// (2.85 at worst: the plan said "under 1 cent at the top notes", which holds only up to 6.9 kHz, a
+// count of 866); over the top it is the top, 21.6 kHz, as played.
+static void testEveryKeyAsPlayed() {
+    double worst = 0.0, worstUnder = 0.0;
+    int held = 0;
+    for (int range = 0; range < 3; ++range)
+        for (int key = 0; key < 128; ++key) {
+            std::unique_ptr<Jx3p> j = synth(held_({{Dco1Range, range}}));
+            j->noteOn(key, 1.f);
+            const double want = keyHz(key) * (range == 0 ? 0.5 : (range == 1 ? 1.0 : 2.0)), counter = counterHz(want);
+            if (counter > 0.45 * 48000.0) {
+                CHECK(j->voiceHz(0) == 0.45 * 48000.0);
+                ++held;
+            } else {
+                CHECK(j->voiceHz(0) == counter);
+                worst = std::fmax(worst, std::fabs(cents(counter, want)));
+                if (want < 6900.0) worstUnder = std::fmax(worstUnder, std::fabs(cents(counter, want)));
+            }
+        }
+    if (failures || std::getenv("JX3P_PRINT")) std::printf("  every key: %.3f cents at worst (%.3f under 6.9 kHz), %d held at the top\n", worst, worstUnder, held);
+    CHECK(worst < 3.0 && worstUnder < 1.0 && held > 0);
+}
+
+// A KEY OUTSIDE 0..127 IS REFUSED (SELF; review 2026-11-14): note -1 held a voice that never sounded
+// and was never let go, and stopped every later key starting the LFO's DELAY.
+static void testAKeyOutsideIsRefused() {
+    std::unique_ptr<Jx3p> j = synth(held_());
+    for (int note : {-1, -50, 128, 1000}) j->noteOn(note, 1.f), j->noteOnFrom(note, 1.f, 60, 0.1f);
+    play(*j, 480);
+    for (int v = 0; v < kVoices; ++v) CHECK(!j->voiceHeld(v) && j->voiceNote(v) == -1);
+    j->noteOn(0, 1.f);
+    j->noteOn(127, 1.f);
+    play(*j, 480);
+    CHECK(voiceOf(*j, 0) >= 0 && voiceOf(*j, 127) >= 0);
 }
 
 // ---- the voices -----------------------------------------------------------------------------------
@@ -895,6 +937,35 @@ static void reportCost() {
     std::printf("  six notes: %.2f%% of one core\n", 100.0 * seconds / (6000.0 * 256.0 / 48000.0));
 }
 
+// A HOLD ALWAYS LANDS (SELF: the house rules, "every smoother lands exactly"; found in review,
+// 2026-11-14): from 0 and from far, at both rates, to targets from small to 1000, a hold is on its
+// target, exactly, within 50 ms, and never goes past it on the way. Far from 0 a float's step is
+// coarser than the landing distance (over 4: 4.8e-7 a step, a gap under 1.2e-5 times k rounds to no
+// change) and it stuck short for good: the HPF at 6.1 and over, 1.1e-5 short.
+static void testAHoldAlwaysLands() {
+    int stuck = 0, past = 0, tried = 0;
+    for (double rate : {44100.0, 48000.0, 96000.0}) {
+        const float k = holdCoef(rate);
+        for (int i = 0; i < 400; ++i) {
+            const float target = static_cast<float>(1e-3 * std::pow(1e6, i / 399.0)) * (i % 7 == 3 ? -1.f : 1.f); // 0.001 .. 1000
+            for (float from : {0.f, target * 3.f, -target}) {
+                Hold h;
+                h.value = from;
+                h.target = target;
+                const float gap = std::fabs(target - from);
+                for (int n = 0; n < static_cast<int>(0.05 * rate); ++n) {
+                    h.next(k);
+                    if (std::fabs(target - h.value) > gap) ++past;
+                }
+                stuck += h.still() ? 0 : 1;
+                ++tried;
+            }
+        }
+    }
+    if (failures || std::getenv("JX3P_PRINT")) std::printf("  a hold: %d of %d not landed in 50 ms, %d steps away from the target\n", stuck, tried, past);
+    CHECK(stuck == 0 && past == 0);
+}
+
 int main(int argc, char** argv) {
     struct Test { const char* name; void (*run)(); };
     const Test tests[] = {
@@ -906,6 +977,7 @@ int main(int argc, char** argv) {
         {"testVca", testVca}, {"testVelocity", testVelocity}, {"testMacros", testMacros}, {"testGlide", testGlide}, {"testBlocks", testBlocks},
         {"testTwiceFromFresh", testTwiceFromFresh}, {"testPlayFromTheTop", testPlayFromTheTop}, {"testSilence", testSilence}, {"testSeededPhase", testSeededPhase},
         {"testNoAllocation", testNoAllocation}, {"testTooSmall", testTooSmall}, {"testTheParts", testTheParts},
+        {"testEveryKeyAsPlayed", testEveryKeyAsPlayed}, {"testAKeyOutsideIsRefused", testAKeyOutsideIsRefused}, {"testAHoldAlwaysLands", testAHoldAlwaysLands},
     };
     bool any = false;
     for (int a = 1; a < argc; ++a) {

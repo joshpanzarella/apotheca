@@ -22,6 +22,7 @@
 //   | The tick                     | 10 ms (kTickSeconds), 480 samples at 48 kHz  | SN p.6 ("approx. 10mS") |
 //   | The hold's smoothing         | 1 ms, one pole (kHoldSeconds), landing at    | SELF   |
 //   |                              | 1e-5 from its target (kHoldLands)            |        |
+//   |                              | or where a step no longer moves it           |        |
 //   | ATTACK 0 to 10               | one tick to 4 s, even in log (kAttackSeconds)| SELF   |
 //   | DECAY, RELEASE 0 to 10       | one tick to 10 s, even in log (kFallSeconds) | SELF   |
 //   | The attack's curve           | heads for 1.5 and is stopped at 1 (kAttackAim)| SELF  |
@@ -158,10 +159,16 @@ struct Adsr {
 struct Hold {
     float value = 0.f, target = 0.f;
     bool still() const { return value == target; }
+    // It lands when this near its target, or when a step no longer moves it: far from 0 a float's
+    // step is coarser than `lands` allows for (HPF 6.1 and over, 4 octaves and up: 4.8e-7 a step,
+    // so a gap under 1.2e-5 times k rounds to no change, and it stuck 1.1e-5 short for good, the
+    // HPF and the chorus run on silence for ever). Stuck is stuck for good, so landing there
+    // changes nothing that would have moved. `testAHoldAlwaysLands`.
     float next(float k, float lands = kHoldLands) {
         if (value != target) {
+            const float was = value;
             value += (target - value) * k;
-            if (std::fabs(target - value) < lands) value = target;
+            if (value == was || std::fabs(target - value) < lands) value = target;
         }
         return value;
     }

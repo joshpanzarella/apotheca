@@ -420,6 +420,16 @@ static void testHpf() {
     const double slope = dB(gainHp(corner / 8.0, corner)) - dB(gainHp(corner / 16.0, corner));
     CHECK(std::fabs(slope - 6.0) < 0.2);
     CHECK(std::fabs(dB(gainHp(8000.0, corner))) < 0.3);
+    // What it passes, it passes whole: at the top (a sample up, a sample down) a trapezoidal high-pass
+    // is exactly 1 at any corner. A pass level of 0.998 (0.017 dB; a review's mutant, 2026-11-14)
+    // reads 0.998 here.
+    for (double at : {kHpfLowHz, kHpfHighHz}) {
+        HighPass h;
+        const float g = onePoleG(at, 48000.0);
+        float y = 0.f;
+        for (int i = 0; i < 48000; ++i) y = h.run(i % 2 ? -0.5f : 0.5f, g);
+        CHECK(std::fabs(std::fabs(y) - 0.5f) < 1e-5f);
+    }
     double hz16 = 0.0, hz8 = 0.0;
     const auto fundamental = [](int range, int hpf, double* hz) {
         std::unique_ptr<Jx3p> j = synth({{Dco1Range, range}, {Hpf, hpf}});
@@ -476,6 +486,29 @@ static void testTheHpfSlides() {
     CHECK(turned < 0.003f && turned > 0.0005f);
 }
 
+// THE HPF'S CORNER LANDS (SELF: the house rules, "every smoother lands exactly"; found in review,
+// 2026-11-14): at every HPF, a second after the knob is set, its hold is still, so on silence nothing
+// of it runs (render() skips the HPF, and the chorus with it). Over 4 octaves (HPF 6.1 and up) a
+// float's step is coarser than the hold's landing, and it stuck 1.1e-5 short for good: an idle track
+// at HPF 8 cost 0.14% of a desk core for ever.
+static void testTheHpfLands() {
+    int stuck = 0;
+    for (int hpf = 1; hpf <= 100; ++hpf) {
+        std::unique_ptr<Jx3p> j = synth({{Hpf, hpf}});
+        j->noteOn(48, 1.f);
+        play(*j, 4800);
+        j->noteOff(48);
+        play(*j, 48000);
+        stuck += j->hpfLanded() ? 0 : 1;
+        // Turned from there to another, it lands there too.
+        j->setSetting(Hpf, 101 - hpf);
+        play(*j, 48000);
+        stuck += j->hpfLanded() ? 0 : 1;
+    }
+    if (printing()) std::printf("  the HPF's corner: %d of 200 not landed after a second\n", stuck);
+    CHECK(stuck == 0);
+}
+
 // A VOICE TAKEN AGAIN STARTS AS A FRESH ONE (SELF: plan section 2, nothing of a silent voice moves):
 // six keys played and let go, the voices freed, then one more key: the same bits whichever six went
 // before (their filters held other sounds when they were freed).
@@ -501,6 +534,7 @@ int main(int argc, char** argv) {
         {"testOrganI", testOrganI}, {"testKeyFollow", testKeyFollow}, {"testPolarity", testPolarity}, {"testTheCvSteps", testTheCvSteps},
         {"testGlideMovesTheCutoff", testGlideMovesTheCutoff}, {"testBrilliance", testBrilliance}, {"testBassLoss", testBassLoss},
         {"testStaysBounded", testStaysBounded}, {"testHpf", testHpf}, {"testHpfOffIsUntouched", testHpfOffIsUntouched}, {"testAVoiceTakenAgainIsFresh", testAVoiceTakenAgainIsFresh}, {"testTheHpfSlides", testTheHpfSlides},
+        {"testTheHpfLands", testTheHpfLands},
     };
     bool any = false;
     for (int a = 1; a < argc; ++a)

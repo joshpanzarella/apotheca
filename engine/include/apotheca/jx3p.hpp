@@ -143,6 +143,7 @@ public:
     bool voiceHeld(int voice) const;
     int tailsRinging() const;           // voices handed over by allNotesOff still ringing out
     float lfoNow() const;               // the LFO as the voices read it now: -1..1, the delay's fade in it
+    bool hpfLanded() const;             // the HPF's corner is on its knob (its hold still: nothing of it runs on silence)
 
 private:
     struct State;

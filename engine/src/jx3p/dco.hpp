@@ -21,7 +21,8 @@
 // fundamental): every jump gets a BLEP and every bend a BLAMP, minimum-phase
 // tables (blep_table.hpp, made by tools/jx3p_blep.py), placed at the exact
 // time of the jump within the sample. Minimum-phase: all the correction comes
-// after, so nothing is late, not by a sample.
+// after, so a jump starts on its own sample (the wave as a whole comes through
+// 2.23 samples late at the bottom, kBlampCarry, which every slope carries).
 //
 // Rack-free and SDL-free; no allocation; nothing a silent voice keeps moves.
 //
@@ -83,9 +84,6 @@ inline double waveSlope(int wave, double r) {
     default: return 0.0;
     }
 }
-// The slope a wave has where it is not bent: what the minimum-phase lateness (kBlampCarry) is
-// counted from. A saw is never bent, so it carries nothing.
-inline double waveBaseSlope(int wave) { return wave == WaveSaw ? 2.0 : 0.0; }
 // Where on its ramp a wave bends or jumps by itself (the pulse's top, the square's rising edge), or -1.
 inline double waveCorner(int wave) { return wave == WavePulse ? kPulseTop : (wave == WaveSquare ? 0.5 : -1.0); }
 
@@ -197,10 +195,14 @@ struct Dco {
         }
         return wrapped;
     }
-    // This sample's value: the wave where its ramp is, its corrections, and the lateness of its bent
-    // parts (kBlampCarry: the part of a bend's correction that stays).
+    // This sample's value: the wave where its ramp is, its corrections, and the lateness of its
+    // slope (kBlampCarry: the part of a bend's correction that stays). EVERY slope carries, the
+    // saw's too: a minimum-phase jump's correction comes through 2.23 samples late at the bottom, so
+    // the corrected jumps are late, and the ramp between them must be as late, or the wave's mean
+    // is off by the carry (a saw was 4.47 x dt over 0: 19% of its peak at key 96, and it stepped
+    // with the pitch at the tick). `testNoOffset`.
     float take() {
-        const double carry = kBlampCarry * dt * (waveSlope(wave, r) - waveBaseSlope(wave));
+        const double carry = kBlampCarry * dt * waveSlope(wave, r);
         return static_cast<float>(waveValue(wave, r) + carry) + bleps.take();
     }
 };
