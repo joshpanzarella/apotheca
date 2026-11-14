@@ -454,6 +454,20 @@ void testTheGesture() {
     CHECK(song.cursorOnMaster());
     rig.tap(LEFT);
     CHECK(!song.cursorOnMaster() && song.cursorColumn() == rig.project().trackCount());
+    // And left again: along the heads, onto the last track's name, not down into its cell (owner, 2026-11-14).
+    rig.tap(LEFT);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == rig.project().trackCount() - 1);
+    // The same from the last head: right to + TRACK, left back to the head.
+    rig.tap(RIGHT);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == rig.project().trackCount());
+    rig.tap(LEFT);
+    CHECK(song.cursorOnHead() && song.cursorColumn() == rig.project().trackCount() - 1);
+    // Come to + TRACK from a cell (scene 3 of the last track), left goes back to that cell.
+    song.moveCursorTo(2, rig.project().trackCount() - 1);
+    rig.tap(RIGHT);
+    CHECK(song.cursorColumn() == rig.project().trackCount());
+    rig.tap(LEFT);
+    CHECK(!song.cursorOnHead() && song.cursorColumn() == rig.project().trackCount() - 1 && song.cursorScene() == 2);
     // With twelve tracks there is no + TRACK: MASTER is right of the last head, and left of it is that head.
     while (rig.project().trackCount() < kNumTracks) session.addTrack(TrackKind::Drums);
     song.moveCursorTo(0, kNumTracks - 1);

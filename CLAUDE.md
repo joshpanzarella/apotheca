@@ -277,6 +277,17 @@ effect in those two groups and fails one that does not.
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
   `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+- **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
+  and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
+  the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
+  left (owner's report, 2026-11-14). That is the design; whether an unwritten scene should HOLD the last
+  value instead is the owner's call, not made. **Whatever changes a knob in the engine sets its rest
+  too**: `SetMacro`, `SetEffectParam`, `SetSend`, and `SelectPreset`, which puts all eight macros' rest
+  at the middle as the synth does (it left the old sound's knobs as the rest, and the song played the
+  old sound's macros after every wrap into a scene with none written: `engine_test`
+  `testAPresetPutsTheMacrosRestBack`). The app sends the macros after a built-in preset too
+  (`chooseSynthPreset`), as `sendSong` does: the engine is told the project's knobs, never left to agree
+  by itself (`app_test` `testABuiltInPresetRestsTheMacrosWhereTheyShow`).
 - **A tempo change keeps every place in the step** (`SetTempo`): what is left
   of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
   waiting are all scaled by the same amount, so the arpeggio stays on the beat.

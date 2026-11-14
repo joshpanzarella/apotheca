@@ -72,6 +72,16 @@ void Session::chooseSynthPreset(int track, int index) {
         c.type = Command::SelectPreset; // the engine has these itself, and puts its macros back
         c.a = index;
         engine.send(c);
+        // ...and is told the knobs too, as sendSong tells them: the engine is always told the
+        // project's macros, never left to agree with them by itself.
+        for (int m = 0; m < kSynthMacros; ++m) {
+            Command k;
+            k.type = Command::SetMacro;
+            k.track = track;
+            k.a = m;
+            k.value = t.macro[m];
+            engine.send(k);
+        }
         return;
     }
     // One of the player's own: the engine is told every setting, and the macros it was saved with.
