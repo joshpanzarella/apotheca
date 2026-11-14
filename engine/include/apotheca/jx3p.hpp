@@ -14,7 +14,8 @@
 // sample-and-hold, the VCA with VELOCITY. Batch 2: both DCOs, every wave, TUNE,
 // FINE, SYNC, METAL, NOISE, SOURCE MIX, ENV on the DCOs (engine/src/jx3p/dco.hpp). Batch 3: the
 // VCF (CUTOFF, RESONANCE, ENV MOD and its polarity, KEY FOLLOW), the HPF, BRILLIANCE
-// (engine/src/jx3p/ir3109.hpp). Every other setting (the LFO's, CHORUS) is kept and read back, and
+// (engine/src/jx3p/ir3109.hpp). Batch 4: the LFO (WAVE, RATE, DELAY) and its routes (LFO DEPTH and
+// each DCO's switch, LFO MOD on the VCF; engine/src/jx3p/lfo.hpp). CHORUS is kept and read back, and
 // does nothing yet.
 //
 // Every knob reads 0 to 10 on the PG-200; it is kept as 0..100, tenths of the
@@ -141,6 +142,7 @@ public:
     double voiceCutoffHz(int voice) const; // the VCF's cutoff now (0 before its first sample)
     bool voiceHeld(int voice) const;
     int tailsRinging() const;           // voices handed over by allNotesOff still ringing out
+    float lfoNow() const;               // the LFO as the voices read it now: -1..1, the delay's fade in it
 
 private:
     struct State;

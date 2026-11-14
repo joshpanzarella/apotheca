@@ -569,7 +569,8 @@ static void testGlide() {
 
 // A phrase with every part built so far moving: keys, steals, glides, knobs, macros, VELOCITY, the
 // DCOs (waves, cross mod, TUNE, FINE, MIX, ENV on them), the VCF and HPF (CUTOFF, RESONANCE, ENV MOD
-// and its polarity, KEY FOLLOW, HPF, BRILLIANCE),
+// and its polarity, KEY FOLLOW, HPF, BRILLIANCE), the LFO (WAVE, RATE, DELAY, LFO MOD, LFO DEPTH and
+// each DCO's switch),
 // GATE, RANGE, allNotesOff. Each event at its sample.
 struct Event { long at; std::function<void(Jx3p&)> act; };
 static std::vector<Event> phrase(double seconds) {
@@ -586,6 +587,7 @@ static std::vector<Event> phrase(double seconds) {
         const int a = roll(4), b = roll(101), c = roll(8), d = roll(11), e = roll(2), f = roll(3), g = roll(2), h = 40 + roll(61);
         const int w1 = roll(3), w2 = roll(4), x = roll(3), tune = roll(101), mix = roll(101), depth = roll(101), sw = roll(4); // the DCOs (batch 2)
         const int cut = roll(101), res = roll(101), envMod = roll(101), key = roll(101), hpf = roll(3) * 40, bright = roll(101); // the VCF and HPF (batch 3)
+        const int lw = roll(3), rate = roll(101), delay = roll(61), lfoMod = roll(101), lfoDepth = roll(101), lsw = roll(4); // the LFO (batch 4)
         if (kind < 6) ev.push_back({t, [=](Jx3p& j) { j.noteOn(note, velocity); }});
         else if (kind < 8) ev.push_back({t, [=](Jx3p& j) { j.noteOnFrom(note, velocity, note - 7, 0.15f); }});
         else if (kind == 8) ev.push_back({t, [=](Jx3p& j) { j.setSetting(Attack + a, b); }});
@@ -596,7 +598,9 @@ static std::vector<Event> phrase(double seconds) {
             j.setSetting(SourceMix, mix); j.setSetting(DcoEnvDepth, depth); j.setSetting(Dco1Env, sw & 1); j.setSetting(Dco2Env, (sw + 1) & 1);
             j.setSetting(DcoEnvPolarity, depth & 1); j.setSetting(Dco2Range, f); j.setSetting(Dco2Fine, mix);
             j.setSetting(Cutoff, cut); j.setSetting(Resonance, res); j.setSetting(VcfEnv, envMod); j.setSetting(VcfEnvPolarity, cut & 1);
-            j.setSetting(KeyFollow, key); j.setSetting(Hpf, hpf); j.setSetting(Brilliance, bright); }});
+            j.setSetting(KeyFollow, key); j.setSetting(Hpf, hpf); j.setSetting(Brilliance, bright);
+            j.setSetting(LfoWave, lw); j.setSetting(LfoRate, rate); j.setSetting(LfoDelay, delay); j.setSetting(VcfLfo, lfoMod);
+            j.setSetting(DcoLfoDepth, lfoDepth); j.setSetting(Dco1Lfo, lsw & 1); j.setSetting(Dco2Lfo, lsw >> 1); }});
         else ev.push_back({t, [](Jx3p& j) { j.allNotesOff(); }});
         const long off = t + 600 + roll(30000);
         ev.push_back({off, [=](Jx3p& j) { j.noteOff(note); }});
@@ -652,6 +656,13 @@ static std::vector<float> engineSong(int helpers) {
             e->send(c);
         }
         e->send(make(Command::SetSetting, t, Release, 40 + 20 * t));
+        // The LFO (batch 4): a fast RANDOM on the pitch and the cutoff, its DELAY (each track its own).
+        e->send(make(Command::SetSetting, t, LfoWave, t % 3));
+        e->send(make(Command::SetSetting, t, LfoRate, 50 + 15 * t));
+        e->send(make(Command::SetSetting, t, LfoDelay, 10 * t));
+        e->send(make(Command::SetSetting, t, DcoLfoDepth, 30));
+        e->send(make(Command::SetSetting, t, Dco1Lfo, 1));
+        e->send(make(Command::SetSetting, t, VcfLfo, 40));
         Command m = make(Command::SetAutomation, t, MacroAttack, 4, 0.9f);
         e->send(m);
     }
@@ -676,6 +687,9 @@ static std::vector<float> fromTheTop(bool auditionFirst) {
     std::unique_ptr<Engine> e(new Engine);
     CHECK(e->addSynthTrack(1, SynthKind::Jx3p));
     e->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    // The LFO (batch 4), which allNotesOff puts back: RANDOM, a DELAY, on the pitch and the cutoff.
+    const int lfo[][2] = {{LfoWave, 2}, {LfoRate, 70}, {LfoDelay, 30}, {DcoLfoDepth, 30}, {Dco2Lfo, 1}, {VcfLfo, 40}};
+    for (const auto& l : lfo) e->send(make(Command::SetSetting, 1, l[0], l[1]));
     const int keys[6] = {48, 55, 60, 64, 67, 72};
     for (int n = 0; n < 6; ++n) e->send(noteAt(n, 0, keys[n], 3.f));
     for (int n = 0; n < 4; ++n) e->send(noteAt(6 + n, 4 + 2 * n, 50 + 2 * n, 1.f));

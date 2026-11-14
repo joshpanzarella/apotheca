@@ -69,8 +69,8 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 //      DCO-1's, a fifth up, the envelope sweeping DCO-2's pitch, both DCOs heard, and the envelope
 //      moving all the while: a slow attack, a decay, each key played again every half second; and
 //      from batch 3 the envelope on the VCF, RESONANCE 5, so its cutoff moves after every tick)
-//   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8 (and, from batch 4, the LFO
-//      on the cutoff), so whatever is worked out from the pitch and the cutoff is worked out every sample
+//   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8, and (from batch 4) the LFO
+//      on the cutoff and on DCO-1, so whatever is worked out from the pitch and the cutoff is worked out every sample
 static void jx3pRow(const char* name, int how) {
     std::unique_ptr<Jx3p> synth(new Jx3p);
     synth->prepare(48000.f);
@@ -93,6 +93,10 @@ static void jx3pRow(const char* name, int how) {
         synth->setSetting(jx3p::Cutoff, 40);
         synth->setSetting(jx3p::Resonance, 50);
         synth->setSetting(jx3p::KeyFollow, 98);
+        synth->setSetting(jx3p::VcfLfo, 30);   // the LFO on the cutoff (batch 4): a sine at RATE 7
+        synth->setSetting(jx3p::LfoRate, 70);
+        synth->setSetting(jx3p::DcoLfoDepth, 20);
+        synth->setSetting(jx3p::Dco1Lfo, 1);
     }
     std::vector<float> l(256), r(256);
     const int keys[6] = {48, 52, 55, 60, 64, 67};

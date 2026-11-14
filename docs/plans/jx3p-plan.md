@@ -15,8 +15,10 @@ BLEP and BLAMP tables; what it learned is under the batch table too. **Batch
 3 is done (2026-11-14)**: the VCF, the HPF and BRILLIANCE
 (`engine/src/jx3p/ir3109.hpp`, `tests/jx3p_vcf_test.cpp`); the filter bends
 only its feedback, not each stage (see "Batch 3: what it learned"). Its SPEED
-TEST on the handheld waits on the owner. Nobody has heard anything: every
-figure is a test's.
+TEST on the handheld waits on the owner. **Batch 4 is done (2026-11-14)**: the
+LFO, its DELAY and its routes (`engine/src/jx3p/lfo.hpp`,
+`tests/jx3p_lfo_test.cpp`); see "Batch 4: what it learned". Nobody has heard
+anything: every figure is a test's.
 
 ## The recommendation
 
@@ -594,6 +596,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
 | | **Batch 3 DONE (2026-11-14, branch `jx3p`)**, but for the SPEED TEST on the handheld, which **waits on the owner** (the three JX-3P rows are in `bench` and in SPEED TEST). The VCF: four trapezoidal one-poles solved as one sum each sample, the feedback's soft clip from the sample before; its coefficient from polynomials, only when its CV moved. The HPF: one pole on the summed voices, off and untouched at 0. BRILLIANCE: plus or minus 2 octaves on every voice's cutoff. `jx3p_vcf_test` (in ctest, TIMEOUT 120, about 1.5 s): 17 tests. `jx3p_test`'s phrase moves every VCF and HPF setting too (`testBlocks`, `testTooSmall`, twice from fresh, the helpers). **Organ I**: a semitone a semitone within 2.2 cents over notes 48 to 84 (the bar is 5). **Bench** (desk, four runs on a busy machine, the synth alone): 6 notes **0.43 to 0.46%** (0.21 in batch 2), the worst row (now with ENV on the VCF and RESONANCE 5) 0.80 to 0.87% (0.30), moving cutoff (KEY FOLLOW 9.8, every note gliding, so the coefficient is worked out every sample) **1.56 to 1.67%** (0.63 to 0.68); in the same runs Phazed 0.7 to 1.2, QMOD 2.8 to 2.9, Twin x1 4.1 to 5.4. The moving-cutoff row is under the 2.0% ceiling but over the 1.2% target, with the LFO and the chorus still to come: see "Batch 3: what it learned". Mutants: 35 made, 34 killed |
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
+| | **Batch 4 DONE (2026-11-14, branch `jx3p`).** One LFO for the synth on a 10 ms tick of its own, counted from allNotesOff; SINE, SQUARE, RANDOM; RATE 0.1 to 20 Hz; DELAY 0 to 5 s, a straight fade from a key with no other key held; LFO DEPTH to each DCO by its own switch (12 semitones at 10, as the dial squared), LFO MOD to the VCF (4 octaves at 10, straight); the LFO macro moves both (batch 1's survivor is killed). Every figure is a guess, in one table at the top of `lfo.hpp`. `jx3p_lfo_test` (in ctest, TIMEOUT 120, under a second): 11 tests, one FAITHFUL (stepped, SN p.6). `jx3p_test`'s phrase moves every LFO setting too (`testBlocks`, `testTooSmall`, twice from fresh), its helpers' song has an LFO on each track, and its Play-from-the-top song a RANDOM LFO with a DELAY. **Bench** (desk, two runs, the synth alone): 6 notes **0.43%**, the worst row 0.86 / 0.87%, moving cutoff (now with the LFO on the cutoff and on DCO-1) **1.67 / 1.68%**: no change from batch 3 that shows; in the same runs Phazed 0.8, QMOD 2.8 / 3.2, Twin x1 4.2 / 4.0. Mutants: 31 made, 29 killed, the other 2 equivalent |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
 | 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jx3p` and the `twin` reading, `.jx3p` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
@@ -732,6 +735,42 @@ hold's landing, the coefficient's recompute, the bass loss, the HPF's tail,
 its slide). Survived: the kick in the synth (above). Three mutants first hung or
 crashed the test (a filter that never sings gave a pitch of 0 to the
 harmonics' reader): it now fails instead.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 4: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "One tick for the synth" | The LFO's tick counts from allNotesOff (or the synth's making) and runs **whether anything sounds or not**. `render` cuts its block into pieces that end where the LFO ticks, so through a piece the LFO is one number and a voice's own tick reads it as of its sample | The same bits however the sound is cut (`testBlocks` in both programs, cut 1 to 1000 and at random). Reading the LFO once a block would tie it to the block's length |
+| The LFO "on the tick" | The LFO moves on its tick; **a voice takes it on the voice's tick** (counted from its key), the pitch stepped, the cutoff through the S/H | One CPU loop writes the CVs after working the LFO out (SN p.6); here the two grids differ by up to 10 ms, as the envelope's do. `testStepped` holds both grids |
+| Shapes | SINE from 0, rising; SQUARE +1 its first half; RANDOM a value a cycle from a hash of the count of cycles (`kLfoSeed`), pinned in the test | Never a generator walked. **A first seed was 2 x 0x9E3779B9**, so cycle 2 hashed to 0 and read exactly -1: the test found it |
+| RATE "a table, 0.1 to 20 Hz" | Even in octaves (`lfoRateHz`), so 5.0 is 1.41 Hz; measured within 0.01% in the LFO alone and in the synth at 48 and 44.1 kHz | SELF |
+| DELAY "0 to 5 s" | As the dial squared (5.0 is 1.25 s), in whole ticks; a straight fade from 0 to full, full on the tick DELAY's ticks after the first the key meets; **0 from the key's own sample** (`startDelay`) | SELF. Without the 0 at the key, a voice ticking before the LFO's next tick read the old full depth for up to 10 ms |
+| Which keys start the delay | A key with **no other key held** (`kDelayOnFirstKeyOnly`); a key played again while its voice rings counts as none held | SELF: not written down |
+| The routes' sizes (not in the plan) | LFO DEPTH 10 is 12 semitones each way, as the dial squared (2.0 is 0.48, 3.0 is 1.08: a vibrato in the low dial); LFO MOD 10 is 4 octaves each way, straight. They add to ENV's | SELF: no source. One constant each (`kDcoLfoSemitones`, `kVcfLfoOctaves`) |
+| Key trigger | **None: it runs free** (`testFreeRunning`: the LFO sample for sample the same with keys as without) | The 1983 machine has none; the 2018 plug-out lists key trigger as new |
+| allNotesOff puts it back | So: phase, count of cycles, delay, tick (`testAllNotesOffPutsItBack`; through the engine, `testPlayFromTheTop` now has a RANDOM LFO with a DELAY) | |
+| HPF's knob read on the tick | **Not changed**: read when the knob moves, as batch 3 built it | Its tests stand; a knob read up to a tick late is not worth changing them |
+
+**Known: a tail hears the LFO put back.** allNotesOff hands the ringing voices to tails, and puts the
+LFO back: a tail with the LFO on its pitch or cutoff takes the LFO from its start, mid-release.
+`testPlayFromTheTopWhileRinging` holds "fresh plus tails" with the LFO off; with it on, the tails of
+a Play would differ from those of a Stop alone. Left so: one LFO is the machine's.
+
+**The cost.** The LFO's tick is a sine (or a hash) every 10 ms for the synth, and a voice's tick two
+more adds; the pieces add a loop round the voices per 480 samples. Measured, nothing that shows: 6
+notes 0.43%, the worst row 0.86 / 0.87%, moving cutoff 1.67 / 1.68% with the LFO now on its cutoff
+and on DCO-1 (batch 3: 0.43 to 0.46 / 0.80 to 0.87 / 1.56 to 1.67). Still over the 1.2% target on
+the moving cutoff, under the 2.0 ceiling, with the chorus to come.
+
+**Mutants (batch 4)**: 31 made, **29 killed** (the square's half, RANDOM's count and its hash, the
+sine's turn, the delay's count, its start and its 0 at the key, which keys start it, RATE's octaves,
+DELAY's and DEPTH's squares, LFO MOD's size, each part of `reset`, allNotesOff's reset, each DCO's
+switch and its sign, the VCF's route, the rate's step through the synth, the pieces at the LFO's
+ticks, the macro's second setting, DELAY read, the wave read). Equivalent: the fade's `>=` against
+`>` (at `sinceKey == delayTicks` the fraction is exactly 1 too) and the step as `0.01` of a cycle a
+tick at the rate (the tick is a whole 480 or 441 samples at 48 and 44.1 kHz, so 10 ms exactly).
 
 **What only the tests saw**: everything. Nothing here has been heard.
 
