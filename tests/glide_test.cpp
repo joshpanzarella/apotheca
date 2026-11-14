@@ -1100,8 +1100,8 @@ static double pitchOver(const std::vector<float>& out, int from, int frames) {
 }
 
 static void testEverySynthTakesTheLength() {
-    for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
-        const char* name = kind == SynthKind::Twin ? "twin" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
+    for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Jx3p}) {
+        const char* name = kind == SynthKind::Twin ? "twin" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Jx3p ? "jx3p" : "phazed";
         // A quiet low note, then one an octave up four steps later. Its pitch from 0.55 to 0.95 of a
         // step into it, at 60 BPM (a step is a quarter of a second).
         const auto early = [&](int glide) {

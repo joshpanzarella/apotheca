@@ -26,6 +26,7 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
 #include "apotheca/twin.hpp"
+#include "apotheca/jx3p.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -60,6 +61,37 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
     }
     const double block = ms([&] { engine->render(out.data(), 256); }, 600);
     std::printf("  %-28s %5.1f%% of one core\n", name, 100.0 * block / (256.0 / 48.0));
+}
+
+// The JX-3P (docs/plans/jx3p-plan.md, section 3): six notes, the most it plays. `how`:
+//   0  the patch as a player meets it (batch 7: A1 String I, chorus on; until then the start patch)
+//   1  the worst patch (batch 7: B12 Sync Sweep; until then the start patch with its envelope
+//      moving all the while: a slow attack, a decay, each key played again every half second)
+//   2  a moving cutoff: every note a glide all the while (and, from batch 4, the LFO on the cutoff),
+//      so whatever is worked out from the pitch is worked out every sample
+static void jx3pRow(const char* name, int how) {
+    std::unique_ptr<Jx3p> synth(new Jx3p);
+    synth->prepare(48000.f);
+    if (how == 1) {
+        synth->setSetting(jx3p::Attack, 40);
+        synth->setSetting(jx3p::Decay, 60);
+        synth->setSetting(jx3p::Sustain, 30);
+    }
+    std::vector<float> l(256), r(256);
+    const int keys[6] = {48, 52, 55, 60, 64, 67};
+    for (int k : keys) synth->noteOn(k, 0.8f);
+    synth->render(l.data(), r.data(), 256);
+    int block = 0;
+    const double each = ms([&] {
+        if (how > 0 && block % 94 == 0) // every half second
+            for (int k : keys) {
+                if (how == 2) synth->noteOnFrom(k, 0.8f, k - 12, 0.5f);
+                else synth->noteOn(k, 0.8f);
+            }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
 }
 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
@@ -383,6 +415,9 @@ int apotheca::runBench() {
     instrument("Twin Analog x2, 8 notes", SynthKind::Twin, 8, twin::Oversample, 1);
     instrument("Twin Analog x8, 8 notes", SynthKind::Twin, 8, twin::Oversample, 3);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
+    jx3pRow("JX-3P, 6 notes", 0);
+    jx3pRow("JX-3P, 6, worst patch", 1);
+    jx3pRow("JX-3P, 6, moving cutoff", 2);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);

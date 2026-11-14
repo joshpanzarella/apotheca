@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (33) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (34) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -392,6 +392,11 @@ effect in those two groups and fails one that does not.
   COMP's level reading for good. The old five do not (their arithmetic is not
   touched). `effects_test` tries every effect newer than CRUSH, each choice
   of each setting, and fails a new one that forgets.
+- **A one-pole that lands exactly must land further out than a float can
+  step.** Heading for 1, a 1 ms smoothing at 48 kHz stops moving 1.4e-6 short
+  (k times the gap is under half a float step there), so a landing at 1e-6
+  never came and the JX-3P's voice was never freed. Its hold lands at 1e-5
+  (`jx3p::kHoldLands`); a new smoother picks its gap the same way.
 - **A `Glide` always lands, at any block length** (never slower than `kLeast`
   a sample). A fraction of what is left falls below what a float can add in
   blocks of 8 frames and under, and `moving()` then stayed true for good.
@@ -1278,6 +1283,7 @@ effect in those two groups and fails one that does not.
 | Phazed, 8 notes | 0.9% of a core |
 | QMOD, 8 notes | 2.6% |
 | Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
+| JX-3P skeleton (batch 1: DCO-1's saw, envelope, VCA; no filter or chorus yet), 6 notes / a moving envelope / every note gliding (2026-11-14, one run: Phazed 0.9%, Twin x1 4.3% in it) | 0.08% / 0.10% / 0.40% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
@@ -1324,5 +1330,9 @@ step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
 it down rather than tune it. **Decided (owner, 2026-11-13): Twin Analog becomes a
 faithful Roland JX-3P clone**, which is what it was meant to be; it grew past that
 in VCV Rack. The plan is `docs/plans/jx3p-plan.md`; **batch 0 (the Service
-Notes' pages, the shared measuring tools) is done** on branch `jx3p`. The engine stays at 48 kHz: 44.1 would save about
+Notes' pages, the shared measuring tools) and batch 1 (the skeleton:
+`jx3p.hpp`, `jx3p.cpp`, `jx3p/env.hpp`, `jx3p_test`) are done** on branch
+`jx3p`. The new synth is built beside Twin, which is untouched until 6a / 8b.
+The owner's calls (plan section 8) are taken at the recommended answers, each
+one constant in `jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at 48 kHz: 44.1 would save about
 8%, which the owner judged not worth it.

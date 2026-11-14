@@ -38,7 +38,7 @@ public:
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Twin, Sampler, Qmod };
+enum class SynthKind { Phazed, Twin, Sampler, Qmod, Jx3p };
 
 // Every synth has this many macros (the eight knobs on its DEVICE screen).
 // Songs, presets and automation lanes 0..7 all count on it; each synth's

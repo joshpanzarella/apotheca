@@ -4,8 +4,11 @@ Written 2026-11-13, revised the same day after a sceptic's review (section 9
 lists each of their 28 points and what was done). **Batch 0 is done
 (2026-11-14)**: the Service Notes were read and every SN claim below has its
 page (section 0, "SN pages"), and the measuring tools are shared in
-`tests/measure.hpp`. Nothing of the synth is built yet; nobody has heard
-anything.
+`tests/measure.hpp`. **Batch 1 is done (2026-11-14)**: the skeleton plays
+DCO-1's saw through the voices, the tick, the envelope and the VCA
+(`engine/include/apotheca/jx3p.hpp`, `engine/src/jx3p.cpp`,
+`engine/src/jx3p/env.hpp`, `tests/jx3p_test.cpp`); what it learned is under
+the batch table. Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
 
@@ -575,6 +578,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 0 | **Sources and tools.** Find a readable SN; fill an "SN page" against every SN claim in this plan, and the saw's peak to peak at adjustment 5; mark any claim with no page SELF. Move the pitch reader, spectrum and level reader out of `effects_test` into `tests/measure.hpp`, shared | `effects_test` gives the same results with the shared header | Every SN claim has a page or is marked SELF; one copy of the tools |
 | | **Batch 0 DONE (2026-11-14, branch `jx3p`).** SN read (manualslib 3497592, OCR text): 27 claims paged, in "SN pages"; none is without a page but the speeds, the chorus rate and the saw's figure (not printed: the self-oscillation level stays SELF). Found on the way: SYNC's direction settled (DCO-1 resets DCO-2, p.6), the VCA is a BA662B (p.3), the factory tunes A4 to 442 Hz (p.7). `tests/measure.hpp` holds the level, spectrum (`harmonicsIn`, split out of `harmonicsOf`), pitch, checksum and no-click readers; `effects_test --measure` and `--print` give the same output before and after, line for line, but for the 15 lines that time blocks. Mutants in the header: 13 made, 12 killed; `Sum` survives by design (a changed checksum changes `mathsPrint` too, and the pinned sound falls back to loudness and peak, as it does on another machine) | | |
 | 1 | **Skeleton.** `jx3p.hpp/.cpp`, the 34 settings (32 patch, 2 track) and 8 macros with ranges, a start patch, 6 voices with the assigner and the steal rule, `allNotesOff`'s resets, seeded start phases, `jx3p/env.hpp` (tick, ADSR, S/H smoothing, VCA, velocity), DCO-1 saw only. `SynthKind::Jx3p`, the factory, the three `bench` rows | In tune, voices, steal, envelope times, the tick, `testBlocks`, `testPlayFromTheTop`, twice from fresh, no allocation, `testTooSmall` | A note sounds in tune through the engine and the bench row is under 1% |
+| | **Batch 1 DONE (2026-11-14, branch `jx3p`).** Built beside Twin (Twin untouched; `SynthKind::Jx3p` appended, made by `Engine::addSynthTrack`; not in the app's instruments yet, that is 6a). `jx3p_test` (in ctest, TIMEOUT 120, under a second): 22 tests, each marked FAITHFUL or SELF. It also joined `glide_test`'s `testEverySynthTakesTheLength` (plain 440 Hz; 1/4 440, 1/2 440, 1 381, 2 293, FULL 253) and `engine_test`'s helpers' song (a sixth track). **Bench** (desk, one run, synth alone, 256-frame blocks): 6 notes **0.08%**, the worst row (a moving envelope, keys again every half second) 0.10%, moving cutoff (six notes gliding all the while, so the pitch is worked out every sample) **0.40%**; in the same run Phazed 0.9, QMOD 2.8, Twin x1 4.3. The start patch's note is 1.6 dB over Twin's first preset's (RMS 0.095 against 0.079). Mutants: see "Batch 1: what it learned" | | |
 | 2 | **DCOs**, `jx3p/dco.hpp`: both DCOs, every wave, TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX, DCO pitch from ENV | `jx3p_dco_test`: the DCO table, **aliasing first**, and the table BLEP if needed | Every DCO test passes and the bench row is measured again |
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
@@ -590,6 +594,39 @@ One batch for one agent each. Each ends with `ctest` green (with
 Batches 2 to 5 can go side by side once 1 is in: each has its own header and
 its own test program. Only the wiring in `jx3p.cpp` is shared, and it is
 joined one batch at a time.
+
+### Batch 1: what it learned (2026-11-14)
+
+Where the build differs from the words above, and why. Each is in the code
+with the same words.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| Start phase from a seed of the voice's number and the count of keys | **The count of keys alone** (since `allNotesOff`) | The count is new at every key, so the voice's number added nothing: its mutant survived |
+| The phase set "at each note-on" | Set when a FREE voice takes a key. **A sounding voice taken again (the same key, or a steal) keeps its phase** | A reset there is a jump in the wave; carrying on is just as repeatable, since the phase it has came from a seed |
+| `allNotesOff` puts the DCO phases back to 0 | Not done: a free voice's phase is set from the seed at its next key, so it was dead code (its mutant survived) | |
+| `allNotesOff` puts back everything | It lets the keys go and puts back the count of keys, the sample clock and every voice's age. **A voice still ringing rings out** (Play and Stop let notes go; they do not cut them). So "Play from the top is the same" holds once the audition has rung out; `testPlayFromTheTop` lets it | |
+| The hold lands "within 1e-6" | **Within 1e-5** (`kHoldLands`) | A one-pole of 1 ms in float, heading for 1, stops moving 1.4e-6 short (a step of k times the gap is under half a float step there), so 1e-6 never came: the voice was never freed |
+| VCA: 4 dB a dial step, a soft clip above LEVEL 7 | LEVEL 7.0 is 0 dB (`kVcaUnityDial`), and a full wave there just meets the clip; it bends toward 1.5 times that at most (`kVcaClipCeiling`) | With 0 dB at 8, the start patch was already in the clip; a ceiling of exactly the clip point divided by zero |
+| ADSR "times" | **A time is the time to land**: the attack from 0 to the top (the key's own tick counts as the first), a decay from the top to SUSTAIN 0, a release from the top to silence; a fall lands when 80 dB from its target (`kEnvLand`) | One meaning for "lands within one tick" |
+| A key on its own sample | **And a key let go**: the voice's tick restarts at the note-off, so the release (or GATE's close) starts on its sample, not up to 10 ms on | The program's timing comes first, as for the key |
+| `bench`'s three rows | Built, through the synth alone (not the engine, so the rows can glide); rows 0 and 1 use the start patch until batch 7 brings A1 and B12 | |
+
+**For batch 2: the 8253's counters are 16 bits.** 5,999,840 / 65535 is
+91.6 Hz, so no single count reaches a note below about F#2 at 8' (and an
+octave more at 16'). The real DCO must divide again after the counter (an
+octave stage), or switch ranges another way; the SN pages read do not say.
+Today the rounding is `clock / round(clock / f)` with no limit on the count,
+which is under 0.4 cents from the written note everywhere tested (24 to 96,
+every RANGE) and exactly the counter's pitch.
+
+**Mutants (batch 1): 32 in the last round, 29 killed** (two more, earlier, survived because their code was dead, and it was taken out: the voice's number in the seed, and `allNotesOff` setting free voices' phases to 0). Survived: `allNotesOff` not
+putting the sample clock back (it only matters with `kKeysOnTheSample` off,
+where the 10 ms grid is counted from it); the BLEP's sign (no alias test yet:
+batch 2's first job, and batch 2 replaces this saw); the LFO macro moving DCO
+LFO DEPTH too (nothing reads it until batch 4).
+
+**What only the tests saw**: everything. Nothing here has been heard.
 
 ## 7. Risks
 

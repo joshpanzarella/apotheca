@@ -282,13 +282,13 @@ static void testHelpersAlwaysStop() {
 // When the machine cannot keep up, synths are told to do plainer work.
 // Tracks worked out on several processor cores at once: the same sound, to the last bit.
 static void testSharingTracksAcrossCores() {
-    // A busy song: drums and five synths of every kind, each with notes, an effect, and automation on one.
+    // A busy song: drums and six synths of every kind, each with notes, an effect, and automation on one.
     const auto song = [](int helpers) {
         std::unique_ptr<Engine> engine(new Engine);
         engine->useWorkers(helpers);
         for (int s = 0; s < kSteps; s += 2) engine->send(step(s % 4 == 0 ? KICK : RIM, s, 0.9f));
-        const SynthKind kinds[5] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod, SynthKind::Twin, SynthKind::Qmod};
-        for (int t = 1; t <= 5; ++t) {
+        const SynthKind kinds[6] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod, SynthKind::Twin, SynthKind::Qmod, SynthKind::Jx3p};
+        for (int t = 1; t <= 6; ++t) {
             CHECK(engine->addSynthTrack(t, kinds[t - 1]));
             for (int n = 0; n < 4; ++n) {
                 Command note = make(Command::SetNote, t, n, n * 4 + (t % 3), 0.7f);
@@ -308,7 +308,7 @@ static void testSharingTracksAcrossCores() {
             all.insert(all.end(), got.begin(), got.end());
         }
         float peaks = 0.f;
-        for (int t = 0; t <= 5; ++t) peaks += engine->trackPeak(t);
+        for (int t = 0; t <= 6; ++t) peaks += engine->trackPeak(t);
         all.push_back(peaks); // the meters agree too
         return all;
     };
