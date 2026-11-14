@@ -1761,6 +1761,18 @@ static void testStepEffectRatchet() {
     engine->send(make(Command::Stop));
     CHECK(clicksIn(renderFrames(*engine, 4 * kStep)).empty());
 
+    // The tempo changed part-way through a ratchet: the pieces still to come keep their places in
+    // the step, as the step clock does (half the tempo: what was left of the gap is twice as long).
+    engine->send(make(Command::Play));
+    std::vector<float> before = renderFrames(*engine, 12 * kStep + 1000); // the first of four has played
+    engine->send(make(Command::SetTempo, 0, 0, 0, 60.f));
+    out = renderFrames(*engine, 2 * kStep);
+    CHECK(clicksIn(before).size() == 7 && clicksIn(before).back() == 12 * kStep);
+    CHECK((clicksIn(out) == std::vector<int>{1000, 4000, 7000}));
+    engine->send(make(Command::Stop));
+    engine->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    renderFrames(*engine, 4000);
+
     // A chance is rolled once for the whole ratchet: all of its hits or none.
     engine->send(make(Command::SetStepChance, 0, 0, 12, 0.5f));
     engine->send(make(Command::Play));

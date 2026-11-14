@@ -1004,19 +1004,39 @@ static void testStopAndPlay() {
 
 static void testTempoMidChord() {
     // An arpeggio goes with the tempo: half the speed from the change on, and it ends with the chord.
+    // The step clock goes the same way, so the arpeggio stays ON THE BEAT: a plain note on a later
+    // step (and the next time round) begins with the arpeggio's note on that step.
     Rig rig;
     rig.chord(0, 0, {60, 64, 67}, 8.f, playOf(kStrumStep));
+    rig.note(3, 4, 48, 0.5f); // step 5: on the beat with the arpeggio's fifth note
+    rig.note(4, 9, 50, 0.5f); // step 10: two steps after the chord has ended
+    rig.note(5, 3, 52, 0.25f, 0, -0.25f); // step 4, a quarter early: asked a step ahead, waiting when the tempo changes
+    rig.note(6, 2, 53, 1.f);              // step 3, a step long: sounding when the tempo changes
     rig.play();
     rig.run(2 * kStep + 3000); // half-way through the third step
     rig.send(make(Command::SetTempo, 0, 0, 0, 60.f));
     rig.run(40 * kStep);
-    const std::vector<Sounded> n = rig.notes();
+    std::vector<Sounded> n, plain;
+    for (const Sounded& s : rig.notes())
+        if (s.pitch >= 60) n.push_back(s);
+        else if (s.on < 20 * kStep) plain.push_back(s); // (the first time round)
     CHECK(n.size() >= 8);
     if (n.size() >= 8) {
         CHECK(n[0].on == 0 && n[1].on == kStep && n[2].on == 2 * kStep);
         // What was left of the third step is twice as long now, and so is every step after.
         for (std::size_t m = 3; m < 8; ++m) CHECK(near(n[m].on, 2 * kStep + 3000 + 6000 + static_cast<long>(m - 3) * 2 * kStep));
         CHECK(n[7].off >= 0 && near(n[7].off, n[7].on + 2 * kStep, 2));
+        // The steps themselves: the fifth begins with the arpeggio's fifth note, to the sample.
+        // (plain: 53 on step 3, 52 early for step 4, then 48 on step 5 and 50 on step 10)
+        CHECK(plain.size() == 4);
+        if (plain.size() == 4) {
+            CHECK(plain[2].pitch == 48 && plain[2].on == n[4].on);
+            CHECK(plain[3].pitch == 50 && plain[3].on == 2 * kStep + 9000 + 6 * 2 * kStep);
+            // The waiting note keeps its place: a quarter of the new step before step 4. The note
+            // sounding ends where its step does.
+            CHECK(plain[0].pitch == 53 && plain[0].on == 2 * kStep && near(plain[0].off, 2 * kStep + 9000, 2));
+            CHECK(plain[1].pitch == 52 && near(plain[1].on, 2 * kStep + 9000 - kStep / 2));
+        }
     }
     // No note is left sounding by a change in the middle of a strum either.
     Rig strum;

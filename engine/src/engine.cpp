@@ -1033,10 +1033,26 @@ void Engine::apply(const Command& c) {
             tempo_ = c.value < kMinTempo ? kMinTempo : (c.value > kMaxTempo ? kMaxTempo : c.value);
             const double was = samplesPerStep_;
             samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
-            // An arpeggio keeps its place in the step: what it was waiting is as much of a step as it was.
-            for (Track& track : tracks_)
-                for (auto& arp : track.arps)
-                    if (arp.on && was > 0.0) arp.wait *= samplesPerStep_ / was;
+            // The step keeps its place: what is left of it is as much of a step as it was, so the
+            // next step comes on the new tempo's beat. An arpeggio keeps its place in the step the
+            // same way, so the two agree: its notes stay on the beat.
+            // So does everything else that waits for a place in the steps: a note nudged or asked a
+            // step ahead, a note's end, a drum hit late or a ratchet's next piece.
+            if (was > 0.0 && playing_) {
+                const double by = samplesPerStep_ / was;
+                untilStep_ *= by;
+                for (Track& track : tracks_) {
+                    for (auto& arp : track.arps)
+                        if (arp.on) arp.wait *= by;
+                    for (auto& p : track.pendingNotes)
+                        if (p.velocity > 0.f) p.samplesLeft *= by;
+                    for (double& off : track.offIn)
+                        if (off < kNoNote) off *= by;
+                    for (auto& lane : track.pending)
+                        for (auto& p : lane)
+                            if (p.velocity > 0.f) p.samplesLeft *= by, p.gap *= by;
+                }
+            }
             // Effects that keep time (the delay) follow.
             for (Track& track : tracks_)
                 for (auto& effect : track.effects)
