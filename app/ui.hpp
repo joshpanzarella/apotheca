@@ -248,6 +248,8 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine);
 // and full scale 4 pixels inside its top and bottom edges, never on them.
 constexpr int kScopeMiddle = kScopeY + kScopeH / 2;
 constexpr float kScopeHalf = (kScopeH - 8) / 2.f;
+constexpr float kScopeBend = 0.4f; // the power the line's height is bent by, so a quiet sound shows
+float scopeBent(float sample);     // -1..1 in, -1..1 out: the same sign, 0 and the ends where they were
 int scopeLineY(float sample);
 
 // The name a track goes by on screen: "2 PHAZED".

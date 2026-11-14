@@ -473,17 +473,26 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     int lastX = x + 1, lastY = kScopeMiddle;
     for (int i = 0; i < count; ++i) {
         const int px = x + 1 + (w - 3) * i / (count - 1);
-        const int py = scopeLineY(samples[i] * 1.5f);
+        const int py = scopeLineY(samples[i]);
         if (i > 0) SDL_RenderDrawLine(r, lastX, lastY, px, py);
         lastX = px;
         lastY = py;
     }
 }
 
-int scopeLineY(float sample) {
+// The line's height is the sample's size bent (to the power kScopeBend), not to scale: to scale, the
+// strip's 14 pixels a side showed a quiet recording as half a pixel (owner, 2026-11-14). Bent, a sound
+// 30 dB down stands 3 pixels and one 20 dB down 5, a louder sound is still taller, full scale is still
+// the edge and silence is still the middle line.
+float scopeBent(float sample) {
     const float s = sample < -1.f ? -1.f : (sample > 1.f ? 1.f : sample);
-    return kScopeMiddle - static_cast<int>(std::round(s * kScopeHalf));
+    const float size = std::fabs(s);
+    if (!(size > 0.f)) return 0.f; // (not a number: the middle too)
+    const float bent = std::pow(size, kScopeBend);
+    return s < 0.f ? -bent : bent;
 }
+
+int scopeLineY(float sample) { return kScopeMiddle - static_cast<int>(std::round(scopeBent(sample) * kScopeHalf)); }
 
 void trackName(const Project& project, int track, char* out, int size) {
     const TrackKind kind = project.tracks[track].kind;

@@ -800,7 +800,9 @@ effect in those two groups and fails one that does not.
   strip; no empty band), the kit's lanes `kLaneRowH` 45 (was 37), the
   sampler's settings 109 and its recording's picture `kWaveH` 80 (was 40;
   with no recording its words stand in that room's middle). The line is
-  placed by `ui::scopeLineY` (full scale 4 rows inside the strip's edges). A box taller than `kBoxUsualH` (70) moves its value down by half
+  placed by `ui::scopeLineY` (full scale 4 rows inside the strip's edges), **its height bent, not to
+  scale** (`scopeBent`, the power `kScopeBend` 0.4; owner, 2026-11-14: to scale a quiet recording was
+  half a pixel): 30 dB down stands 3 pixels, half scale 11 of the 14; louder is never smaller. A box taller than `kBoxUsualH` (70) moves its value down by half
   the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.

@@ -286,7 +286,14 @@ void testTheLineStaysInTheStrip() {
     CHECK(scopeLineY(0.f) == kScopeMiddle);
     CHECK(scopeLineY(1.f) == kScopeY + 4 && scopeLineY(-1.f) == kScopeY + kScopeH - 4);
     CHECK(scopeLineY(5.f) == scopeLineY(1.f) && scopeLineY(-5.f) == scopeLineY(-1.f));
-    CHECK(scopeLineY(0.5f) == kScopeMiddle - 7);
+    // Bent, so a quiet sound shows (owner, 2026-11-14): half scale is 11 of the 14 pixels, a sound 30 dB
+    // down (0.03) stands 3 pixels and one 20 dB down 5 or 6, where to scale they were under one and under two.
+    CHECK(scopeLineY(0.5f) == kScopeMiddle - 11 && scopeLineY(-0.5f) == kScopeMiddle + 11);
+    CHECK(scopeLineY(0.03f) == kScopeMiddle - 3 && scopeLineY(-0.03f) == kScopeMiddle + 3);
+    CHECK(kScopeMiddle - scopeLineY(0.1f) >= 5 && kScopeMiddle - scopeLineY(0.1f) <= 6);
+    // A louder sound is never drawn smaller, the sign is kept, and what is not a number is the middle.
+    for (float a = 0.f; a < 1.f; a += 0.01f) CHECK(scopeBent(a + 0.01f) >= scopeBent(a) && scopeBent(-a) == -scopeBent(a));
+    CHECK(scopeBent(0.f) == 0.f && scopeBent(1.f) == 1.f && scopeBent(-1.f) == -1.f && scopeBent(std::nanf("")) == 0.f);
 }
 
 // The sampler with no recording: what it says stands in the middle of the picture's room.
