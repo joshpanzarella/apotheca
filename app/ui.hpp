@@ -181,6 +181,9 @@ struct Hint { const char* key; const char* does; };
 // D-pad gives is written as the direction alone. A hint that does not fit
 // is left out; the end of the bar says how to see the help, if there is room.
 void hints(SDL_Renderer* r, const Fonts& fonts, const Hint* list, int count);
+// For the tests: how many pixels the last bar hints() drew was short of holding all of
+// its hints and the help at the end. 0: nothing was left out.
+inline float gHintsOver = 0.f;
 // Where the bar's first chip starts.
 constexpr float kHintsLeft = 8.f;
 // The bar while a strip of fields is being set (X held on a hit, a note or a chord): each

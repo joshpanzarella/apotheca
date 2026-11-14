@@ -1110,6 +1110,45 @@ static void testTheBarDrawsSelOnTheScreen() {
     CHECK(box == canvas.part(8, top, w, h));
 }
 
+// What the bar left out, for the tests of each screen (ui::gHintsOver): how far short it was of
+// holding every hint and the help at the end. Worked out as the bar lays them out.
+static void testTheBarSaysWhatItLeftOut() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    const auto over = [&](const ui::Hint* list, int count) {
+        canvas.clear();
+        ui::hints(canvas.r, fonts, list, count);
+        return ui::gHintsOver;
+    };
+    const auto room = [&](const ui::Hint& h) { return ui::keyWidth(fonts, h.key) + 8.f + 5.f + fonts.small.width(h.does) + 11.f; };
+    const float help = 6.f + fonts.small.width(ui::gHelpHint), limit = ui::kScreenW - 6.f;
+    const ui::Hint one[] = {{"A", "open"}};
+    CHECK(over(one, 1) == 0.f && over(nullptr, 0) == 0.f);
+    // Hints added one at a time: 0 while all of them and the help fit, then exactly what is missing.
+    std::vector<ui::Hint> many;
+    float x = ui::kHintsLeft;
+    bool reached = false;
+    for (int i = 0; i < 12; ++i) {
+        const ui::Hint h = i % 2 ? ui::Hint{"HOLD R1", "paint random"} : ui::Hint{"B", "delete"};
+        many.push_back(h);
+        x += room(h);
+        const float want = x + help - limit;
+        CHECK(std::fabs(over(many.data(), static_cast<int>(many.size())) - (want > 0.f ? want : 0.f)) < 0.01f);
+        reached = reached || want > 0.f;
+    }
+    CHECK(reached);
+    // A hint left out (null) takes no room; only the help left out is counted too.
+    const ui::Hint gap[] = {{"A", nullptr}, {nullptr, "open"}, {"A", "open"}};
+    CHECK(over(gap, 3) == 0.f);
+    std::string words;
+    while (ui::kHintsLeft + room(ui::Hint{"A", words.c_str()}) <= limit) words += 'W'; // one hint that fills the bar to its end
+    words.pop_back();
+    const ui::Hint full[] = {{"A", words.c_str()}};
+    CHECK(over(full, 1) > 0.f); // drawn, but the help is not
+}
+
 // The bar as a strip of fields is being set (ui::hintsUnder): a chip under each field, no words,
 // the dice alone at the left. Read off the screen.
 static void testTheBarUnderAStrip() {
@@ -1463,6 +1502,7 @@ int main(int, char**) {
     testNoteStripThrowFits();
     testTheBarDrawsSelForSelect();
     testTheBarDrawsSelOnTheScreen();
+    testTheBarSaysWhatItLeftOut();
     testTheBarUnderAStrip();
     testThePlainBarIsAsItWas();
     testAHintThatJustDoesNotFit();
