@@ -40,7 +40,196 @@ float longestFrom(const TrackData& track, int scene, int bar, int step) {
     return static_cast<float>((bars - bar) * kSteps - step);
 }
 
+void putEffects(std::string& out, const EffectData* effects, int slots) {
+    for (int slot = 0; slot < slots; ++slot) {
+        const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
+        if (kind == EffectKind::None) continue;
+        put(out, "fx %.0f ", slot + 1);
+        out += effectInfo(kind).word; // its own word, not its screen name: the name may change, the word never
+        for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", effects[slot].param[i]);
+        out += "\n";
+    }
+}
+
+// One track of a song file: from its "track" line to the next one's.
+void putTrack(std::string& out, const TrackData& track) {
+    out += std::string("track ") + instrument(track.kind)->word + "\n";
+    if (track.name[0]) out += std::string("name ") + track.name + "\n";
+    // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kAutoLanes; ++lane) {
+            std::string line;
+            for (int i = 0; i < kAutoSteps; ++i) {
+                const float v = track.automation[scene][lane][i];
+                if (v < 0.f) continue;
+                put(line, " %.0f", i);
+                put(line, " %.4g", v);
+            }
+            if (line.empty()) continue;
+            put(out, "auto %.0f", scene + 1);
+            put(out, " %.0f", lane);
+            out += line + "\n";
+        }
+    if (track.muted) out += "muted\n";
+    putEffects(out, track.effects, kTrackSlots);
+    // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
+    for (int bus = 0; bus < kBuses; ++bus) {
+        if (!(track.send[bus] > 0.f)) continue;
+        put(out, "send %.0f", bus + 1);
+        put(out, " %.6g\n", track.send[bus]);
+    }
+    // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
+    if (isSynth(track.kind) && track.glideFrom) put(out, "glidefrom %.0f\n", track.glideFrom);
+    if (track.kind == TrackKind::Drums) {
+        out += "lanes";
+        for (float level : track.laneLevel) put(out, " %.6g", level);
+        out += "\n";
+        // sample LANE FIT NAME: a recording on a lane, stretched to FIT steps (0: as recorded)
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (!track.laneSample[lane][0]) continue;
+            put(out, "sample %.0f", lane + 1);
+            put(out, " %.0f ", track.laneFit[lane]);
+            out += track.laneSample[lane];
+            out += "\n";
+        }
+        // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
+        bool anySliced = false;
+        for (bool on : track.laneOneSlice) anySliced = anySliced || on;
+        if (anySliced) {
+            out += "oneslice";
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
+            out += "\n";
+        }
+        // scene N, then "bars B" if the cell is longer than one, then each
+        // bar's hits; "bar K" comes before those of the second bar on.
+        // Then the bars the cell hides (made shorter: they come back as they were if it is made
+        // longer again), each after its "bar K" past the cell's end. A program from before
+        // reads no line for a bar the cell does not have, so it skips them.
+        for (int scene = 0; scene < kMaxScenes; ++scene) {
+            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+            put(out, "scene %.0f\n", scene + 1);
+            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                const DrumPattern& p = track.drums[scene][bar];
+                if (p.empty()) continue;
+                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+                out += "seeds";
+                for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
+                out += "\n";
+                for (int lane = 0; lane < kDrumLanes; ++lane) {
+                    for (int step = 0; step < kSteps; ++step) {
+                        if (p.level[lane][step] <= 0.f) continue;
+                        put(out, "hit %.0f", lane + 1);
+                        put(out, " %.0f", step + 1);
+                        put(out, " %.6g", p.level[lane][step]);
+                        put(out, " %.6g", p.nudge[lane][step]);
+                        put(out, " %.6g", p.chance[lane][step]);
+                        out += p.fromDice[lane][step] ? " 1" : " 0";
+                        if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
+                        out += "\n";
+                        // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
+                        // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
+                        // ("fx" is taken: it is an effect in a slot.)
+                        if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
+                            put(out, "stepfx %.0f", lane + 1);
+                            put(out, " %.0f", step + 1);
+                            put(out, " %.0f", fx.pitch);
+                            put(out, " %.0f", fx.hits());
+                            put(out, " %.0f", fx.reverse ? 1 : 0);
+                            put(out, " %.0f", fx.cut);
+                            if (fx.throwTo) put(out, " %.0f", fx.throwTo);
+                            out += "\n";
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        if (track.kind == TrackKind::Sampler) {
+            // sound NAME: its recording. sampler: root tune start attack release loop level.
+            if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
+            out += "sampler";
+            for (int v : track.sampler) put(out, " %.0f", v);
+            out += "\n";
+        } else {
+            put(out, "preset %.0f\n", track.preset + 1);
+            out += "macros";
+            for (float m : track.macro) put(out, " %.6g", m);
+            out += "\nsettings";
+            const int* values = specFor(track.kind)->values(const_cast<TrackData&>(track));
+            for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
+            out += "\n";
+        }
+        for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
+            if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
+            put(out, "scene %.0f\n", scene + 1);
+            if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                const NotePattern& p = track.notes[scene][bar];
+                if (p.empty()) continue;
+                if (bar > 0) put(out, "bar %.0f\n", bar + 1);
+                for (const NoteEvent& n : p.notes) {
+                    if (n.velocity <= 0.f) continue;
+                    put(out, "note %.0f", n.step + 1);
+                    put(out, " %.0f", n.pitch);
+                    put(out, " %.6g", n.length);
+                    put(out, " %.6g", n.velocity);
+                    // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
+                    // has the nudge written before it even at 0, so that it is the sixth number
+                    if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
+                    if (n.throwTo) put(out, " %.0f", n.throwTo);
+                    out += "\n";
+                    // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
+                    if (n.ratchet >= 2 || n.glide) {
+                        put(out, "notefx %.0f", n.step + 1);
+                        put(out, " %.0f", n.pitch);
+                        put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
+                        put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
+                    }
+                }
+                // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
+                for (const ChordEvent& c : p.chords) {
+                    if (c.velocity <= 0.f) continue;
+                    put(out, "chord %.0f", c.step + 1);
+                    put(out, " %.6g", c.length);
+                    put(out, " %.6g", c.velocity);
+                    put(out, " %.0f", c.inversion);
+                    put(out, " %.0f ", c.root);
+                    out += c.name[0] ? c.name : "?";
+                    for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
+                    if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
+                    out += "\n";
+                    if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
+                        put(out, "chordfx %.0f", c.step + 1);
+                        put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
+                        if (c.throwTo) put(out, " %.0f", c.throwTo);
+                        out += "\n";
+                    }
+                    // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
+                    // A line of its own, left out when none is set: a chord that has none is written
+                    // as it always was, and a program from before them skips the line whole.
+                    if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
+                        put(out, "chordplay %.0f", c.step + 1);
+                        put(out, " %.0f", c.play.strum);
+                        put(out, " %.0f", c.play.order);
+                        put(out, " %.0f", c.play.time);
+                        put(out, " %.0f", c.play.level);
+                        put(out, " %.0f\n", c.play.lengths);
+                    }
+                }
+            }
+        }
+    }
+}
+
 } // namespace
+
+std::string trackText(const TrackData& track) {
+    std::string out;
+    putTrack(out, track);
+    return out;
+}
 
 std::string songText(const Project& project) {
     std::string out = "apotheca-song 1\n";
@@ -57,17 +246,7 @@ std::string songText(const Project& project) {
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
     // fx SLOT NAME and its settings. Before any track: the master's.
-    const auto putEffects = [&](const EffectData* effects, int slots) {
-        for (int slot = 0; slot < slots; ++slot) {
-            const EffectKind kind = static_cast<EffectKind>(effects[slot].kind);
-            if (kind == EffectKind::None) continue;
-            put(out, "fx %.0f ", slot + 1);
-            out += effectInfo(kind).word; // its own word, not its screen name: the name may change, the word never
-            for (int i = 0; i < effectInfo(kind).params; ++i) put(out, " %.6g", effects[slot].param[i]);
-            out += "\n";
-        }
-    };
-    putEffects(project.masterEffects, kMasterSlots);
+    putEffects(out, project.masterEffects, kMasterSlots);
     // busfx BUS NAME and its settings: what the ECHO (1) and the SPACE (2) bus hold. Always both, an
     // empty one as "none": a song with no such line is an old song, and gets the usual two.
     for (int bus = 0; bus < kBuses; ++bus) {
@@ -78,177 +257,7 @@ std::string songText(const Project& project) {
         out += "\n";
     }
 
-    for (int t = 0; t < project.trackCount(); ++t) {
-        const TrackData& track = project.tracks[t];
-        out += std::string("track ") + instrument(track.kind)->word + "\n";
-        if (track.name[0]) out += std::string("name ") + track.name + "\n";
-        // auto SCENE LANE then pairs INDEX VALUE: the steps of a lane of automation that have something on them.
-        for (int scene = 0; scene < kMaxScenes; ++scene)
-            for (int lane = 0; lane < kAutoLanes; ++lane) {
-                std::string line;
-                for (int i = 0; i < kAutoSteps; ++i) {
-                    const float v = track.automation[scene][lane][i];
-                    if (v < 0.f) continue;
-                    put(line, " %.0f", i);
-                    put(line, " %.4g", v);
-                }
-                if (line.empty()) continue;
-                put(out, "auto %.0f", scene + 1);
-                put(out, " %.0f", lane);
-                out += line + "\n";
-            }
-        if (track.muted) out += "muted\n";
-        putEffects(track.effects, kTrackSlots);
-        // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
-        for (int bus = 0; bus < kBuses; ++bus) {
-            if (!(track.send[bus] > 0.f)) continue;
-            put(out, "send %.0f", bus + 1);
-            put(out, " %.6g\n", track.send[bus]);
-        }
-        // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
-        if (isSynth(track.kind) && track.glideFrom) put(out, "glidefrom %.0f\n", track.glideFrom);
-        if (track.kind == TrackKind::Drums) {
-            out += "lanes";
-            for (float level : track.laneLevel) put(out, " %.6g", level);
-            out += "\n";
-            // sample LANE FIT NAME: a recording on a lane, stretched to FIT steps (0: as recorded)
-            for (int lane = 0; lane < kDrumLanes; ++lane) {
-                if (!track.laneSample[lane][0]) continue;
-                put(out, "sample %.0f", lane + 1);
-                put(out, " %.0f ", track.laneFit[lane]);
-                out += track.laneSample[lane];
-                out += "\n";
-            }
-            // oneslice LANE...: the lanes whose hits play one slice of their sound and stop
-            bool anySliced = false;
-            for (bool on : track.laneOneSlice) anySliced = anySliced || on;
-            if (anySliced) {
-                out += "oneslice";
-                for (int lane = 0; lane < kDrumLanes; ++lane)
-                    if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
-                out += "\n";
-            }
-            // scene N, then "bars B" if the cell is longer than one, then each
-            // bar's hits; "bar K" comes before those of the second bar on.
-            // Then the bars the cell hides (made shorter: they come back as they were if it is made
-            // longer again), each after its "bar K" past the cell's end. A program from before
-            // reads no line for a bar the cell does not have, so it skips them.
-            for (int scene = 0; scene < kMaxScenes; ++scene) {
-                if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-                put(out, "scene %.0f\n", scene + 1);
-                if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-                for (int bar = 0; bar < kMaxBars; ++bar) {
-                    const DrumPattern& p = track.drums[scene][bar];
-                    if (p.empty()) continue;
-                    if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                    out += "seeds";
-                    for (std::uint32_t seed : p.diceSeed) put(out, " %.0f", seed);
-                    out += "\n";
-                    for (int lane = 0; lane < kDrumLanes; ++lane) {
-                        for (int step = 0; step < kSteps; ++step) {
-                            if (p.level[lane][step] <= 0.f) continue;
-                            put(out, "hit %.0f", lane + 1);
-                            put(out, " %.0f", step + 1);
-                            put(out, " %.6g", p.level[lane][step]);
-                            put(out, " %.6g", p.nudge[lane][step]);
-                            put(out, " %.6g", p.chance[lane][step]);
-                            out += p.fromDice[lane][step] ? " 1" : " 0";
-                            if (p.start[lane][step] > 0.f) put(out, " %.6g", p.start[lane][step]); // where in the sound it begins
-                            out += "\n";
-                            // stepfx LANE STEP PITCH RATCHET BACKWARDS CUT [THROW]: the hit's step effects, if it has any.
-                            // THROW (1 ECHO, 2 SPACE, 3 both) is left off when it is 0, as every older song has it.
-                            // ("fx" is taken: it is an effect in a slot.)
-                            if (const StepFx& fx = p.fx[lane][step]; fx.any()) {
-                                put(out, "stepfx %.0f", lane + 1);
-                                put(out, " %.0f", step + 1);
-                                put(out, " %.0f", fx.pitch);
-                                put(out, " %.0f", fx.hits());
-                                put(out, " %.0f", fx.reverse ? 1 : 0);
-                                put(out, " %.0f", fx.cut);
-                                if (fx.throwTo) put(out, " %.0f", fx.throwTo);
-                                out += "\n";
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            if (track.kind == TrackKind::Sampler) {
-                // sound NAME: its recording. sampler: root tune start attack release loop level.
-                if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
-                out += "sampler";
-                for (int v : track.sampler) put(out, " %.0f", v);
-                out += "\n";
-            } else {
-                put(out, "preset %.0f\n", track.preset + 1);
-                out += "macros";
-                for (float m : track.macro) put(out, " %.6g", m);
-                out += "\nsettings";
-                const int* values = specFor(track.kind)->values(const_cast<TrackData&>(track));
-                for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
-                out += "\n";
-            }
-            for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
-                if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
-                put(out, "scene %.0f\n", scene + 1);
-                if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-                for (int bar = 0; bar < kMaxBars; ++bar) {
-                    const NotePattern& p = track.notes[scene][bar];
-                    if (p.empty()) continue;
-                    if (bar > 0) put(out, "bar %.0f\n", bar + 1);
-                    for (const NoteEvent& n : p.notes) {
-                        if (n.velocity <= 0.f) continue;
-                        put(out, "note %.0f", n.step + 1);
-                        put(out, " %.0f", n.pitch);
-                        put(out, " %.6g", n.length);
-                        put(out, " %.6g", n.velocity);
-                        // early or late, in steps; and then its THROW (1 ECHO, 2 SPACE, 3 both), which
-                        // has the nudge written before it even at 0, so that it is the sixth number
-                        if (n.nudge != 0.f || n.throwTo) put(out, " %.6g", n.nudge);
-                        if (n.throwTo) put(out, " %.0f", n.throwTo);
-                        out += "\n";
-                        // notefx STEP KEY RATCHET GLIDE: what the note does besides play, if anything
-                        if (n.ratchet >= 2 || n.glide) {
-                            put(out, "notefx %.0f", n.step + 1);
-                            put(out, " %.0f", n.pitch);
-                            put(out, " %.0f", n.ratchet >= 2 ? n.ratchet : 1);
-                            put(out, " %.0f\n", glideKind(n.glide)); // (1, "on" in an old song, is half a step)
-                        }
-                    }
-                    // chord STEP LENGTH LEVEL INVERSION ROOT NAME then its notes above the root
-                    for (const ChordEvent& c : p.chords) {
-                        if (c.velocity <= 0.f) continue;
-                        put(out, "chord %.0f", c.step + 1);
-                        put(out, " %.6g", c.length);
-                        put(out, " %.6g", c.velocity);
-                        put(out, " %.0f", c.inversion);
-                        put(out, " %.0f ", c.root);
-                        out += c.name[0] ? c.name : "?";
-                        for (int i = 0; i < c.count; ++i) put(out, " %.0f", c.intervals[i]);
-                        if (c.nudge != 0.f) put(out, " nudge %.6g", c.nudge);
-                        out += "\n";
-                        if (c.ratchet >= 2 || c.throwTo) { // chordfx STEP RATCHET [THROW]: THROW is left off at 0
-                            put(out, "chordfx %.0f", c.step + 1);
-                            put(out, " %.0f", c.ratchet >= 2 ? c.ratchet : 1);
-                            if (c.throwTo) put(out, " %.0f", c.throwTo);
-                            out += "\n";
-                        }
-                        // chordplay STEP STRUM ORDER TIME LEVEL LENGTHS: the chord effects (chord_rule.hpp).
-                        // A line of its own, left out when none is set: a chord that has none is written
-                        // as it always was, and a program from before them skips the line whole.
-                        if (c.play.strum || c.play.order || c.play.time || c.play.level || c.play.lengths) {
-                            put(out, "chordplay %.0f", c.step + 1);
-                            put(out, " %.0f", c.play.strum);
-                            put(out, " %.0f", c.play.order);
-                            put(out, " %.0f", c.play.time);
-                            put(out, " %.0f", c.play.level);
-                            put(out, " %.0f\n", c.play.lengths);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    for (int t = 0; t < project.trackCount(); ++t) putTrack(out, project.tracks[t]);
     return out;
 }
 

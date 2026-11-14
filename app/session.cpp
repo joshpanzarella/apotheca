@@ -667,6 +667,19 @@ bool Session::patternsAre(const Project& was) const {
     return songText(*here) == songText(was);
 }
 
+// Are the patterns of `now` those of `then` (a track read from a song's text), as the song file writes them?
+bool Session::patternsSameAsText(const TrackData& now, const TrackData& then) {
+    std::unique_ptr<TrackData> here(new TrackData(then)); // `then`, with the patterns of `now` (large: not on the stack)
+    std::memcpy(here->bars, now.bars, sizeof here->bars);
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int bar = 0; bar < kMaxBars; ++bar) {
+            here->drums[scene][bar] = now.drums[scene][bar];
+            here->notes[scene][bar] = now.notes[scene][bar];
+        }
+    std::memcpy(here->automation, now.automation, sizeof here->automation);
+    return trackText(*here) == trackText(then);
+}
+
 int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
 
 void Session::restorePatterns(const std::string& text, int movedFrom, int movedBy) {
@@ -694,6 +707,11 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
             std::memcmp(now.notes, then.notes, sizeof now.notes) == 0 && std::memcmp(now.automation, then.automation, sizeof now.automation) == 0) {
             continue;
         }
+        // Numbers that differ only as the text rounds them (a keyboard's 90/127, a setting
+        // written with WRITE on) are the same patterns: the track is as it was, and is left
+        // alone, unrounded. Compared as above, every such track was sent whole on an undo
+        // of one hit on another, and its values rounded.
+        if (patternsSameAsText(now, then)) continue;
         for (int scene = 0; scene < kMaxScenes; ++scene) {
             now.bars[scene] = then.bars[scene];
             for (int bar = 0; bar < kMaxBars; ++bar) {

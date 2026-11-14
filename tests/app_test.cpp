@@ -6869,6 +6869,41 @@ void testATrackDeletedOrChangedKeepsUndo() {
     }
 }
 
+// An undo of one hit sends the one track it changed. The others are compared as the song file
+// writes them: a keyboard's 90/127 or a setting written with WRITE on is not the number the text
+// reads back to the last bit, and each such track was sent whole and its values rounded.
+void testUndoSendsOnlyTheTrackItChanged() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums));
+    rig.frames(2);
+    project.tracks[1].drums[0][0].level[0][0] = 90.f / 127.f; // as a keyboard plays it
+    session.sendDrumPattern(1, 0);
+    session.setAutomation(2, 0, 9, 0, 0.123456f); // as WRITE writes it
+    rig.frames(60);
+    rig.render(512);
+    const float hit = project.tracks[1].drums[0][0].level[0][0], written = project.tracks[2].automation[0][9][0];
+    placeAndSettle(rig, 0, 3, 3);
+    const unsigned sent = session.imagesSent();
+    CHECK(session.undo() && project.tracks[0].drums[0][0].level[3][3] == 0.f);
+    CHECK(session.imagesSent() - sent == 1);
+    CHECK(project.tracks[1].drums[0][0].level[0][0] == hit && project.tracks[2].automation[0][9][0] == written); // to the last bit
+    // A track that did change is still put back and sent.
+    const unsigned again = session.imagesSent();
+    CHECK(session.redo() && project.tracks[0].drums[0][0].level[3][3] > 0.f && session.imagesSent() - again == 1);
+    // What is compared is every part of the patterns: automation, a cell's length, notes.
+    session.setAutomation(2, 0, 9, 4, 0.5f);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[2].automation[0][9][4] < 0.f);
+    session.setCellBars(1, 0, 2);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[1].bars[0] == 1);
+    session.setCellBars(2, 1, 2); // an empty cell: its length is all that changes
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[2].bars[1] == 1);
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
@@ -6881,11 +6916,13 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
         testAResyncKeepsUndo();
         testATrackDeletedOrChangedKeepsUndo();
+        testUndoSendsOnlyTheTrackItChanged();
         if (failures == 0) std::printf("app tests passed (undo kept only)\n");
         return failures == 0 ? 0 : 1;
     }
     testAResyncKeepsUndo();
     testATrackDeletedOrChangedKeepsUndo();
+    testUndoSendsOnlyTheTrackItChanged();
     testTabs();
     testNoteEffects();
     testNoteEffectsHoldUp();

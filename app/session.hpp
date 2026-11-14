@@ -490,6 +490,7 @@ private:
     // A step of undo: the patterns as text. `nextScene` is -1, or the scene a "next scene" was
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
+    static bool patternsSameAsText(const TrackData& now, const TrackData& then);
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still
