@@ -896,6 +896,29 @@ void testADeletedSongIsNeverWrittenOver() {
     CHECK(!binSong(folder, "never was"));
 }
 
+// A song kept with Windows' line ends (edited on a computer, sent from the page) reads as the same
+// song: its recordings, its sampler's sound, its chord pack and its names. They were dropped, as
+// a name that ends in the line end's \r is not a name.
+void testWindowsLineEnds() {
+    const std::string plain = "apotheca-song 1\ntempo 97\npack jazz\ntrack drums\nname BEATS\nsample 1 0 kick\nscene 1\nhit 1 1 0.8\n"
+                              "track sampler\nsound pads/warm\n";
+    std::string windows;
+    for (char c : plain) {
+        if (c == '\n') windows += '\r';
+        windows += c;
+    }
+    std::unique_ptr<Project> a(new Project), b(new Project);
+    CHECK(parseSong(plain, *a) && parseSong(windows, *b));
+    CHECK(std::string(b->tracks[0].laneSample[0]) == "kick" && std::string(b->tracks[1].sample) == "pads/warm");
+    CHECK(std::string(b->chordPack) == "jazz" && std::string(b->tracks[0].name) == "BEATS" && b->tracks[0].drums[0][0].level[0][0] == 0.8f);
+    CHECK(songText(*a) == songText(*b));
+    // A rename follows into such a file, and leaves its line ends as they were.
+    std::string renamed = windows;
+    CHECK(renameRecordings(renamed, {{"kick", "kicks/808"}, {"pads/warm", "soft"}}));
+    CHECK(renamed.find("sample 1 0 kicks/808\r\n") != std::string::npos && renamed.find("sound soft\r\n") != std::string::npos);
+    CHECK(renamed.find("tempo 97\r\n") != std::string::npos);
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -907,6 +930,7 @@ int main(int, char**) {
     testHiddenBarsAreKept();
     testSavedToTheCardBeforeItIsMoved();
     testADeletedSongIsNeverWrittenOver();
+    testWindowsLineEnds();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

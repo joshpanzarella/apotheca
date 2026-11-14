@@ -279,6 +279,7 @@ bool parseSong(const std::string& text, Project& project) {
     TrackData* track = nullptr;
 
     while (std::getline(lines, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back(); // a file kept with Windows' line ends: a name must not end in it
         std::istringstream in(line);
         std::string word;
         if (!(in >> word)) continue;
@@ -569,6 +570,8 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
         std::size_t end = text.find('\n', at);
         if (end == std::string::npos) end = text.size();
         std::string line = text.substr(at, end - at);
+        const bool windows = !line.empty() && line.back() == '\r'; // read without it, as parseSong reads; written back with it
+        if (windows) line.pop_back();
         std::istringstream in(line);
         std::string word, name;
         double lane = 0, fit = 0;
@@ -590,6 +593,7 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
             }
         }
         out += line;
+        if (windows) out += '\r';
         if (end < text.size()) out += '\n';
         at = end + 1;
     }
