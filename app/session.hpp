@@ -129,7 +129,8 @@ public:
     void keepHearing(bool xHeld, const void* screen);
     bool hearingHeld() const { return heard_.track >= 0 && heard_.held; }
     // When what X held stops, or stopped (now, for one cut by panic or a new song); 0 while X is
-    // still held, or when nothing has been heard. The line across a recording's picture ends there.
+    // still held, when nothing has been heard, or when nothing stops it (the built-in drum tapped:
+    // heard whole). The line across a recording's picture ends there.
     Uint32 heardEnds() const { return heard_.held ? 0 : heard_.ends; }
     void update(Uint32 nowMs);
 

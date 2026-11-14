@@ -797,14 +797,17 @@ effect in those two groups and fails one that does not.
 - **X HELD hears a recording until it is let go, to its end** (owner,
   2026-11-14): the SAMPLER and KIT pages, their list, the drum grid's lane
   name and empty step, the FX screen and the roll's empty place on a sampler
-  track. A tap still sounds `Session::kAuditionMs` (350). Screens call
+  track. A tap still sounds `Session::kAuditionMs` (350); **the built-in
+  kit tapped is heard whole**, as before (its cymbal is 1.8 s): `letGoHeard`
+  stops a tapped lane only when it holds a recording. Screens call
   `Session::auditionHeld` (a synth key, held at `kHeldOn` in `sounding_`) or
   `hearLaneHeld` (a `Trigger` with `e = 1`); **`App::update` lets go**
   (`keepHearing`) when X is up, another screen is up or another track
   picked; Play, a new song and panic let go too. A drum lane's is stopped by
   `Command::StopAudition`, which fades (3 ms) only the voices and waiting
   ratchet pieces a held audition started (`HitPlay::audition`; a hit that
-  carries the sound on takes it over). On a hit, X held stays the step
+  carries the sound on takes it over; a lane plays one sound, so any
+  audition chokes the hit before it anyway, joined or not). On a hit, X held stays the step
   effects' hold. The line over the picture stops with it (`heardEnds`).
   `tests/hear_test.cpp`. The SONG screen's X (`hearTrack`) is not held.
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end

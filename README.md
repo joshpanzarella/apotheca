@@ -953,7 +953,8 @@ WAV file from the `samples` folder beside the program. A kit can mix the two.
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
 
 **X hears the lane. Hold X and a recording plays for as long as you hold it**,
-to its end; let go and it fades out. A tap plays a moment (0.35 s). Another
+to its end; let go and it fades out. A tap plays a moment (0.35 s); a
+built-in drum tapped plays whole. Another
 screen, another track, Play or a new song stops it.
 
 **L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut

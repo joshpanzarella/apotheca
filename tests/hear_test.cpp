@@ -216,6 +216,30 @@ void testItsRatchetIsNotPlayedOn() {
     CHECK(lastHeardMs(out) > 90);
 }
 
+// A drum lane plays one sound at a time: any new hit chokes the one before (as it always did), and
+// X held is no different. So an audition always takes the lane's sound, whether it starts
+// elsewhere (the hit fades at the press) or exactly where the hit's sound has got to (the slice
+// join: the sound carries on as the audition's). Either way the let go leaves the lane quiet, and
+// before it the lane sounds: the join is not a case where a hit is stopped that would otherwise play.
+void testAnAuditionTakesTheLane() {
+    for (int joined = 0; joined < 2; ++joined) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->setLaneSample(0, 2, toneData(2.f, 0.5f)));
+        renderOf(*engine, 256);
+        engine->send(trigger(2, false)); // a hit
+        renderOf(*engine, 12000);
+        Command from = trigger(2, true); // X: from where the hit has got to (a quarter in), or the middle
+        from.b = joined ? 2500 : 5000;
+        engine->send(from);
+        std::vector<float> out = renderOf(*engine, 4800);
+        CHECK(lastHeardMs(out) >= 99);
+        CHECK(biggestStep(out, 0, 4800) < 0.05f); // no click either way
+        engine->send(stopAudition(2));
+        out = renderOf(*engine, 24000);
+        CHECK(lastHeardMs(out) <= 5);
+    }
+}
+
 // ---- the app -----------------------------------------------------------------------------
 
 struct Rig {
@@ -580,6 +604,41 @@ void testTheFxScreenOnDrums() {
                 [&](const char* name) { session.setLaneSample(0, 0, name); });
 }
 
+// The built-in kit tapped is heard whole, as it always was (its cymbal is 1.8 s): the 350 ms tap is
+// for a recording. Held and let go, it stops all the same.
+void testTheBuiltInDrumTapped() {
+    Rig rig(tempFolder());
+    Session& session = rig.session();
+    rig.project().track = 0;
+    const auto x = [&](bool down) { rig.key(X, down); };
+    const auto tapped = [&](const char* where, int lane) {
+        std::printf("  %s\n", where);
+        rig.listen();
+        x(true);
+        x(false);
+        rig.run(16);
+        CHECK(!session.hearingHeld() && session.heardEnds() == 0); // let go, and nothing stops it
+        rig.run(2500);
+        CHECK(rig.heardMs() > (lane == 7 ? 1700 : 500));
+        rig.listen();
+        x(true);
+        rig.run(800);
+        x(false);
+        rig.run(2000);
+        if (lane == 7) CHECK(near(rig.heardMs(), 800, 40));
+    };
+    session.view = View::Device;
+    rig.app.kit().goTo(7, KitScreen::kSound);
+    tapped("kit", 7);
+    session.view = View::Pattern;
+    rig.app.drums().moveCursorTo(7, -1);
+    tapped("drum grid, lane name", 7);
+    rig.app.drums().moveCursorTo(7, 5);
+    tapped("drum grid, empty step", 7);
+    session.view = View::Effects;
+    tapped("fx (the kick, 0.6 s)", 0);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -599,9 +658,11 @@ int main(int argc, char** argv) {
     RUN(testTheEngineStopsAHeldAudition);
     RUN(testAPatternHitIsNotStopped);
     RUN(testItsRatchetIsNotPlayedOn);
+    RUN(testAnAuditionTakesTheLane);
     RUN(testThePages);
     RUN(testTheSampler);
     RUN(testTheFxScreenOnDrums);
+    RUN(testTheBuiltInDrumTapped);
     if (failures) {
         std::printf("%d failure(s)\n", failures);
         return 1;

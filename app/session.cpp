@@ -180,6 +180,8 @@ void Session::letGoHeard() {
     if (heard_.lane < 0) {
         for (Sounding& s : sounding_)
             if (s.track == heard_.track && s.pitch == heard_.pitch && s.until == kHeldOn) s.until = heard_.ends;
+    } else if (now_ < least && !project.tracks[heard_.track].laneSample[heard_.lane][0]) {
+        heard_.ends = 0; // the built-in drum tapped: heard whole, as it always was (at most 1.8 s)
     } else {
         LaneStop* free = &laneStops_[0];
         for (LaneStop& stop : laneStops_)
