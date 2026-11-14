@@ -596,6 +596,9 @@ void SongScreen::drawSongEnd(SDL_Renderer* r, int cx, int cy, int end, SDL_Color
     for (int i = 0; i < 5; ++i) fill(r, cx + 1 + i, cy - 8 + i, 1, 9 - 2 * i, color); // ...to an arrowhead pointing on
 }
 
+// How wide a head's M or S mark is: its letter, at the lettering the heads were laid out at, 2 pixels clear each side.
+int SongScreen::headMarkWidth(const Fonts& fonts, const char* letter) { return static_cast<int>(std::ceil(fonts.fixed().small.width(letter))) + 4; }
+
 void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[96];
     const int tracks = project_.trackCount();
@@ -631,7 +634,20 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         } else {
             std::snprintf(text, sizeof text, "%d", t + 1);
             // (In the narrow columns at LARGE, as the name under it: beside the M or S mark there is no room to grow.)
-            (colW > 60 ? fonts : fonts.fixed()).small.drawCentered(r, x + colW / 2.f, kGridTop + 5.f, text, kDim);
+            // Where the mark would stand on the number (11 and 12 in the narrowest heads), the number is centred
+            // in the room left of it instead, clear of the mixer's mark at the other corner.
+            const Font& numberFont = (colW > 60 ? fonts : fonts.fixed()).small;
+            const char* letter = project_.tracks[t].solo ? "S" : (project_.tracks[t].muted ? "M" : nullptr);
+            float numberX = x + colW / 2.f;
+            if (letter) {
+                const float markLeft = x + colW - 2 - headMarkWidth(fonts, letter);
+                if (numberX + numberFont.width(text) / 2.f + 1.f > markLeft) {
+                    const bool mixed = project_.tracks[t].mixDb != 0 || project_.tracks[t].mixPan != 0;
+                    const float from = mixed ? x + kMixMarkInset + kMixMarkSize + 1.f : x + 1.f;
+                    numberX = (from + markLeft - 1.f) / 2.f;
+                }
+            }
+            numberFont.drawCentered(r, numberX, kGridTop + 5.f, text, kDim);
             const InstrumentInfo* info = instrument(project_.tracks[t].kind);
             const char* name = !info ? "" : colW > 60 ? info->name : info->shortName;
             // The player's own name for it, cut to fit a narrow column.
@@ -653,13 +669,20 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (!sounding && !deleting) fill(r, x + 1, kGridTop + 1, colW - 2, kHeadH - 2, faded(kBg, 150));
         // Not at its usual level or pan (the mixer): a brass mark in the other corner.
         if (!deleting && (project_.tracks[t].mixDb != 0 || project_.tracks[t].mixPan != 0)) fill(r, x + kMixMarkInset, kGridTop + kMixMarkInset, kMixMarkSize, kMixMarkSize, kBrass);
+        // The mark's box is made to its letter (2 pixels clear all round), in the lettering every head was
+        // laid out at: at a fixed 11 by 11 the letter stood out of it, below and at the sides (owner, 2026-11-14).
+        const auto mark = [&](const char* letter, SDL_Color colour) {
+            const Font& font = fonts.fixed().small;
+            const int w = headMarkWidth(fonts, letter), h = static_cast<int>(std::ceil(font.capHeight())) + 4;
+            const int left = x + colW - 2 - w;
+            fill(r, left, kGridTop + 2, w, h, colour);
+            font.drawCentered(r, left + w / 2.f, kGridTop + 4.f, letter, kBg);
+        };
         if (project_.tracks[t].solo) {
-            fill(r, x + colW - 13, kGridTop + 2, 11, 11, kTeal);
-            fonts.small.drawCentered(r, x + colW - 7.5f, kGridTop + 3.f, "S", kBg);
+            mark("S", kTeal);
             outline(r, x, kGridTop, colW, kHeadH, kTeal);
         } else if (project_.tracks[t].muted) {
-            fill(r, x + colW - 13, kGridTop + 2, 11, 11, kBrass);
-            fonts.small.drawCentered(r, x + colW - 7.5f, kGridTop + 3.f, "M", kBg);
+            mark("M", kBrass);
         }
     }
     if (addColumn() >= 0) {

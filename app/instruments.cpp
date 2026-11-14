@@ -6,7 +6,7 @@ namespace apotheca {
 
 const InstrumentInfo kInstruments[] = {
     {TrackKind::Drums, "DRUMS", "DRUMS", "DRUMS", "8 lanes: built-in drums or your recordings", false, "drums", SynthKind::Phazed, nullptr},
-    {TrackKind::Phazed, "PHAZED", "PHZD", "PHAZED", "the synth", true, "phazed", SynthKind::Phazed, ".phazed"},
+    {TrackKind::Phazed, "PHAZED", "PHZD", "PHAZED", "phase distortion synth", true, "phazed", SynthKind::Phazed, ".phazed"},
     // JAX-EP (owner, 2026-11-14): the name on the device, and what it says it is. No maker's or model's
     // name anywhere a player reads; in the code it is Jx3p (jx3p-plan.md, sections 5 and 8). It stands
     // in the list where Twin Analog stood.

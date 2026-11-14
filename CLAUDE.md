@@ -1330,6 +1330,10 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **A head's M or S mark is a box made to its letter** (`SongScreen::headMarkWidth`: the letter at the
+  heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
+  stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)
+  the number is centred in the room left of it, clear of the mixer's mark. Stills `song-marks`, `-12`.
 - **Solo is L1 HELD on a track** (`SongScreen::kSoloHoldMs`, 400 ms, fired once in `update()`; owner,
   2026-11-14: a tap of L1 soloed a track by mistake too easily). A tap does nothing; a hold carried to
   another track, or with the mixer or a list up, is called off. Y's mute is still at once. The head's

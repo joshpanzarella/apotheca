@@ -818,6 +818,17 @@ int main(int argc, char** argv) {
         }
         pushKey(SDLK_x, true); // A, held
         app.song().showMixCardForStill();
+    } else if (std::strncmp(view, "song-marks", 10) == 0) {
+        // The heads' marks: track 2 muted (M), track 3 soloed (S); "-12" with twelve tracks, the narrow heads.
+        app.session().view = View::Song;
+        if (std::strstr(view, "-12")) {
+            const TrackKind kinds[3] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Drums};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            app.session().setMuted(10, true);
+            app.session().setSolo(11, true);
+        }
+        app.session().setMuted(1, true);
+        app.session().setSolo(2, true);
     } else if (std::strcmp(view, "song-end-loop") == 0 || std::strcmp(view, "song-end-stop") == 0) {
         // AT END: the cursor on the PLAYS box of the row just past the last scene, where the song ends.
         app.session().view = View::Song;

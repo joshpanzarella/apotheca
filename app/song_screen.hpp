@@ -88,6 +88,7 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
+    static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
     bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
     void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
     bool mixCardUp() const { return mixing_ && (mixShown_ || mixTurned_); } // ...and its card is drawn: held kMixCardMs, or something turned
