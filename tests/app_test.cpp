@@ -4129,8 +4129,9 @@ float echoOfAHit(Rig& rig) {
     return Rig::peak(out, 11000, 16000);
 }
 // Which of track 1's slots the engine holds the automation of (a bit a slot), once what was sent has arrived.
+// (512 frames: after a whole song sent again, what follows waits for a sounding track's 5 ms fade.)
 int heldOf(Rig& rig) {
-    rig.render(64);
+    rig.render(512);
     return rig.engine->automationHeld(0);
 }
 } // namespace
