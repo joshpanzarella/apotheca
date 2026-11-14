@@ -6,8 +6,9 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of two synths: Phazed (phase distortion, 65 presets) or Twin
-Analog (two morphing oscillators, 16 presets). Up to sixteen scenes of
+kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), Twin
+Analog (two morphing oscillators, 16 presets) or QMOD (FM rolled from a
+number, 24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -27,8 +28,9 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-Not built yet: the sound designer web page, and the handheld making its own
-WiFi hotspot.
+A sound designer web page (see "The sound designer") sets a synth's sounds
+from a computer's browser. Not built yet: the handheld making its own WiFi
+hotspot.
 
 ## Build
 
