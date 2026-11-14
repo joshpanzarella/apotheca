@@ -76,6 +76,8 @@ bool Session::removeTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count <= 1) return false;
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
+    for (int t = track; t < kNumTracks; ++t) // the types each slot remembers move with their tracks
+        for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
     {
         std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
         project.tracks[kNumTracks - 1] = *blank;
@@ -108,6 +110,7 @@ bool Session::addTrack(TrackKind kind) {
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
+    forgetTrackTypes(track);
     if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;
 }
@@ -115,6 +118,7 @@ bool Session::addTrack(TrackKind kind) {
 bool Session::setTrackKind(int track, TrackKind kind) {
     if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
     TrackData& t = project.tracks[track];
+    forgetTrackTypes(track); // (its effects stay; what they were switched from is forgotten)
     t.kind = kind;
     t.preset = 0;
     for (float& m : t.macro) m = 0.5f;
@@ -1152,6 +1156,9 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
     const int bus = busOfTrack(track);
     if (bus >= 0 && kind != EffectKind::None && effectBus(kind) != bus) return; // ECHO holds a delay, SPACE a reverb
     if (!engine.setEffect(track, slot, kind)) return;
+    // Another family (or nothing): the types the slot remembered were of the one that went.
+    const EffectKind was = static_cast<EffectKind>(effectData(track, slot).kind);
+    if (std::strcmp(effectFamily(kind), effectFamily(was)) != 0) forgetTypes(track, slot); // (EMPTY is a family of its own, "NONE")
     // Another effect in the slot: automation written for the old one's settings means nothing now.
     if (track >= 0)
         for (int scene = 0; scene < kMaxScenes; ++scene)
@@ -1159,6 +1166,32 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
     EffectData& data = effectData(track, slot);
     data.kind = static_cast<int>(kind);
     for (int i = 0; i < kEffectParams; ++i) data.param[i] = effectDefault(kind, i, bus >= 0); // on a bus, LEVEL at full
+}
+
+int Session::memorySlot(int track, int slot) {
+    if (slot < 0 || slot >= slotsOf(track)) return -1;
+    if (track >= 0) return track * kTrackSlots + slot;
+    if (track == kMasterTrack) return kNumTracks * kTrackSlots + slot;
+    return kNumTracks * kTrackSlots + kMasterSlots + busOfTrack(track);
+}
+
+void Session::rememberType(int track, int slot, const EffectData& settings) {
+    const int at = memorySlot(track, slot), kind = settings.kind;
+    if (at < 0 || kind <= static_cast<int>(EffectKind::None) || kind >= kEffectKinds) return;
+    typeMemory_[at].has[kind] = true;
+    for (int i = 0; i < kEffectParams; ++i) typeMemory_[at].param[kind][i] = settings.param[i];
+}
+
+bool Session::rememberedType(int track, int slot, EffectKind kind, float out[kEffectParams]) const {
+    const int at = memorySlot(track, slot), k = static_cast<int>(kind);
+    if (at < 0 || k <= static_cast<int>(EffectKind::None) || k >= kEffectKinds || !typeMemory_[at].has[k]) return false;
+    for (int i = 0; i < kEffectParams; ++i) out[i] = typeMemory_[at].param[k][i];
+    return true;
+}
+
+void Session::forgetTypes(int track, int slot) {
+    const int at = memorySlot(track, slot);
+    if (at >= 0) typeMemory_[at] = TypeMemory();
 }
 
 void Session::setEffectParam(int track, int slot, int index, float value) {
@@ -1311,6 +1344,7 @@ void Session::sendEffects(int track) {
 void Session::applyProject() {
     sendSong();
     // Another song: nothing of the last one to go back to.
+    for (TypeMemory& m : typeMemory_) m = TypeMemory();
     undo_.clear();
     redo_.clear();
     editing_ = false;

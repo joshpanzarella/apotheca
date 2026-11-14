@@ -367,6 +367,7 @@ std::unique_ptr<Effect> makeEffect(EffectKind kind, float sampleRate, float temp
     const int index = static_cast<int>(kind);
     if (index <= 0 || index >= kEffectKinds || !kTable[index]->create) return nullptr;
     std::unique_ptr<Effect> effect(kTable[index]->create());
+    effect->madeAs = index;
     effect->prepare(sampleRate);
     effect->setTempo(tempo);
     return effect;

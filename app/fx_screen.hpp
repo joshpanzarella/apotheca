@@ -37,7 +37,11 @@
 //                    settings and its automation. It cannot be undone, and
 //                    the heading says so while the bar fills. Let go sooner
 //                    and nothing goes. (On SENDS a tap of B: nothing sent.)
-//   in the settings  up / down: the next setting. Left: back to the list.
+//   in the settings  up / down: the next setting. Right: the slot's next TYPE (COMP to DUCK); left: the
+//                    type before, except on the first setting, where left is back to the list (and on
+//                    a family of one, or the sends, left is back to the list from any setting). The ends
+//                    stop. The cursor stays on its row. A type switched back to comes back with the
+//                    settings it was left with (switchEffectType).
 //                    Hold A + stick up / down turns it; the D-pad moves it a
 //                    twentieth, or to the next choice. B: its usual value
 //                    (a send: nothing sent).
@@ -70,6 +74,12 @@ namespace apotheca {
 // written by WRITE. False, and nothing done, if `to` is not another type of
 // what the slot holds.
 bool changeEffectType(Session& session, int track, int slot, EffectKind to);
+// The same, as the player switches TYPE (LEFT / RIGHT in a slot's settings, or let go on another type in the
+// list of effects): the slot remembers the type it leaves, its settings as they are (Session::rememberType),
+// and a type it has held before comes back with ITS settings as it was left, to the bit, not with ones carried
+// from the type it leaves. Its automation is what changeEffectType does with it: the lanes of the settings the
+// two share move to their new places, the rest are cleared (nothing of a remembered type's automation is kept).
+bool switchEffectType(Session& session, int track, int slot, EffectKind to);
 
 class FxScreen : public Screen {
 public:
@@ -196,7 +206,17 @@ public:
     // planned, and longer): a family's types on its line of the list of effects (its top at `y`, the one at `lit`
     // in brass, -1 none; a family's words are one name), and the heading's TYPE row (on `at`, the key with A held).
     static void drawPickTypes(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int lit, int y);
-    static void drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list);
+    // `key`: the key drawn at the row's right end where it is not the list's ("RIGHT" on a setting's first row,
+    // "LEFT / RIGHT" on the others: switching TYPE from the settings); with the list open it is "LEFT / RIGHT".
+    static void drawTypeRow(SDL_Renderer* r, const Fonts& fonts, const std::vector<std::string>& names, int at, bool list, const char* key = nullptr);
+    // The key that switches TYPE from where the cursor is, in a slot's settings with A not held, or nullptr where
+    // neither LEFT nor RIGHT switches it. It names only what does something: no RIGHT on the family's last type,
+    // no LEFT on its first, nor on the first setting (there LEFT is the list).
+    const char* typeKey() const;
+    // The same, asked with numbers (a test can ask for a family of one, which no family is today): the cursor's
+    // column (0 the list), how many types the family has, and which of them the slot is. Below the first setting
+    // it is nullptr only for a family of one, and that is what sends LEFT back to the list from there.
+    static const char* typeKeyFor(int column, int types, int at);
 
 private:
     static bool sends(int row) { return row == kSendsRow; }
@@ -214,6 +234,7 @@ private:
     void sendSlot(const EffectData& d); // the engine's slot to `d` (the project untouched)
     void holdAutomation(bool held);
     void stepTrack(int by);
+    bool stepType(int by); // in a slot's settings: the slot's next TYPE (by 1) or the one before (-1); false at an end
     float send(int bus) const { return project_.current().send[bus]; }
     void press(Button direction);
     void turn(float amount);
@@ -229,6 +250,8 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
+    bool cameIn_ = false;            // RIGHT (D-pad or stick) came into the settings from the list and is still held:
+                                     // it switches no TYPE until it is let go (a slightly long press made a COMP a SNAP)
     int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
     int trySlot_ = 0;                // and its slot, kept after tryRow_ is let go (the engine's hold is let go by it)
     EffectData tried_;               // what it is trying
