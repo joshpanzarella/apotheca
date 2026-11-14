@@ -870,6 +870,32 @@ void testSavedToTheCardBeforeItIsMoved() {
 #endif
 }
 
+// A deleted song goes to "deleted" with its revs, under a name nothing there has: new songs reuse
+// the names of deleted ones, and the second "ash well" deleted wrote over the first.
+void testADeletedSongIsNeverWrittenOver() {
+    const std::string folder = tempFolder();
+    Rig rig(folder);
+    Session& session = rig.session();
+    const std::string name = session.songName();
+    rig.project().tempo = 90.f;
+    session.saveNow();
+    CHECK(session.saveRev() == 1);
+    session.newSong();
+    CHECK(session.deleteSong(name));
+    // The same name again, with another song in it and a rev of its own.
+    CHECK(writeTextFile(folder + "/" + name + ".song", "apotheca-song 1\ntempo 150\n") && writeTextFile(folder + "/" + name + ".3.rev", "apotheca-song 1\ntempo 151\n"));
+    CHECK(session.deleteSong(name) && !exists(folder + "/" + name + ".song") && !exists(folder + "/" + name + ".3.rev"));
+    std::string text;
+    CHECK(readTextFile(folder + "/deleted/" + name + ".song", text) && text.find("tempo 90\n") != std::string::npos);
+    CHECK(exists(folder + "/deleted/" + name + ".1.rev") && !exists(folder + "/deleted/" + name + ".3.rev"));
+    CHECK(readTextFile(folder + "/deleted/" + name + " 2.song", text) && text == "apotheca-song 1\ntempo 150\n");
+    CHECK(readTextFile(folder + "/deleted/" + name + " 2.3.rev", text) && text == "apotheca-song 1\ntempo 151\n");
+    // A name whose only trace there is a rev is taken too.
+    CHECK(writeTextFile(folder + "/deleted/lone.7.rev", "apotheca-song 1\n") && writeTextFile(folder + "/lone.song", "apotheca-song 1\ntempo 60\n"));
+    CHECK(binSong(folder, "lone") && exists(folder + "/deleted/lone 2.song") && !exists(folder + "/deleted/lone.song"));
+    CHECK(!binSong(folder, "never was"));
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -880,6 +906,7 @@ int main(int, char**) {
     testFreeNoteLengthsAreKept();
     testHiddenBarsAreKept();
     testSavedToTheCardBeforeItIsMoved();
+    testADeletedSongIsNeverWrittenOver();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

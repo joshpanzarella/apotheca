@@ -2,7 +2,9 @@
 #include "instruments.hpp"
 #include "samples.hpp"
 
+#include <dirent.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -620,6 +622,44 @@ bool writeTextFile(const std::string& path, const std::string& text) {
         close(dir);
     }
     return true;
+}
+
+namespace {
+// The files of a song in a folder: "<name>.song" (if there) and its revs, "<name>.<n>.rev".
+std::vector<std::string> songFiles(const std::string& folder, const std::string& name) {
+    std::vector<std::string> files;
+    if (DIR* dir = opendir(folder.c_str())) {
+        while (const dirent* entry = readdir(dir)) {
+            const std::string file = entry->d_name;
+            const bool song = file == name + ".song";
+            const bool rev = file.size() > name.size() + 5 && file.compare(0, name.size() + 1, name + ".") == 0 &&
+                             file.compare(file.size() - 4, 4, ".rev") == 0 &&
+                             file.find_first_not_of("0123456789", name.size() + 1) == file.size() - 4;
+            if (song || rev) files.push_back(file);
+        }
+        closedir(dir);
+    }
+    return files;
+}
+} // namespace
+
+bool binSong(const std::string& folder, const std::string& name) {
+    std::vector<std::string> files = songFiles(folder, name);
+    bool there = false;
+    for (const std::string& file : files) there = there || file == name + ".song";
+    if (!there) return false;
+    const std::string bin = folder + "/deleted";
+    mkdir(bin.c_str(), 0755); // fine if it is already there
+    // A name nothing in "deleted" has, the song's or a rev's: a song deleted before under this
+    // name (new songs reuse the names of deleted ones) is not written over.
+    std::string as = name;
+    for (int n = 2; !songFiles(bin, as).empty(); ++n) as = name + " " + std::to_string(n);
+    bool moved = true;
+    for (const std::string& file : files) {
+        const std::string to = as + file.substr(name.size()); // ".song", or ".<n>.rev"
+        moved = std::rename((folder + "/" + file).c_str(), (bin + "/" + to).c_str()) == 0 && moved;
+    }
+    return moved;
 }
 
 bool readTextFile(const std::string& path, std::string& text) {

@@ -628,7 +628,8 @@ In the list:
 - **Y on the open song** gives it a new two-word name. Press again for another.
 - **Hold B on a song for a second** deletes it; the row fills as you hold. A
   tap of B only closes the list. A deleted song and its revs are moved to a
-  `deleted` folder inside `songs`, not destroyed.
+  `deleted` folder inside `songs`, not destroyed. One deleted under a name
+  that is already there is kept beside it as `NAME 2` (then `NAME 3`).
 
 **SELECT + D-pad** sets the tempo from any screen: up / down by 1, left /
 right by 10.

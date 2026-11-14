@@ -688,23 +688,12 @@ void dropIfEmpty(const std::string& folder, const std::string& name) {
 }
 
 // A song deleted from the page goes where one deleted on the handheld goes:
-// into "deleted" in the song folder, with its revs ("<name>.<n>.rev").
-bool binSong(const std::string& folder, const std::string& file) {
-    const std::string bin = folder + "/deleted", name = file.substr(0, file.size() - 5);
-    mkdir(bin.c_str(), 0755); // fine if it is already there
-    std::vector<std::string> revs;
-    if (DIR* dir = opendir(folder.c_str())) {
-        while (const dirent* entry = readdir(dir)) {
-            const std::string rev = entry->d_name;
-            if (rev.size() > name.size() + 5 && rev.compare(0, name.size() + 1, name + ".") == 0 && rev.compare(rev.size() - 4, 4, ".rev") == 0 &&
-                rev.find_first_not_of("0123456789", name.size() + 1) == rev.size() - 4)
-                revs.push_back(rev);
-        }
-        closedir(dir);
-    }
-    if (std::rename((folder + "/" + file).c_str(), (bin + "/" + file).c_str()) != 0) return false;
-    for (const std::string& rev : revs) std::rename((folder + "/" + rev).c_str(), (bin + "/" + rev).c_str());
-    return true;
+// into "deleted" in the song folder, with its revs (binSong in song_file.cpp).
+// It is deleted if the song itself has gone from the folder (a rev that would not move stays behind).
+bool binSongFile(const std::string& folder, const std::string& file) {
+    binSong(folder, file.substr(0, file.size() - 5));
+    struct stat info;
+    return lstat((folder + "/" + file).c_str(), &info) != 0;
 }
 
 // What a request says after `name` in its headers ("x-to"), or "" if it does not say.
@@ -1001,7 +990,7 @@ void Transfer::answer(int fd) {
         if (!realFile(folder, name)) return reply(fd, "404 Not Found", "text/plain", "no such file\n");
         std::unique_lock<std::mutex> songs(songFiles_, std::defer_lock);
         if (kind == "songs") songs.lock(); // not while the session is going through them
-        const bool gone = kind == "songs" ? binSong(folder, name) : unlink(file.c_str()) == 0;
+        const bool gone = kind == "songs" ? binSongFile(folder, name) : unlink(file.c_str()) == 0;
         if (kind == "songs") songs.unlock();
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
         if (kind == "samples") {

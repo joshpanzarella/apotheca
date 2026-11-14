@@ -48,6 +48,10 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
 // the text has no such track (it is then as it was).
 bool dropTrackText(std::string& text, int track);
 
+// A song and its revs moved from `folder` into "deleted" inside it, under a name nothing there has
+// ("ash well", else "ash well 2", ...). False if there is no such song or a file would not move.
+bool binSong(const std::string& folder, const std::string& name);
+
 bool writeTextFile(const std::string& path, const std::string& text); // whole or not at all
 bool readTextFile(const std::string& path, std::string& text);
 

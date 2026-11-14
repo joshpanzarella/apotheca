@@ -289,6 +289,12 @@ void testDeletingAndMoving() {
     CHECK(readTextFile(songs + "/deleted/quiet road.song", kept) && kept == song && exists(songs + "/deleted/quiet road.1.rev") && exists(songs + "/deleted/quiet road.12.rev"));
     CHECK(exists(songs + "/quiet roadster.song") && exists(songs + "/quiet roadster.1.rev") && exists(songs + "/quiet road.x.rev") && exists(songs + "/loud roads.1.rev")); // that last name is as long as the deleted song's
     CHECK(del(port, door + "/songs/quiet%20road.song").status == 404);
+    // Another "quiet road", sent and deleted: the first one in "deleted" is not written over.
+    const std::string second = "apotheca-song 1\ntempo 150\n";
+    CHECK(put(port, door + "/songs/quiet%20road.song", second).status == 200);
+    CHECK(del(port, door + "/songs/quiet%20road.song").status == 200 && !exists(songs + "/quiet road.song"));
+    CHECK(readTextFile(songs + "/deleted/quiet road.song", kept) && kept == song);
+    CHECK(readTextFile(songs + "/deleted/quiet road 2.song", kept) && kept == second);
     // A chord pack and a bounce.
     CHECK(del(port, door + "/chords/sent.json").status == 200 && !exists(chords + "/sent.json") && exists(chords));
     CHECK(put(port, door + "/bounces/new.wav", wav).status == 405 && !exists(bounces + "/new.wav")); // nothing is sent there

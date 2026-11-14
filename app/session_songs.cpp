@@ -253,23 +253,7 @@ std::string Session::renameSong() {
 
 bool Session::deleteSong(const std::string& name) {
     if (folder_.empty() || name.empty() || name.find('/') != std::string::npos || !fileExists(pathOf(name))) return false;
-    const std::string bin = folder_ + "/deleted";
-    mkdir(bin.c_str(), 0755); // fine if it is already there
-    // The song and everything of its: "<name>.song" and "<name>.<n>.rev".
-    std::vector<std::string> files;
-    if (DIR* dir = opendir(folder_.c_str())) {
-        while (const dirent* entry = readdir(dir)) {
-            const std::string file = entry->d_name;
-            const bool song = file == name + ".song";
-            const bool rev = file.size() > name.size() + 5 && file.compare(0, name.size() + 1, name + ".") == 0 &&
-                             file.compare(file.size() - 4, 4, ".rev") == 0 &&
-                             file.find_first_not_of("0123456789", name.size() + 1) == file.size() - 4;
-            if (song || rev) files.push_back(file);
-        }
-        closedir(dir);
-    }
-    bool moved = true;
-    for (const std::string& file : files) moved = std::rename((folder_ + "/" + file).c_str(), (bin + "/" + file).c_str()) == 0 && moved;
+    const bool moved = binSong(folder_, name); // the song and its revs, into "deleted"; never over another
     if (name == songName_) {
         // The open one: a new song takes its place. Nothing is saved over what was moved.
         std::unique_ptr<Project> fresh(new Project);
