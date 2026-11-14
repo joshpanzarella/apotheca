@@ -481,6 +481,17 @@ void testTwinFromThePage() {
     CHECK(has(spec, "\"name\":\"JAX-EP\"") && has(spec, "\"macros\":[\"CUTOFF\",\"RESO\"") && count(spec, "\"env\":") == 5 && !has(spec, "\"env\":true"));
     CHECK(count(spec, "\"id\":") == jx3p::kSettings);
     CHECK(has(spec, "\"texts\":[\"OFF\",\"SYNC\",\"METAL\"]") && has(spec, "\"texts\":[\"SAW\",\"PULSE\",\"SQUARE\",\"NOISE\"]"));
+    // A knob reads on the page as on the device, its dial in tenths, 0.0 to 10.0 (batch 6b): the page is given
+    // all 101 readings of each of the 19 knobs, and shows the one the slider is at.
+    CHECK(count(spec, "\"texts\":") == jx3p::kSettings && count(spec, "\"texts\":[\"0.0\",\"0.1\",\"0.2\",") == 19 && count(spec, ",\"9.8\",\"9.9\",\"10.0\"]") == 19);
+    CHECK(has(spec, "{\"name\":\"CUTOFF\",\"id\":16,\"min\":0,\"max\":100,\"texts\":[\"0.0\",") && !has(spec, "\"100\"") && !has(spec, "\"10.1\""));
+    {
+        // ...and only JAX-EP's: Phazed's long settings still show their plain number there.
+        Rig other;
+        other.addSynth();
+        const std::string phazed = other.get("/design/spec").body;
+        CHECK(has(phazed, "\"name\":\"PHAZED\"") && count(phazed, "\"texts\":") > 0 && count(phazed, "\"texts\":") < count(phazed, "\"id\":"));
+    }
     rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
     rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 70");
     const float before = rig.loud();

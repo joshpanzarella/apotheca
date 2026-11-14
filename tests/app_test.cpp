@@ -6245,6 +6245,111 @@ void testTwinsDeviceScreen() {
     CHECK(track.patch.value[phazed::Octave] == 0); // and never touches the other synth's patch
 }
 
+// HOW JAX-EP READS (jx3p-plan.md, section 1 and batch 6b): a knob as its dial, in tenths, 0.0 to 10.0; a switch
+// by its positions' names; a macro as how far from the patch it is; a folder by what is known of its sounds.
+void testHowJaxepReads() {
+    const SynthSpec& spec = jx3pSpec();
+    const auto reads = [&](int id, int value) {
+        char text[32];
+        spec.settingText(id, value, text, sizeof text);
+        return std::string(text);
+    };
+    const int switches[] = {jx3p::Dco1Range, jx3p::Dco1Wave, jx3p::Dco1Lfo, jx3p::Dco1Env, jx3p::Dco2Range, jx3p::Dco2Wave, jx3p::Dco2CrossMod, jx3p::Dco2Lfo,
+                            jx3p::Dco2Env, jx3p::DcoEnvPolarity, jx3p::VcfEnvPolarity, jx3p::VcaMode, jx3p::LfoWave, jx3p::Chorus, jx3p::Velocity};
+    int knobs = 0;
+    for (int id = 0; id < jx3p::kSettings; ++id) {
+        bool isSwitch = false;
+        for (int s : switches) isSwitch = isSwitch || s == id;
+        if (isSwitch) {
+            CHECK(spec.settingMax(id) <= 3);
+            continue;
+        }
+        ++knobs;
+        CHECK(spec.settingMin(id) == 0 && spec.settingMax(id) == 100);
+        CHECK(reads(id, 0) == "0.0" && reads(id, 100) == "10.0" && reads(id, 1) == "0.1" && reads(id, 9) == "0.9" && reads(id, 10) == "1.0" && reads(id, 53) == "5.3" && reads(id, 79) == "7.9" && reads(id, 98) == "9.8");
+    }
+    CHECK(knobs == 19);
+    const auto every = [&](int id) {
+        std::string all;
+        for (int v = spec.settingMin(id); v <= spec.settingMax(id); ++v) all += (v ? " " : "") + reads(id, v);
+        return all;
+    };
+    CHECK(every(jx3p::Dco1Range) == "16' 8' 4'" && every(jx3p::Dco2Range) == "16' 8' 4'");
+    CHECK(every(jx3p::Dco1Wave) == "SAW PULSE SQUARE" && every(jx3p::Dco2Wave) == "SAW PULSE SQUARE NOISE");
+    CHECK(every(jx3p::Dco2CrossMod) == "OFF SYNC METAL" && every(jx3p::LfoWave) == "SINE SQUARE RANDOM" && every(jx3p::VcaMode) == "ENV GATE");
+    CHECK(every(jx3p::DcoEnvPolarity) == "NORMAL INVERTED" && every(jx3p::VcfEnvPolarity) == "NORMAL INVERTED");
+    const int onOff[] = {jx3p::Dco1Lfo, jx3p::Dco1Env, jx3p::Dco2Lfo, jx3p::Dco2Env, jx3p::Chorus, jx3p::Velocity};
+    for (int id : onOff) CHECK(every(id) == "OFF ON");
+    // A value out of its range (a file, a later program) reads as the nearest position, never past the list.
+    CHECK(reads(jx3p::Dco1Wave, 3) == "SQUARE" && reads(jx3p::Dco2Wave, 9) == "NOISE" && reads(jx3p::Chorus, -1) == "OFF" && reads(jx3p::LfoWave, 7) == "RANDOM");
+
+    // The pages' own words, in the panel's order.
+    const char* pages[] = {"MAIN", "DCO-1", "DCO-2", "VCF", "VCA AND ENVELOPE", "LFO AND CHORUS"};
+    CHECK(spec.pages == 6);
+    for (int p = 0; p < 6; ++p) CHECK(std::string(spec.pageNames[p]) == pages[p]);
+    const auto names = [&](int page) {
+        std::string all;
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = 0;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            all += (i ? ", " : "") + std::string(name);
+        }
+        return all;
+    };
+    CHECK(names(1) == "RANGE, WAVE, LFO, ENV, LFO DEPTH, ENV DEPTH, ENV POLARITY");
+    CHECK(names(2) == "RANGE, WAVE, CROSS MOD, TUNE, FINE, LFO, ENV");
+    CHECK(names(3) == "MIX, HPF, CUTOFF, RESONANCE, LFO MOD, ENV MOD, ENV POLARITY, KEY FOLLOW");
+    CHECK(names(4) == "MODE, LEVEL, ATTACK, DECAY, SUSTAIN, RELEASE");
+    CHECK(names(5) == "WAVE, DELAY, RATE, CHORUS, BRILLIANCE, VELOCITY");
+    CHECK(spec.itemCount(0) == 0 && spec.itemCount(6) == 0 && !spec.envelopePage(1) && !spec.roll);
+
+    // The eight macros, by lane (they are automation lanes 0 to 7), and how far each is from the patch.
+    const char* macros[kSynthMacros] = {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"};
+    for (int m = 0; m < kSynthMacros; ++m) {
+        CHECK(std::string(spec.macroNames[m]) == macros[m]);
+        char text[16];
+        spec.macroText(m, 0.5f, text, sizeof text);
+        CHECK(std::string(text) == "+0");
+        spec.macroText(m, 0.f, text, sizeof text);
+        CHECK(std::string(text) == "-100");
+        spec.macroText(m, 1.f, text, sizeof text);
+        CHECK(std::string(text) == "+100");
+        spec.macroText(m, 0.65f, text, sizeof text);
+        CHECK(std::string(text) == "+30");
+    }
+
+    // What a folder says: the two banks are from the 1983 booklet; every built-in sound's speeds are guesses;
+    // the player's own say nothing; the other synths have nothing to say. No maker's name in either.
+    CHECK(std::string(jaxepFolderNote("BANK A")) == "1983 BOOKLET, SPEEDS GUESSED" && jaxepFolderNote("BANK B") == kJaxepBankNote);
+    CHECK(std::string(jaxepFolderNote("START")) == "SPEEDS GUESSED" && jaxepFolderNote("BANKS") == kJaxepGuessNote && jaxepFolderNote("USER") == kJaxepGuessNote && jaxepFolderNote("") == kJaxepGuessNote);
+    CHECK(spec.folderNote && !phazedSpec().folderNote && !qmodSpec().folderNote && spec.pageReadsAsDevice && !phazedSpec().pageReadsAsDevice && !qmodSpec().pageReadsAsDevice);
+    for (int i = 0; i < Jx3p::presetCount(); ++i) CHECK(spec.folderNote(i) == jaxepFolderNote(Jx3p::presetCategory(i)));
+    UserPreset own;
+    own.name = "MINE";
+    own.values.assign(jx3p::kPatchSettings, 0);
+    own.macros.assign(kSynthMacros, 0.5f);
+    setUserPresets(TrackKind::Jx3p, {own});
+    CHECK(spec.presetCount() == Jx3p::presetCount() + 1 && spec.folderNote(Jx3p::presetCount()) == nullptr && spec.folderNote(0) != nullptr);
+    setUserPresets(TrackKind::Jx3p, {});
+
+    // On the screen: MAIN's PRESET row says it, and does not for the player's own.
+    std::unique_ptr<Rig> rig(onTwin());
+    rig->tap(A);
+    rig->tap(R2);
+    SynthScreen& screen = rig->app.twin();
+    CHECK(rig->view() == View::Device && screen.folderNote() == kJaxepGuessNote);
+    screen.folderNoteAs(kJaxepBankNote);
+    CHECK(screen.folderNote() == kJaxepBankNote);
+    screen.folderNoteAs(nullptr);
+    setUserPresets(TrackKind::Jx3p, {own});
+    rig->app.session().chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(screen.folderNote() == nullptr);
+    rig->project().track = 0; // (and a drum track is not asked)
+    setUserPresets(TrackKind::Jx3p, {});
+    CHECK(rig->app.phazed().folderNote() == nullptr && rig->app.qmod().folderNote() == nullptr);
+}
+
 // How loud a note at `velocity` is on the Rig's track 2, the JX-3P, as it stands.
 float jxLoud(Rig& rig, float velocity) {
     rig.render(48000); // whatever sounded before has rung out
@@ -8981,6 +9086,7 @@ int main(int argc, char** argv) {
     testEveryPatchSettingIsOnSomePage();
     testAddingTwinAnalog();
     testTwinsDeviceScreen();
+    testHowJaxepReads();
     testTheEngineHearsTwinsSettings();
     testAPresetKeepsTheTracksOwnValues();
     if (failures) {

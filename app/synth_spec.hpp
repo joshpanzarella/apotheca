@@ -29,7 +29,20 @@ struct SynthSpec {
     bool (*envelopePage)(int page); // an eight-step envelope, drawn out
     // For a synth whose sounds are generated from a number: a new sound from `seed`. Null for the others.
     void (*roll)(TrackData& track, unsigned seed);
+    // A few words about the folder a preset is in, said on MAIN beside PRESET; null for a synth with
+    // nothing to say, and may give null for a preset. JAX-EP's say that its speeds are guesses.
+    const char* (*folderNote)(int preset);
+    // The WiFi designer page is given every setting's values as the device reads them, however many
+    // there are (JAX-EP: a knob reads as its dial, 0.0 to 10.0, not as 0 to 100). False: only for a
+    // setting of few values, a choice, and a longer one shows its plain number there.
+    bool pageReadsAsDevice;
 };
+
+// What JAX-EP's folders say (jx3p-plan.md, section 4): the two banks are from a booklet of 1983 and may
+// not be the machine's own sounds, and every time and rate in the synth is a guess until it is measured.
+extern const char* const kJaxepBankNote;  // BANK A, BANK B
+extern const char* const kJaxepGuessNote; // any other built-in folder
+const char* jaxepFolderNote(const char* folder); // which of the two a built-in folder says
 
 const SynthSpec& phazedSpec();
 const SynthSpec& jx3pSpec(); // JAX-EP on the device

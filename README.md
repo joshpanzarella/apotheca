@@ -1281,6 +1281,23 @@ each line's volume, wave and pitch envelopes drawn out). JAX-EP has
 five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). L1 and R1 turn the pages; B
 goes back to MAIN.
 
+JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
+pages are that synth's panel:
+
+- **A knob reads as a dial, 0.0 to 10.0**, in tenths, on the handheld and on
+  the designer page. A switch reads by its positions (RANGE 16', 8', 4'; WAVE
+  SAW, PULSE, SQUARE; CROSS MOD OFF, SYNC, METAL).
+- **A macro reads -100 to +100.** At +0 the setting is as the preset has it;
+  below, it slides down to 0.0; above, up to 10.0.
+- **MAIN says SPEEDS GUESSED beside PRESET.** Every time and rate in this
+  synth (envelope times, LFO rate and delay, the chorus's sweep, where the
+  filter's cutoff sits) is a guess until it is measured from recordings. The
+  two banks of built-in sounds, when they come, will say 1983 BOOKLET, SPEEDS
+  GUESSED: their settings are from a booklet of that year and may not be the
+  machine's own. One of your own presets says nothing.
+- **VELOCITY and BRILLIANCE (last page) belong to the track**, not to the
+  preset: picking a preset leaves them as set.
+
 How fast the drum grid moves is set in one place, `Feel` in
 `app/pattern_screen.hpp`.
 

@@ -4,6 +4,7 @@
 
 #include "apotheca/envelope.hpp"
 #include <cstdio>
+#include <cstring>
 
 namespace apotheca {
 
@@ -119,8 +120,7 @@ void item(int page, int index, int& id, const char*& name) {
 } // namespace pz
 
 // ---- JAX-EP (Jx3p in the code) ----------------------------------------------------------
-// The plan: docs/plans/jx3p-plan.md, section 4. Batch 6a wrote this much so that a track plays, saves
-// and loads; how each value reads at every size, and the folder's line, are batch 6b's.
+// The plan: docs/plans/jx3p-plan.md, section 4.
 
 namespace jx {
 using namespace jx3p;
@@ -180,8 +180,15 @@ void settingText(int id, int value, char* out, int size) {
     }
 }
 
+// A macro reads -100 to +100, +0 "as the patch": under the middle it slides its setting from the
+// patch's value down to 0, over it up to 10 (the engine's apply), so the number is how far, not a dial.
 void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
 bool envelopePage(int) { return false; }
+// The player's own presets (the USER folder) say nothing: they were set by ear, on this synth.
+const char* folderNote(int index) {
+    if (Presets<Jx3p, TrackKind::Jx3p>::own(index)) return nullptr;
+    return jaxepFolderNote(Jx3p::presetCategory(index));
+}
 int itemCount(int page) { return page >= 1 && page < 6 ? kPageItems[page].count : 0; }
 void item(int page, int index, int& id, const char*& name) {
     const Item& it = kPageItems[page].items[index];
@@ -253,11 +260,15 @@ void roll(TrackData& t, unsigned seed) {
 
 } // namespace
 
+const char* const kJaxepBankNote = "1983 BOOKLET, SPEEDS GUESSED";
+const char* const kJaxepGuessNote = "SPEEDS GUESSED";
+const char* jaxepFolderNote(const char* folder) { return std::strncmp(folder, "BANK ", 5) == 0 ? kJaxepBankNote : kJaxepGuessNote; }
+
 const SynthSpec& phazedSpec() {
     static const SynthSpec spec = {"PHAZED", Presets<Phazed, TrackKind::Phazed>::count, Presets<Phazed, TrackKind::Phazed>::name, Presets<Phazed, TrackKind::Phazed>::category, pz::loadPreset, pz::values,
                                    phazed::settingMin, phazed::settingMax, pz::settingText,
                                    {"TONE", "MOTION", "ATTACK", "RELEASE", "DETUNE", "VIBRATO", "CHORUS", "OCTAVE"}, pz::macroText,
-                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr};
+                                   10, pz::kPages, pz::itemCount, pz::item, pz::envelopePage, nullptr, nullptr, false};
     return spec;
 }
 
@@ -265,7 +276,7 @@ const SynthSpec& jx3pSpec() {
     static const SynthSpec spec = {"JAX-EP", Presets<Jx3p, TrackKind::Jx3p>::count, Presets<Jx3p, TrackKind::Jx3p>::name, Presets<Jx3p, TrackKind::Jx3p>::category, jx::loadPreset, jx::values,
                                    jx3p::settingMin, jx3p::settingMax, jx::settingText,
                                    {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"}, jx::macroText,
-                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, nullptr};
+                                   6, jx::kPages, jx::itemCount, jx::item, jx::envelopePage, nullptr, jx::folderNote, true};
     return spec;
 }
 
@@ -285,7 +296,7 @@ const SynthSpec& qmodSpec() {
     static const SynthSpec spec = {"QMOD", Presets<Qmod, TrackKind::Qmod>::count, Presets<Qmod, TrackKind::Qmod>::name, Presets<Qmod, TrackKind::Qmod>::category, qm::loadPreset, qm::values,
                                    qmod::settingMin, qmod::settingMax, qm::settingText,
                                    {"ENTANGLE", "TENSION", "EVOLVE", "VARIATION", "ATTACK", "RELEASE", "WIDTH", "OCTAVE"}, qm::macroText,
-                                   4, qm::kPages, qm::itemCount, qm::item, qm::envelopePage, qm::roll};
+                                   4, qm::kPages, qm::itemCount, qm::item, qm::envelopePage, qm::roll, nullptr, false};
     return spec;
 }
 

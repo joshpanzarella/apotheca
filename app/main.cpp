@@ -15,7 +15,8 @@
 //                  add-track, change-instrument, song-deleting, song-mixer, song-mixer-master
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
-//                  twin, twin1 .. twin5 (JAX-EP's main panel and pages; the views keep the old word until batch 6b)
+//                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
+//                  jaxep-bank (MAIN as a folder of its two banks will say it), jaxep-held (a knob, A held, turned)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -867,12 +868,22 @@ int main(int argc, char** argv) {
         app.project().track = 1;
         app.session().view = View::Device;
         app.phazed().goTo(std::atoi(view + 4), 1);
-    } else if (std::strncmp(view, "twin", 4) == 0) {
+    } else if (std::strncmp(view, "jaxep", 5) == 0) {
         // A JAX-EP track, added the way the Song screen adds one.
         app.session().addTrack(TrackKind::Jx3p);
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
-        app.twin().goTo(std::atoi(view + 4), view[4] ? 0 : SynthScreen::kFirstMacro + 1);
+        if (std::strcmp(view, "jaxep-bank") == 0) {
+            // The 32 presets and their two folders are the plan's batch 7; this is what a folder of them says.
+            app.twin().folderNoteAs(kJaxepBankNote);
+            app.twin().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "jaxep-held") == 0) {
+            app.twin().goTo(3, 2);  // VCF: CUTOFF
+            pushKey(SDLK_x, true);  // hold A
+            tapKey(SDLK_DOWN, 27);  // and turn it down: 7.3
+        } else {
+            app.twin().goTo(std::atoi(view + 5), view[5] ? 0 : SynthScreen::kFirstMacro + 1);
+        }
     } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one
         // bar, with hits on the beat whose starts have been rolled.

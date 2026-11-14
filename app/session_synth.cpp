@@ -221,8 +221,9 @@ std::string Session::designSpec(TrackKind kind) const {
             const int lo = spec->settingMin(id), hi = spec->settingMax(id);
             std::snprintf(text, sizeof text, ",\"id\":%d,\"min\":%d,\"max\":%d", id, lo, hi);
             out += (i ? ",{\"name\":" : "{\"name\":") + jsonText(name) + text;
-            // A setting with few values is a choice: the page is given their names.
-            if (hi - lo <= 40) {
+            // A setting with few values is a choice: the page is given their names. JAX-EP's knobs
+            // too (pageReadsAsDevice): the page then shows 7.0 where the device does, not 70.
+            if (hi - lo <= 40 || spec->pageReadsAsDevice) {
                 out += ",\"texts\":[";
                 for (int v = lo; v <= hi; ++v) {
                     spec->settingText(id, v, text, sizeof text);

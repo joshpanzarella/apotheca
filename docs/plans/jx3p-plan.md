@@ -22,8 +22,11 @@ LFO, its DELAY and its routes (`engine/src/jx3p/lfo.hpp`,
 `tests/jx3p_chorus_test.cpp`); see "Batch 5: what it learned". **Batch 6a is
 done (2026-11-14)**: the synth is in the app as **JAX-EP** (the owner's name,
 the same day), in Twin Analog's place; songs and presets are written `jaxep`
-and an old `track twin` is read; see "Batch 6a: what it learned". Nobody has
-heard anything: every figure is a test's.
+and an old `track twin` is read; see "Batch 6a: what it learned". **Batch 6b
+is done (2026-11-14)**: its pages are checked at every size and theme, a knob
+reads as its dial on the handheld and on the designer page, and MAIN says
+SPEEDS GUESSED; see "Batch 6b: what it learned". Nobody has heard anything:
+every figure is a test's.
 
 ## The recommendation
 
@@ -619,6 +622,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jaxep` and the `twin` reading, `.jaxep` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
 | | **Batch 6a DONE (2026-11-14, branch `jx3p`).** `TrackKind::Twin` is `Jx3p`; the instruments row is JAX-EP's (word `jaxep`, presets `NAME.jaxep`); `track twin` is read as planned (`trackKindFromWord`'s `old`, `parseSong`'s `oldSound`); a preset, built-in or the player's own, writes and keeps ids 0 to 31 (`presetSettingCount`), a song keeps all 34. The spec's five pages, its macro names and `settingText` in dial tenths were written here too, since Twin's spec could not stay: 6b checks them at every size and adds the folder line and the views. `tests/twinsong_main.inc` is the old song (not to be remade). **Tests**: `ctest` 38 of 38; `save_test` `testAnOldTwinSong`, `app_test` `testAPresetKeepsTheTracksOwnValues` and the three JAX-EP screen tests, `design_test`'s page test, `words` with the makers' rule. **Mutants: 27 made, 27 killed** (23 in the app, 4 in the words test). The sound is not touched; `bench`'s rows are under "Batch 6a: what it learned" | | |
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
+| | **Batch 6b DONE (2026-11-14, branch `jx3p`).** The pages, `settingText` and the macro names were in 6a's commit; this batch finished them: the folder's note on MAIN (`SynthSpec::folderNote`), a knob as its dial on the designer page too (`SynthSpec::pageReadsAsDevice`), the still views `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank`, `jaxep-held` (in `main.cpp` and `kViews`; the `twin` views are gone), README. **Tests**: `ctest` 39 of 39; `app_test` `testHowJaxepReads` (every knob at 0.0, 0.1, 0.9, 1.0, 5.3, 7.9, 9.8 and 10.0, every switch's words, a value out of range, the pages' and macros' names, `macroText` at both ends, what a folder says); `textsize` (all 34 settings with the cursor on each, at its least and, A held, at its most, and MAIN's PRESET row three ways, at all four sizes); `design_test` (the page is given all 101 readings of each of the 19 knobs, and only JAX-EP's); `textviews` and `themeviews` draw the nine views at four sizes and in six themes. **Mutants: 38 made, 38 killed** (23 on this batch's code, 15 on what 6a's tests cover, again). The engine is not touched | | |
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
 | 8b | **Twin's code out.** Delete `twin.hpp/.cpp` and `twin_test`; remove `setQualityLimit`, the load watch, "BUSY: OVERSAMPLING DOWN", the bounce's x8 | All of `ctest` | No word "twin" left but the file reader's |
@@ -867,6 +871,42 @@ to 0.8, QMOD 2.8 to 3.3, Twin x1 4.1. As batch 5's.
 pick from at SMALL, LARGE and XL (BROWN and PAPER), the SONG screen with twelve
 tracks (JAX in the narrow heads), JAX-EP's MAIN page and its last page.
 Nothing was heard, and nothing was run on the handheld.
+
+### Batch 6b: what it learned (2026-11-14)
+
+6a and 6b were first built by one run that a usage limit cut off; its work went
+out as 0.485 unreviewed. This batch read that commit against the lists above
+and built what was missing.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "On the device each folder's line says 1983 BOOKLET, SPEEDS GUESSED" | **On MAIN's PRESET row**, between the word PRESET and the count (`SynthScreen::kNoteGap` 10 after the word). A folder whose name begins "BANK " says the whole line (`kJaxepBankNote`); **any other built-in folder says SPEEDS GUESSED** (`kJaxepGuessNote`), so the one sound there is today, Start, says it; one of the player's own says nothing | The FOLDER box is 200 wide and the line is 245 at LARGE. The speeds are guesses for every sound of this synth, the banks' or not |
+| "checked at XL" | The row keeps room for a count as long as "888 / 888" whatever the count is. At LARGE the three are 57 + 245 + 73 of 379; at XL 61 + 262 + 78, which does not fit, so **at XL the whole row (PRESET, the note, the count) is drawn at LARGE**, where LARGE draws it. The short note fits at every size and follows the setting | "A held text takes its row with it" |
+| The banks' note cannot be seen until batch 7 (no folder is a bank yet) | `SynthScreen::folderNoteAs` shows it for a still and a test: the view `jaxep-bank`, and `textsize` with a hundred presets ("1 / 100") | So the long line is checked now, not when the presets land |
+| `settingText` in dial tenths | So on the handheld (6a). **On the designer page a knob read 0 to 100** (the page shows a plain number for a setting of more than 40 values): `pageReadsAsDevice` gives the page every reading, and it shows 7.3 where the handheld does. About 16 KB more in the page's spec, JAX-EP's only | Tried in Chrome (Playwright) against `design_test`'s server: CUTOFF read 10.0, and 7.3 after its slider was moved. The page's script is not changed |
+| `macroText` | -100 to +100, as the other synths' (`plusMinus`): how far from the patch, not a dial value | The macro's reading does not know the patch's value; +0 is "as the preset" on every synth |
+| Views `jx3p`, `jx3p0..5` | `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank`, `jaxep-held` (a knob, A held, turned to 7.3) | The device's name |
+| Picking a built-in preset rests the macros (main's 0.464 mend) | Holds on JAX-EP: `testABuiltInPresetRestsTheMacrosWhereTheyShow` runs it for all three synths; with the engine's rest and the app's send both taken out and the test cut to JAX-EP alone, it fails | Asked for with this batch |
+
+**Left for later batches, as 6a left them**: `App::twin()` and `twin_`, the
+tests' names with Twin in them (8a, 8b); README's engineering half on Twin
+(8c).
+
+**Mutants (batch 6b)**: 23 on this batch's code (the dial's tenths, each
+switch's words, the clamp, `macroText`, each branch of the folder's note, the
+page's readings for JAX-EP and for nobody else, each of the row's three texts'
+lettering, the gap, the room, the count's place, the row's height, the still's
+override, a view left out of `kViews`): **23 killed**. 15 on what the cut-off
+run's tests cover (a preset writing or keeping all 34, `twin` not read or not
+old, each of the old sound's lines read, lanes 0 to 7 kept or all lanes
+dropped, the word, the ending, the short name, a maker's name in the app, a
+new track's VELOCITY, the macros' rest): **15 killed**.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN at
+LARGE and XL, MAIN with a bank's note at LARGE, XL and SMALL on PAPER, the
+five pages at LARGE, DCO-2 at XL, the last page at XL on GREY, a knob held;
+and the designer page in Chrome. Nothing was heard, nothing was run on the
+handheld.
 
 ### Batches 2 to 5: the review's mend (2026-11-14)
 

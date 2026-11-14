@@ -308,11 +308,24 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     if (page_ == 0) {
         // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        valueBox(r, fonts, 8, kPresetY, 200, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        valueBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        char place[24];
         std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
-        valueBox(r, fonts, 216, kPresetY, 416, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
-        std::snprintf(text, sizeof text, "%d / %d", t.preset + 1, spec_.presetCount());
-        fonts.small.drawRight(r, 622.f, kPresetY + 7.f, text, kDim);
+        std::snprintf(place, sizeof place, "%d / %d", t.preset + 1, spec_.presetCount());
+        const float rowY = kPresetY + 7.f, countRight = kPresetX + kPresetW - 10.f;
+        if (const char* note = folderNote()) {
+            // PRESET, the folder's note and the count share the top row: one lettering for all three.
+            const float room = countRight - (kPresetX + 7.f) - fonts.small.width("PRESET") - fonts.small.width(kCountLongest) - 2.f * kNoteGap;
+            const Font& row = fonts.within(&Fonts::small, note, room);
+            const float y = rowY; // (a row held at LARGE is where LARGE draws it)
+            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, -1.f, cursor_ == kPreset, holding_);
+            row.draw(r, kPresetX + 7.f, y, "PRESET", kDim);
+            row.draw(r, kPresetX + 7.f + row.width("PRESET") + kNoteGap, y, note, kDim);
+            row.drawRight(r, countRight, y, place, kDim);
+        } else {
+            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
+            fonts.small.drawRight(r, countRight, rowY, place, kDim);
+        }
 
         for (int m = 0; m < kMacros; ++m) {
             const int x = 8 + (m % 4) * kMacroPitchX, y = kMacroY + (m / 4) * (kMacroH + kMacroGap);

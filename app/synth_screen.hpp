@@ -60,6 +60,16 @@ public:
         return rows < 1 ? kMacroH : (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
     }
 
+    // MAIN's two boxes, and the folder's note (SynthSpec::folderNote: JAX-EP's "SPEEDS GUESSED"). The
+    // note stands on PRESET's top row, kNoteGap after the word PRESET, and the row keeps room for a
+    // count as long as kCountLongest whatever the count is, so the note is drawn the same way for
+    // every preset. Where the three do not fit at the size chosen the whole row is drawn at LARGE.
+    static constexpr int kFolderX = 8, kFolderW = 200, kPresetX = 216, kPresetW = 416, kNoteGap = 10;
+    static constexpr const char* kCountLongest = "888 / 888";
+    // For a still or a test: the note as a folder of batch 7 (BANK A) will say it, or nullptr for the spec's own.
+    void folderNoteAs(const char* note) { noteAs_ = note; }
+    const char* folderNote() const { return noteAs_ ? noteAs_ : spec_.folderNote ? spec_.folderNote(trk().preset) : nullptr; }
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
@@ -73,6 +83,7 @@ private:
     int columns() const;
     bool envelopePage() const { return page_ > 0 && spec_.envelopePage(page_); }
     int* values() { return spec_.values(trk()); }
+    const char* noteAs_ = nullptr;
     const int* values() const { return spec_.values(const_cast<TrackData&>(trk())); }
     void moveCursor(Button direction);
     void stepPreset(int by);

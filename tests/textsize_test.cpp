@@ -1117,7 +1117,7 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.twin(), "TWIN"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.twin(), "JAX-EP"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1139,6 +1139,86 @@ void testTheOtherScreens() {
         rig.frames(1);
     }
     CHECK(pagesSeen >= 10 + 4 + 2);
+
+    // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
+    // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Jx3p) project.track = t;
+        CHECK(project.current().kind == TrackKind::Jx3p);
+        SynthScreen& jax = rig.app.twin();
+        const SynthSpec& spec = jx3pSpec();
+        int settings = 0, knobs = 0;
+        for (int page = 1; page < jax.pageCount(); ++page) {
+            for (int stop = 0; stop < spec.itemCount(page); ++stop, ++settings) {
+                jax.goTo(page, stop);
+                const int id = jax.settingHere();
+                CHECK(id >= 0 && id < jx3p::kSettings);
+                const int was = project.current().jx3p.value[id];
+                char reads[32];
+                session.setSynthSetting(project.track, id, spec.settingMin(id));
+                rig.frames(1);
+                holds(rig, "JAX-EP, a setting at its least");
+                spec.settingText(id, spec.settingMin(id), reads, sizeof reads);
+                CHECK(drew(reads));
+                session.setSynthSetting(project.track, id, spec.settingMax(id));
+                rig.key(A, true);
+                rig.frames(1);
+                holds(rig, "JAX-EP, a setting at its most, A held");
+                spec.settingText(id, spec.settingMax(id), reads, sizeof reads);
+                CHECK(drew(reads));
+                knobs += std::string(reads) == "10.0" ? 1 : 0;
+                rig.key(A, false);
+                rig.frames(1);
+                session.setSynthSetting(project.track, id, was);
+            }
+        }
+        CHECK(settings == jx3p::kSettings && knobs == 19);
+
+        // MAIN: what the folder says stands on PRESET's top row, between the word and the count. The short
+        // one follows the setting; the long one (a bank's, the plan's batch 7) does not fit at XL beside a
+        // count of three figures, and the whole row is then at LARGE, as LARGE draws it.
+        const Fonts& large = *screens().at[kTextLarge];
+        const Fonts& xl = *screens().at[kTextXl];
+        const auto place = [](const textfit::Frame& frame, const char* words, float& x, float& w) {
+            for (const textfit::Text& t : frame.texts)
+                if (t.words == words && t.y >= 30.f) { x = t.x; w = t.w; return true; }
+            return false;
+        };
+        const auto rowIsClear = [&](const textfit::Frame& frame, const char* note, const char* count) {
+            float px = 0.f, pw = 0.f, nx = 0.f, nw = 0.f, cx = 0.f, cw = 0.f;
+            if (!place(frame, "PRESET", px, pw) || !place(frame, note, nx, nw) || !place(frame, count, cx, cw)) return false;
+            return std::fabs(nx - (px + pw + SynthScreen::kNoteGap)) < 0.01f && cx - (nx + nw) >= SynthScreen::kNoteGap && std::fabs(cx + cw - 622.f) < 0.01f;
+        };
+        jax.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        holds(rig, "JAX-EP MAIN, what its folder says");
+        CHECK(std::string(kJaxepGuessNote) == "SPEEDS GUESSED" && drew(kJaxepGuessNote) && rowIsClear(lastLarge, kJaxepGuessNote, "1 / 1") && rowIsClear(lastXl, kJaxepGuessNote, "1 / 1"));
+        CHECK(capAtXl(kJaxepGuessNote) == xl.small.capHeight() && capAtXl("PRESET", 30.f) == xl.small.capHeight() && capAtXl("1 / 1") == xl.small.capHeight());
+        std::vector<UserPreset> many(99);
+        for (std::size_t i = 0; i < many.size(); ++i) many[i].name = "OWN " + std::to_string(i);
+        setUserPresets(TrackKind::Jx3p, many);
+        jax.folderNoteAs(kJaxepBankNote);
+        rig.frames(1);
+        holds(rig, "JAX-EP MAIN, what a bank says, a hundred presets");
+        CHECK(std::string(kJaxepBankNote) == "1983 BOOKLET, SPEEDS GUESSED" && drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepBankNote, "1 / 100") && rowIsClear(lastXl, kJaxepBankNote, "1 / 100"));
+        CHECK(xl.small.capHeight() > large.small.capHeight());
+        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 100") == large.small.capHeight());
+        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 100"));
+        // ...and it would not have fitted at XL: the row's room is for the longest count there can be.
+        CHECK(7.f + xl.small.width("PRESET") + xl.small.width(kJaxepBankNote) + xl.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap > SynthScreen::kPresetW - 10.f);
+        std::printf("    JAX-EP's PRESET row at LARGE: %.1f + %.1f + %.1f, at XL %.1f + %.1f + %.1f, of %d\n", large.small.width("PRESET"), large.small.width(kJaxepBankNote), large.small.width(SynthScreen::kCountLongest), xl.small.width("PRESET"), xl.small.width(kJaxepBankNote), xl.small.width(SynthScreen::kCountLongest), SynthScreen::kPresetW - 17 - 2 * SynthScreen::kNoteGap);
+        CHECK(7.f + large.small.width("PRESET") + large.small.width(kJaxepBankNote) + large.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap <= SynthScreen::kPresetW - 10.f);
+        jax.folderNoteAs(nullptr);
+        // One of the player's own says nothing, and its row is as any synth's.
+        session.chooseSynthPreset(project.track, Jx3p::presetCount());
+        rig.frames(2);
+        holds(rig, "JAX-EP MAIN, one of the player's own");
+        CHECK(drew("OWN 0") && drew("USER") && drew("PRESET") && !drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && capAtXl("PRESET", 30.f) == xl.small.capHeight());
+        session.chooseSynthPreset(project.track, 0);
+        setUserPresets(TrackKind::Jx3p, {});
+        rig.frames(2);
+    }
 
     // The sampler: with nothing, with the longest name there is, and with a recording that has gone.
     for (int t = 0; t < kNumTracks; ++t)
