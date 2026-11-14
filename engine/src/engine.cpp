@@ -798,7 +798,15 @@ void Engine::apply(const Command& c) {
             fx.ratchet = static_cast<std::uint8_t>(c.bar < 0 ? 0 : (c.bar > kMaxRatchet ? kMaxRatchet : c.bar));
             fx.reverse = c.scene == 1;
             setCutAndThrow(fx, c.extra);
-            playHit(tracks_[c.track], c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f, fx, 0.0);
+            playHit(tracks_[c.track], c.a, c.value, static_cast<float>(c.b) * 1e-4f, c.c > 0 ? static_cast<float>(c.c) * 1e-4f : -1.f, fx, 0.0, c.e == 1);
+        }
+        break;
+    case Command::StopAudition:
+        if (validTrack(c.track) && tracks_[c.track].hasDrums && c.a >= 0 && c.a < kDrumLanes) {
+            Track& track = tracks_[c.track];
+            track.drums.letGo(c.a);
+            for (auto& p : track.pending[c.a]) // a ratchet's pieces still to come of it: not played
+                if (p.velocity > 0.f && p.how.audition) p.velocity = 0.f;
         }
         break;
     case Command::SetStepFx:
@@ -1234,10 +1242,11 @@ void Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
 // hit several times across the step; each of its hits is cut by the next, and
 // a hit that is CUT stops when its time is up, or when the next of the ratchet
 // comes, whichever is first.
-void Engine::playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples) {
+void Engine::playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition) {
     const int hits = fx.hits();
     const double gap = samplesPerStep_ / hits;
     HitPlay how;
+    how.audition = audition;
     how.rate = fx.pitch == 0 ? 1.f : std::exp2(static_cast<float>(fx.pitch) / 12.f);
     how.reverse = fx.reverse != 0;
     how.throwTo = fx.throwTo & 3; // every hit of a ratchet is thrown: they are all this one hit

@@ -64,7 +64,7 @@ void SamplePicker::moveTo(int row, bool playing) {
     if (row == cursor_) return;
     cursor_ = row;
     if (jobs_.use) jobs_.use(row == 0 ? "" : names_[static_cast<std::size_t>(row - 1)]);
-    if (!playing && jobs_.hear) jobs_.hear();
+    if (!playing && jobs_.hear) jobs_.hear(false);
 }
 
 void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
@@ -104,7 +104,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     } else if (b == Button::A) {
         open_ = false; // what is showing is already on
     } else if (b == Button::X) {
-        if (jobs_.hear) jobs_.hear();
+        if (jobs_.hear) jobs_.hear(true); // for as long as X is held
     }
 }
 

@@ -24,12 +24,12 @@
 namespace apotheca {
 
 namespace {
-constexpr Uint32 kAuditionMs = 350;
 constexpr Uint32 kSaveEveryMs = 2000;
 constexpr Uint32 kTempoSettleMs = 250;
 }
 
 void Session::togglePlay(bool song) {
+    letGoHeard(); // X held is a sound alone; the song does not carry it on
     project.playing = !project.playing;
     Command c;
     c.type = project.playing ? Command::Play : Command::Stop;
@@ -45,6 +45,7 @@ void Session::panic(bool held) {
     c.a = held ? 1 : 0;
     engine.send(c);
     if (!held) return;
+    dropHearing(); // the engine has cut it
     project.playing = false;
     project.silenced = true;
 }
@@ -129,9 +130,103 @@ void Session::audition(int track, int pitch, float velocity) {
     c.a = pitch;
     c.value = velocity;
     engine.send(c);
+    // (A setting turned while X holds this very key is heard on the held note: it stays held.)
+    const bool held = hearingHeld() && heard_.lane < 0 && heard_.track == track && heard_.pitch == pitch;
     slot->track = track;
     slot->pitch = pitch;
-    slot->until = now_ + kAuditionMs;
+    slot->until = held ? kHeldOn : now_ + kAuditionMs;
+}
+
+void Session::auditionHeld(int track, int pitch, float velocity, const void* owner) {
+    letGoHeard();
+    audition(track, pitch, velocity);
+    for (Sounding& s : sounding_)
+        if (s.track == track && s.pitch == pitch) s.until = kHeldOn;
+    heard_ = Heard();
+    heard_.track = track;
+    heard_.pitch = pitch;
+    heard_.since = now_;
+    heard_.owner = owner;
+    heard_.held = true;
+}
+
+void Session::hearLaneHeld(int track, int lane, float level, const void* owner, float start, float part) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes) return;
+    letGoHeard();
+    for (LaneStop& stop : laneStops_)
+        if (stop.track == track && stop.lane == lane) stop.track = -1; // a tap just before: not this one's stop
+    Command c;
+    c.type = Command::Trigger;
+    c.track = track;
+    c.a = lane;
+    c.b = static_cast<int>(std::round(start * 10000.f));
+    c.c = static_cast<int>(std::round(part * 10000.f));
+    c.value = level;
+    c.e = 1; // StopAudition fades this one, and nothing else on the lane
+    engine.send(c);
+    heard_ = Heard();
+    heard_.track = track;
+    heard_.lane = lane;
+    heard_.since = now_;
+    heard_.owner = owner;
+    heard_.held = true;
+}
+
+void Session::letGoHeard() {
+    if (!hearingHeld()) return;
+    heard_.held = false;
+    const Uint32 least = heard_.since + kAuditionMs; // a tap is heard as it always was
+    heard_.ends = now_ > least ? now_ : least;
+    if (heard_.lane < 0) {
+        for (Sounding& s : sounding_)
+            if (s.track == heard_.track && s.pitch == heard_.pitch && s.until == kHeldOn) s.until = heard_.ends;
+    } else {
+        LaneStop* free = &laneStops_[0];
+        for (LaneStop& stop : laneStops_)
+            if (stop.track < 0 || (free->track >= 0 && stop.at < free->at)) free = &stop;
+        if (free->track >= 0) stopLane(free->track, free->lane); // all four waiting: the soonest goes now
+        free->track = heard_.track;
+        free->lane = heard_.lane;
+        free->at = heard_.ends;
+    }
+    endHearing();
+}
+
+void Session::keepHearing(bool xHeld, const void* screen) {
+    if (hearingHeld() && (!xHeld || screen != heard_.owner || project.track != heard_.track)) letGoHeard();
+}
+
+void Session::stopLane(int track, int lane) {
+    Command c;
+    c.type = Command::StopAudition;
+    c.track = track;
+    c.a = lane;
+    engine.send(c);
+}
+
+void Session::endHearing() {
+    for (LaneStop& stop : laneStops_) {
+        if (stop.track < 0 || now_ < stop.at) continue;
+        stopLane(stop.track, stop.lane);
+        stop.track = -1;
+    }
+    for (Sounding& s : sounding_) {
+        if (s.track < 0 || now_ < s.until) continue;
+        Command c;
+        c.type = Command::NoteOff;
+        c.track = s.track;
+        c.a = s.pitch;
+        engine.send(c);
+        s.track = -1;
+    }
+}
+
+void Session::dropHearing() {
+    if (heard_.track >= 0 && heard_.held) heard_.ends = now_;
+    heard_.held = false;
+    for (LaneStop& stop : laneStops_) stop.track = -1;
+    for (Sounding& s : sounding_)
+        if (s.until == kHeldOn) s.until = now_; // (its NoteOff, next update, finds it let go already)
 }
 
 void Session::update(Uint32 nowMs) {
@@ -232,15 +327,7 @@ void Session::update(Uint32 nowMs) {
         nextSaveAt_ = nowMs + kSaveEveryMs;
         saveNow();
     }
-    for (Sounding& s : sounding_) {
-        if (s.track < 0 || nowMs < s.until) continue;
-        Command c;
-        c.type = Command::NoteOff;
-        c.track = s.track;
-        c.a = s.pitch;
-        engine.send(c);
-        s.track = -1;
-    }
+    endHearing();
     syncSong();
 }
 
@@ -1049,6 +1136,7 @@ void Session::sendSong() {
     engine.send(c);
     project.playing = false;
     for (Sounding& sounding : sounding_) sounding.track = -1;
+    dropHearing();
 
     for (int track = 0; track < kNumTracks; ++track) engine.removeTrack(track); // those with nothing say so; fine
     for (auto& track : sounds_)

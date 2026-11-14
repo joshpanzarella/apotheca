@@ -129,7 +129,10 @@ plays the recording as it was made; an octave up, twice as fast.
 **PITCH is semitones up or down, and up is higher.** (It used to be ROOT, a
 key, which ran the other way. Old songs open as they were.) **X hears it at
 middle C**: its own pitch at PITCH 0, and the change when PITCH or TUNE is
-moved. A setting is also heard as it is changed, when the song is stopped.
+moved. **Hold X and it plays for as long as you hold it**, to the end of the
+recording; let go and it stops (its RELEASE runs). A tap plays a moment
+(0.35 s), as before. Pressed again, it starts again from the top. A setting
+is also heard as it is changed, when the song is stopped.
 
 **Y is Catch** here too: the last bar the song played becomes this track's
 recording. Eight notes at a time.
@@ -146,7 +149,7 @@ as a list, with the one showing drawn as a waveform and its length.
 | **L1 / R1** | The folder before / after (when there are folders) |
 | A | Keep it |
 | B | A tap: put back what was there before the list opened |
-| X | Hear it again |
+| X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
 | START | Play / stop, with the list still open |
 
@@ -201,7 +204,8 @@ to the sound just now.
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
 | | B | Its usual value. A send: nothing sent. |
 
-X hears the track and START plays, as everywhere. Y does nothing here.
+X hears the track and START plays, as everywhere (a recording, on lane 1 or
+the sampler, plays for as long as X is held). Y does nothing here.
 
 **The list of effects** is seven families, each with a TYPE:
 
@@ -797,7 +801,9 @@ to again.
 | Hold Y, stick left / right | Start: where in the drum's sound the hit begins | A mark slides under it, and it is heard as it moves |
 
 The stick does one of those per push. A places a hit. Y places a "maybe"
-(50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane.
+(50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane:
+on its name or an empty step, held, for as long as you hold it (a tap: a
+moment). On a hit X is heard as the pattern plays it, whole.
 
 Hold **B** and drag to delete every hit the cursor crosses.
 
@@ -825,7 +831,7 @@ A few things mean one thing everywhere:
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
 | B | Delete, empty, go back |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
-| X | Hear it. Held on a drum hit: its step effects |
+| X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
 | L2 / R2 | The tabs |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |
@@ -946,6 +952,10 @@ WAV file from the `samples` folder beside the program. A kit can mix the two.
 | SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
 
+**X hears the lane. Hold X and a recording plays for as long as you hold it**,
+to its end; let go and it fades out. A tap plays a moment (0.35 s). Another
+screen, another track, Play or a new song stops it.
+
 **L1 is Slices**: the PATTERN tab, zoomed into this lane's recording cut
 into slices (see "Slices: chopping a break").
 
@@ -997,7 +1007,7 @@ is loud; holding A shapes it the way it is drawn.
 | Hold A, **D-pad** up / down | Length by whole steps: the end goes to the next step line, or the one before |
 | Hold A, **L2 / R2** | Nudge: the note a tenth of a step early (L2) or late (R2), up to half a step. It sits a little above or below its line. |
 | B | Delete the note under the cursor |
-| X | Hear the key |
+| X | Hear the key (on a sampler track, on an empty place: for as long as X is held) |
 | Hold R1 and drag | Paint a note on every step crossed |
 | Hold B and drag | Delete every note (or chord) the cursor crosses |
 | **Hold X on a note**, left / right | **RATCHET**: the note played 2, 3 or 4 times inside its first step |

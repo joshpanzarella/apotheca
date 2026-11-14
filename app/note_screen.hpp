@@ -19,7 +19,8 @@
 //                                        (L2) or late (R2), up to half a step
 //   B                     delete the note under the cursor
 //   hold B and drag       delete every note the cursor crosses
-//   X                     hear the key under the cursor
+//   X                     hear the key under the cursor (on a SAMPLER track, on an
+//                         empty place: for as long as X is held; a tap for a moment)
 //   hold X on a note      what it does besides play, a click at a time:
 //                           left / right   RATCHET: the note 2, 3 or 4 times inside its first step
 //                           up / down      GLIDE longer / shorter, down to OFF: it slides to its pitch from the note before it

@@ -18,7 +18,9 @@
 //   Y          CATCH: the last bar the song played becomes this track's recording
 //   R1         RECORD from a USB microphone or interface: once to start (it
 //              waits for sound), again to stop. Ten seconds at most.
-//   X          hear it, at middle C (its own pitch, until ROOT or TUNE is moved).
+//   X          hear it, at middle C (its own pitch, until ROOT or TUNE is moved),
+//              for as long as X is held, to the recording's end; let go, its
+//              RELEASE runs. A tap is heard for a moment, as before.
 //              A setting is also heard as it is changed, when the song is stopped.
 //   START      play / stop
 
@@ -60,7 +62,7 @@ private:
     const TrackData& trk() const { return project_.current(); }
     void press(Button direction);
     void stepSound(int by);
-    void hear();
+    void hear(bool held = false); // held: X is down, and it sounds until X is let go
     void setSetting(int id, int value); // kept, and heard
 
     Session& session_;
@@ -80,6 +82,8 @@ private:
     Uint32 repeatAt_ = 0, lastMs_ = 0;
     Uint32 heardAt_ = 0; // when a changed setting was last heard
     ui::Playhead head_;  // where the recording has got to while it is heard
+    bool headHeld_ = false; // head_ runs for as long as X holds the sound
+    float release_ = 0.f;   // seconds the held sound's RELEASE runs once X is let go
     int timesHeard_ = 0;
 };
 

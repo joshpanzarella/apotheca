@@ -16,13 +16,20 @@ constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEv
 constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to hear each sound
 }
 
-void KitScreen::hear() {
+// X held: it sounds until X is let go, or to its end (a tap: Session::kAuditionMs). Otherwise (a
+// sound arrived on, by the list or A held) the whole of it, as a hit.
+void KitScreen::hear(bool held) {
     // A line runs across the lane's picture while it sounds: for as long as the recording lasts
-    // (a fitted one lasts its steps at the tempo).
+    // (a fitted one lasts its steps at the tempo), or until X is let go.
     const Session::LaneSound& sound = session_.laneSound(project_.track, lane_);
     const int fit = trk().laneFit[lane_];
     head_.start(lastMs_, fit > 0 && !sound.waiting ? static_cast<float>(fit) * 15.f / project_.tempo : sound.seconds);
     headLane_ = lane_;
+    headHeld_ = held;
+    if (held) {
+        session_.hearLaneHeld(project_.track, lane_, 0.8f, this);
+        return;
+    }
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
@@ -56,7 +63,7 @@ void KitScreen::openPicker() {
     const int track = project_.track, lane = lane_;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track, lane](const std::string& name) { session_.setLaneSample(track, lane, name); };
-    jobs.hear = [this] { hear(); };
+    jobs.hear = [this](bool held) { hear(held); };
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
     jobs.playhead = [this] { return &head_; };
@@ -125,7 +132,7 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
             saidUntil_ = lastMs_ + 2500;
         }
     } else if (b == Button::X) {
-        hear();
+        hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -140,6 +147,11 @@ void KitScreen::update(const Input& input, Uint32 nowMs) {
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
+    if (headHeld_ && !session_.hearingHeld()) {
+        headHeld_ = false; // X let go (App told the Session): the line stops where the sound does
+        const float lasts = session_.heardEnds() > head_.since ? static_cast<float>(session_.heardEnds() - head_.since) / 1000.f : 0.f;
+        head_.lasts = lasts > 0.f ? lasts : 1e-3f; // (0 would be "to the end")
+    }
     picker_.update(input, nowMs, project_.playing);
     if (picker_.isOpen()) return;
     // While recording, the line says how it is going.

@@ -625,9 +625,11 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (fxHeld_) repeating_ = Button::None;
         axis_ = Axis::None;
         if (!event.down || onTempo_) return;
+        // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
+        // go). A hit is heard as the pattern plays it: X held there is the step effects' hold.
         if (hitHere()) hearHit();
-        else if (slicing_ && onStep()) audition(lane_, kNewHitLevel, ownStart(step_), 1.f / static_cast<float>(slices())); // the slice a hit placed here would play
-        else audition(lane_, kNewHitLevel);
+        else if (slicing_ && onStep()) session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this, ownStart(step_), 1.f / static_cast<float>(slices())); // the slice a hit placed here would play
+        else session_.hearLaneHeld(project_.track, lane_, kNewHitLevel, this);
         return;
     }
     if (b == Button::L1) {

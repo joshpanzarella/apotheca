@@ -49,7 +49,9 @@
 // yours and stays.
 //
 // Taps: A places a hit. Y places a "maybe" hit (50%), or on a hit that is
-// there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane.
+// there steps its chance 100 > 75 > 50 > 25. B removes. X hears the lane (on
+// its name or an empty step: for as long as X is held, to the end of its
+// recording; a tap for a moment).
 // START plays and stops.
 //
 // A cell can be 1, 2, 4 or 8 bars long (set on the Song screen). The grid

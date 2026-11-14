@@ -2042,12 +2042,14 @@ void testThePlayhead() {
     CHECK(std::fabs(kit.playhead().at(rig.clock) - 0.48f) < 0.01f);
     rig.frames(20);
     CHECK(kit.playhead().at(rig.clock) < 0.f);
-    // A fitted recording lasts its steps at the tempo: 8 steps at 120 is a second.
+    // A fitted recording lasts its steps at the tempo: 8 steps at 120 is a second. (Held: a tap
+    // is heard for 350 ms and the line stops with it.)
     session.setLaneFit(0, 3, 8);
     CHECK(rig.settle());
-    rig.tap(X);
+    rig.key(X, true);
     rig.frames(25); // 400 ms
     CHECK(std::fabs(kit.playhead().at(rig.clock) - 0.4f) < 0.01f);
+    rig.key(X, false);
     // In the list it is the same line: picking a recording starts it.
     session.setLaneFit(0, 3, 0);
     rig.frames(80);

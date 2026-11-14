@@ -143,9 +143,13 @@ void FxScreen::meterWords(EffectKind kind, float dB, char* out, int size) {
     std::snprintf(out, static_cast<std::size_t>(size), kind == EffectKind::Duck ? "DIPPING %d DB" : "TURNING DOWN %d DB", whole);
 }
 
-void FxScreen::hear() {
+void FxScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
-    if (kind == TrackKind::Drums) {
+    if (held && kind == TrackKind::Drums) {
+        session_.hearLaneHeld(project_.track, 0, 0.8f, this);
+    } else if (held && kind == TrackKind::Sampler) {
+        session_.auditionHeld(project_.track, 60, 0.8f, this);
+    } else if (kind == TrackKind::Drums) {
         Command c;
         c.type = Command::Trigger;
         c.track = project_.track;
@@ -274,7 +278,7 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.setWriting(writing);
         }
     } else if (b == Button::X) {
-        hear();
+        hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }

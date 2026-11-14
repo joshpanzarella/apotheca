@@ -113,7 +113,8 @@ struct Command {
                         //   c = how much of the sound to play, in ten-thousandths (0: as the lane is set)
                         //   and the step effects, to hear a hit as the pattern would play it: d = pitch in
                         //   semitones, bar = ratchet (2..4), scene = 1 for backwards, extra = cut (1, 2, 3)
-                        //   and, as in SetStepFx, 4 times its THROW added to `extra`
+                        //   and, as in SetStepFx, 4 times its THROW added to `extra`.
+                        //   e = 1: an audition heard while X is held; StopAudition fades it
         SetStep,        // write one pattern step:    track, scene, a = lane, b = step, value = velocity (0 clears)
         Play,           // start from step 1:         a = scene to start on, b = 1 to loop that scene alone,
                         //   c = 1: the song is played once through and then stopped (a bounce), so its last
@@ -170,9 +171,12 @@ struct Command {
                         //   keeps each scene of each track apart and only changes which is which), with
                         //   the scene that is new: c = the times it plays, d = its steps, scene = how many
                         //   scenes the song now has. (With no pointer: the playing moves and nothing else.)
-        SetGlideFrom    // GLIDE FROM, which key of the moment before a synth track's glides come from:
+        SetGlideFrom,   // GLIDE FROM, which key of the moment before a synth track's glides come from:
                         //   track, a = kFromTop, kFromPaired, kFromNearest, kFromRandom (glide_rule.hpp;
                         //   a number not known is TOP). Notes that begin after it is taken go by it.
+        StopAudition    // X let go: what a held audition (a Trigger with e = 1) started on a drum lane fades
+                        //   out over the choke's 3 ms: track, a = lane. A pattern's hits on the lane, and a
+                        //   ratchet's pieces still waiting that are not the audition's, are left alone.
     };
     Type type = Trigger;
     int track = 0;
@@ -185,7 +189,7 @@ struct Command {
     float value = 0.f;
     float extra = 0.f;       // SetNote only
     float shift = 0.f;       // SetNote only: the note early or late, -0.5..0.5 of a step
-    int e = 0;               // SetNote only: what the note does besides play. Its low byte: a ratchet (2..4:
+    int e = 0;               // SetNote (and Trigger: 1, a held audition): what the note does besides play. Its low byte: a ratchet (2..4:
                              //   that many notes, evenly, inside its first step). 256 added: it glides to its
                              //   pitch from the note before it. 512 added: it is thrown to ECHO; 1024: to
                              //   SPACE (THROW: the track's send to that bus is full for as long as the note lasts).
@@ -604,7 +608,7 @@ private:
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1
-    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples);
+    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false); // audition: a held audition's, which StopAudition fades
     void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
     void firePending();
     void clearPending();
