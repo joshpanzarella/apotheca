@@ -1664,6 +1664,64 @@ void testTheBounceBarClearsItsWords() {
             }
 }
 
+// The step numbers of a scene of 25 steps, bar 2: they count through the cell (17 to 25) and a step
+// past the scene's end reads "-" (26 to 32: seven of them), on the drum grid, its slice view and the
+// piano roll alike. Read off what is drawn, at LARGE.
+void testTheStepNumbersOfAShortScene() {
+    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
+    const std::string folder = mkdtemp(pattern);
+    std::vector<float> sound(48000);
+    for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
+    CHECK(writeWav(folder + "/loop.wav", sound, 48000));
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    session.useSampleFolder(folder);
+    CHECK(session.addTrack(TrackKind::Phazed));
+    session.setLaneSample(0, 5, "loop");
+    session.finishStretching();
+    session.setCellBars(0, 0, 2);
+    session.setCellBars(1, 0, 2);
+    session.view = View::Pattern;
+    rig.frames(2);
+    // How many times each of these words is drawn now.
+    const auto count = [&](const char* words) {
+        const Drawn now = rig.draw(screens().at[kTextLarge].get());
+        int n = 0;
+        for (const textfit::Text& t : now.frame.texts) n += t.words == words ? 1 : 0;
+        return n;
+    };
+    PatternScreen& drums = rig.app.drums();
+    const auto look = [&](const char* what) {
+        project.bar = 1;
+        rig.frames(2);
+        session.setSceneSteps(0, 2 * kSteps); // every step (kept as 0)
+        rig.frames(2);
+        const int dashes = count("-");
+        CHECK(count("17") >= 1 && count("32") >= 1 && count("26") >= 1);
+        session.setSceneSteps(0, 25);
+        rig.frames(2);
+        const bool right = count("17") >= 1 && count("25") >= 1 && count("26") == 0 && count("32") == 0 && count("-") == dashes + 7;
+        if (!right) std::printf("    %s: a scene of 25 steps, bar 2: not 17 to 25 and seven dashes\n", what);
+        CHECK(right);
+        session.setSceneSteps(0, 2 * kSteps);
+        rig.frames(2);
+    };
+    project.track = 0;
+    drums.moveCursorTo(5, 2);
+    rig.frames(2);
+    look("the drum grid");
+    rig.tap(L1);
+    CHECK(drums.slicing());
+    look("the slice view");
+    rig.tap(L1);
+    CHECK(!drums.slicing());
+    project.track = 1;
+    rig.frames(2);
+    look("the piano roll");
+    CHECK(std::system(("rm -rf '" + folder + "'").c_str()) == 0);
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
@@ -1680,6 +1738,7 @@ int main(int argc, char** argv) {
     testTheSettingIsKept();
     testTheRow();
     testTheDrumGridsRows();
+    testTheStepNumbersOfAShortScene();
     testThePianoRollsRows();
     testTheOtherScreens();
     testWhatOnlyLargeHadRoomFor();
