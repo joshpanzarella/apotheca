@@ -253,6 +253,19 @@ effect in those two groups and fails one that does not.
   held.** Setting the stop flag without it hung the quit.
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
+- **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,
+  `Track::going`, `kGoneFadeSeconds`; owner, 2026-11-14): its instrument, its
+  effects' tails and its thrown hits go down together, then `takeAway` does
+  what the command always did. Silent in its last block (`kGoneQuiet`, -100 dB):
+  at once, as before. **What was sent after waits for the fade** (`held_`,
+  `takeCommands`), and comes at the chunk the fade ends on, in the order sent;
+  other takings away fade beside it (a new song takes all twelve at once).
+  `caughtUp()` counts the held command. A test that takes a sounding track away
+  and wants the next thing at once renders 5 ms first (`engine_test`
+  `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+- **A tempo change keeps every place in the step** (`SetTempo`): what is left
+  of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
+  waiting are all scaled by the same amount, so the arpeggio stays on the beat.
 - **An effect going into or out of a slot fades for 10 ms**
   (`Engine::swapEffect`, `runSlot`): the old one and the new both run, and
   the sound slides between them. Outside a fade a slot runs exactly as it did.

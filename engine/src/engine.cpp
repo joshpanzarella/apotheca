@@ -8,6 +8,7 @@
 namespace apotheca {
 
 namespace {
+constexpr float kGoneQuiet = 1e-5f; // a track taken away that made nothing louder in its last block (-100 dB) goes at once
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 bool validScene(int scene) { return scene >= 0 && scene < kMaxScenes; }
 // A bar of a scene, as the pattern commands name it. -1 if there is no such bar.
@@ -265,6 +266,9 @@ void Engine::prepare(float sampleRate) {
     sampleRate_ = sampleRate;
     samplesPerStep_ = static_cast<double>(sampleRate_) * 60.0 / tempo_ / 4.0;
     const DrumKit& kit = DrumKit::builtIn(sampleRate); // one for every engine at this rate
+    for (int t = 0; t < kNumTracks; ++t) // a setup call: a track still fading out goes now
+        if (tracks_[t].going) takeAway(t);
+    going_ = 0;
     for (Track& track : tracks_) {
         track.drums.setKit(&kit);
         track.drums.prepare(sampleRate);
@@ -1132,54 +1136,16 @@ void Engine::apply(const Command& c) {
     case Command::RemoveInstrument:
         if (validTrack(c.track)) {
             Track& track = tracks_[c.track];
-            if (track.synth) {
-                // Freeing is not for this thread: hand it back. Always: a synth
-                // kept here would play the next song's notes in place of its instrument.
-                Trash trash;
-                trash.pointer = track.synth.release();
-                bin(trash);
+            if (track.going) break; // already on its way
+            // Still sounding (the last block it made): it fades first, and is taken away at the end
+            // of the fade (renderChunk). Silent: at once, as it always was.
+            if (track.hasInstrument() && track.peak.load(std::memory_order_relaxed) > kGoneQuiet) {
+                track.going = true;
+                track.goingGain = 1.f;
+                ++going_;
+                break;
             }
-            if (track.trackSample) { // the synth that read it has gone
-                Trash trash;
-                trash.isSample = true;
-                trash.pointer = track.trackSample;
-                track.trackSample = nullptr;
-                bin(trash);
-            }
-            track.hasDrums = false;
-            track.glideFrom = kFromTop;
-            track.drums.reset();
-            for (int lane = 0; lane < kDrumLanes; ++lane) {
-                if (!track.laneSamples[lane]) continue;
-                Trash trash;
-                trash.isSample = true;
-                trash.pointer = track.laneSamples[lane];
-                track.drums.setLaneSample(lane, nullptr, 0);
-                track.laneSamples[lane] = nullptr;
-                bin(trash);
-            }
-            for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
-            for (int slot = 0; slot < kPatternSlots; ++slot) {
-                DrumScene& scene = track.drumScenes[slot];
-                for (int lane = 0; lane < kDrumLanes; ++lane)
-                    for (int step = 0; step < kSteps; ++step) {
-                        scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
-                        scene.chance[lane][step] = 1.f;
-                        scene.fx[lane][step] = StepFx();
-                    }
-            }
-            for (int slot = 0; slot < kPatternSlots; ++slot)
-                for (Note& note : track.notes[slot]) note = Note();
-            for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = 1;
-            for (double& off : track.offIn) off = kNoNote;
-            for (auto& p : track.pendingNotes) p = Track::PendingNote();
-            for (auto& arp : track.arps) arp = Track::Arp();
-            for (auto& lane : track.pending)
-                for (auto& p : lane) p = Track::Pending();
-            for (int bus = 0; bus < kBuses; ++bus) { // the next instrument here starts with its sends as they are set
-                track.throwLeft[bus] = 0.0;
-                track.throwNow[bus] = 0.f;
-            }
+            takeAway(c.track);
         }
         break;
     case Command::SetTrackImage:
@@ -1474,6 +1440,82 @@ void Engine::noteLoad(float part, int frames) {
         if (track.synth) track.synth->setQualityLimit(limit);
 }
 
+// A track's instrument taken away, and everything it was waiting to play. On the audio thread.
+void Engine::takeAway(int t) {
+    Track& track = tracks_[t];
+    track.going = false;
+    track.goingGain = 1.f;
+    if (track.synth) {
+        // Freeing is not for this thread: hand it back. Always: a synth
+        // kept here would play the next song's notes in place of its instrument.
+        Trash trash;
+        trash.pointer = track.synth.release();
+        bin(trash);
+    }
+    if (track.trackSample) { // the synth that read it has gone
+        Trash trash;
+        trash.isSample = true;
+        trash.pointer = track.trackSample;
+        track.trackSample = nullptr;
+        bin(trash);
+    }
+    track.hasDrums = false;
+    track.glideFrom = kFromTop;
+    track.drums.reset();
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (!track.laneSamples[lane]) continue;
+        Trash trash;
+        trash.isSample = true;
+        trash.pointer = track.laneSamples[lane];
+        track.drums.setLaneSample(lane, nullptr, 0);
+        track.laneSamples[lane] = nullptr;
+        bin(trash);
+    }
+    for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
+    for (int slot = 0; slot < kPatternSlots; ++slot) {
+        DrumScene& scene = track.drumScenes[slot];
+        for (int lane = 0; lane < kDrumLanes; ++lane)
+            for (int step = 0; step < kSteps; ++step) {
+                scene.level[lane][step] = scene.nudge[lane][step] = scene.start[lane][step] = 0.f;
+                scene.chance[lane][step] = 1.f;
+                scene.fx[lane][step] = StepFx();
+            }
+    }
+    for (int slot = 0; slot < kPatternSlots; ++slot)
+        for (Note& note : track.notes[slot]) note = Note();
+    for (int scene = 0; scene < kMaxScenes; ++scene) track.bars[scene] = 1;
+    for (double& off : track.offIn) off = kNoNote;
+    for (auto& p : track.pendingNotes) p = Track::PendingNote();
+    for (auto& arp : track.arps) arp = Track::Arp();
+    for (auto& lane : track.pending)
+        for (auto& p : lane) p = Track::Pending();
+    for (int bus = 0; bus < kBuses; ++bus) { // the next instrument here starts with its sends as they are set
+        track.throwLeft[bus] = 0.0;
+        track.throwNow[bus] = 0.f;
+    }
+}
+
+// The commands sent, in order. A track taken away while it sounded fades first (renderTrack,
+// renderChunk): what was sent after it waits for the end of the fade, so it still comes in the
+// order it was sent. Other takings away go on fading beside it (a new song takes every track away
+// at once). Called at the start of render(), and again at the end of a chunk that ends a fade.
+void Engine::takeCommands() {
+    if (holding_.load(std::memory_order_relaxed)) {
+        if (going_ > 0) return;
+        apply(held_);
+        holding_.store(false, std::memory_order_release);
+    }
+    Command command;
+    while (!holding_.load(std::memory_order_relaxed) && commands_.pop(command)) {
+        if (going_ > 0 && command.type != Command::RemoveInstrument) {
+            held_ = command;
+            holding_.store(true, std::memory_order_release);
+        } else {
+            apply(command);
+        }
+    }
+}
+
 void Engine::render(float* interleaved, int frames) {
     const FlushDenormals flushed(flush_.load(std::memory_order_relaxed)); // if asked for: on for this call, then the thread is as it was
     const auto began = watchLoad_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
@@ -1488,8 +1530,8 @@ void Engine::render(float* interleaved, int frames) {
             engine.noteLoad(static_cast<float>(took * engine.sampleRate_ / frames), frames);
         }
     } timed{*this, began, allFrames};
+    takeCommands();
     Command command;
-    while (commands_.pop(command)) apply(command);
     while (live_.pop(command)) apply(command);
 
     float peaks[kNumTracks] = {};
@@ -1546,9 +1588,19 @@ void Engine::render(float* interleaved, int frames) {
                 for (auto& p : lane)
                     if (p.velocity > 0.f) p.samplesLeft -= chunk;
         }
+        if (going_ > 0) { // a chunk ends where a fade of a track taken away does
+            const double down = 1.0 / (kGoneFadeSeconds * sampleRate_);
+            for (const Track& track : tracks_)
+                if (track.going) {
+                    const int left = static_cast<int>(std::ceil(track.goingGain / down - 1e-6));
+                    if (left >= 1 && left < chunk) chunk = left;
+                }
+        }
         renderChunk(interleaved, chunk, peaks);
         interleaved += 2 * chunk;
         frames -= chunk;
+        // The fade has ended: what was sent after the taking away comes now, not a block later.
+        if (holding_.load(std::memory_order_relaxed) && going_ == 0) takeCommands();
     }
     for (int t = 0; t < kNumTracks; ++t) tracks_[t].peak.store(peaks[t], std::memory_order_relaxed);
 }
@@ -1630,6 +1682,21 @@ void Engine::renderTrack(int t) {
             if (thrown & 1) thrown_[t][0][i] *= track.level * gate;
             if (thrown & 2) thrown_[t][1][i] *= track.level * gate;
         }
+    }
+    if (track.going) {
+        // Taken away while it sounded: down to nothing, its effects' tails and its thrown hits
+        // with it, and then it is taken away (renderChunk). A loop of its own, so a track that is
+        // staying runs the one below as it was.
+        const float down = 1.f / (kGoneFadeSeconds * sampleRate_);
+        float g = track.goingGain;
+        for (int i = 0; i < frames; ++i) {
+            g = g > down ? g - down : 0.f;
+            left[i] *= g;
+            right[i] *= g;
+            if (thrown & 1) thrown_[t][0][i] *= g;
+            if (thrown & 2) thrown_[t][1][i] *= g;
+        }
+        track.goingGain = g;
     }
     for (int i = 0; i < frames; ++i) {
         if (track.gate != gateTo) {
@@ -1892,6 +1959,14 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         for (SlotFade& fade : tracks_[active_[i]].fades) binLeaving(fade);
     for (SlotFade& fade : masterFades_) binLeaving(fade);
     for (SlotFade& fade : busFades_) binLeaving(fade);
+    // Tracks taken away whose fade has ended: taken away now (here: the helpers are done, and the
+    // trash takes from this thread alone).
+    if (going_ > 0)
+        for (int t = 0; t < kNumTracks; ++t)
+            if (tracks_[t].going && tracks_[t].goingGain <= 0.f) {
+                takeAway(t);
+                --going_;
+            }
     binHeld(); // what found the trash full, handed on now the app may have emptied it
 
     // Remember what goes out, for Catch.

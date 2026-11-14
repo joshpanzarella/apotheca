@@ -321,7 +321,10 @@ public:
     // to wait (trashLost; never seen, it would take thousands in one frame).
     int trashHeld() const { return heldNow_.load(std::memory_order_relaxed); }
     unsigned trashLost() const { return trashLost_.load(std::memory_order_relaxed); }
-    bool caughtUp() const { return commands_.empty(); }
+    bool caughtUp() const { return commands_.empty() && !holding_.load(std::memory_order_acquire); }
+    // A track taken away while it sounds fades over this long first (no click). Commands sent
+    // after the taking away wait for the fade: they are applied in the order sent.
+    static constexpr float kGoneFadeSeconds = 0.005f;
     // A second way in, for ONE other thread (the one reading a USB keyboard):
     // notes and drum hits to play now, and nothing else. They are taken up
     // at the start of the next render(), after everything sent with send().
@@ -582,6 +585,10 @@ private:
         SlotFade fades[kTrackSlots];
         std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
         std::atomic<float> peak{0.f};
+        // Taken away while it still sounded: it fades to nothing over kGoneFadeSeconds (its
+        // effects' tails too), and only then is its instrument taken away (Engine::takeAway).
+        bool going = false;
+        float goingGain = 1.f;
         bool hasInstrument() const { return hasDrums || synth; }
     };
     struct Position { int scene, repeat, bar; };
@@ -598,6 +605,11 @@ private:
     void fireArps();
 
     void apply(const Command& command);
+    void takeAway(int t);      // RemoveInstrument's work, at once (after its fade, if it sounded)
+    void takeCommands();       // the queue, in order, up to a command that waits for a fade
+    int going_ = 0;            // tracks fading before they are taken away (the audio thread's)
+    Command held_;             // the first command after a taking away, waiting for the fade
+    std::atomic<bool> holding_{false};
     Position afterThisBar() const;
     void fireStep();
     void applyAuto(Track& track, int lane, float value);

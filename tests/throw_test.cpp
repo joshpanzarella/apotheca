@@ -689,7 +689,7 @@ static void testStopAndPanic() {
         rig.play();
         rig.render(2 * kStep);
         CHECK(rig.engine->removeTrack(1));
-        rig.render(64);
+        rig.render(512); // (sounding: it fades for 5 ms before it goes, its send with it)
         rig.engine->collectGarbage();
         CHECK(rig.engine->addSynthTrack(1, SynthKind::Phazed));
         const std::size_t at = rig.echo->fed.size();
