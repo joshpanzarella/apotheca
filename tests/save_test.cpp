@@ -18,6 +18,37 @@
 #include "app.hpp"
 #include "song_file.hpp"
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <limits.h>
+#include <mutex>
+#include <sys/syscall.h>
+
+// What reaches the card, in order: fsync and rename are caught here on their way to the
+// kernel (a definition in the program is the one the program's own code calls).
+static std::mutex gDiskMutex;
+static std::vector<std::string> gDisk;
+static std::string fdPath(int fd) {
+    char buf[PATH_MAX];
+    const ssize_t n = readlink(("/proc/self/fd/" + std::to_string(fd)).c_str(), buf, sizeof buf - 1);
+    return n > 0 ? std::string(buf, static_cast<std::size_t>(n)) : "?";
+}
+extern "C" int fsync(int fd) {
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.push_back("fsync " + fdPath(fd));
+    }
+    return static_cast<int>(syscall(SYS_fsync, fd));
+}
+extern "C" int rename(const char* from, const char* to) {
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.push_back(std::string("rename ") + from + " > " + to);
+    }
+    return static_cast<int>(syscall(SYS_renameat, AT_FDCWD, from, AT_FDCWD, to));
+}
+#endif
+
 using namespace apotheca;
 
 static int failures = 0;
@@ -803,6 +834,42 @@ void testHiddenBarsAreKept() {
     }
 }
 
+// A song (and settings, a rev: everything written by writeTextFile) is on the card before it
+// takes the old file's place, and the move is on the card after. Without the first, a flat
+// battery could leave the song empty: the card may be given the move before the words.
+void testSavedToTheCardBeforeItIsMoved() {
+#ifdef __linux__
+    char real[PATH_MAX];
+    const std::string made = tempFolder();
+    const std::string folder = realpath(made.c_str(), real) ? real : made;
+    const auto steps = [&](const std::string& path) {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        int synced = -1, moved = -1, folderSynced = -1;
+        for (int i = 0; i < static_cast<int>(gDisk.size()); ++i) {
+            if (gDisk[i] == "fsync " + path + ".part" && synced < 0) synced = i;
+            if (gDisk[i] == "rename " + path + ".part > " + path && moved < 0) moved = i;
+            if (gDisk[i] == "fsync " + folder && moved >= 0 && folderSynced < 0) folderSynced = i;
+        }
+        return synced >= 0 && moved > synced && folderSynced > moved;
+    };
+    {
+        std::lock_guard<std::mutex> hold(gDiskMutex);
+        gDisk.clear();
+    }
+    CHECK(writeTextFile(folder + "/a.song", "apotheca-song 1\n"));
+    CHECK(steps(folder + "/a.song"));
+    std::string back;
+    CHECK(readTextFile(folder + "/a.song", back) && back == "apotheca-song 1\n");
+    // The autosave goes that way.
+    Rig rig(folder);
+    rig.project().tempo = 97.f;
+    rig.session().saveNow();
+    CHECK(steps(folder + "/" + rig.session().songName() + ".song"));
+#else
+    std::printf("(fsync's order is checked on Linux only)\n");
+#endif
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -812,6 +879,7 @@ int main(int, char**) {
     testTheSongListOnScreen();
     testFreeNoteLengthsAreKept();
     testHiddenBarsAreKept();
+    testSavedToTheCardBeforeItIsMoved();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

@@ -2,6 +2,9 @@
 #include "instruments.hpp"
 #include "samples.hpp"
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -594,16 +597,29 @@ bool renameRecordings(std::string& text, const std::vector<std::pair<std::string
 
 bool writeTextFile(const std::string& path, const std::string& text) {
     // Written beside the real file and moved into place, so a crash or a flat
-    // battery mid-write cannot leave half a song.
+    // battery mid-write cannot leave half a song. The new file is on the card
+    // (fsync) before it takes the old one's place: else the card may be given
+    // the move before the words, and a flat battery leaves an empty song.
     const std::string temporary = path + ".part";
     std::FILE* f = std::fopen(temporary.c_str(), "wb");
     if (!f) return false;
-    const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    ok = std::fflush(f) == 0 && ok;
+    ok = ok && fsync(fileno(f)) == 0;
     if (std::fclose(f) != 0 || !ok) {
         std::remove(temporary.c_str());
         return false;
     }
-    return std::rename(temporary.c_str(), path.c_str()) == 0;
+    if (std::rename(temporary.c_str(), path.c_str()) != 0) return false;
+    // And the move itself, which is written in the folder.
+    const std::size_t slash = path.rfind('/');
+    const std::string folder = slash == std::string::npos ? "." : (slash == 0 ? "/" : path.substr(0, slash));
+    const int dir = open(folder.c_str(), O_RDONLY);
+    if (dir >= 0) {
+        fsync(dir); // (the file is in place either way: this is only to have it there for good, now)
+        close(dir);
+    }
+    return true;
 }
 
 bool readTextFile(const std::string& path, std::string& text) {
