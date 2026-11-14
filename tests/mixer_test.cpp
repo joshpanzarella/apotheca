@@ -139,6 +139,16 @@ void testTheMaster() {
     bool half = side(p, 0) > 0.f;
     for (std::size_t i = 0; i < p.size(); ++i) half = half && std::fabs(q[i] - 0.5f * p[i]) < 1e-6f;
     CHECK(half);
+    // Back to the usual (1): it glides there (a whole step from 0 to 1 takes 5 ms, so this half takes 2.5),
+    // from where it was, and then is the plain sound to the bit.
+    master.send(make(Command::SetTrackLevel, kMasterTrack, 1.f));
+    const std::vector<float> back = render(master, 2400), plainBack = render(plain, 2400);
+    float sum = 0.f, plainSum = 0.f; // its first 60 samples: from 0.5 to 0.75 of the plain sound, 0.625 on the whole
+    for (int i = 0; i < 2 * 60; ++i) sum += std::fabs(back[i]), plainSum += std::fabs(plainBack[i]);
+    bool gliding = plainSum > 0.f && sum > 0.55f * plainSum && sum < 0.72f * plainSum, there = true;
+    for (std::size_t i = 2 * 300; i < back.size(); ++i) there = there && back[i] == plainBack[i];
+    CHECK(gliding && there);
+    master.send(make(Command::SetTrackLevel, kMasterTrack, 0.5f));
     master.send(make(Command::SetTrackPan, kMasterTrack, 1.f));
     render(master, 480);
     render(plain, 480);
@@ -186,6 +196,20 @@ void testATrackThatComesBackIsAtTheUsual() {
     render(engine, 960);
     const std::vector<float> out = render(engine, 2400);
     CHECK(side(out, 0) > 0.f && side(out, 1) > 0.f);
+    // ...at once, not gliding up from the old track's nothing: its first notes as loud as a track never touched.
+    float first[2] = {0.f, 0.f};
+    for (int touched = 0; touched < 2; ++touched) {
+        Engine again;
+        holdANote(again);
+        again.send(make(Command::SetTrackLevel, 1, touched ? 0.f : kUsualTrackLevel));
+        render(again, 960);
+        again.removeTrack(1);
+        render(again, 960);
+        again.addSynthTrack(1, SynthKind::Phazed);
+        again.send(note);
+        first[touched] = side(render(again, 120), 0);
+    }
+    CHECK(first[0] > 0.f && std::fabs(first[1] / first[0] - 1.f) < 1e-3f);
 }
 
 // The engine's every part, played, as a song is: drums and three synths, sends up, a slot each.
@@ -431,6 +455,73 @@ void testTheGesture() {
     CHECK(session.mixDb(kEchoBus) == 0 && rig.project().masterDb == 0);
 }
 
+// Buttons held together with A on a head, and B's delete with A pressed during it.
+void testOtherButtonsWithA() {
+    const SDL_Keycode X = SDLK_s, Y = SDLK_a, L1 = SDLK_q;
+    Rig rig;
+    Session& session = rig.session();
+    SongScreen& song = rig.song();
+    session.addTrack(TrackKind::Phazed);
+    rig.frames(2);
+    session.view = View::Song;
+    // B held on track 2's head, then A while its bar fills: the delete is called off, and A let go names nothing.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.frames(20);
+    rig.key(A, true);
+    rig.frames(150); // (longer than a delete takes)
+    CHECK(rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
+    rig.key(B, false);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.view == View::Song && rig.project().trackCount() == 2);
+    // The same on a cell: A calls the delete off (B's tap has emptied the cell, as before), and opens nothing.
+    song.moveCursorTo(0, 1);
+    rig.key(B, true);
+    rig.frames(20);
+    rig.key(A, true);
+    rig.frames(150);
+    CHECK(rig.project().trackCount() == 2);
+    rig.key(B, false);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.view == View::Song && rig.project().trackCount() == 2);
+    // B held alone still deletes (the check above is not just a delete that never comes).
+    session.addTrack(TrackKind::Phazed);
+    rig.frames(1);
+    song.moveCursorTo(0, 2);
+    rig.tap(UP);
+    rig.key(B, true);
+    rig.frames(150);
+    rig.key(B, false);
+    CHECK(rig.project().trackCount() == 2);
+    // Y, X, L1 with A held on a head: no mute, no solo, and A let go is no tap (no keyboard for the name).
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    for (SDL_Keycode other : {Y, X, L1}) {
+        rig.key(A, true);
+        rig.tap(other);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.view == View::Song && !rig.project().tracks[1].muted && !rig.project().tracks[1].solo);
+    }
+    // ...and on MASTER too.
+    song.moveCursorTo(0, rig.project().trackCount());
+    rig.tap(RIGHT);
+    CHECK(song.cursorOnMaster());
+    rig.key(A, true);
+    rig.tap(Y);
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(session.view == View::Song && song.cursorOnMaster());
+    // Away from the card they do as they did: Y on the head mutes.
+    song.moveCursorTo(0, 1);
+    rig.tap(UP);
+    rig.tap(Y);
+    CHECK(rig.project().tracks[1].muted);
+}
+
 // Off the drawn screen: the mark on a changed head, the card while A is held, the hints.
 void testWhatIsDrawn() {
     Canvas canvas, scratch;
@@ -622,6 +713,19 @@ void testTheSongFile() {
     CHECK(rig.session().mixPan(1) == -kPanMost && rig.session().mixDb(kMasterTrack) == -2);
     const Heard heard = hearTrackOne(rig);
     CHECK(heard.left > 0.f && heard.right == 0.f);
+    // The master's level is the engine's too: a song opened at -6 DB is heard at half (one in the middle, to compare).
+    std::unique_ptr<Project> halved(new Project), whole(new Project);
+    CHECK(parseSong("apotheca-song 1\nmaster -6 0\ntrack drums\ntrack phazed\n", *halved));
+    CHECK(parseSong("apotheca-song 1\ntrack drums\ntrack phazed\n", *whole));
+    rig.project() = *whole;
+    rig.session().applyProject();
+    rig.frames(2);
+    const Heard full = hearTrackOne(rig);
+    rig.project() = *halved;
+    rig.session().applyProject();
+    rig.frames(2);
+    const Heard half = hearTrackOne(rig);
+    CHECK(full.left > 0.f && std::fabs(half.left / full.left - 0.501187f) < 0.02f && std::fabs(half.right / full.right - 0.501187f) < 0.02f);
     // ...and another song with none: the middle again.
     std::unique_ptr<Project> plain(new Project);
     CHECK(parseSong("apotheca-song 1\ntrack drums\ntrack phazed\n", *plain));
@@ -696,6 +800,7 @@ int main() {
     testTheMiddleIsUntouched();
     testHelpersChangeNothing();
     testTheGesture();
+    testOtherButtonsWithA();
     testWhatIsDrawn();
     testTheHints();
     testTheSongFile();

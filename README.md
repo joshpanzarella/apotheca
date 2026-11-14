@@ -609,7 +609,10 @@ with the level and the pan, in words and as two bars.
 | LEFT / RIGHT | PAN, one step a press, from L 50 to R 50. MIDDLE is the usual. |
 | The stick | The same, in big moves. |
 | B | Back to the usual: 0 DB and MIDDLE. (B on a head without A still only deletes, held.) |
+| START | Plays and stops, as always. Y, X and L1 do nothing while A is held, so a track is not muted or soloed by mistake. |
 
+- Pressing A while a track is being deleted (B held, its head filling)
+  stops the delete. So does it on a cell.
 - **A head not at its usual level or pan has a small brass square** in its
   top left corner, so a changed track can be seen at a glance.
 - PAN keeps the loudness even as it moves (equal power): hard to one side,

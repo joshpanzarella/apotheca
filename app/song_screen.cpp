@@ -323,7 +323,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
     if ((onHead_ || onMaster_) && b == Button::A) {
         if (event.down) {
             mixing_ = true;
-            mixTurned_ = false;
+            mixTurned_ = trackHold_ && input.held(Button::B); // A pressed while B was deleting the track calls the delete off (update()), and is no tap
             mixSavedDb_ = mixSavedPan_ = 0.f;
         } else {
             if (mixing_ && !mixTurned_ && onHead_) {
@@ -349,6 +349,10 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) session_.setMix(mixTrack(), 0, 0), mixTurned_ = true; // back to the usual: 0 DB, the middle
         return;
     }
+    // Any other button with A held on a head: letting go of A is then no tap (no keyboard for the name),
+    // and only START does its job (Y, X, L1 would mute, hear or solo the track under the card).
+    if (mixing_ && event.down) mixTurned_ = true;
+    if (mixing_ && b != Button::Start) return;
     if (onMaster_ && (b == Button::B || b == Button::R1)) return; // nothing to empty, delete or change there
     if (onHead_ && (b == Button::B || b == Button::R1)) {
         // On a track's head: B held deletes the track, as it does on a cell; a tap of it empties nothing here.
@@ -370,9 +374,9 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         if (event.down) {
             if (onCell()) {
                 // Held, the stick sets how many bars long it is. Let go
-                // without doing that, and it opens.
+                // without doing that, and it opens. (Pressed while B was deleting the track, it calls the delete off and opens nothing.)
                 holding_ = true;
-                turned_ = false;
+                turned_ = trackHold_ && input.held(Button::B);
                 saved_ = 0.f;
             } else if (column_ == addColumn()) {
                 choosing_ = true;
@@ -460,7 +464,8 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
-    if (!input.held(Button::B) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
+    // A pressed while it fills calls it off, as any other button does on the FX screen.
+    if (!input.held(Button::B) || input.held(Button::A) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
     if (trackHold_) {
         if (!trackHoldTimed_) trackHoldTimed_ = true, trackHoldSince_ = nowMs;
         const Uint32 held = nowMs - trackHoldSince_;

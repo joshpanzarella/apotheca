@@ -967,7 +967,11 @@ effect in those two groups and fails one that does not.
 - **The mixer (owner, 2026-11-14): hold A on a track's head on SONG, or on
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:
-  it acts on letting go, as on a cell. `TrackData::mixDb` (whole dB from the
+  it acts on letting go, as on a cell, and **only if no other button was
+  pressed while A was held** (`mixTurned_`); while A is held on a head every
+  other button but START does nothing (Y there muted the track under the
+  card). **A pressed while B's delete is filling calls the delete off**, on a
+  head and on a cell (`update()`), and is then no tap. `TrackData::mixDb` (whole dB from the
   usual, -40..+6) and `mixPan` (-50..50), `Project::masterDb` / `masterPan`;
   `Session::setMix(track, db, pan)` takes `kMasterTrack` and nothing else
   below zero, calls `noteEdit()` (a step of undo: `restorePatterns` puts them
