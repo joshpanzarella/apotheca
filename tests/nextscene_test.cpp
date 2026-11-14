@@ -2436,36 +2436,80 @@ void measure() {
 
 } // namespace
 
-// A fault that is known and not mended (on `main` too; found in review, 2026-11-13). Not part of
-// ctest: `nextscene_test --edge` prints it. The song plays through with a copy of scene 2 after
-// it, and the copy is taken back while the LAST STEP of scene 2 plays. That step has already asked
-// for the early notes and humanised chords of the bar that follows, which was the copy; with the
-// copy gone the bar that follows is scene 3, whose first step then plays wrong.
-void edge() {
-    for (const double at : {60.5, 61.05, 61.5, 61.99}) { // steps since Play; scene 2 ends at 62
-        Rig rig, plain;
-        fill(rig);
-        fill(plain);
-        rig.project().scene = 1;
-        rig.nextScene();
-        for (Rig* r : {&rig, &plain}) {
-            r->frames(2);
-            r->render(512);
-            r->heard.clear();
-            const int on = r->project().scene;
-            r->project().scene = 0;
-            r->session().togglePlay(true);
-            r->project().scene = on; // (back before a frame is drawn: going to another scene is itself a step of undo)
-            r->frames(1);
-            r->render(static_cast<int>(at * kStep));
-        }
-        rig.undo();
-        for (Rig* r : {&rig, &plain}) {
-            r->frames(1);
-            r->render(40 * kStep);
-        }
-        std::printf("  the copy of scene 2 taken back at step %.2f of the song: %g from the song left alone\n", at, static_cast<double>(apart(rig.heard, plain.heard)));
+// The copy taken back while the LAST STEP of the scene it was copied from plays (found in review,
+// 2026-11-13; mended 2026-11-14). The song plays through with a copy of scene 2 after it. That
+// last step has already asked for the early notes, hits and humanised chords of the bar that
+// follows, which was the copy; with the copy gone the bar that follows is scene 3's. The engine
+// drops what it asked from the copy and asks again from scene 3 (Engine::askAgain): the song is
+// then the song left alone, to the sample. Except once an early note asked from the copy has
+// already sounded (here after 61.7 of the step): what is heard cannot be taken back, and scene
+// 3's notes whose moment has gone by are not played late. `nextscene_test --edge` prints it.
+// `more`: scene 2's first step also has, asked a step ahead from the step before it, an early hit,
+// an arpeggio, a strum on the PAIRED track (UP-DOWN: scene 3's chord there strums the other way if
+// the count of strokes is left one on), and an early PAIRED note; its last step a WIDE STRUM with
+// HUMAN TIME, asked a step ahead and still sounding its last keys when the copy is taken back
+// (they are that step's own by then, and are not dropped); and scene 3's first step a strum on the
+// synth track that is not asked ahead (begun on its step: a "chord asked" left over would skip it).
+void addEdges(Rig& rig) {
+    Project& p = rig.project();
+    TrackData& drums = p.tracks[0];
+    TrackData& synth = p.tracks[1];
+    TrackData& chords = p.tracks[2];
+    drums.drums[1][0].level[2][0] = 0.7f;
+    drums.drums[1][0].nudge[2][0] = -0.3f;
+    synth.notes[1][0].chords[0] = chordOf(0, 2.f, 64, 3, kStrumQuarter, kOrderUp, 0, 0, 0, 0, 0, -0.2f);
+    synth.notes[1][0].chords[1] = chordOf(15, 1.f, 67, 3, kStrumWide, kOrderUp, 100, 0, 0);
+    chords.notes[1][0].chords[2] = chordOf(0, 2.f, 52, 3, kStrumWide, kOrderUpDown, 0, 0, 0, 0, 0, -0.2f);
+    chords.notes[1][0].notes[4] = NoteEvent{0, 70, 1.f, -0.25f, 0.6f, 0, kGlideHalf, 0, 0};
+    synth.notes[2][0].chords[0] = chordOf(0, 2.f, 48, 3, kStrumTight, kOrderUp, 0, 0, 0);
+    // PAIRED, what was told as coming: a gliding note in scene 3's early moment (the copy's keys
+    // told for that moment must be forgotten), and in scene 2's last step a late moment told a step
+    // ahead (a chord with HUMAN TIME, a gliding note with it) that is that step's own by the move.
+    chords.notes[2][0].notes[1] = NoteEvent{0, 48, 1.f, -0.2f, 0.6f, 0, kGlideHalf, 0, 0}; // (inside the chord: its rank is what PAIRED counts)
+    chords.notes[1][0].chords[3] = chordOf(15, 1.f, 41, 3, kStrumOff, kOrderUp, 100, 0, 0, 0, 0, 0.6f);
+    chords.notes[1][0].notes[5] = NoteEvent{15, 46, 0.3f, 0.6f, 0.6f, 0, kGlideHalf, 0, 0}; // (inside the chord)
+    rig.session().applyProject();
+}
+
+float takenBackOnTheLastStep(double at, bool more = false) {
+    Rig rig, plain;
+    fill(rig);
+    fill(plain);
+    if (more) addEdges(rig), addEdges(plain);
+    rig.project().scene = 1;
+    rig.nextScene();
+    for (Rig* r : {&rig, &plain}) {
+        r->frames(2);
+        r->render(512);
+        r->heard.clear();
+        const int on = r->project().scene;
+        r->project().scene = 0;
+        r->session().togglePlay(true);
+        r->project().scene = on; // (back before a frame is drawn: going to another scene is itself a step of undo)
+        r->frames(1);
+        r->render(static_cast<int>(at * kStep));
     }
+    rig.undo();
+    for (Rig* r : {&rig, &plain}) {
+        r->frames(1);
+        r->render(40 * kStep);
+    }
+    return apart(rig.heard, plain.heard);
+}
+
+void edge() {
+    for (const double at : {60.5, 61.05, 61.5, 61.7, 61.8, 61.99}) // steps since Play; scene 2 ends at 62
+        std::printf("  the copy of scene 2 taken back at step %.2f of the song: %g from the song left alone\n", at, static_cast<double>(takenBackOnTheLastStep(at)));
+    for (const double at : {61.05, 61.5, 61.65, 61.75, 61.99})
+        std::printf("  ...with more asked ahead, at %.2f: %g\n", at, static_cast<double>(takenBackOnTheLastStep(at, true)));
+}
+
+void testTakenBackOnTheLastStep() {
+    for (const double at : {60.5, 61.05, 61.5, 61.7}) CHECK(takenBackOnTheLastStep(at) == 0.f);
+    for (const double at : {61.05, 61.5, 61.65}) CHECK(takenBackOnTheLastStep(at, true) == 0.f); // (the first of the copy's early moments is at 61.7)
+    const float late = takenBackOnTheLastStep(61.99);
+    CHECK(late < 0.3f); // (an early note of the copy already heard: 0.28, as it was before the mend at every point)
+    std::printf("  the copy taken back on the last step of the scene it was copied from: 0 from the song left alone up to 61.7 of the step; at 61.99, %g\n", static_cast<double>(late));
 }
 
 // The song above is what it is said to be: under PAIRED and under RANDOM its chord track's
@@ -2517,7 +2561,7 @@ int main(int argc, char** argv) {
         {"testTheSongIsLongerAtOnce", testTheSongIsLongerAtOnce, false}, {"testStopped", testStopped, false}, {"testTheEngineHasTheWholeSong", testTheEngineHasTheWholeSong, false},
         {"testWriteGoesToTheNewScene", testWriteGoesToTheNewScene, false}, {"testTheFramesBeforeTheEngineHears", testTheFramesBeforeTheEngineHears, false}, {"testTheCommand", testTheCommand, false},
         {"testTheEnginesMove", testTheEnginesMove, false}, {"testNothingFreedOnTheAudioThreadAndAllOfItComesBack", testNothingFreedOnTheAudioThreadAndAllOfItComesBack, false}, {"testASceneHandedOverIsWhatTheCommandsWrite", testASceneHandedOverIsWhatTheCommandsWrite, false},
-        {"testAnArpeggioGoesWithItsScene", testAnArpeggioGoesWithItsScene, true}, {"testOnceThroughAfterAMove", testOnceThroughAfterAMove, true},
+        {"testAnArpeggioGoesWithItsScene", testAnArpeggioGoesWithItsScene, true}, {"testTakenBackOnTheLastStep", testTakenBackOnTheLastStep, true}, {"testOnceThroughAfterAMove", testOnceThroughAfterAMove, true},
         {"testTheCopyIsWhatTheRollWrites", testTheCopyIsWhatTheRollWrites, true}, {"testTheSixteenthSceneIsGivenBack", testTheSixteenthSceneIsGivenBack, false},
         {"testMovesLostToAFullQueue", testMovesLostToAFullQueue, false}, {"testTakenBackAfterSomethingUndoDoesNotKnow", testTakenBackAfterSomethingUndoDoesNotKnow, false},
         {"testTheSongBesideTheFinishedSong", [] { testTheSongBesideTheFinishedSong(false); }, false}, {"testTheSongBesideTheFinishedSongLater", [] { testTheSongBesideTheFinishedSong(true); }, true},

@@ -159,6 +159,7 @@ struct GlideTrail {
     struct Coming {
         double at = 0.0;
         std::uint8_t pitch = 0;
+        bool ahead = false; // told from the step after the one playing (a note asked a step ahead)
     };
     Moment last, before;
     Coming coming[kGlideComing];
@@ -176,11 +177,23 @@ struct GlideTrail {
         comingCount = kept;
     }
     // A note is going to begin at `at`.
-    void tellComing(int pitch, double at) {
+    void tellComing(int pitch, double at, bool ahead = false) {
         if (comingCount >= kGlideComing) return;
         coming[comingCount].at = at;
         coming[comingCount].pitch = static_cast<std::uint8_t>(pitch);
+        coming[comingCount].ahead = ahead;
         ++comingCount;
+    }
+    // What was told from the step after is forgotten (that step is another scene's now), or is
+    // only what is coming (a new step has begun: it is this step's).
+    void forgetAhead() {
+        int kept = 0;
+        for (int i = 0; i < comingCount; ++i)
+            if (!coming[i].ahead) coming[kept++] = coming[i];
+        comingCount = kept;
+    }
+    void aheadIsNow() {
+        for (int i = 0; i < comingCount; ++i) coming[i].ahead = false;
     }
     bool joins(double at) const { return last.any && at <= last.at + kGlideTogether; } // the moment last begun is its own
     // What a note beginning at `at` slides from. `seed`: glideSeed(track, at), for RANDOM.

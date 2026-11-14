@@ -487,7 +487,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
     // A PAIRED track's step, the first time through: the note is only told as coming, so that
     // the first note of a moment to begin knows the whole moment (glide_rule.hpp).
     if (telling_) {
-        track.trail.tellComing(note.pitch, at); // (only a pattern's own notes come here: never a ratchet's later piece, never a chord's spread key)
+        track.trail.tellComing(note.pitch, at, asking_); // (only a pattern's own notes come here: never a ratchet's later piece, never a chord's spread key)
         return;
     }
     // A ratchet: the note several times over, evenly, inside its first step. Each is let go just
@@ -555,6 +555,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         p.throwTo = note.throwTo;
         p.hold = note.hold;
         p.how = note.how;
+        p.ahead = asking_;
         return;
     }
 }
@@ -567,7 +568,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
     const double nudge = top && note.nudge < 0.f ? 0.0 : static_cast<double>(note.nudge); // (nothing is before the top)
     const double at = stepAt + nudge;                  // the chord's own moment, in steps since Play
     if (telling_) { // (a PAIRED track's step, the first time through: see startNote)
-        track.trail.tellComing(note.pitch, at);
+        track.trail.tellComing(note.pitch, at, asking_);
         return;
     }
     // (The bar of its cell, not the scene's number: a scene put into the song or taken out moves
@@ -595,6 +596,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
                 p.velocity = note.velocity;
                 p.at = at;
                 p.how = kTellOnly;
+                p.ahead = asking_;
                 break;
             }
         }
@@ -622,6 +624,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
             arp->velocity = note.velocity;
             arp->length = note.length;
             arp->throwTo = note.throwTo;
+            arp->ahead = asking_;
             arp->moved = arpMoved(play, seed, 0, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_);
             if (own + arp->moved < 0.0) arp->moved = -own;
             arp->wait = own + arp->moved;
@@ -965,6 +968,10 @@ void Engine::apply(const Command& c) {
         } else {
             tellScene(playScene()); // the same scene, and the count with it
         }
+        // The step playing asked ahead for the step after it. If that is another scene's now (the
+        // copy taken back while the last step of the scene it was copied from plays: the bar that
+        // follows is the next scene's, not the copy's), what was asked is asked again from it.
+        askAgain();
         break;
     case Command::SetSceneRepeats:
         if (validScene(c.scene)) repeats_[c.scene] = c.a < 1 ? 1 : (c.a > kMaxRepeats ? kMaxRepeats : c.a);
@@ -992,6 +999,7 @@ void Engine::apply(const Command& c) {
         break;
     case Command::Play:
         playing_ = true;
+        askedFollowing_ = -1; // nothing asked ahead yet in this playing
         loopScene_ = c.b != 0;
         once_ = c.c == 1 && !loopScene_;
         scene_ = validScene(c.a) ? c.a : 0;
@@ -1245,6 +1253,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
             p.start = start;
             p.part = part;
             p.how = how;
+            p.ahead = asking_;
             return;
         }
     }
@@ -1292,6 +1301,86 @@ Engine::Position Engine::afterThisBar() const {
     return {(scene_ + 1) % sceneCount_, 0, 0};
 }
 
+// The early hits of step `following` of `then`, set waiting. `elapsed`: how far into the step
+// playing this is asked (0 from fireStep; more when a scene move asks again): a hit whose moment
+// has gone by then is not asked.
+void Engine::askAheadHits(Track& track, const DrumScene& then, int following, double elapsed) {
+    asking_ = true;
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        if (then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
+            const double wait = (1.0 + then.nudge[lane][following]) * samplesPerStep_ - elapsed;
+            if (wait >= 0.0) schedule(track, lane, then, following, wait);
+        }
+    }
+    asking_ = false;
+}
+
+// The early notes and the chords asked ahead of step `following` of the cell bar `slotThen`.
+void Engine::askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed) {
+    asking_ = true;
+    for (const Note& note : track.notes[slotThen]) {
+        if (note.velocity <= 0.f || note.step != following) continue;
+        const bool chordAhead = note.play.count && !note.play.atRest() && (note.nudge < 0.f || note.play.time > 0);
+        if (chordAhead) {
+            if (elapsed > 0.0 && (1.0 + (note.nudge < 0.f ? note.nudge : 0.f)) * samplesPerStep_ < elapsed) continue; // (its moment has gone by)
+            startChordNote(track, slotThen, note, false, now + 1.0, samplesPerStep_ - elapsed);
+        } else if (note.nudge < 0.f && !(note.play.count && !note.play.atRest())) {
+            const double wait = (1.0 + note.nudge) * samplesPerStep_ - elapsed;
+            if (wait < 0.0) continue;
+            startNote(track, note, wait, (now + 1.0) + note.nudge);
+        } else {
+            continue;
+        }
+        if (note.play.count && !telling_) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
+    }
+    asking_ = false;
+}
+
+// After a scene move. The step playing asked a step ahead for the early notes, hits and chords of
+// the step after it, from the bar that followed then. If another scene's bar follows now, what was
+// asked from the old one is dropped, what the asking changed is put back (the strokes, the chord
+// asked), and it is asked again from the new one, as far into the step as the playing is.
+void Engine::askAgain() {
+    if (!playing_ || askedFollowing_ < 0) return;
+    const int following = askedFollowing_;
+    const Position after = afterThisBar();
+    const int followingScene = following == 0 ? after.scene : scene_;
+    const int followingBar = following == 0 ? after.bar : bar_;
+    const bool pastEnd = once_ && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const double elapsed = samplesPerStep_ - untilStep_ > 0.0 ? samplesPerStep_ - untilStep_ : 0.0;
+    const double now = static_cast<double>(stepsFired_ - 1); // the step playing
+    for (Track& track : tracks_) {
+        if (!track.hasInstrument()) continue;
+        const int slotThen = slotOf(track, followingScene, followingBar);
+        if (track.askedFrom == track.scenes[slotThen / kMaxBars] && track.askedBar == slotThen % kMaxBars) continue; // the same bar: as asked
+        for (auto& p : track.pendingNotes)
+            if (p.ahead) p = Track::PendingNote();
+        for (auto& arp : track.arps)
+            if (arp.ahead && !arp.begun) arp = Track::Arp();
+        for (auto& lane : track.pending)
+            for (auto& p : lane)
+                if (p.ahead) p = Track::Pending();
+        track.trail.forgetAhead();
+        if (track.synth) {
+            track.strokes = track.strokesBefore;
+            track.lastChord = track.lastChordBefore;
+            track.chordAsked = track.chordAskedBefore;
+        }
+        track.askedFrom = track.scenes[slotThen / kMaxBars];
+        track.askedBar = slotThen % kMaxBars;
+        if (pastEnd) continue;
+        if (track.hasDrums) {
+            askAheadHits(track, track.drumScenes[slotThen], following, elapsed);
+        } else if (track.synth) {
+            for (int pass = track.glideFrom == kFromPaired ? 0 : 1; pass < 2; ++pass) {
+                telling_ = pass == 0;
+                askAheadNotes(track, slotThen, following, now, elapsed);
+            }
+            telling_ = false;
+        }
+    }
+}
+
 // Called on the first sample of step `nextStep_`. Hits on the grid play now.
 // A late hit of this step, and an early hit of the next step, are both
 // somewhere inside the step that is starting, so they are set to wait.
@@ -1316,6 +1405,15 @@ void Engine::fireStep() {
     // The very first step after Play. A hit or note on step 1 that is pushed
     // EARLY would have started just before the bar, and there was no
     // "before": so it starts now, at the top, and is not missed.
+    // What the step before asked a step ahead is this step's now: a scene move from here on does
+    // not take it back (askAgain).
+    for (Track& track : tracks_) {
+        for (auto& p : track.pendingNotes) p.ahead = false;
+        for (auto& arp : track.arps) arp.ahead = false;
+        for (auto& lane : track.pending)
+            for (auto& p : lane) p.ahead = false;
+        track.trail.aheadIsNow();
+    }
     const bool veryFirst = firstStep_; // (only ever set for step 1)
     firstStep_ = false;
     const double now = static_cast<double>(stepsFired_++); // this step, counted from Play
@@ -1341,10 +1439,11 @@ void Engine::fireStep() {
                 } else if (veryFirst && now.level[lane][0] > 0.f) {
                     schedule(track, lane, now, 0, 0.0);
                 }
-                if (!pastEnd && then.level[lane][following] > 0.f && then.nudge[lane][following] < 0.f) {
-                    schedule(track, lane, then, following, (1.0 + then.nudge[lane][following]) * samplesPerStep_);
-                }
             }
+            const int slotThen = slotOf(track, followingScene, followingBar);
+            track.askedFrom = track.scenes[slotThen / kMaxBars];
+            track.askedBar = slotThen % kMaxBars;
+            if (!pastEnd) askAheadHits(track, then, following, 0.0);
         } else if (track.synth) {
             // The notes whose time was up have been let go already
             // (fireNoteOffs). Start this step's.
@@ -1379,15 +1478,15 @@ void Engine::fireStep() {
                     if (note.velocity > 0.f && note.step == nextStep_ && note.nudge >= 0.f) startNote(track, note, note.nudge * samplesPerStep_, now + note.nudge);
                     else if (veryFirst && note.velocity > 0.f && note.step == 0) startNote(track, note, 0.0, now);
                 }
-                for (const Note& note : track.notes[slotThen]) {
-                    if (pastEnd || note.velocity <= 0.f || note.step != following) continue;
-                    const bool chordAhead = note.play.count && !note.play.atRest() && (note.nudge < 0.f || note.play.time > 0);
-                    if (chordAhead) startChordNote(track, slotThen, note, false, now + 1.0, samplesPerStep_);
-                    else if (note.nudge < 0.f && !(note.play.count && !note.play.atRest())) startNote(track, note, (1.0 + note.nudge) * samplesPerStep_, (now + 1.0) + note.nudge);
-                    else continue;
-                    if (note.play.count && !telling_) track.chordAsked = stepsFired_; // (stepsFired_: the number the step after this one will have)
+                if (!telling_) { // (what the asking ahead changes, kept, in case a scene move takes it back)
+                    track.strokesBefore = track.strokes;
+                    track.lastChordBefore = track.lastChord;
+                    track.chordAskedBefore = track.chordAsked;
                 }
+                if (!pastEnd) askAheadNotes(track, slotThen, following, now, 0.0);
             }
+            track.askedFrom = track.scenes[slotThen / kMaxBars];
+            track.askedBar = slotThen % kMaxBars;
             // (`telling_` is false again here: the last time through is the real one.)
         }
     }
@@ -1408,6 +1507,7 @@ void Engine::fireStep() {
             track.autoGliding[lane] = true;
         }
     }
+    askedFollowing_ = following;
     playStep_.store(nextStep_, std::memory_order_relaxed);
     tellScene(scene_);
     playRepeat_.store(repeat_, std::memory_order_relaxed);

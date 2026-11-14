@@ -607,15 +607,28 @@ effect in those two groups and fails one that does not.
   left alone while one scene goes round, and beside a song built with the
   copy in it while the song plays through (press, undo, redo; also with a
   later scene playing, and with a real audio thread making blocks back to back).
-- **A known fault, not mended, on `main` too** (found in review,
-  2026-11-13): the song plays through, and a copy is taken back during the
-  LAST STEP of the scene it was copied from. That step has already asked a
-  step ahead for the early notes and humanised chords of the bar that
-  follows, which was the copy; the first step of the scene that now follows
-  plays wrong (0.28 from the song left alone; taken back half a step sooner,
-  0). One sixteenth note wide. `nextscene_test --edge` prints it; it is not
-  in `ctest`. The mend is in what `fireStep` has asked ahead, and is the
-  owner's call.
+- **A copy taken back during the LAST STEP of the scene it was copied from
+  is mended in the engine** (found in review 2026-11-13, mended 2026-11-14).
+  That step has asked a step ahead for the early notes, hits and chords of the
+  bar that follows, which was the copy. Everything asked ahead is marked
+  (`ahead` on a waiting note, a drum hit waiting, an arpeggio, a PAIRED
+  `Coming`; `asking_` while it is asked), and each track keeps where it was
+  asked from (`askedFrom`, `askedBar`) and what the asking changed
+  (`strokesBefore`, `lastChordBefore`, `chordAskedBefore`). `ScenesMoved` ends
+  with `askAgain`: where another scene's bar follows now, the marked things
+  are dropped, those three put back, and the step asked again from the new
+  bar (`askAheadHits`, `askAheadNotes`, the same code `fireStep` asks with),
+  as far into the step as the playing is. A new step clears the marks first.
+  **One thing it cannot mend**: an early note of the copy already heard
+  (here from 61.7 of the step on: 0.28 from the song left alone, as before),
+  and the next scene's notes whose moment has gone by are not played late.
+  `nextscene_test` `testTakenBackOnTheLastStep` (in ctest) holds 0 up to there
+  for `fill` and for a song with more asked ahead (`addEdges`);
+  `nextscene_test --edge` prints the figures. **One line no test reaches**
+  (its mutant survives): `GlideTrail::aheadIsNow` in `fireStep`, clearing the
+  PAIRED marks at a new step. Kept: a mark left on would let a move forget a
+  moment's own keys, but the keys begin before any note of their moment can
+  ask, so no song found shows it.
 - **What the program remembers it sent is set only when the send went**
   (`Session::syncSong`: `sentSceneCount_`). Set before, a scene move lost to a
   full queue left the engine with the old song length for good: the song sent
