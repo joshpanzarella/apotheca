@@ -202,8 +202,8 @@ to the sound just now.
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
-| | **Right** | **The next TYPE** of the effect (COMP to DUCK), at once: the cursor stays on its row. The last type stops. The press that brought you in from the list switches nothing, however long you hold it: let go, then press again. |
-| | **Left** | On the first setting: back to the list, on the same line. On any other: **the TYPE before** (the first stops). On SENDS: back to the list. |
+| | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
+| | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
 | | B | Its usual value. A send: nothing sent. |
 
@@ -216,8 +216,8 @@ another family or EMPTY goes in the slot, another song opens, or the track is
 deleted or given another instrument. Automation does not come back with a
 type: it follows the settings the two types share, as any change of TYPE
 does. Undo after a switch puts back the type before, with its settings.
-The heading's TYPE row shows the key that does something there (RIGHT, LEFT,
-or LEFT / RIGHT): no RIGHT on the last type, no LEFT on the first.
+With A held on a setting the heading's TYPE row shows the key that switches
+(RIGHT, LEFT, or LEFT / RIGHT): no RIGHT on the last type, no LEFT on the first.
 
 Two things to know. "Exactly as you left it" includes MIX, and LEVEL on a bus:
 turn a bus down on PING, go back to TAPE, and TAPE's own LEVEL is back. And

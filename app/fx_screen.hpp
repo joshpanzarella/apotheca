@@ -250,8 +250,6 @@ private:
     int last_[kRows] = {1, 1, 1, 1, 1, 1, 1, 1};
     static_assert(kRows == 8, "last_ has a place for each line");
     bool holding_ = false;
-    bool cameIn_ = false;            // RIGHT (D-pad or stick) came into the settings from the list and is still held:
-                                     // it switches no TYPE until it is let go (a slightly long press made a COMP a SNAP)
     int tryRow_ = -1, tryTrack_ = 0; // A held on a slot's line: which, and whose
     int trySlot_ = 0;                // and its slot, kept after tryRow_ is let go (the engine's hold is let go by it)
     EffectData tried_;               // what it is trying

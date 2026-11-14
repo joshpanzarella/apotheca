@@ -684,7 +684,7 @@ int main(int argc, char** argv) {
         //   fx-type     the same; with --hold-a its TYPE row and the list of effects
         //   fx-pick     on an empty slot; with --hold-a the list of effects is open
         //   fx-comp     COMP on the track, on its THRESHOLD, with its meter
-        //   fx-switch   COMP on the track, on its second setting: RIGHT there switches its TYPE (the key in the heading; LEFT stops, COMP is LEVEL's first)
+        //   fx-switch   COMP on the track, on its second setting: with --hold-a, A held, RIGHT switches its TYPE (the key in the heading; LEFT stops, COMP is LEVEL's first)
         //   fx-master   COMP on the master, on its THRESHOLD
         //   fx-duck     DUCK on the track, on its SOURCE (a choice: one piece for each)
         //   fx-choice   FILTER's TYPE (a choice)

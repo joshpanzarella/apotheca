@@ -54,7 +54,7 @@ New screens and gestures keep these; do not invent a variant.
 | Build | `cmake -S . -B build && cmake --build build -j8` |
 | All tests (39) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting: RIGHT switches its TYPE, and the key says so), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -659,25 +659,21 @@ effect in those two groups and fails one that does not.
   buses (`kBusRow`), 6 and 7 the master (`kMasterRow`). **Column 0 is the line
   in the list; 1 and up are its settings** (SENDS: 1 ECHO, 2 SPACE).
   - Up / down in the list goes round; right goes to the setting the line
-    last used (`last_`, kept through a change of track); left from the first
-    setting comes back (from a lower one it is the TYPE before, next rule).
+    last used (`last_`, kept through a change of track); left comes back.
     `update()` only pulls the cursor in when the line has fewer settings now.
-  - **In a slot's settings LEFT / RIGHT switch its TYPE** (owner, 2026-11-14, option A;
-    `FxScreen::stepType`, `typeKey`): RIGHT the next of the family, LEFT the one before, A
-    not held; the ends stop, the cursor keeps its row (pulled in where the new type has
-    fewer). **LEFT on the FIRST setting is still the list**, and so is LEFT anywhere on
-    SENDS (no types). Held, it repeats at the list's pace (`kListEveryMs`), the stick at
-    `kKindsPerSecond`: a type is a choice. **The heading's TYPE row and the hints show
-    the key that does something** (`typeKey`, `typeKeyFor`): RIGHT, LEFT or LEFT / RIGHT;
-    no RIGHT on the family's last type, no LEFT on its first or on the first setting, and
-    none at all on the last type's first setting. Below the first setting only a family
-    of one has no key (none is today: `typeKeyFor` is asked with numbers by the test), and
-    that is what sends LEFT back to the list there. B's hint there is "default".
-  - **The RIGHT that came in from the list switches nothing until it is let go**
-    (`cameIn_`; review, 2026-11-14: the D-pad repeats after 170 ms, so a slightly long
-    press into a COMP's settings made it a DUCK, then a LIMITER, then a SNAP; the stick
-    the same). Let go means the D-pad's RIGHT up AND the stick not pushed right.
-    Anything new that carries the cursor from the list into the settings sets it.
+  - **In a slot's settings, A HELD + LEFT / RIGHT switch its TYPE** (owner, 2026-11-14;
+    `FxScreen::stepType`): the type before / after, in the grip that turns the value with
+    UP / DOWN, as LEFT / RIGHT is the TYPE with A held in the list. The ends stop, the
+    cursor keeps its row (pulled in where the new type has fewer), every setting row alike,
+    D-pad only (the stick with A held turns the value), repeating at the list's pace
+    (`kListEveryMs`). **Without A, LEFT is the list from any setting and RIGHT does
+    nothing.** (A first try that day had plain LEFT / RIGHT switch, with LEFT the list only
+    from the first setting: LEFT doing two jobs was awkward, and a long RIGHT in from the
+    list ran through the types. It is gone, `cameIn_` with it.) **With A held the
+    heading's TYPE row and the bar show the key that switches** (`typeKey`, `typeKeyFor`:
+    RIGHT, LEFT or LEFT / RIGHT; no RIGHT on the family's last type, no LEFT on its first,
+    none for a family of one or on SENDS); with A up the bar says LEFT list and HOLD A
+    "turn, type" ("turn" where there are no types). B's hint there is "default".
   - **A slot remembers each type's own settings** (`Session::rememberType` /
     `rememberedType`, `switchEffectType` in fx_screen.cpp): a switch goes through
     `changeEffectType` (lanes moved as always: **a remembered type's automation is not

@@ -327,17 +327,14 @@ void FxScreen::press(Button b) {
             // In the list: up and down through its lines; right into the line's settings, where it was last.
             if (b == Button::Up) goTo(row_ - 1, 0);
             if (b == Button::Down) goTo(row_ + 1, 0);
-            // (That RIGHT, held on, must not go on to switch the TYPE there: cameIn_, until it is let go.)
-            if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]), cameIn_ = true;
+            if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]);
         } else {
-            // In the settings: up and down through them (the ends stop). Right: the slot's next TYPE; left: the
-            // type before, but on the first setting (or where left / right switch no type) back to the list.
+            // In the settings: up and down through them (the ends stop); left is back to the list, from any
+            // of them; right does nothing. The slot's TYPE is switched with A HELD (below): owner, 2026-11-14,
+            // LEFT doing two jobs (the type before, but the list from the first setting) was awkward.
             if (b == Button::Up && column_ > 1) goTo(row_, column_ - 1);
             if (b == Button::Down) goTo(row_, column_ + 1);
-            const bool types = typeKey() != nullptr;
-            if (b == Button::Right && cameIn_) return; // still the push that came in from the list
-            if (b == Button::Left && (column_ == 1 || !types)) column_ = 0;
-            else if ((b == Button::Left || b == Button::Right) && types && stepType(b == Button::Right ? 1 : -1) && !project_.playing) hear();
+            if (b == Button::Left) column_ = 0;
         }
         return;
     }
@@ -363,7 +360,12 @@ void FxScreen::press(Button b) {
         if (!project_.playing) hear();
         return;
     }
-    if (!upDown) return;
+    if (!upDown) {
+        // A held on a setting, LEFT / RIGHT: the slot's TYPE before / after, in the same grip that turns the
+        // value with UP / DOWN (as LEFT / RIGHT is the TYPE with A held in the list). The ends stop.
+        if (!sends(row_) && stepType(b == Button::Right ? 1 : -1) && !project_.playing) hear();
+        return;
+    }
     const int by = b == Button::Up ? 1 : -1;
     if (sends(row_)) {
         // A send: a twentieth at a push.
@@ -412,7 +414,6 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
     if (!event.down) {
         if (b == repeating_) repeating_ = Button::None;
-        if (b == Button::Right && !(input.stickX() > 0.f)) cameIn_ = false; // let go: the next RIGHT is a push of its own
         return;
     }
     if (b == Button::L1 || b == Button::R1) {
@@ -463,12 +464,14 @@ bool FxScreen::stepType(int by) {
 
 const char* FxScreen::typeKeyFor(int column, int types, int at) {
     if (column < 1) return nullptr; // the list. (A family of one: neither way is true, so no key.)
-    const bool right = at + 1 < types, left = column > 1 && at > 0; // (LEFT on the first setting is the list)
+    const bool right = at + 1 < types, left = at > 0;
     return left && right ? "LEFT / RIGHT" : (right ? "RIGHT" : (left ? "LEFT" : nullptr));
 }
 
+// With A held on a slot's setting: the direction(s) that switch its TYPE, or nullptr (not held, the list,
+// SENDS, a family of one).
 const char* FxScreen::typeKey() const {
-    if (holding_ || column_ == 0 || sends(row_)) return nullptr;
+    if (!holding_ || column_ == 0 || sends(row_)) return nullptr;
     const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
     return typeKeyFor(column_, effectTypes(kind), effectTypeIndex(kind));
 }
@@ -488,7 +491,6 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
     // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
-    if (cameIn_ && !input.held(Button::Right) && !(input.stickX() > 0.f)) cameIn_ = false;
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
     // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
@@ -840,6 +842,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         if (column_ > 0) {
             hint("UP / DOWN", "turn it");
+            if (const char* key = typeKey()) hint(key, "type");
         } else if (!onSends) {
             hint("UP / DOWN", "effect");
             if (effectTypes(kind) > 1) hint("LEFT / RIGHT", "type");
@@ -853,10 +856,8 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     } else {
-        const char* key = typeKey();
-        if (!key || column_ == 1) hint("LEFT", "list");
-        if (key) hint(key, "type");
-        hint("HOLD A", "turn");
+        hint("LEFT", "list");
+        hint("HOLD A", !onSends && effectTypes(kind) > 1 ? "turn, type" : "turn"); // (with A held the bar says which way)
         hint("B", onSends ? "none" : "default");
         hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
