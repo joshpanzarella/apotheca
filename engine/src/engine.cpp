@@ -65,6 +65,7 @@ Engine::~Engine() {
         if (command.type == Command::ScenesMoved) delete static_cast<SceneMove*>(command.pointer);
     }
     collectGarbage();
+    for (int i = 0; i < heldCount_; ++i) destroy(heldTrash_[i]);
     for (Track& track : tracks_)
         for (SampleData* sample : track.laneSamples) delete sample;
     for (Track& track : tracks_) delete track.trackSample;
@@ -81,6 +82,26 @@ void Engine::destroy(const Trash& trash) {
 void Engine::collectGarbage() {
     Trash trash;
     while (trash_.pop(trash)) destroy(trash);
+}
+
+void Engine::bin(const Trash& trash) {
+    if (!trash.pointer) return;
+    if (trash_.push(trash)) return;
+    if (heldCount_ < kHeldTrash) {
+        heldTrash_[heldCount_++] = trash;
+        heldNow_.store(heldCount_, std::memory_order_relaxed);
+        return;
+    }
+    trashLost_.fetch_add(1, std::memory_order_relaxed); // leaked rather than freed here
+}
+
+void Engine::binHeld() {
+    if (heldCount_ == 0) return;
+    int kept = 0;
+    for (int i = 0; i < heldCount_; ++i)
+        if (!trash_.push(heldTrash_[i])) heldTrash_[kept++] = heldTrash_[i];
+    heldCount_ = kept;
+    heldNow_.store(heldCount_, std::memory_order_relaxed);
 }
 
 // The slot a "track" number and a slot number name: a track's, the master's or a bus's.
@@ -108,7 +129,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.a = slot;
     c.b = busOfTrack(track) >= 0 ? effectMixParam(kind) : -1; // on a bus: which setting is its LEVEL (the engine's to apply)
     c.pointer = effect.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     effect.release(); // the audio thread hands the old one back through the trash
     // Its settings as it starts, said out loud: automation needs to know where each knob rests.
     if (validTrack(track) && kind != EffectKind::None) {
@@ -119,7 +140,7 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
         for (int i = 0; i < effectInfo(kind).params; ++i) {
             p.b = i;
             p.value = effectInfo(kind).defaults[i];
-            commands_.push(p);
+            send(p); // a loss here is counted too: where the knobs rest would be unknown
         }
     }
     return true;
@@ -131,7 +152,7 @@ bool Engine::setTrackSample(int track, std::unique_ptr<SampleData> sample) {
     c.type = Command::SetTrackSample;
     c.track = track;
     c.pointer = sample.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release();
     return true;
 }
@@ -143,7 +164,7 @@ bool Engine::setLaneSample(int track, int lane, std::unique_ptr<SampleData> samp
     c.track = track;
     c.a = lane;
     c.pointer = sample.get();
-    if (!commands_.push(c)) return false;
+    if (!send(c)) return false; // counted: a loss is mended by sending the song again
     sample.release(); // the audio thread hands the old one back through the trash
     return true;
 }
@@ -316,18 +337,8 @@ void Engine::swapEffect(std::unique_ptr<Effect>& place, SlotFade& fade, Effect* 
         // still fading out goes now; the fade starts over from the one in the slot.
         Trash trash;
         trash.isEffect = true;
-        trash.pointer = fade.leaving.get();
-        if (trash_.push(trash)) fade.leaving.release(); // if full it stays ours, and is freed below or with the engine
-    }
-    if (fade.leaving) {
-        // Nowhere to hand it: the incoming one cannot wait either, so the one
-        // in the slot goes at once (as every swap did before there was a fade).
-        Trash trash;
-        trash.isEffect = true;
-        trash.pointer = place.release();
-        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
-        place.reset(incoming);
-        return;
+        trash.pointer = fade.leaving.release();
+        bin(trash);
     }
     if (!place && !incoming) return; // empty, and still empty
     fade.leaving = std::move(place);
@@ -378,8 +389,8 @@ void Engine::binLeaving(SlotFade& fade) {
     if (fade.left > 0 || !fade.leaving) return;
     Trash trash;
     trash.isEffect = true;
-    trash.pointer = fade.leaving.get();
-    if (trash_.push(trash)) fade.leaving.release(); // if full: kept, and tried again next chunk
+    trash.pointer = fade.leaving.release();
+    bin(trash); // if full: held, and tried again at the end of the chunk
 }
 
 bool Engine::addDrumTrack(int track) {
@@ -811,7 +822,7 @@ void Engine::apply(const Command& c) {
         std::unique_ptr<Effect>* found = effectPlace(c.track, c.a, &fade);
         if (!found) {
             trash.pointer = c.pointer; // nowhere to put it
-            if (trash.pointer) trash_.push(trash);
+            bin(trash);
             break;
         }
         std::unique_ptr<Effect>& place = *found;
@@ -848,7 +859,7 @@ void Engine::apply(const Command& c) {
         } else {
             trash.pointer = incoming;
         }
-        if (trash.pointer) trash_.push(trash);
+        bin(trash);
         break;
     }
     case Command::SetLaneSample: {
@@ -863,7 +874,7 @@ void Engine::apply(const Command& c) {
         } else {
             trash.pointer = incoming; // nowhere to put it
         }
-        if (trash.pointer) trash_.push(trash); // if full, it is leaked rather than freed here
+        bin(trash);
         break;
     }
     case Command::SetStep:
@@ -942,7 +953,7 @@ void Engine::apply(const Command& c) {
             Trash trash;
             trash.isMove = true;
             trash.pointer = c.pointer;
-            trash_.push(trash); // if full, it is leaked rather than freed here
+            bin(trash);
         }
         if (playing_ && (c.b == 1 || c.b == -1) && validScene(c.a) && scene_ >= c.a && validScene(scene_ + c.b)) {
             scene_ += c.b;
@@ -1106,19 +1117,18 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track)) {
             Track& track = tracks_[c.track];
             if (track.synth) {
-                // Freeing is not for this thread: hand it back. If the trash is
-                // full (it never should be) the synth is kept rather than lost.
+                // Freeing is not for this thread: hand it back. Always: a synth
+                // kept here would play the next song's notes in place of its instrument.
                 Trash trash;
-                trash.pointer = track.synth.get();
-                if (trash_.push(trash)) track.synth.release();
-                else break;
+                trash.pointer = track.synth.release();
+                bin(trash);
             }
             if (track.trackSample) { // the synth that read it has gone
                 Trash trash;
                 trash.isSample = true;
                 trash.pointer = track.trackSample;
                 track.trackSample = nullptr;
-                trash_.push(trash);
+                bin(trash);
             }
             track.hasDrums = false;
             track.glideFrom = kFromTop;
@@ -1130,7 +1140,7 @@ void Engine::apply(const Command& c) {
                 trash.pointer = track.laneSamples[lane];
                 track.drums.setLaneSample(lane, nullptr, 0);
                 track.laneSamples[lane] = nullptr;
-                trash_.push(trash);
+                bin(trash);
             }
             for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
             for (int slot = 0; slot < kPatternSlots; ++slot) {
@@ -1174,7 +1184,7 @@ void Engine::apply(const Command& c) {
             Trash trash;
             trash.isImage = true;
             trash.pointer = c.pointer;
-            trash_.push(trash); // if full, the image is leaked rather than freed here
+            bin(trash);
         }
         break;
     case Command::SetEffectParam: {
@@ -1866,6 +1876,7 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
         for (SlotFade& fade : tracks_[active_[i]].fades) binLeaving(fade);
     for (SlotFade& fade : masterFades_) binLeaving(fade);
     for (SlotFade& fade : busFades_) binLeaving(fade);
+    binHeld(); // what found the trash full, handed on now the app may have emptied it
 
     // Remember what goes out, for Catch.
     // The volume: after everything, Catch included. It glides to a new

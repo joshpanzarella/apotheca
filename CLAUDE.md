@@ -235,11 +235,16 @@ effect in those two groups and fails one that does not.
 
 ### The engine and its threads
 - **The audio thread never allocates, locks for long, or frees.** Things it
-  is done with go to the trash queue; `collectGarbage()` frees them.
+  is done with go to the trash queue (`bin()`); `collectGarbage()` frees them,
+  once a frame. What finds it full waits with the audio thread and is handed
+  on at the end of a chunk (`binHeld`). **Nothing is kept in the engine for
+  want of room**: a synth kept so played the next song's notes.
 - **Commands go through a queue that can fill.** `Engine::send` returns false
   and counts the loss (`dropped()`). `Session::update` notices and sends the
   whole song again (`applyProject`). Callers that hand over a pointer must
-  check the return themselves.
+  check the return themselves. **Every push goes through `send()`**, the
+  ones that carry a recording or an effect too: a loss it does not count is
+  never mended.
 - **A test that never renders never empties the queue.** Render alongside
   frames (`rig.frames(n); rig.render(...)`), or commands pile up and drop.
 - **Helper threads** (`useWorkers`): tracks are rendered side by side and
@@ -1054,6 +1059,7 @@ effect in those two groups and fails one that does not.
 | ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
+| The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo | 20 ms |

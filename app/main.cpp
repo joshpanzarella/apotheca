@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
     // than there are (one is left for the screen and everything else).
     {
         const unsigned cores = std::thread::hardware_concurrency();
-        const int helpers = cores >= 4 ? 2 : (cores >= 2 ? 1 : 0);
+        const int helpers = helpersFor(cores);
         if (!smoke && !shot) engine.useWorkers(helpers, [] { makeThreadRealtime(69); });
         std::printf("processor cores: %u; tracks shared across %d\n", cores, engine.workers() + 1);
     } // real sound: if it cannot keep up, do plainer work, not stutter

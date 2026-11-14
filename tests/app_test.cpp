@@ -21,6 +21,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "battery.hpp"
+#include "bench_run.hpp"
 #include "canvas.hpp"
 #include "controls.hpp"
 #include "instruments.hpp"
@@ -5762,6 +5763,18 @@ void testTheEngineHearsTwinsSettings() {
 
 } // namespace
 
+// The SPEED TEST plays the busiest song with the helpers the program uses, as well as without
+// (the handheld cannot otherwise tell whether they carry it). Briefly here: that it plays, and
+// that the helpers asked for are the ones at work.
+void testTheSpeedTestPlaysTheBusiestSongWithHelpers() {
+    const WholeSongTimes alone = timeWholeSong(0, 0.3), helped = timeWholeSong(2, 0.3);
+    CHECK(alone.helpers == 0 && helped.helpers == 2);
+    CHECK(alone.blocks == 56 && helped.blocks == 56); // 0.3 s in blocks of 256 frames
+    CHECK(alone.peak > 0.05f && helped.peak > 0.05f); // a song playing, not silence
+    CHECK(alone.meanMs > 0.0 && alone.worstMs >= alone.p99Ms && alone.p99Ms >= 0.0 && helped.worstMs >= helped.p99Ms);
+    CHECK(!alone.realtime && !helped.realtime); // not asked for outside the SPEED TEST itself
+}
+
 // A full command queue loses commands (it takes the audio thread standing
 // still for seconds). The app notices, waits for the queue to empty, and
 // sends the whole song again: what is on the screen is what plays.
@@ -7442,6 +7455,7 @@ int main(int argc, char** argv) {
     testNamingATrackFromTheSongScreen();
     testStepEffects();
     testAFullQueueIsRecoveredFrom();
+    testTheSpeedTestPlaysTheBusiestSongWithHelpers();
     testANewProjectIsOneDrumTrack();
     testAddingTracks();
     testOpeningACellWorksOnThatScene();
