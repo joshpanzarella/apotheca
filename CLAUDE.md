@@ -163,6 +163,10 @@ effect in those two groups and fails one that does not.
   purpose: a bus nobody has touched holds the same thing in every song. `songText` always writes both `busfx` lines, an empty bus
   as `busfx 2 none`, so "none" is never mistaken for "old". A track's send is
   a `send BUS AMOUNT` line, left out at 0; `fx 3` is its third slot.
+- **A cell made shorter keeps its hidden bars, in the file too.** They are
+  written after a `bar K` past the cell's end (`hidesBars` in song_file.cpp);
+  a program from before reads no line for a bar the cell does not have, so it
+  skips them. A note there may run to where the longest cell would end.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.

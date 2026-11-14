@@ -729,6 +729,80 @@ void testNamesDoNotRepeat() {
 
 } // namespace
 
+// A cell made shorter hides its last bars; made longer again they come back as they were. That
+// holds through the file (save and open), and through undo, which reads the song from its text.
+void testHiddenBarsAreKept() {
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.frames(2);
+    session.setCellBars(0, 0, 2);
+    session.setCellBars(1, 0, 4);
+    project.tracks[0].drums[0][0].level[0][0] = 0.9f;
+    project.tracks[0].drums[0][1].level[1][4] = 0.7f; // a snare in bar 2 only
+    project.tracks[0].drums[0][1].fx[1][4].ratchet = 3;
+    session.sendDrumPattern(0, 0);
+    project.tracks[0].drums[1][1].level[2][2] = 0.4f; // and in scene 2, a one-bar cell with nothing in its one bar: its hidden bar still goes in the file
+    session.sendDrumPattern(0, 1);
+    NotePattern& third = project.tracks[1].notes[0][2];
+    third.notes[0].step = 2;
+    third.notes[0].pitch = 64;
+    third.notes[0].length = 20.f; // over the bar line, into the fourth
+    third.notes[0].velocity = 0.6f;
+    third.chords[0].step = 8;
+    third.chords[0].length = 4.f;
+    third.chords[0].velocity = 0.5f;
+    third.chords[0].root = 60;
+    third.chords[0].count = 3;
+    third.chords[0].intervals[1] = 4;
+    third.chords[0].intervals[2] = 7;
+    session.sendNotePattern(1, 0);
+    rig.frames(60);
+    session.setCellBars(0, 0, 1);
+    session.setCellBars(1, 0, 2);
+    rig.frames(60);
+
+    const std::string text = songText(project);
+    std::unique_ptr<Project> opened(new Project);
+    CHECK(parseSong(text, *opened));
+    CHECK(opened->tracks[0].bars[0] == 1 && opened->tracks[1].bars[0] == 2);
+    CHECK(opened->tracks[0].drums[0][1].level[1][4] == 0.7f && opened->tracks[0].drums[0][1].fx[1][4].ratchet == 3);
+    CHECK(opened->tracks[1].notes[0][2].notes[0].velocity == 0.6f && opened->tracks[1].notes[0][2].notes[0].length == 20.f);
+    CHECK(opened->tracks[1].notes[0][2].chords[0].velocity == 0.5f && opened->tracks[1].notes[0][2].chords[0].count == 3);
+    CHECK(opened->tracks[0].bars[1] == 1 && opened->tracks[0].drums[1][1].level[2][2] == 0.4f);
+    CHECK(songText(*opened) == text);
+    // Written after a "bar K" past the cell's end: a program from before reads no line of them.
+    const std::size_t hidden = text.find("bar 2\nseeds");
+    CHECK(hidden != std::string::npos && text.find("hit 2 5 0.7", hidden) != std::string::npos);
+    // A song with no hidden bars is written as it always was.
+    {
+        std::unique_ptr<Project> plain(new Project);
+        CHECK(parseSong("apotheca-song 1\ntrack drums\nscene 1\nseeds 0 0 0 0 0 0 0 0\nhit 1 1 0.9 0 1 0\n", *plain));
+        CHECK(songText(*plain).find("bar") == std::string::npos);
+    }
+
+    // Undo of an edit on the same track leaves the hidden bar where it is.
+    project.tracks[0].drums[0][0].level[3][8] = 0.5f;
+    session.sendDrumPattern(0, 0);
+    rig.frames(60);
+    CHECK(session.undo() && project.tracks[0].drums[0][0].level[3][8] == 0.f);
+    CHECK(project.tracks[0].drums[0][1].level[1][4] == 0.7f);
+    CHECK(project.tracks[1].notes[0][2].notes[0].velocity == 0.6f);
+
+    // Opened again and made longer: the bar comes back as it was, not a copy of the first.
+    {
+        Rig other;
+        other.project() = *opened;
+        other.session().applyProject();
+        other.frames(2);
+        other.session().setCellBars(0, 0, 2);
+        other.session().setCellBars(1, 0, 4);
+        CHECK(other.project().tracks[0].drums[0][1].level[1][4] == 0.7f && other.project().tracks[0].drums[0][1].level[0][0] == 0.f);
+        CHECK(other.project().tracks[1].notes[0][2].notes[0].pitch == 64 && other.project().tracks[1].notes[0][2].notes[0].length == 20.f);
+    }
+}
+
 int main(int, char**) {
     testTextRoundTrip();
     testBadFiles();
@@ -737,6 +811,7 @@ int main(int, char**) {
     testNewSongAndTheList();
     testTheSongListOnScreen();
     testFreeNoteLengthsAreKept();
+    testHiddenBarsAreKept();
     testRevs();
     testASongMadeAMomentAgoIsInTheList();
     testRenamingAndDeletingSongs();

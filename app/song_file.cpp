@@ -24,6 +24,22 @@ void put(std::string& out, const char* format, double a) {
 }
 
 
+// Has the cell bars past its end with something in them? (A cell made shorter hides its last bars.)
+bool hidesBars(const TrackData& track, int scene) {
+    for (int bar = track.bars[scene]; bar < kMaxBars; ++bar) {
+        if (track.kind == TrackKind::Drums && !track.drums[scene][bar].empty()) return true;
+        if (isSynth(track.kind) && !track.notes[scene][bar].empty()) return true;
+    }
+    return false;
+}
+
+// How long a note or a chord may be, from its step: to the end of the cell, over the bar lines.
+// One in a bar the cell hides may run to where the longest cell would end.
+float longestFrom(const TrackData& track, int scene, int bar, int step) {
+    const int bars = bar < track.bars[scene] ? track.bars[scene] : kMaxBars;
+    return static_cast<float>((bars - bar) * kSteps - step);
+}
+
 } // namespace
 
 std::string songText(const Project& project) {
@@ -114,11 +130,14 @@ std::string songText(const Project& project) {
             }
             // scene N, then "bars B" if the cell is longer than one, then each
             // bar's hits; "bar K" comes before those of the second bar on.
+            // Then the bars the cell hides (made shorter: they come back as they were if it is made
+            // longer again), each after its "bar K" past the cell's end. A program from before
+            // reads no line for a bar the cell does not have, so it skips them.
             for (int scene = 0; scene < kMaxScenes; ++scene) {
-                if (track.sceneEmpty(scene) && track.bars[scene] == 1) continue;
+                if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
                 put(out, "scene %.0f\n", scene + 1);
                 if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-                for (int bar = 0; bar < track.bars[scene]; ++bar) {
+                for (int bar = 0; bar < kMaxBars; ++bar) {
                     const DrumPattern& p = track.drums[scene][bar];
                     if (p.empty()) continue;
                     if (bar > 0) put(out, "bar %.0f\n", bar + 1);
@@ -169,11 +188,11 @@ std::string songText(const Project& project) {
                 for (int i = 0; i < settingCount(track.kind); ++i) put(out, " %.0f", values[i]);
                 out += "\n";
             }
-            for (int scene = 0; scene < kMaxScenes; ++scene) {
-                if (track.sceneEmpty(scene) && track.bars[scene] == 1) continue;
+            for (int scene = 0; scene < kMaxScenes; ++scene) { // (and the hidden bars, as a drum track's)
+                if (track.sceneEmpty(scene) && track.bars[scene] == 1 && !hidesBars(track, scene)) continue;
                 put(out, "scene %.0f\n", scene + 1);
                 if (track.bars[scene] > 1) put(out, "bars %.0f\n", track.bars[scene]);
-                for (int bar = 0; bar < track.bars[scene]; ++bar) {
+                for (int bar = 0; bar < kMaxBars; ++bar) {
                     const NotePattern& p = track.notes[scene][bar];
                     if (p.empty()) continue;
                     if (bar > 0) put(out, "bar %.0f\n", bar + 1);
@@ -383,8 +402,8 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "bar") {
             double b;
             bar = (in >> b) && b >= 1 && b <= kMaxBars ? static_cast<int>(b) - 1 : -1;
-        } else if (bar < 0 || bar >= track->bars[scene]) {
-            continue; // lines for a bar the cell does not have
+        } else if (bar < 0) {
+            continue; // lines for a bar there is not (a bar past the cell's end is one it hides: kept)
         } else if (word == "seeds" && track->kind == TrackKind::Drums) {
             double seed;
             for (int i = 0; i < kDrumLanes && (in >> seed); ++i) track->drums[scene][bar].diceSeed[i] = static_cast<std::uint32_t>(seed);
@@ -422,7 +441,7 @@ bool parseSong(const std::string& text, Project& project) {
             const int s = static_cast<int>(step) - 1;
             p.notes[slot].step = s;
             p.notes[slot].pitch = static_cast<int>(pitch);
-            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - s)); // to the end of the cell: a note may run on over the bar lines
+            p.notes[slot].length = clampf(static_cast<float>(length), kShortestNote, longestFrom(*track, scene, bar, s)); // to the end of the cell: a note may run on over the bar lines
             p.notes[slot].velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             p.notes[slot].nudge = clampf(static_cast<float>(nudge), -0.5f, 0.5f);
             p.notes[slot].throwTo = static_cast<std::uint8_t>(thrown >= 1 && thrown < kThrowChoices ? thrown : 0);
@@ -468,7 +487,7 @@ bool parseSong(const std::string& text, Project& project) {
             NotePattern& p = track->notes[scene][bar];
             ChordEvent c;
             c.step = static_cast<int>(step) - 1;
-            c.length = clampf(static_cast<float>(length), kShortestNote, static_cast<float>((track->bars[scene] - bar) * kSteps - c.step));
+            c.length = clampf(static_cast<float>(length), kShortestNote, longestFrom(*track, scene, bar, c.step));
             c.velocity = clampf(static_cast<float>(level), 0.05f, 1.f);
             c.inversion = clampi(static_cast<int>(inversion), -kMaxInversion, kMaxInversion);
             c.root = static_cast<int>(root);
