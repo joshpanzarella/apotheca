@@ -615,7 +615,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a tap: let go without turning anything) types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
 | A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
@@ -665,7 +665,7 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - **The scene lasts as long as its longest cell.** A shorter cell goes round
   under it: a one-bar drum loop plays four times under a four-bar part.
 - A shorter cell is drawn again for each time it goes round, a little dimmer,
-  with a thin line where it starts over. A long cell shows its length in the corner.
+  with a thin line where it starts over.
 - **The repeat count is whole passes of the scene.** A four-bar scene at x2
   is eight bars.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end

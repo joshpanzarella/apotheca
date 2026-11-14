@@ -898,7 +898,7 @@ effect in those two groups and fails one that does not.
     at every size: the top bar (and the tempo's box), the hints bar and
     `hintsUnder` (inside `ui.cpp`: hand them the set you were given), the
     strip under the drum grid and under the piano roll (`tight` in both),
-    anything written over a little picture (a cell's bar count on SONG, a
+    anything written over a little picture (a
     recording's seconds in the list), the heads of narrow SONG columns, the
     controls setup. The tests that read a strip or a bar off the screen
     draw at LARGE and hold at every size for that reason.
@@ -1204,7 +1204,8 @@ effect in those two groups and fails one that does not.
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:
   it acts on letting go, as on a cell, and **only if no other button was
-  pressed while A was held** (`mixTurned_`); while A is held on a head every
+  pressed while A was held** (`mixTurned_`) **and it was let go before the card came up**
+  (`kMixCardMs`, 300 ms: `mixShown_`; owner, 2026-11-14: a look at the level opened the keyboard); while A is held on a head every
   other button but START does nothing (Y there muted the track under the
   card). **A pressed while B's delete is filling calls the delete off**, on a
   head and on a cell (`update()`), and is then no tap. `TrackData::mixDb` (whole dB from the

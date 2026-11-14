@@ -61,6 +61,9 @@ public:
     static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
+    // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
+    // names the track, turned or not (owner, 2026-11-14: a look at the level opened the keyboard).
+    static constexpr Uint32 kMixCardMs = 300;
     // What the hints bar says while the head fills (the head has room for one word).
     static constexpr const char* kTrackDeletingWords = "deleting the track: cannot be undone";
     // Under the list of instruments when a track's is being changed: what goes with the old one.
@@ -82,7 +85,9 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
-    bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the mixer card is up
+    bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
+    void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
+    bool mixCardUp() const { return mixing_ && (mixShown_ || mixTurned_); } // ...and its card is drawn: held kMixCardMs, or something turned
     void moveToMaster() { onHead_ = false, onMaster_ = true; }
     // The mixer card while A is held on a head: placed under the head (for the tests to read).
     static constexpr int kMixCardW = 136, kMixCardH = 62;
@@ -121,6 +126,8 @@ private:
     bool onMaster_ = false; // ...or on MASTER, the head at the right-hand end
     bool mixing_ = false;   // A is held on a head: the directions turn its level and pan
     bool mixTurned_ = false; // ...and something was turned, so letting go is not a tap (a tap on a track's head names it)
+    bool mixShown_ = false, mixTimed_ = false; // ...held kMixCardMs: the card is up, and letting go is not a tap either
+    Uint32 mixSince_ = 0;
     float mixSavedDb_ = 0.f, mixSavedPan_ = 0.f; // the stick's part-steps saved up
     int scene_ = 0;
     int column_ = 0;

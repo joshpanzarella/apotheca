@@ -18,7 +18,9 @@ namespace apotheca {
 enum TextSize { kTextSmall, kTextMedium, kTextLarge, kTextXl, kTextSizes };
 constexpr const char* const kTextSizeNames[kTextSizes] = {"SMALL", "MEDIUM", "LARGE", "XL"};
 // The three fonts at each size: small, medium, large. LARGE is what every screen was laid out at.
-constexpr float kTextPoints[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.5f, 16.f, 18.5f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
+// MEDIUM is halfway between SMALL and LARGE (owner, 2026-11-14: it was {13.5, 16, 18.5}, and SMALL to MEDIUM
+// looked a much bigger step than the two after it); each step up is now about the same.
+constexpr float kTextPoints[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.25f, 15.5f, 18.f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
 
 // The program holds TWO sets of these: the chosen one (the setting), and the fixed one, which
 // is always LARGE. The rows that were laid out to the pixel are drawn with the fixed one

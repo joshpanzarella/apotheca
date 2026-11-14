@@ -491,7 +491,7 @@ void testTheSizes() {
     // Where it started, the step after, what the screens were laid out at, and a little bigger.
     CHECK(kTextSizes == 4 && kTextSmall == 0 && kTextMedium == 1 && kTextLarge == 2 && kTextXl == 3); // (the numbers are kept in settings.txt)
     CHECK(Session::kTextSizeCount == kTextSizes && Session::kTextSizeAsBuilt == kTextLarge);
-    const float points[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.5f, 16.f, 18.5f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
+    const float points[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.25f, 15.5f, 18.f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
     const char* names[kTextSizes] = {"SMALL", "MEDIUM", "LARGE", "XL"};
     for (int size = 0; size < kTextSizes; ++size) {
         CHECK(std::string(kTextSizeNames[size]) == names[size]);
@@ -1003,12 +1003,12 @@ void testTheOtherScreens() {
     rig.frames(2);
     holds(rig, "SONG, twelve tracks with long names");
     {
-        // The four-bar cell's count, over its little picture: at LARGE whatever is chosen, and so is track 4's number
-        // on its narrow head (beside the S or M mark). The scene's own number 4 follows the setting.
+        // Track 4's number on its narrow head (beside the S or M mark) is at LARGE whatever is chosen; the scene's own
+        // number 4 follows the setting. A four-bar cell has no count over its little picture (owner, 2026-11-14).
         int held = 0, follows = 0;
         for (const textfit::Text& t : lastXl.texts)
             if (t.words == "4") (t.cap == screens().at[kTextLarge]->small.capHeight() ? held : follows) += 1;
-        CHECK(held == 2 && follows >= 1);
+        CHECK(held == 1 && follows >= 1);
     }
     rig.app.song().moveCursorTo(0, 1);
     rig.key(B, true); // deleting a track: its head says so

@@ -815,6 +815,7 @@ int main(int argc, char** argv) {
             tapKey(SDLK_UP); // onto its head
         }
         pushKey(SDLK_x, true); // A, held
+        app.song().showMixCardForStill();
     } else if (std::strcmp(view, "song-deleting") == 0) {
         // B held on a song in the list: its row filling (it is deleted at a second; stills are taken sooner).
         app.session().view = View::Song;

@@ -398,6 +398,23 @@ void testTheGesture() {
     rig.frames(1);
     CHECK(rig.app.session().view == View::Settings);
     session.view = View::Song;
+    // A held long enough for the card, nothing turned, let go: a look at the level, not a tap. No keyboard
+    // (owner, 2026-11-14). Just short of the card it is still a tap; the card is drawn only once it is up.
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(song.mixing() && !song.mixCardUp());
+    rig.frames(SongScreen::kMixCardMs / 16 + 1);
+    CHECK(song.mixCardUp());
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.app.session().view == View::Song && session.mixDb(1) == -6 && session.mixPan(1) == 10);
+    rig.key(A, true);
+    rig.frames(SongScreen::kMixCardMs / 16 - 2);
+    CHECK(!song.mixCardUp());
+    rig.key(A, false);
+    rig.frames(1);
+    CHECK(rig.app.session().view == View::Settings);
+    session.view = View::Song;
     rig.frames(1);
     // A held on a cell is the cell's length, as it was: no level moves.
     song.moveCursorTo(0, 1);
@@ -575,6 +592,7 @@ void testWhatIsDrawn() {
         song.moveCursorTo(0, 1);
         rig.tap(UP);
         rig.key(A, true);
+        rig.frames(SongScreen::kMixCardMs / 16 + 2); // (the card comes up once A has been held a moment)
         CHECK(draw());
         const SongScreen::Place card = song.mixCard();
         const SDL_Rect head = song.headRect(1);
@@ -648,6 +666,7 @@ void testTheHints() {
         rig.tap(UP);
         CHECK(draw() && said("mix") && said("name") && said("mute") && said("solo"));
         rig.key(A, true);
+        rig.frames(SongScreen::kMixCardMs / 16 + 2);
         CHECK(draw() && said("level") && said("pan") && said("back to 0 DB, middle"));
         rig.tap(UP), rig.tap(DOWN); // (turned, so letting go is not a tap: that would name the track)
         rig.key(A, false);
@@ -655,6 +674,7 @@ void testTheHints() {
         rig.tap(RIGHT);
         CHECK(draw() && said("level and pan of everything") && said("MASTER"));
         rig.key(A, true);
+        rig.frames(SongScreen::kMixCardMs / 16 + 2);
         CHECK(draw() && said("level") && said("pan"));
         rig.key(A, false);
     }
