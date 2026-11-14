@@ -399,7 +399,7 @@ bool parseSong(const std::string& text, Project& project) {
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
         } else if (word == "songend") {
             double end = 0;
-            if (in >> end) song->songEnd = wholeIn(end, kSongLoop, kSongStop);
+            if (in >> end) song->songEnd = songEndKind(wholeIn(end, 0, 255)); // (held as a double first; a number nobody knows: LOOP)
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;

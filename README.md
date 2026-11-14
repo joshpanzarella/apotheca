@@ -628,7 +628,8 @@ The song runs to the last scene with anything in it. Then, by its **song end**:
 - **LOOP** (the usual): it comes round to the first scene, for good.
 - **STOP**: it stops on the step after the last scene's last step, as START
   stopping it would: notes let go, echoes and tails ring out. The next START
-  plays from the scene you are on, as always.
+  plays from the scene you are on, as always. Catch (Y) after it gives the
+  song's last bar.
 
 The song end is kept with the song and undone like any edit. It is for the
 song only: a scene played alone (START on PATTERN) goes round as before, and

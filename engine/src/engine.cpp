@@ -1050,9 +1050,15 @@ void Engine::apply(const Command& c) {
     case Command::Stop:
         stopPlaying();
         break;
-    case Command::SetSongEnd:
+    case Command::SetSongEnd: {
+        // Switched while the song's last step plays: that step has asked a step ahead for the early
+        // hits and notes of the song's top (LOOP), or for nothing (STOP). It is asked again, as
+        // after a scene move, so the round that follows is LOOP's, or the end STOP's.
+        const bool was = playsOnce();
         songStop_ = c.a == 1;
+        if (playsOnce() != was) askAgain(true);
         break;
+    }
     case Command::Panic:
         panicHeld_ = c.a != 0;
         if (!panicHeld_) break;
@@ -1347,6 +1353,18 @@ int Engine::sceneSteps(int scene) const {
     return steps_[scene] > 0 && steps_[scene] < whole ? steps_[scene] : whole;
 }
 
+// A bar line, for Catch: the bar that has just ended is the last whole bar (where it began and
+// ended), and the next begins here. Called where a bar's first step fires, and where a song that
+// stops at its end stops (no step fires there, and its last bar is a whole bar all the same).
+void Engine::barLine() {
+    const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
+    if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
+        barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_relaxed);
+        barEndedAt_.store(now, std::memory_order_relaxed);
+    }
+    barBeganAt_ = now;
+}
+
 void Engine::stopPlaying() {
     playing_ = false;
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
@@ -1409,19 +1427,21 @@ void Engine::askAheadNotes(Track& track, int slotThen, int following, double now
 // the step after it, from the bar that followed then. If another scene's bar follows now, what was
 // asked from the old one is dropped, what the asking changed is put back (the strokes, the chord
 // asked), and it is asked again from the new one, as far into the step as the playing is.
-void Engine::askAgain() {
+void Engine::askAgain(bool endChanged) {
     if (!playing_ || askedFollowing_ < 0) return;
     const int following = askedFollowing_;
     const Position after = afterThisBar();
     const int followingScene = following == 0 ? after.scene : scene_;
     const int followingBar = following == 0 ? after.bar : bar_;
-    const bool pastEnd = playsOnce() && following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool lastStep = following == 0 && (bar_ + 1) * kSteps >= sceneSteps(scene_) && repeat_ + 1 >= repeats_[scene_] && scene_ + 1 >= sceneCount_;
+    const bool pastEnd = playsOnce() && lastStep;
+    if (endChanged && !lastStep) return; // (AT END switched anywhere else: nothing asked depends on it)
     const double elapsed = samplesPerStep_ - untilStep_ > 0.0 ? samplesPerStep_ - untilStep_ : 0.0;
     const double now = static_cast<double>(stepsFired_ - 1); // the step playing
     for (Track& track : tracks_) {
         if (!track.hasInstrument()) continue;
         const int slotThen = slotOf(track, followingScene, followingBar);
-        if (track.askedFrom == track.scenes[slotThen / kMaxBars] && track.askedBar == slotThen % kMaxBars) continue; // the same bar: as asked
+        if (!endChanged && track.askedFrom == track.scenes[slotThen / kMaxBars] && track.askedBar == slotThen % kMaxBars) continue; // the same bar: as asked
         for (auto& p : track.pendingNotes)
             if (p.ahead) p = Track::PendingNote();
         for (auto& arp : track.arps)
@@ -1457,14 +1477,7 @@ void Engine::fireStep() {
     // Step 1 of a new bar: move on through the song (not on the very first
     // step after Play, which is where the song starts).
     // Bar lines, for Catch: where the bar that has just ended began and ended.
-    if (nextStep_ == 0) {
-        const std::uint64_t now = caughtCount_.load(std::memory_order_relaxed);
-        if (!firstStep_ && now - barBeganAt_ <= static_cast<std::uint64_t>(kCatchFrames)) {
-            barFrames_.store(static_cast<int>(now - barBeganAt_), std::memory_order_relaxed);
-            barEndedAt_.store(now, std::memory_order_relaxed);
-        }
-        barBeganAt_ = now;
-    }
+    if (nextStep_ == 0) barLine();
     if (nextStep_ == 0 && !firstStep_) {
         const Position next = afterThisBar();
         scene_ = next.scene;
@@ -1719,6 +1732,7 @@ void Engine::render(float* interleaved, int frames) {
         // A song that stops at its end stops on the first sample of the step after its last, exactly
         // as a Stop taken there would (before anything of that sample: a Stop is taken first).
         if (playing_ && untilStep_ <= 0.0 && songEndsNow()) {
+            barLine(); // Catch: the song's last bar is the last bar it played
             stopPlaying();
             songEnded_.store(playsTaken_, std::memory_order_relaxed);
         }

@@ -733,6 +733,7 @@ private:
     // The step after the song's last: a song that stops at its end stops here (render()).
     bool songEndsNow() const;
     void stopPlaying(); // Command::Stop, and a song stopping at its end
+    void barLine();     // Catch: a bar has ended here (a bar's first step, or a song stopping at its end)
     bool firstStep_ = true; // the step about to fire is the first since Play
     bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
     bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)
@@ -742,7 +743,7 @@ private:
     void askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed);
     // After a scene move: the step after the one playing is another scene's now? Then what was
     // asked from the one it was is dropped, and asked again from the one it is.
-    void askAgain();
+    void askAgain(bool endChanged = false); // endChanged: AT END was switched (asked again only on the song's last step, the same bar or not)
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;

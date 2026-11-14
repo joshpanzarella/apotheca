@@ -52,6 +52,8 @@ Command make(Command::Type type, int track = 0, int scene = 0) {
 struct Song {
     int scenes = 3;
     int lastRepeats = 1; // the last scene's
+    int lastBars = 1;    // ...how many bars its cells have
+    int lastSteps = 0;   // ...and the steps it is cut short to (0: all of them)
 };
 
 // Drums on track 0 and a Phazed on track 1, every scene one bar. Scene 1 plays twice. An early hit
@@ -83,6 +85,11 @@ void build(Engine& engine, const Song& song) {
     c.b = 0;
     c.value = -0.3f;
     engine.send(c);
+    c = make(Command::SetStepFx, 0, 0); // ...ratcheted: its later pieces wait on, after the first has sounded
+    c.a = 0;
+    c.b = 0;
+    c.d = 3;
+    engine.send(c);
     c = make(Command::SetNote, 1, 0);
     c.a = 1;
     c.b = 0;
@@ -98,6 +105,29 @@ void build(Engine& engine, const Song& song) {
     c.d = 6;
     c.value = 0.8f;
     engine.send(c);
+    // An early hit on the last scene's first step too: asked ahead when that scene goes round alone.
+    c = make(Command::SetStep, 0, song.scenes - 1);
+    c.a = 1;
+    c.b = 0;
+    c.value = 0.9f;
+    engine.send(c);
+    c = make(Command::SetStepNudge, 0, song.scenes - 1);
+    c.a = 1;
+    c.b = 0;
+    c.value = -0.3f;
+    engine.send(c);
+    if (song.lastBars > 1) {
+        for (int track = 0; track < 2; ++track) {
+            c = make(Command::SetCellBars, track, song.scenes - 1);
+            c.a = song.lastBars;
+            engine.send(c);
+        }
+    }
+    if (song.lastSteps) {
+        c = make(Command::SetSceneSteps, 0, song.scenes - 1);
+        c.a = song.lastSteps;
+        engine.send(c);
+    }
     c = make(Command::SetSceneCount);
     c.a = song.scenes;
     engine.send(c);
@@ -112,7 +142,8 @@ void build(Engine& engine, const Song& song) {
 }
 
 long songSteps(const Song& song) {
-    return 16L * (song.scenes > 1 ? 2 + (song.scenes - 2) + song.lastRepeats : 2 * song.lastRepeats);
+    const long last = song.lastSteps ? song.lastSteps : 16L * song.lastBars;
+    return song.scenes > 1 ? 16L * (2 + (song.scenes - 2)) + last * song.lastRepeats : last * 2 * song.lastRepeats;
 }
 
 enum Mode { Loop, Stop, Once, LoopUntold };
@@ -128,7 +159,7 @@ struct Run {
 // The song played from its top. `stopAt`: a Stop sent before that frame (-1: none). `event`, before
 // frame `eventAt`. Rendered in blocks of `block`, each cut where a Stop or an event goes.
 Run run(const Song& song, Mode mode, int block, int helpers, long total, long stopAt = -1, long eventAt = -1,
-        const std::function<void(Engine&)>& event = nullptr, int playAlone = 0) {
+        const std::function<void(Engine&)>& event = nullptr, int playAlone = 0, int startScene = 0, std::vector<float>* lastBar = nullptr) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
     build(*engine, song);
@@ -138,6 +169,7 @@ Run run(const Song& song, Mode mode, int block, int helpers, long total, long st
         engine->send(end);
     }
     Command play = make(Command::Play);
+    play.a = startScene;
     play.b = playAlone;
     play.c = mode == Once ? 1 : 0;
     engine->send(play);
@@ -162,6 +194,7 @@ Run run(const Song& song, Mode mode, int block, int helpers, long total, long st
     }
     r.playingAtEnd = engine->playStep() >= 0;
     r.songEnded = engine->songEnded();
+    if (lastBar) *lastBar = engine->lastBar();
     engine->useWorkers(0);
     return r;
 }
@@ -231,6 +264,60 @@ void testTheLastScenePlayedFourTimes() {
     CHECK(stop.ended == 7 * 16 * kStep);
 }
 
+// A last scene of more than one bar, or cut short, is played to ITS end: not stopped at its first bar line.
+void testALongLastScene() {
+    Song bars;
+    bars.lastBars = 3;
+    bars.lastRepeats = 2;
+    stopsWhereItGoesRound(bars, -1, nullptr, "three bars x2", false); // (its hits are in its first bar: nothing rings at the end)
+    CHECK(run(bars, Stop, 1, 0, (songSteps(bars) + 4) * kStep).ended == (16 * 3 + 2 * 48) * kStep);
+    Song cut;
+    cut.lastBars = 2;
+    cut.lastSteps = 23;
+    stopsWhereItGoesRound(cut, -1, nullptr, "cut to 23 steps", false);
+    CHECK(run(cut, Stop, 1, 0, (songSteps(cut) + 4) * kStep).ended == (16 * 3 + 23) * kStep);
+    Song few;
+    few.lastSteps = 5;
+    few.lastRepeats = 2;
+    stopsWhereItGoesRound(few, -1, nullptr, "five steps x2");
+    Song one; // one scene of two bars
+    one.scenes = 1;
+    one.lastBars = 2;
+    stopsWhereItGoesRound(one, -1, nullptr, "one scene of two bars", false);
+}
+
+// Catch (Engine::lastBar) gives the last bar the song played. A bar's end is marked where the next
+// bar begins; a song that stops at its end begins none, and its last bar is marked where it stops.
+void testCatchAfterTheEnd() {
+    const long bar = 16 * kStep;
+    const auto is = [](const std::vector<float>& got, const std::vector<float>& out, long from) {
+        for (std::size_t i = 0; i < got.size(); ++i)
+            if (got[i] != 0.5f * (out[2 * (from + static_cast<long>(i))] + out[2 * (from + static_cast<long>(i)) + 1])) return false;
+        return true;
+    };
+    for (int scenes : {3, 1}) {
+        Song song;
+        song.scenes = scenes;
+        const long end = songSteps(song) * kStep;
+        std::vector<float> got;
+        // STOP, a fifth of a second after the end: the song's last bar, not the one before, nor the tail.
+        const Run stop = run(song, Stop, 64, 0, end + 9600, -1, -1, nullptr, 0, 0, &got);
+        CHECK(!stop.playingAtEnd && got.size() == static_cast<std::size_t>(bar));
+        CHECK(got.size() == static_cast<std::size_t>(bar) && is(got, stop.out, end - bar));
+        CHECK(loudest(stop.out, end - bar, end) > 0.01f);
+        // LOOP, just after it has gone round: the same bar (as it always was).
+        const Run loop = run(song, Loop, 64, 0, end + 640, -1, -1, nullptr, 0, 0, &got);
+        CHECK(got.size() == static_cast<std::size_t>(bar) && is(got, loop.out, end - bar));
+    }
+    // A last scene of two bars: its second bar.
+    Song two;
+    two.lastBars = 2;
+    const long end = songSteps(two) * kStep;
+    std::vector<float> got;
+    const Run stop = run(two, Stop, 333, 0, end + 9600, -1, -1, nullptr, 0, 0, &got);
+    CHECK(got.size() == static_cast<std::size_t>(bar) && is(got, stop.out, end - bar));
+}
+
 void testATempoChangeNearTheEnd() {
     const Song song;
     const long lastBar = (songSteps(song) - 16) * kStep;
@@ -296,6 +383,19 @@ void testASceneAloneIsUnaffected() {
         const Run stop = run(song, Stop, 333, helpers, total, -1, -1, nullptr, 1);
         CHECK(same(loop.out, stop.out) && stop.playingAtEnd && stop.songEnded == 0);
     }
+    // The song's LAST scene alone (it plays once in the song): it goes round all the same, and its
+    // last step still asks for the early hit of its own first step, each time round.
+    for (int scenes : {3, 1}) {
+        Song last;
+        last.scenes = scenes;
+        const long round = 16 * kStep;
+        const Run loop = run(last, Loop, 64, 0, 5 * round, -1, -1, nullptr, 1, scenes - 1);
+        const Run stop = run(last, Stop, 64, 0, 5 * round, -1, -1, nullptr, 1, scenes - 1);
+        const Run untold = run(last, LoopUntold, 64, 0, 5 * round, -1, -1, nullptr, 1, scenes - 1);
+        CHECK(same(loop.out, stop.out) && same(loop.out, untold.out) && stop.playingAtEnd && stop.songEnded == 0);
+        // (The early hit is there to be lost: the second time round is not the first, which had it on the top.)
+        CHECK(loudest(stop.out, 2 * round - kStep, 2 * round) > 0.01f);
+    }
 }
 
 // Switched while the song plays: STOP set in the middle stops it at the end; LOOP set on the last step goes round.
@@ -308,6 +408,28 @@ void testSwitchedWhilePlaying() {
     CHECK(on.ended == songSteps(song) * kStep && on.songEnded == 1);
     const Run off = run(song, Stop, 1, 0, total, -1, (songSteps(song) - 1) * kStep + 50, toLoop);
     CHECK(off.ended < 0 && off.playingAtEnd && off.wentRound == songSteps(song) * kStep && off.songEnded == 0);
+    // The last step had asked for nothing of the top (STOP). Switched to LOOP there, it asks again:
+    // the early hit and note of the song's first step are played, and it is LOOP all along, to the bit.
+    const Run loop = run(song, Loop, 1, 0, total), stop = run(song, Stop, 1, 0, total);
+    CHECK(same(off.out, loop.out));
+    // ...and the other way: LOOP's last step had asked for them; switched to STOP before they
+    // sound, they are taken back, and it is STOP all along. Switched in the middle of the song, too.
+    const Run late = run(song, Loop, 1, 0, total, -1, (songSteps(song) - 1) * kStep + 50, toStop);
+    CHECK(late.ended == songSteps(song) * kStep && same(late.out, stop.out));
+    CHECK(same(on.out, stop.out));
+    CHECK(same(run(song, Stop, 1, 0, total, -1, 20 * kStep, toLoop).out, loop.out));
+    // Switched on any other step, nothing is asked again: scene 1 plays twice, and on its last
+    // step the first time, the early ratcheted hit of its top has begun (0.7 of a step in); its
+    // later pieces are waiting, and stay.
+    CHECK(same(run(song, Loop, 1, 0, total, -1, 15 * kStep + 2500, toStop).out, stop.out));
+    CHECK(same(run(song, Stop, 1, 0, total, -1, 15 * kStep + 2500, toLoop).out, loop.out));
+    // A switch that changes nothing asks nothing again: LOOP told LOOP on the last step, after the
+    // top's early hit has begun (its later pieces stay), and STOP told STOP there.
+    CHECK(same(run(song, Loop, 1, 0, total, -1, (songSteps(song) - 1) * kStep + 2500, toLoop).out, loop.out));
+    CHECK(same(run(song, Stop, 64, 0, total, -1, (songSteps(song) - 1) * kStep + 50, toStop).out, run(song, Stop, 64, 0, total).out));
+    // On three helpers and an odd block, the two late switches are what they are on none.
+    CHECK(same(run(song, Stop, 333, 3, total, -1, (songSteps(song) - 1) * kStep + 50, toLoop).out, run(song, Loop, 333, 3, total).out));
+    CHECK(same(run(song, Loop, 333, 3, total, -1, (songSteps(song) - 1) * kStep + 50, toStop).out, run(song, Stop, 333, 3, total).out));
     // Each Play is counted: a second playing that ends says it is the second.
     std::unique_ptr<Engine> engine(new Engine);
     build(*engine, song);
@@ -371,7 +493,13 @@ void testTheSongFile() {
     // An old song has no such line: LOOP.
     CHECK(parseSong("apotheca-song 1\ntempo 100\ntrack drums\n", *back) && back->songEnd == kSongLoop);
     // Numbers held to their limits as doubles; a line with no number is skipped.
-    CHECK(parseSong("apotheca-song 1\nsongend 1e300\ntrack drums\n", *back) && back->songEnd == kSongStop);
+    // A number nobody knows (a later program's) is the usual, LOOP: not the nearest.
+    CHECK(parseSong("apotheca-song 1\nsongend 1e300\ntrack drums\n", *back) && back->songEnd == kSongLoop);
+    CHECK(parseSong("apotheca-song 1\nsongend 2\ntrack drums\n", *back) && back->songEnd == kSongLoop);
+    CHECK(parseSong("apotheca-song 1\nsongend 255\ntrack drums\n", *back) && back->songEnd == kSongLoop);
+    CHECK(parseSong("apotheca-song 1\nsongend nan\ntrack drums\n", *back) && back->songEnd == kSongLoop);
+    CHECK(parseSong("apotheca-song 1\nsongend 1 1 1\ntrack drums\n", *back) && back->songEnd == kSongStop);
+    CHECK(songEndKind(1) == kSongStop && songEndKind(0) == kSongLoop && songEndKind(2) == kSongLoop && songEndKind(-1) == kSongLoop);
     CHECK(parseSong("apotheca-song 1\nsongend -7\ntrack drums\n", *back) && back->songEnd == kSongLoop);
     CHECK(parseSong("apotheca-song 1\nsongend\ntrack drums\n", *back) && back->songEnd == kSongLoop);
     CHECK(parseSong("apotheca-song 1\nsongend 1\r\ntrack drums\r\n", *back) && back->songEnd == kSongStop);
@@ -427,6 +555,17 @@ void testTheGesture() {
     song.moveCursorTo(3, -1);
     rig.tap(A);
     CHECK(rig.project().repeats[3] == 2 && rig.project().songEnd == kSongStop);
+    // On MASTER (the cursor's row and column kept under it) it is not the end box: A there is the mixer's.
+    song.moveCursorTo(2, -1);
+    CHECK(song.onSongEnd());
+    song.moveToMaster();
+    CHECK(!song.onSongEnd());
+    rig.tap(A);
+    rig.tap(B);
+    rig.frames(1);
+    CHECK(rig.project().songEnd == kSongStop);
+    song.moveCursorTo(2, -1);
+    CHECK(song.onSongEnd());
     // A scene put in the end row: the end goes down with it.
     rig.project().tracks[0].drums[2][0].level[1][0] = 0.9f;
     CHECK(song.songEndRow() == 3);
@@ -442,6 +581,12 @@ void testTheAppIsTold() {
     session.view = View::Song;
     session.setSongEnd(kSongStop);
     rig.song().moveCursorTo(0, 0);
+    // No Play sent yet, and no song ended: a play mark that did not come from a Play (the other
+    // tests set it by hand, "as if playing") is not taken for a song that has ended.
+    rig.project().playing = true;
+    rig.frames(3);
+    CHECK(rig.project().playing);
+    rig.project().playing = false;
     rig.tap(START);
     rig.frames(1);
     CHECK(rig.project().playing);
@@ -482,6 +627,20 @@ void testTheAppIsTold() {
     rig.frames(1);
     CHECK(rig.project().playing && rig.project().playScene >= 0);
     rig.tap(START);
+    rig.frames(1);
+    rig.play(1024);
+    // After Stops by hand (two by now), a song that ends by itself: the app is told all the same.
+    // (Only the Plays are counted: a Stop counted would run the app's number ahead of the engine's.)
+    session.setSongEnd(kSongStop);
+    rig.frames(1);
+    rig.tap(START);
+    rig.frames(1);
+    rig.play(1024);
+    rig.frames(1);
+    CHECK(rig.project().playing && rig.project().playScene == 1);
+    rig.play(16 * 3000L);
+    rig.frames(1);
+    CHECK(!rig.project().playing && rig.project().playStep < 0 && rig.engine->playStep() < 0);
     // A scene alone (START on the drum grid) goes round, STOP or not.
     session.setSongEnd(kSongStop);
     session.view = View::Pattern;
@@ -494,6 +653,30 @@ void testTheAppIsTold() {
     rig.play(3 * 16 * 3000L);
     rig.frames(1);
     CHECK(rig.project().playing && rig.project().playScene == 1);
+}
+
+// AT END switched while the command queue is full: the switch is lost, known to be lost, and sent
+// again (what the program remembers it sent is set only when the send went).
+void testSwitchedWithTheQueueFull() {
+    Rig rig;
+    twoScenes(rig);
+    rig.session().setSongEnd(kSongStop);
+    rig.frames(2);
+    rig.play(4096);
+    CHECK(rig.engine->songStopsAtEnd());
+    const unsigned before = rig.engine->dropped();
+    Command c;
+    c.type = Command::SetVolume;
+    c.value = 1.f;
+    for (long sent = 0; rig.engine->dropped() == before && sent < 10000000; ++sent) rig.engine->send(c);
+    CHECK(rig.engine->dropped() != before);
+    rig.session().setSongEnd(kSongLoop);
+    rig.frames(1);
+    for (int i = 0; i < 40; ++i) {
+        rig.play(1024);
+        rig.frames(1);
+    }
+    CHECK(rig.project().songEnd == kSongLoop && !rig.engine->songStopsAtEnd());
 }
 
 void testUndo() {
@@ -544,6 +727,7 @@ void testTheScreenAsDrawn() {
         return n;
     };
     const auto draw = [&] { rig.frames(1); canvas.clear(); rig.app.draw(canvas.r, *canvas.fonts); };
+    rig.project().steps[2] = 5; // (an empty row left cut short: its brass step count is not drawn under the mark)
     const SDL_Rect end = rig.song().repeatBox(2), after = rig.song().repeatBox(3), last = rig.song().repeatBox(1);
     CHECK(end.w > 0 && after.w > 0);
     draw();
@@ -558,6 +742,9 @@ void testTheScreenAsDrawn() {
     CHECK(canvas.part(after.x, after.y, after.w, after.h) == afterLoop && canvas.part(last.x, last.y, last.w, last.h) == lastLoop);
     // A scene put in the end row: its box is a count again, and the mark is a row down.
     rig.project().tracks[0].drums[2][0].level[1][0] = 0.9f;
+    draw();
+    CHECK(count(end, ui::kBrass) > 0 && count(end, ui::kBrass) < 144); // (now a scene cut to 5 steps: its count says so, in brass)
+    rig.project().steps[2] = 0;
     draw();
     CHECK(count(end, ui::kBrass) == 0 && count(rig.song().repeatBox(3), ui::kBrass) == 144);
 }
@@ -609,6 +796,8 @@ int main(int argc, char** argv) {
         testStopStopsOnTheRightSample();
         testASongOfOneScene();
         testTheLastScenePlayedFourTimes();
+        testALongLastScene();
+        testCatchAfterTheEnd();
         testATempoChangeNearTheEnd();
         testAScenePutInOrTakenOutNearTheEnd();
         testLoopIsAsItWas();
@@ -618,6 +807,7 @@ int main(int argc, char** argv) {
     testTheSongFile();
     testTheGesture();
     testTheAppIsTold();
+    testSwitchedWithTheQueueFull();
     testUndo();
     testTheScreenAsDrawn();
     testABounceIsUnchanged();

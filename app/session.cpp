@@ -40,7 +40,7 @@ void Session::togglePlay(bool song) {
 }
 
 void Session::setSongEnd(int end) {
-    end = end == kSongStop ? kSongStop : kSongLoop;
+    end = songEndKind(end);
     if (end == project.songEnd) return;
     project.songEnd = end;
     noteEdit(); // a step of undo: it is a line of the song (the engine is told by update's syncSong, this frame)
@@ -966,8 +966,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         sendMix(track);
     };
     mixBack(kMasterTrack, was->masterDb, was->masterPan);
-    project.songEnd = was->songEnd; // (the song's own lines are always read; the engine is told by syncSong)
-    syncSong();
+    project.songEnd = was->songEnd; // (the song's own lines are always read; the engine is told by update's syncSong)
     for (int t = 0; t < kNumTracks; ++t)
         if (!same[t] && project.tracks[t].kind != TrackKind::None && project.tracks[t].kind == was->tracks[t].kind) mixBack(t, was->tracks[t].mixDb, was->tracks[t].mixPan);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {
