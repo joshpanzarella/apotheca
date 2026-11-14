@@ -85,7 +85,7 @@ if(APOTHECA_BUILD_APP)
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
   add_library(apotheca_app STATIC app/app.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
       app/instruments.cpp app/synth_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
-      app/text.cpp app/ui.cpp
+      app/text.cpp app/ui.cpp app/realtime.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)
   target_compile_options(apotheca_app PRIVATE -Wall -Wextra)
@@ -99,7 +99,7 @@ if(APOTHECA_BUILD_APP)
     target_link_libraries(apotheca_app PUBLIC apotheca_engine ${SDL2_LIBRARIES} Threads::Threads)
   endif()
 
-  add_executable(apotheca app/main.cpp app/realtime.cpp)
+  add_executable(apotheca app/main.cpp)
   target_compile_options(apotheca PRIVATE -Wall -Wextra)
   target_link_libraries(apotheca PRIVATE apotheca_app)
 
