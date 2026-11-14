@@ -1071,7 +1071,44 @@ void testTheTextKeptIsTheSongsText() {
     CHECK(cache.text(*p) == songText(*p) && tracksWritten() == before + static_cast<std::uint64_t>(p->trackCount()));
 }
 
+// A song's text cut into its own lines and its tracks', where parseSong cuts it; and not cut where
+// a part would not read alone as it reads in the whole (undo then reads the step whole).
+void testCuttingASong() {
+    std::unique_ptr<Project> p(new Project);
+    p->tracks[1].kind = TrackKind::Phazed;
+    specFor(TrackKind::Phazed)->loadPreset(p->tracks[1], 0);
+    p->tracks[2].kind = TrackKind::Drums;
+    p->tracks[0].drums[0][0].level[0][0] = 1.f;
+    p->tracks[2].automation[1][3][5] = 0.5f;
+    p->masterEffects[0].kind = 1;
+    const std::string text = songText(*p);
+    std::string head;
+    std::vector<std::string> parts;
+    CHECK(cutSong(text, head, parts) && parts.size() == 3);
+    std::string joined = head;
+    for (std::size_t t = 0; t < parts.size(); ++t) {
+        joined += parts[t];
+        CHECK(parts[t] == trackText(p->tracks[t]));
+    }
+    CHECK(joined == text && head.compare(0, 13, "apotheca-song") == 0 && head.find("track") == std::string::npos);
+    // A "track" line is a word, wherever it stands on its line, as parseSong reads it.
+    CHECK(cutSong("apotheca-song 1\n  track drums\nscene 1\n\ttrack\tphazed\n", head, parts) && parts.size() == 2 && parts[1] == "\ttrack\tphazed\n");
+    CHECK(cutSong("apotheca-song 1\ntempo 90\ntrack drums", head, parts) && head == "apotheca-song 1\ntempo 90\n" && parts.size() == 1 && parts[0] == "track drums");
+    CHECK(cutSong("apotheca-song 1\n", head, parts) && parts.empty());
+    CHECK(cutSong("apotheca-song 1\ntrack drums\ntracks 3\n", head, parts) && parts.size() == 1); // (a word that begins "track" is not one)
+    // Not cut: a song's own line among a track's, a kind not known, a thirteenth track, not a song.
+    for (const char* own : {"tempo 80", "length 3", "steps 5", "repeats 2", "pack x", "busfx 1 none"}) CHECK(!cutSong(std::string("apotheca-song 1\ntrack drums\n") + own + "\n", head, parts));
+    CHECK(cutSong("apotheca-song 1\ntrack drums\nfx 1 filter 0.5\nname X\n", head, parts)); // (a track's own)
+    CHECK(!cutSong("apotheca-song 1\ntrack drums\ntrack banjo\nscene 1\n", head, parts));
+    std::string twelve = "apotheca-song 1\n";
+    for (int t = 0; t < kNumTracks; ++t) twelve += "track drums\n";
+    CHECK(cutSong(twelve, head, parts) && static_cast<int>(parts.size()) == kNumTracks);
+    CHECK(!cutSong(twelve + "track drums\n", head, parts));
+    CHECK(!cutSong("track drums\n", head, parts) && !cutSong("", head, parts));
+}
+
 int main(int, char**) {
+    testCuttingASong();
     testTheAutosaveWritesNothingOutWhenNothingChanged();
     testTheTextKeptIsTheSongsText();
     testTextRoundTrip();

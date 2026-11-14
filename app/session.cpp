@@ -500,7 +500,7 @@ void Session::recordAutomation(int track, int lane, float value) {
 
 // The patterns, as the song file writes them. (The whole song's text: only
 // the patterns are taken back out of it.)
-std::string Session::patternsNow() const { return songText(project); }
+std::string Session::patternsNow() const { return textNow(); }
 
 std::uint32_t Session::cellMark() const {
     const TrackData& t = project.current();
@@ -682,9 +682,36 @@ bool Session::patternsSameAsText(const TrackData& now, const TrackData& then) {
 
 int Session::undoSteps() const { return static_cast<int>(undo_.size()); }
 
+// A step of undo read back into `was`. A track whose text in the step is its text now (most are:
+// an edit is to one track) is not read: in its place `was` gets a line or two that give it its kind
+// and its cells' lengths (what the scenes' lengths are worked out from), and `same` says so. What
+// is read is read by parseSong, as the whole was. (Read whole, a 2.5 MB song's step took 80 ms on
+// the desk to give back one track.) A scene move reads it whole: it takes the sixteenth scene from it.
+bool Session::readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole) {
+    for (int t = 0; t < kNumTracks; ++t) same[t] = false;
+    std::string head;
+    std::vector<std::string> parts;
+    if (whole || readUndoWhole_ || !cutSong(text, head, parts)) return parseSong(text, was);
+    textNow(); // (each track's text as it is now)
+    std::string read = head;
+    for (std::size_t t = 0; t < parts.size(); ++t) {
+        const TrackData& now = project.tracks[t];
+        if (parts[t] != textNow_.track(static_cast<int>(t))) {
+            read += parts[t];
+            continue;
+        }
+        same[t] = true;
+        read.append(parts[t], 0, parts[t].find('\n') + 1); // its "track" line
+        for (int scene = 0; scene < kMaxScenes; ++scene)
+            if (now.bars[scene] > 1) read += "scene " + std::to_string(scene + 1) + "\nbars " + std::to_string(now.bars[scene]) + "\n";
+    }
+    return parseSong(read, was);
+}
+
 void Session::restorePatterns(const std::string& text, int movedFrom, int movedBy) {
     std::unique_ptr<Project> was(new Project);
-    if (!parseSong(text, *was)) return;
+    bool same[kNumTracks];
+    if (!readStep(text, *was, same, movedBy != 0)) return;
     restoring_ = true;
     if (movedBy != 0) {
         // A "next scene" taken back or put back: the scenes move, here and in the engine, and
@@ -701,6 +728,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         TrackData& now = project.tracks[t];
         const TrackData& then = was->tracks[t];
         if (now.kind == TrackKind::None || now.kind != then.kind) continue; // a track added since stays as it is
+        if (same[t]) continue; // its text is the step's: as it was (and not read: `then` is not it)
         // A track that is the same then as now is left alone. Most are: an edit is
         // to one track, and sending a track's every pattern again is the costly part.
         if (std::memcmp(now.bars, then.bars, sizeof now.bars) == 0 && std::memcmp(now.drums, then.drums, sizeof now.drums) == 0 &&

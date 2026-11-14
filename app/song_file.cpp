@@ -20,7 +20,7 @@ namespace apotheca {
 
 namespace {
 
-std::uint64_t gTracksWritten = 0, gTracksRead = 0;
+std::uint64_t gTracksWritten = 0, gBytesRead = 0;
 
 // A number read from a file, held to its limits BEFORE it is made an int or a float: a double too
 // big for one ("repeats 1e300") made into one is undefined, and the desk and the handheld read it
@@ -334,9 +334,10 @@ const std::string& SongTextCache::track(int t) const {
 }
 
 std::uint64_t tracksWritten() { return gTracksWritten; }
-std::uint64_t tracksRead() { return gTracksRead; }
+std::uint64_t bytesRead() { return gBytesRead; }
 
 bool parseSong(const std::string& text, Project& project) {
+    gBytesRead += text.size();
     std::istringstream lines(text);
     std::string line;
     if (!std::getline(lines, line) || line.compare(0, 13, "apotheca-song") != 0) return false;
@@ -401,7 +402,6 @@ bool parseSong(const std::string& text, Project& project) {
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
             track = &song->tracks[count++];
-            ++gTracksRead;
             *track = *blank;
             track->kind = k;
             if (const SynthSpec* spec = specFor(k)) spec->loadPreset(*track, 0);
@@ -605,6 +605,49 @@ bool parseSong(const std::string& text, Project& project) {
         if (song->steps[s] >= song->sceneBars(s) * kSteps) song->steps[s] = 0; // every step: kept as "all of them"
     }
     project = *song;
+    return true;
+}
+
+namespace {
+bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; } // as `>>` skips
+// The next word of a line, from `at`, as `>>` reads it (the line ends at `end`): where it starts, and where it ends.
+std::size_t wordAt(const std::string& text, std::size_t at, std::size_t end, std::size_t& from) {
+    while (at < end && space(text[at])) ++at;
+    from = at;
+    while (at < end && !space(text[at])) ++at;
+    return at;
+}
+} // namespace
+
+bool cutSong(const std::string& text, std::string& head, std::vector<std::string>& tracks) {
+    head.clear();
+    tracks.clear();
+    if (text.compare(0, 13, "apotheca-song") != 0) return false;
+    std::size_t from = 0; // where the part being read began
+    bool inTrack = false;
+    int count = 0;
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx"};
+    for (std::size_t at = 0; at < text.size();) {
+        std::size_t end = text.find('\n', at);
+        end = end == std::string::npos ? text.size() : end + 1;
+        // (The first line, "apotheca-song", is neither a track's nor one of the song's own below.)
+        std::size_t word = 0;
+        const std::size_t after = wordAt(text, at, end, word);
+        const auto is = [&](const char* w) { const std::size_t n = std::strlen(w); return after - word == n && text.compare(word, n, w) == 0; };
+        if (is("track")) {
+            std::size_t kindFrom = 0;
+            const std::size_t kindTo = wordAt(text, after, end, kindFrom);
+            if (trackKindFromWord(text.substr(kindFrom, kindTo - kindFrom).c_str()) == TrackKind::None || ++count > kNumTracks) return false;
+            (inTrack ? tracks.emplace_back() : head).assign(text, from, at - from);
+            from = at;
+            inTrack = true;
+        } else if (inTrack) {
+            for (const char* own : songsOwn)
+                if (is(own)) return false; // the song's, wherever it stands
+        }
+        at = end;
+    }
+    (inTrack ? tracks.emplace_back() : head).assign(text, from, text.size() - from);
     return true;
 }
 

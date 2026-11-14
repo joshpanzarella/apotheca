@@ -6906,6 +6906,170 @@ void testUndoSendsOnlyTheTrackItChanged() {
     CHECK(session.undo() && project.tracks[2].bars[1] == 1);
 }
 
+
+// A busy song of twelve tracks: drums and Phazed by turns, `scenes` scenes of `bars` bars, and
+// values as a keyboard and WRITE leave them (that the text rounds).
+void fillBusySong(Rig& rig, int scenes, int bars) {
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    for (int t = 1; t < kNumTracks; ++t) session.addTrack(t % 2 ? TrackKind::Drums : TrackKind::Phazed);
+    for (int t = 0; t < kNumTracks; ++t)
+        for (int sc = 0; sc < scenes; ++sc) {
+            p.tracks[t].bars[sc] = bars;
+            for (int b = 0; b < bars; ++b) {
+                if (p.tracks[t].kind == TrackKind::Drums) {
+                    DrumPattern& d = p.tracks[t].drums[sc][b];
+                    for (int lane = 0; lane < kDrumLanes; ++lane)
+                        for (int st = lane % 2; st < kSteps; st += 2) d.level[lane][st] = 90.f / 127.f;
+                } else {
+                    NotePattern& n = p.tracks[t].notes[sc][b];
+                    for (int k = 0; k < 32; ++k) n.notes[k] = NoteEvent{k / 2, 48 + k, 1.f, 0.f, 100.f / 127.f};
+                }
+                for (int i = 0; i < kSteps; ++i) p.tracks[t].automation[sc][0][b * kSteps + i] = 0.123456f;
+            }
+        }
+    session.applyProject();
+    rig.frames(60);
+    rig.render(512);
+}
+
+// The end of a burst of edits to one track, and an undo and a redo of it, write out as text and
+// read back that track, not the song. They did the whole song each time, on the screen's thread:
+// on the desk, at 2.5 MB of text, 87 ms at the end of an edit and 160 ms an undo.
+void testUndoWorksOnTheTrackItChanged() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    fillBusySong(rig, 4, 2);
+    const std::size_t size = songText(p).size();
+    std::uint64_t written = tracksWritten();
+    p.tracks[3].drums[1][1].level[1][1] = 0.5f;
+    session.sendDrumPattern(3, 1);
+    session.noteEdit();
+    rig.frames(60);
+    CHECK(session.undoSteps() == 1 && tracksWritten() - written == 1);
+    written = tracksWritten();
+    std::uint64_t read = bytesRead();
+    CHECK(session.undo() && std::fabs(p.tracks[3].drums[1][1].level[1][1] - 90.f / 127.f) < 1e-6f);
+    CHECK(tracksWritten() - written <= 2); // (the track compared with the step, as text: two)
+    CHECK(bytesRead() - read < size / 6);
+    written = tracksWritten();
+    read = bytesRead();
+    CHECK(session.redo() && p.tracks[3].drums[1][1].level[1][1] == 0.5f);
+    CHECK(tracksWritten() - written <= 3); // (and the track as it was, for the step of undo)
+    CHECK(bytesRead() - read < size / 6);
+    CHECK(songText(p).find("hit 2 2 0.5") != std::string::npos);
+    // A scene's length, where the longest cell in it is on a track the undo does not read: still its length.
+    session.setCellBars(5, 0, 8);
+    session.setSceneSteps(0, 100);
+    rig.frames(60);
+    p.tracks[3].drums[0][0].level[0][1] = 1.f;
+    session.sendDrumPattern(3, 0);
+    session.noteEdit();
+    rig.frames(60);
+    CHECK(p.steps[0] == 100 && session.undo() && p.steps[0] == 100 && p.tracks[3].drums[0][0].level[0][1] == 0.f && p.tracks[5].bars[0] == 8);
+}
+
+// NEXT SCENE taken back reads the step whole: the sixteenth scene comes from it. A track that the
+// move left as it was (the same in every scene from the one copied on) keeps its sixteenth.
+void testNextSceneTakenBackReadsTheStepWhole() {
+    Rig rig;
+    Session& session = rig.app.session();
+    Project& p = rig.project();
+    CHECK(session.addTrack(TrackKind::Drums));
+    rig.frames(2);
+    for (int scene = 0; scene < kMaxScenes; ++scene) session.setAutomation(1, scene, 2, 0, 0.25f);
+    placeAndSettle(rig, 0, 1, 1);
+    CHECK(session.nextScene() == 1);
+    rig.frames(60);
+    CHECK(session.undo() && p.tracks[1].automation[kMaxScenes - 1][2][0] == 0.25f && p.tracks[0].drums[1][0].level[1][1] == 0.f);
+}
+
+// An undo that reads back only the tracks that changed does what it did reading the step whole:
+// two of the same song, the same edits, undos and redos, one of them reading every step whole.
+void testUndoIsAsItWasReadWhole() {
+    Rig a, b;
+    b.app.session().readUndoWhole(true);
+    Rig* both[2] = {&a, &b};
+    for (Rig* rig : both) fillBusySong(*rig, 3, 2);
+    std::uint32_t seed = std::getenv("UNDO_SEED") ? static_cast<std::uint32_t>(std::atoi(std::getenv("UNDO_SEED"))) : 777u;
+    const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
+    int checked = 0, wrong = 0, undone = 0;
+    for (int round = 0; round < 200; ++round) {
+        const int op = roll(14), t = roll(a.project().trackCount()), scene = roll(4), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
+        // (A level the program can make: 0.05 and up. One under it, that no gesture makes, the file holds
+        // as 0.05, so a track with one is not its text read back. Read whole, such a track was put back
+        // as the text has it on an undo of any other track; read in parts, it is left as it is.)
+        const float level = roll(3) ? static_cast<float>(7 + roll(121)) / 127.f : 0.f;
+        const float value = static_cast<float>(roll(1000)) / 997.f;
+        const int kindRoll = roll(2), bars = 1 << roll(4), steps = roll(3) ? 0 : 1 + roll(40), repeats = 1 + roll(4), autoLane = roll(2);
+        const bool settle = roll(2) == 0 && op < 7; // the burst of edits over, or more of it to come
+        bool didUndo = false;
+        for (Rig* rig : both) {
+            Session& session = rig->app.session();
+            Project& p = rig->project();
+            TrackData& track = p.tracks[t];
+            switch (op) {
+            case 0: case 1: case 2:
+                if (track.kind == TrackKind::Drums) {
+                    track.drums[scene][bar].level[lane][step] = level;
+                    session.sendDrumPattern(t, scene);
+                } else {
+                    track.notes[scene][bar].notes[lane * 8 + step % 8] = NoteEvent{step, 40 + lane, 1.f, 0.f, level};
+                    session.sendNotePattern(t, scene);
+                }
+                session.noteEdit();
+                break;
+            case 3: session.setAutomation(t, scene, autoLane, bar * kSteps + step, value); break;
+            case 4: session.setCellBars(t, scene, bars); break;
+            case 5: session.setSceneSteps(scene, steps); break;
+            case 6: p.repeats[scene] = repeats; session.noteEdit(); break;
+            case 7: case 8: case 9: didUndo = session.undo(); break;
+            case 10: case 11: session.redo(); break;
+            case 12: if (t > 0) session.setTrackKind(t, kindRoll ? TrackKind::Drums : TrackKind::Phazed); break;
+            default: if (t > 0 && p.trackCount() > 8) session.removeTrack(t); else session.addTrack(kindRoll ? TrackKind::Drums : TrackKind::Phazed); break;
+            }
+            rig->frames(settle ? 60 : 3);
+            rig->render(256);
+            rig->engine->collectGarbage();
+        }
+        undone += didUndo;
+        const Project& x = a.project();
+        const Project& y = b.project();
+        bool same = std::memcmp(x.repeats, y.repeats, sizeof x.repeats) == 0 && std::memcmp(x.steps, y.steps, sizeof x.steps) == 0;
+        for (int i = 0; i < kNumTracks; ++i) {
+            const TrackData& u = x.tracks[i];
+            const TrackData& v = y.tracks[i];
+            same = same && u.kind == v.kind && std::memcmp(u.bars, v.bars, sizeof u.bars) == 0 && std::memcmp(u.drums, v.drums, sizeof u.drums) == 0 &&
+                   std::memcmp(u.notes, v.notes, sizeof u.notes) == 0 && std::memcmp(u.automation, v.automation, sizeof u.automation) == 0;
+        }
+        same = same && a.app.session().undoSteps() == b.app.session().undoSteps() && a.app.session().redoSteps() == b.app.session().redoSteps() &&
+               a.app.session().imagesSent() == b.app.session().imagesSent();
+        ++checked;
+        if (!same) {
+            ++wrong;
+            if (wrong == 1) {
+                std::printf("    undo read in parts differs from read whole after round %d (op %d)\n", round, op);
+                if (std::getenv("UNDO_DEBUG")) {
+                    for (int i = 0; i < kNumTracks; ++i) {
+                        const TrackData& u = x.tracks[i];
+                        const TrackData& v = y.tracks[i];
+                        if (u.kind != v.kind) std::printf("     track %d kind %d %d\n", i, int(u.kind), int(v.kind));
+                        if (std::memcmp(u.bars, v.bars, sizeof u.bars)) std::printf("     track %d bars\n", i);
+                        if (std::memcmp(u.drums, v.drums, sizeof u.drums)) std::printf("     track %d drums\n", i);
+                        if (std::memcmp(u.notes, v.notes, sizeof u.notes)) std::printf("     track %d notes\n", i);
+                        if (std::memcmp(u.automation, v.automation, sizeof u.automation)) std::printf("     track %d auto\n", i);
+                    }
+                    std::printf("     steps %d repeats %d undo %d %d redo %d %d images %u %u text %d\n", std::memcmp(x.steps, y.steps, sizeof x.steps), std::memcmp(x.repeats, y.repeats, sizeof x.repeats),
+                                a.app.session().undoSteps(), b.app.session().undoSteps(), a.app.session().redoSteps(), b.app.session().redoSteps(), a.app.session().imagesSent(), b.app.session().imagesSent(), songText(x) == songText(y));
+                }
+            }
+        }
+    }
+    CHECK(checked == 200 && wrong == 0 && undone > 20);
+    CHECK(songText(a.project()) == songText(b.project()));
+}
+
 int main(int argc, char** argv) {
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
@@ -6919,12 +7083,18 @@ int main(int argc, char** argv) {
         testAResyncKeepsUndo();
         testATrackDeletedOrChangedKeepsUndo();
         testUndoSendsOnlyTheTrackItChanged();
+        testUndoWorksOnTheTrackItChanged();
+        testNextSceneTakenBackReadsTheStepWhole();
+        testUndoIsAsItWasReadWhole();
         if (failures == 0) std::printf("app tests passed (undo kept only)\n");
         return failures == 0 ? 0 : 1;
     }
     testAResyncKeepsUndo();
     testATrackDeletedOrChangedKeepsUndo();
     testUndoSendsOnlyTheTrackItChanged();
+    testUndoWorksOnTheTrackItChanged();
+    testNextSceneTakenBackReadsTheStepWhole();
+    testUndoIsAsItWasReadWhole();
     testTabs();
     testNoteEffects();
     testNoteEffectsHoldUp();

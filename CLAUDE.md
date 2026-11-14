@@ -468,6 +468,18 @@ effect in those two groups and fails one that does not.
   with `sendSong()` and keep the steps: a delete takes its track out of every
   step's text (`dropTrackText`), and another instrument is passed by (its kind
   differs). The delete itself is still not undone.
+- **The song's text is made a track at a time** (`SongTextCache`,
+  `Session::textNow()`): a track whose bytes are as they were when its text
+  was made is not written again. The autosave, the end of a burst of edits and
+  undo all use it, so with nothing changed the autosave is a compare of memory
+  (2.5 MB of text: 0.8 ms on the desk, was 68). **An undo reads back only the
+  tracks whose text differs from the step's** (`Session::readStep`; the rest
+  get a stand-in line that gives their kind and cells' lengths). A scene move
+  reads the step whole (it takes the sixteenth scene from it).
+  `readUndoWhole(true)` reads every step whole, as before: `app_test`
+  (`testUndoIsAsItWasReadWhole`) holds the two the same. Do not give the cache
+  a count of changes instead: the screens write into the project in many
+  places, and one that forgot to count is work never saved.
 - **Scenes are numbered by their place, so a scene put in moves the ones
   after it** (NEXT SCENE, SELECT + Y: `Session::nextScene`). Whatever holds a
   scene's number must follow: the engine's playing, its patterns and an

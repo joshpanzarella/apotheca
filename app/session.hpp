@@ -333,6 +333,7 @@ public:
     int undoSteps() const;
     int redoSteps() const { return static_cast<int>(redo_.size()); }
     void noteEdit(); // something in a pattern has just changed
+    void readUndoWhole(bool on) { readUndoWhole_ = on; } // the tests: every step of undo read back whole, as it was before (to hold the two the same)
 
     // ---- next scene ---------------------------------------------------------------------
     // The scene being worked on, copied whole (every track's cell with its length, the
@@ -496,6 +497,8 @@ private:
     // made from, when that is what lies between this text and the one it is swapped for: taking
     // it back or putting it forward moves the player and the playing as well as the patterns.
     static bool patternsSameAsText(const TrackData& now, const TrackData& then);
+    bool readStep(const std::string& text, Project& was, bool same[kNumTracks], bool whole);
+    bool readUndoWhole_ = false;
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still

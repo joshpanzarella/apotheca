@@ -55,15 +55,22 @@ private:
     bool made_ = false;
 };
 
-// How many tracks songText, trackText and SongTextCache have written, and parseSong has read, since
-// the program began: for the tests, which hold what a gesture costs by them.
+// How many tracks songText, trackText and SongTextCache have written, and how many bytes of text
+// parseSong has read, since the program began: for the tests, which hold what a gesture costs by them.
 std::uint64_t tracksWritten();
-std::uint64_t tracksRead();
+std::uint64_t bytesRead();
 
 // Fills `project` from text. Values out of range are held to their limits and
 // lines it does not understand are skipped. False (and `project` untouched)
 // if the text is not a song at all.
 bool parseSong(const std::string& text, Project& project);
+
+// A song's text cut where parseSong cuts it: the song's own lines (`head`, from the first line),
+// then each track's, from its "track" line to the next "track" line, as parseSong counts them.
+// Each part then reads alone as it reads in the whole. False where it would not: a track of a
+// kind this version does not know, a thirteenth, a song's own line (tempo, repeats...) among a
+// track's, or text that is not a song. songText's text always cuts.
+bool cutSong(const std::string& text, std::string& head, std::vector<std::string>& tracks);
 
 // Recordings were renamed or moved (`first` to `second`, in the order it happened): the lines of
 // this song that name one ("sample LANE FIT NAME" on a drum track, "sound NAME" on a sampler)
