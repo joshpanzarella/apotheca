@@ -50,6 +50,7 @@
 #include "apotheca/effects.hpp"
 #include "apotheca/chord_rule.hpp"
 #include "apotheca/feel_rule.hpp"
+#include "apotheca/mod_rule.hpp"
 #include "apotheca/glide_rule.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
@@ -200,9 +201,15 @@ struct Command {
         SetSongEnd,     // what the song does at its end, played as a song (not a scene alone, not a bounce):
                         //   a = 0 LOOP, round to its first scene (as it always did); 1 STOP: playing stops on
                         //   the step after the last step of the last scene, as Stop does (Engine::songEnded)
-        SetLaneFeel     // FEEL, a drum lane's HUMAN TIME and HUMAN LEVEL (feel_rule.hpp): track, a = lane,
+        SetLaneFeel,    // FEEL, a drum lane's HUMAN TIME and HUMAN LEVEL (feel_rule.hpp): track, a = lane,
                         //   b = HUMAN TIME, c = HUMAN LEVEL, each 0..100. Live: hits asked for after it is
                         //   taken go by it; nothing is written into them. Both 0: the lane plays as it always did.
+        SetMod,         // one field of a track's MOD (mod_rule.hpp): track, a = MOD (0, 1), b = the field (ModField),
+                        //   value = its value, held to what it can be (modSet). Taken at the MOD's next tick.
+        SetModStep,     // one value of a STEPPER's row: track, a = MOD, b = place (0..15), value = -1..1
+        ModAudition     // stopped, X held on a modulated knob: track, a = which MODs run (bit 0 MOD 1, bit 1 MOD 2),
+                        //   counted from now as if Play had just been pressed; a = 0 lets go (the knob is given
+                        //   its centre). Not taken while playing (the song's MODs run then); Stop and Panic let go.
     };
     Type type = Trigger;
     int track = 0;
@@ -435,6 +442,24 @@ public:
     // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
     // tests: read between renders, never while one is under way.
     int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
+    // For the tests, between renders, never while one is under way: a lane's centre (the knob or
+    // its automation), what a track's send has been given, and what the MODs add to a lane.
+    float laneCentre(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].autoNow[lane] : kAutoNone; }
+    float sendGiven(int track, int bus) const { return track >= 0 && track < kNumTracks && bus >= 0 && bus < kBuses ? tracks_[track].send[bus] : 0.f; }
+    float modOffsetForTests(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].modOffset[lane] : 0.f; }
+
+    // ---- MOD: a track's two modulators (mod_rule.hpp, docs/plans/modulation-plan.md) ----------
+    // From the control thread: every field and every step of one MOD, as SetMod and SetModStep
+    // commands. False if any was lost (counted in dropped(), as every send is).
+    bool setMod(int track, int mod, const ModSettings& settings);
+    // What a MOD adds to its setting now (depth x shape, -1..1), as of its last tick: what is
+    // heard. 0 while it does not run (stopped, OFF). Any thread, no lock.
+    float modShown(int track, int mod) const;
+    // A STEPPER's place in its row as of its last tick (0..15); -1 while it does not run, or an LFO.
+    int modPlace(int track, int mod) const;
+    // Chunks worked out since the engine was made (a MOD's tick cuts more of them: the bench counts
+    // them). As of the end of the last render(); any thread.
+    std::uint64_t chunksRendered() const { return chunksShown_.load(std::memory_order_relaxed); }
 
 private:
     struct DrumScene {
@@ -537,7 +562,16 @@ private:
             float& operator[](int i) const { return scenes[i / (kAutoLanes * kAutoSteps)]->automation[i % (kAutoLanes * kAutoSteps)]; }
         } automation{scenes};
         float autoBase[kAutoLanes]; // where each knob was left; below zero: not known (an effect not yet told)
-        float autoNow[kAutoLanes];  // what the synth or effect has been given
+        float autoNow[kAutoLanes];  // the CENTRE: where the knob or its automation has the lane (a MOD moves around it)
+        // What the track's MODs add to each lane (mod_rule.hpp). Exactly 0 where no MOD is aimed,
+        // and everywhere while none runs: then the lane is given autoNow itself, in the same calls
+        // as before there were MODs. Only runMods sets it, and stillLane puts it back to 0.
+        float modOffset[kAutoLanes] = {};
+        ModSettings mods[kModsPerTrack];          // MOD 1 and MOD 2 (SetMod, SetModStep): OFF unless told
+        std::atomic<float> modShown[kModsPerTrack]; // what each adds as of its last tick, for the screen
+        std::atomic<int> modPlace[kModsPerTrack];   // a STEPPER's place as of its last tick; -1: not running
+        std::uint8_t slotChoices[kTrackSlots] = {}; // a bit a setting: which of each slot's effect's settings are
+                                                    //   choices (InstallEffect). A MOD never moves a choice.
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
         bool autoGliding[kAutoLanes] = {};
         std::uint8_t autoHeld = 0; // a bit a slot: its automation waits (HoldEffectAutomation)
@@ -662,6 +696,22 @@ private:
     Position afterThisBar() const;
     void fireStep();
     void applyAuto(Track& track, int lane, float value);
+    void giveLane(Track& track, int lane);
+    // MOD. runMods: one tick, at `position` (steps since Play, or since X went down); `macros`: this
+    // tick also gives the synth's macros (every kModMacroTicks'th). stillLane: a lane's offset back
+    // to 0, and the lane given its centre. stillMods: every lane of the track so. modsChanged:
+    // whether any MOD is on (anyMod_), after one was set or a track taken away.
+    void runMods(double position, bool macros);
+    void stillLane(Track& track, int lane);
+    void stillMods(Track& track);
+    void modsChanged();
+    bool anyMod_ = false;      // some track has a MOD on: chunks are cut on the tick while playing
+    long sinceStep_ = 0;       // samples since the first sample of the step playing (the tick counts from it)
+    int heardTrack_ = -1;      // ModAudition: the track whose MODs run while stopped, -1 none
+    unsigned heardMask_ = 0;   // ...which of them (bit 0 MOD 1), 0: none runs
+    long heardFor_ = 0;        // ...samples since X went down
+    std::uint64_t chunks_ = 0; // chunks worked out (the audio thread's), shown at the end of render()
+    std::atomic<std::uint64_t> chunksShown_{0};
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1

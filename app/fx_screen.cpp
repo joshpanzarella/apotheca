@@ -1,5 +1,7 @@
 #include "fx_screen.hpp"
 
+#include "mods.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -47,9 +49,17 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
         }
     }
 
+    // A MOD aimed at one of the old effect's settings follows it by name too, or goes OFF.
+    ModSettings mods[kModsPerTrack];
+    if (track >= 0)
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            mods[m] = session.modData(track, m);
+            mods[m].target = modTargetSlot(mods[m].target) == slot ? modTargetCarried(from, to, mods[m].target) : kModTargetNone;
+        }
+
     const bool writing = session.writing();
     session.setWriting(false); // none of this is the player moving a knob
-    session.setEffect(track, slot, to); // (clears all four of the slot's lanes, in every scene)
+    session.setEffect(track, slot, to); // (clears all four of the slot's lanes, in every scene, and puts OFF a MOD aimed at them)
     if (session.effectData(track, slot).kind != static_cast<int>(to)) {
         session.setWriting(writing);
         return false; // refused: everything is as it was
@@ -58,6 +68,9 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     effectCarry(from, to, was.param, busOfTrack(track) >= 0, now);
     for (int i = 0; i < info.params; ++i) session.setEffectParam(track, slot, i, now[i]);
     for (const Kept& k : kept) session.setAutomation(track, k.scene, autoLaneOfEffect(slot, k.index), k.step, k.value);
+    if (track >= 0)
+        for (int m = 0; m < kModsPerTrack; ++m)
+            if (mods[m].target != kModTargetNone) session.setMod(track, m, mods[m]);
     session.setWriting(writing);
     return true;
 }
@@ -401,9 +414,37 @@ void FxScreen::turn(float amount) {
     session_.setEffectParam(trackOf(row_), slotOf(row_), index, data(row_).param[index] + amount);
 }
 
+int FxScreen::knobHere() const {
+    if (column_ < 1) return -1;
+    if (sends(row_)) return kModFirstSend + (column_ - 1);
+    if (row_ < kTrackSlots) return kModFirstEffect + row_ * 4 + (column_ - 1);
+    return -1; // a bus's or the master's setting: nothing there is automated or modulated
+}
+
+void FxScreen::endMod(const Input& input) {
+    if (!modKnob_.held()) return;
+    modKnob_.letGo();
+    stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+    repeating_ = Button::None;
+}
+
 void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (event.down && b != Button::B) deleting_ = false, deletePart_ = 0.f; // any other press calls a held B off
+    // X: hear the track. Held on a track's setting or a send (A not held), it is also that knob's MOD, and
+    // the X-held check comes before every other button's own job (L1 / R1's track, B's default, the D-pad).
+    if (b == Button::X) {
+        if (!event.down) {
+            endMod(input);
+            return;
+        }
+        const bool knob = !holding_ && knobHere() >= 0 && modKnob_.hold(project_.track, knobHere(), input);
+        if (knob) repeating_ = Button::None;
+        if (knob && isSynth(project_.current().kind) && !project_.playing) session_.auditionHeld(project_.track, 60, 0.8f, this); // heard as long as X is
+        else hear(true);
+        return;
+    }
+    if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
     if (b == Button::A) {
         if (!event.down && tryRow_ >= 0) letGo(); // what is tried goes in (or, on the one it started on, it is as it was)
         holding_ = event.down;
@@ -445,8 +486,6 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
             session_.setEffectParam(trackOf(row_), slotOf(row_), column_ - 1, effectDefault(kind, column_ - 1, busOf(row_) >= 0));
             session_.setWriting(writing);
         }
-    } else if (b == Button::X) {
-        hear(true);
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -515,6 +554,16 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // there is still one there (the nearest, else back in the list). What was last used is not forgotten.
     if (column_ > settings(row_)) column_ = settings(row_);
     const float x = input.stickX(), y = input.stickY();
+    // X held on a knob: the stick and the D-pad are its MOD's, and the cursor stays on it.
+    // Let go when X is up, when the knob under the cursor is another (an undo can take its setting away), or
+    // when another track is up (picked on SONG with X still held): the gesture is the knob's on the track shown.
+    if (!input.held(Button::X) || knobHere() != modKnob_.target() || project_.track != modKnob_.track()) endMod(input);
+    if (modKnob_.held()) {
+        modKnob_.update(input, nowMs, dt);
+        return;
+    }
+    if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
+    if (stickWait_) return; // (the stick was pushed for the MOD: it moves nothing until it has come back)
 
     // A setting that is a choice (the filter's TYPE, the delay's TIME) is not turned: it clicks
     // from one choice to the next, a push at a time, with the stick as with the D-pad.
@@ -684,6 +733,14 @@ void FxScreen::drawSends(SDL_Renderer* r, const Fonts& fonts) const {
         }
         if (cursor) outline(r, kPaneX - 1, y - 1, kPaneW + 2, kSendH + 2, accent, 2);
     }
+    if (modKnob_.held()) drawModPanel(r, fonts); // X held on a send: its MOD in the other send's row
+}
+
+void FxScreen::drawModPanel(SDL_Renderer* r, const Fonts& fonts) const {
+    const int target = modKnob_.target(), y = modPanelY();
+    const char* knob = modTargetIsSend(target) ? (target == kModFirstSend ? "ECHO" : "SPACE")
+                                               : effectInfo(static_cast<EffectKind>(data(row_).kind)).paramNames[modTargetSetting(target)];
+    modKnob_.drawFields(r, fonts, kFxModPlaces, static_cast<float>(y), kPaneX, y, kPaneW, modPanelH(), knob);
 }
 
 // A slot's line, large: the heading, then its settings; or, with A held on the line, the list of effects.
@@ -697,27 +754,32 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
     const bool list = picking(), empty = kind == EffectKind::None;
     const SDL_Color accent = holding_ ? kBrass : kTeal;
 
-    // The heading: where this is, what is in it, its TYPE, what it is doing.
-    box(r, kPaneX, kPaneY, kPaneW, kHeadH, kPanel, kLine);
-    if (bus >= 0) std::snprintf(text, sizeof text, "%s BUS: WHAT THE TRACKS SEND TO %s", bus == 0 ? "ECHO" : "SPACE", bus == 0 ? "ECHO" : "SPACE");
-    else if (track == kMasterTrack) std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slot + 1);
-    else std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slot + 1);
-    if (deletePart_ > 0.f) {
-        // B held on the line: a bar along the heading's foot fills as the line does, and the heading says what is
-        // coming in place of where it is. (A strip, not the whole heading: nothing the heading says is drawn in it.)
-        fill(r, kPaneX + 1, kPaneY + kHeadH - 6, static_cast<int>((kPaneW - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
-        fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, kDeletingWords, kText);
+    // The heading: where this is, what is in it, its TYPE, what it is doing. (X held on a setting: its
+    // MOD's fields in its place.)
+    if (modKnob_.held()) {
+        drawModPanel(r, fonts);
     } else {
-        fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, text, kDim);
-    }
-    fonts.large.draw(r, kPaneX + 12.f, kPaneY + 30.f, empty ? "EMPTY" : effectFamily(kind), list ? kBrass : (empty ? kDim : kText));
-    meterWords(kind, meterOf(row_), text, sizeof text);
-    fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, kPaneY + 36.f, text, kBrass);
-    if (const int types = effectTypes(kind); effectFamilyNamesTypes(kind)) {
-        // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.)
-        std::vector<std::string> names;
-        for (int t = 0; t < types; ++t) names.push_back(effectTypeName(effectTypeAt(kind, t)));
-        drawTypeRow(r, fonts, names, effectTypeIndex(kind), list, typeKey());
+        box(r, kPaneX, kPaneY, kPaneW, kHeadH, kPanel, kLine);
+        if (bus >= 0) std::snprintf(text, sizeof text, "%s BUS: WHAT THE TRACKS SEND TO %s", bus == 0 ? "ECHO" : "SPACE", bus == 0 ? "ECHO" : "SPACE");
+        else if (track == kMasterTrack) std::snprintf(text, sizeof text, "MASTER (EVERYTHING), EFFECT %d", slot + 1);
+        else std::snprintf(text, sizeof text, "%s, EFFECT %d", name, slot + 1);
+        if (deletePart_ > 0.f) {
+            // B held on the line: a bar along the heading's foot fills as the line does, and the heading says what is
+            // coming in place of where it is. (A strip, not the whole heading: nothing the heading says is drawn in it.)
+            fill(r, kPaneX + 1, kPaneY + kHeadH - 6, static_cast<int>((kPaneW - 2) * (deletePart_ > 1.f ? 1.f : deletePart_)), 5, faded(kStop, 150));
+            fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, kDeletingWords, kText);
+        } else {
+            fonts.small.draw(r, kPaneX + 12.f, kPaneY + 10.f, text, kDim);
+        }
+        fonts.large.draw(r, kPaneX + 12.f, kPaneY + 30.f, empty ? "EMPTY" : effectFamily(kind), list ? kBrass : (empty ? kDim : kText));
+        meterWords(kind, meterOf(row_), text, sizeof text);
+        fonts.small.drawRight(r, kPaneX + kPaneW - 12.f, kPaneY + 36.f, text, kBrass);
+        if (const int types = effectTypes(kind); effectFamilyNamesTypes(kind)) {
+            // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.)
+            std::vector<std::string> names;
+            for (int t = 0; t < types; ++t) names.push_back(effectTypeName(effectTypeAt(kind, t)));
+            drawTypeRow(r, fonts, names, effectTypeIndex(kind), list, typeKey());
+        }
     }
     if (list) outline(r, kPaneX - 1, kPaneY - 1, kPaneW + 2, kHeadH + 2, kBrass, 2);
 
@@ -839,6 +901,10 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     const bool onSends = sends(row_);
     const EffectKind kind = onSends ? EffectKind::None : static_cast<EffectKind>(data(row_).kind);
+    if (modKnob_.held()) {
+        modKnob_.drawHints(r, fonts, kFxModPlaces); // each button under its field in the panel
+        return;
+    }
     if (holding_) {
         if (column_ > 0) {
             hint("UP / DOWN", "turn it");
@@ -859,6 +925,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("LEFT", "list");
         hint("HOLD A", !onSends && effectTypes(kind) > 1 ? "turn, type" : "turn"); // (with A held the bar says which way)
         hint("B", onSends ? "none" : "default");
+        if (onSends) hint("HOLD X", "mod"); // (where the bar has room for it: a setting's has none; the help card says it)
         hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     }

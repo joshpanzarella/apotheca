@@ -229,7 +229,8 @@ static void testCeiling() {
 }
 
 static void testLaneLevel() {
-    Engine full, half, muted;
+    std::unique_ptr<Engine> own[3] = {std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine), std::unique_ptr<Engine>(new Engine)}; // on the heap: 1.4 MB each
+    Engine &full = *own[0], &half = *own[1], &muted = *own[2];
     half.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.5f));
     muted.send(make(Command::SetLaneLevel, 0, SNARE, 0, 0.f));
     for (Engine* e : {&full, &half, &muted}) e->send(trigger(SNARE));

@@ -1,5 +1,6 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/denormals.hpp"
+#include "apotheca/mod_rule.hpp"
 
 #include <cmath>
 #include <utility>
@@ -21,6 +22,7 @@ void panGains(float pan, float& left, float& right) {
 
 namespace {
 constexpr float kGoneQuiet = 1e-5f; // a track taken away that made nothing louder in its last block (-100 dB) goes at once
+constexpr float kPresetMacro = 0.5f; // where Instrument::selectPreset puts every macro: "as the patch says"
 bool validTrack(int track) { return track >= 0 && track < kNumTracks; }
 // One step of a glide toward `to`, kSendGlideSeconds for the whole of 0 to 1 (as a send moves).
 inline void glideToward(float& now, float to, float step) {
@@ -54,8 +56,11 @@ Engine::Engine() {
     caught_.reset(new std::atomic<float>[kCatchFrames]);
     for (int i = 0; i < kCatchFrames; ++i) caught_[i].store(0.f, std::memory_order_relaxed);
     for (auto& s : scope_) s.store(0.f, std::memory_order_relaxed);
-    for (Track& track : tracks_)
+    for (Track& track : tracks_) {
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
+        for (auto& m : track.modShown) m.store(0.f, std::memory_order_relaxed);
+        for (auto& m : track.modPlace) m.store(-1, std::memory_order_relaxed);
+    }
     for (Track& track : tracks_)
         for (auto& k : track.kinds) k.store(0, std::memory_order_relaxed);
     for (auto& m : masterMeters_) m.store(0.f, std::memory_order_relaxed);
@@ -152,6 +157,8 @@ bool Engine::setEffect(int track, int slot, EffectKind kind) {
     c.track = track;
     c.a = slot;
     c.b = busOfTrack(track) >= 0 ? effectMixParam(kind) : -1; // on a bus: which setting is its LEVEL (the engine's to apply)
+    for (int i = 0; i < kEffectParams && kind != EffectKind::None; ++i)
+        if (effectChoices(kind, i) > 0) c.c |= 1 << i; // which settings are choices: a MOD never moves one
     c.pointer = effect.get();
     if (!send(c)) return false; // counted: a loss is mended by sending the song again
     effect.release(); // the audio thread hands the old one back through the trash
@@ -538,6 +545,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
             if (left < kShortestNote) break; // a note shorter than its ratchet: as many as fit
             one.length = k + 1 < hits && left > apart * 0.85f ? apart * 0.85f : left;
             double wait = delaySamples + static_cast<double>(k) * apart * samplesPerStep_;
+            // (No note reaches this today: the two that carry kWholeFrames, a chord's key and an
+            // arpeggio's, come with ratchet 0, since startChordNote counts a chord's pieces itself.
+            // An abort here passed every test, 2026-11-15. Kept as a guard, as aheadIsNow is.)
             if (note.how & kWholeFrames) wait = std::ceil(wait);
             startNote(track, one, wait, at);
         }
@@ -871,12 +881,15 @@ void Engine::apply(const Command& c) {
         }
         std::unique_ptr<Effect>& place = *found;
         if (validTrack(c.track)) {
-            // Another effect in the slot: where its knobs rest is not known until it says.
+            // Another effect in the slot: where its knobs rest is not known until it says, and what a
+            // MOD added to the one before is not carried over (the next tick works it out again).
             for (int i = 0; i < 4; ++i) {
                 const int lane = autoLaneOfEffect(c.a, i);
                 tracks_[c.track].autoBase[lane] = tracks_[c.track].autoNow[lane] = kAutoNone;
                 tracks_[c.track].autoGliding[lane] = false;
+                tracks_[c.track].modOffset[lane] = 0.f;
             }
+            tracks_[c.track].slotChoices[c.a] = static_cast<std::uint8_t>(c.c & 15);
         }
         swapEffect(place, *fade, static_cast<Effect*>(c.pointer));
         // On a bus at rest there is no sound to fade: the new one is simply there, and the old one goes.
@@ -1050,6 +1063,7 @@ void Engine::apply(const Command& c) {
         clearPending();
         letGoOfNotes();
         stepsFired_ = 0;
+        sinceStep_ = 0; // (an audition gives way: every MOD runs from here, its first tick at once; Stop lets it go)
         for (Track& track : tracks_) {
             track.trail.clear(); // the song's first note has nothing to glide from
             track.strokes = -1;  // ...and its first strum goes up
@@ -1075,6 +1089,9 @@ void Engine::apply(const Command& c) {
         playing_ = false;
         clearPending();
         letGoOfNotes();
+        for (Track& track : tracks_) stillMods(track); // as Stop: no MOD runs
+        heardTrack_ = -1;
+        heardMask_ = 0;
         playStep_.store(-1, std::memory_order_relaxed);
         tellScene(-1);
         if (gate_ != Gate::Shut) gate_ = Gate::Closing;
@@ -1137,16 +1154,44 @@ void Engine::apply(const Command& c) {
             Track& track = tracks_[c.track];
             if (c.b) track.autoHeld = static_cast<std::uint8_t>(track.autoHeld | (1 << c.a));
             else track.autoHeld = static_cast<std::uint8_t>(track.autoHeld & ~(1 << c.a));
-            for (int i = 0; i < 4 && c.b; ++i) track.autoGliding[autoLaneOfEffect(c.a, i)] = false; // a glide under way stops where it is
+            for (int i = 0; i < 4 && c.b; ++i) {
+                track.autoGliding[autoLaneOfEffect(c.a, i)] = false; // a glide under way stops where it is
+                stillLane(track, autoLaneOfEffect(c.a, i));          // and a MOD on it waits too (runMods passes it by)
+            }
         }
+        break;
+    case Command::SetMod:
+    case Command::SetModStep:
+        if (validTrack(c.track) && c.a >= 0 && c.a < kModsPerTrack) {
+            Track& track = tracks_[c.track];
+            ModSettings& mod = track.mods[c.a];
+            const int was = mod.on() ? mod.target : kModTargetNone;
+            if (c.type == Command::SetMod) modSet(mod, c.b, c.value);
+            else modSetStep(mod, c.b, c.value);
+            // Aimed somewhere else now, or off: what it added to the lane it left goes (the other
+            // MOD, if it is aimed there too, is added again at its next tick).
+            if (was != kModTargetNone && was != (mod.on() ? mod.target : kModTargetNone)) stillLane(track, was);
+            if (!mod.on()) {
+                track.modShown[c.a].store(0.f, std::memory_order_relaxed);
+                track.modPlace[c.a].store(-1, std::memory_order_relaxed);
+            }
+            modsChanged();
+        }
+        break;
+    case Command::ModAudition:
+        if (playing_) break; // the song's MODs run while it plays
+        if (heardTrack_ >= 0) stillMods(tracks_[heardTrack_]);
+        heardTrack_ = validTrack(c.track) && (c.a & 3) ? c.track : -1;
+        heardMask_ = heardTrack_ >= 0 ? static_cast<unsigned>(c.a & 3) : 0u;
+        heardFor_ = 0; // counted from X going down, as from Play
         break;
     case Command::SetSend:
         if (validTrack(c.track) && c.a >= 0 && c.a < kBuses && c.value == c.value) {
             Track& track = tracks_[c.track];
             const int lane = autoLaneOfSend(c.a);
-            track.send[c.a] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
-            track.autoBase[lane] = track.autoNow[lane] = track.send[c.a]; // the knob itself: where it rests when nothing automates it
+            track.autoBase[lane] = track.autoNow[lane] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value); // the knob itself: where it rests when nothing automates it
             track.autoGliding[lane] = false;
+            giveLane(track, lane); // a MOD's wobble about it, held to 0..1; the centre kept as it is
         }
         break;
     case Command::SetTrackLevel:
@@ -1178,21 +1223,28 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && tracks_[c.track].synth) {
             Track& track = tracks_[c.track];
             track.synth->selectPreset(c.a);
-            // The preset puts its macros back to the middle, so that is where they rest now. Left as
-            // they were, a scene with nothing written on a macro's lane took the OLD sound's knob back.
-            for (int m = 0; m < 8; ++m) {
-                track.autoBase[m] = track.autoNow[m] = track.autoFrom[m] = track.autoTo[m] = 0.5f;
-                track.autoGliding[m] = false;
+            // The preset puts its macros back to the middle (Instrument::selectPreset), so that is where
+            // they rest now, as the project's are. Left as they were, a scene with nothing written on a
+            // macro's lane took the OLD sound's knob back. A MOD on a macro is given about it at once,
+            // not left at the bare middle until its offset next changes, nor moved about the knob the
+            // old sound had. With nothing added no macro is given: the synth already has it (a song
+            // with no MOD is the same to the bit; applyProject sends every macro after the preset anyway).
+            for (int lane = 0; lane < 8; ++lane) {
+                track.autoBase[lane] = track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = kPresetMacro;
+                track.autoGliding[lane] = false;
+                if (track.modOffset[lane] != 0.f) giveLane(track, lane);
             }
         }
         break;
     case Command::SetMacro:
         if (validTrack(c.track) && tracks_[c.track].synth) {
             Track& track = tracks_[c.track];
-            track.synth->setMacro(c.a, c.value);
             if (c.a >= 0 && c.a < 8) { // the knob itself: where the setting rests when nothing automates it
                 track.autoBase[c.a] = track.autoNow[c.a] = c.value;
                 track.autoGliding[c.a] = false;
+                giveLane(track, c.a);
+            } else {
+                track.synth->setMacro(c.a, c.value);
             }
         }
         break;
@@ -1262,14 +1314,14 @@ void Engine::apply(const Command& c) {
             if (c.value == c.value) busLevel_[bus] = c.value < 0.f ? 0.f : (c.value > 1.f ? 1.f : c.value);
             break;
         }
-        if (*place) (*place)->setParam(c.b, c.value);
-        if (validTrack(c.track)) {
+        if (validTrack(c.track) && c.b >= 0 && c.b < 4) {
             Track& track = tracks_[c.track];
-            if (c.b >= 0 && c.b < 4) {
-                const int lane = autoLaneOfEffect(c.a, c.b);
-                track.autoBase[lane] = track.autoNow[lane] = c.value;
-                track.autoGliding[lane] = false;
-            }
+            const int lane = autoLaneOfEffect(c.a, c.b);
+            track.autoBase[lane] = track.autoNow[lane] = c.value;
+            track.autoGliding[lane] = false;
+            giveLane(track, lane);
+        } else if (*place) {
+            (*place)->setParam(c.b, c.value); // the master's, or a setting no lane has
         }
         break;
     }
@@ -1419,6 +1471,9 @@ void Engine::stopPlaying() {
     playing_ = false;
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
     letGoOfNotes();
+    for (Track& track : tracks_) stillMods(track); // no MOD runs while stopped: every knob is given its centre
+    heardTrack_ = -1;
+    heardMask_ = 0;
     settleAutomation(); // every automated setting back to where its knob was left
     playStep_.store(-1, std::memory_order_relaxed);
     tellScene(-1);
@@ -1690,6 +1745,12 @@ void Engine::takeAway(int t) {
     }
     track.hasDrums = false;
     track.glideFrom = kFromTop;
+    // Its MODs go OFF, as GLIDE FROM goes back to TOP: the effects stay, so what was added to
+    // their settings and the sends is taken off first.
+    stillMods(track);
+    for (int m = 0; m < kModsPerTrack; ++m) track.mods[m] = ModSettings();
+    if (heardTrack_ == t) heardTrack_ = -1, heardMask_ = 0;
+    modsChanged();
     for (LaneFeel& feel : track.feel) feel = LaneFeel(); // the next kit here plays plain until it is told
     for (long& asked : track.feelAsked) asked = -1;
     track.level = track.levelNow = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
@@ -1777,6 +1838,7 @@ void Engine::render(float* interleaved, int frames) {
             if (untilStep_ <= 0.0) {
                 fireStep();
                 untilStep_ += samplesPerStep_;
+                sinceStep_ = 0; // a MOD's ticks count from here
             }
             fireArps(); // after the step: a chord that begins now has its first note now
             next = untilStep_;
@@ -1801,6 +1863,20 @@ void Engine::render(float* interleaved, int frames) {
             const int toNext = static_cast<int>(std::ceil(next));
             if (toNext < chunk) chunk = toNext < 1 ? 1 : toNext;
         }
+        // MOD: a tick every kModTick samples, counted from the first sample of the step playing (or,
+        // stopped, from X going down on a modulated knob). The chunk is cut on the next tick, but
+        // only while some MOD runs: a song with none is cut as it always was, to the bit.
+        if (playing_ ? anyMod_ : heardMask_ != 0) {
+            const long since = playing_ ? sinceStep_ : heardFor_;
+            const int into = static_cast<int>(since % kModTick);
+            if (into == 0) {
+                // Where the song is at this chunk's first sample: read BEFORE the chunk is taken off
+                // untilStep_ (after, it would be the chunk's end, a chunk late).
+                const double at = playing_ ? modPosition(stepsFired_, samplesPerStep_, untilStep_) : static_cast<double>(heardFor_) / samplesPerStep_;
+                runMods(at, (since / kModTick) % kModMacroTicks == 0);
+            }
+            if (kModTick - into < chunk) chunk = kModTick - into;
+        }
         if (playing_) untilStep_ -= chunk;
         for (Track& track : tracks_) {
             if (track.synth && playing_) {
@@ -1824,6 +1900,9 @@ void Engine::render(float* interleaved, int frames) {
                     if (left >= 1 && left < chunk) chunk = left;
                 }
         }
+        if (playing_) sinceStep_ += chunk;
+        else if (heardMask_) heardFor_ += chunk;
+        ++chunks_;
         renderChunk(interleaved, chunk, peaks);
         interleaved += 2 * chunk;
         frames -= chunk;
@@ -1831,11 +1910,25 @@ void Engine::render(float* interleaved, int frames) {
         if (holding_.load(std::memory_order_relaxed) && going_ == 0) takeCommands();
     }
     for (int t = 0; t < kNumTracks; ++t) tracks_[t].peak.store(peaks[t], std::memory_order_relaxed);
+    chunksShown_.store(chunks_, std::memory_order_relaxed);
 }
 
-// Give a lane's value to what it belongs to: a macro of the synth, or a setting of an effect.
+// A lane's centre moves (automation, Stop): give it on.
 void Engine::applyAuto(Track& track, int lane, float value) {
     track.autoNow[lane] = value;
+    giveLane(track, lane);
+}
+
+// Give a lane to what it belongs to: a macro of the synth, a setting of an effect, or a send.
+// The one way a lane's value goes out (automation, Stop, a knob's own command, a MOD's tick):
+// its centre plus what the MODs add, held to 0..1 (modGiven). With nothing added it is the
+// centre as it is, in the same call as before there were MODs: a song with no MOD is the same
+// to the bit. The centre itself is never changed here, so automation and Stop still compare
+// with the knob's value, never the wobble.
+void Engine::giveLane(Track& track, int lane) {
+    const float offset = track.modOffset[lane], centre = track.autoNow[lane];
+    if (offset != 0.f && !(centre >= 0.f)) return; // a centre not known yet (an effect not told its settings): nothing to move about
+    const float value = modGiven(centre, offset);
     if (lane < 8) {
         if (track.synth) track.synth->setMacro(lane, value);
     } else if (lane < 8 + kTrackSlots * 4) {
@@ -1843,6 +1936,96 @@ void Engine::applyAuto(Track& track, int lane, float value) {
     } else if (lane < kAutoSendLane + kBuses) {
         track.send[lane - kAutoSendLane] = value < 0.f ? 0.f : (value > 1.f ? 1.f : value); // it glides from there by itself (feedBuses)
     } // (the last two lanes are spare)
+}
+
+// ---- MOD: a track's two modulators (mod_rule.hpp) -------------------------------------------
+
+// One tick, on the audio thread, before the tracks are shared out (the helpers only read what it
+// sets). Each MOD that runs works out what it adds at `position` (mod_rule.hpp: from where the song
+// is, never from the tick before), two on one lane add, and the lane is given only if that
+// changed: a held STEPPER value costs a compare. A synth's macros are given on `macros` ticks only
+// (every kModMacroTicks'th: each change works a whole tone out again). A lane whose slot the FX
+// screen is trying effects in waits (its offset was put back to 0 by the hold), and a setting that
+// is a choice is never moved.
+void Engine::runMods(double position, bool macros) {
+    for (int t = 0; t < kNumTracks; ++t) {
+        Track& track = tracks_[t];
+        const unsigned mask = playing_ ? 3u : (t == heardTrack_ ? heardMask_ : 0u);
+        if (!mask || !track.hasInstrument()) continue;
+        float added[kModsPerTrack] = {};
+        bool runs[kModsPerTrack] = {};
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            const ModSettings& mod = track.mods[m];
+            if (!((mask >> m) & 1u) || !mod.on() || (modTargetIsMacro(mod.target) && !macros)) continue;
+            runs[m] = true;
+            added[m] = modOffsetAt(mod, position, t, m);
+            track.modShown[m].store(added[m], std::memory_order_relaxed);
+            track.modPlace[m].store(stepperPlace(mod, position), std::memory_order_relaxed);
+        }
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!runs[m]) continue;
+            const int lane = track.mods[m].target;
+            if (m == 1 && runs[0] && track.mods[0].target == lane) continue; // added in with MOD 1's
+            if (track.autoWaits(lane)) continue;
+            const int slot = autoSlotOfLane(lane);
+            if (slot >= 0 && ((track.slotChoices[slot] >> ((lane - 8) % 4)) & 1)) continue;
+            float sum = added[m];
+            if (m == 0 && runs[1] && track.mods[1].target == lane) sum += added[1];
+            if (sum == track.modOffset[lane]) continue;
+            track.modOffset[lane] = sum;
+            giveLane(track, lane);
+        }
+    }
+}
+
+// A lane's offset back to nothing, and the lane given its centre (where the centre is known).
+void Engine::stillLane(Track& track, int lane) {
+    if (lane < 0 || lane >= kAutoLanes || track.modOffset[lane] == 0.f) return;
+    track.modOffset[lane] = 0.f;
+    if (track.autoNow[lane] >= 0.f) giveLane(track, lane);
+}
+
+void Engine::stillMods(Track& track) {
+    for (int lane = 0; lane < kAutoLanes; ++lane) stillLane(track, lane);
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        track.modShown[m].store(0.f, std::memory_order_relaxed);
+        track.modPlace[m].store(-1, std::memory_order_relaxed);
+    }
+}
+
+void Engine::modsChanged() {
+    anyMod_ = false;
+    for (const Track& track : tracks_)
+        for (const ModSettings& mod : track.mods) anyMod_ = anyMod_ || mod.on();
+}
+
+bool Engine::setMod(int track, int mod, const ModSettings& settings) {
+    if (!validTrack(track) || mod < 0 || mod >= kModsPerTrack) return false;
+    bool sent = true;
+    Command c;
+    c.track = track;
+    c.a = mod;
+    c.type = Command::SetModStep;
+    for (int step = 0; step < kModSteps; ++step) { // the row first: a MOD turned on by the last field plays it at once
+        c.b = step;
+        c.value = settings.steps[step];
+        sent = send(c) && sent;
+    }
+    c.type = Command::SetMod;
+    for (int field = kModFields - 1; field >= 0; --field) { // KIND last, so it comes on with the rest in place
+        c.b = field;
+        c.value = modGet(settings, field);
+        sent = send(c) && sent;
+    }
+    return sent;
+}
+
+float Engine::modShown(int track, int mod) const {
+    return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modShown[mod].load(std::memory_order_relaxed) : 0.f;
+}
+
+int Engine::modPlace(int track, int mod) const {
+    return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modPlace[mod].load(std::memory_order_relaxed) : -1;
 }
 
 // Move every gliding lane on. The glide takes the first half of a step, in

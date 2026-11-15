@@ -86,11 +86,15 @@ public:
     void noteOff(int note) override;
     void allNotesOff() override;
     void render(float* left, float* right, int frames) override;
+    // How many times the wiring has been worked out (apply): for the tests, which hold that a
+    // macro given the value it has costs nothing.
+    unsigned applied() const { return applied_; }
 
 private:
     struct State;
     void apply();
     std::unique_ptr<State> state_;
+    unsigned applied_ = 0;
 };
 
 } // namespace apotheca

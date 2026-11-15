@@ -269,6 +269,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // X held hears a recording until it is let go. Let go, or another screen or track up while it
     // is held (the screen that asked would never hear of the let go): it stops.
     session_.keepHearing(input.held(Button::X), &screenNow());
+    session_.keepModsHeard(input.held(Button::X), &screenNow()); // (X held on a knob's MOD while stopped: it ran)
     if (session_.resyncs() != resyncsSeen_) { // the engine fell behind and was sent the song again; that stops it
         resyncsSeen_ = session_.resyncs();
         std::snprintf(undoSaid_, sizeof undoSaid_, "SOUND FELL BEHIND AND WAS RESET: PRESS START");
@@ -378,7 +379,7 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
         outline(renderer, x, y, w, h, kTeal, 2);
         struct Line { const char* key; const char* does; };
         const Line everywhere[] = {
-            {"X", "hear it (SONG: solo). Held on a hit or note: its effects"},
+            {"X", "hear it (SONG: solo). Held: a step's effects, a knob's MOD"},
             {"STICK or D-PAD", "move: the stick for big moves, the D-pad for exact"},
             {"A", "place, open or pick. Held: a direction changes it"},
             {"B", "delete, empty, or go back"},

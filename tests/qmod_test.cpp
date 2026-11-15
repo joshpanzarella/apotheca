@@ -280,12 +280,45 @@ void testMacrosAndNotes() {
 
 } // namespace
 
+// A macro given the value it already has works nothing out again (a MOD gives the same value
+// often, and the wiring costs about a microsecond); a new value does, and the sound follows it.
+void testAnEqualMacroCostsNothing() {
+    Qmod q;
+    q.prepare(48000.f);
+    q.selectPreset(0);
+    const unsigned at = q.applied();
+    q.setMacro(MacroTension, 0.5f); // as the preset left it
+    CHECK(q.applied() == at);
+    q.setMacro(MacroTension, 0.7f);
+    CHECK(q.applied() == at + 1);
+    q.setMacro(MacroTension, 0.7f);
+    q.setMacro(MacroTension, 0.7f);
+    CHECK(q.applied() == at + 1);
+    q.setMacro(MacroTension, 3.f); // held to 1: a new value
+    q.setMacro(MacroTension, 1.f); // the same, once held
+    CHECK(q.applied() == at + 2);
+    q.setMacro(MacroTension, 3.f); // over 1 again: held first, then the same as it has
+    CHECK(q.applied() == at + 2);
+    q.setMacro(MacroTension, std::nanf("")); // not a number: nothing
+    CHECK(q.applied() == at + 2);
+    // The same sound as a synth given the value once.
+    Qmod once;
+    once.prepare(48000.f);
+    once.selectPreset(0);
+    once.setMacro(MacroTension, 1.f);
+    q.noteOn(57, 0.8f);
+    once.noteOn(57, 0.8f);
+    const Heard a = render(q, 4800), b = render(once, 4800);
+    CHECK(a.left == b.left && a.right == b.right);
+}
+
 int main() {
     testEveryPresetIsASound();
     testEveryRollIsASound();
     testTheSameNumberIsTheSameSound();
     testWhatEachControlDoes();
     testMacrosAndNotes();
+    testAnEqualMacroCostsNothing();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

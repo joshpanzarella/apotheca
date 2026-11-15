@@ -84,6 +84,7 @@ public:
     // Everything below is realtime safe.
     void selectPreset(int index) override; // sounding notes fade out; macros go back to the middle
     int preset() const { return preset_; }
+    bool twinned() const { return twinByDetune_; } // a one-line sound made a twin by DETUNE (kept at the middle while notes sound)
     void setSetting(int id, int value) override;     // edit the patch
     void setMacro(int macro, float value) override;  // 0..1, 0.5 = as the patch says
     void noteOn(int note, float velocity) override;  // MIDI note number; velocity 0..1
@@ -97,12 +98,17 @@ public:
 private:
     struct State;
     void apply(bool newSound);
+    bool sounding() const; // any voice playing or fading
+    void trimInTune();     // before a note begins on a twin kept at the middle
+    void lineBack();       // a twin kept at DETUNE's middle for sounding notes goes back to one line, if none sound
 
     std::unique_ptr<State> state_;
     bool ok_ = false;
     int preset_ = 0;
     PhazedPatch patch_;
     float macro_[phazed::kMacros];
+    bool inTuneTrim_ = false;   // that twin, kept at the middle, has had a note begin on it: trimmed for lines in tune
+    bool twinByDetune_ = false; // the synth has a one-line sound made a twin by DETUNE
 };
 
 } // namespace apotheca

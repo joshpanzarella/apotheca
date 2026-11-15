@@ -2262,7 +2262,8 @@ void testTheHelpCardDrawsSel() {
     CHECK(holds(0, "X", nullptr) && holds(4, "START", nullptr));
     CHECK(holds(6, "SEL,", "tapped"));
     CHECK(!holds(6, "SELECT,", "tapped") && !holds(6, "SEL,", "tappee") && !holds(6, "SEL", "tapped"));
-    // X's line says WHERE held X shows effects (a hit or a note: on SONG and FX it does not),
+    // X's line says WHERE held X shows effects (a hit or a note: on SONG it does not) and that on a
+    // knob it is its MOD (owner's call G: said here, on the card, where the bars have no room),
     // and every line ends inside the card's margin.
     const auto says = [&](int box, const char* does) {
         const int top = tops[box] + 3;
@@ -2271,7 +2272,7 @@ void testTheHelpCardDrawsSel() {
         plain.fonts->small.draw(plain.r, 190.f, static_cast<float>(top), does, ui::kText);
         return canvas.part(190, top - 3, 408, 17) == plain.part(190, top - 3, 408, 17);
     };
-    CHECK(says(0, "hear it (SONG: solo). Held on a hit or note: its effects")); // (SONG: owner, 2026-11-15)
+    CHECK(says(0, "hear it (SONG: solo). Held: a step's effects, a knob's MOD")); // (SONG: owner, 2026-11-15)
     CHECK(says(3, "delete, empty, or go back") && !says(0, "delete, empty, or go back")); // (the check can tell)
     for (int top : tops)
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));

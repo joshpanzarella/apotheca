@@ -506,6 +506,61 @@ static void testEachMacroDoesItsJob() {
     CHECK(std::fabs(1200.0 * std::log2(hz(0.f) / middle) + 1200.0) < 10.0);
 }
 
+// DETUNE makes a one-line sound a twin off the middle and one line at it. Passing through the
+// middle while a note was held cut the note (the CZ fades every voice for a new layout of its
+// lines): it fell from RMS 0.087 to 0.008. Now the twin stays while the note sounds, and the
+// next note played into silence is one line again, as a sound with DETUNE at the middle always was.
+static double rmsOf(const std::vector<float>& v, int fromFrame, int toFrame) { return std::sqrt(energyOf(v, fromFrame, toFrame) / (2.0 * (toFrame - fromFrame))); }
+static void testDetuneThroughTheMiddleKeepsTheNote() {
+    using namespace phazed;
+    int tried = 0;
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        const PhazedPatch patch = Phazed::presetPatch(preset);
+        if (patch.value[LineSelect] >= 2 || patch.value[envSustain(patch.value[LineSelect], AmpEnv)] == 0) continue; // one line, held
+        // The same note in two engines: DETUNE through the middle, and DETUNE never moved from 0.52.
+        // (Compared with the twin left alone, so a sound that dies away by itself does not count.)
+        std::vector<float> heard[2][3];
+        std::unique_ptr<Engine> engines[2];
+        for (int way = 0; way < 2; ++way) {
+            engines[way].reset(new Engine);
+            Engine& engine = *engines[way];
+            engine.prepare(44100.f);
+            engine.addSynthTrack(1);
+            engine.send(make(Command::SelectPreset, 1, preset));
+            engine.send(macro(Detune, 0.52f));
+            renderFrames(engine, 22050);
+            engine.send(make(Command::NoteOn, 1, 60, 1.f));
+            heard[way][0] = renderFrames(engine, 22050);
+            engine.send(macro(Detune, way == 0 ? 0.5f : 0.52f));
+            heard[way][1] = renderFrames(engine, 4410);
+            engine.send(macro(Detune, 0.52f));
+            heard[way][2] = renderFrames(engine, 22050);
+        }
+        Engine& engine = *engines[0];
+        if (rmsOf(heard[1][0], 11025, 22050) < 0.01) continue; // too quiet by then to say anything
+        ++tried;
+        const double middle = rmsOf(heard[0][1], 2205, 4410) / rmsOf(heard[1][1], 2205, 4410);
+        const double after = rmsOf(heard[0][2], 11025, 22050) / rmsOf(heard[1][2], 11025, 22050);
+        if (std::getenv("DETUNE_PRINT")) std::printf("preset %d: through the middle %.3f, after %.3f of the twin left alone\n", preset, middle, after);
+        // Not cut (it was a tenth), and not turned down either: the trim for lines in tune
+        // (kDoubleInTuneTrim) is taken when a note BEGINS at the middle, never from a held note
+        // (taken there, this was 0.61 to 0.80). Louder is the slow beat of the two lines in
+        // another place.
+        CHECK(middle > 0.82); // 0.859 the least (preset 55), 1.097 the most
+        CHECK(after > 0.7);
+        // Let go and fall silent: the next note, with DETUNE at the middle, is one line again,
+        // as loud as one played with DETUNE never moved (a twin would be 3 dB up).
+        engine.send(make(Command::NoteOff, 1, 60));
+        engine.send(macro(Detune, 0.5f));
+        renderFrames(engine, 44100 * 8);
+        engine.send(make(Command::NoteOn, 1, 60, 1.f));
+        const std::vector<float> again = renderFrames(engine, 22050);
+        const double plain = rmsOf(playNote(preset, {}).held, 11025, 22050);
+        CHECK(std::fabs(rmsOf(again, 11025, 22050) / plain - 1.0) < 0.1);
+    }
+    CHECK(tried >= 3); // the review measured presets 7, 9 and 12
+}
+
 static void testChoosingAPresetClearsTheMacros() {
     const int preset = organPreset();
     Engine engine;
@@ -691,6 +746,152 @@ static void reportCost() {
     }
 }
 
+// The one-line, held presets DETUNE makes a twin of.
+static std::vector<int> oneLineHeldPresets() {
+    using namespace phazed;
+    std::vector<int> found;
+    for (int preset = 0; preset < Phazed::presetCount(); ++preset) {
+        const PhazedPatch patch = Phazed::presetPatch(preset);
+        if (patch.value[LineSelect] < 2 && patch.value[envSustain(patch.value[LineSelect], AmpEnv)] != 0) found.push_back(preset);
+    }
+    return found;
+}
+static double rmsMono(const std::vector<float>& v, std::size_t from, std::size_t to) {
+    double sum = 0.0;
+    for (std::size_t i = from; i < to; ++i) sum += double(v[i]) * v[i];
+    return std::sqrt(sum / double(to - from));
+}
+
+// A legato part (each note on before the last is let go) never falls silent, so a twin kept at
+// DETUNE's middle is never sent back to one line while it plays. Its notes, begun on two lines in
+// tune, sum in phase: they were 3 dB over the patch (review, 2026-11-14) until the kept twin was
+// trimmed 3 dB more (kDoubleInTuneTrim). Now as loud as DETUNE never moved, as on main once the cut
+// was over. DETUNE goes 0.52 to 0.5 at the fifth note; heard 5 to 10 s in. The trim is taken as
+// the first note begins at the middle, and given back when DETUNE leaves it.
+static void testALegatoPartAtTheMiddleIsAsLoudAsTheMiddle() {
+    using namespace phazed;
+    int tried = 0;
+    for (int preset : oneLineHeldPresets()) for (bool glided : {false, true}) { // every note plain, or every one the gliding way in
+        double level[2];
+        for (int way = 0; way < 2; ++way) {
+            Phazed synth;
+            synth.prepare(44100.f);
+            synth.selectPreset(preset);
+            synth.setMacro(Detune, way == 0 ? 0.52f : 0.5f);
+            std::vector<float> all;
+            int held = -1;
+            for (int i = 0; i < 40; ++i) {
+                const int note = 60 + (i % 3) * 2;
+                if (glided) synth.noteOnFrom(note, 1.f, note, 0.01f); // (from its own key: no slide)
+                else synth.noteOn(note, 1.f);
+                if (held >= 0) synth.noteOff(held);
+                held = note;
+                if (i == 4) synth.setMacro(Detune, 0.5f); // back to the middle, notes sounding
+                if (i == 8) synth.setMacro(Chorus, 0.55f); // another macro turned (nothing heard: the patch's own chorus up to 0.6) keeps the trim
+                const std::vector<float> part = renderSynth(synth, 11025);
+                all.insert(all.end(), part.begin(), part.end());
+            }
+            level[way] = rmsMono(all, all.size() / 2, all.size());
+        }
+        if (level[1] < 0.01) continue;
+        ++tried;
+        const double db = 20.0 * std::log10(level[0] / level[1]);
+        if (std::getenv("DETUNE_PRINT")) std::printf("preset %d%s: a legato part at the middle, %.2f dB against DETUNE never moved\n", preset, glided ? " glided" : "", db);
+        CHECK(std::fabs(db) < 0.5);
+    }
+    CHECK(tried >= 6);
+}
+
+// A twin kept at the middle goes back to one line before a note into silence, played plainly or
+// gliding, and a new sound (a preset chosen, notes still fading) starts as one line however it is
+// chosen: the middle is one line wherever nothing is held over.
+static void testATwinKeptAtTheMiddleGoesBack() {
+    using namespace phazed;
+    const int preset = oneLineHeldPresets().at(0);
+    for (int way = 0; way < 3; ++way) {
+        Phazed synth;
+        synth.prepare(44100.f);
+        synth.selectPreset(preset);
+        CHECK(!synth.twinned());
+        synth.setMacro(Detune, 0.52f);
+        CHECK(synth.twinned());
+        synth.noteOn(60, 1.f);
+        renderSynth(synth, 4410);
+        synth.setMacro(Detune, 0.5f);
+        CHECK(synth.twinned()); // kept: a note sounds
+        if (way == 0) {
+            synth.selectPreset(preset); // the note fades as the new sound comes in
+            CHECK(!synth.twinned());
+            continue;
+        }
+        synth.noteOff(60);
+        renderSynth(synth, 8 * 44100);
+        CHECK(synth.twinned()); // (nothing has asked yet)
+        if (way == 1) synth.noteOn(62, 1.f);
+        else synth.noteOnFrom(62, 1.f, 60, 0.1f);
+        CHECK(!synth.twinned());
+    }
+}
+
+// The trim for lines in tune is the middle's alone: DETUNE moved off it again, the legato part is
+// as loud as a twin whose DETUNE never came to the middle (left on, it was 3 dB under). And a
+// DETUNE that only passes the middle, no note beginning there, turns nothing down.
+static void testTheInTuneTrimIsGivenBack() {
+    using namespace phazed;
+    int tried = 0;
+    for (int preset : oneLineHeldPresets()) {
+        double level[4];
+        for (int way = 0; way < 4; ++way) {
+            Phazed synth;
+            synth.prepare(44100.f);
+            synth.selectPreset(preset);
+            if (way < 3) synth.setMacro(Detune, 0.52f); // (way 3: one line, DETUNE never moved)
+            std::vector<float> all;
+            int held = -1;
+            for (int i = 0; i < 48; ++i) {
+                const int note = 60 + (i % 3) * 2;
+                synth.noteOn(note, 1.f);
+                if (held >= 0) synth.noteOff(held);
+                held = note;
+                if (way == 1 && i == 4) synth.setMacro(Detune, 0.5f); // notes begin at the middle from here
+                if (way == 1 && i == 12) synth.setMacro(Detune, 0.52f); // and off it again
+                if (way == 2 && i >= 4 && i < 12) synth.setMacro(Detune, 0.5f), synth.setMacro(Detune, 0.52f); // only passing
+                const std::vector<float> part = renderSynth(synth, 11025);
+                all.insert(all.end(), part.begin(), part.end());
+            }
+            level[way] = rmsMono(all, all.size() / 2, all.size());
+        }
+        if (level[0] < 0.01) continue;
+        ++tried;
+        const double back = 20.0 * std::log10(level[1] / level[0]), passing = 20.0 * std::log10(level[2] / level[0]);
+        if (std::getenv("DETUNE_PRINT")) std::printf("preset %d: off the middle again %.2f dB, only passing it %.2f dB, against a twin left alone\n", preset, back, passing);
+        const double twin = 20.0 * std::log10(level[0] / level[3]);
+        if (std::getenv("DETUNE_PRINT")) std::printf("preset %d: a detuned twin's legato part, %.2f dB against one line\n", preset, twin);
+        // The trim is never taken off the middle: a detuned twin's short notes begin with their
+        // lines together and are 1.2 to 3.0 dB over one line (measured; as on main), not under it.
+        CHECK(twin > 0.6 && twin < 3.5);
+        CHECK(std::fabs(back) < 1.0);
+        CHECK(std::fabs(passing) < 1.0);
+    }
+    CHECK(tried >= 3);
+}
+
+// A note the CZ is fading out still sounds: a twin is kept for it too. A one-line note held,
+// DETUNE off the middle (the layout changes: the CZ fades the note, once) and straight back.
+// (In the CZ a fading voice is always an active one, cz_synth.c: so `sounding()` asking for
+// "active or fading" cannot be told from "active" by any test. Review, 2026-11-14.)
+static void testFadingVoicesStillSound() {
+    using namespace phazed;
+    Phazed synth;
+    synth.prepare(44100.f);
+    synth.selectPreset(oneLineHeldPresets().at(0));
+    synth.noteOn(60, 1.f);
+    renderSynth(synth, 4410);
+    synth.setMacro(Detune, 0.52f);
+    synth.setMacro(Detune, 0.5f);
+    CHECK(synth.twinned());
+}
+
 int main(int argc, char** argv) {
     testPresetsAreThere();
     testASynthTrackIsAddedOnce();
@@ -706,11 +907,16 @@ int main(int argc, char** argv) {
     testSettingsAreHeldToTheirLimits();
     testMacrosInTheMiddleChangeNothing();
     testEachMacroDoesItsJob();
+    testDetuneThroughTheMiddleKeepsTheNote();
     testChoosingAPresetClearsTheMacros();
     testAGlideTakesItsLength();
     testAWaitingGlideKeepsItsOwnLength();
     testAGlideComesFromTheKeyItIsGiven();
     testAGlideSurvivesAWaitForItsSlot();
+    testALegatoPartAtTheMiddleIsAsLoudAsTheMiddle();
+    testATwinKeptAtTheMiddleGoesBack();
+    testTheInTuneTrimIsGivenBack();
+    testFadingVoicesStillSound();
     if (argc > 1 && std::strcmp(argv[1], "--cost") == 0) reportCost();
     if (failures) {
         std::printf("%d check(s) failed\n", failures.load());

@@ -210,6 +210,8 @@ struct TrackData {
     int mixPan = 0;                  // ...and its pan, -kPanMost (left) .. kPanMost (right)
     std::uint8_t glideFrom = 0;      // GLIDE FROM, a synth track's: which key of the moment before its glides come from
                                      // (kFromTop, kFromPaired, kFromNearest, kFromRandom: apotheca/glide_rule.hpp)
+    ModSettings mods[kModsPerTrack]; // MOD 1 and MOD 2: the track's, not a scene's (apotheca/mod_rule.hpp). One that is OFF is
+                                     // blank, and one whose target does not fit the track is OFF (mods.hpp); set by Session::setMod
     float laneLevel[kDrumLanes]; // each drum's volume
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded

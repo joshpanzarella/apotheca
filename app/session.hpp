@@ -167,6 +167,22 @@ public:
     // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
     // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
     void setLaneFeel(int track, int lane, int time, int level);
+    // MOD 1 or 2 of a track (mod 0 or 1): the whole of it, held to what it can be. One that is OFF,
+    // or aimed at something that does not fit the track (mods.hpp: an empty slot, a choice, a macro
+    // on a track with none), is stored OFF, blank. A step of undo, as GLIDE FROM is. True if the
+    // track holds what was asked for (false: it was put OFF, or there is no such track or MOD).
+    bool setMod(int track, int mod, const ModSettings& settings);
+    const ModSettings& modData(int track, int mod) const;
+    // X HELD on a knob with a MOD while the song is stopped (owner's call E): the engine runs the
+    // MODs in `mask` (bit 0 MOD 1, bit 1 MOD 2) of `track`, counted from now as from Play
+    // (Command::ModAudition), so the gesture is heard. The screen asks every frame X is held there;
+    // a command goes only when what runs changes. Mask 0 lets go. While the song plays nothing is
+    // sent (its MODs run), and after it stops the next ask starts it again. `owner` is the screen:
+    // App lets go when X is up, another screen is up or another track picked (keepModsHeard), and
+    // a new song and panic let go too.
+    void hearMods(int track, unsigned mask, const void* owner);
+    void keepModsHeard(bool xHeld, const void* screen);
+    unsigned modsHeard(int track) const { return track == modsHeard_.track ? modsHeard_.mask : 0u; } // for the tests
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the
@@ -534,6 +550,9 @@ private:
     void stopLane(int track, int lane);
     void endHearing();  // what is due to stop now, stopped
     void dropHearing(); // panic, a new song: nothing held, nothing waiting to stop
+    struct ModsHeard { int track = -1; unsigned mask = 0; const void* owner = nullptr; };
+    ModsHeard modsHeard_; // what the engine was told to run while stopped (hearMods); track -1: nothing
+    void letGoOfMods();
     Uint32 now_ = 0;
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;
@@ -609,6 +628,7 @@ private:
     std::uint32_t soundMark_ = 0;
     void restoreSounds(const Project& was, const bool same[kNumTracks]);
     void restoreEffect(int track, int slot, const EffectData& then);
+    void sendMod(int track, int mod); // the project's MOD told to the engine (OFF: one command)
     struct UndoStep { std::string text; int nextScene = -1; };
     std::vector<UndoStep> undo_, redo_;
     std::string settled_;                            // the patterns when things were last still
