@@ -219,8 +219,15 @@ void ModScreen::toUsual() {
     } else if (column_ == kShape) {
         s.kind = usual.kind, s.shape = usual.shape;
     } else if (column_ == kDepth) {
+        // Its usual DEPTH, and its lane in this scene emptied (as B on a macro or an FX setting). A reset,
+        // not a turn to record: with WRITE on and the song playing, setMod would write the lane again.
         s.depth = usual.depth;
-        session_.clearAutomation(track(), project_.scene, modDepthLane(m)); // (as B on an FX setting: its lane in this scene too)
+        const bool writing = session_.writing();
+        session_.setWriting(false);
+        session_.clearAutomation(track(), project_.scene, modDepthLane(m));
+        set(m, s);
+        session_.setWriting(writing);
+        return;
     } else if (column_ == kRate) {
         s.rate = usual.rate;
     } else if (column_ == kMore) {

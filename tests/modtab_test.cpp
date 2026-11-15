@@ -826,6 +826,34 @@ void testTheDepthLane() {
     CHECK(rig.mod(t, 0).depth == 0.3f && rig.session().hasAutomation(t, rig.project().scene, modDepthLane(0)));
 }
 
+// B on DEPTH with WRITE on while the song plays empties the lane and leaves it empty, as B on a
+// macro or an FX setting does: the reset is not a turn to record (review, 2026-11-15: one step of
+// the lane was written back at +25%). WRITE is still on after it.
+void testBOnDepthWhileWriting() {
+    Rig rig;
+    const int t = rig.phazed;
+    CHECK(rig.session().setMod(t, 0, lfo(kModFirstMacro, 0.6f)));
+    for (int i = 0; i < kSteps; ++i) rig.session().setAutomation(t, rig.project().scene, modDepthLane(0), i, modDepthToLane(-0.5f));
+    rig.at(t, 0, S::kDepth);
+    rig.tap(START);
+    rig.frames(20);
+    rig.session().setWriting(true);
+    CHECK(rig.project().playing && rig.session().writing());
+    rig.tap(B);
+    rig.frames(30);
+    CHECK(rig.mod(t, 0).depth == 0.25f);
+    CHECK(!rig.session().hasAutomation(t, rig.project().scene, modDepthLane(0)));
+    CHECK(rig.project().playing && rig.session().writing());
+    // A turn after it is still written (WRITE was put back, not left off).
+    rig.key(A, true), rig.frames(1);
+    rig.tap(UP);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(rig.mod(t, 0).depth > 0.25f && rig.session().hasAutomation(t, rig.project().scene, modDepthLane(0)));
+    rig.tap(START);
+    rig.frames(5);
+}
+
 // While the song plays, a MOD whose DEPTH lane says -50% is drawn as a MOD whose own DEPTH is -50%:
 // its line in the list (the DEPTH it reads, its picture turned over) and the heading's picture, pixel
 // for pixel, on the same pass of two rigs that played alike.
@@ -880,6 +908,7 @@ int main(int argc, char** argv) {
     testTheStickAndTheRepeat();
     testXOnTheDrums();
     testTheDepthLane();
+    testBOnDepthWhileWriting();
     testTheLaneIsDrawnAsTheDepth();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

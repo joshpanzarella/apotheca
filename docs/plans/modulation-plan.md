@@ -1103,3 +1103,20 @@ Alone and in a full `ctest -j3` it passes. The same holds for the other `-deleti
 found: `mod-depth`'s first form (-60% on half the bar, +80% on the rest) could read either at a
 size; it is written -60% on every step now.
 
+
+## 26. The review of batches 6 to 9, mended (2026-11-15, branch `mods`)
+
+| Finding | Fate |
+| --- | --- |
+| B on the MOD tab's DEPTH, with WRITE on while the song plays, wrote the lane again right after emptying it (`toUsual` emptied the lane, then `setMod` saw a DEPTH turn and called `recordAutomation`: one step back at +25%, the purple line and "moves with the pattern" kept) | **Mended.** `ModScreen::toUsual` turns WRITE off around the DEPTH reset and puts it back after, as B on a macro (`synth_screen.cpp`) and on an FX setting or a send (`fx_screen.cpp`) do. `modtab_test` `testBOnDepthWhileWriting`: a Phazed MOD at +60% with its lane written on all 16 steps, the song playing, WRITE on, B on DEPTH: the lane empty, DEPTH +25%, still playing with WRITE on, and a turn after it is written again. Two mutants (WRITE not turned off; WRITE not put back), both killed, both put back |
+
+**Notes from the review, not defects, left as they are:**
+- The brass mark shows for a MOD at 0% while playing (`modMarkAt` reads its kind and target, not
+  its DEPTH, so a DEPTH lane can bring it in): with nothing written in the lane it sits on the knob's
+  own value. Left so: a MOD at 0% whose lane is written does move the knob.
+- A song with a LEVEL or PAN MOD read by a program from before batch 8 loads, keeps its DEPTH lanes
+  (they do nothing there) and drops those MODs as aimed at nothing; saved there, they are lost.
+- For the join: `main` has moved past 0.534 and changed SPEED TEST in `app/bench_run.cpp` and README
+  (it says "about three minutes"; this branch's README "up to a minute", and batch 9 adds about 10 s).
+
+Full `ctest -j3` after the mend: 51 of 51. No engine code changed. **Seen only by the tests.**
