@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -872,12 +873,51 @@ static void testTheSpeedTest() {
     const int port = transfer.port();
     const std::string door = "/" + transfer.pin();
     const std::string was = Transfer::benchCommand;
-    CHECK(was.find("--bench") != std::string::npos); // the program itself, timing only
+    CHECK(was.empty()); // as made: this program itself, with --bench (selfCommand)
+    {
+        // The command runs THIS program through the shell, not the shell (0.534 ran /proc/self/exe
+        // under popen, which is /bin/sh there: "Illegal option --").
+        const std::string self = Transfer::selfCommand("--say-hello 2>&1");
+        CHECK(self.find("/proc/self") == std::string::npos && self.find("transfer_test") != std::string::npos);
+        std::string said;
+        if (FILE* run = popen(self.c_str(), "r")) {
+            char block[256];
+            for (std::size_t got; (got = fread(block, 1, sizeof block, run)) > 0;) said.append(block, got);
+            CHECK(pclose(run) == 0);
+        }
+        CHECK(said == "hello from transfer_test\n");
+    }
     Transfer::benchCommand = "echo Phazed 4.2; echo JAX-EP 9.9";
     Answer a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
     CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nJAX-EP 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
     CHECK(raw(port, "GET /bench HTTP/1.1\r\n\r\n").status == 403); // not without the number
     CHECK(raw(port, "POST " + door + "/bench HTTP/1.1\r\nContent-Length: 0\r\n\r\n").body.find("Phazed") == std::string::npos); // only asked for, never sent to
+    {
+        // Each row is sent as it comes, not all at the end (0.536 sent nothing for minutes: a blank page).
+        Transfer::benchCommand = "echo first row; sleep 3; echo second row";
+        const int fd = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in where = {};
+        where.sin_family = AF_INET;
+        where.sin_port = htons(static_cast<uint16_t>(port));
+        inet_pton(AF_INET, "127.0.0.1", &where.sin_addr);
+        CHECK(connect(fd, reinterpret_cast<sockaddr*>(&where), sizeof where) == 0);
+        const std::string ask = "GET " + door + "/bench HTTP/1.1\r\n\r\n";
+        CHECK(send(fd, ask.data(), ask.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(ask.size()));
+        const auto began = std::chrono::steady_clock::now();
+        std::string got;
+        char block[1024];
+        while (got.find("first row\n") == std::string::npos) {
+            const ssize_t n = recv(fd, block, sizeof block, 0);
+            if (n <= 0) break;
+            got.append(block, static_cast<std::size_t>(n));
+        }
+        const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+        CHECK(got.find("first row\n") != std::string::npos && waited < 2.0);
+        CHECK(got.find("about three minutes") != std::string::npos && got.find("second row") == std::string::npos);
+        for (ssize_t n = recv(fd, block, sizeof block, 0); n > 0; n = recv(fd, block, sizeof block, 0)) got.append(block, static_cast<std::size_t>(n));
+        close(fd);
+        CHECK(got.find("second row\n(done)\n") != std::string::npos);
+    }
     Transfer::benchCommand = "echo half; exit 3";
     a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
     CHECK(a.status == 200 && a.body.find("half\n") != std::string::npos && a.body.find("did not finish") != std::string::npos);
@@ -1401,7 +1441,8 @@ static void testTooManyWrongNumbers() {
     CHECK(Transfer::kWrongMost == 5);
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--say-hello") { std::printf("hello from transfer_test\n"); return 0; } // (testTheSpeedTest runs this program again)
     testTheOpenSongIsRefused();
     testTooManyWrongNumbers();
     testTheSpeedTest();

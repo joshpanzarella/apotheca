@@ -31,6 +31,8 @@ bool plainName(const std::string& name, std::size_t longest); // (below)
 
 namespace {
 
+// Said at the top of the speed test's page at once, before the first row is timed.
+const char* const kBenchSays = "The rows come as they are timed: about three minutes on the handheld. Leave the song stopped.\n\n";
 const char* const kTooManyWrong = "too many wrong numbers: wait a minute\n";
 
 const char* const kPage = R"page(<!doctype html>
@@ -111,7 +113,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
  .fhead .fname{flex:1 1 60%}
 }
 </style></head><body><main>
-<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes up to a minute.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
+<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes about three minutes; the rows come as they are timed.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
 
 <div id="drop">
 <div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button><span class="dim">or drop files or a whole folder on the page.</span></div>
@@ -864,7 +866,16 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
 }
 
 bool Transfer::renameBroken = false;
-std::string Transfer::benchCommand = "/proc/self/exe --bench 2>&1";
+std::string Transfer::benchCommand;
+
+std::string Transfer::selfCommand(const std::string& args) {
+    char path[4096];
+    const ssize_t got = readlink("/proc/self/exe", path, sizeof path - 1);
+    if (got <= 0) return "";
+    std::string quoted = "'";
+    for (const char c : std::string(path, static_cast<std::size_t>(got))) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return quoted + "' " + args;
+}
 
 void Transfer::noteChange(const std::string& fromFile, const std::string& toFile) {
     const auto bare = [](const std::string& file) { return file.empty() ? file : file.substr(0, file.size() - 4); }; // every one ends ".wav"
@@ -1045,17 +1056,30 @@ void Transfer::answer(int fd) {
         return desk_->ask(body) ? reply(fd, "200 OK", "text/plain", "ok\n") : reply(fd, "400 Bad Request", "text/plain", "that makes no sense\n");
     }
 
-    // The speed test: the program run again by itself, only to time things, and what it printed.
+    // The speed test: the program run again by itself, only to time things, and what it printed,
+    // sent a line at a time as it comes (it runs two minutes or more on the handheld: sent whole at
+    // the end, the page stood blank all that while). No length: the closed connection ends it.
     if (method == "GET" && path == "/bench") {
-        std::string out = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n";
-        if (FILE* run = popen(benchCommand.c_str(), "r")) {
-            char block[1024];
-            for (std::size_t got; out.size() < 65536 && (got = fread(block, 1, sizeof block, run)) > 0;) out.append(block, got);
-            if (pclose(run) != 0) out += "(the speed test did not finish)\n";
-        } else {
-            out += "could not start the speed test\n";
+        const char* head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n";
+        std::string first = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n" + kBenchSays;
+        if (!sendAll(fd, head, std::strlen(head)) || !sendAll(fd, first.data(), first.size())) return;
+        const std::string command = benchCommand.empty() ? selfCommand("--bench 2>&1") : benchCommand;
+        FILE* run = command.empty() ? nullptr : popen(command.c_str(), "r");
+        if (!run) {
+            const char* no = "could not start the speed test\n";
+            sendAll(fd, no, std::strlen(no));
+            return;
         }
-        return reply(fd, "200 OK", "text/plain; charset=utf-8", out);
+        char line[1024];
+        std::size_t sent = 0;
+        bool listening = true;
+        while (std::fgets(line, sizeof line, run)) { // read to the end even if the page went away, so the run is not left stuck
+            const std::size_t n = std::strlen(line);
+            if (listening && sent < 65536) listening = sendAll(fd, line, n), sent += n;
+        }
+        const char* end = pclose(run) != 0 ? "(the speed test did not finish)\n" : "(done)\n";
+        if (listening) sendAll(fd, end, std::strlen(end));
+        return;
     }
 
     // A new Apotheca: set aside, never installed from here.

@@ -162,6 +162,12 @@ effect in those two groups and fails one that does not.
   fresh copy from where it came from does not lose it without anyone knowing.
 
 ### Files and compatibility
+- **Nothing is released; old songs are owed nothing** (owner, 2026-11-15: "don't
+  ever worry about old tracks. this is all in beta"). The rules below keep old
+  files loading and old sounds to the bit; they still hold as the house way, but
+  where one stands in the way of a better program or a cheaper one, change it,
+  and say so. Never keep slow code, an instrument or a format for an old song's
+  sake. (QMOD is to be replaced by FM-6 outright, its word read as FM-6.)
 - **Song files must keep loading.** Words in a song file (`track phazed`,
   `auto`, `steps`, `name`) never change meaning. Unknown lines are skipped.
 - **Ids are appended, never reordered or reused**: `Command::Type`, every
@@ -2117,6 +2123,18 @@ watch again, it is in git (the commit before batch 8b).
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
+
+8. **The efficiency pass, then FM-6** (owner, 2026-11-15, after SPEED TEST on the handheld: it is
+   13 to 20 times slower than the desk, not 5, and the busiest song stutters even with helpers):
+   a third helper timed beside two, undo that reads back only what changed (200 ms on the
+   handheld), the busiest song profiled, nothing worked out on silence; then QMOD replaced by
+   FM-6, a 6-operator FM synth on msfa (Apache 2.0, the core inside Dexed; never Dexed's GPL
+   code), with the 32 sounds of the first factory cartridge.
+9. **The RG505 on the road map** (owner, 2026-11-15: "could be the perfect handheld"; it stays on
+   the RG40XXV for now). Unisoc T618 (2 x A75 + 6 x A55 at 2.0 GHz, about 3 to 4 times the
+   speed on a big core), 960x544 OLED, a headphone jack, 5000 mAh, **Android 12 only**: a port
+   through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
+   Keep the engine free of Linux-only calls where it costs nothing.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
