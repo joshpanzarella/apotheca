@@ -1406,7 +1406,10 @@ effect in those two groups and fails one that does not.
     plays a sample sooner or later by how the sound is cut into blocks. A
     nudged plain note and a plain ratchet still do (not changed: old songs at
     the handheld's block length). An arpeggio's clock fires as a step does,
-    on the first sample at or after its time.
+    on the first sample at or after its time. **The `ceil` in `startNote`'s ratchet
+    loop is reached by no note** (a chord's and an arpeggio's keys come with
+    ratchet 0; `startChordNote` counts the pieces and ceils them itself): an
+    abort there passed all 46 tests (2026-11-15). Kept as a guard.
   - **A note that may be early is asked for a step ahead**, as a nudged-early
     note is. Which asking takes it is `nudge < 0 || play.time > 0`: nothing
     that depends on the tempo, or a tempo change between the two askings
@@ -1851,6 +1854,10 @@ effect in those two groups and fails one that does not.
   (an oscillator's aliasing: the loudest part that is not a harmonic, under
   a frequency). **A band-limited wave's zero crossings are not its pitch near
   the top** (its ringing crosses too): read it through `bandOf` first.
+- **A `bench` row that is the difference of two small figures times the two
+  in turns** (many short rounds, each its best: `modsAlone`, `macroModsRun`).
+  Timed one after the other, a busy desk moved the whole row more than the
+  difference: 24 MODs read -0.04% in one run and +0.10% in the next.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -1901,8 +1908,10 @@ effect in those two groups and fails one that does not.
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
 | ...the same song with its two Twin Analog tracks (x2) now two JAX-EP tracks on A1 (2026-11-15, three runs after; one run before on the same desk that day read 23.0% / 13.8%). The figures above are the old song's. **Not yet run on the handheld** | 19.6 to 21.1% / 11.6 to 14.2% of a block, worst block 2.92 to 5.95 / 3.96 to 6.08 ms of 5.33 (a shared desk: 0 to 2 blocks of 1875 late) |
 | A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin Analog (gone since; `bench` now has JAX-EP's row in its place, not yet recorded here). The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
-| MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
+| MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none. **Since 2026-11-15 the three engines are timed in turns** (`modsAlone`, 40 rounds, each its best): one after another, one run read 24 MODs -0.04% and the next +0.10%. Six runs that way, load 1.5 to 3.4: +0.028 to +0.046% / +0.084 to +0.122% | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
 | 24 MODs on macros RUN through the engine, twelve silent tracks of the synth, a SINE and a STEPPER each (2026-11-14, two runs, a build beside them): QMOD / Phazed, over none | +0.26 to +0.27% / +0.15 and +0.36% (twelve silent Phazed tracks are 2.3 to 2.4% by themselves: noisy) |
+| ...the same, the two engines timed in turns (2026-11-15, three runs, load 2.3 to 3.4; one after another a Phazed run had read -0.06%): QMOD / Phazed / JAX-EP | +0.26 to +0.27% / +0.14 to +0.21% / +0.13 to +0.14% (+0.04% in one run) |
+| JAX-EP, a macro changed, a call (2026-11-15, five runs of six; no early return on the same value) | 0.12 us (0.20 in one run): 24 MODs 0.03% of a core at 512 samples, 0.22% at 64 |
 | Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
@@ -1921,7 +1930,7 @@ watch again, it is in git (the commit before batch 8b).
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
 2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
-3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); batch 3 (the DEVICE knob) next, once the owner has seen its still. **Joined with `main` (2026-11-15)**: FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
+3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); batch 3 (the DEVICE knob) next, once the owner has made the calls in the plan's section 17 and seen its still. **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.

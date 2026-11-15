@@ -545,6 +545,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
             if (left < kShortestNote) break; // a note shorter than its ratchet: as many as fit
             one.length = k + 1 < hits && left > apart * 0.85f ? apart * 0.85f : left;
             double wait = delaySamples + static_cast<double>(k) * apart * samplesPerStep_;
+            // (No note reaches this today: the two that carry kWholeFrames, a chord's key and an
+            // arpeggio's, come with ratchet 0, since startChordNote counts a chord's pieces itself.
+            // An abort here passed every test, 2026-11-15. Kept as a guard, as aheadIsNow is.)
             if (note.how & kWholeFrames) wait = std::ceil(wait);
             startNote(track, one, wait, at);
         }

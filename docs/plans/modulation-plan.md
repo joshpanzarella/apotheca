@@ -3,7 +3,7 @@
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
 here, then revised the same day after a review (section 11). **Batches 0 and
-1 are built (sections 12 and 13), their review mended (section 14), and batch 2 is built (section 15); nothing else is, and nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
+1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17); nothing else is, and nothing is heard. Section 17 lists the owner's calls batch 3 waits on.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -798,3 +798,59 @@ memory. The join:
   no MOD is the same to the bit). FEEL, chord effects and MODs in one song
   (`mod_test testFeelChordsAndModsInAnyBlocks`, 120 BPM, JAX-EP chords) the
   same in blocks of 1, 64 and 333 on 0 and 3 helpers. Nobody has heard it.
+
+## 17. The join's review, mended (2026-11-15)
+
+**The review found no defect in batch 2 or the join.** It ran on a copy:
+46 of 46 tests; a song with no MOD the same to the bit as `main`
+(`effects_test --print`); `main` reads the join's song files (MODs, FEEL,
+the mixer, AT END: the same text with the `mod` lines left out); not-a-number
+held everywhere; **no allocation on the audio thread** with 24 MODs, a scene
+move and a tempo change; Play twice the same; 22 mutants, 21 killed, 1
+equivalent. Not done: the thread sanitizer on `nextscene`, the handheld,
+listening. Its four findings:
+
+| Finding | Fate |
+| --- | --- |
+| `bench`'s "MODs on the sends" row read 24 MODs -0.04% in one run, +0.10% in the next | **Mended.** `modsAlone` builds the three engines (0, 1, 24 MODs) first and times them in turns, 40 rounds of 100 blocks, each its best. Six runs since, load 1.5 to 3.4: 1 MOD +0.028 to +0.046%, 24 MODs +0.084 to +0.122%, never below zero. `macroModsRun` had the same fault (a Phazed run read -0.06%) and is timed the same way: three runs, QMOD +0.26 to +0.27%, Phazed +0.14 to +0.21%, JAX-EP +0.13 to +0.14% (+0.04 once). `bench` times nothing in ctest; the figures are run and read |
+| The join adds a compiler warning at `bench_run.cpp:672` | **Not so.** It is `main`'s own warning at `bench_run.cpp:534` (the app timing's `NoteEvent{...}` with no `play`), the same line moved down by the MOD rows. `main` and the join each have one in that file. Left as `main` has it |
+| Removing `wait = std::ceil(wait)` (`engine.cpp`, `startNote`'s ratchet loop) survives `main`'s `chordfx_test` | **Shown why: no note reaches it.** Only a chord's key (`startChordNote`) and an arpeggio's note carry `kWholeFrames`, and both come with ratchet 0: `startChordNote` counts a chord's pieces itself and ceils each. An `abort()` put on that line passed all 46 tests. Kept as a guard, with a comment, as `aheadIsNow` is (CLAUDE.md says both) |
+| JAX-EP's TUNE macro takes a MOD, but moves DCO-2 in semitone steps | **The owner's call** (call A below). Read from the code (`kTuneStepped`, 2.4 semitones a dial step, rounded to the semitone), not measured, not heard |
+
+### What batch 3 needs to know
+
+- **The way in**: `Session::setMod(track, mod, settings)` (returns whether the
+  track holds what was asked) and `Session::modData(track, mod)`. The first
+  free MOD is the first whose `kind` is `kModOff`. `modTargetFits(track,
+  lane)` says whether X + UP on that knob may take one: a macro that is a
+  choice may not (`macroIsChoice`: Phazed CHORUS and OCTAVE, QMOD OCTAVE).
+  **Every JAX-EP macro fits** (call A).
+- A MOD with no target that fits cannot be stored (it reads OFF), so the knob
+  gesture always has its target: the knob under the cursor.
+- **Undo needs nothing from the screen**: `soundMark()` sees a MOD change the
+  frame after it.
+- **While stopped**, the engine's `ModAudition` runs a track's MODs from the
+  moment X went down; the screen must send it on X down and let go on X up
+  (as `keepHearing` lets go of a held audition). It is not taken while
+  playing.
+- DEVICE MAIN's X already hears (`synth_screen.cpp`); the X-held check must
+  come before Y (QMOD's ROLL) and before the stick (section 7's order table:
+  three tests).
+- `ui::hintsUnder` draws chips under fields that exist; the fields need the
+  room the owner gives them (call B). Every new still goes in `kViews`
+  (`tests/stills.hpp`), at XL and in PAPER (`textviews`, `themeviews`).
+- What only tests saw: everything. No screen sets a MOD yet; nobody has heard one.
+
+### The owner's calls before batch 3
+
+| # | Call | Recommended |
+| --- | --- | --- |
+| A | JAX-EP's TUNE (DCO-2) under a MOD steps in semitones, as its knob does: allow it, keep it out (as a choice), or make the MOD's TUNE glide | **Allow it as it is**: a stepped pitch wobble is a sound of its own, and it is what the knob does; a gliding TUNE is a change to the synth |
+| B | Where the X-held fields go (section 9, call 20: a change to a settled look) | **DEVICE: in LIVE OUTPUT's strip, only while X is held; FX: in the heading.** Stills first |
+| C | What the first UP on a knob with no MOD makes | **LFO, SINE, 1 BAR, +25%** (section 7) |
+| D | Two MODs a track (MODS FULL on a third knob), or one per knob | **Two** (call 1) |
+| E | X held while stopped runs the MOD (call 8) | **Yes** |
+| F | What X + Y rolls (call 15) | **A stepper's row; an LFO's shape and rate, DEPTH kept** |
+| G | "HOLD X: MOD" in DEVICE MAIN's hints bar (it is full) | **On the help card only**, unless it fits with `gHintsOver` at 0 |
+| H | Nine effects glide a setting a call at a time, so under a MOD they are not the same to the bit in other blocks (at most 0.0024 apart, about 46 dB down), and a fast MOD on them is mostly smoothed away (CLAUDE.md) | **Leave them**: mending it changes their glide on old songs |
+

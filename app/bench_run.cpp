@@ -472,8 +472,11 @@ void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 
 // What working MODs out costs, with next to nothing under it: twelve drum tracks that play no hit,
 // their MODs on the sends (no effect on the buses, so nothing wakes), the chunks a tick cuts
-// included. 0, 1 or 24 MODs; the difference is the MODs'.
-static double modsAlone(int mods) {
+// included. 0, 1 or 24 MODs; the difference is the MODs'. The three engines are timed in turns,
+// a short run each, many rounds, and each keeps its best: the difference is a tenth of a percent
+// and a busy machine moves the whole row more than that between two runs. Timed one after
+// another, one run read 24 MODs as -0.04% and the next +0.10% (review, 2026-11-15).
+static std::unique_ptr<Engine> modsAloneEngine(int mods) {
     std::unique_ptr<Engine> engine(new Engine);
     std::vector<float> out(512);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
@@ -483,16 +486,34 @@ static double modsAlone(int mods) {
     c.type = Command::Play;
     engine->send(c);
     for (int i = 0; i < 40; ++i) engine->render(out.data(), 256);
-    double best = 1e30;
-    for (int run = 0; run < 5; ++run) best = std::min(best, ms([&] { engine->render(out.data(), 256); }, 600));
-    return 100.0 * best / (256.0 / 48.0);
+    return engine;
+}
+
+struct ModsAloneTimes {
+    double none = 0.0, one = 0.0, all = 0.0;
+};
+
+static ModsAloneTimes modsAlone() {
+    std::unique_ptr<Engine> engines[3] = {modsAloneEngine(0), modsAloneEngine(1), modsAloneEngine(24)};
+    std::vector<float> out(512);
+    double best[3] = {1e30, 1e30, 1e30};
+    for (int round = 0; round < 40; ++round)
+        for (int i = 0; i < 3; ++i) {
+            Engine& engine = *engines[i];
+            best[i] = std::min(best[i], ms([&] { engine.render(out.data(), 256); }, 100));
+        }
+    ModsAloneTimes t;
+    t.none = 100.0 * best[0] / (256.0 / 48.0);
+    t.one = 100.0 * best[1] / (256.0 / 48.0);
+    t.all = 100.0 * best[2] / (256.0 / 48.0);
+    return t;
 }
 
 // 24 MODs on macros, run through the engine (not worked out from one call): twelve tracks of one
 // synth, no note held (a synth that sounds costs the same with or without them, and its own time
 // would bury these), each track's MOD 1 a SINE on macro 1 and MOD 2 a STEPPER on macro 2, both
 // moving at every macro tick. 0 or 2 MODs a track; the difference is the macro ticks' whole cost.
-static double macroModsRun(SynthKind kind, bool mods) {
+static std::unique_ptr<Engine> macroModsEngine(SynthKind kind, bool mods) {
     std::unique_ptr<Engine> engine(new Engine);
     std::vector<float> out(512);
     for (int t = 0; t < kNumTracks; ++t) engine->addSynthTrack(t, kind);
@@ -505,9 +526,21 @@ static double macroModsRun(SynthKind kind, bool mods) {
     c.type = Command::Play;
     engine->send(c);
     for (int i = 0; i < 40; ++i) engine->render(out.data(), 256);
-    double best = 1e30;
-    for (int run = 0; run < 5; ++run) best = std::min(best, ms([&] { engine->render(out.data(), 256); }, 600));
-    return 100.0 * best / (256.0 / 48.0);
+    return engine;
+}
+// The two engines timed in turns, as modsAlone's (twelve silent Phazed tracks are 2.4% by
+// themselves, and one after the other the 24 MODs read -0.06% in one run, +0.16% in the next).
+static void macroModsRun(SynthKind kind, double& none, double& all) {
+    std::unique_ptr<Engine> engines[2] = {macroModsEngine(kind, false), macroModsEngine(kind, true)};
+    std::vector<float> out(512);
+    double best[2] = {1e30, 1e30};
+    for (int round = 0; round < 30; ++round)
+        for (int i = 0; i < 2; ++i) {
+            Engine& engine = *engines[i];
+            best[i] = std::min(best[i], ms([&] { engine.render(out.data(), 256); }, 100));
+        }
+    none = 100.0 * best[0] / (256.0 / 48.0);
+    all = 100.0 * best[1] / (256.0 / 48.0);
 }
 
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
@@ -540,10 +573,10 @@ static void wholeSongModRows() {
             if (h == helpers) break;
         }
     std::printf("working MODs out, twelve silent drum tracks, MODs on the sends:\n");
-    const double none = modsAlone(0), one = modsAlone(1), all = modsAlone(24);
-    std::printf("  %-28s %5.3f%% of one core\n", "no MOD", none);
-    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "1 MOD", one, one - none);
-    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs", all, all - none);
+    const ModsAloneTimes times = modsAlone();
+    std::printf("  %-28s %5.3f%% of one core\n", "no MOD", times.none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "1 MOD", times.one, times.one - times.none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs", times.all, times.all - times.none);
 }
 
 int apotheca::runBench() {
@@ -587,7 +620,8 @@ int apotheca::runBench() {
         std::printf("24 MODs on macros, run (twelve silent tracks of the synth, a SINE and a STEPPER each):\n");
         const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"QMOD", SynthKind::Qmod}, {"JAX-EP", SynthKind::Jx3p}};
         for (const auto& one : synths) {
-            const double none = macroModsRun(one.kind, false), all = macroModsRun(one.kind, true);
+            double none = 0.0, all = 0.0;
+            macroModsRun(one.kind, none, all);
             std::printf("  %-28s %5.3f%% of one core with none, %5.3f%% with 24 (%+.3f%%)\n", one.name, none, all, all - none);
         }
     }
