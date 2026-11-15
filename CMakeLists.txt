@@ -99,7 +99,13 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_chorus_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_chorus_test PRIVATE engine/src tests)
   add_test(NAME jx3p_chorus COMMAND jx3p_chorus_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus PROPERTIES TIMEOUT 120)
+  # The JX-3P's 32 factory patches (plan batch 7): the table against the booklet as read
+  # (tests/jx3p_nam.inc), the booklet's three checks, every patch played.
+  add_executable(jx3p_presets_test tests/jx3p_presets_test.cpp)
+  target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

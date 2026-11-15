@@ -6197,7 +6197,7 @@ void testTwinsDeviceScreen() {
     CHECK(rig->view() == View::Device && screen.pageCount() == 6);
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
 
-    // Presets, and round. (One until the plan's batch 7 brings the factory 32.)
+    // Presets, and round: the factory 32 (the plan's batch 7).
     const int presets = Jx3p::presetCount();
     rig->key(A, true);
     rig->tap(UP);
@@ -6208,6 +6208,23 @@ void testTwinsDeviceScreen() {
     rig->tap(UP);
     rig->key(A, false);
     CHECK(track.preset == 0);
+    CHECK(presets == 32 && std::string(jx3pSpec().presetName(0)) == "String I" && std::string(jx3pSpec().presetCategory(0)) == "BANK A");
+
+    // A folder jump is a bank jump (the plan, section 4): on FOLDER, A held, up is B1; up again goes round
+    // to A1; down from A1 is B1 again. The patch goes with it.
+    screen.goTo(0, SynthScreen::kFolder);
+    rig->key(A, true);
+    rig->tap(UP);
+    CHECK(track.preset == 16 && std::string(jx3pSpec().presetName(track.preset)) == "Violin" && std::string(jx3pSpec().presetCategory(track.preset)) == "BANK B");
+    for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(track.jx3p.value[id] == Jx3p::presetPatch(16).value[id]);
+    rig->tap(UP);
+    CHECK(track.preset == 0);
+    rig->tap(DOWN);
+    CHECK(track.preset == 16);
+    rig->tap(DOWN);
+    rig->key(A, false);
+    CHECK(track.preset == 0);
+    screen.goTo(0, SynthScreen::kPreset);
 
     // A macro.
     screen.goTo(0, SynthScreen::kFirstMacro + jx3p::MacroMix);
@@ -6338,10 +6355,12 @@ void testHowJaxepReads() {
     rig->tap(A);
     rig->tap(R2);
     SynthScreen& screen = rig->app.twin();
-    CHECK(rig->view() == View::Device && screen.folderNote() == kJaxepGuessNote);
-    screen.folderNoteAs(kJaxepBankNote);
-    CHECK(screen.folderNote() == kJaxepBankNote);
+    CHECK(rig->view() == View::Device && screen.folderNote() == kJaxepBankNote); // (batch 7: a new track is on A1, in BANK A)
+    screen.folderNoteAs(kJaxepGuessNote);
+    CHECK(screen.folderNote() == kJaxepGuessNote);
     screen.folderNoteAs(nullptr);
+    rig->app.session().chooseSynthPreset(1, 31); // B16, in BANK B
+    CHECK(screen.folderNote() == kJaxepBankNote && std::string(spec.presetCategory(31)) == "BANK B" && std::string(spec.presetCategory(15)) == "BANK A" && std::string(spec.presetCategory(16)) == "BANK B");
     setUserPresets(TrackKind::Jx3p, {own});
     rig->app.session().chooseSynthPreset(1, Jx3p::presetCount());
     CHECK(screen.folderNote() == nullptr);
@@ -6413,7 +6432,6 @@ void testAPresetKeepsTheTracksOwnValues() {
     rig->key(A, true);
     rig->tap(UP, Jx3p::presetCount()); // all the way round, back to the first
     rig->key(A, false);
-    if (Jx3p::presetCount() == 1) session.chooseSynthPreset(1, 0); // (one preset until the plan's batch 7: the screen has no other to come back from)
     const Jx3pPatch first = Jx3p::presetPatch(0);
     CHECK(track.preset == 0);
     for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(track.jx3p.value[id] == first.value[id]); // RESONANCE and CHORUS are the preset's again

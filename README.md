@@ -7,7 +7,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth) or QMOD (FM rolled
+(a virtual analog synth modeled after a popular DCO synth, 32 presets) or QMOD (FM rolled
 from a number, 24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
@@ -441,7 +441,7 @@ designer".
   - **An old song still opens.** Its Twin Analog tracks become JAX-EP tracks
     and keep their notes, chords, scenes, effects, sends, level and pan, and
     the automation of effects and sends. Their sound is not kept: each plays
-    JAX-EP's first preset, with the macros in the middle and no macro
+    JAX-EP's first preset (String I), with the macros in the middle and no macro
     automation. Saved again, the song is written for JAX-EP.
   - A JAX-EP preset does not hold VELOCITY or BRILLIANCE. Those two belong
     to the track, and stay as set when another preset is picked.
@@ -1289,12 +1289,24 @@ pages are that synth's panel:
   SAW, PULSE, SQUARE; CROSS MOD OFF, SYNC, METAL).
 - **A macro reads -100 to +100.** At +0 the setting is as the preset has it;
   below, it slides down to 0.0; above, up to 10.0.
-- **MAIN says SPEEDS GUESSED beside PRESET.** Every time and rate in this
+- **Its 32 presets are two folders, BANK A and BANK B, sixteen each**: the
+  sounds the synth it is modeled after came with, in their order (String I,
+  String II, Organ I ... Planet, Jet). On FOLDER, hold A and press up or down
+  to go from one bank to the other. A new JAX-EP track starts on the first.
+- **MAIN says 1983 BOOKLET, SPEEDS GUESSED beside PRESET.** The presets'
+  settings are from a booklet of that year that prints each knob's value;
+  they may not be the machine's own memory. And every time and rate in this
   synth (envelope times, LFO rate and delay, the chorus's sweep, where the
-  filter's cutoff sits) is a guess until it is measured from recordings. The
-  two banks of built-in sounds, when they come, will say 1983 BOOKLET, SPEEDS
-  GUESSED: their settings are from a booklet of that year and may not be the
-  machine's own. One of your own presets says nothing.
+  filter's cutoff sits, how loud each step of LEVEL is) is a guess until it
+  is measured from recordings. So a preset has the right settings and
+  guessed speeds. One of your own presets says nothing.
+  - **Twelve of them hold a guess of their own**: the booklet draws PULSE and
+    SQUARE alike, told apart only by the angle of a knob (Organ II, both
+    E. Pianos, Clavi, Vibraphone, Celesta, Flute, Oboe, Distortion Guitar,
+    Sync Sweep, Funky Clavi, Planet). Pulsar's CROSS MOD is read as METAL.
+  - **Song Whistle and Planet are all but silent, and the bank is quiet**
+    (about 13 dB under PHAZED's presets). Both come from the guesses above,
+    not from the presets: turn CUTOFF or the track's level up meanwhile.
 - **VELOCITY and BRILLIANCE (last page) belong to the track**, not to the
   preset: picking a preset leaves them as set.
 

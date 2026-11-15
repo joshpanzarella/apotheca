@@ -17,6 +17,8 @@
 // (engine/src/jx3p/ir3109.hpp). Batch 4: the LFO (WAVE, RATE, DELAY) and its routes (LFO DEPTH and
 // each DCO's switch, LFO MOD on the VCF; engine/src/jx3p/lfo.hpp). Batch 5: the chorus (CHORUS on or off;
 // engine/src/jx3p/chorus.hpp): two BBD reads swept 180 degrees apart, stereo when on.
+// Batch 7: the 32 factory patches, A1 to B16, in two folders (BANK A, BANK B), from the 1983 booklet
+// of the programmer's settings (the table and its guesses: engine/src/jx3p.cpp; tests/jx3p_nam.inc).
 //
 // Every knob reads 0 to 10 on the PG-200; it is kept as 0..100, tenths of the
 // dial. A switch is 0, 1 (, 2, 3) in the order written beside it.
@@ -102,7 +104,7 @@ constexpr bool kBbdHiss = false;            // the chorus's hiss is not copied (
 // Play from the top is the same performance however long the last notes ring). Twice six, so a
 // Stop and a Play inside one release both fit; past that a voice stays where it is.
 constexpr int kTailVoices = 2 * kVoices;
-// Kept outside the engine: the name on the device (TWIN ANALOG) and `track twin` read as A1 (batch 6a).
+// Kept outside the engine: the name on the device (JAX-EP) and `track twin` read as A1 (batch 6a).
 
 } // namespace jx3p
 
@@ -120,7 +122,8 @@ public:
     static int presetCount();
     static const char* presetName(int index);
     static const char* presetCategory(int index);
-    static Jx3pPatch presetPatch(int index); // ids 32 and 33 at a new track's values
+    static Jx3pPatch presetPatch(int index); // ids 32 and 33 at a new track's values. 0 to 31: A1 to B16
+    static Jx3pPatch startPatch();           // what a synth is made with: a plain saw (not a preset)
 
     // A preset writes ids 0..31 only: VELOCITY and BRILLIANCE stay as the track has them.
     void selectPreset(int index) override;

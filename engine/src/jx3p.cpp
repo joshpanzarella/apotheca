@@ -36,11 +36,73 @@ struct Preset {
     const char* category;
     int value[kPatchSettings];
 };
-// The start patch: one plain saw, the filter open, a short decay to a held level. The 32
-// factory patches come in batch 7.
+// The start patch: one plain saw, the filter open, a short decay to a held level. What a synth
+// is made with (the engine's own tests play it); a player never meets it: a track is sent its
+// preset's patch by the app.
+// RANGE WAVE LFO ENV | RANGE WAVE XMOD TUNE FINE LFO ENV | LFO-D ENV-D POL | MIX HPF CUT RES LFO ENV POL KEY | MODE LEVEL | WAVE DELAY RATE | A D S R | CHORUS
+const Preset kStart = {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 70, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}};
+
+// THE 32 FACTORY PATCHES (the plan, section 4, batch 7), A1 to B16, in the factory order, from
+// the maker's 1983 booklet of the programmer's settings for 32 sounds (NAM-0150), which draws a
+// panel a sound with each knob's value printed on it to a tenth. Every value here is that
+// number times ten, read twice from the scan (two renderings, 2026-11-14: they agree on all of
+// them), and a third time by the pointers' angles, which a program read off the drawing (564
+// knobs: 0.07 of a dial step off the printed number on average, 0.35 at worst, but for TUNE and
+// FINE, whose drawing has a ring round it: 0.6). tests/jx3p_nam.inc holds the booklet as read, in
+// its own terms, and jx3p_presets_test holds this table to it. THE NUMBERS BELOW WERE WRITTEN
+// FROM THAT READING BY A SCRIPT: change the reading and both, never one.
+//
+// GUESSES, each said again in the .inc:
+//  - PULSE against SQUARE is read off the wave knob's angle (the two glyphs are one drawing,
+//    turned): A4, A8, A9, A10, A12, A14, B2, B3, B7, B12, B13, B15. DCO-1's knob has three
+//    places (pulse is straight up: A16, B7, B13), DCO-2's four; every DCO-2 one is read as the
+//    third, SQUARE (the booklet's words call A4's "square"; they call B2's "pulse").
+//  - B14 Pulsar's CROSS MOD points at a place with no label: where A13 Chime's says Metal. METAL.
+//    And it has LFO DEPTH 10 with both DCOs' LFO switches off: kept as printed.
+//  - What the booklet does not draw (a blank knob or switch) cannot be heard as the patch
+//    stands, and is put at 8', SAW, OFF, TUNE 5.0, FINE 5.0, switches off, polarity NORMAL:
+//    DCO-2 of A6, A7, A16, B1, B8 (MIX 0); B3's DCO-1 wave and all of B4's DCO-1 (MIX 10);
+//    B16's DCO-1 and its DCO-2 but for NOISE; the DCOs' ENV POLARITY wherever no ENV switch
+//    is on; the VCF's ENV POLARITY of B1, B3, B4, B12 (ENV MOD 0).
+//  - TWO BLANKS THAT CAN BE HEARD: the VCF's ENV POLARITY of A5 Organ III (ENV MOD 0.4) and of
+//    A16 Voice (ENV MOD 0.5) is not drawn. NORMAL, a guess.
+// Not known: whether the booklet is the machine's own memory (it says its knobs are a guide).
+// And every speed in the synth is a guess (the plan, section 2), so these are the right settings
+// at guessed speeds: the app says so beside the folder (app/synth_spec.cpp, jaxepFolderNote).
 // RANGE WAVE LFO ENV | RANGE WAVE XMOD TUNE FINE LFO ENV | LFO-D ENV-D POL | MIX HPF CUT RES LFO ENV POL KEY | MODE LEVEL | WAVE DELAY RATE | A D S R | CHORUS
 const Preset kPresets[] = {
-    {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 70, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}},
+    {"String I",          "BANK A", {0, 0, 0, 0, /**/ 0, 0, 0, 49, 61, 0, 0, /**/ 32, 34, 0, /**/ 47, 6, 53, 0, 0, 8, 0, 67, /**/ 0, 34, /**/ 0, 8, 78, /**/ 19, 28, 84, 27, /**/ 1}}, // A1
+    {"String II",         "BANK A", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 32, 0, 0, /**/ 19, 0, 0, /**/ 49, 0, 60, 0, 0, 6, 0, 46, /**/ 0, 27, /**/ 0, 18, 81, /**/ 24, 24, 76, 21, /**/ 1}}, // A2
+    {"Organ I",           "BANK A", {0, 0, 0, 0, /**/ 0, 0, 0, 50, 23, 0, 0, /**/ 40, 0, 0, /**/ 48, 0, 24, 100, 0, 9, 0, 98, /**/ 1, 44, /**/ 0, 24, 71, /**/ 0, 0, 0, 0, /**/ 1}}, // A3
+    {"Organ II",          "BANK A", {0, 2, 0, 0, /**/ 2, 2, 1, 51, 28, 0, 0, /**/ 36, 0, 0, /**/ 48, 0, 32, 48, 0, 13, 0, 98, /**/ 1, 36, /**/ 0, 2, 58, /**/ 0, 0, 0, 0, /**/ 1}}, // A4
+    {"Organ III",         "BANK A", {0, 0, 0, 0, /**/ 2, 0, 1, 50, 43, 0, 0, /**/ 47, 0, 0, /**/ 74, 0, 48, 0, 0, 4, 0, 51, /**/ 0, 48, /**/ 0, 16, 79, /**/ 15, 75, 78, 21, /**/ 1}}, // A5
+    {"Brass I",           "BANK A", {0, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 47, 3, 0, /**/ 0, 0, 0, 0, 0, 100, 0, 41, /**/ 0, 38, /**/ 0, 12, 59, /**/ 16, 19, 61, 14, /**/ 0}}, // A6
+    {"Brass II",          "BANK A", {0, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 57, 0, 0, /**/ 0, 16, 0, 0, 0, 56, 0, 43, /**/ 0, 37, /**/ 0, 0, 58, /**/ 18, 26, 49, 23, /**/ 1}}, // A7
+    {"E. Piano I",        "BANK A", {1, 0, 0, 0, /**/ 1, 2, 1, 28, 39, 0, 1, /**/ 0, 51, 0, /**/ 98, 58, 0, 49, 24, 45, 0, 34, /**/ 0, 99, /**/ 0, 0, 11, /**/ 0, 75, 52, 12, /**/ 0}}, // A8
+    {"E. Piano II",       "BANK A", {1, 0, 0, 0, /**/ 1, 2, 1, 14, 38, 0, 0, /**/ 24, 0, 0, /**/ 100, 38, 41, 16, 0, 10, 0, 38, /**/ 0, 51, /**/ 0, 7, 81, /**/ 0, 45, 27, 22, /**/ 1}}, // A9
+    {"Clavi",             "BANK A", {0, 2, 0, 0, /**/ 0, 2, 1, 9, 12, 0, 0, /**/ 14, 0, 0, /**/ 100, 45, 24, 0, 0, 50, 0, 50, /**/ 0, 32, /**/ 0, 5, 56, /**/ 0, 71, 17, 11, /**/ 0}}, // A10
+    {"Harpsichord",       "BANK A", {1, 0, 0, 0, /**/ 2, 0, 0, 50, 30, 0, 0, /**/ 12, 0, 0, /**/ 68, 92, 100, 61, 0, 14, 0, 50, /**/ 0, 85, /**/ 0, 0, 78, /**/ 0, 47, 0, 9, /**/ 0}}, // A11
+    {"Vibraphone",        "BANK A", {1, 2, 0, 0, /**/ 2, 2, 0, 79, 45, 0, 0, /**/ 36, 0, 0, /**/ 54, 0, 16, 0, 24, 30, 0, 40, /**/ 0, 54, /**/ 0, 0, 49, /**/ 0, 66, 0, 63, /**/ 0}}, // A12
+    {"Chime",             "BANK A", {2, 0, 0, 0, /**/ 2, 0, 2, 16, 40, 0, 0, /**/ 0, 0, 0, /**/ 100, 0, 0, 11, 0, 44, 0, 99, /**/ 0, 45, /**/ 0, 23, 84, /**/ 0, 91, 0, 72, /**/ 1}}, // A13
+    {"Celesta",           "BANK A", {1, 2, 0, 0, /**/ 2, 2, 0, 100, 100, 0, 0, /**/ 55, 43, 0, /**/ 94, 98, 28, 0, 0, 46, 0, 100, /**/ 0, 45, /**/ 0, 24, 63, /**/ 0, 30, 0, 38, /**/ 0}}, // A14
+    {"Accordion",         "BANK A", {0, 0, 0, 0, /**/ 0, 0, 0, 100, 66, 0, 0, /**/ 0, 50, 0, /**/ 78, 100, 60, 24, 14, 8, 0, 29, /**/ 0, 41, /**/ 0, 0, 3, /**/ 12, 100, 72, 5, /**/ 1}}, // A15
+    {"Voice",             "BANK A", {0, 1, 1, 1, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 45, 49, 0, /**/ 0, 45, 36, 79, 0, 5, 0, 50, /**/ 0, 100, /**/ 0, 46, 85, /**/ 16, 34, 98, 0, /**/ 0}}, // A16
+    {"Violin",            "BANK B", {1, 0, 1, 1, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 5, 0, 0, /**/ 0, 0, 71, 0, 3, 0, 0, 38, /**/ 0, 24, /**/ 0, 32, 86, /**/ 28, 31, 93, 17, /**/ 0}}, // B1
+    {"Flute",             "BANK B", {2, 0, 0, 0, /**/ 2, 2, 1, 51, 29, 0, 0, /**/ 27, 0, 0, /**/ 34, 36, 33, 41, 11, 14, 0, 58, /**/ 0, 43, /**/ 0, 16, 65, /**/ 18, 45, 71, 10, /**/ 0}}, // B2
+    {"Oboe",              "BANK B", {1, 0, 0, 0, /**/ 1, 2, 1, 14, 29, 0, 0, /**/ 8, 0, 0, /**/ 100, 100, 59, 40, 0, 0, 0, 44, /**/ 0, 45, /**/ 0, 12, 72, /**/ 15, 56, 100, 11, /**/ 0}}, // B3
+    {"Song Whistle",      "BANK B", {1, 0, 0, 0, /**/ 1, 0, 0, 96, 47, 1, 1, /**/ 14, 3, 0, /**/ 100, 50, 28, 62, 4, 0, 0, 100, /**/ 0, 52, /**/ 0, 21, 78, /**/ 17, 30, 100, 11, /**/ 0}}, // B4
+    {"Synth Brass I",     "BANK B", {1, 0, 0, 0, /**/ 1, 0, 0, 39, 31, 0, 1, /**/ 36, 10, 0, /**/ 40, 0, 39, 0, 0, 32, 0, 92, /**/ 1, 24, /**/ 0, 12, 73, /**/ 13, 0, 100, 0, /**/ 1}}, // B5
+    {"Synth Brass II",    "BANK B", {0, 0, 0, 0, /**/ 0, 0, 0, 50, 37, 0, 0, /**/ 46, 3, 0, /**/ 43, 0, 5, 48, 0, 58, 0, 41, /**/ 0, 56, /**/ 0, 17, 68, /**/ 16, 25, 52, 0, /**/ 1}}, // B6
+    {"Distortion Guitar", "BANK B", {0, 1, 0, 0, /**/ 0, 2, 1, 50, 38, 0, 1, /**/ 25, 68, 1, /**/ 100, 0, 57, 0, 0, 62, 0, 67, /**/ 1, 17, /**/ 0, 12, 62, /**/ 0, 60, 47, 0, /**/ 1}}, // B7
+    {"Juicy Funk",        "BANK B", {0, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 41, 0, 0, /**/ 0, 0, 0, 88, 0, 78, 0, 48, /**/ 1, 52, /**/ 0, 8, 67, /**/ 14, 17, 50, 0, /**/ 0}}, // B8
+    {"Filter Flow",       "BANK B", {0, 0, 0, 0, /**/ 0, 0, 0, 49, 40, 0, 0, /**/ 43, 0, 0, /**/ 52, 0, 29, 38, 0, 43, 0, 30, /**/ 1, 38, /**/ 0, 6, 72, /**/ 70, 74, 76, 0, /**/ 1}}, // B9
+    {"Fat Fifth",         "BANK B", {0, 0, 0, 0, /**/ 0, 0, 0, 79, 45, 0, 0, /**/ 35, 0, 0, /**/ 62, 0, 9, 0, 0, 58, 0, 48, /**/ 1, 25, /**/ 0, 13, 66, /**/ 0, 30, 90, 0, /**/ 1}}, // B10
+    {"Sync Wah",          "BANK B", {0, 0, 0, 0, /**/ 0, 0, 1, 71, 86, 0, 1, /**/ 29, 100, 0, /**/ 100, 0, 38, 35, 0, 45, 0, 71, /**/ 1, 21, /**/ 0, 11, 71, /**/ 11, 7, 100, 0, /**/ 1}}, // B11
+    {"Sync Sweep",        "BANK B", {0, 0, 0, 0, /**/ 1, 2, 1, 36, 47, 0, 1, /**/ 38, 63, 0, /**/ 100, 0, 77, 0, 0, 0, 0, 48, /**/ 1, 19, /**/ 0, 13, 68, /**/ 68, 0, 100, 0, /**/ 1}}, // B12
+    {"Funky Clavi",       "BANK B", {0, 1, 0, 0, /**/ 0, 2, 1, 95, 0, 0, 1, /**/ 61, 13, 0, /**/ 63, 0, 13, 44, 0, 54, 0, 38, /**/ 0, 56, /**/ 0, 16, 60, /**/ 0, 21, 51, 0, /**/ 1}}, // B13
+    {"Pulsar",            "BANK B", {0, 0, 0, 0, /**/ 1, 0, 2, 50, 34, 0, 0, /**/ 100, 0, 0, /**/ 49, 0, 25, 80, 50, 14, 0, 92, /**/ 0, 48, /**/ 2, 0, 75, /**/ 0, 0, 97, 84, /**/ 1}}, // B14
+    {"Planet",            "BANK B", {2, 2, 0, 0, /**/ 1, 2, 0, 50, 44, 0, 0, /**/ 81, 0, 0, /**/ 51, 0, 23, 100, 0, 68, 1, 50, /**/ 0, 48, /**/ 0, 18, 76, /**/ 0, 73, 0, 79, /**/ 1}}, // B15
+    {"Jet",               "BANK B", {1, 0, 0, 0, /**/ 1, 3, 0, 50, 50, 0, 0, /**/ 0, 21, 0, /**/ 100, 0, 0, 0, 0, 60, 0, 100, /**/ 0, 66, /**/ 0, 0, 90, /**/ 100, 0, 100, 100, /**/ 1}}, // B16
 };
 const int kPresetCount = static_cast<int>(sizeof kPresets / sizeof kPresets[0]);
 
@@ -230,7 +292,7 @@ struct Jx3p::State {
 
 Jx3p::Jx3p() : state_(new State) {
     for (float& m : state_->macro) m = 0.5f;
-    state_->patch = presetPatch(0);
+    state_->patch = startPatch();
     prepare(48000.f);
 }
 Jx3p::~Jx3p() = default;
@@ -238,14 +300,21 @@ Jx3p::~Jx3p() = default;
 int Jx3p::presetCount() { return kPresetCount; }
 const char* Jx3p::presetName(int i) { return kPresets[clampi(i, 0, kPresetCount - 1)].name; }
 const char* Jx3p::presetCategory(int i) { return kPresets[clampi(i, 0, kPresetCount - 1)].category; }
-Jx3pPatch Jx3p::presetPatch(int i) {
+static_assert(sizeof kPresets / sizeof kPresets[0] == 32, "the 32 factory patches, A1 to B16");
+namespace {
+Jx3pPatch patchOf(const Preset& preset);
+}
+Jx3pPatch Jx3p::startPatch() { return patchOf(kStart); }
+Jx3pPatch Jx3p::presetPatch(int i) { return patchOf(kPresets[clampi(i, 0, kPresetCount - 1)]); }
+namespace {
+Jx3pPatch patchOf(const Preset& preset) {
     Jx3pPatch patch;
-    const Preset& preset = kPresets[clampi(i, 0, kPresetCount - 1)];
     for (int id = 0; id < kPatchSettings; ++id) patch.value[id] = clampi(preset.value[id], settingMin(id), settingMax(id));
     patch.value[Velocity] = kNewTrackVelocity;
     patch.value[Brilliance] = kNewTrackBrilliance;
     return patch;
 }
+} // namespace
 
 void Jx3p::prepare(float sampleRate) {
     State& s = *state_;

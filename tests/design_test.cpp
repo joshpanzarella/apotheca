@@ -492,7 +492,11 @@ void testTwinFromThePage() {
         const std::string phazed = other.get("/design/spec").body;
         CHECK(has(phazed, "\"name\":\"PHAZED\"") && count(phazed, "\"texts\":") > 0 && count(phazed, "\"texts\":") < count(phazed, "\"id\":"));
     }
+    // A new track is on A1 String I (batch 7). Made plain to listen to: one DCO (its two saws beat, and
+    // a note's peak then hangs on where in the beat it began), no slow attack, the chorus off.
     rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
+    rig.tell("set " + std::to_string(jx3p::SourceMix) + " 0");
+    rig.tell("set " + std::to_string(jx3p::Attack) + " 0");
     rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 70");
     const float before = rig.loud();
     CHECK(rig.tell("set " + std::to_string(jx3p::Resonance) + " 30") && rig.track().jx3p.value[jx3p::Resonance] == 30);
@@ -520,10 +524,16 @@ void testTwinFromThePage() {
     rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     rig.tell("preset 0"); // the first built-in one
     CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
-    CHECK(rig.loud() > 3.f * sound);
+    rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 2.0)
+    CHECK(rig.track().preset == 7 && rig.track().jx3p.value[jx3p::VcaLevel] == 99 && rig.loud() > 3.f * sound);
     rig.tell("preset " + std::to_string(Jx3p::presetCount()));
-    CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value) && rig.sameLoudness(rig.loud(), sound));
+    CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value));
     CHECK(rig.track().jx3p.value[jx3p::Brilliance] == 39 && rig.track().jx3p.value[jx3p::Velocity] == 0); // as the track had them, not as they were at the save
+    // ...and it sounds as it did, with BRILLIANCE where it was when it was listened to (it moves A1's
+    // filter, and a saw's peak with it).
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 61");
+    CHECK(rig.sameLoudness(rig.loud(), sound));
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     // The page follows the handheld to another track: a different synth, a different page.
     rig.app.project().track = 0;
     rig.frames(1);

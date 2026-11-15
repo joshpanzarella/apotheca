@@ -25,8 +25,11 @@ the same day), in Twin Analog's place; songs and presets are written `jaxep`
 and an old `track twin` is read; see "Batch 6a: what it learned". **Batch 6b
 is done (2026-11-14)**: its pages are checked at every size and theme, a knob
 reads as its dial on the handheld and on the designer page, and MAIN says
-SPEEDS GUESSED; see "Batch 6b: what it learned". Nobody has heard anything:
-every figure is a test's.
+SPEEDS GUESSED; see "Batch 6b: what it learned". **Batch 7 is done
+(2026-11-14)**: the 32 factory patches, A1 to B16, in BANK A and BANK B, read
+twice from the booklet; **two of them are all but silent and the bank is
+quiet, both from this plan's guesses** (see "Batch 7: what it learned").
+Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
 
@@ -547,6 +550,7 @@ every time is a guess.
 | | Patches |
 | --- | --- |
 | Taken from NAM as printed | A1 String I to A16 Voice, B1 Violin to B16 Jet, except below |
+| Where the values are | `tests/jx3p_nam.inc` (the booklet as read, a line a patch) and `kPresets` in `engine/src/jx3p.cpp` (batch 7) |
 | **Guesses** | Pulse against square is read off the knob's angle in the booklet: **A4, A8, A9, A10, A12, A14, B2, B3, B7, B12, B13, B15** could be swapped. **B14 Pulsar**: cross mod's pointer is at an unlabelled place; read as METAL. **B3 Oboe** DCO-1 wave not drawn (MIX 10 hides it). **A6, A7, B8** DCO-2 not drawn (MIX 0 hides it); B4's DCO-1 the same. **B14** has LFO DEPTH 10 with both switches off |
 | Not known | Whether NAM is exactly the ROM. Synthmania's names match; NAM says "the knob positions are only a guide" |
 
@@ -624,6 +628,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
 | | **Batch 6b DONE (2026-11-14, branch `jx3p`).** The pages, `settingText` and the macro names were in 6a's commit; this batch finished them: the folder's note on MAIN (`SynthSpec::folderNote`), a knob as its dial on the designer page too (`SynthSpec::pageReadsAsDevice`), the still views `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank`, `jaxep-held` (in `main.cpp` and `kViews`; the `twin` views are gone), README. **Tests**: `ctest` 39 of 39; `app_test` `testHowJaxepReads` (every knob at 0.0, 0.1, 0.9, 1.0, 5.3, 7.9, 9.8 and 10.0, every switch's words, a value out of range, the pages' and macros' names, `macroText` at both ends, what a folder says); `textsize` (all 34 settings with the cursor on each, at its least and, A held, at its most, and MAIN's PRESET row three ways, at all four sizes); `design_test` (the page is given all 101 readings of each of the 19 knobs, and only JAX-EP's); `textviews` and `themeviews` draw the nine views at four sizes and in six themes. **Mutants: 38 made, 38 killed** (23 on this batch's code, 15 on what 6a's tests cover, again). The engine is not touched | | |
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
+| | **Batch 7 DONE (2026-11-14, branch `jx3p`).** The 32 patches are `kPresets` in `engine/src/jx3p.cpp`, sixteen in BANK A and sixteen in BANK B, named as the booklet's English headings; the start patch is no longer a preset (`Jx3p::startPatch()`: what a synth is made with). A new JAX-EP track, and an old `track twin`, is on A1 String I. `tests/jx3p_nam.inc` is the booklet as read, in its own terms. **Tests**: `ctest` 40 of 40; the new `jx3p_presets_test` (in ctest, TIMEOUT 120, about 3 s): 8 tests (the table against the booklet, value for value; a patch picked; NAM's three checks; every patch played: sounds, bounded, ends; the same bits cut in blocks of 256, 64 and 97 and twice from fresh; no number too small, every patch through its release and by allNotesOff; after another patch; through the engine). `app_test` (the folder jump is a bank jump; a bank's note), `textsize` (MAIN on each of the 32 at four sizes), `design_test`. **Bench** (desk, three runs, the synth alone): 6 notes, now A1 String I, **0.55 to 0.56%**; the worst of the 32, **B15 Planet, 1.03 to 1.06%** (B12 Sync Sweep, which this plan named, is 0.55%); moving cutoff 1.78 to 1.83% (not changed); Phazed 0.7, QMOD 2.8 to 2.9, Twin x1 4.0 to 4.4 beside them. **Mutants: 35 made, 34 killed**; see "Batch 7: what it learned" | | |
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
 | 8b | **Twin's code out.** Delete `twin.hpp/.cpp` and `twin_test`; remove `setQualityLimit`, the load watch, "BUSY: OVERSAMPLING DOWN", the bounce's x8 | All of `ctest` | No word "twin" left but the file reader's |
 | 8c | **Docs.** README, CLAUDE.md's Measured table and rules, `effects-plan.md`'s cost figures | `ctest -R words` | |
@@ -908,6 +913,91 @@ five pages at LARGE, DCO-2 at XL, the last page at XL on GREY, a knob held;
 and the designer page in Chrome. Nothing was heard, nothing was run on the
 handheld.
 
+### Batch 7: what it learned (2026-11-14)
+
+**Bad news first: B4 Song Whistle and B15 Planet are all but silent (-62 and
+-61 dB), and the whole bank is about 13 dB quieter than PHAZED's presets.**
+Neither is a fault of the presets: both come from guesses this plan made
+before any patch was played. The owner's calls are below.
+
+**The reading.** The scan is 16 pages, a panel drawing a sound with the
+number printed on each knob.
+
+| Step | What | Result |
+| --- | --- | --- |
+| First reading | Each panel cut from the scan at 400 dots an inch, one a picture | 32 lines |
+| Second reading | Another rendering (170 dots an inch, two panels a picture), read again without the first | **The same on all 1024 places** |
+| By the pointers | A program found each knob's pointer on the drawing and worked out the dial from its angle | 564 knobs: 0.07 off the printed number on average, **0.35 at worst**, but TUNE and FINE (a ring is drawn round them): 0.6 at worst |
+| The wave knobs | The same program's angles for RANGE, WAVE, CROSS MOD | DCO-1's three places: -33, 0, +30 degrees. DCO-2's WAVE: -47 (saw), +5 to +17 (ten patches), +50 (noise) |
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "From NAM as the plan's section 4 gives them" | Section 4 names the patches and the guesses; **the values are in `tests/jx3p_nam.inc`** (the booklet's terms) and `kPresets` (the engine's numbers, written from that reading by a script) | The plan never held the numbers |
+| Pulse against square "read off the knob's angle": twelve patches | **The same twelve, found again from the angles** (A4, A8, A9, A10, A12, A14, B2, B3, B7, B12, B13, B15). DCO-1 straight up is PULSE (A16, B7, B13), to the right SQUARE. Every DCO-2 one is at one place, read as the third of four: SQUARE | The booklet's words call A4's wave "square" (矩形波) and B2's, at the same angle, "pulse": so it stays a guess |
+| B14 Pulsar: cross mod "at an unlabelled place; read as METAL" | METAL: its pointer is at +31 degrees, where A13 Chime's (+28) is labelled Metal | Less of a guess than it was |
+| Not drawn: "A6, A7, B8 DCO-2; B3's DCO-1 wave; B4's DCO-1" | Also **A16 and B1's DCO-2** (MIX 0), **B16's DCO-1 and DCO-2 but NOISE**, the DCOs' ENV POLARITY on 23 panels, the VCF's on 6: 79 places in all. Kept at 8', SAW, OFF, 5.0, off, NORMAL | None can be heard as the patch stands, **but two**: the VCF's ENV POLARITY of A5 Organ III (ENV MOD 0.4) and A16 Voice (0.5) is not drawn. NORMAL, a guess |
+| The start patch is preset 0 | **Not a preset.** `Jx3p::startPatch()` is what a synth is made with; the engine's own tests play it, as before. Preset 0 is A1 | "The preset numbers are the factory numbers" |
+| `bench` row 1 is B12 Sync Sweep, "the worst patch" | **B15 Planet** | Measured, each of the 32 with six keys played again every half second: 0.47% (B3 Oboe) to 1.07% (Planet); Sync Sweep 0.55%. All under the 1.2% target |
+| The banks' note "cannot be seen until batch 7" (`folderNoteAs`) | Every built-in sound is in a bank now, so MAIN says 1983 BOOKLET, SPEEDS GUESSED on all 32. The short note (SPEEDS GUESSED) has no folder today; `folderNoteAs` is kept for its test. The view `jaxep-bank` is MAIN on B7 Distortion Guitar, the longest name | |
+| NAM's three checks | Fat Fifth: DCO-2 695.02 cents over DCO-1 (700, less FINE 4.5's 5). Accordion: 1216.00 (1200, plus FINE 6.6's 16). Organ I, the patch as written but for the chorus: a semitone a semitone within **3.0 cents** over keys 48 to 84 (the bar is 5), and it sings steadily | FAITHFUL for the first two; Organ I pins 9.8 = 100% (SELF) |
+
+**How loud** (`jx3p_presets_test --print`; C3 G3 C4 E4 at full velocity, the
+loudest tenth of a second):
+
+| | dB |
+| --- | --- |
+| A8 E. Piano I (LEVEL 9.9, in the VCA's clip, peak 1.34), A16 Voice (LEVEL 10) | -5.9, -8.7 |
+| The middle of the 32 | -28.5 |
+| A1 String I, what a new track plays | **-25.0** |
+| The quietest that sounds: B16 Jet | -37.9 |
+| **B15 Planet, B4 Song Whistle** | **-60.9, -62.3** |
+| The same chord on PHAZED's first three presets; QMOD's first | -15.5 to -14.7; -9.1 |
+| The start patch (LEVEL 7) | -11.3 |
+
+**Why, and the two calls for the owner** (section 8 has them):
+
+1. **LEVEL.** The booklet's LEVELs stand about 4.5 (from 1.7 to 10). This
+   plan put 0 dB at LEVEL 7 with 4 dB a dial step, so a patch at 4.5 is 10 dB
+   down, and B12 at 1.9 is 20 dB down. The booklet says the taper's middle is
+   lower than guessed. One constant (`kVcaUnityDial`); not changed here: it
+   moves every level the engine's tests hold.
+2. **The cutoff's Hz.** Song Whistle is one DCO at CUTOFF 2.8 under KEY FOLLOW
+   10: its filter is two octaves and more under the note, so nothing comes
+   through. Planet is RESONANCE 10 at CUTOFF 2.3 with the envelope inverted:
+   it sings at 74 Hz and under. **Tried, not kept**: with CUTOFF 0 at 49.6 Hz
+   in place of 15 (the other answer in section 8: Organ I then sings the key
+   played) Song Whistle is -35.8 dB and Planet -44.5, twelve more come up by
+   1 to 9 dB, and three go down by about 4. The factory patches are evidence for that answer. Still
+   one constant each (`kVcfLowHz`, `kVcfHighHz`).
+
+The test holds both as KNOWN (`testEveryPatchPlays`): when either constant
+moves, its two marked lines fail and are taken out.
+
+**Found on the way.** `design_test` took a new track's sound for a plain saw;
+on A1 its two saws beat (FINE 6.1) and a note's peak hung on where in the beat
+it began (0.006 to 0.013 from note to note). The test now makes the sound
+plain first. And a key within a few milliseconds of a preset change hears the
+HPF's corner slide from the last patch's (12 of 32 pairs tried): the design
+(a knob turned slides), said in `testAfterAnother`.
+
+**Mutants (batch 7): 35 made, 34 killed** (a value of the table, two patches
+swapped, a bank's name two ways, a name, the start patch two ways, the
+booklet's side, each of NAM's three and Organ I not singing, a preset writing
+the track's two, presets 32 and -1 taken, the VCA's clip, a new track's
+VELOCITY, a blank off its place, Planet's polarity, a silent patch, the
+filter's snap, allNotesOff's LFO and clock, the engine's pick, Song Whistle
+heard, the HPF never let go, its tail not run, the LFO once a block, the
+chorus's sweep from the block's end, the test's own reading of a number and of
+a blank, the app loading the preset after). One survived its first round (the
+VCA's clip three times as high: the peak's bar was 2.0; it is 1.5 now).
+**Survives here**: the chorus not emptied when switched off before the first
+sample; no patch reaches it (a chorus that has rung out is empty anyway), and
+batch 5's own test kills it.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+A1 at LARGE, XL and SMALL on PAPER, MAIN on B7 at LARGE, XL on GREY and MEDIUM
+on BLUE. Nothing was heard, nothing was run on the handheld.
+
 ### Batches 2 to 5: the review's mend (2026-11-14)
 
 A review measured the four batches with its own harness (blocks, allocation, small numbers, Play
@@ -967,6 +1057,9 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |
 | **Where batch 9's recordings come from**: the owner's own unit, a hired one, or dry multisample libraries of a real unit (Roland's plug-out is a model, not a source) | A hired or borrowed unit: every knob of the table at 0, 2.5, 5, 7.5 and 10, one held note, dry. A multisample library can give the patches' speeds but not each knob. Without one, batch 9 cannot start and the speeds stay guesses |
 | Bass patches: the factory 32 have none | Add own patches later, in a third folder |
+| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | Not decided. One constant (`kVcaUnityDial`): at 4.5 the middle patch is about as loud as PHAZED's, and LEVEL 10 clips harder. Or leave it and turn the track up in the mixer |
+| **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | Not decided; the row above ("Where the cutoff's Hz sit") was taken at 15 Hz to 15 kHz. **The factory patches speak for the other answer**: anchored so Organ I sings the key played, both can be heard (-36 and -45 dB), twelve more come up and three go down by about 4 dB |
+| **(From batch 7.) The VCF's ENV POLARITY of A5 and A16 is not drawn** | NORMAL |
 
 ## 9. Decisions on the review (2026-11-13)
 

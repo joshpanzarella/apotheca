@@ -64,31 +64,19 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
 }
 
 // The JX-3P (docs/plans/jx3p-plan.md, section 3): six notes, the most it plays. `how`:
-//   0  the patch as a player meets it (batch 7: A1 String I, chorus on; until then the start patch)
-//   1  the worst patch (batch 7: B12 Sync Sweep; until then one like it: DCO-2's pulse synced to
-//      DCO-1's, a fifth up, the envelope sweeping DCO-2's pitch, both DCOs heard, and the envelope
-//      moving all the while: a slow attack, a decay, each key played again every half second; and
-//      from batch 3 the envelope on the VCF, RESONANCE 5, so its cutoff moves after every tick)
+//   0  the patch as a player meets it: A1 String I (both DCOs, the chorus on), the six keys held
+//   1  the worst of the 32: B15 Planet (both DCOs, RESONANCE 10, the envelope on the VCF, so its cutoff
+//      moves after every tick; the chorus on), each key played again every half second. The plan
+//      named B12 Sync Sweep; measured, all 32 this way (2026-11-14): 0.47% (B3 Oboe) to 1.07% (Planet),
+//      Sync Sweep 0.55%: its envelope moves DCO-2's pitch, which is cheap, and its filter stands still
 //   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8, and (from batch 4) the LFO
 //      on the cutoff and on DCO-1, so whatever is worked out from the pitch and the cutoff is worked out every sample
+// (Until batch 7 rows 0 and 1 were the start patch and a patch made by hand: 0.52 and 0.96%.)
 static void jx3pRow(const char* name, int how) {
     std::unique_ptr<Jx3p> synth(new Jx3p);
     synth->prepare(48000.f);
-    if (how == 1) {
-        synth->setSetting(jx3p::Attack, 40);
-        synth->setSetting(jx3p::Decay, 60);
-        synth->setSetting(jx3p::Sustain, 30);
-        synth->setSetting(jx3p::Dco1Wave, 1);
-        synth->setSetting(jx3p::Dco2Wave, 1);
-        synth->setSetting(jx3p::Dco2CrossMod, 1);
-        synth->setSetting(jx3p::Dco2Tune, 79);
-        synth->setSetting(jx3p::Dco2Env, 1);
-        synth->setSetting(jx3p::DcoEnvDepth, 60);
-        synth->setSetting(jx3p::SourceMix, 50);
-        synth->setSetting(jx3p::Cutoff, 30);
-        synth->setSetting(jx3p::Resonance, 50);
-        synth->setSetting(jx3p::VcfEnv, 70);
-    }
+    if (how == 0) synth->selectPreset(0);
+    if (how == 1) synth->selectPreset(30);
     if (how == 2) {
         synth->setSetting(jx3p::Cutoff, 40);
         synth->setSetting(jx3p::Resonance, 50);

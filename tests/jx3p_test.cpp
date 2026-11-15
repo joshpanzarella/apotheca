@@ -105,8 +105,10 @@ static void testSettings() {
     CHECK(fresh->setting(Dco1Range) == 1 && fresh->setting(Dco1Wave) == 0 && fresh->setting(Dco2Tune) == 50 && fresh->setting(Cutoff) == 100);
     CHECK(fresh->setting(VcaLevel) == 70 && fresh->setting(Chorus) == 1 && fresh->setting(Velocity) == kNewTrackVelocity && fresh->setting(Brilliance) == kNewTrackBrilliance);
     CHECK(kNewTrackVelocity == 1 && kNewTrackBrilliance == 50 && kVoices == 6);
-    CHECK(Jx3p::presetCount() >= 1 && std::string(Jx3p::presetName(0)) == "Start");
+    // (The start patch is what a synth is made with; the presets are the 32 of batch 7: jx3p_presets_test.)
+    CHECK(Jx3p::presetCount() == 32 && Jx3p::startPatch().value[VcaLevel] == 70 && Jx3p::startPatch().value[Cutoff] == 100);
     CHECK(Jx3p::presetPatch(0).value[Velocity] == 1 && Jx3p::presetPatch(0).value[Brilliance] == 50);
+    CHECK(Jx3p::startPatch().value[Velocity] == 1 && Jx3p::startPatch().value[Brilliance] == 50);
 }
 
 // A PRESET KEEPS THE TRACK'S OWN: picking one writes ids 0..31 and leaves VELOCITY and BRILLIANCE
@@ -119,7 +121,7 @@ static void testAPresetKeepsTheTracksOwn() {
     j->setSetting(VcaLevel, 12);
     j->selectPreset(0);
     CHECK(j->setting(Velocity) == 0 && j->setting(Brilliance) == 73);
-    CHECK(j->setting(Attack) == Jx3p::presetPatch(0).value[Attack] && j->setting(VcaLevel) == 70);
+    CHECK(j->setting(Attack) == Jx3p::presetPatch(0).value[Attack] && j->setting(VcaLevel) == Jx3p::presetPatch(0).value[VcaLevel] && j->setting(VcaLevel) != 12);
     // And a macro goes back to the middle: ATTACK's macro turned up to 10 is the patch's ATTACK again
     // (up, not down: the start patch's ATTACK is 0, which the macro at 0 gives too).
     std::unique_ptr<Jx3p> a = synth(held({{Attack, 60}})), b = synth(held({{Attack, 60}}));

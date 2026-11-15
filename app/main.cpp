@@ -16,7 +16,7 @@
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
-//                  jaxep-bank (MAIN as a folder of its two banks will say it), jaxep-held (a knob, A held, turned)
+//                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -874,8 +874,8 @@ int main(int argc, char** argv) {
         app.project().track = app.project().trackCount() - 1;
         app.session().view = View::Device;
         if (std::strcmp(view, "jaxep-bank") == 0) {
-            // The 32 presets and their two folders are the plan's batch 7; this is what a folder of them says.
-            app.twin().folderNoteAs(kJaxepBankNote);
+            // BANK B, on the longest of the 32 names (B7): what a bank's folder says, beside it.
+            app.session().chooseSynthPreset(app.project().track, 22);
             app.twin().goTo(0, SynthScreen::kPreset);
         } else if (std::strcmp(view, "jaxep-held") == 0) {
             app.twin().goTo(3, 2);  // VCF: CUTOFF
