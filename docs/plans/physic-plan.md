@@ -3,7 +3,9 @@
 Written 2026-11-14 from the code at 0.455 (branch `physicplan`). Three
 designers each wrote a plan ("sound", "engine", "hands"); this one is joined
 from them, then revised after a review the same day (section 13 says what
-was taken and what was not). **Nothing here is built and nobody has heard anything.** The code
+was taken and what was not). **The engine part (batches 0 to 5, and the
+presets as engine data) was built on 2026-11-15, branch `physic`: section 14.
+The app part (7a, 7b, 9, 10) is not. Nobody has heard anything.** The code
 was only read. The designers ran four throwaway programs for cost and tuning
 in a scratchpad, not in the repo, on a 2.3 GHz Xeon container: those figures
 are marked **scratch**. They are not the owner's desk and not `bench`.
@@ -745,3 +747,244 @@ not `bench` on the owner's desk.
 | 14 | The NEON claim may not hold without fast-math | **Accepted.** The mode loop keeps four sums by hand in a fixed order; batch 1 looks for four-wide multiplies in the handheld build and says what it found |
 | 15 | The plan is large for one instrument | **Accepted in part.** BODY, PAIR, MOTOR and NOISE move to batch 10, after version 1 (18 settings, 22 presets) is whole; their ids are appended then, not reserved now, so nothing is stored that might be taken back. Macro 5 is RELEASE instead of BODY MIX, so no lane waits on batch 10. **Not taken further**: the 11 models stay in version 1 (each is one table row in the same core, and batch 2 measures them all), and the DICE page stays (dice are what the owner asked for). Call #16 |
 
+## 14. As built: the engine part (2026-11-15, branch `physic`)
+
+Built from `main` at 0.551, in four commits. **Engine only**: no `TrackKind`, no
+song-file word, no DEVICE screen (other branches were editing the app). **Nobody
+has heard it.** Every claim below is a test or a measurement.
+
+**A fact the plan did not know** (the owner's SPEED TEST, 2026-11-15): the
+handheld is **13 to 20 times slower than the desk, not 5** (Phazed 8 notes 9.3%
+of a handheld core against 0.7% on the desk; JAX-EP 6 notes 9.6% against 0.55%).
+So the cost target became **at or under Phazed's desk figure, 0.6 to 0.7%**, and
+every handheld figure here is the desk's times 13 to 17.
+
+### Where it is
+
+| File | Holds |
+| --- | --- |
+| `engine/include/apotheca/physic_rule.hpp` | Settings (18, a patch room for 22), macros and their bend, the 11 model rows, the shapes (free bar, tine, J_n, tilt), the damping law, Hertz, the held pitch, the Nyquist fade, the string's loop sums (tuning, loop filter, stiffness, DC blocker), the bump, the dice |
+| `engine/src/physic/modes.hpp` | The mode bank: coupled form, groups of four, per-mode snap |
+| `engine/src/physic/string.hpp` | The string loop, its damping on a re-strike |
+| `engine/src/physic/strike.hpp` | The push: bump (modes), half-sine and hashed noise (string), the pick comb; polynomial sin and cos |
+| `engine/include/apotheca/physic.hpp`, `engine/src/physic.cpp` | Voices, the queue (one moment), the steal, take-over, the tick, sleep, presets |
+| `tests/physic_test.cpp` | 32 tests, about 4 s (ctest `physic`, TIMEOUT 120). `--measure` prints the figures, `--print` the song's checksum |
+| `tests/measure.hpp` | Four readers moved in: `phaseAt`, `centsOff` (pitch by phase over 60 periods), `sizeAt`, `t60At` |
+
+Engine changes outside PHYSIC (each does nothing for the other synths: every
+pinned checksum and every other test unchanged):
+
+- `SynthKind::Physic` appended; `Engine::addSynthTrack` makes it (one line).
+- `Instrument::noteSeed(uint32_t)` (default: nothing) and
+  `Instrument::stopNotes()` (default: `allNotesOff()`).
+- `Engine::startNote` takes `strikeAt` (default: `at`), used for the seed and
+  nothing else, and calls `noteSeed(strikeSeed(track, pitch, strikeAt))` just
+  before `noteOn` / `noteOnFrom`. A ratchet's piece passes `at + k apart`
+  (both ratchet loops), an arpeggio note `arp.at + m gap` (`Track::Arp::at`, the
+  chord's moment, new). A waiting note keeps it as `PendingNote::strikeOff`, a
+  float in what was padding (**the Engine is not one byte bigger**).
+- `letGoOfNotes(bool stopping)`: `stopPlaying` (Stop by hand, a song's end)
+  calls each synth's `stopNotes`; Play and panic still call `allNotesOff`.
+- `ChordRoll::kRollStrike = 7` (6 is MOD's, already on `main`).
+- `tools/bench` (through `app/bench_run.cpp`): four rows, `physicRow`.
+- PHYSIC joined the plain synth loops of `engine_test`
+  (`testANoteGlides`), `glide_test` (`testEverySynthTakesTheLength`) and
+  `chordfx_test` (`realSong`, a fifth track). **Not** the pinned song.
+- `tests/words_test.sh` reads `engine/src/physic` (`kBeside`, 8 folders now),
+  with two plants of its own.
+
+### Batch 0: groundwork
+
+- The tables are worked out in `physic_rule.hpp` (beam and tine roots, Bessel
+  zeros, BELL from Hibbert's cents in double), and `testTables` finds every root
+  again by halving (to 1e-9). **The plan's GLOCK sixth mode was a slip**: it
+  wrote 18.6372; the root gives **18.63789**.
+- **No new page of FR, JS, VHKJ, CD or R00 was opened.** Every claim the plan
+  marked "batch 0 fills a page" is still as the plan states it: the formulas
+  (beam, Bessel, Hertz's slope, KS / JS tuning) are FAITHFUL to the formula; the
+  ranges (mallet 8 to 0.3 ms, `kWoodB`, DECAY's scale, MARIMBA's 4th mode 17.0,
+  WOOD's table, BELL's upper two) are SELF.
+
+### Batch 1: the skeleton and the modes
+
+- Coupled-form modes, **four at a time by hand**, the four sums added in one
+  fixed order, worked on locals. **The handheld build vectorises it**: clang
+  `-O2 -mcpu=cortex-a53` gives 103 four-wide multiplies (`fmul v.4s`) in
+  `physic.cpp`, and no fused multiply-add (next point). (The desk's gcc gives 11
+  `mulps`.)
+- **`#pragma clang fp contract(off)`** in `physic.cpp` and the test: clang on ARM
+  joins a multiply and an add into one rounding by itself. **With it the handheld
+  plays the desk's bits** (`physic_test` under qemu-aarch64 with the handheld's
+  flags and its libraries: PHYSIC's song `0x45a36ca1ca8d0d2a` on both; every test
+  passes there). Without it the ARM sum was `0x3eb9e06d6e428c3e`.
+- Every mode snaps under 1e-15 on its tick; the groups at the top that are all
+  zeros are not run. A voice sleeps after 64 samples under -120 dB (a string's
+  whole line as well). `testTooSmall`: a 60 s tail of every model at WOOD and
+  METAL on a high key, flush-to-zero off, every output sample and every state
+  scanned: nothing under `FLT_MIN`; timed against flush-to-zero on, the same.
+- 8 voices + 2 fade slots (3 ms). The steal takes the quietest that is past its
+  strike; a just-struck voice reads quietest (its peak has not been read yet), so
+  the rule matters (`testSteal` kills both mutants).
+
+### Batch 2: every modal model
+
+- **Tuning: worst 0.0068 cent** (every modal model, sounding 12 to 120, through
+  OCTAVE and FINE; read by phase over 60 periods). Every mode of every table at
+  its ratio within 0.5 cent at key 48 (`testModeRatios`).
+- The 0.40 to 0.45 fade; a mode above is silent and not run. The pitch held at
+  127.
+- STRETCH 50 the table to the bit; 0 whole numbers; over 50 `ratio^(1 + 0.3 s)`.
+- **Position nulls** (FAITHFUL): a bar's mode 2 at its centre, mode 1 at 0.2242,
+  a skin's (n >= 1) modes at its centre, a string plucked at 1/5 (5 and 10) and
+  1/2 (the evens): each at least 30 dB down.
+- **DECAY on METAL every mode's T60 within 5%** (five settings, five keys);
+  toward WOOD never longer; the law fitted within 5% (`testMaterial`), and it
+  follows a glide (`testMaterialGlides`).
+- **What changed from the plan: the mallet into the modes is a smooth bump, not a
+  half-sine.** A half-sine's spectrum has zeros (`f T` = 1.5, 2.5...): a soft
+  mallet on a key whose fundamental sat on one sounded as nothing, and the
+  level's make-up then pushed it to 1.0 and over. The bump `n q^n` (an alpha
+  function, 12 dB an octave like a half-sine, no zero; `tau = T / 3.77` puts its
+  -6 dB where the half-sine's is) keeps Hertz's law (`testHertz`: the centroid
+  rises with velocity; the slope of T against v is -1/5). SELF. The string keeps
+  the half-sine.
+- **A note never peaks over 0.3** (`kModalGain`) at velocity 1 and LEVEL 0: the
+  sizes its modes ring at add up to it (an L1 sum, so however they line up), and a
+  soft mallet's darkening is made up 12 dB at most (`kMostMadeUp`: a yarn mallet on
+  a high bar is dull and quiet). The loudest single note measured: 0.282.
+
+### Batch 3: the string
+
+- **Tuning: worst 0.0012 cent**, keys 24 to 108, STRETCH 0 and 100, MATERIAL 0,
+  50, 100.
+- **DECAY is the fundamental's T60 on every key and every MATERIAL** (as the plan's
+  section 2 says for STRING; a first try put `b f0^2` into the fundamental too and
+  a WOOD string's top keys rang a tenth as long). The loop's one-pole is fitted to
+  the law at the fundamental and at 5 f0; where that needs a gain over 1 the pole
+  is eased (the fundamental is exact either way).
+- **New: a DC blocker in the loop** (corner f0 / 200; its phase and size are in
+  the tuning and the gain). Without it the loop's own DC rang at a DC gain of
+  0.99999: a WOOD string on key 96 kept its voice awake past 60 s.
+- **Stiffness** (four alike allpasses, fitted to F64's partial 6): at B 2e-3 on
+  keys 48 to 72, partial 6 within 0.15 cent of the formula, the partials below
+  1.3 to 3.5 cents sharp of it, 7 and 8 5.5 and 14 cents flat of it; every partial
+  sharper than the one below (FAITHFUL to the formula only at partial 6). A low key
+  reaches less (the allpasses cannot hold that much delay): SELF.
+- **A length switch keeps the allpass's output and takes its input from the new
+  tap** (the plan's "state set from the new tap" set both, which measured 5.13
+  here). An octave glide: the worst second difference 4.12 times its RMS (the held
+  note 3.94); a naive switch and the plan's both fail the test's 5.
+- **A re-strike damps the whole string to 30% over 2 ms, then plucks**: the line
+  holds the sound over a scale that falls a sample at a time (a loss in the loop
+  acts once a pass, which on a low string is longer than 2 ms). The pluck after it
+  is whole (as loud as a fresh one).
+- A low string struck by a short mallet is silent until its sound comes round to
+  the read tap (1168 samples at 41 Hz): the sleep looks at the line too
+  (`testStringMallet`).
+
+### Batch 4: the strike's roll
+
+- `testSeeds` (a listening instrument through the engine): every piece of a
+  ratchet its own seed, every piece of a chord's ratchet, an arpeggio's notes on
+  one key new every time round, Play twice the same seeds, each seed exactly
+  `strikeSeed(track, key, moment)`. Six mutants (each caller, the waiting note, the
+  hand-over) killed.
+- POSITION +-25, HARDNESS +-30, TUNE +-15 cents, DECAY +-30%, each by its row and
+  DICE; the tune heard in the pitch within 0.5 cent of the roll.
+- A live note (MIDI, a key heard: no seed) rolls by a count that `allNotesOff`
+  puts back.
+- Y's `roll` maths (a new patch) is the app's: not built.
+
+### Batch 5: playing
+
+- **A strike waits for the top of `render()`** (a queue of 16), with the settings
+  as they were when it was played. A glide takes a voice over only when it is the
+  one note of its moment to name that `from`, the voice is over -40 dB and past
+  its strike; a chord under TOP strikes every key. A taken-over note's level
+  slides to its velocity over 5 ms.
+- Glide on the voice's own 16-sample tick (`Slide::take(16)`); the modes' angles
+  from polynomials while it moves, in double when it lands.
+- `setMacro` stores and returns (early on the value it has); a voice works out its
+  numbers once on its next tick (`testMacrosCheap` counts them).
+- **Stop lets go** (RELEASE damps, RING rings on: a bounce's tail keeps it); Play
+  and panic damp in 30 ms. Tested through the engine. The bounce itself
+  (`app/bounce.cpp`) is not tested here: it is the app's.
+- WIDTH a gain pair a voice; LEVEL slides 5 ms.
+- `testBlocks` (blocks of 1 to 333 with glides, macros, a re-strike, steals, a
+  sleep and a waking), `testPlayFromTheTop` (Play twice, two engines, 0 and 3
+  helpers): the same bits. **PHYSIC's song** (two tracks: a marimba line with a
+  ratchet, a glide, a FULL glide and a strummed chord, DICE 100; a STEEL line)
+  is pinned: `0x45a36ca1ca8d0d2a`.
+
+### Batch 8: the presets (as engine data)
+
+**24, not 22**: every name in section 5 without a dagger (the plan's count of 22
+does not add up from its own list). Preset 0 is **Marimba**. Folders MALLETS (5),
+STRINGS (5), TINES (1), BELLS (5), WOOD AND SKIN (4), DICE (4). Each makes sound,
+peaks under 1 as a four-key chord at full velocity (0.30 to 0.98), and sleeps.
+**Nobody has heard any**; their figures are a first guess.
+
+### Cost (`bench`, this container; its Phazed row read 0.7%, the desk's figure, in the quieter run)
+
+| Row | Desk | Handheld (x 13 to 17) |
+| --- | --- | --- |
+| PHYSIC, 8 notes (MARIMBA, struck again every half second, none asleep) | 0.21% (0.33 under load) | 2.7 to 3.6% |
+| PHYSIC string, 8 notes (STEEL) | 0.23 to 0.37% | 3.0 to 3.9% (the low figure) |
+| PHYSIC worst (CHURCH BELL, DICE 100, every note gliding) | 0.40 to 0.59% | 5.2 to 6.8% |
+| PHYSIC asleep | 0.01% | 0.2% |
+| By model (`physic_test --measure`), 8 notes | 0.20 (XYLO, VIBES) to 0.29% (DRUM, 8 modes) | 2.6 to 4.9% |
+
+**Under the target** (Phazed's 0.7%) on every row. The modes are not most of it: 3
+modes cost 0.20%, 8 modes 0.29%; the rest is each voice's own sample loop (its
+level, fade, pan and peak). That loop is the next place to look if the handheld
+wants it cheaper. **Not run on the handheld.**
+
+### Mutation testing
+
+About 56 mutants, each killed by a test (the list is in the commits: tuning, the
+switch, the pitch held in cos, the tierce, J0, the six seed paths, sleep, the
+snaps, the macros, take-over, Stop, the steal, the queue, the fade, the gains,
+the DC blocker, the loop filter, the stiffness, the re-strike, the comb, the
+glide's tick, the dice, WIDTH, LEVEL, VELOCITY, RELEASE, Hertz, the live seed, the
+song's checksum). **Three survive, each explained**:
+
+- The string's filter-state snap (under 1e-20): the voice sleeps at -120 dB long
+  before any state gets there. Kept as a guard.
+- A mode above 0.45 left to run (silent) instead of zeroed: the same sound; it
+  only saves work.
+- The DC blocker inside the 2 ms re-strike damping: 96 samples of DC is nothing
+  that can be measured.
+
+### What the app needs next (batches 7a, 7b, 9, 10)
+
+- **7a**: `TrackKind::Physic` appended; its row in `app/instruments.cpp`
+  (`"physic"`, `.physic`, last in the list); `PhysicPatch physic` in `TrackData`
+  (22 ints: `physic::kSettingRoom`); a `SynthSpec` whose **`loadPreset` puts the
+  factory defaults first**, then the user's values; `settingCount` 18;
+  `Session` sends the patch as the other synths' (`SetSetting` per id, then the
+  macros). The engine side needs nothing more.
+- **7b**: pages SOUND, RING, PLAY, DICE (section 7); `settingText` (MODEL's and
+  STRIKE's words: `physic::modelName`; DECAY `decaySeconds`, RELEASE
+  `releaseSeconds` and RING at 100, HARDNESS, POSITION `positionAlong`, STRETCH 50
+  AS MADE and STRING's B `stiffnessOf`, MATERIAL WOOD / METAL); Y's patch roll;
+  `App::screenNow()`; stills and `kViews`.
+- **9**: README's page, CLAUDE.md's rules (the ones this section lists as built).
+- PHYSIC's song and its bounce through `app/bounce.cpp` (`testStopRings`' bounce
+  half) want the app.
+
+### The owner's open questions
+
+The plan's calls were taken at their recommended answers (section 12). Open:
+
+1. **The 24 presets' sounds and names** (call 20): nobody has heard them; the
+   levels were set only so that nothing passes 1.
+2. **The mallet's shape into the modes**: a smooth bump (no key falls silent) or
+   the plan's half-sine (more physical; its zeros silence some keys at some
+   HARDNESS). Taken: the bump.
+3. **A string's DECAY** is its fundamental's T60 at every MATERIAL (the plan's
+   section 2); a modal model's DECAY is "the longest it rings" (call 23). The
+   two read the same word differently: say if they should be one.
+4. **Dice the same every time round** (call 9): new each time, as built.
+5. **Stiffness**: matched at partial 6 only; a fuller dispersion filter
+   (Rauhala's design) would follow F64 on every partial, at more cost.
+6. **The handheld cost** is an estimate (x 13 to 17): SPEED TEST will say.
