@@ -461,8 +461,8 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     const int x = kScopeX + kScopeLabelW, w = kScopeW - kScopeLabelW;
     fill(r, x - 1, y + 1, 1, h - 2, kLine); // the label's room ends
     fill(r, x + 1, y + h / 2, w - 2, 1, kLine);
-    const int count = 512;
-    float samples[512];
+    const int count = kScopeSamples;
+    float samples[kScopeSamples];
     engine.readScope(samples, count);
     SDL_SetRenderDrawColor(r, kTeal.r, kTeal.g, kTeal.b, 255);
     int lastX = x + 1, lastY = kScopeMiddle;

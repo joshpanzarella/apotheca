@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (46) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (49) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -239,15 +239,26 @@ effect in those two groups and fails one that does not.
   SQUARE on twelve, B14's METAL, the blanks). The start patch is not a preset
   (`Jx3p::startPatch()`: what a synth is made with, what the engine's tests
   play); a new track and an old `track twin` are on A1.
-  - **The cutoff's range and the VCA's 0 dB were set from the bank (owner,
-    2026-11-15; three "known" faults mended).** `kVcfLowHz` 49.84 and
+  - **The cutoff's range was set from the bank, and the VCA is straight (owner,
+    2026-11-15).** `kVcfLowHz` 49.84 and
     `kVcfHighHz` 49840 (`jx3p/ir3109.hpp`; they were 15 and 15000: the same
     span times 3.32), held at `kVcfTopHz` 20 kHz as before, so **at key 60
-    CUTOFF 8.7 to 10 is one sound**. `kVcaUnityDial` 45 (`jx3p/env.hpp`; it
-    was 70) and **`kVcaClipDial` is the same number: the clip starts at a full
-    wave, 1, wherever the 0 dB is.** The start patch's LEVEL moved with it (45),
-    so it and the engine's tests are the gain they were; **a test that wants a
-    clean wave sets LEVEL 4.5 or under** (the tests' plain patches: 25, 35, 45).
+    CUTOFF 8.7 to 10 is one sound**. **The VCA's gain is the dial, straight**
+    (`vcaGain`, `jx3p/env.hpp`: LEVEL 5 is half of LEVEL 10), `kVcaUnityDial`
+    100 and **`kVcaClipDial` the same: the clip starts at a full wave at LEVEL
+    10, so no preset as written reaches it** (owner: "I don't think they should
+    distort by default"). The synth's `kOutputGain` is 0.6 (it was 0.3), so the
+    bank stayed as loud. It was 4 dB a dial step, 0 dB at LEVEL 7 and then for a
+    day at 4.5 with the clip there: A8 and A16 (LEVEL 9.9, 10) were 21 and 18 dB
+    into it. **Moving the 0 dB alone cannot do it**: with 4 dB a step, LEVEL 10
+    is 22 dB over LEVEL 4.5, so clean and as loud they pass full scale nine
+    times over (measured: at 70 with the gain made up, A8 six keys 6.9, still
+    10 dB into the clip). The start patch is LEVEL 5.0 (a wave of 0.3 out,
+    exactly the gain LEVEL 4.5 gave), the tests' plain patches 2.0, 3.2 and 5.0
+    (were 2.5, 3.5, 4.5: the same gain within 0.15 dB). **A plain saw's corners
+    overshoot to 1.31 of full**, so a player's own saw clips softly from LEVEL
+    7.6; `testVca` holds that. `Jx3p::samplesClipped()` counts the samples the
+    clip bent; `testEveryPatchPlays` holds it at 0 for the 32 as written.
     - **A3 Organ I sings the key played**: 0.4 cents from the grid at worst,
       keys 48 to 84, read over five seconds (`testNamsThree`). Its sine sits on
       DCO-1's second harmonic (16') and is held by it: the cutoff 40 cents off
@@ -255,17 +266,23 @@ effect in those two groups and fails one that does not.
       within half a cent. Its level sways (DCO-2 is 27 cents flat in the patch
       and beats with the sine, twice a second at key 48): the patch, not a fault.
     - **No patch is all but silent** (`testEveryPatchPlays`, the chord's
-      loudest tenth of a second): B15 Planet -34.5 dB, the quietest; B4 Song
-      Whistle -25.8; the middle of the 32 -17.2; A1 String I -14.5 (PHAZED's
-      first presets: -15.5 to -12.6); A16 Voice -2.0, the loudest.
-    - **Known, held there, not hidden: the two patches at LEVEL 10 are 22 dB
-      into the clip and pass full scale.** Six keys as written: A8 E. Piano I
-      2.85, A16 Voice 2.56 out of the synth; every other patch 1.26 at most.
-      Macros full: A8 2.69, A16 2.58, A11 2.53, B8 1.90. Nothing is
-      not-a-number and everything ends. It is what "LEVEL 10 clips harder"
-      means (the owner's yes); `kVcaClipCeiling` (1.5) is not changed.
-    - **A song from build 0.502 or earlier loads and sounds brighter and 10 dB
-      louder** on a JAX-EP track (said in README).
+      loudest tenth of a second): B15 Planet -36.1 dB, the quietest; B4 Song
+      Whistle -28.3; A11 Harpsichord -28.6; the middle of the 32 -16.6; A1
+      String I -13.5 (PHAZED's first presets: -15.5 to -12.6); B7 Distortion
+      Guitar -5.7, the loudest. The straight taper moved the high-LEVEL
+      patches down against the rest (A11 -17.4 to -28.6, B16 Jet -24.3 to
+      -30.3) and the low ones up (B7 -7.5 to -5.7).
+    - **Six keys as written: nothing clips, A8 E. Piano I peaks 1.46 out of
+      the synth** (0.95 after the track's usual level), every other patch 1.17
+      at most (A16 1.08; they were 2.85 and 2.56). **Macros full: twenty
+      patches reach the clip**, B8 1.79 and A8 1.53 pass 1.5 (it was A8 2.69,
+      A16 2.58, A11 2.53, B8 1.90). Nothing is not-a-number and everything
+      ends. `kVcaClipCeiling` (1.5) is not changed.
+    - **A song from builds 0.504 to 0.514 loads as saved; a JAX-EP track at
+      LEVEL 4 or under is within 2 dB of how it sounded, higher LEVELs
+      quieter and clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before its
+      old clip). From 0.502 or earlier: brighter, and about 12 dB louder**
+      (said in README).
   - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
     preset 1.** A song from them keeps its sound (all 34 settings are read
     after the preset) under String I's name (`save_test`
@@ -944,6 +961,36 @@ effect in those two groups and fails one that does not.
   the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.
+- **The screen is drawn only when it can have changed** (owner, 2026-11-15: save the battery,
+  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms,
+  reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
+  pass with nothing to show. **The picture must be exactly what drawing every frame shows, and a
+  button is drawn on the pass it is pressed.** A pass is drawn on a STIR (`Stir` in redraw.hpp):
+  any SDL event but a stick's motion, a button held, the stick pushed, the song playing; the
+  engine's readouts moved since the last picture (where the song is, the LIVE OUTPUT samples,
+  every effect meter, MIDI notes and keyboards: `App::readouts`); `App::stirring` (the volume,
+  the App's message, the panic notice, the update's answer, plus `Session::stirring`: a fit, a
+  recording, a bounce, WiFi on, and the screen's own `Screen::stirring`: a line said for a moment,
+  a line over a recording, the list's resting row, the button test). **And the pass after any
+  stir** (`kStirAfter`: what ends a timer is drawn), and `kKeepDrawingMs` (2 s) after, as a margin.
+  The controls setup, a text size or theme changed, and every still (`--shot`, `--smoke`) draw
+  every pass. `--draw-every-frame` draws as before, for measuring.
+  - **A new thing that moves by itself says so** (a timer, an animation, anything read from
+    another thread or the clock): a bit, set by the App, the Session, its screen's `stirring()` or
+    a readout, **and a part in `tests/idle_test.cpp`'s session** that sets it going and then
+    leaves the buttons alone. The test draws EVERY pass into a canvas with the margin at 0 and
+    fails a pass left out that is not the last picture shown, pixel for pixel, naming the pass,
+    the part and the screen. Then it takes each stir away (`Redraw::ignore`) and must fail;
+    PLAYING, RECORDING and PICKER are known to be covered by others where it can be shown (`belts`)
+    and are not run. `idle_test --quick` is the session alone (about 20 s); `IDLE_PRINT=PART`
+    prints each pass's reasons in a part; `--measure` times a pass's drawing on five screens.
+  - The test makes the sound between passes, as the audio thread does while main.cpp waits, and
+    holds it up once (`stalled`): a Stop heard three passes late takes the playhead away with no
+    button, which only the readouts see.
+  - Measured (desk, 2026-11-15): the drum grid left alone, the whole program for 20 s (software
+    renderer, dummy sound): 1.1 s of CPU, against 5.8 s drawing every frame. A pass's drawing in
+    the test's software renderer: 1.8 to 2.4 ms by screen; deciding whether to draw: 0.001 ms.
+    **Not measured on the handheld**, where the renderer and the present are its own.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.
@@ -1626,7 +1673,7 @@ effect in those two groups and fails one that does not.
   - **A move is `moveSample`**: the file renamed with the ending it had (written again and the
     old one taken away where the card will not rename, as the page does:
     `Transfer::renameBroken` is the tests' such card), then `recordingChanged` (the name only),
-    `savedSongsFollow`, `saveNow`. Nothing is written over, capitals not counted; the folder
+    `saveNow`, `followLater` (next rule). Nothing is written over, capitals not counted; the folder
     must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
     list's `original_` and `on_` follow, so B's tap is still "as it was".
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
@@ -1653,9 +1700,10 @@ effect in those two groups and fails one that does not.
       Let go where it was: LEFT WHERE IT WAS.
     - **Hold B on a folder that is not empty says so** after `kHoldSaysMs` (NOT DELETED: IT IS
       NOT EMPTY), and letting go is then no tap. A tap still closes.
-    - **`moveSample` answers `NotSaved`** when the file moved but a saved song that names it, or
-      the open song, could not be written (`savedSongsFollow`'s `failed`, `saveNow` is a bool);
-      the list shows it moved and says MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE.
+    - **`moveSample` answers `NotSaved`** when the file moved but the open song could not be
+      written (`saveNow` is a bool); a saved song that could not be is found as its turn comes
+      (next rule). Either way the list shows it moved and says MOVED, BUT A SONG COULD NOT BE
+      SAVED WITH ITS NEW PLACE.
     - **A column's rows are made when the place or the card changes, never per frame**
       (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
       `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
@@ -1667,9 +1715,22 @@ effect in those two groups and fails one that does not.
       the whole still 63): held to 36, a long recording carried into a folder on the handheld
       was gone from the page, which then refused to delete it. The page's script changed with it
       (tried in a browser, 2026-11-15).
-    - **Not mended: the freeze on a carry let go** (`savedSongsFollow` reads every saved song and
-      rev on the app thread, as a rename on the page does). Doing it a file a frame means a
-      switched-off handheld can leave songs naming the old place: the owner's call.
+    - **The saved songs follow a move a few files a frame** (2026-11-15, our call left by the owner;
+      `Session::followLater`, `followSome` in `update()`): up to `kFollowReadsAFrame` (8) read, and
+      none after one is written. Measured on the desk, 40 songs with 10 revs each (one of them the
+      bench's 32 KB song): every one naming the recording, all at once was 450 to 740 ms (about 2
+      to 4 s on the handheld); a few a frame, the let-go is 1 ms and the longest frame 12 to 16 ms
+      (one card write), 440 frames. None naming it: 2 to 3 ms all at once. `moveSample` answers
+      `Moving` and the list says MOVING TO X... until `following()` is false, then MOVED TO X,
+      or MOVED, BUT A SONG COULD NOT BE SAVED... (`followFailures` went up). **Safe against a
+      switch-off**: before any file is touched what is owed is written (`kOwedFile`,
+      renames-owed.txt in the song folder, `writeTextFile`; "job" before each batch, FROM tab TO),
+      rewritten as each batch ends and deleted at the last; `useSongFolder` finishes it, in order,
+      before any song is opened (`finishOwed`; a file not in its words is let be). Gone through
+      twice is no harm: it no longer names the old place. **Whatever reads or renames a saved song
+      first finishes what is owed** (`followNow`: openSong, openRev, renameSong, deleteSong); a new
+      one of those calls it too. If the owed list cannot be written, it is all done at once.
+      The WiFi page's renames take the same way. `picker_test` `testSpreadOverFrames`.
 - **A recording's name may carry two folders** (owner, 2026-11-14; it was one):
   `kicks/808`, `drums/kicks/808`. `sampleFolderOf` is ALL of the folder (`drums/kicks`),
   `sampleLabel` the last part; a song file's one-folder name is still a name. The whole name
@@ -1777,6 +1838,13 @@ effect in those two groups and fails one that does not.
   The Session tells the server the name (`Transfer::setOpenSong`, from
   `update()` when it changes and when WiFi goes on). **`saveNow` holds
   `Transfer::songFiles()` while it writes**, as the server does.
+- **A folder of recordings is deleted only on purpose** (owner, 2026-11-15: "Keep them"):
+  one that loses its last recording, deleted or moved out, stays, on the page as on the
+  handheld. `DELETE /PIN/folders/NAME` (`safeFolderPath`: one or two plain names) deletes an
+  EMPTY one by `rmdir` (409 with anything in it, 404 for a link or one inside a link); the
+  page offers DELETE FOLDER on a heading with no recording and no folder under it. Folders
+  made for a request that is then refused are taken away again, and only those (`foldersMade`
+  keeps what it made, `dropMade`): a folder that was there before is never touched.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from
@@ -1792,7 +1860,7 @@ effect in those two groups and fails one that does not.
   not from `applyProject`). It lists the samples folder once, and not at all
   when nothing is missing. Never guess between two.
 - **A rename on the page rewrites the saved songs and revs** on the app
-  thread (`Session::savedSongsFollow`, `renameRecordings`): only the name on
+  thread, a few files a frame (`Session::followLater`, as a carry; `renameRecordings`): only the name on
   `sample` and `sound` lines, the rest byte for byte, the file's date kept.
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes
@@ -1873,6 +1941,7 @@ effect in those two groups and fails one that does not.
 | JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
 | JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
 | JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
+| JAX-EP with the VCA straight and its clip counted (2026-11-15, `bench`'s three rows, the two quieter of five runs on a desk shared with another build; Phazed 1.0 to 1.2% in them). **Not yet run on the handheld** | 0.56% / 1.05 to 1.11% / 1.79 to 1.81% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |

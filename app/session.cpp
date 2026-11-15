@@ -1,6 +1,7 @@
 // Session, part one of four (see session_parts.hpp for what is where).
 #include "mods.hpp"
 #include "session.hpp"
+#include "redraw.hpp"
 #include "instruments.hpp"
 #include "ui.hpp"
 
@@ -330,12 +331,15 @@ void Session::update(Uint32 nowMs) {
             recordingChanged(change.from, change.to);
             renames.push_back({change.from, change.to}); // one sent or deleted has no name on one side, and is passed over there
         }
-        savedSongsFollow(renames);
-        // The open song is written now, not at the next autosave: its revs already have the new
+        followLater(renames); // a few files a frame, below (it was all at once: a freeze)
+        // The open song is written now, not at the next autosave: its revs will have the new
         // name, and a flat battery in between would leave the song itself with the old one.
         for (const auto& rename : renames)
             if (!rename.first.empty() && !rename.second.empty()) { saveNow(); break; }
     }
+
+    // Saved songs following a rename (a carry, the WiFi page): a few files a frame.
+    followSome();
 
     // What has come in from the input goes to the recorder.
     if (rec_ == Rec::Waiting || rec_ == Rec::Recording) {
@@ -364,6 +368,15 @@ void Session::update(Uint32 nowMs) {
     }
     endHearing();
     syncSong();
+}
+
+unsigned Session::stirring() const {
+    unsigned stirs = 0;
+    if (stretching()) stirs |= kStirFitting; // (a fit starts in update() when the tempo has settled: stretching() from that pass)
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) stirs |= kStirRecording;
+    if (bouncing()) stirs |= kStirBouncing;
+    if (transferOn()) stirs |= kStirWifi;
+    return stirs;
 }
 
 void Session::setSceneSteps(int scene, int steps) {

@@ -1101,7 +1101,7 @@ void testASongFromTheOnePresetBuilds() {
     std::unique_ptr<Project> p(new Project);
     CHECK(parseSong(text, *p) && p->trackCount() == 1 && p->tracks[0].kind == TrackKind::Jx3p);
     const TrackData& t = p->tracks[0];
-    CHECK(start.value[jx3p::Cutoff] == 100 && start.value[jx3p::VcaLevel] == 45 && Jx3p::presetPatch(0).value[jx3p::Cutoff] != 100);
+    CHECK(start.value[jx3p::Cutoff] == 100 && start.value[jx3p::VcaLevel] == 50 && Jx3p::presetPatch(0).value[jx3p::Cutoff] != 100);
     for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(t.jx3p.value[id] == start.value[id]); // the sound it was saved with, not String I's
     CHECK(t.jx3p.value[jx3p::Velocity] == 0 && t.jx3p.value[jx3p::Brilliance] == 81 && t.macro[3] == 0.25f && t.notes[0][0].at(60, 0) >= 0);
     CHECK(t.preset == 0 && std::string(jx3pSpec().presetName(t.preset)) == "String I"); // KNOWN: the name is A1's now

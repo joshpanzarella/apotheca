@@ -42,6 +42,11 @@ public:
     void onButton(const ButtonEvent& event, const Input& input);
     void update(const Input& input, Uint32 nowMs); // once per frame
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    // What can change the picture with no button, as of the last update(): the Stir bits of
+    // redraw.hpp, from the App's own timed things, the Session and the screen up.
+    unsigned stirring() const;
+    // What the screen reads from the engine and the MIDI thread, as it is now (redraw.hpp).
+    void readouts(struct Readouts& out) const;
     // Read the battery from another folder (the stills and the tests have no battery of their own).
     void useBatteryFolder(const std::string& folder) { batteryRoot_ = folder; batteryReadAt_ = 0; }
 

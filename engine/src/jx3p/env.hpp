@@ -29,12 +29,14 @@
 //   | Decay and release            | a fall by a fixed ratio a tick, landing on   | SELF   |
 //   |                              | its target when 80 dB from it (kEnvLand)     |        |
 //   | SUSTAIN 0 to 10              | 0 to 1, straight                             | SELF   |
-//   | The VCA's taper              | 4 dB a dial step (kVcaDbPerDial), 0 dB at    | SELF; the owner's call |
-//   |                              | LEVEL 4.5 (kVcaUnityDial: where NAM's 32     | (2026-11-15: it was 7, |
-//   |                              | LEVELs stand), LEVEL 0 silent                | and the bank 10 dB quieter) |
-//   | Too high a LEVEL             | a soft clip over what LEVEL 4.5 gives a full | OM p.26 says it distorts; |
+//   | The VCA's taper              | the gain is the dial: LEVEL 5 is half of     | SN p.7 (an OTA: gain   |
+//   |                              | LEVEL 10 (-6 dB), LEVEL 1 a tenth; 0 dB at   | follows its current); |
+//   |                              | LEVEL 10 (kVcaUnityDial), LEVEL 0 silent     | the owner's call (2026-11-15: |
+//   |                              |                                              | no patch distorts) |
+//   | Too high a LEVEL             | a soft clip over what LEVEL 10 gives a full  | OM p.26 says it distorts; |
 //   |                              | wave (kVcaClipDial), to 1.5 times that at    | the shape is SELF |
-//   |                              | most (kVcaClipCeiling)                       |        |
+//   |                              | most (kVcaClipCeiling): a wave over full     |        |
+//   |                              | (resonance, the macros) at a high LEVEL      |        |
 //   | VELOCITY ON                  | 30 dB from full to none (kVelocityDb); full  | SELF (the real one has none) |
 //   |                              | velocity is exactly 1                        |        |
 //
@@ -84,9 +86,14 @@ constexpr float kFallSeconds[101] = {
 
 constexpr float kAttackAim = 1.5f;   // SELF: where the attack heads for; it is stopped at 1
 constexpr float kEnvLand = 1e-4f;    // SELF: a decay or a release this near its target (80 dB) is on it
-constexpr float kVcaDbPerDial = 4.f; // SELF: a whole step of the dial (ten tenths)
-constexpr float kVcaUnityDial = 45.f;// The owner's call (2026-11-15; it was 70): LEVEL 4.5 is 0 dB, where the booklet's LEVELs stand: a full wave there just meets the clip
-constexpr float kVcaClipDial = kVcaUnityDial; // SELF: over what that LEVEL gives a full wave (1), a soft clip comes in: it moved with the 0 dB, so a LEVEL of 10 is 22 dB into it
+// THE TAPER IS STRAIGHT (the owner's call, 2026-11-15: "I don't think they should distort by default").
+// Until then it was 4 dB a dial step with 0 dB at LEVEL 4.5 (before that day, at 7), and the clip came
+// in at that 0 dB: E. Piano I and Voice, at LEVEL 9.9 and 10, were 21 and 18 dB into it as written,
+// and 22 dB louder than a patch at 4.5 before it. Straight, LEVEL 10 is 8.8 dB over LEVEL 3.4 (it was
+// 26), the bank's LEVELs balance it (the loudest of the 32 is B7 Distortion Guitar, at LEVEL 1.7), and
+// no patch as written reaches the clip. The synth's output gain (jx3p.cpp) brought the bank back up.
+constexpr float kVcaUnityDial = 100.f; // LEVEL 10 is 0 dB: a full wave there just meets the clip
+constexpr float kVcaClipDial = kVcaUnityDial; // SELF: over what that LEVEL gives a full wave (1), a soft clip comes in
 constexpr float kVcaClipCeiling = 1.5f; // SELF: ...and bends toward this many times that, never past it
 constexpr float kVelocityDb = 30.f;  // SELF: VELOCITY ON, velocity 0 is this far under velocity 1
 
@@ -176,11 +183,8 @@ struct Hold {
 };
 inline float holdCoef(double sampleRate) { return static_cast<float>(1.0 - std::exp(-1.0 / (kHoldSeconds * sampleRate))); }
 
-// The VCA's taper: LEVEL's dial (0..100) to a gain. 0 is silence.
-inline float vcaGain(float dial) {
-    dial = dialHeld(dial);
-    return dial <= 0.f ? 0.f : static_cast<float>(std::pow(10.0, (dial - kVcaUnityDial) / 10.f * kVcaDbPerDial / 20.0));
-}
+// The VCA's taper: LEVEL's dial (0..100) to a gain, straight. 0 is silence.
+inline float vcaGain(float dial) { return dialHeld(dial) / kVcaUnityDial; }
 // VELOCITY ON: a velocity (0..1) to a gain. Exactly 1 at full velocity, so a patch plays as written.
 inline float velocityGain(float velocity) {
     velocity = velocity < 0.f ? 0.f : (velocity > 1.f ? 1.f : velocity);

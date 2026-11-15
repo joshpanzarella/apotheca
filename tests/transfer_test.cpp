@@ -197,7 +197,12 @@ void testTheServer() {
     a = get(port, door + "/list");
     CHECK(a.body.find(std::string(19, 'x') + ".wav") != std::string::npos && a.body.find(std::string(20, 'y')) == std::string::npos);
     unlink((samples + "/twenty letters long a/twenty letters long b/" + std::string(20, 'y') + ".wav").c_str());
-    CHECK(del(port, door + "/samples/twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(19, 'x') + ".wav").status == 200 && !exists(samples + "/twenty letters long a"));
+    CHECK(del(port, door + "/samples/twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(19, 'x') + ".wav").status == 200 && exists(samples + "/twenty letters long a/twenty letters long b"));
+    // ITS FOLDERS STAY, EMPTY (owner, 2026-11-15: "Keep them"), and go only when deleted on purpose: an
+    // empty one, the inner first (the outer is not empty while the inner is in it).
+    CHECK(del(port, door + "/folders/twenty%20letters%20long%20a").status == 409 && exists(samples + "/twenty letters long a/twenty letters long b"));
+    CHECK(del(port, door + "/folders/twenty%20letters%20long%20a/twenty%20letters%20long%20b").status == 200 && !exists(samples + "/twenty letters long a/twenty letters long b"));
+    CHECK(del(port, door + "/folders/twenty%20letters%20long%20a%2F").status == 400 && del(port, door + "/folders/twenty%20letters%20long%20a").status == 200 && !exists(samples + "/twenty letters long a"));
     // A folder on the way that is a file, or a link out: refused, and nothing made stays.
     writeTextFile(samples + "/afile", "x");
     CHECK(put(port, door + "/samples/afile/in/x.wav", wav).status == 400 && put(port, door + "/samples/fresh/in/x.wav", wav).status == 200);
@@ -206,12 +211,30 @@ void testTheServer() {
     writeTextFile(root + "/x.wav", wav); // nor is one that IS out there deleted or moved through the link
     CHECK(del(port, door + "/samples/fresh/out/x.wav").status == 404 && post(port, door + "/samples/fresh/out/x.wav", "mine.wav").status == 404 && exists(root + "/x.wav") && !exists(samples + "/mine.wav"));
     unlink((root + "/x.wav").c_str());
-    CHECK(del(port, door + "/samples/fresh/in/x.wav").status == 200 && !exists(samples + "/fresh/in") && exists(samples + "/fresh")); // the inner one went with its last; the outer still holds the link
+    CHECK(del(port, door + "/samples/fresh/in/x.wav").status == 200 && exists(samples + "/fresh/in")); // its folder stays
+    // A folder is deleted only as itself: not a link (to an empty folder or not), nor one inside a link, nor a file.
+    CHECK(mkdir((root + "/elsewhere").c_str(), 0755) == 0 && symlink((root + "/elsewhere").c_str(), (samples + "/fresh/away").c_str()) == 0);
+    CHECK(del(port, door + "/folders/fresh/away").status == 404 && exists(root + "/elsewhere") && del(port, door + "/folders/fresh/out").status == 404 && exists(root));
+    CHECK(mkdir((root + "/elsewhere/inner").c_str(), 0755) == 0 && symlink((root + "/elsewhere").c_str(), (samples + "/away").c_str()) == 0);
+    CHECK(del(port, door + "/folders/away/inner").status == 404 && exists(root + "/elsewhere/inner") && del(port, door + "/folders/afile").status == 404 && exists(samples + "/afile"));
+    unlink((samples + "/away").c_str());
+    unlink((samples + "/fresh/away").c_str());
+    // Nor by a name that is not a plain one, nor three deep, nor by anything but DELETE.
+    for (const char* bad : {"/folders/..", "/folders/../songs", "/folders/fresh/..", "/folders/.hid", "/folders/a/b/c", "/folders/", "/folders//in", "/folders/fresh%5Cin"}) CHECK(del(port, door + bad).status == 400);
+    CHECK(get(port, door + "/folders/fresh/in").status == 405 && post(port, door + "/folders/fresh/in", "x").status == 405 && exists(samples + "/fresh/in"));
+    CHECK(del(port, door + "/folders/fresh/in").status == 200 && !exists(samples + "/fresh/in") && del(port, door + "/folders/fresh/in").status == 404);
     unlink((samples + "/fresh/out").c_str());
     rmdir((samples + "/fresh").c_str());
     unlink((samples + "/afile").c_str());
-    CHECK(del(port, door + "/samples/new/inner/one.wav").status == 200 && !exists(samples + "/new")); // both folders went with their last recording
-    CHECK(del(port, door + "/samples/kicks/long/boom.wav").status == 200 && !exists(samples + "/kicks/long") && exists(samples + "/kicks/deep one.wav"));
+    CHECK(del(port, door + "/samples/new/inner/one.wav").status == 200 && exists(samples + "/new/inner")); // both folders stay
+    CHECK(del(port, door + "/samples/kicks/long/boom.wav").status == 200 && exists(samples + "/kicks/long") && exists(samples + "/kicks/deep one.wav"));
+    CHECK(get(port, door + "/list").body.find(",\"folders\":[\"breaks\",\"kicks\",\"kicks/long\",\"new\",\"new/inner\"],") != std::string::npos); // listed, empty
+    // A folder holding a file that is no recording is not empty either.
+    CHECK(writeTextFile(samples + "/new/inner/notes.txt", "x") && del(port, door + "/folders/new/inner").status == 409 && exists(samples + "/new/inner/notes.txt"));
+    unlink((samples + "/new/inner/notes.txt").c_str());
+    const unsigned beforeFolders = transfer.received();
+    CHECK(del(port, door + "/folders/new/inner").status == 200 && del(port, door + "/folders/new").status == 200 && del(port, door + "/folders/kicks%2Flong").status == 200);
+    CHECK(!exists(samples + "/new") && !exists(samples + "/kicks/long") && exists(samples + "/kicks/deep one.wav") && transfer.received() == beforeFolders + 3);
     CHECK(put(port, door + "/samples/../up.wav", wav).status == 400 && put(port, door + "/samples/a/..%2Fup.wav", wav).status == 400 && !exists(root + "/up.wav"));
     CHECK(put(port, door + "/samples/.hid/x.wav", wav).status == 400 && put(port, door + "/samples/a/.x.wav", wav).status == 400 && put(port, door + "/samples//x.wav", wav).status == 400);
     CHECK(put(port, door + "/samples/a/.wav", wav).status == 400 && put(port, door + "/samples/a/b.json", wav).status == 400);
@@ -298,6 +321,7 @@ void testDeletingAndMoving() {
     // ---- deleting ----
     // Not without the number; not what is not there; not by a name that is not a plain one.
     CHECK(del(port, "/samples/a.wav").status == 403 && del(port, "/0000/samples/a.wav").status == 403 && exists(samples + "/a.wav"));
+    CHECK(del(port, "/folders/kicks").status == 403 && del(port, "/folders/empty").status == 403 && exists(samples + "/empty")); // a folder too: only behind the number
     CHECK(del(port, door + "/samples/missing.wav").status == 404 && del(port, door + "/samples/kicks/missing.wav").status == 404 && del(port, door + "/samples/nowhere/one.wav").status == 404);
     for (const char* bad : {"/samples/..%2Fsecret.wav", "/samples/../secret.wav", "/samples/kicks/..%2F..%2Fsecret.wav", "/samples/kicks/../../secret.wav", "/samples/..%2Fout/x.wav", "/samples/../out/x.wav",
                             "/samples/kicks%5Cone.wav", "/samples/kicks/sub/more/one.wav", "/samples/.hid/one.wav", "/samples/kicks/.one.wav", "/samples/kicks", "/samples/kicks/", "/samples/", "/samples",
@@ -312,11 +336,13 @@ void testDeletingAndMoving() {
     CHECK(del(port, door + "/samples/link.wav").status == 404 && exists(samples + "/link.wav") && exists(root + "/secret.wav"));
     CHECK(del(port, door + "/samples/linked/x.wav").status == 404 && exists(out + "/x.wav"));
     CHECK(transfer.received() == received);
-    // One that is there goes. Its folder stays while there is another in it, and goes with the last.
+    // One that is there goes. Its folder stays, with the last one too.
     a = del(port, door + "/samples/kicks/one.wav");
     CHECK(a.status == 200 && a.body == "deleted\n" && !exists(samples + "/kicks/one.wav") && exists(samples + "/kicks/two.wav") && transfer.received() == received + 1);
     CHECK(del(port, door + "/samples/kicks/one.wav").status == 404); // twice is not there the second time
-    CHECK(del(port, door + "/samples/kicks%2Ftwo.wav").status == 200 && !exists(samples + "/kicks") && exists(samples));
+    CHECK(del(port, door + "/samples/kicks%2Ftwo.wav").status == 200 && exists(samples + "/kicks"));
+    CHECK(get(port, door + "/list").body.find("\"kicks\"") != std::string::npos);
+    CHECK(del(port, door + "/folders/kicks").status == 200 && !exists(samples + "/kicks") && exists(samples));
     CHECK(get(port, door + "/list").body.find("kicks") == std::string::npos);
     // A song goes where the handheld puts a deleted one, with its revs and nobody else's.
     CHECK(del(port, door + "/songs/quiet%20road.song").status == 200 && !exists(songs + "/quiet road.song") && !exists(songs + "/quiet road.1.rev") && !exists(songs + "/quiet road.12.rev"));
@@ -369,23 +395,25 @@ void testDeletingAndMoving() {
     CHECK(a.status == 409 && readTextFile(samples + "/a.wav", kept) && kept == wav && readTextFile(samples + "/b.wav", kept) && kept == other);
     CHECK(post(port, door + "/samples/a.wav", "dir.wav").status == 409);
     CHECK(exists(samples + "/a.wav") && !exists(samples + "/c.wav") && !exists(root + "/c.wav") && !exists(out + "/c.wav") && !exists(samples + "/x") && transfer.received() == received);
-    // A new name; then into a folder that comes into being for it; then to another, and the first folder goes.
+    // A new name; then into a folder that comes into being for it; then to another, and the first folder stays.
     a = post(port, door + "/samples/a.wav", "c%20new.wav");
     CHECK(a.status == 200 && a.body == "moved\n" && !exists(samples + "/a.wav") && readTextFile(samples + "/c new.wav", kept) && kept == wav && transfer.received() == received + 1);
     CHECK(post(port, door + "/samples/c%20new.wav", "new%20place/c.wav").status == 200 && !exists(samples + "/c new.wav") && readTextFile(samples + "/new place/c.wav", kept) && kept == wav);
     CHECK(post(port, door + "/samples/b.wav", "new%20place%2Fb.wav").status == 200 && exists(samples + "/new place/b.wav"));
     CHECK(post(port, door + "/samples/new%20place/c.wav", "empty/c.wav").status == 200 && exists(samples + "/empty/c.wav") && exists(samples + "/new place/b.wav"));
-    // Two levels down, both folders coming into being for it; on to another inner folder, and the first inner one goes;
-    // then out, and both go. Not where all of it would be too long a name for a song.
+    // Two levels down, both folders coming into being for it; on to another inner folder, and the first inner one stays;
+    // then out, and both stay. Not where all of it would be too long a name for a song.
     CHECK(post(port, door + "/samples/empty/c.wav", "drums/kicks/c.wav").status == 200 && readTextFile(samples + "/drums/kicks/c.wav", kept) && kept == wav);
-    CHECK(post(port, door + "/samples/drums/kicks/c.wav", "drums%2Fsnares%2Fc.wav").status == 200 && exists(samples + "/drums/snares/c.wav") && !exists(samples + "/drums/kicks"));
+    CHECK(post(port, door + "/samples/drums/kicks/c.wav", "drums%2Fsnares%2Fc.wav").status == 200 && exists(samples + "/drums/snares/c.wav") && exists(samples + "/drums/kicks"));
     CHECK(post(port, door + "/samples/drums/snares/c.wav", "twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(20, 'c') + ".wav").status == 400 && !exists(samples + "/twenty letters long a"));
     CHECK(post(port, door + "/samples/drums/snares/c.wav", "linked/in/c.wav").status == 400 && !exists(out + "/in"));
     CHECK(post(port, door + "/samples/drums/snares/missing.wav", "c.wav").status == 404);
-    CHECK(post(port, door + "/samples/drums/snares/c.wav", "empty/c.wav").status == 200 && exists(samples + "/empty/c.wav") && !exists(samples + "/drums"));
+    CHECK(post(port, door + "/samples/drums/snares/c.wav", "empty/c.wav").status == 200 && exists(samples + "/empty/c.wav") && exists(samples + "/drums/snares") && exists(samples + "/drums/kicks"));
+    CHECK(del(port, door + "/folders/drums").status == 409 && del(port, door + "/folders/drums/kicks").status == 200 && del(port, door + "/folders/drums/snares").status == 200 && del(port, door + "/folders/drums").status == 200 && !exists(samples + "/drums"));
     // The header in small letters, with spaces round what it says; and back out to the loose ones.
     a = raw(port, "POST " + door + "/samples/new%20place/b.wav HTTP/1.1\r\nx-to:   B.WAV  \r\nHost: x\r\n\r\n");
-    CHECK(a.status == 200 && readTextFile(samples + "/B.WAV", kept) && kept == other && !exists(samples + "/new place"));
+    CHECK(a.status == 200 && readTextFile(samples + "/B.WAV", kept) && kept == other && exists(samples + "/new place"));
+    CHECK(del(port, door + "/folders/new%20place").status == 200 && !exists(samples + "/new place"));
     // To the name it has: nothing happens, and nothing is lost.
     CHECK(post(port, door + "/samples/empty/c.wav", "empty/c.wav").status == 200 && readTextFile(samples + "/empty/c.wav", kept) && kept == wav);
     a = get(port, door + "/list");
@@ -1128,6 +1156,12 @@ static void testSavedSongsFollow() {
             engine->render(out.data(), 512);
         }
     };
+    // Until the saved songs have followed (a few files a frame); how many frames it took.
+    const auto settle = [&] {
+        int n = 0;
+        for (; session.following() && n < 1000; ++n) frames(1);
+        return n;
+    };
     session.useSampleFolder(samples);
     session.useSongFolder(songs, 3);
     session.useChordFolder(root + "/chords");
@@ -1164,6 +1198,7 @@ static void testSavedSongsFollow() {
     CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
     CHECK(contents(uses) == usesBefore); // not from the server's thread: when the program next looks
     frames(1);
+    CHECK(session.following() && settle() >= 1); // a few files a frame (the page's renames take the handheld's way)
     // The song that names it has the new name on those lines, and is otherwise the same to the byte.
     CHECK(contents(uses) == usesAfter && contents(usesRev) == usesAfter);
     CHECK(fileId(uses) != usesId && fileId(usesRev) != revId); // written beside and moved into place: a new file
@@ -1189,6 +1224,7 @@ static void testSavedSongsFollow() {
     CHECK(post(port, door + "/samples/pad.wav", "warm.wav").status == 200);
     CHECK(post(port, door + "/samples/warm.wav", "pads/warm.wav").status == 200);
     frames(1);
+    settle();
     std::string twice = usesAfter;
     twice.replace(twice.find("sound pad\n"), 10, "sound pads/warm\n");
     CHECK(contents(uses) == twice && fileId(uses) != usesId2 && contents(usesRev) == twice);

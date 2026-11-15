@@ -405,9 +405,10 @@ passes the sound untouched to the bit (SELF).
 
 SN: a voltage-controlled resistance (p.7); the part is a BA662B (p.3; see
 "SN pages"). Gain = LEVEL × ENV, or LEVEL × the gate in GATE mode, times the
-velocity curve with VELOCITY ON (1 at full velocity). **The taper is a guess**
-(exponential, a dial step of 1 is 4 dB). Above LEVEL 7 a soft clip comes in
-("too high may cause distortion", OM p.26), also a guess in shape. GATE mode
+velocity curve with VELOCITY ON (1 at full velocity). **The taper is straight**
+(the gain is the dial, as an OTA's follows its current; owner's call,
+2026-11-15: it was exponential, 4 dB a step). Over a full wave at LEVEL 10 a
+soft clip comes in ("too high may cause distortion", OM p.26), a guess in shape. GATE mode
 opens on the next sample, not on a tick: the program's timing comes first.
 
 Tests: LEVEL steps follow the taper table within 0.3 dB (SELF); GATE mode has
@@ -1108,6 +1109,63 @@ B7 at LARGE, XL on PAPER ("7 / 16"). `bench`: 0.55 / 1.03 to 1.14 / 1.77 to
 1.86%, as before; the 32 one by one were not timed again. Nothing was heard,
 nothing ran on the handheld.
 
+### The owner's call on distortion (2026-11-15)
+
+**Bad news first: the route named for it did not work, so the VCA's taper
+changed too.** The call: "I don't think they should distort by default" (A8
+E. Piano I and A16 Voice, at LEVEL 9.9 and 10, were 21 and 18 dB into the
+VCA's clip). The route named: the 0 dB back at LEVEL 7 and the bank's
+loudness made up by the output gain. Measured: that is the same sound with
+the clip 10 dB higher, so A8 and A16 got LOUDER (+4.4 and +3.8 dB, six keys
+6.9 and 5.1 out of the synth) and were still 10.6 and 8.0 dB into the clip.
+With 4 dB a dial step LEVEL 10 is 22 dB over 4.5; clean and with the bank as
+loud, A8's six keys pass full scale nearly nine times over. **No placing of
+the 0 dB meets both.**
+
+| | Before (0 dB at 4.5, 4 dB a step) | Built (straight, 0 dB at 10, output 0.6) |
+| --- | --- | --- |
+| The middle of the 32 | -17.2 | **-16.6** |
+| A1 String I | -14.5 | **-13.5** |
+| The quietest | B15 Planet -34.5 | **B15 Planet -36.1** |
+| B4 Song Whistle | -25.8 | -28.3 |
+| A8 E. Piano I / A16 Voice | -3.4 / -2.0 | **-9.2 / -11.4** |
+| The loudest | A16 -2.0 | **B7 Distortion Guitar -5.7** (LEVEL 1.7) |
+| A11 Harpsichord (8.5) / B16 Jet (6.6) | -17.4 / -24.3 | -28.6 / -30.3 |
+| Peak, four keys | A8 2.00 | **B14 Pulsar 0.89** |
+| Peak, six keys as written | A8 2.85, A16 2.56; the rest 1.26 | **A8 1.46**; the rest 1.17 (A3); A16 1.08 |
+| Patches whose six keys as written reach the clip | 7 (A8 21 dB in, A16 18, A11 6, A12 3.5, A14 2.7; A9 and B8 under 1) | **0** (`Jx3p::samplesClipped()`, held in `testEveryPatchPlays`) |
+| Peak, six keys, macros full | A8 2.69, A16 2.58, A11 2.53, B8 1.90 | B8 1.79, A8 1.53, A16 1.37, A3 1.33; twenty reach the clip |
+| Macros at 0: under -60 dB | 3 | 4 |
+
+**Why straight.** The plan already said "Gain = LEVEL x ENV", and the VCA is
+an OTA (SN p.7, the BA662B), whose gain follows its control current: a pot
+on that current is straight. The 4 dB step was a guess (SELF). Straight,
+LEVEL 9.9 is 9.3 dB over LEVEL 3.4 (it was 26), the bank's own LEVELs balance
+it, and the two hot patches land in the middle of the bank. **What it costs**:
+patches at a high LEVEL with a quiet wave fall back (A11 Harpsichord 11 dB,
+B16 Jet 6), and those at a low LEVEL come up a little (B7 1.8 dB). Nobody
+has heard either.
+
+**Tried, and not built**: the exponential taper flattened instead (1.2 to 2
+dB a step). Kept as loud, 1.4 dB a step peaks at about the same 1.4 but
+puts B7 and B12 there too; 2 dB a step leaves A8 at 2.07. Straight was the
+best of them on the peaks and has the part behind it.
+
+**A plain saw's corners overshoot to 1.31 of full**, so a player's own saw
+at LEVEL 7.6 or over meets the clip softly (`testVca` holds the bend at
+LEVEL 10). The 32 as written do not.
+
+**The tests**: the start patch is LEVEL 5.0 (a wave of 0.3 out, the gain
+LEVEL 4.5 gave); the plain patches 2.0, 3.2, 5.0 (were 2.5, 3.5, 4.5; within
+0.15 dB). `effects_test`'s whole song moved (its JAX-EP track) and was remade:
+0x6536b73551f423cb to 0x97cdd450e1e17437, rms 0.353221477 to 0.353221461; the
+40 pinned renders and the maths line held. **Mutants: 6 made, 6 killed** (the
+clip back at 4.5, the old taper, the old output gain, the clip counter not
+counting, the start patch at 4.5, the clip coming in late).
+
+**A song from builds 0.504 to 0.514** loads as saved: a JAX-EP track at LEVEL
+4 or under within 2 dB of how it sounded, higher LEVELs quieter and clean.
+
 ### Batch 8a: what it learned (2026-11-15)
 
 **Not done, on purpose: two tests still play Twin.** `twin_test` and
@@ -1289,13 +1347,13 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |
 | **Where batch 9's recordings come from**: the owner's own unit, a hired one, or dry multisample libraries of a real unit (Roland's plug-out is a model, not a source) | A hired or borrowed unit: every knob of the table at 0, 2.5, 5, 7.5 and 10, one held note, dry. A multisample library can give the patches' speeds but not each knob. Without one, batch 9 cannot start and the speeds stay guesses |
 | Bass patches: the factory 32 have none | Add own patches later, in a third folder |
-| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | **Decided (owner, 2026-11-15): up.** `kVcaUnityDial` 45 (it was 70), the clip's start with it. The middle patch -17.2 dB, A1 -14.5; LEVEL 10 clips harder (A8, A16) |
+| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | **Decided (owner, 2026-11-15): up**, first by `kVcaUnityDial` 45. **Then (owner, same day): "I don't think they should distort by default."** The VCA's taper is straight, 0 dB and the clip's start at LEVEL 10, `kOutputGain` 0.6: the middle patch -16.6 dB, A1 -13.5, no patch as written reaches the clip (below, "The owner's call on distortion") |
 | **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | **Mended by the cutoff's row (2026-11-15)**: -25.8 and -34.5 dB with both calls built |
 | **(From batch 7.) The VCF's ENV POLARITY of A5 and A16 is not drawn** | NORMAL |
 | **(From the review, 2026-11-15.) A3 Organ I is out of tune with the other tracks**: its filter sings 20.8 semitones under the key, 21 cents off the grid | **Mended by the cutoff's row (2026-11-15)**: it sings the key within 0.4 cents, keys 48 to 84 |
 | **(From the review.) A song from builds 0.485 to 0.493 on "Start" is named String I** (its sound is kept) | Not decided: leave it (said in README), or put Start back as a 33rd preset in a folder of its own and read such a song onto it |
 | **(From the review.) MAIN's count reads "23 / 32" on B7**, not the factory's number | **Decided (owner, 2026-11-15): "7 / 16"**, the preset's place in its folder, on every synth |
-| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | Changed by the bank's level (2026-11-15), **still the owner's to weigh**: six keys AS WRITTEN now pass full scale on the two patches at LEVEL 10 (A8 2.85, A16 2.56); macros full, four pass 1.5 (2.69 at most). `kVcaClipCeiling` is not changed |
+| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | **Settled by the straight taper (2026-11-15)**: as written nothing clips and the highest is A8 1.46; macros full, twenty patches reach the clip and two pass 1.5 (B8 1.79, A8 1.53). `kVcaClipCeiling` is not changed |
 
 ## 9. Decisions on the review (2026-11-13)
 

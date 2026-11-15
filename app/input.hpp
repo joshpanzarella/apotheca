@@ -39,6 +39,11 @@ public:
     void useMap(const struct ControlMap* map) { map_ = map; }
 
     bool held(Button button) const { return held_[static_cast<int>(button)]; }
+    bool anyHeld() const {
+        for (bool down : held_)
+            if (down) return true;
+        return false;
+    }
     // Does this device have the button at all? (MENU is kept by some firmwares, and then it was left out of the setup.)
     bool has(Button button) const;
 

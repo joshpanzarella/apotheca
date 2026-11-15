@@ -6388,25 +6388,25 @@ float jxLoud(Rig& rig, float velocity) {
 }
 
 void testTheEngineHearsJaxepsSettings() {
-    // The VCA's LEVEL: a step of the dial is 4 dB (the plan's taper, a guess), so three steps down is a quarter as loud.
+    // The VCA's LEVEL: the gain follows the dial straight (the owner's call, 2026-11-15), so LEVEL 1.6 is half of 3.2.
     const auto loudness = [](int down) {
         std::unique_ptr<Rig> rig(onJaxep());
         rig->tap(A);
         rig->tap(R2);
         rig->app.jaxep().goTo(4, 1);
         CHECK(rig->app.jaxep().settingHere() == jx3p::VcaLevel);
-        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 35); // (a step under the VCA's 0 dB, LEVEL 4.5: over it the clip bends the wave)
+        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 32); // (the gain LEVEL 3.5 gave with the old taper; nowhere near the clip)
         rig->key(A, true);
         rig->tap(DOWN, down);
         rig->key(A, false);
         const int level = rig->project().tracks[1].jx3p.value[jx3p::VcaLevel];
-        CHECK(down == 0 ? level == 35 : level < 35);
+        CHECK(down == 0 ? level == 32 : level < 32);
         const float loud = jxLoud(*rig, 1.f);
         return std::pair<float, int>(loud, level);
     };
     const std::pair<float, int> full = loudness(0), down = loudness(6);
     CHECK(full.first > 0.01f);
-    const float expected = std::pow(10.f, -0.4f * static_cast<float>(full.second - down.second) / 20.f);
+    const float expected = static_cast<float>(down.second) / static_cast<float>(full.second);
     CHECK(down.second < full.second && std::fabs(down.first / full.first - expected) < 0.05f * expected);
 }
 

@@ -497,10 +497,10 @@ void testJaxepFromThePage() {
     rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
     rig.tell("set " + std::to_string(jx3p::SourceMix) + " 0");
     rig.tell("set " + std::to_string(jx3p::Attack) + " 0");
-    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 45"); // (the VCA's 0 dB: over it the clip bends the wave)
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 50"); // (half the VCA's 0 dB: nowhere near the clip)
     const float before = rig.loud();
     CHECK(rig.tell("set " + std::to_string(jx3p::Resonance) + " 30") && rig.track().jx3p.value[jx3p::Resonance] == 30);
-    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 5"); // four steps of the dial: 16 dB down
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 5"); // a tenth of the dial: 20 dB down
     CHECK(rig.loud() < 0.2f * before);
     rig.tell("set " + std::to_string(jx3p::Resonance) + " 500");
     CHECK(rig.track().jx3p.value[jx3p::Resonance] == 100);

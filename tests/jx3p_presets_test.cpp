@@ -136,6 +136,7 @@ struct Heard {
     double peak = 0.0;
     double rings = 0.0;      // seconds from the keys' letting go to exact silence, or -1: it never came
     bool number = true;      // every sample a number
+    std::uint64_t clipped = 0; // samples of a voice the VCA's clip bent
 };
 // A chord held two seconds at full velocity (the patch as written), let go, and listened to until
 // the synth puts out exact zeros for a tenth of a second (40 s at most: RELEASE 10 is 10 s).
@@ -172,6 +173,7 @@ static Heard hear(int preset, int block = 256, int keys = 0, float macros = 0.5f
             break;
         }
     }
+    h.clipped = j->samplesClipped();
     if (quiet < 4800) h.rings = -1.0;
     else if (h.rings < 0.0) h.rings = 0.0; // (a struck sound, over before the keys were let go)
     for (std::size_t from = 0; from + 4800 <= static_cast<std::size_t>(hold); from += 2400) h.heldRms = std::fmax(h.heldRms, rmsOf(h.left, from, from + 4800));
@@ -235,7 +237,7 @@ static void testNam() {
     // The start patch is not one of them: what a synth is made with, before anything picks a patch.
     std::unique_ptr<Jx3p> fresh(new Jx3p);
     for (int id = 0; id < kSettings; ++id) CHECK(fresh->setting(id) == Jx3p::startPatch().value[id]);
-    CHECK(Jx3p::startPatch().value[Cutoff] == 100 && Jx3p::startPatch().value[VcaLevel] == 45 && Jx3p::presetPatch(0).value[VcaLevel] == 34);
+    CHECK(Jx3p::startPatch().value[Cutoff] == 100 && Jx3p::startPatch().value[VcaLevel] == 50 && Jx3p::presetPatch(0).value[VcaLevel] == 34);
 }
 
 // PICKING ONE (SELF): selectPreset writes the 32, puts the macros back, and keeps the track's two.
@@ -327,16 +329,19 @@ static void testNamsThree() {
 // the patch's own RELEASE and a little.
 //
 // HOW LOUD (measured 2026-11-15, C3 G3 C4 E4 at full velocity, the loudest tenth of a second;
-// --print): from -34.5 dB (B15 Planet) to -2.0 dB (A16 Voice, LEVEL 10); the middle of the 32
-// -17.2 dB, and A1 String I, what a new track plays, -14.5. The same chord on PHAZED's first
-// presets is -15.5 to -12.6 dB. THE OWNER'S TWO CALLS (2026-11-15) made it so. Until then the
-// middle was -28.5 dB and two patches all but silent (B4 Song Whistle -62.3, B15 Planet -60.9):
-//  - the VCA's 0 dB is at LEVEL 4.5, where the booklet's LEVELs stand (it was 7; jx3p/env.hpp):
-//    10 dB more on every patch under the clip;
+// --print): from -36.1 dB (B15 Planet) to -5.7 dB (B7 Distortion Guitar, LEVEL 1.7); the middle of
+// the 32 -16.6 dB, and A1 String I, what a new track plays, -13.5. The same chord on PHAZED's first
+// presets is -15.5 to -12.6 dB. THE OWNER'S CALLS (2026-11-15) made it so. Before them the middle
+// was -28.5 dB and two patches all but silent (B4 Song Whistle -62.3, B15 Planet -60.9):
+//  - the VCA's taper is straight, 0 dB at LEVEL 10, and the clip comes in over a full wave there
+//    (jx3p/env.hpp), with the synth's output gain at 0.6 (it was 4 dB a step, 0 dB at LEVEL 7, then
+//    at 4.5 for a day: E. Piano I and Voice, at LEVEL 10, were then 21 and 18 dB into the clip);
 //  - the cutoff's range is 49.84 Hz to 49.84 kHz about key 60 (it was 15 Hz to 15 kHz;
 //    jx3p/ir3109.hpp): Song Whistle's CUTOFF 2.8 under KEY FOLLOW 10 lets its one DCO through
-//    (-25.8 dB), and Planet's filter is no longer shut (-34.5).
-// NO PATCH IS ALL BUT SILENT: every one is over -36 dB, and the checks below hold the middle
+//    (-28.3 dB), and Planet's filter is no longer shut (-36.1).
+// The straight taper moved the patches at a high LEVEL down against the rest: A11 Harpsichord (8.5)
+// -17.4 to -28.6 dB, B16 Jet (6.6) -24.3 to -30.3; and those at a low one up: B7 -7.5 to -5.7.
+// NO PATCH IS ALL BUT SILENT: every one is over -38 dB, and the checks below hold the middle
 // and A1 where they were measured.
 static const int kSongWhistle = 19, kPlanet = 30;
 static void testEveryPatchPlays() {
@@ -346,63 +351,64 @@ static void testEveryPatchPlays() {
     for (int i = 0; i < Jx3p::presetCount(); ++i) {
         const Heard h = hear(i);
         CHECK(h.number);
-        CHECK(h.heldRms > 0.0158);                                // -36 dB: no patch is all but silent (the quietest is B15 Planet, -34.5)
-        CHECK(h.peak < 2.2);                                      // the loudest, A8 E. Piano I (LEVEL 9.9, deep in the VCA's clip), peaks at 2.00
+        CHECK(h.heldRms > 0.0126);                                // -38 dB: no patch is all but silent (the quietest is B15 Planet, -36.1)
+        CHECK(h.peak < 1.0);                                      // the highest, B14 Pulsar, peaks at 0.89
+        CHECK(h.clipped == 0);                                    // THE OWNER'S CALL (2026-11-15): no patch as written reaches the VCA's clip
         held.push_back(h.heldRms);
-        if (i == 0) CHECK(dB(h.heldRms) > -15.5 && dB(h.heldRms) < -13.5); // A1 String I, a new track's sound: -14.5, where PHAZED's first presets are
-        if (i == kSongWhistle) CHECK(dB(h.heldRms) > -27.0 && dB(h.heldRms) < -24.5); // -25.8 (it was -62.3)
-        if (i == kPlanet) CHECK(dB(h.heldRms) > -35.5 && dB(h.heldRms) < -33.0);      // -34.5 (it was -60.9)
+        if (i == 0) CHECK(dB(h.heldRms) > -14.5 && dB(h.heldRms) < -12.5); // A1 String I, a new track's sound: -13.5, where PHAZED's first presets are
+        if (i == kSongWhistle) CHECK(dB(h.heldRms) > -29.5 && dB(h.heldRms) < -27.0); // -28.3 (it was -62.3, then -25.8)
+        if (i == kPlanet) CHECK(dB(h.heldRms) > -37.0 && dB(h.heldRms) < -35.0);      // -36.1 (it was -60.9, then -34.5)
         CHECK(h.rings >= 0.0 && h.rings < 11.0); // RELEASE 10 is 10 s (a guess: jx3p/env.hpp); Jet's
         if (h.heldRms < quietest) quietest = h.heldRms, quietAt = i;
         if (h.heldRms > loudest) loudest = h.heldRms, loudAt = i;
         if (gPrint)
-            std::printf("  %s%-2d %-18s LEVEL %4.1f  held %6.1f dB  peak %5.2f  rings %5.2f s\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i),
-                        Jx3p::presetPatch(i).value[VcaLevel] / 10.0, dB(h.heldRms), h.peak, h.rings);
-        if (h.heldRms <= 0.0158 || h.peak >= 2.2 || h.rings < 0.0 || h.rings >= 11.0) std::printf("     (that was %s)\n", Jx3p::presetName(i));
+            std::printf("  %s%-2d %-18s LEVEL %4.1f  held %6.1f dB  peak %5.2f  rings %5.2f s  clipped %llu\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i),
+                        Jx3p::presetPatch(i).value[VcaLevel] / 10.0, dB(h.heldRms), h.peak, h.rings, static_cast<unsigned long long>(h.clipped));
+        if (h.heldRms <= 0.0126 || h.peak >= 1.0 || h.clipped || h.rings < 0.0 || h.rings >= 11.0) std::printf("     (that was %s)\n", Jx3p::presetName(i));
     }
-    // The middle of the 32 (the mean of the sixteenth and seventeenth by loudness): -17.2 dB.
+    // The middle of the 32 (the mean of the sixteenth and seventeenth by loudness): -16.6 dB.
     {
         std::sort(held.begin(), held.end());
         const double middle = 0.5 * (dB(held[15]) + dB(held[16]));
         if (gPrint) std::printf("  the middle of the 32: %.1f dB\n", middle);
-        CHECK(middle > -18.2 && middle < -16.2);
+        CHECK(middle > -17.6 && middle < -15.6);
     }
-    // SIX KEYS, AND THE MACROS AT THEIR ENDS (the review, 2026-11-15; measured again that day with
-    // the VCA's 0 dB at LEVEL 4.5; SELF). Four keys with the macros in the middle is not the loudest a
-    // patch gets. Six keys as written (held two seconds): THE TWO PATCHES AT LEVEL 10 PASS FULL SCALE,
-    // A8 E. Piano I 2.85 and A16 Voice 2.56 out of the synth (1.85 and 1.66 after the track's usual
-    // level, 0.65; the master's soft clip takes what is over), since each of their voices is 22 dB
-    // into the VCA's clip and bends toward 1.5, and six voices add. KNOWN, HELD HERE, NOT HIDDEN: it
-    // is what "LEVEL 10 clips harder" means, the owner's call with the bank's level. Every other
-    // patch as written is under 1.3 (A3 Organ I and A11 Harpsichord, 1.26). With every macro full up
-    // four pass 1.5: A8 2.69, A16 2.58, A11 2.53, B8 Juicy Funk 1.90. Every sample is a number and
-    // every patch comes to exact silence in all 96 runs. With every macro at 0 three of the 32 are
-    // under -60 dB (the filter shut; it was 17 before the cutoff's range moved).
+    // SIX KEYS, AND THE MACROS AT THEIR ENDS (the review, 2026-11-15; measured again after the owner's
+    // call that day, "I don't think they should distort by default"; SELF). Four keys with the macros in
+    // the middle is not the loudest a patch gets. SIX KEYS AS WRITTEN (held two seconds): NO PATCH
+    // REACHES THE VCA'S CLIP, and the highest peak out of the synth is A8 E. Piano I's, 1.46 (0.95 after
+    // the track's usual level, 0.65): it was 2.85, 21 dB into the clip, and A16 Voice 2.56 (now 1.08).
+    // Every other patch as written is under 1.2 (A3 Organ I 1.17). WITH EVERY MACRO FULL UP the filter
+    // rings and twenty patches reach the clip: two pass 1.5 (B8 Juicy Funk 1.79, A8 1.53; it was A8 2.69,
+    // A16 2.58, A11 2.53, B8 1.90). Every sample is a number and every patch comes to exact silence in
+    // all 96 runs. With every macro at 0 four of the 32 are under -60 dB (the filter shut).
     {
         double mostFull = 0.0, mostWritten = 0.0;
-        int fullAt = 0, writtenAt = 0, over = 0, overWritten = 0, shut = 0;
-        double nextWritten = 0.0; // the highest peak as written but for the two at LEVEL 10
+        int fullAt = 0, writtenAt = 0, over = 0, overWritten = 0, shut = 0, clippedFull = 0;
+        double nextWritten = 0.0; // the highest peak as written but for E. Piano I's
         for (int i = 0; i < Jx3p::presetCount(); ++i) {
             const Heard written = hear(i, 256, 6), full = hear(i, 256, 6, 1.f), none = hear(i, 256, 6, 0.f);
             CHECK(written.number && full.number && none.number);
             CHECK(written.rings >= 0.0 && written.rings < 11.0 && full.rings >= 0.0 && full.rings < 11.0 && none.rings >= 0.0 && none.rings < 11.0);
-            CHECK(written.peak < 3.1 && full.peak < 3.0 && none.peak < 0.3);
+            CHECK(written.peak < 1.5 && full.peak < 2.0 && none.peak < 0.3);
+            CHECK(written.clipped == 0 && none.clipped == 0); // as written, and with the macros down, nothing reaches the clip
             if (written.peak > mostWritten) mostWritten = written.peak, writtenAt = i;
             overWritten += written.peak > 1.5;
-            if (Jx3p::presetPatch(i).value[VcaLevel] < 99) nextWritten = std::fmax(nextWritten, written.peak);
+            if (i != 7) nextWritten = std::fmax(nextWritten, written.peak);
             if (full.peak > mostFull) mostFull = full.peak, fullAt = i;
             over += full.peak > 1.5;
+            clippedFull += full.clipped > 0;
             shut += none.heldRms < 1e-3;
-            if (gPrint) std::printf("  %s%-2d %-18s six keys: peak %5.2f as written, %5.2f macros full, %5.3f macros at 0 (held %6.1f dB)\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i), written.peak, full.peak, none.peak, dB(none.heldRms));
+            if (gPrint) std::printf("  %s%-2d %-18s six keys: peak %5.2f as written, %5.2f macros full (clipped %llu), %5.3f macros at 0 (held %6.1f dB)\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i), written.peak, full.peak, static_cast<unsigned long long>(full.clipped), none.peak, dB(none.heldRms));
         }
         if (gPrint)
-            std::printf("  six keys: the highest peak as written %.3f (%s), %d patches over 1.5, the rest %.3f at most; macros full %.3f (%s), %d patches over 1.5; macros at 0, %d patches under -60 dB\n", mostWritten,
-                        Jx3p::presetName(writtenAt), overWritten, nextWritten, mostFull, Jx3p::presetName(fullAt), over, shut);
-        CHECK(writtenAt == 7 && mostWritten > 2.6 && overWritten == 2); // KNOWN: A8 E. Piano I, 2.85, and A16 Voice, 2.56: the two at LEVEL 10, and no other
-        CHECK(nextWritten > 1.1 && nextWritten < 1.4);                  // every other patch as written: 1.26 at most
-        CHECK(fullAt == 7 && mostFull > 2.4 && over == 4 && shut == 3);  // macros full: A8 2.69, and four over 1.5
+            std::printf("  six keys: the highest peak as written %.3f (%s), %d patches over 1.5, the rest %.3f at most; macros full %.3f (%s), %d patches over 1.5, %d reach the clip; macros at 0, %d patches under -60 dB\n", mostWritten,
+                        Jx3p::presetName(writtenAt), overWritten, nextWritten, mostFull, Jx3p::presetName(fullAt), over, clippedFull, shut);
+        CHECK(writtenAt == 7 && mostWritten > 1.3 && mostWritten < 1.5 && overWritten == 0); // A8 E. Piano I, 1.46, and none over 1.5
+        CHECK(nextWritten > 1.0 && nextWritten < 1.25);                                    // every other patch as written: 1.17 at most
+        CHECK(fullAt == 23 && mostFull > 1.6 && over == 2 && shut == 4 && clippedFull == 20); // macros full: B8 Juicy Funk 1.79, two over 1.5, twenty reach the clip
     }
-    CHECK(quietAt == kPlanet && loudAt == 15 && std::string(Jx3p::presetName(kSongWhistle)) == "Song Whistle" && std::string(Jx3p::presetName(kPlanet)) == "Planet");
+    CHECK(quietAt == kPlanet && loudAt == 22 && std::string(Jx3p::presetName(kSongWhistle)) == "Song Whistle" && std::string(Jx3p::presetName(kPlanet)) == "Planet");
     if (gPrint) std::printf("  the quietest %s, %.1f dB; the loudest %s, %.1f dB: %.1f dB apart\n", Jx3p::presetName(quietAt), dB(quietest), Jx3p::presetName(loudAt), dB(loudest), dB(loudest / quietest));
     // A patch with CHORUS on is stereo, one with it off the same on both sides.
     for (int i : {0, 5}) {
@@ -415,6 +421,7 @@ static void testEveryPatchPlays() {
 
 // THE SAME SOUND HOWEVER IT IS CUT (SELF: the house rule), and twice from fresh: every patch's
 // chord and its release, in blocks of 256, of 64 and of 97.
+
 static void testBlocks() {
     for (int i = 0; i < Jx3p::presetCount(); ++i) {
         const Heard a = hear(i, 256), again = hear(i, 256);
