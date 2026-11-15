@@ -177,6 +177,8 @@ struct Jx3p::State {
         float keyFollow = 0.f;// octaves of cutoff an octave of key, read on the tick
         float vcfAt = NAN;    // the CV the coefficient was last worked out for (not a number: none yet)
         VcfCoef vcfG;         // a stage's coefficient at that CV, and its powers
+        float vcfK = NAN;     // the feedback the low end given back was last worked out for...
+        float vcfGiven = 0.f; // ...and that share (bassGiven): worked out again only when the feedback moves
         bool vcfFresh = true; // the voice's first tick sets its CVs where they are going, with no slide
         Slide slide;          // GLIDE: how far it still is from its own key, in semitones
         bool landing = false; // the glide came to its key on the last sample
@@ -513,10 +515,11 @@ void Jx3p::State::renderVoice(Voice& v, float* out, int frames) {
         const float cv = v.vcfCv.next(holdK, kVcfCvLands) + v.vcfKey;
         if (cv != v.vcfAt) {
             v.vcfAt = cv;
-            v.vcfG.set(onePoleG(cornerHz(cv, kVcfLowHz, sampleRate), sampleRate));
+            v.vcfG.set(cornerHz(cv, kVcfLowHz, sampleRate), sampleRate);
         }
         const float k = v.vcfRes.next(holdK);
-        const float filtered = v.vcf.run(kBassLoss ? source : source * (1.f + k), v.vcfG, k);
+        if (k != v.vcfK) v.vcfK = k, v.vcfGiven = bassGiven(k, kBassKept);
+        const float filtered = v.vcf.run(source, v.vcfG, k, v.vcfGiven);
         const float gain = v.vca.next(holdK);
         const float y = filtered * gain;
         if (std::fabs(y) > clipFrom) out[i] += vcaClip(y, clipFrom), ++clipped;
