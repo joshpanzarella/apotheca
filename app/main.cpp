@@ -20,6 +20,8 @@
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
+//                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
+//                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --no-menu      with --shot: any view as on a handheld with no MENU button (the bar's
@@ -660,7 +662,7 @@ int main(int argc, char** argv) {
     } else if (std::strcmp(view, "songs") == 0) {
         app.session().view = View::Song;
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
-    } else if (std::strcmp(view, "sampler") == 0) {
+    } else if (std::strncmp(view, "sampler", 7) == 0) {
         // With --samples: a sampler track playing the first recording.
         app.session().addTrack(TrackKind::Sampler);
         app.project().track = app.project().trackCount() - 1;
@@ -669,6 +671,10 @@ int main(int argc, char** argv) {
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
         app.session().view = View::Device;
         app.sampler().goTo(3);
+        if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
+            app.sampler().goTo(0);
+            tapKey(SDLK_x);
+        }
     } else if (std::strncmp(view, "bars", 4) == 0) {
         // Scene 1 with cells of different lengths: the pads four bars (a
         // chord a bar, the last held over two), the bass two, the drums one.
@@ -900,7 +906,7 @@ int main(int argc, char** argv) {
         } else {
             app.twin().goTo(std::atoi(view + 5), view[5] ? 0 : SynthScreen::kFirstMacro + 1);
         }
-    } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strcmp(view, "picker") == 0) {
+    } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strncmp(view, "picker", 6) == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one
         // bar, with hits on the beat whose starts have been rolled.
         const std::vector<std::string> names = app.session().sampleNames();
@@ -954,9 +960,55 @@ int main(int argc, char** argv) {
         } else {
             app.session().view = View::Device;
             app.kit().goTo(5, KitScreen::kSound);
-            if (std::strcmp(view, "picker") == 0) {
-                tapKey(SDLK_x); // the list
-                tapKey(SDLK_DOWN, 3);
+            if (std::strncmp(view, "picker", 6) == 0) {
+                // The list of recordings, three columns. It opens in the folder of the recording that is on, on it.
+                // picker: out to SAMPLES, on a folder (what it holds beside it). picker-in: in a folder, on a
+                // recording. picker-deep and picker-deleting: two folders down (the second with B held: its bar filling).
+                // picker-new: on + NEW FOLDER, the last row of SAMPLES. picker-typing: its name being typed.
+                // picker-carrying: R1 held on a recording in a folder, steered out onto the folder (the top line says where it would go).
+                // picker-folder-deleting: B held on an empty folder, its bar filling.
+                const int levels = std::strcmp(view, "picker-in") == 0 || std::strcmp(view, "picker-carrying") == 0 ? 1 : std::strcmp(view, "picker-deep") == 0 || std::strcmp(view, "picker-deleting") == 0 ? 2 : 0;
+                for (const std::string& n : app.session().sampleNames())
+                    if (levels > 0 && std::count(n.begin(), n.end(), '/') == levels) {
+                        app.session().setLaneSample(0, 5, n);
+                        break;
+                    }
+                tapKey(SDLK_x); // A: the list
+                if (levels == 0) tapKey(SDLK_LEFT);
+                if (std::strcmp(view, "picker-new") == 0 || std::strcmp(view, "picker-typing") == 0) {
+                    tapKey(SDLK_w, 3); // R1: a page at a time, to the last row
+                    if (std::strcmp(view, "picker-typing") == 0) {
+                        tapKey(SDLK_x);
+                        for (const char* k = "\x02x\x01\x01x\x03x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : *k == 3 ? SDLK_UP : SDLK_x);
+                    }
+                }
+                if (std::strcmp(view, "picker-carrying") == 0) {
+                    pushKey(SDLK_w, true); // R1 held
+                    tapKey(SDLK_LEFT);     // and a direction: carried at once
+                }
+                if (std::strcmp(view, "picker-folder-deleting") == 0) {
+                    // The first folder of SAMPLES with nothing in it, if there is one.
+                    const std::vector<std::string> have = app.session().sampleNames(), folders = app.session().sampleFolders();
+                    int row = 1 + (std::count_if(have.begin(), have.end(), [](const std::string& n) { return n.find('/') == std::string::npos; }) > 0 ? 1 : 0);
+                    for (const std::string& folder : folders) {
+                        if (folder.find('/') != std::string::npos) continue;
+                        bool empty = true;
+                        for (const std::string& other : folders) empty = empty && other.compare(0, folder.size() + 1, folder + "/") != 0;
+                        for (const std::string& n : have) empty = empty && n.compare(0, folder.size() + 1, folder + "/") != 0;
+                        if (empty) {
+                            tapKey(SDLK_UP, 20);
+                            tapKey(SDLK_DOWN, row);
+                            pushKey(SDLK_z, true);
+                            if (stillMs > 600) stillMs = 600; // (well before the second is up: this one deletes a FOLDER)
+                            break;
+                        }
+                        ++row;
+                    }
+                }
+                if (std::strcmp(view, "picker-deleting") == 0) {
+                    pushKey(SDLK_z, true);
+                    if (stillMs > 600) stillMs = 600; // the picture is taken well before the second is up: this one deletes a FILE
+                }
             }
         }
     } else if (std::strcmp(view, "setup") == 0 || std::strcmp(view, "buttons") == 0) {
@@ -1018,7 +1070,7 @@ int main(int argc, char** argv) {
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
-    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr) { // (another press calls a held B off)
+    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strcmp(view, "picker-typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
     // A gesture held on the drum grid.

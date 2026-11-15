@@ -90,6 +90,12 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
 
+    // A new folder's name being typed in the list of recordings: every button is the list's, the tabs too.
+    if (typingAFolder() && !panicking_) {
+        screenNow().onButton(event, input);
+        return;
+    }
+
     // SELECT tapped by itself, away from the SONG screen: go there. (On the
     // SONG screen the same tap opens the list of songs.) A second way to
     // SONG, for when L2 cannot be trusted.
@@ -231,7 +237,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // firmware keeps MENU for itself (it was left out of the controls setup),
     // SELECT held by itself for four tenths of a second does it instead; then
     // letting go of SELECT is not a tap.
-    const bool busy = session_.view == View::Settings && (settings_.testing() || settings_.typing());
+    const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAFolder();
     const bool menu = input.has(Button::Menu);
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
     ui::gUpdateReady = session_.updateReady();

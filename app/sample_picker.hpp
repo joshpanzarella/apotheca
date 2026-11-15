@@ -1,30 +1,56 @@
 #pragma once
-// The list of recordings, for picking one quickly. The kit's lanes and the
-// sampler both open it: a tap of A on SOUND.
+// The recordings, for picking one quickly. The kit's lanes and the sampler
+// both open it: a tap of A on SOUND.
 //
-//   up / down      the next one. It goes onto the lane AT ONCE, so with the
-//                  song playing it is heard in its place in the beat; with
-//                  the song stopped it is played once.
-//   left / right   eight at a time
-//   L1 / R1        the folder before / after. Recordings kept in folders (one
-//                  level inside the samples folder) are listed a folder at a
-//                  time; the loose ones are a folder of their own, UNSORTED.
-//                  Arriving in a folder puts its first recording on, as
-//                  arriving on a row does.
-//   A              keep the one showing
+// Three columns, as the file manager yazi (owner, 2026-11-14): where this
+// folder is, this folder with the cursor in it, and what is under the cursor
+// (a folder's contents, or a recording's picture and length). Folders go two
+// levels deep. The cursor's column is always the middle one.
+//
+//   up / down      the next in the column; the ends stop. A recording under
+//                  the cursor goes onto the lane AT ONCE, so with the song
+//                  playing it is heard in its place in the beat; with the
+//                  song stopped it is played once. Held: the list's pace
+//                  (ui::kListEveryMs), faster after kFasterAfterMs, and after
+//                  kFastestAfterMs as fast as kFastestEveryMs (a long list's end).
+//   the stick      big moves: up to kStickRowsPerSecond, by the SQUARE of how far it
+//                  is pushed (a little push is slow enough to read). Moving faster than
+//                  one row every kAtOnceMs, a recording goes on when the
+//                  cursor rests, not each one passed (each is a file read).
+//   left / right   out to the folder this one is in / into the folder under
+//                  the cursor
+//   L1 / R1        a page up / down, and held: page after page at the list's pace. (R1 on a
+//                  recording that can be carried: one page, when it is let go, since held it carries.)
+//   hold R1        on a recording: CARRY it (hold R1 drags, on every screen). After kCarryHoldMs,
+//                  or at once with a direction: steer with up / down / left / right, the stick
+//                  and L1, and let go to put it in the folder under the cursor, or else in the
+//                  folder showing (SAMPLES itself: out of every folder). The top line says where
+//                  it would go. Nothing goes on the lane meanwhile. B with R1 held calls it off.
+//                  Every saved song and rev that names it follows (Session::moveSample).
+//   A              on a recording: keep it. On a folder: into it. On + NEW FOLDER (the last row
+//                  of SAMPLES and of a first-level folder): the keys for its name, as a track's
+//                  name is typed (A types, B deletes or leaves, Y or START keeps it).
 //   B              a tap: put back what was there before the list was opened
 //   hold B         for a second: DELETE the recording under the cursor from the
-//                  handheld, for good (a bad catch, a take not wanted). Not the
-//                  first row. Hold B is "delete for good" on every screen.
+//                  handheld, for good (a bad catch, a take not wanted), or an
+//                  EMPTY folder (nothing at all in it). Not the first row. Hold B is "delete for good" on
+//                  every screen. Held on a folder that is NOT empty: after kHoldSaysMs the top line
+//                  says so, and letting go is then no tap.
 //   X              hear it again, for as long as X is held (to its end); a tap
-//                  is heard for a moment, as before
+//                  is heard for a moment
+//
+// The first column (SAMPLES) holds the first row ("THE BUILT-IN DRUM"), then
+// UNSORTED (the loose recordings, if there are any) and the folders. With no
+// folders at all there is nothing to go into: the loose recordings are listed
+// there themselves, as the list always was.
 //
 // The list knows nothing of lanes or samplers: it is given the names and
-// three things it can do (use this one, play it, tell me about it).
+// the things it can do (use this one, play it, tell me about it).
 
 #include <SDL.h>
 
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -42,47 +68,118 @@ public:
         std::function<const Session::LaneSound*()> sound;  // what is on now, for its picture; may be empty
         std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
         std::function<const ui::Playhead*()> playhead;     // where the sound being heard has got to, for a line across its picture
+        std::function<int(const std::string&)> used;       // how many OTHER places in the open song have this recording on; may be empty
+        std::function<Session::FileJob(const std::string& from, const std::string& to)> move; // carry: the recording `from` becomes `to`
+        std::function<Session::FileJob(const std::string&)> makeFolder;   // a new, empty folder of this whole name
+        std::function<Session::FileJob(const std::string&)> removeFolder; // delete this folder, if it is empty
     };
-    static constexpr int kRows = 9, kPage = 8;
+    // A row of a column.
+    enum class Kind { First, Folder, Recording, NewFolder };
+    struct Row {
+        Kind kind;
+        std::string name; // a recording's whole name ("drums/kicks/808"), or a folder's ("drums/kicks"; "" is UNSORTED)
+        int count;        // a folder: the recordings in it, those of the folders inside it too
+    };
+    static constexpr int kRows = 11, kPage = kRows - 1;
+    static constexpr Uint32 kFasterAfterMs = 1500, kFasterEveryMs = 60; // a held D-pad: the list's pace first, then this
+    static constexpr Uint32 kFastestAfterMs = 3500, kFastestEveryMs = 20; // ...and held this long, this: the far end of a long list
+    static constexpr float kStickRowsPerSecond = 80.f;                  // the stick pushed all the way (times ui::gStickSpeed); by the square of the push
+    static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
+    static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on
+    static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
+    static constexpr Uint32 kSaidMs = 2500;      // how long the top line says what was done, or why not
+    static constexpr int kFolderNameLength = 12; // the longest a folder's name is typed
+    static const char* const kKeys;              // the keys a name is typed with, row after row (the SET page's)
+    static constexpr int kKeyColumns = 10, kKeyCount = 40;
+    static constexpr float kKeysPerSecond = 7.f;  // the stick over the keys
 
-    // `first` names the row before the recordings ("THE BUILT-IN DRUM").
-    void open(std::vector<std::string> names, const std::string& current, const char* title, const char* first, Jobs jobs);
+    // `folders`: the folders there are (Session::sampleFolders), the empty ones too. `first` names
+    // the row before everything ("THE BUILT-IN DRUM").
+    void open(std::vector<std::string> names, std::vector<std::string> folders, const std::string& current, const char* title, const char* first, Jobs jobs);
     bool isOpen() const { return open_; }
     void onButton(const ButtonEvent& event, bool playing);
     void update(const Input& input, Uint32 nowMs, bool playing);
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
 
-    int cursor() const { return cursor_; }                             // 0 is the first row
-    int count() const { return static_cast<int>(names_.size()) + 1; }  // the first row and the recordings of the folder showing
-    int folders() const { return static_cast<int>(folders_.size()); }
-    int folder() const { return folder_; }                             // which is showing, from 0
-    const std::string& folderName() const { return folders_[static_cast<std::size_t>(folder_)]; } // "" is the loose ones
+    int cursor() const { return cursor_; }                          // which row of the middle column, from 0
+    int count() const { return static_cast<int>(rows_.size()); }    // how many rows it has
+    int depth() const { return depth_; }                            // 0: SAMPLES. 1: a folder (or UNSORTED). 2: a folder in a folder
+    const std::string& folderName() const { return here_; }         // the folder showing: "" is SAMPLES, or UNSORTED at depth 1
+    const std::vector<Row>& rows() const { return rows_; }
+    const Row* under() const { return cursor_ >= 0 && cursor_ < count() ? &rows_[static_cast<std::size_t>(cursor_)] : nullptr; }
+    bool flat() const { return dirs_.empty(); }                     // no folders at all: one list
+    float deletePart() const { return deletePart_; }
+    const std::string& carried() const { return carried_; }         // the recording being carried ("": none)
+    std::string carryTo() const;                                    // the folder it would go to if R1 were let go now ("": out of every folder)
+    bool typing() const { return typing_; }                         // a new folder's name is being typed: every button is its
+    const std::string& typed() const { return typed_; }
+    const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
+    // The rows of a place, as a column lists them.
+    std::vector<Row> rowsAt(int depth, const std::string& folder) const;
+    int rowsMade() const { return rowsMade_; }                 // how many times a column's rows were worked out (draw() does not, frame after frame)
+
+    // Where things are drawn, for the tests that read the screen.
+    static constexpr int kX = 8, kW = ui::kScreenW - 16, kY = 34, kH = ui::kScreenH - ui::kHintsH - kY - 8;
+    static constexpr int kGap = 8, kLeftW = 150, kMidW = 254, kRightW = kW - 24 - 2 * kGap - kLeftW - kMidW;
+    static constexpr int kLeftX = kX + 12, kMidX = kLeftX + kLeftW + kGap, kRightX = kMidX + kMidW + kGap;
+    static constexpr int kHeadY = kY + 30, kRowsY = kHeadY + 22, kRowH = 30, kPictureH = 70;
 
 private:
-    void moveTo(int row, bool playing);
-    void showFolder(int index);          // list its recordings
-    void turnFolder(int by, bool playing);
+    void moveTo(int row, bool playing, bool atOnce);
+    void arrive(bool playing, bool atOnce);  // the cursor has come to a row: a recording goes on
+    void put(bool playing);                  // what the cursor is on goes on now
+    void show(int depth, const std::string& folder);
+    void into(bool playing);                 // the folder under the cursor
+    void out();                              // to the folder this one is in
+    int step(Button b) const;
+    void refresh(const std::string& onto = "");  // the rows again, after the card changed; the cursor on its row (or the row of this key)
+    void drop(bool playing);                 // R1 let go while carrying
+    void typeButton(Button b);
+    void moveKey(Button direction);
+    void keepFolder();
+    void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
+    bool emptyFolder(const Row& row) const;  // a folder hold B deletes
+    bool carries(const Row* row) const { return row && row->kind == Kind::Recording && jobs_.move && !flat(); } // hold R1 carries it
+    void index();                            // all_ or dirs_ changed: the counts again
+    const std::vector<Row>& side(std::vector<Row>& rows, std::string& key, int depth, const std::string& folder) const;
+    void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
+    void drawColumn(SDL_Renderer* r, const Fonts& fonts, int x, int w, const std::vector<Row>& rows, int lit, bool cursor, int first) const;
 
     bool open_ = false;
-    std::vector<std::string> all_;      // every recording, as "name" or "folder/name"
-    std::vector<std::string> folders_;  // the folders there are; "" (the loose ones) first if there are any
-    int folder_ = 0;
-    std::vector<std::string> names_;    // the recordings of the folder showing, by their whole names
-    std::string original_, title_, first_;
+    std::vector<std::string> all_;   // every recording, by its whole name
+    std::vector<std::string> dirs_;  // every folder: "drums", "drums/kicks"
+    int depth_ = 0;
+    std::string here_;
+    std::vector<Row> rows_;          // the middle column
+    std::map<std::string, int> counts_; // how many recordings are under each folder, its inner folders' too
+    int loose_ = 0, changes_ = 0;       // the recordings in no folder; how many times the card's lists changed
+    mutable int rowsMade_ = 0;
+    mutable std::vector<Row> leftRows_, rightRows_; // the side columns as last drawn: made again only when the place or the card changes
+    mutable std::string leftKey_, rightKey_;
+    std::map<std::string, std::string> last_; // where the cursor was in a folder left, by the row's name (this opening only)
+    std::string original_, on_, title_, first_;
     Jobs jobs_;
     int cursor_ = 0;
+    bool waiting_ = false;           // the row under the cursor has not gone on yet (moving fast)
+    Uint32 arrivedAt_ = 0;
     float saved_ = 0.f;
     bool stickWas_ = false;
     Button repeating_ = Button::None;
-    Uint32 repeatAt_ = 0, lastMs_ = 0;
-    bool playing_ = false;
+    Uint32 repeatAt_ = 0, repeatSince_ = 0, lastMs_ = 0;
     bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's)
     bool deleting_ = false, deleteTimed_ = false; // B is held on a recording
+    bool refusing_ = false;                       // B is held on a folder that is not empty
     Uint32 deleteSince_ = 0;
     float deletePart_ = 0.f;
-public:
-    static constexpr Uint32 kDeleteHoldMs = 1000;
-    float deletePart() const { return deletePart_; }
+    bool r1Down_ = false, r1Timed_ = false;       // R1 went down on a recording: a page when let go, a carry if held
+    Uint32 r1Since_ = 0;
+    std::string carried_;
+    bool typing_ = false;
+    std::string typed_, typingIn_;                // the name so far, and the folder it will be in ("": SAMPLES)
+    int key_ = 0;
+    std::string said_;
+    Uint32 saidUntil_ = 0;
 };
 
 } // namespace apotheca

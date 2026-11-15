@@ -112,7 +112,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
 
 <div id="drop">
 <div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button><span class="dim">or drop files or a whole folder on the page.</span></div>
-<div class="line" style="margin-top:12px"><label for="into">Recordings go in</label><select id="into"></select><input id="intoNew" class="hid" type="text" maxlength="24" placeholder="new folder name"></div>
+<div class="line" style="margin-top:12px"><label for="into">Recordings go in</label><select id="into"></select><input id="intoNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"></div>
 <p style="margin:10px 0 0;font-size:13px">Recordings (.wav), chord packs (.json), songs (.song). 30 MB at most each. Every file is checked before it is kept.</p>
 <input id="files" class="hid" type="file" multiple accept=".wav,.json,.song,audio/wav,audio/x-wav">
 <input id="dir" class="hid" type="file" webkitdirectory multiple>
@@ -122,7 +122,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
 </div>
 
 <h2>Recordings <span class="count" id="nSamples"></span><input id="find" type="text" placeholder="find"></h2>
-<div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="24" placeholder="new folder name"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
+<div class="line hid" id="bulk"><b id="nPicked"></b><label for="bulkTo">move to</label><select id="bulkTo"></select><input id="bulkNew" class="hid" type="text" maxlength="49" placeholder="new folder, or folder/inner"><button id="bulkMove" class="main">Move</button><button id="bulkDelete" class="del">Delete</button><button id="bulkNone">Choose none</button></div>
 <div id="recordings"></div>
 <h2>Bounces <span class="count" id="nBounces"></span></h2><p>Your songs as sound files.</p><div class="panel"><ul id="bounces"></ul></div>
 <h2>Songs <span class="count" id="nSongs"></span></h2><div class="panel"><ul id="songs"></ul></div>
@@ -147,7 +147,7 @@ $('bench').href = base + '/bench';
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 function btn(text, act, cls) { const b = el('button', cls, text); b.dataset.act = act; return b; }
 function urlOf(kind, name) { return base + '/' + kind + '/' + name.split('/').map(encodeURIComponent).join('/'); }
-function split(name) { const i = name.indexOf('/'); return i < 0 ? ['', name] : [name.slice(0, i), name.slice(i + 1)]; }
+function split(name) { const i = name.lastIndexOf('/'); return i < 0 ? ['', name] : [name.slice(0, i), name.slice(i + 1)]; }
 function sizeText(n) { return n == null ? '' : n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
 function bytes(s) { return new TextEncoder().encode(s).length; }
 // The same rules the handheld holds a name to. '' if it is fine, or what is wrong with it.
@@ -157,10 +157,20 @@ function wrong(name, longest) {
   if (/^[. ]/.test(name) || name.includes('..') || /[\x00-\x1f\x7f\/\\:"<>|?*]/.test(name)) return 'a name cannot start with a dot or a space, or have .. / \\ : " < > | ? * in it';
   return '';
 }
+// A folder: one name, or one inside another ("drums/kicks"), two deep and no further.
+function wrongFolder(f) {
+  const parts = f.split('/');
+  if (parts.length > 2) return 'folders go two deep at most';
+  for (const part of parts) if (wrong(part, 24)) return wrong(part, 24);
+  return '';
+}
+// A recording's whole name, folders and all but not its ending, is kept in 63 letters.
+function tooLong(folder, file) { return folder && bytes(folder + '/' + file.replace(/\.wav$/i, '')) > 63 ? 'too long with its folders: 63 letters at most in all' : ''; }
 function folders() {
   const s = new Set(all.folders || []);
   for (const n of all.samples) { const f = split(n)[0]; if (f) s.add(f); }
   for (const f of made) s.add(f);
+  for (const f of [...s]) if (f.includes('/')) s.add(split(f)[0]); // the folder a folder is in
   return [...s].sort((a, b) => a.localeCompare(b));
 }
 function folderSelect(sel, now) {
@@ -257,11 +267,12 @@ $('bulkTo').onchange = () => { $('bulkNew').classList.toggle('hid', $('bulkTo').
 $('bulkNone').onclick = () => { picked.clear(); drawRecordings(); };
 $('bulkMove').onclick = async () => {
   const f = $('bulkTo').value == NEW ? $('bulkNew').value.trim() : $('bulkTo').value;
-  if (f && wrong(f, 24)) { note('folder ' + f, 'refused: ' + wrong(f, 24), 'no'); return; }
+  if (f && wrongFolder(f)) { note('folder ' + f, 'refused: ' + wrongFolder(f), 'no'); return; }
   const names = [...picked].sort();
   for (const from of names) {
     const to = (f ? f + '/' : '') + split(from)[1];
     if (to == from) { picked.delete(from); continue; } // already there
+    if (tooLong(f, split(from)[1])) { note(from + ' to ' + to, 'refused: ' + tooLong(f, split(from)[1]), 'no'); continue; }
     if (await moveOne(from, to)) picked.delete(from);
   }
   if (f) open.add(f);
@@ -297,7 +308,7 @@ function send(files, folder) {
     const kind = kinds[file.name.split('.').pop().toLowerCase()];
     if (!kind) { note(file.name, 'refused: not a .wav, .json or .song', 'no'); continue; }
     const f = kind == 'samples' ? folder : '', name = (f ? f + '/' : '') + file.name;
-    const bad = (f && wrong(f, 24) && 'folder: ' + wrong(f, 24)) || wrong(file.name, f ? 36 : 60) || (file.size > 30 * 1048576 && 'too big: 30 MB at most');
+    const bad = (f && wrongFolder(f) && 'folder: ' + wrongFolder(f)) || wrong(file.name, 60) || tooLong(f, file.name) || (file.size > 30 * 1048576 && 'too big: 30 MB at most');
     if (bad) { note(name, 'refused: ' + bad, 'no'); continue; }
     add(name, urlOf(kind, name), file, (all[kind] || []).includes(name));
     if (f) open.add(f);
@@ -346,7 +357,7 @@ async function run() { // one after another: the handheld takes one at a time
 }
 function target() { // the folder chosen at the top, or null if it is not a name that will do
   if ($('into').value != NEW) return $('into').value;
-  const f = $('intoNew').value.trim(), bad = wrong(f, 24);
+  const f = $('intoNew').value.trim(), bad = f ? wrongFolder(f) : wrong(f, 24);
   if (bad) { note('new folder', bad, 'no'); $('intoNew').focus(); return null; }
   made.add(f); into = f; $('intoNew').value = ''; $('intoNew').classList.add('hid'); draw(); // it is on the card once a file is in it
   return f;
@@ -359,8 +370,9 @@ $('pickUpdate').onclick = () => $('update').click();
 $('update').onchange = () => { const file = $('update').files[0]; if (file && file.size > 30 * 1048576) note('update: ' + file.name, 'refused: too big: 30 MB at most', 'no'); else if (file) add('update: ' + file.name, base + '/update/apotheca', file, false); $('update').value = ''; };
 
 // ---- a whole folder: every recording in it, however deep, each into ONE folder here ----
-// The handheld keeps recordings one folder deep, so "Drums/Kicks/808.wav" arrives as folder
-// "Kicks", file "808". Names are made to fit, and nothing is sent until it has been shown.
+// Each folder there becomes ONE folder here, so "Drums/Kicks/808.wav" arrives as folder
+// "Kicks", file "808". (The handheld takes folders two deep since 2026-11-14; the import does not
+// make them yet.) Names are made to fit, and nothing is sent until it has been shown.
 function tidy(s) { return s.replace(/[\x00-\x1f\x7f\/\\:"<>|?*]/g, ' ').replace(/\.\.+/g, '.').replace(/\s+/g, ' ').replace(/^[. ]+/, '').trim(); }
 function fit(s, room) { // to `room` bytes. Whole words go first, from the middle: a pack's names differ at the start and the end ("Kick ... 01")
   s = tidy(s);
@@ -428,7 +440,7 @@ function showPlan(p, title) {
   box.append(el('h3', '', title + ': ' + n + ' recording' + (n == 1 ? '' : 's') + ' into ' + p.folders.size + ' folder' + (p.folders.size == 1 ? '' : 's') + ', ' + sizeText(p.bytes)));
   if (all.free >= 0 && mb > all.free) box.append(el('p', 'warn', 'TOO BIG FOR THE CARD: ' + sizeText(p.bytes) + ' to send, ' + all.free + ' MB free. Choose a smaller folder.'));
   else if (all.free >= 0) box.append(el('p', '', 'Free on the card: ' + (all.free >= 1024 ? (all.free / 1024).toFixed(1) + ' GB' : all.free + ' MB') + '.'));
-  box.append(el('p', '', 'Sub-folders become one folder each: the handheld keeps recordings one folder deep.'));
+  box.append(el('p', '', 'Sub-folders become one folder each here.'));
   if (p.changed) box.append(el('p', 'warn', p.changed + ' name' + (p.changed == 1 ? ' is' : 's are') + ' shortened or tidied to fit (32 letters at most). Open a folder below to see them.'));
   if (p.replaces) box.append(el('p', 'warn', p.replaces + ' will take the place of a recording of the same name already on the handheld.'));
   if (p.other) box.append(el('p', '', p.other + ' other file' + (p.other == 1 ? '' : 's') + ' left out (not .wav).'));
@@ -553,12 +565,12 @@ function edit(li, moving) { // one small form for both: the name, and the folder
   for (const e of document.querySelectorAll('.edit')) e.remove();
   const [f, file] = split(li.dataset.name), dot = file.lastIndexOf('.');
   const box = el('div', 'edit'), name = el('input'), sel = el('select'), fresh = el('input', 'hid'), save = btn('save', '', 'main'), cancel = btn('cancel', '');
-  name.type = fresh.type = 'text'; name.value = file.slice(0, dot); name.maxLength = 56; fresh.maxLength = 24; fresh.placeholder = 'new folder name';
+  name.type = fresh.type = 'text'; name.value = file.slice(0, dot); name.maxLength = 56; fresh.maxLength = 49; fresh.placeholder = 'new folder, or folder/inner';
   folderSelect(sel, f);
   sel.onchange = () => { fresh.classList.toggle('hid', sel.value != NEW); if (sel.value == NEW) fresh.focus(); };
   const go = () => {
     const folder = sel.value == NEW ? fresh.value.trim() : sel.value, to = name.value.trim() + file.slice(dot);
-    const bad = (folder && wrong(folder, 24) && 'folder: ' + wrong(folder, 24)) || wrong(to, folder ? 36 : 60);
+    const bad = (folder && wrongFolder(folder) && 'folder: ' + wrongFolder(folder)) || wrong(to, 60) || tooLong(folder, to);
     if (bad) { note(li.dataset.name, bad, 'no'); return; }
     const whole = (folder ? folder + '/' : '') + to;
     if (whole == li.dataset.name) { box.remove(); return; }
@@ -677,17 +689,31 @@ long long megabytesFree(const std::string& folder) {
 }
 
 // A file that is really there, as itself: not a link to somewhere else, and
-// (for "folder/name") not inside a link either. Only such a file is deleted or moved.
+// (for "folder/name" or "folder/inner/name") not inside a link either. Only such a file is deleted or moved.
 bool realFile(const std::string& folder, const std::string& name) {
     struct stat info;
-    const std::size_t slash = name.find('/');
-    if (slash != std::string::npos && (lstat((folder + "/" + name.substr(0, slash)).c_str(), &info) != 0 || !S_ISDIR(info.st_mode))) return false;
+    for (std::size_t slash = name.find('/'); slash != std::string::npos; slash = name.find('/', slash + 1))
+        if (lstat((folder + "/" + name.substr(0, slash)).c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) return false;
     return lstat((folder + "/" + name).c_str(), &info) == 0 && S_ISREG(info.st_mode);
 }
 
-// A folder inside the recordings that has just lost a file goes too if that was its last.
+// A folder inside the recordings that has just lost a file goes too if that was its last, and
+// the folder that one was in, if it was all that held.
 void dropIfEmpty(const std::string& folder, const std::string& name) {
-    if (const std::size_t slash = name.find('/'); slash != std::string::npos) rmdir((folder + "/" + name.substr(0, slash)).c_str()); // does nothing while files are in it
+    for (std::size_t slash = name.rfind('/'); slash != std::string::npos && slash > 0; slash = name.rfind('/', slash - 1))
+        rmdir((folder + "/" + name.substr(0, slash)).c_str()); // does nothing while anything is in it
+}
+
+// The folders a recording's name asks for, made if they are not there (the outer one first).
+// False if one of them is not a folder that can be used (a link, a file).
+bool foldersMade(const std::string& folder, const std::string& name) {
+    for (std::size_t slash = name.find('/'); slash != std::string::npos; slash = name.find('/', slash + 1)) {
+        const std::string inside = folder + "/" + name.substr(0, slash);
+        struct stat there;
+        mkdir(inside.c_str(), 0755); // fine if it is already there
+        if (lstat(inside.c_str(), &there) != 0 || !S_ISDIR(there.st_mode)) return false;
+    }
+    return true;
 }
 
 // A song deleted from the page goes where one deleted on the handheld goes:
@@ -746,21 +772,28 @@ std::string safeFileName(const std::string& fromAddress, const std::string& endi
     return end == ending ? name : "";
 }
 
-// A recording may be in a folder, one level down: "kicks/808.wav". The folder
-// and the file are each held to the same rules. "" if it is not such a name.
+// A recording may be in a folder, or in a folder in a folder: "kicks/808.wav",
+// "drums/kicks/808.wav" (two levels and no further). Each folder and the file
+// are held to the same rules, and the whole of it, without its ending, must be a
+// name a song can keep (sampleNameOk: kSampleNameRoom). "" if it is not such a name.
 std::string safeSamplePath(const std::string& fromAddress) {
     const std::string name = unescape(fromAddress);
-    const std::size_t slash = name.find('/');
+    const std::size_t slash = name.rfind('/');
     if (slash == std::string::npos) return safeFileName(fromAddress, ".wav");
-    const std::string folder = name.substr(0, slash), file = name.substr(slash + 1);
-    if (!plainName(folder, 24) || file.size() <= 4 || !plainName(file, 36)) return "";
+    const std::string folders = name.substr(0, slash), file = name.substr(slash + 1);
+    for (std::size_t from = 0; from <= folders.size();) {
+        const std::size_t end = std::min(folders.find('/', from), folders.size());
+        if (!plainName(folders.substr(from, end - from), 24)) return "";
+        from = end + 1;
+    }
+    if (file.size() <= 4 || !plainName(file, 60)) return ""; // (as long as a loose one: the handheld carries any recording into a folder, and the whole is held below)
     std::string end = file.substr(file.size() - 4);
     for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
-    return end == ".wav" ? name : "";
+    return end == ".wav" && sampleNameOk(name.substr(0, name.size() - 4)) ? name : ""; // (which is also what holds it to two folders)
 }
 
-// The folders inside the recordings, empty ones too.
-std::vector<std::string> foldersIn(const std::string& folder) {
+namespace {
+std::vector<std::string> plainFoldersIn(const std::string& folder) {
     std::vector<std::string> folders;
     if (DIR* dir = folder.empty() ? nullptr : opendir(folder.c_str())) {
         while (const dirent* entry = readdir(dir)) {
@@ -773,13 +806,24 @@ std::vector<std::string> foldersIn(const std::string& folder) {
     std::sort(folders.begin(), folders.end());
     return folders;
 }
+} // namespace
 
-// The recordings: the loose ones, then those in each folder as "folder/name.wav".
+// The folders inside the recordings, empty ones too: each, then the folders inside it ("drums", "drums/kicks").
+std::vector<std::string> foldersIn(const std::string& folder) {
+    std::vector<std::string> folders;
+    for (const std::string& inside : plainFoldersIn(folder)) {
+        folders.push_back(inside);
+        for (const std::string& under : plainFoldersIn(folder + "/" + inside)) folders.push_back(inside + "/" + under);
+    }
+    return folders;
+}
+
+// The recordings: the loose ones, then those in each folder as "folder/name.wav" (and "folder/inner/name.wav").
 std::vector<std::string> recordingsIn(const std::string& folder) {
     std::vector<std::string> names = filesEnding(folder, ".wav");
     for (const std::string& inside : foldersIn(folder))
         for (const std::string& file : filesEnding(folder + "/" + inside, ".wav"))
-            if (file.size() <= 36) names.push_back(inside + "/" + file);
+            if (file.size() <= 60 && sampleNameOk(inside + "/" + file.substr(0, file.size() - 4))) names.push_back(inside + "/" + file); // (only what the page could ask for by name)
     return names;
 }
 
@@ -1045,10 +1089,9 @@ void Transfer::answer(int fd) {
         // Nothing is written over. (A card that takes "Kick" and "kick" for one name answers with the file itself.)
         if (lstat(target.c_str(), &there) == 0 && (stat(file.c_str(), &here) != 0 || here.st_ino != there.st_ino || here.st_dev != there.st_dev))
             return reply(fd, "409 Taken", "text/plain", "there is one of that name already\n");
-        if (const std::size_t in = to.find('/'); in != std::string::npos) {
-            const std::string inside = folder + "/" + to.substr(0, in);
-            mkdir(inside.c_str(), 0755); // fine if it is already there
-            if (lstat(inside.c_str(), &there) != 0 || !S_ISDIR(there.st_mode)) return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
+        if (!foldersMade(folder, to)) {
+            dropIfEmpty(folder, to); // (what was made on the way does not linger)
+            return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
         }
         // Some cards will not rename a file from one folder into another (it was refused on the
         // handheld's own card). Then it is moved the long way: written again where it goes, and
@@ -1117,7 +1160,10 @@ void Transfer::answer(int fd) {
                      kind == "samples" ? "not a WAV file this can read\n" : kind == "chords" ? "not a chord pack\n" : "not an Apotheca song\n");
     }
     mkdir(folder.c_str(), 0755); // fine if it is already there
-    if (const std::size_t in = name.find('/'); in != std::string::npos) mkdir((folder + "/" + name.substr(0, in)).c_str(), 0755); // and the folder inside it
+    if (!foldersMade(folder, name)) { // and the folders inside it
+        dropIfEmpty(folder, name);
+        return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
+    }
     std::unique_lock<std::mutex> songs(songFiles_, std::defer_lock);
     if (kind == "songs") songs.lock(); // not while the session is going through them
     const bool written = writeTextFile(file, body);

@@ -141,25 +141,41 @@ recording. Eight notes at a time.
 ### The list of recordings
 
 **Tap A on SOUND** (a kit lane, or the sampler) and the recordings come up
-as a list, with the one showing drawn as a waveform and its length.
+in **three columns**: the folder this one is in, this folder with the cursor
+in it, and what is under the cursor (a folder's contents, or a recording's
+waveform and length). The cursor's column is always the middle one. It opens
+in the folder of the recording that is on, on it.
 
 | Button | Does |
 | --- | --- |
-| Up / down | The next one. It goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. The stick runs through about eight a second. |
-| Left / right | Eight at a time |
-| **L1 / R1** | The folder before / after (when there are folders) |
-| A | Keep it |
+| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. Held: a steady pace, faster after a second and a half |
+| The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
+| Left / right | Out to the folder this one is in / into the folder under the cursor |
+| **L1 / R1** | A page up / down |
+| **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
+| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, B deletes, Y or START keeps it) |
 | B | A tap: put back what was there before the list opened |
 | X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
-| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
+| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
 | START | Play / stop, with the list still open |
 
-**Folders.** Make folders inside `samples` (kicks, breaks, vocals...) and the
-list shows one folder at a time, its name on a bar at the top. L1 and R1 turn
-them; arriving in a folder puts its first recording on. Recordings not in a
-folder are in one called UNSORTED. One level of folders: a folder inside a
-folder is not looked into. Catches go in `catches`, takes from a microphone
-in `recorded`, by themselves. A song keeps a recording as `folder/name`.
+**Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
+folders inside those: **two levels**, `drums/kicks/808`. A folder inside
+that is not looked into. **Make one on the handheld** with + NEW FOLDER, the
+last row of SAMPLES and of each first-level folder (twelve letters at most,
+kept in small letters), or on the WiFi page.
+
+**A recording carried to another folder keeps playing**, and nothing is
+lost: the open song, every saved song and every rev that used it name it
+where it is now. It is not moved where one of that name already is, or where
+its name with its folders would pass 63 letters; the top line says which.
+The folder it left stays, even empty. The first column, SAMPLES, lists the first row (the
+built-in drum, or no recording), UNSORTED (the recordings not in a folder)
+and each folder with how many recordings are under it. With no folders at
+all the recordings are listed there themselves. Under a recording's picture
+the list says if it is on elsewhere in the song. Catches go in `catches`,
+takes from a microphone in `recorded`, by themselves. A song keeps a
+recording as `folder/name` or `folder/inner/name`, 63 letters at most in all.
 
 **A recording that has moved is found again.** When a song is opened and a
 recording is not where the song says, Apotheca looks through `samples` and
@@ -769,8 +785,9 @@ the same network.
   count again; a minute with no wrong number does. Turning WiFi off and on
   gives a new number and starts the count again.
 - **A whole folder**: CHOOSE A FOLDER, or drop one on the page. Every `.wav`
-  in it is sent, however deep its sub-folders go. The handheld keeps
-  recordings one folder deep, so each sub-folder becomes one folder:
+  in it is sent, however deep its sub-folders go. Each sub-folder becomes
+  one folder here (the handheld takes folders two deep, but a folder sent
+  whole is still laid out one deep):
   `Pack/Drums/Kicks/808.wav` arrives as folder `Kicks`, file `808`. Two
   folders with one name get their parent's in front (`Drums Kicks`,
   `Vintage Kicks`). Names too long for the handheld (32 letters, 24 for a
@@ -817,8 +834,8 @@ the same network.
   seen the handheld's screen cannot get in. It is not encryption: use it on
   a network you trust.
 - Every file is checked before it is kept: a plain name of the right kind
-  (no `..`, nothing hidden; a recording may be one folder down, nothing
-  else may), 30 MB at most, and really a WAV, a chord pack or a song.
+  (no `..`, nothing hidden; a recording may be one or two folders down,
+  63 letters in all, nothing else may), 30 MB at most, and really a WAV, a chord pack or a song.
   Anything else is refused and nothing is written. Deleting, renaming and
   moving hold names to the same rules, and only touch a file that is there.
 - It is off until turned on, and off again when Apotheca closes.

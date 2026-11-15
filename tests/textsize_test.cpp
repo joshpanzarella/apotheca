@@ -168,6 +168,12 @@ int runViews(const char* program, const char* only) {
     wav("hat closed", 0.1f, 4000.f);
     wav("vocal take 06", 1.2f, 220.f);
     wav("long ambient texture", 2.f, 110.f);
+    // Folders two levels down (owner, 2026-11-14), one of them empty: the list of recordings shows them in columns.
+    for (const char* dir : {"/drums", "/drums/kicks", "/drums/snares", "/drums/empty", "/vocals"}) mkdir((samples + dir).c_str(), 0755);
+    wav("drums/kicks/tight", 0.2f, 60.f);
+    wav("drums/kicks/sub drop with a long name", 1.1f, 40.f);
+    wav("drums/snares/crack", 0.15f, 900.f);
+    wav("drums/one shot", 0.3f, 300.f);
 
     if (!only) testTheStillsFlag(program, folder);
     std::vector<std::vector<std::string>> faults(static_cast<std::size_t>(kViewCount));
@@ -996,6 +1002,22 @@ void testTheOtherScreens() {
     for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
     CHECK(writeWav(samples + "/a folder with a long name/a recording with a very long name indeed.wav", sound, 48000));
     CHECK(writeWav(samples + "/short.wav", sound, 48000));
+    // Two folders down, each name as long as a folder's may be, and an empty folder beside it.
+    const std::string deep = "a folder with a long name/another just as long as it/x of names";
+    mkdir((samples + "/a folder with a long name/another just as long as it").c_str(), 0755);
+    mkdir((samples + "/a folder with a long name/nothing in this folder yet").c_str(), 0755);
+    CHECK(writeWav(samples + "/" + deep + ".wav", sound, 48000) && sampleNameOk(deep) && deep.size() == 63);
+    // A short one two folders down (a lane says the inner folder), and a folder of more than the list shows at once.
+    mkdir((samples + "/ab").c_str(), 0755);
+    mkdir((samples + "/ab/cd").c_str(), 0755);
+    mkdir((samples + "/mm").c_str(), 0755);
+    CHECK(writeWav(samples + "/ab/cd/ef.wav", sound, 48000));
+    CHECK(writeWav(samples + "/ab/a dozen chars.wav", sound, 48000)); // (too long a name to carry two folders down)
+    for (int i = 1; i <= 14; ++i) {
+        char many[32];
+        std::snprintf(many, sizeof many, "/mm/m %02d.wav", i);
+        CHECK(writeWav(samples + many, sound, 48000));
+    }
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
@@ -1314,18 +1336,132 @@ void testTheOtherScreens() {
     rig.frames(1);
     holds(rig, "the kit, on FIT TO");
     rig.app.kit().goTo(2, KitScreen::kSound);
-    rig.tap(A); // the list, in the long folder
-    holds(rig, "the kit's list of recordings");
-    rig.tap(R1);
-    holds(rig, "the kit's list, the next folder");
-    rig.tap(DOWN);
+    // The list, in columns: in the long folder, on the long name; then every place it can be, and
+    // the hints bar holding all it says at each.
+    const SDL_Keycode UP = SDLK_UP;
+    const auto listHolds = [&](const char* what, const char* words) {
+        holds(rig, what);
+        if (ui::gHintsOver != 0.f) std::printf("    %s: the hints are %.0f pixels over\n", what, static_cast<double>(ui::gHintsOver));
+        if (!drew(words)) std::printf("    %s: \"%s\" is not drawn\n", what, words);
+        CHECK(ui::gHintsOver == 0.f && drew(words));
+    };
+    session.setLaneSample(0, 2, deep);
+    session.finishStretching();
+    rig.tap(A);
+    CHECK(rig.app.kit().picker().depth() == 2 && rig.app.kit().picker().cursor() == 0);
+    listHolds("the kit's list, two folders down", "ANOTHER JUST AS LONG AS IT");
+    CHECK(drew("carry") && drew("delete it") && drew("keep it")); // the bar, on a recording: HOLD R1 carries, HOLD B deletes
+    CHECK(drew("1 OF 1") && drew("LANE 3: PICK ITS SOUND") && drew("0.50 S") && drew("X OF NAMES"));
     rig.key(B, true);
     rig.frames(10);
-    holds(rig, "the kit's list, B held");
+    listHolds("the kit's list, B held", "DELETING: CANNOT BE UNDONE");
+    CHECK(asAtLarge("DELETING: CANNOT BE UNDONE")); // (too long for its row at XL: held at LARGE, where it fits)
     rig.key(B, false);
-    rig.tap(L1);
     rig.tap(A);
+    session.setLaneSample(0, 7, deep); // on another lane too: the list says so
+    listHolds("the kit's list, a recording on in two places", "ALSO IN THIS SONG: 1 PLACE");
+    session.setLaneSample(0, 6, deep);
+    listHolds("the kit's list, a recording on in three places", "ALSO IN THIS SONG: 2 PLACES");
+    session.setLaneSample(0, 6, "");
+    session.setLaneSample(0, 7, "");
+    rig.tap(LEFT); // on the folder it is in, itself in a folder: what it holds beside it
+    CHECK(rig.app.kit().picker().depth() == 1 && rig.app.kit().picker().count() == 3); // (the 66-letter one on the card is too long to be a name: not listed)
+    listHolds("the kit's list, on a folder in a folder", "X OF NAMES");
+    CHECK(!drew("carry") && !drew("delete it") && drew("open") && drew("page")); // a folder with something in it: neither
+    rig.key(B, true); // B held on it: no bar, and after a moment the top line says why
+    rig.frames(30);
+    listHolds("the kit's list, B held on a folder that is not empty", "NOT DELETED: IT IS NOT EMPTY");
+    rig.key(B, false);
+    CHECK(rig.app.kit().picker().isOpen());
+    rig.frames(SamplePicker::kSaidMs / 16 + 2);
+    rig.tap(DOWN); // on an empty one
+    listHolds("the kit's list, on an empty folder", "NOTHING IN IT");
+    rig.tap(RIGHT); // in it
+    CHECK(rig.app.kit().picker().depth() == 2 && rig.app.kit().picker().count() == 0);
+    listHolds("the kit's list, in an empty folder", "NOTHING IN IT");
+    rig.tap(LEFT);
+    rig.tap(LEFT); // SAMPLES
+    CHECK(rig.app.kit().picker().depth() == 0);
+    listHolds("the kit's list, SAMPLES", "UNSORTED");
+    rig.tap(UP);
+    listHolds("the kit's list, UNSORTED", "SHORT");
+    rig.tap(UP);
+    listHolds("the kit's list, the first row", "THE BUILT-IN DRUM");
+    // More rows than show: the list goes along with the cursor (a page at a time with R1, the ends stop).
+    rig.tap(DOWN, 4);
+    rig.tap(RIGHT);
+    CHECK(rig.app.kit().picker().folderName() == "mm" && rig.app.kit().picker().count() == 15);
+    listHolds("the kit's list, a long folder's top", "M 01");
+    CHECK(drew("M 11") && !drew("M 12") && drew("1 OF 15"));
+    rig.tap(R1);
+    listHolds("the kit's list, a page down", "M 11");
+    CHECK(drew("M 14") && !drew("M 04") && drew("M 05") && drew("+ NEW FOLDER") && drew("11 OF 15")); // (the last eleven: the cursor is not kept in the middle past the end)
+    rig.tap(R1);
+    listHolds("the kit's list, its end", "+ NEW FOLDER");
+    CHECK(drew("15 OF 15") && drew("M 14") && drew("M 05") && !drew("M 04"));
+    // + NEW FOLDER: its name typed, at its longest, and the folder made.
+    rig.tap(A);
+    CHECK(rig.app.kit().picker().typing());
+    listHolds("the kit's list, a new folder's name, nothing typed", "NEW FOLDER IN MM: ITS NAME");
+    rig.tap(DOWN, 2);
+    rig.tap(RIGHT, 2);
+    rig.tap(A, 14);
+    listHolds("the kit's list, a new folder's name at its longest", "WWWWWWWWWWWW");
+    CHECK(drew("12 OF 12") && drew("SPACE"));
+    rig.tap(Y);
+    CHECK(!rig.app.kit().picker().typing());
+    listHolds("the kit's list, a folder made", "MADE WWWWWWWWWWWW");
+    // Carrying: the top line says what, and where it would go; then what came of it.
+    const SDL_Keycode R1 = SDLK_w, L1 = SDLK_q;
+    rig.tap(L1, 3);
+    rig.tap(R1, 3);
+    rig.tap(UP);
+    rig.key(R1, true);
+    rig.frames(25);
+    CHECK(rig.app.kit().picker().carried() == "mm/m 14");
+    listHolds("the kit's list, carrying", "CARRYING TO MM: M 14");
+    rig.tap(LEFT);
+    rig.tap(UP, 2);
+    listHolds("the kit's list, carrying to a long folder", "CARRYING TO A FOLDER WITH A LONG NAME: M 14");
+    rig.key(R1, false);
+    listHolds("the kit's list, moved", "MOVED TO A FOLDER WITH A LONG NAME");
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    rig.tap(L1);
+    rig.tap(DOWN);
+    CHECK(rig.app.kit().picker().under() && rig.app.kit().picker().under()->name == "ab/a dozen chars");
+    rig.key(R1, true);
+    rig.tap(LEFT);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    rig.tap(L1, 3);
+    CHECK(rig.app.kit().picker().carryTo() == "a folder with a long name/another just as long as it");
+    listHolds("the kit's list, carrying into a folder in a folder", "CARRYING TO ANOTHER JUST AS LONG AS IT: A DOZEN CHARS");
+    rig.key(R1, false);
+    listHolds("the kit's list, not moved", "NOT MOVED: ITS NAME WOULD BE TOO LONG THERE");
+    // B held on an empty folder: its bar. Let go: B's tap, and the lane is as it was.
+    rig.tap(LEFT);
+    rig.tap(DOWN, 2);
+    rig.tap(RIGHT);
+    rig.tap(L1, 3);
+    CHECK(rig.app.kit().picker().under() && rig.app.kit().picker().under()->name == "mm/wwwwwwwwwwww");
+    listHolds("the kit's list, on an empty folder that can be deleted", "WWWWWWWWWWWW");
+    CHECK(drew("delete it") && !drew("carry"));
+    rig.key(B, true);
+    rig.frames(10);
+    CHECK(rig.app.kit().picker().deletePart() > 0.f);
+    listHolds("the kit's list, B held on an empty folder", "DELETING: CANNOT BE UNDONE");
+    rig.key(B, false);
     rig.frames(2);
+    CHECK(!rig.app.kit().picker().isOpen());
+    session.setLaneSample(0, 2, longest);
+    session.setLaneSample(0, 3, "ab/cd/ef");
+    session.finishStretching();
+    rig.frames(2);
+    holds(rig, "the kit, a recording two folders down");
+    CHECK(drew("EF") && drew("CD") && !drew("AB/CD")); // its lane says the folder it is in: of two, the inner one
+    session.setLaneSample(0, 3, "short");
+    session.finishStretching();
 
     // What comes up over any screen: the volume, the help card (with a MENU button and without), ALL SOUND STOPPED.
     session.view = View::Song;

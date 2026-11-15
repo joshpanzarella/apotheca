@@ -75,6 +75,10 @@ public:
 
 private:
     Screen& screenNow();
+    bool typingAFolder() const { // the list of recordings is up, with a new folder's name being typed
+        const Screen* now = &screenNow();
+        return (now == &kit_ && kit_.picker().typing()) || (now == &sampler_ && sampler_.picker().typing());
+    }
     const Screen& screenNow() const { return const_cast<App*>(this)->screenNow(); }
     std::unique_ptr<Project> project_; // large, so not on the stack
     Session session_;

@@ -178,7 +178,22 @@ public:
     std::vector<std::string> sampleNames() const;
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
+    std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
+    int sampleUses(const std::string& name) const; // how many drum lanes and sampler tracks of the open song have it on
     bool deleteSample(const std::string& name);
+    // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
+    // hold B on an empty folder), and how it went.
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved }; // NotSaved: done, but a song that names it could not be written (a full card)
+    // Move a recording to another folder (or out of every folder), under the name `to`: its file is
+    // renamed (the long way where the card will not), the open song follows (recordingChanged: the
+    // name only, the sound plays on), every saved song and rev that names it follows
+    // (savedSongsFollow), and the open song is written. Nothing is written over (Taken, case not
+    // counted); the folder it goes to must be there already; `to` must fit kSampleNameRoom (TooLong).
+    FileJob moveSample(const std::string& from, const std::string& to);
+    // A new, empty folder: "name", or "folder/name" inside one of the first level.
+    FileJob makeSampleFolder(const std::string& name);
+    // Only an EMPTY folder is deleted: NotEmpty if anything at all is in it (a file that is no recording too).
+    FileJob deleteSampleFolder(const std::string& name);
     // A recording's file was changed from outside (the WiFi page), and the open song follows.
     // Renamed or moved (`from` and `to`): every lane and sampler track that used the old name
     // uses the new one, and goes on playing the sound it has: nothing is read again. Deleted
@@ -200,7 +215,7 @@ public:
     // itself and moved into place, with the date it had. Pairs with a name that is no
     // recording's (one sent or deleted has an empty side) are passed over. The open song's own file is left to
     // recordingChanged and the autosave. Returns how many files were written.
-    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames);
+    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed = nullptr); // failed: those that name one and could not be written
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
@@ -284,7 +299,7 @@ public:
     std::vector<std::string> songNames() const; // most recently saved first
     void newSong();                             // saves the current one first
     bool openSong(const std::string& name);     // likewise
-    void saveNow();                             // only writes if something changed
+    bool saveNow();                             // only writes if something changed; false: it had to and could not
     // Give the open song a new two-word name (there is no keyboard to type
     // one). Its file and its revs follow. Returns the new name.
     std::string renameSong();

@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (42) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (43) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -1480,7 +1480,83 @@ effect in those two groups and fails one that does not.
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played
   with.
-- **A recording's name may carry one folder**: `kicks/808`. Everything that
+- **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
+  plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
+  folder with the cursor (always the middle column), and what is under the cursor.
+  `rowsAt(depth, folder)` is the one place a column's rows are made (0 SAMPLES: the first row,
+  UNSORTED if anything is loose, the folders; with no folders at all, the recordings
+  themselves: `flat()`). **A D-pad press puts the recording on at once; rows going by faster
+  than one every `kAtOnceMs` (the stick, a D-pad held past `kFasterAfterMs`) do not: the one
+  rested on does** (each is a file read from the card). A, X and B go by what is SHOWING or
+  what was on (`on_`), never by the cursor alone. A folder puts nothing on. Deleting a
+  folder's last recording leaves the folder (an empty folder is deleted by itself: batch 2).
+  Its places are constants in the header; `sample_test` (`testFoldersInTheSamplePicker`,
+  `testThePickersPace`) and `textsize_test` (every place it can be, the hints at 0 over).
+  **The still `picker-deleting` holds B over a real file**: main.cpp takes its picture at
+  600 ms, before the second is up (`picker-folder-deleting` the same, over a real FOLDER).
+  - **It changes the card too** (batch 2, 2026-11-15): `Session::moveSample`,
+    `makeSampleFolder`, `deleteSampleFolder`, each a `Session::FileJob` (Done, Same, TooLong,
+    Taken, NotEmpty, Failed), reached through the list's `Jobs`. The list never touches a file.
+  - **Hold R1 on a recording carries it** (`kCarryHoldMs` 300, or at once with a direction or
+    the stick). So **R1 on a recording pages when it is LET GO**; on any other row at once.
+    While carried nothing goes on the lane (`arrive` returns), A, X and Y do nothing, and the
+    top line says CARRYING TO place: name (`carryTo()`: the folder under the cursor, else the
+    folder showing; SAMPLES itself is "out of every folder", which is how a recording leaves
+    when UNSORTED is not listed). B with R1 held calls it off. A let-go the list never saw
+    (`update`: R1 not held) calls it off too: nothing moves without a let-go that was seen.
+  - **A move is `moveSample`**: the file renamed with the ending it had (written again and the
+    old one taken away where the card will not rename, as the page does:
+    `Transfer::renameBroken` is the tests' such card), then `recordingChanged` (the name only),
+    `savedSongsFollow`, `saveNow`. Nothing is written over, capitals not counted; the folder
+    must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
+    list's `original_` and `on_` follow, so B's tap is still "as it was".
+  - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
+    folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
+    opens the keys a track's name is typed with (the list's own copy: `typeButton`,
+    `drawTyping`; SettingsScreen's was not touched), twelve letters, made in SMALL letters,
+    a space at the end dropped. **While typing every button is the list's, START too**
+    (`picker_.typing()` in the kit's and the sampler's `onButton`); the still `picker-typing`
+    is therefore not given the demo's START, which would make the folder.
+  - **Hold B on a folder deletes it only if it is empty** (`emptyFolder`: no recording under
+    it, no folder in it), by `rmdir`, so a folder holding a file that is no recording stays and
+    the top line says NOT DELETED: OTHER FILES ARE IN IT.
+  - What was done, or why not, is on the top line for `kSaidMs` (`said()`).
+  - On a recording the bar says HOLD R1 carry where it said L1 / R1 page: it holds five.
+  - `tests/picker_test.cpp` (real files; the saved song and rev byte for byte; the list by
+    itself with jobs that count), `textsize_test` (each state drawn, the bar's words).
+  - **The review's mend (batch 3, 2026-11-15):**
+    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
+      the push (a little push reads each name). A held D-pad has a third pace
+      (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
+      (several a frame; a stall makes no burst). **L1 held pages on, and R1 where it does not
+      carry.** 500 rows: the stick 8.3 s, DOWN held 12.6, L1 held 5.5 (each was 33 or more).
+    - **Hold R1 carries only where there is a folder to carry to** (`carries()`: not `flat()`).
+      Let go where it was: LEFT WHERE IT WAS.
+    - **Hold B on a folder that is not empty says so** after `kHoldSaysMs` (NOT DELETED: IT IS
+      NOT EMPTY), and letting go is then no tap. A tap still closes.
+    - **`moveSample` answers `NotSaved`** when the file moved but a saved song that names it, or
+      the open song, could not be written (`savedSongsFollow`'s `failed`, `saveNow` is a bool);
+      the list shows it moved and says MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE.
+    - **A column's rows are made when the place or the card changes, never per frame**
+      (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
+      `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
+    - **While a folder's name is typed L2 / R2 and MENU's help are the list's too**
+      (`App::typingAFolder`).
+    - **`wavNames` lists only what `sampleNameOk` takes** (a file of 64 letters or more is not
+      offered: resting on it put a cut name on the lane).
+    - **On the WiFi page a file in a folder may be as long as a loose one** (60 with its ending;
+      the whole still 63): held to 36, a long recording carried into a folder on the handheld
+      was gone from the page, which then refused to delete it. The page's script changed with it
+      (tried in a browser, 2026-11-15).
+    - **Not mended: the freeze on a carry let go** (`savedSongsFollow` reads every saved song and
+      rev on the app thread, as a rename on the page does). Doing it a file a frame means a
+      switched-off handheld can leave songs naming the old place: the owner's call.
+- **A recording's name may carry two folders** (owner, 2026-11-14; it was one):
+  `kicks/808`, `drums/kicks/808`. `sampleFolderOf` is ALL of the folder (`drums/kicks`),
+  `sampleLabel` the last part; a song file's one-folder name is still a name. The whole name
+  fits `kSampleNameRoom` (63 letters), on the WiFi page too (`safeSamplePath` ends in
+  `sampleNameOk`; each folder 24, the file 60 with its ending, in a folder or out). `wavNames` lists two levels, `wavFolders`
+  the folders (empty ones too). The page's folder import still makes one level. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
 - **THROW is a value on a hit, a note or a chord** (`throwTo`: 1 ECHO, 2
@@ -1725,7 +1801,7 @@ there is a change to the sound, and needs the owner's ears.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
-6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets.
+6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
