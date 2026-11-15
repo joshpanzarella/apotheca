@@ -72,6 +72,8 @@ public:
         std::function<Session::FileJob(const std::string& from, const std::string& to)> move; // carry: the recording `from` becomes `to`
         std::function<Session::FileJob(const std::string&)> makeFolder;   // a new, empty folder of this whole name
         std::function<Session::FileJob(const std::string&)> removeFolder; // delete this folder, if it is empty
+        std::function<bool()> following;                   // saved songs are still following a move (Session::following); may be empty
+        std::function<int()> followFailures;               // Session::followFailures; may be empty
     };
     // A row of a column.
     enum class Kind { First, Folder, Recording, NewFolder };
@@ -115,6 +117,7 @@ public:
     bool typing() const { return typing_; }                         // a new folder's name is being typed: every button is its
     const std::string& typed() const { return typed_; }
     const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
+    bool moving() const { return moving_; }                         // a move's saved songs are following: the top line says MOVING TO
     // The rows of a place, as a column lists them.
     std::vector<Row> rowsAt(int depth, const std::string& folder) const;
     int rowsMade() const { return rowsMade_; }                 // how many times a column's rows were worked out (draw() does not, frame after frame)
@@ -180,6 +183,9 @@ private:
     int key_ = 0;
     std::string said_;
     Uint32 saidUntil_ = 0;
+    std::string movingTo_;           // a move whose saved songs are still following: said MOVING until they are
+    int failuresBefore_ = 0;         // Session::followFailures when it began
+    bool moving_ = false;
 };
 
 } // namespace apotheca

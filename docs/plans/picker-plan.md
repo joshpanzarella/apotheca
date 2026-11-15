@@ -175,7 +175,7 @@ Nothing here has run on the handheld. Every figure is the desk's.
 | --- | --- |
 | A long recording carried into a folder vanished from the WiFi page | **Mended**: a file in a folder may be 60 with its ending, as a loose one (the whole still 63). Server and the page's script; the script tried in a browser |
 | The stick was no big move; nothing paged when held | **Mended**: stick 80 rows a second times its setting, by the square of the push; a third D-pad pace (20 ms a row after 3.5 s); L1 held pages on, R1 too where it does not carry. 500 rows: 8.3 s / 12.6 s / 5.5 s |
-| A carry let go freezes while every saved song is read | **Not mended: the owner's call.** A file a frame would end the freeze, but a handheld switched off mid-way leaves songs naming the old place (mended on opening only if one recording has that last name) |
+| A carry let go freezes while every saved song is read | **Mended (2026-11-15, left to us by the owner)**: a few files a frame, MOVING TO X... on the top line until done; what is owed written down first (renames-owed.txt) and finished at the next start, so a switch-off mid-way leaves nothing naming the old place. Desk: 40 songs x 11 files all naming it, 450 to 740 ms at once; now the longest frame 12 to 16 ms |
 | Two columns' rows worked out every frame | **Mended**: counted once when the card changes, kept until the place or the card changes |
 | MOVED though the songs were not rewritten | **Mended**: `FileJob::NotSaved`, and the top line says so |
 | Hold B on a folder that is not empty said nothing and closed the list | **Mended**: after 400 ms it says NOT DELETED: IT IS NOT EMPTY, and the let-go is no tap |
@@ -197,6 +197,6 @@ Nothing here has run on the handheld. Every figure is the desk's.
 
 **For the owner**
 
-- The freeze on a carry let go (above).
-- An emptied folder: the handheld keeps it, the WiFi page drops it with its last recording.
+- The freeze on a carry let go: mended (above). Not timed on the handheld: one card write a frame is an estimated 60 to 80 ms frame there, and a recording in 40 songs with their revs is about 440 frames of MOVING.
+- An emptied folder: kept on the handheld and on the WiFi page (owner, 2026-11-15: "Keep them").
 - A folder holding only a computer's hidden file (.DS_Store) cannot be deleted on the handheld: it says OTHER FILES ARE IN IT.

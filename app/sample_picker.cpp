@@ -224,7 +224,8 @@ void SamplePicker::drop(bool playing) {
     const std::string to = folder.empty() ? sampleLabel(from) : folder + "/" + sampleLabel(from);
     carried_.clear();
     const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
-    if (did == Session::FileJob::Done || did == Session::FileJob::NotSaved) { // (not saved: it HAS moved)
+    const int failuresBefore = jobs_.followFailures ? jobs_.followFailures() : 0;
+    if (did == Session::FileJob::Done || did == Session::FileJob::NotSaved || did == Session::FileJob::Moving) { // (not saved: it HAS moved)
         std::replace(all_.begin(), all_.end(), from, to);
         std::sort(all_.begin(), all_.end());
         index();
@@ -233,7 +234,14 @@ void SamplePicker::drop(bool playing) {
         // In the folder it went to: the cursor on it. On that folder's row: the row, which counts one more.
         const bool there = depth_ > 0 && here_ == folder;
         refresh(there ? rowKey({Kind::Recording, to, 0}) : "");
-        say(did == Session::FileJob::Done ? "MOVED TO " + destName(folder) : "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE");
+        if (did == Session::FileJob::Moving) { // the saved songs follow a few a frame: said until they have (update)
+            if (!moving_) failuresBefore_ = failuresBefore;
+            moving_ = true;
+            movingTo_ = destName(folder);
+            say("MOVING TO " + movingTo_ + "...");
+        } else {
+            say(did == Session::FileJob::Done ? "MOVED TO " + destName(folder) : "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE");
+        }
     } else if (did == Session::FileJob::TooLong) {
         say("NOT MOVED: ITS NAME WOULD BE TOO LONG THERE");
     } else if (did == Session::FileJob::Taken) {
@@ -411,6 +419,15 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
     dt *= ui::gStickSpeed;
     lastMs_ = nowMs;
     if (!open_) return;
+    if (moving_) {
+        if (jobs_.following && jobs_.following()) {
+            saidUntil_ = nowMs + kSaidMs; // MOVING TO stays while the songs follow
+        } else {
+            moving_ = false;
+            const bool failed = jobs_.followFailures && jobs_.followFailures() != failuresBefore_;
+            if (said_.compare(0, 7, "MOVING ") == 0 || said_.empty()) say(failed ? "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE" : "MOVED TO " + movingTo_);
+        }
+    }
     if (!said_.empty() && nowMs >= saidUntil_) said_.clear();
     if (typing_) {
         // The stick moves over the keys, one at once and then steadily; a held D-pad direction runs.

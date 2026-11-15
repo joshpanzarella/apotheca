@@ -1548,7 +1548,7 @@ effect in those two groups and fails one that does not.
   - **A move is `moveSample`**: the file renamed with the ending it had (written again and the
     old one taken away where the card will not rename, as the page does:
     `Transfer::renameBroken` is the tests' such card), then `recordingChanged` (the name only),
-    `savedSongsFollow`, `saveNow`. Nothing is written over, capitals not counted; the folder
+    `saveNow`, `followLater` (next rule). Nothing is written over, capitals not counted; the folder
     must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
     list's `original_` and `on_` follow, so B's tap is still "as it was".
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
@@ -1575,9 +1575,10 @@ effect in those two groups and fails one that does not.
       Let go where it was: LEFT WHERE IT WAS.
     - **Hold B on a folder that is not empty says so** after `kHoldSaysMs` (NOT DELETED: IT IS
       NOT EMPTY), and letting go is then no tap. A tap still closes.
-    - **`moveSample` answers `NotSaved`** when the file moved but a saved song that names it, or
-      the open song, could not be written (`savedSongsFollow`'s `failed`, `saveNow` is a bool);
-      the list shows it moved and says MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE.
+    - **`moveSample` answers `NotSaved`** when the file moved but the open song could not be
+      written (`saveNow` is a bool); a saved song that could not be is found as its turn comes
+      (next rule). Either way the list shows it moved and says MOVED, BUT A SONG COULD NOT BE
+      SAVED WITH ITS NEW PLACE.
     - **A column's rows are made when the place or the card changes, never per frame**
       (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
       `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
@@ -1589,9 +1590,22 @@ effect in those two groups and fails one that does not.
       the whole still 63): held to 36, a long recording carried into a folder on the handheld
       was gone from the page, which then refused to delete it. The page's script changed with it
       (tried in a browser, 2026-11-15).
-    - **Not mended: the freeze on a carry let go** (`savedSongsFollow` reads every saved song and
-      rev on the app thread, as a rename on the page does). Doing it a file a frame means a
-      switched-off handheld can leave songs naming the old place: the owner's call.
+    - **The saved songs follow a move a few files a frame** (2026-11-15, our call left by the owner;
+      `Session::followLater`, `followSome` in `update()`): up to `kFollowReadsAFrame` (8) read, and
+      none after one is written. Measured on the desk, 40 songs with 10 revs each (one of them the
+      bench's 32 KB song): every one naming the recording, all at once was 450 to 740 ms (about 2
+      to 4 s on the handheld); a few a frame, the let-go is 1 ms and the longest frame 12 to 16 ms
+      (one card write), 440 frames. None naming it: 2 to 3 ms all at once. `moveSample` answers
+      `Moving` and the list says MOVING TO X... until `following()` is false, then MOVED TO X,
+      or MOVED, BUT A SONG COULD NOT BE SAVED... (`followFailures` went up). **Safe against a
+      switch-off**: before any file is touched what is owed is written (`kOwedFile`,
+      renames-owed.txt in the song folder, `writeTextFile`; "job" before each batch, FROM tab TO),
+      rewritten as each batch ends and deleted at the last; `useSongFolder` finishes it, in order,
+      before any song is opened (`finishOwed`; a file not in its words is let be). Gone through
+      twice is no harm: it no longer names the old place. **Whatever reads or renames a saved song
+      first finishes what is owed** (`followNow`: openSong, openRev, renameSong, deleteSong); a new
+      one of those calls it too. If the owed list cannot be written, it is all done at once.
+      The WiFi page's renames take the same way. `picker_test` `testSpreadOverFrames`.
 - **A recording's name may carry two folders** (owner, 2026-11-14; it was one):
   `kicks/808`, `drums/kicks/808`. `sampleFolderOf` is ALL of the folder (`drums/kicks`),
   `sampleLabel` the last part; a song file's one-folder name is still a name. The whole name
@@ -1714,7 +1728,7 @@ effect in those two groups and fails one that does not.
   not from `applyProject`). It lists the samples folder once, and not at all
   when nothing is missing. Never guess between two.
 - **A rename on the page rewrites the saved songs and revs** on the app
-  thread (`Session::savedSongsFollow`, `renameRecordings`): only the name on
+  thread, a few files a frame (`Session::followLater`, as a carry; `renameRecordings`): only the name on
   `sample` and `sound` lines, the rest byte for byte, the file's date kept.
   The open song's own file is left to the autosave. It holds
   `Transfer::songFiles()`, which the server holds while it writes or deletes

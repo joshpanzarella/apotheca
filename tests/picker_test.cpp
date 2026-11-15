@@ -9,7 +9,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -107,6 +110,12 @@ struct Rig {
             last = static_cast<int>(i / 2);
         }
         return first < 0 ? 0 : last - first + 1;
+    }
+    // Frames until the saved songs have followed a move (a few files a frame); how many it took.
+    int settle() {
+        int n = 0;
+        for (; app.session().following() && n < 1000; ++n) frames(1);
+        return n;
     }
     SamplePicker& list() { return app.kit().picker(); }
     Session& session() { return app.session(); }
@@ -359,7 +368,12 @@ void testCarrying() {
     rig.key(R1, false);
     CHECK(list.carried().empty() && list.isOpen() && card.has("void/808.wav") && !card.has("kicks/808.wav"));
     CHECK(rig.lane(5) == "void/808" && rig.lane(6) == "void/808" && !session.laneSound(0, 5).missing && !session.laneSound(0, 6).missing);
-    CHECK(list.said() == "MOVED TO VOID" && rig.on(Kind::Folder, "void", 1) && list.depth() == 0);
+    // The saved songs follow a few a frame: MOVING until they have, then MOVED.
+    CHECK(list.said() == "MOVING TO VOID..." && list.moving() && session.following() && rig.on(Kind::Folder, "void", 1) && list.depth() == 0);
+    CHECK(contents(saved) == before && contents(rev) == before && exists(card.songs + "/" + Session::kOwedFile)); // not yet: what is owed is written down first
+    CHECK(rig.settle() >= 1);
+    rig.frames(1);
+    CHECK(list.said() == "MOVED TO VOID" && !list.moving() && !exists(card.songs + "/" + Session::kOwedFile));
     CHECK(session.sampleNames() == std::vector<std::string>({"tom", "drums/Clap", "drums/snares/rim", "kicks/909", "void/808"}));
     // The saved song and its rev name it where it is now, the rest of them as it was; the open song is written at once.
     std::string after = before;
@@ -390,6 +404,8 @@ void testCarrying() {
     rig.tap(DOWN);
     CHECK(rig.on(Kind::Folder, "", 1) && list.carryTo().empty());
     rig.key(R1, false);
+    rig.settle();
+    rig.frames(1);
     CHECK(card.has("808.wav") && !card.has("void/808.wav") && rig.lane() == "808" && list.said() == "MOVED TO UNSORTED" && rig.on(Kind::Folder, "", 2));
     CHECK(exists(card.samples + "/void")); // the folder it left stays, empty
     after.replace(after.find("sample 1 0 void/808"), 19, "sample 1 0 808");
@@ -419,6 +435,8 @@ void testCarrying() {
     CHECK(list.depth() == 2 && rig.on(Kind::Recording, "drums/snares/rim") && list.carryTo() == "drums/snares" && rig.lane() == "tom");
     rig.sounding(96000);
     rig.key(R1, false);
+    rig.settle();
+    rig.frames(1);
     CHECK(card.has("drums/snares/tom.wav") && !card.has("tom.wav") && list.said() == "MOVED TO SNARES");
     CHECK(list.depth() == 2 && list.count() == 2 && rig.on(Kind::Recording, "drums/snares/tom") && rig.lane() == "drums/snares/tom" && rig.sounding(20000) > 1500);
 
@@ -482,8 +500,9 @@ void testCarrying() {
 
     // A card that will not rename from one folder to another: moved the long way, the same.
     Transfer::renameBroken = true;
-    CHECK(session.moveSample("808", "kicks/808") == Job::Done && card.has("kicks/808.wav") && !card.has("808.wav") && !card.has("kicks/808.wav.part"));
+    CHECK(session.moveSample("808", "kicks/808") == Job::Moving && card.has("kicks/808.wav") && !card.has("808.wav") && !card.has("kicks/808.wav.part"));
     Transfer::renameBroken = false;
+    rig.settle();
     std::vector<float> read;
     CHECK(readWav(card.samples + "/kicks/808.wav", read) && read.size() == 3000);
     after.replace(after.find("sample 1 0 808"), 14, "sample 1 0 kicks/808");
@@ -920,13 +939,18 @@ void testAMoveThatCouldNotBeSaved() {
     const std::string openFile = card.songs + "/" + session.songName() + ".song";
     // A saved song that cannot be written (a folder where its new text would be written first: a full card's stand-in).
     mkdir((saved + ".part").c_str(), 0755);
-    CHECK(session.moveSample("kicks/808", "void/808") == Job::NotSaved);
+    const int failedBefore = session.followFailures();
+    CHECK(session.moveSample("kicks/808", "void/808") == Job::Moving);
+    rig.settle();
+    CHECK(session.followFailures() == failedBefore + 1); // found when its turn came
     CHECK(card.has("void/808.wav") && !card.has("kicks/808.wav") && rig.lane() == "void/808" && contents(saved) == before);
     CHECK(contents(openFile).find("void/808") != std::string::npos); // (the open song's own file was written)
     rmdir((saved + ".part").c_str());
     // One that names no recording moved is not counted, though it could not be written either.
     mkdir((saved + ".part").c_str(), 0755);
-    CHECK(session.moveSample("kicks/707", "void/707") == Job::Done && card.has("void/707.wav"));
+    CHECK(session.moveSample("kicks/707", "void/707") == Job::Moving && card.has("void/707.wav"));
+    rig.settle();
+    CHECK(session.followFailures() == failedBefore + 1);
     rmdir((saved + ".part").c_str());
     // The open song's own file not written: the same answer. Through the list: it says so, and shows the recording where it now is.
     mkdir((openFile + ".part").c_str(), 0755);
@@ -1042,9 +1066,214 @@ void testTheRest() {
     rig.tap(B);
 }
 
+
+// HOW LONG A CARRY'S LET-GO STOPS THE SCREEN (--measure; not run by ctest): a card of 40 songs
+// with 10 revs each, one of them a big one, and every song naming the recording carried or none.
+double msOf(const std::function<void()>& f) {
+    const auto t0 = std::chrono::steady_clock::now();
+    f();
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+std::string songOf(int tracks, int scenes, bool names) {
+    std::unique_ptr<Engine> engine(new Engine);
+    App app(*engine);
+    Session& session = app.session();
+    const TrackKind kinds[4] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod};
+    for (int t = 1; t < tracks; ++t) session.addTrack(kinds[t % 4]);
+    Project& p = app.project();
+    for (int t = 0; t < tracks; ++t)
+        for (int scene = 0; scene < scenes; ++scene) {
+            for (int step = 0; step < kSteps; step += 2) p.tracks[t].drums[scene][0].level[step % kDrumLanes][step] = 0.8f;
+            for (int n = 0; n < 12; ++n) p.tracks[t].notes[scene][0].notes[n] = NoteEvent{n, 48 + n, 1.f, 0.f, 0.8f};
+            for (int i = 0; i < kSteps; ++i) p.tracks[t].automation[scene][t % 8][i] = 0.5f;
+        }
+    for (int lane = 0; lane < 8; ++lane) std::snprintf(p.tracks[0].laneSample[lane], 64, "%s", names && lane == 0 ? "kicks/808" : ("loose" + std::to_string(lane)).c_str());
+    return songText(p);
+}
+void measure() {
+    const std::string typical = songOf(4, 4, true), big = songOf(kNumTracks, 8, true), typicalNot = songOf(4, 4, false), bigNot = songOf(kNumTracks, 8, false);
+    std::printf("a typical song %zu KB, the big one %zu KB\n", typical.size() / 1024, big.size() / 1024);
+    for (int named = 0; named < 2; ++named) {
+        Card card;
+        card.folder("kicks");
+        card.folder("drums");
+        card.wav("kicks/808", 2000);
+        std::size_t bytes = 0;
+        for (int song = 0; song < 40; ++song) {
+            const std::string& text = song == 0 ? (named ? big : bigNot) : (named ? typical : typicalNot);
+            const std::string name = card.songs + "/song " + std::to_string(song);
+            writeTextFile(name + ".song", text);
+            for (int rev = 1; rev <= 10; ++rev) writeTextFile(name + "." + std::to_string(rev) + ".rev", text);
+            bytes += 11 * text.size();
+        }
+        Rig rig(card);
+        Session& session = rig.session();
+        int behind = 0;
+        const double first = msOf([&] { session.savedSongsFollow({{"kicks/808", "drums/808"}}, &behind); });
+        const double back = msOf([&] { session.savedSongsFollow({{"drums/808", "kicks/808"}}, &behind); });
+        std::printf("%s: 440 files, %.1f MB: all at once %.0f ms, and back %.0f ms\n", named ? "every song names it" : "no song names it", bytes / 1048576.0, first, back);
+        // A few a frame: the let-go itself, and the frames after it.
+        double worst = 0.0, all = 0.0;
+        int frames = 0;
+        const double letGo = msOf([&] { session.followLater({{"kicks/808", "drums/808"}}); });
+        while (session.following()) {
+            const double f = msOf([&] { rig.frames(1); });
+            worst = std::max(worst, f), all += f, ++frames;
+        }
+        std::printf("  a few a frame: the let-go %.1f ms, then %d frames, the longest %.1f ms, %.0f ms in all\n", letGo, frames, worst, all);
+    }
+}
+
+// THE SAVED SONGS FOLLOW A MOVE A FEW FILES A FRAME (owner, 2026-11-15: the let-go of a carry froze
+// the screen while every saved song and rev was read and written). What is owed is written down
+// before any song is touched, a program stopped part-way finishes it the next time it starts,
+// before a song is opened, and nothing is renamed twice.
+void testSpreadOverFrames() {
+    Card card;
+    for (const char* dir : {"kicks", "void"}) card.folder(dir);
+    card.wav("kicks/808", 3000);
+    const std::string names = "apotheca-song 1\ntempo 97\ntrack drums\nsample 1 0 kicks/808\nsample 2 0 kicks/8080\ntrack sampler\nsound kicks/808\n";
+    const std::string other = "apotheca-song 1\ntempo 120\ntrack drums\nsample 1 0 snare\n";
+    std::string moved = names, back = names;
+    moved.replace(moved.find("sample 1 0 kicks/808"), 20, "sample 1 0 void/808");
+    moved.replace(moved.find("sound kicks/808"), 15, "sound void/808");
+    // Twenty songs that name it, each with two revs, and ten that do not.
+    std::vector<std::string> naming, plain;
+    for (int i = 0; i < 20; ++i) {
+        const std::string base = card.songs + "/song " + std::to_string(i);
+        for (const std::string& file : {base + ".song", base + ".1.rev", base + ".2.rev"}) {
+            CHECK(writeTextFile(file, names));
+            naming.push_back(file);
+        }
+    }
+    for (int i = 0; i < 10; ++i) {
+        plain.push_back(card.songs + "/zz other " + std::to_string(i) + ".song"); // (after the others: the frames' count below is exact)
+        CHECK(writeTextFile(plain.back(), other));
+    }
+    const std::string owed = card.songs + "/" + Session::kOwedFile;
+    const auto count = [&](const std::string& text) {
+        int n = 0;
+        for (const std::string& file : naming) n += contents(file) == text;
+        return n;
+    };
+    {
+        Rig rig(card);
+        Session& session = rig.session();
+        // Let go: the file has moved, nothing saved is touched yet, and what is owed is on the card.
+        CHECK(session.moveSample("kicks/808", "void/808") == Job::Moving && card.has("void/808.wav") && session.following());
+        CHECK(count(names) == 60 && contents(owed) == "apotheca-owed 1\njob\nkicks/808\tvoid/808\n");
+        // A frame writes one file at most.
+        rig.frames(1);
+        CHECK(count(moved) == 1);
+        rig.frames(9);
+        CHECK(count(moved) == 10 && session.following());
+        // Carried back before they are done: owed in order, both.
+        CHECK(session.moveSample("void/808", "kicks/808") == Job::Moving);
+        CHECK(contents(owed) == "apotheca-owed 1\njob\nkicks/808\tvoid/808\njob\nvoid/808\tkicks/808\n");
+        rig.frames(30);
+        CHECK(count(moved) == 40 && count(names) == 20); // the first batch through 40 of 60
+        // ...and the handheld is switched off here.
+    }
+    CHECK(exists(owed));
+    {
+        // Started again: finished before any song is opened, in order (back where it was), and the list gone.
+        Rig rig(card);
+        CHECK(!rig.session().following() && !exists(owed) && count(names) == 60);
+        for (const std::string& file : plain) CHECK(contents(file) == other);
+        // A song that is not a song's text, or an owed file that is not one, is let be.
+    }
+    // The whole way, with nothing in between: byte for byte, the songs that do not name it never written.
+    {
+        std::vector<ino_t> ids;
+        for (const std::string& file : plain) {
+            struct stat info;
+            lstat(file.c_str(), &info);
+            ids.push_back(info.st_ino);
+        }
+        Rig rig(card);
+        Session& session = rig.session();
+        SamplePicker& list = rig.list();
+        session.setLaneSample(0, 5, "kicks/808");
+        rig.frames(1);
+        rig.tap(A);
+        CHECK(list.isOpen() && list.folderName() == "kicks" && rig.on(Kind::Recording, "kicks/808"));
+        rig.key(R1, true);
+        rig.tap(LEFT);
+        CHECK(rig.goTo(Kind::Folder, "void"));
+        rig.key(R1, false);
+        CHECK(list.said() == "MOVING TO VOID..." && list.moving());
+        const int took = rig.settle();
+        CHECK(took >= 60 && took <= 62); // one written a frame: 60, and the ten plain ones read beside them
+        rig.frames(1);
+        CHECK(list.said() == "MOVED TO VOID" && count(moved) == 60 && !exists(owed));
+        for (std::size_t i = 0; i < plain.size(); ++i) {
+            struct stat info;
+            lstat(plain[i].c_str(), &info);
+            CHECK(contents(plain[i]) == other && info.st_ino == ids[i]);
+        }
+        // One that cannot be written (a full card's stand-in): said when its turn has come.
+        const std::string blocked = card.songs + "/song 7.song.part";
+        mkdir(blocked.c_str(), 0755);
+        rig.tap(RIGHT);
+        CHECK(list.folderName() == "void" && rig.on(Kind::Recording, "void/808"));
+        rig.key(R1, true);
+        rig.tap(LEFT);
+        CHECK(rig.goTo(Kind::Folder, "kicks"));
+        rig.key(R1, false);
+        CHECK(list.said() == "MOVING TO KICKS...");
+        rig.settle();
+        rig.frames(1);
+        CHECK(list.said() == "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE" && count(names) == 59);
+        rmdir(blocked.c_str());
+        CHECK(session.moveSample("kicks/808", "void/808") == Job::Moving);
+        rig.settle();
+        CHECK(count(moved) == 60);
+        // A song opened part-way has followed: what is owed is finished first.
+        CHECK(session.moveSample("void/808", "kicks/808") == Job::Moving);
+        rig.frames(2);
+        CHECK(count(names) == 2 && session.openSong("song 19") && !session.following() && count(names) == 60 && !exists(owed));
+        CHECK(std::string(rig.app.project().tracks[0].laneSample[0]) == "kicks/808");
+        // The open song renamed part-way: its revs (on the list by their old names) have followed first.
+        CHECK(session.moveSample("kicks/808", "void/808") == Job::Moving);
+        rig.frames(1);
+        const std::string renamed = session.renameSong();
+        CHECK(renamed != "song 19" && !session.following() && contents(card.songs + "/" + renamed + ".1.rev") == moved && contents(card.songs + "/" + renamed + ".2.rev") == moved);
+        for (int rev : {1, 2}) CHECK(std::rename((card.songs + "/" + renamed + "." + std::to_string(rev) + ".rev").c_str(), (card.songs + "/song 19." + std::to_string(rev) + ".rev").c_str()) == 0);
+        CHECK(session.moveSample("void/808", "kicks/808") == Job::Moving);
+        rig.settle();
+        CHECK(count(names) == 59); // (song 19.song itself is gone: renamed with the open song)
+        // A rev opened part-way, and a song deleted part-way, have followed first. (A second 808
+        // elsewhere, so a rev still naming the old place would not be mended by its base name.)
+        card.folder("other");
+        card.wav("other/808", 1000);
+        CHECK(session.saveRev() == 1);
+        CHECK(session.moveSample("kicks/808", "void/808") == Job::Moving);
+        CHECK(session.openRev(1) && !session.following() && std::string(rig.app.project().tracks[0].laneSample[0]) == "void/808");
+        CHECK(session.moveSample("void/808", "kicks/808") == Job::Moving);
+        CHECK(session.deleteSong("song 3") && !session.following() && contents(card.songs + "/deleted/song 3.song") == names);
+        for (const char* file : {"/song 3.song", "/song 3.1.rev", "/song 3.2.rev"}) CHECK(contents(card.songs + "/deleted" + file) == names && writeTextFile(card.songs + file, names));
+        for (int rev : session.revs()) std::remove((card.songs + "/" + renamed + "." + std::to_string(rev) + ".rev").c_str()); // (the open song's own, as the others were)
+        CHECK(count(names) == 59);
+        // Where what is owed cannot be written down, it is done at once, as before.
+        mkdir((owed + ".part").c_str(), 0755);
+        CHECK(session.moveSample("kicks/808", "void/808") == Job::Done && !session.following() && count(moved) == 59 && !exists(owed));
+        rmdir((owed + ".part").c_str());
+    }
+    // An owed file in another hand's words is let be (not read, and not deleted).
+    CHECK(writeTextFile(owed, "something else\njob\nvoid/808\tkicks/808\n"));
+    {
+        Rig rig(card);
+        CHECK(count(moved) == 59 && exists(owed));
+    }
+}
+
 } // namespace
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--measure") {
+        measure();
+        return 0;
+    }
     testMakingAFolder();
     testCarrying();
     testTheListByItself();
@@ -1053,6 +1282,7 @@ int main(int, char**) {
     testBigMoves();
     testTheGuards();
     testAMoveThatCouldNotBeSaved();
+    testSpreadOverFrames();
     testTheRest();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);

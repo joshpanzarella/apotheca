@@ -69,6 +69,8 @@ void KitScreen::openPicker() {
     jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };
     jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
     jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
+    jobs.following = [this] { return session_.following(); };
+    jobs.followFailures = [this] { return session_.followFailures(); };
     jobs.playhead = [this] { return &head_; };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);

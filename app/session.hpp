@@ -183,11 +183,11 @@ public:
     bool deleteSample(const std::string& name);
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
-    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved }; // NotSaved: done, but a song that names it could not be written (a full card)
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved, Moving }; // NotSaved: done, but a song that names it could not be written (a full card). Moving: done, and the saved songs are following (following())
     // Move a recording to another folder (or out of every folder), under the name `to`: its file is
     // renamed (the long way where the card will not), the open song follows (recordingChanged: the
-    // name only, the sound plays on), every saved song and rev that names it follows
-    // (savedSongsFollow), and the open song is written. Nothing is written over (Taken, case not
+    // name only, the sound plays on), the open song is written, and every saved song and rev that
+    // names it follows, a few a frame (followLater: Moving while they do). Nothing is written over (Taken, case not
     // counted); the folder it goes to must be there already; `to` must fit kSampleNameRoom (TooLong).
     FileJob moveSample(const std::string& from, const std::string& to);
     // A new, empty folder: "name", or "folder/name" inside one of the first level.
@@ -216,6 +216,22 @@ public:
     // recording's (one sent or deleted has an empty side) are passed over. The open song's own file is left to
     // recordingChanged and the autosave. Returns how many files were written.
     int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed = nullptr); // failed: those that name one and could not be written
+    // THE SAME, A FEW FILES A FRAME (owner, 2026-11-15: a carry let go froze the screen while every
+    // saved song and rev was read and written; on the handheld, a recording in forty songs with
+    // their revs, seconds). `followLater` lists the files now and goes through them in `update`:
+    // up to kFollowReadsAFrame read, and no more after one is written (a write waits for the card).
+    // BEFORE any file is touched it writes what is still owed (`kOwedFile` in the song folder, with
+    // writeTextFile), rewrites that as each batch of renames is done and deletes it at the end; a
+    // program stopped part-way finishes it the next time the song folder is opened, before any
+    // song is (useSongFolder). A file gone through twice is no harm: it no longer names the old
+    // place. Anything that reads or renames a saved song first finishes what is owed (followNow).
+    // If the list cannot be written, it is all done at once, as before.
+    void followLater(const std::vector<std::pair<std::string, std::string>>& renames);
+    void followNow();                                   // finish what is owed, at once
+    bool following() const { return !follows_.empty(); } // saved songs are still being gone through
+    int followFailures() const { return followFailures_; } // files that named one and could not be written, since the program started
+    static constexpr int kFollowReadsAFrame = 8;
+    static const char* const kOwedFile;                 // "renames-owed.txt"
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
@@ -625,6 +641,21 @@ private:
     bool updateReady_ = false; // accepted this run; the bar says so until the next start
     float updateMegabytes_ = 0.f;
     unsigned seenReceived_ = 0;
+    // Saved songs still to follow a rename (followLater): each batch of renames with the files it
+    // goes through, in order.
+    struct Follow {
+        std::vector<std::pair<std::string, std::string>> renames;
+        std::vector<std::string> files;
+        std::size_t next = 0;
+    };
+    std::vector<Follow> follows_;
+    int followFailures_ = 0;
+    std::vector<std::string> songFilesToFollow() const;  // every saved song and rev but the open song
+    // One file through the renames: 1 written, 0 nothing to do (or gone), -1 it names one and could not be written.
+    int followFile(const std::string& file, const std::vector<std::pair<std::string, std::string>>& renames);
+    void followSome();                                  // a frame's share
+    bool writeOwed() const;                             // what is owed, or the file deleted when nothing is
+    void finishOwed();                                  // a program stopped part-way: done now
     std::string toldOpenSong_; // the song name the WiFi page was last told (it refuses one sent under it)
     std::string chordFolder_;
     AudioInput* input_ = nullptr;

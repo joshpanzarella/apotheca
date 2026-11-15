@@ -118,12 +118,11 @@ Session::FileJob Session::moveSample(const std::string& from, const std::string&
         }
     }
     recordingChanged(from, to);
-    int behind = 0;
-    savedSongsFollow({{from, to}}, &behind);
-    const bool saved = saveNow(); // the open song now, not at the next autosave: its revs already have the new name
+    const bool saved = saveNow(); // the open song now, not at the next autosave: its revs will have the new name
+    followLater({{from, to}});    // the saved songs and revs, a few a frame (Moving until they are done)
     // The file HAS moved. A song that could not be written (a full card) still names the old place:
     // said, since opened later it is mended only if no other recording has that last name.
-    return behind == 0 && saved ? FileJob::Done : FileJob::NotSaved;
+    return !saved ? FileJob::NotSaved : following() ? FileJob::Moving : FileJob::Done;
 }
 
 Session::FileJob Session::makeSampleFolder(const std::string& name) {

@@ -49,6 +49,9 @@ void Session::useSongFolder(const std::string& folder, std::uint32_t seed) {
     folder_ = folder;
     nameSeed_ = seed | 1u;
     mkdir(folder_.c_str(), 0755); // fine if it is already there
+    follows_.clear();
+    songName_.clear(); // (no song is open while what is owed is finished: every saved one is gone through)
+    finishOwed();      // a program stopped while saved songs followed a rename: finished before any is opened
     std::string last;
     if (readTextFile(folder_ + "/last.txt", last)) {
         while (!last.empty() && (last.back() == '\n' || last.back() == '\r')) last.pop_back();
@@ -115,6 +118,7 @@ void Session::newSong() {
 }
 
 bool Session::openSong(const std::string& name) {
+    followNow(); // what it reads has followed every rename
     saveNow();
     std::string text;
     if (folder_.empty() || !readTextFile(pathOf(name), text) || !parseSong(text, project)) return false;
@@ -126,16 +130,21 @@ bool Session::openSong(const std::string& name) {
     return true;
 }
 
-int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed) {
-    if (failed) *failed = 0;
+namespace {
+// Only pairs that are both a recording's name: one sent or deleted has an empty side.
+std::vector<std::pair<std::string, std::string>> goodRenames(const std::vector<std::pair<std::string, std::string>>& renames) {
     std::vector<std::pair<std::string, std::string>> good;
     for (const auto& rename : renames)
         if (sampleNameOk(rename.first) && sampleNameOk(rename.second)) good.push_back(rename);
-    if (folder_.empty() || good.empty()) return 0;
-    // The server writes and deletes songs on its own thread: not while this is half-way through one.
-    std::lock_guard<std::mutex> hold(transfer_.songFiles());
+    return good;
+}
+} // namespace
+
+const char* const Session::kOwedFile = "renames-owed.txt";
+
+std::vector<std::string> Session::songFilesToFollow() const {
     std::vector<std::string> files;
-    if (DIR* dir = opendir(folder_.c_str())) {
+    if (DIR* dir = folder_.empty() ? nullptr : opendir(folder_.c_str())) {
         while (const dirent* entry = readdir(dir)) {
             const std::string file = entry->d_name;
             const bool song = file.size() > 5 && file.compare(file.size() - 5, 5, ".song") == 0;
@@ -145,31 +154,132 @@ int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::stri
         }
         closedir(dir);
     }
+    std::sort(files.begin(), files.end()); // (the order the card lists them in is the card's: this one is the same every time)
+    return files;
+}
+
+int Session::followFile(const std::string& file, const std::vector<std::pair<std::string, std::string>>& renames) {
+    const std::string path = folder_ + "/" + file;
+    struct stat info;
+    std::string text;
+    if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || !readTextFile(path, text)) return 0;
+    // Most songs do not name the recording: those are told by a plain search, and not gone through line by line
+    // (with hundreds of songs the going-through froze the screen for seconds on the handheld).
+    bool named = false;
+    for (const auto& rename : renames) named = named || text.find(rename.first) != std::string::npos;
+    if (!named || !renameRecordings(text, renames)) return 0; // only one that names it is written
+    if (!writeTextFile(path, text)) return -1; // (no room on the card: it still names the old place, and whoever asked is told)
+    utimbuf times;
+    times.actime = info.st_atime;
+    times.modtime = info.st_mtime; // the song list is in order of date, and a rev shows its own: neither moves
+    utime(path.c_str(), &times);
+    return 1;
+}
+
+int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed) {
+    if (failed) *failed = 0;
+    const std::vector<std::pair<std::string, std::string>> good = goodRenames(renames);
+    if (folder_.empty() || good.empty()) return 0;
+    // The server writes and deletes songs on its own thread: not while this is half-way through one.
+    std::lock_guard<std::mutex> hold(transfer_.songFiles());
     int written = 0;
-    for (const std::string& file : files) {
-        const std::string path = folder_ + "/" + file;
-        struct stat info;
-        std::string text;
-        if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || !readTextFile(path, text)) continue;
-        // Most songs do not name the recording: those are told by a plain search, and not gone through line by line
-        // (with hundreds of songs the going-through froze the screen for seconds on the handheld).
-        bool named = false;
-        for (const auto& rename : good) named = named || text.find(rename.first) != std::string::npos;
-        if (!named) continue;
-        if (!renameRecordings(text, good)) continue; // only one that names it is written
-        if (!writeTextFile(path, text)) { // (no room on the card: it still names the old place, and whoever asked is told)
-            if (failed) ++*failed;
-            continue;
-        }
-        utimbuf times;
-        times.actime = info.st_atime;
-        times.modtime = info.st_mtime; // the song list is in order of date, and a rev shows its own: neither moves
-        utime(path.c_str(), &times);
-        ++written;
+    for (const std::string& file : songFilesToFollow()) {
+        const int did = followFile(file, good);
+        written += did > 0;
+        if (did < 0 && failed) ++*failed;
     }
     return written;
 }
 
+// What is owed, as a file: "job" before each batch of renames, then a line of each, FROM, a tab, TO.
+bool Session::writeOwed() const {
+    const std::string path = folder_ + "/" + kOwedFile;
+    if (follows_.empty()) return std::remove(path.c_str()) == 0 || !fileExists(path);
+    std::string text = "apotheca-owed 1\n";
+    for (const Follow& follow : follows_) {
+        text += "job\n";
+        for (const auto& rename : follow.renames) text += rename.first + "\t" + rename.second + "\n";
+    }
+    return writeTextFile(path, text);
+}
+
+void Session::followLater(const std::vector<std::pair<std::string, std::string>>& renames) {
+    Follow follow;
+    follow.renames = goodRenames(renames);
+    if (folder_.empty() || follow.renames.empty()) return;
+    {
+        std::lock_guard<std::mutex> hold(transfer_.songFiles());
+        follow.files = songFilesToFollow();
+    }
+    if (follow.files.empty()) return;
+    follows_.push_back(follow);
+    if (!writeOwed()) followNow(); // nowhere to keep what is owed: done now, as before, not left to a flat battery
+}
+
+void Session::followSome() {
+    if (follows_.empty()) return;
+    std::lock_guard<std::mutex> hold(transfer_.songFiles());
+    for (int read = 0; read < kFollowReadsAFrame && !follows_.empty();) {
+        Follow& follow = follows_.front();
+        if (follow.next < follow.files.size()) {
+            const int did = followFile(follow.files[follow.next++], follow.renames);
+            ++read;
+            followFailures_ += did < 0;
+            if (did != 0) break; // one written (or tried) a frame
+            continue;
+        }
+        follows_.erase(follows_.begin());
+        writeOwed(); // the rest, or nothing: the file goes
+    }
+    if (!follows_.empty() && follows_.front().next >= follows_.front().files.size()) {
+        follows_.erase(follows_.begin());
+        writeOwed();
+    }
+}
+
+void Session::followNow() {
+    if (follows_.empty()) return;
+    {
+        std::lock_guard<std::mutex> hold(transfer_.songFiles());
+        for (Follow& follow : follows_)
+            for (; follow.next < follow.files.size(); ++follow.next) followFailures_ += followFile(follow.files[follow.next], follow.renames) < 0;
+    }
+    follows_.clear();
+    writeOwed();
+}
+
+// The program stopped while songs were following a rename: every batch owed, in order, through
+// every saved song and rev (one already gone through no longer names the old place), then the file goes.
+void Session::finishOwed() {
+    const std::string path = folder_ + "/" + kOwedFile;
+    std::string text;
+    if (folder_.empty() || !readTextFile(path, text)) return;
+    std::vector<std::vector<std::pair<std::string, std::string>>> jobs;
+    std::istringstream lines(text);
+    std::string line;
+    bool known = false;
+    while (std::getline(lines, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!known) {
+            known = line == "apotheca-owed 1";
+            if (!known) return; // not this program's words: let be
+            continue;
+        }
+        if (line == "job") {
+            jobs.emplace_back();
+            continue;
+        }
+        const std::size_t tab = line.find('\t');
+        if (tab == std::string::npos || jobs.empty()) continue;
+        jobs.back().push_back({line.substr(0, tab), line.substr(tab + 1)});
+    }
+    for (const auto& job : jobs) {
+        int failed = 0;
+        savedSongsFollow(job, &failed);
+        followFailures_ += failed;
+    }
+    std::remove(path.c_str());
+}
 
 float Session::ui_stickSpeed() { return ui::gStickSpeed; }
 
@@ -246,6 +356,7 @@ void Session::setTempo(float bpm) {
 
 std::string Session::renameSong() {
     if (folder_.empty()) return songName_;
+    followNow(); // its revs are on the list under their old names
     saveNow();
     const std::vector<int> have = revs(); // under the old name
     const std::string old = songName_, fresh = freshName();
@@ -263,6 +374,7 @@ std::string Session::renameSong() {
 
 bool Session::deleteSong(const std::string& name) {
     if (folder_.empty() || name.empty() || name.find('/') != std::string::npos || !fileExists(pathOf(name))) return false;
+    followNow(); // (one in "deleted" is never gone through: it goes there having followed)
     const bool moved = binSong(folder_, name); // the song and its revs, into "deleted"; never over another
     if (name == songName_) {
         // The open one: a new song takes its place. Nothing is saved over what was moved.
@@ -320,6 +432,7 @@ std::string Session::revWhen(int rev) const {
 }
 
 bool Session::openRev(int rev) {
+    followNow(); // what it reads has followed every rename
     std::string text;
     std::unique_ptr<Project> back(new Project);
     if (folder_.empty() || !readTextFile(revPath(rev), text) || !parseSong(text, *back)) return false;

@@ -1128,6 +1128,12 @@ static void testSavedSongsFollow() {
             engine->render(out.data(), 512);
         }
     };
+    // Until the saved songs have followed (a few files a frame); how many frames it took.
+    const auto settle = [&] {
+        int n = 0;
+        for (; session.following() && n < 1000; ++n) frames(1);
+        return n;
+    };
     session.useSampleFolder(samples);
     session.useSongFolder(songs, 3);
     session.useChordFolder(root + "/chords");
@@ -1164,6 +1170,7 @@ static void testSavedSongsFollow() {
     CHECK(post(port, door + "/samples/thud.wav", "kicks/big%20boom.wav").status == 200);
     CHECK(contents(uses) == usesBefore); // not from the server's thread: when the program next looks
     frames(1);
+    CHECK(session.following() && settle() >= 1); // a few files a frame (the page's renames take the handheld's way)
     // The song that names it has the new name on those lines, and is otherwise the same to the byte.
     CHECK(contents(uses) == usesAfter && contents(usesRev) == usesAfter);
     CHECK(fileId(uses) != usesId && fileId(usesRev) != revId); // written beside and moved into place: a new file
@@ -1189,6 +1196,7 @@ static void testSavedSongsFollow() {
     CHECK(post(port, door + "/samples/pad.wav", "warm.wav").status == 200);
     CHECK(post(port, door + "/samples/warm.wav", "pads/warm.wav").status == 200);
     frames(1);
+    settle();
     std::string twice = usesAfter;
     twice.replace(twice.find("sound pad\n"), 10, "sound pads/warm\n");
     CHECK(contents(uses) == twice && fileId(uses) != usesId2 && contents(usesRev) == twice);
