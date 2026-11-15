@@ -872,7 +872,20 @@ static void testTheSpeedTest() {
     const int port = transfer.port();
     const std::string door = "/" + transfer.pin();
     const std::string was = Transfer::benchCommand;
-    CHECK(was.find("--bench") != std::string::npos); // the program itself, timing only
+    CHECK(was.empty()); // as made: this program itself, with --bench (selfCommand)
+    {
+        // The command runs THIS program through the shell, not the shell (0.534 ran /proc/self/exe
+        // under popen, which is /bin/sh there: "Illegal option --").
+        const std::string self = Transfer::selfCommand("--say-hello 2>&1");
+        CHECK(self.find("/proc/self") == std::string::npos && self.find("transfer_test") != std::string::npos);
+        std::string said;
+        if (FILE* run = popen(self.c_str(), "r")) {
+            char block[256];
+            for (std::size_t got; (got = fread(block, 1, sizeof block, run)) > 0;) said.append(block, got);
+            CHECK(pclose(run) == 0);
+        }
+        CHECK(said == "hello from transfer_test\n");
+    }
     Transfer::benchCommand = "echo Phazed 4.2; echo JAX-EP 9.9";
     Answer a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
     CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nJAX-EP 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
@@ -1401,7 +1414,8 @@ static void testTooManyWrongNumbers() {
     CHECK(Transfer::kWrongMost == 5);
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    if (argc > 1 && std::string(argv[1]) == "--say-hello") { std::printf("hello from transfer_test\n"); return 0; } // (testTheSpeedTest runs this program again)
     testTheOpenSongIsRefused();
     testTooManyWrongNumbers();
     testTheSpeedTest();

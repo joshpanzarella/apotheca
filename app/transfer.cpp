@@ -864,7 +864,16 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
 }
 
 bool Transfer::renameBroken = false;
-std::string Transfer::benchCommand = "/proc/self/exe --bench 2>&1";
+std::string Transfer::benchCommand;
+
+std::string Transfer::selfCommand(const std::string& args) {
+    char path[4096];
+    const ssize_t got = readlink("/proc/self/exe", path, sizeof path - 1);
+    if (got <= 0) return "";
+    std::string quoted = "'";
+    for (const char c : std::string(path, static_cast<std::size_t>(got))) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return quoted + "' " + args;
+}
 
 void Transfer::noteChange(const std::string& fromFile, const std::string& toFile) {
     const auto bare = [](const std::string& file) { return file.empty() ? file : file.substr(0, file.size() - 4); }; // every one ends ".wav"
@@ -1048,7 +1057,8 @@ void Transfer::answer(int fd) {
     // The speed test: the program run again by itself, only to time things, and what it printed.
     if (method == "GET" && path == "/bench") {
         std::string out = "Apotheca " + std::string(kVersion) + ", built " + std::string(kBuilt) + "\n";
-        if (FILE* run = popen(benchCommand.c_str(), "r")) {
+        const std::string command = benchCommand.empty() ? selfCommand("--bench 2>&1") : benchCommand;
+        if (FILE* run = command.empty() ? nullptr : popen(command.c_str(), "r")) {
             char block[1024];
             for (std::size_t got; out.size() < 65536 && (got = fread(block, 1, sizeof block, run)) > 0;) out.append(block, got);
             if (pclose(run) != 0) out += "(the speed test did not finish)\n";

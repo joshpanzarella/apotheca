@@ -100,7 +100,11 @@ public:
     // For tests: behave as a card does that will not rename a file into another folder, so the
     // long way round (write it again, then take the old one away) is the one that runs.
     static bool renameBroken;
-    static std::string benchCommand; // what the page's SPEED TEST runs: this program with --bench (tests put something small here)
+    static std::string benchCommand; // what the page's SPEED TEST runs; empty (as made): this program with --bench (tests put something small here)
+    // A shell command that runs THIS program with `args`. The program's path is read here, in this
+    // process: popen runs the command through /bin/sh, where /proc/self/exe is the shell itself (the
+    // SPEED TEST failed that way on the handheld: "/proc/self/exe: 0: Illegal option --", 0.534).
+    static std::string selfCommand(const std::string& args);
 
     static constexpr std::size_t kLargestFile = 30u * 1024u * 1024u;
 
