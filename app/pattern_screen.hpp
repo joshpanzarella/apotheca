@@ -108,6 +108,7 @@
 // Slices that follow each other in order play as one unbroken sound; only a
 // slice out of order is heard as a cut (drums.hpp).
 
+#include "redraw.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -137,6 +138,7 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override; // once per frame
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    unsigned stirring() const override { return said()[0] ? kStirScreenSaid : 0u; } // (redraw.hpp)
 
     // For the build check and for stills: writes through the same path the
     // buttons use.

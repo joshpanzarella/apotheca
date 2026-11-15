@@ -28,6 +28,8 @@
 //                  last words are then HLD SEL: HELP)
 //   --shot FILE    save the last frame drawn as a BMP picture
 //   --battery DIR  read the battery from DIR (laid out like /sys/class/power_supply)
+//   --draw-every-frame  draw and present every pass, as before the screen was left alone
+//                  when nothing on it changes (redraw.hpp): for measuring what that saves
 //   --learn        set up the controls again (as on a first start with a joystick)
 //   --handheld     what the launcher passes: set up the controls on a first start
 //                  even if the buttons do not show up as a joystick (some
@@ -50,6 +52,7 @@
 #include "version.hpp"
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "redraw.hpp"
 #include "bench_run.hpp"
 #include "controls.hpp"
 #include "input.hpp"
@@ -231,6 +234,7 @@ int main(int argc, char** argv) {
     // quitting: without this, nothing it said would be in the file.
     std::setvbuf(stdout, nullptr, _IOLBF, 0);
     bool learn = false; // ask for each button again, whatever has been learned
+    bool everyFrame = false; // --draw-every-frame: as before redraw.hpp, every pass drawn (for measuring what it saves)
     bool handheld = false; // started by the handheld's launcher: with no controls learned yet, ask, joystick or not
     bool noMenu = false;
     bool smoke = false, demo = false, holdA = false, holdY = false, onName = false, onTempo = false, dice = false;
@@ -250,6 +254,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--smoke") == 0) smoke = true;
         else if (std::strcmp(argv[i], "--learn") == 0) learn = true;
+        else if (std::strcmp(argv[i], "--draw-every-frame") == 0) everyFrame = true;
         else if (std::strcmp(argv[i], "--handheld") == 0) handheld = true;
         else if (std::strcmp(argv[i], "--demo") == 0) demo = true;
         else if (std::strcmp(argv[i], "--hold-a") == 0) holdA = true;
@@ -1127,9 +1132,15 @@ int main(int argc, char** argv) {
         rawLogged = 0;
         learning = true;
     };
+    // The screen is drawn only when it can have changed (redraw.hpp): buttons are still read and
+    // the app still moves on every pass, at the same pace.
+    Redraw redraw;
+    int drawnTheme = -1;
     while (running) {
         SDL_Event event;
+        bool stirred = false; // a button, or anything of the window, this pass (a stick's motion counts by where it is)
         while (SDL_PollEvent(&event)) {
+            if (event.type != SDL_JOYAXISMOTION && event.type != SDL_CONTROLLERAXISMOTION) stirred = true;
             if (event.type == SDL_QUIT) running = false;
             // Desk testing only: the handheld has no Escape key.
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) running = false;
@@ -1151,6 +1162,7 @@ int main(int argc, char** argv) {
 
             ButtonEvent press;
             if (!input.handle(event, press)) continue;
+            stirred = true;
             if (input.held(Button::Select) && input.held(Button::Start)) running = false;
             else app.onButton(press, input);
         }
@@ -1185,10 +1197,15 @@ int main(int argc, char** argv) {
         if (app.session().textSize() != fontsAt) {
             fontsAt = app.session().textSize();
             if (!fonts.load(renderer, ttf, fontsAt)) std::fprintf(stderr, "could not load the lettering at that size\n");
+            redraw.forget();
         }
+        if (app.session().theme() != drawnTheme) drawnTheme = app.session().theme(), redraw.forget();
+        // Drawn this pass? Asked every pass, so it keeps count; a still is drawn on every pass.
+        const bool draw = redraw.wanted(app, input, stirred, SDL_GetTicks()) || learning || smoke || shot || everyFrame;
+        if (learning) redraw.forget(); // the setup is drawn every pass, and the app's picture the pass after it
         ui::useTheme(app.session().theme()); // (App::draw does the same; the setup draws without it)
         if (learning) learner.draw(renderer, fonts); // (always at LARGE: it asks for the fixed set itself)
-        else app.draw(renderer, fonts);
+        else if (draw) app.draw(renderer, fonts);
         if ((smoke || shot) && SDL_GetTicks() - start > static_cast<Uint32>(stillMs < 0 ? 0 : stillMs)) running = false;
         if (!running && texts) {
             // The same moment drawn once at each text size, and what each drew written down:
@@ -1241,7 +1258,7 @@ int main(int argc, char** argv) {
             else app.draw(renderer, fonts);
         }
         if (!running && shot && *shot) keepPicture(shot);
-        SDL_RenderPresent(renderer);
+        if (draw) SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
 

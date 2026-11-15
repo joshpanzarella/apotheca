@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include "battery.hpp"
+#include "redraw.hpp"
 #include "version.hpp"
 
 #include <cstdio>
@@ -277,6 +278,32 @@ void App::update(const Input& input, Uint32 nowMs) {
     // An effect being tried on the FX screen (A held on a slot's line) is called off when another screen is up.
     if (&screenNow() != &fx_) fx_.callOff();
     screenNow().update(input, nowMs);
+}
+
+unsigned App::stirring() const {
+    unsigned stirs = session_.stirring() | screenNow().stirring();
+    if (project_->playing) stirs |= kStirPlaying;
+    if (volumeShowing()) stirs |= kStirVolume;
+    if (undoSaid()[0]) stirs |= kStirSaid;
+    if (panicNote_ && !panicking_) stirs |= kStirPanicNote; // (while panicking the four buttons are held)
+    if (updateSaid_ != 0) stirs |= kStirUpdateSaid;
+    return stirs;
+}
+
+void App::readouts(Readouts& out) const {
+    const Engine& engine = session_.engine;
+    unsigned heard = 0;
+    const int scene = engine.playScene(&heard);
+    const int place[6] = {engine.playStep(), engine.playBar(), engine.playRepeat(), scene * 4096 + static_cast<int>(heard % 4096u),
+                          engine.silenced() ? 1 : 0, static_cast<int>(engine.songEnded())};
+    for (int i = 0; i < 6; ++i) out.place[i] = place[i];
+    out.scope.resize(ui::kScopeSamples);
+    engine.readScope(out.scope.data(), ui::kScopeSamples);
+    out.meters.clear();
+    for (int track = kMasterTrack; track < kNumTracks; ++track)
+        for (int slot = 0; slot < slotsOf(track); ++slot) out.meters.push_back(engine.effectMeter(track, slot));
+    out.midi[0] = static_cast<int>(session_.midiHeard());
+    out.midi[1] = session_.midiKeyboards();
 }
 
 void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {

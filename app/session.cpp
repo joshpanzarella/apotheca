@@ -1,5 +1,6 @@
 // Session, part one of four (see session_parts.hpp for what is where).
 #include "session.hpp"
+#include "redraw.hpp"
 #include "instruments.hpp"
 #include "ui.hpp"
 
@@ -364,6 +365,15 @@ void Session::update(Uint32 nowMs) {
     }
     endHearing();
     syncSong();
+}
+
+unsigned Session::stirring() const {
+    unsigned stirs = 0;
+    if (stretching()) stirs |= kStirFitting; // (a fit starts in update() when the tempo has settled: stretching() from that pass)
+    if (rec_ == Rec::Waiting || rec_ == Rec::Recording) stirs |= kStirRecording;
+    if (bouncing()) stirs |= kStirBouncing;
+    if (transferOn()) stirs |= kStirWifi;
+    return stirs;
 }
 
 void Session::setSceneSteps(int scene, int steps) {

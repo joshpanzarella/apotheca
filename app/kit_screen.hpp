@@ -23,6 +23,7 @@
 //           let go, it fades. A tap is heard for a moment (Session::kAuditionMs).
 //   START   play / stop
 
+#include "redraw.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -43,6 +44,9 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    unsigned stirring() const override { // (redraw.hpp)
+        return (!said_.empty() && lastMs_ < saidUntil_ ? kStirScreenSaid : 0u) | (head_.at(lastMs_) >= 0.f ? kStirPlayhead : 0u) | picker_.stirring();
+    }
 
     // For tests and stills.
     void goTo(int lane, int column) { lane_ = lane; column_ = column; }

@@ -24,6 +24,7 @@
 //              A setting is also heard as it is changed, when the song is stopped.
 //   START      play / stop
 
+#include "redraw.hpp"
 #include "screen.hpp"
 #include <SDL.h>
 
@@ -48,6 +49,9 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    unsigned stirring() const override { // (redraw.hpp)
+        return (!said_.empty() && lastMs_ < saidUntil_ ? kStirScreenSaid : 0u) | (head_.at(lastMs_) >= 0.f ? kStirPlayhead : 0u) | picker_.stirring();
+    }
 
     // Where things are, for the tests too: the recording's box at the top (its picture is as tall as
     // the box allows), then two rows of settings, down to the LIVE OUTPUT strip (ui::kAboveScope).
