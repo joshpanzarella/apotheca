@@ -143,13 +143,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
     add_executable(textsize_test tests/textsize_test.cpp)
@@ -172,6 +172,9 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
     # SELECT is drawn as SEL: no text the device shows spells it out.
     add_test(NAME words COMMAND sh ${CMAKE_SOURCE_DIR}/tests/words_test.sh ${CMAKE_SOURCE_DIR}/app)
-    set_tests_properties(launcher words PROPERTIES TIMEOUT 120)
+    # The demo render is run and read (nothing else in ctest runs tools/render_demo.cpp).
+    add_test(NAME demo COMMAND render_demo ${CMAKE_BINARY_DIR}/demo_test.wav)
+    set_tests_properties(demo PROPERTIES PASS_REGULAR_EXPRESSION "bass: Phazed, [^\n]+\nchords: JAX-EP, String I\n20\\.7 seconds, peak 0\\.[5-9]")
+    set_tests_properties(launcher words demo PROPERTIES TIMEOUT 120)
   endif()
 endif()

@@ -17,4 +17,9 @@ struct WholeSongTimes {
     float peak = 0.f;        // the loudest sample: it was playing
 };
 WholeSongTimes timeWholeSong(int helpers, double seconds);
+
+// That song, sent to a fresh engine and set playing (what the rows above time). For bench_test,
+// which holds what the song is: nothing else in ctest runs the timings.
+class Engine;
+void sendBusiestSong(Engine& engine);
 }

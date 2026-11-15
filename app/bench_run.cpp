@@ -407,6 +407,7 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime) 
 }
 
 WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds) { return playWholeSong(helpers, seconds, false); }
+void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
 // uses on this machine. Ten seconds each, in real time.

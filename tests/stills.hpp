@@ -36,7 +36,7 @@ inline const char* const kViews[] = {
     "fx-kind-bloom", "fx-kind-bloom --hold-a", "fx-kind-bloom-1", "fx-kind-shimmer", "fx-kind-shimmer --hold-a", "fx-kind-shimmer-1",
     "fx-family-1 --hold-a", "fx-family-2 --hold-a", "fx-family-3 --hold-a", "fx-family-4 --hold-a", "fx-family-5 --hold-a", "fx-family-6 --hold-a", "fx-family-7 --hold-a",
     "fx-deleting", "fx-trying", "change-instrument", "song-deleting", "song-marks", "song-marks-12", "song-mixer", "song-mixer-master", "song-mixer-12", "song-mixer-master-12", "song-end-loop", "song-end-stop",
-    "bounce", "bounce-tail", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
+    "bounce", "bounce-tail", "bounce-ready", "panic", "wifi", "revs", "add-track", "chords", "chords-swap", "notes",
     "phazed", "page0", "page1", "page2", "page3", "page4", "page5", "page6", "page7", "page8", "page9", "jaxep", "jaxep0", "jaxep1", "jaxep2", "jaxep3", "jaxep4", "jaxep5", "jaxep-bank", "jaxep-held",
     "kit", "slices", "slices-32", "slices-name", "slices-name-feel", "slices-throw", "starts", "picker", "picker-in", "picker-deep", "picker-deleting", "picker-new", "picker-typing", "picker-carrying", "picker-folder-deleting", "sampler-picker",
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said",

@@ -313,7 +313,7 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             } else {
                 std::snprintf(text, sizeof text, "%s", what[bounceWhat_]);
                 if (session_.bounceFiles() > 0) std::snprintf(bounced_, sizeof bounced_, "done: %d file%s, on the WiFi page", session_.bounceFiles(), session_.bounceFiles() == 1 ? "" : "s");
-                note = session_.bounceFiles() > 0 ? bounced_ : "A: write it as a WAV file, at best quality";
+                note = session_.bounceFiles() > 0 ? bounced_ : "A: write it as a WAV file";
             }
             break;
         }

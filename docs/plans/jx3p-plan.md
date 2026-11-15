@@ -1189,15 +1189,46 @@ ANALOG as the instrument's name in the table (`words`); the old word not read
 that nothing is timed in `render()` any more (the tests that held the watch
 went with it).
 
-**Not changed, for the owner to weigh**: the BOUNCE row's note still says
-"A: write it as a WAV file, at best quality". It was true of Twin's x8; now
-a bounce is simply the song as it plays. The words are the owner's.
+**Not changed then; changed in the review's mend, below**: the BOUNCE row's
+note said "A: write it as a WAV file, at best quality". It was true of Twin's
+x8; now a bounce is simply the song as it plays.
 `docs/plans/modulation-plan.md` and `physic-plan.md` still name Twin (other
 branches' plans: not touched here).
 
 **What only the tests and stills saw**: all of it. Stills looked at: MAIN on
 A1 while playing (the top bar), the list to change an instrument. Nothing was
 heard, nothing ran on the handheld; **SPEED TEST there is still owed**.
+
+### Batches 8a, 8b and 8c: the review's mend (2026-11-15)
+
+The review found no fault in the code, the tests or the docs: four low notes.
+
+| Finding | What was done |
+| --- | --- |
+| The BOUNCE row still said "at best quality" | **Mended.** It says "A: write it as a WAV file". `ctest -R words` fails a text that says BEST QUALITY (a plant). A still view of the row at rest, `bounce-ready`, in `kViews` (so `textviews` and `themeviews` draw it at every size and theme) |
+| `ctest -R words` did not read the engine | **Mended.** It reads `engine/`'s four folders, the two copied-in synths and `tools/` for a maker's or model's name, the synth that went and BEST QUALITY (`kBeside`; `.c` and `.h` too: Phazed's presets are a `.c` file). Not for SELECT: the engine draws nothing. A plant is now an app folder with those folders beside it, a name is planted in each, and a folder with nothing to read fails |
+| The sanitizer run was on 8a's code | **Run again** on the code as it stands (`-fsanitize=thread`, `nextscene_test` whole): clean, no warning, 11 minutes for the run |
+| `bench`, SPEED TEST and `render_demo` had no test | **Mended in part.** `tests/bench_test.cpp` (`ctest -R bench`, 2 s) holds what the busiest song IS: the effects on all twelve tracks, the buses and the master, that every track sounds, that the two JAX-EP tracks are on A1 (A1 chosen again: 0 apart; another preset: 0.08), and that the real-time rows count their blocks and helpers. `ctest -R demo` runs `render_demo` and reads its lines (the names, 20.7 seconds, a peak). **Still no test**: `bench`'s one-track rows and any figure; `render_demo`'s test reads the preset's name, not its sound |
+
+`ctest`: 44 of 44 (two more: `bench`, `demo`).
+
+**Mutants: 18 made, 18 killed in the end; three found the new check wanting
+first and it was mended.** BEST QUALITY back on the row; the rule taken out;
+a JAX-EP preset "Juno Strings" and a folder "JX-3P A" (the review's two, now
+caught by `words`); a Phazed category "Roland Keys" in the `.c` file;
+`render_demo` printing PG-200; `.c` and `.h` not read; the engine read as a
+screen (its SELECT plant). **The three**: with the plants in a folder of
+their own kind, the real folders could be dropped from the list unseen, so
+the plants now live in the same folders by the same list; and the check for
+"nothing to read" failed a folder that has no `.c` file. Then: the engine out
+of the list, `engine/src` out of the folders. For `bench_test` and `demo`:
+the JAX-EP tracks never given A1 (the review's mutant 19), HALL on every
+track, nothing on ECHO, the helpers' row without helpers, the blocks counted
+at another rate, the demo's chords on another preset, the demo two bars short.
+
+**What only the tests and stills saw**: all of it. Stills looked at: the SET
+page on BOUNCE at LARGE, XL, and SMALL on PAPER. Nothing was heard, nothing
+ran on the handheld; this branch's handheld program was not built again here.
 
 ### Batches 2 to 5: the review's mend (2026-11-14)
 
