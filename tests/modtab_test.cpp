@@ -223,6 +223,8 @@ void testTurningEachSetting() {
     turn(UP, 1);
     CHECK(rig.mod(t, 0).rate == kModRateTwoBars);
     turn(UP, 20);
+    CHECK(rig.mod(t, 0).rate == kModRateFree); // an LFO's last: FREE
+    turn(DOWN, 1);
     CHECK(rig.mod(t, 0).rate == kModRateEightBars);
     turn(DOWN, 30);
     CHECK(rig.mod(t, 0).rate == kModRateHalfStep);
@@ -575,8 +577,10 @@ void testTheHintsFit() {
     Rig rig;
     for (int t : {0, rig.phazed, rig.qmod}) {
         rig.session().setEffect(t, 0, EffectKind::Filter);
-        for (int on = 0; on < 3; ++on) {
-            rig.session().setMod(t, 0, on == 0 ? ModSettings() : (on == 1 ? lfo(kModFirstSend) : stepper(kModFirstSend)));
+        for (int on = 0; on < 4; ++on) {
+            ModSettings free = lfo(kModFirstSend);
+            free.rate = kModRateFree, free.speed = 0.025f; // (its SPEED row)
+            rig.session().setMod(t, 0, on == 0 ? ModSettings() : (on == 1 ? lfo(kModFirstSend) : (on == 2 ? stepper(kModFirstSend) : free)));
             rig.session().setMod(t, 1, on == 0 ? ModSettings() : stepper(kModFirstEffect));
             for (int row = 0; row < S::kRows; ++row)
                 for (int column = 0; column <= S::kStepsColumns; ++column)
@@ -776,6 +780,147 @@ void testTheStickAndTheRepeat() {
     CHECK(std::abs(rig.mod(t, 1).length - expected) <= 1);
 }
 
+// FREE (owner, 2026-11-15): RATE's last choice, an LFO's only. Its fifth row is then SPEED in Hz: A +
+// UP / DOWN a click of the list, the stick smoothly on its log scale, B its usual 1 Hz, the ends stop.
+// A STEPPER's RATE stops at 8 BARS, and an LFO made a STEPPER while FREE is at 1 BAR. The row says
+// SPEED and the Hz, with a bar filled on the log scale; the list's line says the Hz; the picture's
+// dot is where seconds since Play put it.
+void testFree() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setMod(t, 0, lfo(kModFirstSend, 0.6f));
+    ModScreen& tab = rig.at(t, 0, S::kRate);
+    const auto turn = [&](SDL_Keycode d, int times) { rig.key(A, true), rig.frames(1), rig.tap(d, times), rig.key(A, false), rig.frames(1); };
+    turn(UP, 4);
+    CHECK(rig.mod(t, 0).rate == kModRateFree && modFree(rig.mod(t, 0)) && rig.mod(t, 0).speed == kModSpeedUsual && rig.mod(t, 0).phase == 0);
+    CHECK(std::strcmp(ModKnob::moreName(rig.mod(t, 0)), "SPEED") == 0);
+    turn(UP, 1);
+    CHECK(rig.mod(t, 0).rate == kModRateFree); // the end stops
+    // SPEED: a click of the list; between two, the next; the ends stop; B: 1 Hz.
+    tab.goTo(0, S::kMore);
+    turn(UP, 2);
+    CHECK(rig.mod(t, 0).speed == 1.5f);
+    turn(DOWN, 3);
+    CHECK(rig.mod(t, 0).speed == 0.8f);
+    turn(UP, 40);
+    CHECK(rig.mod(t, 0).speed == 20.f);
+    turn(DOWN, 40);
+    CHECK(rig.mod(t, 0).speed == 0.02f);
+    rig.tap(B);
+    CHECK(rig.mod(t, 0).speed == 1.f && rig.mod(t, 0).rate == kModRateFree);
+    // The stick, A held: smoothly, faster up, a number between the clicks; B gives the usual.
+    rig.key(A, true), rig.key(StickUp, true), rig.frames(10), rig.key(StickUp, false), rig.key(A, false), rig.frames(1);
+    const float up = rig.mod(t, 0).speed;
+    CHECK(up > 1.5f && up < 6.f && modSpeedStep(modSpeedStep(up, -1), 1) != up); // (not a click)
+    turn(DOWN, 1);
+    CHECK(rig.mod(t, 0).speed == modSpeedStep(up, -1) && rig.mod(t, 0).speed < up);
+    rig.key(A, true), rig.key(StickDown, true), rig.frames(400), rig.key(StickDown, false), rig.key(A, false), rig.frames(1);
+    CHECK(rig.mod(t, 0).speed == 0.02f); // held at its end
+    rig.tap(B);
+    // A STEPPER: its RATE stops at 8 BARS, and one made from a FREE LFO is at 1 BAR.
+    ModSettings m = rig.mod(t, 0);
+    m.speed = 3.f;
+    rig.session().setMod(t, 0, m);
+    tab.goTo(0, S::kShape);
+    turn(UP, 10);
+    CHECK(rig.mod(t, 0).kind == kModStepper && rig.mod(t, 0).rate == kModRateBar && rig.mod(t, 0).speed == 3.f); // (SPEED kept, for when it is an LFO again)
+    tab.goTo(0, S::kRate);
+    turn(UP, 10);
+    CHECK(rig.mod(t, 0).rate == kModRateEightBars);
+    CHECK(std::strcmp(ModKnob::moreName(rig.mod(t, 0)), "LENGTH") == 0);
+    // Back to an LFO, FREE again: its SPEED as it was; RATE DOWN leaves FREE for 8 BARS, PHASE again.
+    tab.goTo(0, S::kShape);
+    turn(DOWN, 10);
+    tab.goTo(0, S::kRate);
+    turn(UP, 1);
+    CHECK(modFree(rig.mod(t, 0)) && rig.mod(t, 0).speed == 3.f);
+    turn(DOWN, 1);
+    CHECK(rig.mod(t, 0).rate == kModRateEightBars && std::strcmp(ModKnob::moreName(rig.mod(t, 0)), "PHASE") == 0);
+    turn(UP, 1);
+    // Undo takes a SPEED turn back (Session::setMod: soundMark sees it).
+    rig.frames(60);
+    tab.goTo(0, S::kMore);
+    turn(UP, 1);
+    CHECK(rig.mod(t, 0).speed == 4.f);
+    rig.frames(60);
+    rig.undo();
+    CHECK(rig.mod(t, 0).speed == 3.f && modFree(rig.mod(t, 0)));
+    // What is drawn: the row says SPEED and its Hz, its bar filled on the log scale (not pieces).
+    if (!rig.canvas.ok) return;
+    tab.goTo(0, S::kMore);
+    rig.frames(200); // (UNDONE's toast gone)
+    rig.draw();
+    const auto has = [&](int x, int y, int w, int h, SDL_Color c) { return rig.count(x, y, w, h, c) > 0; };
+    const int y = S::rowY(4);
+    CHECK(has(S::kPaneX + 12, y + 8, 60, 14, ui::kDim));
+    {
+        Canvas want;
+        want.clear();
+        want.fonts->small.draw(want.r, S::kPaneX + 12.f, y + 8.f, "SPEED", ui::kDim);
+        const Font& font = want.fonts->fit("3 HZ", static_cast<float>(S::kValueRoom));
+        font.draw(want.r, static_cast<float>(S::kValueX), y + S::kRowH - 10.f - font.capHeight(), "3 HZ", ui::kTeal);
+        int body = 0, missing = 0;
+        for (int py = y; py < y + S::kRowH; ++py)
+            for (int px = S::kPaneX; px < S::kBarX - 4; ++px)
+                for (SDL_Color c : {ui::kDim, ui::kTeal})
+                    if (want.is(px, py, c)) ++body, missing += !rig.canvas.is(px, py, c);
+        CHECK(body > 40 && missing == 0);
+        if (printing || missing) std::printf("SPEED row: %d pixels, %d missing; speed %g\n", body, missing, static_cast<double>(rig.mod(t, 0).speed));
+    }
+    {
+        // The list's line: its DEPTH and its SPEED (FREE: how fast).
+        Canvas want;
+        want.clear();
+        const float x = S::kListX + 10.f, room = static_cast<float>(S::kSmallPicX - 6) - x;
+        want.fonts->within(&Fonts::small, "+60%  3 HZ", room).draw(want.r, x, S::lineY(0) + 62.f, "+60%  3 HZ", ui::kDim);
+        int body = 0, missing = 0;
+        for (int py = S::lineY(0); py < S::lineY(0) + S::kLineH; ++py)
+            for (int px = S::kListX; px < S::kSmallPicX - 4; ++px)
+                if (want.is(px, py, ui::kDim)) ++body, missing += !rig.canvas.is(px, py, ui::kDim);
+        CHECK(body > 40 && missing == 0);
+    }
+    const int barY = y + S::kRowH / 2 - S::kBarH / 2;
+    const int lit = rig.canvas.run(S::kBarX, barY + 2, ui::kTeal);
+    CHECK(std::abs(lit - static_cast<int>(std::lround(S::kBarW * modSpeedPart(3.f)))) <= 1);
+    if (printing) std::printf("SPEED bar: %d lit of %d\n", lit, S::kBarW);
+    // RATE's bar: 13 pieces for an LFO, FREE the last and lit.
+    {
+        const int ry = S::rowY(3) + S::kRowH / 2;
+        int pieces = 0, lastLit = -1;
+        bool in = false;
+        for (int px = S::kBarX; px < S::kBarX + S::kBarW; ++px) {
+            const bool line = rig.canvas.is(px, ry, ui::kLine), dim = rig.canvas.is(px, ry, ui::kDim);
+            if ((line || dim) && !in) ++pieces;
+            if (dim) lastLit = pieces;
+            in = line || dim;
+        }
+        CHECK(pieces == kModRates && lastLit == kModRates);
+    }
+    char words[32];
+    ModKnob::speedText(3.f, words, sizeof words);
+    CHECK(std::strcmp(words, "3 HZ") == 0);
+    ModKnob::speedText(0.025f, words, sizeof words);
+    CHECK(std::strcmp(words, "0.025 HZ") == 0);
+    ModKnob::speedText(0.0234f, words, sizeof words);
+    CHECK(std::strcmp(words, "0.023 HZ") == 0);
+    ModKnob::speedText(15.7f, words, sizeof words);
+    CHECK(std::strcmp(words, "16 HZ") == 0);
+    // Playing: the dot where seconds since Play put it, the same as the engine's value.
+    rig.tap(START);
+    for (int round = 0; round < 4; ++round) {
+        rig.frames(23);
+        rig.draw();
+        const ModSettings& now = rig.mod(t, 0);
+        const double at = rig.engine->modNow(t, 0);
+        CHECK(std::isfinite(at) && modOffsetAt(now, at, t, 0) == rig.engine->modShown(t, 0));
+        const double cycles = at * 3.0, place = cycles - std::floor(cycles); // seconds x 3 Hz
+        const int dotX = S::kPicX + static_cast<int>(place * S::kPicW);
+        const int dotY = S::kPicY + S::kPicH / 2 - static_cast<int>(std::lround(lfoValue(now, at, t, 0) * (S::kPicH / 2 - 2)));
+        CHECK(rig.count(dotX - 3, dotY - 3, 7, 7, ui::kPurple) == 49);
+    }
+    rig.tap(START);
+}
+
 // X on a drum track hears its first lane.
 void testXOnTheDrums() {
     Rig rig;
@@ -934,6 +1079,7 @@ int main(int argc, char** argv) {
     testAHeldOnAStepsLine();
     testHoldBTakesASecond();
     testTheStickAndTheRepeat();
+    testFree();
     testXOnTheDrums();
     testTheDepthLane();
     testBOnDepthWhileWriting();

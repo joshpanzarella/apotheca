@@ -61,15 +61,16 @@ static void testTheNumbers() {
         }
     CHECK(modTargetSlot(5) == -1 && modTargetSetting(20) == -1 && kModTargetLevel == 32 && kModTargetPan == 33);
     // Rates, in steps (a sixteenth), by number.
-    const double steps[kModRates] = {0.5, 1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 4.0, 6.0, 8.0, 16.0, 32.0, 64.0, 128.0};
-    const char* names[kModRates] = {"1/2 STEP", "1 STEP", "1/8T", "1/8", "1/4T", "1/4", "1/4.", "1/2", "1 BAR", "2 BARS", "4 BARS", "8 BARS"};
-    CHECK(kModRates == 12);
+    // FREE (appended, 2026-11-15) is last: an LFO's SPEED; a STEPPER that reads it plays 1 BAR's 16 steps.
+    const double steps[kModRates] = {0.5, 1.0, 4.0 / 3.0, 2.0, 8.0 / 3.0, 4.0, 6.0, 8.0, 16.0, 32.0, 64.0, 128.0, 16.0};
+    const char* names[kModRates] = {"1/2 STEP", "1 STEP", "1/8T", "1/8", "1/4T", "1/4", "1/4.", "1/2", "1 BAR", "2 BARS", "4 BARS", "8 BARS", "FREE"};
+    CHECK(kModRates == 13 && kModRateFree == 12 && kModTempoRates == 12);
     for (int r = 0; r < kModRates; ++r) {
         CHECK(modRateSteps(r) == steps[r]);
         CHECK(std::string(modRateInfo(r).name) == names[r]);
         CHECK(modRateAt(modRatePlace(r)) == r);
     }
-    CHECK(modRate(12) == kModRateBar && modRate(-1) == kModRateBar && kModRateUsual == kModRateBar);
+    CHECK(modRate(13) == kModRateBar && modRate(12) == kModRateFree && modRate(-1) == kModRateBar && kModRateUsual == kModRateBar);
     CHECK(modRateAt(-3) == 0 && modRateAt(99) == kModRates - 1);
 }
 
@@ -184,6 +185,63 @@ static void testRandomAndDrift() {
     CHECK(biggest < 2.0 * kPi / 2.0 * 0.01 / 4.0 * 1.01 + 1e-9); // at most the cosine's steepest over a 0.01-step move
 }
 
+// FREE (owner, 2026-11-15): an LFO at RATE FREE runs at its SPEED in Hz, its position seconds since
+// Play, with no PHASE. A STEPPER has no FREE (one that reads it plays 1 BAR). SPEED's clicks, held
+// ends, and its log scale.
+static void testTheFreeRule() {
+    ModSettings m;
+    m.kind = kModLfo;
+    m.rate = kModRateFree;
+    m.speed = 0.5f;
+    CHECK(modFree(m) && modPositionFor(m, 7.0, 3.25) == 3.25);
+    for (int k : {kModOff, kModStepper}) {
+        ModSettings other = m;
+        other.kind = k;
+        CHECK(!modFree(other) && modPositionFor(other, 7.0, 3.25) == 7.0);
+    }
+    ModSettings synced = m;
+    synced.rate = kModRateBar;
+    CHECK(!modFree(synced) && modPositionFor(synced, 7.0, 3.25) == 7.0);
+    // Cycles are seconds x SPEED: half a cycle a second. PHASE does nothing to a free LFO.
+    for (int phase = 0; phase < kModPhases; ++phase) {
+        m.phase = phase;
+        CHECK(near(lfoCycles(m, 3.0), 1.5, 1e-12) && near(lfoPositionAt(m, 1.5), 3.0, 1e-12));
+        m.shape = kModSine;
+        CHECK(near(lfoValue(m, 0.5, 1, 0), 1.0, 1e-12) && near(lfoValue(m, 1.5, 1, 0), -1.0, 1e-12) && near(lfoValue(m, 2.0, 1, 0), 0.0, 1e-12));
+    }
+    m.phase = 0;
+    m.speed = 7.f;
+    CHECK(near(lfoCycles(m, 0.25), 1.75, 1e-12) && near(lfoPositionAt(m, 1.75), 0.25, 1e-12));
+    // At 120 BPM (8 steps a second) a free LFO at 0.5 Hz is a synced one at 1 BAR, in every shape,
+    // RANDOM and DRIFT included: the same cycle's count, the same roll.
+    m.speed = 0.5f;
+    for (int shape = 0; shape < kModShapes; ++shape) {
+        m.shape = synced.shape = shape;
+        for (double t = -3.0; t < 30.0; t += 0.173) CHECK(near(lfoValue(m, t, 4, 1), lfoValue(synced, t * 8.0, 4, 1), 1e-9));
+    }
+    // A STEPPER at FREE (a song written by hand) plays as one at 1 BAR, and its place too.
+    ModSettings s, bar;
+    s.kind = bar.kind = kModStepper;
+    s.rate = kModRateFree;
+    bar.rate = kModRateBar;
+    for (int i = 0; i < kModSteps; ++i) s.steps[i] = bar.steps[i] = static_cast<float>(i % 5) / 4.f - 0.5f;
+    for (double at = 0.0; at < 200.0; at += 3.7) CHECK(stepValue(s, at, 1, 0) == stepValue(bar, at, 1, 0) && stepperPlace(s, at) == stepperPlace(bar, at));
+    // SPEED: 31 clicks, 0.02 to 20, rising by a fifth to a third, 1 Hz among them; held ends.
+    CHECK(modSpeedClick(0) == 0.02f && modSpeedClick(kModSpeedClickCount - 1) == 20.f && kModSpeedClickCount == 31);
+    CHECK(kModSpeedLeast == 0.02f && kModSpeedMost == 20.f && modSpeedClick(-1) == 0.02f && modSpeedClick(99) == 20.f && modSpeedClick(17) == kModSpeedUsual);
+    for (int i = 1; i < kModSpeedClickCount; ++i) {
+        const float ratio = modSpeedClick(i) / modSpeedClick(i - 1);
+        CHECK(ratio >= 1.19f && ratio <= 1.34f);
+        CHECK(modSpeedStep(modSpeedClick(i - 1), 1) == modSpeedClick(i) && modSpeedStep(modSpeedClick(i), -1) == modSpeedClick(i - 1));
+    }
+    CHECK(modSpeedStep(20.f, 1) == 20.f && modSpeedStep(0.02f, -1) == 0.02f && modSpeedStep(1.f, 0) == 1.f); // the ends stop
+    CHECK(modSpeedStep(1.1f, 1) == 1.2f && modSpeedStep(1.1f, -1) == 1.f && modSpeedStep(0.0234f, -1) == 0.02f); // between two: to the next
+    CHECK(modSpeedStep(99.f, -1) == 15.f && modSpeedStep(0.f, 1) == 0.025f);
+    CHECK(modSpeed(0.f) == 0.02f && modSpeed(1e9f) == 20.f && modSpeed(std::nanf("")) == 0.02f && modSpeed(3.3f) == 3.3f);
+    CHECK(modSpeedPart(0.02f) == 0.f && near(modSpeedPart(20.f), 1.0, 1e-6) && near(modSpeedPart(std::sqrt(0.02f * 20.f)), 0.5, 1e-6));
+    CHECK(near(modSpeedTurned(1.f, 1.0), 2.0, 1e-6) && near(modSpeedTurned(1.f, -2.0), 0.25, 1e-6) && modSpeedTurned(10.f, 5.0) == 20.f && modSpeedTurned(0.05f, -5.0) == 0.02f);
+}
+
 // A STEPPER: its row as written, round and round LENGTH long; CHANCE plays fresh rolls; SLEW glides.
 static void testTheStepper() {
     ModSettings m;
@@ -284,10 +342,10 @@ static void testTheCombine() {
 // One field at a time, as SetMod carries it: held to what it can be, and read back the same.
 static void testTheFields() {
     CHECK(kModFieldKind == 0 && kModFieldTarget == 1 && kModFieldDepth == 2 && kModFieldRate == 3 && kModFieldShape == 4 && kModFieldRestart == 5 &&
-          kModFieldPhase == 6 && kModFieldLength == 7 && kModFieldSlew == 8 && kModFieldChance == 9 && kModFields == 10);
+          kModFieldPhase == 6 && kModFieldLength == 7 && kModFieldSlew == 8 && kModFieldChance == 9 && kModFieldSpeed == 10 && kModFields == 11);
     ModSettings m;
     m.steps[3] = 0.25f;
-    const float values[kModFields] = {2.f, 13.f, -0.4f, 5.f, 6.f, 0.f, 3.f, 7.f, 0.3f, 0.6f};
+    const float values[kModFields] = {2.f, 13.f, -0.4f, 5.f, 6.f, 0.f, 3.f, 7.f, 0.3f, 0.6f, 2.5f};
     for (int f = 0; f < kModFields; ++f) modSet(m, f, values[f]);
     for (int f = 0; f < kModFields; ++f) CHECK(modGet(m, f) == values[f]);
     CHECK(m.on());
@@ -313,8 +371,18 @@ static void testTheFields() {
     CHECK(m.depth == -1.f);
     modSet(m, kModFieldDepth, std::nanf(""));
     CHECK(m.depth == 0.f);
-    modSet(m, kModFieldRate, 12.f);
+    modSet(m, kModFieldRate, 13.f);
     CHECK(m.rate == kModRateBar);
+    modSet(m, kModFieldRate, 12.f);
+    CHECK(m.rate == kModRateFree);
+    modSet(m, kModFieldSpeed, 99.f);
+    CHECK(m.speed == kModSpeedMost);
+    modSet(m, kModFieldSpeed, 0.f);
+    CHECK(m.speed == kModSpeedLeast);
+    modSet(m, kModFieldSpeed, std::nanf(""));
+    CHECK(m.speed == kModSpeedLeast);
+    modSet(m, kModFieldSpeed, 0.37f);
+    CHECK(m.speed == 0.37f && ModSettings().speed == kModSpeedUsual && kModSpeedUsual == 1.f);
     modSet(m, kModFieldShape, -1.f);
     CHECK(m.shape == kModSine);
     modSet(m, kModFieldPhase, 4.f);
@@ -710,7 +778,7 @@ static void testATempoChangeKeepsThePhase() {
 // and VOWEL's settings and a send, of each kind and several shapes (`gliding`: on SATURATE's
 // DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL (it is not
 // the same cut into other blocks), no automation (its glide moves at chunks).
-static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f) {
+static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f, bool free = false) {
     std::unique_ptr<Engine> e(new Engine);
     e->prepare(48000.f);
     std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
@@ -742,6 +810,14 @@ static std::vector<float> song(int block, int helpers, bool mods, int frames, bo
         e->setMod(2, 0, lfo(phazed::Tone, 0.5f, kModDrift, kModRateQuarterTriplet));
         e->setMod(2, 1, stepper(autoLaneOfSend(0), 0.4f, kModRateQuarter, 0.5f, 0.3f, 6));
         if (!phazedToo) e->setMod(0, 1, stepper(autoLaneOfSend(0), 0.4f, kModRateQuarter, 0.5f, 0.3f, 6));
+        if (free) { // FREE: the CUTOFF's at 3.7 Hz, TONE's at 0.6 Hz (each its own count of seconds)
+            ModSettings f = lfo(autoLaneOfEffect(0, 0), 0.3f, kModSine, kModRateFree);
+            f.speed = 3.7f;
+            e->setMod(0, 0, f);
+            f = lfo(phazed::Tone, 0.5f, kModDrift, kModRateFree);
+            f.speed = 0.6f;
+            if (phazedToo) e->setMod(2, 0, f);
+        }
     }
     if (mods && gliding) {
         e->setMod(0, 0, lfo(autoLaneOfEffect(1, 0), 0.3f, kModSine, kModRateEighth));      // SATURATE's DRIVE
@@ -1318,6 +1394,94 @@ static void testHeardWhileStopped() {
     CHECK(rig.params.empty() && rig.engine->sendGiven(1, 0) == 0.f && rig.engine->modShown(1, 0) == 0.f);
 }
 
+// ---- FREE: a free LFO's place is seconds since Play ----------------------------------------------
+
+static ModSettings freeLfo(int target, float depth, int shape, float hz) {
+    ModSettings m = lfo(target, depth, shape, kModRateFree);
+    m.speed = hz;
+    return m;
+}
+
+// Its position is samples since Play over the sample rate, a whole number of samples at every tick,
+// and its value the rule's there. At 120 a free 0.5 Hz SINE is a synced 1 BAR one, tick for tick; a
+// tempo change moves the synced one and leaves the free one where seconds have it.
+static void testAFreeLfoCountsSeconds() {
+    for (float to : {90.f, 171.f}) {
+        Rig rig;
+        const ModSettings free = freeLfo(autoLaneOfEffect(1, 0), 0.5f, kModSine, 0.5f), synced = lfo(autoLaneOfSend(0), 0.5f, kModSine, kModRateBar);
+        rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f));
+        rig.mod(0, free);
+        rig.mod(1, synced);
+        rig.send(make(Command::Play, 0, 0, 1));
+        long since = 1; // samples since Play (rig.send renders one)
+        int ticks = 0, same = 0, wrong = 0, apart = 0;
+        double before = -1.0;
+        for (; since < 48000L * 6; since += 16) {
+            if (since == 48000L * 2 + 1) rig.send(make(Command::SetTempo, 0, 0, 0, to)), ++since; // at two seconds
+            const double at = rig.engine->modNow(1, 0), steps = rig.engine->modNow(1, 1);
+            const double samples = at * 48000.0;
+            wrong += !(std::fabs(samples - std::round(samples)) < 1e-6 && samples <= since && samples > since - 64 - 16); // the last tick: a whole sample, at most 64 back
+            wrong += rig.engine->modShown(1, 0) != modOffsetAt(free, at, 1, 0);
+            if (at != before) {
+                ++ticks;
+                if (since < 48000L * 2) same += near(rig.engine->modShown(1, 0), rig.engine->modShown(1, 1), 1e-5) && near(steps, at * 8.0, 1e-9);
+                else apart += !near(steps, at * 8.0, 1e-3); // the synced one counts steps: from the change on, not seconds x 8
+            }
+            before = at;
+            rig.frames(16, 16);
+        }
+        CHECK(wrong == 0 && ticks > 4000);
+        CHECK(same > 1400 && apart > 2500);
+        if (measuring) std::printf("free LFO, tempo to %.0f at 2 s: %d ticks, %d the synced one's before, %d apart after, %d wrong\n", to, ticks, same, apart, wrong);
+    }
+}
+
+// The same to the bit cut into any blocks and on any helpers (a song whose MODs are free: its tick
+// is the step's, its place whole samples), and Play twice gives the same.
+static void testAFreeLfoInAnyBlocks() {
+    const int whole = 2 * 16 * 6000;
+    const std::vector<float> plain = song(64, 0, true, whole, true, false, 120.f, true);
+    CHECK(plain != song(64, 0, true, whole, true, false, 120.f)); // (FREE does something)
+    CHECK(song(1, 0, true, whole, true, false, 120.f, true) == plain && song(333, 3, true, whole, true, false, 120.f, true) == plain);
+    const int frames = 2 * 16 * 5414; // 133: the drums alone, as testTheSameInAnyBlocks
+    const std::vector<float> drums = song(64, 0, true, frames, false, false, 133.f, true);
+    CHECK(song(1, 0, true, frames, false, false, 133.f, true) == drums && song(512, 3, true, frames, false, false, 133.f, true) == drums);
+    Rig rig;
+    rig.send(make(Command::SetEffectParam, 1, 1, 3, 0.5f));
+    rig.mod(0, freeLfo(4, 0.6f, kModRandom, 3.f));
+    rig.mod(1, freeLfo(autoLaneOfEffect(1, 3), 0.7f, kModDrift, 0.8f));
+    std::vector<Given> macros[2], params[2];
+    for (int round = 0; round < 2; ++round) {
+        rig.macros.clear();
+        rig.params.clear();
+        rig.send(make(Command::Play, 0, 0, 1));
+        if (round == 1) rig.send(make(Command::SetTempo, 0, 0, 0, 120.f)); // (told again: nothing moves)
+        rig.frames(6000 * 40, round == 0 ? 512 : 333);
+        macros[round] = rig.macros;
+        params[round] = rig.params;
+        rig.send(make(Command::Stop));
+    }
+    CHECK(macros[0].size() > 10 && params[0].size() > 50);
+    CHECK(macros[0] == macros[1] && params[0] == params[1]);
+}
+
+// Stopped, X held: from the moment X went down, in seconds.
+static void testAFreeLfoHeardWhileStopped() {
+    Rig rig;
+    const int fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f));
+    const ModSettings ramp = freeLfo(fx, 0.5f, kModRampUp, 13.f);
+    rig.mod(0, ramp);
+    rig.frames(1000);
+    rig.hear(1);
+    CHECK(rig.lastParam(0) == 0.f && rig.engine->modNow(1, 0) == 0.0); // the ramp's start, at the moment X went down
+    rig.frames(1499);                                                     // 1500 since: the tick at 1472
+    CHECK(rig.engine->modNow(1, 0) == 1472.0 / 48000.0 && rig.lastParam(0) == modGiven(0.5f, modOffsetAt(ramp, 1472.0 / 48000.0, 1, 0)));
+    rig.send(make(Command::SetTempo, 0, 0, 0, 77.f)); // stopped, the tempo turned: the free one does not care
+    rig.frames(999);
+    CHECK(rig.engine->modNow(1, 0) == 2496.0 / 48000.0 && rig.lastParam(0) == modGiven(0.5f, modOffsetAt(ramp, 2496.0 / 48000.0, 1, 0)));
+}
+
 // The old FILTER takes its CUTOFF in stairs, a tick apart (its arithmetic is pinned: no glide may
 // be added). The largest stair a SINE at depth 50% makes, at each rate at 120 BPM, is held to
 // depth x 2 pi x 64 / the cycle's samples. Nobody has listened to it.
@@ -1342,15 +1506,16 @@ static void testTheOldFiltersStairs() {
 // A newer effect takes a setting through its own 20 to 30 ms Glide, a block (here a tick) at a
 // time: a fast MOD loses depth. What is kept of a SINE's swing, at 120 BPM, a 64-sample tick:
 // measured here, the figures in the plan. A 1 BAR SINE keeps all but a hair; a 1/2 STEP loses most.
-static double keptThroughAGlide(int rate, float seconds) {
-    const ModSettings m = lfo(8, 1.f, kModSine, rate);
+static double keptThroughAGlide(int rate, float seconds, float hz = 0.f) {
+    ModSettings m = lfo(8, 1.f, kModSine, rate);
+    if (hz > 0.f) m.rate = kModRateFree, m.speed = hz; // FREE: its position in seconds (6000 samples a step at 120: 8 steps a second)
     fx::Glide g;
     g.snap();
-    const double cycle = modRateSteps(rate) * 6000.0;
+    const double cycle = hz > 0.f ? 48000.0 / hz : modRateSteps(rate) * 6000.0;
     double lo = 1e9, hi = -1e9;
     const long settle = static_cast<long>(4.0 * 48000.0), total = settle + static_cast<long>(2.0 * cycle) + 64;
     for (long at = 0; at < total; at += kModTick) {
-        g.to = modOffsetAt(m, static_cast<double>(at) / 6000.0, 1, 0);
+        g.to = modOffsetAt(m, static_cast<double>(at) / (hz > 0.f ? 48000.0 : 6000.0), 1, 0);
         g.begin(kModTick, fx::glideK(kModTick, seconds, 48000.f));
         for (int i = 0; i < kModTick; ++i) {
             const float v = g.next();
@@ -1362,7 +1527,7 @@ static double keptThroughAGlide(int rate, float seconds) {
 }
 static void testANewerEffectSoftensAFastMod() {
     double last = 0.0;
-    for (int rate = 0; rate < kModRates; ++rate) {
+    for (int rate = 0; rate < kModTempoRates; ++rate) {
         const double kept20 = keptThroughAGlide(rate, 0.02f), kept30 = keptThroughAGlide(rate, 0.03f);
         CHECK(kept30 <= kept20 + 1e-9 && kept20 >= last - 1e-9); // slower kept more; a longer glide less
         last = kept20;
@@ -1370,6 +1535,16 @@ static void testANewerEffectSoftensAFastMod() {
     }
     CHECK(keptThroughAGlide(kModRateBar, 0.03f) > 0.98);
     CHECK(keptThroughAGlide(kModRateHalfStep, 0.03f) < 0.6);
+    // FREE: 16 Hz is 1/2 STEP at 120, to the bit; up to 20 Hz, faster keeps less (README's figures).
+    CHECK(keptThroughAGlide(0, 0.02f, 16.f) == keptThroughAGlide(kModRateHalfStep, 0.02f));
+    last = 1.0;
+    for (float hz : {1.f, 2.f, 5.f, 10.f, 20.f}) {
+        const double kept20 = keptThroughAGlide(0, 0.02f, hz), kept30 = keptThroughAGlide(0, 0.03f, hz);
+        CHECK(kept30 <= kept20 + 1e-9 && kept20 <= last + 1e-9);
+        last = kept20;
+        if (measuring) std::printf("a newer effect's Glide, SINE FREE at %4.1f Hz keeps %5.1f%% (20 ms) %5.1f%% (30 ms)\n", static_cast<double>(hz), 100.0 * kept20, 100.0 * kept30);
+    }
+    CHECK(last < 0.4);
 }
 
 // A preset chosen while a MOD runs on a macro (review, 2026-11-14): the synth puts every macro back
@@ -1569,6 +1744,7 @@ int main(int argc, char** argv) {
         {"testThePosition", testThePosition},
         {"testTheShapes", testTheShapes},
         {"testRandomAndDrift", testRandomAndDrift},
+        {"testTheFreeRule", testTheFreeRule},
         {"testTheStepper", testTheStepper},
         {"testTheCombine", testTheCombine},
         {"testTheFields", testTheFields},
@@ -1604,6 +1780,9 @@ int main(int argc, char** argv) {
         {"testTheDepthKnobStopsTheLanesGlide", testTheDepthKnobStopsTheLanesGlide},
         {"testNoDepthLetsGoAtOnce", testNoDepthLetsGoAtOnce},
         {"testASceneMoveCarriesTheDepthLane", testASceneMoveCarriesTheDepthLane},
+        {"testAFreeLfoCountsSeconds", testAFreeLfoCountsSeconds},
+        {"testAFreeLfoInAnyBlocks", testAFreeLfoInAnyBlocks},
+        {"testAFreeLfoHeardWhileStopped", testAFreeLfoHeardWhileStopped},
     };
     int first = 1;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) measuring = true, first = 2;

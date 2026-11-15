@@ -493,15 +493,18 @@ void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 // and a busy machine moves the whole row more than that between two runs. Timed one after
 // another, one run read 24 MODs as -0.04% and the next +0.10% (review, 2026-11-15).
 // `mix`: the 24 on LEVEL and PAN instead (batch 8: a track whose level or pan moves takes the
-// render's moving loop, not its at-rest one).
-static std::unique_ptr<Engine> modsAloneEngine(int mods, bool mix = false) {
+// render's moving loop, not its at-rest one). `lfos` 1: the 24 all LFOs in time; 2: the same 24
+// FREE, each at the SPEED its rate has at 120 (what FREE costs over an LFO in time).
+static std::unique_ptr<Engine> modsAloneEngine(int mods, bool mix = false, int lfos = 0) {
     std::unique_ptr<Engine> engine(new Engine);
     std::vector<float> out(512);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     engine->render(out.data(), 256);
     for (int m = 0; m < mods; ++m) {
         const int target = mix ? (m % 2 ? kModTargetPan : kModTargetLevel) : autoLaneOfSend(m % 2);
-        engine->setMod(m / 2, m % 2, benchMod(m % 2 ? kModStepper : kModLfo, target, kModRateEighth + m % 5, m % kModShapes));
+        ModSettings mod = benchMod(m % 2 && !lfos ? kModStepper : kModLfo, target, kModRateEighth + m % 5, m % kModShapes);
+        if (lfos == 2) mod.speed = static_cast<float>(8.0 / modRateSteps(mod.rate)), mod.rate = kModRateFree; // (8 steps a second at 120)
+        engine->setMod(m / 2, m % 2, mod);
     }
     Command c;
     c.type = Command::Play;
@@ -511,15 +514,15 @@ static std::unique_ptr<Engine> modsAloneEngine(int mods, bool mix = false) {
 }
 
 struct ModsAloneTimes {
-    double none = 0.0, one = 0.0, all = 0.0, mix = 0.0;
+    double none = 0.0, one = 0.0, all = 0.0, mix = 0.0, synced = 0.0, free = 0.0;
 };
 
 static ModsAloneTimes modsAlone() {
-    std::unique_ptr<Engine> engines[4] = {modsAloneEngine(0), modsAloneEngine(1), modsAloneEngine(24), modsAloneEngine(24, true)};
+    std::unique_ptr<Engine> engines[6] = {modsAloneEngine(0), modsAloneEngine(1), modsAloneEngine(24), modsAloneEngine(24, true), modsAloneEngine(24, false, 1), modsAloneEngine(24, false, 2)};
     std::vector<float> out(512);
-    double best[4] = {1e30, 1e30, 1e30, 1e30};
+    double best[6] = {1e30, 1e30, 1e30, 1e30, 1e30, 1e30};
     for (int round = 0; round < 40; ++round)
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < 6; ++i) {
             Engine& engine = *engines[i];
             best[i] = std::min(best[i], ms([&] { engine.render(out.data(), 256); }, 100));
         }
@@ -528,6 +531,8 @@ static ModsAloneTimes modsAlone() {
     t.one = 100.0 * best[1] / (256.0 / 48.0);
     t.all = 100.0 * best[2] / (256.0 / 48.0);
     t.mix = 100.0 * best[3] / (256.0 / 48.0);
+    t.synced = 100.0 * best[4] / (256.0 / 48.0);
+    t.free = 100.0 * best[5] / (256.0 / 48.0);
     return t;
 }
 
@@ -601,6 +606,8 @@ static void wholeSongModRows() {
     std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "1 MOD", times.one, times.one - times.none);
     std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs", times.all, times.all - times.none);
     std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs on LEVEL and PAN", times.mix, times.mix - times.none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 LFOs in time", times.synced, times.synced - times.none);
+    std::printf("  %-28s %5.3f%% (%+.3f%% over in time)\n", "24 LFOs FREE", times.free, times.free - times.synced);
 }
 
 int apotheca::runBench() {

@@ -8,9 +8,10 @@
 //                     1 BAR, +25% (owner's call C), in the first MOD that is free. Both taken:
 //                     MODS FULL (call D), and nothing is made.
 //     the stick       up / down turns DEPTH smoothly (a big move); left / right clicks RATE
-//     LEFT / RIGHT    RATE, a click a push (the ends stop)
+//     LEFT / RIGHT    RATE, a click a push (the ends stop: an LFO's last is FREE, a STEPPER's 8 BARS)
 //     A               SHAPE: SINE ... DRIFT, then STEPPER, then SINE again
-//     L1 / R1         an LFO's PHASE, a STEPPER's LENGTH (the ends stop)
+//     L1 / R1         an LFO's PHASE (a FREE one's SPEED, a click of mod_rule.hpp's list), a
+//                     STEPPER's LENGTH (the ends stop)
 //     Y               the dice (call F): a STEPPER's row; an LFO's shape and rate, DEPTH kept
 //     hold B          deletes the MOD (a bar fills for a second; undo brings it back)
 //   X held while the song is stopped runs the MOD (call E: Session::hearMods), and the screen's
@@ -42,12 +43,15 @@ constexpr float kModValueDrop = 16.f; // a value's top under its name's
 
 // DEVICE MAIN: in the LIVE OUTPUT strip's place (ui::kScopeY, 36 tall), one row. The dice stand at
 // the bar's left end, so the knob's field starts past them.
+// (NOW from 528: a FREE LFO's slowest SPEED, "0.025 HZ", stands clear of it.)
 constexpr ModPlaces kDeviceModPlaces = {56.f, 166.f, 284.f, 352.f, 444.f,
                                         static_cast<float>(ui::kScopeY + 4), static_cast<float>(ui::kScopeY + 4),
-                                        520, ui::kScopeY + 4, 104};
+                                        528, ui::kScopeY + 4, 96};
 // FX: in the heading's place (FxScreen::kPaneX 222, kPaneY 34, kHeadH 93): the knob and NOW on the
 // first row, the four fields on the second. Given as offsets from the panel's top (`top` is added).
-constexpr ModPlaces kFxModPlaces = {234.f, 289.f, 402.f, 467.f, 556.f, 10.f, 50.f, 470, 10, 150};
+// (RATE from 465 and the last field from 550: a FREE LFO's "0.025 HZ" ends inside the panel, and
+// "1/2 STEP" before it.)
+constexpr ModPlaces kFxModPlaces = {234.f, 289.f, 402.f, 465.f, 550.f, 10.f, 50.f, 470, 10, 150};
 
 class ModKnob {
 public:
@@ -84,7 +88,12 @@ public:
     static void shapeText(const ModSettings& m, char* out, int size);
     static void depthText(float depth, char* out, int size);
     static void moreText(const ModSettings& m, char* out, int size);
-    static const char* moreName(const ModSettings& m) { return modKind(m.kind) == kModStepper ? "LENGTH" : "PHASE"; }
+    static const char* moreName(const ModSettings& m) { return modKind(m.kind) == kModStepper ? "LENGTH" : (modFree(m) ? "SPEED" : "PHASE"); }
+    static void speedText(float hz, char* out, int size); // "1 HZ", "0.025 HZ", "15 HZ"
+    // How many places RATE has for this MOD: an LFO's run to FREE, a STEPPER's stop at 8 BARS.
+    static int rates(const ModSettings& m) { return modKind(m.kind) == kModStepper ? kModTempoRates : kModRates; }
+    // The SPEEDs the dice roll a FREE LFO between: the clicks 0.1 Hz to 5 Hz.
+    static constexpr int kSpeedRollFirst = 7, kSpeedRollLast = 24;
     // The first MOD UP makes (owner's call C).
     static ModSettings fresh(int target);
     // SHAPE as one list, as A steps it here and UP / DOWN on the MOD tab: SINE ... DRIFT (an LFO's
@@ -95,7 +104,7 @@ public:
     static int shapePlace(const ModSettings& m) { return modKind(m.kind) == kModStepper ? kModShapes : modShape(m.shape); }
     static ModSettings shapeAt(const ModSettings& m, int place, int track);
     // The dice (owner's call F), from a seed: a STEPPER's row rolled, LENGTH, SLEW and CHANCE kept; an
-    // LFO's SHAPE and RATE, never both as they were, DEPTH kept.
+    // LFO's SHAPE and RATE, never both as they were, DEPTH kept (a FREE one's SHAPE and SPEED: it stays free).
     static ModSettings rolled(const ModSettings& m, std::uint32_t seed);
     // The words where there is no MOD to show.
     static constexpr const char* kNoModWords = "UP: A NEW LFO HERE";

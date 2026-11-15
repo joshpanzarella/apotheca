@@ -200,6 +200,118 @@ void testTheWords() {
     CHECK(differ && whole && within);
 }
 
+// ---- FREE (owner, 2026-11-15) -------------------------------------------------------------------
+
+// RATE's last is FREE (an LFO's only), and L1 / R1 is then SPEED, a click of its list; the dice keep
+// it free; A to a STEPPER puts it at 1 BAR, whose RATE stops at 8 BARS. Drawn: RATE says FREE, the
+// last field SPEED and its Hz, each chip still under its field, and the longest Hz clear of what is
+// beside it, on DEVICE and on FX.
+void testFreeOnTheKnob() {
+    char text[16];
+    ModSettings m = ModKnob::fresh(3);
+    m.rate = kModRateFree, m.speed = 0.25f, m.phase = 2;
+    ModKnob::moreText(m, text, sizeof text);
+    CHECK(std::strcmp(text, "0.25 HZ") == 0 && std::strcmp(ModKnob::moreName(m), "SPEED") == 0 && ModKnob::rates(m) == kModRates);
+    m.kind = kModStepper;
+    CHECK(std::strcmp(ModKnob::moreName(m), "LENGTH") == 0 && ModKnob::rates(m) == kModTempoRates);
+    // The dice on a FREE LFO: it stays free; SHAPE and SPEED, never both as they were, a click 0.1 to 5 Hz.
+    int shapes = 0, speeds = 0;
+    for (std::uint32_t seed = 0; seed < 400; ++seed) {
+        ModSettings f = ModKnob::fresh(8);
+        f.rate = kModRateFree, f.depth = -0.4f, f.speed = 1.f;
+        const ModSettings r = ModKnob::rolled(f, seed);
+        CHECK(r.rate == kModRateFree && r.depth == f.depth && r.kind == kModLfo && (r.shape != f.shape || r.speed != f.speed));
+        CHECK(r.speed >= 0.1f && r.speed <= 5.f && modSpeedStep(modSpeedStep(r.speed, -1), 1) == r.speed && r.phase == f.phase);
+        shapes |= 1 << r.shape;
+        for (int i = ModKnob::kSpeedRollFirst; i <= ModKnob::kSpeedRollLast; ++i) speeds |= (r.speed == modSpeedClick(i)) << (i - ModKnob::kSpeedRollFirst);
+    }
+    CHECK(shapes == (1 << kModShapes) - 1 && speeds == (1 << (ModKnob::kSpeedRollLast - ModKnob::kSpeedRollFirst + 1)) - 1);
+    CHECK(modSpeedClick(ModKnob::kSpeedRollFirst) == 0.1f && modSpeedClick(ModKnob::kSpeedRollLast) == 5.f);
+
+    Rig rig;
+    const int t = rig.phazed;
+    rig.device(t, 0);
+    rig.key(X, true);
+    rig.tap(SDLK_UP); // a fresh LFO: 1 BAR
+    rig.tap(SDLK_RIGHT, 3);
+    CHECK(rig.mod(t, 0).rate == kModRateEightBars);
+    rig.tap(SDLK_RIGHT);
+    CHECK(modFree(rig.mod(t, 0)) && rig.mod(t, 0).speed == 1.f);
+    rig.tap(SDLK_RIGHT, 2);
+    CHECK(rig.mod(t, 0).rate == kModRateFree); // the end stops
+    // L1 / R1: SPEED, a click; the ends stop; PHASE is left as it was.
+    rig.tap(R1);
+    CHECK(rig.mod(t, 0).speed == 1.2f && rig.mod(t, 0).phase == 0);
+    rig.tap(L1, 3);
+    CHECK(rig.mod(t, 0).speed == 0.6f);
+    rig.tap(R1, 40);
+    CHECK(rig.mod(t, 0).speed == 20.f);
+    rig.tap(L1, 40);
+    CHECK(rig.mod(t, 0).speed == 0.02f);
+    rig.tap(R1, 17);
+    CHECK(rig.mod(t, 0).speed == 1.f);
+    // The stick sideways: RATE clicks, and stops at FREE too.
+    rig.key(StickRight, true), rig.frames(30), rig.key(StickRight, false), rig.frames(1);
+    CHECK(rig.mod(t, 0).rate == kModRateFree);
+    // Y: still free.
+    rig.tap(Y);
+    CHECK(modFree(rig.mod(t, 0)));
+    const float rolled = rig.mod(t, 0).speed;
+    // A to a STEPPER: at 1 BAR, its RATE stopping at 8 BARS; back to an LFO it is at 1 BAR, its SPEED kept.
+    rig.tap(A, kModShapes - rig.mod(t, 0).shape);
+    CHECK(rig.mod(t, 0).kind == kModStepper && rig.mod(t, 0).rate == kModRateBar && rig.mod(t, 0).speed == rolled);
+    rig.tap(SDLK_RIGHT, 6);
+    CHECK(rig.mod(t, 0).rate == kModRateEightBars);
+    rig.tap(A);
+    CHECK(rig.mod(t, 0).kind == kModLfo && rig.mod(t, 0).rate == kModRateEightBars);
+    rig.tap(SDLK_RIGHT);
+    CHECK(modFree(rig.mod(t, 0)) && rig.mod(t, 0).speed == rolled);
+    rig.key(X, false);
+    rig.frames(2);
+
+    // What is drawn.
+    if (!rig.canvas.ok || !rig.scratch.ok) return;
+    ModSettings f = lfoOn(kModFirstMacro);
+    f.rate = kModRateFree, f.speed = 0.025f;
+    rig.session().setMod(t, 0, f);
+    rig.device(t, 0);
+    rig.key(X, true);
+    rig.draw();
+    const ModPlaces& p = kDeviceModPlaces;
+    CHECK(rig.drawn(p.rate, p.fieldsY, "RATE") && rig.drawn(p.rate, p.fieldsY + kModValueDrop, "FREE", true, ui::kText));
+    CHECK(rig.drawn(p.more, p.fieldsY, "SPEED") && rig.drawn(p.more, p.fieldsY + kModValueDrop, "0.025 HZ", true, ui::kText));
+    const Chips all = {{8, rig.chipW("Y")},
+                       {static_cast<int>(p.lead), rig.chipW("HOLD B")},
+                       {static_cast<int>(p.shape), rig.chipW("A")},
+                       {static_cast<int>(p.depth), rig.chipW("UP / DOWN")},
+                       {static_cast<int>(p.rate), rig.chipW("LEFT / RIGHT")},
+                       {static_cast<int>(p.more), rig.chipW("L1 / R1")}};
+    CHECK(rig.chips() == all && rig.chipIs(p.more, "L1 / R1"));
+    rig.key(X, false);
+    // The widest SPEED there can be (the stick reaches any): clear of NOW on DEVICE, inside the panel on FX.
+    const Font& medium = rig.canvas.fonts->medium;
+    float widest = 0.f;
+    for (int i = 0; i <= 3000; ++i) {
+        ModKnob::speedText(kModSpeedLeast * std::pow(1000.f, static_cast<float>(i) / 3000.f), text, sizeof text);
+        widest = std::max(widest, medium.width(text));
+    }
+    if (printing) std::printf("the widest SPEED: %.1f pixels (\"0.025 HZ\" %.1f); 1/2 STEP %.1f, -100%% %.1f, RAMP DOWN %.1f\n", static_cast<double>(widest), static_cast<double>(medium.width("0.025 HZ")), static_cast<double>(medium.width("1/2 STEP")), static_cast<double>(medium.width("-100%")), static_cast<double>(medium.width("RAMP DOWN")));
+    CHECK(widest >= medium.width("0.025 HZ") && p.more + widest + 6.f <= p.nowX);
+    CHECK(kFxModPlaces.more + widest <= FxScreen::kPaneX + FxScreen::kPaneW - 6 && kFxModPlaces.rate + medium.width("1/2 STEP") + 6.f <= kFxModPlaces.more);
+    // On FX: the same two fields.
+    rig.session().setEffect(t, 0, EffectKind::Filter);
+    f.target = kModFirstEffect;
+    rig.session().setMod(t, 1, f);
+    rig.fx(t, 0, 1);
+    rig.key(X, true);
+    rig.draw();
+    const float top = static_cast<float>(FxScreen::kPaneY);
+    const ModPlaces& q = kFxModPlaces;
+    CHECK(rig.drawn(q.rate, top + q.fieldsY + kModValueDrop, "FREE", true, ui::kText) && rig.drawn(q.more, top + q.fieldsY, "SPEED") && rig.drawn(q.more, top + q.fieldsY + kModValueDrop, "0.025 HZ", true, ui::kText));
+    CHECK(rig.chipIs(q.more, "L1 / R1") && rig.chipIs(q.rate, "LEFT / RIGHT"));
+    rig.key(X, false);
+}
+
 // ---- DEVICE MAIN ------------------------------------------------------------------------------
 
 void testTheGestureOnAMacro() {
@@ -227,7 +339,7 @@ void testTheGestureOnAMacro() {
     rig.tap(SDLK_RIGHT);
     CHECK(rig.mod(t, 0).rate == kModRateTwoBars);
     rig.tap(SDLK_RIGHT, 5);
-    CHECK(rig.mod(t, 0).rate == kModRateEightBars);
+    CHECK(rig.mod(t, 0).rate == kModRateFree); // (an LFO's last: FREE)
     rig.tap(SDLK_LEFT, 20);
     CHECK(rig.mod(t, 0).rate == kModRateHalfStep);
     // L1 / R1: PHASE, the ends stop.
@@ -1185,6 +1297,7 @@ int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     for (int i = 1; i < argc; ++i) printing = printing || std::strcmp(argv[i], "--print") == 0;
     testTheWords();
+    testFreeOnTheKnob();
     testTheGestureOnAMacro();
     testFullAndChoices();
     testTheOrderOnDevice();

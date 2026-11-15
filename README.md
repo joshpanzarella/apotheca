@@ -580,7 +580,7 @@ one of two kinds:
 
 | Kind | What it does |
 | --- | --- |
-| **LFO** | A slow wave: SINE, TRIANGLE, RAMP UP, RAMP DOWN, SQUARE, RANDOM (a new value each cycle) or DRIFT (glides between random values) |
+| **LFO** | A slow wave: SINE, TRIANGLE, RAMP UP, RAMP DOWN, SQUARE, RANDOM (a new value each cycle) or DRIFT (glides between random values). In time with the song, or **FREE**: at a speed of its own in Hz |
 | **STEPPER** | A row of up to 16 values, one held for each note length, round and round |
 
 Each track has **two MODs**. Each one is aimed at one knob: a macro (DEVICE),
@@ -598,10 +598,10 @@ Each button's chip in the bottom bar stands under the field it sets.
 | --- | --- |
 | **UP** (no MOD yet) | Makes one: LFO, SINE, 1 BAR, +25% |
 | Up / down | DEPTH, 1% a push. The stick turns it smoothly. Below 0% it turns the other way |
-| Left / right | RATE: 1/2 STEP up to 8 BARS, a click a push |
+| Left / right | RATE: 1/2 STEP up to 8 BARS, then **FREE** (an LFO only), a click a push |
 | A | SHAPE: the next wave; after DRIFT, a STEPPER (its row rolled); then SINE again |
-| L1 / R1 | An LFO's PHASE (0, 1/4, 1/2, 3/4); a STEPPER's LENGTH (1 to 16) |
-| Y | The dice: a STEPPER's row; an LFO's shape and rate (DEPTH stays) |
+| L1 / R1 | An LFO's PHASE (0, 1/4, 1/2, 3/4); a FREE LFO's **SPEED** (a click, next rule); a STEPPER's LENGTH (1 to 16) |
+| Y | The dice: a STEPPER's row; an LFO's shape and rate (a FREE one's shape and SPEED, 0.1 to 5 Hz: it stays free; DEPTH stays) |
 | **Hold B** | Deletes the MOD (a second; the strip fills) |
 
 NOW, at the right, shows what the MOD is adding this moment. With the song
@@ -623,6 +623,30 @@ written DEPTH has the purple line, and while the song plays DEPTH reads what
 the pattern says. B on DEPTH puts it back to +25% and empties what was written
 in that scene.
 
+**FREE: an LFO that ignores the tempo.** RATE's last choice, after 8 BARS, is
+FREE. A free LFO goes at its own **SPEED**, in Hz (cycles a second), from
+0.02 Hz (50 seconds a cycle) to 20 Hz. Its PHASE row becomes SPEED, and RATE
+reads FREE.
+
+| SPEED | How |
+| --- | --- |
+| The D-pad (L1 / R1 on the knob, A + up / down on the MOD tab) | A click along 0.02, 0.025, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1 ... 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20 Hz (about a third of an octave a click). Between two, it goes to the next |
+| The stick, A held, on the MOD tab | Smoothly, any speed between (it reads two figures: 1.3 HZ) |
+| B on the MOD tab | 1 Hz |
+
+- It counts **seconds since Play** (or since X went down, stopped), so a tempo
+  change does not move it, and Play from the top is the same wobble again.
+- A STEPPER has no FREE: its RATE stops at 8 BARS, and an LFO made a STEPPER
+  while FREE goes to 1 BAR. Its SPEED is kept for when it is an LFO again.
+- **How fast it really moves a knob.** A MOD is worked out 750 times a second
+  for an effect's setting, a send, LEVEL and PAN, but only **94 times a second
+  for a macro**. So at 20 Hz a macro gets under five values a cycle: a fast
+  free LFO on a macro is a coarse staircase, not a wave. On an effect's setting
+  or a send it is 37 values a cycle. Nine effects also smooth what a MOD gives
+  them over 20 to 30 ms (CHORUS, COMP, DUCK, HALL, PING, PLATE, SATURATE,
+  SPRING, TAPE): of a SINE's swing they keep about 72 to 84% at 5 Hz, 46 to
+  61% at 10 Hz and 25 to 36% at 20 Hz (measured on the rule, not heard).
+
 #### The MOD tab
 
 The tab after FX shows both MODs of the track: a list at the left (MOD 1, its
@@ -635,16 +659,16 @@ the step playing.
 | --- | --- |
 | Up / down, right, left | Move: right goes into the line's settings, left back to the list |
 | **Hold A** on TARGET (or on a MOD's line) | The list of targets: MACROS, FX 1 to 3, SENDS, MIXER (LEVEL, PAN), only what a MOD can move. Up / down a line, left / right along it, **let go** to aim it there (a MOD that was off starts as LFO, SINE, 1 BAR, +25%). B with A held: as it was |
-| **Hold A** + up / down on a setting | Turns it: DEPTH 1% a push, a step or SLEW or CHANCE 5%; SHAPE, RATE, PHASE and LENGTH a click. The stick turns the amounts smoothly |
+| **Hold A** + up / down on a setting | Turns it: DEPTH 1% a push, a step or SLEW or CHANCE 5%; SHAPE, RATE, PHASE and LENGTH a click; a FREE LFO's SPEED a click of its list. The stick turns the amounts (and SPEED) smoothly |
 | **Hold A** + left / right on the row | The step before / after, still holding A: a whole row in one grip |
-| B | A setting back to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, a step 0...) |
+| B | A setting back to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, SPEED 1 Hz, a step 0...) |
 | **Hold B** on a MOD's line | Deletes the MOD (a second; undo brings it back) |
 | Y | The dice: on a MOD's line as on the knob; on STEPS, the row |
 | X | Hear the track. Held on a MOD's line with the song stopped, that MOD runs |
 | L1 / R1 | The track before / after |
 
 A MOD's settings: TARGET, SHAPE (SINE ... DRIFT, then STEPPER), DEPTH, RATE,
-and PHASE (an LFO) or LENGTH (a STEPPER). Its STEPS: the row of 16 (steps past
+and PHASE (an LFO), SPEED (an LFO at RATE FREE) or LENGTH (a STEPPER). Its STEPS: the row of 16 (steps past
 LENGTH are faint), then LENGTH, **SLEW** (how much of a step it takes to glide
 to the next value) and **CHANCE** (how often a step plays a fresh random value
 instead of the one written). An LFO keeps a row too, for when it becomes a

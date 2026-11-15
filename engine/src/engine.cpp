@@ -1066,6 +1066,7 @@ void Engine::apply(const Command& c) {
         letGoOfNotes();
         stepsFired_ = 0;
         sinceStep_ = 0; // (an audition gives way: every MOD runs from here, its first tick at once; Stop lets it go)
+        playedFor_ = 0; // a FREE LFO's clock: samples since Play
         for (Track& track : tracks_) {
             track.trail.clear(); // the song's first note has nothing to glide from
             track.strokes = -1;  // ...and its first strum goes up
@@ -1901,7 +1902,9 @@ void Engine::render(float* interleaved, int frames) {
                 // Where the song is at this chunk's first sample: read BEFORE the chunk is taken off
                 // untilStep_ (after, it would be the chunk's end, a chunk late).
                 const double at = playing_ ? modPosition(stepsFired_, samplesPerStep_, untilStep_) : static_cast<double>(heardFor_) / samplesPerStep_;
-                runMods(at, (since / kModTick) % kModMacroTicks == 0);
+                // A FREE LFO's: seconds since Play (or X), whole samples counted, so no tempo moves it.
+                const double seconds = static_cast<double>(playing_ ? playedFor_ : heardFor_) / static_cast<double>(sampleRate_);
+                runMods(at, seconds, (since / kModTick) % kModMacroTicks == 0);
             }
             if (kModTick - into < chunk) chunk = kModTick - into;
         }
@@ -1928,7 +1931,7 @@ void Engine::render(float* interleaved, int frames) {
                     if (left >= 1 && left < chunk) chunk = left;
                 }
         }
-        if (playing_) sinceStep_ += chunk;
+        if (playing_) sinceStep_ += chunk, playedFor_ += chunk;
         else if (heardMask_) heardFor_ += chunk;
         ++chunks_;
         renderChunk(interleaved, chunk, peaks);
@@ -1984,7 +1987,7 @@ void Engine::giveMix(Track& track) {
 // (every kModMacroTicks'th: each change works a whole tone out again). A lane whose slot the FX
 // screen is trying effects in waits (its offset was put back to 0 by the hold), and a setting that
 // is a choice is never moved.
-void Engine::runMods(double position, bool macros) {
+void Engine::runMods(double steps, double seconds, bool macros) {
     for (int t = 0; t < kNumTracks; ++t) {
         Track& track = tracks_[t];
         const unsigned mask = playing_ ? 3u : (t == heardTrack_ ? heardMask_ : 0u);
@@ -1995,6 +1998,7 @@ void Engine::runMods(double position, bool macros) {
             const ModSettings& mod = track.mods[m];
             if (!((mask >> m) & 1u) || !mod.runs() || (modTargetIsMacro(mod.target) && !macros)) continue;
             runs[m] = true;
+            const double position = modPositionFor(mod, steps, seconds); // (a FREE LFO's: seconds)
             // At the depth its DEPTH lane has now (batch 7): where the scene's automation has it, or,
             // where the lane rests on its knob, the MOD's own DEPTH exactly (0..1 and back is not
             // always the same float).

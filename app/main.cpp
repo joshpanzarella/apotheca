@@ -19,8 +19,8 @@
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
-//                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12 (the MOD tab; with
-//                  --hold-a on mod-target and mod-drums, the list of targets)
+//                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12, mod-free (the MOD tab;
+//                  with --hold-a on mod-target and mod-drums, the list of targets), device-mod-free
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -937,7 +937,8 @@ int main(int argc, char** argv) {
         // the dot moves). mod-steps: MOD 2's row, on step 5. mod-target: on MOD 1's TARGET (--hold-a: the list
         // of targets). mod-off: no MOD, on MOD 1's TARGET. mod-drums: the drum track, a STEPPER on its first
         // effect (--hold-a: the list of targets, no macros). mod-deleting: B held on MOD 1's line (the still is
-        // taken before the second is up). mod-12: twelve tracks, on the last, its MODs as above.
+        // taken before the second is up). mod-12: twelve tracks, on the last, its MODs as above. mod-free: MOD 1
+        // FREE at 0.025 Hz (the longest SPEED there is to read), on its SPEED, X held (it runs, the dot moves).
         Session& s = app.session();
         int track = 1;
         if (std::strcmp(view, "mod-12") == 0) {
@@ -952,6 +953,7 @@ int main(int argc, char** argv) {
         ModSettings steps;
         steps.kind = kModStepper, steps.target = kModFirstSend, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8, steps.slew = 0.25f, steps.chance = 0.1f;
         for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.4f) + 0.05f * static_cast<float>(i % 5);
+        if (std::strcmp(view, "mod-free") == 0) lfo.rate = kModRateFree, lfo.speed = 0.025f;
         if (std::strcmp(view, "mod-drums") == 0) {
             app.project().track = track = 0;
             s.setEffect(0, 0, EffectKind::Filter);
@@ -968,8 +970,8 @@ int main(int argc, char** argv) {
             s.setMod(track, 1, steps);
         }
         ModScreen& mods = app.mods();
-        if (std::strcmp(view, "mod-lfo") == 0) {
-            mods.goTo(0, ModScreen::kDepth);
+        if (std::strcmp(view, "mod-lfo") == 0 || std::strcmp(view, "mod-free") == 0) {
+            mods.goTo(0, std::strcmp(view, "mod-free") == 0 ? ModScreen::kMore : ModScreen::kDepth);
             pushKey(SDLK_s, true); // X held
         } else if (std::strcmp(view, "mod-depth") == 0) {
             // MOD 1's DEPTH lane written in this scene (batch 7): -60% on every step (one reading, whenever
@@ -993,7 +995,7 @@ int main(int argc, char** argv) {
         // chip under its field. device-mod-held: an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4). device-mod-stepper:
         // a STEPPER. device-mod-new: no MOD on it yet (UP makes one). device-mod-full: both MODs on other knobs
         // (MODS FULL). device-mod-deleting: B held on its LFO, the bar filling (the still is taken before the
-        // second is up).
+        // second is up). device-mod-free: the LFO FREE at 0.025 Hz (RATE reads FREE, SPEED its longest).
         Session& s = app.session();
         app.project().track = 1;
         s.view = View::Device;
@@ -1003,6 +1005,7 @@ int main(int argc, char** argv) {
         ModSettings steps;
         steps.kind = kModStepper, steps.target = kModFirstMacro, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8;
         for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.35f) + 0.05f * static_cast<float>(i % 4);
+        if (std::strcmp(view, "device-mod-free") == 0) lfo.rate = kModRateFree, lfo.speed = 0.025f;
         if (std::strcmp(view, "device-modded") == 0) {
             // The song playing, no X: TONE under its LFO, the third macro under a STEPPER, each bar with
             // the thin brass mark where it is given now (batch 6).

@@ -42,12 +42,13 @@ inline bool modTargetFits(const TrackData& track, int target) {
 
 // A MOD as the song may hold it on this track: every field held to what it can be (mod_rule.hpp's
 // modSet: a number nobody knows is OFF, 1 BAR, SINE...), and OFF, blank, if it is OFF or its
-// target does not fit.
+// target does not fit. A STEPPER at FREE (an LFO's rate alone) is at 1 BAR.
 inline ModSettings modHeldFor(const TrackData& track, const ModSettings& asked) {
     ModSettings m;
     for (int field = 0; field < kModFields; ++field) modSet(m, field, modGet(asked, field));
     for (int step = 0; step < kModSteps; ++step) modSetStep(m, step, asked.steps[step]);
     if (m.kind == kModOff || !modTargetFits(track, m.target)) return ModSettings();
+    if (m.kind == kModStepper && m.rate == kModRateFree) m.rate = kModRateBar; // FREE is an LFO's alone: a STEPPER made from a free LFO starts at 1 BAR
     return m;
 }
 

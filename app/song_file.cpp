@@ -74,9 +74,11 @@ void putEffects(std::string& out, const EffectData* effects, int slots) {
 
 } // namespace
 
-// mod N KIND TARGET DEPTH RATE SHAPE RESTART PHASE: MOD N (1 or 2) of the track. KIND 1 an LFO, 2 a
-// STEPPER; TARGET the automation lane it is aimed at (0-7 macros, 8 + slot * 4 + setting, 20 and 21
-// the sends); DEPTH 0..1 with 0.5 none (depthToFile); the rest by their numbers in mod_rule.hpp.
+// mod N KIND TARGET DEPTH RATE SHAPE RESTART PHASE [SPEED]: MOD N (1 or 2) of the track. KIND 1 an
+// LFO, 2 a STEPPER; TARGET the automation lane it is aimed at (0-7 macros, 8 + slot * 4 + setting, 20
+// and 21 the sends); DEPTH 0..1 with 0.5 none (depthToFile); the rest by their numbers in
+// mod_rule.hpp. SPEED (a FREE LFO's, Hz) is left off at its usual, 1 Hz: a program before it reads
+// the eight numbers it knows and skips the ninth.
 // modsteps N LENGTH SLEW CHANCE v1..v16: its row (a STEPPER's), each value -1..1; left out when it
 // is as a new MOD's (16 long, no slew, no chance, every value 0). Both left out when the MOD is OFF.
 std::string modText(const ModSettings& mod, int index) {
@@ -89,7 +91,9 @@ std::string modText(const ModSettings& mod, int index) {
     put(out, " %.0f", mod.rate);
     put(out, " %.0f", mod.shape);
     put(out, " %.0f", mod.restart);
-    put(out, " %.0f\n", mod.phase);
+    put(out, " %.0f", mod.phase);
+    if (mod.speed != kModSpeedUsual) put(out, " %.6g", mod.speed);
+    out += "\n";
     bool row = mod.length != kModSteps || mod.slew != 0.f || mod.chance != 0.f;
     for (float v : mod.steps) row = row || v != 0.f;
     if (!row) return out;
@@ -510,13 +514,14 @@ bool parseSong(const std::string& text, Project& project) {
             // (KIND and TARGET must be there; what is missing after them is as a new MOD's. A KIND or a
             // TARGET nobody knows is OFF, and so is a target that does not fit the track: seen once the
             // whole song is read, below, since the track's effects may be written after this line.)
-            double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0;
+            double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0, speed = kModSpeedUsual;
             if (!(in >> n >> kind >> target) || !(n >= 1.0) || n > kModsPerTrack) continue;
             if (!(in >> depth)) depth = 0.5;
             else if (!(in >> rate)) rate = kModRateUsual;
             else if (!(in >> shape)) shape = 0;
             else if (!(in >> restart)) restart = 0;
             else if (!(in >> phase)) phase = 0;
+            else if (!(in >> speed)) speed = kModSpeedUsual;
             ModSettings& m = track->mods[static_cast<int>(n) - 1];
             m.kind = modKind(wholeIn(kind, -1, 255));
             const int lane = wholeIn(target, -1, 255);
@@ -526,6 +531,7 @@ bool parseSong(const std::string& text, Project& project) {
             m.shape = modShape(wholeIn(shape, -1, 255));
             m.restart = modRestart(wholeIn(restart, -1, 255));
             m.phase = modPhase(wholeIn(phase, -1, 255));
+            m.speed = fractionIn(speed, kModSpeedLeast, kModSpeedMost);
         } else if (word == "modsteps") {
             double n = 0, length = kModSteps, slew = 0, chance = 0, v = 0;
             if (!(in >> n >> length) || !(n >= 1.0) || n > kModsPerTrack) continue;

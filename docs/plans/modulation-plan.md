@@ -156,7 +156,7 @@ it. CELL restart (later) is the cure if the owner minds.
 | Setting | Choices |
 | --- | --- |
 | SHAPE | SINE, TRIANGLE, RAMP UP, RAMP DOWN, SQUARE, RANDOM (a seeded value each cycle, held), DRIFT (glides between seeded values) |
-| PHASE | 0, 1/4, 1/2, 3/4 (two MODs a quarter apart) |
+| PHASE | 0, 1/4, 1/2, 3/4 (two MODs a quarter apart). At RATE FREE (section 27) the row is SPEED |
 
 ### STEPPER
 
@@ -1120,3 +1120,49 @@ size; it is written -60% on every step now.
   (it says "about three minutes"; this branch's README "up to a minute", and batch 9 adds about 10 s).
 
 Full `ctest -j3` after the mend: 51 of 51. No engine code changed. **Seen only by the tests.**
+
+## 27. FREE: an LFO at a speed of its own (2026-11-15, branch `lfofree`)
+
+The owner: "I think we should also add a free mode to the LFOs. When they are in free mode, the
+PHASE parameter can turn into a SPEED control." Built as the brief laid it out; nothing in the
+code made it wrong.
+
+| Part | As built |
+| --- | --- |
+| RATE | **FREE is its last choice**, after 8 BARS: `kModRateFree` 12, appended (`kModRates` 13). An LFO's only: `kModTempoRates` (12) is all a STEPPER has, `ModKnob::rates` stops its RATE there on the knob and the tab. A STEPPER at FREE goes to **1 BAR** (not its last tempo rate: that would be one more thing kept and written): `modHeldFor` is the one place, so A to STEPPER on the knob, SHAPE on the tab and a song file all land there. FREE's table row is 16 steps, so a STEPPER that reads FREE in the engine (only by hand) plays as 1 BAR too |
+| SPEED | `ModSettings::speed`, Hz, `kModFieldSpeed` 10, appended. **An amount, not a choice**: a free LFO is tuned by ear against nothing in time, so a speed between two clicks is worth having. 0.02 to 20 Hz, usual 1. **The D-pad clicks along 31 numbers that read well** (`modSpeedClick`: 0.02, 0.025, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1 ... 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20: the R10 series, a fifth to a third of an octave each); from between two, `modSpeedStep` goes to the next one; the ends stop. **The stick on the MOD tab (A held) turns it smoothly on its log scale**, 4 octaves a unit of turn (`modSpeedTurned`), as DEPTH is turned. On the knob the stick stays DEPTH and RATE (call B's layout), so SPEED there is L1 / R1's clicks only. It reads two figures, "0.025 HZ", "1.3 HZ", "15 HZ" (`ModKnob::speedText`). B on the tab: 1 Hz. The dice keep a free LFO free: SHAPE and SPEED, a click 0.1 to 5 Hz, never both as they were |
+| The rule | `modFree(m)`; `modPositionFor(m, steps, seconds)`: **a free LFO's position is seconds since Play**; `lfoCycles` = seconds x SPEED, with no PHASE (PHASE is kept for when it is in time again); `lfoPositionAt` the other way, so the tab's picture and dot need nothing new. RANDOM and DRIFT roll by the cycle's count as before (at 120, a free 0.5 Hz LFO is a 1 BAR one in every shape, to 1e-9) |
+| The engine | `playedFor_`: samples since Play, counted beside `sinceStep_` (reset at Play, one add a chunk while playing). At each tick `runMods(steps, seconds, macros)`, seconds = `playedFor_` (or, stopped, `heardFor_`) over the sample rate; each MOD takes `modPositionFor`, and `modAt` keeps it in the MOD's own terms. The tick is the same tick, counted from each step's start, so a free LFO is the same in any blocks exactly where an LFO in time is (any blocks at a whole-sample step, as CLAUDE.md says). Outside `runMods`, the tick's two lines and Play: nothing |
+| The knob | RATE's field reads FREE; the last field's name is SPEED and its value the Hz. The row is tight (`fonts.fixed()`), so the places moved to fit "0.025 HZ" (76 px at LARGE): DEVICE's NOW from 520 to 528 (96 wide, ending where it did), FX's RATE 467 to 465 and its last field 556 to 550. `testFreeOnTheKnob` holds the widest text the stick can give (3001 speeds) clear of NOW and inside the FX panel, "1/2 STEP" clear of it, and every chip under its field |
+| The tab | RATE's bar 13 pieces for an LFO, 12 for a STEPPER; the fifth row SPEED, its bar filled on the log scale (`modSpeedPart`), an amount (`amount()`: the stick smooth, the D-pad at the cursor's pace); the list's line reads "+40%  0.025 HZ" |
+| Song file | `mod N KIND TARGET DEPTH RATE SHAPE RESTART PHASE [SPEED]`: **a ninth number, left off at 1 Hz**, so a song with no SPEED turned is written as before, and a program before it reads the eight it knows and skips the ninth (it reads RATE 12 as 1 BAR). Read with `fractionIn`, held to 0.02..20; missing or no number: 1 Hz. Kept and written while the LFO is in time too |
+| Undo, commands | Nothing new: `soundMark` compares MODs as the file writes them, `Session::setMod` sends the fields that changed (SPEED among them), `Engine::setMod` every field |
+
+**The tick limits, not changed** (README says it): an effect's setting, a send, LEVEL and PAN are
+worked out every 64 samples (750 a second: 37 values a cycle at 20 Hz), a macro every 512 (94 a
+second: under five a cycle at 20 Hz, a staircase). The nine effects that glide a setting a call at
+a time keep of a SINE's swing (`testANewerEffectSoftensAFastMod --measure`, 20 / 30 ms glides):
+1 Hz 99 / 98%, 2 Hz 97 / 93%, 5 Hz 84 / 72%, 10 Hz 61 / 46%, 20 Hz 36 / 25%.
+
+**Cost** (desk, `bench`'s MOD rows, the six engines timed in turns): 24 LFOs FREE against the same
+24 in time on twelve silent drum tracks: see CLAUDE.md's Measured table. Nothing that shows: a
+multiply in place of a divide, and one add a chunk. A song with no FREE MOD: `effects_test --print`
+the same before and after (no MOD: the same bits).
+
+**Tests**: `mod_test` `testTheFreeRule` (by hand: seconds, no PHASE, the clicks, the ends, the log
+scale, a STEPPER at FREE as 1 BAR, free 0.5 Hz = 1 BAR at 120 in every shape),
+`testAFreeLfoCountsSeconds` (every tick's position a whole sample of seconds since Play, at most a
+tick back; its value the rule's there; the same as a 1 BAR LFO at 120 for the first two seconds,
+and apart from it after the tempo goes to 90 or 171), `testAFreeLfoInAnyBlocks` (blocks of 1, 64,
+333 and three helpers at 120; the drums alone at 133; Play twice with the tempo told again),
+`testAFreeLfoHeardWhileStopped` (from X, in seconds; the tempo turned while stopped moves nothing),
+`testANewerEffectSoftensAFastMod` (16 Hz free is 1/2 STEP at 120 to the bit; the figures above);
+`modapp_test` `testAFreeLfoInTheSong` (the ninth number, left off at 1 Hz, held, a STEPPER at
+FREE, undo and redo heard in the engine, a turn reaching the engine); `modtab_test` `testFree`
+(FREE reached and left, SPEED's clicks, the stick, the ends, B, a STEPPER's RATE, undo, the row
+drawn with SPEED and its Hz and its bar, RATE's 13 pieces, the dot where seconds put it) and
+`testTheHintsFit` (a free LFO: 0 over everywhere); `modknob_test` `testFreeOnTheKnob`; stills
+`mod-free`, `device-mod-free` in `kViews` (`textviews`, `themeviews`).
+
+**Not heard by anyone.** Looked at by eye: `mod-free` and `device-mod-free` at LARGE and XL, in
+BROWN and PAPER.

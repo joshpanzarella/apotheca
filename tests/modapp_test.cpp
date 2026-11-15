@@ -421,9 +421,12 @@ void testTheSongFile() {
         m.slew = static_cast<float>(percent + 100) / 200.f;
         m.chance = static_cast<float>(100 - percent) / 200.f;
         m.length = 1 + (percent + 100) % kModSteps;
+        m.speed = modSpeedClick((percent + 100) % kModSpeedClickCount);
         CHECK(session.setMod(2, 1, m));
         std::unique_ptr<Project> back(new Project);
-        CHECK(parseSong(songText(project), *back) && sameMod(back->tracks[2].mods[1], m));
+        CHECK(parseSong(songText(project), *back) && sameMod(back->tracks[2].mods[1], session.modData(2, 1)));
+        if (m.kind == kModStepper && m.rate == kModRateFree) CHECK(session.modData(2, 1).rate == kModRateBar); // (a STEPPER has no FREE)
+        else CHECK(sameMod(session.modData(2, 1), m));
     }
     session.setMod(2, 1, ModSettings());
     session.setMod(0, 0, ModSettings());
@@ -496,15 +499,16 @@ void testTheSongFile() {
     // Numbers too big for anything, and not numbers: every field stays what it can be. (How a
     // library reads "1e300" or "nan" differs; that it is held does not.)
     for (const char* big : {"1e300", "-1e300", "nan", "inf", "-inf", "1e39", "4294967296", "-4294967296", "x"}) {
-        for (int place = 0; place < 8; ++place) {
+        for (int place = 0; place < 9; ++place) {
             std::string line = "mod";
-            const std::string usual[8] = {"2", "1", target, "0.375", "4", "6", "0", "3"};
-            for (int i = 0; i < 8; ++i) line += " " + (i == place ? std::string(big) : usual[i]);
+            const std::string usual[9] = {"2", "1", target, "0.375", "12", "6", "0", "3", "2.5"};
+            for (int i = 0; i < 9; ++i) line += " " + (i == place ? std::string(big) : usual[i]);
             std::unique_ptr<Project> back(new Project);
             CHECK(readWith(line, *back));
             for (const ModSettings& m : back->tracks[1].mods) {
                 CHECK(m.kind >= 0 && m.kind < kModKinds && (m.target == kModTargetNone || m.target == lane(2, feedback)) && m.depth >= -1.f && m.depth <= 1.f);
                 CHECK(m.rate >= 0 && m.rate < kModRates && m.shape >= 0 && m.shape < kModShapes && m.restart == 0 && m.phase >= 0 && m.phase < kModPhases);
+                CHECK(m.speed >= kModSpeedLeast && m.speed <= kModSpeedMost);
                 CHECK(sameMod(m, modHeldFor(back->tracks[1], m))); // as the Session would hold it
             }
         }
@@ -561,6 +565,88 @@ void testTheSongFile() {
         }
         CHECK(readWith("mod 1 1 7 0.75\nmod 2 1 6 0.75", *back) && blank(back->tracks[1].mods[0]) && back->tracks[1].mods[1].target == 6); // QMOD: OCTAVE a choice, WIDTH not
     }
+}
+
+// FREE (owner, 2026-11-15): SPEED is a ninth number on the `mod` line, left off at its usual 1 Hz,
+// so a song without it is written as before and a program before it reads the eight it knows. Held
+// to 0.02..20; a STEPPER at FREE is at 1 BAR; undo takes a SPEED turn back and tells the engine; a
+// turn reaches the engine as its one field.
+void testAFreeLfoInTheSong() {
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    rig.settle();
+    ModSettings m = square(20, 0.5f);
+    m.rate = kModRateFree;
+    CHECK(session.setMod(1, 0, m));
+    std::string text = songText(project);
+    CHECK(text.find("\nmod 1 1 20 0.75 12 4 0 0\n") != std::string::npos); // at 1 Hz: eight numbers, as before
+    m.speed = 0.025f;
+    CHECK(session.setMod(1, 0, m));
+    text = songText(project);
+    CHECK(text.find("\nmod 1 1 20 0.75 12 4 0 0 0.025\n") != std::string::npos);
+    {
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(text, *back) && sameMod(back->tracks[1].mods[0], m) && songText(*back) == text);
+    }
+    // A SPEED kept while in time (for when it is FREE again) is written too.
+    m.rate = kModRateHalf, m.speed = 3.5f;
+    CHECK(session.setMod(1, 0, m));
+    CHECK(songText(project).find("\nmod 1 1 20 0.75 7 4 0 0 3.5\n") != std::string::npos);
+    // Read by hand: held to its ends; not a number: the least; not there or not a number to read: 1 Hz.
+    const auto readSpeed = [&](const std::string& line) {
+        std::string hand = songText(project);
+        const std::size_t at = hand.find("\nmod 1 ");
+        const std::size_t end = at == std::string::npos ? at : hand.find('\n', at + 1);
+        CHECK(end != std::string::npos);
+        if (end != std::string::npos) hand.replace(at + 1, end - at - 1, line);
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(hand, *back));
+        return back->tracks[1].mods[0];
+    };
+    CHECK(readSpeed("mod 1 1 20 0.75 12 4 0 0 99").speed == 20.f && readSpeed("mod 1 1 20 0.75 12 4 0 0 -3").speed == 0.02f);
+    CHECK(readSpeed("mod 1 1 20 0.75 12 4 0 0 nan").speed == 0.02f || readSpeed("mod 1 1 20 0.75 12 4 0 0 nan").speed == 1.f); // (how "nan" is read differs: held either way)
+    CHECK(readSpeed("mod 1 1 20 0.75 12 4 0 0 x").speed == 1.f && readSpeed("mod 1 1 20 0.75 12 4 0 0").speed == 1.f && readSpeed("mod 1 1 20 0.75 12").speed == 1.f);
+    CHECK(readSpeed("mod 1 1 20 0.75 12 4 0 0 0.3 7 7").speed == 0.3f); // (more after it: skipped, as a later program's would be)
+    CHECK(readSpeed("mod 1 1 20 0.75 12 4 0 0 0.3").rate == kModRateFree && modFree(readSpeed("mod 1 1 20 0.75 12 4 0 0 0.3")));
+    // A STEPPER at FREE (by hand, or made from a FREE LFO): at 1 BAR.
+    {
+        const ModSettings st = readSpeed("mod 1 2 20 0.75 12 4 0 0 0.3");
+        CHECK(st.kind == kModStepper && st.rate == kModRateBar && st.speed == 0.3f);
+        ModSettings asked = m;
+        asked.kind = kModStepper, asked.rate = kModRateFree;
+        CHECK(session.setMod(1, 0, asked) && session.modData(1, 0).rate == kModRateBar);
+    }
+    // Undo: a SPEED turn is a step; taken back and put back, and the engine runs what the song holds.
+    m = square(20, 0.5f);
+    m.shape = kModSine, m.rate = kModRateFree, m.speed = 2.f;
+    CHECK(session.setMod(1, 0, m));
+    rig.settle();
+    const int steps = session.undoSteps();
+    m.speed = 7.f;
+    CHECK(session.setMod(1, 0, m));
+    rig.settle();
+    CHECK(session.undoSteps() == steps + 1);
+    const auto heard = [&](float hz) { // stopped, MOD 1 run as X runs it: its value is the rule's at the engine's seconds
+        session.hearMods(1, 1u, nullptr);
+        rig.render(4000);
+        const double at = rig.engine->modNow(1, 0);
+        ModSettings want = m;
+        want.speed = hz;
+        const bool same = std::isfinite(at) && at > 0.0 && rig.engine->modShown(1, 0) == modOffsetAt(want, at, 1, 0);
+        session.hearMods(1, 0u, nullptr);
+        rig.render(1000);
+        return same;
+    };
+    CHECK(heard(7.f) && !heard(2.f));
+    CHECK(session.undo() && session.modData(1, 0).speed == 2.f && heard(2.f));
+    CHECK(session.redo() && session.modData(1, 0).speed == 7.f && heard(7.f));
+    // A turn of SPEED alone reaches the engine (Session::setMod sends only what changed: the field).
+    rig.settle();
+    m.speed = 7.5f;
+    CHECK(session.setMod(1, 0, m));
+    CHECK(heard(7.5f));
 }
 
 // ---- the engine is told ------------------------------------------------------------------------
@@ -864,6 +950,7 @@ int main() {
     testAnotherInstrumentAndATrackDeleted();
     testUndo();
     testUndoLeavesWhatTheTextRounds();
+    testAFreeLfoInTheSong();
     testTheDepthLanes();
     if (failures == 0) std::printf("modapp tests passed\n");
     return failures == 0 ? 0 : 1;

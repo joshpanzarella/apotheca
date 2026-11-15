@@ -17,6 +17,7 @@ namespace {
 constexpr Uint32 kRepeatDelayMs = kCursorDelayMs, kRepeatEveryMs = kCursorEveryMs;
 constexpr float kMovesPerSecond = 14.f, kClicksPerSecond = 5.f, kTurnPerSecond = 1.8f; // (an amount here is -1..1 or 0..1)
 constexpr float kDepthStep = 0.01f, kNotch = 0.05f;
+constexpr double kSpeedOctaves = 4.0; // the stick on a FREE LFO's SPEED: octaves a unit of turn (its 10 octaves in about 1.4 s, pushed full)
 
 float held(float v, float lo, float hi) { return v > hi ? hi : (v < lo ? lo : (v == v ? v : lo)); }
 
@@ -135,7 +136,7 @@ int ModScreen::nowPlace(int m) const {
 bool ModScreen::amount() const {
     if (column_ < 1) return false;
     if (stepsLine(row_)) return column_ != kLength;
-    return column_ == kDepth;
+    return column_ == kDepth || (column_ == kMore && modFree(mod(modOf(row_)))); // a FREE LFO's SPEED: an amount
 }
 
 // ---- turning -----------------------------------------------------------------------------------
@@ -174,7 +175,7 @@ void ModScreen::turnBy(int by) {
     }
     case kRate: {
         const int to = modRatePlace(s.rate) + by;
-        if (to < 0 || to >= kModRates) return;
+        if (to < 0 || to >= ModKnob::rates(s)) return; // (an LFO's last is FREE, a STEPPER's 8 BARS)
         s.rate = modRateAt(to);
         break;
     }
@@ -183,6 +184,8 @@ void ModScreen::turnBy(int by) {
             const int to = modLength(s.length) + by;
             if (to < 1 || to > kModSteps) return;
             s.length = to;
+        } else if (modFree(s)) {
+            s.speed = modSpeedStep(s.speed, by); // a click of the list (the ends stop)
         } else {
             const int to = modPhase(s.phase) + by;
             if (to < 0 || to >= kModPhases) return;
@@ -199,7 +202,8 @@ void ModScreen::turnSmooth(float by) {
     const int m = modOf(row_);
     ModSettings s = mod(m);
     if (s.kind == kModOff) return;
-    if (!stepsLine(row_)) s.depth = held(s.depth + by, -1.f, 1.f);
+    if (!stepsLine(row_) && column_ == kMore) s.speed = modSpeedTurned(s.speed, by * kSpeedOctaves); // a FREE LFO's SPEED (amount())
+    else if (!stepsLine(row_)) s.depth = held(s.depth + by, -1.f, 1.f);
     else if (column_ < kLength) s.steps[column_ - kFirstStep] = held(s.steps[column_ - kFirstStep] + by, -1.f, 1.f);
     else if (column_ == kSlew) s.slew = held(s.slew + by * 0.5f, 0.f, 1.f);
     else if (column_ == kChance) s.chance = held(s.chance + by * 0.5f, 0.f, 1.f);
@@ -232,6 +236,7 @@ void ModScreen::toUsual() {
         s.rate = usual.rate;
     } else if (column_ == kMore) {
         if (modKind(s.kind) == kModStepper) s.length = usual.length;
+        else if (modFree(s)) s.speed = usual.speed;
         else s.phase = usual.phase;
     } else {
         return; // TARGET has no usual: hold B deletes
@@ -548,7 +553,10 @@ void ModScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 fonts.within(&Fonts::small, text, room).draw(r, x, y + 40.f, text, kText);
                 char depth[16];
                 ModKnob::depthText(session_.modDepthShown(track(), m), depth, sizeof depth); // (while playing: its DEPTH lane's)
-                std::snprintf(text, sizeof text, "%s  %s", depth, modRateInfo(s.rate).name);
+                char rate[16];
+                if (modFree(s)) ModKnob::speedText(s.speed, rate, sizeof rate); // (FREE: how fast is its SPEED)
+                else std::snprintf(rate, sizeof rate, "%s", modRateInfo(s.rate).name);
+                std::snprintf(text, sizeof text, "%s  %s", depth, rate);
                 fonts.within(&Fonts::small, text, room).draw(r, x, y + 62.f, text, kDim);
             }
             if (!off) drawPicture(r, kSmallPicX, y + (kLineH - kSmallPicH) / 2, kSmallPicW, kSmallPicH, asNow(m), track(), m, nowPosition(m), nowPlace(m), here);
@@ -622,10 +630,11 @@ void ModScreen::drawModPane(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, kPaneX + 1, rowY(2) + kRowH - 3, kPaneW - 2, 2, kPurple);
         fonts.small.drawRight(r, static_cast<float>(kBarX + kBarW), rowY(2) + 8.f, kMovesWords, kPurple);
     }
-    drawRow(r, fonts, rowY(3), "RATE", modRateInfo(s.rate).name, 0.f, kModRates, modRatePlace(s.rate), false, column_ == kRate);
+    drawRow(r, fonts, rowY(3), "RATE", modRateInfo(s.rate).name, 0.f, ModKnob::rates(s), modRatePlace(s.rate), false, column_ == kRate);
     ModKnob::moreText(s, text, sizeof text);
     const bool stepper = modKind(s.kind) == kModStepper;
-    drawRow(r, fonts, rowY(4), ModKnob::moreName(s), text, 0.f, stepper ? kModSteps : kModPhases, stepper ? modLength(s.length) - 1 : modPhase(s.phase), false, column_ == kMore);
+    if (modFree(s)) drawRow(r, fonts, rowY(4), ModKnob::moreName(s), text, modSpeedPart(s.speed), 0, 0, false, column_ == kMore); // SPEED: an amount, on its log scale
+    else drawRow(r, fonts, rowY(4), ModKnob::moreName(s), text, 0.f, stepper ? kModSteps : kModPhases, stepper ? modLength(s.length) - 1 : modPhase(s.phase), false, column_ == kMore);
 }
 
 int ModScreen::otherTarget() const {
