@@ -131,11 +131,11 @@ struct Rig {
         }
     }
     // A synth on track 2, and the handheld looking at it.
-    void addSynth(bool twin = false) {
+    void addSynth(bool jaxep = false) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
         key(SDLK_x);
-        if (twin) key(SDLK_DOWN);
+        if (jaxep) key(SDLK_DOWN);
         key(SDLK_x);
         app.project().track = app.project().trackCount() - 1;
         frames(1);
@@ -473,7 +473,7 @@ void testQmodFromThePage() {
 }
 
 // JAX-EP, where Twin Analog stood (jx3p-plan.md, batch 6a).
-void testTwinFromThePage() {
+void testJaxepFromThePage() {
     Rig rig;
     rig.addSynth(true);
     CHECK(rig.track().kind == TrackKind::Jx3p);
@@ -552,10 +552,10 @@ int main() {
     testKeysFromThePage();
     testSavingAPreset();
     testQmodFromThePage();
-    testTwinFromThePage();
+    testJaxepFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
-        rig.addSynth(std::getenv("APOTHECA_DESIGN_TWIN") != nullptr);
+        rig.addSynth(std::getenv("APOTHECA_DESIGN_JAXEP") != nullptr);
         rig.tell("preset 8");
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);

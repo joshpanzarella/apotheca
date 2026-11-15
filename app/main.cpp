@@ -898,13 +898,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(view, "jaxep-bank") == 0) {
             // BANK B, on the longest of the 32 names (B7): what a bank's folder says, beside it.
             app.session().chooseSynthPreset(app.project().track, 22);
-            app.twin().goTo(0, SynthScreen::kPreset);
+            app.jaxep().goTo(0, SynthScreen::kPreset);
         } else if (std::strcmp(view, "jaxep-held") == 0) {
-            app.twin().goTo(3, 2);  // VCF: CUTOFF
+            app.jaxep().goTo(3, 2);  // VCF: CUTOFF
             pushKey(SDLK_x, true);  // hold A
             tapKey(SDLK_DOWN, 27);  // and turn it down: 7.3
         } else {
-            app.twin().goTo(std::atoi(view + 5), view[5] ? 0 : SynthScreen::kFirstMacro + 1);
+            app.jaxep().goTo(std::atoi(view + 5), view[5] ? 0 : SynthScreen::kFirstMacro + 1);
         }
     } else if (std::strcmp(view, "kit") == 0 || std::strncmp(view, "slices", 6) == 0 || std::strcmp(view, "starts") == 0 || std::strncmp(view, "picker", 6) == 0) {
         // With --samples: the first recording goes on lane 6, fitted to one

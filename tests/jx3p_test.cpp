@@ -678,7 +678,7 @@ static std::vector<float> phraseIn(int block, double seconds = 20.0, std::vector
     return out;
 }
 
-// THE SAME SOUND HOWEVER THE BLOCKS ARE CUT (SELF: a house rule; Twin fails it, this must not): 20 s,
+// THE SAME SOUND HOWEVER THE BLOCKS ARE CUT (SELF: a house rule; the synth before this one failed it, this must not): 20 s,
 // cut 1, 48, 64, 100, 512 and at random, the same bits. And twice from fresh, the same bits.
 static void testBlocks() {
     std::vector<float> right, r;

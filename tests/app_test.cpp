@@ -1371,7 +1371,7 @@ void testNothingStaysHeld() {
 void testDeletingATrack() {
     Rig rig;
     Session& session = rig.app.session();
-    // Four tracks, each with something of its own: drums, Phazed (named), Twin, QMOD.
+    // Four tracks, each with something of its own: drums, Phazed (named), JAX-EP, QMOD.
     rig.app.drums().setStep(0, 0, 1.f);
     session.addTrack(TrackKind::Phazed);
     session.addTrack(TrackKind::Jx3p);
@@ -1409,7 +1409,7 @@ void testDeletingATrack() {
     CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].qmod.value[qmod::Sound] == 4321 && rig.project().tracks[2].muted);
     CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 1.f && rig.project().track == 2 && !rig.project().playing);
     for (float v : rig.project().tracks[3].automation[0][3]) CHECK(v < 0.f); // the freed place is clean
-    // The engine has them in their new places: the Twin note sounds from track 2, and the kick still plays.
+    // The engine has them in their new places: the JAX-EP note sounds from track 2, and the kick still plays.
     rig.render(96000);
     session.setMuted(2, false);
     session.view = View::Pattern;
@@ -1572,7 +1572,7 @@ void testBouncing() {
     session.useBounceFolder(folder);
     CHECK(!there("old 261112-104548.wav.part") && there("notes.part"));
     plant("old 261112-104549.wav.part"); // ...and when the next bounce starts
-    // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a Twin track with one long note.
+    // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a JAX-EP track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
     rig.project().repeats[0] = 2;
     session.addTrack(TrackKind::Jx3p);
@@ -1601,7 +1601,7 @@ void testBouncing() {
     const std::size_t tail = song.left.size() - body;
     CHECK(peakIn(song, 0, 2000) > 0.2f);                                  // the first kick, at the very start
     CHECK(peakIn(song, kBar, kBar + 2000) > 0.2f);                        // and the scene's second time round
-    CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the Twin note
+    CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the JAX-EP note
     CHECK(peakIn(song, body + tail - kAfter, body + tail) < 0.001f);      // the tail has died away: nothing started again
     CHECK(peakIn(song, body + 4000, body + 24000) < peakIn(song, 0, 2000)); // no kick after the song's end
     // The song itself was only read: the synth's settings are as they were, and nothing is playing.
@@ -6127,7 +6127,7 @@ void testEveryPatchSettingIsOnSomePage() {
 
 // ---- JAX-EP (it took Twin Analog's place), through the same screens ------------------------------------------
 
-Rig* onTwin() {
+Rig* onJaxep() {
     Rig* rig = new Rig;
     rig->app.session().view = View::Song;
     rig->app.song().moveCursorTo(0, rig->project().trackCount());
@@ -6137,8 +6137,8 @@ Rig* onTwin() {
     return rig;
 }
 
-void testAddingTwinAnalog() {
-    std::unique_ptr<Rig> rig(onTwin());
+void testAddingJaxep() {
+    std::unique_ptr<Rig> rig(onJaxep());
     CHECK(rig->project().trackCount() == 2);
     CHECK(rig->project().tracks[1].kind == TrackKind::Jx3p);
     // JAX-EP (owner, 2026-11-14; jx3p-plan.md): the name on the device, a new word in a song file, and
@@ -6188,11 +6188,11 @@ void testAddingTwinAnalog() {
     CHECK(rig->engine->trackPeak(0) == 0.f && rig->engine->trackPeak(2) == 0.f);
 }
 
-void testTwinsDeviceScreen() {
-    std::unique_ptr<Rig> rig(onTwin());
+void testJaxepsDeviceScreen() {
+    std::unique_ptr<Rig> rig(onJaxep());
     rig->tap(A);  // open its pattern
     rig->tap(R2); // and its device
-    SynthScreen& screen = rig->app.twin();
+    SynthScreen& screen = rig->app.jaxep();
     TrackData& track = rig->project().tracks[1];
     CHECK(rig->view() == View::Device && screen.pageCount() == 6);
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
@@ -6353,10 +6353,10 @@ void testHowJaxepReads() {
     setUserPresets(TrackKind::Jx3p, {});
 
     // On the screen: MAIN's PRESET row says it, and does not for the player's own.
-    std::unique_ptr<Rig> rig(onTwin());
+    std::unique_ptr<Rig> rig(onJaxep());
     rig->tap(A);
     rig->tap(R2);
-    SynthScreen& screen = rig->app.twin();
+    SynthScreen& screen = rig->app.jaxep();
     CHECK(rig->view() == View::Device && screen.folderNote() == kJaxepBankNote); // (batch 7: a new track is on A1, in BANK A)
     screen.folderNoteAs(kJaxepGuessNote);
     CHECK(screen.folderNote() == kJaxepGuessNote);
@@ -6387,14 +6387,14 @@ float jxLoud(Rig& rig, float velocity) {
     return peak;
 }
 
-void testTheEngineHearsTwinsSettings() {
+void testTheEngineHearsJaxepsSettings() {
     // The VCA's LEVEL: a step of the dial is 4 dB (the plan's taper, a guess), so three steps down is a quarter as loud.
     const auto loudness = [](int down) {
-        std::unique_ptr<Rig> rig(onTwin());
+        std::unique_ptr<Rig> rig(onJaxep());
         rig->tap(A);
         rig->tap(R2);
-        rig->app.twin().goTo(4, 1);
-        CHECK(rig->app.twin().settingHere() == jx3p::VcaLevel);
+        rig->app.jaxep().goTo(4, 1);
+        CHECK(rig->app.jaxep().settingHere() == jx3p::VcaLevel);
         rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 35); // (a step under the VCA's 0 dB, LEVEL 4.5: over it the clip bends the wave)
         rig->key(A, true);
         rig->tap(DOWN, down);
@@ -6413,7 +6413,7 @@ void testTheEngineHearsTwinsSettings() {
 // A PRESET PICKED KEEPS BRILLIANCE AND VELOCITY (the plan, section 1): they are the track's, as
 // BRILLIANCE is a knob on the real one's panel. Everything else is the preset's.
 void testAPresetKeepsTheTracksOwnValues() {
-    std::unique_ptr<Rig> rig(onTwin());
+    std::unique_ptr<Rig> rig(onJaxep());
     Session& session = rig->app.session();
     TrackData& track = rig->project().tracks[1];
     CHECK(jx3p::kPatchSettings == 32 && presetSettingCount(TrackKind::Jx3p) == 32 && settingCount(TrackKind::Jx3p) == 34);
@@ -6430,7 +6430,7 @@ void testAPresetKeepsTheTracksOwnValues() {
     // A built-in preset, picked on the screen.
     rig->tap(A);
     rig->tap(R2);
-    rig->app.twin().goTo(0, SynthScreen::kPreset);
+    rig->app.jaxep().goTo(0, SynthScreen::kPreset);
     rig->key(A, true);
     rig->tap(UP, Jx3p::presetCount()); // all the way round, back to the first
     rig->key(A, false);
@@ -6524,7 +6524,7 @@ void testAPresetKeepsTheTracksOwnValues() {
 // engine) must each count a SONG's settings, not a preset's. Counting a preset's in any of the
 // three passed every test.
 void testUndoPutsBackTheTracksOwnTwo() {
-    std::unique_ptr<Rig> rig(onTwin());
+    std::unique_ptr<Rig> rig(onJaxep());
     Session& session = rig->app.session();
     TrackData& track = rig->project().tracks[1];
     const auto still = [&] {
@@ -6596,10 +6596,10 @@ void testJaxepsHintsFit() {
     CHECK(canvas.ok);
     if (!canvas.ok) return;
     const Fonts& fonts = *canvas.fonts;
-    std::unique_ptr<Rig> rig(onTwin());
+    std::unique_ptr<Rig> rig(onJaxep());
     rig->project().track = 1;
     rig->app.session().view = View::Device;
-    SynthScreen& screen = rig->app.twin();
+    SynthScreen& screen = rig->app.jaxep();
     CHECK(screen.pageCount() == 6 && rig->project().tracks[rig->project().track].kind == TrackKind::Jx3p);
     int states = 0;
     for (int menu = 0; menu < 2; ++menu) {
@@ -9242,10 +9242,10 @@ int main(int argc, char** argv) {
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();
     testEveryPatchSettingIsOnSomePage();
-    testAddingTwinAnalog();
-    testTwinsDeviceScreen();
+    testAddingJaxep();
+    testJaxepsDeviceScreen();
     testHowJaxepReads();
-    testTheEngineHearsTwinsSettings();
+    testTheEngineHearsJaxepsSettings();
     testAPresetKeepsTheTracksOwnValues();
     testUndoPutsBackTheTracksOwnTwo();
     testJaxepsHintsFit();

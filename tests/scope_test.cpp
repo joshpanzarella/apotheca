@@ -63,7 +63,7 @@ const Page kPages[] = {
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.twin() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.

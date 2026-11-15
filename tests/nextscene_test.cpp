@@ -165,6 +165,9 @@ ChordEvent chordOf(int step, float length, int root, int keys, int strum, int or
 // coming, then begun) and what was told is in flight too; a note beside a gliding one makes
 // PAIRED pick another key than the top one. One proof is made again with RANDOM.
 int gGlideFrom = kFromPaired;
+// It is on JAX-EP (jx3p-plan.md, batch 8a): six voices, a Stop that hands its ringing voices to tails,
+// one LFO and one chorus on the synth's own clock. All of that is in flight too when a scene moves.
+const TrackKind kChordTrack = TrackKind::Jx3p;
 void fillChords(TrackData& t) {
     t.glideFrom = static_cast<std::uint8_t>(gGlideFrom);
     t.bars[0] = 2;
@@ -197,14 +200,14 @@ void fillChords(TrackData& t) {
 }
 
 // A song with something of every kind a scene holds, and no two scenes alike:
-// track 1 drums, track 2 Phazed, track 3 Phazed with the chords above; three scenes.
+// track 1 drums, track 2 Phazed, track 3 JAX-EP (six voices, so its chords and glides steal) with the chords above; three scenes.
 //   scene 1: the drums' cell two bars long, the synth's one; cut to 23 steps; played twice
 //   scene 2: one bar, once
 //   scene 3: cut to 13 steps, three times
 void fill(Rig& rig) {
     Project& p = rig.project();
     CHECK(rig.session().addTrack(TrackKind::Phazed));
-    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    CHECK(rig.session().addTrack(kChordTrack));
     fillChords(p.tracks[2]);
     TrackData& drums = p.tracks[0];
     TrackData& synth = p.tracks[1];
@@ -882,6 +885,30 @@ void testEditsStraightAfter() {
 
 // ---- playing -------------------------------------------------------------------------------------
 
+// The chord track is JAX-EP, and it is heard in what the proofs below compare: the song with that
+// one track muted is another sound, by a lot. (So "0 from the song left alone" has its six voices,
+// its steals, its tails, its LFO and its chorus in it.)
+void testTheChordTrackIsHeard() {
+    Rig plain, without;
+    fill(plain);
+    fill(without);
+    CHECK(plain.project().tracks[2].kind == TrackKind::Jx3p && plain.project().tracks[1].kind == TrackKind::Phazed);
+    without.session().setMuted(2, true);
+    for (Rig* r : {&plain, &without}) {
+        r->frames(2);
+        r->render(512);
+        r->heard.clear();
+        r->session().togglePlay(false);
+        for (int i = 0; i < 100; ++i) {
+            r->frames(1);
+            r->render(kBar * 3 / 100);
+        }
+    }
+    const float off = apart(plain.heard, without.heard);
+    if (!(off > 0.05f)) std::printf("  the chord track muted: %g from the song with it\n", static_cast<double>(off));
+    CHECK(off > 0.05f);
+}
+
 // One scene going round. The gesture in the middle of a step, then undo, then redo, each in the
 // middle of the music: the same sound as a song nobody touched, to the last bit.
 void testPlayingGoesOnUnbroken() {
@@ -1105,7 +1132,7 @@ void testTheEngineHasTheWholeSong() {
     redone.redo();
     Rig handed; // an engine as new as the others: the song goes to it once, as theirs did
     CHECK(handed.session().addTrack(TrackKind::Phazed));
-    CHECK(handed.session().addTrack(TrackKind::Phazed));
+    CHECK(handed.session().addTrack(kChordTrack));
     handed.project() = *whole;
     handed.session().applyProject();
     handed.session().view = View::Pattern;
@@ -1618,7 +1645,7 @@ void testMovesLostToAFullQueue() {
     CHECK(rig.session().resyncs() == resyncs + 1 && rig.engine->caughtUp());
     Rig handed;
     CHECK(handed.session().addTrack(TrackKind::Phazed));
-    CHECK(handed.session().addTrack(TrackKind::Phazed));
+    CHECK(handed.session().addTrack(kChordTrack));
     handed.project() = rig.project();
     handed.session().applyProject();
     handed.session().view = View::Pattern;
@@ -2518,7 +2545,7 @@ void testTakenBackOnTheLastStep() {
     for (const double at : {60.5, 61.05, 61.5, 61.7}) CHECK(takenBackOnTheLastStep(at) == 0.f);
     for (const double at : {61.05, 61.5, 61.65}) CHECK(takenBackOnTheLastStep(at, true) == 0.f); // (the first of the copy's early moments is at 61.7)
     const float late = takenBackOnTheLastStep(61.99);
-    CHECK(late < 0.3f); // (an early note of the copy already heard: 0.28, as it was before the mend at every point)
+    CHECK(late < 0.3f); // (an early note of the copy already heard: 0.11 on JAX-EP; 0.28 when the chord track was Phazed, as it was before the mend at every point)
     std::printf("  the copy taken back on the last step of the scene it was copied from: 0 from the song left alone up to 61.7 of the step; at 61.99, %g\n", static_cast<double>(late));
 }
 
@@ -2565,7 +2592,7 @@ int main(int argc, char** argv) {
     struct Test { const char* name; void (*run)(); bool sound; }; // sound: its proof is of the sound, and is made again on three helper threads
     const Test kTests[] = {
         {"testTheSceneIsCopied", testTheSceneIsCopied, false}, {"testOnlyOnTheGrids", testOnlyOnTheGrids, false}, {"testNoRoom", testNoRoom, false}, {"testUndo", testUndo, false},
-        {"testUndoPutsThePlayerOnABarThatIsThere", testUndoPutsThePlayerOnABarThatIsThere, false}, {"testUndoIsOneStep", testUndoIsOneStep, false},
+        {"testUndoPutsThePlayerOnABarThatIsThere", testUndoPutsThePlayerOnABarThatIsThere, false}, {"testUndoIsOneStep", testUndoIsOneStep, false}, {"testTheChordTrackIsHeard", testTheChordTrackIsHeard, false},
         {"testPlayingGoesOnUnbroken", testPlayingGoesOnUnbroken, true}, {"testTheSongGoesOnUnbroken", testTheSongGoesOnUnbroken, true}, {"testAnotherSceneIsPlaying", testAnotherSceneIsPlaying, false},
         {"testUndoWhileTheFirstOfTheTwoPlays", testUndoWhileTheFirstOfTheTwoPlays, false}, {"testTheLastSceneIsPlaying", testTheLastSceneIsPlaying, false},
         {"testTheSongIsLongerAtOnce", testTheSongIsLongerAtOnce, false}, {"testStopped", testStopped, false}, {"testTheEngineHasTheWholeSong", testTheEngineHasTheWholeSong, false},

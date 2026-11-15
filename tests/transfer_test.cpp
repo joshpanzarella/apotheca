@@ -845,9 +845,9 @@ static void testTheSpeedTest() {
     const std::string door = "/" + transfer.pin();
     const std::string was = Transfer::benchCommand;
     CHECK(was.find("--bench") != std::string::npos); // the program itself, timing only
-    Transfer::benchCommand = "echo Phazed 4.2; echo Twin 9.9";
+    Transfer::benchCommand = "echo Phazed 4.2; echo JAX-EP 9.9";
     Answer a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
-    CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nTwin 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
+    CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nJAX-EP 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
     CHECK(raw(port, "GET /bench HTTP/1.1\r\n\r\n").status == 403); // not without the number
     CHECK(raw(port, "POST " + door + "/bench HTTP/1.1\r\nContent-Length: 0\r\n\r\n").body.find("Phazed") == std::string::npos); // only asked for, never sent to
     Transfer::benchCommand = "echo half; exit 3";

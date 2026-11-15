@@ -1151,7 +1151,7 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.twin(), "JAX-EP"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1180,7 +1180,7 @@ void testTheOtherScreens() {
         for (int t = 0; t < kNumTracks; ++t)
             if (project.tracks[t].kind == TrackKind::Jx3p) project.track = t;
         CHECK(project.current().kind == TrackKind::Jx3p);
-        SynthScreen& jax = rig.app.twin();
+        SynthScreen& jax = rig.app.jaxep();
         const SynthSpec& spec = jx3pSpec();
         int settings = 0, knobs = 0;
         for (int page = 1; page < jax.pageCount(); ++page) {

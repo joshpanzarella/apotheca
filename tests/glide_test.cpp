@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "apotheca/jx3p.hpp"
 
 using namespace apotheca;
 
@@ -1082,7 +1083,7 @@ static void testTheRule() {
 // ---- each synth takes the length it is given ------------------------------------------------
 
 // The pitch over a stretch of sound: the shift at which it best matches itself. (Counting
-// crossings cannot read Twin, with its two oscillators.)
+// crossings cannot read a synth with two oscillators a little apart.)
 static double pitchOver(const std::vector<float>& out, int from, int frames) {
     double best = -1e30;
     int bestLag = 1;
@@ -1100,8 +1101,8 @@ static double pitchOver(const std::vector<float>& out, int from, int frames) {
 }
 
 static void testEverySynthTakesTheLength() {
-    for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Jx3p}) {
-        const char* name = kind == SynthKind::Twin ? "twin" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Jx3p ? "jx3p" : "phazed";
+    for (SynthKind kind : {SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Jx3p}) {
+        const char* name = kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Jx3p ? "jx3p" : "phazed";
         // A quiet low note, then one an octave up four steps later. Its pitch from 0.55 to 0.95 of a
         // step into it, at 60 BPM (a step is a quarter of a second).
         const auto early = [&](int glide) {
@@ -1134,6 +1135,151 @@ static void testEverySynthTakesTheLength() {
     }
 }
 
+// ---- PAIRED on six voices: a glide's pitch is its own, stolen voice or not ---------------------
+
+// (jx3p-plan.md, "Voice stealing"; SELF.) A real JAX-EP on the track, watched: what the engine told
+// it, and what each of its six voices plays, sample by sample.
+struct Watched : Instrument {
+    struct Voices {
+        int note[jx3p::kVoices];
+        double hz[jx3p::kVoices];
+    };
+    Jx3p synth;
+    std::vector<Began>* log;
+    std::vector<Voices>* seen; // seen[f]: the six voices after frame f was made
+    std::vector<Voices>* atKey; // as each gliding key was taken, before a sample of it
+    long frame = 0;
+    Watched(std::vector<Began>* to, std::vector<Voices>* each, std::vector<Voices>* keys) : log(to), seen(each), atKey(keys) {}
+    Voices now() const {
+        Voices v;
+        for (int i = 0; i < jx3p::kVoices; ++i) v.note[i] = synth.voiceNote(i), v.hz[i] = synth.voiceHz(i);
+        return v;
+    }
+    void prepare(float rate) override { synth.prepare(rate); }
+    void selectPreset(int index) override { synth.selectPreset(index); }
+    void setSetting(int id, int value) override { synth.setSetting(id, value); }
+    void setMacro(int macro, float value) override { synth.setMacro(macro, value); }
+    void noteOn(int note, float velocity) override {
+        log->push_back({frame, note, -1, 0.f});
+        synth.noteOn(note, velocity);
+    }
+    void noteOnFrom(int note, float velocity, int from, float seconds) override {
+        log->push_back({frame, note, from, seconds});
+        synth.noteOnFrom(note, velocity, from, seconds);
+        atKey->push_back(now());
+    }
+    void noteOff(int note) override { synth.noteOff(note); }
+    void allNotesOff() override { synth.allNotesOff(); }
+    void render(float* left, float* right, int frames) override {
+        for (int i = 0; i < frames; ++i) { // a sample at a time, so every sample's pitch is seen (the synth is the same however it is cut)
+            synth.render(left + i, right + i, 1);
+            seen->push_back(now());
+        }
+        frame += frames;
+    }
+};
+
+static double centsApart(double a, double b) { return 1200.0 * std::log2(a / b); }
+static double keyHz(double key) { return 440.0 * std::pow(2.0, (key - 69.0) / 12.0); }
+
+// A chord of four keys, still held, then four gliding notes at once: eight notes on six voices, so
+// two of the new ones steal a voice that is sounding a chord key. Each new note, stolen voice or
+// free: comes from the key the roll's rule (glideLines, PAIRED) says, starts at that key's pitch on
+// its first sample, slides straight, and is at its own pitch when the roll's length is up.
+static void testPairedOnSixVoices() {
+    const int chord[4] = {48, 55, 60, 67}, next[4] = {52, 53, 72, 76};
+    const int kChordStep = 2, kNextStep = 6;
+    // What the roll draws.
+    std::vector<GlideNote> notes(kGlideNotes);
+    std::vector<GlideLine> lines(kGlideNotes);
+    for (int k = 0; k < 4; ++k) {
+        notes[static_cast<std::size_t>(k)].sounds = true, notes[static_cast<std::size_t>(k)].step = kChordStep, notes[static_cast<std::size_t>(k)].pitch = chord[k];
+        GlideNote& n = notes[static_cast<std::size_t>(4 + k)];
+        n.sounds = true, n.step = kNextStep, n.pitch = next[k], n.glide = k % 2 ? kGlideOne : kGlideTwo;
+    }
+    glideLines(notes.data(), 1, 16, lines.data(), kFromPaired, 1);
+    for (int k = 0; k < 4; ++k) CHECK(lines[static_cast<std::size_t>(4 + k)].from == chord[k]); // by hand: the four pair off, bottom to top
+
+    std::unique_ptr<Engine> engine(new Engine);
+    std::vector<Began> log;
+    std::vector<Watched::Voices> seen, atKey;
+    seen.reserve(16 * kStep);
+    {
+        std::unique_ptr<Watched> watched(new Watched(&log, &seen, &atKey));
+        watched->prepare(48000.f);
+        Command c = make(Command::InstallSynth, 1);
+        c.pointer = watched.get();
+        CHECK(engine->send(c));
+        watched.release();
+    }
+    engine->send(make(Command::SetSetting, 1, jx3p::Dco1Range, 1)); // 8': the key as written
+    engine->send(glideFrom(kFromPaired));
+    for (int k = 0; k < 4; ++k) engine->send(noteAt(k, kChordStep, chord[k], 9.f)); // held past everything looked at
+    for (int k = 0; k < 4; ++k) engine->send(noteAt(4 + k, kNextStep, next[k], 5.f, packed(0, k % 2 ? kGlideOne : kGlideTwo)));
+    engine->send(make(Command::Play, 0, 0, 1));
+    std::vector<float> out(2 * 1000);
+    for (int done = 0; done < 10 * kStep; done += 1000) engine->render(out.data(), 1000);
+
+    const long began = static_cast<long>(kNextStep) * kStep;
+    CHECK(static_cast<long>(seen.size()) == 10L * kStep && atKey.size() == 4);
+    if (static_cast<long>(seen.size()) != 10L * kStep || atKey.size() != 4) return;
+    // Just before: the chord on four voices, two free.
+    const Watched::Voices& before = seen[static_cast<std::size_t>(began - 1)];
+    int chordVoices = 0, freeVoices = 0;
+    for (int v = 0; v < jx3p::kVoices; ++v) chordVoices += before.note[v] >= 48 && before.note[v] <= 67, freeVoices += before.note[v] < 0;
+    CHECK(chordVoices == 4 && freeVoices == 2);
+    int stolen = 0;
+    for (int k = 0; k < 4; ++k) {
+        const GlideLine& line = lines[static_cast<std::size_t>(4 + k)];
+        // The engine told the synth what the roll draws.
+        const Began* told = nullptr;
+        for (const Began& b : log) told = b.pitch == next[k] ? &b : told;
+        CHECK(told && told->frame == began && told->from == line.from && about(told->seconds, line.steps * kStepSeconds));
+        // Its voice, and whether it was sounding a chord key a sample before.
+        const Watched::Voices& after = seen[static_cast<std::size_t>(began)];
+        int voice = -1;
+        for (int v = 0; v < jx3p::kVoices; ++v) voice = after.note[v] == next[k] ? v : voice;
+        CHECK(voice >= 0);
+        if (voice < 0) continue;
+        const bool took = before.note[voice] >= 0;
+        stolen += took;
+        if (took) CHECK(std::fabs(centsApart(before.hz[voice], keyHz(before.note[voice]))) < 1.0); // (it was on its chord key, in tune)
+        // As the key was taken, before a sample: the pitch of the key it comes from (the DCO's
+        // counter is within a cent of any key), not the voice's old key, not its own.
+        const double first = atKey[static_cast<std::size_t>(k)].hz[voice]; // (keys are taken in slot order: the k-th taken is next[k])
+        CHECK(atKey[static_cast<std::size_t>(k)].note[voice] == next[k]);
+        const double cents0 = centsApart(first, keyHz(line.from));
+        // A straight slide: a quarter, half and three quarters of the way at those parts of its length.
+        const long length = std::lround(line.steps * kStep);
+        double worst = 0.0;
+        for (int part = 1; part <= 3; ++part) {
+            const double want = line.from + (next[k] - line.from) * part / 4.0;
+            worst = std::fmax(worst, std::fabs(centsApart(seen[static_cast<std::size_t>(began + length * part / 4 - 1)].hz[voice], keyHz(want))));
+        }
+        // Not there a hundredth of its length early; there, and staying, when the length is up.
+        const double early = centsApart(seen[static_cast<std::size_t>(began + length - length / 100)].hz[voice], keyHz(next[k]));
+        const double landed = centsApart(seen[static_cast<std::size_t>(began + length)].hz[voice], keyHz(next[k]));
+        const double later = centsApart(seen[static_cast<std::size_t>(began + length + kStep / 2)].hz[voice], keyHz(next[k]));
+        const double gap = std::abs(next[k] - line.from); // cents still to go a hundredth early: a hundredth of its semitones, in cents
+        const bool ok = std::fabs(cents0) < 1.0 && worst < 2.0 && std::fabs(std::fabs(early) - gap) < 2.0 && std::fabs(landed) < 1.0 && std::fabs(later) < 1.0;
+        CHECK(ok);
+        if (!ok || std::getenv("GLIDE_PRINT"))
+            std::printf("  six voices, key %d from %d over %.0f step(s), voice %d (%s): starts %.2f cents from that key; on the way %.2f off a straight slide at worst; a hundredth early %.1f cents short (%.1f); landed %.2f, later %.2f\n",
+                        next[k], line.from, line.steps, voice, took ? "stolen" : "free", cents0, worst, early, gap, landed, later);
+    }
+    CHECK(stolen == 2); // two took a free voice, two a voice sounding a chord key
+    // The two chord keys not stolen play on, in tune, all the while.
+    const Watched::Voices& late = seen[static_cast<std::size_t>(began + 3 * kStep)];
+    int left = 0;
+    for (int v = 0; v < jx3p::kVoices; ++v)
+        if (late.note[v] >= 48 && late.note[v] <= 67 && (late.note[v] == chord[0] || late.note[v] == chord[1] || late.note[v] == chord[2] || late.note[v] == chord[3])) {
+            // (52 and 53 are new keys inside the chord's span: they are not chord keys.)
+            ++left;
+            CHECK(std::fabs(centsApart(late.hz[v], keyHz(late.note[v]))) < 1.0);
+        }
+    CHECK(left == 2);
+}
+
 int main() {
     testTheLengths();
     testEachLengthIsTold();
@@ -1145,6 +1291,7 @@ int main() {
     testTypesWithChords();
     testRandomIsRolledForItsPlace();
     testPairedAcrossAStepLine();
+    testPairedOnSixVoices();
     testPairedWhereTheSceneGoesRound();
     testRandomOnALaterScene();
     testTypesAtAnyBlockLength();

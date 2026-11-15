@@ -804,7 +804,7 @@ static std::vector<float> throwSong(int helpers, bool throws = true, bool ducks 
             engine->send(c);
         }
     }
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {

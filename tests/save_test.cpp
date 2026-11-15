@@ -166,19 +166,19 @@ void fillSong(Rig& rig) {
     rig.app.notes().moveCursorTo(64, 0);
     rig.tap(A);
     rig.session().view = View::Device;
-    rig.app.twin().goTo(0, SynthScreen::kPreset);
+    rig.app.jaxep().goTo(0, SynthScreen::kPreset);
     rig.key(A, true);
     rig.tap(UP, 4);
     rig.key(A, false);
-    rig.app.twin().goTo(3, 3); // RESONANCE
+    rig.app.jaxep().goTo(3, 3); // RESONANCE
     rig.key(A, true);
     rig.tap(UP, 7);
     rig.key(A, false);
-    rig.app.twin().goTo(5, 4); // BRILLIANCE, the track's own
+    rig.app.jaxep().goTo(5, 4); // BRILLIANCE, the track's own
     rig.key(A, true);
     rig.tap(DOWN, 4);
     rig.key(A, false);
-    rig.app.twin().goTo(5, 5); // VELOCITY, the same
+    rig.app.jaxep().goTo(5, 5); // VELOCITY, the same
     rig.key(A, true);
     rig.tap(DOWN, 1);
     rig.key(A, false);
@@ -419,7 +419,7 @@ void testNewSongAndTheList() {
     rig.project().playing = false;
     CHECK(rig.session().openSong(first));
     CHECK(rig.session().songName() == first && rig.project().trackCount() == 3);
-    CHECK(rig.project().tracks[1].kind == TrackKind::Phazed); // track 2 is Phazed again, not the Twin just added
+    CHECK(rig.project().tracks[1].kind == TrackKind::Phazed); // track 2 is Phazed again, not the JAX-EP just added
     CHECK(!rig.session().openSong("no such song"));
     CHECK(rig.session().songName() == first);
     std::string onDisk;

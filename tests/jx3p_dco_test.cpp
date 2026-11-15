@@ -247,7 +247,7 @@ static void testTheDcosStartApart() {
 
 // ---- aliasing -------------------------------------------------------------------------------
 
-// The plan's two-sample polynomial BLEP (Twin's, batch 1's saw), for the record and to show the
+// The plan's two-sample polynomial BLEP (batch 1's saw), for the record and to show the
 // measure can see aliasing.
 static std::vector<float> polySaw(double hz, std::size_t frames) {
     std::vector<float> out(frames);

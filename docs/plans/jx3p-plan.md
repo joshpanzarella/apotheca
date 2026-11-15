@@ -32,7 +32,10 @@ quiet, both from this plan's guesses** (see "Batch 7: what it learned").
 **The review of 6a, 6b and 7 is mended (2026-11-15)**: see "Batches 6a, 6b
 and 7: the review's mend". **A third preset is hurt by the cutoff guess: A3
 Organ I plays 21 semitones low and 21 cents off the other tracks.** Left for
-the owner with the other two (section 8).
+the owner with the other two (section 8). **Batch 8a is done (2026-11-15)**:
+every test that played Twin plays JAX-EP, but Twin's own two (`twin_test` and
+`engine_test`'s quality limit, which 8b deletes with the code); see "Batch 8a:
+what it learned".
 Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
@@ -634,6 +637,7 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
 | | **Batch 7 DONE (2026-11-14, branch `jx3p`).** The 32 patches are `kPresets` in `engine/src/jx3p.cpp`, sixteen in BANK A and sixteen in BANK B, named as the booklet's English headings; the start patch is no longer a preset (`Jx3p::startPatch()`: what a synth is made with). A new JAX-EP track, and an old `track twin`, is on A1 String I. `tests/jx3p_nam.inc` is the booklet as read, in its own terms. **Tests**: `ctest` 40 of 40; the new `jx3p_presets_test` (in ctest, TIMEOUT 120, about 3 s): 8 tests (the table against the booklet, value for value; a patch picked; NAM's three checks; every patch played: sounds, bounded, ends; the same bits cut in blocks of 256, 64 and 97 and twice from fresh; no number too small, every patch through its release and by allNotesOff; after another patch; through the engine). `app_test` (the folder jump is a bank jump; a bank's note), `textsize` (MAIN on each of the 32 at four sizes), `design_test`. **Bench** (desk, three runs, the synth alone): 6 notes, now A1 String I, **0.55 to 0.56%**; the worst of the 32, **B15 Planet, 1.03 to 1.06%** (B12 Sync Sweep, which this plan named, is 0.55%); moving cutoff 1.78 to 1.83% (not changed); Phazed 0.7, QMOD 2.8 to 2.9, Twin x1 4.0 to 4.4 beside them. **Mutants: 35 made, 34 killed**; see "Batch 7: what it learned" | | |
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
+| | **Batch 8a DONE (2026-11-15, branch `jx3p`).** JAX-EP is the synth in `engine_test` (the helpers' song, the macros' rest, the tail and the attack, the glide: no exception left), `effects_test` (both songs; **the pinned song's sum remade**), `chordfx_test`, `throw_test`, `mixer_test`, `glide_test`, and `render_demo` plays A1 String I (peak 0.95; it was 0.96). New: `glide_test` `testPairedOnSixVoices` (the PAIRED steal test) and `nextscene_test` `testTheChordTrackIsHeard`; `nextscene_test`'s chord track is JAX-EP, every proof still 0. The app's screen is `App::jaxep()`. **Tests**: `ctest` 43 of 43. **Thread sanitizer**: `nextscene_test` clean, 10 min 45 s for the run. **Mutants: 15 made, 14 killed**; see "Batch 8a: what it learned". The engine is not touched, so `bench` was not run | | |
 | 8b | **Twin's code out.** Delete `twin.hpp/.cpp` and `twin_test`; remove `setQualityLimit`, the load watch, "BUSY: OVERSAMPLING DOWN", the bounce's x8 | All of `ctest` | No word "twin" left but the file reader's |
 | 8c | **Docs.** README, CLAUDE.md's Measured table and rules, `effects-plan.md`'s cost figures | `ctest -R words` | |
 | 9 | **Calibration from recordings** (waits on the owner's source). A small tool reads WAVs of a real JX-3P and fits the tables: envelope times and curve, LFO rate and delay, cutoff in Hz, HPF, KEY FOLLOW's 100%, the VCA taper, pulse's gain, chorus rate and depth, the self-oscillation level | Each fitted table written in the tests with its measured figure; those tests become FAITHFUL | Every "guess" here is measured, or the owner chose to keep it |
@@ -1098,6 +1102,56 @@ folder's run one short at its end, and one late at its start).
 B7 at LARGE, XL on PAPER ("7 / 16"). `bench`: 0.55 / 1.03 to 1.14 / 1.77 to
 1.86%, as before; the 32 one by one were not timed again. Nothing was heard,
 nothing ran on the handheld.
+
+### Batch 8a: what it learned (2026-11-15)
+
+**Not done, on purpose: two tests still play Twin.** `twin_test` and
+`engine_test`'s `testFallingBehindLowersTheQuality` test code only Twin has
+(its oversampling under the load watch). 8b deletes them with that code. Moved
+to JAX-EP they would test nothing.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "No test names Twin" | No test PLAYS Twin but its own two (above). The word is still in the tests of the old song and the old preset file (the file reader's), in one guard that no instrument offered is Twin's (`app_test`, until 8b takes the kind away), and as a plain word for "a second engine beside the first" (`effects_test`, `app_test`) | 8b's bar is "no word twin left but the file reader's" |
+| `engine_test` tails | Twin's tail tested the shared `Envelope` (20 s); JAX-EP has its own. Now: RELEASE 10.0 is 0.068 of the held note after 3 s (23 dB down of its 80 in 10 s), **exact silence after 11 s**, RELEASE 0 gone inside 20 ms; ATTACK 0 peaks 0.226 in its first 10 ms, 3.0 0.060, 5.0 0.019 | The settings reach the synth through the engine. The first attack check passed with ATTACK not read at all (its mutant survived); it compares three attacks now |
+| `engine_test` glide "without a JX exception" | So: the `kind == Twin` let-off on "from above, where it settled" is gone and JAX-EP passes it | |
+| The trio songs | `effects_test` (both), `throw_test`, `chordfx_test`, `mixer_test`, the helpers' song (three JAX-EP tracks of six) | |
+| **`effects_test`'s pinned song had Twin in it** (not in the plan) | **Its sum is remade**: 0xd8819d428dab766d to 0x6536b73551f423cb, rms 0.355528 to 0.353221. On the commit before, the old sum held and `--print` gave 42 lines; with only the synth's kind changed, the same 41 and the new song line | The rule is "remade only from code known to be right": the 40 renders that pin the old five effects did not move. The song's sum now moves when JAX-EP's sound does (a chorus constant moved in the eighth figure fails it) |
+| The PAIRED steal test | `glide_test` `testPairedOnSixVoices`: a real JAX-EP on the track, watched a sample at a time. A chord of four still held, then four gliding notes at once (two lengths), so **two take a free voice and two steal one sounding a chord key**. Each: told the key `glideLines` (PAIRED) draws, at its frame, for its length; at the key's pitch as it is taken (0.01 cents); a straight slide (0.19 cents off at worst); not there a hundredth early; landed (0.07) and staying. The two chord keys left play on in tune | SELF. Stolen or free reads the same |
+| `nextscene_test` on the new synth | Track 3 (`kChordTrack`) is JAX-EP. **Every proof is still 0** from the song left alone, on no helpers and on three. The one figure that is not 0 by design (a copy taken back on the last step, an early note already heard) reads 0.11; it was 0.28 on PHAZED. `testTheChordTrackIsHeard`: that track muted is another sound | |
+| `App::twin()` (8b in the notes above) | `App::jaxep()` now | The tests call it |
+
+**Thread sanitizer** (`-fsanitize=thread`, its own build under the scratch
+folder): `nextscene_test` whole, with the chord track on JAX-EP: **no
+warning, "next scene tests passed", 10 min 45 s** on a shared desk. (After
+it only a comment changed in that file.)
+
+**Mutants: 15 made, 14 killed.** A gliding key not at its from-pitch when
+taken; a stolen voice not sliding; a stolen voice sliding from its old key;
+a slide 2% fast; no glide at all; RELEASE not read; ATTACK not read (it
+survived its first round: the check was too weak, and is three attacks now);
+the chorus's dry share moved in its eighth figure (the song's sum); a preset
+not putting the macros back; a count shared by every JAX-EP in the start
+phase (twice from fresh: `chordfx_test`, `effects_test`, `throw_test`,
+`engine_test` all fail); the chord track back on Phazed; the old song sum;
+the tail read at RELEASE 0; eight voices (nothing stolen).
+**Survives, and is no fault of the test**: `allNotesOff` keeping the count of
+keys, against `nextscene_test`. Both rigs of every proof there stop and play
+alike, so they agree; `jx3p_test`'s Play from the top is what holds it.
+**So `nextscene_test` proves the engine's calls with JAX-EP on the track, not
+JAX-EP's own Play from the top.**
+
+**Not tested**: `render_demo` has no test. It was run: 20.7 s, peak 0.95.
+
+**Left for 8b**: `twin.hpp/.cpp`, `twin_test`, the quality limit and its
+test, `bench`'s and SPEED TEST's Twin rows, the busiest song's two Twin
+tracks (`app/bench_run.cpp`: moving them changes that figure, so it goes with
+the rows), `SynthKind::Twin` and the guard in `app_test`, the word "twin" as
+a variable's name.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN and
+the VCF page (a knob held), unchanged. Nothing was heard, nothing ran on the
+handheld.
 
 ### Batches 2 to 5: the review's mend (2026-11-14)
 

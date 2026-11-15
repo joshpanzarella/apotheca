@@ -3,7 +3,7 @@
 //
 //   build/render_demo out.wav
 //
-// Eight bars: the drum pattern from the app's --demo, a Phazed bass and Twin Analog chords.
+// Eight bars: the drum pattern from the app's --demo, a Phazed bass and JAX-EP chords (A1 String I).
 
 #include <cstdint>
 #include <cstdio>
@@ -65,10 +65,9 @@ int main(int argc, char** argv) {
     Engine engine;
     engine.prepare(static_cast<float>(rate));
     engine.addSynthTrack(1);
-    engine.addSynthTrack(2, SynthKind::Twin);
+    engine.addSynthTrack(2, SynthKind::Jx3p);
     const int bass = firstPresetIn("Bass");
-    int pad = 0; // Twin Analog's first pad
-    while (std::strcmp(Twin::presetCategory(pad), "Pads") != 0) ++pad;
+    const int pad = 0; // JAX-EP's A1, String I: what a new track plays
     engine.send(make(Command::SelectPreset, 1, bass));
     engine.send(make(Command::SelectPreset, 2, pad));
     // Levels that leave the mix under the ceiling, so nothing is squashed.
@@ -76,7 +75,7 @@ int main(int argc, char** argv) {
     engine.send(make(Command::SetTrackLevel, 1, 0, 0, 0.35f));
     engine.send(make(Command::SetTrackLevel, 2, 0, 0, 0.3f));
     engine.send(make(Command::SetTempo, 0, 0, 0, tempo));
-    std::printf("bass: Phazed, %s\nchords: Twin Analog, %s\n", Phazed::presetName(bass), Twin::presetName(pad));
+    std::printf("bass: Phazed, %s\nchords: JAX-EP, %s\n", Phazed::presetName(bass), Jx3p::presetName(pad));
 
     // The drum pattern from the app's --demo.
     const struct { int lane, step; float level; } hits[] = {

@@ -291,6 +291,10 @@ effect in those two groups and fails one that does not.
   checksums taken before they were moved. Old songs depend on them. Do not
   touch their arithmetic, not even to fix it; make a new effect instead. The
   checksums are remade (`effects_test --print`) only from code known to be right.
+  **The whole song's sum was remade once (2026-11-15)**: its third synth went from
+  Twin Analog to JAX-EP, and `--print` gave the same 40 renders before and after.
+  It pins JAX-EP's sound too now: a change to that synth moves it, and is then
+  proved by the 40 renders standing still.
 - **An effect has a number, a word and a place, and they are three things.**
   The number (`EffectKind`) is in memory and commands: appended, never
   reordered. The `word` is in song files: never changed. The place in the
@@ -965,7 +969,7 @@ effect in those two groups and fails one that does not.
   pairs, held to twelve blocks past the last key (a busy machine made minutes
   of sound otherwise). It is clean under the thread sanitizer
   (`-fsanitize=thread`, about nine minutes; sixteen with its build, on a busy
-  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; clean 2026-11-14 with the scene move's asking again, nineteen minutes for the run alone on a shared desk; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
+  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; clean 2026-11-14 with the scene move's asking again, nineteen minutes for the run alone on a shared desk; clean 2026-11-15 with the chord track on JAX-EP, eleven minutes for the run alone; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
   what a scene move hands over.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
@@ -1000,7 +1004,7 @@ effect in those two groups and fails one that does not.
   bar (`askAheadHits`, `askAheadNotes`, the same code `fireStep` asks with),
   as far into the step as the playing is. A new step clears the marks first.
   **One thing it cannot mend**: an early note of the copy already heard
-  (here from 61.7 of the step on: 0.28 from the song left alone, as before),
+  (here from 61.7 of the step on: 0.11 from the song left alone with the chord track on JAX-EP; it was 0.28 on PHAZED),
   and the next scene's notes whose moment has gone by are not played late.
   `nextscene_test` `testTakenBackOnTheLastStep` (in ctest) holds 0 up to there
   for `fill` and for a song with more asked ahead (`addEdges`);
@@ -1036,7 +1040,7 @@ effect in those two groups and fails one that does not.
   there.**
 - **The song `nextscene_test` plays (`fill`) has a track of chords strummed,
   as arpeggios, humanised, ratcheted, thrown, in every ORDER, and a glide of
-  every length, on a track whose GLIDE FROM is PAIRED**, so every proof of the sound has them in flight when the
+  every length, on a JAX-EP track (six voices: its chords and glides steal; `testTheChordTrackIsHeard`) whose GLIDE FROM is PAIRED**, so every proof of the sound has them in flight when the
   scene moves. The proofs marked `sound` in its table run again with the
   tracks on three helper threads, and the song left alone is held to the same
   sound on none and on three. `nextscene_test --only NAME...` runs just
@@ -1796,7 +1800,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
-2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done; 8a, the tests off Twin, is next. **The owner's three calls of 2026-11-15 are built: the cutoff's range moved (Organ I in tune, no preset silent), the bank is up to PHAZED's loudness, MAIN's count is the preset's place in its bank.** Nobody has heard any of it).
+2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done, and 8a (the tests off Twin: only `twin_test` and `engine_test`'s quality-limit test still play it); 8b, Twin's code out, is next. **The owner's three calls of 2026-11-15 are built: the cutoff's range moved (Organ I in tune, no preset silent), the bank is up to PHAZED's loudness, MAIN's count is the preset's place in its bank.** Nobody has heard any of it).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
@@ -1818,7 +1822,7 @@ Notes' pages, the shared measuring tools), batch 1 (the skeleton:
 JAX-EP, Twin Analog is no longer offered) and batch 6b (its pages at every
 size, the folder's note, the still views) and batch 7 (the 32 factory
 presets: `jx3p_presets_test`, `tests/jx3p_nam.inc`) are done** on branch `jx3p`; batch 3's
-SPEED TEST on the handheld waits on the owner. Twin's engine code, its tests and its `bench` rows stay until 8a / 8b.
+SPEED TEST on the handheld waits on the owner. Twin's engine code, `twin_test`, `engine_test`'s quality-limit test and its `bench` rows (SPEED TEST's too, and the busiest song's two Twin tracks) stay until 8b. The app's JAX-EP screen is `App::jaxep()`.
 The owner's calls (plan section 8) are taken at the recommended answers, each
 one constant in `jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at 48 kHz: 44.1 would save about
 8%, which the owner judged not worth it.

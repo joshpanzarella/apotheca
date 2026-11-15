@@ -214,7 +214,7 @@ void testATrackThatComesBackIsAtTheUsual() {
 
 // The engine's every part, played, as a song is: drums and three synths, sends up, a slot each.
 void playABusyBar(Engine& engine) {
-    for (int t = 1; t < 4; ++t) engine.addSynthTrack(t, t == 2 ? SynthKind::Twin : SynthKind::Phazed);
+    for (int t = 1; t < 4; ++t) engine.addSynthTrack(t, t == 2 ? SynthKind::Jx3p : SynthKind::Phazed);
     for (int t = 0; t < 4; ++t) {
         Command send = make(Command::SetSend, t, 0.3f);
         send.a = t % 2;

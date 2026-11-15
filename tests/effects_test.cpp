@@ -327,7 +327,7 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
     }
     const int step = 6000; // frames in one step at 120 BPM and 48 kHz
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {
@@ -365,10 +365,14 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
     return all;
 }
 
-// The song's checksum on 2026-11-11, before the effects were moved. (The
-// same maths-library caveat: the instruments use it too.)
-static const std::uint64_t kSongSum = 0xd8819d428dab766dull;
-static const double kSongRms = 0.355528453;
+// The song's checksum. (The same maths-library caveat: the instruments use it too.)
+// Taken on 2026-11-11, before the effects were moved: 0xd8819d428dab766d, rms 0.355528453, with
+// the song's third synth the one JAX-EP replaced. REMADE ONCE, 2026-11-15 (jx3p-plan.md, batch 8a),
+// when that track went to JAX-EP and nothing else did: on the commit before, the old sum held and
+// `--print` gave the 40 pinned renders and the maths line; with only the synth's kind changed it
+// gave the same 41 lines and this sum. The effects' arithmetic was not touched on the way.
+static const std::uint64_t kSongSum = 0x6536b73551f423cbull;
+static const double kSongRms = 0.353221477;
 
 static void testWholeSong() {
     const std::vector<float> alone = effectsSong(0);
@@ -4399,7 +4403,7 @@ static std::vector<float> sendSong(int helpers, bool sends = true) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {

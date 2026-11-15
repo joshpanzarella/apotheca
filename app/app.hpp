@@ -51,7 +51,7 @@ public:
     PatternScreen& drums() { return drums_; }
     NoteScreen& notes() { return notes_; }
     SynthScreen& phazed() { return phazed_; }
-    SynthScreen& twin() { return twin_; }
+    SynthScreen& jaxep() { return jaxep_; }
     SynthScreen& qmod() { return qmod_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
@@ -111,7 +111,7 @@ private:
     bool selectAlone_ = false; // SELECT is down and nothing else has been pressed since
     bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
     SynthScreen phazed_; // the same screen, once for each synth
-    SynthScreen twin_;
+    SynthScreen jaxep_;
     SynthScreen qmod_;
 };
 

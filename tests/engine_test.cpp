@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,7 +11,8 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
-#include "apotheca/twin.hpp"
+#include "apotheca/twin.hpp" // (only testFallingBehindLowersTheQuality: both go with Twin's code, jx3p-plan.md batch 8b)
+#include "apotheca/jx3p.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/rate_converter.hpp"
 
@@ -287,7 +289,7 @@ static void testSharingTracksAcrossCores() {
         std::unique_ptr<Engine> engine(new Engine);
         engine->useWorkers(helpers);
         for (int s = 0; s < kSteps; s += 2) engine->send(step(s % 4 == 0 ? KICK : RIM, s, 0.9f));
-        const SynthKind kinds[6] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod, SynthKind::Twin, SynthKind::Qmod, SynthKind::Jx3p};
+        const SynthKind kinds[6] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Jx3p};
         for (int t = 1; t <= 6; ++t) {
             CHECK(engine->addSynthTrack(t, kinds[t - 1]));
             for (int n = 0; n < 4; ++n) {
@@ -623,7 +625,7 @@ static void testAutomation() {
 // 2026-11-14: "went back to a previous sound I was using" as the song looped). The same song beside an engine
 // whose knobs were never turned must be the same to the sample, after the wrap and after Stop.
 static void testAPresetPutsTheMacrosRestBack() {
-    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Twin, SynthKind::Qmod};
+    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Qmod};
     for (SynthKind kind : kinds) {
         const auto rig = [kind](bool turned) {
             std::unique_ptr<Engine> engine(new Engine);
@@ -735,29 +737,41 @@ static void testTheSharedEnvelope() {
     for (int i = 0; i < 480000; ++i) quick.next(shape); // ten seconds: half-way, 30 dB down
     CHECK(quick.level > 0.028f && quick.level < 0.036f);
 
-    // Twin Analog and the sampler both use it. A Twin note let go at RELEASE 100 is still
-    // clearly there six seconds later (it used to be gone, to the ear, by then), and one at RELEASE 0 has gone in a blink.
-    const auto twinTail = [](int release, int afterFrames) {
+    // JAX-EP has an envelope of its own (a level a tick, jx3p/env.hpp), and its settings reach it through
+    // the engine: a note let go at RELEASE 10.0 is still clearly there three seconds later, and one at
+    // RELEASE 0 has gone in a blink (a tick and the hold's few milliseconds).
+    const auto jaxTail = [](int release, int afterFrames) {
         std::unique_ptr<Engine> engine(new Engine);
-        CHECK(engine->addSynthTrack(1, SynthKind::Twin));
-        engine->send(make(Command::SetSetting, 1, twin::Release, release));
-        engine->send(make(Command::SetSetting, 1, twin::Sustain, 100));
-        engine->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
+        CHECK(engine->addSynthTrack(1, SynthKind::Jx3p));
+        engine->send(make(Command::SetSetting, 1, jx3p::Release, release));
+        engine->send(make(Command::SetSetting, 1, jx3p::Sustain, 100));
+        engine->send(make(Command::SetSetting, 1, jx3p::Chorus, 0));
+        engine->send(make(Command::NoteOn, 1, 57, 0, 1.f));
         const float held = peakOf(renderFrames(*engine, 9600));
         engine->send(make(Command::NoteOff, 1, 57));
         renderFrames(*engine, afterFrames);
         return peakOf(renderFrames(*engine, 2400)) / held;
     };
-    const float long6 = twinTail(100, 6 * 48000);
-    CHECK(long6 > 0.08f && long6 < 0.2f); // 18 dB down after 6 of its 20 seconds
-    CHECK(twinTail(0, 480) < 0.1f); // the note itself has gone; what is left is the output filter settling
-    // And its attack at 0 is up within a millisecond or so, without a step.
-    std::unique_ptr<Engine> engine(new Engine);
-    CHECK(engine->addSynthTrack(1, SynthKind::Twin));
-    engine->send(make(Command::SetSetting, 1, twin::Attack, 0));
-    engine->send(make(Command::NoteOn, 1, 57, 0, 0.8f));
-    const std::vector<float> start = renderFrames(*engine, 480);
-    CHECK(std::fabs(start[0]) < 0.02f && peakOf(start) > 0.05f);
+    const float long3 = jaxTail(100, 3 * 48000), longAll = jaxTail(100, 11 * 48000), blink = jaxTail(0, 960);
+    if (std::getenv("TAIL_PRINT")) std::printf("  JAX-EP's tail: RELEASE 10.0 after 3 s %.4f of the held note, after 11 s %.6f; RELEASE 0 after 20 ms %.6f\n", long3, longAll, blink);
+    CHECK(long3 > 0.045f && long3 < 0.1f); // 0.068: 23 dB down after 3 of its 10 seconds (80 dB in all, kEnvLand)
+    CHECK(longAll == 0.f); // its ten seconds are up: exact silence, the voice is free
+    CHECK(blink < 0.001f);
+    // And its attack: at 0 the note is up within its first tick (10 ms), without a step; at 5.0 it is
+    // still far down there, and at 3.0 between the two.
+    const auto jaxStart = [](int attack) {
+        std::unique_ptr<Engine> engine(new Engine);
+        CHECK(engine->addSynthTrack(1, SynthKind::Jx3p));
+        engine->send(make(Command::SetSetting, 1, jx3p::Attack, attack));
+        engine->send(make(Command::SetSetting, 1, jx3p::Chorus, 0));
+        engine->send(make(Command::NoteOn, 1, 57, 0, 1.f));
+        const std::vector<float> start = renderFrames(*engine, 480);
+        CHECK(std::fabs(start[0]) < 0.02f);
+        return peakOf(start);
+    };
+    const float up0 = jaxStart(0), up30 = jaxStart(30), up50 = jaxStart(50);
+    if (std::getenv("TAIL_PRINT")) std::printf("  JAX-EP's first 10 ms: ATTACK 0 peaks %.4f, 3.0 %.4f, 5.0 %.4f\n", up0, up30, up50);
+    CHECK(up0 > 0.15f && up30 < 0.4f * up0 && up30 > 0.15f * up0 && up50 < 0.15f * up0); // 0.226, 0.060, 0.019
 }
 
 static void testFallingBehindLowersTheQuality() {
@@ -2140,7 +2154,7 @@ static void testRatchetsHoldUp() {
 
 // A note that glides starts at the pitch of the note before it and slides to its own.
 static void testANoteGlides() {
-    for (SynthKind kind : {SynthKind::Twin, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
+    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
         const auto second = [&](int effects, int firstKey = 57, bool onlyOne = false) {
             std::unique_ptr<Engine> engine(new Engine);
             CHECK(engine->addSynthTrack(1, kind));
@@ -2159,7 +2173,7 @@ static void testANoteGlides() {
             return std::make_pair(pitchOver(out, 4 * kStep + 96, 1440), pitchOver(out, 8 * kStep, 9600));
         };
         const auto plain = second(0), slid = second(256);
-        const char* name = kind == SynthKind::Twin ? "twin" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
+        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
         if (!(slid.first < 0.85 * plain.first)) std::printf("  %s: began at %.0f Hz plain, %.0f Hz with a glide; settled at %.0f / %.0f\n", name, plain.first, slid.first, plain.second, slid.second);
         CHECK(slid.first < 0.85 * plain.first);                           // it begins well under its own pitch (the note before was an octave lower)
         CHECK(std::fabs(slid.second - plain.second) < 0.02 * plain.second); // and arrives at it
@@ -2167,8 +2181,7 @@ static void testANoteGlides() {
         // From above, it begins over its pitch and comes down.
         const auto fromAbove = second(256, 81);
         if (!(fromAbove.first > 1.15 * plain.first)) std::printf("  from above: %.0f against %.0f; settled %.0f / %.0f\n", fromAbove.first, plain.first, fromAbove.second, plain.second);
-        // (Twin's two oscillators and the high first note's long tail make "where it settled" unreadable by counting crossings: its start is checked, and its arriving was checked from below.)
-        CHECK(fromAbove.first > 1.15 * plain.first && (kind == SynthKind::Twin || std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second));
+        CHECK(fromAbove.first > 1.15 * plain.first && std::fabs(fromAbove.second - plain.second) < 0.04 * plain.second); // (every synth: no exception)
         // The first note after Play has nothing to glide from: it is plain.
         const auto alone = second(256, 57, true), aloneAsItIs = second(0, 57, true);
         CHECK(std::fabs(alone.first - aloneAsItIs.first) < 0.03 * aloneAsItIs.first);
