@@ -17,12 +17,20 @@
 //                  cursor rests, not each one passed (each is a file read).
 //   left / right   out to the folder this one is in / into the folder under
 //                  the cursor
-//   L1 / R1        a page up / down
-//   A              on a recording: keep it. On a folder: into it.
+//   L1 / R1        a page up / down (R1 on a recording: when it is let go, since held it carries)
+//   hold R1        on a recording: CARRY it (hold R1 drags, on every screen). After kCarryHoldMs,
+//                  or at once with a direction: steer with up / down / left / right, the stick
+//                  and L1, and let go to put it in the folder under the cursor, or else in the
+//                  folder showing (SAMPLES itself: out of every folder). The top line says where
+//                  it would go. Nothing goes on the lane meanwhile. B with R1 held calls it off.
+//                  Every saved song and rev that names it follows (Session::moveSample).
+//   A              on a recording: keep it. On a folder: into it. On + NEW FOLDER (the last row
+//                  of SAMPLES and of a first-level folder): the keys for its name, as a track's
+//                  name is typed (A types, B deletes or leaves, Y or START keeps it).
 //   B              a tap: put back what was there before the list was opened
 //   hold B         for a second: DELETE the recording under the cursor from the
-//                  handheld, for good (a bad catch, a take not wanted). Not a
-//                  folder, not the first row. Hold B is "delete for good" on
+//                  handheld, for good (a bad catch, a take not wanted), or an
+//                  EMPTY folder (nothing at all in it). Not the first row. Hold B is "delete for good" on
 //                  every screen.
 //   X              hear it again, for as long as X is held (to its end); a tap
 //                  is heard for a moment
@@ -57,9 +65,12 @@ public:
         std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
         std::function<const ui::Playhead*()> playhead;     // where the sound being heard has got to, for a line across its picture
         std::function<int(const std::string&)> used;       // how many OTHER places in the open song have this recording on; may be empty
+        std::function<Session::FileJob(const std::string& from, const std::string& to)> move; // carry: the recording `from` becomes `to`
+        std::function<Session::FileJob(const std::string&)> makeFolder;   // a new, empty folder of this whole name
+        std::function<Session::FileJob(const std::string&)> removeFolder; // delete this folder, if it is empty
     };
     // A row of a column.
-    enum class Kind { First, Folder, Recording };
+    enum class Kind { First, Folder, Recording, NewFolder };
     struct Row {
         Kind kind;
         std::string name; // a recording's whole name ("drums/kicks/808"), or a folder's ("drums/kicks"; "" is UNSORTED)
@@ -70,6 +81,12 @@ public:
     static constexpr float kStickRowsPerSecond = 20.f;                  // the stick pushed all the way (times ui::gStickSpeed)
     static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on
     static constexpr Uint32 kDeleteHoldMs = 1000;
+    static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
+    static constexpr Uint32 kSaidMs = 2500;      // how long the top line says what was done, or why not
+    static constexpr int kFolderNameLength = 12; // the longest a folder's name is typed
+    static const char* const kKeys;              // the keys a name is typed with, row after row (the SET page's)
+    static constexpr int kKeyColumns = 10, kKeyCount = 40;
+    static constexpr float kKeysPerSecond = 7.f;  // the stick over the keys
 
     // `folders`: the folders there are (Session::sampleFolders), the empty ones too. `first` names
     // the row before everything ("THE BUILT-IN DRUM").
@@ -87,6 +104,11 @@ public:
     const Row* under() const { return cursor_ >= 0 && cursor_ < count() ? &rows_[static_cast<std::size_t>(cursor_)] : nullptr; }
     bool flat() const { return dirs_.empty(); }                     // no folders at all: one list
     float deletePart() const { return deletePart_; }
+    const std::string& carried() const { return carried_; }         // the recording being carried ("": none)
+    std::string carryTo() const;                                    // the folder it would go to if R1 were let go now ("": out of every folder)
+    bool typing() const { return typing_; }                         // a new folder's name is being typed: every button is its
+    const std::string& typed() const { return typed_; }
+    const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
     // The rows of a place, as a column lists them.
     std::vector<Row> rowsAt(int depth, const std::string& folder) const;
 
@@ -104,6 +126,14 @@ private:
     void into(bool playing);                 // the folder under the cursor
     void out();                              // to the folder this one is in
     int step(Button b) const;
+    void refresh(const std::string& onto = "");  // the rows again, after the card changed; the cursor on its row (or the row of this key)
+    void drop(bool playing);                 // R1 let go while carrying
+    void typeButton(Button b);
+    void moveKey(Button direction);
+    void keepFolder();
+    void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
+    bool emptyFolder(const Row& row) const;  // a folder hold B deletes
+    void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
     void drawColumn(SDL_Renderer* r, const Fonts& fonts, int x, int w, const std::vector<Row>& rows, int lit, bool cursor, int first) const;
 
     bool open_ = false;
@@ -126,6 +156,14 @@ private:
     bool deleting_ = false, deleteTimed_ = false; // B is held on a recording
     Uint32 deleteSince_ = 0;
     float deletePart_ = 0.f;
+    bool r1Down_ = false, r1Timed_ = false;       // R1 went down on a recording: a page when let go, a carry if held
+    Uint32 r1Since_ = 0;
+    std::string carried_;
+    bool typing_ = false;
+    std::string typed_, typingIn_;                // the name so far, and the folder it will be in ("": SAMPLES)
+    int key_ = 0;
+    std::string said_;
+    Uint32 saidUntil_ = 0;
 };
 
 } // namespace apotheca

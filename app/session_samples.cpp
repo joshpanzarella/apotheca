@@ -5,6 +5,9 @@
 
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
+
+#include <cerrno>
 
 #include <algorithm>
 #include <cmath>
@@ -70,6 +73,71 @@ bool Session::deleteSample(const std::string& name) {
         if (track.kind == TrackKind::Sampler && name == track.sample) setTrackSample(t, "");
     }
     return true;
+}
+
+namespace {
+// A folder of the samples folder that is really there, as itself: no part of it a link. "" is the samples folder.
+bool realFolder(const std::string& folder, const std::string& name) {
+    struct stat info;
+    for (std::size_t slash = name.find('/'); !name.empty(); slash = name.find('/', slash + 1)) {
+        if (lstat((folder + "/" + name.substr(0, slash)).c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) return false;
+        if (slash == std::string::npos) break;
+    }
+    return true;
+}
+std::string lowered(std::string text) {
+    for (char& c : text) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+    return text;
+}
+}
+
+Session::FileJob Session::moveSample(const std::string& from, const std::string& to) {
+    if (sampleFolder_.empty() || !sampleNameOk(from)) return FileJob::Failed;
+    if (from == to) return FileJob::Same;
+    if (to.size() >= static_cast<std::size_t>(kSampleNameRoom)) return FileJob::TooLong;
+    if (!sampleNameOk(to) || !realFolder(sampleFolder_, sampleFolderOf(from)) || !realFolder(sampleFolder_, sampleFolderOf(to))) return FileJob::Failed;
+    // Its file, whichever way it ends; it keeps that ending.
+    struct stat info;
+    const char* ending = nullptr;
+    for (const char* end : {".wav", ".WAV"})
+        if (!ending && lstat((sampleFolder_ + "/" + from + end).c_str(), &info) == 0 && S_ISREG(info.st_mode)) ending = end;
+    if (!ending) return FileJob::Failed;
+    // Nothing is written over, and no two names that differ only in capitals (a card may not tell them apart).
+    for (const std::string& have : sampleNames())
+        if (have != from && lowered(have) == lowered(to)) return FileJob::Taken;
+    const std::string file = sampleFolder_ + "/" + from + ending, target = sampleFolder_ + "/" + to + ending;
+    if (lstat(target.c_str(), &info) == 0) return FileJob::Taken;
+    // Some cards will not rename a file from one folder into another (the handheld's own refused):
+    // then it is written again where it goes, and the old one taken away once the new one is safely there.
+    if (Transfer::renameBroken || std::rename(file.c_str(), target.c_str()) != 0) { // (renameBroken: the tests' card that will not)
+        std::string contents;
+        const bool copied = readTextFile(file, contents) && writeTextFile(target, contents);
+        if (!copied || std::remove(file.c_str()) != 0) {
+            if (copied) std::remove(target.c_str()); // the old one would not go: do not leave two
+            return FileJob::Failed;
+        }
+    }
+    recordingChanged(from, to);
+    savedSongsFollow({{from, to}});
+    saveNow(); // the open song now, not at the next autosave: its revs already have the new name
+    return FileJob::Done;
+}
+
+Session::FileJob Session::makeSampleFolder(const std::string& name) {
+    if (sampleFolder_.empty() || name.empty()) return FileJob::Failed;
+    if (name.size() + 2 >= static_cast<std::size_t>(kSampleNameRoom)) return FileJob::TooLong; // no recording's name would fit in it
+    if (!sampleNameOk(name + "/x") || !realFolder(sampleFolder_, sampleFolderOf(name))) return FileJob::Failed;
+    for (const std::string& have : sampleFolders())
+        if (lowered(have) == lowered(name)) return FileJob::Taken;
+    struct stat info;
+    if (lstat((sampleFolder_ + "/" + name).c_str(), &info) == 0) return FileJob::Taken;
+    return mkdir((sampleFolder_ + "/" + name).c_str(), 0755) == 0 ? FileJob::Done : FileJob::Failed;
+}
+
+Session::FileJob Session::deleteSampleFolder(const std::string& name) {
+    if (sampleFolder_.empty() || !sampleNameOk(name + "/x") || !realFolder(sampleFolder_, name)) return FileJob::Failed;
+    if (rmdir((sampleFolder_ + "/" + name).c_str()) == 0) return FileJob::Done; // (it goes only if nothing is in it)
+    return errno == ENOTEMPTY || errno == EEXIST ? FileJob::NotEmpty : FileJob::Failed;
 }
 
 void Session::recordingChanged(const std::string& from, const std::string& to) {

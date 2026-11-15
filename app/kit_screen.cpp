@@ -66,6 +66,9 @@ void KitScreen::openPicker() {
     jobs.hear = [this](bool held) { hear(held); };
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
+    jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };
+    jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
+    jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
     jobs.playhead = [this] { return &head_; };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
@@ -89,7 +92,7 @@ void KitScreen::press(Button b) {
 void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (picker_.isOpen()) {
-        if (b == Button::Start && event.down && !input.held(Button::Select)) session_.togglePlay(false); // to hear it in the beat
+        if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false); // to hear it in the beat
         else picker_.onButton(event, project_.playing);
         return;
     }

@@ -152,15 +152,24 @@ in the folder of the recording that is on, on it.
 | The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down |
-| A | On a recording: keep it. On a folder: into it |
+| **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
+| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, B deletes, Y or START keeps it) |
 | B | A tap: put back what was there before the list opened |
 | X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
-| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Not a folder |
+| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
 | START | Play / stop, with the list still open |
 
-**Folders.** Make folders inside `samples` (kicks, breaks, vocals...), and
+**Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
 folders inside those: **two levels**, `drums/kicks/808`. A folder inside
-that is not looked into. The first column, SAMPLES, lists the first row (the
+that is not looked into. **Make one on the handheld** with + NEW FOLDER, the
+last row of SAMPLES and of each first-level folder (twelve letters at most,
+kept in small letters), or on the WiFi page.
+
+**A recording carried to another folder keeps playing**, and nothing is
+lost: the open song, every saved song and every rev that used it name it
+where it is now. It is not moved where one of that name already is, or where
+its name with its folders would pass 63 letters; the top line says which.
+The folder it left stays, even empty. The first column, SAMPLES, lists the first row (the
 built-in drum, or no recording), UNSORTED (the recordings not in a folder)
 and each folder with how many recordings are under it. With no folders at
 all the recordings are listed there themselves. Under a recording's picture

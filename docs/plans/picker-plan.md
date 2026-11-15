@@ -1,6 +1,6 @@
 # The sample picker: columns, two levels of folders, move and make on the device
 
-Owner, 2026-11-14. **Batches 0 and 1 are built** (2026-11-15, branch `picker`); 2 and 3 are not. "As built", at the end, says what and where.
+Owner, 2026-11-14. **Batches 0, 1 and 2 are built** (2026-11-15, branch `picker`); 3, the review, is not. "As built", at the end, says what and where.
 
 > "I think we need to be able to traverse folders in columns ... similar to the way the command line
 > tool yazi looks. It just needs to be easier to move around and select the sample you want. The
@@ -81,7 +81,7 @@ Nothing here has run on the handheld; the owner has not seen or heard it. Tests 
 | --- | --- | --- |
 | 0 | **Done** | `app/samples.cpp` (`sampleNameOk`, `sampleFolderOf`, `wavNames`, `wavFolders`), `app/transfer.cpp` (`safeSamplePath`, `realFile`, `dropIfEmpty`, `foldersMade`, `foldersIn`, `recordingsIn`, and the page's script: `split`, `wrongFolder`, `tooLong`, `folders`); `sample_test`, `transfer_test` |
 | 1 | **Done** | `app/sample_picker.hpp/.cpp`; `Session::sampleFolders`, `sampleUses`; stills `picker`, `picker-in`, `picker-deep`, `picker-deleting`, `sampler-picker`; `sample_test`, `textsize_test`, `textviews`, `themeviews` |
-| 2 | Not started | + NEW FOLDER, carry (hold R1), delete an empty folder (hold B), saved songs follow |
+| 2 | **Done** | `Session::moveSample`, `makeSampleFolder`, `deleteSampleFolder` (`app/session_samples.cpp`); the list's carry, + NEW FOLDER row and keys, hold B on an empty folder (`app/sample_picker.hpp/.cpp`); stills `picker-new`, `picker-typing`, `picker-carrying`, `picker-folder-deleting`; `tests/picker_test.cpp`, `textsize_test`. See "As built (batch 2)" below |
 | 3 | Not started | |
 
 **The gestures as built**
@@ -120,3 +120,49 @@ Nothing here has run on the handheld; the owner has not seen or heard it. Tests 
 - UNSORTED is listed only when something is loose: carrying a recording OUT of every folder needs somewhere to let go (SAMPLES itself, or UNSORTED always shown).
 - + NEW FOLDER rows are not there: `rowsAt` is the one place rows are made.
 - `Session::deleteSample` and the WiFi page's `dropIfEmpty` disagree about an emptied folder (see the table). The owner may want one rule.
+
+## As built (batch 2, 2026-11-15)
+
+Nothing here has run on the handheld; the owner has not seen it. Tests and stills only.
+**The WiFi page was not changed in this batch** (the plan asks nothing of it here; batch 0 did its part).
+
+**The gestures added**
+
+| Button | Does |
+| --- | --- |
+| Hold R1 on a recording | Carries it, after 300 ms (`kCarryHoldMs`), or at once with a direction or the stick. Steer with the D-pad, the stick, L1; LEFT / RIGHT go out of and into folders. The top line: CARRYING TO place: name |
+| Let go of R1 | It goes into the folder under the cursor; else into the folder showing; on SAMPLES, on a row that is no folder: out of every folder. The top line says MOVED TO place, or why not |
+| B with R1 held | Calls it off |
+| R1, a tap, on a recording | A page, when it is let go (on any other row: at once, as before) |
+| A on + NEW FOLDER | The keys: A types, B deletes (nothing typed: leaves), Y or START keeps. Twelve letters |
+| Hold B on an empty folder | Deletes it (a second, the bar, CANNOT BE UNDONE) |
+
+**Choices made where the plan left room**
+
+| Choice | Why |
+| --- | --- |
+| Where a carried recording goes: the folder UNDER THE CURSOR if there is one, else the folder SHOWING | Both readings of "steer to a folder" work: stop on it, or go into it |
+| Out of every folder: let go on SAMPLES on a row that is no folder (the first row, + NEW FOLDER) or on UNSORTED | UNSORTED is not listed when nothing is loose; this needs no extra row |
+| A direction with R1 carries at once, without the 300 ms | Speed. The wait is only there so a tap is still a page |
+| On a recording, R1's page waits for the let-go | A press cannot be both. On other rows it is at once |
+| The bar on a recording says HOLD R1 carry in place of L1 / R1 page | It holds five hints. L1 / R1 still page |
+| + NEW FOLDER is the LAST row | The plan's picture. First would put it under the cursor on going into a folder, where the first recording goes on |
+| No + NEW FOLDER in UNSORTED | UNSORTED is not a folder |
+| A folder is made in small letters, 12 letters at most; one of that name, capitals not counted, is refused | The folders the program makes are small; a card may not tell KICKS from kicks |
+| After a folder is made the cursor is on it; after a move into the folder showing, on the recording, which goes on the lane | "What is under the cursor is on" |
+| While carried nothing goes on the lane and nothing is heard | Rows are only steered over |
+| Nothing is written over: a recording of that name there (capitals not counted) refuses the move | As the WiFi page |
+| A carry is never made into a folder that is not there, and never through a link | The list only offers real folders |
+| An "empty" folder is one `rmdir` takes: a file that is no recording keeps it, and the top line says so | Never delete what the list does not show |
+| A folder holding only an empty folder is not deleted: the inner one first | "Only when it is empty" |
+| The folder a recording was carried out of stays, empty | As batch 1's delete |
+| A let-go of R1 the list never saw calls the carry off | Nothing moves without a let-go that was seen |
+| The keys are the list's own copy of the SET page's | `SettingsScreen` was not touched |
+| What was done, or why not, shows on the top line for 2.5 s | The title's place; no new box |
+
+**Known, not hidden**
+
+- A recording whose name is too long to be a name at all (listed from the card, over 63 letters) says COULD NOT MOVE IT.
+- The still `picker-typing` gets no START (it would make the folder); `picker-folder-deleting` is taken at 600 ms, as `picker-deleting`.
+- Rename on the device, and carrying several at once, are still "later" (the owner's open calls).
+- The hold's 300 ms and the page-on-let-go are not tried on the handheld.

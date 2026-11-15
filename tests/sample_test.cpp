@@ -1403,7 +1403,7 @@ void testTheSamplePicker() {
 
     // A tap of A on SOUND opens it, on the built-in drum, with the lane as it was.
     rig.tap(A);
-    CHECK(list.isOpen() && list.cursor() == 0 && list.count() == 21 && track.laneSample[5][0] == 0);
+    CHECK(list.isOpen() && list.cursor() == 0 && list.count() == 22 && track.laneSample[5][0] == 0);
     // Down: the next one is on the lane at once, and (the song being stopped) it is heard.
     rig.render(96000);
     rig.tap(DOWN);
@@ -1423,10 +1423,16 @@ void testTheSamplePicker() {
     rig.tap(R1);
     CHECK(list.cursor() == 13 && std::string(track.laneSample[5]) == "take 13");
     rig.tap(R1, 3);
+    // The last row is + NEW FOLDER: the cursor on it, the lane keeps the last recording it came to, and nothing is played.
+    CHECK(list.cursor() == 21 && list.under()->kind == SamplePicker::Kind::NewFolder && std::string(track.laneSample[5]) == "take 13");
+    rig.tap(UP);
     CHECK(list.cursor() == 20 && std::string(track.laneSample[5]) == "take 20");
+    rig.tap(DOWN);
     rig.render(96000);
     rig.tap(DOWN); // at the end: nothing moves, so nothing is loaded or played again
-    CHECK(list.cursor() == 20 && Rig::sounding(rig.render(20000)) == 0);
+    rig.tap(X);    // (and X on + NEW FOLDER hears nothing)
+    CHECK(list.cursor() == 21 && Rig::sounding(rig.render(20000)) == 0);
+    rig.tap(UP);
     rig.tap(L1);
     CHECK(list.cursor() == 10);
     // While it is open the kit's own buttons do nothing: Y does not catch, R1 does not record, and the lane cursor stays.
@@ -1525,7 +1531,7 @@ void testTheSamplePicker() {
     rig.frames(1);
     SamplePicker& one = rig.app.sampler().picker();
     rig.tap(A);
-    CHECK(one.isOpen() && one.cursor() == 0 && one.count() == 21);
+    CHECK(one.isOpen() && one.cursor() == 0 && one.count() == 22);
     rig.tap(DOWN, 3);
     CHECK(std::string(rig.app.project().tracks[1].sample) == "take 03");
     rig.tap(B);
@@ -1548,11 +1554,11 @@ void testTheSamplePicker() {
     session.setLaneSample(0, 5, "take 05");
     session.setLaneSample(0, 6, "take 05"); // another lane playing the same recording
     rig.tap(A);
-    CHECK(list.isOpen() && list.cursor() == 5 && list.count() == 21);
+    CHECK(list.isOpen() && list.cursor() == 5 && list.count() == 22);
     rig.key(Y, true);
     rig.frames(80);
     rig.key(Y, false);
-    CHECK(list.count() == 21 && list.isOpen() && std::string(track.laneSample[5]) == "take 05");
+    CHECK(list.count() == 22 && list.isOpen() && std::string(track.laneSample[5]) == "take 05");
     // B let go before the second is up: a tap. The list shuts with the lane as it was, and nothing is deleted.
     rig.tap(DOWN);
     rig.key(B, true);
@@ -1565,11 +1571,11 @@ void testTheSamplePicker() {
     CHECK(list.isOpen() && list.cursor() == 5 && list.deletePart() == 0.f);
     rig.key(B, true);
     rig.frames(55); // 0.88 s
-    CHECK(list.count() == 21 && list.deletePart() > 0.7f);
+    CHECK(list.count() == 22 && list.deletePart() > 0.7f);
     rig.frames(10);
     rig.key(B, false);
     rig.frames(1);
-    CHECK(list.count() == 20 && list.isOpen() && list.cursor() == 5); // letting go after the delete is not a tap: the list stays
+    CHECK(list.count() == 21 && list.isOpen() && list.cursor() == 5); // letting go after the delete is not a tap: the list stays
     CHECK(std::string(track.laneSample[5]) == "take 06"); // the next one took its place under the cursor, and is on the lane
     CHECK(track.laneSample[6][0] == 0);                    // the other lane that had it is back on its drum
     struct stat info;
@@ -1584,18 +1590,31 @@ void testTheSamplePicker() {
     CHECK(list.cursor() == 0);
     rig.key(B, true);
     rig.frames(80);
-    CHECK(list.count() == 20 && list.isOpen());
+    CHECK(list.count() == 21 && list.isOpen());
     rig.key(B, false); // however long it was held there, it is B's tap: the list shuts
     CHECK(!list.isOpen() && session.sampleNames().size() == 19);
     CHECK(!session.deleteSample("no such thing") && !session.deleteSample("") && !session.deleteSample("../take 06") && session.sampleNames().size() == 19);
     // The last in the list deleted: the cursor goes to the one before.
     rig.tap(A);
     rig.tap(R1, 3);
+    CHECK(list.cursor() == 20);
+    // (+ NEW FOLDER is not deleted either: held there, B is its tap.)
+    rig.key(B, true);
+    rig.frames(70);
+    CHECK(list.isOpen() && list.deletePart() == 0.f);
+    rig.key(B, false);
+    CHECK(!list.isOpen() && session.sampleNames().size() == 19);
+    rig.tap(A);
+    rig.tap(R1, 3);
+    rig.tap(UP);
     CHECK(list.cursor() == 19);
     rig.key(B, true);
     rig.frames(70);
     rig.key(B, false);
-    CHECK(list.count() == 19 && list.cursor() == 18 && std::string(track.laneSample[5]) == "take 19");
+    // (The row that took its place is + NEW FOLDER: the cursor stays in the column, on it, and the lane is on its drum.)
+    CHECK(list.count() == 20 && list.cursor() == 19 && list.under()->kind == SamplePicker::Kind::NewFolder && track.laneSample[5][0] == 0);
+    rig.tap(UP);
+    CHECK(std::string(track.laneSample[5]) == "take 19");
     rig.tap(A);
 
     // No recordings at all: the list opens with its one row, and says how to get some.
@@ -1603,8 +1622,7 @@ void testTheSamplePicker() {
     empty.app.session().view = View::Device;
     empty.app.kit().goTo(0, KitScreen::kSound);
     empty.tap(A);
-    CHECK(empty.app.kit().picker().isOpen() && empty.app.kit().picker().count() == 1);
-    empty.tap(DOWN);
+    CHECK(empty.app.kit().picker().isOpen() && empty.app.kit().picker().count() == 2); // (the first row and + NEW FOLDER)
     empty.tap(RIGHT);
     CHECK(empty.app.kit().picker().cursor() == 0);
     empty.tap(A);
@@ -1984,12 +2002,12 @@ void testFoldersInTheSamplePicker() {
     // Opened with the built-in drum on: SAMPLES. The first row, UNSORTED (the loose ones), then each folder,
     // the empty one too, each with how many recordings are under it (those in its folders counted).
     rig.tap(A);
-    CHECK(list.isOpen() && !list.flat() && list.depth() == 0 && list.folderName().empty() && list.count() == 6 && list.cursor() == 0 && on(Kind::First, ""));
+    CHECK(list.isOpen() && !list.flat() && list.depth() == 0 && list.folderName().empty() && list.count() == 7 && list.cursor() == 0 && on(Kind::First, ""));
     {
         const std::vector<SamplePicker::Row>& rows = list.rows();
         CHECK(rows[1].kind == Kind::Folder && rows[1].name.empty() && rows[1].count == 2);
         CHECK(rows[2].name == "breaks" && rows[2].count == 1 && rows[3].name == "drums" && rows[3].count == 3 && rows[4].name == "kicks" && rows[4].count == 3);
-        CHECK(rows[5].kind == Kind::Folder && rows[5].name == "void" && rows[5].count == 0);
+        CHECK(rows[5].kind == Kind::Folder && rows[5].name == "void" && rows[5].count == 0 && rows[6].kind == Kind::NewFolder);
     }
     // Down onto a folder: nothing goes on the lane and nothing is played.
     rig.render(96000);
@@ -2000,7 +2018,7 @@ void testFoldersInTheSamplePicker() {
     CHECK(Rig::sounding(rig.render(20000)) == 0);
     rig.key(B, true);
     rig.frames(80);
-    CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 6);
+    CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 7);
     rig.key(B, false);
     CHECK(!list.isOpen() && session.sampleNames().size() == 9);
     rig.tap(A);
@@ -2022,7 +2040,7 @@ void testFoldersInTheSamplePicker() {
     // A on a folder is into it too.
     rig.tap(DOWN);
     rig.tap(A);
-    CHECK(list.isOpen() && list.depth() == 1 && list.folderName() == "breaks" && list.count() == 1 && lane() == "breaks/amen");
+    CHECK(list.isOpen() && list.depth() == 1 && list.folderName() == "breaks" && list.count() == 2 && lane() == "breaks/amen");
     CHECK(Rig::sounding(rig.render(20000)) > 4000);
     CHECK(session.recording() == Session::Rec::Idle);
     // A folder with a folder in it: the folder first, then its own recordings. The cursor on the inner
@@ -2030,7 +2048,7 @@ void testFoldersInTheSamplePicker() {
     rig.tap(LEFT);
     rig.tap(DOWN);
     rig.tap(RIGHT);
-    CHECK(list.depth() == 1 && list.folderName() == "drums" && list.count() == 2 && on(Kind::Folder, "drums/snares", 2) && lane() == "breaks/amen");
+    CHECK(list.depth() == 1 && list.folderName() == "drums" && list.count() == 3 && on(Kind::Folder, "drums/snares", 2) && lane() == "breaks/amen");
     CHECK(list.rows()[1].kind == Kind::Recording && list.rows()[1].name == "drums/tom");
     // Two levels down, and no further.
     rig.tap(RIGHT);
@@ -2153,7 +2171,7 @@ void testFoldersInTheSamplePicker() {
     flat.frames(1);
     flat.tap(A);
     SamplePicker& simple = flat.app.kit().picker();
-    CHECK(simple.isOpen() && simple.flat() && simple.depth() == 0 && simple.count() == 3);
+    CHECK(simple.isOpen() && simple.flat() && simple.depth() == 0 && simple.count() == 4);
     flat.tap(DOWN);
     flat.tap(RIGHT);
     flat.tap(LEFT);
@@ -2171,7 +2189,7 @@ void testFoldersInTheSamplePicker() {
     tidy.frames(1);
     tidy.tap(A);
     SamplePicker& neat = tidy.app.kit().picker();
-    CHECK(neat.isOpen() && !neat.flat() && neat.count() == 2 && neat.rows()[1].kind == Kind::Folder && neat.rows()[1].name == "hats" && neat.rows()[1].count == 1);
+    CHECK(neat.isOpen() && !neat.flat() && neat.count() == 3 && neat.rows()[1].kind == Kind::Folder && neat.rows()[1].name == "hats" && neat.rows()[1].count == 1);
     tidy.tap(DOWN);
     tidy.tap(RIGHT);
     CHECK(std::string(tidy.app.project().tracks[0].laneSample[2]) == "hats/closed");
@@ -2183,7 +2201,7 @@ void testFoldersInTheSamplePicker() {
     lone.app.kit().goTo(2, KitScreen::kSound);
     lone.frames(1);
     lone.tap(A);
-    CHECK(!lone.app.kit().picker().flat() && lone.app.kit().picker().count() == 2);
+    CHECK(!lone.app.kit().picker().flat() && lone.app.kit().picker().count() == 3);
 }
 
 // How fast it moves (owner: "fast ... not so fast that it is hard to choose").
@@ -2206,7 +2224,7 @@ void testThePickersPace() {
     rig.tap(A);
     rig.tap(DOWN);
     rig.tap(RIGHT);
-    CHECK(list.depth() == 1 && list.count() == 80 && list.cursor() == 0);
+    CHECK(list.depth() == 1 && list.count() == 81 && list.cursor() == 0);
     const auto under = [&] { return list.under() ? list.under()->name : std::string(); };
     int used = 0;
     std::string was = track.laneSample[5];
