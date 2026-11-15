@@ -373,6 +373,21 @@ static void testHeldAtTheEdge() {
         const std::vector<float> v = play(*p, 9600);
         CHECK(std::fabs(centsOff(v, hzOf(127), 0.01)) < 0.5);
     }
+    // A mode's share fades out between 0.40 and 0.45 of the sample rate, and above it is silent.
+    {
+        // GLOCK's third mode (5.4039) at 0.425 of the sample rate: key 106 and 15 cents.
+        auto p = synth(plain(kGlock, {{Fine, 15}}));
+        p->noteOn(106, 1.f);
+        const std::vector<float> v = play(*p, 9600);
+        double hz[kModesMost];
+        float heard[kModesMost];
+        CHECK(p->modesOf(0, hz, heard) == 6);
+        for (int k = 0; k < 6; ++k) CHECK(heard[k] == static_cast<float>(nyquistFade(hz[k], kRate)));
+        CHECK(heard[2] > 0.4f && heard[2] < 0.6f && heard[3] == 0.f);
+        // Above: nothing where its fold would land.
+        const double folded = kRate - hz[3];
+        CHECK(sizeAt(v, folded, 0.01, 64.0) < 1e-6);
+    }
     for (int key : {12, 115}) {
         auto p = synth(plain(kString));
         p->noteOn(key, 0.8f);
@@ -523,6 +538,21 @@ static void testMaterial() {
     }
 }
 
+// ...and a glide on WOOD takes each mode's damping with it: landed an octave up, the modes die as the
+// law says at their new frequencies.
+static void testMaterialGlides() {
+    auto p = synth(plain(kGlock, {{Decay, 80}, {Material, 30}}));
+    p->noteOnFrom(60, 0.8f, 48, 0.05f);
+    const std::vector<float> v = play(*p, 48000 * 2);
+    const double a = rateOfT60(decaySeconds(80)), b = materialB(30);
+    for (int k = 0; k < 3; ++k) {
+        const double hz = hzOf(60) * modelRow(kGlock).ratio[k];
+        const double want = a + b * hz * hz;
+        const double got = rateOfT60(t60At(v, hz, 0.1, std::min(0.5, 3.0 / want), std::max(32.0, hz * 0.005)));
+        CHECK(std::fabs(got / want - 1.0) < 0.05);
+    }
+}
+
 // FAITHFUL (Hz, through the sound): a harder hit is brighter as well as louder. The spectral centroid
 // of a MARIMBA's first 0.2 s rises with velocity (VELOCITY 100), and not at VELOCITY 0.
 static double centroidOf(int velocityAmount, float velocity) {
@@ -649,6 +679,37 @@ static void testStiffness() {
     }
 }
 
+// A low string struck by a short mallet: for its first period its sound has not come round to where
+// the loop is read, so 64 samples of silence do not mean it is asleep (its whole line is looked at).
+static void testStringMallet() {
+    auto p = synth(plain(kString, {{Strike, 1}, {Hardness, 100}, {Position, 0}}));
+    p->noteOn(28, 0.9f); // 41 Hz: a period of 1168 samples
+    const std::vector<float> first = play(*p, 960);
+    CHECK(peakOf(first) == 0.f); // nothing has come round yet
+    CHECK(p->awake() == 1);
+    const std::vector<float> v = play(*p, 48000 * 3);
+    CHECK(peakOf(v) > 0.05f);
+    CHECK(std::fabs(centsOff(v, hzOf(28), 0.1)) < 0.5);
+}
+
+// SELF: a struck note never peaks over kModalGain (0.3) at velocity 1 and LEVEL 0: the modes' sizes
+// add up to it, however they line up, whatever the model, key, mallet or place.
+static void testPeakBound() {
+    float most = 0.f;
+    for (int model = 1; model < kModels; ++model)
+        for (int key : {36, 60, 84, 100})
+            for (int hardness : {0, 50, 100})
+                for (int position : {0, 50, 100}) {
+                    auto p = synth(plain(model, {{Hardness, hardness}, {Position, position}, {Velocity, 100}}));
+                    p->noteOn(key, 1.f);
+                    const float peak = peakOf(play(*p, 4800));
+                    most = std::max(most, peak);
+                    CHECK(peak <= 0.3f * 1.0001f);
+                    if (position == 0 && key <= 60 && hardness >= 50) CHECK(peak > 0.1f); // and it is not quiet
+                }
+    if (gPrint) std::printf("  the loudest single note: %.4f (bound 0.3)\n", most);
+}
+
 // SELF: a ringing string struck again is damped 2 ms first (down to 30%), then plucked; a ringing bar
 // struck again keeps its voice and the hit adds to the ringing.
 static void testRestrike() {
@@ -658,12 +719,21 @@ static void testRestrike() {
         const std::vector<float> before = play(*p, 9600);
         const double was = rmsOf(before, 9600 - 480);
         p->noteOff(57);
+        p->noteSeed(99u);
         p->noteOn(57, 0.8f);
         const std::vector<float> damped = play(*p, 96);
         CHECK(p->strikes() == 2 && p->awake() == 1);
         CHECK(rmsOf(damped, 72, 96) < 0.55 * was); // (the last of the 2 ms: towards 30%)
         const std::vector<float> after = play(*p, 4800);
         CHECK(rmsOf(after, 960) > 0.5 * was);
+        // The pluck after the damping is all there: as loud as a fresh one (with what is left of the
+        // old under it).
+        auto fresh = synth(plain(kString, {{Strike, 0}, {Decay, 80}}));
+        fresh->noteSeed(99u); // (the same pluck)
+        fresh->noteOn(57, 0.8f);
+        const std::vector<float> f = play(*fresh, 96 + 4800);
+        CHECK(rmsOf(after, 960, 4800) > 0.95 * rmsOf(f, 96 + 960, 96 + 4800));
+        if (gPrint) std::printf("  re-struck string: %.4f, a fresh pluck %.4f, before %.4f\n", rmsOf(after, 960, 4800), rmsOf(f, 96 + 960, 96 + 4800), was);
     }
     {
         auto p = synth(plain(kMarimba, {{Decay, 70}}));
@@ -742,6 +812,14 @@ static void testTakeOver() {
         play(*p, 256);
         CHECK(p->strikes() == 2);
     }
+    { // from a voice still inside its strike: a new strike
+        auto p = synth(plain(kMarimba, {{Hardness, 0}}));
+        p->noteOn(57, 0.8f);
+        play(*p, 128);
+        p->noteOnFrom(60, 0.8f, 57, 0.2f);
+        play(*p, 256);
+        CHECK(p->strikes() == 2);
+    }
     {
         auto p = synth(plain(kVibes, {{Velocity, 100}}));
         p->noteOn(57, 1.f);
@@ -756,6 +834,11 @@ static void testTakeOver() {
 // SELF: 12 overlapping notes: the quietest goes, never a voice inside its strike; the step at a
 // steal is no larger than the 3 ms fade allows.
 static void testSteal() {
+    const auto sounds = [](Physic& p, int key) {
+        int keys[kSlots];
+        const int n = p.keysSounding(keys);
+        return std::find(keys, keys + n, key) != keys + n;
+    };
     auto p = synth(plain(kMarimba, {{Decay, 70}, {Velocity, 100}, {Hardness, 0}}));
     std::vector<float> all;
     for (int n = 0; n < 12; ++n) {
@@ -763,11 +846,26 @@ static void testSteal() {
         const std::vector<float> v = play(*p, 2400);
         all.insert(all.end(), v.begin(), v.end());
         CHECK(p->awake() <= kSlots);
+        if (n == 7) CHECK(sounds(*p, 46));
+        if (n == 8) CHECK(!sounds(*p, 46) && sounds(*p, 40) && sounds(*p, 56)); // the quietest went, not the oldest
     }
     CHECK(p->strikes() == 12);
     // No step larger than a plain mode's, a few times over (a voice cut dead would be a jump).
     CHECK(largestJump(all) < 0.2f);
-    // A voice inside its strike (an 8 ms yarn mallet) is never taken: eight strikes at once, then a ninth.
+    // A voice inside its strike is never taken, though it reads quietest (its peak is still coming):
+    // seven ringing, an eighth struck with a yarn mallet, a ninth at once.
+    {
+        auto r = synth(plain(kMarimba, {{Decay, 70}, {Hardness, 100}}));
+        for (int n = 0; n < 7; ++n) r->noteOn(50 + n, 0.8f);
+        play(*r, 4800);
+        r->setSetting(Hardness, 0);
+        r->noteOn(70, 0.8f);
+        play(*r, 16);
+        r->noteOn(72, 0.8f);
+        play(*r, 16);
+        CHECK(sounds(*r, 70) && sounds(*r, 72));
+    }
+    // ...unless all eight are: eight strikes at once, then a ninth.
     auto q = synth(plain(kMarimba, {{Hardness, 0}}));
     for (int n = 0; n < 8; ++n) q->noteOn(50 + n, 0.8f);
     play(*q, 16);
@@ -843,9 +941,9 @@ static void testBlocks() {
 // scanned on every tick, over a 60 s tail of every model, at MATERIAL 0 on a high key (high modes die
 // first while the voice is still loud) and at METAL. Timed beside the same run with it on: at most 3
 // times as long.
-static double tailRun(int model, int material, int key, bool flush, bool scan) {
+static double tailRun(int model, int material, int key, bool flush, bool scan, int stretch = 50) {
     FlushDenormals ftz(flush);
-    auto p = synth(plain(model, {{Material, material}, {Decay, 70}, {Strike, model == kString ? 0 : 1}, {Release, 100}}));
+    auto p = synth(plain(model, {{Material, material}, {Decay, 70}, {Strike, model == kString ? 0 : 1}, {Release, 100}, {Stretch, stretch}}));
     for (int k = 0; k < 4; ++k) p->noteOn(key + 3 * k, 0.9f);
     float l[16], r[16];
     const auto t0 = std::chrono::steady_clock::now();
@@ -871,6 +969,7 @@ static double tailRun(int model, int material, int key, bool flush, bool scan) {
 static void testTooSmall() {
     for (int model = 0; model < kModels; ++model)
         for (int material : {0, 100}) tailRun(model, material, model == kString ? 96 : 100, false, true);
+    for (int material : {0, 100}) tailRun(kString, material, 96, false, true, 0); // (a string with no stiffness takes the other loop)
     // Timed: the worst case without the scan, off and on.
     for (int model : {kGlock, kString}) {
         double off = 1e9, on = 1e9;
@@ -947,6 +1046,78 @@ static void testNoAllocation() {
         p->allNotesOff();
         for (int b = 0; b < 400; ++b) p->render(l.data(), r.data(), 256);
         CHECK(gNews == before);
+    }
+}
+
+// The plain controls: WIDTH (low keys left, high right, equal power), LEVEL (dB, sliding), VELOCITY
+// (the level (1 - V) + V v), RELEASE reached over 5 ms, the dice's TUNE heard in the pitch.
+static void testPlainControls() {
+    { // WIDTH 100: key 36 well left, key 84 well right, key 60 in the middle; WIDTH 0 both sides alike
+        for (int key : {36, 60, 84}) {
+            auto p = synth(plain(kVibes, {{Width, 100}}));
+            p->noteOn(key, 0.8f);
+            std::vector<float> r;
+            const std::vector<float> l = play(*p, 4800, &r);
+            const double side = dB(rmsOf(r) / rmsOf(l));
+            if (key == 36) CHECK(side < -10.0); // (pan -2/3: cos and sin of a twelfth of a turn, -11.4 dB)
+            if (key == 60) CHECK(std::fabs(side) < 1e-6);
+            if (key == 84) CHECK(side > 10.0);
+        }
+        auto p = synth(plain(kVibes, {{Width, 0}}));
+        p->noteOn(84, 0.8f);
+        std::vector<float> r;
+        const std::vector<float> l = play(*p, 4800, &r);
+        CHECK(l == r);
+    }
+    { // LEVEL -6: half, after a slide of 5 ms
+        auto a = synth(plain(kVibes)), b = synth(plain(kVibes));
+        a->noteOn(60, 0.8f), b->noteOn(60, 0.8f);
+        play(*a, 480), play(*b, 480);
+        b->setSetting(Level, -6);
+        const std::vector<float> x = play(*a, 4800), y = play(*b, 4800);
+        CHECK(std::fabs(rmsOf(y, 480) / rmsOf(x, 480) - std::pow(10.0, -6.0 / 20.0)) < 1e-4);
+        CHECK(rmsOf(y, 0, 24) / rmsOf(x, 0, 24) > 0.9); // (slid, not stepped: half a millisecond in, still near where it was)
+    }
+    { // VELOCITY 100: a quarter of the level at velocity 0.25; VELOCITY 0: the same
+        for (int amount : {0, 100}) {
+            auto a = synth(plain(kMarimba, {{Velocity, amount}, {Hardness, 100}})), b = synth(plain(kMarimba, {{Velocity, amount}, {Hardness, 100}}));
+            a->noteOn(36, 1.f), b->noteOn(36, 0.25f);
+            const std::vector<float> x = play(*a, 9600), y = play(*b, 9600);
+            const double ratio = sizeAt(y, hzOf(36), 0.05) / sizeAt(x, hzOf(36), 0.05);
+            CHECK(std::fabs(ratio - (amount ? 0.25 : 1.0)) < 0.02);
+        }
+    }
+    { // RELEASE 0 (10 ms): reached over 5 ms, so 5 ms after let go it is down about 15 dB, not 30
+        auto p = synth(plain(kVibes, {{Release, 0}}));
+        p->noteOn(60, 0.8f);
+        const std::vector<float> before = play(*p, 4800);
+        p->noteOff(60);
+        const std::vector<float> after = play(*p, 480);
+        const double down = dB(rmsOf(after, 192, 288) / rmsOf(before, 4800 - 96));
+        CHECK(down < -8.0 && down > -22.0);
+    }
+    { // a note let go before it has sounded (both before render()): struck, then let go
+        auto p = synth(plain(kVibes, {{Release, 0}}));
+        p->noteOn(60, 0.8f);
+        p->noteOff(60);
+        play(*p, 4800);
+        CHECK(p->strikes() == 1 && p->awake() == 0);
+    }
+    { // DICE TUNE: the note sounds where the roll put it; its row at 0, it does not move
+        std::uint32_t seed = 1;
+        while (std::fabs(diceRoll(seed, kRollsTune)) < 0.3) ++seed; // (a roll of more than 4.5 cents)
+        auto p = synth(plain(kVibes, {{Dice, 100}, {DiceTune, 100}, {DicePosition, 100}}));
+        p->noteSeed(seed);
+        p->noteOn(60, 0.8f);
+        const std::vector<float> v = play(*p, 48000);
+        const double cents = p->lastRolled().tuneCents;
+        CHECK(std::fabs(cents) > 2.0);
+        CHECK(std::fabs(centsOff(v, hzOf(60), 0.05) - cents) < 0.5);
+        auto q = synth(plain(kVibes, {{Dice, 100}, {DiceTune, 0}, {DicePosition, 100}}));
+        q->noteSeed(seed);
+        q->noteOn(60, 0.8f);
+        play(*q, 16);
+        CHECK(q->lastRolled().tuneCents == 0.0 && q->lastRolled().position != 40.0);
     }
 }
 
@@ -1117,6 +1288,21 @@ static void testRollsDiffer() {
     play(*p, 16);
     const Physic::Rolled c = p->lastRolled();
     CHECK(c.position == a.position && c.tuneCents == a.tuneCents);
+    // A live note (no seed handed over: MIDI, a key heard) rolls by a count of live notes, which
+    // allNotesOff puts back: not repeatable in play, but the same after a panic.
+    {
+        auto live = synth(plain(kMarimba, {{Dice, 100}, {DiceTune, 100}}));
+        live->noteOn(60, 0.8f);
+        play(*live, 16);
+        const std::uint32_t first = live->lastSeed();
+        live->noteOn(62, 0.8f);
+        play(*live, 16);
+        CHECK(live->lastSeed() != first);
+        live->allNotesOff();
+        live->noteOn(60, 0.8f);
+        play(*live, 16);
+        CHECK(live->lastSeed() == first);
+    }
     // DICE 0: nothing moves.
     auto q = synth(plain(kMarimba, {{Dice, 0}, {DicePosition, 100}, {DiceTune, 100}}));
     q->noteSeed(7u);
@@ -1160,8 +1346,6 @@ static void testPlayFromTheTop() {
         rig.send(make(Command::Play, 0, 0, 1));
         first = rig.run(48000 * 3);
         rig.send(make(Command::Stop));
-        const std::vector<float> after = rig.run(4800);
-        CHECK(rmsOf(after, 0, 960) > 1e-3); // RING: rings on after Stop
         rig.run(48000 * 25);
         rig.send(make(Command::Play, 0, 0, 1));
         second = rig.run(48000 * 3);
@@ -1186,6 +1370,18 @@ static void testPlayFromTheTop() {
         helped = rig.run(48000 * 3);
     }
     CHECK(first == helped);
+    // Stop with RING (MARIMBA, preset 0): it rings on (a bounce's tail keeps it); damped, as Play
+    // damps, it would be 60 dB down in 35 ms.
+    {
+        Rig rig;
+        CHECK(rig.engine->addSynthTrack(1, SynthKind::Physic));
+        rig.note(0, 0, 60, 16.f);
+        rig.send(make(Command::Play, 0, 0, 1));
+        const std::vector<float> before = rig.run(9600);
+        rig.send(make(Command::Stop));
+        const std::vector<float> after = rig.run(9600);
+        CHECK(rmsOf(after, 2 * 7200, 2 * 9600) > 0.3 * rmsOf(before, 2 * 7200, 2 * 9600));
+    }
     // Stop with RELEASE: damped; panic and Play: damped in 30 ms.
     {
         Rig rig;
@@ -1289,11 +1485,14 @@ int main(int argc, char** argv) {
         {"testPosition", testPosition},
         {"testDecay", testDecay},
         {"testMaterial", testMaterial},
+        {"testMaterialGlides", testMaterialGlides},
         {"testHertz", testHertz},
         {"testStretch", testStretch},
         {"testMacrosCheap", testMacrosCheap},
         {"testStringTuning", testStringTuning},
         {"testStiffness", testStiffness},
+        {"testStringMallet", testStringMallet},
+        {"testPeakBound", testPeakBound},
         {"testRestrike", testRestrike},
         {"testGlideClicks", testGlideClicks},
         {"testTakeOver", testTakeOver},
@@ -1303,6 +1502,7 @@ int main(int argc, char** argv) {
         {"testNaN", testNaN},
         {"testSilence", testSilence},
         {"testNoAllocation", testNoAllocation},
+        {"testPlainControls", testPlainControls},
         {"testEveryPreset", testEveryPreset},
         {"testSeeds", testSeeds},
         {"testRollsDiffer", testRollsDiffer},

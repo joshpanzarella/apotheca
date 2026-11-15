@@ -77,8 +77,9 @@ public:
     float smallestState(bool lines = true) const; // lines: the strings' lines too (the slow part)
     // Voice `slot`'s modes as they ring now: how many, and each one's frequency in Hz (with its
     // glide), for the tests of the tables. -1 when the slot is asleep or a string.
-    int modesOf(int slot, double* hz) const;
+    int modesOf(int slot, double* hz, float* heard = nullptr) const; // heard: each one's share heard (the fade near Nyquist)
     std::uint32_t lastSeed() const;    // the roll the last strike took
+    int keysSounding(int* keys) const; // the keys of the voices that sound (not asleep, not fading out), how many
     // What the last strike rolled (the sums the dice moved), for the tests.
     struct Rolled { double position = 0, hardness = 0, tuneCents = 0, decayScale = 1; };
     Rolled lastRolled() const;

@@ -728,6 +728,12 @@ long Physic::ticksWorked() const { return state_->ticks; }
 long Physic::strikes() const { return state_->strikes; }
 long Physic::tunings() const { return state_->tunings; }
 std::uint32_t Physic::lastSeed() const { return state_->lastSeed; }
+int Physic::keysSounding(int* keys) const {
+    int n = 0;
+    for (const State::Voice& v : state_->voice)
+        if (!v.asleep && !v.fading) keys[n++] = v.key;
+    return n;
+}
 Physic::Rolled Physic::lastRolled() const { return state_->lastRolled; }
 
 float Physic::smallestState(bool lines) const {
@@ -746,12 +752,14 @@ float Physic::smallestState(bool lines) const {
     return least;
 }
 
-int Physic::modesOf(int slot, double* hz) const {
+int Physic::modesOf(int slot, double* hz, float* heard) const {
     if (slot < 0 || slot >= kSlots) return -1;
     const State::Voice& v = state_->voice[slot];
     if (v.asleep || v.string) return -1;
     const double q = std::pow(2.0, v.off / 12.0);
     for (int k = 0; k < v.modes; ++k) hz[k] = v.baseHz[k] * q;
+    if (heard)
+        for (int k = 0; k < v.modes; ++k) heard[k] = v.bank.out[k];
     return v.modes;
 }
 
