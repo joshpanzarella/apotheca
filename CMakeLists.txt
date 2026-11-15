@@ -134,7 +134,7 @@ if(APOTHECA_BUILD_APP)
   # Everything of the app but main(): compiled ONCE, and linked by the program and by every test
   # of it. (It used to be compiled again for each of the nine tests: ten times in all.)
   add_library(apotheca_app STATIC app/app.cpp app/bench_run.cpp app/chords.cpp app/controls.cpp app/sampler_screen.cpp app/settings_screen.cpp app/samples.cpp app/stretch.cpp app/stretch_smooth.cpp app/fx_screen.cpp app/input.cpp app/kit_screen.cpp app/note_screen.cpp app/pattern_screen.cpp app/pattern_slices.cpp
-      app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
+      app/instruments.cpp app/synth_screen.cpp app/mod_knob.cpp app/mod_screen.cpp app/recorder.cpp app/session.cpp app/session_songs.cpp app/session_synth.cpp app/session_samples.cpp app/song_file.cpp app/song_screen.cpp app/synth_spec.cpp app/transfer.cpp app/midi.cpp app/bounce.cpp app/sample_picker.cpp app/designer.cpp app/design_page.cpp
       app/text.cpp app/ui.cpp app/realtime.cpp app/redraw.cpp
       app/version.cpp)
   target_include_directories(apotheca_app PUBLIC app third_party)
@@ -159,13 +159,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob modtab)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob modtab PROPERTIES TIMEOUT 120)
     # The screen drawn only when it can have changed (app/redraw.hpp): a long session, every pass held
     # to the picture, and each reason taken away in turn, a third of them in each of idle1 to idle3.
     add_executable(idle_test tests/idle_test.cpp)

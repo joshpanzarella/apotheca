@@ -112,11 +112,13 @@ void testTabs() {
     rig.tap(R2);
     CHECK(rig.view() == View::Effects);
     rig.tap(R2);
+    CHECK(rig.view() == View::Mods); // the MOD tab, after FX
+    rig.tap(R2);
     CHECK(rig.view() == View::Settings);
     rig.tap(R2);
     CHECK(rig.view() == View::Settings);
     // Not while shaping something: a slip of the finger must not change screens.
-    rig.tap(L2, 3);
+    rig.tap(L2, 4);
     CHECK(rig.view() == View::Pattern);
     rig.key(A, true);
     rig.tap(L2);
@@ -157,7 +159,11 @@ void testTabs() {
     CHECK(rig.project().playing);
     rig.tap(R2);
     rig.tap(START);
-    CHECK(!rig.project().playing && rig.view() == View::Effects);
+    CHECK(!rig.project().playing && rig.view() == View::Effects);    rig.tap(R2); // and on the MOD tab
+    rig.tap(START);
+    CHECK(rig.project().playing && rig.view() == View::Mods);
+    rig.tap(START);
+    CHECK(!rig.project().playing);
 }
 
 // ---- the Song screen ------------------------------------------------------------------
@@ -2935,8 +2941,8 @@ void testTheSetupScreen() {
         session.useProgramFolder(folder);
         session.loadSettings(); // nothing kept yet: as built
         CHECK(session.octavesShown() == 2 && near(session.stickSpeed(), stickBefore));
-        // The last tab, one past FX; the row of tabs still has an end.
-        session.view = View::Effects;
+        // The last tab, one past MOD; the row of tabs still has an end.
+        session.view = View::Mods;
         rig.tap(R2);
         CHECK(rig.view() == View::Settings);
         rig.tap(R2);

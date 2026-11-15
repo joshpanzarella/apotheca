@@ -11,6 +11,7 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/effects.hpp"
+#include "apotheca/mod_rule.hpp"
 #include "bench_run.hpp"
 
 using namespace apotheca;
@@ -114,11 +115,50 @@ void testTheRowsCountWhatTheySay() {
     CHECK(helped.peak > 0.05f);
 }
 
+
+// The 24 MODs the timing rows run on the busiest song (batch 9): two on every track, every kind of
+// target a MOD takes, the DEPTH lanes written. Each runs; LEVEL and PAN move; the DEPTH lanes take
+// their written values; and the rows count the chunks the tick cuts.
+void testTheModsAreWhatTheySay() {
+    std::unique_ptr<Engine> engine(new Engine);
+    sendBusiestSong(*engine);
+    sendBusiestMods(*engine, 24);
+    std::vector<float> block(512);
+    bool levelMoved[kNumTracks] = {}, panMoved[kNumTracks] = {}, deeper[kNumTracks] = {}, shallower[kNumTracks] = {};
+    for (int at = 0; at + 256 <= 2 * 48000; at += 256) {
+        engine->render(block.data(), 256);
+        engine->collectGarbage();
+        for (int t = 0; t < kNumTracks; ++t) {
+            float l = 0.f, r = 0.f;
+            engine->panGiven(t, l, r);
+            levelMoved[t] = levelMoved[t] || engine->levelGiven(t) != kUsualTrackLevel;
+            panMoved[t] = panMoved[t] || l != 1.f || r != 1.f;
+            const float depth = engine->laneCentre(t, modDepthLane(0));
+            deeper[t] = deeper[t] || depth == modDepthToLane(0.6f);
+            shallower[t] = shallower[t] || depth == modDepthToLane(-0.3f);
+        }
+    }
+    CHECK(engine->dropped() == 0);
+    int running = 0;
+    for (int t = 0; t < kNumTracks; ++t) {
+        for (int m = 0; m < kModsPerTrack; ++m) running += !std::isnan(engine->modNow(t, m));
+        CHECK(levelMoved[t] == (t == 4 || t == 10));
+        CHECK(panMoved[t] == (t == 5 || t == 11));
+        CHECK(deeper[t] && shallower[t]);
+    }
+    CHECK(running == 24);
+    // The rows: the 24 MODs cut more chunks than the song alone.
+    const WholeSongTimes plain = timeWholeSong(0, 0.25), modded = timeWholeSong(0, 0.25, 24), one = timeWholeSong(0, 0.25, 1);
+    CHECK(modded.blocks == 46 && modded.peak > 0.05f && one.blocks == 46);
+    CHECK(modded.chunksPerSecond > plain.chunksPerSecond && one.chunksPerSecond > plain.chunksPerSecond);
+    std::printf("the busiest song's chunks a second: %.0f plain, %.0f with 1 MOD, %.0f with 24\n", plain.chunksPerSecond, one.chunksPerSecond, modded.chunksPerSecond);
+}
 }
 
 int main() {
     testTheSongIsWhatItSays();
     testTheRowsCountWhatTheySay();
+    testTheModsAreWhatTheySay();
     if (failures) {
         std::printf("%d bench test failure(s)\n", failures);
         return 1;

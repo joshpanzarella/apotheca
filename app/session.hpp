@@ -66,7 +66,7 @@ private:
     long long seen_ = 0, lastSound_ = 0, cap_, fade_, quiet_, after_;
 };
 
-enum class View { Song, Pattern, Device, Effects, Settings };
+enum class View { Song, Pattern, Device, Effects, Mods, Settings }; // (the order of the tabs; never saved by number)
 
 // Somewhere to record from: a USB microphone or interface. The app gives the
 // session one (main.cpp, through SDL); the tests give it a made-up one.
@@ -129,6 +129,7 @@ public:
     void letGoHeard();
     void keepHearing(bool xHeld, const void* screen);
     bool hearingHeld() const { return heard_.track >= 0 && heard_.held; }
+    int heardLane() const { return heard_.lane; } // the drum lane last heard (-1: a synth's key, or none)
     // When what X held stops, or stopped (now, for one cut by panic or a new song); 0 while X is
     // still held, when nothing has been heard, or when nothing stops it (the built-in drum tapped:
     // heard whole). The line across a recording's picture ends there.
@@ -173,6 +174,9 @@ public:
     // track holds what was asked for (false: it was put OFF, or there is no such track or MOD).
     bool setMod(int track, int mod, const ModSettings& settings);
     const ModSettings& modData(int track, int mod) const;
+    // A MOD's DEPTH as it is now: while the song plays, where its DEPTH lane's automation has it in
+    // the scene playing (batch 7), else its own (exactly).
+    float modDepthShown(int track, int mod) const;
     // X HELD on a knob with a MOD while the song is stopped (owner's call E): the engine runs the
     // MODs in `mask` (bit 0 MOD 1, bit 1 MOD 2) of `track`, counted from now as from Play
     // (Command::ModAudition), so the gesture is heard. The screen asks every frame X is held there;

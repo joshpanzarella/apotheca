@@ -104,12 +104,12 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
                     SDL_RenderDrawLine(r, px + s.p[2 * i], py + s.p[2 * i + 1] + thick, px + s.p[2 * i + 2], py + s.p[2 * i + 3] + thick);
     }
     // The bar grows from the middle, in the macro's own colour.
-    const int bx = x + 7, bw = w - 14, by = y + h - 11;
-    fill(r, bx, by, bw, 5, kLine);
+    const int bx = x + kMacroBarInset, bw = w - 2 * kMacroBarInset, by = y + h - kMacroBarFromFoot;
+    fill(r, bx, by, bw, kMacroBarH, kLine);
     if (part > 1.f) part = 1.f;
     if (part < 0.f) part = 0.f;
     const int mid = bx + bw / 2, to = bx + static_cast<int>(std::round(bw * part));
-    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, 5, cursor ? accent : family);
+    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, kMacroBarH, cursor ? accent : family);
     fill(r, mid, by - 2, 1, 9, kDim);
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }
@@ -142,12 +142,14 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     arrow(x, true);
     x += 8.f;
     x += chip(x, "L2") + 4.f;
-    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX", "SET"};
-    for (int i = 0; i < 5; ++i) {
-        const float w = fonts.small.width(tabs[i]) + 10.f;
+    const char* tabs[] = {"SONG", "PATTERN", "DEVICE", "FX", "MOD", "SET"}; // View's order
+    for (int i = 0; i < 6; ++i) {
+        // (3 pixels either side of a tab's word: 5 until the sixth tab, MOD, came in, so the screen's own words
+        // kept their room: a track's name, "12 PHAZED", still fits beside the scene's blocks while playing.)
+        const float w = fonts.small.width(tabs[i]) + 2.f * kTabPad;
         const bool here = static_cast<int>(view) == i;
         if (here) fill(r, static_cast<int>(x), 2, static_cast<int>(w), kTopBarH - 4, kTeal);
-        fonts.small.draw(r, x + 5.f, textY, tabs[i], here ? kBg : kDim);
+        fonts.small.draw(r, x + kTabPad, textY, tabs[i], here ? kBg : kDim);
         x += w + 2.f;
     }
     x += 2.f;
@@ -209,6 +211,8 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     }
     for (std::size_t n = std::strlen(shown); n > 0 && x + fonts.small.width(shown) > room; --n) shown[n - 1] = 0;
     fonts.small.draw(r, x, textY, shown, kText);
+    bar.wordsX = x;
+    bar.wordsRoom = room - x;
     return bar;
 }
 

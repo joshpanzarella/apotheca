@@ -61,6 +61,7 @@ Engine::Engine() {
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
         for (auto& m : track.modShown) m.store(0.f, std::memory_order_relaxed);
         for (auto& m : track.modPlace) m.store(-1, std::memory_order_relaxed);
+        for (auto& m : track.modAt) m.store(kModNotRunning, std::memory_order_relaxed);
     }
     for (Track& track : tracks_)
         for (auto& k : track.kinds) k.store(0, std::memory_order_relaxed);
@@ -72,7 +73,8 @@ Engine::Engine() {
         for (int i = 0; i < kMaxScenes * kAutoLanes * kAutoSteps; ++i) track.automation[i] = kAutoNone;
         for (int lane = 0; lane < kAutoLanes; ++lane) {
             // Macros start in the middle and sends at nothing; an effect says when it arrives.
-            track.autoBase[lane] = lane < 8 ? 0.5f : (lane >= kAutoSendLane && lane < kAutoSendLane + kBuses ? 0.f : kAutoNone);
+            // A MOD's DEPTH lane (22, 23) at no depth until a MOD says (batch 7).
+            track.autoBase[lane] = lane < 8 ? 0.5f : (lane >= kAutoSendLane && lane < kAutoSendLane + kBuses ? 0.f : (lane >= kModDepthLane ? modDepthToLane(0.f) : kAutoNone));
             track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = track.autoBase[lane];
         }
     }
@@ -1167,15 +1169,29 @@ void Engine::apply(const Command& c) {
         if (validTrack(c.track) && c.a >= 0 && c.a < kModsPerTrack) {
             Track& track = tracks_[c.track];
             ModSettings& mod = track.mods[c.a];
-            const int was = mod.on() ? mod.target : kModTargetNone;
+            const int was = mod.runs() ? mod.target : kModTargetNone;
             if (c.type == Command::SetMod) modSet(mod, c.b, c.value);
             else modSetStep(mod, c.b, c.value);
+            if (c.type == Command::SetMod && c.b == kModFieldDepth) {
+                // Its DEPTH is the knob of its DEPTH lane (batch 7): where the lane rests when a scene
+                // has nothing written on it, and where it is now, as SetMacro sets a macro's.
+                const int lane = modDepthLane(c.a);
+                track.autoBase[lane] = track.autoNow[lane] = modDepthToLane(mod.depth);
+                track.autoGliding[lane] = false;
+                // Turned to no depth: what it added goes at once, not at its next tick (it still
+                // runs, at 0, so a scene whose DEPTH lane is written moves it).
+                if (mod.depth == 0.f && mod.runs()) {
+                    stillLane(track, mod.target);
+                    track.modShown[c.a].store(0.f, std::memory_order_relaxed);
+                }
+            }
             // Aimed somewhere else now, or off: what it added to the lane it left goes (the other
             // MOD, if it is aimed there too, is added again at its next tick).
-            if (was != kModTargetNone && was != (mod.on() ? mod.target : kModTargetNone)) stillLane(track, was);
-            if (!mod.on()) {
+            if (was != kModTargetNone && was != (mod.runs() ? mod.target : kModTargetNone)) stillLane(track, was);
+            if (!mod.runs()) {
                 track.modShown[c.a].store(0.f, std::memory_order_relaxed);
                 track.modPlace[c.a].store(-1, std::memory_order_relaxed);
+                track.modAt[c.a].store(kModNotRunning, std::memory_order_relaxed);
             }
             modsChanged();
         }
@@ -1198,13 +1214,19 @@ void Engine::apply(const Command& c) {
         break;
     case Command::SetTrackLevel:
         if (!std::isfinite(c.value)) break;
-        if (validTrack(c.track)) tracks_[c.track].level = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
-        else if (c.track == kMasterTrack) masterLevel_ = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            track.levelSet = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+            giveMix(track); // (a MOD on LEVEL moves about it; with none, the level is this exactly)
+        } else if (c.track == kMasterTrack) masterLevel_ = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
         break;
     case Command::SetTrackPan:
         if (!std::isfinite(c.value)) break;
-        if (validTrack(c.track)) panGains(c.value, tracks_[c.track].panL, tracks_[c.track].panR);
-        else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            track.panSet = c.value < -1.f ? -1.f : (c.value > 1.f ? 1.f : c.value); // (panGains holds it the same)
+            giveMix(track);
+        } else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
         break;
     case Command::SetTrackHeard:
         if (validTrack(c.track)) tracks_[c.track].heard = c.a != 0;
@@ -1750,13 +1772,19 @@ void Engine::takeAway(int t) {
     // Its MODs go OFF, as GLIDE FROM goes back to TOP: the effects stay, so what was added to
     // their settings and the sends is taken off first.
     stillMods(track);
-    for (int m = 0; m < kModsPerTrack; ++m) track.mods[m] = ModSettings();
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        track.mods[m] = ModSettings();
+        const int lane = modDepthLane(m); // (its DEPTH lane back at no depth, with it)
+        track.autoBase[lane] = track.autoNow[lane] = track.autoFrom[lane] = track.autoTo[lane] = modDepthToLane(0.f);
+        track.autoGliding[lane] = false;
+    }
     if (heardTrack_ == t) heardTrack_ = -1, heardMask_ = 0;
     modsChanged();
     for (LaneFeel& feel : track.feel) feel = LaneFeel(); // the next kit here plays plain until it is told
     for (long& asked : track.feelAsked) asked = -1;
-    track.level = track.levelNow = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
+    track.level = track.levelNow = track.levelSet = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
     track.panL = track.panR = track.panLNow = track.panRNow = 1.f;
+    track.panSet = track.modMix[0] = track.modMix[1] = 0.f;
     track.drums.reset();
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         if (!track.laneSamples[lane]) continue;
@@ -1937,7 +1965,16 @@ void Engine::giveLane(Track& track, int lane) {
         if (track.effects[(lane - 8) / 4]) track.effects[(lane - 8) / 4]->setParam((lane - 8) % 4, value);
     } else if (lane < kAutoSendLane + kBuses) {
         track.send[lane - kAutoSendLane] = value < 0.f ? 0.f : (value > 1.f ? 1.f : value); // it glides from there by itself (feedBuses)
-    } // (the last two lanes are spare)
+    } // (the last two lanes are the MODs' DEPTH: runMods reads them at each tick, nothing is given)
+}
+
+// LEVEL and PAN given (batch 8): the mixer's own (levelSet, panSet), with what the MODs on them add
+// (modLevelGiven, modPanGiven). With nothing added, exactly what SetTrackLevel and SetTrackPan gave
+// before there were MODs: the render's at-rest path is taken as it always was.
+void Engine::giveMix(Track& track) {
+    const float level = modLevelGiven(track.levelSet, track.modMix[0]);
+    track.level = level > 4.f ? 4.f : level;
+    panGains(modPanGiven(track.panSet, track.modMix[1]), track.panL, track.panR);
 }
 
 // ---- MOD: a track's two modulators (mod_rule.hpp) -------------------------------------------
@@ -1958,16 +1995,31 @@ void Engine::runMods(double position, bool macros) {
         bool runs[kModsPerTrack] = {};
         for (int m = 0; m < kModsPerTrack; ++m) {
             const ModSettings& mod = track.mods[m];
-            if (!((mask >> m) & 1u) || !mod.on() || (modTargetIsMacro(mod.target) && !macros)) continue;
+            if (!((mask >> m) & 1u) || !mod.runs() || (modTargetIsMacro(mod.target) && !macros)) continue;
             runs[m] = true;
-            added[m] = modOffsetAt(mod, position, t, m);
+            // At the depth its DEPTH lane has now (batch 7): where the scene's automation has it, or,
+            // where the lane rests on its knob, the MOD's own DEPTH exactly (0..1 and back is not
+            // always the same float).
+            const int l = modDepthLane(m);
+            const float lane = track.autoNow[l];
+            added[m] = modOffsetAt(mod, position, t, m, lane >= 0.f && lane != track.autoBase[l] ? modDepthFromLane(lane) : mod.depth);
             track.modShown[m].store(added[m], std::memory_order_relaxed);
             track.modPlace[m].store(stepperPlace(mod, position), std::memory_order_relaxed);
+            track.modAt[m].store(position, std::memory_order_relaxed);
         }
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (!runs[m]) continue;
             const int lane = track.mods[m].target;
             if (m == 1 && runs[0] && track.mods[0].target == lane) continue; // added in with MOD 1's
+            if (modTargetIsMix(lane)) { // LEVEL or PAN: not a lane
+                float sum = added[m];
+                if (m == 0 && runs[1] && track.mods[1].target == lane) sum += added[1];
+                float& now = track.modMix[lane - kModTargetLevel];
+                if (sum == now) continue;
+                now = sum;
+                giveMix(track);
+                continue;
+            }
             if (track.autoWaits(lane)) continue;
             const int slot = autoSlotOfLane(lane);
             if (slot >= 0 && ((track.slotChoices[slot] >> ((lane - 8) % 4)) & 1)) continue;
@@ -1982,6 +2034,13 @@ void Engine::runMods(double position, bool macros) {
 
 // A lane's offset back to nothing, and the lane given its centre (where the centre is known).
 void Engine::stillLane(Track& track, int lane) {
+    if (modTargetIsMix(lane)) { // LEVEL or PAN: the mixer's own given again
+        float& now = track.modMix[lane - kModTargetLevel];
+        if (now == 0.f) return;
+        now = 0.f;
+        giveMix(track);
+        return;
+    }
     if (lane < 0 || lane >= kAutoLanes || track.modOffset[lane] == 0.f) return;
     track.modOffset[lane] = 0.f;
     if (track.autoNow[lane] >= 0.f) giveLane(track, lane);
@@ -1989,16 +2048,19 @@ void Engine::stillLane(Track& track, int lane) {
 
 void Engine::stillMods(Track& track) {
     for (int lane = 0; lane < kAutoLanes; ++lane) stillLane(track, lane);
+    stillLane(track, kModTargetLevel);
+    stillLane(track, kModTargetPan);
     for (int m = 0; m < kModsPerTrack; ++m) {
         track.modShown[m].store(0.f, std::memory_order_relaxed);
         track.modPlace[m].store(-1, std::memory_order_relaxed);
+        track.modAt[m].store(kModNotRunning, std::memory_order_relaxed);
     }
 }
 
 void Engine::modsChanged() {
     anyMod_ = false;
     for (const Track& track : tracks_)
-        for (const ModSettings& mod : track.mods) anyMod_ = anyMod_ || mod.on();
+        for (const ModSettings& mod : track.mods) anyMod_ = anyMod_ || mod.runs();
 }
 
 bool Engine::setMod(int track, int mod, const ModSettings& settings) {
@@ -2028,6 +2090,10 @@ float Engine::modShown(int track, int mod) const {
 
 int Engine::modPlace(int track, int mod) const {
     return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modPlace[mod].load(std::memory_order_relaxed) : -1;
+}
+
+double Engine::modNow(int track, int mod) const {
+    return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modAt[mod].load(std::memory_order_relaxed) : kModNotRunning;
 }
 
 // Move every gliding lane on. The glide takes the first half of a step, in

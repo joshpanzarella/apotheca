@@ -382,6 +382,9 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             macroBox(r, fonts, x, y, kMacroW, kMacroH, spec_.macroNames[m], text, v, cursor_ == kFirstMacro + m, holding_);
             // A purple bar along the bottom: this macro has automation in the cell being worked on.
             if (session_.hasAutomation(project_.track, project_.scene, m)) fill(r, x + 1, y + kMacroH - 3, kMacroW - 2, 2, kPurple);
+            // A MOD on it runs: the thin brass mark where the macro is given this moment (batch 6).
+            drawModMark(r, x + kMacroBarInset, y + kMacroH - kMacroBarFromFoot, kMacroW - 2 * kMacroBarInset, kMacroBarH,
+                        modMarkAt(session_, project_.track, kModFirstMacro + m, v));
         }
         box(r, 8, kAdvancedY, kMacroW, kAdvancedH, kPanel2, kLine);
         fonts.medium.draw(r, 20.f, kAdvancedY + (kAdvancedH - fonts.medium.capHeight()) / 2.f, "ADVANCED  >", cursor_ == kAdvanced ? kTeal : kText);

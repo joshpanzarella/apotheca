@@ -384,9 +384,12 @@ static void busiestSong(Engine& e) {
     e.send(c);
 }
 
-// MODs on the busiest song: one, on the first drum track's ECHO send; or 24, two on every track
-// (a drum track's on its second slot's first setting and its ECHO send, a synth track's on its
-// first macro and its second slot's first setting), LFOs and STEPPERs of several rates.
+// MODs on the busiest song: one, on the first drum track's ECHO send; or 24, two on every track,
+// every kind of target a MOD takes (batch 9): MOD 1 an LFO on a drum track's second slot's first
+// setting (SATURATE's DRIVE or CHORUS's first) or a synth track's first macro; MOD 2 a STEPPER on
+// the ECHO send (tracks 0 to 3 and 6 to 9), on LEVEL (4 and 10) or on PAN (5 and 11); and every
+// track's MOD 1 DEPTH lane written on three steps of the bar (+30%, -30%, +60%), so the DEPTH lanes
+// glide as well. LFOs of four rates and seven shapes, STEPPERs of three rates at CHANCE 50%, SLEW 30%.
 static ModSettings benchMod(int kind, int target, int rate, int shape) {
     ModSettings m;
     m.kind = kind;
@@ -407,10 +410,23 @@ static void busiestMods(Engine& e, int mods) {
     }
     for (int t = 0; t < kNumTracks; ++t) {
         const bool drums = t < 6;
+        const int place = t % 6; // 0..3 the ECHO send, 4 LEVEL, 5 PAN
         e.setMod(t, 0, benchMod(kModLfo, drums ? autoLaneOfEffect(1, 0) : 0, kModRateEighth + t % 4, t % kModShapes));
-        e.setMod(t, 1, benchMod(kModStepper, drums ? autoLaneOfSend(0) : autoLaneOfEffect(1, 0), kModRateStep + t % 3, 0));
+        e.setMod(t, 1, benchMod(kModStepper, place < 4 ? autoLaneOfSend(0) : (place == 4 ? kModTargetLevel : kModTargetPan), kModRateStep + t % 3, 0));
+        const float depths[3] = {0.3f, -0.3f, 0.6f};
+        for (int i = 0; i < 3; ++i) {
+            Command c;
+            c.type = Command::SetAutomation;
+            c.track = t;
+            c.scene = 0;
+            c.a = modDepthLane(0);
+            c.b = 4 * i;
+            c.value = modDepthToLane(depths[i]);
+            e.send(c);
+        }
     }
 }
+void apotheca::sendBusiestMods(Engine& engine, int mods) { busiestMods(engine, mods); }
 
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
@@ -499,12 +515,17 @@ void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 // a short run each, many rounds, and each keeps its best: the difference is a tenth of a percent
 // and a busy machine moves the whole row more than that between two runs. Timed one after
 // another, one run read 24 MODs as -0.04% and the next +0.10% (review, 2026-11-15).
-static std::unique_ptr<Engine> modsAloneEngine(int mods) {
+// `mix`: the 24 on LEVEL and PAN instead (batch 8: a track whose level or pan moves takes the
+// render's moving loop, not its at-rest one).
+static std::unique_ptr<Engine> modsAloneEngine(int mods, bool mix = false) {
     std::unique_ptr<Engine> engine(new Engine);
     std::vector<float> out(512);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     engine->render(out.data(), 256);
-    for (int m = 0; m < mods; ++m) engine->setMod(m / 2, m % 2, benchMod(m % 2 ? kModStepper : kModLfo, autoLaneOfSend(m % 2), kModRateEighth + m % 5, m % kModShapes));
+    for (int m = 0; m < mods; ++m) {
+        const int target = mix ? (m % 2 ? kModTargetPan : kModTargetLevel) : autoLaneOfSend(m % 2);
+        engine->setMod(m / 2, m % 2, benchMod(m % 2 ? kModStepper : kModLfo, target, kModRateEighth + m % 5, m % kModShapes));
+    }
     Command c;
     c.type = Command::Play;
     engine->send(c);
@@ -513,15 +534,15 @@ static std::unique_ptr<Engine> modsAloneEngine(int mods) {
 }
 
 struct ModsAloneTimes {
-    double none = 0.0, one = 0.0, all = 0.0;
+    double none = 0.0, one = 0.0, all = 0.0, mix = 0.0;
 };
 
 static ModsAloneTimes modsAlone() {
-    std::unique_ptr<Engine> engines[3] = {modsAloneEngine(0), modsAloneEngine(1), modsAloneEngine(24)};
+    std::unique_ptr<Engine> engines[4] = {modsAloneEngine(0), modsAloneEngine(1), modsAloneEngine(24), modsAloneEngine(24, true)};
     std::vector<float> out(512);
-    double best[3] = {1e30, 1e30, 1e30};
+    double best[4] = {1e30, 1e30, 1e30, 1e30};
     for (int round = 0; round < 40; ++round)
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 4; ++i) {
             Engine& engine = *engines[i];
             best[i] = std::min(best[i], ms([&] { engine.render(out.data(), 256); }, 100));
         }
@@ -529,6 +550,7 @@ static ModsAloneTimes modsAlone() {
     t.none = 100.0 * best[0] / (256.0 / 48.0);
     t.one = 100.0 * best[1] / (256.0 / 48.0);
     t.all = 100.0 * best[2] / (256.0 / 48.0);
+    t.mix = 100.0 * best[3] / (256.0 / 48.0);
     return t;
 }
 
@@ -586,10 +608,11 @@ static void wholeSongRows() {
 // rows above say how many with no MOD).
 static void wholeSongModRows() {
     const int helpers = helpersFor(std::thread::hardware_concurrency());
-    std::printf("the busiest song with MODs running (a tick every %d samples, macros every %d):\n", kModTick, kModTick * kModMacroTicks);
+    std::printf("the busiest song with MODs running (a tick every %d samples, macros every %d; 24: two a track on\n", kModTick, kModTick * kModMacroTicks);
+    std::printf("macros, effect settings, sends, LEVEL and PAN, the DEPTH lanes written):\n");
     for (int mods : {1, 24})
         for (int h : {0, helpers}) {
-            const WholeSongTimes t = playWholeSong(h, 5.0, true, mods); // five seconds each: the SPEED TEST runs these too
+            const WholeSongTimes t = playWholeSong(h, mods == 24 ? 10.0 : 5.0, true, mods); // the SPEED TEST runs these too: 24 for as long as the song without
             char name[48];
             std::snprintf(name, sizeof name, "%d MOD%s, %d helper%s", mods, mods == 1 ? "" : "s", t.helpers, t.helpers == 1 ? "" : "s");
             std::printf("  %-28s %5.1f%% of a block, worst %.2f ms, %d of %d too late, %.0f chunks a second\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.worstMs, t.over, t.blocks, t.chunksPerSecond);
@@ -600,6 +623,7 @@ static void wholeSongModRows() {
     std::printf("  %-28s %5.3f%% of one core\n", "no MOD", times.none);
     std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "1 MOD", times.one, times.one - times.none);
     std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs", times.all, times.all - times.none);
+    std::printf("  %-28s %5.3f%% (%+.3f%%)\n", "24 MODs on LEVEL and PAN", times.mix, times.mix - times.none);
 }
 
 int apotheca::runBench() {

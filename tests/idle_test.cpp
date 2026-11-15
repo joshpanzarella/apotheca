@@ -151,6 +151,7 @@ const char* viewName(View v) {
     case View::Pattern: return "PATTERN";
     case View::Device: return "DEVICE";
     case View::Effects: return "FX";
+    case View::Mods: return "MOD";
     case View::Settings: return "SETUP";
     }
     return "?";
@@ -449,6 +450,49 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.run(1500);
     rig.key(X, false);
     rig.run(3000);
+    // The MOD tab (mod_screen.hpp): the shape's picture has a dot at now, and a STEPPER's row its step
+    // lit, which move by themselves while X runs a MOD (stopped) or the song plays; at Stop they go.
+    rig.part = "the MOD tab: X held on a MOD's line runs it while stopped, then let go";
+    rig.press(R2); // MOD
+    rig.byHand([&] { rig.app->mods().goTo(0, 0); });
+    rig.run(200);
+    rig.key(X, true);
+    rig.run(1500);
+    rig.key(X, false);
+    rig.run(3000);
+    rig.part = "the MOD tab: a STEPPER's row while the song plays, and stopped";
+    rig.byHand([&] {
+        ModSettings steps;
+        steps.kind = kModStepper, steps.target = kModFirstSend, steps.depth = 0.5f, steps.rate = kModRateStep, steps.length = 4;
+        for (int i = 0; i < kModSteps; ++i) steps.steps[i] = i % 2 ? 0.5f : -0.5f;
+        s.setMod(rig.project().track, 1, steps);
+        rig.app->mods().goTo(3, 0);
+    });
+    rig.run(300);
+    rig.press(START);
+    rig.run(1500);
+    rig.press(START);
+    rig.run(3000);
+    rig.press(L2); // FX
+    rig.press(L2); // DEVICE again
+    rig.run(300);
+    // The thin brass mark (batch 6): on a modulated knob's own bar, where it is given now. It moves by
+    // itself while the song plays, and goes at Stop.
+    rig.part = "the brass mark on a macro's bar while the song plays, and stopped";
+    rig.byHand([&] { rig.app->phazed().goTo(0, SynthScreen::kFirstMacro + 3); }); // (the MOD is on the first macro)
+    rig.run(200);
+    rig.press(START);
+    rig.run(1500);
+    rig.press(START);
+    rig.run(3000);
+    rig.part = "the brass mark on a send's bar while the song plays, and stopped";
+    rig.press(R2); // FX
+    rig.byHand([&] { rig.app->fx().goTo(FxScreen::kSendsRow, 0); });
+    rig.run(200);
+    rig.press(START);
+    rig.run(1500);
+    rig.press(START);
+    rig.run(3000);
     rig.press(L2); // DEVICE again
     rig.run(300);
 
@@ -476,7 +520,7 @@ void theSession(Rig& rig, const std::string& samples) {
 
     rig.part = "SETUP: text size, theme, the button test";
     rig.byHand([&] { rig.project().track = 0; });
-    rig.press(R2), rig.press(R2), rig.press(R2); // SETUP
+    rig.press(R2), rig.press(R2), rig.press(R2), rig.press(R2); // SETUP (FX, MOD, SETUP)
     rig.run(300);
     rig.byHand([&] { rig.app->settings().goTo(SettingsScreen::kTextSize); });
     rig.press(RIGHT);

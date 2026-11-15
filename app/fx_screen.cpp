@@ -727,6 +727,7 @@ void FxScreen::drawSends(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(shown * 100.f + 0.5f));
         fonts.large.draw(r, kPaneX + 12.f, static_cast<float>(y + kSendValueY), text, cursor ? accent : kText);
         wideBar(r, kPaneX + 12, y + kSendBarY, kPaneW - 24, 14, shown, 0, 0, cursor ? accent : kDim);
+        drawModMark(r, kPaneX + 12, y + kSendBarY, kPaneW - 24, 14, modMarkAt(session_, project_.track, lane, shown)); // a MOD on it runs (batch 6)
         if (session_.hasAutomation(project_.track, project_.scene, lane)) {
             fill(r, kPaneX + 12, y + kSendLineY, kPaneW - 24, 2, kPurple);
             fonts.small.draw(r, kPaneX + 12.f, static_cast<float>(y + kSendWordsY), "moves with the pattern", kPurple);
@@ -826,6 +827,10 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
         effectParamText(kind, p, shown[p], text, sizeof text, shown);
         fonts.fit(text, static_cast<float>(kValueRoom)).draw(r, static_cast<float>(kValueX), y + 30.f, text, cursor ? accent : kText);
         wideBar(r, kBarX, barY, kBarW, kBarH, shown[p], choices, whichChoice(shown[p], choices), cursor ? accent : kDim);
+        // A MOD on it runs: the thin brass mark where the setting is given this moment (batch 6). Not on a
+        // bus's or the master's (no MOD there). (A choice takes no MOD, and an effect is tried only with
+        // the list of effects open, where no setting is drawn: modMarkAt finds nothing for either.)
+        if (track >= 0) drawModMark(r, kBarX, barY, kBarW, kBarH, modMarkAt(session_, track, autoLaneOfEffect(slot, p), shown[p]));
         if (track >= 0 && session_.hasAutomation(track, project_.scene, autoLaneOfEffect(slot, p))) {
             // It moves with the pattern in this scene: the purple line, and the words above the bar.
             fill(r, kPaneX + 1, y + kSetH - 3, kPaneW - 2, 2, kPurple);
