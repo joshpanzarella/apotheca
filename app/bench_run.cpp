@@ -28,6 +28,7 @@
 #include "apotheca/jx3p.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/phazed.hpp"
+#include "apotheca/physic.hpp"
 #include "apotheca/qmod.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -103,6 +104,38 @@ static void jx3pRow(const char* name, int how) {
         synth->render(l.data(), r.data(), 256);
     }, 600);
     std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
+}
+
+// PHYSIC (docs/plans/physic-plan.md, section 6): its own rows, not instrument(), in which a marimba
+// would ring down and sleep in the 3.2 s timed. Eight notes struck again every half second at DECAY
+// 100 (30 s), and the row says FAILED if any voice slept meanwhile (it would be timing silence).
+//   preset   0 MARIMBA, 5 STEEL, 11 CHURCH BELL (with DICE 100 and every note a glide: the worst)
+//   asleep   eight notes struck once, then timed long after they have all gone to sleep
+static void physicRow(const char* name, int preset, bool worst, bool asleep = false) {
+    std::unique_ptr<Physic> synth(new Physic);
+    synth->prepare(48000.f);
+    synth->selectPreset(preset);
+    synth->setSetting(physic::Decay, asleep ? 0 : 100);
+    if (worst) synth->setSetting(physic::Dice, 100);
+    std::vector<float> l(256), r(256);
+    const int keys[8] = {48, 52, 55, 59, 62, 65, 69, 72};
+    if (asleep) {
+        for (int k : keys) synth->noteOn(k, 0.8f);
+        for (int b = 0; b < 400 && synth->awake() > 0; ++b) synth->render(l.data(), r.data(), 256);
+    }
+    int block = 0;
+    bool slept = false;
+    const double each = ms([&] {
+        if (!asleep && block % 94 == 0) // every half second
+            for (int k = 0; k < 8; ++k) {
+                if (worst && block > 0) synth->noteOnFrom(keys[k] + (block / 94 % 2 ? 2 : 0), 0.8f, keys[k] + (block / 94 % 2 ? 0 : 2), 0.5f);
+                else synth->noteOn(keys[k], 0.8f);
+            }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+        slept = slept || (!asleep && synth->awake() < 8);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core%s\n", name, 100.0 * each / (256.0 / 48.0), slept ? "  FAILED: a voice slept" : asleep && synth->awake() ? "  FAILED: not asleep" : "");
 }
 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
@@ -611,6 +644,10 @@ int apotheca::runBench() {
     jx3pRow("JAX-EP, 6 notes", 0);
     jx3pRow("JAX-EP, 6, worst patch", 1);
     jx3pRow("JAX-EP, 6, moving cutoff", 2);
+    physicRow("PHYSIC, 8 notes", 0, false);
+    physicRow("PHYSIC string, 8 notes", 5, false);
+    physicRow("PHYSIC worst", 11, true);
+    physicRow("PHYSIC asleep", 0, false, true);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);

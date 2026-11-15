@@ -563,6 +563,47 @@ static void testStretch() {
     CHECK(std::fabs(hz[4] / hzOf(60) - std::pow(2.0, 1.3)) < 1e-9);
 }
 
+// SELF: a macro stores a number and returns (early on the value it has); nothing is worked out until
+// each voice's next tick, and then once however many times it was turned (a MOD gives values often).
+static void testMacrosCheap() {
+    for (int model : {kMarimba, kString}) {
+        auto p = synth(plain(model, {{Strike, model == kString ? 0 : 1}}));
+        p->noteOn(60, 0.8f);
+        p->noteOn(64, 0.8f);
+        play(*p, 1600);
+        const long rest = p->tunings();
+        play(*p, 1600);
+        CHECK(p->tunings() == rest); // ringing at rest: nothing worked out again
+        p->setMacro(MacroDecay, 0.5f);
+        p->setMacro(MacroStretch, 0.5f);
+        play(*p, 160);
+        CHECK(p->tunings() == rest); // the value it had: nothing
+        for (int i = 0; i < 50; ++i) p->setMacro(MacroMaterial, 0.5f + 0.001f * i);
+        CHECK(p->tunings() == rest); // nothing on the call
+        play(*p, 16);
+        CHECK(p->tunings() == rest + 2); // once a voice, on its tick
+        p->setMacro(MacroTone, 0.9f);   // HARDNESS: the next strike's
+        p->setMacro(MacroPosition, 0.1f);
+        p->setMacro(MacroDice, 0.9f);
+        play(*p, 16);
+        CHECK(p->tunings() <= rest + 2 + 2 + 2); // (the voices look once; nothing they ring with moved)
+    }
+    // OCTAVE's macro: a threshold, down under a quarter and up over three.
+    auto p = synth(plain(kMarimba));
+    double hz[kModesMost];
+    p->setMacro(MacroOctave, 0.2f);
+    p->noteOn(60, 0.8f);
+    play(*p, 16);
+    CHECK(p->modesOf(0, hz) > 0 && std::fabs(hz[0] - hzOf(48)) < 1e-9);
+    p->setMacro(MacroOctave, 0.5f);
+    p->noteOn(62, 0.8f);
+    p->setMacro(MacroOctave, 0.8f);
+    p->noteOn(64, 0.8f);
+    play(*p, 16);
+    CHECK(p->modesOf(1, hz) > 0 && std::fabs(hz[0] - hzOf(62)) < 1e-9);
+    CHECK(p->modesOf(2, hz) > 0 && std::fabs(hz[0] - hzOf(76)) < 1e-9);
+}
+
 // ---- the string ---------------------------------------------------------------------------------------
 
 // FAITHFUL (JS, PASP): the string in tune within 0.5 cent, keys 24 to 108 (sounding), at STRETCH 0
@@ -1250,6 +1291,7 @@ int main(int argc, char** argv) {
         {"testMaterial", testMaterial},
         {"testHertz", testHertz},
         {"testStretch", testStretch},
+        {"testMacrosCheap", testMacrosCheap},
         {"testStringTuning", testStringTuning},
         {"testStiffness", testStiffness},
         {"testRestrike", testRestrike},

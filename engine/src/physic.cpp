@@ -140,12 +140,13 @@ struct Physic::State {
         int note = 0, from = -1;
         float velocity = 0.f, seconds = 0.f;
         std::uint32_t seed = 0;
+        float eff[kSettings]; // the settings as they were when it was played (a macro may move before render())
     };
     Queued queue[kQueue];
     int queued = 0;
     std::uint32_t nextSeed = 0, liveCount = 0;
     bool seedGiven = false;
-    long ticks = 0, strikes = 0;
+    long ticks = 0, strikes = 0, tunings = 0;
     std::uint32_t lastSeed = 0;
     Rolled lastRolled;
     float scratch[kTick], pushed[kTick];
@@ -164,7 +165,7 @@ struct Physic::State {
     void letGo(Voice& v, double t60);
     void sleep(Voice& v);
     void tick(Voice& v);
-    void tuneModes(Voice& v, bool exact);
+    void tuneModes(Voice& v, bool exact, bool decay = true);
     void tuneString(Voice& v, bool filter, bool stiff);
     void strikeGains(Voice& v, double q, double along, double hardness, bool pluck);
     double pitchOf(int key, double tuneCents) const;
@@ -408,8 +409,11 @@ void Physic::State::takeOver(Voice& v, const Queued& q) {
 void Physic::State::settle() {
     const int n = queued;
     queued = 0;
+    float now[kSettings];
+    std::memcpy(now, eff, sizeof now);
     for (int i = 0; i < n; ++i) {
         const Queued& q = queue[i];
+        std::memcpy(eff, q.eff, sizeof eff); // (each strike with the settings it was played with)
         if (q.from >= 0) {
             int naming = 0;
             for (int j = 0; j < n; ++j) naming += queue[j].from == q.from;
@@ -425,6 +429,7 @@ void Physic::State::settle() {
         Voice* v = pick(q.note, again);
         strike(*v, q, again);
     }
+    std::memcpy(eff, now, sizeof eff);
 }
 
 void Physic::State::letGo(Voice& v, double t60) {
@@ -447,8 +452,12 @@ void Physic::State::sleep(Voice& v) {
 // ---- the tick -----------------------------------------------------------------------------------
 
 // The modes' turn and shrink a sample, from their frequencies now (with the glide) and the damping
-// law. Exact (double) at rest, so a note is in tune; from polynomials while a glide moves.
-void Physic::State::tuneModes(Voice& v, bool exact) {
+// law. Exact (double) at rest, so a note is in tune; from polynomials while a glide moves. `decay`:
+// the law's numbers moved (else the shrink is worked out again only where it hangs on the
+// frequency: b over 0).
+void Physic::State::tuneModes(Voice& v, bool exact, bool decay) {
+    ++tunings;
+    const bool shrink = decay || v.bNow > 0.0;
     const double rate = sampleRate, twoPi = 6.283185307179586;
     const double q = v.off == 0.f ? 1.0 : std::pow(2.0, v.off / 12.0);
     for (int k = 0; k < kModesMost; ++k) {
@@ -470,9 +479,11 @@ void Physic::State::tuneModes(Voice& v, bool exact) {
         } else {
             sinCos(static_cast<float>(w), v.sw[k], v.cw[k]);
         }
-        double r = v.aNow + v.bNow * hz * hz;
-        if (v.relNow > r) r = v.relNow;
-        v.radius[k] = static_cast<float>(radiusOf(r, rate));
+        if (shrink || v.radius[k] == 0.f) {
+            double r = v.aNow + v.bNow * hz * hz;
+            if (v.relNow > r) r = v.relNow;
+            v.radius[k] = static_cast<float>(radiusOf(r, rate));
+        }
         v.bank.c[k] = v.radius[k] * v.cw[k];
         v.bank.s[k] = v.radius[k] * v.sw[k];
         v.bank.out[k] = static_cast<float>(fade);
@@ -483,6 +494,7 @@ void Physic::State::tuneModes(Voice& v, bool exact) {
 // the tuning. (A glide moves the tuning only: the filter and the stiffness are worked out again when
 // it lands.)
 void Physic::State::tuneString(Voice& v, bool filter, bool stiff) {
+    ++tunings;
     const double f0 = hzOf(v.pitch + v.off);
     double a = v.aNow;
     if (v.relNow > a) a = v.relNow;
@@ -534,7 +546,7 @@ void Physic::State::tick(Voice& v) {
         if (pitch || decay) tuneString(v, decay || landed, stiffer || landed);
         v.str.snap();
     } else {
-        if (pitch || decay) tuneModes(v, v.off == 0.f);
+        if (pitch || decay) tuneModes(v, v.off == 0.f, decay);
         v.bank.snap(v.modes, v.push.on(v.age) || v.push.on(v.age + kTick - 1));
     }
     // Asleep: 64 samples counted from its strike all under -120 dB, its strike done (and a string's
@@ -621,6 +633,7 @@ void Physic::noteOnFrom(int note, float velocity, int from, float seconds) {
     q.from = from >= 0 && from <= 127 && from != note && seconds > 0.f && seconds < 1e6f ? from : -1;
     q.seconds = q.from >= 0 ? seconds : 0.f;
     q.seed = seed;
+    std::memcpy(q.eff, s.eff, sizeof q.eff);
 }
 
 void Physic::noteOff(int note) {
@@ -713,6 +726,7 @@ int Physic::awake() const {
 }
 long Physic::ticksWorked() const { return state_->ticks; }
 long Physic::strikes() const { return state_->strikes; }
+long Physic::tunings() const { return state_->tunings; }
 std::uint32_t Physic::lastSeed() const { return state_->lastSeed; }
 Physic::Rolled Physic::lastRolled() const { return state_->lastRolled; }
 

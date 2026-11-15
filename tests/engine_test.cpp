@@ -2081,7 +2081,7 @@ static void testRatchetsHoldUp() {
 
 // A note that glides starts at the pitch of the note before it and slides to its own.
 static void testANoteGlides() {
-    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
+    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Physic}) {
         const auto second = [&](int effects, int firstKey = 57, bool onlyOne = false) {
             std::unique_ptr<Engine> engine(new Engine);
             CHECK(engine->addSynthTrack(1, kind));
@@ -2100,7 +2100,7 @@ static void testANoteGlides() {
             return std::make_pair(pitchOver(out, 4 * kStep + 96, 1440), pitchOver(out, 8 * kStep, 9600));
         };
         const auto plain = second(0), slid = second(256);
-        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
+        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Physic ? "physic" : "phazed";
         if (!(slid.first < 0.85 * plain.first)) std::printf("  %s: began at %.0f Hz plain, %.0f Hz with a glide; settled at %.0f / %.0f\n", name, plain.first, slid.first, plain.second, slid.second);
         CHECK(slid.first < 0.85 * plain.first);                           // it begins well under its own pitch (the note before was an octave lower)
         CHECK(std::fabs(slid.second - plain.second) < 0.02 * plain.second); // and arrives at it

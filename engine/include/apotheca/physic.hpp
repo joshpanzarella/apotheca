@@ -71,6 +71,7 @@ public:
     int awake() const;                 // voices not asleep (fading ones too)
     long ticksWorked() const;          // ticks any voice has worked out since made
     long strikes() const;              // strikes begun (a take-over is none)
+    long tunings() const;              // times a voice's coefficients were worked out (a macro: on the next tick)
     // The smallest size (not zero) any state of any voice holds now: a mode's two numbers, a
     // string's filters and its line. 0: none but zeros.
     float smallestState(bool lines = true) const; // lines: the strings' lines too (the slow part)
