@@ -7,6 +7,8 @@
 # reader's, "twin" by itself, which an old song's track is read by. Nor does a
 # text promise BEST QUALITY: a bounce is the song as it plays (no synth has a
 # quality to turn up; the mend of batches 8a to 8c).
+# FM-6 (owner, 2026-11-15) is "after a classic 80s synth": no Yamaha, no DX7
+# either (the copied-in FM core under third_party/msfa is read with the rest).
 # The engine's texts are read for those names too (preset and folder names
 # are there: engine/, and the copied-in synths under third_party/), and the
 # tools' (render_demo and bench print what a player may read).
@@ -37,7 +39,7 @@ app=$1
 # Prints a line for each fault in the folder; nothing if it is clean.
 # scan FOLDER [names]: with "names", only the names nobody is to read (the engine's folders).
 scan() {
-    for f in "$1"/*.cpp "$1"/*.hpp "$1"/*.c "$1"/*.h; do
+    for f in "$1"/*.cpp "$1"/*.hpp "$1"/*.c "$1"/*.h "$1"/*.cc; do
         [ -f "$f" ] || continue
         case $f in */design_page.cpp) continue ;; esac
         awk -v file="$f" -v namesOnly="${2:+1}" '
@@ -49,7 +51,7 @@ scan() {
                 low = tolower(str)
                 # No name of a maker or of a model where a player reads (owner, 2026-11-14: the synth is JAX-EP).
                 # (The name of a file in an #include is not on the screen.)
-                if (low ~ /roland|jx-?3p|pg-?200|juno/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
+                if (low ~ /roland|jx-?3p|pg-?200|juno|yamaha|dx-?7/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
                 # Nor the name of the synth that went, nor its oversampling (batch 8b). "twin" alone is the word an old song has.
                 if (low ~ /twin analog|oversampl/) printf "%s:%d: the synth that went: \"%s\"\n", file, strline, str
                 if (low ~ /best quality/) printf "%s:%d: a quality nothing has: \"%s\"\n", file, strline, str
@@ -137,13 +139,13 @@ scan() {
 makers() {
     for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md; do
         [ -f "$f" ] || continue
-        grep -n -i -E 'roland|jx-?3p|pg-?200|juno' "$f" | sed "s|^|$f:|"
+        grep -n -i -E 'roland|jx-?3p|pg-?200|juno|yamaha|dx-?7' "$f" | sed "s|^|$f:|"
     done
 }
 
 # The engine's texts (preset and folder names, an effect's words) and the tools', beside the app.
 # (A plant is an app folder of its own with the same folders beside it: one is planted in each.)
-kBeside="engine/src engine/src/fx engine/src/jx3p engine/include/apotheca third_party/easycz/dsp third_party/shapetaker/entanglement tools"
+kBeside="engine/src engine/src/fx engine/src/jx3p engine/src/fm6 engine/include/apotheca third_party/easycz/dsp third_party/shapetaker/entanglement third_party/msfa tools"
 engine() {
     for d in $kBeside; do
         [ -d "$1/../$d" ] && scan "$1/../$d" names
@@ -163,7 +165,7 @@ fi
 grep -q 'hint("SELECT"' "$app"/song_screen.cpp || { echo "words_test: found no SELECT hint at all; is the folder right?"; exit 1; }
 for d in $kBeside; do # (a folder moved or renamed would be read by nobody, and say nothing)
     some=0
-    for f in "$app/../$d"/*.cpp "$app/../$d"/*.hpp "$app/../$d"/*.c "$app/../$d"/*.h; do [ -f "$f" ] && some=1; done
+    for f in "$app/../$d"/*.cpp "$app/../$d"/*.hpp "$app/../$d"/*.c "$app/../$d"/*.h "$app/../$d"/*.cc; do [ -f "$f" ] && some=1; done
     [ "$some" -eq 1 ] || { echo "words_test: nothing to read in $d beside the app; is the folder right?"; exit 1; }
 done
 [ "$2" = "--only" ] && { echo "words test passed"; exit 0; }
@@ -268,6 +270,18 @@ PLANT
 plant a-name-in-a-c-header ../third_party/easycz/dsp/cz_presets.h caught <<'PLANT'
 #define CAT_KEYS "Juno Keys"
 PLANT
+plant the-fm-synths-maker x.cpp caught <<'PLANT'
+    {TrackKind::Fm6, "FM-6", "FM6", "FM-6", "6-operator FM, after the Yamaha", false, "fm6", SynthKind::Fm6, ".fm6"},
+PLANT
+plant the-fm-synths-model x.cpp caught <<'PLANT'
+    fm6Row("DX7, 8 notes", 10, 8, false);
+PLANT
+plant the-fm-synths-model-with-a-stroke ../engine/src/fm6.cpp caught <<'PLANT'
+const char* Fm6::presetCategory(int) { return "DX-7 ROM 1A"; }
+PLANT
+plant a-name-in-the-fm-core ../third_party/msfa/dx7note.cc caught <<'PLANT'
+      std::cout << "Loaded DX7 patch " << current_patch_;
+PLANT
 plant the-synth-that-went-in-the-engine ../engine/include/apotheca/presets.hpp caught <<'PLANT'
 static const char* const kNames[] = {"Init", "Twin Analog Lead"};
 PLANT
@@ -278,9 +292,11 @@ for d in $kBeside; do # every folder read beside the app is read: a name planted
     const char* says = "as the PG-200 has it";
 PLANT
 done
-[ "$n" -eq 7 ] || { echo "words_test: $n folders beside the app, not 7"; fails=$((fails + 1)); }
+[ "$n" -eq 9 ] || { echo "words_test: $n folders beside the app, not 9"; fails=$((fails + 1)); }
 plant what-the-engine-may-say ../engine/src/engine.cpp clean <<'PLANT'
 #include "apotheca/jx3p.hpp"
+#include "msfa/dx7note.h"
+// the DX7's note, in a comment
 #include "jx3p/dco.hpp"
 // the JX-3P's DCO, in a comment
     const char* word = "SELECT"; // no screen here: the engine's SELECT is not drawn

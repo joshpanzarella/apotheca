@@ -1,5 +1,6 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/denormals.hpp"
+#include "apotheca/fm6.hpp"
 #include "apotheca/mod_rule.hpp"
 
 #include <cmath>
@@ -444,6 +445,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     if (kind == SynthKind::Sampler) synth.reset(new Sampler);
     else if (kind == SynthKind::Qmod) synth.reset(new Qmod);
     else if (kind == SynthKind::Jx3p) synth.reset(new Jx3p);
+    else if (kind == SynthKind::Fm6) synth.reset(new Fm6);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
