@@ -214,6 +214,8 @@ struct TrackData {
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
+    LaneFeel laneFeel[kDrumLanes];        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, 0..100 (apotheca/feel_rule.hpp). The track's,
+                                          // not a scene's; live, nothing is written into the hits
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and

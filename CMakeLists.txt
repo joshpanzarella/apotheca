@@ -73,6 +73,9 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(chordfx_test PRIVATE apotheca_engine)
   add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
+  add_executable(feel_test tests/feel_test.cpp)
+  target_link_libraries(feel_test PRIVATE apotheca_engine)
+  add_test(NAME feel COMMAND feel_test)
   # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
   # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
   add_executable(jx3p_test tests/jx3p_test.cpp)
@@ -105,7 +108,7 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
   add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -143,13 +146,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
     add_executable(textsize_test tests/textsize_test.cpp)

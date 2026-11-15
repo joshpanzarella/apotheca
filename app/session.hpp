@@ -164,6 +164,9 @@ public:
     // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
     // the rest, apotheca/glide_rule.hpp). A step of undo, as a send or a sound is.
     void setGlideFrom(int track, int type);
+    // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
+    // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
+    void setLaneFeel(int track, int lane, int time, int level);
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the

@@ -17,6 +17,11 @@ constexpr int kStripY = kGridTop + 8 * kLaneH + 6;
 // draws its name and value there, and the bar under it draws the button that sets it there
 // (ui::hintsUnder), so the two cannot drift apart.
 constexpr float kFxPitchX = 190.f, kFxRatchetX = 260.f, kFxReverseX = 355.f, kFxCutX = 450.f, kFxThrowX = 555.f;
+// With X held on a lane's name the strip is the lane's FEEL: HUMAN TIME, HUMAN LEVEL, and the
+// copy onto every lane. The field and the button's chip under it share these, as above.
+constexpr float kFeelTimeX = 190.f, kFeelLevelX = 320.f, kFeelAllX = 450.f;
+// A lane with a feel wears a mark at the left of its name: the upper piece for HUMAN TIME, the lower for HUMAN LEVEL.
+constexpr int kFeelMarkX = kNameX + 3, kFeelMarkW = 3, kFeelMarkH = 12, kFeelMarkInset = 5;
 
 } // namespace pattern_layout
 } // namespace apotheca

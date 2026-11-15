@@ -144,8 +144,10 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // the buses hold (None: they are fed and give nothing back, which is the cost
 // of the feeding alone). `throws`: every hit of every track is thrown to both
 // buses (THROW), which is the most throwing a song can do. `ducks`: a DUCK in
-// a slot of every track as well. The best of five runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false) {
+// a slot of every track as well. `feelTime`, `feelLevel`: FEEL, every lane of every kit at that
+// HUMAN TIME and HUMAN LEVEL (so every hit is rolled for, asked a step ahead and set waiting).
+// The best of five runs of ten seconds.
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -171,6 +173,13 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
         c.track = t;
         c.value = sends ? 0.5f : 0.f;
         for (int bus = 0; bus < kBuses; ++bus) c.a = bus, engine->send(c);
+        c = Command();
+        c.type = Command::SetLaneFeel;
+        c.track = t;
+        c.b = feelTime;
+        c.c = feelLevel;
+        if (feelTime || feelLevel)
+            for (int lane = 0; lane < kDrumLanes; ++lane) c.a = lane, engine->send(c);
     }
     if (ducks)
         for (int t = 0; t < kNumTracks; ++t) engine->setEffect(t, 0, EffectKind::Duck);
@@ -506,6 +515,13 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "...thrown, TAPE, HALL, 12 DUCKs", all - dry);
         const double plate = busSong(true, EffectKind::Tape, EffectKind::Plate);
         std::printf("  %-28s %6.2f%% of one core\n", "...or TAPE and PLATE on them", plate - dry);
+        // FEEL: every lane of all twelve kits humanised, as what it adds to the same plain song
+        // (rolls for every hit, every hit asked a step ahead and waiting; the sound is the same work).
+        std::printf("FEEL on every lane of the twelve drum tracks (%.2f%% plain):\n", dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME and LEVEL 100%", busSong(false, none, none, false, false, 100, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME 100% alone", busSong(false, none, none, false, false, 100, 0) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN LEVEL 100% alone", busSong(false, none, none, false, false, 0, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "...the plain song again", busSong(false, none, none) - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");

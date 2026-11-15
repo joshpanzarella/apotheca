@@ -119,6 +119,13 @@ void putTrack(std::string& out, const TrackData& track) {
                 if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
             out += "\n";
         }
+        // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (track.laneFeel[lane].atRest()) continue;
+            put(out, "feel %.0f", lane + 1);
+            put(out, " %.0f", track.laneFeel[lane].time);
+            put(out, " %.0f\n", track.laneFeel[lane].level);
+        }
         // scene N, then "bars B" if the cell is longer than one, then each
         // bar's hits; "bar K" comes before those of the second bar on.
         // Then the bars the cell hides (made shorter: they come back as they were if it is made
@@ -481,6 +488,11 @@ bool parseSong(const std::string& text, Project& project) {
             double lane;
             while (in >> lane)
                 if (lane >= 1 && lane <= kDrumLanes) track->laneOneSlice[static_cast<int>(lane) - 1] = true;
+        } else if (word == "feel" && track->kind == TrackKind::Drums) {
+            double lane, time = 0, level = 0;
+            if (!(in >> lane >> time) || !(lane >= 1) || lane > kDrumLanes) continue;
+            if (!(in >> level)) level = 0;
+            track->laneFeel[static_cast<int>(lane) - 1] = laneFeelOf(wholeIn(time, 0, 100), wholeIn(level, 0, 100)); // (held as doubles first)
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
             std::getline(in >> std::ws, name);

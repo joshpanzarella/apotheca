@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (40) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (42) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -1190,6 +1190,76 @@ effect in those two groups and fails one that does not.
   pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
+- **FEEL is two amounts on each drum LANE, and it is live** (owner, 2026-11-14; built on branch
+  `feel`, 2026-11-15; `engine/include/apotheca/feel_rule.hpp`, `LaneFeel`): HUMAN TIME and
+  HUMAN LEVEL, 0..100, a chord's six clicks (`kAmountAt`) and a chord's two "mosts"
+  (`kHumanTimeMs` 12, `kHumanLevelMost` 0.15). Nothing is written into the hits. A hit on a
+  main beat (steps 1, 5, 9, 13: `feelOnBeat`) moves half as much (`kFeelBeatShare`), in time and
+  in level. **Nobody has listened to it**: the tests measure where each hit lands and how loud.
+  - **Every roll is worked out from where and which time** (`feelSeed(track, lane, bar of the
+    cell, step, steps since Play)`): never a generator walked, never the scene's number
+    (`nextscene_test`'s `fill` has three felt lanes, and fails if the seed takes the song's bar).
+  - **A lane with both at 0 takes the path it always did** (`schedule`, `playHit`): old songs
+    are the same to the bit (`effects_test --print` the same before and after, and a busy drum
+    song with nudges, ratchets, chance, throws, a DUCK, tempo changes and a Play-once gave one
+    checksum on `main`'s engine and this one).
+  - **A lane with HUMAN TIME has every hit asked a step ahead** (`askAheadHits`: the roll may
+    bring it early), and the track keeps that it was (`Track::feelAsked`, the step's number, as
+    `chordAsked`): the hit is not begun again on its own step, whatever the lane says by then.
+    Without it a feel turned while the song played lost hits or played them twice
+    (`testTurnedWhilePlaying`). Play clears it; a track taken away puts the lane at rest.
+  - **Everything a felt hit times is a whole number of samples** (the wait, `std::ceil`; a
+    ratchet's gap, `std::floor`), so it is the same at any block length. A plain lane's nudge and
+    ratchet are still a part of a sample long, as they always were: `feel_test`'s block test
+    gives the lanes with HUMAN LEVEL alone no nudge and no ratchet for that reason.
+  - The song's first step has no step before it: an early roll lands on the top. Played once
+    (a bounce, AT END STOP) the last step asks nothing of the first, as for chords.
+  - **Asked again** (a scene move, AT END switched on the last step: `askAgain`): a felt hit
+    counts from the sample its asking step began on (`std::floor(elapsed)`), so it comes on the
+    very sample it would have. One that has not sounded gives its mark back and may be asked
+    again; **asked again after its early moment has gone by, it comes on its step** (a downbeat
+    a few ms late, not lost: `schedule` returns false, the mark is not set). One that has
+    sounded (`Pending::begun`) keeps its mark; its ratchet pieces still waiting go, as an early
+    hit's always did.
+  - **CHANCE is still the walked dice** (`dice_`), so a felt hit with a CHANCE that is asked
+    again rolls its chance again (as a nudged-early one always did), and from then on the song is
+    not "the song played straight through" in its chances. `fill` keeps the feel off its CHANCE
+    lane for that reason. Not mended: making chance a roll by place is a change to every song.
+  - **A run of slices moves as one** (`feelHead`): a hit that starts further into its sound,
+    with a hit on the step before it, takes the TIME of the hit its run begins with (step 1 of a
+    bar always begins one), so slices in order still carry the sound on (`testSlices`: the same
+    samples, sooner or later, to the bit). Its LEVEL is its own. Moved each by itself, every
+    slice met the sound up to 24 ms off and cut it.
+  - HUMAN LEVEL is held to 0.02..1: **a hit written at full only gets quieter** (as a chord's).
+  - Three waiting slots a lane are still enough (a ratchet running on, this step's hit, the next
+    step's): HUMAN TIME is never more than a quarter of a step (`kFeelMostOfStep`; at the
+    program's fastest, 240 BPM, 12 ms is under a fifth).
+  - **The app**: `TrackData::laneFeel`, `Session::setLaneFeel`, `Command::SetLaneFeel` (a = lane,
+    b = time, c = level). `sendSong` tells every drum lane's, at rest too. In a song file
+    `feel LANE TIME LEVEL`, a line of the kit's own for each lane, **left out when both are 0**;
+    under a synth track it is not taken; the numbers are held as doubles first. **In undo by
+    `soundMark` / `restoreSounds`** (as GLIDE FROM: not a pattern), the turns of one hold one step.
+  - **The gesture: X held on a lane's NAME** (`PatternScreen::feelHeld_`, as `fxHeld_` on a
+    hit): LEFT / RIGHT HUMAN TIME, UP / DOWN HUMAN LEVEL, a click each, stopping at the ends
+    (`app/lane_feel.hpp`); Y the dice (OFF, 10 or 25% of each, never none, never what it was);
+    A this lane's feel onto every lane (from OFF: all plain). **X there still hears the drum,
+    exactly as before** (`hearLaneHeld` on the press, `keepHearing` lets go): the one hold is
+    both, and a turn of the feel sounds nothing (the feel is the playing pattern's). L1 and R1 do
+    nothing while it is held (kept for SWING). **Y let go after X is not a tap** (`yDidSomething_`
+    is set by the dice): it rolled the lane's hits, and on a hit it stepped the chance.
+  - The strip's fields and their chips share `kFeelTimeX`, `kFeelLevelX`, `kFeelAllX`
+    (`pattern_layout.hpp`); EVERY LANE reads COPY, or THE SAME once they are. With X up the name's
+    strip says the feel in one purple line. **The mark** (`drawFeelMark`, both views): at the left
+    of the name, the upper piece HUMAN TIME, the lower HUMAN LEVEL, purple.
+  - Tests: `tests/feel_test.cpp` (the engine: the rule by hand, each hit's place and level,
+    blocks, helpers, Play twice, once, turned while playing, slices, DUCK and THROW, asked
+    again) and `tests/feelapp_test.cpp` (the gesture, the strip off the drawn screen, the song
+    file, undo, a song sent again, a bounce, X still hearing). `feel_test testTime testSlices`
+    runs just those. SWING is not built.
+- **An `Engine` is 1.4 MB: a test does not stand many on the stack.** `engine_test`'s
+  `testNudgeMovesAHitOffTheGrid` had six in one frame, 8.37 MB of the 8 MB there is, with 20 KB
+  to spare by luck; an Engine a kilobyte bigger (FEEL) and it crashed one run in three, before
+  `main` printed anything. Five of them are on the heap now. `testLaneLevel` has five (6.98 MB).
 - **Note effects are two bytes on a note** (`NoteEvent::ratchet`, `glide`; a
   chord has `ratchet` and its own five, next rule). They reach the engine in `Command::e` (low byte
   the ratchet, +256 a glide, and `glide << 11` for a length other than half a
@@ -1593,6 +1663,7 @@ effect in those two groups and fails one that does not.
 | ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
+| FEEL on every lane of twelve busy drum tracks, HUMAN TIME and HUMAN LEVEL at 100% (2026-11-15, three runs: the tracks themselves 1.47 to 1.48%, DRIVE 0.12%; the same plain song measured again read -0.03 to +0.04) | 0.10 to 0.11% more; HUMAN TIME alone 0.08 to 0.11; HUMAN LEVEL alone nothing that shows |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
 | ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
@@ -1614,7 +1685,7 @@ there is a change to the sound, and needs the owner's ears.
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
-7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter; SWING later.
+7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets.
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation

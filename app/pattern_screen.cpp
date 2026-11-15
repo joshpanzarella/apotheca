@@ -1,5 +1,6 @@
 #include "pattern_screen.hpp"
 #include "pattern_layout.hpp"
+#include "lane_feel.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -126,6 +127,30 @@ void PatternScreen::fxRoll() {
     fx.throwTo = before.throwTo;
     setFx(lane_, step_, fx);
     if (!project_.playing) hearHit();
+}
+
+// With X held on a lane's name, one click of its FEEL. Left and right: HUMAN TIME. Up and down:
+// HUMAN LEVEL. It stops at each end. Nothing is heard for it: the feel is the playing pattern's.
+void PatternScreen::feelTurn(Button direction) {
+    if (onTempo_ || step_ != kLaneName) return;
+    LaneFeel feel = trk().laneFeel[lane_];
+    if (direction == Button::Right || direction == Button::Left) feel.time = static_cast<std::uint8_t>(feelAmountStep(feel.time, direction == Button::Right ? 1 : -1));
+    else feel.level = static_cast<std::uint8_t>(feelAmountStep(feel.level, direction == Button::Up ? 1 : -1));
+    session_.setLaneFeel(project_.track, lane_, feel.time, feel.level);
+}
+
+// ...Y rolls the dice for it: a small feel, never none and never what it was.
+void PatternScreen::feelRoll() {
+    if (onTempo_ || step_ != kLaneName) return;
+    const LaneFeel feel = feelDice(trk().laneFeel[lane_], dice_);
+    session_.setLaneFeel(project_.track, lane_, feel.time, feel.level);
+}
+
+// ...A puts this lane's feel on every lane of the kit (a lane at OFF: every lane plays plain again).
+void PatternScreen::feelToAll() {
+    if (onTempo_ || step_ != kLaneName) return;
+    const LaneFeel feel = trk().laneFeel[lane_];
+    for (int lane = 0; lane < kDrumLanes; ++lane) session_.setLaneFeel(project_.track, lane, feel.time, feel.level);
 }
 
 void PatternScreen::hearHit() {
@@ -606,8 +631,19 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
-    if (fxHeld_ && b == Button::Y) {
-        if (event.down) fxRoll(); // the dice, for what this hit does. (Y's own jobs wait until X is let go.)
+    if (feelHeld_ && (b == Button::L1 || b == Button::R1)) return; // (kept for SWING; the slices and the brush wait until X is let go)
+    if ((fxHeld_ || feelHeld_) && b == Button::Y) {
+        // The dice, for what this hit does, or for the lane's feel. (Y's own jobs wait until X is let go;
+        // and if X is let go first, Y coming up after it is not a tap: it rolls nothing and steps no chance.)
+        if (event.down) {
+            yDidSomething_ = true;
+            if (feelHeld_) feelRoll();
+            else fxRoll();
+        }
+        return;
+    }
+    if (feelHeld_ && b == Button::A) {
+        if (event.down) feelToAll(); // this lane's feel onto every lane. (A's own jobs wait until X is let go.)
         return;
     }
     if (fxHeld_ && b == Button::A) {
@@ -617,12 +653,15 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (b == Button::X) {
         // Hears what is under the cursor, as everywhere. On a hit it is also a hold: the stick then sets its step effects.
         fxHeld_ = event.down && hitHere() && !shaping_ && !dicing_ && paint_ == Paint::None;
+        // On a lane's name it is the same hold for the lane's FEEL, and the drum is heard as ever
+        // (for as long as X is held: a recording to its end; the Session lets it go).
+        feelHeld_ = event.down && !onTempo_ && step_ == kLaneName && !shaping_ && !dicing_ && paint_ == Paint::None;
         fxSaved_ = 0.f;
         fxWas_ = false;
         // A direction that was already held (the cursor was on its way here) is not a turn of the
         // effect: X only heard the hit. It must be let go and pushed again.
         fxWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
-        if (fxHeld_) repeating_ = Button::None;
+        if (fxHeld_ || feelHeld_) repeating_ = Button::None;
         axis_ = Axis::None;
         if (!event.down || onTempo_) return;
         // On the lane's name or an empty step it sounds for as long as X is held (the Session lets it
@@ -686,7 +725,8 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 
     if (isDirection(b)) {
-        if (fxHeld_) fxTurn(b);
+        if (feelHeld_) feelTurn(b);
+        else if (fxHeld_) fxTurn(b);
         else if (input.held(Button::Y)) nudgeExact(b, true);
         else if (input.held(Button::A)) nudgeExact(b, false);
         else dragCursor(b);
@@ -713,6 +753,7 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::R1)) paint_ = Paint::None;
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::X) || !hitHere()) fxHeld_ = false;
+    if (!input.held(Button::X) || onTempo_ || step_ != kLaneName) feelHeld_ = false;
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -731,9 +772,11 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     // The tempo can be set from elsewhere (SELECT + D-pad, or a song opened).
     if (std::round(tempoExact_) != project_.tempo) tempoExact_ = project_.tempo;
 
-    if (fxHeld_) {
+    if (fxHeld_ || feelHeld_) {
         // X is held on a hit: the stick clicks its step effects. One way per push (up / down is the
         // pitch, sideways the ratchet); a click at once, then a steady run while it is held over.
+        // On a lane's name it clicks the lane's feel the same way (sideways HUMAN TIME, up / down
+        // HUMAN LEVEL), at the ratchet's pace: six clicks end to end.
         if (x == 0.f && y == 0.f) {
             axis_ = Axis::None;
             fxSaved_ = 0.f;
@@ -743,10 +786,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
             if (axis_ == Axis::None) axis_ = std::fabs(y) >= std::fabs(x) ? Axis::UpDown : Axis::Sideways;
             const float push = axis_ == Axis::UpDown ? -y : x;
             if (push != 0.f) {
-                fxSaved_ += fxWas_ ? std::fabs(push) * (axis_ == Axis::UpDown ? kPitchClicksPerSecond : kRatchetClicksPerSecond) * dt : 1.f;
+                fxSaved_ += fxWas_ ? std::fabs(push) * (axis_ == Axis::UpDown && !feelHeld_ ? kPitchClicksPerSecond : kRatchetClicksPerSecond) * dt : 1.f;
                 fxWas_ = true;
-                for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f)
-                    fxTurn(axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left));
+                for (; fxSaved_ >= 1.f; fxSaved_ -= 1.f) {
+                    const Button way = axis_ == Axis::UpDown ? (push > 0.f ? Button::Up : Button::Down) : (push > 0.f ? Button::Right : Button::Left);
+                    if (feelHeld_) feelTurn(way);
+                    else fxTurn(way);
+                }
             }
         }
         stickX_ = stickY_ = 0.f;
@@ -794,7 +840,10 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
         repeatAt_ = nowMs + feel.repeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
         repeatAt_ = nowMs + feel.repeatEveryMs;
-        if (fxHeld_) {
+        if (feelHeld_) {
+            repeatAt_ = nowMs + static_cast<Uint32>(1000.f / kRatchetClicksPerSecond);
+            feelTurn(repeating_);
+        } else if (fxHeld_) {
             // Clicks, not a slide: slower than the cursor runs.
             const bool vertical = repeating_ == Button::Up || repeating_ == Button::Down;
             repeatAt_ = nowMs + static_cast<Uint32>(1000.f / (vertical ? kPitchClicksPerSecond : kRatchetClicksPerSecond));
@@ -806,6 +855,13 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
 }
 
 // ---- drawing ---------------------------------------------------------------------
+
+// A lane with a feel: a purple mark at the left of its name, the upper piece for HUMAN TIME,
+// the lower for HUMAN LEVEL. `nameY`: the top of the name's box.
+void PatternScreen::drawFeelMark(SDL_Renderer* r, int nameY, LaneFeel feel) {
+    if (feel.time) fill(r, kFeelMarkX, nameY + kFeelMarkInset, kFeelMarkW, kFeelMarkH, kPurple);
+    if (feel.level) fill(r, kFeelMarkX, nameY + kCellH - kFeelMarkInset - kFeelMarkH, kFeelMarkW, kFeelMarkH, kPurple);
+}
 
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64];
@@ -866,6 +922,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (nameHere) outline(r, kNameX - 1, y - 1, kNameW + 2, kCellH + 2, cursorColor, 2);
         const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 10.f); // (a long recording's name at XL: held at LARGE)
         nameFont.draw(r, 15.f, y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
+        drawFeelMark(r, y, trk().laneFeel[lane]);
 
         for (int s = 0; s < kSteps; ++s) {
             box(r, kGridLeft + s * kStepW, y, kCellW, kCellH, s % 4 == 0 ? kPanel2 : kPanel, kLine);
@@ -941,9 +998,29 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "%d", static_cast<int>(project_.tempo));
         field(134.f, "BPM", text, cursorColor);
         bar(244, (tempoExact_ - kMinTempo) / (kMaxTempo - kMinTempo), cursorColor);
+    } else if (onName && feelHeld_) {
+        // X is held: the strip is the lane's feel, and nothing else.
+        const LaneFeel feel = trk().laneFeel[lane_];
+        tight.small.draw(r, 8.f, stripY, "LANE", kDim);
+        tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+        feelAmountText(feel.time, text, sizeof text);
+        field(kFeelTimeX, "HUMAN TIME", text, feel.time ? kBrass : kText);
+        feelAmountText(feel.level, text, sizeof text);
+        field(kFeelLevelX, "HUMAN LEVEL", text, feel.level ? kBrass : kText);
+        bool all = true;
+        for (int lane = 0; lane < kDrumLanes; ++lane) all = all && trk().laneFeel[lane] == feel;
+        field(kFeelAllX, "EVERY LANE", all ? "THE SAME" : "COPY", all ? kDim : kText);
     } else if (onName) {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
+        // Its feel, in a line: what X held would show in full.
+        if (const LaneFeel feel = trk().laneFeel[lane_]; !feel.atRest()) {
+            char time[8], level[8], summary[48];
+            feelAmountText(feel.time, time, sizeof time);
+            feelAmountText(feel.level, level, sizeof level);
+            std::snprintf(summary, sizeof summary, "HUMAN TIME %s   HUMAN LEVEL %s", time, level);
+            tight.small.drawRight(r, 632.f, stripY + 44.f, summary, kPurple);
+        }
         std::snprintf(text, sizeof text, "%d%%", static_cast<int>(std::round(trk().laneLevel[lane_] * 100.f)));
         field(134.f, "DRUM VOLUME", text, dicing_ ? kText : cursorColor);
         bar(244, trk().laneLevel[lane_], dicing_ ? kDim : cursorColor);
@@ -1031,7 +1108,12 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { hints[count].key = key; hints[count].does = does; ++count; };
     char brushText[40];
-    if (fxHeld_ && hitHere()) { // (as the strip above: its fields are there only on a hit)
+    if (feelHeld_ && onName) {
+        // As on a hit: each button under the field it sets, the dice alone at the left.
+        const HintUnder under[] = {{kFeelTimeX, "LEFT / RIGHT"}, {kFeelLevelX, "UP / DOWN"}, {kFeelAllX, "A"}};
+        ui::hintsUnder(r, fonts, "Y", under, 3);
+        return;
+    } else if (fxHeld_ && hitHere()) { // (as the strip above: its fields are there only on a hit)
         // Each button under the field it sets, with no word: the field's name is right above it.
         // The dice roll all of it and stand alone at the left. (THROW is so far right that the
         // bar has no room left to say how the help is opened; the help card says it.)
@@ -1052,6 +1134,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("UP / DOWN", "one slice / runs on");
         hint("HOLD A", "volume");
         hint("HOLD Y", "dice");
+        hint("HOLD X", "feel");
         hint("L1", "grid");
     } else if (slicing_ && !held) {
         if (hitHere()) hint("UP / DOWN", "slice");
@@ -1089,6 +1172,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("HOLD A", "volume");
         hint("HOLD Y", "dice");
         hint("TAP Y", "roll");
+        hint("HOLD X", "feel");
         if (canSlice(lane_)) hint("L1", "slices");
     } else {
         // As on the piano roll: on a hit, what is done to it (a tap of B deletes it, HOLD R1 paints at its

@@ -13,7 +13,7 @@ one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
-- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice) or, for
+- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel for each lane) or, for
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
@@ -904,7 +904,7 @@ random levels for as long as R2 is down. R2 by itself is "next screen", at
 once.
 
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
-hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
+hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
 they leave; tap Y to reshuffle). Up from the top lane is the tempo.
 
@@ -961,6 +961,49 @@ it changes:
   deleted.
 - A synth's notes have their own: see "Note effects" under PATTERN, a
   synth.
+
+### FEEL: a lane played by a hand
+
+**Each lane of a kit can be humanised, and it is live**: nothing is written
+into the hits. Every time round the hits land a little differently, as a
+drummer's do. A hit on a main beat (steps 1, 5, 9, 13) moves half as much as
+one between them, so the beat stays put and what is between leans.
+
+Put the cursor on a lane's **name**, **hold X** (a tap of X still just hears
+the drum), and:
+
+| Hold X and | Sets | At 100% |
+| --- | --- | --- |
+| Left / right | **HUMAN TIME**: OFF, 10, 25, 50, 75, 100% | Each hit up to 12 ms early or late (6 ms on a main beat) |
+| Up / down | **HUMAN LEVEL**: the same six | Each hit up to 15% louder or quieter (7.5% on a main beat) |
+| Y | **Dice**: a small feel, OFF, 10 or 25% of each. Always something, never what it was | |
+| A | **This lane's feel onto every lane** of the kit. From a lane at OFF, that clears them all | |
+
+- With X held the strip under the grid shows HUMAN TIME, HUMAN LEVEL and
+  EVERY LANE (COPY, or THE SAME once they are), each button under its field.
+- **A lane with a feel wears a purple mark at the left of its name**: the
+  upper piece for HUMAN TIME, the lower for HUMAN LEVEL. With the cursor on
+  the name the strip says both in a line.
+- It is the lane's, in every scene of the track. A new kit plays plain.
+- **It is heard only as the pattern plays.** Set it while the song runs.
+  Hearing a drum with X or A is always plain.
+- It adds to what each hit has: its own nudge, its own level. A ratchet's
+  hits move together and share one level.
+- A hit written at full level can only get quieter (nothing is louder than
+  full). At 80%, where A places them, it goes both ways.
+- **Play from the top is the same performance again**, and a bounce is what
+  was heard: the moves are worked out from where each hit is and which time
+  round it is, not from luck at the moment.
+- The song's very first hit cannot come before the top: it lands on it.
+- **Slices in order still play as one unbroken sound.** A run of slices
+  (each on the step after the last) moves as one, by its first hit's move.
+  Each slice still gets its own level.
+- CHANCE on a hit works as before.
+- Kept in the song (a song without it is written as it always was), undone
+  by SELECT + B, and in a bounce.
+- SWING is not built yet.
+- **Nobody has listened to this yet.** The tests measure where each hit
+  lands and how loud; whether 12 ms and 15% are the right "most" is for ears.
 
 ### THROW
 

@@ -845,7 +845,10 @@ static void testPatternPlaysOnTheExactSample() {
 
 static void testNudgeMovesAHitOffTheGrid() {
     const int quarter = kStep / 4;
-    Engine late, early, wrapped;
+    // (Not on the stack: an Engine is 1.4 MB, and this test's, six of them at once, filled all but
+    // 20 KB of the 8 MB there is. It crashed one run in three once an Engine grew by a kilobyte.)
+    const std::unique_ptr<Engine> lateHeld(new Engine), earlyHeld(new Engine), wrappedHeld(new Engine), farHeld(new Engine), stoppedHeld(new Engine);
+    Engine &late = *lateHeld, &early = *earlyHeld, &wrapped = *wrappedHeld, &far = *farHeld, &stopped = *stoppedHeld;
     late.send(step(RIM, 4, 1.f));
     late.send(make(Command::SetStepNudge, 0, RIM, 4, 0.25f));
     early.send(step(RIM, 4, 1.f));
@@ -899,7 +902,6 @@ static void testNudgeMovesAHitOffTheGrid() {
     }
 
     // The limits are half a step either way, and nonsense is ignored.
-    Engine far;
     far.send(step(RIM, 4, 1.f));
     far.send(make(Command::SetStepNudge, 0, RIM, 4, 9.f));
     far.send(make(Command::SetStepNudge, 0, RIM, 4, std::nanf("")));
@@ -910,7 +912,6 @@ static void testNudgeMovesAHitOffTheGrid() {
     CHECK(d >= 4 * kStep + kStep / 2 && d <= 4 * kStep + kStep / 2 + 2);
 
     // Stop forgets a hit that was waiting for its moment.
-    Engine stopped;
     stopped.send(step(RIM, 0, 1.f));
     stopped.send(make(Command::SetStepNudge, 0, RIM, 0, 0.4f));
     stopped.send(make(Command::Play));

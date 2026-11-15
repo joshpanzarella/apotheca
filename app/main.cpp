@@ -485,6 +485,20 @@ int main(int argc, char** argv) {
         fx(6, 3, 0, 0, false, 0, kThrowEcho);  // a quiet one
         drums.moveCursorTo(1, 4);
         if (std::strcmp(view, "effects-held") == 0) pushKey(SDLK_s, true); // X held
+    } else if (std::strncmp(view, "feel", 4) == 0) {
+        // FEEL on the drum grid: lanes with a HUMAN TIME, a HUMAN LEVEL, both (each wears its mark),
+        // the cursor on a lane's name. feel: the strip's one line says the lane's. feel-held: X held,
+        // the strip is its feel. feel-off-held: on a lane with none. feel-same-held: every lane at
+        // 100% and 100%, the strip at its widest.
+        Session& session = app.session();
+        session.setLaneFeel(0, 0, 10, 0);
+        session.setLaneFeel(0, 1, 25, 10);
+        session.setLaneFeel(0, 2, 50, 25);
+        session.setLaneFeel(0, 4, 0, 75);
+        if (std::strstr(view, "same"))
+            for (int lane = 0; lane < kDrumLanes; ++lane) session.setLaneFeel(0, lane, 100, 100);
+        app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : 2, -1);
+        if (std::strstr(view, "-held")) pushKey(SDLK_s, true); // X held
     } else if (std::strncmp(view, "chordfx", 7) == 0) {
         // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
         // chordfx-held: X held on it (the strip is its six effects). chordfx-ratchet, -strum,
@@ -917,7 +931,8 @@ int main(int argc, char** argv) {
             app.drums().setStep(5, 11, 0.f);
             app.session().setLaneOneSlice(0, 5, true);
             if (std::strcmp(view, "slices-32") == 0) app.drums().setStart(5, 5, 25.f / 32.f + 0.012f); // on a finer cut, and slid a little off it
-            app.drums().moveCursorTo(5, std::strcmp(view, "slices-name") == 0 ? -1 : 5);
+            app.drums().moveCursorTo(5, std::strncmp(view, "slices-name", 11) == 0 ? -1 : 5);
+            if (std::strcmp(view, "slices-name-feel") == 0) app.session().setLaneFeel(0, 5, 25, 50); // the lane's feel: its mark by the name, its line on the strip
             app.drums().setSlicing(true);
             if (std::strcmp(view, "slices-throw") == 0) { // slices thrown to a bus, and X held on one
                 StepFx f;

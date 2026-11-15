@@ -664,6 +664,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.effects, sizeof track.effects);
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -744,6 +745,9 @@ void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
             engine.send(c);
         }
         if (now.glideFrom != then.glideFrom) setGlideFrom(t, then.glideFrom);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneFeel[lane] != then.laneFeel[lane]) setLaneFeel(t, lane, then.laneFeel[lane].time, then.laneFeel[lane].level);
         if (const SynthSpec* spec = specFor(now.kind)) {
             const int count = settingCount(now.kind);
             TrackData& thenData = const_cast<TrackData&>(then);
@@ -1223,6 +1227,20 @@ void Session::setGlideFrom(int track, int type) {
     engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
 }
 
+void Session::setLaneFeel(int track, int lane, int time, int level) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    const LaneFeel feel = laneFeelOf(time, level);
+    if (feel == project.tracks[track].laneFeel[lane]) return;
+    project.tracks[track].laneFeel[lane] = feel;
+    Command c;
+    c.type = Command::SetLaneFeel;
+    c.track = track;
+    c.a = lane;
+    c.b = feel.time;
+    c.c = feel.level;
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
 void Session::setSend(int track, int bus, float value) {
     if (track < 0 || track >= kNumTracks || bus < 0 || bus >= kBuses) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
@@ -1431,6 +1449,19 @@ void Session::sendSong() {
         c.track = track;
         c.a = isSynth(project.tracks[track].kind) ? project.tracks[track].glideFrom : 0;
         engine.send(c);
+    }
+    // Every drum lane's FEEL, at rest too. (A synth track has none.)
+    for (int track = 0; track < kNumTracks; ++track) {
+        if (project.tracks[track].kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            c = Command();
+            c.type = Command::SetLaneFeel;
+            c.track = track;
+            c.a = lane;
+            c.b = project.tracks[track].laneFeel[lane].time;
+            c.c = project.tracks[track].laneFeel[lane].level;
+            engine.send(c);
+        }
     }
     for (int scene = 0; scene < kMaxScenes; ++scene) {
         c = Command();

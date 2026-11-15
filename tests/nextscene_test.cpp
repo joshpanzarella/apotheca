@@ -210,6 +210,11 @@ void fill(Rig& rig) {
     TrackData& synth = p.tracks[1];
 
     drums.bars[0] = 2;
+    // FEEL on three lanes (not the one with a CHANCE: a hit asked again rolls its chance again): every
+    // hit of them is asked a step ahead and waiting, moved by its roll, wherever a scene is moved.
+    drums.laneFeel[0] = laneFeelOf(100, 50);
+    drums.laneFeel[1] = laneFeelOf(75, 100);
+    drums.laneFeel[2] = laneFeelOf(50, 0);
     DrumPattern& d = drums.drums[0][0];
     for (int step = 0; step < kSteps; step += 4) d.level[0][step] = 0.8f;
     d.level[2][6] = 0.6f;

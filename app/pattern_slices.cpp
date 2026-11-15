@@ -68,6 +68,7 @@ void PatternScreen::drawSlices(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.within(&Fonts::medium, plays, kNameW - 10.f).draw(r, 15.f, kWaveY + 78.f, plays, trk().laneOneSlice[lane_] ? kPurple : kText);
     std::snprintf(text, sizeof text, "%d SLICES", count);
     fonts.small.draw(r, 15.f, kWaveY + kWaveH - 22.f, text, kDim);
+    drawFeelMark(r, kWaveY, trk().laneFeel[lane_]); // the lane's feel, as on the grid
 
     // ---- which slices this bar's hits play, and which is playing ------------------------
     bool used[64] = {};

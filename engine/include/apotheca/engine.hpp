@@ -49,6 +49,7 @@
 #include "apotheca/effect.hpp"
 #include "apotheca/effects.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/feel_rule.hpp"
 #include "apotheca/glide_rule.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
@@ -197,9 +198,12 @@ struct Command {
         HoldEffectAutomation, // the FX screen's list of effects is open on a track's slot, and the slot sounds what
                         //   the cursor is on: track, a = slot, b = 1 held (the slot's automation is not applied,
                         //   so it does not move the effect being tried), 0 let go (it is, from the next step).
-        SetSongEnd      // what the song does at its end, played as a song (not a scene alone, not a bounce):
+        SetSongEnd,     // what the song does at its end, played as a song (not a scene alone, not a bounce):
                         //   a = 0 LOOP, round to its first scene (as it always did); 1 STOP: playing stops on
                         //   the step after the last step of the last scene, as Stop does (Engine::songEnded)
+        SetLaneFeel     // FEEL, a drum lane's HUMAN TIME and HUMAN LEVEL (feel_rule.hpp): track, a = lane,
+                        //   b = HUMAN TIME, c = HUMAN LEVEL, each 0..100. Live: hits asked for after it is
+                        //   taken go by it; nothing is written into them. Both 0: the lane plays as it always did.
     };
     Type type = Trigger;
     int track = 0;
@@ -617,8 +621,14 @@ private:
             HitPlay how;
             int more = 0;
             bool ahead = false; // an early hit of the step after the one playing
+            bool begun = false; // a ratchet whose first hit has sounded
         };
         Pending pending[kDrumLanes][3];
+        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, and the step (counted from Play) whose hit
+        // on the lane has been asked for a step ahead because HUMAN TIME may bring it early: that
+        // hit is not begun again when its step comes, whatever the lane says by then.
+        LaneFeel feel[kDrumLanes];
+        long feelAsked[kDrumLanes] = {-1, -1, -1, -1, -1, -1, -1, -1};
         // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
         // always lands on a chunk's first sample (render() ends a chunk where the
         // next one is due), so "which lanes" is all there is to say.
@@ -670,8 +680,11 @@ private:
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1
-    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false); // audition: a held audition's, which StopAudition fades
-    void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
+    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false, bool whole = false); // audition: a held audition's, which StopAudition fades
+    // `bar`: the bar of the cell the hit is in; `stepAt`: its step's number, counted from Play (both for FEEL's
+    // rolls); `ahead`: asked a step ahead (a hit whose moment has gone by is then not played).
+    // False: asked ahead, and not taken (its moment had gone by).
+    bool schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead);
     void firePending();
     void clearPending();
     void letGoOfNotes();
@@ -745,7 +758,7 @@ private:
     bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)
     int askedFollowing_ = -1; // the step after the one playing, as fireStep worked it out (-1: none asked)
     // The early notes, hits and chords of the step after the one playing, asked from where it is.
-    void askAheadHits(Track& track, const DrumScene& then, int following, double elapsed);
+    void askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed);
     void askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed);
     // After a scene move: the step after the one playing is another scene's now? Then what was
     // asked from the one it was is dropped, and asked again from the one it is.
