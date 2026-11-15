@@ -2063,7 +2063,10 @@ watch again, it is in git (the commit before batch 8b).
    a third helper timed beside two, undo that reads back only what changed (200 ms on the
    handheld), the busiest song profiled, nothing worked out on silence; then QMOD replaced by
    FM-6, a 6-operator FM synth on msfa (Apache 2.0, the core inside Dexed; never Dexed's GPL
-   code), with the 32 sounds of the first factory cartridge.
+   code), with the 32 sounds of the first factory cartridge. **The engine part is built (branch
+   `fm6`, 2026-11-15; `docs/plans/fm6-plan.md`)**: `third_party/msfa` (changes in
+   `third_party/CHANGES.md`, built with `-fwrapv`), `engine/src/fm6.cpp`, the 32 written by
+   `tools/fm6_rom.py`, `fm6_test`. Not in the app yet, not heard, not run on the handheld.
 9. **The RG505 on the road map** (owner, 2026-11-15: "could be the perfect handheld"; it stays on
    the RG40XXV for now). Unisoc T618 (2 x A75 + 6 x A55 at 2.0 GHz, about 3 to 4 times the
    speed on a big core), 960x544 OLED, a headphone jack, 5000 mAh, **Android 12 only**: a port
