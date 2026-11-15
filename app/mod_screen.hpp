@@ -77,6 +77,9 @@ public:
     int pickLine() const { return pickLine_; }
     int pickItem() const { return pickItem_; }
     int pickTarget() const; // the target under the list's cursor, or kModTargetNone
+    // The other MOD's target (kModTargetNone when it is OFF): purple, underlined, in the list of
+    // targets, so both MODs are not aimed at one knob by mistake (X held there reaches MOD 1 only).
+    int otherTarget() const;
     // B held on a MOD's line: how far its bar has filled, 0..1. Full, the MOD is deleted.
     static constexpr Uint32 kDeleteHoldMs = 1000;
     float deletePart() const { return deletePart_; }

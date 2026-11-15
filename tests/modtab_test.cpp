@@ -889,6 +889,34 @@ void testTheLaneIsDrawnAsTheDepth() {
 
 } // namespace
 
+
+// The other MOD's target is marked in the list of targets (owner, 2026-11-15): purple, underlined, from
+// either MOD, and not at all when the other is OFF.
+void testTheOtherModsTargetIsMarked() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setMod(t, 0, lfo(kModFirstMacro + 0));
+    rig.session().setMod(t, 1, lfo(kModFirstMacro + 2));
+    const auto purpleOnMacros = [&](int row) {
+        ModScreen& tab = rig.at(t, row, S::kTarget);
+        rig.key(A, true), rig.frames(1);
+        CHECK(tab.picking());
+        rig.draw();
+        const int n = rig.count(S::kPickItemsX - 4, S::pickLineY(S::kPickMacros), S::kPaneW - (S::kPickItemsX - S::kPaneX), S::kPickLineH, ui::kPurple);
+        const int other = tab.otherTarget();
+        rig.key(B, true), rig.frames(1), rig.key(B, false), rig.key(A, false), rig.frames(2); // called off
+        CHECK(!tab.picking());
+        return std::make_pair(other, n);
+    };
+    auto from1 = purpleOnMacros(0), from2 = purpleOnMacros(2);
+    CHECK(from1.first == kModFirstMacro + 2 && from1.second > 20);
+    CHECK(from2.first == kModFirstMacro + 0 && from2.second > 20);
+    rig.session().setMod(t, 1, ModSettings()); // MOD 2 OFF: nothing marked from MOD 1
+    auto off = purpleOnMacros(0);
+    CHECK(off.first == kModTargetNone && off.second == 0);
+    CHECK(rig.mod(t, 0).target == kModFirstMacro + 0); // looking changed nothing
+}
+
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     for (int i = 1; i < argc; ++i) printing = printing || std::strcmp(argv[i], "--print") == 0;
@@ -910,6 +938,7 @@ int main(int argc, char** argv) {
     testTheDepthLane();
     testBOnDepthWhileWriting();
     testTheLaneIsDrawnAsTheDepth();
+    testTheOtherModsTargetIsMarked();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

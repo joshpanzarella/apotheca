@@ -1627,6 +1627,10 @@ effect in those two groups and fails one that does not.
     one command, not 26); from or to OFF, the whole MOD as before.
   - The fields move by themselves only while X is held, which the redraw already counts (a button
     held); `idle_test` has a part on each screen (made, heard while stopped, let go).
+- **Both MODs may aim at one knob; the list of targets marks the other MOD's** (owner,
+  2026-11-15): its word purple and underlined (`ModScreen::otherTarget`; an OFF MOD is blank, so
+  it marks nothing). X held on that knob still reaches MOD 1 only. `modtab_test`
+  `testTheOtherModsTargetIsMarked`.
 - **The MOD tab is the sixth tab, after FX** (batch 5, 2026-11-15; owner: "keep going", the
   plan's calls at their recommended answers; `app/mod_screen.hpp`, `View::Mods`,
   `tests/modtab_test.cpp`). Laid out as FX: four lines (MOD 1, its STEPS, MOD 2, its STEPS),
