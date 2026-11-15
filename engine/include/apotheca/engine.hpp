@@ -438,6 +438,11 @@ public:
     void setFlushDenormals(bool on) { flush_.store(on, std::memory_order_relaxed); }
     bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
+    // The helpers take the tracks heaviest first (by each one's time the chunk before) instead
+    // of in track order. The mix is in track order either way, so the sound is the same to the
+    // bit. Off unless asked for: the SPEED TEST times it (docs/plans/speed-plan.md, batch 0).
+    // Before the sound starts, not while render() runs.
+    void setHeaviestFirst(bool on) { heaviestFirst_ = on; }
 
     // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
     // tests: read between renders, never while one is under way.
@@ -760,6 +765,9 @@ private:
     unsigned chunkHits_ = 0;
     float* chunkPeaks_ = nullptr;
     int active_[kNumTracks] = {};
+    int taken_[kNumTracks] = {};      // active_ in the order the helpers take them (heaviestFirst_: by tookNs_)
+    bool heaviestFirst_ = false;
+    long tookNs_[kNumTracks] = {};    // heaviestFirst_: how long each track took last chunk (written by whoever did it)
     std::atomic<int> activeCount_{0}, nextActive_{kNumTracks}, finished_{0};
     std::vector<std::thread> workers_;
     std::mutex wakeMutex_;

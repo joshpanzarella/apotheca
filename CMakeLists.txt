@@ -153,6 +153,13 @@ if(APOTHECA_BUILD_APP)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
     set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob modtab PROPERTIES TIMEOUT 120)
+    # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
+    # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
+    add_executable(speed_test tests/speed_test.cpp)
+    target_link_libraries(speed_test PRIVATE apotheca_app)
+    target_include_directories(speed_test PRIVATE engine/src third_party/easycz)
+    add_test(NAME speed COMMAND speed_test)
+    set_tests_properties(speed PROPERTIES TIMEOUT 120)
     # The screen drawn only when it can have changed (app/redraw.hpp): a long session, every pass held
     # to the picture, and each reason taken away in turn, a third of them in each of idle1 to idle3.
     add_executable(idle_test tests/idle_test.cpp)

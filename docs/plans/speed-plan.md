@@ -269,3 +269,63 @@ block**. That is a guess built on guesses; batch 0's rows are the first check.
 - **The bigger song**: the bench's song is 32 KB of text. The 2.5 MB song the
   undo notes speak of was not built; its text and parse times scale with it,
   the 12 MB copies do not.
+
+## 8. As built
+
+Desk figures; the desk was shared (load 4 to 6) all the while, so a timed row
+moves by a tenth between runs. **Instructions** are callgrind's, on a build made
+the handheld's way (clang -O2 -g), one second of sound, the rendering only
+(`bench --profile NAME 1`, `--toggle-collect='*profiledRender*'`): they do not
+move with the load.
+
+### Batch 0: what the device does (2026-11-15)
+
+SPEED TEST now prints, besides its old rows:
+
+| Row | Where | On the desk |
+| --- | --- | --- |
+| **The processor, before and after the rows**: each core's governor, its clock now, where the governor holds it, how far it can go (`/sys/devices/system/cpu/cpu*/cpufreq/`) | `processorRows` | nothing told: the desk has no `cpufreq` |
+| **May this program set the governor?** `scaling_governor` opened for writing and shut, nothing written | `processorRows` | no (no such file) |
+| **The caches** as cpu0 sees them, and which cores share each | `processorRows` | L1 data 48K, L1 code 64K, L2 2048K, L3 shared |
+| **The clocks during each real-time row**: every core read ten times a second on an ordinary thread, lowest and highest | `ClockWatch` | nothing told |
+| **The sound card**: the default output opened once with any change allowed, said, shut. The program does it at start, before it opens the card for its sound, prints it (`sound card: ...`) and hands it to the SPEED TEST in `APOTHECA_SOUND_CARD`, since the test cannot open a card the program holds. Run alone (`apotheca --bench`), the bench looks for itself | `probeSoundCard`, `main.cpp` | could not be opened (no card) |
+| **The busiest song with 3 helpers**, and **heaviest first** with 2 and 3, in real time | `sharingRows`, `Engine::setHeaviestFirst` | below |
+| **A screen pass while the song plays**: the app's update and its drawing, timed apart, on SONG and the drum grid. SDL's software renderer into memory (the test cannot draw on the program's screen), so it is the drawing's work, not the handheld's renderer or its present | `screenRows` | update 0.05 to 0.06 ms, drawing 1.6 to 1.7 ms |
+| `bench --profile NAME [SECONDS]`: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, qmod-silent, empty | `runProfile` | the instruction rows below |
+
+**Heaviest first** is in the engine, off unless asked for (only the SPEED
+TEST asks): the helpers take the tracks from `taken_`, sorted by each one's
+time the chunk before (two clock reads a track a chunk, only then); the mix
+still walks `active_`, in track order. `speed_test` (`testHeaviestFirst`)
+holds 2 and 3 helpers, in order and heaviest first, to the audio thread alone,
+to the bit; mixing in the order taken fails it.
+
+The busiest song, one run on the shared desk (the same run):
+
+| Threads | % of a block |
+| --- | --- |
+| the audio thread alone | 17.8 |
+| 2 helpers | 12.0 |
+| 3 helpers | 13.3 |
+| 2 helpers, heaviest first | 11.4 |
+| 3 helpers, heaviest first | 11.1 |
+
+The desk tells little here (section 7: its helpers read in no order). **The
+device's run is what decides batch 3.**
+
+The SPEED TEST grew by three real-time rows of 10 s and the screen rows (a
+second or two): about 35 s more on the handheld, about four minutes in all.
+The page says so.
+
+Instructions, one second of sound, before batch 1 (the plan's own figures in
+brackets):
+
+| Setup | Instructions |
+| --- | --- |
+| busiest | 2,070 M (2,082 M) |
+| phazed-silent (twelve silent Phazed tracks) | 351 M (353 M) |
+| chords (eleven silent samplers, plain chords) | 67.5 M (68 M) |
+| jaxep-silent | 68.5 M (69 M) |
+| drums (twelve drum tracks) | 214 M (215 M) |
+| drums-thrown | 435 M (437 M) |
+| empty | 4.3 M |

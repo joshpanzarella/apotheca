@@ -2,6 +2,7 @@
 #include "apotheca/denormals.hpp"
 #include "apotheca/mod_rule.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -2219,7 +2220,14 @@ void Engine::shareOutTracks() {
     for (;;) {
         const int i = nextActive_.fetch_add(1, std::memory_order_acq_rel);
         if (i >= activeCount_.load(std::memory_order_acquire)) return;
-        renderTrack(active_[i]);
+        const int t = taken_[i];
+        if (heaviestFirst_) { // (timed only when it is asked for: two clock reads a track a chunk)
+            const auto t0 = std::chrono::steady_clock::now();
+            renderTrack(t);
+            tookNs_[t] = static_cast<long>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        } else {
+            renderTrack(t);
+        }
         finished_.fetch_add(1, std::memory_order_release);
     }
 }
@@ -2439,6 +2447,13 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     } else {
         // Shared out. Everything above is set before the list is opened (nextActive_ = 0), so a
         // helper arriving late for the chunk before finds nothing, or this chunk whole.
+        // Taken in track order, or heaviest first (by last chunk's times; equal ones in track order).
+        for (int i = 0; i < count; ++i) {
+            int at = i;
+            if (heaviestFirst_)
+                while (at > 0 && tookNs_[taken_[at - 1]] < tookNs_[active_[i]]) taken_[at] = taken_[at - 1], --at;
+            taken_[at] = active_[i];
+        }
         finished_.store(0, std::memory_order_relaxed);
         activeCount_.store(count, std::memory_order_release);
         nextActive_.store(0, std::memory_order_release);

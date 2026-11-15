@@ -385,6 +385,13 @@ int main(int argc, char** argv) {
     AudioState audio;
     audio.engine = &engine;
 
+    // What the sound card itself runs at, before the program opens it for its sound: said here and
+    // handed to the SPEED TEST, which cannot open a card the program holds (speed plan, batch 0).
+    if (!smoke && !shot) {
+        const std::string card = probeSoundCard();
+        std::printf("sound card: %s\n", card.c_str());
+        setenv(kSoundCardVariable, card.c_str(), 1);
+    }
     SDL_AudioSpec want = {};
     want.freq = 48000; // SDL converts if the device differs
     want.format = AUDIO_F32SYS;
