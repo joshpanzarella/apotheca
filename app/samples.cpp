@@ -168,27 +168,51 @@ std::vector<std::string> wavNames(const std::string& folder) {
     std::vector<std::string> names, folders;
     listFolder(folder, names, &folders);
     for (const std::string& inside : folders) {
-        std::vector<std::string> theirs;
-        listFolder(folder + "/" + inside, theirs, nullptr); // one level: a folder in a folder is not looked into
+        std::vector<std::string> theirs, deeper;
+        listFolder(folder + "/" + inside, theirs, &deeper);
         for (const std::string& name : theirs) names.push_back(inside + "/" + name);
+        for (const std::string& under : deeper) {
+            std::vector<std::string> last;
+            listFolder(folder + "/" + inside + "/" + under, last, nullptr); // two levels: a folder under that is not looked into
+            for (const std::string& name : last) names.push_back(inside + "/" + under + "/" + name);
+        }
     }
     return names;
+}
+
+std::vector<std::string> wavFolders(const std::string& folder) {
+    std::vector<std::string> wavs, folders, all;
+    listFolder(folder, wavs, &folders);
+    for (const std::string& inside : folders) {
+        if (!sampleNameOk(inside + "/x")) continue;
+        all.push_back(inside);
+        std::vector<std::string> deeper;
+        listFolder(folder + "/" + inside, wavs, &deeper);
+        for (const std::string& under : deeper)
+            if (sampleNameOk(inside + "/" + under + "/x")) all.push_back(inside + "/" + under);
+    }
+    return all;
 }
 
 bool sampleNameOk(const std::string& name) {
     if (name.empty() || name.size() >= static_cast<std::size_t>(kSampleNameRoom)) return false;
     if (name.find('\\') != std::string::npos || name.find("..") != std::string::npos) return false;
-    const std::size_t slash = name.find('/');
-    if (slash != std::string::npos && name.find('/', slash + 1) != std::string::npos) return false; // one folder deep at most
-    const std::string folder = sampleFolderOf(name), label = sampleLabel(name);
-    if (label.empty() || label[0] == '.' || (slash != std::string::npos && (folder.empty() || folder[0] == '.'))) return false;
     for (char c : name)
         if (static_cast<unsigned char>(c) < 32 || c == 127) return false;
-    return true;
+    // Its parts, between the slashes: three at most (two folders and the name), none empty, none hidden.
+    int parts = 0;
+    for (std::size_t from = 0;; ++parts) {
+        const std::size_t slash = name.find('/', from);
+        const std::size_t end = slash == std::string::npos ? name.size() : slash;
+        if (end == from || name[from] == '.') return false;
+        if (slash == std::string::npos) break;
+        from = slash + 1;
+    }
+    return parts <= kSampleFolderLevels;
 }
 
 std::string sampleFolderOf(const std::string& name) {
-    const std::size_t slash = name.find('/');
+    const std::size_t slash = name.rfind('/');
     return slash == std::string::npos ? "" : name.substr(0, slash);
 }
 

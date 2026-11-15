@@ -12,7 +12,8 @@
 // What is checked before a file is kept:
 //   - its name is a plain name with the right ending: no "..", nothing
 //     hidden, 60 characters at most. A recording may be one folder down
-//     ("kicks/808.wav": folder 24, name 36 at most); nothing else may.
+//     or two ("kicks/808.wav", "drums/kicks/808.wav": each folder 24, name 36
+//     at most, and all of it without the ending 63); nothing else may.
 //   - it is 30 MB at most
 //   - it is what it says: a WAV this can read, a chord pack with chords in
 //     it, a song this can open. Anything else is refused and not written.

@@ -41,6 +41,18 @@ bool recordingThere(const std::string& folder, const std::string& name) {
 }
 
 std::vector<std::string> Session::sampleNames() const { return wavNames(sampleFolder_); }
+std::vector<std::string> Session::sampleFolders() const { return wavFolders(sampleFolder_); }
+
+int Session::sampleUses(const std::string& name) const {
+    int uses = 0;
+    if (name.empty()) return 0;
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& track = project.tracks[t];
+        for (int lane = 0; lane < kDrumLanes; ++lane) uses += track.kind == TrackKind::Drums && name == track.laneSample[lane];
+        uses += track.kind == TrackKind::Sampler && name == track.sample;
+    }
+    return uses;
+}
 
 bool Session::deleteSample(const std::string& name) {
     if (sampleFolder_.empty() || !sampleNameOk(name)) return false;

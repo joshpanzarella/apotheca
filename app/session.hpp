@@ -178,6 +178,8 @@ public:
     std::vector<std::string> sampleNames() const;
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
+    std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
+    int sampleUses(const std::string& name) const; // how many drum lanes and sampler tracks of the open song have it on
     bool deleteSample(const std::string& name);
     // A recording's file was changed from outside (the WiFi page), and the open song follows.
     // Renamed or moved (`from` and `to`): every lane and sampler track that used the old name
