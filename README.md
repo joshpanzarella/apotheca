@@ -1381,18 +1381,23 @@ pages are that synth's panel:
     (2026-11-15). CUTOFF 0 to 10 is 50 Hz to 20 kHz at middle C, placed so
     Organ I's filter sings the key played: it is in tune with the other
     tracks now. (At middle C the top of the knob, 8.7 to 10, is one sound:
-    the filter is as open as it goes.) LEVEL 4.5, where most of the presets
-    stand, is the full clean level, so the bank is about as loud as PHAZED's
-    presets, and every one of the 32 can be heard. **A JAX-EP track saved by
-    build 0.502 or earlier loads as it was saved and sounds brighter and
-    about 10 dB louder.**
-  - **LEVEL over 4.5 bends the sound** (it distorts, more the higher), as
-    too high a LEVEL does on the synth it is modeled after. E. Piano I and
-    Voice are at LEVEL 10 in the booklet, so they are driven hard, and
-    **with six keys down they come out of the synth over full scale**
-    (almost three times it at most; the master's soft clip takes what is
-    over). Turn their LEVEL down, or the track in the mixer, if that is not
-    wanted.
+    the filter is as open as it goes.) LEVEL follows the knob straight:
+    LEVEL 5 is half as loud as LEVEL 10 (6 dB down), LEVEL 2.5 a quarter.
+    The bank is about as loud as PHAZED's presets, and every one of the 32
+    can be heard.
+  - **No preset distorts as written.** LEVEL 10 with an ordinary wave is
+    the full clean level. Only a wave over full there (the filter ringing
+    hard, the macros turned up) bends a little, as too high a LEVEL does on
+    the synth it is modeled after. Six keys of E. Piano I, the loudest,
+    come out of the synth at about one and a half times full scale (the
+    track's usual level takes it under).
+  - **A JAX-EP track saved by an older build loads as it was saved, and
+    may sound different.** From builds 0.504 to 0.514: a sound at LEVEL 4
+    or under is within 2 dB of what it was; higher LEVELs are quieter and
+    clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before the old
+    distortion, which is gone); E. Piano I and Voice no longer distort.
+    From build 0.502 or earlier: brighter, and most sounds about 12 dB
+    louder.
 - **The number beside PRESET is the preset's place in its folder**: 7 / 16
   in BANK B is the booklet's B7. Your own presets are counted among
   themselves (every synth counts this way).

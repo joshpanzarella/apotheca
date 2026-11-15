@@ -22,10 +22,10 @@ namespace {
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// A voice at the VCA's 0 dB (LEVEL 4.5: kVcaUnityDial) with its envelope at the top puts out a wave of this height. SELF: about
-// what the synth it took the place of gave (the start patch's note measured 1.6 dB over that one's
-// first preset's, 2026-11-14).
-constexpr float kOutputGain = 0.3f;
+// A voice at the VCA's 0 dB (LEVEL 10: kVcaUnityDial) with its envelope at the top puts out a wave of this height,
+// so one at LEVEL 5 (the start patch) one of 0.3, as before. SELF: the bank where the owner put it
+// (2026-11-15: the middle of the 32 -16.6 dB, A1 -13.5, PHAZED's first presets -15.5 to -12.6).
+constexpr float kOutputGain = 0.6f;
 // The highest a DCO is let go: a little under half the sample rate (its corrections need room).
 constexpr double kHighestStep = 0.45;
 // The keys there are: a note outside them is refused (noteOn, noteOnFrom).
@@ -40,7 +40,7 @@ struct Preset {
 // is made with (the engine's own tests play it); a player never meets it: a track is sent its
 // preset's patch by the app.
 // RANGE WAVE LFO ENV | RANGE WAVE XMOD TUNE FINE LFO ENV | LFO-D ENV-D POL | MIX HPF CUT RES LFO ENV POL KEY | MODE LEVEL | WAVE DELAY RATE | A D S R | CHORUS
-const Preset kStart = {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 45, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}}; // (LEVEL 4.5: the VCA's 0 dB, kVcaUnityDial, as LEVEL 7 was until 2026-11-15)
+const Preset kStart = {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 50, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}}; // (LEVEL 5.0: half the VCA's 0 dB, a wave of 0.3 out, as LEVEL 4.5 was with the old taper)
 
 // THE 32 FACTORY PATCHES (the plan, section 4, batch 7), A1 to B16, in the factory order, from
 // the maker's 1983 booklet of the programmer's settings for 32 sounds (NAM-0150), which draws a
@@ -190,6 +190,7 @@ struct Jx3p::State {
     float holdK = 0.f;
     EnvTimes times;
     float levelGain = 1.f, clipFrom = 1.f;
+    std::uint64_t clipped = 0; // samples of a voice the VCA's clip bent (for the tests: no patch as written is)
     double tune2 = 0.0;       // DCO-2's TUNE and FINE together, in semitones
     double clockSteps = kCounterClockHz / 48000.0; // the counter's clock in steps a sample
     float vcfOctaves = 0.f;   // CUTOFF and BRILLIANCE together, in octaves: what every voice's tick reads
@@ -517,7 +518,9 @@ void Jx3p::State::renderVoice(Voice& v, float* out, int frames) {
         const float k = v.vcfRes.next(holdK);
         const float filtered = v.vcf.run(kBassLoss ? source : source * (1.f + k), v.vcfG, k);
         const float gain = v.vca.next(holdK);
-        out[i] += vcaClip(filtered * gain, clipFrom);
+        const float y = filtered * gain;
+        if (std::fabs(y) > clipFrom) out[i] += vcaClip(y, clipFrom), ++clipped;
+        else out[i] += y;
         if (!v.held && gain == 0.f && v.vca.target == 0.f && (v.env.idle() || eff[VcaMode] >= 0.5f)) {
             // Silent, and nothing to open it again: the voice is free. Nothing of a free voice
             // moves, so how long it stays free cannot change the sound.
@@ -594,6 +597,7 @@ void Jx3p::State::runHpf(float* x, int frames) {
 
 int Jx3p::voiceNote(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].note : -1; }
 float Jx3p::voiceEnv(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].env.level : 0.f; }
+std::uint64_t Jx3p::samplesClipped() const { return state_->clipped; }
 float Jx3p::voiceVca(int voice) const { return voice >= 0 && voice < kVoices ? state_->voices[voice].vca.value : 0.f; }
 double Jx3p::voiceHz(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count1) : 0.0; }
 double Jx3p::voiceHz2(int voice) const { return voice >= 0 && voice < kVoices ? State::hzOf(state_->voices[voice].count2) : 0.0; }

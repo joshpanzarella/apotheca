@@ -140,6 +140,7 @@ public:
     int voiceNote(int voice) const;     // -1: silent
     float voiceEnv(int voice) const;    // the envelope's level, as worked out on the last tick
     float voiceVca(int voice) const;    // the VCA's CV after the hold
+    std::uint64_t samplesClipped() const; // samples of a voice the VCA's clip has bent since the synth was made
     double voiceHz(int voice) const;    // DCO-1's frequency now
     double voiceHz2(int voice) const;   // DCO-2's
     double voiceCutoffHz(int voice) const; // the VCF's cutoff now (0 before its first sample)

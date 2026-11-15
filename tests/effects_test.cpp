@@ -371,8 +371,11 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
 // when that track went to JAX-EP and nothing else did: on the commit before, the old sum held and
 // `--print` gave the 40 pinned renders and the maths line; with only the synth's kind changed it
 // gave the same 41 lines and this sum. The effects' arithmetic was not touched on the way.
-static const std::uint64_t kSongSum = 0x6536b73551f423cbull;
-static const double kSongRms = 0.353221477;
+// REMADE AGAIN, 2026-11-15, when JAX-EP's VCA went straight (the owner's call: no patch distorts;
+// it was 0x6536b73551f423cb, rms 0.353221477): the 40 pinned renders and the maths line held, and
+// only the song moved, by a hair in its loudness (its JAX-EP track is quiet in the mix).
+static const std::uint64_t kSongSum = 0x97cdd450e1e17437ull;
+static const double kSongRms = 0.353221461;
 
 static void testWholeSong() {
     const std::vector<float> alone = effectsSong(0);

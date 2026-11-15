@@ -238,15 +238,26 @@ effect in those two groups and fails one that does not.
   SQUARE on twelve, B14's METAL, the blanks). The start patch is not a preset
   (`Jx3p::startPatch()`: what a synth is made with, what the engine's tests
   play); a new track and an old `track twin` are on A1.
-  - **The cutoff's range and the VCA's 0 dB were set from the bank (owner,
-    2026-11-15; three "known" faults mended).** `kVcfLowHz` 49.84 and
+  - **The cutoff's range was set from the bank, and the VCA is straight (owner,
+    2026-11-15).** `kVcfLowHz` 49.84 and
     `kVcfHighHz` 49840 (`jx3p/ir3109.hpp`; they were 15 and 15000: the same
     span times 3.32), held at `kVcfTopHz` 20 kHz as before, so **at key 60
-    CUTOFF 8.7 to 10 is one sound**. `kVcaUnityDial` 45 (`jx3p/env.hpp`; it
-    was 70) and **`kVcaClipDial` is the same number: the clip starts at a full
-    wave, 1, wherever the 0 dB is.** The start patch's LEVEL moved with it (45),
-    so it and the engine's tests are the gain they were; **a test that wants a
-    clean wave sets LEVEL 4.5 or under** (the tests' plain patches: 25, 35, 45).
+    CUTOFF 8.7 to 10 is one sound**. **The VCA's gain is the dial, straight**
+    (`vcaGain`, `jx3p/env.hpp`: LEVEL 5 is half of LEVEL 10), `kVcaUnityDial`
+    100 and **`kVcaClipDial` the same: the clip starts at a full wave at LEVEL
+    10, so no preset as written reaches it** (owner: "I don't think they should
+    distort by default"). The synth's `kOutputGain` is 0.6 (it was 0.3), so the
+    bank stayed as loud. It was 4 dB a dial step, 0 dB at LEVEL 7 and then for a
+    day at 4.5 with the clip there: A8 and A16 (LEVEL 9.9, 10) were 21 and 18 dB
+    into it. **Moving the 0 dB alone cannot do it**: with 4 dB a step, LEVEL 10
+    is 22 dB over LEVEL 4.5, so clean and as loud they pass full scale nine
+    times over (measured: at 70 with the gain made up, A8 six keys 6.9, still
+    10 dB into the clip). The start patch is LEVEL 5.0 (a wave of 0.3 out,
+    exactly the gain LEVEL 4.5 gave), the tests' plain patches 2.0, 3.2 and 5.0
+    (were 2.5, 3.5, 4.5: the same gain within 0.15 dB). **A plain saw's corners
+    overshoot to 1.31 of full**, so a player's own saw clips softly from LEVEL
+    7.6; `testVca` holds that. `Jx3p::samplesClipped()` counts the samples the
+    clip bent; `testEveryPatchPlays` holds it at 0 for the 32 as written.
     - **A3 Organ I sings the key played**: 0.4 cents from the grid at worst,
       keys 48 to 84, read over five seconds (`testNamsThree`). Its sine sits on
       DCO-1's second harmonic (16') and is held by it: the cutoff 40 cents off
@@ -254,17 +265,23 @@ effect in those two groups and fails one that does not.
       within half a cent. Its level sways (DCO-2 is 27 cents flat in the patch
       and beats with the sine, twice a second at key 48): the patch, not a fault.
     - **No patch is all but silent** (`testEveryPatchPlays`, the chord's
-      loudest tenth of a second): B15 Planet -34.5 dB, the quietest; B4 Song
-      Whistle -25.8; the middle of the 32 -17.2; A1 String I -14.5 (PHAZED's
-      first presets: -15.5 to -12.6); A16 Voice -2.0, the loudest.
-    - **Known, held there, not hidden: the two patches at LEVEL 10 are 22 dB
-      into the clip and pass full scale.** Six keys as written: A8 E. Piano I
-      2.85, A16 Voice 2.56 out of the synth; every other patch 1.26 at most.
-      Macros full: A8 2.69, A16 2.58, A11 2.53, B8 1.90. Nothing is
-      not-a-number and everything ends. It is what "LEVEL 10 clips harder"
-      means (the owner's yes); `kVcaClipCeiling` (1.5) is not changed.
-    - **A song from build 0.502 or earlier loads and sounds brighter and 10 dB
-      louder** on a JAX-EP track (said in README).
+      loudest tenth of a second): B15 Planet -36.1 dB, the quietest; B4 Song
+      Whistle -28.3; A11 Harpsichord -28.6; the middle of the 32 -16.6; A1
+      String I -13.5 (PHAZED's first presets: -15.5 to -12.6); B7 Distortion
+      Guitar -5.7, the loudest. The straight taper moved the high-LEVEL
+      patches down against the rest (A11 -17.4 to -28.6, B16 Jet -24.3 to
+      -30.3) and the low ones up (B7 -7.5 to -5.7).
+    - **Six keys as written: nothing clips, A8 E. Piano I peaks 1.46 out of
+      the synth** (0.95 after the track's usual level), every other patch 1.17
+      at most (A16 1.08; they were 2.85 and 2.56). **Macros full: twenty
+      patches reach the clip**, B8 1.79 and A8 1.53 pass 1.5 (it was A8 2.69,
+      A16 2.58, A11 2.53, B8 1.90). Nothing is not-a-number and everything
+      ends. `kVcaClipCeiling` (1.5) is not changed.
+    - **A song from builds 0.504 to 0.514 loads as saved; a JAX-EP track at
+      LEVEL 4 or under is within 2 dB of how it sounded, higher LEVELs
+      quieter and clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before its
+      old clip). From 0.502 or earlier: brighter, and about 12 dB louder**
+      (said in README).
   - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
     preset 1.** A song from them keeps its sound (all 34 settings are read
     after the preset) under String I's name (`save_test`
@@ -1769,6 +1786,7 @@ effect in those two groups and fails one that does not.
 | JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
 | JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
 | JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
+| JAX-EP with the VCA straight and its clip counted (2026-11-15, `bench`'s three rows, the two quieter of five runs on a desk shared with another build; Phazed 1.0 to 1.2% in them). **Not yet run on the handheld** | 0.56% / 1.05 to 1.11% / 1.79 to 1.81% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
