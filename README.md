@@ -110,7 +110,7 @@ and the buses' (their LEVEL too). Tempo, mutes, names, the kit's recordings
 and a track deleted or given another instrument are not. The song keeps
 playing while you undo.
 
-**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, SET.
+**L2 and R2** walk along the screens: SONG, PATTERN, DEVICE, FX, MOD, SET.
 **SELECT**, tapped by itself, goes to SONG from anywhere (and on SONG opens
 the list of songs). **START** plays: the song from
 the SONG screen, the scene being worked on from the others. **SELECT + START**
@@ -584,7 +584,10 @@ one of two kinds:
 | **STEPPER** | A row of up to 16 values, one held for each note length, round and round |
 
 Each track has **two MODs**. Each one is aimed at one knob: a macro (DEVICE),
-a setting of one of the track's effects, or a send (FX). A setting that is a
+a setting of one of the track's effects, a send (FX), or the track's LEVEL or
+PAN on the mixer (aimed from the MOD tab). On LEVEL a MOD at 100% swings from
+silence to twice the mixer's level; on PAN from the middle it reaches either
+side. The mixer still shows its own LEVEL and PAN. A setting that is a
 choice (a filter's TYPE, a delay's TIME, Phazed's CHORUS and OCTAVE) takes no MOD.
 
 **Hold X on the knob.** While X is held its MOD shows: on DEVICE where LIVE
@@ -607,6 +610,45 @@ both MODs in use on other knobs, the strip says **MODS FULL** and nothing is
 made. The knob, or its automation, is the middle the MOD moves around.
 WRITE records the knob, never the wobble. Undo (SELECT + B) takes a MOD
 back like any other change. A song saves its MODs.
+
+While a MOD runs (the song playing, or X held with it stopped), the knob's own
+bar on DEVICE or FX has a **thin brass mark** where the knob is this moment:
+the bar shows where the knob rests, the mark where the MOD has it.
+
+**A MOD's DEPTH can change from scene to scene.** Turn DEPTH (on the knob or
+on the MOD tab) with WRITE on while the song plays, and it is written into the
+pattern, as a knob's turn is. A scene with nothing written uses the MOD's own
+DEPTH, so a MOD set to 0% can wobble in one scene only. On the MOD tab a
+written DEPTH has the purple line, and while the song plays DEPTH reads what
+the pattern says. B on DEPTH puts it back to +25% and empties what was written
+in that scene.
+
+#### The MOD tab
+
+The tab after FX shows both MODs of the track: a list at the left (MOD 1, its
+STEPS, MOD 2, its STEPS), the line picked large at the right, as on FX. A
+MOD's line has a small picture of its shape; while the song plays (or X is
+held) a dot on it shows where the wave is now, and a STEPPER's row lights
+the step playing.
+
+| On the MOD tab | Does |
+| --- | --- |
+| Up / down, right, left | Move: right goes into the line's settings, left back to the list |
+| **Hold A** on TARGET (or on a MOD's line) | The list of targets: MACROS, FX 1 to 3, SENDS, MIXER (LEVEL, PAN), only what a MOD can move. Up / down a line, left / right along it, **let go** to aim it there (a MOD that was off starts as LFO, SINE, 1 BAR, +25%). B with A held: as it was |
+| **Hold A** + up / down on a setting | Turns it: DEPTH 1% a push, a step or SLEW or CHANCE 5%; SHAPE, RATE, PHASE and LENGTH a click. The stick turns the amounts smoothly |
+| **Hold A** + left / right on the row | The step before / after, still holding A: a whole row in one grip |
+| B | A setting back to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, a step 0...) |
+| **Hold B** on a MOD's line | Deletes the MOD (a second; undo brings it back) |
+| Y | The dice: on a MOD's line as on the knob; on STEPS, the row |
+| X | Hear the track. Held on a MOD's line with the song stopped, that MOD runs |
+| L1 / R1 | The track before / after |
+
+A MOD's settings: TARGET, SHAPE (SINE ... DRIFT, then STEPPER), DEPTH, RATE,
+and PHASE (an LFO) or LENGTH (a STEPPER). Its STEPS: the row of 16 (steps past
+LENGTH are faint), then LENGTH, **SLEW** (how much of a step it takes to glide
+to the next value) and **CHANCE** (how often a step plays a fresh random value
+instead of the one written). An LFO keeps a row too, for when it becomes a
+STEPPER.
 
 ### QMOD
 
@@ -835,8 +877,9 @@ the same network.
   out. While it runs there is one row with a count and a STOP; only what is
   refused gets a row of its own.
 - **SPEED TEST** (top of the page) times every instrument and effect on the
-  device and shows the numbers in a new tab, each row as it is timed. Stop the
-  song first; it takes about three minutes on the handheld.
+  device and shows the numbers in a new tab, each row as it is timed, the
+  busiest song with 24 MODs running among them. Stop the song first; it takes
+  about three minutes on the handheld.
 - **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
   folder to open or shut it. FIND narrows the list by name.
 - **To send into a folder**: drop the files on it, or press its ADD FILES

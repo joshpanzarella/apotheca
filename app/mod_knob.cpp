@@ -157,23 +157,26 @@ void ModKnob::moreBy(int by) {
     set(s);
 }
 
+ModSettings ModKnob::shapeAt(const ModSettings& m, int place, int track) {
+    ModSettings s = m;
+    if (place < kModShapes) {
+        s.kind = kModLfo;
+        s.shape = modShape(place);
+        return s;
+    }
+    s.kind = kModStepper;
+    // A row of nothing moves nothing: one never written is rolled as it comes in, so it is heard.
+    bool any = false;
+    for (int i = 0; i < kModSteps; ++i) any = any || s.steps[i] != 0.f;
+    if (!any) s = rolled(s, 0x51ed27u + static_cast<std::uint32_t>(track) * 131u + static_cast<std::uint32_t>(s.target));
+    return s;
+}
+
 void ModKnob::nextShape() {
     const int m = mod();
     if (m < 0) return;
-    ModSettings s = session_.modData(track_, m);
-    if (modKind(s.kind) == kModStepper) {
-        s.kind = kModLfo;
-        s.shape = kModSine;
-    } else if (modShape(s.shape) + 1 < kModShapes) {
-        s.shape = modShape(s.shape) + 1;
-    } else {
-        s.kind = kModStepper;
-        // A row of nothing moves nothing: one never written is rolled as it comes in, so it is heard.
-        bool any = false;
-        for (int i = 0; i < kModSteps; ++i) any = any || s.steps[i] != 0.f;
-        if (!any) s = rolled(s, 0x51ed27u + static_cast<std::uint32_t>(track_) * 131u + static_cast<std::uint32_t>(target_));
-    }
-    set(s);
+    const ModSettings& s = session_.modData(track_, m);
+    set(shapeAt(s, (shapePlace(s) + 1) % kShapePlaces, track_));
 }
 
 void ModKnob::dice(Uint32 nowMs) {
@@ -296,7 +299,7 @@ void ModKnob::drawFields(SDL_Renderer* r, const Fonts& chosen, const ModPlaces& 
     const ModSettings& s = session_.modData(track_, m);
     shapeText(s, text, sizeof text);
     field(p.shape, p.fieldsY, "SHAPE", text, kText);
-    depthText(s.depth, text, sizeof text);
+    depthText(session_.modDepthShown(track_, m), text, sizeof text); // (while playing: where its DEPTH lane has it)
     field(p.depth, p.fieldsY, "DEPTH", text, kText);
     field(p.rate, p.fieldsY, "RATE", modRateInfo(s.rate).name, kText);
     moreText(s, text, sizeof text);
@@ -321,6 +324,40 @@ void ModKnob::drawHints(SDL_Renderer* r, const Fonts& fonts, const ModPlaces& p)
     } else {
         hintsUnder(r, fonts, nullptr, nullptr, 0);
     }
+}
+
+// ---- the brass mark -----------------------------------------------------------------------------
+
+float modMarkAt(const Session& session, int track, int lane, float shown) {
+    if (track < 0 || track >= kNumTracks || lane < 0) return kModNotRunning;
+    float added = 0.f;
+    bool runs = false;
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        const ModSettings& mod = session.modData(track, m);
+        if (modKind(mod.kind) == kModOff || mod.target != lane) continue; // (at any DEPTH: its lane may be written)
+        // As the MOD tab's dot: only while the song plays or X runs it, so a Stop takes it away on
+        // the very pass (the engine's last tick would stand with nothing to stir the redraw).
+        if (!session.project.playing && !(session.modsHeard(track) & (1u << m))) continue;
+        const double at = session.engine.modNow(track, m);
+        if (!(at == at)) continue;
+        runs = true;
+        added += session.engine.modShown(track, m);
+    }
+    if (!runs) return kModNotRunning;
+    const float v = shown + added;
+    return v > 0.f ? (v < 1.f ? v : 1.f) : 0.f;
+}
+
+int modMarkX(int x, int w, float at) {
+    const float part = at > 0.f ? (at < 1.f ? at : 1.f) : 0.f;
+    const int centre = x + static_cast<int>(std::round(static_cast<float>(w) * part));
+    const int left = centre - kModMarkW / 2;
+    return left < x ? x : (left > x + w - kModMarkW ? x + w - kModMarkW : left);
+}
+
+void drawModMark(SDL_Renderer* r, int x, int y, int w, int h, float at) {
+    if (!(at == at)) return;
+    fill(r, modMarkX(x, w, at), y - kModMarkOver, kModMarkW, h + 2 * kModMarkOver, kBrass);
 }
 
 } // namespace apotheca

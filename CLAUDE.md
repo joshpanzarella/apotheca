@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (50) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (51) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -315,6 +315,9 @@ effect in those two groups and fails one that does not.
   through `sendBusiestSong`): what is on each track, bus and the master, that
   the two JAX-EP tracks are on A1 (choosing A1 again changes nothing, to the
   bit), and that the real-time rows count the blocks and helpers they say.
+  **Its 24 MODs too** (`sendBusiestMods`, batch 9: two a track, every kind of
+  target, LEVEL on tracks 4 and 10, PAN on 5 and 11, every MOD 1's DEPTH lane
+  written; each runs, and the 24 cut more chunks than the song alone).
   **It times nothing**; the figures are still run and read. `ctest -R demo`
   runs `render_demo` and reads its three lines. `bench`'s one-track rows have
   no test.
@@ -1597,6 +1600,69 @@ effect in those two groups and fails one that does not.
     one command, not 26); from or to OFF, the whole MOD as before.
   - The fields move by themselves only while X is held, which the redraw already counts (a button
     held); `idle_test` has a part on each screen (made, heard while stopped, let go).
+- **Both MODs may aim at one knob; the list of targets marks the other MOD's** (owner,
+  2026-11-15): its word purple and underlined (`ModScreen::otherTarget`; an OFF MOD is blank, so
+  it marks nothing). X held on that knob still reaches MOD 1 only. `modtab_test`
+  `testTheOtherModsTargetIsMarked`.
+- **The MOD tab is the sixth tab, after FX** (batch 5, 2026-11-15; owner: "keep going", the
+  plan's calls at their recommended answers; `app/mod_screen.hpp`, `View::Mods`,
+  `tests/modtab_test.cpp`). Laid out as FX: four lines (MOD 1, its STEPS, MOD 2, its STEPS),
+  the line picked large at the right. A MOD's rows: TARGET, SHAPE (SINE ... DRIFT then STEPPER,
+  `ModKnob::shapeAt`: the knob's one list), DEPTH, RATE, PHASE / LENGTH; its STEPS: the 16, then
+  LENGTH, SLEW, CHANCE. **Hold A on TARGET (or the MOD's line) is the list of targets, and it
+  only TRIES**: nothing is set or heard while A is held, let go aims it (an OFF MOD made as the
+  knob's first, call C), B with A held, another track or another screen calls it off. Only
+  `pickLineTargets` (through `modTargetFits`) says what is offered. Everything goes through
+  `Session::setMod`, so undo needs nothing here.
+  - **The top bar's tabs have 3 pixels either side of their word** (`ui::kTabPad`; it was 5),
+    so with six tabs the screen's words still have room: 167 stopped, 94 playing (a track's
+    name, "12 PHAZED", is 77), 32 playing with WRITE on (`TopBar::wordsRoom`; with five tabs at
+    5 it was 186, 113, 51). `modtab_test` holds the name to fit stopped and playing.
+  - **The dot at now and the step lit are shown only while the song plays or X runs that MOD**
+    (`ModScreen::nowPosition`, `nowPlace`: the project's word, then the engine's
+    `Engine::modNow`, the position of the MOD's last tick, and `modPlace`). Read from the
+    engine alone, a Stop showed the old dot for a block with nothing to stir the redraw.
+    `idle_test` has two parts (X held on a MOD's line; a STEPPER while the song plays, then Stop).
+- **A modulated knob's own bar has a thin brass mark where it is given now** (batch 6,
+  2026-11-15, call 18; `modMarkAt` / `drawModMark` in `app/mod_knob.hpp`): the bar's centre (what
+  the bar itself is drawn at) plus `Engine::modShown` of every MOD aimed at that lane, one clamp,
+  `kModMarkW` (2) wide and `kModMarkOver` (3) above and below the bar. DEVICE's macros (the bar's
+  place is `ui::kMacroBar...`, which `macroBox` draws from), FX's slot settings and SENDS. **Only
+  while the song plays or X runs that MOD**, as the MOD tab's dot, and only once the engine has
+  ticked it (`modNow` a number). `modknob_test` `testTheBrassMark` reads it off the drawn screen in
+  BROWN and PAPER; `idle_test` has two parts (a macro, a send, playing then stopped). Stills
+  `device-modded`, `fx-modded`.
+- **Lanes 22 and 23 are MOD 1's and MOD 2's DEPTH** (batch 7, 2026-11-15, call 10;
+  `modDepthLane`, `modDepthToLane` / `modDepthFromLane` in `mod_rule.hpp`: 0.5 no depth, 0 -100%,
+  1 +100%, the song file's DEPTH scale). Written like any lane (WRITE records a DEPTH turned:
+  `Session::setMod` when DEPTH changes on a MOD that stays on; made or deleted is not a turn), in
+  `auto` lines, in the scene's `SceneStore`, so a scene move and undo carry them as any lane. **A
+  MOD's own DEPTH is its lane's knob**: `SetMod`'s DEPTH sets the lane's `autoBase` and `autoNow`,
+  so a scene with nothing written goes back to it (the owner, 2026-11-15: the clearing is left as
+  it is). `runMods` reads the lane's centre, and **where the lane rests on its knob it uses the
+  MOD's DEPTH itself** (0..1 and back is not always the same float: a song's MODs at rest give what
+  they gave before, to the bit). **So the engine runs a MOD at any DEPTH** (`ModSettings::runs()`;
+  `on()` still wants one, for the app): a MOD at 0% cuts the chunks on the tick while the song
+  plays, and one turned to 0% lets go at once. A MOD deleted leaves its lane's automation where it
+  is (no new clearing: the owner's word); the tab shows it (the purple line) and B on DEPTH
+  empties it in the scene worked on, as B on an FX setting does. While playing, the knob's
+  DEPTH field, the tab's DEPTH row and line and its pictures read `Session::modDepthShown`.
+  `mod_test` (`testTheDepthLanes`, `testASceneMoveCarriesTheDepthLane`...), `modapp_test`
+  (`testTheDepthLanes`: WRITE, undo, the file, NEXT SCENE), `modtab_test`, `modknob_test`. Still
+  `mod-depth`.
+- **LEVEL and PAN are MOD targets 32 and 33** (batch 8, 2026-11-15, call 14; **TREMOLO stays**, the
+  owner: an effect taken out would break the songs that use it). Not lanes, not automated, every
+  track. The engine keeps the mixer's own (`Track::levelSet`, `panSet`, what `SetTrackLevel` /
+  `SetTrackPan` say) apart from what is given (`level`, `panL`, `panR`: `Engine::giveMix`):
+  `modLevelGiven` (gain times 1 + added, held to 0..2) and `modPanGiven` (place plus added, held to
+  -1..1), each the mixer's own **exactly** with nothing added, so a song with no MOD takes the
+  render's at-rest path as it always did (`effects_test --print` the same; `mixer_test`
+  `testTheMiddleIsUntouched`). `runMods` keeps their offsets in `Track::modMix`; `stillLane` lets
+  them go too. The mixer's card, its file line and undo are the mixer's own, never the wobble. The
+  MOD tab's list of targets has a sixth line, MIXER. No knob gesture (the mixer is A held on a head)
+  and no brass mark on the mixer's card. `mod_test` (`testTheMixRule`, `testLevelAndPan`,
+  `testLevelAndPanHeard`: silence at -100%, hard left, the same in any blocks and helpers),
+  `mixer_test` `testAModOnLevelAndPan`. Still `mod-mixer`.
 - **GLIDE FROM is the track's choice of which key of the moment before**
   (owner, 2026-11-13: "I always like the option"; `glideFromKey` in
   `glide_rule.hpp`). The numbers are in songs, appended: 0 TOP (the highest,
@@ -2035,6 +2101,10 @@ effect in those two groups and fails one that does not.
 | ...the same, the two engines timed in turns (2026-11-15, three runs, load 2.3 to 3.4; one after another a Phazed run had read -0.06%): QMOD / Phazed / JAX-EP | +0.26 to +0.27% / +0.14 to +0.21% / +0.13 to +0.14% (+0.04% in one run) |
 | JAX-EP, a macro changed, a call (2026-11-15, five runs of six; no early return on the same value) | 0.12 us (0.20 in one run): 24 MODs 0.03% of a core at 512 samples, 0.22% at 64 |
 | Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
+| The busiest song with 24 MODs (MOD batch 9, 2026-11-15; `busiestMods`: two a track on macros, effect settings, the ECHO send, LEVEL and PAN, every MOD 1's DEPTH lane written; SPEED TEST runs it ten seconds, as the song without), real time, the audio thread alone / 2 helpers, six runs on a quiet desk (load 0.6 to 2.3). In the same runs the song with no MOD: 18.3 to 22.2% / 12.3 to 17.2%; with 1 MOD: 18.1 to 22.1% / 13.1 to 16.9%. **Not yet run on the handheld** | 19.0 to 26.1% / 14.3 to 16.6% of a block, worst block 3.2 to 9.4 / 3.9 to 10.4 ms of 5.33 (one run 60 ms: the machine; 0 to 2 blocks of 1875 late, as with no MOD). **Within the desk's noise of the song without**: the rows cannot tell the MODs' cost apart |
+| ...chunks a second: no MOD / 1 MOD / 24 MODs | 1030 / 1285 / 1287 |
+| MODs worked out, twelve silent drum tracks (the same six runs, the engines timed in turns): 1 MOD / 24 on the sends / **24 on LEVEL and PAN** (batch 8's moving level and pan loop), over none (0.171 to 0.174%) | +0.030 to +0.033% / +0.093 to +0.098% / +0.123 to +0.126% |
+| ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
@@ -2052,7 +2122,7 @@ watch again, it is in git (the commit before batch 8b).
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
 2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
-3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); **batches 3 and 4 are built (2026-11-15, the owner's calls A to H taken; section 18): X held on a knob is its MOD, on DEVICE and FX**; next, batch 5 (the MOD tab). **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
+3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); **batches 3 and 4 are built (2026-11-15, the owner's calls A to H taken; section 18): X held on a knob is its MOD, on DEVICE and FX**; **batch 5, the MOD tab after FX, is built (2026-11-15, section 20)**; next, batch 6 (the brass mark on the target's own bar). **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.

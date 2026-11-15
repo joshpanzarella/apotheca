@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "apotheca/chord_rule.hpp"
 
@@ -42,11 +43,26 @@ constexpr int kModTargetNone = -1;
 constexpr int kModFirstMacro = 0;  // 0..7 the synth's eight macros
 constexpr int kModFirstEffect = 8; // 8 + slot * 4 + setting: the track's three slots
 constexpr int kModFirstSend = 20;  // 20 ECHO, 21 SPACE
-constexpr int kModTargetLanes = 22; // lanes 22 and 23 are spare: kept for MOD 1 / MOD 2 DEPTH (batch 7), never targets
-constexpr int kModTargetLevel = 32; // the track's LEVEL and PAN: not lanes (batch 8; not taken yet)
+constexpr int kModTargetLanes = 22; // lanes 22 and 23 are MOD 1's and MOD 2's DEPTH (batch 7), never targets
+// A MOD's DEPTH as an automation lane (batch 7, owner's call 10): lane 22 is MOD 1's, 23 MOD 2's,
+// written with WRITE like any lane, so a wobble can be in one scene only. A lane holds 0..1, so
+// 0.5 is no depth, 0 is -100% and 1 is +100%: the scale a DEPTH has in the song file. A scene with
+// nothing written on it goes back to the MOD's own DEPTH, as every lane goes back to its knob.
+constexpr int kModDepthLane = kModTargetLanes;
+inline int modDepthLane(int mod) { return kModDepthLane + mod; }
+inline float modDepthToLane(float depth) {
+    const float d = depth == depth ? (depth > 1.f ? 1.f : (depth < -1.f ? -1.f : depth)) : 0.f;
+    return 0.5f * (d + 1.f);
+}
+inline float modDepthFromLane(float v) {
+    const float d = 2.f * v - 1.f;
+    return d == d ? (d > 1.f ? 1.f : (d < -1.f ? -1.f : d)) : 0.f;
+}
+constexpr int kModTargetLevel = 32; // the track's LEVEL and PAN on the mixer: not lanes, not automated (batch 8)
 constexpr int kModTargetPan = 33;
-// A target the engine takes today. LEVEL and PAN (and anything else) read as no target.
-inline bool modTargetKnown(int target) { return target >= 0 && target < kModTargetLanes; }
+inline bool modTargetIsMix(int target) { return target == kModTargetLevel || target == kModTargetPan; }
+// A target the engine takes: a lane that is not a DEPTH lane, LEVEL or PAN. Anything else reads as no target.
+inline bool modTargetKnown(int target) { return (target >= 0 && target < kModTargetLanes) || modTargetIsMix(target); }
 inline bool modTargetIsMacro(int target) { return target >= kModFirstMacro && target < kModFirstEffect; }
 inline bool modTargetIsEffect(int target) { return target >= kModFirstEffect && target < kModFirstSend; }
 inline bool modTargetIsSend(int target) { return target >= kModFirstSend && target < kModTargetLanes; }
@@ -99,6 +115,8 @@ inline int modRestart(int n) { return n >= 0 && n < kModRestarts ? n : kModResta
 // sample; a synth's macros only every kModMacroTicks'th (each change works a whole tone out
 // again: QMOD about a microsecond). The engine's runMods uses them; here so the tests hold one number.
 constexpr int kModTick = 64;
+// A position that is none: the MOD does not run (Engine::modNow).
+constexpr double kModNotRunning = std::numeric_limits<double>::quiet_NaN();
 constexpr int kModMacroTicks = 8;
 
 // ---- the settings of one MOD ---------------------------------------------------------------------
@@ -115,6 +133,9 @@ struct ModSettings {
     float chance = 0.f;     // a STEPPER's: 0..1, the chance a step plays a fresh roll
     float steps[kModSteps] = {}; // a STEPPER's row, -1..1
     bool on() const { return modKind(kind) != kModOff && modTargetKnown(target) && depth != 0.f; }
+    // The engine runs a MOD that has a kind and a target at ANY depth: its DEPTH lane may be
+    // automated (batch 7), so a MOD set at 0% may wobble in the scene whose lane says so.
+    bool runs() const { return modKind(kind) != kModOff && modTargetKnown(target); }
 };
 inline int modLength(int n) { return n < 1 ? 1 : (n > kModSteps ? kModSteps : n); }
 
@@ -184,13 +205,24 @@ inline double modRollUnit(std::uint32_t seed, int mod, int what) { return chordU
 // floor(x) as a whole number, for cycle counts (which go below 0 before the first step).
 inline long modFloor(double x) { return static_cast<long>(std::floor(x)); }
 
+// How many of its cycles an LFO has gone through at a position (PHASE included): its whole part is
+// which cycle, the rest where in it. And back: the position at a count of cycles (the MOD tab draws
+// the cycle playing from it, with a dot at now).
+inline double lfoCycles(const ModSettings& m, double position) {
+    const ModRateInfo& r = modRateInfo(modRate(m.rate));
+    return position * r.den / r.num + 0.25 * modPhase(m.phase);
+}
+inline double lfoPositionAt(const ModSettings& m, double cycles) {
+    const ModRateInfo& r = modRateInfo(modRate(m.rate));
+    return (cycles - 0.25 * modPhase(m.phase)) * r.num / r.den;
+}
+
 // ---- an LFO's value: -1..1 at a position in steps -------------------------------------------------
 // The cycle is the rate's length, started at Play, moved on by PHASE quarters. SINE starts at 0
 // going up, as do TRIANGLE; the RAMPs and SQUARE are at an edge. RANDOM holds one seeded value a
 // cycle; DRIFT glides (a cosine) from each cycle's value to the next's.
 inline double lfoValue(const ModSettings& m, double position, int track, int mod) {
-    const ModRateInfo& r = modRateInfo(modRate(m.rate));
-    const double cycles = position * r.den / r.num + 0.25 * modPhase(m.phase);
+    const double cycles = lfoCycles(m, position);
     const long whole = modFloor(cycles);
     const double p = cycles - static_cast<double>(whole); // 0 up to 1 in the cycle
     switch (modShape(m.shape)) {
@@ -245,15 +277,35 @@ inline int stepperPlace(const ModSettings& m, double position) {
     return static_cast<int>(place < 0 ? place + length : place);
 }
 
-// What one MOD adds at a position: depth x its shape (0 when OFF or aimed at nothing).
-inline float modOffsetAt(const ModSettings& m, double position, int track, int mod) {
-    if (!m.on()) return 0.f;
+// What one MOD adds at a position: `depth` x its shape (0 when OFF, aimed at nothing or at no
+// depth). The engine hands it the depth now (the MOD's own, or its DEPTH lane's: batch 7).
+inline float modOffsetAt(const ModSettings& m, double position, int track, int mod, float depth) {
+    depth = depth > 1.f ? 1.f : (depth < -1.f ? -1.f : depth);
+    if (!m.runs() || depth == 0.f || depth != depth) return 0.f; // (not a number: none)
     const double shape = modKind(m.kind) == kModLfo ? lfoValue(m, position, track, mod) : stepValue(m, position, track, mod);
-    const float depth = m.depth > 1.f ? 1.f : (m.depth < -1.f ? -1.f : m.depth);
     return static_cast<float>(depth * shape);
 }
+// ...at the MOD's own DEPTH.
+inline float modOffsetAt(const ModSettings& m, double position, int track, int mod) { return modOffsetAt(m, position, track, mod, m.depth); }
 
 // ---- the combine ---------------------------------------------------------------------------------
+// LEVEL and PAN (batch 8) are not 0..1 settings, so they have their own combine, with the same
+// promise: nothing added gives the mixer's value exactly as it is.
+//   LEVEL: the track's gain times (1 + what is added), held to 0..2: at 100% a SINE swings from
+//          silence up to twice the gain (+6 dB, the mixer's top step), about the mixer's level.
+//   PAN:   the place (-1 hard left .. 1 hard right) plus what is added, held to -1..1: at 100% from
+//          the middle it reaches either side.
+constexpr float kModLevelMost = 2.f;
+inline float modLevelGiven(float level, float offset) {
+    if (offset == 0.f || !(offset == offset)) return level;
+    const float times = 1.f + offset;
+    return level * (times > 0.f ? (times < kModLevelMost ? times : kModLevelMost) : 0.f);
+}
+inline float modPanGiven(float pan, float offset) {
+    if (offset == 0.f || !(offset == offset)) return pan;
+    const float v = pan + offset;
+    return v > -1.f ? (v < 1.f ? v : 1.f) : -1.f;
+}
 // What a setting is given: its centre plus what the MODs aimed at it add (two on one target add,
 // then one clamp), held to 0..1. Nothing added (0, or not a number): the centre exactly as it is,
 // in the same call as before there were MODs. That is the bit-exact path.

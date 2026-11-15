@@ -26,7 +26,7 @@ inline bool macroIsChoice(TrackKind kind, int macro) {
     return false;
 }
 
-// May a MOD on this track be aimed at `target` (an automation lane's number)?
+// May a MOD on this track be aimed at `target` (an automation lane's number, or LEVEL / PAN)?
 inline bool modTargetFits(const TrackData& track, int target) {
     if (track.kind == TrackKind::None || !modTargetKnown(target)) return false;
     if (modTargetIsMacro(target)) return specFor(track.kind) != nullptr && !macroIsChoice(track.kind, target - kModFirstMacro);
@@ -37,7 +37,7 @@ inline bool modTargetFits(const TrackData& track, int target) {
         const int setting = modTargetSetting(target);
         return setting < effectInfo(effect).params && effectChoices(effect, setting) == 0;
     }
-    return true; // a send: every track has both
+    return true; // a send, LEVEL or PAN (batch 8): every track has them
 }
 
 // A MOD as the song may hold it on this track: every field held to what it can be (mod_rule.hpp's

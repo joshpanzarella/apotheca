@@ -166,8 +166,14 @@ void testTheSessionHoldsAMod() {
         CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && blank(project.tracks[2].mods[1]) == (macro >= 7));
     }
     CHECK(session.setMod(1, 0, square(4, 0.5f)) && rig.onlyAt(1, 4, 0.5f));
-    // The spare lanes, LEVEL and PAN, and numbers nobody knows: no target.
-    for (int target : {22, 23, kModTargetLevel, kModTargetPan, 24, 99, -1, -7}) {
+    // LEVEL and PAN (batch 8): every track that has something on it.
+    for (int t : {0, 1, 2, 3, 4}) {
+        CHECK(session.setMod(t, 1, square(kModTargetLevel, 0.5f)) && project.tracks[t].mods[1].target == kModTargetLevel);
+        CHECK(session.setMod(t, 1, square(kModTargetPan, -0.5f)) && project.tracks[t].mods[1].target == kModTargetPan);
+        CHECK(session.setMod(t, 1, ModSettings()));
+    }
+    // The DEPTH lanes and numbers nobody knows: no target.
+    for (int target : {22, 23, 24, 31, 34, 99, -1, -7}) {
         CHECK(!session.setMod(1, 1, square(target, 0.5f)) && blank(project.tracks[1].mods[1]));
     }
     // No such track, no such MOD, a track with nothing on it.
@@ -443,7 +449,7 @@ void testTheSongFile() {
     // OFF: a KIND or a TARGET nobody knows, a MOD that is not 1 or 2, a line cut short before its TARGET,
     // a target that does not fit (a choice, an empty slot, a setting that is not there, a choice macro).
     for (const std::string& odd : {std::string("mod 2 9 ") + target + " 0.375 4 6 0 3", std::string("mod 2 0 ") + target + " 0.375 4 6 0 3", std::string("mod 2 -1 ") + target + " 0.375",
-                                   std::string("mod 2 1 22 0.375 4 6 0 3"), std::string("mod 2 1 23 0.375"), std::string("mod 2 1 32 0.375"), std::string("mod 2 1 33 0.375"), std::string("mod 2 1 99 0.375"),
+                                   std::string("mod 2 1 22 0.375 4 6 0 3"), std::string("mod 2 1 23 0.375"), std::string("mod 2 1 31 0.375"), std::string("mod 2 1 34 0.375"), std::string("mod 2 1 99 0.375"),
                                    std::string("mod 2 1 -1 0.375"), std::string("mod 2 1 1e9 0.375"), std::string("mod 2 1"), std::string("mod 2"), std::string("mod"), std::string("mod x 1 20 0.4"),
                                    std::string("mod 3 1 20 0.375"), std::string("mod 0 1 20 0.375"), std::string("mod -1 1 20 0.375"), std::string("mod 1e300 1 20 0.375"), std::string("mud 2 1 20 0.375"),
                                    std::string("mod 2 1 ") + std::to_string(lane(2, time)) + " 0.375", std::string("mod 2 1 ") + std::to_string(lane(0, 0)) + " 0.375",
@@ -746,6 +752,104 @@ void testUndoLeavesWhatTheTextRounds() {
     CHECK(rig.added(0, 21) == 0.5f);
 }
 
+// ---- batch 7: lanes 22 and 23 are MOD 1's and MOD 2's DEPTH ------------------------------------
+
+// Written in a scene, a DEPTH lane is the MOD's depth there while the song plays (the engine's, and
+// what the screens show: Session::modDepthShown); a scene with nothing written is the MOD's own
+// DEPTH; the song file keeps the lanes as any lane's `auto` lines; WRITE records a DEPTH turned;
+// undo takes the turn and what it wrote back together; NEXT SCENE copies the lane with the scene.
+void testTheDepthLanes() {
+    Rig rig;
+    Session& session = rig.session();
+    Project& project = rig.project();
+    CHECK(session.addTrack(TrackKind::Phazed));
+    const int t = project.trackCount() - 1;
+    session.setSend(t, 0, 0.1f);
+    CHECK(session.setMod(t, 0, square(kModFirstSend, 0.2f)));
+    rig.settle();
+    const int l0 = modDepthLane(0);
+    // Scene 1, every step: +60%.
+    for (int i = 0; i < kSteps; ++i) session.setAutomation(t, 0, l0, i, modDepthToLane(0.6f));
+    rig.settle();
+    CHECK(session.modDepthShown(t, 0) == 0.2f); // stopped: its own
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(4000);
+    CHECK(std::fabs(rig.engine->modShown(t, 0) - 0.6f) < 1e-6f && std::fabs(session.modDepthShown(t, 0) - 0.6f) < 1e-6f);
+    CHECK(session.modDepthShown(t, 1) == 0.f); // MOD 2 (OFF): its lane not written, nothing
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(1000);
+    CHECK(session.modDepthShown(t, 0) == 0.2f && rig.engine->laneCentre(t, l0) == modDepthToLane(0.2f));
+
+    // The song file: an `auto` line on lane 22, read back the same; the MOD's line as it was.
+    const std::string text = songText(project);
+    CHECK(text.find("auto 1 22 0 0.8 1 0.8") != std::string::npos);
+    {
+        std::unique_ptr<Project> back(new Project);
+        CHECK(parseSong(text, *back) && songText(*back) == text);
+        CHECK(back->tracks[t].automation[0][l0][5] == 0.8f && back->tracks[t].automation[0][modDepthLane(1)][5] == kAutoNone);
+    }
+
+    // WRITE on and playing: a DEPTH turned is written into its lane where the song is. Undo takes the
+    // turn and what it wrote back in one step.
+    for (int i = 0; i < kSteps; ++i) session.setAutomation(t, 0, l0, i, -1.f);
+    rig.settle();
+    const std::string before = songText(project);
+    const int steps = session.undoSteps();
+    session.setWriting(true);
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(6000 * 2 + 100); // on the third step
+    rig.frames(1);
+    const int step = rig.engine->playStep();
+    CHECK(step == 2);
+    ModSettings deeper = square(kModFirstSend, -0.4f);
+    CHECK(session.setMod(t, 0, deeper));
+    CHECK(project.tracks[t].automation[0][l0][step] == modDepthToLane(-0.4f));
+    int written = 0;
+    for (int i = 0; i < kAutoSteps; ++i) written += project.tracks[t].automation[0][l0][i] >= 0.f;
+    CHECK(written == 1);
+    // A MOD made (OFF to on) is not a turn of DEPTH: nothing written on MOD 2's lane.
+    CHECK(session.setMod(t, 1, square(kModFirstSend + 1, 0.3f)));
+    CHECK(!session.hasAutomation(t, 0, modDepthLane(1)));
+    CHECK(session.setMod(t, 1, ModSettings()));
+    session.togglePlay(false);
+    session.setWriting(false);
+    rig.settle();
+    CHECK(session.undoSteps() > steps);
+    while (session.undoSteps() > steps) CHECK(session.undo());
+    rig.settle();
+    CHECK(songText(project) == before && project.tracks[t].mods[0].depth == 0.2f && !session.hasAutomation(t, 0, l0));
+    // WRITE off: a turn writes nothing.
+    session.togglePlay(false);
+    rig.frames(1);
+    rig.render(3000);
+    CHECK(session.setMod(t, 0, deeper));
+    CHECK(!session.hasAutomation(t, 0, l0));
+    session.togglePlay(false);
+    CHECK(session.setMod(t, 0, square(kModFirstSend, 0.2f)));
+    rig.settle();
+
+    // NEXT SCENE: the copy has the lane, and plays it. (A note in the scene: a scene with automation
+    // alone is an empty one.)
+    project.tracks[t].notes[0][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
+    session.sendNotePattern(t, 0);
+    for (int i = 0; i < kSteps; ++i) session.setAutomation(t, 0, l0, i, modDepthToLane(-1.f));
+    rig.settle();
+    project.scene = 0;
+    CHECK(session.nextScene() == 1);
+    rig.settle();
+    CHECK(project.scene == 1 && project.sceneCount() == 2 && project.tracks[t].automation[1][l0][7] == 0.f && session.hasAutomation(t, 1, l0));
+    session.togglePlay(false); // from the scene worked on: the copy
+    rig.frames(1);
+    rig.render(4000);
+    CHECK(rig.engine->playScene() == 1 && rig.engine->modShown(t, 0) == -1.f && session.modDepthShown(t, 0) == -1.f);
+    session.togglePlay(false);
+    rig.settle();
+    CHECK(session.undo() && project.sceneCount() == 1 && !session.hasAutomation(t, 1, l0) && session.hasAutomation(t, 0, l0));
+}
+
 } // namespace
 
 int main() {
@@ -760,6 +864,7 @@ int main() {
     testAnotherInstrumentAndATrackDeleted();
     testUndo();
     testUndoLeavesWhatTheTextRounds();
+    testTheDepthLanes();
     if (failures == 0) std::printf("modapp tests passed\n");
     return failures == 0 ? 0 : 1;
 }

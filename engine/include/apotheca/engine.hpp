@@ -446,6 +446,12 @@ public:
     // its automation), what a track's send has been given, and what the MODs add to a lane.
     float laneCentre(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].autoNow[lane] : kAutoNone; }
     float sendGiven(int track, int bus) const { return track >= 0 && track < kNumTracks && bus >= 0 && bus < kBuses ? tracks_[track].send[bus] : 0.f; }
+    // A track's LEVEL (gain) and PAN (the two sides' gains) as given, with what MODs add (batch 8). For the tests.
+    float levelGiven(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].level : 0.f; }
+    void panGiven(int track, float& left, float& right) const {
+        left = track >= 0 && track < kNumTracks ? tracks_[track].panL : 0.f;
+        right = track >= 0 && track < kNumTracks ? tracks_[track].panR : 0.f;
+    }
     float modOffsetForTests(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].modOffset[lane] : 0.f; }
 
     // ---- MOD: a track's two modulators (mod_rule.hpp, docs/plans/modulation-plan.md) ----------
@@ -457,6 +463,10 @@ public:
     float modShown(int track, int mod) const;
     // A STEPPER's place in its row as of its last tick (0..15); -1 while it does not run, or an LFO.
     int modPlace(int track, int mod) const;
+    // Where the song was at a MOD's last tick (steps since Play, or since X went down: mod_rule.hpp's
+    // position), so the MOD tab can draw its shape with a dot at now; not a number while it does not
+    // run. Any thread, no lock.
+    double modNow(int track, int mod) const;
     // Chunks worked out since the engine was made (a MOD's tick cuts more of them: the bench counts
     // them). As of the end of the last render(); any thread.
     std::uint64_t chunksRendered() const { return chunksShown_.load(std::memory_order_relaxed); }
@@ -570,6 +580,7 @@ private:
         ModSettings mods[kModsPerTrack];          // MOD 1 and MOD 2 (SetMod, SetModStep): OFF unless told
         std::atomic<float> modShown[kModsPerTrack]; // what each adds as of its last tick, for the screen
         std::atomic<int> modPlace[kModsPerTrack];   // a STEPPER's place as of its last tick; -1: not running
+        std::atomic<double> modAt[kModsPerTrack];   // the position of its last tick; not a number: not running
         std::uint8_t slotChoices[kTrackSlots] = {}; // a bit a setting: which of each slot's effect's settings are
                                                     //   choices (InstallEffect). A MOD never moves a choice.
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
@@ -656,6 +667,11 @@ private:
         float levelNow = kUsualTrackLevel; // ...as it is this sample: it glides to `level` over kSendGlideSeconds
         float panL = 1.f, panR = 1.f;       // PAN: the two sides' gains it is set to (panGains; 1 and 1: the middle)
         float panLNow = 1.f, panRNow = 1.f; // ...as they are this sample, gliding as the level does
+        // The mixer's own LEVEL (gain) and PAN (place), as SetTrackLevel and SetTrackPan set them: the
+        // centre a MOD on LEVEL or PAN moves about (batch 8). `level`, `panL` and `panR` are what is
+        // given (giveMix); with nothing added, these exactly.
+        float levelSet = kUsualTrackLevel, panSet = 0.f;
+        float modMix[2] = {}; // what the MODs add to LEVEL and to PAN (runMods); 0 while none runs
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
@@ -697,6 +713,7 @@ private:
     void fireStep();
     void applyAuto(Track& track, int lane, float value);
     void giveLane(Track& track, int lane);
+    void giveMix(Track& track); // LEVEL and PAN given: the mixer's, with what the MODs add (batch 8)
     // MOD. runMods: one tick, at `position` (steps since Play, or since X went down); `macros`: this
     // tick also gives the synth's macros (every kModMacroTicks'th). stillLane: a lane's offset back
     // to 0, and the lane given its centre. stillMods: every lane of the track so. modsChanged:

@@ -87,6 +87,13 @@ public:
     static const char* moreName(const ModSettings& m) { return modKind(m.kind) == kModStepper ? "LENGTH" : "PHASE"; }
     // The first MOD UP makes (owner's call C).
     static ModSettings fresh(int target);
+    // SHAPE as one list, as A steps it here and UP / DOWN on the MOD tab: SINE ... DRIFT (an LFO's
+    // shapes, places 0 to 6), then STEPPER (7). `shapeAt`: the MOD at that place, everything else
+    // kept; a STEPPER whose row was never written comes in rolled, so it moves (a row of nothing
+    // moves nothing), from a seed of the track and the target.
+    static constexpr int kShapePlaces = kModShapes + 1;
+    static int shapePlace(const ModSettings& m) { return modKind(m.kind) == kModStepper ? kModShapes : modShape(m.shape); }
+    static ModSettings shapeAt(const ModSettings& m, int place, int track);
     // The dice (owner's call F), from a seed: a STEPPER's row rolled, LENGTH, SLEW and CHANCE kept; an
     // LFO's SHAPE and RATE, never both as they were, DEPTH kept.
     static ModSettings rolled(const ModSettings& m, std::uint32_t seed);
@@ -117,5 +124,17 @@ private:
     bool stickWas_ = false;
     unsigned rolls_ = 0;
 };
+
+// ---- the brass mark (batch 6): a thin mark on a target's own bar where the value is NOW ----------
+// While a MOD aimed at a knob runs (the song playing, or X held on it while stopped), the knob's own
+// bar on DEVICE or FX shows the value the setting is given this moment: the bar's centre (`shown`,
+// what the bar itself is drawn at) plus what the MODs aimed there add (Engine::modShown, the two
+// added), one clamp, as the engine gives it (mod_rule.hpp's modGiven). Brass, as a meter is: it
+// moves by itself. Not a number where no MOD aimed at that lane runs: nothing is drawn.
+float modMarkAt(const Session& session, int track, int lane, float shown);
+// The mark: kModMarkW wide, standing kModMarkOver above and below a bar at (x, y), w by h.
+constexpr int kModMarkW = 2, kModMarkOver = 3;
+int modMarkX(int x, int w, float at); // the mark's left edge
+void drawModMark(SDL_Renderer* r, int x, int y, int w, int h, float at);
 
 } // namespace apotheca

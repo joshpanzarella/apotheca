@@ -24,4 +24,7 @@ WholeSongTimes timeWholeSong(int helpers, double seconds, int mods = 0);
 // which holds what the song is: nothing else in ctest runs the timings.
 class Engine;
 void sendBusiestSong(Engine& engine);
+// Its MODs, as the timing rows run them: 1 (on the first drum track's ECHO send) or 24 (two a
+// track, every kind of target, the DEPTH lanes written). For bench_test, as the song.
+void sendBusiestMods(Engine& engine, int mods);
 }
