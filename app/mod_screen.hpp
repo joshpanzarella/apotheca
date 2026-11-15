@@ -89,10 +89,15 @@ public:
     double nowPosition(int m) const;
     int nowPlace(int m) const; // a STEPPER's place playing, on the same terms (-1: none shown)
     // The shape picture: an LFO's cycle at `position` (or its first, with no dot, for not a number),
-    // at full height, upside down for a negative DEPTH; a STEPPER's row with `place` lit (-1: none).
+    // at full height, upside down for a negative DEPTH (what the target does); a STEPPER's row with
+    // `place` lit (-1: none). `asWritten`: the row as the player writes it, never turned over (the
+    // STEPS line in the list, beside the STEPS pane, which draws it so too).
     // `dot` comes back true where a dot was drawn, at (dotX, dotY).
     struct Dot { bool drawn = false; int x = 0, y = 0; };
-    static Dot drawPicture(SDL_Renderer* r, int x, int y, int w, int h, const ModSettings& m, int track, int mod, double position, int place, bool cursor);
+    static Dot drawPicture(SDL_Renderer* r, int x, int y, int w, int h, const ModSettings& m, int track, int mod, double position, int place, bool cursor, bool asWritten = false);
+
+    // The hints bar's words where the cursor is now (what draw() hands the bar): up to 6.
+    int hintsNow(ui::Hint* list) const;
 
     // Where things are drawn (for the tests that read the screen). As the FX screen's: the page ends 7
     // above the hints bar; the list's four lines and the settings' rows each reach that foot.

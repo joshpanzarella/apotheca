@@ -458,11 +458,11 @@ void ModScreen::update(const Input& input, Uint32 nowMs) {
 
 // ---- drawing -----------------------------------------------------------------------------------
 
-ModScreen::Dot ModScreen::drawPicture(SDL_Renderer* r, int x, int y, int w, int h, const ModSettings& m, int track, int mod, double position, int place, bool cursor) {
+ModScreen::Dot ModScreen::drawPicture(SDL_Renderer* r, int x, int y, int w, int h, const ModSettings& m, int track, int mod, double position, int place, bool cursor, bool asWritten) {
     Dot dot;
     fill(r, x, y + h / 2, w, 1, kLine); // the middle: the knob where it is
     if (m.kind == kModOff) return dot;
-    const float flip = m.depth < 0.f ? -1.f : 1.f;
+    const float flip = m.depth < 0.f && !asWritten ? -1.f : 1.f;
     const int half = h / 2 - 2;
     const auto yOf = [&](double v) { return y + h / 2 - static_cast<int>(std::lround(held(static_cast<float>(v) * flip, -1.f, 1.f) * static_cast<float>(half))); };
     const SDL_Color line = cursor ? kText : kDim;
@@ -551,7 +551,7 @@ void ModScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 fonts.small.drawRight(r, kListX + kListW - 10.f, y + 10.f, text, kDim);
                 if (modKind(s.kind) == kModStepper) {
                     const int px = kListX + 10, pw = kListW - 20, py = y + 30, ph = kLineH - 38;
-                    drawPicture(r, px, py, pw, ph, s, track(), m, kModNotRunning, nowPlace(m), here);
+                    drawPicture(r, px, py, pw, ph, s, track(), m, kModNotRunning, nowPlace(m), here, true); // as written: as the pane beside it
                 }
             }
         }
@@ -725,6 +725,10 @@ void ModScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     else drawModPane(r, fonts);
 
     Hint list[6];
+    hints(r, fonts, list, hintsNow(list));
+}
+
+int ModScreen::hintsNow(Hint* list) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     const bool on = mod(modOf(row_)).kind != kModOff, steps = stepsLine(row_);
@@ -736,6 +740,8 @@ void ModScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (holding_ && column_ > 0) {
         hint("UP / DOWN", onStep ? "value" : "turn it");
         if (onStep) hint("LEFT / RIGHT", "step");
+    } else if (holding_ && column_ == 0) {
+        hint("L1 / R1", "track"); // (A held on a STEPS line: the directions, B and Y wait for A)
     } else if (column_ == 0) {
         if (settings(row_) > 0) hint("RIGHT", steps ? "steps" : "settings");
         if (!steps) hint("HOLD A", "target");
@@ -750,7 +756,7 @@ void ModScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         if (on) hint("Y", "dice");
         hint("L1 / R1", "track");
     }
-    hints(r, fonts, list, count);
+    return count;
 }
 
 } // namespace apotheca

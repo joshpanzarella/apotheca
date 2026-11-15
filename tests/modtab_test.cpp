@@ -659,6 +659,121 @@ void testTheDotAndTheStepPlaying() {
     CHECK(lineAt(S::kPicX + 10) > lineAt(S::kPicX + S::kPicW - 10));
 }
 
+
+// ---- the review of batch 5 (mended) ---------------------------------------------------------------
+
+bool same(const ModSettings& a, const ModSettings& b) { return std::memcmp(&a, &b, sizeof a) == 0; }
+
+bool hinted(const ModScreen& tab, const char* key, const char* does) {
+    ui::Hint list[6];
+    const int n = tab.hintsNow(list);
+    for (int i = 0; i < n; ++i)
+        if (std::strcmp(list[i].key, key) == 0 && (!does || std::strcmp(list[i].does, does) == 0)) return true;
+    return false;
+}
+
+// The list's small STEPS row is the row as written, as the pane beside it, whatever the DEPTH's sign
+// (the MOD's own picture is what the target does, and turns over).
+void testTheListRowAsThePane() {
+    Rig rig;
+    if (!rig.canvas.ok) return;
+    const int t = rig.phazed;
+    for (float depth : {0.6f, -0.6f}) {
+        ModSettings s = stepper(kModFirstSend);
+        s.depth = depth, s.length = 4;
+        for (int i = 0; i < 4; ++i) s.steps[i] = 0.8f;
+        rig.session().setMod(t, 0, s);
+        rig.at(t, 1, S::kFirstStep + 3); // (step 1 drawn plain in the pane)
+        rig.draw();
+        int paneAbove = 0, paneBelow = 0, listAbove = 0, listBelow = 0;
+        for (int y = S::kStepsTop; y < S::kStepsMiddle; ++y) paneAbove += rig.canvas.is(S::kStepX + 1, y, ui::kText);
+        for (int y = S::kStepsMiddle + 1; y < S::kStepsMiddle + S::kStepsHalf; ++y) paneBelow += rig.canvas.is(S::kStepX + 1, y, ui::kText);
+        const int ly = S::lineY(1) + 30, lh = S::kLineH - 38, lmid = ly + lh / 2, lx = S::kListX + 13;
+        for (int y = ly; y < lmid; ++y) listAbove += rig.canvas.is(lx, y, ui::kText);
+        for (int y = lmid + 1; y < ly + lh; ++y) listBelow += rig.canvas.is(lx, y, ui::kText);
+        CHECK(paneAbove > 20 && paneBelow == 0);
+        CHECK(listAbove > 10 && listBelow == 0);
+        // The MOD's own picture (on its line) turns over with the sign: step 1 above for +, below for -.
+        const int py = S::lineY(0) + (S::kLineH - S::kSmallPicH) / 2, pmid = py + S::kSmallPicH / 2;
+        int picAbove = 0, picBelow = 0;
+        for (int y = py; y < pmid; ++y) picAbove += rig.canvas.is(S::kSmallPicX + 3, y, ui::kDim);
+        for (int y = pmid + 1; y < py + S::kSmallPicH; ++y) picBelow += rig.canvas.is(S::kSmallPicX + 3, y, ui::kDim);
+        CHECK(depth > 0.f ? (picAbove > 5 && picBelow == 0) : (picBelow > 5 && picAbove == 0));
+    }
+}
+
+// A held on a STEPS line in the list does nothing but L1 / R1 (and START): the hints say only that.
+void testAHeldOnAStepsLine() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setMod(t, 0, stepper(kModFirstSend));
+    ModScreen& tab = rig.at(t, 1, 0);
+    CHECK(hinted(tab, "RIGHT", "steps") && hinted(tab, "Y", "dice") && hinted(tab, "HOLD B", "delete"));
+    rig.key(A, true), rig.frames(1);
+    CHECK(!tab.picking());
+    CHECK(!hinted(tab, "RIGHT", nullptr) && !hinted(tab, "Y", nullptr) && !hinted(tab, "HOLD B", nullptr));
+    CHECK(hinted(tab, "L1 / R1", "track"));
+    const ModSettings before = rig.mod(t, 0);
+    rig.tap(RIGHT);
+    rig.tap(Y);
+    CHECK(tab.cursorColumn() == 0 && same(before, rig.mod(t, 0)));
+    rig.key(A, false), rig.frames(1);
+    // A setting's hints: Y dice while the MOD is on, never on an OFF one.
+    tab.goTo(0, S::kDepth);
+    CHECK(hinted(tab, "Y", "dice") && hinted(tab, "B", "default") && hinted(tab, "LEFT", "list"));
+    // Y with A held on a setting: nothing is rolled.
+    rig.key(A, true), rig.frames(1);
+    rig.tap(Y);
+    rig.key(A, false), rig.frames(1);
+    CHECK(same(before, rig.mod(t, 0)));
+    rig.session().setMod(t, 0, ModSettings());
+    rig.frames(1);
+    CHECK(!hinted(tab, "Y", nullptr));
+}
+
+// Hold B deletes at a second, not sooner.
+void testHoldBTakesASecond() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setMod(t, 0, lfo(kModFirstMacro));
+    ModScreen& tab = rig.at(t, 0, 0);
+    rig.key(B, true), rig.frames(50); // 800 ms
+    CHECK(rig.mod(t, 0).kind == kModLfo && tab.deletePart() > 0.7f && tab.deletePart() < 0.95f);
+    rig.frames(15);
+    CHECK(rig.mod(t, 0).kind == kModOff);
+    rig.key(B, false), rig.frames(1);
+}
+
+// The stick on SLEW turns half as fast as on DEPTH; a click held repeats at the list's pace.
+void testTheStickAndTheRepeat() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setMod(t, 1, stepper(kModFirstSend));
+    ModScreen& tab = rig.at(t, 3, S::kSlew);
+    rig.key(A, true), rig.key(StickUp, true), rig.frames(10), rig.key(StickUp, false), rig.key(A, false), rig.frames(1);
+    const float slew = rig.mod(t, 1).slew;
+    CHECK(slew > 0.05f && slew < 0.2f);
+    // LENGTH from 1, A + UP held for about a second: one, then one each kListEveryMs.
+    ModSettings s = rig.mod(t, 1);
+    s.length = 1;
+    rig.session().setMod(t, 1, s);
+    tab.goTo(3, S::kLength);
+    rig.key(A, true), rig.frames(1);
+    rig.key(UP, true), rig.frames(60), rig.key(UP, false);
+    rig.key(A, false), rig.frames(1);
+    const int expected = 1 + 1 + static_cast<int>((60 * 16 - 170) / ui::kListEveryMs);
+    CHECK(std::abs(rig.mod(t, 1).length - expected) <= 1);
+}
+
+// X on a drum track hears its first lane.
+void testXOnTheDrums() {
+    Rig rig;
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums);
+    rig.at(0, 0, 0);
+    rig.key(X, true), rig.frames(2);
+    CHECK(rig.session().hearingHeld() && rig.session().heardLane() == 0);
+    rig.key(X, false), rig.frames(2);
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -674,6 +789,11 @@ int main(int argc, char** argv) {
     testL1R1AndX();
     testTheHintsFit();
     testTheDotAndTheStepPlaying();
+    testTheListRowAsThePane();
+    testAHeldOnAStepsLine();
+    testHoldBTakesASecond();
+    testTheStickAndTheRepeat();
+    testXOnTheDrums();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

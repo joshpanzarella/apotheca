@@ -129,6 +129,7 @@ public:
     void letGoHeard();
     void keepHearing(bool xHeld, const void* screen);
     bool hearingHeld() const { return heard_.track >= 0 && heard_.held; }
+    int heardLane() const { return heard_.lane; } // the drum lane last heard (-1: a synth's key, or none)
     // When what X held stops, or stopped (now, for one cut by panic or a new song); 0 while X is
     // still held, when nothing has been heard, or when nothing stops it (the built-in drum tapped:
     // heard whole). The line across a recording's picture ends there.

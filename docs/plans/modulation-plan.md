@@ -970,3 +970,16 @@ handheld.
 **Left**: batch 6 (the thin brass mark on the target's own bar on DEVICE and FX), 7 (lanes 22 / 23 as
 MOD DEPTH automation), 8 (LEVEL and PAN as targets; TREMOLO kept), 9 (the cost on the busiest song,
 SPEED TEST).
+
+## 21. The review of batch 5, mended (2026-11-15, branch `mods`)
+
+| Finding | Fate |
+| --- | --- |
+| The list's small STEPS row drawn upside down from the STEPS pane beside it for a negative DEPTH | **Mended.** `drawPicture` takes `asWritten`: the STEPS line draws the row as written, as the pane does; the MOD's own picture (on its line and in the heading) still turns over, since it is what the target does. `modtab_test` `testTheListRowAsThePane` reads both signs off the drawn screen (the pane, the list's row, the MOD's picture) |
+| The hints wrong with A held on a STEPS line in the list (RIGHT steps, Y dice: neither does anything there) | **Mended.** That place now says only L1 / R1 track (START still works and is not listed, as with A held on a setting). The bar's words are `ModScreen::hintsNow` (what `draw()` hands the bar), so a test reads them: `testAHeldOnAStepsLine` |
+| The tab lets both MODs aim at one target, and the knob only ever shows MOD 1 | **Not changed: the owner's call.** Two on one target add (section 2), so it is allowed; X held on that knob reaches MOD 1 only (its fields, hold B, the dice), and MOD 2 is then reached on the tab alone. The list of targets does not mark what the other MOD holds. Choices: leave it; mark the other MOD's target in the list; or refuse it in the list (one MOD a target). Recommended: mark it, so nothing is hidden and nothing is refused |
+| Six mutants survived `modtab_test` | **Each has a test now, and each is killed**: hold B at 0.5 s (`testHoldBTakesASecond`: not gone at 800 ms, gone by 1040), the stick on SLEW 4x (`testTheStickAndTheRepeat`), X on a drum track hearing lane 2 (`testXOnTheDrums`, through `Session::heardLane()`, new), Y with A held rolling (`testAHeldOnAStepsLine`), a click held with A repeating at the cursor's pace (LENGTH from 1 held a second: one, then one each `kListEveryMs`), a setting's hints losing Y dice (`hintsNow`). The three the review called equivalent or redundant were left |
+
+Mutants of the mend: the two fixes taken back and the six above put in again, eight made, eight
+killed, each put back. Full `ctest -j3`: 51 of 51. No engine code changed. **Seen only by the tests
+and the stills** (`mod-steps`: the list's row now stands as the pane's, the MOD's picture turned over).
