@@ -580,6 +580,7 @@ static void wholeSongModRows() {
 }
 
 int apotheca::runBench() {
+    std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);

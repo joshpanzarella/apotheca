@@ -835,8 +835,8 @@ the same network.
   out. While it runs there is one row with a count and a STOP; only what is
   refused gets a row of its own.
 - **SPEED TEST** (top of the page) times every instrument and effect on the
-  device and shows the numbers in a new tab. Stop the song first; it takes up
-  to a minute.
+  device and shows the numbers in a new tab, each row as it is timed. Stop the
+  song first; it takes about three minutes on the handheld.
 - **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
   folder to open or shut it. FIND narrows the list by name.
 - **To send into a folder**: drop the files on it, or press its ADD FILES
