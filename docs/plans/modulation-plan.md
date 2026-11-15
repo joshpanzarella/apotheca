@@ -906,3 +906,17 @@ the handheld.
 SLEW and CHANCE, which the knob does not reach), 6 (the brass mark on the target's own bar, the
 shape picture), 7 (lanes 22 / 23 as DEPTH automation), 8 (LEVEL and PAN), 9 (the cost on the
 busiest song, SPEED TEST).
+
+## 19. The review of batches 3 and 4, mended (2026-11-15, branch `mods`)
+
+| Finding | Fate |
+| --- | --- |
+| X held across a change of track (picked on SONG, X never let go) kept the gesture on the old track: UP changed the old track's MOD, and its audition was let go and asked again every frame (`keepModsHeard` let go, the screen's `ModKnob::update` asked again), so the wobble stood still | **Mended.** Both screens let go when `project.track != modKnob_.track()` (`FxScreen::update`, `SynthScreen::update`: two tracks of one synth share a screen). `testTrackChangedWhileHeld`, on DEVICE (two PHAZED tracks) and FX, picks the other track on SONG with X held: the knob let go, nothing runs, UP touches neither track, X pressed again is the shown track's. Both mends' mutants fail it |
+| FX letting go when the knob under the cursor changes was called equivalent in section 18; it is not: SELECT + B (undo) works with X held, and an undo that takes a 4-setting effect back to a 3-setting one pulls the cursor in | **Tested** (the code was right). `testUndoTakesTheKnobAway`: FILTER after REVERB, X on MIX, UP, two undos; the knob let go, UP makes nothing. The mutant fails it |
+| Three mutants passed: DOWN with no MOD making one (`by <= 0` to `by < 0`); `keepModsHeard` without its track term; `letGoOfMods` forgetting a let go lost to a full queue | **DOWN**: equivalent. `depthBy` is only ever called with `+-kDepthStep` (the D-pad) or `+kDepthStep` (the stick's first push), never 0, so the two compare alike on every call; `testTheGestureOnAMacro` already holds DOWN making nothing. **The track term**: with the screens' mend no gesture reaches it (they let go first); it stays as the second guard, and `testHeardOnlyForTheTrackShown` holds the Session's rule by itself. **The lost let go**: `testLetGoLostToAFullQueue` fills the queue, lets X go, sees the Session still asking, then the MOD stopped once there is room |
+
+**Mutants of the mend** (each built and run, put back, `app/` compared with a saved copy): the
+FX track check, the DEVICE track check, `keepModsHeard`'s track term, the lost let go, FX's
+knob check: **5 made, 5 killed.**
+
+**What only the tests saw**: all of it. Nothing heard, nothing run on the handheld.

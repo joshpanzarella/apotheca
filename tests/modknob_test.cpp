@@ -624,6 +624,133 @@ void testHeldAcrossThings() {
     CHECK(fx.cursorColumn() == 2); // pushed again: it moves
 }
 
+// X held across a change of track (picked on SONG, X never let go): the gesture lets go of the old
+// track's knob, the old track's MOD stops running, and UP touches neither track (review, 2026-11-15:
+// the knob stayed on the old track, its audition began again every frame, and UP changed it).
+void pickOnSong(Rig& rig, int track) {
+    for (int i = 0; i < 3 && rig.session().view != View::Song; ++i) rig.tap(SDLK_1); // L2 to SONG
+    CHECK(rig.session().view == View::Song);
+    for (int i = 0; i < kNumTracks && rig.project().track != track; ++i) {
+        rig.tap(SDLK_RIGHT);
+        rig.tap(A); // a cell: its track, and the PATTERN
+        if (rig.project().track != track && rig.session().view != View::Song) rig.tap(SDLK_1);
+    }
+    CHECK(rig.project().track == track);
+}
+
+void testTrackChangedWhileHeld() {
+    for (int device = 0; device < 2; ++device) {
+        Rig rig;
+        CHECK(rig.session().addTrack(TrackKind::Phazed));
+        const int a = rig.phazed, b = device ? rig.project().trackCount() - 1 : rig.qmod; // DEVICE: two Phazed tracks, one screen
+        const int target = device ? kModFirstMacro : kModFirstEffect;
+        rig.session().setEffect(a, 0, EffectKind::Filter);
+        rig.session().setEffect(b, 0, EffectKind::Filter);
+        CHECK(rig.session().setMod(a, 0, lfoOn(target, 0.6f)));
+        if (device) rig.device(a, 0);
+        else rig.fx(a, 0, 1);
+        const ModKnob& knob = device ? rig.app.phazed().modKnob() : rig.app.fx().modKnob();
+        rig.key(X, true);
+        rig.frames(20);
+        CHECK(knob.held() && knob.track() == a && rig.session().modsHeard(a) == 1u);
+        pickOnSong(rig, b);
+        rig.tap(SDLK_2); // R2: PATTERN -> DEVICE
+        if (!device) rig.tap(SDLK_2); // -> EFFECTS
+        CHECK(rig.session().view == (device ? View::Device : View::Effects));
+        rig.frames(3);
+        CHECK(!knob.held());
+        CHECK(rig.session().modsHeard(a) == 0 && rig.session().modsHeard(b) == 0);
+        CHECK(rig.engine->modOffsetForTests(a, target) == 0.f);
+        rig.tap(SDLK_UP); // X still held, but not on the knob: nothing is made or turned
+        CHECK(rig.mod(a, 0).depth == 0.6f && rig.mod(b, 0).kind == kModOff && rig.mod(b, 1).kind == kModOff);
+        rig.key(X, false);
+        rig.frames(2);
+        // X pressed again on the knob shown: it is that track's.
+        if (device) rig.app.phazed().goTo(0, SynthScreen::kFirstMacro);
+        else rig.app.fx().goTo(0, 1);
+        rig.frames(1);
+        rig.key(X, true);
+        rig.frames(1);
+        CHECK(knob.held() && knob.track() == b);
+        rig.key(X, false);
+        rig.frames(2);
+    }
+}
+
+// The Session's own rule, apart from any screen: what runs while stopped is the track shown's. (The
+// screens let go first now, so no gesture reaches this; it stays as the second guard.)
+void testHeardOnlyForTheTrackShown() {
+    Rig rig;
+    const int a = rig.phazed, b = rig.qmod;
+    CHECK(rig.session().setMod(a, 0, lfoOn(kModFirstMacro, 0.6f)));
+    int owner = 0;
+    rig.project().track = a;
+    rig.session().hearMods(a, 1u, &owner);
+    rig.session().keepModsHeard(true, &owner);
+    CHECK(rig.session().modsHeard(a) == 1u);
+    rig.project().track = b;
+    rig.session().keepModsHeard(true, &owner);
+    CHECK(rig.session().modsHeard(a) == 0);
+}
+
+// An undo with X held (SELECT + B works on every screen) that takes the setting under the cursor away:
+// the knob is let go, never left on a setting the slot no longer has.
+void testUndoTakesTheKnobAway() {
+    Rig rig;
+    const int t = rig.phazed;
+    rig.session().setEffect(t, 0, EffectKind::Reverb); // three settings (REVERB) ...
+    rig.frames(200);
+    rig.session().setEffect(t, 0, EffectKind::Filter); // ... then four (FILTER's MIX the fourth)
+    CHECK(effectInfo(EffectKind::Reverb).params == 3 && effectInfo(EffectKind::Filter).params == 4);
+    rig.frames(200);
+    FxScreen& fx = rig.fx(t, 0, 4);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(SDLK_UP);
+    rig.frames(200);
+    CHECK(fx.modKnob().held() && fx.modKnob().target() == kModFirstEffect + 3 && rig.mod(t, 0).kind == kModLfo);
+    for (int u = 0; u < 2; ++u) { // the MOD, then the FILTER
+        rig.key(SDLK_BACKSPACE, true), rig.key(B, true);
+        rig.frames(1);
+        rig.key(B, false), rig.key(SDLK_BACKSPACE, false);
+        rig.frames(2);
+    }
+    CHECK(rig.session().effectData(t, 0).kind == static_cast<int>(EffectKind::Reverb) && fx.cursorColumn() == 3);
+    CHECK(!fx.modKnob().held());
+    rig.tap(SDLK_UP); // nothing is made for a setting that is not there
+    CHECK(rig.mod(t, 0).kind == kModOff && rig.mod(t, 1).kind == kModOff);
+    rig.key(X, false);
+    rig.frames(2);
+}
+
+// X let go while the queue is full: the Session keeps asking until the engine is told, and the MOD
+// stops (letGoOfMods forgets only a let go that went).
+void testLetGoLostToAFullQueue() {
+    Rig rig;
+    const int t = rig.phazed;
+    CHECK(rig.session().setMod(t, 0, lfoOn(kModFirstMacro, 0.8f)));
+    rig.device(t, 0);
+    rig.key(X, true);
+    rig.frames(20);
+    CHECK(rig.session().modsHeard(t) == 1u && rig.engine->modOffsetForTests(t, kModFirstMacro) != 0.f);
+    Command c;
+    c.type = Command::SetSend;
+    c.track = 0;
+    c.a = 0;
+    c.value = 0.f;
+    int sent = 0;
+    while (rig.engine->send(c) && sent < 100000) ++sent; // (nothing renders: the queue fills)
+    CHECK(sent < 100000);
+    rig.key(X, false);
+    rig.clock += 16;
+    rig.app.update(rig.input, rig.clock); // the let go is asked for, and lost
+    CHECK(rig.session().modsHeard(t) == 1u);
+    rig.frames(10); // room again: asked again, and it goes
+    CHECK(rig.session().modsHeard(t) == 0 && rig.engine->modOffsetForTests(t, kModFirstMacro) == 0.f);
+    rig.frames(30);
+    CHECK(rig.engine->modOffsetForTests(t, kModFirstMacro) == 0.f);
+}
+
 // The fields are a tight row: drawn the same at every TEXT SIZE (the chips stand under them at LARGE).
 void testTheSameAtEverySize() {
     Rig rig;
@@ -912,6 +1039,10 @@ int main(int argc, char** argv) {
     testHeardWhileStopped();
     testOnlyWhatChangedIsSent();
     testHeldAcrossThings();
+    testTrackChangedWhileHeld();
+    testHeardOnlyForTheTrackShown();
+    testUndoTakesTheKnobAway();
+    testLetGoLostToAFullQueue();
     testTheSameAtEverySize();
     testDrawnOnDevice();
     testTheGestureOnFx();

@@ -555,7 +555,9 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     if (column_ > settings(row_)) column_ = settings(row_);
     const float x = input.stickX(), y = input.stickY();
     // X held on a knob: the stick and the D-pad are its MOD's, and the cursor stays on it.
-    if (!input.held(Button::X) || knobHere() != modKnob_.target()) endMod(input);
+    // Let go when X is up, when the knob under the cursor is another (an undo can take its setting away), or
+    // when another track is up (picked on SONG with X still held): the gesture is the knob's on the track shown.
+    if (!input.held(Button::X) || knobHere() != modKnob_.target() || project_.track != modKnob_.track()) endMod(input);
     if (modKnob_.held()) {
         modKnob_.update(input, nowMs, dt);
         return;

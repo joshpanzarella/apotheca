@@ -289,7 +289,9 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
-    if (!input.held(Button::X) || page_ != 0) endMod(input);
+    // Let go when X is up, off MAIN, or when another track is up (two tracks of one synth share this
+    // screen; picked on SONG with X still held): the gesture is the knob's on the track shown.
+    if (!input.held(Button::X) || page_ != 0 || project_.track != modKnob_.track()) endMod(input);
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
