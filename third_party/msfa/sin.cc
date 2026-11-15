@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
 #include <math.h>
 
 #include "synth.h"
 #include "sin.h"
+
+namespace msfa {
 
 #define R (1 << 29)
 
@@ -139,3 +143,5 @@ int32_t Sin::compute10(int32_t phase) {
   y ^= -((phase >> 29) & 1);
   return y;
 }
+
+}  // namespace msfa

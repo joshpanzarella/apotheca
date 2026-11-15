@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
+#pragma once
+
+#include <stdint.h>
+
+namespace msfa {
+
 class Exp2 {
  public:
   Exp2();
@@ -78,3 +86,5 @@ int32_t Tanh::lookup(int32_t x) {
     return y ^ signum;
   }
 }
+
+}  // namespace msfa

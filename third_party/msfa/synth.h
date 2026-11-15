@@ -14,63 +14,28 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): everything in namespace msfa; N and LG_N
+// are constants, not macros (a macro named N broke any header after it); no
+// NEON (the C++ kernels everywhere, so the desk and the handheld make the same
+// numbers); no memory barrier (nothing here is shared between threads); min
+// and max are std's. See third_party/CHANGES.md.
+
 #ifndef __SYNTH_H
 #define __SYNTH_H
 
-// This may not be present on MSVC.
-// See http://stackoverflow.com/questions/126279/c99-stdint-h-header-and-ms-visual-studio
 #include <stdint.h>
 
-// TODO(raph): move from fixed to variable N
-#define LG_N 6
-#define N (1 << LG_N)
+#include <algorithm>
 
-#if defined(__APPLE__)
-#include <libkern/OSAtomic.h>
-#define SynthMemoryBarrier() OSMemoryBarrier()
-#elif defined(__GNUC__)
-#if (__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 1)
-#define SynthMemoryBarrier() __sync_synchronize()
-#endif
-#endif
+namespace msfa {
 
-// #undef SynthMemoryBarrier()
+// The envelopes, the LFO and the gains move once every N samples.
+constexpr int LG_N = 6;
+constexpr int N = 1 << LG_N;
 
-#ifndef SynthMemoryBarrier
-#warning Memory barrier is not enabled
-#define SynthMemoryBarrier()
-#endif
+using std::min;
+using std::max;
 
-template<typename T>
-inline static T min(const T& a, const T& b) {
-    return a < b ? a : b;
-}
-
-template<typename T>
-inline static T max(const T& a, const T& b) {
-    return a > b ? a : b;
-}
-
-#ifdef __aarch64__
-#define HAVE_NEON_INTRINSICS
-#include <arm_neon.h>
-static inline bool hasNeon() {
-  return true;
-}
-#elif __ARM_NEON__
-#define HAVE_NEON_INTRINSICS
-#include <arm_neon.h>
-// TODO: get this working (although maybe we don't even care about non-NEON ARM any more)
-//#include <cpu-features.h>
-
-static inline bool hasNeon() {
-  return true;
-  //return (android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON) != 0;
-}
-#else
-static inline bool hasNeon() {
-  return false;
-}
-#endif
+}  // namespace msfa
 
 #endif  // __SYNTH_H

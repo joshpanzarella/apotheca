@@ -14,8 +14,13 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa; its state starts as
+// numbers, not whatever was in memory. See third_party/CHANGES.md.
+
 #include "synth.h"
 #include "pitchenv.h"
+
+namespace msfa {
 
 int PitchEnv::unit_;
 
@@ -53,7 +58,7 @@ void PitchEnv::set(const int r[4], const int l[4]) {
 }
 
 int32_t PitchEnv::getsample() {
-  if (ix_ < 3 || (ix_ < 4) && !down_) {
+  if (ix_ < 3 || ((ix_ < 4) && !down_)) {
     if (rising_) {
       level_ += inc_;
       if (level_ >= targetlevel_) {
@@ -89,3 +94,4 @@ void PitchEnv::advance(int newix) {
   }
 }
 
+}  // namespace msfa

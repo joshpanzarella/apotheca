@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa; its state starts as
+// numbers, not whatever was in memory. See third_party/CHANGES.md.
+
 #ifndef __PITCHENV_H
 #define __PITCHENV_H
 
 // Computation of the DX7 pitch envelope
+
+namespace msfa {
 
 class PitchEnv {
  public:
@@ -35,16 +40,17 @@ class PitchEnv {
   static int unit_;
   int rates_[4];
   int levels_[4];
-  int32_t level_;
-  int targetlevel_;
-  bool rising_;
-  int ix_;
-  int inc_;
+  int32_t level_ = 0;
+  int targetlevel_ = 0;
+  bool rising_ = false;
+  int ix_ = 4;
+  int inc_ = 0;
 
-  bool down_;
+  bool down_ = false;
 
   void advance(int newix);
 };
 
-#endif  // __PITCHENV_H
+}  // namespace msfa
 
+#endif  // __PITCHENV_H

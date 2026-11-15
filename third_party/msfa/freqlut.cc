@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
 // Resolve frequency signal (1.0 in Q24 format = 1 octave) to phase delta.
 
 // The LUT is just a global, and we'll need the init function to be called before
@@ -23,6 +25,8 @@
 #include <math.h>
 
 #include "freqlut.h"
+
+namespace msfa {
 
 #define LG_N_SAMPLES 10
 #define N_SAMPLES (1 << LG_N_SAMPLES)
@@ -53,3 +57,5 @@ int32_t Freqlut::lookup(int32_t logfreq) {
   int hibits = logfreq >> 24;
   return y >> (MAX_LOGFREQ_INT - hibits);
 }
+
+}  // namespace msfa

@@ -14,22 +14,43 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa; each kernel makes any
+// count of samples (1..N) from a given gain, so a voice's period can be cut
+// anywhere and still make the same numbers; the feedback is a gain, not a
+// shift, so it can sit between two settings (the FEEDBACK macro; at a whole
+// setting it is the original to the bit); no NEON, and the experimental
+// kernels that were switched off are gone. See third_party/CHANGES.md.
+
+#ifndef __FM_OP_KERNEL_H
+#define __FM_OP_KERNEL_H
+
+#include <stdint.h>
+
+namespace msfa {
+
 class FmOpKernel {
  public:
-  // gain1 and gain2 represent linear step: gain for sample i is
-  // gain1 + (1 + i) / 64 * (gain2 - gain1)
+  // `gain` is the gain before the first sample; each sample adds `dgain`
+  // first (the original's linear step: gain for sample i of a period is
+  // gain1 + (1 + i) * dgain). Makes `count` samples.
 
   // This is the basic FM operator. No feedback.
   static void compute(int32_t *output, const int32_t *input,
                       int32_t phase0, int32_t freq,
-                      int32_t gain1, int32_t gain2, bool add);
-  
+                      int32_t gain, int32_t dgain, int count, bool add);
+
   // This is a sine generator, no feedback.
   static void compute_pure(int32_t *output, int32_t phase0, int32_t freq,
-                           int32_t gain1, int32_t gain2, bool add);
+                           int32_t gain, int32_t dgain, int count, bool add);
 
-  // One op with feedback, no add.
+  // One op with feedback. fb_gain: the sum of the last two samples is
+  // multiplied by it and shifted down 32 (the original's shift s is
+  // fb_gain = 1 << (31 - s)).
   static void compute_fb(int32_t *output, int32_t phase0, int32_t freq,
-                         int32_t gain1, int32_t gain2,
-                         int32_t *fb_buf, int fb_gain, bool add);
+                         int32_t gain, int32_t dgain, int count,
+                         int32_t *fb_buf, int32_t fb_gain, bool add);
 };
+
+}  // namespace msfa
+
+#endif  // __FM_OP_KERNEL_H

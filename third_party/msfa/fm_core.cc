@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): see fm_core.h and third_party/CHANGES.md.
+
 #ifdef VERBOSE
 #include <iostream>
 #endif
@@ -22,7 +24,7 @@
 #include "fm_op_kernel.h"
 #include "fm_core.h"
 
-using namespace std;
+namespace msfa {
 
 struct FmOperatorInfo {
   int in;
@@ -107,9 +109,12 @@ void FmCore::dump() {
 #endif
 }
 
+bool FmCore::is_carrier(int algorithm, int op) {
+  return (algorithms[algorithm & 31].ops[op] & 3) == 0;
+}
+
 void FmCore::compute(int32_t *output, FmOpParams *params, int algorithm,
-                     int32_t *fb_buf, int feedback_shift) {
-  const int kLevelThresh = 1120;
+                     int32_t *fb_buf, int32_t fb_gain, int from, int count) {
   const FmAlgorithm alg = algorithms[algorithm];
   bool has_contents[3] = { true, false, false };
   for (int op = 0; op < 6; op++) {
@@ -121,31 +126,32 @@ void FmCore::compute(int32_t *output, FmOpParams *params, int algorithm,
     int32_t *outptr = (outbus == 0) ? output : buf_[outbus - 1].get();
     int32_t gain1 = param.gain[0];
     int32_t gain2 = param.gain[1];
+    int32_t dgain = (gain2 - gain1 + (N >> 1)) >> LG_N;
+    int32_t gain = gain1 + from * dgain;  // before sample `from`
     if (gain1 >= kLevelThresh || gain2 >= kLevelThresh) {
       if (!has_contents[outbus]) {
         add = false;
       }
       if (inbus == 0 || !has_contents[inbus]) {
         // todo: more than one op in a feedback loop
-        if ((flags & 0xc0) == 0xc0 && feedback_shift < 16) {
-          // cout << op << " fb " << inbus << outbus << add << endl;
+        if ((flags & 0xc0) == 0xc0 && fb_gain != 0) {
           FmOpKernel::compute_fb(outptr, param.phase, param.freq,
-                                 gain1, gain2,
-                                 fb_buf, feedback_shift, add);
+                                 gain, dgain, count,
+                                 fb_buf, fb_gain, add);
         } else {
-          // cout << op << " pure " << inbus << outbus << add << endl;
           FmOpKernel::compute_pure(outptr, param.phase, param.freq,
-                                   gain1, gain2, add);
+                                   gain, dgain, count, add);
         }
       } else {
-        // cout << op << " normal " << inbus << outbus << " " << param.freq << add << endl;
         FmOpKernel::compute(outptr, buf_[inbus - 1].get(),
-                            param.phase, param.freq, gain1, gain2, add);
+                            param.phase, param.freq, gain, dgain, count, add);
       }
       has_contents[outbus] = true;
     } else if (!add) {
       has_contents[outbus] = false;
     }
-    param.phase += param.freq << LG_N;
+    param.phase += param.freq * count;
   }
 }
+
+}  // namespace msfa

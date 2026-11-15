@@ -14,12 +14,18 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa; start() puts it back to
+// its very start (phase, S&H, delay: Play from the top is the same sound),
+// and its state starts as numbers. See third_party/CHANGES.md.
+
 // Low frequency oscillator, compatible with DX7
 
 #include "synth.h"
 
 #include "sin.h"
 #include "lfo.h"
+
+namespace msfa {
 
 uint32_t Lfo::unit_;
 
@@ -95,3 +101,5 @@ void Lfo::keydown() {
   }
   delaystate_ = 0;
 }
+
+}  // namespace msfa

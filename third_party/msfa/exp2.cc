@@ -14,12 +14,16 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
 #include <math.h>
 
 #include "synth.h"
 #include "exp2.h"
 
 #include <stdio.h>
+
+namespace msfa {
 
 int32_t exp2tab[EXP2_N_SAMPLES << 1];
 
@@ -63,3 +67,5 @@ void Tanh::init() {
   int32_t lasty = (1 << 24) * y + 0.5;
   tanhtab[(TANH_N_SAMPLES << 1) - 2] = lasty - tanhtab[(TANH_N_SAMPLES << 1) - 1];
 }
+
+}  // namespace msfa

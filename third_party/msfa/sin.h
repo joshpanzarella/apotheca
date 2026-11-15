@@ -14,6 +14,14 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
+#pragma once
+
+#include <stdint.h>
+
+namespace msfa {
+
 class Sin {
  public:
   Sin();
@@ -60,3 +68,5 @@ int32_t Sin::lookup(int32_t phase) {
 #endif
 }
 #endif
+
+}  // namespace msfa

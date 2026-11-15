@@ -14,8 +14,18 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): in namespace msfa. See third_party/CHANGES.md.
+
+#pragma once
+
+#include <stdint.h>
+
+namespace msfa {
+
 class Freqlut {
  public:
   static void init(double sample_rate);
   static int32_t lookup(int32_t logfreq);
 };
+
+}  // namespace msfa

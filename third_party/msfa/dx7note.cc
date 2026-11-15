@@ -14,26 +14,27 @@
  * limitations under the License.
  */
 
-#ifdef VERBOSE
-#include <iostream>
-#endif
+// Changed for Apotheca (2026-11-15): see dx7note.h and third_party/CHANGES.md.
+// The helpers below are the original's, given internal linkage; init,
+// control, render and silent are Apotheca's, built on the original's init and
+// compute.
+
 #include <math.h>
+
 #include "synth.h"
 #include "freqlut.h"
-#include "patch.h"
 #include "exp2.h"
-#include "controllers.h"
 #include "dx7note.h"
 
-using namespace std;
+namespace msfa {
 
-int32_t midinote_to_logfreq(int midinote) {
+static int32_t midinote_to_logfreq(int midinote) {
   const int base = 50857777;  // (1 << 24) * (log(440) / log(2) - 69/12)
   const int step = (1 << 24) / 12;
   return base + step * midinote;
 }
 
-const int32_t coarsemul[] = {
+static const int32_t coarsemul[] = {
   -16777216, 0, 16777216, 26591258, 33554432, 38955489, 43368474, 47099600,
   50331648, 53182516, 55732705, 58039632, 60145690, 62083076, 63876816,
   65546747, 67108864, 68576247, 69959732, 71268397, 72509921, 73690858,
@@ -41,7 +42,7 @@ const int32_t coarsemul[] = {
   81503396, 82323963, 83117622
 };
 
-int32_t osc_freq(int midinote, int mode, int coarse, int fine, int detune) {
+static int32_t osc_freq(int midinote, int mode, int coarse, int fine, int detune) {
   // TODO: pitch randomization
   int32_t logfreq;
   if (mode == 0) {
@@ -62,7 +63,7 @@ int32_t osc_freq(int midinote, int mode, int coarse, int fine, int detune) {
   return logfreq;
 }
 
-const uint8_t velocity_data[64] = {
+static const uint8_t velocity_data[64] = {
   0, 70, 86, 97, 106, 114, 121, 126, 132, 138, 142, 148, 152, 156, 160, 163,
   166, 170, 173, 174, 178, 181, 184, 186, 189, 190, 194, 196, 198, 200, 202,
   205, 206, 209, 211, 214, 216, 218, 220, 222, 224, 225, 227, 229, 230, 232,
@@ -71,14 +72,14 @@ const uint8_t velocity_data[64] = {
 };
 
 // See "velocity" section of notes. Returns velocity delta in microsteps.
-int ScaleVelocity(int velocity, int sensitivity) {
+static int ScaleVelocity(int velocity, int sensitivity) {
   int clamped_vel = max(0, min(127, velocity));
   int vel_value = velocity_data[clamped_vel >> 1] - 239;
   int scaled_vel = ((sensitivity * vel_value + 7) >> 3) << 4;
   return scaled_vel;
 }
 
-int ScaleRate(int midinote, int sensitivity) {
+static int ScaleRate(int midinote, int sensitivity) {
   int x = min(31, max(0, midinote / 3 - 7));
   int qratedelta = (sensitivity * x) >> 3;
 #ifdef SUPER_PRECISE
@@ -92,12 +93,12 @@ int ScaleRate(int midinote, int sensitivity) {
   return qratedelta;
 }
 
-const uint8_t exp_scale_data[] = {
+static const uint8_t exp_scale_data[] = {
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 16, 19, 23, 27, 33, 39, 47, 56, 66,
   80, 94, 110, 126, 142, 158, 174, 190, 206, 222, 238, 250
 };
 
-int ScaleCurve(int group, int depth, int curve) {
+static int ScaleCurve(int group, int depth, int curve) {
   int scale;
   if (curve == 0 || curve == 3) {
     // linear
@@ -114,7 +115,7 @@ int ScaleCurve(int group, int depth, int curve) {
   return scale;
 }
 
-int ScaleLevel(int midinote, int break_pt, int left_depth, int right_depth,
+static int ScaleLevel(int midinote, int break_pt, int left_depth, int right_depth,
     int left_curve, int right_curve) {
   int offset = midinote - break_pt - 17;
   if (offset >= 0) {
@@ -128,84 +129,117 @@ static const uint8_t pitchmodsenstab[] = {
   0, 10, 20, 33, 55, 92, 153, 255
 };
 
-void Dx7Note::init(const char patch[156], int midinote, int velocity) {
+// Apotheca: the amplitude modulation's depth at AMD 99 for each AMS (0..3),
+// in Q8 doublings: 0, 3, 9 and 24 dB. A GUESS: the original left AM out, and
+// these were not measured on the real one.
+static const int32_t ams_doublings[4] = {0, 128, 384, 1024};
+
+// Apotheca: which way each operator is moved by NoteBend::detune_spread, in
+// thirds (OP6 first).
+static const int32_t spread_thirds[6] = {3, -3, 2, -2, 1, -1};
+
+void Dx7Note::init(const char patch[156], int midinote, int velocity,
+    bool retrigger) {
+  algorithm_ = patch[134] & 31;
+  // TRANSPOSE: 24 is none. It moves the pitch, not the keyboard's scaling.
+  int pitchnote = midinote + patch[144] - 24;
+  bool keysync = patch[136] != 0;
   int rates[4];
   int levels[4];
   for (int op = 0; op < 6; op++) {
     int off = op * 21;
+    carrier_[op] = FmCore::is_carrier(algorithm_, op);
+    on_[op] = ((patch[155] >> op) & 1) != 0;
     for (int i = 0; i < 4; i++) {
       rates[i] = patch[off + i];
       levels[i] = patch[off + 4 + i];
     }
+    // A carrier's release ends in silence, whatever its L4: on the original a
+    // carrier with L4 over 0 rang for ever once let go.
+    if (carrier_[op]) levels[3] = 0;
     int outlevel = patch[off + 16];
     outlevel = Env::scaleoutlevel(outlevel);
-#ifdef VERBOSE
-    for (int j = 8; j < 12; j++) {
-      cout << (int)patch[off + j] << " ";
-    }
-#endif
     int level_scaling = ScaleLevel(midinote, patch[off + 8], patch[off + 9],
         patch[off + 10], patch[off + 11], patch[off + 12]);
     outlevel += level_scaling;
     outlevel = min(127, outlevel);
-#ifdef VERBOSE
-    cout << op << ": " << level_scaling << " " << outlevel << endl;
-#endif
     outlevel = outlevel << 5;
     outlevel += ScaleVelocity(velocity, patch[off + 15]);
     outlevel = max(0, outlevel);
     int rate_scaling = ScaleRate(midinote, patch[off + 13]);
-    env_[op].init(rates, levels, outlevel, rate_scaling);
+    env_[op].init(rates, levels, outlevel, rate_scaling, retrigger);
 
     int mode = patch[off + 17];
     int coarse = patch[off + 18];
     int fine = patch[off + 19];
     int detune = patch[off + 20];
-    int32_t freq = osc_freq(midinote, mode, coarse, fine, detune);
-    basepitch_[op] = freq;
-    // cout << op << " freq: " << freq << endl;
-    params_[op].phase = 0;
-    params_[op].gain[1] = 0;
+    basepitch_[op] = osc_freq(pitchnote, mode, coarse, fine, detune);
+    detune_[op] = basepitch_[op] - osc_freq(pitchnote, mode, coarse, fine, 7);
+    ams_[op] = patch[off + 14] & 3;
+    if (!retrigger || keysync) params_[op].phase = 0;
+    if (!retrigger) params_[op].gain[1] = 0;
   }
   for (int i = 0; i < 4; i++) {
     rates[i] = patch[126 + i];
     levels[i] = patch[130 + i];
   }
   pitchenv_.set(rates, levels);
-  algorithm_ = patch[134];
-  int feedback = patch[135];
-  fb_shift_ = feedback != 0 ? 8 - feedback : 16;
-  pitchmoddepth_ = (patch[139] * 165) >> 6;
+  feedback_ = patch[135] & 7;
+  fb_gain_ = feedback_ != 0 ? 1 << (23 + feedback_) : 0;
+  pmd_ = patch[139];
+  amd_ = patch[140];
   pitchmodsens_ = pitchmodsenstab[patch[143] & 7];
+  if (!retrigger) fb_buf_[0] = fb_buf_[1] = 0;
 }
 
-void Dx7Note::compute(int32_t *buf, int32_t lfo_val, int32_t lfo_delay,
-  const Controllers *ctrls) {
-  int32_t pitchmod = pitchenv_.getsample();
-  uint32_t pmd = pitchmoddepth_ * lfo_delay;  // Q32
-  // TODO: add modulation sources (mod wheel, etc)
+void Dx7Note::control(int32_t lfo_val, int32_t lfo_delay, int32_t pitch,
+    const NoteBend &bend) {
+  int32_t pitchmod = ((int64_t)pitchenv_.getsample() * bend.peg_scale) >> 8;
+  int pmd = bend.pmd >= 0 ? bend.pmd : pmd_;
+  int amd = bend.amd >= 0 ? bend.amd : amd_;
+  uint32_t pmdq = (uint32_t)((pmd * 165) >> 6) * (uint32_t)lfo_delay;  // Q32
   int32_t senslfo = pitchmodsens_ * (lfo_val - (1 << 23));
-  pitchmod += (((int64_t)pmd) * (int64_t)senslfo) >> 39;
-
-  // hardcodes a pitchbend range of 3 semitones, TODO make configurable
-  int pitchbend = ctrls->values_[kControllerPitch];
-  int32_t pb = (pitchbend - 0x2000) << 9;
-  pitchmod += pb;
+  pitchmod += (((int64_t)pmdq) * (int64_t)senslfo) >> 39;
+  pitchmod += pitch;
+  // The amplitude modulation: Q24 of its most, 0 .. 1.
+  uint32_t amdq = (uint32_t)((amd * 165) >> 6) * (uint32_t)lfo_delay;  // Q32
+  int32_t am = (int32_t)(((uint64_t)amdq * (uint32_t)lfo_val) >> 32);
   for (int op = 0; op < 6; op++) {
+    env_[op].bend_rates(bend.rate_bend);
     params_[op].gain[0] = params_[op].gain[1];
     int32_t level = env_[op].getsample();
-    int32_t gain = Exp2::lookup(level - (14 * (1 << 24)));
-    //int32_t gain = pow(2, 10 + level * (1.0 / (1 << 24)));
-    params_[op].freq = Freqlut::lookup(basepitch_[op] + pitchmod);
-    params_[op].gain[1] = gain;
+    if (!carrier_[op]) level += bend.mod_level;
+    level -= (int32_t)(((int64_t)am * ams_doublings[ams_[op]]) >> 8);
+    int32_t x = level - (14 * (1 << 24));
+    x = max(-(16 << 24), min(x, 3 << 24));  // (Exp2 shifts by 6 - whole doublings)
+    params_[op].gain[1] = on_[op] ? Exp2::lookup(x) : 0;
+    int32_t logfreq = basepitch_[op] - detune_[op] +
+        (int32_t)(((int64_t)detune_[op] * bend.detune_keep) >> 8) +
+        bend.detune_spread / 3 * spread_thirds[op] + pitchmod;
+    logfreq = max(-(11 << 24), min(logfreq, (20 << 24) - 1));  // (Freqlut shifts by 20 - whole octaves)
+    params_[op].freq = Freqlut::lookup(logfreq);
   }
-  core_.compute(buf, params_, algorithm_, fb_buf_, fb_shift_);
+  fb_gain_now_ = bend.fb_gain >= 0 ? bend.fb_gain : fb_gain_;
+}
+
+void Dx7Note::render(int32_t *buf, int from, int count) {
+  core_.compute(buf, params_, algorithm_, fb_buf_, fb_gain_now_, from, count);
 }
 
 void Dx7Note::keyup() {
   for (int op = 0; op < 6; op++) {
     env_[op].keydown(false);
-    pitchenv_.keydown(false);
   }
+  pitchenv_.keydown(false);
 }
 
+bool Dx7Note::silent() const {
+  for (int op = 0; op < 6; op++) {
+    if (env_[op].down()) return false;
+    if (carrier_[op] && (params_[op].gain[0] >= kLevelThresh ||
+        params_[op].gain[1] >= kLevelThresh)) return false;
+  }
+  return true;
+}
+
+}  // namespace msfa

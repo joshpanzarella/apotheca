@@ -14,25 +14,52 @@
  * limitations under the License.
  */
 
+// Changed for Apotheca (2026-11-15): see env.h and third_party/CHANGES.md.
+
 #include "synth.h"
 #include "env.h"
 
-using namespace std;
+namespace msfa {
 
-void Env::init(const int r[4], const int l[4], int32_t ol, int rate_scaling) {
+
+// The original made a sample every 1 / 49096 s, and its rates count samples.
+int32_t Env::sr_scale_ = 1 << 24;
+
+void Env::init_sr(double sample_rate) {
+  sr_scale_ = (int32_t)(49096.0 / sample_rate * (1 << 24) + 0.5);
+}
+
+void Env::bend_rates(const int q[4]) {
+  bool same = true;
+  for (int i = 0; i < 4; i++) {
+    same = same && bend_[i] == q[i];
+    bend_[i] = q[i];
+  }
+  if (!same && ix_ < 4) {
+    // The stage under way, at its new rate (its target is as it was).
+    int32_t target = targetlevel_;
+    bool rising = rising_;
+    advance(ix_);
+    targetlevel_ = target;
+    rising_ = rising;
+  }
+}
+
+void Env::init(const int r[4], const int l[4], int32_t ol, int rate_scaling,
+    bool keep_level) {
   for (int i = 0; i < 4; i++) {
     rates_[i] = r[i];
     levels_[i] = l[i];
   }
   outlevel_ = ol;
   rate_scaling_ = rate_scaling;
-  level_ = 0;
+  if (!keep_level) level_ = 0;
   down_ = true;
   advance(0);
 }
 
 int32_t Env::getsample() {
-  if (ix_ < 3 || (ix_ < 4) && !down_) {
+  if (ix_ < 3 || ((ix_ < 4) && !down_)) {
     if (rising_) {
       const int jumptarget = 1716;
       if (level_ < (jumptarget << 16)) {
@@ -93,9 +120,11 @@ void Env::advance(int newix) {
 
     // rate
     int qrate = (rates_[ix_] * 41) >> 6;
-    qrate += rate_scaling_;
-    qrate = min(qrate, 63);
+    qrate += rate_scaling_ + bend_[ix_];
+    qrate = max(0, min(qrate, 63));
     inc_ = (4 + (qrate & 3)) << (2 + LG_N + (qrate >> 2));
+    inc_ = (int32_t)(((int64_t)inc_ * sr_scale_) >> 24);
   }
 }
 
+}  // namespace msfa
