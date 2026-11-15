@@ -25,6 +25,7 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/fm6.hpp"
 #include "apotheca/jx3p.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/phazed.hpp"
@@ -99,6 +100,28 @@ static void jx3pRow(const char* name, int how) {
                 if (how == 2) synth->noteOnFrom(k, 0.8f, k - 12, 0.5f);
                 else synth->noteOn(k, 0.8f);
             }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
+}
+
+// FM-6 (docs/plans/fm6-plan.md, section 6): `notes` keys of `preset`, held; `again`: each key played
+// again every half second, so every operator's envelope is up (a decaying sound costs less as its
+// operators fall under the level the core works out). Measured over the 32 (2026-11-15), 8 keys each:
+// 0.22% (TUB BELLS) to 0.52% (BRASS 1, 2; STRINGS 1), most at 0.50 to 0.52: the cost is six operators
+// a voice, whatever the patch. The worst row is 16 keys, every voice the synth has.
+static void fm6Row(const char* name, int preset, int notes, bool again) {
+    std::unique_ptr<Fm6> synth(new Fm6);
+    synth->prepare(48000.f);
+    synth->selectPreset(preset);
+    std::vector<float> l(256), r(256);
+    for (int n = 0; n < notes; ++n) synth->noteOn(40 + 3 * n, 0.8f);
+    synth->render(l.data(), r.data(), 256);
+    int block = 0;
+    const double each = ms([&] {
+        if (again && block % 94 == 0)
+            for (int n = 0; n < notes; ++n) synth->noteOn(40 + 3 * n, 0.8f);
         ++block;
         synth->render(l.data(), r.data(), 256);
     }, 600);
@@ -587,6 +610,8 @@ int apotheca::runBench() {
     jx3pRow("JAX-EP, 6 notes", 0);
     jx3pRow("JAX-EP, 6, worst patch", 1);
     jx3pRow("JAX-EP, 6, moving cutoff", 2);
+    fm6Row("FM-6, 8 notes", 10, 8, false);          // E.PIANO 1
+    fm6Row("FM-6, 16, worst preset", 3, 16, true);  // STRINGS 1, keys again every half second
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);
