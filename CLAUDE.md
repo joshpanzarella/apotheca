@@ -1713,6 +1713,13 @@ effect in those two groups and fails one that does not.
   The Session tells the server the name (`Transfer::setOpenSong`, from
   `update()` when it changes and when WiFi goes on). **`saveNow` holds
   `Transfer::songFiles()` while it writes**, as the server does.
+- **A folder of recordings is deleted only on purpose** (owner, 2026-11-15: "Keep them"):
+  one that loses its last recording, deleted or moved out, stays, on the page as on the
+  handheld. `DELETE /PIN/folders/NAME` (`safeFolderPath`: one or two plain names) deletes an
+  EMPTY one by `rmdir` (409 with anything in it, 404 for a link or one inside a link); the
+  page offers DELETE FOLDER on a heading with no recording and no folder under it. Folders
+  made for a request that is then refused are taken away again, and only those (`foldersMade`
+  keeps what it made, `dropMade`): a folder that was there before is never touched.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from

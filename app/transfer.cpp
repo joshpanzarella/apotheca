@@ -27,6 +27,7 @@
 namespace apotheca {
 
 extern const char* const kDesignPage; // design_page.cpp
+bool plainName(const std::string& name, std::size_t longest); // (below)
 
 namespace {
 
@@ -106,6 +107,8 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
  .acts{flex-basis:100%}
  .acts>*{flex:1 1 auto;text-align:center}
  #find{width:110px}
+ .fhead{flex-wrap:wrap;row-gap:6px}
+ .fhead .fname{flex:1 1 60%}
 }
 </style></head><body><main>
 <header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes up to a minute.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
@@ -173,6 +176,17 @@ function folders() {
   for (const f of [...s]) if (f.includes('/')) s.add(split(f)[0]); // the folder a folder is in
   return [...s].sort((a, b) => a.localeCompare(b));
 }
+// A folder with nothing in it: no recording, no folder inside it. (One with a file that is no recording is refused by the handheld.)
+function emptyFolder(f) { return f && !all.samples.some(n => split(n)[0] == f || n.startsWith(f + '/')) && !folders().some(g => g.startsWith(f + '/')); }
+async function removeFolder(f) {
+  if (!(all.folders || []).includes(f)) { made.delete(f); open.delete(f); if (into == f) into = ''; draw(); return; } // named here, never on the card
+  let r;
+  try { const got = await fetch(base + '/folders/' + f.split('/').map(encodeURIComponent).join('/'), {method: 'DELETE'}); r = {ok: got.ok, text: (await got.text()).trim()}; }
+  catch (e) { r = {ok: false, text: 'no answer from the handheld'}; }
+  note('folder ' + f, r.ok ? r.text : r.text.startsWith('not deleted') ? r.text : 'not deleted: ' + r.text, r.ok ? 'ok' : 'no');
+  if (r.ok) { made.delete(f); open.delete(f); if (into == f) into = ''; }
+  list();
+}
 function folderSelect(sel, now) {
   sel.textContent = '';
   for (const f of ['', ...folders(), NEW]) { const o = el('option', '', f == '' ? 'UNSORTED' : f == NEW ? 'NEW FOLDER...' : f); o.value = f; sel.append(o); }
@@ -238,6 +252,7 @@ function drawRecordings() {
     const isOpen = filter ? true : open.has(f), sec = el('section', 'folder'), head = el('div', 'fhead');
     sec.dataset.folder = f; head.dataset.act = 'toggle';
     head.append(el('span', 'tw', isOpen ? '-' : '+'), el('span', 'fname' + (f ? '' : ' loose'), f || 'UNSORTED'), el('span', 'count', rows.length), btn(rows.length && rows.every(r => picked.has(r[0])) ? 'choose none' : 'choose all', 'all'), btn('add files', 'add'));
+    if (emptyFolder(f)) head.append(btn('delete folder', 'delfolder', 'del')); // a folder stays when its last recording goes: deleted only on purpose
     sec.append(head);
     if (isOpen) { // a shut folder draws no rows, so hundreds of files stay quick
       const ul = el('ul');
@@ -593,6 +608,14 @@ document.addEventListener('click', e => {
     drawRecordings(); return;
   }
   if (act == 'toggle') { const f = sec.dataset.folder; if (open.has(f)) open.delete(f); else open.add(f); drawRecordings(); return; }
+  if (act == 'delfolder') { // asks once more, there in its heading
+    t.textContent = 'delete it'; t.className = 'sure'; t.dataset.act = 'surefolder';
+    const keep = btn('keep', 'keepfolder'); t.after(keep);
+    setTimeout(() => { if (t.isConnected && t.dataset.act == 'surefolder') { t.textContent = 'delete folder'; t.className = 'del'; t.dataset.act = 'delfolder'; keep.remove(); } }, 6000);
+    return;
+  }
+  if (act == 'keepfolder') { const d = t.previousSibling; d.textContent = 'delete folder'; d.className = 'del'; d.dataset.act = 'delfolder'; t.remove(); return; }
+  if (act == 'surefolder') { removeFolder(sec.dataset.folder); return; }
   const kind = li.dataset.kind, name = li.dataset.name;
   if (act == 'play') play(t, kind, name);
   if (act == 'rename' || act == 'move') edit(li, act == 'move');
@@ -697,23 +720,36 @@ bool realFile(const std::string& folder, const std::string& name) {
     return lstat((folder + "/" + name).c_str(), &info) == 0 && S_ISREG(info.st_mode);
 }
 
-// A folder inside the recordings that has just lost a file goes too if that was its last, and
-// the folder that one was in, if it was all that held.
-void dropIfEmpty(const std::string& folder, const std::string& name) {
-    for (std::size_t slash = name.rfind('/'); slash != std::string::npos && slash > 0; slash = name.rfind('/', slash - 1))
-        rmdir((folder + "/" + name.substr(0, slash)).c_str()); // does nothing while anything is in it
-}
-
-// The folders a recording's name asks for, made if they are not there (the outer one first).
-// False if one of them is not a folder that can be used (a link, a file).
-bool foldersMade(const std::string& folder, const std::string& name) {
+// The folders a recording's name asks for, made if they are not there (the outer one first), and
+// each one made just now kept in `made`. False if one of them is not a folder that can be used (a link, a file).
+// A folder that loses its last recording is KEPT (owner, 2026-11-15: "Keep them"), as on the
+// handheld: a folder goes only when it is deleted on purpose (DELETE /folders/...).
+bool foldersMade(const std::string& folder, const std::string& name, std::vector<std::string>& made) {
     for (std::size_t slash = name.find('/'); slash != std::string::npos; slash = name.find('/', slash + 1)) {
         const std::string inside = folder + "/" + name.substr(0, slash);
         struct stat there;
-        mkdir(inside.c_str(), 0755); // fine if it is already there
+        if (mkdir(inside.c_str(), 0755) == 0) made.push_back(inside); // (fine if it is already there)
         if (lstat(inside.c_str(), &there) != 0 || !S_ISDIR(there.st_mode)) return false;
     }
     return true;
+}
+// What was refused does not leave the folders made for it on the way (the inner first); a folder
+// that was there before is never touched.
+void dropMade(const std::vector<std::string>& made) {
+    for (std::size_t i = made.size(); i-- > 0;) rmdir(made[i].c_str()); // does nothing while anything is in it
+}
+
+// A folder of the recordings by its whole name ("kicks", "drums/kicks"), two deep at most, each part
+// a plain name: "" if it is not one this takes.
+std::string safeFolderPath(const std::string& fromAddress) {
+    const std::string name = unescape(fromAddress);
+    std::size_t parts = 0;
+    for (std::size_t from = 0; from <= name.size();) {
+        const std::size_t end = std::min(name.find('/', from), name.size());
+        if (!plainName(name.substr(from, end - from), 24) || ++parts > 2) return "";
+        from = end + 1;
+    }
+    return name;
 }
 
 // A song deleted from the page goes where one deleted on the handheld goes:
@@ -1045,6 +1081,25 @@ void Transfer::answer(int fd) {
         return reply(fd, "200 OK", "text/plain", "sent. Now accept it on the handheld: hold A.\n");
     }
 
+    // Deleting a folder of the recordings: DELETE /folders/<name> ("kicks", "drums/kicks"). Only an
+    // EMPTY one, as hold B on the handheld: anything at all in it (a file that is no recording, a
+    // folder) and it stays. Not a link, nor a folder inside one.
+    if (path.compare(0, 9, "/folders/") == 0) {
+        if (method != "DELETE") return reply(fd, "405 Not Allowed", "text/plain", "folders are only deleted here\n");
+        const std::string name = safeFolderPath(path.substr(9));
+        if (samples_.empty() || name.empty()) return reply(fd, "400 Bad Request", "text/plain", "not a folder name this takes\n");
+        struct stat info;
+        for (std::size_t slash = name.find('/'); ; slash = name.find('/', slash + 1)) {
+            if (lstat((samples_ + "/" + name.substr(0, slash)).c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) return reply(fd, "404 Not Found", "text/plain", "no such folder\n");
+            if (slash == std::string::npos) break;
+        }
+        if (rmdir((samples_ + "/" + name).c_str()) != 0)
+            return errno == ENOTEMPTY || errno == EEXIST ? reply(fd, "409 Not Empty", "text/plain", "not deleted: it is not empty\n")
+                                                         : reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
+        received_.fetch_add(1);
+        return reply(fd, "200 OK", "text/plain", "deleted\n");
+    }
+
     // /samples/<name>.wav, /songs/<name>.song, /chords/<name>.json
     const std::size_t slash = path.find('/', 1);
     const std::string kind = slash == std::string::npos ? "" : path.substr(1, slash - 1);
@@ -1069,10 +1124,7 @@ void Transfer::answer(int fd) {
         const bool gone = kind == "songs" ? binSongFile(folder, name) : unlink(file.c_str()) == 0;
         if (kind == "songs") songs.unlock();
         if (!gone) return reply(fd, "500 Could Not Delete", "text/plain", "could not delete it\n");
-        if (kind == "samples") {
-            dropIfEmpty(folder, name);
-            noteChange(name, "");
-        }
+        if (kind == "samples") noteChange(name, ""); // (its folder stays, empty or not)
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "deleted\n");
     }
@@ -1089,8 +1141,9 @@ void Transfer::answer(int fd) {
         // Nothing is written over. (A card that takes "Kick" and "kick" for one name answers with the file itself.)
         if (lstat(target.c_str(), &there) == 0 && (stat(file.c_str(), &here) != 0 || here.st_ino != there.st_ino || here.st_dev != there.st_dev))
             return reply(fd, "409 Taken", "text/plain", "there is one of that name already\n");
-        if (!foldersMade(folder, to)) {
-            dropIfEmpty(folder, to); // (what was made on the way does not linger)
+        std::vector<std::string> made;
+        if (!foldersMade(folder, to, made)) {
+            dropMade(made); // (what was made on the way does not linger)
             return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
         }
         // Some cards will not rename a file from one folder into another (it was refused on the
@@ -1102,12 +1155,11 @@ void Transfer::answer(int fd) {
             const bool copied = readTextFile(file, contents) && writeTextFile(target, contents);
             if (!copied || unlink(file.c_str()) != 0) {
                 if (copied) unlink(target.c_str()); // the old one would not go: do not leave two
-                dropIfEmpty(folder, to);            // a folder made for it just now does not linger
+                dropMade(made);                     // a folder made for it just now does not linger
                 return reply(fd, "500 Could Not Move", "text/plain", std::string("could not move it: ") + std::strerror(copied ? errno : why) + "\n");
             }
         }
-        dropIfEmpty(folder, name);
-        noteChange(name, to);
+        noteChange(name, to); // (the folder it left stays, empty or not)
         received_.fetch_add(1);
         return reply(fd, "200 OK", "text/plain", "moved\n");
     }
@@ -1160,8 +1212,9 @@ void Transfer::answer(int fd) {
                      kind == "samples" ? "not a WAV file this can read\n" : kind == "chords" ? "not a chord pack\n" : "not an Apotheca song\n");
     }
     mkdir(folder.c_str(), 0755); // fine if it is already there
-    if (!foldersMade(folder, name)) { // and the folders inside it
-        dropIfEmpty(folder, name);
+    std::vector<std::string> made;
+    if (!foldersMade(folder, name, made)) { // and the folders inside it
+        dropMade(made);
         return reply(fd, "400 Bad Request", "text/plain", "not a folder this can use\n");
     }
     std::unique_lock<std::mutex> songs(songFiles_, std::defer_lock);

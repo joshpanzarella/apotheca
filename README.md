@@ -821,11 +821,16 @@ the same network.
   it. **Every other song on the card follows too**, and every rev: each file
   that names the recording is rewritten with the new name and nothing else in
   it changes. It keeps its date, so the song list stays in the same order.
-  Songs in `deleted` are left alone.
+  Songs in `deleted` are left alone. With many songs this takes a moment
+  after the move: the handheld does a few songs at a time and stays quick
+  meanwhile.
 - **DELETE** asks once more in the row (DELETE IT / KEEP). A recording, chord
   pack or bounce is gone for good. A song goes to `deleted` in the song
-  folder with its revs, the same as one deleted on the handheld. A folder
-  goes with its last recording.
+  folder with its revs, the same as one deleted on the handheld. **A folder
+  stays when its last recording is deleted or moved out**, as on the
+  handheld. An empty folder (no recording and no folder in it) shows DELETE
+  FOLDER on its heading, which asks once more too. A folder with any other
+  file in it is not deleted: the page says it is not empty.
 - **Deleting a recording the open song uses**: the song keeps the name. The
   lane says NOT IN THE SAMPLES FOLDER at once and its built-in drum plays; a
   sampler track is silent. Send a recording of that name again (into any
