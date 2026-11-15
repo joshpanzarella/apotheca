@@ -29,6 +29,10 @@ SPEEDS GUESSED; see "Batch 6b: what it learned". **Batch 7 is done
 (2026-11-14)**: the 32 factory patches, A1 to B16, in BANK A and BANK B, read
 twice from the booklet; **two of them are all but silent and the bank is
 quiet, both from this plan's guesses** (see "Batch 7: what it learned").
+**The review of 6a, 6b and 7 is mended (2026-11-15)**: see "Batches 6a, 6b
+and 7: the review's mend". **A third preset is hurt by the cutoff guess: A3
+Organ I plays 21 semitones low and 21 cents off the other tracks.** Left for
+the owner with the other two (section 8).
 Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
@@ -998,6 +1002,39 @@ batch 5's own test kills it.
 A1 at LARGE, XL and SMALL on PAPER, MAIN on B7 at LARGE, XL on GREY and MEDIUM
 on BLUE. Nothing was heard, nothing was run on the handheld.
 
+### Batches 6a, 6b and 7: the review's mend (2026-11-15)
+
+A review ran the three batches with its own programs (an old Twin song from
+`main` at 0.473, presets, undo, hints, every patch with six keys three ways,
+18 mutants) and found eight things. **Two are real faults of the sound or the
+files and are NOT mended, because each is the owner's call; both are now held
+as KNOWN by a test and said in README.** The other six are mended or shown.
+
+| Found | Fate | Test |
+| --- | --- | --- |
+| **A3 Organ I is out of tune with everything else** (high). What is heard is the filter's sine (25 to 28 dB over DCO-1 here), **20.79 semitones under the key, 21 cents off the nearest semitone**, at keys 48, 60 and 72. "Organ I plays in tune" only held a semitone for a semitone | **Reproduced, not mended: it is the owner's call "where the cutoff's Hz sit", taken at 15 Hz to 15 kHz.** Held as KNOWN (three checks that fail when the cutoff moves). **Measured for the call**: the plan's "49.6 Hz at CUTOFF 0" alone does NOT anchor it (Organ I then sings 5.07 semitones under the key). The anchored answer is both constants times 3.32, **49.84 Hz to 49.84 kHz** (the same span, held at 20 kHz as now): Organ I sings the key within 3 cents at keys 48 to 72, 15 dB over its DCO; B4 -35.8 dB, B15 -44.5; 14 of the 32 come up by more than 1 dB (B4 by 26.5), 3 go down (B6 by 4.2); the middle patch -27.0 dB from -28.5. **Meanwhile, on the device**: CUTOFF 4.1 and the track's BRILLIANCE 5.1 sing the key (0.0 cents at key 60, 3.3 at 48, -12 at 36; a scratch program, not in ctest). README says so | `jx3p_presets_test` `testNamsThree` |
+| **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as preset 1**; batch 7 made preset 1 A1 String I. A song from those builds says String I and plays Start (medium) | **Reproduced; the sound is kept, the name is not mended.** A song writes all 34 settings after its preset and they are read after it, so the track sounds as saved; MAIN names it String I, as it names any sound whose knobs were turned after its preset. Mending the name needs Start back on the list (a 33rd preset in a third folder, and the count beside every preset reads "/ 33"): the owner's call (section 8). Said in README and CLAUDE.md; **a preset's place is appended from here on** | `save_test` `testASongFromTheOnePresetBuilds` |
+| Undo of BRILLIANCE and VELOCITY had no test: `settingCount` swapped for `presetSettingCount` in `soundMark`, `restoreSounds` or `sendSynthPatch` passed everything | **A test.** Each turned is a step of its own; undone and redone in the project; VELOCITY undone is heard (a soft note 6 dB and more under a full one again), BRILLIANCE undone is heard (the note duller). The three mutants: killed | `app_test` `testUndoPutsBackTheTracksOwnTwo` |
+| No test held JAX-EP's hints to the bar | **A test.** MAIN and the five pages, every stop, A held and not, either help: 180 bars drawn, 0 pixels over. The 60-letter hint: killed (214 pixels over). A hint lengthened by 15 letters still fits, and passes: the bar has that room | `app_test` `testJaxepsHintsFit` |
+| Six keys with the macros full up pass the test's own peak bar (the review: A8 2.54, A16 2.23, A11 1.57, keys held 3 s) | **Reproduced, held as KNOWN, not changed: loudness is the owner's call with the bank's level.** Here, keys held 2 s: as written 1.464 at most (A8), macros full **A8 2.15, A16 1.88** (two over 1.5; A11 1.36), macros at 0 0.007 and 17 patches under -60 dB (the filter shut). Every sample a number, every patch ends, in all 96 runs. The bar: 1.5 as written, 2.75 macros full | `jx3p_presets_test` `testEveryPatchPlays` |
+| A player's own preset: the clamp in `jx::loadPreset` could be taken out with every test green; a knob out of range read "0.-5" and "10.5"; `readPreset` cast a file's number straight to int | **Mended, each with a test.** A file of numbers no dial has (250, -7, 1e300, -1e300) loads as each setting's most or least and plays (every sample a number); a knob reads inside 0.0 to 10.0 whatever it is given; `readPreset` holds a number as a double before the cast (macros to 0..1, settings to plus or minus a million) | `app_test` `testAPresetKeepsTheTracksOwnValues`, `testHowJaxepReads` |
+| MAIN shows "23 / 32", not B7 | **Not changed: the owner's call** (section 8). The folder box says BANK B; the count runs through both banks and the player's own, as on the other synths | |
+| The table-against-the-booklet test cannot see a digit misread in both files | **True, by design; said at the test.** The table is written from the .inc by a script. The reading was made twice and by the pointers' angles; the review read B4 and B15 again by eye. The other thirty have not been read a fourth time | |
+
+**Mutants (the mend)**: 12 made, **11 killed** (the three undo counts, the long
+hint, the preset's clamp, the knob's, the double's, the cutoff moved to the
+other answer, the VCA's ceiling doubled, a song reading 32 settings, a preset
+winning over the settings). One passes and is no fault: the hint 15 letters
+longer still fits its bar. `readPreset`'s hold of the macros to 0..1 is
+equivalent (`loadPreset` holds them again).
+
+**Small things put right**: the `jaxep-held` view shows 2.6 on A1, not 7.3 as
+"Batch 6b" says above. SPEED TEST still lists Twin Analog x1 / x2 / x8 (8b).
+
+**What only the tests saw**: all of it. Nothing was heard, nothing ran on the
+handheld, and the designer page was not opened in a browser for this mend
+(its script is not changed).
+
 ### Batches 2 to 5: the review's mend (2026-11-14)
 
 A review measured the four batches with its own harness (blocks, allocation, small numbers, Play
@@ -1060,6 +1097,10 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 | **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | Not decided. One constant (`kVcaUnityDial`): at 4.5 the middle patch is about as loud as PHAZED's, and LEVEL 10 clips harder. Or leave it and turn the track up in the mixer |
 | **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | Not decided; the row above ("Where the cutoff's Hz sit") was taken at 15 Hz to 15 kHz. **The factory patches speak for the other answer**: anchored so Organ I sings the key played, both can be heard (-36 and -45 dB), twelve more come up and three go down by about 4 dB |
 | **(From batch 7.) The VCF's ENV POLARITY of A5 and A16 is not drawn** | NORMAL |
+| **(From the review, 2026-11-15.) A3 Organ I is out of tune with the other tracks**: its filter sings 20.8 semitones under the key, 21 cents off the grid | Not decided; it is the cutoff row again, and a third factory patch that speaks for the other answer. **That answer is both constants times 3.32: 49.84 Hz to 49.84 kHz** (the mend's table has what it does to all 32). It moves every figure `jx3p_vcf_test` holds in Hz |
+| **(From the review.) A song from builds 0.485 to 0.493 on "Start" is named String I** (its sound is kept) | Not decided: leave it (said in README), or put Start back as a 33rd preset in a folder of its own and read such a song onto it |
+| **(From the review.) MAIN's count reads "23 / 32" on B7**, not the factory's number | Not decided: leave it (the folder box says BANK B), or show the bank's own number ("B7", or "7 / 16") |
+| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | Not decided; goes with the bank's level (`kVcaUnityDial`, `kVcaClipCeiling`) |
 
 ## 9. Decisions on the review (2026-11-13)
 

@@ -1085,6 +1085,33 @@ void testTheAutosaveWritesNothingOutWhenNothingChanged() {
     CHECK(readTextFile(path, onDisk) && onDisk == songText(p) && onDisk.find("tempo 101\n") != std::string::npos);
 }
 
+// A SONG FROM THE HANDHELD BUILDS 0.485 TO 0.493 KEEPS ITS SOUND, UNDER ANOTHER PRESET'S NAME (the
+// review, 2026-11-15). Those builds went out with JAX-EP and one preset, "Start" in folder START,
+// as preset 1. Batch 7 made preset 1 the booklet's A1 String I and took Start off the list, so
+// "preset 1" in such a song now names String I. KNOWN, HELD HERE, NOT HIDDEN: a song always wrote
+// all 34 settings after its preset, and they are read after it, so the track sounds as it did (the
+// start patch: one plain saw); only the name on MAIN is another's, as it is over any sound whose
+// knobs were turned after its preset was picked. Mending the name needs Start back on the list (a
+// third folder): the owner's call (the plan, section 8).
+void testASongFromTheOnePresetBuilds() {
+    const Jx3pPatch start = Jx3p::startPatch();
+    std::string text = "apotheca-song 1\ntempo 120\ntrack jaxep\npreset 1\nmacros 0.5 0.5 0.5 0.25 0.5 0.5 0.5 0.5\nsettings";
+    for (int id = 0; id < jx3p::kSettings; ++id) text += " " + std::to_string(id == jx3p::Velocity ? 0 : id == jx3p::Brilliance ? 81 : start.value[id]);
+    text += "\nscene 1\nnote 1 60 2 0.8\n";
+    std::unique_ptr<Project> p(new Project);
+    CHECK(parseSong(text, *p) && p->trackCount() == 1 && p->tracks[0].kind == TrackKind::Jx3p);
+    const TrackData& t = p->tracks[0];
+    CHECK(start.value[jx3p::Cutoff] == 100 && start.value[jx3p::VcaLevel] == 70 && Jx3p::presetPatch(0).value[jx3p::Cutoff] != 100);
+    for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(t.jx3p.value[id] == start.value[id]); // the sound it was saved with, not String I's
+    CHECK(t.jx3p.value[jx3p::Velocity] == 0 && t.jx3p.value[jx3p::Brilliance] == 81 && t.macro[3] == 0.25f && t.notes[0][0].at(60, 0) >= 0);
+    CHECK(t.preset == 0 && std::string(jx3pSpec().presetName(t.preset)) == "String I"); // KNOWN: the name is A1's now
+    // Written again and read again it is the same sound still.
+    const std::string again = songText(*p);
+    std::unique_ptr<Project> q(new Project);
+    CHECK(parseSong(again, *q) && songText(*q) == again);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(q->tracks[0].jx3p.value[id] == t.jx3p.value[id]);
+}
+
 // AN OLD SONG'S TWIN ANALOG TRACK IS READ AS A JAX-EP TRACK (jx3p-plan.md, section 5; the owner's
 // call, section 8). The file is one main wrote before the change (tests/twinsong_main.inc: not to be
 // remade). Its sound was another synth's and is not read: no preset, no settings, no macros, no
@@ -1305,6 +1332,7 @@ int main(int, char**) {
     testTheTextKeptIsTheSongsText();
     testTextRoundTrip();
     testAnOldTwinSong();
+    testASongFromTheOnePresetBuilds();
     testBadFiles();
     testSavedAsYouGoAndBackAtTheNextStart();
     testAnOpenedSongSoundsLikeTheOneSaved();

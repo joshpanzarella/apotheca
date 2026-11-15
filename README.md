@@ -445,6 +445,10 @@ designer".
     automation. Saved again, the song is written for JAX-EP.
   - A JAX-EP preset does not hold VELOCITY or BRILLIANCE. Those two belong
     to the track, and stay as set when another preset is picked.
+  - **A song saved by builds 0.485 to 0.493 with a JAX-EP track** was saved
+    on that synth's one sound then, "Start". It still sounds as it did (a
+    song keeps every setting), but MAIN now names it String I, the first
+    preset today.
 - TRACK NAME on the page can be anything; on the handheld it is picked from
   a list (SETUP).
 
@@ -1307,6 +1311,14 @@ pages are that synth's panel:
   - **Song Whistle and Planet are all but silent, and the bank is quiet**
     (about 13 dB under PHAZED's presets). Both come from the guesses above,
     not from the presets: turn CUTOFF or the track's level up meanwhile.
+  - **Organ I is out of tune with the other tracks.** What is heard of it is
+    its filter singing, and for the same guess (where the cutoff sits) it
+    sings 21 semitones under the key played, a fifth of a semitone sharp. It
+    is in tune with itself. To play it in tune meanwhile, set its CUTOFF to
+    4.1 and the track's BRILLIANCE to 5.1: it then sings the key played.
+  - **With six keys down and the macros turned full up, E. Piano I and Voice
+    come out of the synth over full scale** (twice it at most). Turn the
+    track down in the mixer if that is wanted.
 - **VELOCITY and BRILLIANCE (last page) belong to the track**, not to the
   preset: picking a preset leaves them as set.
 

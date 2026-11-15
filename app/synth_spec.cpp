@@ -176,7 +176,13 @@ void settingText(int id, int value, char* out, int size) {
     case DcoEnvPolarity: case VcfEnvPolarity: one(polarity, 2); break;
     case VcaMode: one(modes, 2); break;
     case LfoWave: one(lfoWaves, 3); break;
-    default: std::snprintf(out, n, "%d.%d", value / 10, value % 10); break; // a knob, as the PG-200's dial reads: 0.0 to 10.0
+    default: {
+        // A knob, as the programmer's dial reads: 0.0 to 10.0. Held to the dial: a value from outside
+        // it (a file written by hand) read "0.-5" and "10.5".
+        const int dial = value < 0 ? 0 : (value > 100 ? 100 : value);
+        std::snprintf(out, n, "%d.%d", dial / 10, dial % 10);
+        break;
+    }
     }
 }
 

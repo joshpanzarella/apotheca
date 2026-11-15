@@ -125,6 +125,7 @@ void Session::sendSynthPatch(int track) {
 
 namespace {
 // A preset file: "apotheca-preset 1", then "macros" and "settings" lines.
+const double kPresetValueMost = 1000000.0;
 bool readPreset(const std::string& text, UserPreset& out) {
     std::istringstream lines(text);
     std::string line;
@@ -134,8 +135,11 @@ bool readPreset(const std::string& text, UserPreset& out) {
         std::string word;
         in >> word;
         double v = 0.0;
-        if (word == "macros") while (in >> v) out.macros.push_back(std::isfinite(v) ? static_cast<float>(v) : 0.5f);
-        if (word == "settings") while (in >> v) out.values.push_back(std::isfinite(v) ? static_cast<int>(v) : 0);
+        // A number from a file is held to its limits as a double before it is made a float or an int
+        // ("settings 1e300" cast first is undefined). The widest setting of any synth is well inside
+        // kPresetValueMost; each synth's loadPreset then holds a value to its own setting's range.
+        if (word == "macros") while (in >> v) out.macros.push_back(std::isfinite(v) ? static_cast<float>(v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v)) : 0.5f);
+        if (word == "settings") while (in >> v) out.values.push_back(std::isfinite(v) ? static_cast<int>(v < -kPresetValueMost ? -kPresetValueMost : (v > kPresetValueMost ? kPresetValueMost : v)) : 0);
     }
     return !out.values.empty();
 }

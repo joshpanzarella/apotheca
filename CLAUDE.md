@@ -234,6 +234,21 @@ effect in those two groups and fails one that does not.
     (`kVcfLowHz`, `kVcaUnityDial`), not from the table: the owner's calls
     (the plan, section 8). When either moves, the test's two KNOWN lines fail
     and are taken out.
+  - **Known the same way (the review's mend, 2026-11-15): A3 Organ I is in
+    tune with itself, not with the other tracks.** What is heard is the
+    filter's sine, 20.8 semitones under the key and 21 cents off the grid
+    (`testNamsThree` holds it as KNOWN). The cutoff anchored so it sings the
+    key is BOTH constants times 3.32 (49.84 Hz to 49.84 kHz: the same span;
+    `kVcfLowHz` alone at 49.6 leaves it 5 semitones under). Meanwhile CUTOFF
+    4.1 with the track's BRILLIANCE at 5.1 sings the key (README says so).
+  - **Six keys with every macro full up pass full scale** (A8 2.15, A16 1.88
+    out of the synth; `testEveryPatchPlays`, KNOWN): loudness, the owner's
+    call with the bank's level. Nothing is not-a-number and everything ends.
+  - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
+    preset 1.** A song from them keeps its sound (all 34 settings are read
+    after the preset) under String I's name (`save_test`
+    `testASongFromTheOnePresetBuilds`). **A preset's place is in songs from
+    now on: append, never put one in before another.**
   - **A test that listens to a new JAX-EP track makes it plain first** (MIX
     0, ATTACK 0, CHORUS off): A1's two saws beat, and a note's peak hangs on
     where in the beat it began (`design_test`).
@@ -248,7 +263,11 @@ effect in those two groups and fails one that does not.
   `settingCount(kind)`.** They differ for JAX-EP: ids 32 and 33 (VELOCITY,
   BRILLIANCE) are the track's own, so `loadPreset` (built-in and the player's
   own) and `savePreset` stop at 32, and a new `TrackData` starts with them
-  (`Jx3p::presetPatch(0)`). A new track value of any synth goes after its
+  (`Jx3p::presetPatch(0)`). **Undo counts a song's** (`soundMark`,
+  `restoreSounds`, `sendSynthPatch`: `app_test`
+  `testUndoPutsBackTheTracksOwnTwo`, in the engine too). A number in a preset
+  file is held as a double first, then to its setting's range (`readPreset`,
+  `jx::loadPreset`), and a knob reads inside its dial whatever it is given. A new track value of any synth goes after its
   patch's ids and is kept out the same way.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
@@ -1025,7 +1044,8 @@ effect in those two groups and fails one that does not.
   (`testTheHintsFitAndSayWhatTheyDo`) holds the SONG screen and the drum grid
   to 0 with either help (pit stop, 2026-11-14: SONG's cell leaves mute and
   solo to the head, the drum grid lists a hit's own jobs on a hit and the
-  brushes on an empty step). **The piano roll on a note is still 48 to 69
+  brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
+  every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
   pixels over** (its help is not drawn): not mended.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
@@ -1590,7 +1610,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
-2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done; 8a, the tests off Twin, is next. **Two calls wait on the owner from batch 7: the bank is quiet, and two presets are all but silent**).
+2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done; 8a, the tests off Twin, is next. **Two calls wait on the owner from batch 7: the bank is quiet, and two presets are all but silent; a third, Organ I, is out of tune with the other tracks for the same guess** (the review's mend, 2026-11-15)).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).

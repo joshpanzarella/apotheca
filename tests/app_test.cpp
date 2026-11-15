@@ -6299,6 +6299,8 @@ void testHowJaxepReads() {
     for (int id : onOff) CHECK(every(id) == "OFF ON");
     // A value out of its range (a file, a later program) reads as the nearest position, never past the list.
     CHECK(reads(jx3p::Dco1Wave, 3) == "SQUARE" && reads(jx3p::Dco2Wave, 9) == "NOISE" && reads(jx3p::Chorus, -1) == "OFF" && reads(jx3p::LfoWave, 7) == "RANDOM");
+    // A knob too: held to the dial (it read "0.-5" and "10.5": the review, 2026-11-15).
+    CHECK(reads(jx3p::Cutoff, -5) == "0.0" && reads(jx3p::Cutoff, 105) == "10.0" && reads(jx3p::Brilliance, -100) == "0.0" && reads(jx3p::Release, 1000) == "10.0");
 
     // The pages' own words, in the panel's order.
     const char* pages[] = {"MAIN", "DCO-1", "DCO-2", "VCF", "VCA AND ENVELOPE", "LFO AND CHORUS"};
@@ -6482,6 +6484,27 @@ void testAPresetKeepsTheTracksOwnValues() {
     CHECK(track.jx3p.value[jx3p::Resonance] == 9 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
     std::string still;
     CHECK(readTextFile(std::string(folder) + "/OLD.twin", still) && still.find("synth twin") != std::string::npos);
+    // A file written by hand with numbers no dial has: each is held to its own setting's range (the
+    // review, 2026-11-15: the hold could be taken out with every test green), and one too large for
+    // an int is held as a double first, so it is the setting's most on every machine.
+    {
+        std::string wild = "apotheca-preset 1\nsynth jaxep\nmacros 7 -3 1e300 0.5 0.5 0.5 0.5 0.5\nsettings";
+        for (int id = 0; id < jx3p::kPatchSettings; ++id) wild += id == jx3p::Cutoff ? " 1e300" : id == jx3p::Resonance ? " -1e300" : id % 2 ? " 250" : " -7";
+        CHECK(writeTextFile(std::string(folder) + "/WILD.jaxep", wild + "\n"));
+        session.usePresetFolder(folder);
+        CHECK(userPresets(TrackKind::Jx3p).size() == 3 && userPresets(TrackKind::Jx3p)[2].name == "WILD");
+        session.chooseSynthPreset(1, Jx3p::presetCount() + 2);
+        for (int id = 0; id < jx3p::kPatchSettings; ++id) {
+            const int most = jx3pSpec().settingMax(id), least = jx3pSpec().settingMin(id);
+            CHECK(track.jx3p.value[id] == (id == jx3p::Cutoff ? most : id == jx3p::Resonance ? least : id % 2 ? most : least));
+        }
+        CHECK(track.macro[0] == 1.f && track.macro[1] == 0.f && track.macro[2] == 1.f && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+        // ...and the engine plays it: every sample a number.
+        const std::vector<float> heard = (jxLoud(*rig, 1.f), rig->render(9600));
+        for (float v : heard) CHECK(std::isfinite(v));
+        session.chooseSynthPreset(1, Jx3p::presetCount());
+        std::remove((std::string(folder) + "/WILD.jaxep").c_str());
+    }
     // The track made another instrument and back: the two are the track's still.
     CHECK(session.setTrackKind(1, TrackKind::Phazed) && session.setTrackKind(1, TrackKind::Jx3p));
     CHECK(track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12 && track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
@@ -6493,6 +6516,115 @@ void testAPresetKeepsTheTracksOwnValues() {
     std::remove((std::string(folder) + "/HAND.jaxep").c_str());
     std::remove((std::string(folder) + "/OLD.twin").c_str());
     rmdir(folder);
+}
+
+// UNDO PUTS BACK THE TRACK'S OWN TWO, IN THE ENGINE TOO (the review, 2026-11-15). BRILLIANCE and
+// VELOCITY are ids 32 and 33: past a preset's 32, so the three places that go through a synth's
+// settings for undo (soundMark sees a change, restoreSounds puts it back, sendSynthPatch tells the
+// engine) must each count a SONG's settings, not a preset's. Counting a preset's in any of the
+// three passed every test.
+void testUndoPutsBackTheTracksOwnTwo() {
+    std::unique_ptr<Rig> rig(onTwin());
+    Session& session = rig->app.session();
+    TrackData& track = rig->project().tracks[1];
+    const auto still = [&] {
+        for (int i = 0; i < 12; ++i) {
+            rig->frames(25);
+            rig->render(256);
+        }
+    };
+    // A soft note against a full one, in dB: about 0 with VELOCITY off, far under with it on.
+    const auto softUnderFull = [&] {
+        still();
+        const float soft = jxLoud(*rig, 0.3f);
+        still();
+        const float full = jxLoud(*rig, 1.f);
+        still();
+        return 20.f * std::log10(soft / full);
+    };
+    // A plain sound, so a note's peak does not hang on where the two saws' beat is (CLAUDE.md).
+    session.chooseSynthPreset(1, 5);
+    session.setSynthSetting(1, jx3p::SourceMix, 0);
+    session.setSynthSetting(1, jx3p::Attack, 0);
+    session.setSynthSetting(1, jx3p::Chorus, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 12);
+    still();
+    CHECK(track.jx3p.value[jx3p::Velocity] == 1 && softUnderFull() < -6.f);
+    const int stepsWere = session.undoSteps();
+    // BRILLIANCE turned: a step of its own (soundMark saw id 33 move)...
+    session.setSynthSetting(1, jx3p::Brilliance, 99);
+    still();
+    CHECK(session.undoSteps() == stepsWere + 1);
+    // ...then VELOCITY off: another, and the engine plays a soft note as loud as a full one.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    still();
+    CHECK(session.undoSteps() == stepsWere + 2 && std::fabs(softUnderFull()) < 1.f);
+    // Undo: VELOCITY is on again in the project AND in the sound (the patch was sent with all 34).
+    CHECK(session.undo());
+    still();
+    CHECK(track.jx3p.value[jx3p::Velocity] == 1 && track.jx3p.value[jx3p::Brilliance] == 99 && softUnderFull() < -6.f);
+    // Undo: BRILLIANCE is back where it was. Redo, twice: both as they were turned.
+    CHECK(session.undo());
+    still();
+    CHECK(track.jx3p.value[jx3p::Brilliance] == 12 && track.jx3p.value[jx3p::Velocity] == 1 && track.preset == 5);
+    CHECK(session.redo() && track.jx3p.value[jx3p::Brilliance] == 99 && track.jx3p.value[jx3p::Velocity] == 1);
+    CHECK(session.redo() && track.jx3p.value[jx3p::Velocity] == 0);
+    still();
+    CHECK(std::fabs(softUnderFull()) < 1.f);
+    // BRILLIANCE in the engine: undone to 1.2 from 9.9, the same note is duller (less of it over 3 kHz
+    // is not measured here: its peak through a filter two octaves lower is smaller).
+    session.setSynthSetting(1, jx3p::Velocity, 1);
+    session.setSynthSetting(1, jx3p::Cutoff, 40);
+    session.setSynthSetting(1, jx3p::Brilliance, 0);
+    still();
+    session.setSynthSetting(1, jx3p::Brilliance, 100);
+    still();
+    still();
+    const float bright = jxLoud(*rig, 1.f);
+    CHECK(session.undo());
+    still();
+    still();
+    const float dull = jxLoud(*rig, 1.f);
+    CHECK(track.jx3p.value[jx3p::Brilliance] == 0 && dull < 0.8f * bright);
+}
+
+// JAX-EP'S HINTS FIT THE BAR (the review, 2026-11-15: a hint of sixty letters passed every test,
+// since the bar drops what does not fit and nothing then overlaps). MAIN and the five pages, the
+// cursor on every stop, A held and not, with either help: nothing over.
+void testJaxepsHintsFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(onTwin());
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.twin();
+    CHECK(screen.pageCount() == 6 && rig->project().tracks[rig->project().track].kind == TrackKind::Jx3p);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu) {
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : jx3pSpec().itemCount(page);
+            for (int cursor = 0; cursor < stops; ++cursor) {
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP"; // (App sets it each frame from the controls)
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL JAX-EP's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+            }
+        }
+    }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + jx3p::kSettings));
 }
 
 } // namespace
@@ -8971,6 +9103,14 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--jaxep") { // just JAX-EP's own (for trying a change; ctest runs everything)
+        testHowJaxepReads();
+        testAPresetKeepsTheTracksOwnValues();
+        testUndoPutsBackTheTracksOwnTwo();
+        testJaxepsHintsFit();
+        std::printf(failures ? "%d check(s) failed\n" : "JAX-EP's tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
     if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
         testAResyncKeepsUndo();
         testATrackDeletedOrChangedKeepsUndo();
@@ -9107,6 +9247,8 @@ int main(int argc, char** argv) {
     testHowJaxepReads();
     testTheEngineHearsTwinsSettings();
     testAPresetKeepsTheTracksOwnValues();
+    testUndoPutsBackTheTracksOwnTwo();
+    testJaxepsHintsFit();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
