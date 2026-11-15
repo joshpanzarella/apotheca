@@ -243,6 +243,9 @@ private:
 
     bool fxHeld_ = false;  // X is held on a hit: the stick sets its step effects
     bool feelHeld_ = false; // X is held on a lane's name: the stick sets the lane's feel
+    // A or Y pressed while X was held (the feel's copy and dice, a hit's THROW and dice): that press
+    // does nothing of its own if X is let go first. Until the button comes up.
+    bool aSpent_ = false, ySpent_ = false;
     float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
     bool fxWas_ = false;
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go

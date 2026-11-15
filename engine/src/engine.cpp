@@ -1107,7 +1107,15 @@ void Engine::apply(const Command& c) {
                         if (off < kNoNote) off *= by;
                     for (auto& lane : track.pending)
                         for (auto& p : lane)
-                            if (p.velocity > 0.f) p.samplesLeft *= by, p.gap *= by;
+                            if (p.velocity > 0.f) {
+                                p.samplesLeft *= by, p.gap *= by;
+                                // FEEL: a felt hit's wait and its ratchet's gap stay whole samples (a
+                                // part of a sample plays a sample sooner or later by the block).
+                                if (p.whole) {
+                                    p.samplesLeft = std::ceil(p.samplesLeft);
+                                    p.gap = std::floor(p.gap) < 1.0 ? 1.0 : std::floor(p.gap);
+                                }
+                            }
                 }
             }
             // Effects that keep time (the delay) follow.
@@ -1295,8 +1303,12 @@ bool Engine::schedule(Track& track, int lane, const DrumScene& scene, int step, 
         // The time of the hit its run begins with (a run of slices moves as one, and still
         // carries the sound on), and a whole number of samples: a part of a sample plays a
         // sample sooner or later by how the sound is cut into blocks.
-        const int head = feelHead(scene.level[lane], scene.start[lane], step);
-        const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, bar, head, stepAt - (step - head));
+        // (`scene` is bar `bar` of its cell, and a cell's bars stand in a row: `&scene - bar` is
+        // the cell's first. The run may begin bars back: a break longer than a bar, in order.)
+        const int back = feelRunBack(&scene - bar, bar, lane, step);
+        const int headAt = bar * kSteps + step - back; // steps from the cell's top
+        const int head = headAt % kSteps;
+        const std::uint32_t seed = feelSeed(static_cast<int>(&track - tracks_), lane, headAt / kSteps, head, stepAt - back);
         delaySamples = std::ceil(delaySamples + feelSamples(feel.time, head, seed, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_));
         if (delaySamples < 0.0) {
             if (ahead) return false; // (asked again after a scene move, and its moment has gone by)
@@ -1354,6 +1366,7 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
             p.how = how;
             p.ahead = asking_;
             p.begun = begun;
+            p.whole = whole;
             return;
         }
     }

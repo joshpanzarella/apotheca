@@ -861,6 +861,18 @@ void testTheDrumGridsRows() {
     rig.frames(2);
     holds(rig, "the drum grid, the dice on a lane", kDrumStrip);
     rig.key(Y, false);
+    // FEEL: the name's one purple line, and X held (the strip is the feel): tight rows, the same at every size.
+    rig.session().setLaneFeel(0, 5, 100, 100);
+    rig.frames(2);
+    holds(rig, "the drum grid, on a felt lane's name", kDrumStrip);
+    CHECK(drew("HUMAN TIME 100%   HUMAN LEVEL 100%"));
+    rig.key(X, true);
+    rig.frames(2);
+    CHECK(drums.feeling());
+    holds(rig, "the drum grid, X held on a lane's name", kDrumStrip);
+    rig.key(X, false);
+    rig.session().setLaneFeel(0, 5, 0, 0);
+    rig.frames(40); // (what X heard has rung out)
     // The tempo: its box is in the top bar, which holds() compares.
     drums.moveCursorTo(0, 0);
     rig.tap(UP);

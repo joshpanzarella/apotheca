@@ -622,6 +622,7 @@ private:
             int more = 0;
             bool ahead = false; // an early hit of the step after the one playing
             bool begun = false; // a ratchet whose first hit has sounded
+            bool whole = false; // FEEL: its wait and its gap are whole samples, and stay so through a tempo change
         };
         Pending pending[kDrumLanes][3];
         // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, and the step (counted from Play) whose hit

@@ -19,7 +19,7 @@
 // recording) straight after a hit on the step before it carries that sound on without a seam
 // (DrumMachine::trigger). Moved each by itself, every slice would meet the sound a few
 // milliseconds off and cut it. So such a hit takes the TIME of the hit its run begins with
-// (feelHead); its LEVEL is its own.
+// (feelRunBack: back over the bar lines inside its cell too); its LEVEL is its own.
 //
 // The amounts are percentages, the six a chord's are (kAmountAt). They are kept in songs.
 
@@ -79,13 +79,35 @@ inline float feelLevel(float level, int amount, int step, std::uint32_t seed) {
     return static_cast<float>(to > kFeelMostLevel ? kFeelMostLevel : (to < kFeelLeastLevel ? kFeelLeastLevel : to));
 }
 
-// The step whose TIME a hit on `step` takes: its own, or, for a hit that starts further into its
-// sound and has a hit on the step before it, the one its run begins with. `level` and `start`
-// are the lane's sixteen steps of the bar. A run does not go back over a bar line: step 1
-// begins one.
-inline int feelHead(const float* level, const float* start, int step) {
-    while (step > 0 && start[step] > 0.f && level[step - 1] > 0.f) --step;
-    return step;
+// The run a hit belongs to. A hit that starts further into its sound and has a hit on the step
+// before it takes the TIME of the hit its run begins with; any other hit begins its own.
+//
+// How many steps before the hit on `step` of bar `bar` of its cell its run begins (0: with
+// itself). `cell` is the cell's bars, each with level[lane][step] and start[lane][step]; `bar`
+// counts from the cell's first.
+//
+// A run goes back over a bar line INSIDE the cell: a recording fitted to two bars and played in
+// order is one sound from its first step to its thirty-second, and bar 2 rolled by itself met
+// bar 1's sound some milliseconds off and cut it. It does not go back from the cell's first bar
+// to its last: what played before that is another time round (or another scene), and a slice
+// there never carried on from it anyway unless it was the very next piece of the sound.
+template <class Bar>
+inline int feelRunBack(const Bar* cell, int bar, int lane, int step) {
+    int back = 0;
+    for (;;) {
+        if (cell[bar].start[lane][step] <= 0.f) break; // from the top: its own
+        int barBefore = bar, stepBefore = step - 1;
+        if (stepBefore < 0) {
+            if (bar == 0) break;
+            barBefore = bar - 1;
+            stepBefore = kSteps - 1;
+        }
+        if (cell[barBefore].level[lane][stepBefore] <= 0.f) break; // nothing on the step before it
+        bar = barBefore;
+        step = stepBefore;
+        ++back;
+    }
+    return back;
 }
 
 } // namespace apotheca

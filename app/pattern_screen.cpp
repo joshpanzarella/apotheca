@@ -635,19 +635,23 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if ((fxHeld_ || feelHeld_) && b == Button::Y) {
         // The dice, for what this hit does, or for the lane's feel. (Y's own jobs wait until X is let go;
         // and if X is let go first, Y coming up after it is not a tap: it rolls nothing and steps no chance.)
+        // Nor is it Y's hold if X is let go first and Y stays down: `ySpent_`, until Y comes up.)
         if (event.down) {
             yDidSomething_ = true;
+            ySpent_ = true;
             if (feelHeld_) feelRoll();
             else fxRoll();
         }
         return;
     }
     if (feelHeld_ && b == Button::A) {
-        if (event.down) feelToAll(); // this lane's feel onto every lane. (A's own jobs wait until X is let go.)
+        // This lane's feel onto every lane. (A's own jobs wait until X is let go, and this press of A
+        // does none of them even then: `aSpent_`. It was pressed for the feel.)
+        if (event.down) feelToAll(), aSpent_ = true;
         return;
     }
     if (fxHeld_ && b == Button::A) {
-        if (event.down) fxThrow(); // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go.)
+        if (event.down) fxThrow(), aSpent_ = true; // THROW, a step round. (A's own jobs, placing and shaping, wait until X is let go and A is pressed again.)
         return;
     }
     if (b == Button::X) {
@@ -727,8 +731,8 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
     if (isDirection(b)) {
         if (feelHeld_) feelTurn(b);
         else if (fxHeld_) fxTurn(b);
-        else if (input.held(Button::Y)) nudgeExact(b, true);
-        else if (input.held(Button::A)) nudgeExact(b, false);
+        else if (input.held(Button::Y) && !ySpent_) nudgeExact(b, true);
+        else if (input.held(Button::A) && !aSpent_) nudgeExact(b, false);
         else dragCursor(b);
         repeating_ = b;
         repeatAt_ = 0; // update() starts the wait, on its own clock
@@ -754,6 +758,8 @@ void PatternScreen::update(const Input& input, Uint32 nowMs) {
     if (!input.held(Button::B)) erasing_ = false;
     if (!input.held(Button::X) || !hitHere()) fxHeld_ = false;
     if (!input.held(Button::X) || onTempo_ || step_ != kLaneName) feelHeld_ = false;
+    if (!input.held(Button::A)) aSpent_ = false;
+    if (!input.held(Button::Y)) ySpent_ = false;
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
@@ -1014,7 +1020,8 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         tight.small.draw(r, 8.f, stripY, "LANE", kDim);
         tight.fit(laneLabel(lane_), 104.f).draw(r, 8.f, stripY + 16.f, laneLabel(lane_), kText);
         // Its feel, in a line: what X held would show in full.
-        if (const LaneFeel feel = trk().laneFeel[lane_]; !feel.atRest()) {
+        // (Not while something is being said on that row: why L1 did not open the slices.)
+        if (const LaneFeel feel = trk().laneFeel[lane_]; !feel.atRest() && !said()[0]) {
             char time[8], level[8], summary[48];
             feelAmountText(feel.time, time, sizeof time);
             feelAmountText(feel.level, level, sizeof level);

@@ -91,6 +91,17 @@ struct Rig {
         ButtonEvent press;
         if (input.handle(event, press)) app.onButton(press, input);
     }
+    // The stick pushed all the way: x right, y down (-1..1), or let go (0, 0).
+    void stick(int x, int y) {
+        for (int axis = 0; axis < 2; ++axis) {
+            SDL_Event event = {};
+            event.type = SDL_CONTROLLERAXISMOTION;
+            event.caxis.axis = static_cast<Uint8>(axis == 0 ? SDL_CONTROLLER_AXIS_LEFTX : SDL_CONTROLLER_AXIS_LEFTY);
+            event.caxis.value = static_cast<Sint16>((axis == 0 ? x : y) * 32767);
+            ButtonEvent press;
+            if (input.handle(event, press)) app.onButton(press, input);
+        }
+    }
     void tap(SDL_Keycode code, int times = 1) {
         for (int i = 0; i < times; ++i) {
             key(code, true);
@@ -300,6 +311,110 @@ void testTheGesture() {
     CHECK(rig.kit().laneFeel[kClickLane].time == 100);
     rig.key(X, false);
     rig.frames(1);
+
+    // The stick: a click at once, then four a second while it is held over, sideways and up / down
+    // alike (six clicks end to end: the ratchet's pace, not the pitch's eight a second).
+    rig.app.session().setLaneFeel(0, kClickLane, 0, 0);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.stick(0, -1); // up
+    rig.frames(30);   // 0.48 s: the first click and one more (at eight a second: four)
+    CHECK(rig.kit().laneFeel[kClickLane].level == 25 && rig.kit().laneFeel[kClickLane].time == 0);
+    rig.stick(0, 0);
+    rig.frames(2);
+    rig.stick(1, 0); // right
+    rig.frames(30);
+    CHECK(rig.kit().laneFeel[kClickLane].time == 25 && rig.kit().laneFeel[kClickLane].level == 25);
+    rig.frames(90);  // 1.92 s in all: 1 + 7 clicks, and it stops at the end
+    CHECK(rig.kit().laneFeel[kClickLane].time == 100);
+    rig.stick(0, 0);
+    rig.frames(2);
+    rig.stick(0, 1); // down: one click back
+    rig.frames(3);
+    CHECK(rig.kit().laneFeel[kClickLane].level == 10);
+    rig.stick(0, 0);
+    rig.key(X, false);
+    rig.frames(2);
+    CHECK(drums.cursorLane() == kClickLane && drums.cursorStep() == -1); // the stick did not move the cursor
+}
+
+// A or Y pressed for the feel (the copy, the dice) does nothing of its own when X is let go first
+// and it stays down: no lane volume turned, no hits rolled. Pressed again, it is itself.
+void testXLetGoFirst() {
+    const TempFolder temp;
+    Rig rig(temp.path);
+    PatternScreen& drums = rig.drums();
+    rig.clicks();
+    drums.moveCursorTo(kClickLane, -1);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.tap(SDLK_RIGHT, 2);
+    rig.key(A, true); // the copy
+    rig.frames(1);
+    for (int lane = 0; lane < kDrumLanes; ++lane) CHECK(rig.kit().laneFeel[lane] == laneFeelOf(25, 0));
+    rig.key(X, false);
+    rig.frames(2);
+    CHECK(!drums.feeling());
+    const float volume = rig.kit().laneLevel[kClickLane];
+    const std::string before = songText(rig.project());
+    rig.tap(SDLK_LEFT, 2);
+    rig.tap(SDLK_DOWN, 2);
+    CHECK(rig.kit().laneLevel[kClickLane] == volume);
+    CHECK(songText(rig.project()) == before); // nothing in the song was turned
+    rig.key(A, false);
+    rig.frames(2);
+    // A pressed again is A: held on the name, DOWN turns the lane down.
+    drums.moveCursorTo(kClickLane, -1);
+    rig.frames(30);
+    rig.key(A, true);
+    rig.frames(1);
+    rig.tap(SDLK_DOWN, 2);
+    rig.key(A, false);
+    rig.frames(2);
+    CHECK(rig.kit().laneLevel[kClickLane] < volume);
+
+    // Y: the dice for the feel, X let go, Y still down: the directions do not roll the lane's hits.
+    drums.moveCursorTo(kClickLane, -1);
+    rig.frames(30);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(Y, true);
+    rig.frames(1);
+    CHECK(rig.kit().laneFeel[kClickLane] != laneFeelOf(25, 0));
+    rig.key(X, false);
+    rig.frames(2);
+    const std::string rolled = songText(rig.project());
+    rig.tap(SDLK_LEFT, 2);
+    rig.tap(SDLK_RIGHT, 1);
+    CHECK(songText(rig.project()) == rolled);
+    rig.key(Y, false);
+    rig.frames(2);
+    CHECK(songText(rig.project()) == rolled); // and Y coming up is not a tap
+    // Y pressed again is Y: held on the name, RIGHT rolls the lane's starts.
+    drums.moveCursorTo(kClickLane, -1);
+    rig.key(Y, true);
+    rig.frames(1);
+    rig.tap(SDLK_RIGHT, 1); // (rolls where the lane's hits start in the recording)
+    CHECK(drums.cursorStep() == -1 && songText(rig.project()) != rolled); // Y's own job, not the cursor's
+    rig.key(Y, false);
+    rig.frames(2);
+
+    // The same on a hit: A pressed for THROW with X held, X let go first: A does not nudge the hit.
+    drums.moveCursorTo(kClickLane, 3);
+    rig.frames(30);
+    rig.key(X, true);
+    rig.frames(1);
+    rig.key(A, true);
+    rig.frames(1);
+    CHECK(drums.fx(kClickLane, 3).throwTo == 1);
+    rig.key(X, false);
+    rig.frames(2);
+    const float level = drums.level(kClickLane, 3);
+    rig.tap(SDLK_RIGHT, 2);
+    rig.tap(SDLK_UP, 2);
+    CHECK(drums.nudge(kClickLane, 3) == 0.f && drums.level(kClickLane, 3) == level);
+    rig.key(A, false);
+    rig.frames(2);
 }
 
 // The feel turned by hand while the song plays: every step still has its one hit, near its place.
@@ -489,6 +604,33 @@ void testTheStrip() {
         const Font& small = rig.scratch.fonts->small;
         CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
     }
+    // ...each amount in its own place (TIME first).
+    rig.app.session().setLaneFeel(0, 1, 25, 50);
+    rig.draw();
+    {
+        const char* line = "HUMAN TIME 25%   HUMAN LEVEL 50%";
+        const char* swapped = "HUMAN TIME 50%   HUMAN LEVEL 25%";
+        const Font& small = rig.scratch.fonts->small;
+        CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
+        CHECK(!rig.inked(small, 632.f - small.width(swapped), kStripY + 44.f, swapped, ui::kPurple));
+        // L1 on a built-in drum says why it has no slices, on that row: the line gives way to it
+        // (the two were drawn one over the other), and is back when it has been said.
+        const char* why = "LANE 2 IS A BUILT-IN DRUM. PUT A RECORDING ON IT TO SLICE IT.";
+        CHECK(!rig.inked(small, 8.f, kStripY + 44.f, why, ui::kBrass));
+        rig.tap(SDLK_q);
+        rig.draw();
+        CHECK(!drums.slicing());
+        CHECK(rig.inked(small, 8.f, kStripY + 44.f, why, ui::kBrass));
+        CHECK(!rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
+        bool purple = false; // nothing of the line is under the words
+        for (int y = kStripY + 40; y < kStripY + 62; ++y)
+            for (int x = 0; x < ui::kScreenW; ++x) purple = purple || rig.canvas.is(x, y, ui::kPurple);
+        CHECK(!purple);
+        rig.frames(200); // 3.2 s: it has been said
+        rig.draw();
+        CHECK(!rig.inked(small, 8.f, kStripY + 44.f, why, ui::kBrass));
+        CHECK(rig.inked(small, 632.f - small.width(line), kStripY + 44.f, line, ui::kPurple));
+    }
     // One piece each: a lane with HUMAN TIME alone, one with HUMAN LEVEL alone.
     rig.app.session().setLaneFeel(0, 4, 10, 0);
     rig.app.session().setLaneFeel(0, 5, 0, 10);
@@ -528,6 +670,19 @@ void testTheStrip() {
     rig.draw();
     const ui::Hint sliced[] = {{"UP / DOWN", "one slice / runs on"}, {"HOLD A", "volume"}, {"HOLD Y", "dice"}, {"HOLD X", "feel"}, {"L1", "grid"}};
     CHECK(rig.plainBar(sliced, 5) && ui::gHintsOver == 0);
+    // The slice view's one name wears the lane's mark (it stands where the grid's first name does).
+    CHECK(!rig.kit().laneFeel[2].atRest() && rig.markTime(0) && rig.markLevel(0));
+    {
+        const LaneFeel had = rig.kit().laneFeel[2];
+        rig.app.session().setLaneFeel(0, 2, 0, had.level);
+        rig.draw();
+        CHECK(!rig.markTime(0) && rig.markLevel(0));
+        rig.app.session().setLaneFeel(0, 2, 0, 0);
+        rig.draw();
+        CHECK(!rig.markTime(0) && !rig.markLevel(0));
+        rig.app.session().setLaneFeel(0, 2, had.time, had.level);
+        rig.draw();
+    }
     rig.key(X, true);
     CHECK(drums.feeling() && drums.slicing());
     heldOnAName(rig);
@@ -755,7 +910,7 @@ int main(int argc, char** argv) {
     };
     const Test tests[] = {
         {"testTheGesture", testTheGesture}, {"testTurnedWhileItPlays", testTurnedWhileItPlays}, {"testTheDiceAndTheCopy", testTheDiceAndTheCopy}, {"testTheStrip", testTheStrip}, {"testTheSongFile", testTheSongFile},
-        {"testUndoAndASongSentAgain", testUndoAndASongSentAgain}, {"testABounce", testABounce}, {"testXStillHears", testXStillHears},
+        {"testUndoAndASongSentAgain", testUndoAndASongSentAgain}, {"testABounce", testABounce}, {"testXStillHears", testXStillHears}, {"testXLetGoFirst", testXLetGoFirst},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

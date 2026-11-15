@@ -18,6 +18,7 @@
 //  12. DUCK is told a moved hit where it sounds; a thrown hit is thrown where it sounds
 //  13. a track taken away leaves no feel behind; the command's numbers are held to their limits
 //  14. asked again after what follows has changed: on the same sample, or on its step, never lost
+//  15. a scene put in during the last step before it: its felt hits where a song built so has them
 
 #include <algorithm>
 #include <cmath>
@@ -220,7 +221,32 @@ static void testRule() {
     start[11] = 0.7f;
     start[0] = 0.9f; // the bar's first step: its own
     const int want[kSteps] = {0, 0, 0, 0, 4, 5, 6, 6, 8, 9, 10, 10, 12, 13, 14, 15};
-    for (int s = 0; s < kSteps; ++s) CHECK(feelHead(level, start, s) == want[s]);
+    // The rule the engine asks: how far back the run begins, over the bar lines inside the cell.
+    struct OneBar {
+        float level[kDrumLanes][kSteps] = {};
+        float start[kDrumLanes][kSteps] = {};
+    };
+    std::unique_ptr<OneBar[]> cell(new OneBar[3]);
+    for (int s = 0; s < kSteps; ++s) {
+        cell[0].level[2][s] = level[s];
+        cell[0].start[2][s] = start[s];
+    }
+    for (int s = 0; s < kSteps; ++s) CHECK(feelRunBack(cell.get(), 0, 2, s) == s - want[s]);
+    // Bar 2 goes on from bar 1: its first step starts further in, and bar 1's last step has a hit.
+    cell[0].level[2][14] = cell[0].level[2][15] = 0.8f;
+    cell[0].start[2][14] = 0.f, cell[0].start[2][15] = 0.95f;
+    for (int b = 1; b < 3; ++b)
+        for (int s = 0; s < 4; ++s) cell[b].level[2][s] = 0.8f, cell[b].start[2][s] = 0.1f * (s + 1);
+    CHECK(feelRunBack(cell.get(), 1, 2, 0) == 2);  // back to step 15 of bar 1, whose run begins on 14
+    CHECK(feelRunBack(cell.get(), 1, 2, 3) == 5);
+    CHECK(feelRunBack(cell.get(), 1, 3, 0) == 0);  // another lane: nothing there
+    CHECK(feelRunBack(cell.get(), 2, 2, 0) == 0);  // bar 2's last step is empty: bar 3 begins its own
+    CHECK(feelRunBack(cell.get(), 2, 2, 2) == 2);
+    cell[1].start[2][0] = 0.f;                     // from the top: its own, whatever is before it
+    CHECK(feelRunBack(cell.get(), 1, 2, 0) == 0 && feelRunBack(cell.get(), 1, 2, 3) == 3);
+    // The cell's first bar never goes back (to its last bar: another time round).
+    cell[2].level[2][15] = 0.8f;
+    CHECK(feelRunBack(cell.get(), 0, 2, 0) == 0);
 }
 
 // ---- 2 -------------------------------------------------------------------------------------------
@@ -474,7 +500,7 @@ static void testRatchet() {
 
 // Three drum tracks, the kit's own drums and recordings, every lane felt its own way, nudges,
 // ratchets, throws into real effects, a tempo that makes a step a part of a sample long.
-static std::vector<float> feelSong(int helpers, int block, float tempo = 133.f) {
+static std::vector<float> feelSong(int helpers, int block, float tempo = 133.f, bool tempoTurned = false) {
     Rig rig(helpers);
     for (int t : {1, 4}) CHECK(rig.engine->addDrumTrack(t));
     rig.clicks(4);
@@ -497,7 +523,17 @@ static std::vector<float> feelSong(int helpers, int block, float tempo = 133.f) 
     rig.send(make(Command::SetTempo, 0, 0, 0, tempo));
     rig.render(480, block);
     rig.play();
-    rig.render(3 * kBar, block);
+    if (tempoTurned) {
+        // The tempo turned while felt hits wait, at moments that are no step's and no block's.
+        const float to[5] = {97.f, 171.f, 133.f, 61.f, 201.f};
+        for (int k = 0; k < 5; ++k) {
+            rig.render(kBar / 2 + 1237 * (k + 1), block);
+            rig.send(make(Command::SetTempo, 0, 0, 0, to[k]));
+        }
+        rig.render(kBar / 2 - 1237 * 15, block);
+    } else {
+        rig.render(3 * kBar, block);
+    }
     rig.out.erase(rig.out.begin(), rig.out.begin() + 480);
     return rig.out;
 }
@@ -508,6 +544,11 @@ static void testBlocksAndHelpers() {
     for (int block : {1024, 64, 37, 5}) CHECK(feelSong(0, block) == usual);
     for (int helpers : {1, 2, 3}) CHECK(feelSong(helpers, 256) == usual);
     CHECK(feelSong(3, 37) == usual);
+    // The tempo turned while the song plays: a felt hit that was waiting is still whole samples off.
+    const std::vector<float> turned = feelSong(0, 256, 133.f, true);
+    CHECK(turned != usual);
+    for (int block : {1, 5, 37, 64, 333}) CHECK(feelSong(0, block, 133.f, true) == turned);
+    CHECK(feelSong(3, 1, 133.f, true) == turned);
     // (and it is another song without the feel: the fixture reaches it)
 }
 
@@ -618,6 +659,49 @@ static void testTurnedWhilePlaying() {
 
 // ---- 11 ------------------------------------------------------------------------------------------
 
+// A recording two bars long, cut into thirty-two and played in order through both bars of its
+// cell: one unbroken sound, over the bar line inside the cell too. With HUMAN TIME the whole run
+// moves as one (bar 2 rolled by itself met bar 1's sound up to 9 ms off and cut it).
+static void testSlicesOverABarLine() {
+    const auto build = [](Rig& rig, int time) {
+        std::unique_ptr<SampleData> s(new SampleData);
+        s->data.resize(static_cast<std::size_t>(2 * kBar));
+        for (int i = 0; i < 2 * kBar; ++i) s->data[static_cast<std::size_t>(i)] = static_cast<float>(0.8 * std::sin(i * 0.031 + 0.5e-7 * i * i));
+        CHECK(rig.engine->setLaneSample(0, 0, std::move(s)));
+        Command bars = make(Command::SetCellBars, 0, 2);
+        rig.send(bars);
+        rig.send(make(Command::SetLanePart, 0, 0, 0, 1.f / 32.f));
+        for (int k = 0; k < 2 * kSteps; ++k) {
+            rig.hit(0, k % kSteps, 0.8f, 0.f, 0, 0, 0, k / kSteps);
+            Command c = make(Command::SetStepStart, 0, 0, k % kSteps, k / 32.f);
+            c.bar = k / kSteps;
+            rig.send(c);
+        }
+        rig.feel(0, time, 0);
+        rig.play();
+        rig.render(8 * kBar);
+    };
+    Rig plain, felt;
+    build(plain, 0);
+    build(felt, 100);
+    int movedRounds = 0, barsApart = 0;
+    for (int round = 1; round < 4; ++round) {
+        const long n = round * 2 * kSteps;
+        const long shift = placeOf(0, 0, 0, 0, n, 100) - n * kStep; // the run's first hit: bar 1, step 1
+        if (shift != 0) ++movedRounds;
+        if (placeOf(0, 0, 1, 0, n + kSteps, 100) - (n + kSteps) * kStep != shift) ++barsApart; // what bar 2 would roll by itself
+        float worst = 0.f, loudest = 0.f;
+        for (long i = n * kStep + 600; i < (n + 2 * kSteps) * kStep - 700; ++i) {
+            const float a = plain.out[static_cast<std::size_t>(i)], b = felt.out[static_cast<std::size_t>(i + shift)];
+            worst = std::fabs(a - b) > worst ? std::fabs(a - b) : worst;
+            loudest = std::fabs(a) > loudest ? std::fabs(a) : loudest;
+        }
+        CHECK(loudest > 0.3f);
+        CHECK(worst == 0.f); // the same sound to the sample, through the bar line
+    }
+    CHECK(movedRounds >= 2 && barsApart >= 2); // (the fixture reaches it: bar 2's own roll is another)
+}
+
 static void testSlices() {
     // A recording one bar long, cut into sixteen and played in order on the first eight steps:
     // one unbroken sound. With HUMAN TIME the run moves as one, by its first hit's roll, and is
@@ -664,6 +748,29 @@ static void testSlices() {
     }
     CHECK(jump < plainJump * 1.3f);
     CHECK(loud.out != felt.out);
+    // Each slice's LEVEL is its own roll, not its run's: in the middle of step k the sound is the
+    // plain sound times what the rule gives step k (the run did not move: HUMAN TIME is 0).
+    Rig own;
+    build(own, 0, 100);
+    int steps = 0, apart = 0;
+    for (int round = 1; round < 4; ++round) {
+        double before = -1.0;
+        for (int k = 0; k < 8; ++k) {
+            const long n = round * kSteps + k, from = n * kStep + kStep / 2;
+            double a = 0.0, b = 0.0;
+            for (long i = from; i < from + kStep / 4; ++i) {
+                a += std::fabs(plain.out[static_cast<std::size_t>(i)]);
+                b += std::fabs(own.out[static_cast<std::size_t>(i)]);
+            }
+            const double want = feelLevel(0.8f, 100, k, feelSeed(0, 0, 0, k, n)) / 0.8;
+            CHECK(a > 1.0 && std::fabs(b / a - want) < 0.002);
+            if (before >= 0.0 && std::fabs(want - before) > 0.01) ++apart;
+            before = want;
+            ++steps;
+        }
+    }
+    CHECK(steps == 24 && apart >= 12); // (the fixture tells one slice's level from the next's)
+    testSlicesOverABarLine();
 }
 
 // ---- 12 ------------------------------------------------------------------------------------------
@@ -775,6 +882,23 @@ static void testAskedAgain() {
             ratchet.render(static_cast<int>(18 * step) - static_cast<int>(want[2]) + 64 - 50, 64);
             const std::vector<long> pieces = ratchet.onsets(want[2]);
             CHECK(pieces.size() == 1 && pieces[0] == want[2]);
+            // ...and the same when its first piece sounds in the asking itself: taken back before its
+            // moment, asked again ON the sample it is due (it sounds there, at once), then what follows
+            // changed twice more in the step. It has sounded: it keeps its mark.
+            Rig atOnce;
+            build(atOnce);
+            atOnce.hit(lane, 0, 0.8f, 0.f, 4);
+            atOnce.render(static_cast<int>(want[2]) - 64 - 60, 64);
+            atOnce.send(make(Command::SetSongEnd, 0, 1));
+            atOnce.render(60, 64);
+            atOnce.send(make(Command::SetSongEnd, 0, 0));
+            for (int end : {1, 0}) {
+                atOnce.render(20, 64);
+                atOnce.send(make(Command::SetSongEnd, 0, end));
+            }
+            atOnce.render(static_cast<int>(18 * step) - static_cast<int>(want[2]) + 64 - 40, 64);
+            const std::vector<long> once = atOnce.onsets(want[2] - 200);
+            CHECK(once.size() == 1 && once[0] == want[2]);
         }
         // Taken back for good: STOP on the last step, and the early hit of the top does not come.
         Rig stop;
@@ -785,6 +909,82 @@ static void testAskedAgain() {
         CHECK(stop.onsets().size() == 2);
     }
     CHECK(earlyLanes >= 2);
+}
+
+// ---- 15 ------------------------------------------------------------------------------------------
+
+// A scene put in while the last step of the scene before it plays (NEXT SCENE: Engine::moveScenes).
+// That step asked the felt hits of what followed then; what follows now is the new scene. Its felt
+// hit comes on the very sample it has in a song built with the scene in it from the start.
+static void testASceneMoved() {
+    const double step = 48000.0 * 60.0 / 133.0 / 4.0;
+    const int lastStep = 64 + static_cast<int>(15 * step) + 1;
+    const int whole = 64 + static_cast<int>(50 * step);
+    const auto hit = [](Rig& rig, int scene, int lane, int at, float nudge) {
+        Command c = make(Command::SetStep, 0, lane, at, 0.8f);
+        c.scene = scene;
+        rig.send(c);
+        if (nudge != 0.f) {
+            c = make(Command::SetStepNudge, 0, lane, at, nudge);
+            c.scene = scene;
+            rig.send(c);
+        }
+    };
+    int same = 0, goneBy = 0;
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        for (float nudge : {0.f, 0.25f, -0.5f}) {
+            // Scene 1: steps 1 and 16. What follows it: `follows` (steps 1 and 5).
+            const auto build = [&](Rig& rig, int scenes) {
+                rig.clicks(0);
+                rig.send(make(Command::SetTempo, 0, 0, 0, 133.f));
+                hit(rig, 0, lane, 0, 0.f);
+                hit(rig, 0, lane, 15, 0.f);
+                const int follows = scenes - 1;
+                hit(rig, follows, lane, 0, 0.f);
+                hit(rig, follows, lane, 4, 0.f);
+                if (scenes == 3) { // the scene put in, the long way: steps 1 (nudged) and 9
+                    hit(rig, 1, lane, 0, nudge);
+                    hit(rig, 1, lane, 8, 0.f);
+                }
+                rig.feel(lane, 100, 0);
+                rig.send(make(Command::SetSceneCount, 0, scenes));
+                rig.render(64);
+                rig.send(make(Command::Play, 0, 0, 0));
+            };
+            Rig told;
+            build(told, 3);
+            told.render(whole - 64, 64);
+            const std::vector<long> want = told.onsets();
+            for (int into : {40, 700, 4000, 4800, 5300}) {
+                if (nudge != 0.f && into > 4800) continue; // (the hit asked before, on the grid, may have sounded by then: heard, not to be mended)
+                Rig moved;
+                build(moved, 2);
+                moved.render(lastStep + into - 64, 64);
+                std::unique_ptr<SceneImage> scenes[kNumTracks];
+                scenes[0].reset(new SceneImage);
+                scenes[0]->level[0][lane][0] = scenes[0]->level[0][lane][8] = 0.8f;
+                scenes[0]->nudge[0][lane][0] = nudge;
+                CHECK(moved.engine->moveScenes(1, 1, scenes, 3, 1, 0));
+                moved.render(whole - lastStep - into, 64);
+                const std::vector<long> got = moved.onsets();
+                CHECK(want.size() > 4);
+                if (want.size() <= 4) continue;
+                if (nudge >= 0.f || want[2] >= lastStep + into) {
+                    // Every hit on the sample it has in the song built that way. (On the grid, the hit
+                    // asked before and the new scene's are one roll: the same place, sounded or not.)
+                    CHECK(got == want);
+                    ++same;
+                } else {
+                    // Written early and its moment gone by at the move: not played late, as a plain
+                    // early hit is not. Everything else where it is.
+                    CHECK(got.size() + 1 == want.size());
+                    if (got.size() + 1 == want.size()) CHECK(got[0] == want[0] && got[1] == want[1] && std::equal(got.begin() + 2, got.end(), want.begin() + 3));
+                    ++goneBy;
+                }
+            }
+        }
+    }
+    CHECK(same >= 80 && goneBy >= 12);
 }
 
 // ---- 13 ------------------------------------------------------------------------------------------
@@ -847,7 +1047,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testRule", testRule}, {"testAtRest", testAtRest}, {"testTime", testTime}, {"testLevel", testLevel}, {"testTopAndNudge", testTopAndNudge},
         {"testRatchet", testRatchet}, {"testBlocksAndHelpers", testBlocksAndHelpers}, {"testPlayTwice", testPlayTwice}, {"testOnce", testOnce},
-        {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testSlices", testSlices}, {"testDuckAndThrow", testDuckAndThrow}, {"testGoneAndLimits", testGoneAndLimits}, {"testAskedAgain", testAskedAgain},
+        {"testTurnedWhilePlaying", testTurnedWhilePlaying}, {"testSlices", testSlices}, {"testDuckAndThrow", testDuckAndThrow}, {"testGoneAndLimits", testGoneAndLimits}, {"testAskedAgain", testAskedAgain}, {"testASceneMoved", testASceneMoved},
     };
     for (const Test& test : tests) {
         bool wanted = argc < 2;

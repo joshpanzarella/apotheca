@@ -489,7 +489,8 @@ int main(int argc, char** argv) {
         // FEEL on the drum grid: lanes with a HUMAN TIME, a HUMAN LEVEL, both (each wears its mark),
         // the cursor on a lane's name. feel: the strip's one line says the lane's. feel-held: X held,
         // the strip is its feel. feel-off-held: on a lane with none. feel-same-held: every lane at
-        // 100% and 100%, the strip at its widest.
+        // 100% and 100%, the strip at its widest. feel-said: L1 pressed on that built-in drum (the
+        // message has the row; the feel's line gives way to it).
         Session& session = app.session();
         session.setLaneFeel(0, 0, 10, 0);
         session.setLaneFeel(0, 1, 25, 10);
@@ -499,6 +500,7 @@ int main(int argc, char** argv) {
             for (int lane = 0; lane < kDrumLanes; ++lane) session.setLaneFeel(0, lane, 100, 100);
         app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : 2, -1);
         if (std::strstr(view, "-held")) pushKey(SDLK_s, true); // X held
+        if (std::strstr(view, "-said")) app.drums().setSlicing(true); // L1 on a built-in drum: why it has no slices, said on the row the feel's line has
     } else if (std::strncmp(view, "chordfx", 7) == 0) {
         // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
         // chordfx-held: X held on it (the strip is its six effects). chordfx-ratchet, -strum,

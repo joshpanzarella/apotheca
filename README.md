@@ -996,8 +996,14 @@ the drum), and:
   round it is, not from luck at the moment.
 - The song's very first hit cannot come before the top: it lands on it.
 - **Slices in order still play as one unbroken sound.** A run of slices
-  (each on the step after the last) moves as one, by its first hit's move.
-  Each slice still gets its own level.
+  (each on the step after the last) moves as one, by its first hit's move,
+  through the bar lines inside a cell too: a break two bars long, in order,
+  is one run. Each slice still gets its own level. Where the cell goes
+  round again a new run begins, with a move of its own.
+- If the tempo is changed while the song plays, a hit that was waiting
+  keeps its place in the step.
+- A or Y pressed while X is held (COPY, the dice; THROW on a hit) does
+  nothing more if X is let go first: let it go and press it again.
 - CHANCE on a hit works as before.
 - Kept in the song (a song without it is written as it always was), undone
   by SELECT + B, and in a bounce.

@@ -61,7 +61,7 @@ SWING (per lane, every second sixteenth late, up to a triplet), with L1 / R1 on 
 
 | Part | Where |
 | --- | --- |
-| The rule | `engine/include/apotheca/feel_rule.hpp` (`LaneFeel`, `feelSeed`, `feelSamples`, `feelLevel`, `feelHead`) |
+| The rule | `engine/include/apotheca/feel_rule.hpp` (`LaneFeel`, `feelSeed`, `feelSamples`, `feelLevel`, `feelRunBack`) |
 | The engine | `Track::feel`, `Track::feelAsked`, `Command::SetLaneFeel`; `schedule`, `playHit`, `askAheadHits`, `askAgain` in `engine.cpp` |
 | The app | `TrackData::laneFeel`, `Session::setLaneFeel`, the song file's `feel LANE TIME LEVEL`, undo by `soundMark` / `restoreSounds` |
 | The gesture | `PatternScreen::feelHeld_`, `feelTurn`, `feelRoll`, `feelToAll`; `app/lane_feel.hpp`; the strip's places in `pattern_layout.hpp` |
@@ -74,7 +74,7 @@ SWING (per lane, every second sixteenth late, up to a triplet), with L1 / R1 on 
 | --- | --- | --- |
 | How X on a name both hears and holds | **One hold does both.** The drum is heard on the press exactly as before (a recording for as long as X is held); the directions set the feel meanwhile | Nothing about hearing changed, so nothing to relearn. A turn of the feel sounds nothing: the feel is only in the playing pattern |
 | HUMAN LEVEL at its ends | Held to 2%..100% of full | As a chord's. **A hit written at 100% only gets quieter**; A places hits at 80%, which go both ways |
-| A run of slices | **Moves as one**, by its first hit's roll; each slice keeps its own level | Moved one by one, every slice met the sound up to 24 ms off and cut it. Now a break in order is the same samples, sooner or later |
+| A run of slices | **Moves as one**, by its first hit's roll, through the bar lines inside its cell; each slice keeps its own level | Moved one by one, every slice met the sound up to 24 ms off and cut it. Now a break in order is the same samples, sooner or later. Where the cell goes round, a new run and a new roll |
 | The dice | OFF, 10 or 25% of each, never both off, never what it was | "Small amounts only" |
 | X + A from a lane at OFF | Every lane goes to OFF | "This lane's feel onto every lane" taken at its word; it is also the quick way to clear a kit |
 | L1 / R1 while X is held on a name | Do nothing | Kept for SWING, and the slice view does not open by mistake |
@@ -102,7 +102,26 @@ SWING (per lane, every second sixteenth late, up to a triplet), with L1 / R1 on 
 - Cost: 0.10 to 0.11% of a core for all 96 lanes of twelve kits at 100% and 100%. HUMAN LEVEL
   alone costs nothing that shows.
 
+### Mended after the review (2026-11-15)
+
+- **A break longer than a bar was cut at its inner bar lines** (each bar rolled by itself: a seam
+  in 4 rounds of 6). A run now goes back over the bar lines inside its cell (`feelRunBack`).
+- **A felt hit waiting when the tempo changed came a sample sooner or later by the block.** Its
+  wait and its ratchet's gap are made whole again in `SetTempo`.
+- **L1's "built-in drum" message was drawn over the name's purple line.** The line gives way.
+- **A or Y held on after X was let go did its own hold** (lane volume, the lane's dice; a nudge
+  on a hit after THROW). That press is spent now; press again.
+- Tests the review found missing: each slice's own LEVEL, the summary's two amounts each in its
+  place, the slice view's mark, the stick's pace, the summary as a tight row (`textsize`), a
+  ratchet whose first piece sounds in the asking, and a scene put in on the last step
+  (`testASceneMoved`). Giving the asked mark back is seen only when AT END is switched, never in
+  a scene move: there the old hit and the new are one roll.
+
 ### For the owner's ears
+
+- Where a break's cell goes round, the new round's run has its own move, so the join there is
+  up to 12 ms open or overlapped (each round's move is up to 6: a cell's first step is a main beat). Should a looping break keep
+  one move for good instead?
 
 - Are 12 ms and 15% the right "most"? Is half the right share for a main beat?
 - Should a lane's dice go past 25%?
