@@ -1,6 +1,6 @@
 # The sample picker: columns, two levels of folders, move and make on the device
 
-Owner, 2026-11-14. **Batches 0, 1 and 2 are built** (2026-11-15, branch `picker`); 3, the review, is not. "As built", at the end, says what and where.
+Owner, 2026-11-14. **Batches 0 to 3 are built** (2026-11-15, branch `picker`): 3 is the review and its mend. "As built", at the end, says what and where.
 
 > "I think we need to be able to traverse folders in columns ... similar to the way the command line
 > tool yazi looks. It just needs to be easier to move around and select the sample you want. The
@@ -82,7 +82,7 @@ Nothing here has run on the handheld; the owner has not seen or heard it. Tests 
 | 0 | **Done** | `app/samples.cpp` (`sampleNameOk`, `sampleFolderOf`, `wavNames`, `wavFolders`), `app/transfer.cpp` (`safeSamplePath`, `realFile`, `dropIfEmpty`, `foldersMade`, `foldersIn`, `recordingsIn`, and the page's script: `split`, `wrongFolder`, `tooLong`, `folders`); `sample_test`, `transfer_test` |
 | 1 | **Done** | `app/sample_picker.hpp/.cpp`; `Session::sampleFolders`, `sampleUses`; stills `picker`, `picker-in`, `picker-deep`, `picker-deleting`, `sampler-picker`; `sample_test`, `textsize_test`, `textviews`, `themeviews` |
 | 2 | **Done** | `Session::moveSample`, `makeSampleFolder`, `deleteSampleFolder` (`app/session_samples.cpp`); the list's carry, + NEW FOLDER row and keys, hold B on an empty folder (`app/sample_picker.hpp/.cpp`); stills `picker-new`, `picker-typing`, `picker-carrying`, `picker-folder-deleting`; `tests/picker_test.cpp`, `textsize_test`. See "As built (batch 2)" below |
-| 3 | Not started | |
+| 3 | **Done** | The review's ten findings: see "As built (batch 3)" at the end |
 
 **The gestures as built**
 
@@ -166,3 +166,37 @@ Nothing here has run on the handheld; the owner has not seen it. Tests and still
 - The still `picker-typing` gets no START (it would make the folder); `picker-folder-deleting` is taken at 600 ms, as `picker-deleting`.
 - Rename on the device, and carrying several at once, are still "later" (the owner's open calls).
 - The hold's 300 ms and the page-on-let-go are not tried on the handheld.
+
+## As built (batch 3: the review and its mend, 2026-11-15)
+
+Nothing here has run on the handheld. Every figure is the desk's.
+
+| Finding | Fate |
+| --- | --- |
+| A long recording carried into a folder vanished from the WiFi page | **Mended**: a file in a folder may be 60 with its ending, as a loose one (the whole still 63). Server and the page's script; the script tried in a browser |
+| The stick was no big move; nothing paged when held | **Mended**: stick 80 rows a second times its setting, by the square of the push; a third D-pad pace (20 ms a row after 3.5 s); L1 held pages on, R1 too where it does not carry. 500 rows: 8.3 s / 12.6 s / 5.5 s |
+| A carry let go freezes while every saved song is read | **Not mended: the owner's call.** A file a frame would end the freeze, but a handheld switched off mid-way leaves songs naming the old place (mended on opening only if one recording has that last name) |
+| Two columns' rows worked out every frame | **Mended**: counted once when the card changes, kept until the place or the card changes |
+| MOVED though the songs were not rewritten | **Mended**: `FileJob::NotSaved`, and the top line says so |
+| Hold B on a folder that is not empty said nothing and closed the list | **Mended**: after 400 ms it says NOT DELETED: IT IS NOT EMPTY, and the let-go is no tap |
+| Four guards with no test | **Mended**: each has a test and its mutant dies; `wavFolders`' filter too |
+| R2 / L2 changed the tab while typing | **Mended** (MENU's help also stays down) |
+| No folders: hold R1 said CARRYING and did nothing | **Mended**: no carry there; R1 pages at once and held pages on |
+| A name over 63 letters was listed | **Mended**: not listed |
+
+**Choices made** (each one place)
+
+| Choice | Why |
+| --- | --- |
+| The stick by the SQUARE of the push | Half way is 15 rows a second, all the way 60: one stick both reads and travels |
+| The D-pad's third pace only after 3.5 s | "Not so fast that it is hard to choose": the first 3.5 s are as they were |
+| R1 held on a recording still carries, so it cannot page on there | Hold R1 drags on every screen. L1 held, the stick and DOWN held are the ways down a long folder |
+| A carry let go where it was says LEFT WHERE IT WAS | An R1 held a moment too long for a page did nothing and said nothing |
+| A refused hold of B says so at 400 ms, with no bar | A bar would promise a delete |
+| A file too long to be a name is hidden, not shown as broken | It could never be put on a lane |
+
+**For the owner**
+
+- The freeze on a carry let go (above).
+- An emptied folder: the handheld keeps it, the WiFi page drops it with its last recording.
+- A folder holding only a computer's hidden file (.DS_Store) cannot be deleted on the handheld: it says OTHER FILES ARE IN IT.

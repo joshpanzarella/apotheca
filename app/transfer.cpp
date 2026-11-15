@@ -308,7 +308,7 @@ function send(files, folder) {
     const kind = kinds[file.name.split('.').pop().toLowerCase()];
     if (!kind) { note(file.name, 'refused: not a .wav, .json or .song', 'no'); continue; }
     const f = kind == 'samples' ? folder : '', name = (f ? f + '/' : '') + file.name;
-    const bad = (f && wrongFolder(f) && 'folder: ' + wrongFolder(f)) || wrong(file.name, f ? 36 : 60) || tooLong(f, file.name) || (file.size > 30 * 1048576 && 'too big: 30 MB at most');
+    const bad = (f && wrongFolder(f) && 'folder: ' + wrongFolder(f)) || wrong(file.name, 60) || tooLong(f, file.name) || (file.size > 30 * 1048576 && 'too big: 30 MB at most');
     if (bad) { note(name, 'refused: ' + bad, 'no'); continue; }
     add(name, urlOf(kind, name), file, (all[kind] || []).includes(name));
     if (f) open.add(f);
@@ -570,7 +570,7 @@ function edit(li, moving) { // one small form for both: the name, and the folder
   sel.onchange = () => { fresh.classList.toggle('hid', sel.value != NEW); if (sel.value == NEW) fresh.focus(); };
   const go = () => {
     const folder = sel.value == NEW ? fresh.value.trim() : sel.value, to = name.value.trim() + file.slice(dot);
-    const bad = (folder && wrongFolder(folder) && 'folder: ' + wrongFolder(folder)) || wrong(to, folder ? 36 : 60) || tooLong(folder, to);
+    const bad = (folder && wrongFolder(folder) && 'folder: ' + wrongFolder(folder)) || wrong(to, 60) || tooLong(folder, to);
     if (bad) { note(li.dataset.name, bad, 'no'); return; }
     const whole = (folder ? folder + '/' : '') + to;
     if (whole == li.dataset.name) { box.remove(); return; }
@@ -786,7 +786,7 @@ std::string safeSamplePath(const std::string& fromAddress) {
         if (!plainName(folders.substr(from, end - from), 24)) return "";
         from = end + 1;
     }
-    if (file.size() <= 4 || !plainName(file, 36)) return "";
+    if (file.size() <= 4 || !plainName(file, 60)) return ""; // (as long as a loose one: the handheld carries any recording into a folder, and the whole is held below)
     std::string end = file.substr(file.size() - 4);
     for (char& c : end) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
     return end == ".wav" && sampleNameOk(name.substr(0, name.size() - 4)) ? name : ""; // (which is also what holds it to two folders)
@@ -823,7 +823,7 @@ std::vector<std::string> recordingsIn(const std::string& folder) {
     std::vector<std::string> names = filesEnding(folder, ".wav");
     for (const std::string& inside : foldersIn(folder))
         for (const std::string& file : filesEnding(folder + "/" + inside, ".wav"))
-            if (file.size() <= 36 && sampleNameOk(inside + "/" + file.substr(0, file.size() - 4))) names.push_back(inside + "/" + file); // (only what the page could ask for by name)
+            if (file.size() <= 60 && sampleNameOk(inside + "/" + file.substr(0, file.size() - 4))) names.push_back(inside + "/" + file); // (only what the page could ask for by name)
     return names;
 }
 

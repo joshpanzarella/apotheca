@@ -437,12 +437,12 @@ void testCarrying() {
     rig.frames(2);
     CHECK(list.isOpen() && card.has("drums/snares/tom.wav") && !card.has("drums/tom.wav") && rig.on(Kind::Recording, "drums/Clap") && list.said() != "MOVED TO DRUMS");
 
-    // Let go where it is already: nothing happens, nothing is said. Its file ends .WAV and keeps that.
+    // Let go where it is already: nothing happens, and the top line says so. Its file ends .WAV and keeps that.
     rig.frames(SamplePicker::kSaidMs / 16 + 2);
     rig.key(R1, true);
     rig.frames(25);
     rig.key(R1, false);
-    CHECK(list.said().empty() && card.has("drums/Clap.WAV") && rig.on(Kind::Recording, "drums/Clap"));
+    CHECK(list.said() == "LEFT WHERE IT WAS" && card.has("drums/Clap.WAV") && rig.on(Kind::Recording, "drums/Clap"));
     rig.key(R1, true);
     rig.tap(LEFT);
     CHECK(rig.goTo(Kind::Folder, "void"));
@@ -578,13 +578,42 @@ void testDeletingAnEmptyFolder() {
         rig.key(B, true);
         rig.frames(frames);
     };
-    // A folder with a recording in it, one with a folder in it, and UNSORTED: nothing fills; let go, it is B's tap.
+    // A folder with a recording in it, one with a folder in it, and UNSORTED: nothing fills. A tap is B's tap.
+    // Held (kHoldSaysMs): the top line says why nothing is deleted, and letting go is then no tap: the list stays.
     for (const char* name : {"kicks", "drums", ""}) {
         CHECK(rig.goTo(Kind::Folder, name));
-        hold(80);
-        CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 7);
+        hold(20);
+        CHECK(list.isOpen() && list.deletePart() == 0.f && list.said().empty() && SamplePicker::kHoldSaysMs == 400);
         rig.key(B, false);
         CHECK(!list.isOpen() && session.sampleFolders().size() == 5);
+        rig.tap(A);
+        CHECK(rig.goTo(Kind::Folder, name));
+        hold(24);
+        CHECK(list.said().empty());
+        rig.frames(56);
+        CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 7 && list.said() == "NOT DELETED: IT IS NOT EMPTY");
+        rig.key(B, false);
+        CHECK(list.isOpen() && session.sampleFolders().size() == 5 && rig.on(Kind::Folder, name, name[0] == 'd' ? 0 : 1));
+        rig.frames(SamplePicker::kSaidMs / 16 + 2); // the words go
+        CHECK(list.said().empty());
+        // Another button, or the stick, before it has said so calls it off: nothing is said, and B let go is the tap it would have been.
+        hold(10);
+        rig.tap(X); // (one that does not move the cursor)
+        rig.frames(60);
+        CHECK(list.said().empty());
+        rig.key(B, false);
+        CHECK(!list.isOpen());
+        rig.tap(A);
+        CHECK(rig.goTo(Kind::Folder, name));
+        hold(10);
+        rig.key(STICK_DOWN, true);
+        rig.frames(2);
+        rig.key(STICK_DOWN, false);
+        CHECK(!rig.on(Kind::Folder, name, name[0] == 'd' ? 0 : 1));
+        rig.frames(60);
+        CHECK(list.said().empty());
+        rig.key(B, false);
+        CHECK(!list.isOpen());
         rig.tap(A);
     }
     // The empty one: the bar fills. Let go before the second is up: a tap, and it is still there.
@@ -697,6 +726,322 @@ void testTheHintsFit() {
     CHECK(flat.on(Kind::NewFolder, "") && flat.hintsFit(canvas));
 }
 
+// Big moves (the review, 2026-11-15: the 500th recording took 33 seconds by any way there was).
+// A list by itself, 500 in one folder, at the stick's setting a new handheld has.
+void testBigMoves() {
+    const float stickWas = ui::gStickSpeed;
+    ui::gStickSpeed = 0.75f;
+    std::vector<std::string> names;
+    char name[32];
+    for (int i = 0; i < 500; ++i) {
+        std::snprintf(name, sizeof name, "many/take %03d", i);
+        names.push_back(name);
+    }
+    int used = 0;
+    SamplePicker::Jobs jobs;
+    jobs.use = [&](const std::string&) { ++used; };
+    jobs.move = [&](const std::string&, const std::string&) { return Job::Done; };
+    for (int way = 0; way < 4; ++way) {
+        SamplePicker list;
+        Input input;
+        Uint32 clock = 1000;
+        const auto key = [&](SDL_Keycode code, bool down) {
+            SDL_Event event = {};
+            event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+            event.key.keysym.sym = code;
+            ButtonEvent press;
+            if (input.handle(event, press)) list.onButton(press, true);
+        };
+        // How many seconds until the cursor is on `row` (30 if it never is).
+        const auto secondsTo = [&](int row) {
+            for (int frame = 0; frame < 1875; ++frame) {
+                list.update(input, clock += 16, true);
+                if (list.cursor() == row) return (frame + 1) * 0.016;
+            }
+            return 30.0;
+        };
+        const bool flat = way == 3;
+        if (flat) for (std::string& each : names) each = each.substr(5); // no folders at all: the one list
+        list.open(names, {}, names[0], "TITLE", "FIRST", jobs);
+        list.update(input, clock += 16, true);
+        CHECK(list.count() == (flat ? 501 : 500) && list.cursor() == (flat ? 1 : 0) && list.flat() == flat);
+        const int last = list.count() - 1;
+        double took = 0.0;
+        if (way == 0) {
+            // The stick pushed all the way: 60 rows a second as set (80 times the setting). It was 15.
+            key(STICK_DOWN, true);
+            for (int i = 0; i < 62; ++i) list.update(input, clock += 16, true);
+            CHECK(list.cursor() >= 52 && list.cursor() <= 64); // a second: sixty or so
+            took = 1.0 + secondsTo(last);
+            key(STICK_DOWN, false);
+            CHECK(took > 7.5 && took < 9.5);
+        } else if (way == 1) {
+            // DOWN held: exact first (a dozen in the first second and a half), then faster, then fastest
+            // (kFastestEveryMs after kFastestAfterMs: fifty a second).
+            used = 0;
+            key(DOWN, true);
+            for (int i = 0; i < 93; ++i) list.update(input, clock += 16, true); // 1.49 s
+            const int slow = list.cursor();
+            CHECK(slow >= 11 && slow <= 13 && used == slow);
+            for (int i = 0; i < 125; ++i) list.update(input, clock += 16, true); // to 3.49 s
+            const int faster = list.cursor() - slow;
+            CHECK(faster >= 31 && faster <= 35);
+            for (int i = 0; i < 62; ++i) list.update(input, clock += 16, true); // the next second
+            const int fastest = list.cursor() - slow - faster;
+            CHECK(fastest >= 46 && fastest <= 52 && SamplePicker::kFastestAfterMs == 3500 && SamplePicker::kFastestEveryMs == 20);
+            took = 4.5 + secondsTo(last);
+            key(DOWN, false);
+            CHECK(took > 11.0 && took < 14.0);
+            // Let go: the one it rests on goes on, once.
+            used = 0;
+            for (int i = 0; i < 10; ++i) list.update(input, clock += 16, true);
+            CHECK(used == 1);
+        } else if (way == 2) {
+            // L1 held: page after page, at the list's pace. (It moved one page however long it was held.)
+            key(STICK_DOWN, true);
+            secondsTo(last);
+            key(STICK_DOWN, false);
+            key(L1, true);
+            CHECK(list.cursor() == last - SamplePicker::kPage);
+            took = secondsTo(0);
+            key(L1, false);
+            CHECK(took > 4.5 && took < 6.5);
+            const int at = list.cursor();
+            for (int i = 0; i < 30; ++i) list.update(input, clock += 16, true);
+            CHECK(list.cursor() == at); // let go: it stops
+        } else {
+            // With no folders there is nowhere to carry to: R1 on a recording is a page at once, and held it
+            // pages on. Nothing is carried and the top line never says so.
+            key(R1, true);
+            CHECK(list.cursor() == 1 + SamplePicker::kPage && list.carried().empty());
+            took = secondsTo(last);
+            CHECK(took > 4.5 && took < 6.5 && list.carried().empty() && list.said().empty());
+            key(R1, false);
+            CHECK(list.cursor() == last && list.said().empty());
+            // ...and a direction with R1 held carries nothing there either.
+            key(R1, true);
+            key(UP, true);
+            key(UP, false);
+            CHECK(list.carried().empty());
+            key(R1, false);
+        }
+        std::printf("    500 rows, %s: %.1f s\n", way == 0 ? "the stick all the way" : way == 1 ? "DOWN held" : way == 2 ? "L1 held (back up)" : "R1 held, no folders", took);
+    }
+    ui::gStickSpeed = stickWas;
+}
+
+// The guards the review found no test for (their mutants lived), on a list by itself with jobs that count.
+void testTheGuards() {
+    SamplePicker list;
+    Input input;
+    int removed = 0;
+    std::vector<std::string> used;
+    SamplePicker::Jobs jobs;
+    jobs.use = [&](const std::string& name) { used.push_back(name); };
+    jobs.remove = [&](const std::string&) { ++removed; return true; };
+    jobs.move = [&](const std::string&, const std::string&) { return Job::Same; };
+    Uint32 clock = 1000;
+    const auto key = [&](SDL_Keycode code, bool down, bool seen = true) {
+        SDL_Event event = {};
+        event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+        event.key.keysym.sym = code;
+        ButtonEvent press;
+        if (input.handle(event, press) && seen) list.onButton(press, true);
+    };
+    const auto frames = [&](int count) { for (int i = 0; i < count; ++i) list.update(input, clock += 16, true); };
+    const std::vector<std::string> names = {"kicks/808", "kicks/909", "kicks/a", "kicks/b", "kicks/c", "kicks/d"};
+    // B let go with the list not seeing it (another screen took the let-go): nothing is deleted, however long after.
+    list.open(names, {"kicks", "void"}, "kicks/808", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(B, true);
+    frames(30);
+    CHECK(list.deletePart() > 0.3f);
+    key(B, false, false);
+    frames(90);
+    CHECK(removed == 0 && list.deletePart() == 0.f && list.count() == 6);
+    key(B, true, false); // (and its let-go, seen, with no press the list saw before the hold ended... it saw the first: a tap)
+    key(B, false);
+    // R1 pressed while B's bar fills calls the delete off: the recording is carried, never deleted.
+    list.open(names, {"kicks", "void"}, "kicks/808", "TITLE", "FIRST", jobs);
+    frames(1);
+    key(B, true);
+    frames(30);
+    key(R1, true);
+    CHECK(list.deletePart() == 0.f);
+    frames(125);
+    CHECK(removed == 0 && list.deletePart() == 0.f && list.carried() == "kicks/808" && list.count() == 6);
+    key(R1, false);
+    CHECK(list.said() == "LEFT WHERE IT WAS" && removed == 0); // let go in its own folder: said, not a mystery
+    key(B, false);
+    // LEFT with a row still waiting to go on (the stick was moving fast): it never goes on, and neither does
+    // the folder the cursor is then on.
+    std::vector<std::string> many;
+    for (int i = 0; i < 40; ++i) many.push_back("kicks/take " + std::to_string(10 + i));
+    list.open(many, {"kicks", "void"}, many[0], "TITLE", "FIRST", jobs);
+    frames(1);
+    key(STICK_DOWN, true);
+    frames(8);
+    key(STICK_DOWN, false);
+    const std::size_t before = used.size();
+    CHECK(list.cursor() > 3 && list.under() && (used.empty() || used.back() != list.under()->name)); // moving fast: the one under the cursor is not on yet
+    key(LEFT, true);
+    key(LEFT, false);
+    CHECK(list.depth() == 0 && list.under() && list.under()->kind == Kind::Folder);
+    frames(20);
+    CHECK(used.size() == before);
+    // The program held up for three seconds with DOWN held: no burst of rows to catch up afterwards.
+    key(RIGHT, true);
+    key(RIGHT, false);
+    key(L1, true);
+    key(L1, false);
+    key(DOWN, true);
+    frames(30);
+    const int at = list.cursor();
+    list.update(input, clock += 3000, true);
+    CHECK(list.cursor() >= at && list.cursor() <= at + 1);
+    key(DOWN, false);
+}
+
+// A move whose songs could not be written says so: the file HAS moved, and a song still names the old place.
+void testAMoveThatCouldNotBeSaved() {
+    Card card;
+    for (const char* dir : {"kicks", "void"}) card.folder(dir);
+    card.wav("kicks/808", 3000);
+    card.wav("kicks/909", 4000);
+    card.wav("kicks/707", 2000);
+    const std::string before = "apotheca-song 1\ntempo 97\ntrack drums\nsample 1 0 kicks/808\nsample 2 0 kicks/909\n";
+    const std::string saved = card.songs + "/saved.song";
+    CHECK(writeTextFile(saved, before));
+    Rig rig(card);
+    Session& session = rig.session();
+    SamplePicker& list = rig.list();
+    session.setLaneSample(0, 5, "kicks/808");
+    CHECK(session.saveNow());
+    const std::string openFile = card.songs + "/" + session.songName() + ".song";
+    // A saved song that cannot be written (a folder where its new text would be written first: a full card's stand-in).
+    mkdir((saved + ".part").c_str(), 0755);
+    CHECK(session.moveSample("kicks/808", "void/808") == Job::NotSaved);
+    CHECK(card.has("void/808.wav") && !card.has("kicks/808.wav") && rig.lane() == "void/808" && contents(saved) == before);
+    CHECK(contents(openFile).find("void/808") != std::string::npos); // (the open song's own file was written)
+    rmdir((saved + ".part").c_str());
+    // One that names no recording moved is not counted, though it could not be written either.
+    mkdir((saved + ".part").c_str(), 0755);
+    CHECK(session.moveSample("kicks/707", "void/707") == Job::Done && card.has("void/707.wav"));
+    rmdir((saved + ".part").c_str());
+    // The open song's own file not written: the same answer. Through the list: it says so, and shows the recording where it now is.
+    mkdir((openFile + ".part").c_str(), 0755);
+    rig.frames(1);
+    rig.tap(A);
+    CHECK(list.isOpen() && list.folderName() == "void" && rig.on(Kind::Recording, "void/808"));
+    rig.key(R1, true);
+    rig.tap(LEFT);
+    CHECK(rig.goTo(Kind::Folder, "kicks") && list.carryTo() == "kicks");
+    rig.key(R1, false);
+    CHECK(list.said() == "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE");
+    {
+        // The longest thing the top line says fits it whole, beside the longest count (at LARGE; held there at XL).
+        Canvas canvas;
+        CHECK(canvas.ok);
+        if (canvas.ok) CHECK(canvas.fonts->small.width(list.said().c_str()) <= SamplePicker::kW - 24.f - canvas.fonts->small.width("1000 OF 1000") - 12.f);
+    }
+    CHECK(card.has("kicks/808.wav") && !card.has("void/808.wav") && rig.lane() == "kicks/808" && rig.on(Kind::Folder, "kicks", 2));
+    CHECK(contents(openFile).find("void/808") != std::string::npos && !session.saveNow());
+    rmdir((openFile + ".part").c_str());
+    CHECK(session.saveNow() && contents(openFile).find("kicks/808") != std::string::npos); // with room again the autosave follows
+    rig.tap(B);
+}
+
+// What is on the card but cannot be a name or a folder is not listed; the columns beside the cursor's are
+// not worked out again every frame; and while a folder's name is typed the tabs are the list's too.
+void testTheRest() {
+    Card card;
+    for (const char* dir : {"kicks", "drums", "drums/snares", "bad..one", "kicks/bad..two"}) card.folder(dir);
+    card.wav("kicks/808", 3000);
+    card.wav("drums/snares/rim", 2000);
+    card.wav("tom", 2000);
+    const std::string longest(63, 'k'), over(64, 'x');
+    card.wav(longest, 1000);
+    card.wav(over, 1000); // too long to be a name: resting on it put a cut name on the lane, which is no file
+    card.wav("kicks/" + std::string(60, 'y'), 1000);
+    Rig rig(card);
+    Session& session = rig.session();
+    SamplePicker& list = rig.list();
+    CHECK(session.sampleNames() == std::vector<std::string>({longest, "tom", "drums/snares/rim", "kicks/808"}));
+    CHECK(session.sampleFolders() == std::vector<std::string>({"drums", "drums/snares", "kicks"}));
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    rig.tap(A);
+    CHECK(list.depth() == 0 && list.count() == 5); // the first row, UNSORTED, two folders, + NEW FOLDER
+    // Drawn again and again, at rest: no column's rows are made again (they were, two columns, every frame).
+    for (const char* place : {"drums", "kicks"}) {
+        CHECK(rig.goTo(Kind::Folder, place));
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const int made = list.rowsMade();
+        for (int i = 0; i < 5; ++i) rig.frames(1), rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(list.rowsMade() == made);
+        rig.tap(RIGHT);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const int inside = list.rowsMade();
+        CHECK(inside > made);
+        for (int i = 0; i < 5; ++i) rig.frames(1), rig.app.draw(canvas.r, *canvas.fonts);
+        CHECK(list.rowsMade() == inside);
+        rig.tap(LEFT);
+    }
+    // ...and they are made again when the card changes: a recording carried out of KICKS, and the column beside says so.
+    CHECK(rig.goTo(Kind::Folder, "kicks") && rig.on(Kind::Folder, "kicks", 1));
+    rig.tap(RIGHT);
+    rig.key(R1, true);
+    rig.tap(LEFT);
+    CHECK(rig.goTo(Kind::Folder, "drums"));
+    rig.app.draw(canvas.r, *canvas.fonts);
+    rig.key(R1, false);
+    CHECK(list.said() == "MOVED TO DRUMS" && rig.on(Kind::Folder, "drums", 2));
+    const int moved = list.rowsMade();
+    rig.app.draw(canvas.r, *canvas.fonts);
+    CHECK(list.rowsMade() == moved + 1); // DRUMS' rows, in the column beside: the one more recording in it
+    CHECK(list.rowsAt(1, "drums").size() == 3 && list.rowsAt(0, "")[3].count == 0);
+
+    // A name being typed: R2 and L2 do not change the tab, nor does MENU's help come up over the keys.
+    CHECK(rig.goTo(Kind::NewFolder, ""));
+    rig.tap(A);
+    rig.type("AB");
+    CHECK(list.typing() && session.view == View::Device);
+    rig.tap(SDLK_2);
+    rig.tap(SDLK_1);
+    rig.tap(SDLK_1);
+    CHECK(session.view == View::Device && list.typing() && list.typed() == "AB");
+    rig.tap(B, 3);
+    CHECK(!list.typing() && list.isOpen());
+    rig.tap(SDLK_2); // (and with no name being typed they are the tabs, as ever)
+    CHECK(session.view == View::Effects);
+    rig.tap(SDLK_1);
+    CHECK(session.view == View::Device);
+
+    // The SAMPLER's list: START while a name is typed keeps the name, and does not start the song.
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.app.project().track = 1;
+    rig.frames(2);
+    rig.app.sampler().goTo(0);
+    CHECK(rig.app.project().current().kind == TrackKind::Sampler);
+    rig.tap(A);
+    SamplePicker& other = rig.app.sampler().picker();
+    CHECK(other.isOpen());
+    rig.tap(L1, 3);
+    for (int i = 0; i < other.count() && !(other.under() && other.under()->kind == Kind::NewFolder); ++i) rig.tap(DOWN);
+    rig.tap(A);
+    CHECK(other.typing());
+    rig.type("ZZ");
+    rig.tap(START);
+    rig.frames(2);
+    CHECK(!other.typing() && !rig.app.project().playing && exists(card.samples + "/zz") && other.said() == "MADE ZZ");
+    rig.tap(START); // (with no name being typed START plays, to hear a recording in the beat)
+    rig.frames(2);
+    CHECK(rig.app.project().playing);
+    rig.tap(START);
+    rig.tap(B);
+}
+
 } // namespace
 
 int main(int, char**) {
@@ -705,6 +1050,10 @@ int main(int, char**) {
     testTheListByItself();
     testDeletingAnEmptyFolder();
     testTheHintsFit();
+    testBigMoves();
+    testTheGuards();
+    testAMoveThatCouldNotBeSaved();
+    testTheRest();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

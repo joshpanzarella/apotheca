@@ -55,6 +55,7 @@ public:
     static constexpr int kLaneTop = 50, kLaneGap = 4;
     static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
     SamplePicker& picker() { return picker_; }
+    const SamplePicker& picker() const { return picker_; }
 
 private:
     TrackData& trk() { return project_.current(); }

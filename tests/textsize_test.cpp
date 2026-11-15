@@ -1358,9 +1358,15 @@ void testTheOtherScreens() {
     session.setLaneSample(0, 6, "");
     session.setLaneSample(0, 7, "");
     rig.tap(LEFT); // on the folder it is in, itself in a folder: what it holds beside it
-    CHECK(rig.app.kit().picker().depth() == 1 && rig.app.kit().picker().count() == 4);
+    CHECK(rig.app.kit().picker().depth() == 1 && rig.app.kit().picker().count() == 3); // (the 66-letter one on the card is too long to be a name: not listed)
     listHolds("the kit's list, on a folder in a folder", "X OF NAMES");
     CHECK(!drew("carry") && !drew("delete it") && drew("open") && drew("page")); // a folder with something in it: neither
+    rig.key(B, true); // B held on it: no bar, and after a moment the top line says why
+    rig.frames(30);
+    listHolds("the kit's list, B held on a folder that is not empty", "NOT DELETED: IT IS NOT EMPTY");
+    rig.key(B, false);
+    CHECK(rig.app.kit().picker().isOpen());
+    rig.frames(SamplePicker::kSaidMs / 16 + 2);
     rig.tap(DOWN); // on an empty one
     listHolds("the kit's list, on an empty folder", "NOTHING IN IT");
     rig.tap(RIGHT); // in it

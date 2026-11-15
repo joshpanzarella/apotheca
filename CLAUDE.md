@@ -1509,11 +1509,38 @@ effect in those two groups and fails one that does not.
   - On a recording the bar says HOLD R1 carry where it said L1 / R1 page: it holds five.
   - `tests/picker_test.cpp` (real files; the saved song and rev byte for byte; the list by
     itself with jobs that count), `textsize_test` (each state drawn, the bar's words).
+  - **The review's mend (batch 3, 2026-11-15):**
+    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
+      the push (a little push reads each name). A held D-pad has a third pace
+      (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
+      (several a frame; a stall makes no burst). **L1 held pages on, and R1 where it does not
+      carry.** 500 rows: the stick 8.3 s, DOWN held 12.6, L1 held 5.5 (each was 33 or more).
+    - **Hold R1 carries only where there is a folder to carry to** (`carries()`: not `flat()`).
+      Let go where it was: LEFT WHERE IT WAS.
+    - **Hold B on a folder that is not empty says so** after `kHoldSaysMs` (NOT DELETED: IT IS
+      NOT EMPTY), and letting go is then no tap. A tap still closes.
+    - **`moveSample` answers `NotSaved`** when the file moved but a saved song that names it, or
+      the open song, could not be written (`savedSongsFollow`'s `failed`, `saveNow` is a bool);
+      the list shows it moved and says MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE.
+    - **A column's rows are made when the place or the card changes, never per frame**
+      (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
+      `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
+    - **While a folder's name is typed L2 / R2 and MENU's help are the list's too**
+      (`App::typingAFolder`).
+    - **`wavNames` lists only what `sampleNameOk` takes** (a file of 64 letters or more is not
+      offered: resting on it put a cut name on the lane).
+    - **On the WiFi page a file in a folder may be as long as a loose one** (60 with its ending;
+      the whole still 63): held to 36, a long recording carried into a folder on the handheld
+      was gone from the page, which then refused to delete it. The page's script changed with it
+      (tried in a browser, 2026-11-15).
+    - **Not mended: the freeze on a carry let go** (`savedSongsFollow` reads every saved song and
+      rev on the app thread, as a rename on the page does). Doing it a file a frame means a
+      switched-off handheld can leave songs naming the old place: the owner's call.
 - **A recording's name may carry two folders** (owner, 2026-11-14; it was one):
   `kicks/808`, `drums/kicks/808`. `sampleFolderOf` is ALL of the folder (`drums/kicks`),
   `sampleLabel` the last part; a song file's one-folder name is still a name. The whole name
   fits `kSampleNameRoom` (63 letters), on the WiFi page too (`safeSamplePath` ends in
-  `sampleNameOk`; each folder 24, the file 36). `wavNames` lists two levels, `wavFolders`
+  `sampleNameOk`; each folder 24, the file 60 with its ending, in a folder or out). `wavNames` lists two levels, `wavFolders`
   the folders (empty ones too). The page's folder import still makes one level. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
@@ -1758,7 +1785,7 @@ there is a change to the sound, and needs the owner's ears.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
-6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3 is the review.
+6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,

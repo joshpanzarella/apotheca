@@ -62,6 +62,7 @@ public:
     int timesHeard() const { return timesHeard_; } // how often it has been played from this screen (for tests)
     const std::string& said() const { return said_; }
     SamplePicker& picker() { return picker_; }
+    const SamplePicker& picker() const { return picker_; }
 
 private:
     TrackData& trk() { return project_.current(); }

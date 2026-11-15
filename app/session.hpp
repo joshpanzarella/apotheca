@@ -183,7 +183,7 @@ public:
     bool deleteSample(const std::string& name);
     // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
     // hold B on an empty folder), and how it went.
-    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed };
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved }; // NotSaved: done, but a song that names it could not be written (a full card)
     // Move a recording to another folder (or out of every folder), under the name `to`: its file is
     // renamed (the long way where the card will not), the open song follows (recordingChanged: the
     // name only, the sound plays on), every saved song and rev that names it follows
@@ -215,7 +215,7 @@ public:
     // itself and moved into place, with the date it had. Pairs with a name that is no
     // recording's (one sent or deleted has an empty side) are passed over. The open song's own file is left to
     // recordingChanged and the autosave. Returns how many files were written.
-    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames);
+    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed = nullptr); // failed: those that name one and could not be written
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
@@ -299,7 +299,7 @@ public:
     std::vector<std::string> songNames() const; // most recently saved first
     void newSong();                             // saves the current one first
     bool openSong(const std::string& name);     // likewise
-    void saveNow();                             // only writes if something changed
+    bool saveNow();                             // only writes if something changed; false: it had to and could not
     // Give the open song a new two-word name (there is no keyboard to type
     // one). Its file and its revs follow. Returns the new name.
     std::string renameSong();

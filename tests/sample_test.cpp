@@ -1462,7 +1462,7 @@ void testTheSamplePicker() {
     rig.tap(B);
     CHECK(!list.isOpen() && std::string(track.laneSample[5]) == "take 10");
 
-    // The stick is for big moves: the first row at once, then (pushed all the way) twenty a second.
+    // The stick is for big moves: the first row at once, then (pushed all the way) eighty a second times its setting.
     // Going by that fast, the recordings passed are not each read from the card and put on: the one
     // the cursor comes to rest on is.
     rig.tap(A);
@@ -1471,8 +1471,8 @@ void testTheSamplePicker() {
     rig.key(STICK_DOWN, true);
     rig.frames(1);
     CHECK(list.cursor() == 1 && std::string(track.laneSample[5]) == "take 01"); // (at once: nothing had moved for a while)
-    rig.frames(62); // a second at the stick's own speed (three quarters)
-    CHECK(list.cursor() >= 14 && list.cursor() <= 17);
+    rig.frames(15); // a quarter of a second at the stick's own speed (three quarters): sixty a second
+    CHECK(list.cursor() >= 13 && list.cursor() <= 17);
     for (int at = list.cursor(), tries = 0; list.cursor() == at && tries < 30; ++tries) rig.frames(1); // (let go just as it comes to the next)
     rig.key(STICK_DOWN, false);
     {
@@ -2013,13 +2013,15 @@ void testFoldersInTheSamplePicker() {
     rig.render(96000);
     rig.tap(DOWN);
     CHECK(list.cursor() == 1 && on(Kind::Folder, "", 2) && lane().empty() && Rig::sounding(rig.render(20000)) == 0);
-    // X on a folder hears nothing, and hold B deletes nothing: let go, it is B's tap.
+    // X on a folder hears nothing, and hold B deletes nothing: it says why, and letting go is then no tap. A tap is B's tap.
     rig.tap(X);
     CHECK(Rig::sounding(rig.render(20000)) == 0);
     rig.key(B, true);
     rig.frames(80);
-    CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 7);
+    CHECK(list.isOpen() && list.deletePart() == 0.f && list.count() == 7 && list.said() == "NOT DELETED: IT IS NOT EMPTY");
     rig.key(B, false);
+    CHECK(list.isOpen() && session.sampleNames().size() == 9);
+    rig.tap(B);
     CHECK(!list.isOpen() && session.sampleNames().size() == 9);
     rig.tap(A);
     rig.tap(DOWN);
@@ -2278,7 +2280,7 @@ void testThePickersPace() {
     rig.frames(10); // (nothing that was waiting goes on after the list has shut)
     CHECK(!list.isOpen() && std::string(track.laneSample[5]) == showing);
     // The stick pushed part of the way is as much slower.
-    CHECK(SamplePicker::kStickRowsPerSecond == 20.f && SamplePicker::kFasterAfterMs == 1500 && SamplePicker::kFasterEveryMs == 60 && SamplePicker::kAtOnceMs == 90);
+    CHECK(SamplePicker::kStickRowsPerSecond == 80.f && SamplePicker::kFasterAfterMs == 1500 && SamplePicker::kFasterEveryMs == 60 && SamplePicker::kAtOnceMs == 90);
 }
 
 // A line runs across a recording's picture while it is heard.

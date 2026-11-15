@@ -342,7 +342,21 @@ void testDeletingAndMoving() {
     for (const char* bad : {"", "c", "c.json", "c.song", "..%2Fc.wav", "../c.wav", "..%2Fout%2Fc.wav", "../out/c.wav", "/c.wav", "%2Fc.wav", "x/y/z/c.wav", "x//c.wav", "x/.y/c.wav", "x/..%2Fc.wav", "x/../c.wav", ".x/c.wav", "x/.c.wav", "x%5Cc.wav",
                             "x/.wav", "/tmp/c.wav", "a%20folder%20name%20that%20is%20far%20too%20long/c.wav", "c.wav%00", "c%0A.wav", "x:y/c.wav"})
         CHECK(post(port, door + "/samples/a.wav", bad).status == 400);
-    CHECK(post(port, door + "/samples/a.wav", "x/" + std::string(33, 'n') + ".wav").status == 400); // 36 at most in a folder
+    CHECK(post(port, door + "/samples/a.wav", "x/" + std::string(57, 'n') + ".wav").status == 400 && !exists(samples + "/x")); // 60 at most, in a folder as out of one
+    CHECK(post(port, door + "/samples/a.wav", "kicks/" + std::string(58, 'n') + ".wav").status == 400); // and 63 with its folders
+    {
+        // A long name the handheld carried into a folder (its list lets any recording go into one, and has no
+        // rename): the page lists it, and can move it and delete it. Held to 32 letters in a folder, it was
+        // gone from the page, which then answered 400 for it.
+        const std::string longer(40, 'm'), there = "kicks/" + longer + ".wav";
+        mkdir((samples + "/kicks").c_str(), 0755);
+        CHECK(writeTextFile(samples + "/" + there, wav));
+        CHECK(get(port, door + "/list").body.find("\"" + there + "\"") != std::string::npos);
+        CHECK(post(port, door + "/samples/" + there, longer + ".wav").status == 200 && exists(samples + "/" + longer + ".wav") && !exists(samples + "/" + there));
+        CHECK(post(port, door + "/samples/" + longer + ".wav", there).status == 200 && exists(samples + "/" + there));
+        CHECK(del(port, door + "/samples/" + there).status == 200 && !exists(samples + "/" + there));
+        received = transfer.received();
+    }
     for (const char* bad : {"/samples/..%2Fsecret.wav", "/samples/../secret.wav", "/samples/x/y/z/a.wav", "/samples/.a.wav", "/elsewhere/a.wav", "/samples/kicks%5Ca.wav"}) CHECK(post(port, door + bad, "c.wav").status == 400);
     CHECK(post(port, door + "/samples/missing.wav", "c.wav").status == 404 && post(port, door + "/samples/dir.wav", "c.wav").status == 404);
     CHECK(post(port, door + "/samples/link.wav", "c.wav").status == 404 && post(port, door + "/samples/linked/x.wav", "c.wav").status == 404 && exists(out + "/x.wav"));

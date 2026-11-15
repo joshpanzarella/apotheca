@@ -11,13 +11,16 @@
 //                  the cursor goes onto the lane AT ONCE, so with the song
 //                  playing it is heard in its place in the beat; with the
 //                  song stopped it is played once. Held: the list's pace
-//                  (ui::kListEveryMs), and faster after kFasterAfterMs.
-//   the stick      big moves: up to kStickRowsPerSecond. Moving faster than
+//                  (ui::kListEveryMs), faster after kFasterAfterMs, and after
+//                  kFastestAfterMs as fast as kFastestEveryMs (a long list's end).
+//   the stick      big moves: up to kStickRowsPerSecond, by the SQUARE of how far it
+//                  is pushed (a little push is slow enough to read). Moving faster than
 //                  one row every kAtOnceMs, a recording goes on when the
 //                  cursor rests, not each one passed (each is a file read).
 //   left / right   out to the folder this one is in / into the folder under
 //                  the cursor
-//   L1 / R1        a page up / down (R1 on a recording: when it is let go, since held it carries)
+//   L1 / R1        a page up / down, and held: page after page at the list's pace. (R1 on a
+//                  recording that can be carried: one page, when it is let go, since held it carries.)
 //   hold R1        on a recording: CARRY it (hold R1 drags, on every screen). After kCarryHoldMs,
 //                  or at once with a direction: steer with up / down / left / right, the stick
 //                  and L1, and let go to put it in the folder under the cursor, or else in the
@@ -31,7 +34,8 @@
 //   hold B         for a second: DELETE the recording under the cursor from the
 //                  handheld, for good (a bad catch, a take not wanted), or an
 //                  EMPTY folder (nothing at all in it). Not the first row. Hold B is "delete for good" on
-//                  every screen.
+//                  every screen. Held on a folder that is NOT empty: after kHoldSaysMs the top line
+//                  says so, and letting go is then no tap.
 //   X              hear it again, for as long as X is held (to its end); a tap
 //                  is heard for a moment
 //
@@ -78,7 +82,9 @@ public:
     };
     static constexpr int kRows = 11, kPage = kRows - 1;
     static constexpr Uint32 kFasterAfterMs = 1500, kFasterEveryMs = 60; // a held D-pad: the list's pace first, then this
-    static constexpr float kStickRowsPerSecond = 20.f;                  // the stick pushed all the way (times ui::gStickSpeed)
+    static constexpr Uint32 kFastestAfterMs = 3500, kFastestEveryMs = 20; // ...and held this long, this: the far end of a long list
+    static constexpr float kStickRowsPerSecond = 80.f;                  // the stick pushed all the way (times ui::gStickSpeed); by the square of the push
+    static constexpr Uint32 kHoldSaysMs = 400;                          // B held this long on a folder that is not empty: it says why not
     static constexpr Uint32 kAtOnceMs = 90;                             // rows arrived at closer together than this: the one rested on goes on
     static constexpr Uint32 kDeleteHoldMs = 1000;
     static constexpr Uint32 kCarryHoldMs = 300;  // R1 held this long on a recording carries it; let go sooner, it is a page
@@ -111,6 +117,7 @@ public:
     const std::string& said() const { return said_; }               // what the top line says just now ("": the title)
     // The rows of a place, as a column lists them.
     std::vector<Row> rowsAt(int depth, const std::string& folder) const;
+    int rowsMade() const { return rowsMade_; }                 // how many times a column's rows were worked out (draw() does not, frame after frame)
 
     // Where things are drawn, for the tests that read the screen.
     static constexpr int kX = 8, kW = ui::kScreenW - 16, kY = 34, kH = ui::kScreenH - ui::kHintsH - kY - 8;
@@ -133,6 +140,9 @@ private:
     void keepFolder();
     void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
     bool emptyFolder(const Row& row) const;  // a folder hold B deletes
+    bool carries(const Row* row) const { return row && row->kind == Kind::Recording && jobs_.move && !flat(); } // hold R1 carries it
+    void index();                            // all_ or dirs_ changed: the counts again
+    const std::vector<Row>& side(std::vector<Row>& rows, std::string& key, int depth, const std::string& folder) const;
     void drawTyping(SDL_Renderer* r, const Fonts& fonts) const;
     void drawColumn(SDL_Renderer* r, const Fonts& fonts, int x, int w, const std::vector<Row>& rows, int lit, bool cursor, int first) const;
 
@@ -142,6 +152,11 @@ private:
     int depth_ = 0;
     std::string here_;
     std::vector<Row> rows_;          // the middle column
+    std::map<std::string, int> counts_; // how many recordings are under each folder, its inner folders' too
+    int loose_ = 0, changes_ = 0;       // the recordings in no folder; how many times the card's lists changed
+    mutable int rowsMade_ = 0;
+    mutable std::vector<Row> leftRows_, rightRows_; // the side columns as last drawn: made again only when the place or the card changes
+    mutable std::string leftKey_, rightKey_;
     std::map<std::string, std::string> last_; // where the cursor was in a folder left, by the row's name (this opening only)
     std::string original_, on_, title_, first_;
     Jobs jobs_;
@@ -154,6 +169,7 @@ private:
     Uint32 repeatAt_ = 0, repeatSince_ = 0, lastMs_ = 0;
     bool bDown_ = false;                          // B went down while the list was open (so its let-go is the list's)
     bool deleting_ = false, deleteTimed_ = false; // B is held on a recording
+    bool refusing_ = false;                       // B is held on a folder that is not empty
     Uint32 deleteSince_ = 0;
     float deletePart_ = 0.f;
     bool r1Down_ = false, r1Timed_ = false;       // R1 went down on a recording: a page when let go, a carry if held

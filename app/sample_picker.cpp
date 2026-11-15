@@ -33,10 +33,10 @@ int firstShown(int lit, int count) {
 
 std::vector<SamplePicker::Row> SamplePicker::rowsAt(int depth, const std::string& folder) const {
     std::vector<Row> rows;
+    ++rowsMade_;
     if (depth == 0) {
         rows.push_back({Kind::First, "", 0});
-        int loose = 0;
-        for (const std::string& name : all_) loose += sampleFolderOf(name).empty();
+        const int loose = loose_;
         if (flat()) { // no folders at all: the recordings themselves
             for (const std::string& name : all_) rows.push_back({Kind::Recording, name, 0});
             if (jobs_.makeFolder) rows.push_back({Kind::NewFolder, "", 0});
@@ -48,9 +48,8 @@ std::vector<SamplePicker::Row> SamplePicker::rowsAt(int depth, const std::string
     if (depth == 0 || (depth == 1 && !folder.empty())) {
         for (const std::string& dir : dirs_) {
             if (sampleFolderOf(dir) != folder) continue;
-            int count = 0;
-            for (const std::string& name : all_) count += name.compare(0, dir.size() + 1, dir + "/") == 0;
-            rows.push_back({Kind::Folder, dir, count});
+            const auto count = counts_.find(dir);
+            rows.push_back({Kind::Folder, dir, count == counts_.end() ? 0 : count->second});
         }
     }
     if (depth > 0)
@@ -58,6 +57,25 @@ std::vector<SamplePicker::Row> SamplePicker::rowsAt(int depth, const std::string
             if (sampleFolderOf(name) == folder) rows.push_back({Kind::Recording, name, 0});
     // The last row of a place a folder can be made in: SAMPLES, and a folder of the first level.
     if (jobs_.makeFolder && (depth == 0 || (depth == 1 && !folder.empty()))) rows.push_back({Kind::NewFolder, "", 0});
+    return rows;
+}
+
+// The card's lists changed: how many recordings are under each folder, counted once (a column's
+// rows ask for each folder's; counted there it was folders times recordings, every frame).
+void SamplePicker::index() {
+    counts_.clear();
+    loose_ = 0;
+    ++changes_;
+    for (const std::string& name : all_) {
+        loose_ += sampleFolderOf(name).empty();
+        for (std::string in = sampleFolderOf(name); !in.empty(); in = sampleFolderOf(in)) ++counts_[in];
+    }
+}
+
+// A side column's rows: worked out when the place or the card has changed, not every frame.
+const std::vector<SamplePicker::Row>& SamplePicker::side(std::vector<Row>& rows, std::string& key, int depth, const std::string& folder) const {
+    const std::string now = std::to_string(changes_) + ":" + placeKey(depth, folder);
+    if (now != key) rows = rowsAt(depth, folder), key = now;
     return rows;
 }
 
@@ -86,6 +104,7 @@ void SamplePicker::open(std::vector<std::string> names, std::vector<std::string>
         if (!sampleFolderOf(dirs_[i]).empty()) dirs_.push_back(sampleFolderOf(dirs_[i]));
     std::sort(dirs_.begin(), dirs_.end());
     dirs_.erase(std::unique(dirs_.begin(), dirs_.end()), dirs_.end());
+    index();
     last_.clear();
     // Open in the folder the recording that is on is in, with the cursor on it.
     show(0, "");
@@ -105,6 +124,7 @@ void SamplePicker::open(std::vector<std::string> names, std::vector<std::string>
     repeating_ = Button::None;
     bDown_ = false;
     deleting_ = false;
+    refusing_ = false;
     deletePart_ = 0.f;
     r1Down_ = false;
     carried_.clear();
@@ -142,8 +162,9 @@ void SamplePicker::moveTo(int row, bool playing, bool atOnce) {
     row = row >= count() ? count() - 1 : row;
     row = row < 0 ? 0 : row;
     if (row == cursor_ || count() == 0) return;
+    refusing_ = false; // (B held on a folder, and the stick moved off it)
     // R1 is held on a recording and the cursor is about to leave it (the stick, a D-pad already held): it is carried.
-    if (r1Down_ && carried_.empty() && under() && under()->kind == Kind::Recording) carried_ = under()->name;
+    if (r1Down_ && carried_.empty() && carries(under())) carried_ = under()->name;
     cursor_ = row;
     arrive(playing, atOnce);
 }
@@ -203,20 +224,23 @@ void SamplePicker::drop(bool playing) {
     const std::string to = folder.empty() ? sampleLabel(from) : folder + "/" + sampleLabel(from);
     carried_.clear();
     const Session::FileJob did = jobs_.move ? jobs_.move(from, to) : Session::FileJob::Failed;
-    if (did == Session::FileJob::Done) {
+    if (did == Session::FileJob::Done || did == Session::FileJob::NotSaved) { // (not saved: it HAS moved)
         std::replace(all_.begin(), all_.end(), from, to);
         std::sort(all_.begin(), all_.end());
+        index();
         if (original_ == from) original_ = to; // (the lane has followed: B's "as it was" is the same recording)
         if (on_ == from) on_ = to;
         // In the folder it went to: the cursor on it. On that folder's row: the row, which counts one more.
         const bool there = depth_ > 0 && here_ == folder;
         refresh(there ? rowKey({Kind::Recording, to, 0}) : "");
-        say("MOVED TO " + destName(folder));
+        say(did == Session::FileJob::Done ? "MOVED TO " + destName(folder) : "MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE");
     } else if (did == Session::FileJob::TooLong) {
         say("NOT MOVED: ITS NAME WOULD BE TOO LONG THERE");
     } else if (did == Session::FileJob::Taken) {
         say("NOT MOVED: ONE OF THAT NAME IS THERE");
-    } else if (did != Session::FileJob::Same) {
+    } else if (did == Session::FileJob::Same) {
+        say("LEFT WHERE IT WAS"); // (R1 held too long for a page, or let go in its own folder: said, so it is not a mystery)
+    } else {
         say("COULD NOT MOVE IT");
     }
     arrive(playing, true); // what the cursor is on now goes on, as arriving on any row does
@@ -247,6 +271,7 @@ void SamplePicker::keepFolder() {
     if (did == Session::FileJob::Done) {
         dirs_.push_back(whole);
         std::sort(dirs_.begin(), dirs_.end());
+        index();
         typing_ = false;
         refresh(rowKey({Kind::Folder, whole, 0}));
         say("MADE " + upper(name));
@@ -286,19 +311,24 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     }
     if (b == Button::R1) {
         // On a recording it waits: let go soon, a page; held (or a direction with it), the recording is carried.
-        if (event.down && row && row->kind == Kind::Recording && jobs_.move) {
+        // (With no folders there is nowhere to carry to: a page at once, as on any other row.)
+        if (event.down && carries(row)) {
             r1Down_ = true;
             r1Timed_ = false;
-            deleting_ = false;
+            deleting_ = refusing_ = false; // R1 calls a filling delete off
             deletePart_ = 0.f;
         } else if (event.down) {
-            deleting_ = false;
+            deleting_ = refusing_ = false;
             deletePart_ = 0.f;
             moveTo(cursor_ + kPage, playing, true);
+            repeating_ = b; // held: page after page
+            repeatAt_ = 0;
         } else if (r1Down_) {
             r1Down_ = false;
             if (carried_.empty()) moveTo(cursor_ + kPage, playing, true);
             else drop(playing);
+        } else if (b == repeating_) {
+            repeating_ = Button::None;
         }
         return;
     }
@@ -315,7 +345,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
             return;
         }
         if (!isDirection(b) && b != Button::L1) return; // nothing else while R1 is held
-        if (carried_.empty() && row && row->kind == Kind::Recording) carried_ = row->name, waiting_ = false; // a direction with R1: carried at once
+        if (carried_.empty() && carries(row)) carried_ = row->name, waiting_ = false; // a direction with R1: carried at once
     }
     if (b == Button::B) {
         // Held for a second on a recording: it is deleted, for good (hold B deletes for good on every
@@ -323,11 +353,12 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
         if (event.down) {
             bDown_ = true;
             deleting_ = row && (row->kind == Kind::Recording || emptyFolder(*row));
+            refusing_ = row && row->kind == Kind::Folder && !deleting_; // not empty: held, it says so (update)
             deleteTimed_ = false;
             deletePart_ = 0.f;
         } else if (bDown_) {
             bDown_ = false;
-            deleting_ = false;
+            deleting_ = refusing_ = false;
             deletePart_ = 0.f;
             waiting_ = false;
             // As it was. (Nothing to do if what is on is what was on.)
@@ -340,7 +371,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
         if (b == repeating_) repeating_ = Button::None;
         return;
     }
-    deleting_ = false; // any other button calls it off
+    deleting_ = refusing_ = false; // any other button calls it off
     deletePart_ = 0.f;
     if (b == Button::Up || b == Button::Down) {
         moveTo(cursor_ + step(b), playing, true);
@@ -348,6 +379,8 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
         repeatAt_ = 0;
     } else if (b == Button::L1) {
         moveTo(cursor_ + step(b), playing, true);
+        repeating_ = b; // held: page after page
+        repeatAt_ = 0;
     } else if (b == Button::Left) {
         out();
     } else if (b == Button::Right) {
@@ -405,10 +438,18 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
     if (r1Down_ && carried_.empty()) {
         if (!r1Timed_) r1Timed_ = true, r1Since_ = nowMs;
         const Row* row = under();
-        if (nowMs - r1Since_ >= kCarryHoldMs && row && row->kind == Kind::Recording) carried_ = row->name, waiting_ = false;
+        if (nowMs - r1Since_ >= kCarryHoldMs && carries(row)) carried_ = row->name, waiting_ = false;
     }
     if (waiting_ && nowMs - arrivedAt_ >= kAtOnceMs) put(playing); // the cursor has come to rest
-    if (!input.held(Button::B)) deleting_ = false, deletePart_ = 0.f;
+    if (!input.held(Button::B)) deleting_ = refusing_ = false, deletePart_ = 0.f; // (let go unseen: nothing is deleted)
+    if (refusing_) { // B held on a folder that is not empty: no bar; after a moment it says why, and this hold is no tap
+        if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
+        if (nowMs - deleteSince_ >= kHoldSaysMs) {
+            refusing_ = false;
+            bDown_ = false;
+            say("NOT DELETED: IT IS NOT EMPTY");
+        }
+    }
     if (deleting_) {
         if (!deleteTimed_) deleteTimed_ = true, deleteSince_ = nowMs;
         deletePart_ = static_cast<float>(nowMs - deleteSince_) / static_cast<float>(kDeleteHoldMs);
@@ -421,6 +462,7 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
             const Session::FileJob did = jobs_.removeFolder(gone);
             if (did == Session::FileJob::Done) {
                 dirs_.erase(std::remove(dirs_.begin(), dirs_.end(), gone), dirs_.end());
+                index();
                 last_.erase(placeKey(depth_ + 1, gone));
                 refresh();
                 arrive(playing, true);
@@ -434,6 +476,7 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
             const std::string gone = row->name;
             if (jobs_.remove && jobs_.remove(gone)) {
                 all_.erase(std::remove(all_.begin(), all_.end(), gone), all_.end());
+                index();
                 if (original_ == gone) original_.clear(); // B cannot bring back what is no longer there
                 if (on_ == gone) on_.clear();
                 // The row that takes its place (or the one before, at the end) goes on instead. Its
@@ -452,16 +495,26 @@ void SamplePicker::update(const Input& input, Uint32 nowMs, bool playing) {
         saved_ = 0.f;
         stickWas_ = false;
     } else {
-        saved_ += stickWas_ ? std::fabs(y) * kStickRowsPerSecond * dt : 1.f;
+        // Big moves: by the square of the push, so a little push is slow enough to read each name
+        // and all the way is a long list's length in a few seconds.
+        saved_ += stickWas_ ? y * y * kStickRowsPerSecond * dt : 1.f;
         stickWas_ = true;
         for (; saved_ >= 1.f; saved_ -= 1.f) moveTo(cursor_ + (y > 0.f ? 1 : -1), playing, false);
     }
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kListDelayMs;
         repeatSince_ = nowMs;
-    } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (nowMs - repeatSince_ >= kFasterAfterMs ? kFasterEveryMs : kListEveryMs);
-        moveTo(cursor_ + step(repeating_), playing, false);
+    } else if (repeating_ != Button::None && input.held(repeating_)) {
+        // The D-pad: the list's pace, then faster, then fastest. A shoulder: a page at the list's pace.
+        // Counted from when each was due, not from this frame: a pace faster than the frames is kept
+        // (several rows a frame), and one a little slower is not rounded up to a whole frame more.
+        const bool page = repeating_ == Button::L1 || repeating_ == Button::R1;
+        if (nowMs > repeatAt_ + 100) repeatAt_ = nowMs; // (the program was held up: no burst to catch up)
+        while (nowMs >= repeatAt_) {
+            const Uint32 held = repeatAt_ - repeatSince_;
+            repeatAt_ += page || held < kFasterAfterMs ? kListEveryMs : held < kFastestAfterMs ? kFasterEveryMs : kFastestEveryMs;
+            moveTo(cursor_ + step(repeating_), playing, false);
+        }
     }
 }
 
@@ -543,7 +596,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // Where this folder is: the folder it is in, this one picked out.
     if (depth_ > 0) {
         const std::string parent = depth_ == 2 ? sampleFolderOf(here_) : "";
-        const std::vector<Row> rows = rowsAt(depth_ - 1, parent);
+        const std::vector<Row>& rows = side(leftRows_, leftKey_, depth_ - 1, parent);
         int lit = -1;
         for (std::size_t i = 0; i < rows.size(); ++i)
             if (rows[i].kind == Kind::Folder && rows[i].name == here_) lit = static_cast<int>(i);
@@ -567,7 +620,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, kMidX + 10.f, kRowsY + count() * kRowH + 8.f, "No recordings yet. Send .wav files over the WiFi page,", kDim);
         fonts.small.draw(r, kMidX + 10.f, kRowsY + count() * kRowH + 24.f, "catch a bar with Y, or record with R1.", kDim);
     } else if (row && row->kind == Kind::Folder) {
-        const std::vector<Row> rows = rowsAt(depth_ + 1, row->name);
+        const std::vector<Row>& rows = side(rightRows_, rightKey_, depth_ + 1, row->name);
         head(kRightX, kRightW, placeName(depth_ + 1, row->name), kDim);
         drawColumn(r, fonts, kRightX, kRightW, rows, -1, false, 0);
         if (rows.empty()) fonts.small.draw(r, kRightX + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
@@ -611,7 +664,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         return;
     }
     // (On a recording L1 / R1's page gives its place to HOLD R1: the bar holds five.)
-    const bool carries = recording && jobs_.move && !flat();
+    const bool carries = this->carries(row);
     const Hint list[] = {{"A", !row ? nullptr : folder ? "open" : fresh ? "name it" : "keep it"}, {"B", "as it was"}, {flat() ? nullptr : row ? "LEFT / RIGHT" : "LEFT", row ? "out, in" : "out"},
                          {row && !carries ? "L1 / R1" : nullptr, "page"}, {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
     hints(r, fonts, list, 6);

@@ -177,6 +177,9 @@ std::vector<std::string> wavNames(const std::string& folder) {
             for (const std::string& name : last) names.push_back(inside + "/" + under + "/" + name);
         }
     }
+    // Only what can be a name (sampleNameOk): one too long to keep was listed, and resting on it put
+    // a cut name on the lane, which is no file.
+    names.erase(std::remove_if(names.begin(), names.end(), [](const std::string& name) { return !sampleNameOk(name); }), names.end());
     return names;
 }
 
