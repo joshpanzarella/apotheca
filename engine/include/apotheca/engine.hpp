@@ -117,6 +117,35 @@ constexpr int kMaxNotes = 64;     // notes in one scene of one synth track
 static_assert(kGlideNotes == kMaxNotes && kGlideBars == kMaxBars, "glide_rule.hpp: a cell is as big there as here");
 constexpr int kScopeSize = 1024;  // samples the scope keeps
 constexpr double kNoNote = 1e30;
+
+// Which places of a list may hold something: a bit each (speed plan, batch 1). A place that holds
+// something always has its bit; a bit may stand on a place since emptied, and the next walk that
+// finds it so takes it off. So a walk need look only where the bits are, in the places' order,
+// which is the order a walk of every place found them in. (The step clock walked every synth
+// track's 256 waiting-note places and 128 keys three times a chunk, nearly always empty: a quarter
+// of the busiest song's cache misses.)
+inline bool gWalkEveryPlace = false; // for the tests: every place is walked, bits or not (the old way, to compare with)
+template <int N>
+struct PlaceBits {
+    static constexpr int kWords = (N + 63) / 64;
+    std::uint64_t word[kWords] = {};
+    void set(int i) { word[i >> 6] |= std::uint64_t(1) << (i & 63); }
+    void clear(int i) { word[i >> 6] &= ~(std::uint64_t(1) << (i & 63)); }
+    void clearAll() {
+        for (std::uint64_t& w : word) w = 0;
+    }
+    // f(place) for each bit, lowest first. f may clear its own bit. (A bit set in a word already
+    // read is not seen: no walk sets one.)
+    template <typename F>
+    void each(F&& f) const {
+        if (gWalkEveryPlace) {
+            for (int i = 0; i < N; ++i) f(i);
+            return;
+        }
+        for (int k = 0; k < kWords; ++k)
+            for (std::uint64_t w = word[k]; w; w &= w - 1) f(k * 64 + __builtin_ctzll(w));
+    }
+};
 constexpr int kCatchFrames = 480000; // what the engine remembers of its own output: ten seconds
 constexpr float kShortestNote = 0.05f; // of a step
 
@@ -603,6 +632,8 @@ private:
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
         // (Twenty-four ran out: an eight-key chord at x4, nudged, lost its last two keys.)
         PendingNote pendingNotes[kMaxNotes * kMaxRatchet];
+        PlaceBits<kMaxNotes * kMaxRatchet> notesWaiting; // which of them may be in use
+        PlaceBits<128> keysHeld;                          // which keys may be sounding (offIn below kNoNote)
         // An arpeggio (a chord whose STRUM is a length in steps): one note at a time, round the
         // chord's keys until the chord ends. One clock for the whole chord. Three, because at the most
         // one is still playing (nudged late), the next chord's waits for its own nudge and the
@@ -659,6 +690,7 @@ private:
             bool whole = false; // FEEL: its wait and its gap are whole samples, and stay so through a tempo change
         };
         Pending pending[kDrumLanes][3];
+        PlaceBits<kDrumLanes * 3> hitsWaiting; // which of them may be in use: lane * 3 + place
         // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, and the step (counted from Play) whose hit
         // on the lane has been asked for a step ahead because HUMAN TIME may bring it early: that
         // hit is not begun again when its step comes, whatever the lane says by then.

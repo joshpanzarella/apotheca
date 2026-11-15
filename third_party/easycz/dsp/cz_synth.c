@@ -334,7 +334,7 @@ static void lfo_restart(cz_synth_t *s) {
     s->lfo_out = 0;
 }
 
-int cz_synth_init(cz_synth_t *s) {
+static void init_common(cz_synth_t *s) {
     memset(s, 0, sizeof(*s));
     upd933_init_tables(&s->tables);
     for (int i = 0; i < CZ_CHIPS; i++) upd933_reset(&s->chip[i], &s->tables, 0x2545f491u + (uint32_t)i);
@@ -348,7 +348,17 @@ int cz_synth_init(cz_synth_t *s) {
     s->last_word = -1;
     map_slots(s);
     update_vibrato_words(s);
+}
+
+int cz_synth_init(cz_synth_t *s) {
+    init_common(s);
     return resampler_init(&s->rs);
+}
+
+int cz_synth_init_shared(cz_synth_t *s, const float *clean, const float *analog) {
+    init_common(s);
+    resampler_init_shared(&s->rs, clean, analog);
+    return 0;
 }
 
 void cz_synth_free(cz_synth_t *s) {
@@ -739,6 +749,23 @@ static int idle(const cz_synth_t *s) {
     for (int vi = 0; vi < CZ_VOICES; vi++)
         if (s->voice[vi].active || s->voice[vi].fading) return 0;
     return 1;
+}
+
+int cz_synth_resting(const cz_synth_t *s, int frames) {
+    return frames >= 0 && idle(s) && s->chorus_quiet > CHORUS_BUF && s->chorus_quiet <= UINT32_MAX - (uint32_t)frames;
+}
+
+void cz_synth_rest(cz_synth_t *s, int frames) {
+    if (frames <= 0) return;
+    s->dc.x1 = s->dc.y1 = 0.0f; /* as the idle render leaves it */
+    s->chorus_quiet += (uint32_t)frames;
+    /* The volume's glide, a frame at a time as render_stereo moves it; once a
+     * step no longer moves it, none after it will. */
+    for (int f = 0; f < frames; f++) {
+        const float was = s->gain;
+        s->gain += 0.002f * (s->gain_target - s->gain); /* (written as render_stereo writes it) */
+        if (s->gain == was) break;
+    }
 }
 
 void cz_synth_render(cz_synth_t *s, float *out, int frames) {

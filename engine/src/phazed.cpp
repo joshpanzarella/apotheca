@@ -225,15 +225,39 @@ struct Phazed::State {
     RateConverter converter;
 };
 
+namespace {
+// The CZ's two 40-to-44.1 kHz filters (113 KB each), made once and shared by every Phazed
+// (speed plan, batch 1: each track had its own, read every chip sample; a seventh of the busiest
+// song's cache misses). Never taken apart: a synth may still be playing as the program ends.
+struct CzTables {
+    std::vector<float> clean, analog;
+    CzTables() : clean(static_cast<std::size_t>(RS_UP) * RS_TAPS), analog(static_cast<std::size_t>(RS_UP) * RS_TAPS) {
+        resampler_design(clean.data(), RS_CLEAN);
+        resampler_design(analog.data(), RS_ANALOG);
+    }
+};
+const CzTables& czTables() {
+    static const CzTables& tables = *new CzTables; // (made once, safely, whichever thread asks first)
+    return tables;
+}
+bool gRests = true; // setRestingForTests
+} // namespace
+
+void Phazed::setRestingForTests(bool on) { gRests = on; }
+
 Phazed::Phazed() : state_(new State) {
     for (float& m : macro_) m = 0.5f;
-    ok_ = cz_synth_init(&state_->synth) == 0;
+    const CzTables& tables = czTables();
+    ok_ = cz_synth_init_shared(&state_->synth, tables.clean.data(), tables.analog.data()) == 0;
     if (ok_) selectPreset(0);
 }
 
 Phazed::~Phazed() {
     if (ok_) cz_synth_free(&state_->synth);
 }
+
+const float* Phazed::czTableForTests() const { return state_->synth.rs.coef[RS_ANALOG]; }
+const float* Phazed::converterTableForTests() const { return state_->converter.table(); }
 
 void Phazed::prepare(float sampleRate) {
     state_->engineRate = sampleRate;
@@ -392,6 +416,23 @@ void Phazed::render(float* left, float* right, int frames) {
         return;
     }
     State& s = *state_;
+    // At rest (speed plan, batch 1): nothing sounds, the CZ's output has settled, its chorus has
+    // been fed silence for longer than it remembers, and the converter's history is zeros. Then
+    // every sample out is exactly +0 until something is played, and the work is only the counts
+    // the CZ keeps and its volume's glide: done without the converter's sums or a call a sample.
+    // It wakes as it would have run, to the bit (speed_test holds it beside a Phazed that never rests).
+    if (gRests && s.engineRate != kSynthRate && cz_synth_resting(&s.synth, s.converter.pullsAtMost(frames)) && s.converter.silent()) {
+        cz_synth_rest(&s.synth, s.converter.skip(frames));
+        for (int i = 0; i < frames; ++i) left[i] = right[i] = 0.f;
+        rested_ += frames;
+        return;
+    }
+    if (gRests && s.engineRate == kSynthRate && cz_synth_resting(&s.synth, frames)) {
+        cz_synth_rest(&s.synth, frames);
+        for (int i = 0; i < frames; ++i) left[i] = right[i] = 0.f;
+        rested_ += frames;
+        return;
+    }
     if (s.engineRate == kSynthRate) {
         cz_synth_render_stereo(&s.synth, left, right, frames);
         return;

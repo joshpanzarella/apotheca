@@ -65,6 +65,19 @@ static void design(float *coef, double cutoff_hz, int hold) {
     }
 }
 
+void resampler_design(float *coef, int which) {
+    if (which == RS_CLEAN) design(coef, RS_CUTOFF_CLEAN_HZ, 0);
+    else design(coef, RS_CUTOFF_ANALOG_HZ, 1);
+}
+
+void resampler_init_shared(resampler_t *r, const float *clean, const float *analog) {
+    memset(r, 0, sizeof(*r));
+    r->coef[RS_CLEAN] = (float *)clean; /* (read only: never written after it is designed) */
+    r->coef[RS_ANALOG] = (float *)analog;
+    r->shared = 1;
+    r->design = RS_ANALOG;
+}
+
 int resampler_init(resampler_t *r) {
     memset(r, 0, sizeof(*r));
     for (int d = 0; d < 2; d++) {
@@ -79,7 +92,7 @@ int resampler_init(resampler_t *r) {
 
 void resampler_free(resampler_t *r) {
     for (int d = 0; d < 2; d++) {
-        free(r->coef[d]);
+        if (!r->shared) free(r->coef[d]);
         r->coef[d] = NULL;
     }
 }

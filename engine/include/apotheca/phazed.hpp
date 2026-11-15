@@ -95,6 +95,14 @@ public:
     // Writes `frames` samples (replacing what was there).
     void render(float* left, float* right, int frames) override;
 
+    // For the tests: frames rendered at rest (render: nothing to work out), and the rest switched
+    // off for every Phazed, to hear that it changes nothing. Not while one renders.
+    long restedForTests() const { return rested_; }
+    static void setRestingForTests(bool on);
+    // The weights the CZ's filter and the rate converter read (shared by every Phazed). For the tests.
+    const float* czTableForTests() const;
+    const float* converterTableForTests() const;
+
 private:
     struct State;
     void apply(bool newSound);
@@ -109,6 +117,7 @@ private:
     float macro_[phazed::kMacros];
     bool inTuneTrim_ = false;   // that twin, kept at the middle, has had a note begin on it: trimmed for lines in tune
     bool twinByDetune_ = false; // the synth has a one-line sound made a twin by DETUNE
+    long rested_ = 0;
 };
 
 } // namespace apotheca

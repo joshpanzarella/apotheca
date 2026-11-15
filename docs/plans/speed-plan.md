@@ -329,3 +329,75 @@ brackets):
 | drums (twelve drum tracks) | 214 M (215 M) |
 | drums-thrown | 435 M (437 M) |
 | empty | 4.3 M |
+
+### Batch 1: the work done for nothing (2026-11-15)
+
+**Bit-exact**: `effects_test --print` the same before and after, the pinned
+checksums untouched, `ctest` green (52).
+
+| Change | Where | Held by |
+| --- | --- | --- |
+| **#1 The step clock walks only what waits.** Each track keeps a bit for each waiting-note place (256), each key (128) and each drum hit's place (24) that may hold something (`PlaceBits`): set where a place is filled, taken off by the walk that finds it empty. `render()`'s two walks, `fireNoteOffs`, `firePendingNotes`, `firePending` and `fireStep`'s marks walk the bits, lowest first: the order a walk of every place found them in | `engine.hpp` (`PlaceBits`, `Track::notesWaiting`, `keysHeld`, `hitsWaiting`), `engine.cpp` | `speed_test` `testStepClockPlaces`: eleven listening synths and a drum track (chords plain, strummed, arpeggios, humanised, ratcheted; nudges both ways; glides of every length, PAIRED and RANDOM; drum ratchets, nudges, FEEL; tempo changes, Stop, Play of a scene alone; blocks of 1 to 300) beside an engine that walks every place (`gWalkEveryPlace`): the same notes on the same frames, the same sound. `testBusiestWalksAlike`: the busiest song both ways |
+| **#2 Phazed rests.** When nothing sounds, the CZ's output has settled, its chorus has been fed silence for longer than it remembers and the converter's history is zeros, a block is written as zeros and only the CZ's counts and its volume's glide move (`cz_synth_rest`), and the converter's place (`RateConverter::skip`) | `phazed.cpp`, `rate_converter.hpp`, `cz_synth.c` | `testPhazedRests` (a resting Phazed beside one that never rests, `setRestingForTests`: notes, chords, silences, the volume and a macro turned at rest, another preset, a glide that wakes it while the volume glides; at 48 kHz and at the CZ's own 44.1, blocks of 1 to 300; it rests 21.4 s of 26), `testPhazedRestsInTheEngine` (twelve tracks), `testConverterSkips` |
+| **#3 Phazed's tables shared.** The CZ's two filter tables (113 KB each) and the 44.1-to-48 kHz converter's (49 KB) are made once (`resampler_design`, `cz_synth_init_shared`; `RateConverter::tableFor`, one for each pair of rates) | `cz_output.c`, `cz_synth.c` (`third_party/CHANGES.md`), `phazed.cpp`, `rate_converter.hpp` | `testPhazedTablesShared` (two synths read the same; the table is what `resampler_init` makes for itself); `effects_test`'s pinned song (a table made the other way fails it) |
+| **#9 The effects' way in looks first.** `soundOnly` sweeps a block for a bad sample in one pass the compiler can do several at a time, and mends only if it found one. The plan's other half, a `Glide` at rest skipping its step, **is not done**: it is in each effect's own loop (nineteen files), for about 1% | `fx/glide.hpp` | `testSoundOnly`: every place in blocks of 1 to 70, each kind of bad sample, beside the old way, to the bit |
+
+**Mutation tests** (each change broken, the tests run): **every mutant that
+changes what the change does was killed.** The bits not set in each of the four
+places that fill one, a bit taken off a note, key or ratchet still waiting, the
+last word of bits not walked, a bit set in the wrong word; the rest's volume
+glide left out or stopped a step early, resting without asking the chorus or
+whether it is idle, the converter's place not moved, one pull too few, at 44.1
+kHz half the frames rested, `silent()` not looking at either side; `soundOnly`
+never mending or missing the last sample; the shared filter on the wrong
+design. **Survivors, each equivalent** (no sound can show them): the rest's
+coupling capacitor zeroed (the idle render had zeroed it already, and resting
+needs 512 idle frames first); the chorus's count not kept (it only has to stay
+over 512 while at rest); the converter's history not turned (all zeros: turning
+them changes nothing); Phazed asking `silent()` at all (a resting CZ has fed the
+converter 512 zeros, so it is always silent then: kept as a guard);
+`clearPending` keeping its bits (a bit on an empty place costs a look, nothing
+more). Two mutants of the walks' own bodies (a chunk not cut where a key is let
+go, keys not counted down) survive `speed_test`, which compares the two ways of
+walking, and are killed by `chordfx_test`.
+
+**Instructions, one second of sound** (callgrind, clang -O2 -g):
+
+| Setup | Batch 0 | Batch 1 | |
+| --- | --- | --- | --- |
+| busiest | 2,070 M | 2,023 M | -2.3% |
+| phazed-silent (twelve silent Phazed tracks) | 351 M | 39.0 M | **-89%** |
+| chords (eleven silent samplers, plain chords) | 67.5 M | 22.1 M | **-67%** |
+| jaxep-silent | 68.5 M | 22.0 M | **-68%** |
+| drums (twelve drum tracks) | 214 M | 212 M | -1% |
+| drums-thrown | 435 M | 432 M | -1% |
+| empty | 4.3 M | 4.1 M | |
+
+**Cache, the busiest song** (callgrind's model: L1 32 KB, L2 256 KB):
+
+| | Batch 0 | Batch 1 |
+| --- | --- | --- |
+| L1 data read misses | 9.13 M | 4.64 M (**-49%**) |
+| L2 read misses (code and data) | 5.61 M | 3.60 M (**-36%**) |
+| L2 write misses | 0.84 M | 0.76 M |
+| twelve silent Phazed: L2 read misses | 3.92 M | 0.0005 M |
+
+By section 0's rule of thumb (a miss about 100 ns on the device), 2 M fewer
+misses a second is up to **a fifth of a handheld core** off the busiest song, on
+the audio thread's own part as much as the helpers'. **Not measured on the
+device.**
+
+**Timed, one run on the shared desk** (before: the batch 0 run):
+
+| Row | Before | After |
+| --- | --- | --- |
+| twelve silent Phazed tracks | 2.38% | **0.32%** |
+| twelve silent QMOD / JAX-EP tracks | 0.70 / 0.71% | **0.15 / 0.15%** |
+| eleven silent tracks, plain chords / strummed x4 / arpeggios | 0.72 / 1.19 / 1.15% | **0.15 / 0.24 / 0.21%** |
+| the busiest song alone / 2 helpers | 17.8 / 12.0% | 15.7 / 11.7% |
+| twelve drum tracks | 1.48% | 1.47% |
+
+The plan's targets for the device (eleven silent tracks under 2.5%, twelve
+silent Phazed under 4%): by section 0's rule (1 G instructions a handheld
+core-second), about 2.2% and 3.9%, just inside both. **The device's SPEED TEST
+says.**

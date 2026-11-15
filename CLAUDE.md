@@ -706,6 +706,13 @@ effect in those two groups and fails one that does not.
   sample's** (passed by, the wave jumped raw: `testAnEdgeOnTheSamplesEnd`).
   A wave, DCO-2's start phase and the noise seed are each a voice's own; what
   a free voice starts with comes from the count of keys, as batch 1's phase.
+- **The step clock walks only the places that may hold something** (speed
+  plan batch 1; `PlaceBits` in engine.hpp: `Track::notesWaiting`, `keysHeld`,
+  `hitsWaiting`). **Whatever fills a waiting note's place, sets a key's
+  `offIn` or fills a drum hit's place sets its bit**; an emptied place may keep
+  its bit (the next walk takes it off). A walk visits the bits lowest first,
+  the order a walk of every place had. `speed_test` (`testStepClockPlaces`)
+  holds it beside an engine that walks every place (`gWalkEveryPlace`).
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -1756,6 +1763,15 @@ effect in those two groups and fails one that does not.
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played
   with.
+- **Phazed rests in silence, to the bit** (speed plan batch 1;
+  `cz_synth_resting` / `cz_synth_rest`, `RateConverter::silent` / `skip`):
+  idle, its output settled, its chorus fed silence longer than it remembers
+  and the converter's history zeros, a block is zeros and only the CZ's counts
+  and its volume's glide move. **Anything new the CZ moves in a silent frame
+  goes in `cz_synth_rest` too**, or a woken Phazed is not the one that never
+  slept; `speed_test` (`testPhazedRests`) holds the two side by side.
+  Its filter tables and the converter's are made once and shared
+  (`cz_synth_init_shared`, `RateConverter::tableFor`): never written after.
 - **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
   plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
   folder with the cursor (always the middle column), and what is under the cursor.
@@ -2116,6 +2132,8 @@ effect in those two groups and fails one that does not.
 | The busiest song shared out other ways (speed plan batch 0, 2026-11-15, one run, load 6): 2 helpers / 3 / 2 heaviest first / 3 heaviest first. **The desk cannot tell; the device's SPEED TEST decides** | 12.0 / 13.3 / 11.4 / 11.1% of a block |
 | A screen pass while the song plays, SDL's software renderer (batch 0): SONG / drum grid | update 0.06 / 0.05 ms, drawing 1.7 / 1.6 ms |
 | Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1 | 2,070 / 351 / 67.5 / 214 / 435 M |
+| ...after batch 1 (the step clock walks only what waits, Phazed rests, its tables shared) | 2,023 / 39.0 / 22.1 / 212 / 432 M; the busiest song's L2 read misses (a 256 KB model) 5.61 to 3.60 M |
+| Twelve silent tracks after batch 1 (one run, load 6): Phazed / QMOD / JAX-EP; eleven silent samplers with plain chords | 0.32 / 0.15 / 0.15%; 0.15% (were 2.38 / 0.70 / 0.71%; 0.72%) |
 
 **QMOD is the costly synth now** (Twin Analog, at 4.7% and up, is gone:
 batch 8b). **No synth has a quality setting and nothing watches the load**:

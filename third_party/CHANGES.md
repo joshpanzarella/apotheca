@@ -28,3 +28,15 @@ these unless they are put back.
   fades them, once. Held by `phazed_test`
   (`testDetuneThroughTheMiddleKeepsTheNote`). A fresh copy of `cz_synth.c`
   keeps it, since the copy is not touched.
+- `easycz/dsp/cz_output.c`, `cz_output.h`, `cz_synth.c`, `cz_synth.h` (2026-11-15,
+  speed plan batch 1): the resampler's two filter tables (113 KB each) are made
+  once and shared by every Phazed: `resampler_design`, `resampler_init_shared`
+  (a `shared` flag so `resampler_free` leaves them), `cz_synth_init_shared`.
+  Each track had its own, read every chip sample: a seventh of the busiest
+  song's cache misses. And a synth at rest is not worked out: `cz_synth_resting`
+  (idle, its output settled, the chorus fed silence longer than it remembers)
+  and `cz_synth_rest` (what one-frame renders would do then: the coupling
+  capacitor to zero, the chorus's count, the volume's glide; no samples).
+  `cz_synth_init` and the render are as they were; Phazed (`engine/src/phazed.cpp`)
+  uses the new calls. Same sound to the bit: `speed_test` holds a resting Phazed
+  beside one that never rests, and `effects_test`'s pinned song stands.
