@@ -74,6 +74,11 @@ for c in cz_chorus cz_output cz_presets cz_synth cz_tone upd933; do
     clang $flags -std=c11 -I"$here/third_party/easycz" -c "$here/third_party/easycz/dsp/$c.c" -o "$out/obj/$c.o"
     objects="$objects $out/obj/$c.o"
 done
+# FM-6's core (third_party/msfa) is built to let its fixed-point numbers wrap round, as CMake builds it.
+for c in dx7note env exp2 fm_core fm_op_kernel freqlut lfo pitchenv sin; do
+    clang++ $flags -std=c++17 -fwrapv -c "$here/third_party/msfa/$c.cc" -o "$out/obj/msfa_$c.o"
+    objects="$objects $out/obj/msfa_$c.o"
+done
 clang++ $flags -fuse-ld=lld -std=c++17 -Wall -Wextra -Wno-unused-function \
     -I"$here/engine/include" -I"$here/third_party" -I"$here/third_party/easycz" \
     -I"$sysroot/usr/include/SDL2" -D_REENTRANT \
@@ -89,6 +94,7 @@ mkdir -p "$pack/apotheca/licences"
 cp "$here/third_party/easycz/LICENSE" "$pack/apotheca/licences/phazed-engine-LICENSE.txt"
 cp "$here/third_party/easycz/THIRD_PARTY_LICENSES.md" "$pack/apotheca/licences/phazed-engine-third-party.md"
 mv "$pack/apotheca/routed-gothic-LICENSE.txt" "$pack/apotheca/licences/"
+cp "$here/third_party/msfa/LICENSE" "$pack/apotheca/licences/fm6-core-msfa-LICENSE.txt"
 cp "$here/third_party/signalsmith/LICENSE-stretch.txt" "$pack/apotheca/licences/signalsmith-stretch-LICENSE.txt"
 cp "$here/third_party/signalsmith/LICENSE-linear.txt" "$pack/apotheca/licences/signalsmith-linear-LICENSE.txt"
 # Chord packs: any JSON file dropped in this folder is picked up.

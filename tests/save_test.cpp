@@ -1244,7 +1244,7 @@ void testTheTextKeptIsTheSongsText() {
     SongTextCache cache;
     std::uint32_t seed = 12345u;
     const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
-    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Sampler};
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler};
     for (int t = 1; t < 6; ++t) {
         p->tracks[t].kind = kinds[t % 5];
         if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);

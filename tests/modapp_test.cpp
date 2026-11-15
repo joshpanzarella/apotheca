@@ -120,7 +120,7 @@ void testTheSessionHoldsAMod() {
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
-    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Qmod) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Jx3p));
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Fm6) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Jx3p));
     rig.settle();
     for (int t = 0; t < 5; ++t)
         for (int m = 0; m < kModsPerTrack; ++m) CHECK(blank(session.modData(t, m)));
@@ -160,10 +160,10 @@ void testTheSessionHoldsAMod() {
     for (int macro = 0; macro < kSynthMacros; ++macro) {
         CHECK(!session.setMod(0, 0, square(macro, 0.5f)) && !session.setMod(3, 0, square(macro, 0.5f)));
         CHECK(session.setMod(1, 0, square(macro, 0.5f)) == (macro < 6)); // Phazed: CHORUS and OCTAVE are choices
-        CHECK(session.setMod(2, 1, square(macro, 0.5f)) == (macro < 7)); // QMOD: OCTAVE
+        CHECK(session.setMod(2, 1, square(macro, 0.5f)));                // FM-6: every one an amount
         CHECK(session.setMod(4, 0, square(macro, 0.5f)));                // JAX-EP: every one an amount
         CHECK(blank(project.tracks[0].mods[0]) && blank(project.tracks[3].mods[0]));
-        CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && blank(project.tracks[2].mods[1]) == (macro >= 7));
+        CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && !blank(project.tracks[2].mods[1]));
     }
     CHECK(session.setMod(1, 0, square(4, 0.5f)) && rig.onlyAt(1, 4, 0.5f));
     // LEVEL and PAN (batch 8): every track that has something on it.
@@ -333,7 +333,7 @@ void testTheSongFile() {
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
-    CHECK(session.addTrack(TrackKind::Qmod) && session.addTrack(TrackKind::Phazed));
+    CHECK(session.addTrack(TrackKind::Fm6) && session.addTrack(TrackKind::Phazed));
     project.tracks[1].notes[0][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
     session.setEffect(1, 2, EffectKind::Tape);
     const int feedback = settingNamed(EffectKind::Tape, "FEEDBACK"), time = settingNamed(EffectKind::Tape, "TIME");
@@ -355,7 +355,7 @@ void testTheSongFile() {
     std::snprintf(expect, sizeof expect, "mod 2 1 %d 0.375 4 6 0 3\n", lane(2, feedback));
     CHECK(withLfo.size() == plain.size() + std::strlen(expect) && count(withLfo, "\nmod") == 1);
     {
-        const std::size_t at = withLfo.find(std::string("\n") + expect), second = withLfo.find("\ntrack qmod"), third = withLfo.find("\ntrack phazed");
+        const std::size_t at = withLfo.find(std::string("\n") + expect), second = withLfo.find("\ntrack fm6"), third = withLfo.find("\ntrack phazed");
         CHECK(at != std::string::npos && second != std::string::npos && third != std::string::npos && at > second && at < third);
         std::string without = withLfo;
         if (at != std::string::npos) without.erase(at + 1, std::strlen(expect));
@@ -453,7 +453,7 @@ void testTheSongFile() {
                                    std::string("mod 2 1 -1 0.375"), std::string("mod 2 1 1e9 0.375"), std::string("mod 2 1"), std::string("mod 2"), std::string("mod"), std::string("mod x 1 20 0.4"),
                                    std::string("mod 3 1 20 0.375"), std::string("mod 0 1 20 0.375"), std::string("mod -1 1 20 0.375"), std::string("mod 1e300 1 20 0.375"), std::string("mud 2 1 20 0.375"),
                                    std::string("mod 2 1 ") + std::to_string(lane(2, time)) + " 0.375", std::string("mod 2 1 ") + std::to_string(lane(0, 0)) + " 0.375",
-                                   std::string("mod 2 1 7 0.375"), std::string("modsteps 2 4 0.5 0.5 1 1 1 1")}) {
+                                   std::string("modsteps 2 4 0.5 0.5 1 1 1 1")}) {
         std::unique_ptr<Project> back(new Project);
         CHECK(readWith(odd, *back) && blank(back->tracks[1].mods[1]) && blank(back->tracks[1].mods[0]));
         CHECK(songText(*back) == plain); // ...and nothing else of the song is touched by the line
@@ -538,8 +538,8 @@ void testTheSongFile() {
         CHECK(parseSong(early, *back) && sameMod(back->tracks[1].mods[1], lfo));
         // Under a track line this version does not know, a MOD is nobody's (as every line there).
         std::string unknown = withLfo;
-        const std::size_t q = unknown.find("\ntrack qmod");
-        if (q != std::string::npos) unknown.replace(q, 11, "\ntrack zzzzz");
+        const std::size_t q = unknown.find("\ntrack fm6");
+        if (q != std::string::npos) unknown.replace(q, 10, "\ntrack zzzzz");
         CHECK(parseSong(unknown, *back) && back->tracks[1].kind == TrackKind::Phazed && blank(back->tracks[0].mods[1]) && blank(back->tracks[1].mods[1]));
     }
     // A macro on a drum track or a sampler; a choice macro; an amount macro on a synth.
@@ -554,12 +554,17 @@ void testTheSongFile() {
         // two MODs is its lanes' levels, read before this): not read, and nothing of the track is other than it was.
         for (const char* third : {"mod 3 2 20 0.75 1 1 0 1\n", "modsteps 3 4 0.3 0.7 1 1 1 1 1 1 1 1 1 1\n"}) {
             hand = plain;
-            const std::size_t next = hand.find("\ntrack qmod");
+            const std::size_t next = hand.find("\ntrack fm6");
             CHECK(next != std::string::npos);
             if (next != std::string::npos) hand.insert(next + 1, third);
             CHECK(parseSong(hand, *back) && songText(*back) == plain);
         }
-        CHECK(readWith("mod 1 1 7 0.75\nmod 2 1 6 0.75", *back) && blank(back->tracks[1].mods[0]) && back->tracks[1].mods[1].target == 6); // QMOD: OCTAVE a choice, WIDTH not
+        CHECK(readWith("mod 1 1 7 0.75\nmod 2 1 6 0.75", *back) && back->tracks[1].mods[0].target == 7 && back->tracks[1].mods[1].target == 6); // FM-6: every macro an amount
+        hand = plain; // Phazed's OCTAVE is a choice, its VIBRATO not
+        const std::size_t phazed = hand.find("\ntrack phazed\n");
+        CHECK(phazed != std::string::npos);
+        if (phazed != std::string::npos) hand.insert(phazed + 14, "mod 1 1 7 0.75\nmod 2 1 5 0.75\n");
+        CHECK(parseSong(hand, *back) && blank(back->tracks[2].mods[0]) && back->tracks[2].mods[1].target == 5);
     }
 }
 
@@ -622,7 +627,7 @@ void testAnotherInstrumentAndATrackDeleted() {
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
-    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Fm6));
     rig.settle();
     session.setEffect(1, 0, EffectKind::Drive);
     CHECK(session.setMod(1, 0, square(2, 0.5f)) && session.setMod(1, 1, square(lane(0, 0), 0.25f)));

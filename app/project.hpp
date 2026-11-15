@@ -191,8 +191,9 @@ inline float mixGain(int db, bool master) {
 inline float panAmount(int pan) { return static_cast<float>(pan) / static_cast<float>(kPanMost); }
 
 // (Memory only: a song file names an instrument by its word, instruments.hpp. Jx3p is JAX-EP on the device
-// and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5.)
-enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Qmod };
+// and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5. Fm6 is
+// FM-6 and stands where QMOD stood, whose tracks it takes too: docs/plans/fm6-plan.md.)
+enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6 };
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
@@ -222,7 +223,7 @@ struct TrackData {
     PhazedPatch patch;           // when the track is Phazed
     Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and
                                  // BRILLIANCE, are the track's own: no preset writes them, so a new track's start here
-    QmodPatch qmod;              // when it is QMOD
+    Fm6Patch fm6;                // when it is FM-6 (a new track's is its first preset: Session::addTrack)
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];

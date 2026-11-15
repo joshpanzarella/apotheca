@@ -637,7 +637,7 @@ void testTheScreensInEveryTheme() {
     // The piano roll: its keyboard is drawn as a keyboard in every theme, the white keys lighter
     // than the black ones. (Drawn by job, the dim white keys and the background's black keys came
     // out as a negative on a light theme: light black keys on a dark strip.)
-    CHECK(session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Fm6));
     rig.app.project().track = 1;
     session.view = View::Pattern;
     rig.frames(2);

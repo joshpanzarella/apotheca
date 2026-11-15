@@ -883,7 +883,7 @@ static void testTheSameEveryTime() {
 static std::vector<float> realSong(int helpers, bool effects) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
-    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Sampler, SynthKind::Qmod};
+    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Sampler, SynthKind::Fm6};
     Rig* none = nullptr;
     (void)none;
     for (int t = 1; t <= 4; ++t) {

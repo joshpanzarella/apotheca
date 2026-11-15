@@ -72,7 +72,7 @@ struct Rig {
     NotePattern& pattern() { return project().tracks[1].notes[0][0]; }
     // A synth track (track 2) with the piano roll showing.
     void roll() {
-        CHECK(app.session().addTrack(TrackKind::Qmod));
+        CHECK(app.session().addTrack(TrackKind::Fm6));
         project().track = 1;
         app.session().view = View::Pattern;
         frames(2);

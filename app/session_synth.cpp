@@ -29,15 +29,16 @@ void Session::setSynthSetting(int track, int id, int value) {
     if (track < 0 || track >= kNumTracks) return;
     TrackData& t = project.tracks[track];
     const SynthSpec* spec = specFor(t.kind);
-    if (!spec || id < 0 || id >= settingCount(t.kind)) return;
-    value = value < spec->settingMin(id) ? spec->settingMin(id) : (value > spec->settingMax(id) ? spec->settingMax(id) : value);
-    if (spec->values(t)[id] == value) return;
-    spec->values(t)[id] = value;
+    if (!spec || id < 0 || id >= shownSettingCount(t.kind)) return;
+    int realId = id, realValue = value; // (an FM-6 operator's ON is a bit of its OPERATORS ON)
+    settingWrite(*spec, spec->values(t), id, value, realId, realValue);
+    if (spec->values(t)[realId] == realValue) return;
+    spec->values(t)[realId] = realValue;
     Command c;
     c.type = Command::SetSetting;
     c.track = track;
-    c.a = id;
-    c.b = value;
+    c.a = realId;
+    c.b = realValue;
     engine.send(c);
 }
 
@@ -88,17 +89,6 @@ void Session::chooseSynthPreset(int track, int index) {
     const std::vector<float>& macros = userPresets(t.kind)[own].macros;
     for (int m = 0; m < kSynthMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
     sendSynthPatch(track);
-}
-
-// A new sound from the dice, for a synth that generates its sounds (QMOD).
-bool Session::rollSynth(int track, unsigned seed) {
-    if (track < 0 || track >= kNumTracks) return false;
-    TrackData& t = project.tracks[track];
-    const SynthSpec* spec = specFor(t.kind);
-    if (!spec || !spec->roll) return false;
-    spec->roll(t, seed);
-    sendSynthPatch(track);
-    return true;
 }
 
 // Tell the engine every setting and macro of a synth track, as the project has them.
@@ -212,7 +202,7 @@ bool Session::savePreset(int track, const std::string& typed) {
 std::string Session::designSpec(TrackKind kind) const {
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
-    std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
+    std::string out = "{\"name\":" + jsonText(spec->name) + ",\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
     out += "],\"pages\":[";
     char text[48];
@@ -259,7 +249,8 @@ std::string Session::designState() const {
     std::snprintf(text, sizeof text, ",\"presets\":%d,\"preset\":%d,\"values\":[", spec->presetCount(), t.preset);
     out += text;
     const int* values = spec->values(const_cast<TrackData&>(t));
-    for (int id = 0; id < settingCount(t.kind); ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", values[id]), out += text;
+    // Every setting a page shows, by its id: an FM-6 operator's ON (past the synth's own) is its bit.
+    for (int id = 0; id < shownSettingCount(t.kind); ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", settingValue(*spec, values, id)), out += text;
     out += "],\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) std::snprintf(text, sizeof text, m ? ",%.4g" : "%.4g", t.macro[m]), out += text;
     return out + "]}";
@@ -287,7 +278,6 @@ void Session::serveDesigner() {
         case DesignRequest::Preset: chooseSynthPreset(project.track, r.a); break;
         case DesignRequest::Save: savePreset(project.track, r.name); break;
         case DesignRequest::Name: setTrackName(project.track, r.name); break;
-        case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
