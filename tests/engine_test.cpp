@@ -289,7 +289,7 @@ static void testSharingTracksAcrossCores() {
         std::unique_ptr<Engine> engine(new Engine);
         engine->useWorkers(helpers);
         for (int s = 0; s < kSteps; s += 2) engine->send(step(s % 4 == 0 ? KICK : RIM, s, 0.9f));
-        const SynthKind kinds[6] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Jx3p};
+        const SynthKind kinds[6] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Jx3p};
         for (int t = 1; t <= 6; ++t) {
             CHECK(engine->addSynthTrack(t, kinds[t - 1]));
             for (int n = 0; n < 4; ++n) {
@@ -323,7 +323,7 @@ static void testSharingTracksAcrossCores() {
     // Helpers can be taken on and let go while the song plays, and asking for none, or too many, is safe.
     Engine engine;
     engine.send(step(KICK, 0, 1.f));
-    CHECK(engine.addSynthTrack(1, SynthKind::Qmod));
+    CHECK(engine.addSynthTrack(1, SynthKind::Fm6));
     engine.send(make(Command::Play, 0, 0, 1));
     CHECK(engine.workers() == 0);
     for (int n : {3, 0, 1, -5, 99, 2}) {
@@ -444,14 +444,12 @@ static void testOddStepCounts() {
 
 // Automation: a macro or an effect's setting moved by the pattern.
 static void testAutomation() {
-    // A QMOD track holding one plain note right through the bar; its OCTAVE macro (lane 7) is what gets automated,
-    // because an octave up is easy to hear and to count: twice as many waves.
-    const auto rig = [] {
+    // A Phazed track holding one plain note right through the bar; its OCTAVE macro (lane 7) is what gets automated,
+    // because an octave up is easy to hear and to count: twice as many waves. (It was QMOD's OCTAVE until QMOD went.)
+    // For an effect's setting, below, an FM-6 track: its start patch is a plain sine, held as long as the key is.
+    const auto rig = [](SynthKind kind = SynthKind::Phazed) {
         std::unique_ptr<Engine> engine(new Engine);
-        CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
-        engine->send(make(Command::SetSetting, 1, qmod::Tension, 0));
-        engine->send(make(Command::SetSetting, 1, qmod::Sustain, 100));
-        engine->send(make(Command::SetSetting, 1, qmod::Attack, 0));
+        CHECK(engine->addSynthTrack(1, kind));
         Command note = make(Command::SetNote, 1, 0, 0, 0.8f);
         note.c = 45;
         note.d = 16;
@@ -474,7 +472,7 @@ static void testAutomation() {
         }
         return out;
     };
-    const int lane = qmod::MacroOctave;
+    const int lane = phazed::MacroOctave;
     {
         // Nothing written: the macro stays where its knob is, all bar long.
         std::unique_ptr<Engine> engine = rig();
@@ -599,7 +597,7 @@ static void testAutomation() {
     {
         // An effect's setting: a filter shut right down, its MIX automated. Where MIX is written full the
         // sound is the filtered one (far quieter); elsewhere it rests where the knob is (none of it).
-        std::unique_ptr<Engine> engine = rig();
+        std::unique_ptr<Engine> engine = rig(SynthKind::Fm6);
         CHECK(engine->setEffect(1, 0, EffectKind::Filter));
         engine->send(effectParam(1, 0, 0, 0.f)); // cutoff: 30 Hz
         engine->send(effectParam(1, 0, 3, 0.f)); // mix: none
@@ -625,7 +623,7 @@ static void testAutomation() {
 // 2026-11-14: "went back to a previous sound I was using" as the song looped). The same song beside an engine
 // whose knobs were never turned must be the same to the sample, after the wrap and after Stop.
 static void testAPresetPutsTheMacrosRestBack() {
-    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Qmod};
+    const SynthKind kinds[] = {SynthKind::Phazed, SynthKind::Jx3p, SynthKind::Fm6};
     for (SynthKind kind : kinds) {
         const auto rig = [kind](bool turned) {
             std::unique_ptr<Engine> engine(new Engine);
@@ -2064,7 +2062,7 @@ static void testRatchetsHoldUp() {
     {
         const auto pitchIn = [](int effects) {
             std::unique_ptr<Engine> engine(new Engine);
-            CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
+            CHECK(engine->addSynthTrack(1, SynthKind::Fm6));
             engine->send(noteAt(0, 0, 81, 1.f, 0, 0.02f));
             engine->send(noteAt(1, 4, 93, 4.f, effects));
             engine->send(make(Command::Play, 0, 0, 1));
@@ -2081,7 +2079,7 @@ static void testRatchetsHoldUp() {
 
 // A note that glides starts at the pitch of the note before it and slides to its own.
 static void testANoteGlides() {
-    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Sampler, SynthKind::Phazed}) {
+    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Sampler, SynthKind::Phazed}) {
         const auto second = [&](int effects, int firstKey = 57, bool onlyOne = false) {
             std::unique_ptr<Engine> engine(new Engine);
             CHECK(engine->addSynthTrack(1, kind));
@@ -2100,7 +2098,7 @@ static void testANoteGlides() {
             return std::make_pair(pitchOver(out, 4 * kStep + 96, 1440), pitchOver(out, 8 * kStep, 9600));
         };
         const auto plain = second(0), slid = second(256);
-        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Qmod ? "qmod" : kind == SynthKind::Sampler ? "sampler" : "phazed";
+        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Fm6 ? "fm-6" : kind == SynthKind::Sampler ? "sampler" : "phazed";
         if (!(slid.first < 0.85 * plain.first)) std::printf("  %s: began at %.0f Hz plain, %.0f Hz with a glide; settled at %.0f / %.0f\n", name, plain.first, slid.first, plain.second, slid.second);
         CHECK(slid.first < 0.85 * plain.first);                           // it begins well under its own pitch (the note before was an octave lower)
         CHECK(std::fabs(slid.second - plain.second) < 0.02 * plain.second); // and arrives at it
@@ -2121,7 +2119,7 @@ static void testANoteGlides() {
     // And a gliding note pushed late (so it waits its moment) still glides.
     {
         std::unique_ptr<Engine> engine(new Engine);
-        CHECK(engine->addSynthTrack(1, SynthKind::Qmod));
+        CHECK(engine->addSynthTrack(1, SynthKind::Fm6));
         engine->send(noteAt(0, 0, 69, 2.f, 256)); // glides, but is the first
         engine->send(noteAt(1, 8, 45, 2.f));      // two octaves down, later in the bar
         engine->send(make(Command::Play, 0, 0, 1));
@@ -2134,7 +2132,7 @@ static void testANoteGlides() {
         CHECK(std::fabs(a - b) < 0.1 * a); // the same start both times: not dragged up from the low note
 
         std::unique_ptr<Engine> late(new Engine);
-        CHECK(late->addSynthTrack(1, SynthKind::Qmod));
+        CHECK(late->addSynthTrack(1, SynthKind::Fm6));
         late->send(noteAt(0, 0, 57, 1.f, 0, 0.02f));
         Command pushed = noteAt(1, 4, 69, 8.f, 256);
         pushed.shift = 0.4f; // 40% of a step late
@@ -2144,7 +2142,7 @@ static void testANoteGlides() {
         late->send(make(Command::Play, 0, 0, 1));
         const std::vector<float> slid = renderFrames(*late, 8 * kStep);
         std::unique_ptr<Engine> flat(new Engine);
-        CHECK(flat->addSynthTrack(1, SynthKind::Qmod));
+        CHECK(flat->addSynthTrack(1, SynthKind::Fm6));
         flat->send(noteAt(0, 0, 57, 1.f, 0, 0.02f));
         flat->send(plainLate);
         flat->send(make(Command::Play, 0, 0, 1));

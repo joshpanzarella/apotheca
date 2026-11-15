@@ -112,7 +112,7 @@ bool about(double a, double b) { return std::fabs(a - b) <= 1e-6 * (std::fabs(b)
 // first moment left out: the first time, nothing was before it), the rest to the third.
 void testTheRollDrawsWhatTheEnginePlays(int type) {
     Rig rig;
-    CHECK(rig.app.session().addTrack(TrackKind::Qmod) && isSynth(rig.project().tracks[1].kind));
+    CHECK(rig.app.session().addTrack(TrackKind::Fm6) && isSynth(rig.project().tracks[1].kind));
     rig.listen(); // (a synth put in is TOP: the type is told after it)
     Session& session = rig.app.session();
     session.setGlideFrom(1, type);
@@ -228,7 +228,7 @@ void testTheRollDrawsWhatTheEnginePlays(int type) {
 // A chord's keys are in the slots NotePattern::render gives them, and what follows slides from its top one.
 void testAGlideFromAChord() {
     std::unique_ptr<Project> project(new Project);
-    project->tracks[1].kind = TrackKind::Qmod;
+    project->tracks[1].kind = TrackKind::Fm6;
     NotePattern& p = project->tracks[1].notes[0][0];
     p.chords[0] = makeChord(builtInPack().chords[0], 48, 2, 2.f, 0.7f, 0);
     int keys[kChordNotes];
@@ -261,7 +261,7 @@ void testAGlideFromAChord() {
 void testATrackSentWhole() {
     Rig rig;
     Session& session = rig.app.session();
-    CHECK(session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Fm6));
     rig.listen();
     Project& project = rig.project();
     CHECK(project.tracks[1].bars[0] == 1);
@@ -300,7 +300,7 @@ void testATrackSentWhole() {
 // The song file: a glide's length is the last number of its notefx line. 1 is what ON was.
 void testTheSongFile() {
     Rig rig;
-    CHECK(rig.app.session().addTrack(TrackKind::Qmod));
+    CHECK(rig.app.session().addTrack(TrackKind::Fm6));
     Project& project = rig.project();
     NotePattern& p = project.tracks[1].notes[0][0];
     p = NotePattern();
@@ -362,7 +362,7 @@ double pitchOver(const std::vector<float>& out, long from, int frames) {
 void testGlideFromIsTheTracks() {
     Rig rig;
     Session& session = rig.app.session();
-    CHECK(session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Fm6));
     rig.listen();
     Project& project = rig.project();
     NotePattern& p = project.tracks[1].notes[0][0];
@@ -481,7 +481,7 @@ void testGlideFromGoesWithTheSong() {
 // The song file: `glidefrom N`, a line of a synth track's own, left out at TOP.
 void testGlideFromInTheSongFile() {
     Rig rig;
-    CHECK(rig.app.session().addTrack(TrackKind::Qmod) && rig.app.session().addTrack(TrackKind::Phazed));
+    CHECK(rig.app.session().addTrack(TrackKind::Fm6) && rig.app.session().addTrack(TrackKind::Phazed));
     Project& project = rig.project();
     project.tracks[1].notes[0][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
     const std::string plain = songText(project);
@@ -601,7 +601,7 @@ void testTheLinesOnTheScreen() {
     CHECK(picture.lettering);
     if (!picture.lettering) return;
     Session& session = rig.app.session();
-    CHECK(session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Fm6));
     Project& project = rig.project();
     project.track = 1;
     session.view = View::Pattern;
@@ -735,7 +735,7 @@ void testTheTypesOnTheScreen() {
     CHECK(picture.lettering);
     if (!picture.lettering) return;
     Session& session = rig.app.session();
-    CHECK(session.addTrack(TrackKind::Qmod));
+    CHECK(session.addTrack(TrackKind::Fm6));
     Project& project = rig.project();
     project.track = 1;
     session.view = View::Pattern;

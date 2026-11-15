@@ -1098,7 +1098,7 @@ std::string songOf(int tracks, int scenes, bool names) {
     std::unique_ptr<Engine> engine(new Engine);
     App app(*engine);
     Session& session = app.session();
-    const TrackKind kinds[4] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod};
+    const TrackKind kinds[4] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6};
     for (int t = 1; t < tracks; ++t) session.addTrack(kinds[t % 4]);
     Project& p = app.project();
     for (int t = 0; t < tracks; ++t)

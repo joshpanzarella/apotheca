@@ -130,17 +130,21 @@ void SynthScreen::stepFolder(int by) {
 // Through the session, so that with WRITE on and the song playing the move is recorded into the pattern.
 void SynthScreen::setMacro(int macro, float value) { session_.setSynthMacro(project_.track, macro, value); }
 
+// (Through settingWrite: an FM-6 operator's ON is a bit of the synth's OPERATORS ON.)
 void SynthScreen::setSetting(int id, int value) {
-    value = value < spec_.settingMin(id) ? spec_.settingMin(id) : (value > spec_.settingMax(id) ? spec_.settingMax(id) : value);
-    if (value == values()[id]) return;
-    values()[id] = value;
+    int realId = id, realValue = value;
+    settingWrite(spec_, values(), id, value, realId, realValue);
+    if (realValue == values()[realId]) return;
+    values()[realId] = realValue;
     Command c;
     c.type = Command::SetSetting;
     c.track = project_.track;
-    c.a = id;
-    c.b = value;
+    c.a = realId;
+    c.b = realValue;
     session_.engine.send(c);
 }
+
+int SynthScreen::valueOf(int id) const { return settingValue(spec_, values(), id); }
 
 bool SynthScreen::isChoice(int id) const { return spec_.settingMax(id) - spec_.settingMin(id) <= kChoiceRange; }
 
@@ -165,14 +169,14 @@ void SynthScreen::turn(float amount) {
         if (!choicePushed_) {
             choicePushed_ = true;
             saved_ = 0.f;
-            setSetting(id, values()[id] + (amount > 0.f ? 1 : -1));
+            setSetting(id, valueOf(id) + (amount > 0.f ? 1 : -1));
             return;
         }
         saved_ += amount * kChoicesPerSecond;
         const int steps = static_cast<int>(saved_);
         if (steps != 0) {
             saved_ -= static_cast<float>(steps);
-            setSetting(id, values()[id] + steps);
+            setSetting(id, valueOf(id) + steps);
         }
         return;
     }
@@ -181,7 +185,7 @@ void SynthScreen::turn(float amount) {
     const int whole = static_cast<int>(saved_);
     if (whole != 0) {
         saved_ -= static_cast<float>(whole);
-        setSetting(id, values()[id] + whole);
+        setSetting(id, valueOf(id) + whole);
     }
 }
 
@@ -210,7 +214,7 @@ void SynthScreen::stepExact(int by) {
         return;
     }
     const int id = item(cursor_).id;
-    setSetting(id, values()[id] + by);
+    setSetting(id, valueOf(id) + by);
 }
 
 // ---- buttons ----------------------------------------------------------------------------
@@ -225,7 +229,7 @@ void SynthScreen::endMod(const Input& input) {
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
-    // check comes before every other button's own job (Y's ROLL, B's middle, the D-pad's cursor).
+    // check comes before every other button's own job (B's middle, the D-pad's cursor).
     if (b == Button::X) {
         if (!event.down) {
             endMod(input);
@@ -245,11 +249,6 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         holding_ = event.down;
         saved_ = 0.f;
-        return;
-    }
-    // Y: ROLL, on a synth whose sounds are generated (QMOD). A new sound at once, and it is heard.
-    if (b == Button::Y && event.down && spec_.roll && !holding_) {
-        if (session_.rollSynth(project_.track, lastMs_ * 2654435761u + (++rolls_) * 40503u)) hear();
         return;
     }
     if (!event.down) {
@@ -411,9 +410,8 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (cursor_ == kAdvanced) hint("A", "open");
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
-            if (spec_.roll) hint("Y", "roll a new sound");
-            // (Where the bar has room for it with nothing left out: not beside QMOD's ROLL. The help card says it everywhere.)
-            if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && !spec_.roll && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
+            // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
+            if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);
@@ -426,15 +424,18 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     fonts.medium.draw(r, 8.f, 36.f, spec_.pageNames[page_], kText);
 
     if (!envelopePage()) {
-        const int rowH = settingH((itemCount() + 3) / 4);
+        const int rows = (itemCount() + 3) / 4, rowH = settingH(rows);
+        // A box too short for the lettering chosen (FM-6's six rows at XL: the value stood on its bar) is
+        // drawn at LARGE, its name with it, and so is every box of the page: they are one height.
+        const Fonts& boxFonts = boxFontsFor(fonts, rowH);
         for (int i = 0; i < itemCount(); ++i) {
             const Item it = item(i);
-            const int x = 8 + (i % 4) * kMacroPitchX, y = kSettingY + (i / 4) * (rowH + kSettingGap);
-            const int value = values()[it.id];
-            spec_.settingText(it.id, value, text, sizeof text);
+            const int x = 8 + (i % 4) * kMacroPitchX, y = settingY(rows, i / 4);
+            const int value = valueOf(it.id);
+            settingReading(spec_, values(), it.id, text, sizeof text);
             const int range = spec_.settingMax(it.id) - spec_.settingMin(it.id);
             const float part = isChoice(it.id) ? -1.f : range > 0 ? static_cast<float>(value - spec_.settingMin(it.id)) / range : 0.f; // a choice has no bar
-            valueBox(r, fonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_);
+            valueBox(r, boxFonts, x, y, kMacroW, rowH, it.name, text, part, i == cursor_, holding_);
         }
         scopeStrip(r, fonts, session_.engine);
     } else {
