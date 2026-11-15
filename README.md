@@ -450,8 +450,9 @@ designer".
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
   `NAME.jaxep`, `NAME.qmod`). Saving under the same name again replaces it.
-- **JAX-EP stands where Twin Analog stood**, and is another synth, so what
-  was made for Twin Analog does not carry over:
+- **JAX-EP stands where Twin Analog stood** (a synth of earlier builds, gone
+  from the program now), and is another synth, so what was made for Twin
+  Analog does not carry over:
   - **An old `NAME.twin` preset stays on the card but is not listed.** Nothing
     reads it. Delete it from the card if you want the room.
   - **An old song still opens.** Its Twin Analog tracks become JAX-EP tracks
@@ -583,7 +584,9 @@ and ENTANGLE morphs from one to the other.
 
 The generator is the one in the Entanglement module of the Shapetaker VCV
 Rack plugin (`third_party/shapetaker`, unchanged). QMOD's voice is its own
-and much lighter: eight notes at once cost about half what Twin Analog does.
+and much lighter than the module's. It is still the costliest synth here:
+eight notes at once take about 3% of one core of the build machine, against
+under 1% for PHAZED and about half a percent for six notes of JAX-EP.
 
 | Control | Does |
 | --- | --- |
@@ -604,7 +607,7 @@ any other synth, with a ROLL A NEW SOUND button.
 
 ### The envelope
 
-Twin Analog and the sampler share one volume envelope (and any synth added
+QMOD and the sampler share one volume envelope (and any synth added
 later can use it), so a setting means the same on each:
 
 | Setting | 0 | 50 | 100 |
@@ -615,26 +618,26 @@ later can use it), so a setting means the same on each:
 The attack is curved like an analog one: most of the rise comes early, so a
 short attack is snappy, and it starts from wherever the envelope already is,
 so a note played again does not click. Decay and release times are how long
-the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes.
+the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes,
+and JAX-EP its own one (ATTACK, DECAY, SUSTAIN, RELEASE as dials; its times
+are guesses, as MAIN says there: SPEEDS GUESSED).
 
 ### All four cores
 
 The tracks do not depend on each other until they are mixed, so they are
 worked out side by side: the audio thread and two helpers each take the next
-track not yet done, and the results are mixed in track order. A heavy song
-(six Twin Analog tracks at x4, a chord on each) took 55% of the time it had
-on one core of the build machine and 23% with two helpers: about 2.4 times
-the room. The sound is the same to the last bit, and a test holds it to
-that. One core is left for the screen. Bounces use it too.
+track not yet done, and the results are mixed in track order. The busiest
+song the SPEED TEST knows (twelve tracks: six of drums, two each of JAX-EP,
+QMOD and PHAZED playing strummed chords and arpeggios, every hit and chord
+thrown, three effects on every track, both buses, two on the master) took
+about 20% of the time it had on one core of the build machine and about 13%
+with two helpers (2026-11-15; not yet run on the handheld). The sound is the
+same to the last bit, and a test holds it to that. One core is left for the
+screen. Bounces use it too.
 
-### Keeping up
-
-Twin Analog's OVERSAMPLE setting costs a lot: x8 with two chords held is
-more than the handheld can work out in time, and the sound stutters. So
-Apotheca watches how long each block of sound takes. When it is falling
-behind, it turns the oversampling down a notch at a time (the setting
-itself is left alone) and the top bar says BUSY: OVERSAMPLING DOWN. After
-ten seconds with time to spare it goes back up a notch.
+No synth has a quality setting, so nothing is turned down when the handheld
+is busy: a song that is too much for it stutters, and SPEED TEST on the WiFi
+page says how near a song of that size comes.
 
 ### A USB keyboard
 
@@ -1340,9 +1343,9 @@ leave the preset as it was made. A new preset is played at once when the
 song is stopped.
 
 Phazed's DETUNE tunes the sound's second line (oscillator) up to a semitone
-sharp or flat. A sound with only one line is given a twin of that line as
+sharp or flat. A sound with only one line is given a copy of that line as
 soon as DETUNE leaves the middle, so the macro does something on every
-preset. Two things follow from the twin: notes that are sounding at that
+preset. Two things follow from the copy: notes that are sounding at that
 moment fade out once, and such a sound then plays four notes at a time
 instead of eight.
 
@@ -1462,11 +1465,6 @@ scripts/  the handheld build and the port launcher.
 - **One button and the stick, not a combination.** New controls follow the
   rule on the Pattern screen: the stick moves; hold a button and it shapes.
 - **Fast.** Held input runs quickly. Nobody has asked for slower.
-- **Twin Analog is a port of Clairaudient**, the oscillator in the Shapetaker
-  Rack plugin (`src/clairaudient.cpp` there). `engine/src/twin.cpp` restates
-  its sound-making code without Rack and lists what changed in the move.
-  The four oscillator copies are computed in one branch-free loop of four:
-  measured with clang, that halves the synth's cost. Keep it branch-free.
 - **The first synth is called Phazed.** That is the only name a player sees. Its
   engine lives in `third_party/easycz` under its own names and licences;
   anything from it that reaches the screen goes through

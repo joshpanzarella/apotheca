@@ -35,7 +35,10 @@ Organ I plays 21 semitones low and 21 cents off the other tracks.** Left for
 the owner with the other two (section 8). **Batch 8a is done (2026-11-15)**:
 every test that played Twin plays JAX-EP, but Twin's own two (`twin_test` and
 `engine_test`'s quality limit, which 8b deletes with the code); see "Batch 8a:
-what it learned".
+what it learned". **Batches 8b and 8c are done (2026-11-15)**: Twin Analog's
+code, its test, the quality limit and the load watch are out, and the docs
+say so; see "Batches 8b and 8c: what they learned". **What is left is batch
+9**, which waits on a source of recordings.
 Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
@@ -585,8 +588,8 @@ preset and folder names, the WiFi pages, README. `ctest -R words` holds it
 (Roland, JX-3P, PG-200, Juno, in any text of `app/`, the two web pages and
 README.md). Inside the code it is still `Jx3p` (`jx3p.hpp`, `SynthKind::Jx3p`,
 `TrackKind::Jx3p`), and tests and plans may say JX-3P. TWIN ANALOG is no
-longer a name on the device once Twin's code is out (batch 8b: `bench`'s Twin
-rows and "BUSY: OVERSAMPLING DOWN" are the last).
+longer a name on the device: Twin's code is out (batch 8b took `bench`'s Twin
+rows and "BUSY: OVERSAMPLING DOWN", the last), and `words` fails it in a text.
 
 ## 5. Song files and ids
 
@@ -639,7 +642,9 @@ One batch for one agent each. Each ends with `ctest` green (with
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
 | | **Batch 8a DONE (2026-11-15, branch `jx3p`).** JAX-EP is the synth in `engine_test` (the helpers' song, the macros' rest, the tail and the attack, the glide: no exception left), `effects_test` (both songs; **the pinned song's sum remade**), `chordfx_test`, `throw_test`, `mixer_test`, `glide_test`, and `render_demo` plays A1 String I (peak 0.95; it was 0.96). New: `glide_test` `testPairedOnSixVoices` (the PAIRED steal test) and `nextscene_test` `testTheChordTrackIsHeard`; `nextscene_test`'s chord track is JAX-EP, every proof still 0. The app's screen is `App::jaxep()`. **Tests**: `ctest` 43 of 43. **Thread sanitizer**: `nextscene_test` clean, 10 min 45 s for the run. **Mutants: 15 made, 14 killed**; see "Batch 8a: what it learned". The engine is not touched, so `bench` was not run | | |
 | 8b | **Twin's code out.** Delete `twin.hpp/.cpp` and `twin_test`; remove `setQualityLimit`, the load watch, "BUSY: OVERSAMPLING DOWN", the bounce's x8 | All of `ctest` | No word "twin" left but the file reader's |
+| | **Batch 8b DONE (2026-11-15, branch `jx3p`).** Gone: `twin.hpp`, `twin.cpp`, `twin_test`, `SynthKind::Twin`, `Instrument::setQualityLimit`, the engine's load watch (`watchLoad`, `qualityLimit`, `load`, `noteLoad`, the timing in `render()`), `Project::busy`, the top bar's BUSY: OVERSAMPLING DOWN, `engine_test`'s quality test, `bench`'s and SPEED TEST's three Twin rows. The busiest song's two Twin tracks are JAX-EP on A1. **Tests**: `ctest` 42 of 42 (one fewer: `twin`). `effects_test --print` the same 42 lines before and after. **Bench** and **mutants**: "Batches 8b and 8c: what they learned" | | |
 | 8c | **Docs.** README, CLAUDE.md's Measured table and rules, `effects-plan.md`'s cost figures | `ctest -R words` | |
+| | **Batch 8c DONE (2026-11-15, branch `jx3p`).** README: "Keeping up" is gone, the heavy-song figure is the busiest song's, the envelope's and QMOD's lines no longer lean on Twin, the rule on Twin's port is gone; the note on old `.twin` presets and old songs stays. CLAUDE.md: the Measured table (Twin's row and the batch-by-batch JX-3P rows out, today's in), the rule on where the word `twin` may live, 42 tests. `effects-plan.md`: the budget with JAX-EP (the 12-track song 66% of a handheld core, was 128). `ctest -R words` passes, with a new rule and two plants | | |
 | 9 | **Calibration from recordings** (waits on the owner's source). A small tool reads WAVs of a real JX-3P and fits the tables: envelope times and curve, LFO rate and delay, cutoff in Hz, HPF, KEY FOLLOW's 100%, the VCA taper, pulse's gain, chorus rate and depth, the self-oscillation level | Each fitted table written in the tests with its measured figure; those tests become FAITHFUL | Every "guess" here is measured, or the owner chose to keep it |
 
 Batches 2 to 5 can go side by side once 1 is in: each has its own header and
@@ -1152,6 +1157,47 @@ a variable's name.
 **What only the tests and stills saw**: all of it. Stills looked at: MAIN and
 the VCF page (a knob held), unchanged. Nothing was heard, nothing ran on the
 handheld.
+
+### Batches 8b and 8c: what they learned (2026-11-15)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| Remove `setQualityLimit`, the load watch | All of it: `Engine::watchLoad`, `qualityLimit`, `load`, `noteLoad`, the clock in `render()`, `Project::busy`, main's "keeping up" print | Twin was the only synth that answered. `load()` had one reader, that print. If a synth needs it again it is in git (the commit before this batch) |
+| "the bounce's x8" | Gone since 6a; its comment is put right here | |
+| "No word twin left but the file reader's" | Left: `kOldTwinWord` and the comments on the reader (`instruments.hpp/.cpp`, `song_file.cpp`, `session.hpp`, `project.hpp`, `jx3p.hpp`), the tests of the old song and the old preset file, `twinsong_main.inc`. Renamed: the tests' second engines (`twin` to `second`), Phazed's `kTwinTrim` (`kDoubleTrim`; a comment's word, no sound) | |
+| (not in the plan) | **`ctest -R words` has a rule for it**: a text of `app/` that says TWIN ANALOG or OVERSAMPLING fails; "twin" alone, the reader's word, passes. Two plants | So the name cannot come back on a screen unseen |
+| The busiest song (8a left it) | Its two Twin Analog tracks (x2) are two JAX-EP tracks, sent preset 0 as a new track in the program is | **Its figure is another song's now**: see below |
+| README's "Keeping up" | Gone. In its place two lines: no synth has a quality setting, a song too heavy stutters, SPEED TEST shows how near | It described the watch |
+| README's "A heavy song (six Twin Analog tracks at x4) took 55% / 23%" | The busiest song's figures, about 20% and 13% | The old song cannot be played any more |
+
+**Bench** (desk, 2026-11-15; one run before, three after, a shared machine):
+
+| Row | Before | After |
+| --- | --- | --- |
+| Phazed / QMOD, 8 notes | 0.7% / 2.8% | 0.7 to 1.2% / 2.8 to 3.9% |
+| Twin Analog x1 / x2 / x8 | 4.1% / 8.3% / 31.5% | gone |
+| JAX-EP 6 notes / worst patch / moving cutoff | 0.55% / 1.04% / 1.81% | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
+| The busiest song, alone / with 2 helpers | 23.0% / 13.8% of a block | **19.6 to 21.1% / 11.6 to 14.2%** |
+
+The sound is not touched: `effects_test --print` gives the same 42 lines
+before and after (the pinned song has three JAX-EP tracks in it).
+
+**Mutants: 4 made, 4 killed.** The words rule taken out (its plants are not
+caught); BUSY: OVERSAMPLING DOWN drawn again in the top bar (`words`); TWIN
+ANALOG as the instrument's name in the table (`words`); the old word not read
+(`save_test`). **No test covers**: `bench` and SPEED TEST (run, read), and
+that nothing is timed in `render()` any more (the tests that held the watch
+went with it).
+
+**Not changed, for the owner to weigh**: the BOUNCE row's note still says
+"A: write it as a WAV file, at best quality". It was true of Twin's x8; now
+a bounce is simply the song as it plays. The words are the owner's.
+`docs/plans/modulation-plan.md` and `physic-plan.md` still name Twin (other
+branches' plans: not touched here).
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+A1 while playing (the top bar), the list to change an instrument. Nothing was
+heard, nothing ran on the handheld; **SPEED TEST there is still owed**.
 
 ### Batches 2 to 5: the review's mend (2026-11-14)
 

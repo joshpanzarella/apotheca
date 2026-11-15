@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (43) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (42) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -273,7 +273,12 @@ effect in those two groups and fails one that does not.
   `macros`, `settings`, no automation on lanes 0 to 7; everything else kept).
   It is never written. `tests/twinsong_main.inc` is a song `main` wrote with
   one: **not to be remade**. An old `NAME.twin` preset is left on the card,
-  unlisted.
+  unlisted. **Twin's code is out (batch 8b, 2026-11-15), and that reader is
+  the one place the word lives**: `kOldTwinWord` and its comments, the tests
+  of the old song and the old preset file, README's note on old files. There
+  is no `SynthKind::Twin` (the kinds are memory only: Phazed, Sampler, Qmod,
+  Jx3p). `ctest -R words` fails a text of `app/` that says TWIN ANALOG or
+  OVERSAMPLING, with its own plants.
 - **A preset holds `presetSettingCount(kind)` settings, a song
   `settingCount(kind)`.** They differ for JAX-EP: ids 32 and 33 (VELOCITY,
   BRILLIANCE) are the track's own, so `loadPreset` (built-in and the player's
@@ -369,7 +374,7 @@ effect in those two groups and fails one that does not.
   other takings away fade beside it (a new song takes all twelve at once).
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
-  `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+  `testATrackTakenAwayFades` holds it beside a second engine, sample for sample).
 - **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
   and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
   the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
@@ -1727,8 +1732,8 @@ effect in those two groups and fails one that does not.
   batch 0): a tool that reads a run of samples and knows no Effect or Synth
   goes there, not into a test program of its own. Moved out of `effects_test`
   unchanged: `--measure` and `--print` gave the same lines before and after
-  (but for the block timings). The older copies in `engine_test`,
-  `phazed_test` and `twin_test` are other tools under the same names
+  (but for the block timings). The older copies in `engine_test`
+  and `phazed_test` are other tools under the same names
   (interleaved buffers, int places) and were left. Batch 2 added `partNear`
   (one frequency through a window, any pitch), `spectrumOf` and `asideOf`
   (an oscillator's aliasing: the loudest part that is not a harmonic, under
@@ -1746,15 +1751,9 @@ effect in those two groups and fails one that does not.
 | --- | --- |
 | Phazed, 8 notes | 0.9% of a core |
 | QMOD, 8 notes | 2.6% |
-| Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
-| JX-3P skeleton (batch 1: DCO-1's saw, envelope, VCA; no filter or chorus yet), 6 notes / a moving envelope / every note gliding (2026-11-14, one run: Phazed 0.9%, Twin x1 4.3% in it) | 0.08% / 0.10% / 0.40% |
-| JX-3P with the VCF and HPF (batch 3), 6 notes / a synced pulse with ENV on DCO-2's pitch and on the VCF / every note gliding, KEY FOLLOW 9.8 (2026-11-14, four runs on a busy desk: Phazed 0.7 to 1.2%, Twin x1 4.1 to 5.4% in them). **Not yet run on the handheld** | 0.43 to 0.46% / 0.80 to 0.87% / 1.56 to 1.67% |
-| JX-3P with the LFO (batch 4), 6 notes / the worst row / moving cutoff, now with the LFO on the cutoff and DCO-1 (2026-11-14, two runs: Phazed 0.8%, QMOD 2.8 / 3.2%, Twin x1 4.2 / 4.0% in them). **Not yet run on the handheld** | 0.43% / 0.86 to 0.87% / 1.67 to 1.68% |
-| JX-3P with the chorus (batch 5), 6 notes / the worst row / moving cutoff (2026-11-14, the quietest of five runs on a busy desk: Phazed 0.7%, QMOD 2.8 to 3.2%, Twin x1 4.1 / 4.2% in them). **Not yet run on the handheld** | 0.52 to 0.53% / 0.96 to 0.97% / 1.77 to 1.78% |
-| JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9%, Twin x1 4.0 to 4.4% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
+| JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
+| JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
 | JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
-| JAX-EP after batch 6a (the app; the engine not touched), `bench`'s three rows (2026-11-14, the two quieter of three runs: Phazed 0.7 to 0.8%, QMOD 2.8 to 3.1%, Twin x1 4.1% in them) | 0.53% / 0.98 to 1.07% / 1.79 to 1.80% |
-| JX-3P with both DCOs (batch 2), 6 notes / a synced pulse with ENV on DCO-2's pitch / every note gliding (2026-11-14, two runs: Phazed 0.7 / 1.1%, Twin x1 4.1 / 4.5% in them) | 0.21 to 0.22% / 0.30% / 0.63 to 0.68% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
@@ -1788,19 +1787,24 @@ effect in those two groups and fails one that does not.
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
+| ...the same song with its two Twin Analog tracks (x2) now two JAX-EP tracks on A1 (2026-11-15, three runs after; one run before on the same desk that day read 23.0% / 13.8%). The figures above are the old song's. **Not yet run on the handheld** | 19.6 to 21.1% / 11.6 to 14.2% of a block, worst block 2.92 to 5.95 / 3.96 to 6.08 ms of 5.33 (a shared desk: 0 to 2 blocks of 1875 late) |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
 | ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
 
-**Twin Analog is the costly one**, and its time is spread over plain
-arithmetic with no single hot spot. Do not "optimise" it blind: any change
-there is a change to the sound, and needs the owner's ears.
+**QMOD is the costly synth now** (Twin Analog, at 4.7% and up, is gone:
+batch 8b). **No synth has a quality setting and nothing watches the load**:
+`Instrument::setQualityLimit`, `Engine::watchLoad` / `qualityLimit` / `load`
+/ `noteLoad`, `Project::busy` and the top bar's BUSY: OVERSAMPLING DOWN went
+with Twin, their only user. A song too heavy for the handheld stutters; SPEED
+TEST's busiest song is how to see how near one is. If a synth ever needs the
+watch again, it is in git (the commit before batch 8b).
 
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
-2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done, and 8a (the tests off Twin: only `twin_test` and `engine_test`'s quality-limit test still play it); 8b, Twin's code out, is next. **The owner's three calls of 2026-11-15 are built: the cutoff's range moved (Organ I in tune, no preset silent), the bank is up to PHAZED's loudness, MAIN's count is the preset's place in its bank.** Nobody has heard any of it).
+2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
@@ -1808,21 +1812,10 @@ there is a change to the sound, and needs the owner's ears.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
-step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
-2026-11-11): it has more features than it needs and is the costly synth; cut
-it down rather than tune it. **Decided (owner, 2026-11-13): Twin Analog becomes a
-faithful Roland JX-3P clone**, which is what it was meant to be; it grew past that
-in VCV Rack. The plan is `docs/plans/jx3p-plan.md`; **batch 0 (the Service
-Notes' pages, the shared measuring tools), batch 1 (the skeleton:
-`jx3p.hpp`, `jx3p.cpp`, `jx3p/env.hpp`, `jx3p_test`), batch 2 (the DCOs:
-`jx3p/dco.hpp`, `jx3p_dco_test`), batch 3 (the VCF and HPF, BRILLIANCE:
-`jx3p/ir3109.hpp`, `jx3p_vcf_test`) and batch 4 (the LFO and its routes:
-`jx3p/lfo.hpp`, `jx3p_lfo_test`) and batch 5 (the chorus: `jx3p/chorus.hpp`,
-`jx3p_chorus_test`) and batch 6a (the app's song and files: the track is
-JAX-EP, Twin Analog is no longer offered) and batch 6b (its pages at every
-size, the folder's note, the still views) and batch 7 (the 32 factory
-presets: `jx3p_presets_test`, `tests/jx3p_nam.inc`) are done** on branch `jx3p`; batch 3's
-SPEED TEST on the handheld waits on the owner. Twin's engine code, `twin_test`, `engine_test`'s quality-limit test and its `bench` rows (SPEED TEST's too, and the busiest song's two Twin tracks) stay until 8b. The app's JAX-EP screen is `App::jaxep()`.
-The owner's calls (plan section 8) are taken at the recommended answers, each
-one constant in `jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at 48 kHz: 44.1 would save about
-8%, which the owner judged not worth it.
+step-editor, a picture of QMOD's wiring. **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
+becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
+clone is JAX-EP, built in batches 0 to 8c of `docs/plans/jx3p-plan.md` on
+branch `jx3p`; each batch's "what it learned" is there. The owner's calls
+(plan section 8) are taken at the recommended answers, each one constant in
+`jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at
+48 kHz: 44.1 would save about 8%, which the owner judged not worth it.
