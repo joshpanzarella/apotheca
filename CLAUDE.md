@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (44) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (47) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -892,6 +892,36 @@ effect in those two groups and fails one that does not.
   the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.
+- **The screen is drawn only when it can have changed** (owner, 2026-11-15: save the battery,
+  "I don't want the user to notice"; `app/redraw.hpp`). main.cpp still goes round every 16 ms,
+  reads the buttons and runs `App::update`; only `App::draw` and the present are left out on a
+  pass with nothing to show. **The picture must be exactly what drawing every frame shows, and a
+  button is drawn on the pass it is pressed.** A pass is drawn on a STIR (`Stir` in redraw.hpp):
+  any SDL event but a stick's motion, a button held, the stick pushed, the song playing; the
+  engine's readouts moved since the last picture (where the song is, the LIVE OUTPUT samples,
+  every effect meter, MIDI notes and keyboards: `App::readouts`); `App::stirring` (the volume,
+  the App's message, the panic notice, the update's answer, plus `Session::stirring`: a fit, a
+  recording, a bounce, WiFi on, and the screen's own `Screen::stirring`: a line said for a moment,
+  a line over a recording, the list's resting row, the button test). **And the pass after any
+  stir** (`kStirAfter`: what ends a timer is drawn), and `kKeepDrawingMs` (2 s) after, as a margin.
+  The controls setup, a text size or theme changed, and every still (`--shot`, `--smoke`) draw
+  every pass. `--draw-every-frame` draws as before, for measuring.
+  - **A new thing that moves by itself says so** (a timer, an animation, anything read from
+    another thread or the clock): a bit, set by the App, the Session, its screen's `stirring()` or
+    a readout, **and a part in `tests/idle_test.cpp`'s session** that sets it going and then
+    leaves the buttons alone. The test draws EVERY pass into a canvas with the margin at 0 and
+    fails a pass left out that is not the last picture shown, pixel for pixel, naming the pass,
+    the part and the screen. Then it takes each stir away (`Redraw::ignore`) and must fail;
+    PLAYING, RECORDING and PICKER are known to be covered by others where it can be shown (`belts`)
+    and are not run. `idle_test --quick` is the session alone (about 20 s); `IDLE_PRINT=PART`
+    prints each pass's reasons in a part; `--measure` times a pass's drawing on five screens.
+  - The test makes the sound between passes, as the audio thread does while main.cpp waits, and
+    holds it up once (`stalled`): a Stop heard three passes late takes the playhead away with no
+    button, which only the readouts see.
+  - Measured (desk, 2026-11-15): the drum grid left alone, the whole program for 20 s (software
+    renderer, dummy sound): 1.1 s of CPU, against 5.8 s drawing every frame. A pass's drawing in
+    the test's software renderer: 1.8 to 2.4 ms by screen; deciding whether to draw: 0.001 ms.
+    **Not measured on the handheld**, where the renderer and the present are its own.
 - **A new `Session` tells the engine what the buses hold** (its constructor).
   The engine starts as a new song in every other way, but with empty buses;
   without this a handheld with no saved song had sends that did nothing.

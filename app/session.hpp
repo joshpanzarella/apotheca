@@ -482,6 +482,10 @@ public:
     void sendSong();
     // How many times the engine fell behind (a full command queue) and was sent the whole song again.
     int resyncs() const { return resyncs_; }
+    // What the Session does by itself that can change the screen (the Stir bits of redraw.hpp):
+    // fitting a recording to the tempo (or the tempo settling first), recording, a bounce, WiFi.
+    unsigned stirring() const;
+    unsigned midiHeard() const { return midiHeard_; } // MIDI events taken so far (redraw.hpp's readouts)
 
     // Write a whole cell to the engine (every bar of it, and its length),
     // replacing what it had.
@@ -613,6 +617,7 @@ private:
     MidiInput midi_;
     bool midiRecord_ = false;
     int midiKey_ = -1;
+    unsigned midiHeard_ = 0;
     // Notes being recorded: where each was written, until its key is let go.
     struct Recording { bool on = false; int track = 0, scene = 0, bar = 0, slot = 0, startedAt = 0; };
     Recording recordingNote_[128];

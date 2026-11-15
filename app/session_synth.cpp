@@ -331,6 +331,7 @@ void Session::hearMidi() {
     midi_.setTarget(project.track, kind == TrackKind::Drums ? MidiInput::Drums : isSynth(kind) ? MidiInput::Synth : MidiInput::Nothing);
     MidiEvent event;
     while (midi_.poll(event)) {
+        ++midiHeard_;
         if (event.kind == MidiEvent::NoteOn) midiKey_ = event.note;
         const int scene = playScene(), step = engine.playStep();
         // Let go: the recorded note is as long as it was held, in whole steps, to the end of its bar at most.

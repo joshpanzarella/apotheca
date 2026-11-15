@@ -240,6 +240,7 @@ void sceneProgress(SDL_Renderer* r, int x, int y, int w, int h, int plays, int p
 // the drawn screen.
 constexpr int kScopeH = 36;
 constexpr int kScopeX = 8, kScopeW = kScreenW - 2 * kScopeX;
+constexpr int kScopeSamples = 512; // the newest samples the line is drawn from (redraw.hpp reads the same)
 constexpr int kScopeY = kScreenH - kHintsH - 4 - kScopeH; // 416: 4 pixels clear of the hints bar
 constexpr int kScopeLabelW = 120;                         // the label's room, inside the strip at its left
 constexpr int kAboveScope = kScopeY - 10;                 // 406: where the controls above it end

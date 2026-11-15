@@ -21,6 +21,7 @@
 // by itself four seconds after the last press or let-go, even if a button
 // is stuck down.
 
+#include "redraw.hpp"
 #include "screen.hpp"
 #include <cmath>
 #include <SDL.h>
@@ -42,6 +43,7 @@ public:
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const override;
+    unsigned stirring() const override { return testing_ ? kStirButtonTest : 0u; } // it closes by itself (redraw.hpp)
 
     // Where the rows are drawn, for the tests: a row's box starts at rowY and is kRowH - 6 tall;
     // its name starts at kNameX, its value at kValueX, and what is said about it ends at kNoteRight.

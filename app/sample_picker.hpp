@@ -54,6 +54,7 @@
 #include <string>
 #include <vector>
 
+#include "redraw.hpp"
 #include "input.hpp"
 #include "session.hpp"
 #include "ui.hpp"
@@ -101,6 +102,8 @@ public:
     void onButton(const ButtonEvent& event, bool playing);
     void update(const Input& input, Uint32 nowMs, bool playing);
     void draw(SDL_Renderer* renderer, const Fonts& fonts) const;
+    // What changes here with no button (redraw.hpp): the row rested on about to go on, a line said for a moment.
+    unsigned stirring() const { return !open_ ? 0u : (waiting_ ? kStirPicker : 0u) | (!said_.empty() ? kStirScreenSaid : 0u); }
 
     int cursor() const { return cursor_; }                          // which row of the middle column, from 0
     int count() const { return static_cast<int>(rows_.size()); }    // how many rows it has
