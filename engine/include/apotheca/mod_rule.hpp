@@ -43,7 +43,21 @@ constexpr int kModTargetNone = -1;
 constexpr int kModFirstMacro = 0;  // 0..7 the synth's eight macros
 constexpr int kModFirstEffect = 8; // 8 + slot * 4 + setting: the track's three slots
 constexpr int kModFirstSend = 20;  // 20 ECHO, 21 SPACE
-constexpr int kModTargetLanes = 22; // lanes 22 and 23 are spare: kept for MOD 1 / MOD 2 DEPTH (batch 7), never targets
+constexpr int kModTargetLanes = 22; // lanes 22 and 23 are MOD 1's and MOD 2's DEPTH (batch 7), never targets
+// A MOD's DEPTH as an automation lane (batch 7, owner's call 10): lane 22 is MOD 1's, 23 MOD 2's,
+// written with WRITE like any lane, so a wobble can be in one scene only. A lane holds 0..1, so
+// 0.5 is no depth, 0 is -100% and 1 is +100%: the scale a DEPTH has in the song file. A scene with
+// nothing written on it goes back to the MOD's own DEPTH, as every lane goes back to its knob.
+constexpr int kModDepthLane = kModTargetLanes;
+inline int modDepthLane(int mod) { return kModDepthLane + mod; }
+inline float modDepthToLane(float depth) {
+    const float d = depth == depth ? (depth > 1.f ? 1.f : (depth < -1.f ? -1.f : depth)) : 0.f;
+    return 0.5f * (d + 1.f);
+}
+inline float modDepthFromLane(float v) {
+    const float d = 2.f * v - 1.f;
+    return d == d ? (d > 1.f ? 1.f : (d < -1.f ? -1.f : d)) : 0.f;
+}
 constexpr int kModTargetLevel = 32; // the track's LEVEL and PAN: not lanes (batch 8; not taken yet)
 constexpr int kModTargetPan = 33;
 // A target the engine takes today. LEVEL and PAN (and anything else) read as no target.
@@ -118,6 +132,9 @@ struct ModSettings {
     float chance = 0.f;     // a STEPPER's: 0..1, the chance a step plays a fresh roll
     float steps[kModSteps] = {}; // a STEPPER's row, -1..1
     bool on() const { return modKind(kind) != kModOff && modTargetKnown(target) && depth != 0.f; }
+    // The engine runs a MOD that has a kind and a target at ANY depth: its DEPTH lane may be
+    // automated (batch 7), so a MOD set at 0% may wobble in the scene whose lane says so.
+    bool runs() const { return modKind(kind) != kModOff && modTargetKnown(target); }
 };
 inline int modLength(int n) { return n < 1 ? 1 : (n > kModSteps ? kModSteps : n); }
 
@@ -259,13 +276,16 @@ inline int stepperPlace(const ModSettings& m, double position) {
     return static_cast<int>(place < 0 ? place + length : place);
 }
 
-// What one MOD adds at a position: depth x its shape (0 when OFF or aimed at nothing).
-inline float modOffsetAt(const ModSettings& m, double position, int track, int mod) {
-    if (!m.on()) return 0.f;
+// What one MOD adds at a position: `depth` x its shape (0 when OFF, aimed at nothing or at no
+// depth). The engine hands it the depth now (the MOD's own, or its DEPTH lane's: batch 7).
+inline float modOffsetAt(const ModSettings& m, double position, int track, int mod, float depth) {
+    depth = depth > 1.f ? 1.f : (depth < -1.f ? -1.f : depth);
+    if (!m.runs() || depth == 0.f || depth != depth) return 0.f; // (not a number: none)
     const double shape = modKind(m.kind) == kModLfo ? lfoValue(m, position, track, mod) : stepValue(m, position, track, mod);
-    const float depth = m.depth > 1.f ? 1.f : (m.depth < -1.f ? -1.f : m.depth);
     return static_cast<float>(depth * shape);
 }
+// ...at the MOD's own DEPTH.
+inline float modOffsetAt(const ModSettings& m, double position, int track, int mod) { return modOffsetAt(m, position, track, mod, m.depth); }
 
 // ---- the combine ---------------------------------------------------------------------------------
 // What a setting is given: its centre plus what the MODs aimed at it add (two on one target add,

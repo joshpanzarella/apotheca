@@ -1010,3 +1010,31 @@ tried: the settings are not drawn then).
 
 **What only the tests and stills saw**: all of it.
 
+## 23. Batch 7, the DEPTH lanes, as built (2026-11-15, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** Call 10 at its recommended answer:
+lanes 22 and 23 are MOD 1's and MOD 2's DEPTH. The owner's word on the clearing ("leave the
+automation clearing as is") is kept: a scene with nothing written goes back to the knob, here the
+MOD's own DEPTH, and nothing new clears a lane.
+
+| Part | What is there |
+| --- | --- |
+| The scale | `mod_rule.hpp`: `modDepthLane(m)` (22, 23), `modDepthToLane` / `modDepthFromLane`: 0.5 no depth, 0 -100%, 1 +100%, held; the song file's DEPTH scale (section 5) |
+| The engine | `SetMod`'s DEPTH sets the lane's knob (`autoBase`) and where it is (`autoNow`), and stops a glide under way, as `SetMacro` does a macro's. `runMods` gives each MOD the depth its lane has now; **where the lane rests on its knob, the MOD's DEPTH itself** (0.3 to 0.65 and back is 0.29999995: a song's MODs at rest are as before, to the bit). A new engine and a track taken away put both lanes at no depth. `effects_test --print` the same before and after |
+| Runs at any DEPTH | `ModSettings::runs()` (KIND and a TARGET) is what the engine runs; `on()` (and a DEPTH) is still the app's. So a MOD set to 0% wobbles in the scene whose lane says so. It costs a MOD at 0% the tick's chunk cuts while the song plays (as one at 40%). A DEPTH turned to 0% lets go at once (the setting given its centre), not at the next tick |
+| The app | `Session::setMod` writes a DEPTH turned into its lane with WRITE on while playing (`recordAutomation`), only for a MOD that stays on (made or deleted is not a turn). `Session::modDepthShown`: the lane's while playing, else the MOD's own exactly. The knob's DEPTH field, the tab's DEPTH row, its list line and both pictures read it. On the tab a lane written in the scene worked on puts the purple line under DEPTH and "moves with the pattern" (`ModScreen::kMovesWords`); B on DEPTH gives +25% and empties the lane in that scene, as B on an FX setting does |
+| File, undo, scene move | Nothing new: the lanes are `auto` lines, pattern text in undo, `SceneStore` automation in a scene move |
+| Still | `mod-depth` (MOD 1's lane -60% then +80%, the demo playing), in `kViews` |
+| Tests | `mod_test`: the scale; the lanes (written +60% on a MOD at 0%, the other MOD at its own exactly, back to the knob in an unwritten scene, the knob turned, MOD 2's lane MOD 2's only, Stop, heard while stopped at the knob's); retargeted with only its lane's depth; the knob stopping the lane's glide; 0% lets go at once and still cuts; a scene move with the lane written equal to the song built (sound and shown, bit for bit); a track taken away. `modapp_test` `testTheDepthLanes` (shown while playing, the file, WRITE and one undo, WRITE off, a MOD made writes nothing, NEXT SCENE copies and plays it, undone). `modtab_test` (purple line, B, undo; the lane drawn as the depth, pixel for pixel). `modknob_test` (the field; a MOD at 0% with its lane written has the brass mark) |
+
+**Choices made here**: a MOD deleted leaves its lane's automation (nothing new clears a lane: the
+owner's word), and the tab shows it on the next MOD made there; the purple line is on the tab's
+DEPTH row only (not in the knob's tight strip); a MOD made is not a DEPTH turned (WRITE writes
+nothing then); a MOD at 0% runs (cuts chunks) so its lane can move it.
+
+**Mutants**: 28 made, 28 killed (22 at first; the six survivors each have a test now: the glide not
+stopped, the lanes not at no depth on a new engine, `anyMod_` by `on()`, a retarget let go by
+`on()`, the row drawn at the knob's depth, the brass mark by `on()`).
+
+**What only the tests and stills saw**: all of it.
+

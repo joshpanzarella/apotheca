@@ -217,6 +217,7 @@ void ModScreen::toUsual() {
         s.kind = usual.kind, s.shape = usual.shape;
     } else if (column_ == kDepth) {
         s.depth = usual.depth;
+        session_.clearAutomation(track(), project_.scene, modDepthLane(m)); // (as B on an FX setting: its lane in this scene too)
     } else if (column_ == kRate) {
         s.rate = usual.rate;
     } else if (column_ == kMore) {
@@ -536,11 +537,11 @@ void ModScreen::drawList(SDL_Renderer* r, const Fonts& fonts) const {
                 targetText(t, s.target, text, sizeof text);
                 fonts.within(&Fonts::small, text, room).draw(r, x, y + 40.f, text, kText);
                 char depth[16];
-                ModKnob::depthText(s.depth, depth, sizeof depth);
+                ModKnob::depthText(session_.modDepthShown(track(), m), depth, sizeof depth); // (while playing: its DEPTH lane's)
                 std::snprintf(text, sizeof text, "%s  %s", depth, modRateInfo(s.rate).name);
                 fonts.within(&Fonts::small, text, room).draw(r, x, y + 62.f, text, kDim);
             }
-            if (!off) drawPicture(r, kSmallPicX, y + (kLineH - kSmallPicH) / 2, kSmallPicW, kSmallPicH, s, track(), m, nowPosition(m), nowPlace(m), here);
+            if (!off) drawPicture(r, kSmallPicX, y + (kLineH - kSmallPicH) / 2, kSmallPicW, kSmallPicH, asNow(m), track(), m, nowPosition(m), nowPlace(m), here);
         } else {
             fonts.small.draw(r, x, y + 10.f, "STEPS", here ? kText : kDim);
             if (off || modKind(s.kind) != kModStepper) {
@@ -585,7 +586,7 @@ void ModScreen::drawModPane(SDL_Renderer* r, const Fonts& fonts) const {
         std::snprintf(text, sizeof text, "moves %s", target);
         fonts.within(&Fonts::small, text, room).draw(r, kPaneX + 12.f, kPaneY + 66.f, text, kDim);
     }
-    if (!off) drawPicture(r, kPicX, kPicY, kPicW, kPicH, s, track(), m, nowPosition(m), nowPlace(m), true);
+    if (!off) drawPicture(r, kPicX, kPicY, kPicW, kPicH, asNow(m), track(), m, nowPosition(m), nowPlace(m), true);
     if (picking()) {
         outline(r, kPaneX - 1, kPaneY - 1, kPaneW + 2, kHeadH + 2, kBrass, 2);
         drawPick(r, fonts);
@@ -602,8 +603,15 @@ void ModScreen::drawModPane(SDL_Renderer* r, const Fonts& fonts) const {
     }
     ModKnob::shapeText(s, text, sizeof text);
     drawRow(r, fonts, rowY(1), "SHAPE", text, 0.f, ModKnob::kShapePlaces, ModKnob::shapePlace(s), false, column_ == kShape);
-    ModKnob::depthText(s.depth, text, sizeof text);
-    drawRow(r, fonts, rowY(2), "DEPTH", text, s.depth, 0, 0, true, column_ == kDepth);
+    // DEPTH: while the song plays, where its DEPTH lane's automation has it (batch 7); written in the
+    // scene worked on, the purple line and the words, as an automated setting on FX.
+    const float depth = session_.modDepthShown(track(), m);
+    ModKnob::depthText(depth, text, sizeof text);
+    drawRow(r, fonts, rowY(2), "DEPTH", text, depth, 0, 0, true, column_ == kDepth);
+    if (session_.hasAutomation(track(), project_.scene, modDepthLane(m))) {
+        fill(r, kPaneX + 1, rowY(2) + kRowH - 3, kPaneW - 2, 2, kPurple);
+        fonts.small.drawRight(r, static_cast<float>(kBarX + kBarW), rowY(2) + 8.f, kMovesWords, kPurple);
+    }
     drawRow(r, fonts, rowY(3), "RATE", modRateInfo(s.rate).name, 0.f, kModRates, modRatePlace(s.rate), false, column_ == kRate);
     ModKnob::moreText(s, text, sizeof text);
     const bool stepper = modKind(s.kind) == kModStepper;

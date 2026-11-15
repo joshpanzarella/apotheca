@@ -800,9 +800,13 @@ static void testAGlidingEffectUnderAModIsCloseInOtherBlocks() {
 // The chunks are cut on the tick only while a MOD runs: a song with none, a MOD that is OFF, and a
 // MOD on with the song stopped are cut as they always were.
 static void testChunksAreCutOnlyWhileAModRuns() {
-    auto chunks = [](int state) { // 0 none, 1 OFF (depth 0), 2 on but stopped, 3 on and playing
+    auto chunks = [](int state) { // 0 none, 1 OFF (its KIND; at depth 0 a MOD runs: its DEPTH lane may be written), 2 on but stopped, 3 on and playing
         Rig rig;
-        if (state >= 1) rig.mod(0, lfo(autoLaneOfSend(0), state == 1 ? 0.f : 0.4f, kModSine, kModRateBar));
+        if (state >= 1) {
+            ModSettings m = lfo(autoLaneOfSend(0), 0.4f, kModSine, kModRateBar);
+            if (state == 1) m.kind = kModOff;
+            rig.mod(0, m);
+        }
         if (state != 2) rig.send(make(Command::Play, 0, 0, 1));
         const std::uint64_t before = rig.engine->chunksRendered();
         rig.frames(6000 * 16);
@@ -958,9 +962,200 @@ static void testATrackTakenAwayTurnsItsModsOff() {
     CHECK(e->removeTrack(2));
     for (int i = 0; i < 4; ++i) e->render(out.data(), 256); // its 5 ms fade, if it sounded
     CHECK(e->sendGiven(2, 0) == 0.3f && e->modOffsetForTests(2, autoLaneOfSend(0)) == 0.f && e->modShown(2, 0) == 0.f && e->modShown(2, 1) == 0.f);
+    CHECK(e->laneCentre(2, modDepthLane(0)) == 0.5f && e->laneCentre(2, modDepthLane(1)) == 0.5f); // their DEPTH lanes at no depth (batch 7)
     e->addSynthTrack(2, SynthKind::Phazed);
     for (int i = 0; i < 20; ++i) e->render(out.data(), 256);
     CHECK(e->modShown(2, 0) == 0.f && e->modShown(2, 1) == 0.f && e->modOffsetForTests(2, autoLaneOfSend(0)) == 0.f);
+}
+
+// ---- batch 7: lanes 22 and 23 are MOD 1's and MOD 2's DEPTH ------------------------------------
+
+// A lane holds 0..1: 0.5 no depth, 0 -100%, 1 +100% (the song file's DEPTH scale).
+static void testTheDepthScale() {
+    CHECK(modDepthLane(0) == 22 && modDepthLane(1) == 23 && kModDepthLane == kModTargetLanes);
+    CHECK(modDepthToLane(0.f) == 0.5f && modDepthToLane(-1.f) == 0.f && modDepthToLane(1.f) == 1.f && modDepthToLane(0.5f) == 0.75f);
+    CHECK(modDepthToLane(3.f) == 1.f && modDepthToLane(-3.f) == 0.f && modDepthToLane(std::nanf("")) == 0.5f);
+    CHECK(modDepthFromLane(0.5f) == 0.f && modDepthFromLane(0.f) == -1.f && modDepthFromLane(1.f) == 1.f && modDepthFromLane(0.75f) == 0.5f);
+    CHECK(modDepthFromLane(2.f) == 1.f && modDepthFromLane(-1.f) == -1.f && modDepthFromLane(std::nanf("")) == 0.f);
+    for (int p = -100; p <= 100; ++p) CHECK(near(modDepthFromLane(modDepthToLane(p / 100.f)), p / 100.0, 1e-6));
+    // The engine runs a MOD at any depth (its lane may be written); the app's "on" still wants one.
+    ModSettings m = lfo(autoLaneOfSend(0), 0.f);
+    CHECK(m.runs() && !m.on() && modOffsetAt(m, 1.0, 1, 0) == 0.f && modOffsetAt(m, 0.0, 1, 0, 0.5f) == 0.5f);
+    m.kind = kModOff;
+    CHECK(!m.runs() && modOffsetAt(m, 0.0, 1, 0, 0.5f) == 0.f);
+    m = lfo(kModTargetNone, 0.5f);
+    CHECK(!m.runs());
+    CHECK(modOffsetAt(lfo(0, 0.5f), 0.0, 1, 0, std::nanf("")) == 0.f && modOffsetAt(lfo(0, 0.5f), 0.0, 1, 0, 3.f) == 1.f);
+}
+
+// A scene's DEPTH lane moves its MOD's depth, as a macro's lane moves the macro: written, the depth
+// is the lane's (gliding there in the first half of the step); a scene with nothing written goes
+// back to the MOD's own DEPTH, as every lane goes back to its knob; Stop puts the knob back. MOD 1's
+// lane is MOD 1's only.
+static void testTheDepthLanes() {
+    Rig rig;
+    CHECK(rig.engine->laneCentre(2, modDepthLane(0)) == 0.5f && rig.engine->laneCentre(2, modDepthLane(1)) == 0.5f); // a new engine: at no depth
+    rig.send(make(Command::SetSceneCount, 0, 2));
+    const int echo = autoLaneOfSend(0), fx = autoLaneOfEffect(1, 0);
+    rig.send(make(Command::SetSend, 1, 0, 0, 0.1f));
+    rig.send(make(Command::SetEffectParam, 1, 1, 0, 0.5f)); // (slot 2's first setting: its centre told)
+    rig.mod(0, lfo(echo, 0.f)); // MOD 1 at no depth: it wobbles only where its lane says (a SQUARE, 8 bars: +depth whole)
+    rig.mod(1, lfo(fx, 0.2f));  // MOD 2 at +20%, its lane never written
+    CHECK(rig.engine->laneCentre(1, modDepthLane(0)) == 0.5f && rig.engine->laneCentre(1, modDepthLane(1)) == modDepthToLane(0.2f));
+    rig.write(modDepthLane(0), modDepthToLane(0.6f)); // scene 1, every step of its bar: +60%
+    rig.send(make(Command::Play));
+    rig.frames(3000 + 512); // past the glide
+    CHECK(near(rig.engine->modShown(1, 0), 0.6, 1e-6) && near(rig.engine->sendGiven(1, 0), 0.7, 1e-6));
+    CHECK(rig.engine->modShown(1, 1) == 0.2f && rig.lastParam(0) == 0.5f + 0.2f); // MOD 2 at its own, exactly
+    CHECK(rig.engine->laneCentre(1, modDepthLane(0)) == modDepthToLane(0.6f));
+    {   // Aimed elsewhere (one field, as the Session sends it) at 0% of its own and +60% from its lane:
+        // what it added to the send goes at once.
+        CHECK(rig.engine->send(make(Command::SetMod, 1, 0, kModFieldTarget, static_cast<float>(autoLaneOfSend(1)))));
+        rig.frames(1);
+        CHECK(rig.engine->sendGiven(1, 0) == 0.1f && rig.engine->modOffsetForTests(1, echo) == 0.f);
+        CHECK(rig.engine->send(make(Command::SetMod, 1, 0, kModFieldTarget, static_cast<float>(echo))));
+        rig.frames(512);
+        CHECK(near(rig.engine->sendGiven(1, 0), 0.7, 1e-6));
+    }
+    rig.frames(16 * 6000 - 513); // scene 2's first step, past the glide: nothing written, MOD 1 back to no depth
+    CHECK(rig.engine->playScene() == 1);
+    CHECK(rig.engine->modShown(1, 0) == 0.f && rig.engine->sendGiven(1, 0) == 0.1f && rig.engine->modOffsetForTests(1, echo) == 0.f);
+    CHECK(rig.engine->modShown(1, 1) == 0.2f);
+    rig.frames(16 * 6000); // scene 1 again
+    CHECK(rig.engine->playScene() == 0 && near(rig.engine->modShown(1, 0), 0.6, 1e-6));
+    // The knob's own DEPTH turned while the lane is written: where it rests in scene 2 from now on.
+    ModSettings deeper = lfo(echo, -0.3f);
+    rig.mod(0, deeper);
+    rig.frames(16 * 6000);
+    CHECK(rig.engine->playScene() == 1 && near(rig.engine->modShown(1, 0), -0.3, 1e-6) && near(rig.engine->sendGiven(1, 0), 0.f, 1e-6));
+    // MOD 2's lane written on scene 2's next step at -100%: MOD 2 turns over there, MOD 1 is not
+    // moved by it. (Still in the SQUARE's first half: it is four bars long.)
+    Command c = make(Command::SetAutomation, 1, modDepthLane(1), 1, 0.f);
+    c.scene = 1;
+    CHECK(rig.engine->send(c));
+    rig.frames(6000);
+    CHECK(rig.engine->playScene() == 1 && near(rig.engine->modShown(1, 1), -1.0, 1e-6) && near(rig.lastParam(0), 0.f, 1e-6));
+    CHECK(near(rig.engine->modShown(1, 0), -0.3, 1e-6));
+    // Stopped: every MOD let go, and the DEPTH lanes back on their knobs.
+    rig.send(make(Command::Stop));
+    CHECK(rig.engine->laneCentre(1, modDepthLane(0)) == modDepthToLane(-0.3f) && rig.engine->laneCentre(1, modDepthLane(1)) == modDepthToLane(0.2f));
+    CHECK(rig.engine->sendGiven(1, 0) == 0.1f && rig.engine->modShown(1, 0) == 0.f);
+    // Heard while stopped (X held): at the knob's depth, not a scene's.
+    rig.hear(3);
+    rig.frames(512);
+    CHECK(rig.engine->modShown(1, 0) == -0.3f && rig.engine->modShown(1, 1) == 0.2f);
+    rig.hear(0);
+}
+
+// The knob's own DEPTH set while its lane glides (a written step, its first half): the glide stops
+// and the knob's is heard until the next step, as a macro set by hand.
+static void testTheDepthKnobStopsTheLanesGlide() {
+    Rig rig;
+    const int echo = autoLaneOfSend(0);
+    rig.send(make(Command::SetSend, 1, 0, 0, 0.1f));
+    rig.mod(0, lfo(echo, 0.f));
+    for (int step = 0; step < 2; ++step) {
+        Command c = make(Command::SetAutomation, 1, modDepthLane(0), step, modDepthToLane(0.6f));
+        c.scene = 0;
+        CHECK(rig.engine->send(c));
+    }
+    rig.send(make(Command::Play));
+    rig.frames(1000); // a sixth into the first step: gliding to +60%
+    CHECK(rig.engine->playStep() == 0 && rig.engine->modShown(1, 0) > 0.f && rig.engine->modShown(1, 0) < 0.6f);
+    CHECK(rig.engine->setMod(1, 0, lfo(echo, 0.1f)));
+    rig.frames(3000); // past where the glide would have ended
+    CHECK(rig.engine->playStep() == 0 && rig.engine->modShown(1, 0) == 0.1f);
+    rig.frames(6000); // the next step: written, +60% again
+    CHECK(rig.engine->playStep() == 1 && near(rig.engine->modShown(1, 0), 0.6, 1e-6));
+}
+
+// A MOD turned to no depth lets go at once, not at its next tick; it still runs (a written lane
+// moves it), so the chunks are still cut while it plays.
+static void testNoDepthLetsGoAtOnce() {
+    Rig rig;
+    const int echo = autoLaneOfSend(0);
+    rig.send(make(Command::SetSend, 1, 0, 0, 0.2f));
+    rig.mod(0, lfo(echo, 0.4f));
+    rig.send(make(Command::Play));
+    rig.frames(512);
+    CHECK(rig.engine->sendGiven(1, 0) == 0.2f + 0.4f);
+    CHECK(rig.engine->setMod(1, 0, lfo(echo, 0.f)));
+    rig.frames(1); // (one sample: not to the next tick)
+    CHECK(rig.engine->sendGiven(1, 0) == 0.2f && rig.engine->modShown(1, 0) == 0.f && !std::isnan(rig.engine->modNow(1, 0)));
+    // Still cut on the tick, as at 40% and more than with no MOD (blocks of 333, 120 BPM, a bar).
+    auto chunks = [](float depth, bool any) {
+        Rig r;
+        if (any) r.mod(0, lfo(autoLaneOfSend(0), depth, kModSine, kModRateBar));
+        r.send(make(Command::Play));
+        const std::uint64_t before = r.engine->chunksRendered();
+        r.frames(16 * 6000, 333);
+        return r.engine->chunksRendered() - before;
+    };
+    const std::uint64_t none = chunks(0.f, false), zero = chunks(0.f, true), some = chunks(0.4f, true);
+    CHECK(zero == some && zero > none);
+}
+
+// A scene put in with a DEPTH lane written in the scene it copies: the same, to the bit, as the
+// song built with the scene in it (the lanes are the scene's, carried with its automation).
+static void testASceneMoveCarriesTheDepthLane() {
+    const int depthLane = modDepthLane(0);
+    auto depth = [&](Engine& e, int scene) {
+        for (int step = 0; step < 16; step += 2) {
+            Command c = make(Command::SetAutomation, 0, depthLane, step, step % 4 ? 0.9f : 0.2f);
+            c.scene = scene;
+            e.send(c);
+        }
+    };
+    std::unique_ptr<Engine> moved(new Engine), built(new Engine);
+    std::vector<float> scratch(1024);
+    for (Engine* e : {moved.get(), built.get()}) {
+        e->prepare(48000.f);
+        e->setEffect(0, 0, EffectKind::Saturate);
+        e->setEffect(kEchoBus, 0, EffectKind::Ping);
+        e->send(make(Command::SetSend, 0, 0, 0, 0.3f));
+        const bool three = e == built.get();
+        e->send(make(Command::SetSceneCount, 0, three ? 3 : 2));
+        for (int step = 0; step < 16; step += 4) {
+            for (int scene = 0; scene < (three ? 2 : 1); ++scene) {
+                Command hit = make(Command::SetStep, 0, 0, step, 0.9f);
+                hit.scene = scene;
+                e->send(hit);
+            }
+        }
+        depth(*e, 0);
+        if (three) depth(*e, 1);
+        e->render(scratch.data(), 256);
+        e->setMod(0, 0, lfo(autoLaneOfSend(0), 0.1f, kModSine, kModRateHalf));
+        e->render(scratch.data(), 256);
+        e->send(make(Command::Play));
+    }
+    const int frames = 4 * 16 * 6000;
+    std::vector<float> a(2 * frames), b(2 * frames);
+    std::vector<float> shownA, shownB;
+    int at = 0;
+    const int moveAt = 6000 * 9 + 77;
+    for (; at < moveAt; at += 256) {
+        const int n = moveAt - at < 256 ? moveAt - at : 256;
+        moved->render(a.data() + 2 * at, n);
+        built->render(b.data() + 2 * at, n);
+    }
+    at = moveAt;
+    std::unique_ptr<SceneImage> images[kNumTracks];
+    images[0].reset(new SceneImage);
+    for (int step = 0; step < 16; step += 4) images[0]->level[0][0][step] = 0.9f;
+    for (int step = 0; step < 16; step += 2) images[0]->automation[depthLane * kAutoSteps + step] = step % 4 ? 0.9f : 0.2f;
+    CHECK(moved->moveScenes(1, 1, images, 3, 1, 0));
+    for (; at < frames; at += 256) {
+        const int n = frames - at < 256 ? frames - at : 256;
+        moved->render(a.data() + 2 * at, n);
+        built->render(b.data() + 2 * at, n);
+        shownA.push_back(moved->modShown(0, 0));
+        shownB.push_back(built->modShown(0, 0));
+    }
+    CHECK(a == b && shownA == shownB);
+    bool turned = false; // (the copy's lane did move it: a value only the written DEPTH gives)
+    for (float v : shownA) turned = turned || std::fabs(v) > 0.1f + 1e-6f;
+    CHECK(turned);
 }
 
 // Stopped, X held on a modulated knob: its MODs run from the moment X went down, as from Play, and
@@ -1281,6 +1476,11 @@ int main(int argc, char** argv) {
         {"testATrackWithNothingRunsNoMod", testATrackWithNothingRunsNoMod},
         {"testFeelChordsAndModsInAnyBlocks", testFeelChordsAndModsInAnyBlocks},
         {"testASongThatStopsAtItsEndLetsGoOfTheMods", testASongThatStopsAtItsEndLetsGoOfTheMods},
+        {"testTheDepthScale", testTheDepthScale},
+        {"testTheDepthLanes", testTheDepthLanes},
+        {"testTheDepthKnobStopsTheLanesGlide", testTheDepthKnobStopsTheLanesGlide},
+        {"testNoDepthLetsGoAtOnce", testNoDepthLetsGoAtOnce},
+        {"testASceneMoveCarriesTheDepthLane", testASceneMoveCarriesTheDepthLane},
     };
     int first = 1;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) measuring = true, first = 2;

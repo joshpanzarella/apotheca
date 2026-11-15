@@ -299,7 +299,7 @@ void ModKnob::drawFields(SDL_Renderer* r, const Fonts& chosen, const ModPlaces& 
     const ModSettings& s = session_.modData(track_, m);
     shapeText(s, text, sizeof text);
     field(p.shape, p.fieldsY, "SHAPE", text, kText);
-    depthText(s.depth, text, sizeof text);
+    depthText(session_.modDepthShown(track_, m), text, sizeof text); // (while playing: where its DEPTH lane has it)
     field(p.depth, p.fieldsY, "DEPTH", text, kText);
     field(p.rate, p.fieldsY, "RATE", modRateInfo(s.rate).name, kText);
     moreText(s, text, sizeof text);
@@ -334,7 +334,7 @@ float modMarkAt(const Session& session, int track, int lane, float shown) {
     bool runs = false;
     for (int m = 0; m < kModsPerTrack; ++m) {
         const ModSettings& mod = session.modData(track, m);
-        if (!mod.on() || mod.target != lane) continue;
+        if (modKind(mod.kind) == kModOff || mod.target != lane) continue; // (at any DEPTH: its lane may be written)
         // As the MOD tab's dot: only while the song plays or X runs it, so a Stop takes it away on
         // the very pass (the engine's last tick would stand with nothing to stir the redraw).
         if (!session.project.playing && !(session.modsHeard(track) & (1u << m))) continue;

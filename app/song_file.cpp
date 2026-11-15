@@ -31,7 +31,7 @@ float fractionIn(double v, float lo, float hi) { return !(v >= lo) ? lo : (v > h
 std::uint32_t seedIn(double v) { return !(v >= 0.0) ? 0u : (v > 4294967295.0 ? 4294967295u : static_cast<std::uint32_t>(v)); }
 
 // A MOD's DEPTH in a song file: 0..1, 0.5 no depth, 0 is -100% and 1 is +100% (the scale lanes 22
-// and 23 will automate it on: modulation-plan.md, section 5). The one place that says so.
+// and 23 automate it on, mod_rule.hpp's modDepthToLane: batch 7). Their `auto` lines are any lane's.
 double depthToFile(float depth) { return (static_cast<double>(depth) + 1.0) * 0.5; }
 // (Held as a double, and made a float last: through a float first, 0.92 came back as 0.84000003 and not 0.84.)
 float depthFromFile(double v) { return v == v ? static_cast<float>(2.0 * (v > 0.0 ? (v < 1.0 ? v : 1.0) : 0.0) - 1.0) : 0.f; }

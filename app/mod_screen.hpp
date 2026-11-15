@@ -130,6 +130,14 @@ public:
 private:
     int track() const { return project_.track; }
     void set(int m, const ModSettings& s) { session_.setMod(track(), m, s); }
+    // MOD m as it is now: its DEPTH where its DEPTH lane has it while the song plays (the picture
+    // turns over by it).
+    ModSettings asNow(int m) const {
+        ModSettings now = session_.modData(track(), m);
+        now.depth = session_.modDepthShown(track(), m);
+        return now;
+    }
+    static constexpr const char* kMovesWords = "moves with the pattern";
     void press(Button b);      // a direction, A held or not
     void turnBy(int by);       // A held + UP / DOWN on a setting: a click or a notch
     void turnSmooth(float by); // the stick with A held on an amount

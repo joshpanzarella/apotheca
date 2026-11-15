@@ -1149,6 +1149,36 @@ void testTheBrassMark() {
     ui::useTheme(kThemeBrown);
 }
 
+// Batch 7: while the song plays, the knob's DEPTH field reads where the MOD's DEPTH lane has it.
+void testTheKnobReadsTheDepthLane() {
+    Rig rig;
+    CHECK(rig.canvas.ok);
+    if (!rig.canvas.ok) return;
+    const int t = rig.phazed;
+    CHECK(rig.session().setMod(t, 0, lfoOn(kModFirstMacro, 0.3f)));
+    for (int i = 0; i < kSteps; ++i) rig.session().setAutomation(t, rig.project().scene, modDepthLane(0), i, modDepthToLane(-0.5f));
+    rig.device(t, 0);
+    const ModPlaces& p = kDeviceModPlaces;
+    rig.key(X, true);
+    rig.draw();
+    CHECK(rig.drawn(p.depth, p.fieldsY + kModValueDrop, "+30%", true, ui::kText)); // stopped: its own
+    rig.key(X, false);
+    rig.tap(SDLK_RETURN);
+    rig.frames(20);
+    rig.key(X, true);
+    rig.draw();
+    CHECK(rig.project().playing && rig.drawn(p.depth, p.fieldsY + kModValueDrop, "-50%", true, ui::kText));
+    rig.key(X, false);
+    // A MOD at 0% of its own, its lane written: it moves, and its knob has the brass mark.
+    ModSettings none = lfoOn(kModFirstMacro + 1, 0.f);
+    none.shape = kModSquare;
+    CHECK(rig.session().setMod(t, 1, none));
+    for (int i = 0; i < kSteps; ++i) rig.session().setAutomation(t, rig.project().scene, modDepthLane(1), i, modDepthToLane(0.4f));
+    rig.frames(30);
+    CHECK(std::fabs(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f) - 0.9f) < 1e-6f);
+    rig.tap(SDLK_RETURN);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1170,6 +1200,7 @@ int main(int argc, char** argv) {
     testTheGestureOnFx();
     testDrawnOnFx();
     testTheBrassMark();
+    testTheKnobReadsTheDepthLane();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

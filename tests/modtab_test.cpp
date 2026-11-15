@@ -774,6 +774,80 @@ void testXOnTheDrums() {
     CHECK(rig.session().hearingHeld() && rig.session().heardLane() == 0);
     rig.key(X, false), rig.frames(2);
 }
+// ---- batch 7: a MOD's DEPTH lane on the tab ----------------------------------------------------
+
+// Written in the scene worked on, DEPTH's row has the purple line (as an automated FX setting); while
+// the song plays it reads where the lane has it; B there gives the usual DEPTH and empties the lane
+// in this scene, and one undo puts both back. MOD 2's lane is MOD 2's row's only.
+void testTheDepthLane() {
+    Rig rig;
+    const int t = rig.phazed;
+    CHECK(rig.session().setMod(t, 0, lfo(kModFirstMacro, 0.3f)));
+    CHECK(rig.session().setMod(t, 1, lfo(kModFirstMacro + 1, 0.4f)));
+    rig.at(t, 0, S::kDepth);
+    rig.frames(30);
+    const int y = S::rowY(2), line = 2 * (S::kPaneW - 2);
+    rig.draw();
+    CHECK(rig.count(S::kPaneX + 1, y + S::kRowH - 3, S::kPaneW - 2, 2, ui::kPurple) == 0);
+    for (int i = 0; i < kSteps; ++i) rig.session().setAutomation(t, rig.project().scene, modDepthLane(0), i, modDepthToLane(-0.5f));
+    rig.frames(30);
+    rig.draw();
+    CHECK(rig.count(S::kPaneX + 1, y + S::kRowH - 3, S::kPaneW - 2, 2, ui::kPurple) == line);
+    CHECK(rig.count(S::kBarX, y + 8, S::kBarW, 14, ui::kPurple) > 20); // "moves with the pattern"
+    rig.tab().goTo(2, S::kDepth); // MOD 2: its lane is not written
+    rig.frames(1);
+    rig.draw();
+    CHECK(rig.count(S::kPaneX + 1, y + S::kRowH - 3, S::kPaneW - 2, 2, ui::kPurple) == 0);
+    rig.tab().goTo(0, S::kDepth);
+    CHECK(rig.session().modDepthShown(t, 0) == 0.3f);
+    rig.tap(START);
+    rig.frames(20);
+    CHECK(rig.project().playing && std::fabs(rig.session().modDepthShown(t, 0) + 0.5f) < 1e-6f && rig.session().modDepthShown(t, 1) == 0.4f);
+    rig.tap(START);
+    rig.frames(30);
+    const int steps = rig.session().undoSteps();
+    rig.tap(B);
+    rig.frames(30);
+    CHECK(rig.mod(t, 0).depth == 0.25f && !rig.session().hasAutomation(t, rig.project().scene, modDepthLane(0)));
+    CHECK(rig.session().undoSteps() == steps + 1);
+    rig.undo();
+    rig.frames(30);
+    CHECK(rig.mod(t, 0).depth == 0.3f && rig.session().hasAutomation(t, rig.project().scene, modDepthLane(0)));
+}
+
+// While the song plays, a MOD whose DEPTH lane says -50% is drawn as a MOD whose own DEPTH is -50%:
+// its line in the list (the DEPTH it reads, its picture turned over) and the heading's picture, pixel
+// for pixel, on the same pass of two rigs that played alike.
+void testTheLaneIsDrawnAsTheDepth() {
+    Rig a, b;
+    for (Rig* rig : {&a, &b}) {
+        const int t = rig->phazed;
+        CHECK(rig->session().setMod(t, 0, lfo(kModFirstMacro, rig == &a ? 0.3f : -0.5f)));
+        if (rig == &a)
+            for (int i = 0; i < kSteps; ++i) rig->session().setAutomation(t, rig->project().scene, modDepthLane(0), i, modDepthToLane(-0.5f));
+        rig->at(t, 0, S::kRate);
+        rig->frames(5);
+        rig->tap(START);
+        rig->frames(40);
+        rig->draw();
+    }
+    CHECK(a.project().playing && b.project().playing);
+    const int y = S::lineY(0);
+    CHECK(a.canvas.part(S::kListX, y, S::kListW, S::kLineH) == b.canvas.part(S::kListX, y, S::kListW, S::kLineH));
+    CHECK(a.canvas.part(S::kPaneX, S::kPaneY, S::kPaneW, S::kHeadH) == b.canvas.part(S::kPaneX, S::kPaneY, S::kPaneW, S::kHeadH));
+    // DEPTH's row: its value and its bar (not the purple line and its words, which say a lane is written).
+    const int row = S::rowY(2), barTop = row + S::kRowH / 2 - S::kBarH / 2;
+    CHECK(a.canvas.part(S::kPaneX, row, S::kBarX - S::kPaneX, S::kRowH - 4) == b.canvas.part(S::kPaneX, row, S::kBarX - S::kPaneX, S::kRowH - 4));
+    CHECK(a.canvas.part(S::kBarX, barTop, S::kBarW, S::kBarH) == b.canvas.part(S::kBarX, barTop, S::kBarW, S::kBarH));
+    // ...and stopped, each its own (+30% against -50%): the lane is the song's, not the MOD's.
+    for (Rig* rig : {&a, &b}) {
+        rig->tap(START);
+        rig->frames(5);
+        rig->draw();
+    }
+    CHECK(a.canvas.part(S::kListX, y, S::kListW, S::kLineH) != b.canvas.part(S::kListX, y, S::kListW, S::kLineH));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -794,6 +868,8 @@ int main(int argc, char** argv) {
     testHoldBTakesASecond();
     testTheStickAndTheRepeat();
     testXOnTheDrums();
+    testTheDepthLane();
+    testTheLaneIsDrawnAsTheDepth();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

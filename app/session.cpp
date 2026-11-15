@@ -1190,6 +1190,13 @@ const ModSettings& Session::modData(int track, int mod) const {
     return track >= 0 && track < kNumTracks && mod >= 0 && mod < kModsPerTrack ? project.tracks[track].mods[mod] : none;
 }
 
+float Session::modDepthShown(int track, int mod) const {
+    const float own = modData(track, mod).depth;
+    if (track < 0 || track >= kNumTracks || mod < 0 || mod >= kModsPerTrack) return own;
+    const float rests = modDepthToLane(own), lane = automated(track, modDepthLane(mod), rests);
+    return lane == rests ? own : modDepthFromLane(lane);
+}
+
 bool Session::setMod(int track, int mod, const ModSettings& settings) {
     if (track < 0 || track >= kNumTracks || mod < 0 || mod >= kModsPerTrack || project.tracks[track].kind == TrackKind::None) return false;
     const ModSettings held = modHeldFor(project.tracks[track], settings);
@@ -1202,6 +1209,9 @@ bool Session::setMod(int track, int mod, const ModSettings& settings) {
         sendMod(track, mod); // (lost to a full queue: the whole song is sent again, this with it)
         return taken;
     }
+    // Its DEPTH turned: with WRITE on and the song playing, written into its DEPTH lane where the song
+    // is (batch 7), as a macro's or a send's turn is. (Made or deleted is not a turn of DEPTH.)
+    if (held.depth != was.depth) recordAutomation(track, modDepthLane(mod), modDepthToLane(held.depth));
     // One on, still on (a knob's MOD turned while X is held, every frame): only what changed, so a
     // turn is one or two commands, not twenty-six. The engine's MOD is the project's before this.
     Command c;

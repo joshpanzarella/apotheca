@@ -612,6 +612,14 @@ While a MOD runs (the song playing, or X held with it stopped), the knob's own
 bar on DEVICE or FX has a **thin brass mark** where the knob is this moment:
 the bar shows where the knob rests, the mark where the MOD has it.
 
+**A MOD's DEPTH can change from scene to scene.** Turn DEPTH (on the knob or
+on the MOD tab) with WRITE on while the song plays, and it is written into the
+pattern, as a knob's turn is. A scene with nothing written uses the MOD's own
+DEPTH, so a MOD set to 0% can wobble in one scene only. On the MOD tab a
+written DEPTH has the purple line, and while the song plays DEPTH reads what
+the pattern says. B on DEPTH puts it back to +25% and empties what was written
+in that scene.
+
 #### The MOD tab
 
 The tab after FX shows both MODs of the track: a list at the left (MOD 1, its
