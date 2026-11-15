@@ -3,7 +3,7 @@
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
 here, then revised the same day after a review (section 11). **Batches 0 and
-1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17). The owner answered section 17's calls on 2026-11-15 ("go with all your picks"), `main` was joined again, and batches 3 and 4 (X held on a knob, DEVICE and FX) are built (section 18), and batch 5, the MOD tab (section 20). Nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
+1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17). The owner answered section 17's calls on 2026-11-15 ("go with all your picks"), `main` was joined again, and batches 3 and 4 (X held on a knob, DEVICE and FX) are built (section 18), and batch 5, the MOD tab (section 20), its review mended (section 21), then batches 6 to 9: the brass mark (22), the DEPTH lanes (23), LEVEL and PAN (24, TREMOLO kept), the cost (25). Nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -1062,4 +1062,44 @@ on the master is automated or modulated); the list's line is called MIXER.
 **Mutants** (batch 8): 20 made, 20 killed (16 at first; four survivors have tests now: the level
 held at the mixer's most, 4; a track taken away keeping the mixer's own pan or level, which the
 next level or pan sent would have brought back; TARGET's words LEVEL and PAN).
+
+## 25. Batch 9, the cost, as built (2026-11-15, branch `mods`)
+
+**Built; figures from the desk only. SPEED TEST has not been run on the handheld**: its figures
+come only when the owner runs it.
+
+| Part | What is there |
+| --- | --- |
+| The song | `busiestMods(e, 24)` (`app/bench_run.cpp`): two MODs on every track of the busiest song, every kind of target: MOD 1 an LFO on a drum track's second slot's first setting or a synth track's first macro; MOD 2 a STEPPER on the ECHO send (tracks 0 to 3, 6 to 9), LEVEL (4, 10) or PAN (5, 11); every MOD 1's DEPTH lane written on three steps (+30%, -30%, +60%). Four LFO rates, seven shapes, three STEPPER rates at CHANCE 50% and SLEW 30% |
+| SPEED TEST | It runs `apotheca --bench` (`runBench`), so its page shows the rows: the busiest song alone and with the helpers, then with 1 MOD (5 s) and **24 MODs (10 s, as long as the song without)**, chunks a second, and the MODs worked out on twelve silent tracks, now with a row of **24 on LEVEL and PAN** |
+| Held | `bench_test` `testTheModsAreWhatTheySay` (`sendBusiestMods`, new): all 24 run, LEVEL moves only on 4 and 10 and PAN only on 5 and 11, every DEPTH lane reaches -30% and +60%, and the rows' 24 and 1 MOD cut more chunks than the song alone. It times nothing |
+
+**Figures** (desk, six `bench` runs, load 0.6 to 2.3; CLAUDE.md's Measured table):
+
+| Thing | Figure |
+| --- | --- |
+| The busiest song, real time, alone / 2 helpers: no MOD | 18.3 to 22.2% / 12.3 to 17.2% of a block |
+| ...1 MOD | 18.1 to 22.1% / 13.1 to 16.9% |
+| ...24 MODs | 19.0 to 26.1% / 14.3 to 16.6%; worst block 3.2 to 9.4 / 3.9 to 10.4 ms (one 60 ms: the machine) |
+| Chunks a second: none / 1 / 24 | 1030 / 1285 / 1287 |
+| MODs worked out, twelve silent drum tracks: 1 / 24 on the sends / 24 on LEVEL and PAN | +0.030 to +0.033% / +0.093 to +0.098% / +0.123 to +0.126% of a core |
+| A macro changed, a call: Phazed / QMOD / JAX-EP | 0.36 / 0.92 / 0.11 us |
+
+**What it says**: the real-time rows cannot tell 24 MODs from none on the desk (the ranges
+overlap); the cost that can be read is the silent-track row, about a tenth of a percent of a core
+for 24 (a fifth more on LEVEL and PAN, whose moving level takes the render's per-sample loop), and
+the tick's extra chunks (+25%, the same for 1 or 24). The plan's targets were 0.03% for 24: it is
+three times that, as batch 1 found; left as it is, for the owner, since the handheld's own figure
+is the one that decides. On the handheld (about a fifth as fast) 24 would be about 0.5% of a core,
+guessed, not measured.
+
+**Mutants**: 7 made, 7 killed (`bench_test`: LEVEL or PAN not a target, the DEPTH lanes not written
+or one value, MOD 2 not set, the 24 run as 1, `timeWholeSong` ignoring its MODs).
+
+**Found while testing, not mended (not this batch's)**: `textviews` failed once in four runs with a
+bench running beside it: `mod-deleting` at XL had the MOD gone. The still is taken at 600 ms with B
+held, and a deletion takes a second; on a machine that busy the picture came after the second.
+Alone and in a full `ctest -j3` it passes. The same holds for the other `-deleting` stills. Also
+found: `mod-depth`'s first form (-60% on half the bar, +80% on the rest) could read either at a
+size; it is written -60% on every step now.
 

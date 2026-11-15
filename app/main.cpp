@@ -972,9 +972,10 @@ int main(int argc, char** argv) {
             mods.goTo(0, ModScreen::kDepth);
             pushKey(SDLK_s, true); // X held
         } else if (std::strcmp(view, "mod-depth") == 0) {
-            // MOD 1's DEPTH lane written in this scene (batch 7): -60% on the first half bar, +80% on the
-            // second; the row with its purple line, reading the lane while the demo plays.
-            for (int i = 0; i < kSteps; ++i) s.setAutomation(track, 0, modDepthLane(0), i, modDepthToLane(i < 8 ? -0.6f : 0.8f));
+            // MOD 1's DEPTH lane written in this scene (batch 7): -60% on every step (one reading, whenever
+            // the still is taken: textviews holds the words at every size); the row with its purple line,
+            // reading the lane while the demo plays.
+            for (int i = 0; i < kSteps; ++i) s.setAutomation(track, 0, modDepthLane(0), i, modDepthToLane(-0.6f));
             mods.goTo(0, ModScreen::kDepth);
         } else if (std::strcmp(view, "mod-steps") == 0) {
             mods.goTo(3, ModScreen::kFirstStep + 4);

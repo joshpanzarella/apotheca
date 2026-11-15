@@ -309,6 +309,9 @@ effect in those two groups and fails one that does not.
   through `sendBusiestSong`): what is on each track, bus and the master, that
   the two JAX-EP tracks are on A1 (choosing A1 again changes nothing, to the
   bit), and that the real-time rows count the blocks and helpers they say.
+  **Its 24 MODs too** (`sendBusiestMods`, batch 9: two a track, every kind of
+  target, LEVEL on tracks 4 and 10, PAN on 5 and 11, every MOD 1's DEPTH lane
+  written; each runs, and the 24 cut more chunks than the song alone).
   **It times nothing**; the figures are still run and read. `ctest -R demo`
   runs `render_demo` and reads its three lines. `bench`'s one-track rows have
   no test.
@@ -2088,6 +2091,10 @@ effect in those two groups and fails one that does not.
 | ...the same, the two engines timed in turns (2026-11-15, three runs, load 2.3 to 3.4; one after another a Phazed run had read -0.06%): QMOD / Phazed / JAX-EP | +0.26 to +0.27% / +0.14 to +0.21% / +0.13 to +0.14% (+0.04% in one run) |
 | JAX-EP, a macro changed, a call (2026-11-15, five runs of six; no early return on the same value) | 0.12 us (0.20 in one run): 24 MODs 0.03% of a core at 512 samples, 0.22% at 64 |
 | Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
+| The busiest song with 24 MODs (MOD batch 9, 2026-11-15; `busiestMods`: two a track on macros, effect settings, the ECHO send, LEVEL and PAN, every MOD 1's DEPTH lane written; SPEED TEST runs it ten seconds, as the song without), real time, the audio thread alone / 2 helpers, six runs on a quiet desk (load 0.6 to 2.3). In the same runs the song with no MOD: 18.3 to 22.2% / 12.3 to 17.2%; with 1 MOD: 18.1 to 22.1% / 13.1 to 16.9%. **Not yet run on the handheld** | 19.0 to 26.1% / 14.3 to 16.6% of a block, worst block 3.2 to 9.4 / 3.9 to 10.4 ms of 5.33 (one run 60 ms: the machine; 0 to 2 blocks of 1875 late, as with no MOD). **Within the desk's noise of the song without**: the rows cannot tell the MODs' cost apart |
+| ...chunks a second: no MOD / 1 MOD / 24 MODs | 1030 / 1285 / 1287 |
+| MODs worked out, twelve silent drum tracks (the same six runs, the engines timed in turns): 1 MOD / 24 on the sends / **24 on LEVEL and PAN** (batch 8's moving level and pan loop), over none (0.171 to 0.174%) | +0.030 to +0.033% / +0.093 to +0.098% / +0.123 to +0.126% |
+| ...a macro changed, a call: Phazed / QMOD / JAX-EP (the same runs) | 0.36 / 0.92 / 0.11 us; 24 MODs on QMOD's macros run: +0.27% of a core |
 | One idle frame | 0.03 ms |
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
