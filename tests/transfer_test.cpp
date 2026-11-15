@@ -176,8 +176,42 @@ void testTheServer() {
     a = get(port, door + "/samples/kicks/deep%20one.wav");
     CHECK(a.status == 200 && a.body == wav);
     CHECK(get(port, door + "/samples/kicks/missing.wav").status == 404);
+    // Two levels down too (owner, 2026-11-14): both folders are made, and it is listed after its folder's own and fetched.
+    CHECK(put(port, door + "/samples/kicks/long/boom.wav", wav).status == 200 && readTextFile(samples + "/kicks/long/boom.wav", kept) && kept == wav);
+    CHECK(put(port, door + "/samples/new%2Finner%2Fone.wav", wav).status == 200 && exists(samples + "/new/inner/one.wav"));
+    a = get(port, door + "/list");
+    CHECK(a.body.find(",\"samples\":[\"kick one.wav\",\"breaks/amen.wav\",\"kicks/deep one.wav\",\"kicks/long/boom.wav\",\"new/inner/one.wav\"],") != std::string::npos);
+    CHECK(a.body.find(",\"folders\":[\"breaks\",\"kicks\",\"kicks/long\",\"new\",\"new/inner\"],") != std::string::npos);
+    a = get(port, door + "/samples/kicks/long/boom.wav");
+    CHECK(a.status == 200 && a.body == wav && get(port, door + "/samples/kicks/long/missing.wav").status == 404);
     // ...and no deeper, and not by a name that is not a plain one, and only recordings.
-    CHECK(put(port, door + "/samples/a/b/c.wav", wav).status == 400 && !exists(samples + "/a"));
+    CHECK(put(port, door + "/samples/a/b/c/d.wav", wav).status == 400 && !exists(samples + "/a"));
+    CHECK(put(port, door + "/samples/a/.b/c.wav", wav).status == 400 && put(port, door + "/samples/a//c.wav", wav).status == 400 && put(port, door + "/samples/a/b/.c.wav", wav).status == 400 && !exists(samples + "/a"));
+    CHECK(put(port, door + "/samples/a/..%2F..%2Fup.wav", wav).status == 400 && put(port, door + "/samples/a/b/..%2F..%2F..%2Fup.wav", wav).status == 400 && !exists(root + "/up.wav"));
+    // All of it, without its ending, must be a name a song can keep: 63 letters.
+    CHECK(put(port, door + "/samples/twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(19, 'x') + ".wav", wav).status == 200);
+    CHECK(put(port, door + "/samples/twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(20, 'y') + ".wav", wav).status == 400);
+    CHECK(!exists(samples + "/twenty letters long a/twenty letters long b/" + std::string(20, 'y') + ".wav"));
+    // One that came to be there some other way is not listed: the page could not ask for it by name.
+    writeTextFile(samples + "/twenty letters long a/twenty letters long b/" + std::string(20, 'y') + ".wav", wav);
+    a = get(port, door + "/list");
+    CHECK(a.body.find(std::string(19, 'x') + ".wav") != std::string::npos && a.body.find(std::string(20, 'y')) == std::string::npos);
+    unlink((samples + "/twenty letters long a/twenty letters long b/" + std::string(20, 'y') + ".wav").c_str());
+    CHECK(del(port, door + "/samples/twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(19, 'x') + ".wav").status == 200 && !exists(samples + "/twenty letters long a"));
+    // A folder on the way that is a file, or a link out: refused, and nothing made stays.
+    writeTextFile(samples + "/afile", "x");
+    CHECK(put(port, door + "/samples/afile/in/x.wav", wav).status == 400 && put(port, door + "/samples/fresh/in/x.wav", wav).status == 200);
+    CHECK(symlink(root.c_str(), (samples + "/fresh/out").c_str()) == 0);
+    CHECK(put(port, door + "/samples/fresh/out/x.wav", wav).status == 400 && !exists(root + "/x.wav"));
+    writeTextFile(root + "/x.wav", wav); // nor is one that IS out there deleted or moved through the link
+    CHECK(del(port, door + "/samples/fresh/out/x.wav").status == 404 && post(port, door + "/samples/fresh/out/x.wav", "mine.wav").status == 404 && exists(root + "/x.wav") && !exists(samples + "/mine.wav"));
+    unlink((root + "/x.wav").c_str());
+    CHECK(del(port, door + "/samples/fresh/in/x.wav").status == 200 && !exists(samples + "/fresh/in") && exists(samples + "/fresh")); // the inner one went with its last; the outer still holds the link
+    unlink((samples + "/fresh/out").c_str());
+    rmdir((samples + "/fresh").c_str());
+    unlink((samples + "/afile").c_str());
+    CHECK(del(port, door + "/samples/new/inner/one.wav").status == 200 && !exists(samples + "/new")); // both folders went with their last recording
+    CHECK(del(port, door + "/samples/kicks/long/boom.wav").status == 200 && !exists(samples + "/kicks/long") && exists(samples + "/kicks/deep one.wav"));
     CHECK(put(port, door + "/samples/../up.wav", wav).status == 400 && put(port, door + "/samples/a/..%2Fup.wav", wav).status == 400 && !exists(root + "/up.wav"));
     CHECK(put(port, door + "/samples/.hid/x.wav", wav).status == 400 && put(port, door + "/samples/a/.x.wav", wav).status == 400 && put(port, door + "/samples//x.wav", wav).status == 400);
     CHECK(put(port, door + "/samples/a/.wav", wav).status == 400 && put(port, door + "/samples/a/b.json", wav).status == 400);
@@ -266,7 +300,7 @@ void testDeletingAndMoving() {
     CHECK(del(port, "/samples/a.wav").status == 403 && del(port, "/0000/samples/a.wav").status == 403 && exists(samples + "/a.wav"));
     CHECK(del(port, door + "/samples/missing.wav").status == 404 && del(port, door + "/samples/kicks/missing.wav").status == 404 && del(port, door + "/samples/nowhere/one.wav").status == 404);
     for (const char* bad : {"/samples/..%2Fsecret.wav", "/samples/../secret.wav", "/samples/kicks/..%2F..%2Fsecret.wav", "/samples/kicks/../../secret.wav", "/samples/..%2Fout/x.wav", "/samples/../out/x.wav",
-                            "/samples/kicks%5Cone.wav", "/samples/kicks/sub/one.wav", "/samples/.hid/one.wav", "/samples/kicks/.one.wav", "/samples/kicks", "/samples/kicks/", "/samples/", "/samples",
+                            "/samples/kicks%5Cone.wav", "/samples/kicks/sub/more/one.wav", "/samples/.hid/one.wav", "/samples/kicks/.one.wav", "/samples/kicks", "/samples/kicks/", "/samples/", "/samples",
                             "/songs/quiet%20road.1.rev", "/songs/..%2Fsecret.wav", "/songs/deleted/x.song", "/chords/..%2Fsongs%2Fquiet%20road.song", "/bounces/..%2Fsecret.wav", "/bounces/sub/mix.wav",
                             "/elsewhere/a.wav", "/out/x.wav", "/secret.wav", "/samples/a.wav%00.song", "/songs/a.wav"})
         CHECK(del(port, door + bad).status == 400);
@@ -305,11 +339,25 @@ void testDeletingAndMoving() {
     // Refused: no number, nowhere to go, somewhere it may not go, not there, and only recordings.
     CHECK(post(port, "/samples/a.wav", "c.wav").status == 403);
     CHECK(raw(port, "POST " + door + "/samples/a.wav HTTP/1.1\r\nContent-Length: 0\r\n\r\n").status == 400);
-    for (const char* bad : {"", "c", "c.json", "c.song", "..%2Fc.wav", "../c.wav", "..%2Fout%2Fc.wav", "../out/c.wav", "/c.wav", "%2Fc.wav", "x/y/c.wav", "x/..%2Fc.wav", "x/../c.wav", ".x/c.wav", "x/.c.wav", "x%5Cc.wav",
+    for (const char* bad : {"", "c", "c.json", "c.song", "..%2Fc.wav", "../c.wav", "..%2Fout%2Fc.wav", "../out/c.wav", "/c.wav", "%2Fc.wav", "x/y/z/c.wav", "x//c.wav", "x/.y/c.wav", "x/..%2Fc.wav", "x/../c.wav", ".x/c.wav", "x/.c.wav", "x%5Cc.wav",
                             "x/.wav", "/tmp/c.wav", "a%20folder%20name%20that%20is%20far%20too%20long/c.wav", "c.wav%00", "c%0A.wav", "x:y/c.wav"})
         CHECK(post(port, door + "/samples/a.wav", bad).status == 400);
-    CHECK(post(port, door + "/samples/a.wav", "x/" + std::string(33, 'n') + ".wav").status == 400); // 36 at most in a folder
-    for (const char* bad : {"/samples/..%2Fsecret.wav", "/samples/../secret.wav", "/samples/x/y/a.wav", "/samples/.a.wav", "/elsewhere/a.wav", "/samples/kicks%5Ca.wav"}) CHECK(post(port, door + bad, "c.wav").status == 400);
+    CHECK(post(port, door + "/samples/a.wav", "x/" + std::string(57, 'n') + ".wav").status == 400 && !exists(samples + "/x")); // 60 at most, in a folder as out of one
+    CHECK(post(port, door + "/samples/a.wav", "kicks/" + std::string(58, 'n') + ".wav").status == 400); // and 63 with its folders
+    {
+        // A long name the handheld carried into a folder (its list lets any recording go into one, and has no
+        // rename): the page lists it, and can move it and delete it. Held to 32 letters in a folder, it was
+        // gone from the page, which then answered 400 for it.
+        const std::string longer(40, 'm'), there = "kicks/" + longer + ".wav";
+        mkdir((samples + "/kicks").c_str(), 0755);
+        CHECK(writeTextFile(samples + "/" + there, wav));
+        CHECK(get(port, door + "/list").body.find("\"" + there + "\"") != std::string::npos);
+        CHECK(post(port, door + "/samples/" + there, longer + ".wav").status == 200 && exists(samples + "/" + longer + ".wav") && !exists(samples + "/" + there));
+        CHECK(post(port, door + "/samples/" + longer + ".wav", there).status == 200 && exists(samples + "/" + there));
+        CHECK(del(port, door + "/samples/" + there).status == 200 && !exists(samples + "/" + there));
+        received = transfer.received();
+    }
+    for (const char* bad : {"/samples/..%2Fsecret.wav", "/samples/../secret.wav", "/samples/x/y/z/a.wav", "/samples/.a.wav", "/elsewhere/a.wav", "/samples/kicks%5Ca.wav"}) CHECK(post(port, door + bad, "c.wav").status == 400);
     CHECK(post(port, door + "/samples/missing.wav", "c.wav").status == 404 && post(port, door + "/samples/dir.wav", "c.wav").status == 404);
     CHECK(post(port, door + "/samples/link.wav", "c.wav").status == 404 && post(port, door + "/samples/linked/x.wav", "c.wav").status == 404 && exists(out + "/x.wav"));
     CHECK(post(port, door + "/samples/a.wav", "linked/c.wav").status == 400 && !exists(out + "/c.wav")); // not into a link to somewhere else
@@ -327,6 +375,14 @@ void testDeletingAndMoving() {
     CHECK(post(port, door + "/samples/c%20new.wav", "new%20place/c.wav").status == 200 && !exists(samples + "/c new.wav") && readTextFile(samples + "/new place/c.wav", kept) && kept == wav);
     CHECK(post(port, door + "/samples/b.wav", "new%20place%2Fb.wav").status == 200 && exists(samples + "/new place/b.wav"));
     CHECK(post(port, door + "/samples/new%20place/c.wav", "empty/c.wav").status == 200 && exists(samples + "/empty/c.wav") && exists(samples + "/new place/b.wav"));
+    // Two levels down, both folders coming into being for it; on to another inner folder, and the first inner one goes;
+    // then out, and both go. Not where all of it would be too long a name for a song.
+    CHECK(post(port, door + "/samples/empty/c.wav", "drums/kicks/c.wav").status == 200 && readTextFile(samples + "/drums/kicks/c.wav", kept) && kept == wav);
+    CHECK(post(port, door + "/samples/drums/kicks/c.wav", "drums%2Fsnares%2Fc.wav").status == 200 && exists(samples + "/drums/snares/c.wav") && !exists(samples + "/drums/kicks"));
+    CHECK(post(port, door + "/samples/drums/snares/c.wav", "twenty%20letters%20long%20a/twenty%20letters%20long%20b/" + std::string(20, 'c') + ".wav").status == 400 && !exists(samples + "/twenty letters long a"));
+    CHECK(post(port, door + "/samples/drums/snares/c.wav", "linked/in/c.wav").status == 400 && !exists(out + "/in"));
+    CHECK(post(port, door + "/samples/drums/snares/missing.wav", "c.wav").status == 404);
+    CHECK(post(port, door + "/samples/drums/snares/c.wav", "empty/c.wav").status == 200 && exists(samples + "/empty/c.wav") && !exists(samples + "/drums"));
     // The header in small letters, with spaces round what it says; and back out to the loose ones.
     a = raw(port, "POST " + door + "/samples/new%20place/b.wav HTTP/1.1\r\nx-to:   B.WAV  \r\nHost: x\r\n\r\n");
     CHECK(a.status == 200 && readTextFile(samples + "/B.WAV", kept) && kept == other && !exists(samples + "/new place"));
@@ -765,7 +821,7 @@ static void testTheOpenSongFollows() {
 
     // Told directly: names that are no recording's change nothing, and an empty lane is not "sent" one.
     session.recordingChanged("LOUD", "../outside");
-    session.recordingChanged("LOUD", "a/b/c");
+    session.recordingChanged("LOUD", "a/b/c/d");
     session.recordingChanged("", "");
     session.recordingChanged("kicks/../x", "fine");
     CHECK(lane(5) == "LOUD" && lane(4).empty() && lane(0) == "kicks/big boom");
@@ -789,9 +845,9 @@ static void testTheSpeedTest() {
     const std::string door = "/" + transfer.pin();
     const std::string was = Transfer::benchCommand;
     CHECK(was.find("--bench") != std::string::npos); // the program itself, timing only
-    Transfer::benchCommand = "echo Phazed 4.2; echo Twin 9.9";
+    Transfer::benchCommand = "echo Phazed 4.2; echo JAX-EP 9.9";
     Answer a = raw(port, "GET " + door + "/bench HTTP/1.1\r\n\r\n");
-    CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nTwin 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
+    CHECK(a.status == 200 && a.body.find("Apotheca ") == 0 && a.body.find("Phazed 4.2\nJAX-EP 9.9\n") != std::string::npos && a.body.find("did not finish") == std::string::npos);
     CHECK(raw(port, "GET /bench HTTP/1.1\r\n\r\n").status == 403); // not without the number
     CHECK(raw(port, "POST " + door + "/bench HTTP/1.1\r\nContent-Length: 0\r\n\r\n").body.find("Phazed") == std::string::npos); // only asked for, never sent to
     Transfer::benchCommand = "echo half; exit 3";
@@ -1002,6 +1058,13 @@ static void testFoundOnLoad() {
     wav("y/odd", 0.3f);
     CHECK(session.findMissing("odd") == 1 && lane(6) == "y/odd" && !missing(6) && lane(2) == "gone" && missing(2));
     CHECK(session.findMissing("nothing of this name") == 0);
+    // One two folders down is found by its base name as well (two levels: owner, 2026-11-14).
+    mkdir((samples + "/deep").c_str(), 0755);
+    mkdir((samples + "/deep/er").c_str(), 0755);
+    wav("deep/er/far", 0.2f);
+    session.setLaneSample(0, 6, "far");
+    CHECK(missing(6) && session.findMissing("far") == 1 && lane(6) == "deep/er/far" && !missing(6));
+    session.setLaneSample(0, 6, "y/odd");
     const int looked = session.sampleLookups();
     CHECK(session.findMissing("fine") == 0 && session.sampleLookups() == looked); // nothing of that name is missing: no listing
     CHECK(session.findMissing() == 1 && lane(2) == "x/gone" && !missing(2) && std::abs(session.laneSound(0, 2).seconds - 0.3f) < 0.01f);
@@ -1144,7 +1207,7 @@ static void testSavedSongsFollow() {
     // Asked directly: how many files were written. Names that are no recording's change nothing.
     typedef std::vector<std::pair<std::string, std::string>> Renames;
     CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "../outside"}}) == 0);
-    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "a/b/c"}}) == 0);
+    CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", "a/b/c/d"}}) == 0);
     CHECK(session.savedSongsFollow(Renames{{"kicks/big boom", ""}, {"", "kicks/big boom"}}) == 0);
     CHECK(writeTextFile(junk, "apotheca-song 1\ntrack sampler\nsound ../x\n"));
     CHECK(session.savedSongsFollow(Renames{{"../x", "fine"}}) == 0 && contents(junk) == "apotheca-song 1\ntrack sampler\nsound ../x\n");

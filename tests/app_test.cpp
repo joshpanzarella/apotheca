@@ -272,7 +272,8 @@ void testRepeatCounts() {
     rig.tap(B);
     CHECK(rig.project().repeats[0] == 1);
     CHECK(rig.app.song().cursorScene() == 0); // none of that moved the cursor
-    // Each scene has its own.
+    // Each scene has its own. (Scene 2 given a hit: the row just past the last scene is the song's end, AT END, not a count.)
+    rig.project().tracks[0].drums[1][0].level[0][0] = 0.9f;
     rig.tap(DOWN);
     rig.tap(A);
     CHECK(rig.project().repeats[1] == 2 && rig.project().repeats[0] == 1);
@@ -1152,9 +1153,29 @@ void testMuteSoloAndNames() {
     rig.render(2000);
     levels(d, p);
     CHECK(d > 0.05f && !rig.project().tracks[0].muted);
-    // L1: soloed. Only it is heard, and a muted track that is soloed is heard too.
+    // L1 HELD: soloed. Only it is heard, and a muted track that is soloed is heard too. A tap of L1 does
+    // nothing (owner, 2026-11-14), nor does a hold let go just short, or one carried to another track.
+    const auto holdL1 = [&](int ms) { rig.key(L1, true); rig.frames(ms / 16 + 2); rig.key(L1, false); rig.frames(1); };
+    const int solo = static_cast<int>(SongScreen::kSoloHoldMs);
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(L1);
+    rig.frames(40);
+    CHECK(!rig.project().tracks[1].solo);
+    holdL1(solo - 100);
+    CHECK(!rig.project().tracks[1].solo);
+    rig.key(L1, true);
+    rig.frames(10);
+    rig.tap(LEFT);
+    rig.frames(40);
+    rig.key(L1, false);
+    CHECK(!rig.project().tracks[0].solo && !rig.project().tracks[1].solo);
+    rig.app.song().moveCursorTo(0, 1);
+    rig.key(L1, true);
+    rig.frames(solo / 16 + 2);
+    CHECK(rig.project().tracks[1].solo); // at the hold's end, before L1 is let go
+    rig.frames(60);
+    CHECK(rig.project().tracks[1].solo); // once: kept held, it does not flip back
+    rig.key(L1, false);
     CHECK(rig.project().tracks[1].solo && session.heard(1) && !session.heard(0));
     rig.render(2000);
     levels(d, p);
@@ -1162,11 +1183,11 @@ void testMuteSoloAndNames() {
     rig.tap(Y); // muted as well: solo still wins while it is on
     CHECK(session.heard(1));
     rig.app.song().moveCursorTo(0, 0);
-    rig.tap(L1); // both soloed: both heard
+    holdL1(solo); // both soloed: both heard
     CHECK(session.heard(0) && session.heard(1));
-    rig.tap(L1);
+    holdL1(solo);
     rig.app.song().moveCursorTo(0, 1);
-    rig.tap(L1); // no solo left: the mute shows again
+    holdL1(solo); // no solo left: the mute shows again
     CHECK(session.heard(0) && !session.heard(1));
     rig.render(2000);
     levels(d, p);
@@ -1175,11 +1196,11 @@ void testMuteSoloAndNames() {
     // Not on the repeat counts or + TRACK: nothing to mute there, and nothing breaks.
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(Y);
-    rig.tap(L1);
+    holdL1(solo);
     rig.tap(X);
     rig.app.song().moveCursorTo(0, 2);
     rig.tap(Y);
-    rig.tap(L1);
+    holdL1(solo);
     CHECK(session.heard(0) && session.heard(1) && !rig.app.song().listingSongs());
     rig.tap(START);
     rig.render(96000);
@@ -1350,10 +1371,10 @@ void testNothingStaysHeld() {
 void testDeletingATrack() {
     Rig rig;
     Session& session = rig.app.session();
-    // Four tracks, each with something of its own: drums, Phazed (named), Twin, QMOD.
+    // Four tracks, each with something of its own: drums, Phazed (named), JAX-EP, QMOD.
     rig.app.drums().setStep(0, 0, 1.f);
     session.addTrack(TrackKind::Phazed);
-    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Jx3p);
     session.addTrack(TrackKind::Qmod);
     session.setTrackName(1, "BASS");
     rig.project().tracks[2].notes[0][0].notes[0] = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
@@ -1383,12 +1404,12 @@ void testDeletingATrack() {
     rig.frames(130);
     rig.key(B, false);
     CHECK(rig.project().trackCount() == 3);
-    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Twin && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Jx3p && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
     CHECK(rig.project().tracks[1].name[0] == 0 && rig.project().tracks[1].notes[0][0].at(62, 4) >= 0 && near(rig.project().tracks[1].automation[0][3][5], 0.25f));
     CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].qmod.value[qmod::Sound] == 4321 && rig.project().tracks[2].muted);
     CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 1.f && rig.project().track == 2 && !rig.project().playing);
     for (float v : rig.project().tracks[3].automation[0][3]) CHECK(v < 0.f); // the freed place is clean
-    // The engine has them in their new places: the Twin note sounds from track 2, and the kick still plays.
+    // The engine has them in their new places: the JAX-EP note sounds from track 2, and the kick still plays.
     rig.render(96000);
     session.setMuted(2, false);
     session.view = View::Pattern;
@@ -1551,10 +1572,10 @@ void testBouncing() {
     session.useBounceFolder(folder);
     CHECK(!there("old 261112-104548.wav.part") && there("notes.part"));
     plant("old 261112-104549.wav.part"); // ...and when the next bounce starts
-    // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a Twin track with one long note.
+    // A song: scene 1 (two bars' worth: it plays twice) with a kick on each beat, and a JAX-EP track with one long note.
     for (int step = 0; step < kSteps; step += 4) rig.app.drums().setStep(0, step, 1.f);
     rig.project().repeats[0] = 2;
-    session.addTrack(TrackKind::Twin);
+    session.addTrack(TrackKind::Jx3p);
     NotePattern& bar = rig.project().tracks[1].notes[0][0];
     bar.notes[0].step = 8;
     bar.notes[0].pitch = 57;
@@ -1562,7 +1583,7 @@ void testBouncing() {
     bar.notes[0].velocity = 0.8f;
     session.sendNotePattern(1, 0);
     session.setTrackName(1, "LEAD");
-    const int oversample = rig.project().tracks[1].twin.value[twin::Oversample];
+    const Jx3pPatch asItWas = rig.project().tracks[1].jx3p;
     rig.frames(2);
 
     // The whole song: one file, as long as the song and its tail (the last kick ringing out, and half a second), with sound where the song has it.
@@ -1580,11 +1601,11 @@ void testBouncing() {
     const std::size_t tail = song.left.size() - body;
     CHECK(peakIn(song, 0, 2000) > 0.2f);                                  // the first kick, at the very start
     CHECK(peakIn(song, kBar, kBar + 2000) > 0.2f);                        // and the scene's second time round
-    CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the Twin note
+    CHECK(peakIn(song, 8 * kStep + 500, 11 * kStep) > 0.01f);             // the JAX-EP note
     CHECK(peakIn(song, body + tail - kAfter, body + tail) < 0.001f);      // the tail has died away: nothing started again
     CHECK(peakIn(song, body + 4000, body + 24000) < peakIn(song, 0, 2000)); // no kick after the song's end
-    // The song itself was only read: Twin's own oversampling setting is as it was, and nothing is playing.
-    CHECK(rig.project().tracks[1].twin.value[twin::Oversample] == oversample && !rig.project().playing);
+    // The song itself was only read: the synth's settings are as they were, and nothing is playing.
+    CHECK(std::equal(asItWas.value, asItWas.value + jx3p::kSettings, rig.project().tracks[1].jx3p.value) && !rig.project().playing);
 
     // Each track: a file apiece, named for its track, and each has only its own sound.
     sleep(1); // the files are named by the second
@@ -4747,13 +4768,16 @@ void testTheFxScreensList() {
     CHECK(familyPlace(kindNow()) >= 4 && familyPlace(kindNow()) <= 6);
     rig.key(DOWN, false);
     rig.key(A, false);
-    // On a setting, left and right with A held do nothing at all.
+    // On a setting, left and right with A held switch the slot's TYPE (testFxSwitchesType), the cursor kept;
+    // back again it is the FILTER as it was left.
     session.setEffect(0, 0, EffectKind::Filter);
     fx.goTo(0, 1);
     const float cutoff = project.tracks[0].effects[0].param[0];
     rig.key(A, true);
     rig.tap(RIGHT);
-    CHECK(project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
+    CHECK(project.tracks[0].effects[0].kind == static_cast<int>(effectTypeAt(EffectKind::Filter, 1)) && fx.cursorColumn() == 1);
+    rig.tap(LEFT);
+    CHECK(project.tracks[0].effects[0].kind == static_cast<int>(EffectKind::Filter) && project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
     rig.tap(LEFT);
     CHECK(project.tracks[0].effects[0].kind == filter && project.tracks[0].effects[0].param[0] == cutoff && fx.cursorColumn() == 1);
     rig.key(A, false);
@@ -5116,7 +5140,7 @@ void testTheFxScreenAsDrawn() {
     const bool barFound = hinted("effects");
     CHECK(barFound);
     if (barFound) {
-        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default value") && !hinted("turn"));
+        CHECK(hinted("settings") && hinted("delete") && hinted("play") && !hinted("default") && !hinted("turn"));
         fx.goTo(1, 0);
         session.setEffect(0, 1, EffectKind::None);
         draw();
@@ -5126,10 +5150,10 @@ void testTheFxScreenAsDrawn() {
         CHECK(hinted("sends") && hinted("send nothing") && !hinted("effects"));
         fx.goTo(F::kSendsRow, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default value"));
+        CHECK(hinted("list") && hinted("turn") && hinted("none") && !hinted("default"));
         fx.goTo(0, 2);
         draw();
-        CHECK(hinted("list") && hinted("turn") && hinted("default value"));
+        CHECK(hinted("list") && hinted("turn, type") && hinted("default")); // (DELAY has types: HOLD A turns and switches)
         rig.key(A, true);
         draw();
         CHECK(hinted("turn it") && !hinted("list") && !hinted("effect"));
@@ -5563,7 +5587,9 @@ void testTheFxScreenSecondReview() {
     rig.tap(DOWN, 2);
     CHECK(reads(1) == "40%");
     rig.key(A, false);
-    // The same from the TAPE's usual 48%, and on the TAPE itself every push is seen.
+    // The same from the TAPE's usual 48%, and on the TAPE itself every push is seen. (Emptied first: the slot
+    // would otherwise give back the DELAY it remembers, as it was left, testFxSwitchesType.)
+    session.setEffect(0, 0, EffectKind::None);
     session.setEffect(0, 0, EffectKind::Tape);
     CHECK(slot.param[1] == 0.4f && reads(1) == "48%");
     fx.goTo(0, 0);
@@ -5577,6 +5603,7 @@ void testTheFxScreenSecondReview() {
         for (SDL_Keycode way : {UP, DOWN}) {
             if (slot.kind != static_cast<int>(EffectKind::Delay)) { fx.goTo(0, 0); type(LEFT); }
             session.setEffectParam(0, 0, 1, static_cast<float>(k) / 20.f);
+            session.forgetTypes(0, 0); // (carried, not the TAPE the slot remembers)
             fx.goTo(0, 0);
             type(RIGHT);
             const std::string was = reads(1);
@@ -5803,6 +5830,53 @@ Rig* onPhazed() {
     Rig* rig = onNotes();
     rig->tap(R2);
     return rig;
+}
+
+// A built-in sound picked after the macros were turned: the engine must rest the macros where the screen shows
+// them (the middle). It kept the old sound's knobs, and a song that wrapped from a scene with macro automation
+// into one without played the old sound's macros there (owner, 2026-11-14, "went back to a previous sound").
+// The song, through the Session, beside one whose knobs were never turned: the same to the sample, after the wrap.
+void testABuiltInPresetRestsTheMacrosWhereTheyShow() {
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod};
+    for (TrackKind kind : kinds) {
+        const auto song = [kind](bool turned) {
+            Rig* rig = new Rig;
+            Session& s = rig->app.session();
+            Project& p = rig->project();
+            s.addTrack(kind);
+            rig->frames(2);
+            s.setEffect(1, 0, EffectKind::Filter);
+            s.setEffectParam(1, 0, 0, 0.3f);
+            TrackData& synth = p.tracks[1];
+            synth.notes[0][0].notes[0] = NoteEvent{0, 48, 6.f, 0.f, 0.8f, 0, 0, 0, 0};
+            synth.notes[1][0].notes[0] = NoteEvent{8, 48, 16.f, 0.f, 0.8f, 0, 0, 0, 0}; // rings over the wrap
+            for (int m = 0; m < kSynthMacros; ++m)
+                for (int step = 0; step < 16; ++step) synth.automation[1][m][step] = 0.3f; // the second scene only
+            p.scene = 0;
+            p.track = 1;
+            s.applyProject();
+            rig->frames(2);
+            if (turned) {
+                for (int m = 0; m < kSynthMacros; ++m) s.setSynthMacro(1, m, m % 2 ? 0.95f : 0.05f);
+                rig->frames(2);
+            }
+            s.chooseSynthPreset(1, 1 % specFor(kind)->presetCount()); // (the JX-3P has one until the plan's batch 7: the first again)
+            rig->frames(2);
+            CHECK(p.tracks[1].macro[0] == 0.5f && p.sceneCount() == 2);
+            s.togglePlay(true);
+            std::vector<float> out;
+            for (int b = 0; b < 48 * 6000 / 768; ++b) { // scene 1, scene 2 and scene 1 again, a frame at a time
+                const std::vector<float> got = rig->render(768);
+                out.insert(out.end(), got.begin(), got.end());
+                rig->frames(1);
+            }
+            delete rig;
+            return out;
+        };
+        const std::vector<float> plain = song(false), turned = song(true);
+        CHECK(Rig::peak(plain, 32 * 6000) > 0.005f);
+        CHECK(plain == turned);
+    }
 }
 
 void testPresetsAndFolders() {
@@ -6051,30 +6125,50 @@ void testEveryPatchSettingIsOnSomePage() {
     for (bool s : seen) CHECK(s);
 }
 
-// ---- Twin Analog, through the same screens ------------------------------------------
+// ---- JAX-EP, through the same screens ------------------------------------------
 
-Rig* onTwin() {
+Rig* onJaxep() {
     Rig* rig = new Rig;
     rig->app.session().view = View::Song;
     rig->app.song().moveCursorTo(0, rig->project().trackCount());
     rig->tap(A);    // + TRACK
-    rig->tap(DOWN); // from PHAZED down to TWIN ANALOG
+    rig->tap(DOWN); // from PHAZED down to JAX-EP
     rig->tap(A);
     return rig;
 }
 
-void testAddingTwinAnalog() {
-    std::unique_ptr<Rig> rig(onTwin());
+void testAddingJaxep() {
+    std::unique_ptr<Rig> rig(onJaxep());
     CHECK(rig->project().trackCount() == 2);
-    CHECK(rig->project().tracks[1].kind == TrackKind::Twin);
-    // Its first preset is loaded into the project, as the engine has it.
-    const TwinPatch first = Twin::presetPatch(0);
-    for (int id = 0; id < twin::kSettings; ++id) CHECK(rig->project().tracks[1].twin.value[id] == first.value[id]);
+    CHECK(rig->project().tracks[1].kind == TrackKind::Jx3p);
+    // JAX-EP (owner, 2026-11-14; jx3p-plan.md): the name on the device, a new word in a song file, and
+    // the old Twin Analog is not in the list to pick from (its word is read, never offered or written).
+    // No maker's or model's name where a player reads.
+    const InstrumentInfo* info = instrument(TrackKind::Jx3p);
+    CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
+          std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
+    CHECK(kInstrumentCount == 5);
+    for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin");
+    bool old = false;
+    CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
+    old = true;
+    CHECK(trackKindFromWord("jaxep", &old) == TrackKind::Jx3p && !old && trackKindFromWord("twins") == TrackKind::None);
+    CHECK(trackKindFromWord("jx3p") == TrackKind::None); // the plan's first word: never written by anything released
+    CHECK(std::string(info->shortName) == "JAX" && std::string(info->about) == "virtual analog, after a popular DCO synth" && !info->countPresets);
+    for (int i = 0; i < kInstrumentCount; ++i)
+        for (const char* text : {kInstruments[i].name, kInstruments[i].shortName, kInstruments[i].listName, kInstruments[i].about})
+            for (const char* maker : {"TWIN", "Twin", "JX", "Roland", "ROLAND", "PG-200", "Juno", "JUNO"}) CHECK(std::string(text).find(maker) == std::string::npos);
+    CHECK(std::string(jx3pSpec().name) == "JAX-EP");
+    // Its first preset is loaded into the project, as the engine has it: VELOCITY on and BRILLIANCE
+    // in the middle, a new track's.
+    const Jx3pPatch first = Jx3p::presetPatch(0);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(rig->project().tracks[1].jx3p.value[id] == first.value[id]);
+    CHECK(first.value[jx3p::Velocity] == 1 && first.value[jx3p::Brilliance] == 50);
     // The chooser goes round all five.
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 4); // PHAZED > TWIN > SAMPLER > QMOD > DRUMS
+    rig->tap(DOWN, 4); // PHAZED > JAX-EP > SAMPLER > QMOD > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
@@ -6094,34 +6188,54 @@ void testAddingTwinAnalog() {
     CHECK(rig->engine->trackPeak(0) == 0.f && rig->engine->trackPeak(2) == 0.f);
 }
 
-void testTwinsDeviceScreen() {
-    std::unique_ptr<Rig> rig(onTwin());
+void testJaxepsDeviceScreen() {
+    std::unique_ptr<Rig> rig(onJaxep());
     rig->tap(A);  // open its pattern
     rig->tap(R2); // and its device
-    SynthScreen& screen = rig->app.twin();
+    SynthScreen& screen = rig->app.jaxep();
     TrackData& track = rig->project().tracks[1];
-    CHECK(rig->view() == View::Device && screen.pageCount() == 4);
+    CHECK(rig->view() == View::Device && screen.pageCount() == 6);
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
 
-    // Presets: sixteen, and round.
+    // Presets, and round: the factory 32 (the plan's batch 7).
+    const int presets = Jx3p::presetCount();
     rig->key(A, true);
     rig->tap(UP);
-    CHECK(track.preset == 1);
-    for (int id = 0; id < twin::kSettings; ++id) CHECK(track.twin.value[id] == Twin::presetPatch(1).value[id]);
+    CHECK(track.preset == 1 % presets);
+    for (int id = 0; id < jx3p::kSettings; ++id) CHECK(track.jx3p.value[id] == Jx3p::presetPatch(1 % presets).value[id]);
     rig->tap(DOWN, 2);
-    CHECK(track.preset == Twin::presetCount() - 1);
+    CHECK(track.preset == presets - 1);
     rig->tap(UP);
     rig->key(A, false);
+    CHECK(track.preset == 0);
+    CHECK(presets == 32 && std::string(jx3pSpec().presetName(0)) == "String I" && std::string(jx3pSpec().presetCategory(0)) == "BANK A");
+
+    // A folder jump is a bank jump (the plan, section 4): on FOLDER, A held, up is B1; up again goes round
+    // to A1; down from A1 is B1 again. The patch goes with it.
+    screen.goTo(0, SynthScreen::kFolder);
+    rig->key(A, true);
+    rig->tap(UP);
+    CHECK(track.preset == 16 && std::string(jx3pSpec().presetName(track.preset)) == "Violin" && std::string(jx3pSpec().presetCategory(track.preset)) == "BANK B");
+    for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(track.jx3p.value[id] == Jx3p::presetPatch(16).value[id]);
+    rig->tap(UP);
+    CHECK(track.preset == 0);
+    rig->tap(DOWN);
+    CHECK(track.preset == 16);
+    rig->tap(DOWN);
+    rig->key(A, false);
+    CHECK(track.preset == 0);
+    screen.goTo(0, SynthScreen::kPreset);
 
     // A macro.
-    screen.goTo(0, SynthScreen::kFirstMacro + twin::Blend);
+    screen.goTo(0, SynthScreen::kFirstMacro + jx3p::MacroMix);
     rig->key(A, true);
     rig->tap(UP, 3);
     rig->key(A, false);
-    CHECK(near(track.macro[twin::Blend], 0.65f));
+    CHECK(near(track.macro[jx3p::MacroMix], 0.65f));
+    CHECK(std::string(jx3pSpec().macroNames[jx3p::MacroCutoff]) == "CUTOFF" && std::string(jx3pSpec().macroNames[jx3p::MacroRelease]) == "RELEASE");
 
-    // Three advanced pages hold all twenty-three settings, each once.
-    int seen[twin::kSettings] = {};
+    // Five advanced pages hold all thirty-four settings, each once.
+    int seen[jx3p::kSettings] = {};
     for (int page = 1; page < screen.pageCount(); ++page) {
         for (int stop = 0; stop < 40; ++stop) {
             screen.goTo(page, stop);
@@ -6130,54 +6244,387 @@ void testTwinsDeviceScreen() {
     }
     for (int count : seen) CHECK(count == 1);
     screen.goTo(9, 0);
-    CHECK(screen.page() == 3); // there is no page nine here
+    CHECK(screen.page() == 5); // there is no page nine here
     rig->tap(R1);
     CHECK(screen.page() == 1); // round
     rig->tap(L1);
-    CHECK(screen.page() == 3);
+    CHECK(screen.page() == 5);
 
     // A setting changes the project and stops at its limits.
     screen.goTo(1, 0);
-    CHECK(screen.settingHere() == twin::VOctave);
+    CHECK(screen.settingHere() == jx3p::Dco1Range);
     rig->key(A, true);
     rig->tap(UP, 9);
-    CHECK(track.twin.value[twin::VOctave] == 2);
+    CHECK(track.jx3p.value[jx3p::Dco1Range] == 2);
     rig->tap(DOWN, 9);
-    CHECK(track.twin.value[twin::VOctave] == -2);
+    CHECK(track.jx3p.value[jx3p::Dco1Range] == 0);
     rig->key(A, false);
     CHECK(track.patch.value[phazed::Octave] == 0); // and never touches the other synth's patch
 }
 
-void testTheEngineHearsTwinsSettings() {
-    // The level setting, 12 dB down, is a quarter as loud.
-    const auto loudness = [](int steps) {
-        std::unique_ptr<Rig> rig(onTwin());
+// HOW JAX-EP READS (jx3p-plan.md, section 1 and batch 6b): a knob as its dial, in tenths, 0.0 to 10.0; a switch
+// by its positions' names; a macro as how far from the patch it is; a folder by what is known of its sounds.
+void testHowJaxepReads() {
+    const SynthSpec& spec = jx3pSpec();
+    const auto reads = [&](int id, int value) {
+        char text[32];
+        spec.settingText(id, value, text, sizeof text);
+        return std::string(text);
+    };
+    const int switches[] = {jx3p::Dco1Range, jx3p::Dco1Wave, jx3p::Dco1Lfo, jx3p::Dco1Env, jx3p::Dco2Range, jx3p::Dco2Wave, jx3p::Dco2CrossMod, jx3p::Dco2Lfo,
+                            jx3p::Dco2Env, jx3p::DcoEnvPolarity, jx3p::VcfEnvPolarity, jx3p::VcaMode, jx3p::LfoWave, jx3p::Chorus, jx3p::Velocity};
+    int knobs = 0;
+    for (int id = 0; id < jx3p::kSettings; ++id) {
+        bool isSwitch = false;
+        for (int s : switches) isSwitch = isSwitch || s == id;
+        if (isSwitch) {
+            CHECK(spec.settingMax(id) <= 3);
+            continue;
+        }
+        ++knobs;
+        CHECK(spec.settingMin(id) == 0 && spec.settingMax(id) == 100);
+        CHECK(reads(id, 0) == "0.0" && reads(id, 100) == "10.0" && reads(id, 1) == "0.1" && reads(id, 9) == "0.9" && reads(id, 10) == "1.0" && reads(id, 53) == "5.3" && reads(id, 79) == "7.9" && reads(id, 98) == "9.8");
+    }
+    CHECK(knobs == 19);
+    const auto every = [&](int id) {
+        std::string all;
+        for (int v = spec.settingMin(id); v <= spec.settingMax(id); ++v) all += (v ? " " : "") + reads(id, v);
+        return all;
+    };
+    CHECK(every(jx3p::Dco1Range) == "16' 8' 4'" && every(jx3p::Dco2Range) == "16' 8' 4'");
+    CHECK(every(jx3p::Dco1Wave) == "SAW PULSE SQUARE" && every(jx3p::Dco2Wave) == "SAW PULSE SQUARE NOISE");
+    CHECK(every(jx3p::Dco2CrossMod) == "OFF SYNC METAL" && every(jx3p::LfoWave) == "SINE SQUARE RANDOM" && every(jx3p::VcaMode) == "ENV GATE");
+    CHECK(every(jx3p::DcoEnvPolarity) == "NORMAL INVERTED" && every(jx3p::VcfEnvPolarity) == "NORMAL INVERTED");
+    const int onOff[] = {jx3p::Dco1Lfo, jx3p::Dco1Env, jx3p::Dco2Lfo, jx3p::Dco2Env, jx3p::Chorus, jx3p::Velocity};
+    for (int id : onOff) CHECK(every(id) == "OFF ON");
+    // A value out of its range (a file, a later program) reads as the nearest position, never past the list.
+    CHECK(reads(jx3p::Dco1Wave, 3) == "SQUARE" && reads(jx3p::Dco2Wave, 9) == "NOISE" && reads(jx3p::Chorus, -1) == "OFF" && reads(jx3p::LfoWave, 7) == "RANDOM");
+    // A knob too: held to the dial (it read "0.-5" and "10.5": the review, 2026-11-15).
+    CHECK(reads(jx3p::Cutoff, -5) == "0.0" && reads(jx3p::Cutoff, 105) == "10.0" && reads(jx3p::Brilliance, -100) == "0.0" && reads(jx3p::Release, 1000) == "10.0");
+
+    // The pages' own words, in the panel's order.
+    const char* pages[] = {"MAIN", "DCO-1", "DCO-2", "VCF", "VCA AND ENVELOPE", "LFO AND CHORUS"};
+    CHECK(spec.pages == 6);
+    for (int p = 0; p < 6; ++p) CHECK(std::string(spec.pageNames[p]) == pages[p]);
+    const auto names = [&](int page) {
+        std::string all;
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = 0;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            all += (i ? ", " : "") + std::string(name);
+        }
+        return all;
+    };
+    CHECK(names(1) == "RANGE, WAVE, LFO, ENV, LFO DEPTH, ENV DEPTH, ENV POLARITY");
+    CHECK(names(2) == "RANGE, WAVE, CROSS MOD, TUNE, FINE, LFO, ENV");
+    CHECK(names(3) == "MIX, HPF, CUTOFF, RESONANCE, LFO MOD, ENV MOD, ENV POLARITY, KEY FOLLOW");
+    CHECK(names(4) == "MODE, LEVEL, ATTACK, DECAY, SUSTAIN, RELEASE");
+    CHECK(names(5) == "WAVE, DELAY, RATE, CHORUS, BRILLIANCE, VELOCITY");
+    CHECK(spec.itemCount(0) == 0 && spec.itemCount(6) == 0 && !spec.envelopePage(1) && !spec.roll);
+
+    // The eight macros, by lane (they are automation lanes 0 to 7), and how far each is from the patch.
+    const char* macros[kSynthMacros] = {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"};
+    for (int m = 0; m < kSynthMacros; ++m) {
+        CHECK(std::string(spec.macroNames[m]) == macros[m]);
+        char text[16];
+        spec.macroText(m, 0.5f, text, sizeof text);
+        CHECK(std::string(text) == "+0");
+        spec.macroText(m, 0.f, text, sizeof text);
+        CHECK(std::string(text) == "-100");
+        spec.macroText(m, 1.f, text, sizeof text);
+        CHECK(std::string(text) == "+100");
+        spec.macroText(m, 0.65f, text, sizeof text);
+        CHECK(std::string(text) == "+30");
+    }
+
+    // What a folder says: the two banks are from the 1983 booklet; every built-in sound's speeds are guesses;
+    // the player's own say nothing; the other synths have nothing to say. No maker's name in either.
+    CHECK(std::string(jaxepFolderNote("BANK A")) == "1983 BOOKLET, SPEEDS GUESSED" && jaxepFolderNote("BANK B") == kJaxepBankNote);
+    CHECK(std::string(jaxepFolderNote("START")) == "SPEEDS GUESSED" && jaxepFolderNote("BANKS") == kJaxepGuessNote && jaxepFolderNote("USER") == kJaxepGuessNote && jaxepFolderNote("") == kJaxepGuessNote);
+    CHECK(spec.folderNote && !phazedSpec().folderNote && !qmodSpec().folderNote && spec.pageReadsAsDevice && !phazedSpec().pageReadsAsDevice && !qmodSpec().pageReadsAsDevice);
+    for (int i = 0; i < Jx3p::presetCount(); ++i) CHECK(spec.folderNote(i) == jaxepFolderNote(Jx3p::presetCategory(i)));
+    UserPreset own;
+    own.name = "MINE";
+    own.values.assign(jx3p::kPatchSettings, 0);
+    own.macros.assign(kSynthMacros, 0.5f);
+    setUserPresets(TrackKind::Jx3p, {own});
+    CHECK(spec.presetCount() == Jx3p::presetCount() + 1 && spec.folderNote(Jx3p::presetCount()) == nullptr && spec.folderNote(0) != nullptr);
+    setUserPresets(TrackKind::Jx3p, {});
+
+    // On the screen: MAIN's PRESET row says it, and does not for the player's own.
+    std::unique_ptr<Rig> rig(onJaxep());
+    rig->tap(A);
+    rig->tap(R2);
+    SynthScreen& screen = rig->app.jaxep();
+    CHECK(rig->view() == View::Device && screen.folderNote() == kJaxepBankNote); // (batch 7: a new track is on A1, in BANK A)
+    screen.folderNoteAs(kJaxepGuessNote);
+    CHECK(screen.folderNote() == kJaxepGuessNote);
+    screen.folderNoteAs(nullptr);
+    rig->app.session().chooseSynthPreset(1, 31); // B16, in BANK B
+    CHECK(screen.folderNote() == kJaxepBankNote && std::string(spec.presetCategory(31)) == "BANK B" && std::string(spec.presetCategory(15)) == "BANK A" && std::string(spec.presetCategory(16)) == "BANK B");
+    setUserPresets(TrackKind::Jx3p, {own});
+    rig->app.session().chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(screen.folderNote() == nullptr);
+    rig->project().track = 0; // (and a drum track is not asked)
+    setUserPresets(TrackKind::Jx3p, {});
+    CHECK(rig->app.phazed().folderNote() == nullptr && rig->app.qmod().folderNote() == nullptr);
+}
+
+// How loud a note at `velocity` is on the Rig's track 2, the JX-3P, as it stands.
+float jxLoud(Rig& rig, float velocity) {
+    rig.render(48000); // whatever sounded before has rung out
+    Command c;
+    c.type = Command::NoteOn;
+    c.track = 1;
+    c.a = 57;
+    c.value = velocity;
+    rig.engine->send(c);
+    rig.render(9600);
+    const float peak = Rig::peak(rig.render(9600));
+    c.type = Command::NoteOff;
+    rig.engine->send(c);
+    return peak;
+}
+
+void testTheEngineHearsJaxepsSettings() {
+    // The VCA's LEVEL: a step of the dial is 4 dB (the plan's taper, a guess), so three steps down is a quarter as loud.
+    const auto loudness = [](int down) {
+        std::unique_ptr<Rig> rig(onJaxep());
         rig->tap(A);
         rig->tap(R2);
-        rig->app.twin().goTo(3, 4);
-        CHECK(rig->app.twin().settingHere() == twin::Level);
+        rig->app.jaxep().goTo(4, 1);
+        CHECK(rig->app.jaxep().settingHere() == jx3p::VcaLevel);
+        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 35); // (a step under the VCA's 0 dB, LEVEL 4.5: over it the clip bends the wave)
         rig->key(A, true);
-        rig->tap(DOWN, steps);
+        rig->tap(DOWN, down);
         rig->key(A, false);
-        // Vintage off, so the bus colour is out of the way of the measurement.
-        Command off;
-        off.type = Command::SetSetting;
-        off.track = 1;
-        off.a = twin::Vintage;
-        off.b = 0;
-        rig->engine->send(off);
-        Command c;
-        c.type = Command::NoteOn;
-        c.track = 1;
-        c.a = 57;
-        c.value = 1.f;
-        rig->engine->send(c);
-        rig->render(9600);
-        return Rig::peak(rig->render(9600));
+        const int level = rig->project().tracks[1].jx3p.value[jx3p::VcaLevel];
+        CHECK(down == 0 ? level == 35 : level < 35);
+        const float loud = jxLoud(*rig, 1.f);
+        return std::pair<float, int>(loud, level);
     };
-    const float full = loudness(0), down = loudness(12);
-    CHECK(full > 0.01f);
-    CHECK(std::fabs(down / full - 0.251f) < 0.03f);
+    const std::pair<float, int> full = loudness(0), down = loudness(6);
+    CHECK(full.first > 0.01f);
+    const float expected = std::pow(10.f, -0.4f * static_cast<float>(full.second - down.second) / 20.f);
+    CHECK(down.second < full.second && std::fabs(down.first / full.first - expected) < 0.05f * expected);
+}
+
+// A PRESET PICKED KEEPS BRILLIANCE AND VELOCITY (the plan, section 1): they are the track's, as
+// BRILLIANCE is a knob on the real one's panel. Everything else is the preset's.
+void testAPresetKeepsTheTracksOwnValues() {
+    std::unique_ptr<Rig> rig(onJaxep());
+    Session& session = rig->app.session();
+    TrackData& track = rig->project().tracks[1];
+    CHECK(jx3p::kPatchSettings == 32 && presetSettingCount(TrackKind::Jx3p) == 32 && settingCount(TrackKind::Jx3p) == 34);
+    CHECK(presetSettingCount(TrackKind::Phazed) == settingCount(TrackKind::Phazed) && presetSettingCount(TrackKind::Qmod) == settingCount(TrackKind::Qmod));
+    // With VELOCITY on, as a new track has it, a soft note is quieter than a full one.
+    const float fullOn = jxLoud(*rig, 1.f), softOn = jxLoud(*rig, 0.3f);
+    CHECK(fullOn > 0.01f && softOn < 0.3f * fullOn);
+    // Both turned, and a setting of the patch with them.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 23);
+    session.setSynthSetting(1, jx3p::Resonance, 77);
+    session.setSynthSetting(1, jx3p::Chorus, 0);
+    rig->frames(1);
+    // A built-in preset, picked on the screen.
+    rig->tap(A);
+    rig->tap(R2);
+    rig->app.jaxep().goTo(0, SynthScreen::kPreset);
+    rig->key(A, true);
+    rig->tap(UP, Jx3p::presetCount()); // all the way round, back to the first
+    rig->key(A, false);
+    const Jx3pPatch first = Jx3p::presetPatch(0);
+    CHECK(track.preset == 0);
+    for (int id = 0; id < jx3p::kPatchSettings; ++id) CHECK(track.jx3p.value[id] == first.value[id]); // RESONANCE and CHORUS are the preset's again
+    CHECK(track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 23);          // ...and these two the track's still
+    // The engine too: with VELOCITY off a soft note is as loud as a full one. (Within a quarter: the
+    // chorus is at another place in its sweep for each note, and a peak moves 8% with it. With
+    // VELOCITY on the soft note is a tenth of the full one.)
+    const float fullOff = jxLoud(*rig, 1.f), softOff = jxLoud(*rig, 0.3f);
+    CHECK(softOff > 0.75f * fullOff && softOff < 1.33f * fullOff);
+    // One of the player's own, saved with them turned another way: its file does not hold them...
+    char folder[] = "/tmp/apotheca-keeps-XXXXXX";
+    CHECK(mkdtemp(folder) != nullptr);
+    session.usePresetFolder(folder);
+    session.setSynthSetting(1, jx3p::Resonance, 41);
+    session.setSynthSetting(1, jx3p::Velocity, 1);
+    session.setSynthSetting(1, jx3p::Brilliance, 88);
+    CHECK(session.savePreset(1, "MINE"));
+    std::string file;
+    CHECK(readTextFile(std::string(folder) + "/MINE.jaxep", file) && file.find("synth jaxep\n") != std::string::npos);
+    {
+        std::istringstream in(file.substr(file.find("settings") + 8));
+        int v = 0, count = 0, at17 = -1;
+        while (in >> v) {
+            if (count == jx3p::Resonance) at17 = v;
+            ++count;
+        }
+        CHECK(count == jx3p::kPatchSettings && at17 == 41);
+    }
+    CHECK(track.preset == Jx3p::presetCount() && userPresets(TrackKind::Jx3p).size() == 1);
+    // ...and picking it, with the track's two turned again, leaves them be.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 12);
+    session.chooseSynthPreset(1, 0);
+    CHECK(track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
+    session.chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(track.jx3p.value[jx3p::Resonance] == 41 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+    const float fullMine = jxLoud(*rig, 1.f), softMine = jxLoud(*rig, 0.3f);
+    CHECK(softMine > 0.75f * fullMine && softMine < 1.33f * fullMine);
+    // A file written by hand with 34 numbers: the last two are not a preset's, and are not taken.
+    std::string hand = "apotheca-preset 1\nsynth jaxep\nmacros 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5\nsettings";
+    for (int id = 0; id < jx3p::kSettings; ++id) hand += id == jx3p::Velocity ? " 1" : id == jx3p::Brilliance ? " 99" : id == jx3p::Resonance ? " 9" : " 0";
+    CHECK(writeTextFile(std::string(folder) + "/HAND.jaxep", hand + "\n"));
+    // An old Twin Analog preset on the card is left there and not listed.
+    CHECK(writeTextFile(std::string(folder) + "/OLD.twin", "apotheca-preset 1\nsynth twin\nmacros 0.5\nsettings 1 2 3\n"));
+    session.usePresetFolder(folder);
+    CHECK(userPresets(TrackKind::Jx3p).size() == 2 && userPresets(TrackKind::Jx3p)[0].name == "HAND" && userPresets(TrackKind::Phazed).empty() && userPresets(TrackKind::Qmod).empty());
+    session.chooseSynthPreset(1, Jx3p::presetCount());
+    CHECK(track.jx3p.value[jx3p::Resonance] == 9 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+    std::string still;
+    CHECK(readTextFile(std::string(folder) + "/OLD.twin", still) && still.find("synth twin") != std::string::npos);
+    // A file written by hand with numbers no dial has: each is held to its own setting's range (the
+    // review, 2026-11-15: the hold could be taken out with every test green), and one too large for
+    // an int is held as a double first, so it is the setting's most on every machine.
+    {
+        std::string wild = "apotheca-preset 1\nsynth jaxep\nmacros 7 -3 1e300 0.5 0.5 0.5 0.5 0.5\nsettings";
+        for (int id = 0; id < jx3p::kPatchSettings; ++id) wild += id == jx3p::Cutoff ? " 1e300" : id == jx3p::Resonance ? " -1e300" : id % 2 ? " 250" : " -7";
+        CHECK(writeTextFile(std::string(folder) + "/WILD.jaxep", wild + "\n"));
+        session.usePresetFolder(folder);
+        CHECK(userPresets(TrackKind::Jx3p).size() == 3 && userPresets(TrackKind::Jx3p)[2].name == "WILD");
+        session.chooseSynthPreset(1, Jx3p::presetCount() + 2);
+        for (int id = 0; id < jx3p::kPatchSettings; ++id) {
+            const int most = jx3pSpec().settingMax(id), least = jx3pSpec().settingMin(id);
+            CHECK(track.jx3p.value[id] == (id == jx3p::Cutoff ? most : id == jx3p::Resonance ? least : id % 2 ? most : least));
+        }
+        CHECK(track.macro[0] == 1.f && track.macro[1] == 0.f && track.macro[2] == 1.f && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
+        // ...and the engine plays it: every sample a number.
+        const std::vector<float> heard = (jxLoud(*rig, 1.f), rig->render(9600));
+        for (float v : heard) CHECK(std::isfinite(v));
+        session.chooseSynthPreset(1, Jx3p::presetCount());
+        std::remove((std::string(folder) + "/WILD.jaxep").c_str());
+    }
+    // The track made another instrument and back: the two are the track's still.
+    CHECK(session.setTrackKind(1, TrackKind::Phazed) && session.setTrackKind(1, TrackKind::Jx3p));
+    CHECK(track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12 && track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
+    // A track taken away leaves a new track's values behind it for the next one.
+    session.removeTrack(1);
+    CHECK(session.addTrack(TrackKind::Jx3p) && rig->project().tracks[1].jx3p.value[jx3p::Velocity] == 1 && rig->project().tracks[1].jx3p.value[jx3p::Brilliance] == 50);
+    setUserPresets(TrackKind::Jx3p, {});
+    std::remove((std::string(folder) + "/MINE.jaxep").c_str());
+    std::remove((std::string(folder) + "/HAND.jaxep").c_str());
+    std::remove((std::string(folder) + "/OLD.twin").c_str());
+    rmdir(folder);
+}
+
+// UNDO PUTS BACK THE TRACK'S OWN TWO, IN THE ENGINE TOO (the review, 2026-11-15). BRILLIANCE and
+// VELOCITY are ids 32 and 33: past a preset's 32, so the three places that go through a synth's
+// settings for undo (soundMark sees a change, restoreSounds puts it back, sendSynthPatch tells the
+// engine) must each count a SONG's settings, not a preset's. Counting a preset's in any of the
+// three passed every test.
+void testUndoPutsBackTheTracksOwnTwo() {
+    std::unique_ptr<Rig> rig(onJaxep());
+    Session& session = rig->app.session();
+    TrackData& track = rig->project().tracks[1];
+    const auto still = [&] {
+        for (int i = 0; i < 12; ++i) {
+            rig->frames(25);
+            rig->render(256);
+        }
+    };
+    // A soft note against a full one, in dB: about 0 with VELOCITY off, far under with it on.
+    const auto softUnderFull = [&] {
+        still();
+        const float soft = jxLoud(*rig, 0.3f);
+        still();
+        const float full = jxLoud(*rig, 1.f);
+        still();
+        return 20.f * std::log10(soft / full);
+    };
+    // A plain sound, so a note's peak does not hang on where the two saws' beat is (CLAUDE.md).
+    session.chooseSynthPreset(1, 5);
+    session.setSynthSetting(1, jx3p::SourceMix, 0);
+    session.setSynthSetting(1, jx3p::Attack, 0);
+    session.setSynthSetting(1, jx3p::Chorus, 0);
+    session.setSynthSetting(1, jx3p::Brilliance, 12);
+    still();
+    CHECK(track.jx3p.value[jx3p::Velocity] == 1 && softUnderFull() < -6.f);
+    const int stepsWere = session.undoSteps();
+    // BRILLIANCE turned: a step of its own (soundMark saw id 33 move)...
+    session.setSynthSetting(1, jx3p::Brilliance, 99);
+    still();
+    CHECK(session.undoSteps() == stepsWere + 1);
+    // ...then VELOCITY off: another, and the engine plays a soft note as loud as a full one.
+    session.setSynthSetting(1, jx3p::Velocity, 0);
+    still();
+    CHECK(session.undoSteps() == stepsWere + 2 && std::fabs(softUnderFull()) < 1.f);
+    // Undo: VELOCITY is on again in the project AND in the sound (the patch was sent with all 34).
+    CHECK(session.undo());
+    still();
+    CHECK(track.jx3p.value[jx3p::Velocity] == 1 && track.jx3p.value[jx3p::Brilliance] == 99 && softUnderFull() < -6.f);
+    // Undo: BRILLIANCE is back where it was. Redo, twice: both as they were turned.
+    CHECK(session.undo());
+    still();
+    CHECK(track.jx3p.value[jx3p::Brilliance] == 12 && track.jx3p.value[jx3p::Velocity] == 1 && track.preset == 5);
+    CHECK(session.redo() && track.jx3p.value[jx3p::Brilliance] == 99 && track.jx3p.value[jx3p::Velocity] == 1);
+    CHECK(session.redo() && track.jx3p.value[jx3p::Velocity] == 0);
+    still();
+    CHECK(std::fabs(softUnderFull()) < 1.f);
+    // BRILLIANCE in the engine: undone to 1.2 from 9.9, the same note is duller (less of it over 3 kHz
+    // is not measured here: its peak through a filter two octaves lower is smaller).
+    session.setSynthSetting(1, jx3p::Velocity, 1);
+    session.setSynthSetting(1, jx3p::Cutoff, 40);
+    session.setSynthSetting(1, jx3p::Brilliance, 0);
+    still();
+    session.setSynthSetting(1, jx3p::Brilliance, 100);
+    still();
+    still();
+    const float bright = jxLoud(*rig, 1.f);
+    CHECK(session.undo());
+    still();
+    still();
+    const float dull = jxLoud(*rig, 1.f);
+    CHECK(track.jx3p.value[jx3p::Brilliance] == 0 && dull < 0.8f * bright);
+}
+
+// JAX-EP'S HINTS FIT THE BAR (the review, 2026-11-15: a hint of sixty letters passed every test,
+// since the bar drops what does not fit and nothing then overlaps). MAIN and the five pages, the
+// cursor on every stop, A held and not, with either help: nothing over.
+void testJaxepsHintsFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(onJaxep());
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.jaxep();
+    CHECK(screen.pageCount() == 6 && rig->project().tracks[rig->project().track].kind == TrackKind::Jx3p);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu) {
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : jx3pSpec().itemCount(page);
+            for (int cursor = 0; cursor < stops; ++cursor) {
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP"; // (App sets it each frame from the controls)
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL JAX-EP's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+            }
+        }
+    }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + jx3p::kSettings));
 }
 
 } // namespace
@@ -6580,8 +7027,7 @@ void testNamingATrackFromTheSongScreen() {
     rig.tap(B); // the list of instruments came up, and is put away
     CHECK(rig.project().trackCount() == 2);
     rig.tap(LEFT);
-    CHECK(song.cursorColumn() == 1 && !song.cursorOnHead());
-    rig.tap(UP);
+    CHECK(song.cursorColumn() == 1 && song.cursorOnHead()); // back along the heads (owner, 2026-11-14), not into the cell
     rig.tap(LEFT, 2);
     CHECK(!song.cursorOnHead() && song.cursorColumn() == -1);
     song.moveCursorTo(0, 1);
@@ -6670,12 +7116,12 @@ void testChangingATracksInstrument() {
     rig.tap(R1);
     rig.tap(A);
     CHECK(rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[1].macro[3] == 0.9f);
-    // Down one and A: it is a Twin Analog now. No track was added.
+    // Down one and A: it is a JAX-EP now. No track was added.
     rig.tap(R1);
     rig.tap(DOWN);
     rig.tap(A);
     TrackData& t = rig.project().tracks[1];
-    CHECK(t.kind == TrackKind::Twin && rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
+    CHECK(t.kind == TrackKind::Jx3p && rig.project().trackCount() == 2 && song.cursorOnHead() && song.cursorColumn() == 1);
     // Its notes, name and effect stay; it is on its first sound, with its macros in the middle.
     CHECK(t.notes[0][0].notes[0].velocity == 0.8f && std::string(t.name) == "LEAD" && t.effects[0].kind == static_cast<int>(EffectKind::Delay));
     CHECK(t.preset == 0 && t.macro[3] == 0.5f);
@@ -7924,6 +8370,13 @@ void testTheHintsFitAndSayWhatTheyDo() {
         CHECK(draw());
         rig.app.song().moveCursorTo(0, -1);
         CHECK(draw());
+        // ...on the PLAYS box where the song ends (AT END): what it does there, LOOP or STOP.
+        rig.app.song().moveCursorTo(rig.app.song().songEndRow(), -1);
+        CHECK(rig.app.song().onSongEnd() && draw() && hintKeyed(canvas, scratch, "A", "song end: loop"));
+        rig.tap(A);
+        CHECK(draw() && hintKeyed(canvas, scratch, "A", "song end: stop") && !hintKeyed(canvas, scratch, "A", "song end: loop"));
+        rig.tap(B);
+        CHECK(rig.project().songEnd == kSongLoop);
         // The drum grid, on a hit and on an empty step, on a lane of the kit.
         session.view = View::Pattern;
         rig.project().track = 0;
@@ -7954,6 +8407,484 @@ void testTheHintsFitAndSayWhatTheyDo() {
 
 // L1 / R1 on the FX screen: the track before / after, stopping at the first and the last (as the SONG screen's
 // columns do). The cursor stays on its line and setting; an effect being tried is called off. The bar says so and fits.
+// SWITCHING TYPE FROM THE SETTINGS (owner, 2026-11-14, option A). In a slot's settings RIGHT is the next TYPE of
+// its family and LEFT the one before (LEFT on the first setting is the list, as it was); the ends stop and the
+// cursor keeps its row. The slot remembers each type's own settings: COMP -> DUCK -> COMP gives the COMP back as it
+// was left, to the bit. Forgotten on another family or EMPTY, another song, another instrument, a track deleted.
+namespace {
+bool sameParams(const EffectData& a, const EffectData& b) {
+    if (a.kind != b.kind) return false;
+    for (int i = 0; i < kEffectParams; ++i)
+        if (a.param[i] != b.param[i]) return false;
+    return true;
+}
+// What the engine runs in a slot, once what was sent has arrived.
+int engineKind(Rig& rig, int track, int slot) {
+    rig.render(1024);
+    return rig.engine->effectKindIn(track, slot);
+}
+// A COMP in the track's first slot, every setting turned to a value no carry would make.
+EffectData turnedComp(Rig& rig) {
+    Session& session = rig.app.session();
+    session.setEffect(0, 0, EffectKind::Comp);
+    const float odd[kEffectParams] = {0.3137f, 0.7771f, 0.1234f, 0.6543f};
+    for (int i = 0; i < effectInfo(EffectKind::Comp).params; ++i) session.setEffectParam(0, 0, i, odd[i]);
+    return session.effectData(0, 0);
+}
+} // namespace
+
+// The slot's TYPE switched from its settings: A held, LEFT or RIGHT (owner, 2026-11-14: one grip turns the
+// value and switches the type; plain LEFT is only ever the list).
+void typeTap(Rig& rig, SDL_Keycode way, int times = 1) {
+    rig.key(A, true);
+    rig.tap(way, times);
+    rig.key(A, false);
+}
+
+void testFxSwitchesType() {
+    const int comp = static_cast<int>(EffectKind::Comp), duck = static_cast<int>(EffectKind::Duck);
+    const int levels = effectTypes(EffectKind::Comp);
+    CHECK(effectTypeAt(EffectKind::Comp, 0) == EffectKind::Comp && effectTypeAt(EffectKind::Comp, 1) == EffectKind::Duck && levels >= 3);
+    CHECK(effectInfo(EffectKind::Comp).params >= 2 && effectInfo(EffectKind::Duck).params >= 2);
+    {
+        // The gesture both ways, the memory, the engine's slot after each step.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        rig.frames(1);
+        fx.goTo(0, 2);
+        typeTap(rig, RIGHT);
+        const EffectData& slot = session.effectData(0, 0);
+        float carried[kEffectParams];
+        effectCarry(EffectKind::Comp, EffectKind::Duck, compWas.param, false, carried);
+        CHECK(slot.kind == duck && fx.cursorRow() == 0 && fx.cursorColumn() == 2); // the row stays
+        for (int i = 0; i < kEffectParams; ++i) CHECK(slot.param[i] == carried[i]); // never DUCKed here: carried, as changeEffectType
+        CHECK(engineKind(rig, 0, 0) == duck);
+        session.setEffectParam(0, 0, 1, 0.8642f); // the DUCK turned
+        const EffectData duckWas = slot;
+        typeTap(rig, LEFT);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2); // the COMP as it was left, to the bit
+        CHECK(engineKind(rig, 0, 0) == comp);
+        typeTap(rig, RIGHT);
+        CHECK(sameParams(slot, duckWas)); // and the DUCK as it was left
+        CHECK(engineKind(rig, 0, 0) == duck);
+        // The ends stop: LEFT on the first type, RIGHT on the last.
+        typeTap(rig, LEFT);
+        typeTap(rig, LEFT);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2);
+        typeTap(rig, RIGHT, levels + 3);
+        const EffectKind lastType = effectTypeAt(EffectKind::Comp, levels - 1);
+        CHECK(slot.kind == static_cast<int>(lastType) && engineKind(rig, 0, 0) == static_cast<int>(lastType));
+        typeTap(rig, LEFT, levels - 1);
+        CHECK(sameParams(slot, compWas));
+        // The first setting is as any other: A held, LEFT / RIGHT switch, the cursor kept.
+        fx.goTo(0, 1);
+        typeTap(rig, RIGHT);
+        CHECK(fx.cursorColumn() == 1 && sameParams(slot, duckWas));
+        typeTap(rig, LEFT);
+        CHECK(fx.cursorColumn() == 1 && sameParams(slot, compWas));
+        // WITHOUT A: LEFT is the list from any setting, the slot untouched; RIGHT there does nothing at all,
+        // tapped or held (owner, 2026-11-14: LEFT doing two jobs was awkward).
+        for (int column : {1, 2, 3}) {
+            fx.goTo(0, column);
+            rig.tap(RIGHT, 3);
+            rig.key(RIGHT, true);
+            rig.frames(40);
+            rig.key(RIGHT, false);
+            CHECK(fx.cursorColumn() == column && sameParams(slot, compWas));
+            rig.tap(LEFT);
+            CHECK(fx.cursorColumn() == 0 && sameParams(slot, compWas));
+        }
+        // ...nor does the stick switch, with A up (it is the list, or nothing) or with A held (it turns values).
+        fx.goTo(0, 2);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(20);
+        rig.key(STICK_RIGHT, false);
+        rig.frames(1);
+        CHECK(slot.kind == comp && fx.cursorColumn() == 2);
+        rig.key(A, true);
+        rig.key(STICK_RIGHT, true);
+        rig.frames(20);
+        rig.key(STICK_RIGHT, false);
+        rig.frames(1);
+        rig.key(A, false);
+        CHECK(sameParams(slot, compWas) && fx.cursorColumn() == 2);
+        // A and the direction held: at the pace of a list (a TYPE is a choice), not a cursor's. A third of a
+        // second is the press and one repeat, not the family's end.
+        rig.key(A, true);
+        rig.key(RIGHT, true);
+        rig.frames(14);
+        rig.key(RIGHT, false);
+        CHECK(slot.kind != comp && slot.kind != static_cast<int>(lastType));
+        rig.tap(LEFT, levels);
+        rig.key(A, false);
+        CHECK(sameParams(slot, compWas));
+        // In one grip: A held, UP turns the value, RIGHT switches, LEFT comes back to the COMP as just turned.
+        fx.goTo(0, 2);
+        rig.key(A, true);
+        rig.tap(UP);
+        const EffectData turned = slot;
+        CHECK(turned.kind == comp && !sameParams(turned, compWas));
+        rig.tap(RIGHT);
+        CHECK(slot.kind == duck);
+        rig.tap(LEFT);
+        CHECK(sameParams(slot, turned) && fx.cursorColumn() == 2);
+        rig.tap(DOWN);
+        rig.key(A, false);
+        // A type with fewer settings: the cursor is pulled in to its last. (Any family's pair that has one.)
+        for (int place = 1; place + 1 < effectListSize(); ++place) {
+            const EffectKind k = effectAt(place), next = effectTypeAt(k, effectTypeIndex(k) + 1);
+            if (next == EffectKind::None || effectInfo(next).params >= effectInfo(k).params) continue;
+            session.setEffect(0, 0, EffectKind::None);
+            session.setEffect(0, 0, k);
+            fx.goTo(0, effectInfo(k).params);
+            typeTap(rig, RIGHT);
+            CHECK(session.effectData(0, 0).kind == static_cast<int>(next) && fx.cursorColumn() == effectInfo(next).params);
+            break;
+        }
+        // The sends switch nothing: LEFT is the list from either, RIGHT does nothing.
+        fx.goTo(FxScreen::kSendsRow, 2);
+        typeTap(rig, RIGHT);
+        typeTap(rig, LEFT);
+        rig.tap(RIGHT);
+        CHECK(fx.cursorColumn() == 2 && fx.cursorRow() == FxScreen::kSendsRow);
+        rig.tap(LEFT);
+        CHECK(fx.cursorColumn() == 0 && fx.cursorRow() == FxScreen::kSendsRow);
+        // An empty slot has no settings to be in.
+        session.setEffect(0, 1, EffectKind::None);
+        fx.goTo(1, 2);
+        typeTap(rig, RIGHT);
+        CHECK(fx.cursorColumn() == 0 && session.effectData(0, 1).kind == 0);
+    }
+    {
+        // Forgotten: another family, EMPTY, another song, another instrument; a deleted track takes its own.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const auto switchedAway = [&] { // a turned COMP to the DUCK: the COMP is remembered
+            turnedComp(rig);
+            fx.goTo(0, 2);
+            typeTap(rig, RIGHT);
+            float back[kEffectParams];
+            return session.effectData(0, 0).kind == duck && session.rememberedType(0, 0, EffectKind::Comp, back);
+        };
+        float back[kEffectParams];
+        CHECK(switchedAway());
+        session.setEffect(0, 0, EffectKind::Limiter); // another type put in by hand: the same family, still known (the DUCK left so is not a switch)
+        CHECK(session.rememberedType(0, 0, EffectKind::Comp, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        session.setEffect(0, 0, EffectKind::Filter); // another family
+        CHECK(!session.rememberedType(0, 0, EffectKind::Comp, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        session.setEffect(0, 0, EffectKind::Duck);
+        fx.goTo(0, 2);
+        typeTap(rig, LEFT); // the COMP comes from the DUCK's usual settings, carried: not the one turned before
+        float carried[kEffectParams], usual[kEffectParams];
+        for (int i = 0; i < kEffectParams; ++i) usual[i] = effectDefault(EffectKind::Duck, i, false);
+        effectCarry(EffectKind::Duck, EffectKind::Comp, usual, false, carried);
+        for (int i = 0; i < kEffectParams; ++i) CHECK(session.effectData(0, 0).param[i] == carried[i]);
+        CHECK(switchedAway());
+        fx.goTo(0, 0);
+        holdB(rig); // EMPTY
+        CHECK(session.effectData(0, 0).kind == 0 && !session.rememberedType(0, 0, EffectKind::Comp, back));
+        CHECK(switchedAway());
+        session.applyProject(); // another song
+        CHECK(!session.rememberedType(0, 0, EffectKind::Comp, back));
+        // The master's and the buses' slots remember apart from the tracks', and are forgotten the same way.
+        session.rememberType(kMasterTrack, 1, session.effectData(0, 0));
+        session.rememberType(kSpaceBus, 0, session.effectData(0, 0));
+        CHECK(session.rememberedType(kMasterTrack, 1, EffectKind::Duck, back) && !session.rememberedType(kMasterTrack, 0, EffectKind::Duck, back));
+        CHECK(session.rememberedType(kSpaceBus, 0, EffectKind::Duck, back) && !session.rememberedType(kEchoBus, 0, EffectKind::Duck, back) && !session.rememberedType(0, 0, EffectKind::Duck, back));
+        EffectData hall, tape; // a bus's own, and neither of the master's two
+        hall.kind = static_cast<int>(EffectKind::Hall), tape.kind = static_cast<int>(EffectKind::Tape);
+        session.rememberType(kSpaceBus, 0, hall);
+        session.rememberType(kEchoBus, 0, tape);
+        CHECK(session.rememberedType(kSpaceBus, 0, EffectKind::Hall, back) && session.rememberedType(kEchoBus, 0, EffectKind::Tape, back));
+        CHECK(!session.rememberedType(kMasterTrack, 0, EffectKind::Hall, back) && !session.rememberedType(kMasterTrack, 1, EffectKind::Hall, back));
+        CHECK(!session.rememberedType(kMasterTrack, 0, EffectKind::Tape, back) && !session.rememberedType(kMasterTrack, 1, EffectKind::Tape, back));
+        CHECK(!session.rememberedType(kEchoBus, 0, EffectKind::Hall, back) && !session.rememberedType(kSpaceBus, 0, EffectKind::Tape, back));
+        session.applyProject();
+        CHECK(!session.rememberedType(kMasterTrack, 1, EffectKind::Duck, back) && !session.rememberedType(kSpaceBus, 0, EffectKind::Duck, back));
+        // Tracks: another instrument forgets; a deleted track's go with it, and the ones after move up.
+        CHECK(session.addTrack(TrackKind::Drums) && session.addTrack(TrackKind::Drums)); // tracks 1 and 2
+        EffectData a, b;
+        a.kind = comp, a.param[0] = 0.11f;
+        b.kind = comp, b.param[0] = 0.22f;
+        session.rememberType(1, 2, a);
+        session.rememberType(2, 2, b);
+        CHECK(session.removeTrack(1));
+        CHECK(session.rememberedType(1, 2, EffectKind::Comp, back) && back[0] == 0.22f && !session.rememberedType(2, 2, EffectKind::Comp, back));
+        session.rememberType(0, 1, a);
+        CHECK(session.setTrackKind(0, TrackKind::Phazed));
+        CHECK(!session.rememberedType(0, 1, EffectKind::Comp, back) && session.rememberedType(1, 2, EffectKind::Comp, back));
+        session.rememberType(2, 2, a); // (no track there: nothing in the program does this, but a new track must not find it)
+        CHECK(session.addTrack(TrackKind::Drums)); // a new track starts with nothing remembered
+        CHECK(!session.rememberedType(2, 2, EffectKind::Comp, back));
+    }
+    {
+        // The buses and the master: the same gesture, the same memory, the engine's slot after each step.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectKind next = effectTypeAt(EffectKind::Tape, effectTypeIndex(EffectKind::Tape) + 1);
+        CHECK(session.effectData(kEchoBus, 0).kind == static_cast<int>(EffectKind::Tape) && next != EffectKind::None);
+        session.setEffectParam(kEchoBus, 0, 1, 0.5432f);
+        session.setEffectParam(kEchoBus, 0, 3, 0.6f); // its LEVEL
+        const EffectData tapeWas = session.effectData(kEchoBus, 0);
+        fx.goTo(FxScreen::kBusRow, 2);
+        typeTap(rig, RIGHT);
+        CHECK(session.effectData(kEchoBus, 0).kind == static_cast<int>(next) && engineKind(rig, kEchoBus, 0) == static_cast<int>(next));
+        typeTap(rig, LEFT);
+        CHECK(sameParams(session.effectData(kEchoBus, 0), tapeWas) && engineKind(rig, kEchoBus, 0) == static_cast<int>(EffectKind::Tape));
+        session.setEffect(kMasterTrack, 1, EffectKind::Comp);
+        session.setEffectParam(kMasterTrack, 1, 0, 0.2468f);
+        const EffectData masterWas = session.effectData(kMasterTrack, 1);
+        fx.goTo(FxScreen::kMasterRow + 1, 2);
+        typeTap(rig, RIGHT);
+        CHECK(session.effectData(kMasterTrack, 1).kind == duck && engineKind(rig, kMasterTrack, 1) == duck);
+        CHECK(session.effectData(0, 0).kind == 0); // (the track's own slot untouched)
+        typeTap(rig, LEFT);
+        CHECK(sameParams(session.effectData(kMasterTrack, 1), masterWas) && engineKind(rig, kMasterTrack, 1) == comp);
+    }
+    {
+        // Undo: a switch is a step, and undo puts back the type it left with its settings; the engine follows.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        rig.frames(60);
+        const int steps = session.undoSteps();
+        fx.goTo(0, 2);
+        typeTap(rig, RIGHT);
+        rig.frames(60);
+        CHECK(session.undoSteps() == steps + 1 && session.effectData(0, 0).kind == duck);
+        CHECK(session.undo() && sameParams(session.effectData(0, 0), compWas) && engineKind(rig, 0, 0) == comp);
+        CHECK(session.redo() && session.effectData(0, 0).kind == duck && engineKind(rig, 0, 0) == duck);
+    }
+    {
+        // Automation: what changeEffectType does with it, both ways, whatever is remembered; WRITE writes nothing.
+        Rig rig, second;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        for (Rig* r : {&rig, &second}) {
+            turnedComp(*r);
+            for (int p = 0; p < kEffectParams; ++p) r->app.session().setAutomation(0, p % 3, autoLaneOfEffect(0, p), 2 + p, 0.1f + 0.2f * static_cast<float>(p));
+            r->frames(1);
+        }
+        session.setWriting(true);
+        rig.tap(START);
+        rig.render(kStep * 2);
+        rig.frames(1);
+        CHECK(rig.project().playing);
+        fx.goTo(0, 2);
+        typeTap(rig, RIGHT);
+        CHECK(changeEffectType(second.app.session(), 0, 0, EffectKind::Duck));
+        CHECK(same(tunedOf(rig, 0, 0), tunedOf(second, 0, 0)));
+        typeTap(rig, LEFT); // the COMP's settings are remembered; its lanes are those the DUCK's moved back
+        CHECK(changeEffectType(second.app.session(), 0, 0, EffectKind::Comp));
+        CHECK(tunedOf(rig, 0, 0).lanes == tunedOf(second, 0, 0).lanes && session.writing());
+    }
+    {
+        // The heading's TYPE row shows the key where it switches (RIGHT on the first setting, LEFT / RIGHT below
+        // it), not in the list with A up nor while A turns a setting; the bar says it, and still fits.
+        Canvas canvas, scratch;
+        CHECK(canvas.ok && scratch.ok);
+        if (canvas.ok && scratch.ok) {
+            using F = FxScreen;
+            const Fonts& fonts = *canvas.fonts;
+            Rig rig;
+            Session& session = rig.app.session();
+            FxScreen& fx = rig.app.fx();
+            session.view = View::Effects;
+            turnedComp(rig);
+            const auto draw = [&] {
+                rig.frames(1);
+                canvas.clear();
+                rig.app.draw(canvas.r, fonts);
+                return ui::gHintsOver == 0.f;
+            };
+            const int keyX = static_cast<int>(F::kPaneX + F::kPaneW - 12.f - ui::keyWidth(fonts, "LEFT / RIGHT"));
+            const auto keyInk = [&] { // pixels that are not the heading's panel, where the key stands
+                int n = 0;
+                for (int y = F::kTypeRowY - 4; y < F::kTypeRowY + fonts.small.capHeight() + 4; ++y)
+                    for (int x = keyX; x < F::kPaneX + F::kPaneW - 12; ++x) n += canvas.is(x, y, ui::kPanel) ? 0 : 1;
+                return n;
+            };
+            // In the list, and on a setting with A up: no key in the heading; the bar says LEFT is the list and
+            // that HOLD A turns and switches.
+            fx.goTo(0, 0);
+            CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr);
+            for (int column : {1, 2}) {
+                fx.goTo(0, column);
+                CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr);
+                CHECK(hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn, type") && !hintKeyed(canvas, scratch, "RIGHT", "type"));
+            }
+            // A held on a setting: the key that switches. The family's FIRST type: RIGHT alone, on any setting.
+            rig.key(A, true);
+            CHECK(draw() && keyInk() > 0 && fx.typeKey() && std::strcmp(fx.typeKey(), "RIGHT") == 0);
+            CHECK(hintKeyed(canvas, scratch, "RIGHT", "type") && hintKeyed(canvas, scratch, "UP / DOWN", "turn it") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "type"));
+            const int right = keyInk();
+            rig.tap(RIGHT); // the DUCK, a type in the middle: both ways
+            CHECK(draw() && keyInk() > right && fx.typeKey() && std::strcmp(fx.typeKey(), "LEFT / RIGHT") == 0 && hintKeyed(canvas, scratch, "LEFT / RIGHT", "type"));
+            rig.tap(RIGHT, levels); // the family's LAST type: LEFT alone (the two arrows are one width and one ink: typeKey says which)
+            CHECK(draw() && keyInk() == right && fx.typeKey() && std::strcmp(fx.typeKey(), "LEFT") == 0 && hintKeyed(canvas, scratch, "LEFT", "type") && !hintKeyed(canvas, scratch, "LEFT / RIGHT", "type"));
+            rig.key(A, false);
+            CHECK(draw() && keyInk() == 0 && fx.typeKey() == nullptr && hintKeyed(canvas, scratch, "LEFT", "list"));
+            // SENDS have no types: no key held or not, and HOLD A only turns.
+            fx.goTo(F::kSendsRow, 2);
+            CHECK(draw() && hintKeyed(canvas, scratch, "LEFT", "list") && hintKeyed(canvas, scratch, "HOLD A", "turn") && !hintKeyed(canvas, scratch, "HOLD A", "turn, type"));
+            rig.key(A, true);
+            CHECK(draw() && fx.typeKey() == nullptr && !hintKeyed(canvas, scratch, "RIGHT", "type"));
+            rig.key(A, false);
+        }
+    }
+    {
+        // With A held in the list, LEFT / RIGHT try a remembered type as it was left, and that is what goes in.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        const EffectData compWas = turnedComp(rig);
+        fx.goTo(0, 2);
+        typeTap(rig, RIGHT);
+        session.setEffectParam(0, 0, 1, 0.8642f);
+        const EffectData duckWas = session.effectData(0, 0);
+        fx.goTo(0, 0);
+        rig.key(A, true);
+        rig.tap(LEFT);
+        CHECK(fx.trying() && sameParams(fx.tried(), compWas) && session.effectData(0, 0).kind == duck);
+        CHECK(engineKind(rig, 0, 0) == comp);
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(sameParams(session.effectData(0, 0), compWas)); // what was heard went in
+        rig.key(A, true);
+        rig.tap(RIGHT, 2); // past the DUCK to the third: let go there, the COMP is remembered as it is
+        rig.key(A, false);
+        rig.frames(1);
+        CHECK(session.effectData(0, 0).kind == static_cast<int>(effectTypeAt(EffectKind::Comp, 2)));
+        fx.goTo(0, 2);
+        typeTap(rig, LEFT);
+        CHECK(sameParams(session.effectData(0, 0), duckWas)); // the DUCK, as it was left two switches ago
+        typeTap(rig, LEFT);
+        CHECK(sameParams(session.effectData(0, 0), compWas));
+    }
+}
+
+// What the review of the TYPE switch found (2026-11-14).
+void testFxSwitchMends() {
+    const int comp = static_cast<int>(EffectKind::Comp), duck = static_cast<int>(EffectKind::Duck);
+    const int levels = effectTypes(EffectKind::Comp);
+    {
+        // RIGHT held on from the list goes into the settings and switches NOTHING, however long it is held (the
+        // D-pad's repeat and the stick alike): a slightly long press once made a COMP a DUCK, a LIMITER, a SNAP.
+        // Since the switch is A's (owner, 2026-11-14) a plain RIGHT never switches at all.
+        for (const SDL_Keycode right : {RIGHT, STICK_RIGHT}) {
+            Rig rig;
+            Session& session = rig.app.session();
+            FxScreen& fx = rig.app.fx();
+            session.view = View::Effects;
+            const EffectData compWas = turnedComp(rig);
+            rig.frames(1);
+            for (const int held : {8, 12, 20, 40, 120}) { // 128 ms to two seconds
+                fx.goTo(0, 0);
+                rig.key(right, true);
+                rig.frames(held);
+                CHECK(fx.cursorColumn() >= 1 && sameParams(session.effectData(0, 0), compWas));
+                rig.key(right, false);
+                rig.frames(1);
+                rig.key(right, true); // and a push of its own, there: nothing either
+                rig.frames(20);
+                rig.key(right, false);
+                rig.frames(1);
+                CHECK(sameParams(session.effectData(0, 0), compWas) && engineKind(rig, 0, 0) == comp);
+            }
+        }
+    }
+    {
+        // A track's three slots each remember apart, and one track's are not another's.
+        Rig rig;
+        Session& session = rig.app.session();
+        CHECK(session.addTrack(TrackKind::Drums));
+        EffectData a;
+        a.kind = comp, a.param[0] = 0.11f;
+        float back[kEffectParams];
+        for (int track = 0; track < 2; ++track)
+            for (int slot = 0; slot < kTrackSlots; ++slot) {
+                session.rememberType(track, slot, a);
+                for (int t = 0; t < 2; ++t)
+                    for (int s = 0; s < kTrackSlots; ++s) CHECK(session.rememberedType(t, s, EffectKind::Comp, back) == (t == track && s == slot));
+                session.forgetTypes(track, slot);
+                CHECK(!session.rememberedType(track, slot, EffectKind::Comp, back));
+            }
+        // Through the gesture too: a COMP switched away in slot 1 is not what slot 2's DUCK goes back to.
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        rig.project().track = 0;
+        const EffectData compWas = turnedComp(rig);
+        fx.goTo(0, 2);
+        typeTap(rig, RIGHT);
+        session.setEffect(0, 1, EffectKind::Duck);
+        fx.goTo(1, 2);
+        typeTap(rig, LEFT);
+        CHECK(session.effectData(0, 1).kind == comp && !sameParams(session.effectData(0, 1), compWas));
+    }
+    {
+        // A switch is heard when the song is stopped (the track is sounded through the new type), a switch that
+        // an end stops is not, and nothing is sounded by hand while the song plays.
+        Rig rig;
+        Session& session = rig.app.session();
+        FxScreen& fx = rig.app.fx();
+        session.view = View::Effects;
+        session.setEffect(0, 0, EffectKind::Comp);
+        rig.frames(30);
+        rig.render(96000);
+        fx.goTo(0, 2);
+        CHECK(rig.listen(8000) == 0.f);
+        typeTap(rig, RIGHT);
+        CHECK(session.effectData(0, 0).kind == duck && rig.listen(8000) > 0.01f);
+        rig.frames(30);
+        rig.render(96000);
+        typeTap(rig, LEFT);
+        CHECK(session.effectData(0, 0).kind == comp && rig.listen(8000) > 0.01f);
+        rig.frames(30);
+        rig.render(96000);
+        typeTap(rig, LEFT); // the first type: stopped, nothing switched, nothing sounded
+        CHECK(session.effectData(0, 0).kind == comp && rig.listen(8000) == 0.f);
+        // Playing (an empty pattern, so anything heard would be a hit by hand).
+        Rig playing;
+        Session& ps = playing.app.session();
+        ps.view = View::Effects;
+        ps.setEffect(0, 0, EffectKind::Comp);
+        playing.frames(1);
+        playing.tap(START);
+        playing.frames(1);
+        CHECK(playing.project().playing && playing.listen(48000) == 0.f);
+        playing.app.fx().goTo(0, 2);
+        typeTap(playing, RIGHT);
+        playing.frames(1);
+        CHECK(ps.effectData(0, 0).kind == duck && playing.listen(48000) == 0.f);
+    }
+    {
+        // A family of one (none today) switches nothing and shows no key. Asked with numbers, since no family
+        // can be put in a slot to try it. The first setting is as any other.
+        using F = FxScreen;
+        CHECK(F::typeKeyFor(1, 1, 0) == nullptr && F::typeKeyFor(2, 1, 0) == nullptr && F::typeKeyFor(4, 1, 0) == nullptr);
+        CHECK(F::typeKeyFor(0, 4, 1) == nullptr); // the list
+        CHECK(std::strcmp(F::typeKeyFor(1, 2, 0), "RIGHT") == 0 && std::strcmp(F::typeKeyFor(1, 2, 1), "LEFT") == 0);
+        CHECK(std::strcmp(F::typeKeyFor(2, 2, 0), "RIGHT") == 0 && std::strcmp(F::typeKeyFor(2, 2, 1), "LEFT") == 0);
+        CHECK(std::strcmp(F::typeKeyFor(1, 3, 1), "LEFT / RIGHT") == 0 && std::strcmp(F::typeKeyFor(3, 3, 1), "LEFT / RIGHT") == 0);
+        // Below the first setting only a family of one has no key: every real type there has one.
+        for (int place = 1; place < effectListSize(); ++place) {
+            const EffectKind k = effectAt(place);
+            CHECK(effectTypes(k) >= 2 && F::typeKeyFor(2, effectTypes(k), effectTypeIndex(k)) != nullptr);
+        }
+    }
+}
+
 void testFxStepsTheTrack() {
     Canvas canvas, scratch;
     CHECK(canvas.ok && scratch.ok);
@@ -8109,7 +9040,7 @@ void testChangingAnInstrumentSaysWhatGoes() {
     rig.tap(UP);
     rig.tap(R1); // the list, on PHAZED: the one it has
     CHECK(!says());
-    rig.tap(DOWN); // TWIN ANALOG
+    rig.tap(DOWN); // JAX-EP
     CHECK(says());
     // Inside the list's box, clear of the hints bar.
     CHECK(70 + 46 + kInstrumentCount * 52 + SongScreen::kChangeLostH <= ui::kScreenH - ui::kHintsH);
@@ -8172,6 +9103,14 @@ int main(int argc, char** argv) {
         if (failures == 0) std::printf("app tests passed (bouncing only)\n");
         return failures == 0 ? 0 : 1;
     }
+    if (argc > 1 && std::string(argv[1]) == "--jaxep") { // just JAX-EP's own (for trying a change; ctest runs everything)
+        testHowJaxepReads();
+        testAPresetKeepsTheTracksOwnValues();
+        testUndoPutsBackTheTracksOwnTwo();
+        testJaxepsHintsFit();
+        std::printf(failures ? "%d check(s) failed\n" : "JAX-EP's tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
     if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
         testAResyncKeepsUndo();
         testATrackDeletedOrChangedKeepsUndo();
@@ -8189,6 +9128,8 @@ int main(int argc, char** argv) {
         testTheEffectsScreen();
         testTryingAnEffectKeepsIt();
         testFxStepsTheTrack();
+        testFxSwitchesType();
+        testFxSwitchMends();
         testTheFxScreensList();
         testTheFxScreenAsDrawn();
         testChangingTypeKeepsWhatIsShared();
@@ -8280,6 +9221,8 @@ int main(int argc, char** argv) {
     testTheEffectsScreen();
     testTryingAnEffectKeepsIt();
     testFxStepsTheTrack();
+    testFxSwitchesType();
+    testFxSwitchMends();
     testEffectsThroughTheSession();
     testSendsThroughTheSession();
     testTheFxScreensList();
@@ -8294,13 +9237,18 @@ int main(int argc, char** argv) {
     testTheScreensKnowWhereTheSongIs();
     testAPatternHoldsSixtyFourNotes();
     testPresetsAndFolders();
+    testABuiltInPresetRestsTheMacrosWhereTheyShow();
     testMacros();
     testTheEngineHearsMacrosAndSettings();
     testAdvancedPages();
     testEveryPatchSettingIsOnSomePage();
-    testAddingTwinAnalog();
-    testTwinsDeviceScreen();
-    testTheEngineHearsTwinsSettings();
+    testAddingJaxep();
+    testJaxepsDeviceScreen();
+    testHowJaxepReads();
+    testTheEngineHearsJaxepsSettings();
+    testAPresetKeepsTheTracksOwnValues();
+    testUndoPutsBackTheTracksOwnTwo();
+    testJaxepsHintsFit();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

@@ -36,8 +36,15 @@ void Session::togglePlay(bool song) {
     c.type = project.playing ? Command::Play : Command::Stop;
     c.a = project.scene;
     c.b = song ? 0 : 1;
-    engine.send(c);
+    if (engine.send(c) && c.type == Command::Play) ++playsSent_;
     project.playLoop = !song;
+}
+
+void Session::setSongEnd(int end) {
+    end = songEndKind(end);
+    if (end == project.songEnd) return;
+    project.songEnd = end;
+    noteEdit(); // a step of undo: it is a line of the song (the engine is told by update's syncSong, this frame)
 }
 
 void Session::panic(bool held) {
@@ -52,6 +59,12 @@ void Session::panic(bool held) {
 }
 
 void Session::syncSong() {
+    if (project.songEnd != sentSongEnd_) {
+        Command c;
+        c.type = Command::SetSongEnd;
+        c.a = project.songEnd;
+        if (engine.send(c)) sentSongEnd_ = project.songEnd; // (lost to a full queue: not sent, so sent again)
+    }
     const int count = project.sceneCount();
     if (count == sentSceneCount_) return;
     Command c;
@@ -64,6 +77,8 @@ bool Session::removeTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count <= 1) return false;
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
+    for (int t = track; t < kNumTracks; ++t) // the types each slot remembers move with their tracks
+        for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
     {
         std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
         project.tracks[kNumTracks - 1] = *blank;
@@ -96,6 +111,7 @@ bool Session::addTrack(TrackKind kind) {
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
+    forgetTrackTypes(track);
     if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;
 }
@@ -103,6 +119,7 @@ bool Session::addTrack(TrackKind kind) {
 bool Session::setTrackKind(int track, TrackKind kind) {
     if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
     TrackData& t = project.tracks[track];
+    forgetTrackTypes(track); // (its effects stay; what they were switched from is forgotten)
     t.kind = kind;
     t.preset = 0;
     for (float& m : t.macro) m = 0.5f;
@@ -249,8 +266,9 @@ void Session::update(Uint32 nowMs) {
     project.playStep = engine.playStep();
     project.playRepeat = engine.playRepeat();
     project.playBar = engine.playBar();
+    // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
+    if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     project.silenced = engine.silenced();
-    project.busy = engine.qualityLimit() < 3;
 
     // A full queue loses commands, and then the engine and the song no longer
     // agree (a note on the screen that never plays). It takes the audio thread
@@ -649,6 +667,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -729,6 +748,9 @@ void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
             engine.send(c);
         }
         if (now.glideFrom != then.glideFrom) setGlideFrom(t, then.glideFrom);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneFeel[lane] != then.laneFeel[lane]) setLaneFeel(t, lane, then.laneFeel[lane].time, then.laneFeel[lane].level);
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;
@@ -961,6 +983,7 @@ void Session::restorePatterns(const std::string& text, int movedFrom, int movedB
         sendMix(track);
     };
     mixBack(kMasterTrack, was->masterDb, was->masterPan);
+    project.songEnd = was->songEnd; // (the song's own lines are always read; the engine is told by update's syncSong)
     for (int t = 0; t < kNumTracks; ++t)
         if (!same[t] && project.tracks[t].kind != TrackKind::None && project.tracks[t].kind == was->tracks[t].kind) mixBack(t, was->tracks[t].mixDb, was->tracks[t].mixPan);
     for (int t = 0; t < kNumTracks && !asItWas; ++t) {
@@ -1146,6 +1169,9 @@ void Session::setEffect(int track, int slot, EffectKind kind) {
     const int bus = busOfTrack(track);
     if (bus >= 0 && kind != EffectKind::None && effectBus(kind) != bus) return; // ECHO holds a delay, SPACE a reverb
     if (!engine.setEffect(track, slot, kind)) return;
+    // Another family (or nothing): the types the slot remembered were of the one that went.
+    const EffectKind was = static_cast<EffectKind>(effectData(track, slot).kind);
+    if (std::strcmp(effectFamily(kind), effectFamily(was)) != 0) forgetTypes(track, slot); // (EMPTY is a family of its own, "NONE")
     // Another effect in the slot: automation written for the old one's settings means nothing now.
     if (track >= 0)
         for (int scene = 0; scene < kMaxScenes; ++scene)
@@ -1191,6 +1217,32 @@ void Session::sendMod(int track, int mod) {
     engine.send(c);
 }
 
+int Session::memorySlot(int track, int slot) {
+    if (slot < 0 || slot >= slotsOf(track)) return -1;
+    if (track >= 0) return track * kTrackSlots + slot;
+    if (track == kMasterTrack) return kNumTracks * kTrackSlots + slot;
+    return kNumTracks * kTrackSlots + kMasterSlots + busOfTrack(track);
+}
+
+void Session::rememberType(int track, int slot, const EffectData& settings) {
+    const int at = memorySlot(track, slot), kind = settings.kind;
+    if (at < 0 || kind <= static_cast<int>(EffectKind::None) || kind >= kEffectKinds) return;
+    typeMemory_[at].has[kind] = true;
+    for (int i = 0; i < kEffectParams; ++i) typeMemory_[at].param[kind][i] = settings.param[i];
+}
+
+bool Session::rememberedType(int track, int slot, EffectKind kind, float out[kEffectParams]) const {
+    const int at = memorySlot(track, slot), k = static_cast<int>(kind);
+    if (at < 0 || k <= static_cast<int>(EffectKind::None) || k >= kEffectKinds || !typeMemory_[at].has[k]) return false;
+    for (int i = 0; i < kEffectParams; ++i) out[i] = typeMemory_[at].param[k][i];
+    return true;
+}
+
+void Session::forgetTypes(int track, int slot) {
+    const int at = memorySlot(track, slot);
+    if (at >= 0) typeMemory_[at] = TypeMemory();
+}
+
 void Session::setEffectParam(int track, int slot, int index, float value) {
     if (slot < 0 || slot >= slotsOf(track)) return;
     EffectData& data = effectData(track, slot);
@@ -1217,6 +1269,20 @@ void Session::setGlideFrom(int track, int type) {
     c.type = Command::SetGlideFrom;
     c.track = track;
     c.a = type;
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
+void Session::setLaneFeel(int track, int lane, int time, int level) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    const LaneFeel feel = laneFeelOf(time, level);
+    if (feel == project.tracks[track].laneFeel[lane]) return;
+    project.tracks[track].laneFeel[lane] = feel;
+    Command c;
+    c.type = Command::SetLaneFeel;
+    c.track = track;
+    c.a = lane;
+    c.b = feel.time;
+    c.c = feel.level;
     engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
 }
 
@@ -1341,6 +1407,7 @@ void Session::sendEffects(int track) {
 void Session::applyProject() {
     sendSong();
     // Another song: nothing of the last one to go back to.
+    for (TypeMemory& m : typeMemory_) m = TypeMemory();
     undo_.clear();
     redo_.clear();
     editing_ = false;
@@ -1427,6 +1494,19 @@ void Session::sendSong() {
         c.track = track;
         c.a = isSynth(project.tracks[track].kind) ? project.tracks[track].glideFrom : 0;
         engine.send(c);
+    }
+    // Every drum lane's FEEL, at rest too. (A synth track has none.)
+    for (int track = 0; track < kNumTracks; ++track) {
+        if (project.tracks[track].kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            c = Command();
+            c.type = Command::SetLaneFeel;
+            c.track = track;
+            c.a = lane;
+            c.b = project.tracks[track].laneFeel[lane].time;
+            c.c = project.tracks[track].laneFeel[lane].level;
+            engine.send(c);
+        }
     }
     // Every track's two MODs, the ones that are OFF too.
     for (int track = 0; track < project.trackCount(); ++track)

@@ -161,6 +161,13 @@ void putTrack(std::string& out, const TrackData& track) {
                 if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
             out += "\n";
         }
+        // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (track.laneFeel[lane].atRest()) continue;
+            put(out, "feel %.0f", lane + 1);
+            put(out, " %.0f", track.laneFeel[lane].time);
+            put(out, " %.0f\n", track.laneFeel[lane].level);
+        }
         // scene N, then "bars B" if the cell is longer than one, then each
         // bar's hits; "bar K" comes before those of the second bar on.
         // Then the bars the cell hides (made shorter: they come back as they were if it is made
@@ -298,6 +305,9 @@ void putHead(std::string& out, const Project& project) {
     }
     out += "\n";
     if (project.chordPack[0]) out += std::string("pack ") + project.chordPack + "\n";
+    // songend N: what the song does at its end (1: STOP). Left out at LOOP, so a song that loops is
+    // written as it always was, and a program from before (which skips the line) plays it round.
+    if (project.songEnd != kSongLoop) put(out, "songend %.0f\n", project.songEnd);
     // master DB PAN: the master's level and pan on the mixer, as a track's `mix`. Left out at 0 0.
     if (project.masterDb != 0 || project.masterPan != 0) {
         put(out, "master %.0f", project.masterDb);
@@ -397,6 +407,7 @@ bool parseSong(const std::string& text, Project& project) {
     std::unique_ptr<Project> song(new Project);
     const std::unique_ptr<const TrackData> blank(new TrackData); // a track as new (821 KB: never on the stack)
     song->tracks[0] = *blank; // no tracks until the file names them
+    bool oldSound = false; // the track being read was written as `track twin`: its notes are read, its sound is not
     int count = 0, scene = -1, bar = 0;
     int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
     for (int& n : oldSteps) n = kSteps;
@@ -436,6 +447,9 @@ bool parseSong(const std::string& text, Project& project) {
             data.kind = static_cast<int>(kind);
             for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
             for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
+        } else if (word == "songend") {
+            double end = 0;
+            if (in >> end) song->songEnd = songEndKind(wholeIn(end, 0, 255)); // (held as a double first; a number nobody knows: LOOP)
         } else if (word == "master") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;
@@ -455,7 +469,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "track") {
             std::string kind;
             in >> kind;
-            const TrackKind k = trackKindFromWord(kind.c_str());
+            const TrackKind k = trackKindFromWord(kind.c_str(), &oldSound);
             track = nullptr;
             scene = -1;
             if (k == TrackKind::None || count >= kNumTracks) continue; // an instrument this version does not have, or a thirteenth track
@@ -478,6 +492,7 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "auto") {
             double sceneNumber = 0, lane = -1, index = 0, value = 0;
             if (!(in >> sceneNumber >> lane) || sceneNumber < 1 || sceneNumber > kMaxScenes || lane < 0 || lane >= kAutoLanes) continue;
+            if (oldSound && lane < kSynthMacros) continue; // another synth's macros: they would turn knobs that are not theirs
             while (in >> index >> value) {
                 if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
                 track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
@@ -543,6 +558,11 @@ bool parseSong(const std::string& text, Project& project) {
             double lane;
             while (in >> lane)
                 if (lane >= 1 && lane <= kDrumLanes) track->laneOneSlice[static_cast<int>(lane) - 1] = true;
+        } else if (word == "feel" && track->kind == TrackKind::Drums) {
+            double lane, time = 0, level = 0;
+            if (!(in >> lane >> time) || !(lane >= 1) || lane > kDrumLanes) continue;
+            if (!(in >> level)) level = 0;
+            track->laneFeel[static_cast<int>(lane) - 1] = laneFeelOf(wholeIn(time, 0, 100), wholeIn(level, 0, 100)); // (held as doubles first)
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
             std::getline(in >> std::ws, name);
@@ -551,6 +571,8 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
             double v;
             for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
+        } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
+            continue; // an old Twin Analog track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);
@@ -721,7 +743,7 @@ bool cutSong(const std::string& text, std::string& head, std::vector<std::string
     std::size_t from = 0; // where the part being read began
     bool inTrack = false;
     int count = 0;
-    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master"};
+    static const char* const songsOwn[] = {"tempo", "length", "steps", "repeats", "pack", "busfx", "master", "songend"};
     for (std::size_t at = 0; at < text.size();) {
         std::size_t end = text.find('\n', at);
         end = end == std::string::npos ? text.size() : end + 1;

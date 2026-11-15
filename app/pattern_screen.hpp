@@ -75,6 +75,18 @@
 // ratchet, an arrow for backwards, a red edge for a cut, and a dash beside
 // it that sits higher or lower with the pitch.
 //
+// FEEL: a lane played by a hand. Hold X on a lane's NAME (X by itself still just hears the
+// drum) and the stick or D-pad sets how much every hit of the lane is moved, a click at a time:
+// OFF, 10, 25, 50, 75, 100%. It is live: nothing is written into the hits, every time round is
+// another, and a hit on a main beat (steps 1, 5, 9, 13) moves half as much.
+//
+//   hold X, left / right     HUMAN TIME   each hit up to 12 ms early or late
+//   hold X, up / down        HUMAN LEVEL  each hit up to 15% louder or quieter
+//   hold X, Y                the dice: a small feel (10 or 25%)
+//   hold X, A                this lane's feel onto every lane of the kit
+//
+// A lane with a feel wears a purple mark at the left of its name.
+//
 // SLICES, for chopping a break. L1 on a lane that plays a recording zooms the
 // grid into that one lane (L1 again: back). The recording is drawn large, cut
 // into slices: sixteen, or one to a step if it is fitted to more than a bar.
@@ -150,6 +162,10 @@ public:
     void setFx(int lane, int step, StepFx fx);
     const StepFx& fx(int lane, int step) const { return pat().fx[lane][step]; }
     bool effecting() const { return fxHeld_; } // X is held on a hit
+    // FEEL (see the top of this file): a lane's HUMAN TIME and HUMAN LEVEL.
+    bool feeling() const { return feelHeld_; } // X is held on a lane's name
+    LaneFeel laneFeel(int lane) const { return project_.current().laneFeel[lane]; }
+    static void drawFeelMark(SDL_Renderer* renderer, int nameY, LaneFeel feel); // the mark on a lane's name (both views)
     // The slice view (see the top of this file).
     bool slicing() const { return slicing_; }
     void setSlicing(bool on);         // on only if the cursor's lane plays a recording; if not, it says why
@@ -198,6 +214,9 @@ private:
     void fxRoll();                   // with X held, Y: the dice set the hit's step effects
     void fxThrow();                  // with X held, A: its THROW a step round (off, ECHO, SPACE, both)
     void hearHit();                  // the hit under the cursor, as the pattern would play it
+    void feelTurn(Button direction); // with X held on a lane's name: one click of HUMAN TIME (left / right) or HUMAN LEVEL (up / down)
+    void feelRoll();                 // ...Y: the dice set the lane's feel, small amounts
+    void feelToAll();                // ...A: this lane's feel onto every lane of the kit
     // The marks a hit's step effects put on its block (pattern_slices.cpp). `rise` is how far the pitch dash moves for a semitone.
     static void drawFxMarks(SDL_Renderer* renderer, const StepFx& fx, int x, int y, int w, int h, int middleY, float rise);
     void drawSlices(SDL_Renderer* renderer, const Fonts& fonts) const; // pattern_slices.cpp
@@ -223,6 +242,10 @@ private:
     float diceSaved_ = 0.f; // part-hits saved up while the stick turns
 
     bool fxHeld_ = false;  // X is held on a hit: the stick sets its step effects
+    bool feelHeld_ = false; // X is held on a lane's name: the stick sets the lane's feel
+    // A or Y pressed while X was held (the feel's copy and dice, a hit's THROW and dice): that press
+    // does nothing of its own if X is let go first. Until the button comes up.
+    bool aSpent_ = false, ySpent_ = false;
     float fxSaved_ = 0.f;  // part-clicks saved up while the stick is held over
     bool fxWas_ = false;
     bool fxWait_ = false; // the stick was already over when X went down: it does nothing until it has been let go

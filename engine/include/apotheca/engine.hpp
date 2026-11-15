@@ -49,13 +49,14 @@
 #include "apotheca/effect.hpp"
 #include "apotheca/effects.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/feel_rule.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/glide_rule.hpp"
 #include "apotheca/instrument.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/qmod.hpp"
-#include "apotheca/twin.hpp"
+#include "apotheca/jx3p.hpp"
 #include "apotheca/spsc_queue.hpp"
 
 namespace apotheca {
@@ -197,6 +198,12 @@ struct Command {
         HoldEffectAutomation, // the FX screen's list of effects is open on a track's slot, and the slot sounds what
                         //   the cursor is on: track, a = slot, b = 1 held (the slot's automation is not applied,
                         //   so it does not move the effect being tried), 0 let go (it is, from the next step).
+        SetSongEnd,     // what the song does at its end, played as a song (not a scene alone, not a bounce):
+                        //   a = 0 LOOP, round to its first scene (as it always did); 1 STOP: playing stops on
+                        //   the step after the last step of the last scene, as Stop does (Engine::songEnded)
+        SetLaneFeel,    // FEEL, a drum lane's HUMAN TIME and HUMAN LEVEL (feel_rule.hpp): track, a = lane,
+                        //   b = HUMAN TIME, c = HUMAN LEVEL, each 0..100. Live: hits asked for after it is
+                        //   taken go by it; nothing is written into them. Both 0: the lane plays as it always did.
         SetMod,         // one field of a track's MOD (mod_rule.hpp): track, a = MOD (0, 1), b = the field (ModField),
                         //   value = its value, held to what it can be (modSet). Taken at the MOD's next tick.
         SetModStep,     // one value of a STEPPER's row: track, a = MOD, b = place (0..15), value = -1..1
@@ -375,6 +382,9 @@ public:
     // empty slot and for an effect with nothing to show. `track` may be
     // kMasterTrack. As of the last chunk rendered; no lock, any thread.
     float effectMeter(int track, int slot) const;
+    // Which EffectKind the slot holds, as the audio thread last ran it (0: none). `track` may be kMasterTrack
+    // or a bus. For the tests: what the engine plays, not what the project says. No lock, any thread.
+    int effectKindIn(int track, int slot) const;
     int playStep() const { return playStep_.load(std::memory_order_relaxed); }   // 0..15, or -1 when stopped
     // 0..15, or -1 when stopped. With it, in one read, how many Command::ScenesMoved the audio
     // thread has taken so far (counted round at kMovesHeardRound): a caller that has sent more
@@ -385,6 +395,11 @@ public:
         if (movesHeard) *movesHeard = both >> 8;
         return static_cast<int>(both & 255u) - 1;
     }
+    // AT END STOP: each Play taken is counted, and when a song stops by itself at its end this
+    // says which Play it was (0: none yet). The app counts the Plays it sent: the two equal, the
+    // playing it started has ended. (A Play sent after the end is a later number, so no race.)
+    unsigned songEnded() const { return songEnded_.load(std::memory_order_relaxed); }
+    bool songStopsAtEnd() const { return songStop_; } // what SetSongEnd last said (for the tests: the audio thread's own)
     int playRepeat() const { return playRepeat_.load(std::memory_order_relaxed); } // 0-based pass through the scene
     int playBar() const { return playBar_.load(std::memory_order_relaxed); }       // 0-based bar of the scene
 
@@ -424,21 +439,6 @@ public:
     bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
 
-    // ---- keeping up ---------------------------------------------------------------
-    // A sound that takes longer to work out than it lasts cannot be played:
-    // the output stutters. With the watch on, render() times itself, and
-    // when it is falling behind it tells the synths to do plainer work
-    // (Twin Analog's oversampling, a notch at a time) until it keeps up.
-    // The player's settings are not changed. It is off unless turned on, so
-    // that tests and renders that do not run in real time are never touched.
-    void watchLoad(bool on) { watchLoad_ = on; }
-    // 3: nothing held back. 0: plainest. Lower than 3 means "it could not keep up".
-    int qualityLimit() const { return qualityLimit_.load(std::memory_order_relaxed); }
-    // How long the last render() took, as a part of the time it had (1 = all of it).
-    float load() const { return load_.load(std::memory_order_relaxed); }
-    // What render() does with each timing. Public for the tests: `part` is
-    // time taken over time available, for a block of `frames`.
-    void noteLoad(float part, int frames);
     // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
     // tests: read between renders, never while one is under way.
     int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
@@ -639,8 +639,15 @@ private:
             HitPlay how;
             int more = 0;
             bool ahead = false; // an early hit of the step after the one playing
+            bool begun = false; // a ratchet whose first hit has sounded
+            bool whole = false; // FEEL: its wait and its gap are whole samples, and stay so through a tempo change
         };
         Pending pending[kDrumLanes][3];
+        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, and the step (counted from Play) whose hit
+        // on the lane has been asked for a step ahead because HUMAN TIME may bring it early: that
+        // hit is not begun again when its step comes, whatever the lane says by then.
+        LaneFeel feel[kDrumLanes];
+        long feelAsked[kDrumLanes] = {-1, -1, -1, -1, -1, -1, -1, -1};
         // The lanes hit since the last chunk was worked out: bit 0 is lane 1. A hit
         // always lands on a chunk's first sample (render() ends a chunk where the
         // next one is due), so "which lanes" is all there is to say.
@@ -659,6 +666,7 @@ private:
         std::unique_ptr<Effect> effects[kTrackSlots];
         SlotFade fades[kTrackSlots];
         std::atomic<float> meters[kTrackSlots]; // what each slot's effect shows (effectMeter)
+        std::atomic<int> kinds[kTrackSlots];    // and what it is (effectKindIn)
         std::atomic<float> peak{0.f};
         // Taken away while it still sounded: it fades to nothing over kGoneFadeSeconds (its
         // effects' tails too), and only then is its instrument taken away (Engine::takeAway).
@@ -707,8 +715,11 @@ private:
     void glideAutomation(int frames);
     void settleAutomation();
     double autoPhase_ = 0.0; // how far through the present step, 0..1
-    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false); // audition: a held audition's, which StopAudition fades
-    void schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples);
+    void playHit(Track& track, int lane, float velocity, float start, float part, const StepFx& fx, double delaySamples, bool audition = false, bool whole = false); // audition: a held audition's, which StopAudition fades
+    // `bar`: the bar of the cell the hit is in; `stepAt`: its step's number, counted from Play (both for FEEL's
+    // rolls); `ahead`: asked a step ahead (a hit whose moment has gone by is then not played).
+    // False: asked ahead, and not taken (its moment had gone by).
+    bool schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead);
     void firePending();
     void clearPending();
     void letGoOfNotes();
@@ -747,6 +758,7 @@ private:
     std::unique_ptr<Effect> masterEffects_[kMasterSlots];
     SlotFade masterFades_[kMasterSlots];
     std::atomic<float> masterMeters_[kMasterSlots];
+    std::atomic<int> masterKinds_[kMasterSlots], busKinds_[kBuses]; // effectKindIn
     // The send buses: one effect each, wet only.
     std::unique_ptr<Effect> busEffects_[kBuses];
     SlotFade busFades_[kBuses];
@@ -767,16 +779,25 @@ private:
     bool playing_ = false;
     bool loopScene_ = false;
     bool once_ = false;     // the song is played once and then stopped (a bounce): nothing of its start is asked for at its end
+    bool songStop_ = false; // AT END STOP (SetSongEnd): the song, played as a song, stops by itself at its end
+    unsigned playsTaken_ = 0; // Command::Play taken so far (the audio thread's)
+    std::atomic<unsigned> songEnded_{0}; // the playsTaken_ of the playing that stopped at its end
+    // Nothing of the song's start is asked for at its end: a bounce, or a song that stops there.
+    bool playsOnce() const { return once_ || (songStop_ && !loopScene_); }
+    // The step after the song's last: a song that stops at its end stops here (render()).
+    bool songEndsNow() const;
+    void stopPlaying(); // Command::Stop, and a song stopping at its end
+    void barLine();     // Catch: a bar has ended here (a bar's first step, or a song stopping at its end)
     bool firstStep_ = true; // the step about to fire is the first since Play
     bool telling_ = false;  // inside fireStep, for a PAIRED track: its notes are only told to the trail as coming, not begun
     bool asking_ = false;   // inside fireStep: what is set waiting now is asked a step ahead (marked `ahead`)
     int askedFollowing_ = -1; // the step after the one playing, as fireStep worked it out (-1: none asked)
     // The early notes, hits and chords of the step after the one playing, asked from where it is.
-    void askAheadHits(Track& track, const DrumScene& then, int following, double elapsed);
+    void askAheadHits(Track& track, const DrumScene& then, int bar, int following, double elapsed);
     void askAheadNotes(Track& track, int slotThen, int following, double now, double elapsed);
     // After a scene move: the step after the one playing is another scene's now? Then what was
     // asked from the one it was is dropped, and asked again from the one it is.
-    void askAgain();
+    void askAgain(bool endChanged = false); // endChanged: AT END was switched (asked again only on the song's last step, the same bar or not)
     long stepsFired_ = 0;   // steps begun since Play: the clock a note's start is told to its track's GlideTrail by
     float tempo_ = 120.f;
     double samplesPerStep_ = 6000.0;
@@ -802,11 +823,6 @@ private:
     bool cutEverything_ = false; // the gate has just shut: cut the drums and clear the effects
     int shutFrames_ = 0, quietFrames_ = 0;
     std::atomic<bool> silenced_{false};
-    bool watchLoad_ = false;
-    std::atomic<int> qualityLimit_{3};
-    std::atomic<float> load_{0.f};
-    int busyBlocks_ = 0;      // blocks in a row that took nearly all their time
-    long long calmFrames_ = 0; // frames in a row with time to spare
 
     // The master's level and pan (the mixer): after its slots, before the ceiling. At 1, 1 and 1
     // it is not run at all, so a song left alone comes out as it did to the bit.

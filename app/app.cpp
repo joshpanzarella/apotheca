@@ -15,7 +15,7 @@ constexpr Uint32 kPanicNoteMs = 4000; // how long the notice stays once the butt
 
 App::App(Engine& engine)
     : project_(new Project), session_(engine, *project_), song_(session_), drums_(session_), notes_(session_), kit_(session_), fx_(session_), sampler_(session_), settings_(session_),
-      phazed_(session_, phazedSpec()), twin_(session_, twinSpec()), qmod_(session_, qmodSpec()) {}
+      phazed_(session_, phazedSpec()), jaxep_(session_, jx3pSpec()), qmod_(session_, qmodSpec()) {}
 
 // The one screen that is up: by the tab, and for PATTERN and DEVICE by the
 // track's instrument.
@@ -28,7 +28,7 @@ Screen& App::screenNow() {
         return drums_;
     case View::Device:
         if (kind == TrackKind::Phazed) return phazed_;
-        if (kind == TrackKind::Twin) return twin_;
+        if (kind == TrackKind::Jx3p) return jaxep_;
         if (kind == TrackKind::Qmod) return qmod_;
         if (kind == TrackKind::Sampler) return sampler_;
         return kit_;
@@ -87,6 +87,12 @@ void App::onButton(const ButtonEvent& event, const Input& input) {
     // The button test (SETUP) has every button to itself.
     if (session_.view == View::Settings && (settings_.testing() || settings_.typing()) && !panicking_) {
         settings_.onButton(event, input);
+        return;
+    }
+
+    // A new folder's name being typed in the list of recordings: every button is the list's, the tabs too.
+    if (typingAFolder() && !panicking_) {
+        screenNow().onButton(event, input);
         return;
     }
 
@@ -231,7 +237,7 @@ void App::update(const Input& input, Uint32 nowMs) {
     // firmware keeps MENU for itself (it was left out of the controls setup),
     // SELECT held by itself for four tenths of a second does it instead; then
     // letting go of SELECT is not a tap.
-    const bool busy = session_.view == View::Settings && (settings_.testing() || settings_.typing());
+    const bool busy = (session_.view == View::Settings && (settings_.testing() || settings_.typing())) || typingAFolder();
     const bool menu = input.has(Button::Menu);
     ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
     ui::gUpdateReady = session_.updateReady();

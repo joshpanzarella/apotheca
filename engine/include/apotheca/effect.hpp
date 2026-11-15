@@ -36,6 +36,9 @@ public:
     // keeps it where the screen can ask (Engine::effectMeter): nothing else
     // may call it while the effect is in a slot.
     virtual float meter() const { return 0.f; }
+    // The EffectKind makeEffect made it as (0: one made by hand). Set before it goes in a slot and never
+    // changed there; the audio thread keeps it where any thread can ask (Engine::effectKindIn).
+    int madeAs = 0;
 };
 
 // Plain volume. Param 0: linear gain (1 = unchanged).

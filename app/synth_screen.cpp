@@ -94,6 +94,20 @@ void SynthScreen::choosePreset(int index) {
 
 void SynthScreen::stepPreset(int by) { choosePreset(trk().preset + by); }
 
+// A preset's place in its folder, from 1, and how many the folder holds: the run of presets side
+// by side with its folder's name.
+int SynthScreen::placeInFolder(int preset, int& of) const {
+    const int count = spec_.presetCount();
+    of = 0;
+    if (preset < 0 || preset >= count) return 0;
+    const char* here = spec_.presetCategory(preset);
+    int first = preset, last = preset;
+    while (first > 0 && std::strcmp(spec_.presetCategory(first - 1), here) == 0) --first;
+    while (last + 1 < count && std::strcmp(spec_.presetCategory(last + 1), here) == 0) ++last;
+    of = last - first + 1;
+    return preset - first + 1;
+}
+
 // To the first preset of the next or the previous folder.
 void SynthScreen::stepFolder(int by) {
     const int count = spec_.presetCount();
@@ -308,11 +322,26 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
 
     if (page_ == 0) {
         // ---- MAIN: folder, preset, eight macros, ADVANCED, and the scope ----------
-        valueBox(r, fonts, 8, kPresetY, 200, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        valueBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
+        char place[24];
         std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
-        valueBox(r, fonts, 216, kPresetY, 416, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
-        std::snprintf(text, sizeof text, "%d / %d", t.preset + 1, spec_.presetCount());
-        fonts.small.drawRight(r, 622.f, kPresetY + 7.f, text, kDim);
+        int inFolder = 0;
+        const int placeHere = placeInFolder(t.preset, inFolder);
+        std::snprintf(place, sizeof place, "%d / %d", placeHere, inFolder);
+        const float rowY = kPresetY + 7.f, countRight = kPresetX + kPresetW - 10.f;
+        if (const char* note = folderNote()) {
+            // PRESET, the folder's note and the count share the top row: one lettering for all three.
+            const float room = countRight - (kPresetX + 7.f) - fonts.small.width("PRESET") - fonts.small.width(kCountLongest) - 2.f * kNoteGap;
+            const Font& row = fonts.within(&Fonts::small, note, room);
+            const float y = rowY; // (a row held at LARGE is where LARGE draws it)
+            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "", text, -1.f, cursor_ == kPreset, holding_);
+            row.draw(r, kPresetX + 7.f, y, "PRESET", kDim);
+            row.draw(r, kPresetX + 7.f + row.width("PRESET") + kNoteGap, y, note, kDim);
+            row.drawRight(r, countRight, y, place, kDim);
+        } else {
+            valueBox(r, fonts, kPresetX, kPresetY, kPresetW, kPresetH, "PRESET", text, -1.f, cursor_ == kPreset, holding_);
+            fonts.small.drawRight(r, countRight, rowY, place, kDim);
+        }
 
         for (int m = 0; m < kMacros; ++m) {
             const int x = 8 + (m % 4) * kMacroPitchX, y = kMacroY + (m / 4) * (kMacroH + kMacroGap);

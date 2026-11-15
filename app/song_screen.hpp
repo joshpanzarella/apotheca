@@ -14,7 +14,7 @@
 //                      Hold R1 and drag: copy it into every cell crossed.
 //   on a repeat count  (the column left of the tracks) hold A + stick up /
 //                      down: how many times the scene plays. Tap A: 1, 2, 4, 8.
-//   on + TRACK         A, then pick the instrument: drums, Phazed or Twin Analog.
+//   on + TRACK         A, then pick the instrument: drums, Phazed, JAX-EP...
 //   on a track's head  (up from the top scene) tap A: its name. R1: its instrument. Hold B: delete it.
 //                      Hold A + UP / DOWN: its LEVEL, a dB a press; + LEFT / RIGHT: its PAN.
 //                      The stick, with A held, for big moves. B with A held: back to the usual
@@ -61,6 +61,12 @@ public:
     static constexpr int kMixMarkSize = 6, kMixMarkInset = 3;
     // B held this long on a track deletes it; the warning bar starts after the wait.
     static constexpr Uint32 kTrackHoldWaitMs = 500, kTrackHoldMs = 2000;
+    // L1 held this long on a track solos it, or takes its solo off (owner, 2026-11-14: a tap of L1 soloed a
+    // track by mistake too easily). A tap does nothing.
+    static constexpr Uint32 kSoloHoldMs = 400;
+    // A held this long on a head is the mixer, not a tap: its card comes up, and letting go then never
+    // names the track, turned or not (owner, 2026-11-14: a look at the level opened the keyboard).
+    static constexpr Uint32 kMixCardMs = 300;
     // What the hints bar says while the head fills (the head has room for one word).
     static constexpr const char* kTrackDeletingWords = "deleting the track: cannot be undone";
     // Under the list of instruments when a track's is being changed: what goes with the old one.
@@ -82,7 +88,10 @@ public:
     int cursorColumn() const { return column_; }
     bool cursorOnHead() const { return onHead_; }
     bool cursorOnMaster() const { return onMaster_; }
-    bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the mixer card is up
+    static int headMarkWidth(const Fonts& fonts, const char* letter); // a head's M or S mark, made to its letter
+    bool mixing() const { return mixing_; } // A is held on a head (a track's or MASTER): the directions are the mixer's
+    void showMixCardForStill() { mixShown_ = mixTimed_ = true; } // (a still is taken before kMixCardMs has gone by)
+    bool mixCardUp() const { return mixing_ && (mixShown_ || mixTurned_); } // ...and its card is drawn: held kMixCardMs, or something turned
     void moveToMaster() { onHead_ = false, onMaster_ = true; }
     // The mixer card while A is held on a head: placed under the head (for the tests to read).
     static constexpr int kMixCardW = 136, kMixCardH = 62;
@@ -96,6 +105,12 @@ public:
     const std::vector<std::string>& listedSongs() const { return songs_; }
     void scenesMoved(int from, int by); // a scene put in or taken out (NEXT SCENE): the cursor stays on the scene it was on
     void selectWasUsed() { cancelSelectTap(); } // SELECT did something else: letting go is not a tap
+    // AT END: the PLAYS box of the first empty row, just past the song's last scene, is where the
+    // song ends. It shows a loop (LOOP) or a stop square (STOP), and A there switches them.
+    int songEndRow() const { return project_.sceneCount() < kMaxScenes ? project_.sceneCount() : -1; } // -1: every row is a scene
+    bool onSongEnd() const { return !onMaster_ && column_ == kRepeatColumn && scene_ == songEndRow(); }
+    SDL_Rect repeatBox(int scene) const; // a scene's PLAYS box as it is drawn (w 0: not in view)
+    static void drawSongEnd(SDL_Renderer* r, int cx, int cy, int end, SDL_Color color); // the mark, centred on (cx, cy)
 
 private:
     static constexpr int kRepeatColumn = -1;
@@ -119,14 +134,17 @@ private:
     int changing_ = -1;   // the instrument list is up to change this track's (-1: to add a track)
     bool onHead_ = false; // the cursor is on a track's head (its name), above the top scene
     bool onMaster_ = false; // ...or on MASTER, the head at the right-hand end
+    bool addFromHeads_ = false; // on + TRACK, come to along the heads: left goes back to the last head, not its cell
     bool mixing_ = false;   // A is held on a head: the directions turn its level and pan
     bool mixTurned_ = false; // ...and something was turned, so letting go is not a tap (a tap on a track's head names it)
+    bool mixShown_ = false, mixTimed_ = false; // ...held kMixCardMs: the card is up, and letting go is not a tap either
+    Uint32 mixSince_ = 0;
     float mixSavedDb_ = 0.f, mixSavedPan_ = 0.f; // the stick's part-steps saved up
     int scene_ = 0;
     int column_ = 0;
     int top_ = 0; // first scene shown
     bool choosing_ = false; // the instrument list is open
-    int choice_ = 0;        // 0 drums, 1 Phazed, 2 Twin Analog
+    int choice_ = 0;        // its place in kInstruments
 
     bool holding_ = false;  // A is held on a repeat count
     bool turned_ = false;   // ...and the stick or D-pad changed it, so letting go is not a tap
@@ -148,6 +166,9 @@ private:
     bool selectAlone_ = false; // SELECT went down and nothing else has since
 
     bool trackHold_ = false, trackHoldTimed_ = false; // B is being kept held on a track
+    bool soloHold_ = false, soloHoldTimed_ = false;   // L1 is being kept held on a track: its solo, at kSoloHoldMs
+    int soloColumn_ = 0;
+    Uint32 soloHoldSince_ = 0;
     Uint32 trackHoldSince_ = 0;
     float trackHoldPart_ = 0.f;
     bool copying_ = false;  // R1 is held: the brush carries a cell

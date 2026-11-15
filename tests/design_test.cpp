@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -106,7 +107,7 @@ struct Rig {
     }
     ~Rig() {
         setUserPresets(TrackKind::Phazed, {});
-        setUserPresets(TrackKind::Twin, {});
+        setUserPresets(TrackKind::Jx3p, {});
         setUserPresets(TrackKind::Qmod, {});
     }
     void frames(int n) { for (int i = 0; i < n; ++i) app.update(input, clock += 16); }
@@ -130,11 +131,11 @@ struct Rig {
         }
     }
     // A synth on track 2, and the handheld looking at it.
-    void addSynth(bool twin = false) {
+    void addSynth(bool jaxep = false) {
         app.session().view = View::Song;
         app.song().moveCursorTo(0, app.project().trackCount());
         key(SDLK_x);
-        if (twin) key(SDLK_DOWN);
+        if (jaxep) key(SDLK_DOWN);
         key(SDLK_x);
         app.project().track = app.project().trackCount() - 1;
         frames(1);
@@ -420,7 +421,7 @@ void testSavingAPreset() {
     CHECK(spec.presetCount() == builtIn);
     session.usePresetFolder(rig.root + "/presets");
     CHECK(spec.presetCount() == builtIn + 3 && std::string(spec.presetName(builtIn + 2)) == "WILD");
-    CHECK(userPresets(TrackKind::Twin).empty());
+    CHECK(userPresets(TrackKind::Jx3p).empty());
     rig.tell("preset " + std::to_string(builtIn + 2));
     CHECK(rig.track().patch.value[phazed::LineSelect] == 3 && rig.track().patch.value[phazed::Octave] == 1 && rig.track().patch.value[phazed::DetuneSign] == 1);
     CHECK(rig.track().macro[0] == 1.f && rig.track().macro[1] == 0.f && rig.track().macro[2] == 0.5f);
@@ -471,37 +472,75 @@ void testQmodFromThePage() {
     CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.track().patch.value));
 }
 
-void testTwinFromThePage() {
+// JAX-EP (jx3p-plan.md, batch 6a).
+void testJaxepFromThePage() {
     Rig rig;
     rig.addSynth(true);
-    CHECK(rig.track().kind == TrackKind::Twin);
+    CHECK(rig.track().kind == TrackKind::Jx3p);
     const std::string spec = rig.get("/design/spec").body;
-    CHECK(has(spec, "\"name\":\"TWIN\"") && has(spec, "\"macros\":[\"SHAPE\",\"BLEND\"") && count(spec, "\"env\":") == 3 && !has(spec, "\"env\":true"));
-    CHECK(count(spec, "\"id\":") == twin::kSettings);
-    rig.tell("set " + std::to_string(twin::Level) + " 0");
+    CHECK(has(spec, "\"name\":\"JAX-EP\"") && has(spec, "\"macros\":[\"CUTOFF\",\"RESO\"") && count(spec, "\"env\":") == 5 && !has(spec, "\"env\":true"));
+    CHECK(count(spec, "\"id\":") == jx3p::kSettings);
+    CHECK(has(spec, "\"texts\":[\"OFF\",\"SYNC\",\"METAL\"]") && has(spec, "\"texts\":[\"SAW\",\"PULSE\",\"SQUARE\",\"NOISE\"]"));
+    // A knob reads on the page as on the device, its dial in tenths, 0.0 to 10.0 (batch 6b): the page is given
+    // all 101 readings of each of the 19 knobs, and shows the one the slider is at.
+    CHECK(count(spec, "\"texts\":") == jx3p::kSettings && count(spec, "\"texts\":[\"0.0\",\"0.1\",\"0.2\",") == 19 && count(spec, ",\"9.8\",\"9.9\",\"10.0\"]") == 19);
+    CHECK(has(spec, "{\"name\":\"CUTOFF\",\"id\":16,\"min\":0,\"max\":100,\"texts\":[\"0.0\",") && !has(spec, "\"100\"") && !has(spec, "\"10.1\""));
+    {
+        // ...and only JAX-EP's: Phazed's long settings still show their plain number there.
+        Rig other;
+        other.addSynth();
+        const std::string phazed = other.get("/design/spec").body;
+        CHECK(has(phazed, "\"name\":\"PHAZED\"") && count(phazed, "\"texts\":") > 0 && count(phazed, "\"texts\":") < count(phazed, "\"id\":"));
+    }
+    // A new track is on A1 String I (batch 7). Made plain to listen to: one DCO (its two saws beat, and
+    // a note's peak then hangs on where in the beat it began), no slow attack, the chorus off.
+    rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
+    rig.tell("set " + std::to_string(jx3p::SourceMix) + " 0");
+    rig.tell("set " + std::to_string(jx3p::Attack) + " 0");
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 45"); // (the VCA's 0 dB: over it the clip bends the wave)
     const float before = rig.loud();
-    CHECK(rig.tell("set " + std::to_string(twin::VShape) + " 100") && rig.track().twin.value[twin::VShape] == 100);
-    rig.tell("set " + std::to_string(twin::Level) + " -20");
+    CHECK(rig.tell("set " + std::to_string(jx3p::Resonance) + " 30") && rig.track().jx3p.value[jx3p::Resonance] == 30);
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 5"); // four steps of the dial: 16 dB down
     CHECK(rig.loud() < 0.2f * before);
-    rig.tell("set " + std::to_string(twin::VShape) + " 500");
-    CHECK(rig.track().twin.value[twin::VShape] == 100);
-    const TwinPatch made = rig.track().twin;
+    rig.tell("set " + std::to_string(jx3p::Resonance) + " 500");
+    CHECK(rig.track().jx3p.value[jx3p::Resonance] == 100);
+    rig.tell("set " + std::to_string(jx3p::Resonance) + " 30");
+    // The track's own two, turned before the save: a preset does not hold them.
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 61");
+    rig.tell("set " + std::to_string(jx3p::Velocity) + " 0");
+    const Jx3pPatch made = rig.track().jx3p;
     const float sound = rig.loud();
     CHECK(rig.tell("save wide saw"));
-    CHECK(exists(rig.root + "/presets/WIDE SAW.twin") && !exists(rig.root + "/presets/WIDE SAW.phazed"));
-    CHECK(twinSpec().presetCount() == Twin::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // Twin's list, not Phazed's
-    rig.tell("preset 2");
-    rig.tell("set " + std::to_string(twin::Level) + " 0");
-    CHECK(rig.loud() > 3.f * sound);
-    rig.tell("preset " + std::to_string(Twin::presetCount()));
-    CHECK(std::equal(made.value, made.value + twin::kSettings, rig.track().twin.value) && rig.sameLoudness(rig.loud(), sound));
+    CHECK(exists(rig.root + "/presets/WIDE SAW.jaxep") && !exists(rig.root + "/presets/WIDE SAW.phazed") && !exists(rig.root + "/presets/WIDE SAW.twin"));
+    std::string file;
+    CHECK(readTextFile(rig.root + "/presets/WIDE SAW.jaxep", file));
+    {
+        std::istringstream in(file.substr(file.find("settings") + 8));
+        int v = 0, n = 0;
+        while (in >> v) ++n;
+        CHECK(n == jx3p::kPatchSettings); // ids 0 to 31
+    }
+    CHECK(jx3pSpec().presetCount() == Jx3p::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // its own list, not Phazed's
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
+    rig.tell("preset 0"); // the first built-in one
+    CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
+    rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 0.5)
+    CHECK(rig.track().preset == 7 && rig.track().jx3p.value[jx3p::VcaLevel] == 99 && rig.loud() > 3.f * sound);
+    rig.tell("preset " + std::to_string(Jx3p::presetCount()));
+    CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value));
+    CHECK(rig.track().jx3p.value[jx3p::Brilliance] == 39 && rig.track().jx3p.value[jx3p::Velocity] == 0); // as the track had them, not as they were at the save
+    // ...and it sounds as it did, with BRILLIANCE where it was when it was listened to (it moves A1's
+    // filter, and a saw's peak with it).
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 61");
+    CHECK(rig.sameLoudness(rig.loud(), sound));
+    rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     // The page follows the handheld to another track: a different synth, a different page.
     rig.app.project().track = 0;
     rig.frames(1);
     CHECK(has(rig.get("/design/spec").body, "\"name\":\"\""));
     rig.app.project().track = 1;
     rig.frames(1);
-    CHECK(has(rig.get("/design/spec").body, "\"name\":\"TWIN\""));
+    CHECK(has(rig.get("/design/spec").body, "\"name\":\"JAX-EP\""));
 }
 
 } // namespace
@@ -513,10 +552,10 @@ int main() {
     testKeysFromThePage();
     testSavingAPreset();
     testQmodFromThePage();
-    testTwinFromThePage();
+    testJaxepFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
-        rig.addSynth(std::getenv("APOTHECA_DESIGN_TWIN") != nullptr);
+        rig.addSynth(std::getenv("APOTHECA_DESIGN_JAXEP") != nullptr);
         rig.tell("preset 8");
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);

@@ -35,7 +35,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
@@ -50,11 +50,8 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(phazed_test tests/phazed_test.cpp)
   target_link_libraries(phazed_test PRIVATE apotheca_engine)
   add_test(NAME phazed COMMAND phazed_test)
-  add_executable(twin_test tests/twin_test.cpp)
   add_executable(qmod_test tests/qmod_test.cpp)
-  target_link_libraries(twin_test PRIVATE apotheca_engine)
   target_link_libraries(qmod_test PRIVATE apotheca_engine)
-  add_test(NAME twin COMMAND twin_test)
   add_test(NAME qmod COMMAND qmod_test)
   add_executable(song_test tests/song_test.cpp)
   target_link_libraries(song_test PRIVATE apotheca_engine)
@@ -73,10 +70,45 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(chordfx_test PRIVATE apotheca_engine)
   add_test(NAME chordfx COMMAND chordfx_test)
   add_test(NAME throw COMMAND throw_test)
+  add_executable(feel_test tests/feel_test.cpp)
+  target_link_libraries(feel_test PRIVATE apotheca_engine)
+  add_test(NAME feel COMMAND feel_test)
+  # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
+  # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
+  add_executable(jx3p_test tests/jx3p_test.cpp)
+  target_link_libraries(jx3p_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_test PRIVATE engine/src tests)
+  add_test(NAME jx3p COMMAND jx3p_test)
+  # The JX-3P's DCOs (plan batch 2, engine/src/jx3p/dco.hpp): aliasing, the DCO table.
+  add_executable(jx3p_dco_test tests/jx3p_dco_test.cpp)
+  target_link_libraries(jx3p_dco_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_dco_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_dco COMMAND jx3p_dco_test)
+  # The JX-3P's VCF and HPF (plan batch 3, engine/src/jx3p/ir3109.hpp): the VCF table, the HPF, BRILLIANCE.
+  add_executable(jx3p_vcf_test tests/jx3p_vcf_test.cpp)
+  target_link_libraries(jx3p_vcf_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_vcf_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_vcf COMMAND jx3p_vcf_test)
+  # The JX-3P's LFO (plan batch 4, engine/src/jx3p/lfo.hpp): its table, shapes, delay and routes.
+  add_executable(jx3p_lfo_test tests/jx3p_lfo_test.cpp)
+  target_link_libraries(jx3p_lfo_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_lfo_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_lfo COMMAND jx3p_lfo_test)
+  # The JX-3P's chorus (plan batch 5, engine/src/jx3p/chorus.hpp): its delays, sweep, filters, fade and sleep.
+  add_executable(jx3p_chorus_test tests/jx3p_chorus_test.cpp)
+  target_link_libraries(jx3p_chorus_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_chorus_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_chorus COMMAND jx3p_chorus_test)
+  # The JX-3P's 32 factory patches (plan batch 7): the table against the booklet as read
+  # (tests/jx3p_nam.inc), the booklet's three checks, every patch played.
+  add_executable(jx3p_presets_test tests/jx3p_presets_test.cpp)
+  target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
+  target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
+  add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw glide chordfx mod PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets mod PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -114,13 +146,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer modapp)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer modapp PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp PROPERTIES TIMEOUT 120)
     target_compile_definitions(chord_test PRIVATE APOTHECA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     # TEXT SIZE: the setting and its row; and every still the program knows, drawn by the program at all four sizes.
     add_executable(textsize_test tests/textsize_test.cpp)
@@ -143,6 +175,9 @@ if(APOTHECA_BUILD_APP)
     add_test(NAME launcher COMMAND sh ${CMAKE_SOURCE_DIR}/tests/launcher_test.sh ${CMAKE_SOURCE_DIR}/scripts/Apotheca.sh)
     # SELECT is drawn as SEL: no text the device shows spells it out.
     add_test(NAME words COMMAND sh ${CMAKE_SOURCE_DIR}/tests/words_test.sh ${CMAKE_SOURCE_DIR}/app)
-    set_tests_properties(launcher words PROPERTIES TIMEOUT 120)
+    # The demo render is run and read (nothing else in ctest runs tools/render_demo.cpp).
+    add_test(NAME demo COMMAND render_demo ${CMAKE_BINARY_DIR}/demo_test.wav)
+    set_tests_properties(demo PROPERTIES PASS_REGULAR_EXPRESSION "bass: Phazed, [^\n]+\nchords: JAX-EP, String I\n20\\.7 seconds, peak 0\\.[5-9]")
+    set_tests_properties(launcher words demo PROPERTIES TIMEOUT 120)
   endif()
 endif()

@@ -6,18 +6,18 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), Twin
-Analog (two morphing oscillators, 16 presets) or QMOD (FM rolled from a
-number, 24 presets). Up to sixteen scenes of
+kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), JAX-EP
+(a virtual analog synth modeled after a popular DCO synth, 32 presets) or QMOD (FM rolled
+from a number, 24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
   scene plays, copy bars by dragging.
-- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice) or, for
+- **PATTERN**: a drum grid (levels, nudge, chance, paint, lane dice, a live human feel for each lane) or, for
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, three for Twin Analog).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -54,12 +54,9 @@ device that has none or keeps MENU for itself. The answers are kept in
 `controls.txt` in the `apotheca` folder.
 
 **To set them up again** (another handheld, or a button learned wrongly),
-any of three ways:
+either of two ways:
 
 - **SETUP screen, CONTROLS row:** hold A for a second.
-- **Just after Apotheca starts,** hold any button for two seconds. A brass
-  line at the bottom of the screen says so for the first five seconds. This
-  reads the buttons raw, so it works even when none of them is understood.
 - Delete `controls.txt`.
 
 The setup learns triggers that rest at one end of their travel (many L2 / R2
@@ -144,25 +141,41 @@ recording. Eight notes at a time.
 ### The list of recordings
 
 **Tap A on SOUND** (a kit lane, or the sampler) and the recordings come up
-as a list, with the one showing drawn as a waveform and its length.
+in **three columns**: the folder this one is in, this folder with the cursor
+in it, and what is under the cursor (a folder's contents, or a recording's
+waveform and length). The cursor's column is always the middle one. It opens
+in the folder of the recording that is on, on it.
 
 | Button | Does |
 | --- | --- |
-| Up / down | The next one. It goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. The stick runs through about eight a second. |
-| Left / right | Eight at a time |
-| **L1 / R1** | The folder before / after (when there are folders) |
-| A | Keep it |
+| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. Held: a steady pace, faster after a second and a half |
+| The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
+| Left / right | Out to the folder this one is in / into the folder under the cursor |
+| **L1 / R1** | A page up / down |
+| **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
+| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, B deletes, Y or START keeps it) |
 | B | A tap: put back what was there before the list opened |
 | X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
-| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. |
+| **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
 | START | Play / stop, with the list still open |
 
-**Folders.** Make folders inside `samples` (kicks, breaks, vocals...) and the
-list shows one folder at a time, its name on a bar at the top. L1 and R1 turn
-them; arriving in a folder puts its first recording on. Recordings not in a
-folder are in one called UNSORTED. One level of folders: a folder inside a
-folder is not looked into. Catches go in `catches`, takes from a microphone
-in `recorded`, by themselves. A song keeps a recording as `folder/name`.
+**Folders.** Folders inside `samples` (kicks, breaks, vocals...), and
+folders inside those: **two levels**, `drums/kicks/808`. A folder inside
+that is not looked into. **Make one on the handheld** with + NEW FOLDER, the
+last row of SAMPLES and of each first-level folder (twelve letters at most,
+kept in small letters), or on the WiFi page.
+
+**A recording carried to another folder keeps playing**, and nothing is
+lost: the open song, every saved song and every rev that used it name it
+where it is now. It is not moved where one of that name already is, or where
+its name with its folders would pass 63 letters; the top line says which.
+The folder it left stays, even empty. The first column, SAMPLES, lists the first row (the
+built-in drum, or no recording), UNSORTED (the recordings not in a folder)
+and each folder with how many recordings are under it. With no folders at
+all the recordings are listed there themselves. Under a recording's picture
+the list says if it is on elsewhere in the song. Catches go in `catches`,
+takes from a microphone in `recorded`, by themselves. A song keeps a
+recording as `folder/name` or `folder/inner/name`, 63 letters at most in all.
 
 **A recording that has moved is found again.** When a song is opened and a
 recording is not where the song says, Apotheca looks through `samples` and
@@ -205,9 +218,28 @@ to the sound just now.
 | | Hold A, then **B** | **As it was**: nothing tried goes in. Leaving the screen or the track with A held does the same |
 | | Hold B | **Deletes the effect**, with its settings and its automation: a bar fills for a second, and the heading says DELETING: CANNOT BE UNDONE. Let go sooner and it stays. On SENDS a tap of B: nothing sent. |
 | The settings | Up / down | The next setting |
-| | Left | Back to the list, on the same line |
+| | Left | Back to the list, on the same line, from any setting. (Right does nothing here.) |
+| | **Hold A + left / right** | **The TYPE before / after** (COMP to DUCK), at once, in the same grip that turns the value: the cursor stays on its row. The first and the last type stop. |
 | | Hold A + up / down | The stick turns it. The D-pad moves it a twentieth, or to the next choice. |
 | | B | Its usual value. A send: nothing sent. |
+
+**A slot remembers each type's own settings.** Turn a COMP, switch to the
+DUCK, then back: the COMP is exactly as you left it, not rebuilt from the
+DUCK. A type the slot has not held yet starts with what it shares with the
+one before. This holds for Hold A + left / right in the list too. It is kept
+only while the program runs, not in the song file, and it is forgotten when
+another family or EMPTY goes in the slot, another song opens, or the track is
+deleted or given another instrument. Automation does not come back with a
+type: it follows the settings the two types share, as any change of TYPE
+does. Undo after a switch puts back the type before, with its settings.
+With A held on a setting the heading's TYPE row shows the key that switches
+(RIGHT, LEFT, or LEFT / RIGHT): no RIGHT on the last type, no LEFT on the first.
+
+Two things to know. "Exactly as you left it" includes MIX, and LEVEL on a bus:
+turn a bus down on PING, go back to TAPE, and TAPE's own LEVEL is back. And
+automation is not kept that exactly: a line both types have comes back
+rounded where their scales differ, and a line only one has is cleared (undo
+brings it back).
 
 **L1 / R1** is the track before / after, from the list or from a setting: the
 cursor stays on the same line and setting, and the top bar names the new
@@ -408,7 +440,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED or TWIN track. Move to another track there and the page follows.
+  PHAZED, JAX-EP or QMOD track. Move to another track there and the page follows.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -417,7 +449,23 @@ designer".
 - **SAVE AS PRESET** keeps the sound, macros included, under a name. It
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
-  `NAME.twin`). Saving under the same name again replaces it.
+  `NAME.jaxep`, `NAME.qmod`). Saving under the same name again replaces it.
+- **JAX-EP stands where Twin Analog stood** (a synth of earlier builds, gone
+  from the program now), and is another synth, so what was made for Twin
+  Analog does not carry over:
+  - **An old `NAME.twin` preset stays on the card but is not listed.** Nothing
+    reads it. Delete it from the card if you want the room.
+  - **An old song still opens.** Its Twin Analog tracks become JAX-EP tracks
+    and keep their notes, chords, scenes, effects, sends, level and pan, and
+    the automation of effects and sends. Their sound is not kept: each plays
+    JAX-EP's first preset (String I), with the macros in the middle and no macro
+    automation. Saved again, the song is written for JAX-EP.
+  - A JAX-EP preset does not hold VELOCITY or BRILLIANCE. Those two belong
+    to the track, and stay as set when another preset is picked.
+  - **A song saved by builds 0.485 to 0.493 with a JAX-EP track** was saved
+    on that synth's one sound then, "Start". It still sounds as it did (a
+    song keeps every setting), but MAIN now names it String I, the first
+    preset today.
 - TRACK NAME on the page can be anything; on the handheld it is picked from
   a list (SETUP).
 
@@ -472,9 +520,7 @@ You have a loop going and want the next part of the song to start from it.
 
 A bounce is **not recorded as the song plays**. A second engine works the
 song out again from the start, as fast as the handheld can. So you can
-carry on (even play) while it works, and it does not have to keep up:
-**Twin Analog is always bounced at x8 oversampling**, even where that is more
-than the handheld can play live.
+carry on (even play) while it works.
 
 **Where a bounce ends.** After the song's last step it runs on until there has
 been no sound for seven seconds, and the file ends half a second after the last
@@ -538,7 +584,9 @@ and ENTANGLE morphs from one to the other.
 
 The generator is the one in the Entanglement module of the Shapetaker VCV
 Rack plugin (`third_party/shapetaker`, unchanged). QMOD's voice is its own
-and much lighter: eight notes at once cost about half what Twin Analog does.
+and much lighter than the module's. It is still the costliest synth here:
+eight notes at once take about 3% of one core of the build machine, against
+under 1% for PHAZED and about half a percent for six notes of JAX-EP.
 
 | Control | Does |
 | --- | --- |
@@ -559,7 +607,7 @@ any other synth, with a ROLL A NEW SOUND button.
 
 ### The envelope
 
-Twin Analog and the sampler share one volume envelope (and any synth added
+QMOD and the sampler share one volume envelope (and any synth added
 later can use it), so a setting means the same on each:
 
 | Setting | 0 | 50 | 100 |
@@ -570,26 +618,26 @@ later can use it), so a setting means the same on each:
 The attack is curved like an analog one: most of the rise comes early, so a
 short attack is snappy, and it starts from wherever the envelope already is,
 so a note played again does not click. Decay and release times are how long
-the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes.
+the sound takes to fall by 60 dB. Phazed keeps its own eight-step envelopes,
+and JAX-EP its own one (ATTACK, DECAY, SUSTAIN, RELEASE as dials; its times
+are guesses, as MAIN says there: SPEEDS GUESSED).
 
 ### All four cores
 
 The tracks do not depend on each other until they are mixed, so they are
 worked out side by side: the audio thread and two helpers each take the next
-track not yet done, and the results are mixed in track order. A heavy song
-(six Twin Analog tracks at x4, a chord on each) took 55% of the time it had
-on one core of the build machine and 23% with two helpers: about 2.4 times
-the room. The sound is the same to the last bit, and a test holds it to
-that. One core is left for the screen. Bounces use it too.
+track not yet done, and the results are mixed in track order. The busiest
+song the SPEED TEST knows (twelve tracks: six of drums, two each of JAX-EP,
+QMOD and PHAZED playing strummed chords and arpeggios, every hit and chord
+thrown, three effects on every track, both buses, two on the master) took
+about 20% of the time it had on one core of the build machine and about 13%
+with two helpers (2026-11-15; not yet run on the handheld). The sound is the
+same to the last bit, and a test holds it to that. One core is left for the
+screen. Bounces use it too.
 
-### Keeping up
-
-Twin Analog's OVERSAMPLE setting costs a lot: x8 with two chords held is
-more than the handheld can work out in time, and the sound stutters. So
-Apotheca watches how long each block of sound takes. When it is falling
-behind, it turns the oversampling down a notch at a time (the setting
-itself is left alone) and the top bar says BUSY: OVERSAMPLING DOWN. After
-ten seconds with time to spare it goes back up a notch.
+No synth has a quality setting, so nothing is turned down when the handheld
+is busy: a song that is too much for it stutters, and SPEED TEST on the WiFi
+page says how near a song of that size comes.
 
 ### A USB keyboard
 
@@ -618,14 +666,26 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a tap: let go without turning anything) types its name. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
-| A track (any of its cells) | **Y** mutes it, **L1** solos it, **X** hears it. All at once, playing or not. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
+| A track (any of its cells) | **Y** mutes it and **X** hears it, at once, playing or not. **Hold L1** (under half a second) solos it, or takes its solo off; a tap of L1 does nothing, so a track is not soloed by mistake. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
-| + TRACK | Pick DRUMS, PHAZED, TWIN ANALOG, SAMPLER or QMOD | | | |
+| The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
+| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER or QMOD | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
-The song runs to the last scene with anything in it, then comes round.
+The song runs to the last scene with anything in it. Then, by its **song end**:
+
+- **LOOP** (the usual): it comes round to the first scene, for good.
+- **STOP**: it stops on the step after the last scene's last step, as START
+  stopping it would: notes let go, echoes and tails ring out. The next START
+  plays from the scene you are on, as always. Catch (Y) after it gives the
+  song's last bar.
+
+The song end is kept with the song and undone like any edit. It is for the
+song only: a scene played alone (START on PATTERN) goes round as before, and
+a bounce plays the song once whatever it says. With all 16 rows holding
+scenes there is no empty row, so no place to change it.
 
 #### The mixer: a track's LEVEL and PAN
 
@@ -668,7 +728,7 @@ A **cell** (one track in one scene) can be **1, 2, 4 or 8 bars** long.
 - **The scene lasts as long as its longest cell.** A shorter cell goes round
   under it: a one-bar drum loop plays four times under a four-bar part.
 - A shorter cell is drawn again for each time it goes round, a little dimmer,
-  with a thin line where it starts over. A long cell shows its length in the corner.
+  with a thin line where it starts over.
 - **The repeat count is whole passes of the scene.** A four-bar scene at x2
   is eight bars.
 - On the PATTERN screen the grid shows one bar. Run the cursor off the end
@@ -728,8 +788,9 @@ the same network.
   count again; a minute with no wrong number does. Turning WiFi off and on
   gives a new number and starts the count again.
 - **A whole folder**: CHOOSE A FOLDER, or drop one on the page. Every `.wav`
-  in it is sent, however deep its sub-folders go. The handheld keeps
-  recordings one folder deep, so each sub-folder becomes one folder:
+  in it is sent, however deep its sub-folders go. Each sub-folder becomes
+  one folder here (the handheld takes folders two deep, but a folder sent
+  whole is still laid out one deep):
   `Pack/Drums/Kicks/808.wav` arrives as folder `Kicks`, file `808`. Two
   folders with one name get their parent's in front (`Drums Kicks`,
   `Vintage Kicks`). Names too long for the handheld (32 letters, 24 for a
@@ -776,8 +837,8 @@ the same network.
   seen the handheld's screen cannot get in. It is not encryption: use it on
   a network you trust.
 - Every file is checked before it is kept: a plain name of the right kind
-  (no `..`, nothing hidden; a recording may be one folder down, nothing
-  else may), 30 MB at most, and really a WAV, a chord pack or a song.
+  (no `..`, nothing hidden; a recording may be one or two folders down,
+  63 letters in all, nothing else may), 30 MB at most, and really a WAV, a chord pack or a song.
   Anything else is refused and nothing is written. Deleting, renaming and
   moving hold names to the same rules, and only touch a file that is there.
 - It is off until turned on, and off again when Apotheca closes.
@@ -863,7 +924,7 @@ random levels for as long as R2 is down. R2 by itself is "next screen", at
 once.
 
 The cursor can also sit on a lane's name, left of step 1: A plays the drum,
-hold A + stick is its volume, and Y is the **lane dice** (hold Y + stick up
+hold A + stick is its volume, **hold X is its FEEL** (see "FEEL" below), and Y is the **lane dice** (hold Y + stick up
 and hits arrive in a shuffled order that leans toward the beat; down and
 they leave; tap Y to reshuffle). Up from the top lane is the tempo.
 
@@ -920,6 +981,55 @@ it changes:
   deleted.
 - A synth's notes have their own: see "Note effects" under PATTERN, a
   synth.
+
+### FEEL: a lane played by a hand
+
+**Each lane of a kit can be humanised, and it is live**: nothing is written
+into the hits. Every time round the hits land a little differently, as a
+drummer's do. A hit on a main beat (steps 1, 5, 9, 13) moves half as much as
+one between them, so the beat stays put and what is between leans.
+
+Put the cursor on a lane's **name**, **hold X** (a tap of X still just hears
+the drum), and:
+
+| Hold X and | Sets | At 100% |
+| --- | --- | --- |
+| Left / right | **HUMAN TIME**: OFF, 10, 25, 50, 75, 100% | Each hit up to 12 ms early or late (6 ms on a main beat) |
+| Up / down | **HUMAN LEVEL**: the same six | Each hit up to 15% louder or quieter (7.5% on a main beat) |
+| Y | **Dice**: a small feel, OFF, 10 or 25% of each. Always something, never what it was | |
+| A | **This lane's feel onto every lane** of the kit. From a lane at OFF, that clears them all | |
+
+- With X held the strip under the grid shows HUMAN TIME, HUMAN LEVEL and
+  EVERY LANE (COPY, or THE SAME once they are), each button under its field.
+- **A lane with a feel wears a purple mark at the left of its name**: the
+  upper piece for HUMAN TIME, the lower for HUMAN LEVEL. With the cursor on
+  the name the strip says both in a line.
+- It is the lane's, in every scene of the track. A new kit plays plain.
+- **It is heard only as the pattern plays.** Set it while the song runs.
+  Hearing a drum with X or A is always plain.
+- It adds to what each hit has: its own nudge, its own level. A ratchet's
+  hits move together and share one level.
+- A hit written at full level can only get quieter (nothing is louder than
+  full). At 80%, where A places them, it goes both ways.
+- **Play from the top is the same performance again**, and a bounce is what
+  was heard: the moves are worked out from where each hit is and which time
+  round it is, not from luck at the moment.
+- The song's very first hit cannot come before the top: it lands on it.
+- **Slices in order still play as one unbroken sound.** A run of slices
+  (each on the step after the last) moves as one, by its first hit's move,
+  through the bar lines inside a cell too: a break two bars long, in order,
+  is one run. Each slice still gets its own level. Where the cell goes
+  round again a new run begins, with a move of its own.
+- If the tempo is changed while the song plays, a hit that was waiting
+  keeps its place in the step.
+- A or Y pressed while X is held (COPY, the dice; THROW on a hit) does
+  nothing more if X is let go first: let it go and press it again.
+- CHANCE on a hit works as before.
+- Kept in the song (a song without it is written as it always was), undone
+  by SELECT + B, and in a bounce.
+- SWING is not built yet.
+- **Nobody has listened to this yet.** The tests measure where each hit
+  lands and how loud; whether 12 ms and 15% are the right "most" is for ears.
 
 ### THROW
 
@@ -1224,8 +1334,8 @@ before chord effects skips the line and plays the chord plain.
 ### DEVICE, a synth
 
 MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
-MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. Twin Analog's are
-SHAPE, BLEND, FORMANT, WIDTH, DETUNE, VINTAGE, ATTACK, RELEASE. Hold A + stick turns the one under
+MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. JAX-EP's are
+CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
@@ -1233,16 +1343,61 @@ leave the preset as it was made. A new preset is played at once when the
 song is stopped.
 
 Phazed's DETUNE tunes the sound's second line (oscillator) up to a semitone
-sharp or flat. A sound with only one line is given a twin of that line as
+sharp or flat. A sound with only one line is given a copy of that line as
 soon as DETUNE leaves the middle, so the macro does something on every
-preset. Two things follow from the twin: notes that are sounding at that
+preset. Two things follow from the copy: notes that are sounding at that
 moment fade out once, and such a sound then plays four notes at a time
 instead of eight.
 
 ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
-each line's volume, wave and pitch envelopes drawn out). Twin Analog has
-three (oscillators, formant and character, envelope). L1 and R1 turn the pages; B
+each line's volume, wave and pitch envelopes drawn out). JAX-EP has
+five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). L1 and R1 turn the pages; B
 goes back to MAIN.
+
+JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
+pages are that synth's panel:
+
+- **A knob reads as a dial, 0.0 to 10.0**, in tenths, on the handheld and on
+  the designer page. A switch reads by its positions (RANGE 16', 8', 4'; WAVE
+  SAW, PULSE, SQUARE; CROSS MOD OFF, SYNC, METAL).
+- **A macro reads -100 to +100.** At +0 the setting is as the preset has it;
+  below, it slides down to 0.0; above, up to 10.0.
+- **Its 32 presets are two folders, BANK A and BANK B, sixteen each**: the
+  sounds the synth it is modeled after came with, in their order (String I,
+  String II, Organ I ... Planet, Jet). On FOLDER, hold A and press up or down
+  to go from one bank to the other. A new JAX-EP track starts on the first.
+- **MAIN says 1983 BOOKLET, SPEEDS GUESSED beside PRESET.** The presets'
+  settings are from a booklet of that year that prints each knob's value;
+  they may not be the machine's own memory. And every time and rate in this
+  synth (envelope times, LFO rate and delay, the chorus's sweep, where the
+  filter's cutoff sits, how loud each step of LEVEL is) is a guess until it
+  is measured from recordings. So a preset has the right settings and
+  guessed speeds. One of your own presets says nothing.
+  - **Twelve of them hold a guess of their own**: the booklet draws PULSE and
+    SQUARE alike, told apart only by the angle of a knob (Organ II, both
+    E. Pianos, Clavi, Vibraphone, Celesta, Flute, Oboe, Distortion Guitar,
+    Sync Sweep, Funky Clavi, Planet). Pulsar's CROSS MOD is read as METAL.
+  - **The filter's range and the loudness were set from the presets**
+    (2026-11-15). CUTOFF 0 to 10 is 50 Hz to 20 kHz at middle C, placed so
+    Organ I's filter sings the key played: it is in tune with the other
+    tracks now. (At middle C the top of the knob, 8.7 to 10, is one sound:
+    the filter is as open as it goes.) LEVEL 4.5, where most of the presets
+    stand, is the full clean level, so the bank is about as loud as PHAZED's
+    presets, and every one of the 32 can be heard. **A JAX-EP track saved by
+    build 0.502 or earlier loads as it was saved and sounds brighter and
+    about 10 dB louder.**
+  - **LEVEL over 4.5 bends the sound** (it distorts, more the higher), as
+    too high a LEVEL does on the synth it is modeled after. E. Piano I and
+    Voice are at LEVEL 10 in the booklet, so they are driven hard, and
+    **with six keys down they come out of the synth over full scale**
+    (almost three times it at most; the master's soft clip takes what is
+    over). Turn their LEVEL down, or the track in the mixer, if that is not
+    wanted.
+- **The number beside PRESET is the preset's place in its folder**: 7 / 16
+  in BANK B is the booklet's B7. Your own presets are counted among
+  themselves (every synth counts this way).
+- **VELOCITY and BRILLIANCE (last page) belong to the track**, not to the
+  preset: picking a preset leaves them as set.
 
 How fast the drum grid moves is set in one place, `Feel` in
 `app/pattern_screen.hpp`.
@@ -1310,11 +1465,6 @@ scripts/  the handheld build and the port launcher.
 - **One button and the stick, not a combination.** New controls follow the
   rule on the Pattern screen: the stick moves; hold a button and it shapes.
 - **Fast.** Held input runs quickly. Nobody has asked for slower.
-- **Twin Analog is a port of Clairaudient**, the oscillator in the Shapetaker
-  Rack plugin (`src/clairaudient.cpp` there). `engine/src/twin.cpp` restates
-  its sound-making code without Rack and lists what changed in the move.
-  The four oscillator copies are computed in one branch-free loop of four:
-  measured with clang, that halves the synth's cost. Keep it branch-free.
 - **The first synth is called Phazed.** That is the only name a player sees. Its
   engine lives in `third_party/easycz` under its own names and licences;
   anything from it that reaches the screen goes through

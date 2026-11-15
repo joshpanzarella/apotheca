@@ -25,10 +25,10 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/jx3p.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/qmod.hpp"
-#include "apotheca/twin.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -63,6 +63,46 @@ static void instrument(const char* name, SynthKind kind, int notes, int setting 
     }
     const double block = ms([&] { engine->render(out.data(), 256); }, 600);
     std::printf("  %-28s %5.1f%% of one core\n", name, 100.0 * block / (256.0 / 48.0));
+}
+
+// The JX-3P (docs/plans/jx3p-plan.md, section 3): six notes, the most it plays. `how`:
+//   0  the patch as a player meets it: A1 String I (both DCOs, the chorus on), the six keys held
+//   1  the worst of the 32: B15 Planet (both DCOs, RESONANCE 10, the envelope on the VCF, so its cutoff
+//      moves after every tick; the chorus on), each key played again every half second. The plan
+//      named B12 Sync Sweep; measured, all 32 this way (2026-11-14): 0.47% (B3 Oboe) to 1.07% (Planet),
+//      Sync Sweep 0.55%: its envelope moves DCO-2's pitch, which is cheap, and its filter stands still
+//   2  a moving cutoff: every note a glide all the while, KEY FOLLOW 9.8, and (from batch 4) the LFO
+//      on the cutoff and on DCO-1, so whatever is worked out from the pitch and the cutoff is worked out every sample
+// (Until batch 7 rows 0 and 1 were the start patch and a patch made by hand: 0.52 and 0.96%.)
+static void jx3pRow(const char* name, int how) {
+    std::unique_ptr<Jx3p> synth(new Jx3p);
+    synth->prepare(48000.f);
+    if (how == 0) synth->selectPreset(0);
+    if (how == 1) synth->selectPreset(30);
+    if (how == 2) {
+        synth->setSetting(jx3p::Cutoff, 40);
+        synth->setSetting(jx3p::Resonance, 50);
+        synth->setSetting(jx3p::KeyFollow, 98);
+        synth->setSetting(jx3p::VcfLfo, 30);   // the LFO on the cutoff (batch 4): a sine at RATE 7
+        synth->setSetting(jx3p::LfoRate, 70);
+        synth->setSetting(jx3p::DcoLfoDepth, 20);
+        synth->setSetting(jx3p::Dco1Lfo, 1);
+    }
+    std::vector<float> l(256), r(256);
+    const int keys[6] = {48, 52, 55, 60, 64, 67};
+    for (int k : keys) synth->noteOn(k, 0.8f);
+    synth->render(l.data(), r.data(), 256);
+    int block = 0;
+    const double each = ms([&] {
+        if (how > 0 && block % 94 == 0) // every half second
+            for (int k : keys) {
+                if (how == 2) synth->noteOnFrom(k, 0.8f, k - 12, 0.5f);
+                else synth->noteOn(k, 0.8f);
+            }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
 }
 
 // One effect, stereo at 48 kHz, in the engine's chunks of 64 frames, with
@@ -106,8 +146,10 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // the buses hold (None: they are fed and give nothing back, which is the cost
 // of the feeding alone). `throws`: every hit of every track is thrown to both
 // buses (THROW), which is the most throwing a song can do. `ducks`: a DUCK in
-// a slot of every track as well. The best of five runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false) {
+// a slot of every track as well. `feelTime`, `feelLevel`: FEEL, every lane of every kit at that
+// HUMAN TIME and HUMAN LEVEL (so every hit is rolled for, asked a step ahead and set waiting).
+// The best of five runs of ten seconds.
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -133,6 +175,13 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
         c.track = t;
         c.value = sends ? 0.5f : 0.f;
         for (int bus = 0; bus < kBuses; ++bus) c.a = bus, engine->send(c);
+        c = Command();
+        c.type = Command::SetLaneFeel;
+        c.track = t;
+        c.b = feelTime;
+        c.c = feelLevel;
+        if (feelTime || feelLevel)
+            for (int lane = 0; lane < kDrumLanes; ++lane) c.a = lane, engine->send(c);
     }
     if (ducks)
         for (int t = 0; t < kNumTracks; ++t) engine->setEffect(t, 0, EffectKind::Duck);
@@ -213,13 +262,12 @@ static double chordSong(ChordPlay play, int ratchet, int from = -1) {
 
 // THE BUSIEST SONG (the pit stop audit's, 2026-11-14): 140 BPM, twelve tracks. Six drum
 // tracks, every lane on every other step, ratchets of four on three lanes, every hit thrown to
-// both buses. Two Twin Analog (x2), two QMOD and two Phazed, each four chords of four keys a
+// both buses. Two JAX-EP (A1 String I), two QMOD and two Phazed, each four chords of four keys a
 // bar, half WIDE STRUM and half arpeggios at a quarter step, RANDOM, human at 100%, thrown;
 // a ratchet of two on the strummed ones. COMP, then SATURATE or CHORUS, then HALL or PLATE on
 // every track; TAPE and PLATE on the buses, every track sending 0.4 to each; COMP and SATURATE
-// on the master. Flush-to-zero on, as in the program. Twin stays at full quality: the
-// program would make it plainer if it fell behind (watchLoad), and this is to see whether
-// it has to.
+// on the master. Flush-to-zero on, as in the program. (Until 2026-11-15 the two JAX-EP tracks
+// were the synth that went, at x2 oversampling: the figures before that day are that song's.)
 static void busiestSong(Engine& e) {
     std::vector<float> scratch(512);
     const auto settle = [&](int blocks) {
@@ -230,16 +278,15 @@ static void busiestSong(Engine& e) {
     c.value = 140.f;
     e.send(c);
     for (int t = 1; t < 6; ++t) e.addDrumTrack(t); // (track 1 has drums from the start)
-    const SynthKind kinds[6] = {SynthKind::Twin, SynthKind::Twin, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
+    const SynthKind kinds[6] = {SynthKind::Jx3p, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
     for (int i = 0; i < 6; ++i) e.addSynthTrack(6 + i, kinds[i]);
     settle(4);
     for (int i = 0; i < 6; ++i)
-        if (kinds[i] == SynthKind::Twin) {
+        if (kinds[i] == SynthKind::Jx3p) { // as a new track in the program: on A1 (the engine makes it on its start patch)
             c = Command();
-            c.type = Command::SetSetting;
+            c.type = Command::SelectPreset;
             c.track = 6 + i;
-            c.a = twin::Oversample;
-            c.b = 1; // x2
+            c.a = 0;
             e.send(c);
         }
     for (int t = 0; t < 6; ++t) {
@@ -421,6 +468,7 @@ static void macroCost(const char* name, Instrument& synth, int macro) {
 }
 
 WholeSongTimes apotheca::timeWholeSong(int helpers, double seconds, int mods) { return playWholeSong(helpers, seconds, false, mods); }
+void apotheca::sendBusiestSong(Engine& engine) { busiestSong(engine); }
 
 // What working MODs out costs, with next to nothing under it: twelve drum tracks that play no hit,
 // their MODs on the sends (no effect on the buses, so nothing wakes), the chunks a tick cuts
@@ -501,10 +549,10 @@ static void wholeSongModRows() {
 int apotheca::runBench() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
-    instrument("Twin Analog x1, 8 notes", SynthKind::Twin, 8, twin::Oversample, 0);
-    instrument("Twin Analog x2, 8 notes", SynthKind::Twin, 8, twin::Oversample, 1);
-    instrument("Twin Analog x8, 8 notes", SynthKind::Twin, 8, twin::Oversample, 3);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
+    jx3pRow("JAX-EP, 6 notes", 0);
+    jx3pRow("JAX-EP, 6, worst patch", 1);
+    jx3pRow("JAX-EP, 6, moving cutoff", 2);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);
@@ -532,12 +580,12 @@ int apotheca::runBench() {
         std::printf("a macro changed (what a MOD on a macro costs), the synth alone, 8 notes held:\n");
         std::unique_ptr<Phazed> phazed(new Phazed);
         std::unique_ptr<Qmod> qmod(new Qmod);
-        std::unique_ptr<Twin> twinSynth(new Twin);
+        std::unique_ptr<Jx3p> jaxep(new Jx3p);
         macroCost("Phazed, TONE", *phazed, phazed::Tone);
         macroCost("QMOD, TENSION", *qmod, qmod::MacroTension);
-        macroCost("Twin Analog, macro 1", *twinSynth, 0);
+        macroCost("JAX-EP, macro 1", *jaxep, 0);
         std::printf("24 MODs on macros, run (twelve silent tracks of the synth, a SINE and a STEPPER each):\n");
-        const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"QMOD", SynthKind::Qmod}};
+        const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"QMOD", SynthKind::Qmod}, {"JAX-EP", SynthKind::Jx3p}};
         for (const auto& one : synths) {
             const double none = macroModsRun(one.kind, false), all = macroModsRun(one.kind, true);
             std::printf("  %-28s %5.3f%% of one core with none, %5.3f%% with 24 (%+.3f%%)\n", one.name, none, all, all - none);
@@ -600,6 +648,13 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "...thrown, TAPE, HALL, 12 DUCKs", all - dry);
         const double plate = busSong(true, EffectKind::Tape, EffectKind::Plate);
         std::printf("  %-28s %6.2f%% of one core\n", "...or TAPE and PLATE on them", plate - dry);
+        // FEEL: every lane of all twelve kits humanised, as what it adds to the same plain song
+        // (rolls for every hit, every hit asked a step ahead and waiting; the sound is the same work).
+        std::printf("FEEL on every lane of the twelve drum tracks (%.2f%% plain):\n", dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME and LEVEL 100%", busSong(false, none, none, false, false, 100, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN TIME 100% alone", busSong(false, none, none, false, false, 100, 0) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "HUMAN LEVEL 100% alone", busSong(false, none, none, false, false, 0, 100) - dry);
+        std::printf("  %-28s %6.2f%% of one core\n", "...the plain song again", busSong(false, none, none) - dry);
     }
 
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");
@@ -608,7 +663,7 @@ int apotheca::runBench() {
     App app(*engine);
     Session& session = app.session();
     // A full song: twelve tracks, eight scenes, notes and hits in every cell, some automation.
-    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Drums};
+    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) session.addTrack(kinds[t % 4]);
     Project& p = app.project();
     for (int t = 0; t < kNumTracks; ++t)

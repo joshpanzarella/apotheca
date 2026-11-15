@@ -104,13 +104,17 @@ void SamplerScreen::openPicker() {
     jobs.playhead = [this] { return &head_; };
     jobs.sound = [this, track] { return &session_.trackSound(track); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
-    picker_.open(session_.sampleNames(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
+    jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };
+    jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
+    jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
+    jobs.used = [this, track](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].sample ? 1 : 0); };
+    picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().sample, "THE SAMPLER: PICK ITS RECORDING", "NO RECORDING", jobs);
 }
 
 void SamplerScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (picker_.isOpen()) {
-        if (b == Button::Start && event.down && !input.held(Button::Select)) session_.togglePlay(false);
+        if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false);
         else picker_.onButton(event, project_.playing);
         return;
     }

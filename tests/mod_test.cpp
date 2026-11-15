@@ -707,7 +707,7 @@ static void testATempoChangeKeepsThePhase() {
 // What a song puts out, in blocks of `block`, with `helpers`: drums through the old FILTER and
 // VOWEL, a Phazed through CHORUS, both sent to PING on ECHO; MODs on a macro, the old FILTER's
 // and VOWEL's settings and a send, of each kind and several shapes (`gliding`: on SATURATE's
-// DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL and no Twin (neither is
+// DRIVE and CHORUS's DEPTH instead, which glide a call at a time). No HALL (it is not
 // the same cut into other blocks), no automation (its glide moves at chunks).
 static std::vector<float> song(int block, int helpers, bool mods, int frames, bool phazedToo = true, bool gliding = false, float bpm = 133.f) {
     std::unique_ptr<Engine> e(new Engine);
@@ -1149,6 +1149,101 @@ static void testATrackWithNothingRunsNoMod() {
     CHECK(rig.engine->modShown(5, 0) == 0.f && rig.engine->modOffsetForTests(5, autoLaneOfSend(0)) == 0.f && rig.engine->modShown(1, 0) == 0.f);
 }
 
+// The join with main (2026-11-15): FEEL on the drums, chord effects on a JAX-EP and MODs, all in one
+// song, the same to the bit in blocks of 1, 64 and 333 and on 0 or 3 helpers. At 120 BPM, where a
+// step is a whole number of samples (6000; the rule above). The MODs are on what is exact under a
+// MOD: a JAX-EP macro, the old FILTER's CUTOFF, a send to PING (whose own settings stay at rest).
+static std::vector<float> feelChordsMods(int block, int helpers, bool feel, bool chords, bool mods, int frames) {
+    std::unique_ptr<Engine> e(new Engine);
+    e->prepare(48000.f);
+    std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
+    e->send(make(Command::SetTempo, 0, 0, 0, 120.f));
+    e->addSynthTrack(2, SynthKind::Jx3p);
+    e->render(scratch.data(), 64);
+    e->setEffect(0, 0, EffectKind::Filter);
+    e->setEffect(kEchoBus, 0, EffectKind::Ping);
+    for (int lane = 0; lane < 4; ++lane)
+        for (int step = lane % 2; step < 16; step += 2) e->send(make(Command::SetStep, 0, lane, step, 0.8f));
+    if (feel)
+        for (int lane = 0; lane < 4; ++lane) {
+            Command c = make(Command::SetLaneFeel, 0, lane, lane == 3 ? 0 : 100); // lane 4: HUMAN LEVEL alone
+            c.c = lane == 2 ? 0 : 70;                                             // lane 3: HUMAN TIME alone
+            e->send(c);
+        }
+    // Two chords of three keys, four steps long, and a plain note; chord effects on both chords.
+    const int keys[2][3] = {{48, 52, 55}, {50, 53, 57}};
+    const ChordPlay plays[2] = {chordPlayOf(kStrumWide, kOrderRandom, 100, 100, 60), chordPlayOf(kStrumQuarter, kOrderUp, 50, 50, 0)};
+    for (int chord = 0; chord < 2; ++chord)
+        for (int k = 0; k < 3; ++k) {
+            Command c = make(Command::SetNote, 2, chord * 3 + k, chord * 8, 0.8f);
+            c.c = keys[chord][k];
+            c.d = 4;
+            c.e = chord == 0 ? 3 : 0; // the first chord ratcheted x3
+            if (chords) c.play = plays[chord];
+            c.play.index = static_cast<std::uint8_t>(k);
+            c.play.count = 3;
+            e->send(c);
+        }
+    Command n = make(Command::SetNote, 2, 6, 13, 0.8f);
+    n.c = 60;
+    n.d = 2;
+    e->send(n);
+    e->send(make(Command::SetSend, 0, 0, 0, 0.3f));
+    e->send(make(Command::SetSend, 2, 0, 0, 0.2f));
+    e->render(scratch.data(), 256);
+    if (mods) {
+        e->setMod(0, 0, lfo(autoLaneOfEffect(0, 0), 0.3f, kModSine, kModRateEighth)); // the old FILTER's CUTOFF
+        e->setMod(0, 1, stepper(autoLaneOfSend(0), 0.4f, kModRateQuarter, 0.5f, 0.3f, 6));
+        e->setMod(2, 0, lfo(1, 0.4f, kModTriangle, kModRateHalfStep)); // a JAX-EP macro
+        e->setMod(2, 1, lfo(autoLaneOfSend(0), 0.3f, kModDrift, kModRateQuarterTriplet));
+    }
+    e->render(scratch.data(), 256);
+    if (helpers) e->useWorkers(helpers);
+    e->send(make(Command::Play, 0, 0, 1));
+    for (int at = 0; at < frames; at += block) e->render(out.data() + 2 * at, frames - at < block ? frames - at : block);
+    return out;
+}
+
+static void testFeelChordsAndModsInAnyBlocks() {
+    const int frames = 2 * 16 * 6000; // two bars at 120
+    const std::vector<float> plain = feelChordsMods(64, 0, true, true, true, frames);
+    for (int helpers : {0, 3})
+        for (int block : {1, 64, 333}) {
+            if (block == 64 && helpers == 0) continue;
+            const bool same = feelChordsMods(block, helpers, true, true, true, frames) == plain;
+            CHECK(same);
+            if (!same) std::printf("  FEEL, chords and MODs: blocks of %d on %d helpers differ\n", block, helpers);
+        }
+    // Each of the three does something here.
+    CHECK(feelChordsMods(64, 0, false, true, true, frames) != plain);
+    CHECK(feelChordsMods(64, 0, true, false, true, frames) != plain);
+    CHECK(feelChordsMods(64, 0, true, true, false, frames) != plain);
+    double peak = 0.0;
+    for (float v : plain) peak = std::max(peak, static_cast<double>(std::fabs(v)));
+    CHECK(peak > 0.05 && peak < 4.0);
+}
+
+// AT END STOP (main's) ends the song as Stop does, and so lets go of every MOD: the knob is given
+// its centre, nothing is added, nothing shown.
+static void testASongThatStopsAtItsEndLetsGoOfTheMods() {
+    Rig rig;
+    const int echo = autoLaneOfSend(0);
+    rig.send(make(Command::SetSend, 1, 0, 0, 0.2f));
+    rig.send(make(Command::SetMacro, 1, 2, 0, 0.4f));
+    rig.mod(0, lfo(echo, 0.3f));
+    rig.mod(1, lfo(2, 0.25f));
+    rig.send(make(Command::SetSongEnd, 0, 1));
+    rig.send(make(Command::Play));
+    rig.frames(4000);
+    CHECK(rig.engine->sendGiven(1, 0) == 0.2f + 0.3f && rig.lastMacro(2) == 0.65f && rig.engine->modShown(1, 0) == 0.3f);
+    int samples = 0;
+    while (rig.engine->playStep() != -1 && samples < 48000 * 20) rig.frames(256, 256), samples += 256;
+    CHECK(rig.engine->playStep() == -1 && rig.engine->songEnded() != 0);
+    CHECK(rig.engine->sendGiven(1, 0) == 0.2f && rig.lastMacro(2) == 0.4f);
+    CHECK(rig.engine->modOffsetForTests(1, echo) == 0.f && rig.engine->modOffsetForTests(1, 2) == 0.f);
+    CHECK(rig.engine->modShown(1, 0) == 0.f && rig.engine->modShown(1, 1) == 0.f);
+}
+
 int main(int argc, char** argv) {
     struct Test {
         const char* name;
@@ -1184,6 +1279,8 @@ int main(int argc, char** argv) {
         {"testTheLastModTakenAwayStopsTheCuts", testTheLastModTakenAwayStopsTheCuts},
         {"testStoppedIsCutAsAlways", testStoppedIsCutAsAlways},
         {"testATrackWithNothingRunsNoMod", testATrackWithNothingRunsNoMod},
+        {"testFeelChordsAndModsInAnyBlocks", testFeelChordsAndModsInAnyBlocks},
+        {"testASongThatStopsAtItsEndLetsGoOfTheMods", testASongThatStopsAtItsEndLetsGoOfTheMods},
     };
     int first = 1;
     if (argc > 1 && std::strcmp(argv[1], "--measure") == 0) measuring = true, first = 2;

@@ -1,9 +1,45 @@
 # JX-3P plan
 
 Written 2026-11-13, revised the same day after a sceptic's review (section 9
-lists each of their 28 points and what was done). Nothing here is built. Only
-the code was read and one throwaway timing program was run; nobody has heard
-anything.
+lists each of their 28 points and what was done). **Batch 0 is done
+(2026-11-14)**: the Service Notes were read and every SN claim below has its
+page (section 0, "SN pages"), and the measuring tools are shared in
+`tests/measure.hpp`. **Batch 1 is done (2026-11-14)**: the skeleton plays
+DCO-1's saw through the voices, the tick, the envelope and the VCA
+(`engine/include/apotheca/jx3p.hpp`, `engine/src/jx3p.cpp`,
+`engine/src/jx3p/env.hpp`, `tests/jx3p_test.cpp`); what it learned is under
+the batch table. **Batch 2 is done (2026-11-14)**: both DCOs, every wave,
+TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX and ENV on the DCOs
+(`engine/src/jx3p/dco.hpp`, `tests/jx3p_dco_test.cpp`), with minimum-phase
+BLEP and BLAMP tables; what it learned is under the batch table too. **Batch
+3 is done (2026-11-14)**: the VCF, the HPF and BRILLIANCE
+(`engine/src/jx3p/ir3109.hpp`, `tests/jx3p_vcf_test.cpp`); the filter bends
+only its feedback, not each stage (see "Batch 3: what it learned"). Its SPEED
+TEST on the handheld waits on the owner. **Batch 4 is done (2026-11-14)**: the
+LFO, its DELAY and its routes (`engine/src/jx3p/lfo.hpp`,
+`tests/jx3p_lfo_test.cpp`); see "Batch 4: what it learned". **Batch 5 is done
+(2026-11-14)**: the chorus (`engine/src/jx3p/chorus.hpp`,
+`tests/jx3p_chorus_test.cpp`); see "Batch 5: what it learned". **Batch 6a is
+done (2026-11-14)**: the synth is in the app as **JAX-EP** (the owner's name,
+the same day), in Twin Analog's place; songs and presets are written `jaxep`
+and an old `track twin` is read; see "Batch 6a: what it learned". **Batch 6b
+is done (2026-11-14)**: its pages are checked at every size and theme, a knob
+reads as its dial on the handheld and on the designer page, and MAIN says
+SPEEDS GUESSED; see "Batch 6b: what it learned". **Batch 7 is done
+(2026-11-14)**: the 32 factory patches, A1 to B16, in BANK A and BANK B, read
+twice from the booklet; **two of them are all but silent and the bank is
+quiet, both from this plan's guesses** (see "Batch 7: what it learned").
+**The review of 6a, 6b and 7 is mended (2026-11-15)**: see "Batches 6a, 6b
+and 7: the review's mend". **A third preset is hurt by the cutoff guess: A3
+Organ I plays 21 semitones low and 21 cents off the other tracks.** Left for
+the owner with the other two (section 8). **Batch 8a is done (2026-11-15)**:
+every test that played Twin plays JAX-EP, but Twin's own two (`twin_test` and
+`engine_test`'s quality limit, which 8b deletes with the code); see "Batch 8a:
+what it learned". **Batches 8b and 8c are done (2026-11-15)**: Twin Analog's
+code, its test, the quality limit and the load watch are out, and the docs
+say so; see "Batches 8b and 8c: what they learned". **What is left is batch
+9**, which waits on a source of recordings.
+Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
 
@@ -19,7 +55,7 @@ needs a new row.
 | What is added | Only what the program needs to fit: 8 macros, GLIDE (the engine's), and two **track values** kept out of the patch: VELOCITY and BRILLIANCE (section 1) |
 | Voices | **6**, as the real one (the owner's call; 8 is one constant) |
 | Presets | **The 32 factory patches**, A1 to B16, from Roland's 1983 booklet of PG-200 settings. About a third hold a guess (section 4). **Right settings, guessed speeds** until batch 9, and the device says so |
-| Name on the device | **Keep TWIN ANALOG** (recommended). The owner's call |
+| Name on the device | **JAX-EP** (owner, 2026-11-14), said on the device as "a virtual analog synth modeled after a popular DCO synth". No maker's or model's name on the device, the WiFi page or the README's manual |
 | Old songs | **Load.** `track twin` reads as the new synth on its first preset; Twin's settings, preset, macros and macro automation are dropped. Notes, scenes, effects, sends stay. The owner's call (section 5) |
 | Cost | Target **1.2% of a desk core for 6 notes** (Twin x1 measured 4.1% today, Phazed 0.7%, QMOD 2.7%). A plain version timed for this plan: 0.68% |
 | Oversampling | **None.** Band-limited oscillators instead. Twin's load watch and "BUSY: OVERSAMPLING DOWN" lose their only user and go |
@@ -35,7 +71,7 @@ what the plan guessed. Only the FAITHFUL ones say anything about the machine.
 
 | Short | Source | Read for this plan? |
 | --- | --- | --- |
-| **SN** | Roland JX-3P Service Notes, 27 July 1983 | Quoted below; **the page numbers are not recorded and the reviewer could not open it** (manualslib). Batch 0 finds a readable copy and fills the "SN page" column of every table, or marks the claim SELF |
+| **SN** | Roland JX-3P (PG-200) Service Notes, 27 July 1983 (3rd printing Oct. 1986), 18 pages: manualslib 3497592 | **Read in batch 0** (2026-11-14), through the site's OCR text of the scan, not the images: OCR garbles some words ("lOmS", "eOOmVp-p", "OCO-1"), so each figure below is the plain reading of a garbled one. The viewer's page numbers and the printed ones agree (6 and 7). Pages: 2-3 parts list, 4 block diagram, 6 circuit description (CPU, DCO, VCF), 7 circuit description (VCA, chorus) and adjustments, 8 on main board |
 | **OM** | JX-3P owner's manual (manualslib 1139203) | Pages cited where known. It confirms 32 ROM presets and 32 user patches (p.4) |
 | **NAM** | Roland, *PG-200 音のサンプル32* (NAM-0150), 1983, scanned | Read for the values; scanned images, so every value is checked twice by hand in batch 7 |
 | **WP** | Wikipedia, "Roland JX-3P" | Waves: "pulse at 50% and 10%" |
@@ -44,13 +80,50 @@ what the plan guessed. Only the FAITHFUL ones say anything about the machine.
 | **Polynominal** | polynominal.com, JX-3P page | Confirms the MN3009 BBDs |
 | Roland plug-out manual | manualslib 1461110 | **A model, not the machine.** Used only where nothing else speaks (DCO-2 TUNE in semitones) |
 
-Claims taken from the SN alone, waiting for their page: the 6 MHz master
-clock and 8253 counter, the over-charged saw for PULSE, METAL's two resets,
-the 10 ms CPU loop, the IR3109 with feedback, the VCA as a transistor
-resistor, the 40 to 200 kHz BBD clock, the 10 kHz filters, the 180° sweep,
-adjustment 5 (600 mV self-oscillation). A forum post says the VCA is a BA662;
-WP says discrete. The VCA's type does not change the plan: its taper is a
-guess either way.
+### SN pages (batch 0)
+
+Every claim this plan takes from the SN, with its page. Quotes are the OCR's
+words, mended where the misreading is plain ("lOmS" is 10mS). **FAITHFUL**
+tests may cite these; a claim marked SELF has no page and stays a guess.
+
+| Claim in this plan | SN page | What the page says |
+| --- | --- | --- |
+| Master clock about 6 MHz | **p.6** | "Master Oscillator mTR10(11) generate a frequency of approx. 6MHz" |
+| An 8253 divides it, one counter a DCO | **p.6**; p.3 (parts: M5L8253P-5) | "Programmable counter 8253 containing three 16-bit counters is capable of dividing high frequency signals"; dividing by 6000 gives "1kHz rectangular signals" |
+| SQUARE is the counter's raw output | **p.6** | "Output from Programmable Counter 8253 is a rectangular" |
+| The saw charges a capacitor, and its height is the same on every key | **p.6** | the DCO CV "keeps the sawtooth amplitude constant over the frequency range"; the charging current "is determined by the output from the S/H circuit of DCO CV" |
+| PULSE is an over-charged saw | **p.6** | "The CPU will add a bias to DCO CV to excessively increase charging current when the program needs a pulse like sawtooth". **The 10% is not on the page** (WP only); the clip at the top is this plan's reading |
+| SYNC: DCO-1 resets DCO-2 | **p.6** | "In SYNC mode, pulses from DCO-1 are applied to the gate of [the] counter in DCO-2 section as RESET pulses". **This settles SOS's wording: DCO-1 is the master** |
+| METAL: DCO-2 not synced, its saw reset on the falling edges of both | **p.6** | "DCO-2 programmable counter does not sync to DCO-1"; the saw's transistor "is clocked on every negative edge of both DCO-1 and 2 rectangulars"; likened to ring modulation |
+| NOISE stops DCO-2's clock | **p.6** | "NOISE ON signal is also routed to pin 1 of mIC37 to block DCO-2 master frequency" |
+| The CPU loop, about 10 ms | **p.6** | "The CPU cycles steps 1 to 6 within approx. 10mS": 1 the keyboard, 2 "Refresh the Envelope and LFO data", 3 the panel switches, 4 bender and EDIT, 5 "Write the control voltage data into DCO, VCF, VCA", 6 "Write the note data into the programmable counter in DCO section" |
+| ADSR and LFO are software | **p.6** | step 2 above |
+| DCO pitch steps once a loop | **p.6** | steps 5 and 6: the counter's divisor and the DCO CV are written once a loop |
+| Every CV comes from a D/A and is held | **p.6**; p.2 (HD14051 demultiplexers) | 0 to 4.7 V from the D/A, "sampled into correct channel in individual stages". The DCO CV's S/H is named; the hold for VCF and VCA is not, so **its 1 ms smoothing is SELF** |
+| 6 voices | **p.6** | "6-voice (12 VCOs)" |
+| VCF: 4-pole low-pass with feedback for resonance | **p.6** | "This is a 4-pole LPF composed of mIC102 and associated components"; "Feedback amount and the amplitude of resonance is controlled by mTR103, 104" |
+| The VCF chip is an IR3109 | **p.3** (parts: "IR3109 VCF") | not named in the description |
+| VCF CV is KCV, CUTOFF, LFO and ADSR | **p.6** | "a combination of KCV, CUTOFF, LFO and ADSR controls" |
+| VCA CV | **p.6** | "VCA CV - ADSR, LEVEL, MUTE" |
+| What the VCA is | **p.7**, **p.3** | p.7 describes a controlled resistance with "a minimum forward bias maintained by the CPU"; the parts list (p.3) names the part: **"BA662B VCA"**. A forum said BA662 and WP "discrete"; both pages here are Roland's own, so it is a BA662. The taper is still a guess |
+| HPF after the voices are summed, before the chorus | **p.4** (block diagram: MIXER, HPF, STEREO CHORUS) | the OCR keeps the labels, not the arrows; the order is read from where they stand. Nothing says how many poles: **one pole is SELF** |
+| Two MN3009 BBDs and an MN3101 driver | **p.3** (parts) | "MN3009 BBD", "MN3101 BBD DRIVER" |
+| BBD clock swept 40 to 200 kHz | **p.7** | "The VCO sweeps its frequency between 40k-200kHz" |
+| The other side 180° out of phase | **p.7** | the other channel's sweep is 180 degrees out of phase |
+| 10 kHz low-pass before and after the BBDs | **p.7** | two filters that "both have cutoff frequency at 10kHz". Their order and poles are not given: **2-pole is SELF** |
+| Chorus rate and depth | none | **SELF** |
+| Self-oscillation trimmed to 600 mV | **p.7**, adjustment 5-3 | "Depress a key, and adjust VR-103 (RESO) so that the sine wave is 600mVp-p" |
+| The saw's peak to peak at the same point | **none** | Adjustment 3-4 sets the D/A offset "for the maximum amplitude without clip"; **no saw figure is printed**. So the self-oscillation level against the saw **stays SELF** (6 dB under the saw's peak) |
+| The factory tuning | **p.7**, adjustment 2-4 | L1 (the master oscillator's coil) is set so **A4 reads 442 Hz**. The program stays at A440 (its own); said here because a recording of a real one may be at 442 |
+| Envelope times and curve, LFO rate and delay, cutoff in Hz, HPF corner, VCA taper | none | **SELF**, as section 2 says |
+
+What the SN does not settle stays as planned: PULSE's 10% (WP), METAL with
+DCO-2 on SQUARE (not written: a guess), DCO-2 TUNE's steps (the plug-out
+manual), and how near to 6 MHz "approx." is. **For the counter rounding**
+(section 8): the clock is confirmed as an 8253 fed by about 6 MHz, trimmed
+so A4 is in tune. The clone takes its clock as 440 × round(6 MHz / 440) =
+**5,999,840 Hz**, so A4 is exactly 13636 divisions at A440, as the real
+one's trim makes it in tune at 442. One constant, in batch 2.
 
 ## 1. The JX-3P, parameter by parameter
 
@@ -63,23 +136,23 @@ value to a tenth, so every factory value fits exactly.
 | Id | Section | Setting | Range | Fact it must meet | Source |
 | --- | --- | --- | --- | --- | --- |
 | 0 | DCO-1 | RANGE | 16', 8', 4' | 8' plays the written note; 16' an octave down | NAM, OM |
-| 1 | DCO-1 | WAVE | SAW, PULSE, SQUARE | Pulse is an over-driven, clipped saw **reading 10%**; square is the counter's raw output | SN, WP |
+| 1 | DCO-1 | WAVE | SAW, PULSE, SQUARE | Pulse is an over-driven, clipped saw **reading 10%**; square is the counter's raw output | SN p.6, WP (the 10%) |
 | 2 | DCO-1 | LFO | OFF, ON | The shared LFO DEPTH reaches this DCO | NAM |
 | 3 | DCO-1 | ENV | OFF, ON | The shared ENV DEPTH reaches this DCO | NAM |
 | 4 | DCO-2 | RANGE | 16', 8', 4' | | NAM |
-| 5 | DCO-2 | WAVE | SAW, PULSE, SQUARE, NOISE | Noise stops DCO-2's clock | NAM, SN |
-| 6 | DCO-2 | CROSS MOD | OFF, SYNC, METAL | SYNC: DCO-1 resets DCO-2. METAL: DCO-2's saw reset on both DCOs' falling edges | SN (page to fill), OM p.23 |
+| 5 | DCO-2 | WAVE | SAW, PULSE, SQUARE, NOISE | Noise stops DCO-2's clock | NAM, SN p.6 |
+| 6 | DCO-2 | CROSS MOD | OFF, SYNC, METAL | SYNC: DCO-1 resets DCO-2. METAL: DCO-2's saw reset on both DCOs' falling edges | SN p.6, OM p.23 |
 | 7 | DCO-2 | TUNE | 0-10 | **5.0 unison, 10 an octave up, 0 an octave down, in semitone steps** (7.9 is "a fifth") | OM, NAM, plug-out manual |
 | 8 | DCO-2 | FINE | 0-10 | ±50 cents, 5.0 centre, smooth | OM |
 | 9 | DCO-2 | LFO | OFF, ON | | NAM |
 | 10 | DCO-2 | ENV | OFF, ON | | NAM |
-| 11 | DCO | LFO DEPTH | 0-10 | Pitch moves in ~10 ms steps (software, into the counter) | SN |
-| 12 | DCO | ENV DEPTH | 0-10 | The same | SN |
+| 11 | DCO | LFO DEPTH | 0-10 | Pitch moves in ~10 ms steps (software, into the counter) | SN p.6 |
+| 12 | DCO | ENV DEPTH | 0-10 | The same | SN p.6 |
 | 13 | DCO | ENV POLARITY | NORMAL, INVERTED | | OM p.22 |
 | 14 | VCF | SOURCE MIX | 0-10 | **Linear amplitude crossfade**: 0 DCO-1, 10 DCO-2; 6.8 is 1:2, 7.4 to 7.8 is 1:3 | OM, NAM |
-| 15 | VCF | HPF | 0-10 | Non-resonant, after the voices are summed | NAM, SN diagram |
+| 15 | VCF | HPF | 0-10 | Non-resonant, after the voices are summed | NAM, SN p.4 (diagram) |
 | 16 | VCF | CUTOFF | 0-10 | Hz unknown | |
-| 17 | VCF | RESONANCE | 0-10 | **Self-oscillates at 10**, a sine | NAM Organ I, SN adj. 5 |
+| 17 | VCF | RESONANCE | 0-10 | **Self-oscillates at 10**, a sine | NAM Organ I, SN p.7 adj. 5-3 |
 | 18 | VCF | LFO MOD | 0-10 | | |
 | 19 | VCF | ENV MOD | 0-10 | | |
 | 20 | VCF | ENV POLARITY | NORMAL, INVERTED | Its own, apart from the DCO one | NAM (Planet), OM p.25 |
@@ -90,7 +163,7 @@ value to a tenth, so every factory value fits exactly.
 | 25 | LFO | DELAY | 0-10 | Time unknown | OM p.26 |
 | 26 | LFO | RATE | 0-10 | Hz unknown | OM p.26 |
 | 27-30 | ENV | ATTACK, DECAY, SUSTAIN, RELEASE | 0-10 each | All at 0 gives "an extremely short pulse" | OM p.27 |
-| 31 | CHORUS | | OFF, ON | One mode. Two BBDs swept 180° apart | SN |
+| 31 | CHORUS | | OFF, ON | One mode. Two BBDs swept 180° apart | SN p.7 |
 
 ### Track values: not in the patch
 
@@ -105,7 +178,7 @@ be kept apart from the patch's ids.
 | 33 | BRILLIANCE | 0-10, 5.0 centre | A panel knob on the real one that moves every voice's cutoff. A track is the nearest thing to "the panel" |
 
 - **`kPatchSettings` is 32.** `loadPreset` (factory and own) writes ids 0 to
-  31 only; saving a `.jx3p` preset writes ids 0 to 31 only. Ids 32 and 33
+  31 only; saving a `.jaxep` preset writes ids 0 to 31 only. Ids 32 and 33
   stay as the track had them. A test picks a preset after turning both, and
   reads a saved preset file for them.
 - Both are still settings with ids (appended, in the song file's `settings`
@@ -159,7 +232,7 @@ batches that build them never edit the same lines:
 
 ### The control tick: the JX-3P's own CPU
 
-The SN: "The CPU cycles steps 1 to 6 within approx. 10mS": read keys, work out
+The SN (p.6): "The CPU cycles steps 1 to 6 within approx. 10mS": read keys, work out
 ENV and LFO, read the panel, write the CVs, write the counters. **ADSR and LFO
 are software, and every CV is a step every 10 ms through a sample-and-hold.**
 That is part of the sound and is kept.
@@ -198,7 +271,9 @@ the top, gives the same bits as Play from the top on a fresh engine.
 ### Voice stealing
 
 Assigner: the same key if it is sounding, else the free voice longest silent,
-else the oldest sounding voice.
+else the oldest voice whose key is up (ringing in its release), else the
+oldest held (`kStealLetGoFirst`; added after the batch 1 review: a steal cut a
+key still held while quieter tails rang on. The owner's call, section 8).
 
 **A steal is a retrigger from where the voice is**: the envelope starts its
 attack from its current level (it is software on the real one, so it is not
@@ -215,7 +290,7 @@ length, stolen or not.
 
 ### DCOs
 
-The real DCO (SN): a 6 MHz master clock, divided by a counter (8253) set by
+The real DCO (SN p.6): a 6 MHz master clock, divided by a counter (8253) set by
 the CPU; the counter's rectangle is the SQUARE; a saw is made by charging a
 capacitor at a current set by the pitch, so the saw's height is the same on
 every key.
@@ -224,17 +299,18 @@ every key.
 | --- | --- | --- |
 | SAW | A phase ramp, -1 to 1 | A BLEP (a short correction around a jump that takes the alias out) at the reset |
 | SQUARE | 50% rectangle | A BLEP at each edge |
-| PULSE | The saw times a gain over 1, clipped at the top, then DC-blocked: a ramp that hits the top early and stays there. The SN: "add a bias to DCO CV to excessively increase charging current". **Gain 10, so the ramp reaches the top in 10% of the cycle and the wave reads as WP's 10% pulse.** Fitted again from a recording in batch 9 | A BLEP at the reset, and a **BLAMP** (the same correction for a bend, not a jump) at the clip point, whose time is known exactly |
+| PULSE | The saw times a gain over 1, clipped at the top, then DC-blocked: a ramp that hits the top early and stays there. The SN (p.6): "add a bias to DCO CV to excessively increase charging current". **Gain 10, so the ramp reaches the top in 10% of the cycle and the wave reads as WP's 10% pulse.** Fitted again from a recording in batch 9 | A BLEP at the reset, and a **BLAMP** (the same correction for a bend, not a jump) at the clip point, whose time is known exactly |
 | NOISE | White, a xorshift seeded per voice | None needed |
 
 - **SYNC**: when DCO-1 wraps, DCO-2's phase is reset at the same fraction of a
   sample, and a BLEP of the size of the jump is put there. **Why DCO-1 is the
   master**: OM p.23 and NAM get pulse-width sweeps from SYNC by turning
   DCO-2's TUNE, which only works if DCO-2 is the one reset. SOS writes it the
-  other way round ("syncs DCO 1's frequency to DCO 2"); the SN page goes in
-  the sources table in batch 0.
+  other way round ("syncs DCO 1's frequency to DCO 2"); **the SN (p.6)
+  settles it: "pulses from DCO-1 are applied ... in DCO-2 section as RESET
+  pulses"**.
 - **METAL**: DCO-2 is not synced. Its saw is reset at every falling edge of
-  DCO-1's square **and** of DCO-2's own square (SN). Each reset is a jump with
+  DCO-1's square **and** of DCO-2's own square (SN p.6). Each reset is a jump with
   a BLEP. What METAL does with DCO-2 on SQUARE is not written anywhere: the
   clone resets the square's phase the same way, marked as a guess.
 - **DCO-2 TUNE is in semitone steps**: dial d plays `round((d - 5) × 2.4)`
@@ -245,20 +321,24 @@ every key.
   sweeps are made). The owner's call; one constant.
 - **Pitch**: the key, TUNE, FINE, LFO and ENV become one frequency on each
   tick (the key also per sample under GLIDE).
-- **Rounded to the counter** (owner's call, recommended once the SN's clock
-  figure is checked): the frequency is `clock / round(clock / f)`, as an 8253
-  can only divide by a whole number. At 6 MHz that is under 1 cent off at the
-  top notes. One constant; off until the clock is confirmed.
+- **Rounded to the counter** (owner's call, recommended; **the clock is
+  confirmed, SN p.6: about 6 MHz into an 8253**): the frequency is
+  `clock / round(clock / f)`, as an 8253 can only divide by a whole number.
+  At 6 MHz that is under 1 cent off up to 6.9 kHz (0.85 at worst), and up to
+  2.5 cents above it, to the top (measured, all 128 keys at every RANGE:
+  `testEveryKeyAsPlayed`). Over 0.45 of the sample rate a DCO is held there
+  (21.6 kHz: keys 125 to 127 at 4'), and `voiceHz` says so. One constant (the clock
+  taken as 5,999,840 Hz: see "SN pages").
 
 | Test | Measure | Pass | Kind |
 | --- | --- | --- | --- |
 | In tune | Pitch of each wave, each RANGE, notes 24 to 96 | Within 1 cent of the written note (8'), an octave down at 16', up at 4'. With the counter rounding on: exactly `clock / N` | SELF (A440 is the program's) |
-| Saw height | Peak of the saw at notes 24, 60, 96 | The same within 0.2 dB | FAITHFUL (SN: constant height) |
+| Saw height | Peak of the saw at notes 24, 60, 96 | The same within 0.2 dB | FAITHFUL (SN p.6: constant height) |
 | PULSE is 10% | Duty cycle after the DC block, notes 36, 60, 84 | 10% ±1 | **FAITHFUL (WP)** |
 | TUNE | DCO-2 against DCO-1 at TUNE 0, 2.5, 5, 7.9, 10 | -12, -6, 0, +7, +12 semitones within 1 cent; 7.9 a fifth, 10 an octave | **FAITHFUL (OM, NAM)**; the stepping itself is the plug-out's |
 | FINE | FINE 0 and 10 | -50 and +50 cents within 1 | FAITHFUL (OM) |
 | SYNC's width | DCO-2 on SQUARE, SYNC, TUNE from 5 down to 0 | The pulse's width is DCO-1's frequency over twice DCO-2's, within 1% | **FAITHFUL (OM p.23, NAM)** |
-| METAL | Count the saw's resets in one second, DCO-2 a fifth up | Falling edges of both DCOs, exactly | FAITHFUL (SN) |
+| METAL | Count the saw's resets in one second, DCO-2 a fifth up | Falling edges of both DCOs, exactly | FAITHFUL (SN p.6) |
 | Aliasing | Every wave, SYNC and METAL, notes up to 96 at 4', a spectrum | **Every part that is not a harmonic and falls under 15 kHz at least 50 dB under the fundamental** | SELF (the real DCO is analog and does not alias; this is the house's bar) |
 | Source mix | DCO-1 and DCO-2 levels at MIX 0, 5, 6.8, 7.6, 10 | 1:0, 1:1, 1:2, 1:3, 0:1 within 0.3 dB | FAITHFUL (OM, NAM) |
 
@@ -271,7 +351,7 @@ before going on.
 ### VCF: the IR3109
 
 Four transconductance stages (OTAs) in a row, each a one-pole low-pass, with
-feedback from the last to the first for resonance (SN: "4-pole LPF...
+feedback from the last to the first for resonance (SN p.6: "4-pole LPF...
 feedback amount... controlled by mTR103, 104").
 
 | Choice | Here | Why |
@@ -281,15 +361,15 @@ feedback amount... controlled by mTR103, 104").
 | Resonance | Feedback 0 to 4 (4 = the edge of oscillation in a 4-pole), mapped so dial 10 is just past it | NAM's Organ I uses res 10 as a pitched source |
 | Starting to sing | **At each note-on a fixed 1e-4 is put into stage 1.** A filter that is linear near zero stays at exact zero with nothing in, so without this res 10 on silence never starts | It is the same number every time, so the same bits |
 | Bass loss | **Not compensated**: the low end falls as resonance rises, by 1/(1 + feedback) | A trait of the IR3109 on the Juno-60, **not documented on the JX-3P**. The owner's call |
-| Self-oscillation level | **SELF until the SN figure is in hand**: a guess of 6 dB under the saw's peak. SN adjustment 5 trims it to 600 mV peak to peak; turning that into a ratio needs the saw's peak to peak from the same adjustment, which batch 0 looks for | SN adj. 5 |
-| Cutoff CV | Sum of CUTOFF, KEY FOLLOW × key, LFO, ENV (with its polarity), BRILLIANCE. Exponential: a volt an octave | SN: "KCV, CUTOFF, LFO and ADSR" |
+| Self-oscillation level | **SELF**: a guess of 6 dB under the saw's peak. SN adjustment 5-3 (p.7) trims it to 600 mV peak to peak, but **the SN prints no figure for the saw** (adjustment 3-4 sets the D/A "for the maximum amplitude without clip"), so there is no ratio to take. Batch 9's recordings can give it | SN p.7 |
+| Cutoff CV | Sum of CUTOFF, KEY FOLLOW × key, LFO, ENV (with its polarity), BRILLIANCE. Exponential: a volt an octave | SN p.6: "KCV, CUTOFF, LFO and ADSR" |
 | Cutoff in Hz | **A guess**: dial 0 to 10 covers 10 octaves, 15 Hz to 15 kHz, until a recording | No source gives it |
 | KEY FOLLOW's 100% | **9.8, chosen from NAM's text** (Organ I is at 9.8 and NAM says it plays in tune). The test pins this choice; it does not prove it | NAM |
 | The coefficient's cost | `exp2` and `tan` as short polynomials, not the maths library. The coefficient is worked out **only on samples where the cutoff CV moved** (a smoothing, a GLIDE, an LFO step) | The handheld's maths calls are slow; a FULL glide moves the cutoff for bars |
 
 | Test | Measure | Pass | Kind |
 | --- | --- | --- | --- |
-| A 24 dB slope | Noise through, res 0, two octaves over cutoff | 24 dB an octave within 2 dB | FAITHFUL (SN: 4-pole) |
+| A 24 dB slope | Noise through, res 0, two octaves over cutoff | 24 dB an octave within 2 dB | FAITHFUL (SN p.6: 4-pole) |
 | It starts to sing | Silence in, res 10, a note-on | A steady sine within 50 ms that never stops | FAITHFUL that it sings (NAM); the 50 ms is SELF |
 | Organ I | Preset A3 (res 10, KEY 9.8, CUTOFF 2.4), pitch read 200 ms in, at its steady level | A semitone for a semitone across three octaves, within 5 cents | SELF: it pins 9.8 = 100% |
 | KEY FOLLOW | Self-oscillating pitch at notes 36 and 84, KEY 0, 5, 8, 10 | A straight line in KEY | SELF |
@@ -299,7 +379,7 @@ feedback amount... controlled by mTR103, 104").
 
 ### HPF
 
-One filter for the summed voices, before the chorus (SN block diagram), not
+One filter for the summed voices, before the chorus (SN p.4, block diagram), not
 resonant. **A one-pole high-pass** (6 dB an octave) until a recording says
 otherwise; 0 is off, 10 is a guess of 1 kHz. Tests: the slope (SELF), and 0
 passes the sound untouched to the bit (SELF).
@@ -317,14 +397,14 @@ passes the sound untouched to the bit (SELF).
 | Test | Pass | Kind |
 | --- | --- | --- |
 | Times | Each of 0, 2.5, 5, 7.5, 10 for A, D and R lands on its table's time within one tick | SELF |
-| Stepped | The VCA's gain read off a steady tone moves once a tick | FAITHFUL (SN: 10 ms loop) |
+| Stepped | The VCA's gain read off a steady tone moves once a tick | FAITHFUL (SN p.6: 10 ms loop) |
 | All at 0 | A pulse one tick long | FAITHFUL (OM p.27) for "short"; one tick is this plan's reading |
 | A retrigger | No jump between samples larger than the wave's own | SELF |
 
 ### VCA
 
-SN: a transistor used as a voltage-controlled resistor (contested: see
-section 0). Gain = LEVEL × ENV, or LEVEL × the gate in GATE mode, times the
+SN: a voltage-controlled resistance (p.7); the part is a BA662B (p.3; see
+"SN pages"). Gain = LEVEL × ENV, or LEVEL × the gate in GATE mode, times the
 velocity curve with VELOCITY ON (1 at full velocity). **The taper is a guess**
 (exponential, a dial step of 1 is 4 dB). Above LEVEL 7 a soft clip comes in
 ("too high may cause distortion", OM p.26), also a guess in shape. GATE mode
@@ -357,11 +437,11 @@ and not this circuit) and not the CZ-1 model as it is, but built **the way
 `third_party/easycz/dsp/cz_chorus.c` is**: a fixed buffer, no allocation, one
 mono sample in and a pair out.
 
-| From the SN (pages to fill) | Here |
+| From the SN (p.3 and p.7) | Here |
 | --- | --- |
-| Two MN3009 BBDs (confirmed: Polynominal), one a side, clocked by one VCO sweeping **40 to 200 kHz** (SN only) | Two reads of one delay line. An MN3009 has 256 stages, so its delay is 256 / (2 × clock): **0.64 to 3.2 ms** |
+| Two MN3009 BBDs (confirmed: Polynominal), one a side, clocked by one VCO sweeping **40 to 200 kHz** (SN p.7; MN3009 and MN3101 in the parts, p.3) | Two reads of one delay line. An MN3009 has 256 stages, so its delay is 256 / (2 × clock): **0.64 to 3.2 ms** |
 | One triangle sweep, the other side **180° out of phase** | One triangle; left reads at d, right at the mirror of d |
-| **10 kHz** low-pass before and after (SN only) | A 2-pole low-pass at 10 kHz on the wet path, before and after (their order is a guess) |
+| **10 kHz** low-pass before and after (SN p.7) | A 2-pole low-pass at 10 kHz on the wet path, before and after (their order is a guess) |
 | Rate and depth | **Not published. A guess of 0.5 Hz** over the whole delay range. No source; batch 9 measures it |
 | Dry and wet | Each side is dry plus its own BBD (a guess; the real outputs are L, R and mono) |
 
@@ -372,8 +452,9 @@ zeros and does no work, and wakes as a fresh one.
 
 Tests: an impulse through finds the delay on each side; over a whole sweep
 the delay stays within 0.64 to 3.2 ms and left is longest when right is
-shortest (FAITHFUL, if the SN page holds); the wet path is 3 dB down at 10 kHz
-within 1 dB (FAITHFUL, the same); OFF is the dry sound to the bit, mono
+shortest (FAITHFUL, SN p.7); each filter is 3 dB down at 10 kHz, so the wet
+path is 6 dB down there within 1 dB (FAITHFUL, SN p.7; its 2 poles are SELF;
+built so in batch 5, which found the "3 dB" line read two filters as one); OFF is the dry sound to the bit, mono
 (SELF); the sweep rate (SELF).
 
 ### What every part must keep (house rules)
@@ -383,7 +464,7 @@ within 1 dB (FAITHFUL, the same); OFF is the dry sound to the bit, mono
 | No allocation, lock or free outside the constructor and `prepare` | The engine's counted `new`, as the other synths |
 | The same sound however the blocks are cut | `testBlocks`: a 20 s phrase with every part moving, cut 1, 48, 64, 100, 512 and at random: the same bits. **Twin fails this today; the new one must not** |
 | The same on any helper count and twice from fresh | Joins the synth trio in `chordfx_test`, `effects_test`, `throw_test`, `engine_test` |
-| Play from the top is the same performance | `testPlayFromTheTop` (above) |
+| Play from the top is the same performance | `testPlayFromTheTop` (above), and `testPlayFromTheTopWhileRinging` (the last notes still in their release: the fresh performance plus the tails) |
 | Silence in, silence out | All voices finished and the chorus asleep: exact zeros, and the voice loop skipped |
 | **Every state looks after its small numbers** | Snapped to 0 under 1e-20 or gated at `kQuiet`: the four VCF stages, the HPF, the S/H smoothers, the four 10 kHz chorus filters, the chorus line, the DC block of PULSE. **Every smoother and fade lands exactly** (the `Glide` rule). `testTooSmall`: the whole synth, flush-to-zero off, every preset through its release: no number too small to hold, as `TooSmall` in `effects_test` |
 | GLIDE | `glide_test`'s `testEverySynthTakesTheLength` and `engine_test`'s glide test, without a JX exception |
@@ -479,6 +560,7 @@ every time is a guess.
 | | Patches |
 | --- | --- |
 | Taken from NAM as printed | A1 String I to A16 Voice, B1 Violin to B16 Jet, except below |
+| Where the values are | `tests/jx3p_nam.inc` (the booklet as read, a line a patch) and `kPresets` in `engine/src/jx3p.cpp` (batch 7) |
 | **Guesses** | Pulse against square is read off the knob's angle in the booklet: **A4, A8, A9, A10, A12, A14, B2, B3, B7, B12, B13, B15** could be swapped. **B14 Pulsar**: cross mod's pointer is at an unlabelled place; read as METAL. **B3 Oboe** DCO-1 wave not drawn (MIX 10 hides it). **A6, A7, B8** DCO-2 not drawn (MIX 0 hides it); B4's DCO-1 the same. **B14** has LFO DEPTH 10 with both switches off |
 | Not known | Whether NAM is exactly the ROM. Synthmania's names match; NAM says "the knob positions are only a guide" |
 
@@ -489,15 +571,25 @@ printed value is stored exactly.
 
 ### The name
 
-| Choice | For | Against |
-| --- | --- | --- |
-| **Keep TWIN ANALOG** (recommended) | Two oscillators still; nothing new to learn; no maker's name on the device, as Phazed and QMOD | It no longer says what it is |
-| JX-3P | Says exactly what it is | Roland's name on the device |
-| A new name of the owner's | | One more thing to choose |
+**JAX-EP** (decided by the owner, 2026-11-14; the plan had recommended keeping
+TWIN ANALOG). Where an instrument says what it is, it says **"a virtual analog
+synth modeled after a popular DCO synth"**.
 
-Inside the code it is `Jx3p` either way (`jx3p.hpp`, `SynthKind::Jx3p`), with
-the file word `jx3p` and the preset ending `.jx3p`. The line under the name in
-the picker: "two DCOs, a filter, a chorus".
+| Where | What is written |
+| --- | --- |
+| A track's head, the top bar, a bounce's file name, the list to pick from, the WiFi designer page | JAX-EP |
+| A narrow SONG column (11 or 12 tracks) | JAX (as PHZD, SMPL, QMOD: this plan's choice, the owner may want another) |
+| The line under the name in the list to pick from | "virtual analog, after a popular DCO synth": the owner's words shortened, since the line holds about 42 letters at LARGE (DRUMS' fills it). The count of presets does not fit after it and is left off this one line |
+| README | The owner's words in full |
+| A song file, a preset file | `track jaxep`, `synth jaxep`, `NAME.jaxep` |
+
+**No maker's or model's name anywhere a player reads**: the device's screens,
+preset and folder names, the WiFi pages, README. `ctest -R words` holds it
+(Roland, JX-3P, PG-200, Juno, in any text of `app/`, the two web pages and
+README.md). Inside the code it is still `Jx3p` (`jx3p.hpp`, `SynthKind::Jx3p`,
+`TrackKind::Jx3p`), and tests and plans may say JX-3P. TWIN ANALOG is no
+longer a name on the device: Twin's code is out (batch 8b took `bench`'s Twin
+rows and "BUSY: OVERSAMPLING DOWN", the last), and `words` fails it in a text.
 
 ## 5. Song files and ids
 
@@ -505,21 +597,19 @@ the picker: "two DCOs, a filter, a chorus".
 
 | Line | After |
 | --- | --- |
-| `track jx3p` | The new synth. What every song is written with from now on |
-| `track twin` | **Read as a JX-3P track.** Its `preset`, `macros` and `settings` lines are skipped and its automation lanes 0 to 7 are dropped, so it plays A1 String I with the macros at 0.5 and the track values at their new-track defaults. Its name, notes, scenes, `glidefrom`, effects, sends and lanes 8 and up load as they are. Saved again, it is written `track jx3p` |
-| An old `.twin` preset file | Left on the card, not listed (the folder lists `.jx3p`). The README and the update's notes say so |
+| `track jaxep` | The new synth. What every song is written with from now on. (This plan first said `track jx3p` and `.jx3p`; nothing was released under them, and the program does not read them) |
+| `track twin` | **Read as a JAX-EP track.** Its `preset`, `macros` and `settings` lines are skipped and its automation lanes 0 to 7 are dropped, so it plays the first preset (A1 String I from batch 7) with the macros at 0.5 and the track values at their new-track defaults. Its name, notes, scenes, `glidefrom`, `mix`, effects, sends and lanes 8 and up load as they are. Saved again, it is written `track jaxep` |
+| An old `.twin` preset file | Left on the card, not listed (the folder lists `.jaxep`). The README says so |
 
 **This changes what `twin` means**, which the house rule forbids. It is
-defended only because nothing is released, so it is **the owner's call**.
-The alternative that keeps the rule whole: an old `track twin` is skipped as
-an unknown instrument (its notes are lost). The recommendation keeps the
-notes.
+defended only because nothing is released; **the owner took it** (section 8,
+at the recommended answer).
 
 Test (batch 6a): a real song file written by `main` today with a Twin track
 that has a preset, its settings, its macros and lanes 0 to 7 and 8 and up
 automated, kept as `tests/twinsong_main.inc` in the manner of
 `everykind_main.inc` (not remade): it loads as A1, notes and lanes 8 and up
-whole, lanes 0 to 7 empty, and saves as `track jx3p`.
+whole, lanes 0 to 7 empty, and saves as `track jaxep`.
 
 `TrackKind::Twin` becomes `Jx3p` (memory only); the word `twin` lives on only
 in `trackKindFromWord`. `SynthKind` is memory only and is renamed freely.
@@ -532,32 +622,647 @@ One batch for one agent each. Each ends with `ctest` green (with
 | Batch | What | Tests | Done when |
 | --- | --- | --- | --- |
 | 0 | **Sources and tools.** Find a readable SN; fill an "SN page" against every SN claim in this plan, and the saw's peak to peak at adjustment 5; mark any claim with no page SELF. Move the pitch reader, spectrum and level reader out of `effects_test` into `tests/measure.hpp`, shared | `effects_test` gives the same results with the shared header | Every SN claim has a page or is marked SELF; one copy of the tools |
+| | **Batch 0 DONE (2026-11-14, branch `jx3p`).** SN read (manualslib 3497592, OCR text): 27 claims paged, in "SN pages"; none is without a page but the speeds, the chorus rate and the saw's figure (not printed: the self-oscillation level stays SELF). Found on the way: SYNC's direction settled (DCO-1 resets DCO-2, p.6), the VCA is a BA662B (p.3), the factory tunes A4 to 442 Hz (p.7). `tests/measure.hpp` holds the level, spectrum (`harmonicsIn`, split out of `harmonicsOf`), pitch, checksum and no-click readers; `effects_test --measure` and `--print` give the same output before and after, line for line, but for the 15 lines that time blocks. Mutants in the header: 13 made, 12 killed; `Sum` survives by design (a changed checksum changes `mathsPrint` too, and the pinned sound falls back to loudness and peak, as it does on another machine) | | |
 | 1 | **Skeleton.** `jx3p.hpp/.cpp`, the 34 settings (32 patch, 2 track) and 8 macros with ranges, a start patch, 6 voices with the assigner and the steal rule, `allNotesOff`'s resets, seeded start phases, `jx3p/env.hpp` (tick, ADSR, S/H smoothing, VCA, velocity), DCO-1 saw only. `SynthKind::Jx3p`, the factory, the three `bench` rows | In tune, voices, steal, envelope times, the tick, `testBlocks`, `testPlayFromTheTop`, twice from fresh, no allocation, `testTooSmall` | A note sounds in tune through the engine and the bench row is under 1% |
+| | **Batch 1 DONE (2026-11-14, branch `jx3p`).** Built beside Twin (Twin untouched; `SynthKind::Jx3p` appended, made by `Engine::addSynthTrack`; not in the app's instruments yet, that is 6a). `jx3p_test` (in ctest, TIMEOUT 120, under a second): 22 tests, each marked FAITHFUL or SELF. It also joined `glide_test`'s `testEverySynthTakesTheLength` (plain 440 Hz; 1/4 440, 1/2 440, 1 381, 2 293, FULL 253) and `engine_test`'s helpers' song (a sixth track). **Bench** (desk, one run, synth alone, 256-frame blocks): 6 notes **0.08%**, the worst row (a moving envelope, keys again every half second) 0.10%, moving cutoff (six notes gliding all the while, so the pitch is worked out every sample) **0.40%**; in the same run Phazed 0.9, QMOD 2.8, Twin x1 4.3. The start patch's note is 1.6 dB over Twin's first preset's (RMS 0.095 against 0.079). Mutants: see "Batch 1: what it learned" | | |
 | 2 | **DCOs**, `jx3p/dco.hpp`: both DCOs, every wave, TUNE, FINE, SYNC, METAL, NOISE, SOURCE MIX, DCO pitch from ENV | `jx3p_dco_test`: the DCO table, **aliasing first**, and the table BLEP if needed | Every DCO test passes and the bench row is measured again |
+| | **Batch 2 DONE (2026-11-14, branch `jx3p`).** The polynomial BLEP was tried first, as planned, and fails the bar (a saw at 4186 Hz: -35.3 dB of aliasing under 15 kHz; 1760 Hz: -42.6). Built instead: **minimum-phase** BLEP and BLAMP tables, 16 samples, 64 points a sample (`engine/src/jx3p/blep_table.hpp`, made by `tools/jx3p_blep.py`), so a jump starts on its own sample (the wave as a whole is 2.23 samples late at the bottom: `kBlampCarry`, which every slope carries, the saw's too since the review's mend). Every wave, SYNC and METAL, notes 36 to 96 at 4': **the worst aliasing under 15 kHz is -86.3 dB** (METAL on the pulse); the bar is -50. `jx3p_dco_test` (in ctest, TIMEOUT 120, about 1.5 s): 20 tests. `jx3p_test`: 28 (its alias baseline moved here). **Bench** (desk, two runs, synth alone): 6 notes **0.21 / 0.22%** (0.08 in batch 1), the worst row (now DCO-2's pulse synced a fifth up, ENV on its pitch, both heard) 0.30%, moving cutoff 0.63 / 0.68% (0.40); in the same runs Phazed 0.7 / 1.1, QMOD 2.8, Twin x1 4.1 / 4.5. Mutants: 38 in the last round, **38 killed** (see "Batch 2: what it learned") | | |
 | 3 | **VCF and HPF**, `jx3p/ir3109.hpp`, BRILLIANCE | `jx3p_vcf_test`: the VCF table, the HPF | Organ I's settings play in tune at res 10; **SPEED TEST on the handheld** |
+| | **Batch 3 DONE (2026-11-14, branch `jx3p`)**, but for the SPEED TEST on the handheld, which **waits on the owner** (the three JX-3P rows are in `bench` and in SPEED TEST). The VCF: four trapezoidal one-poles solved as one sum each sample, the feedback's soft clip from the sample before; its coefficient from polynomials, only when its CV moved. The HPF: one pole on the summed voices, off and untouched at 0. BRILLIANCE: plus or minus 2 octaves on every voice's cutoff. `jx3p_vcf_test` (in ctest, TIMEOUT 120, about 1.5 s): 17 tests. `jx3p_test`'s phrase moves every VCF and HPF setting too (`testBlocks`, `testTooSmall`, twice from fresh, the helpers). **Organ I**: a semitone a semitone within 2.2 cents over notes 48 to 84 (the bar is 5). **Bench** (desk, four runs on a busy machine, the synth alone): 6 notes **0.43 to 0.46%** (0.21 in batch 2), the worst row (now with ENV on the VCF and RESONANCE 5) 0.80 to 0.87% (0.30), moving cutoff (KEY FOLLOW 9.8, every note gliding, so the coefficient is worked out every sample) **1.56 to 1.67%** (0.63 to 0.68); in the same runs Phazed 0.7 to 1.2, QMOD 2.8 to 2.9, Twin x1 4.1 to 5.4. The moving-cutoff row is under the 2.0% ceiling but over the 1.2% target, with the LFO and the chorus still to come: see "Batch 3: what it learned". Mutants: 35 made, 34 killed |
 | 4 | **LFO**, `jx3p/lfo.hpp`, and its routes | `jx3p_lfo_test` | |
+| | **Batch 4 DONE (2026-11-14, branch `jx3p`).** One LFO for the synth on a 10 ms tick of its own, counted from allNotesOff; SINE, SQUARE, RANDOM; RATE 0.1 to 20 Hz; DELAY 0 to 5 s, a straight fade from a key with no other key held; LFO DEPTH to each DCO by its own switch (12 semitones at 10, as the dial squared), LFO MOD to the VCF (4 octaves at 10, straight); the LFO macro moves both (batch 1's survivor is killed). Every figure is a guess, in one table at the top of `lfo.hpp`. `jx3p_lfo_test` (in ctest, TIMEOUT 120, under a second): 11 tests, one FAITHFUL (stepped, SN p.6). `jx3p_test`'s phrase moves every LFO setting too (`testBlocks`, `testTooSmall`, twice from fresh), its helpers' song has an LFO on each track, and its Play-from-the-top song a RANDOM LFO with a DELAY. **Bench** (desk, two runs, the synth alone): 6 notes **0.43%**, the worst row 0.86 / 0.87%, moving cutoff (now with the LFO on the cutoff and on DCO-1) **1.67 / 1.68%**: no change from batch 3 that shows; in the same runs Phazed 0.8, QMOD 2.8 / 3.2, Twin x1 4.2 / 4.0. Mutants: 31 made, 29 killed, the other 2 equivalent |
 | 5 | **Chorus**, `jx3p/chorus.hpp` | `jx3p_chorus_test` | Bench row with chorus on under 1.2% at 6 notes |
-| 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jx3p` and the `twin` reading, `.jx3p` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
+| | **Batch 5 DONE (2026-11-14, branch `jx3p`).** One line read twice, the left's BBD clock a triangle from 40 to 200 kHz and back in 2 s, the right's its mirror (the two always add to 240 kHz), so each side's delay is 128 / clock: 0.64 to 3.2 ms; a 2-pole 10 kHz low-pass before the line and one after each side; each side dry plus its BBD at 0.71 each; a 20 ms fade on the switch; asleep when empty. Every guess in one table at the top of `chorus.hpp`. `jx3p_chorus_test` (in ctest, TIMEOUT 120, under a second): 13 tests, three FAITHFUL (the clock's range and the 180° worked out and found by impulses, the 10 kHz filters: SN p.7). `jx3p_test`'s phrase switches CHORUS too (`testBlocks` now holds both sides). **Bench** (desk, a busy machine; the quietest of five runs): 6 notes **0.52 / 0.53%** (batch 4: 0.43; the chorus about 0.1), the worst row 0.96 / 0.97%, moving cutoff 1.77 / 1.78%; in the same runs Phazed 0.7, QMOD 2.8 to 3.2, Twin x1 4.1 / 4.2. **The 6-note row is under the 1.2% bar.** Mutants: 30 made, **30 killed** (six survived the first round and each got a test) |
+| 6a | **App: the song and files.** `TrackKind`, the instruments row in Twin's place, `track jaxep` and the `twin` reading, `.jaxep` presets, `loadPreset` and saving skip ids 32 and 33 | `app_test`, `save_test`, the old Twin song, a preset picked keeps BRILLIANCE and VELOCITY | A song saves and loads; Twin is no longer offered |
+| | **Batch 6a DONE (2026-11-14, branch `jx3p`).** `TrackKind::Twin` is `Jx3p`; the instruments row is JAX-EP's (word `jaxep`, presets `NAME.jaxep`); `track twin` is read as planned (`trackKindFromWord`'s `old`, `parseSong`'s `oldSound`); a preset, built-in or the player's own, writes and keeps ids 0 to 31 (`presetSettingCount`), a song keeps all 34. The spec's five pages, its macro names and `settingText` in dial tenths were written here too, since Twin's spec could not stay: 6b checks them at every size and adds the folder line and the views. `tests/twinsong_main.inc` is the old song (not to be remade). **Tests**: `ctest` 38 of 38; `save_test` `testAnOldTwinSong`, `app_test` `testAPresetKeepsTheTracksOwnValues` and the three JAX-EP screen tests, `design_test`'s page test, `words` with the makers' rule. **Mutants: 27 made, 27 killed** (23 in the app, 4 in the words test). The sound is not touched; `bench`'s rows are under "Batch 6a: what it learned" | | |
 | 6b | **App: the screens.** The spec pages, `settingText` in dial tenths, `macroText`, the DEVICE screen in `App::screenNow()`, the folder line, still views `jx3p`, `jx3p0..5` in `main.cpp` and `kViews` | `design_test`, `textsize` (every setting at XL), `textviews` | The pages draw at every size |
+| | **Batch 6b DONE (2026-11-14, branch `jx3p`).** The pages, `settingText` and the macro names were in 6a's commit; this batch finished them: the folder's note on MAIN (`SynthSpec::folderNote`), a knob as its dial on the designer page too (`SynthSpec::pageReadsAsDevice`), the still views `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank`, `jaxep-held` (in `main.cpp` and `kViews`; the `twin` views are gone), README. **Tests**: `ctest` 39 of 39; `app_test` `testHowJaxepReads` (every knob at 0.0, 0.1, 0.9, 1.0, 5.3, 7.9, 9.8 and 10.0, every switch's words, a value out of range, the pages' and macros' names, `macroText` at both ends, what a folder says); `textsize` (all 34 settings with the cursor on each, at its least and, A held, at its most, and MAIN's PRESET row three ways, at all four sizes); `design_test` (the page is given all 101 readings of each of the 19 knobs, and only JAX-EP's); `textviews` and `themeviews` draw the nine views at four sizes and in six themes. **Mutants: 38 made, 38 killed** (23 on this batch's code, 15 on what 6a's tests cover, again). The engine is not touched | | |
 | 7 | **The 32 presets** | Every preset loads, plays and stays bounded; every NAM value stored exactly (read twice by hand); the three NAM checks | 32 presets in two folders |
+| | **Batch 7 DONE (2026-11-14, branch `jx3p`).** The 32 patches are `kPresets` in `engine/src/jx3p.cpp`, sixteen in BANK A and sixteen in BANK B, named as the booklet's English headings; the start patch is no longer a preset (`Jx3p::startPatch()`: what a synth is made with). A new JAX-EP track, and an old `track twin`, is on A1 String I. `tests/jx3p_nam.inc` is the booklet as read, in its own terms. **Tests**: `ctest` 40 of 40; the new `jx3p_presets_test` (in ctest, TIMEOUT 120, about 3 s): 8 tests (the table against the booklet, value for value; a patch picked; NAM's three checks; every patch played: sounds, bounded, ends; the same bits cut in blocks of 256, 64 and 97 and twice from fresh; no number too small, every patch through its release and by allNotesOff; after another patch; through the engine). `app_test` (the folder jump is a bank jump; a bank's note), `textsize` (MAIN on each of the 32 at four sizes), `design_test`. **Bench** (desk, three runs, the synth alone): 6 notes, now A1 String I, **0.55 to 0.56%**; the worst of the 32, **B15 Planet, 1.03 to 1.06%** (B12 Sync Sweep, which this plan named, is 0.55%); moving cutoff 1.78 to 1.83% (not changed); Phazed 0.7, QMOD 2.8 to 2.9, Twin x1 4.0 to 4.4 beside them. **Mutants: 35 made, 34 killed**; see "Batch 7: what it learned" | | |
 | 8a | **Tests off Twin.** Move every test that names Twin to the new synth (`engine_test` tails, glide, the trio songs, `render_demo` to String I); the PAIRED steal test; `nextscene_test` with its PAIRED chord track on the new synth | All of `ctest`; the thread-sanitizer run of `nextscene_test` once (about 15 minutes) | No test names Twin |
+| | **Batch 8a DONE (2026-11-15, branch `jx3p`).** JAX-EP is the synth in `engine_test` (the helpers' song, the macros' rest, the tail and the attack, the glide: no exception left), `effects_test` (both songs; **the pinned song's sum remade**), `chordfx_test`, `throw_test`, `mixer_test`, `glide_test`, and `render_demo` plays A1 String I (peak 0.95; it was 0.96). New: `glide_test` `testPairedOnSixVoices` (the PAIRED steal test) and `nextscene_test` `testTheChordTrackIsHeard`; `nextscene_test`'s chord track is JAX-EP, every proof still 0. The app's screen is `App::jaxep()`. **Tests**: `ctest` 43 of 43. **Thread sanitizer**: `nextscene_test` clean, 10 min 45 s for the run. **Mutants: 15 made, 14 killed**; see "Batch 8a: what it learned". The engine is not touched, so `bench` was not run | | |
 | 8b | **Twin's code out.** Delete `twin.hpp/.cpp` and `twin_test`; remove `setQualityLimit`, the load watch, "BUSY: OVERSAMPLING DOWN", the bounce's x8 | All of `ctest` | No word "twin" left but the file reader's |
+| | **Batch 8b DONE (2026-11-15, branch `jx3p`).** Gone: `twin.hpp`, `twin.cpp`, `twin_test`, `SynthKind::Twin`, `Instrument::setQualityLimit`, the engine's load watch (`watchLoad`, `qualityLimit`, `load`, `noteLoad`, the timing in `render()`), `Project::busy`, the top bar's BUSY: OVERSAMPLING DOWN, `engine_test`'s quality test, `bench`'s and SPEED TEST's three Twin rows. The busiest song's two Twin tracks are JAX-EP on A1. **Tests**: `ctest` 42 of 42 (one fewer: `twin`). `effects_test --print` the same 42 lines before and after. **Bench** and **mutants**: "Batches 8b and 8c: what they learned" | | |
 | 8c | **Docs.** README, CLAUDE.md's Measured table and rules, `effects-plan.md`'s cost figures | `ctest -R words` | |
+| | **Batch 8c DONE (2026-11-15, branch `jx3p`).** README: "Keeping up" is gone, the heavy-song figure is the busiest song's, the envelope's and QMOD's lines no longer lean on Twin, the rule on Twin's port is gone; the note on old `.twin` presets and old songs stays. CLAUDE.md: the Measured table (Twin's row and the batch-by-batch JX-3P rows out, today's in), the rule on where the word `twin` may live, 42 tests. `effects-plan.md`: the budget with JAX-EP (the 12-track song 66% of a handheld core, was 128). `ctest -R words` passes, with a new rule and two plants | | |
 | 9 | **Calibration from recordings** (waits on the owner's source). A small tool reads WAVs of a real JX-3P and fits the tables: envelope times and curve, LFO rate and delay, cutoff in Hz, HPF, KEY FOLLOW's 100%, the VCA taper, pulse's gain, chorus rate and depth, the self-oscillation level | Each fitted table written in the tests with its measured figure; those tests become FAITHFUL | Every "guess" here is measured, or the owner chose to keep it |
 
 Batches 2 to 5 can go side by side once 1 is in: each has its own header and
 its own test program. Only the wiring in `jx3p.cpp` is shared, and it is
 joined one batch at a time.
 
+### Batch 1: what it learned (2026-11-14)
+
+Where the build differs from the words above, and why. Each is in the code
+with the same words.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| Start phase from a seed of the voice's number and the count of keys | **The count of keys alone** (since `allNotesOff`) | The count is new at every key, so the voice's number added nothing: its mutant survived |
+| The phase set "at each note-on" | Set when a FREE voice takes a key. **A sounding voice taken again (the same key, or a steal) keeps its phase** | A reset there is a jump in the wave; carrying on is just as repeatable, since the phase it has came from a seed |
+| `allNotesOff` puts the DCO phases back to 0 | Not done: a free voice's phase is set from the seed at its next key, so it was dead code (its mutant survived) | |
+| `allNotesOff` puts back everything | It lets the keys go and puts back the count of keys, the sample clock and every voice's age. **A voice still sounding is handed to a tail** (`kTailVoices`, twice six) and rings out its release there, beside the six, which start again as from fresh. So Play from the top is the fresh performance plus the tails, to a float's rounding, however long the release (`testPlayFromTheTopWhileRinging`: Stop, then Play 64, 4800, 48000 samples on, RELEASE 7: off by 7.5e-8 at worst; before the mend, 0.84). Up to twelve voices sound for a release's length after Stop and Play; a third handover inside one release finds no tail free and the voice rings on among the six, as before | Mended after the review (2026-11-14). Play and Stop let notes go, they do not cut them, so the tails must ring somewhere other than the six |
+| A steal takes the oldest sounding voice | **The oldest let go first** (`kStealLetGoFirst`), then the oldest held | The review: a seventh key cut a key still down while three released tails rang on |
+| A velocity in [0, 1] | **A NaN velocity is 0** (at `noteOnVoice`, the one way in) | The review: NaN made the VCA's target NaN, the hold never landed, the voice was never freed, and the track gave NaN for good; Twin and Phazed survive it |
+| The hold lands "within 1e-6" | **Within 1e-5** (`kHoldLands`) | A one-pole of 1 ms in float, heading for 1, stops moving 1.4e-6 short (a step of k times the gap is under half a float step there), so 1e-6 never came: the voice was never freed |
+| VCA: 4 dB a dial step, a soft clip above LEVEL 7 | LEVEL 7.0 is 0 dB (`kVcaUnityDial`), and a full wave there just meets the clip; it bends toward 1.5 times that at most (`kVcaClipCeiling`) | With 0 dB at 8, the start patch was already in the clip; a ceiling of exactly the clip point divided by zero |
+| ADSR "times" | **A time is the time to land**: the attack from 0 to the top (the key's own tick counts as the first), a decay from the top to SUSTAIN 0, a release from the top to silence; a fall lands when 80 dB from its target (`kEnvLand`) | One meaning for "lands within one tick" |
+| A key on its own sample | **And a key let go**: the voice's tick restarts at the note-off, so the release (or GATE's close) starts on its sample, not up to 10 ms on | The program's timing comes first, as for the key |
+| `bench`'s three rows | Built, through the synth alone (not the engine, so the rows can glide); rows 0 and 1 use the start patch until batch 7 brings A1 and B12 | |
+
+**For batch 2: the 8253's counters are 16 bits.** 5,999,840 / 65535 is
+91.6 Hz, so no single count reaches a note below about F#2 at 8' (and an
+octave more at 16'). The real DCO must divide again after the counter (an
+octave stage), or switch ranges another way; the SN pages read do not say.
+Today the rounding is `clock / round(clock / f)` with no limit on the count,
+which is 0.90 cents from the written note at worst over the piano's keys (21
+to 108, every RANGE: note 106 at 4'; under 0.4 for 24 to 96) and exactly the
+counter's pitch. The lowest 8' note whose count fits 16 bits is 42 (F#2).
+**The alias baseline for batch 2** (`testAliasBaseline`, a held 1760 Hz saw,
+everything that is not a harmonic against the fundamental): -27.2 dB, the
+loudest fold-back -31.2 dB at 23360 Hz; with the BLEP's sign flipped -13.2
+(-23.0). The review's figures, by another measure: 33.5 / 28.4 / 25.9 dB at
+notes 84 / 96 / 103. The plan's 50 dB is far off: batch 2's job.
+
+**The review's mend (2026-11-14)**: 12 mutants made on what it touched and
+what the review found untested (the tail handover three ways, the tails
+rendered, the steal's order two ways, NaN velocity, the tick's retune of a
+RANGE turned under a held key, GATE at LEVEL 0 keeping its voice, a preset
+putting the macros back, the top's clamp, the BLEP's sign): **12 killed**.
+`jx3p_test` is 29 tests. The bench rows did not move (0.08 / 0.10 / 0.40%).
+
+**Mutants (batch 1): 32 in the last round, 29 killed** (two more, earlier, survived because their code was dead, and it was taken out: the voice's number in the seed, and `allNotesOff` setting free voices' phases to 0). Survived: `allNotesOff` not
+putting the sample clock back (it only matters with `kKeysOnTheSample` off,
+where the 10 ms grid is counted from it); the BLEP's sign (no alias test yet:
+batch 2's first job, and batch 2 replaces this saw); the LFO macro moving DCO
+LFO DEPTH too (nothing reads it until batch 4).
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 2: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| A table BLEP, "16 samples a side" (so 16 samples late) | **Minimum-phase**, 16 samples, all after the jump (`blep_table.hpp`) | A key sounds on its own sample (`testAKeyStartsOnItsSample`, the owner's call): a linear-phase table makes every note 0.33 ms late. Measured in a numpy prototype before choosing: with 16 zero crossings a side cut to 16 samples, -56 dB (saw) / -43 (pulse) at 4186 Hz; with **8 a side, -98 / -91**: the shorter filter's minimum-phase version fits in 16 samples. Cutoff 0.45 of the rate, Kaiser beta 9: -0.1 dB at 15 kHz, -3 at 20 kHz |
+| The table "computed" | **Written out as numbers** by `tools/jx3p_blep.py` (numpy) | No maths library runs on it at play time, so every machine plays the same bits. Run the script again only to change it |
+| BLAMP at PULSE's clip | A BLAMP at every bend (the clip, a reset from the flat top), and **`kBlampCarry`**: a minimum-phase filter is late at the bottom, so a bend's correction does not die away; it leaves a constant (-2.23 samples times the bend). Kept as a state (the carry is that constant times the wave's slope where it is: **every slope, the saw's too**, since the review's mend below; it was the slope's distance from the wave's plain slope, and the saw carried nothing), never summed, so nothing drifts | Without it the pulse fails the alias bar (its mutant fails 33 of the aliasing checks) |
+| PULSE "DC-blocked" | **Its own mean taken off** (`kPulseMean`, 0.9): exact, no filter, nothing to settle at a note's start, nothing too small to hold | A DC-blocking filter starting at each key would thump: the DCOs do not free-run. A SYNCed or METAL pulse keeps whatever mean its resets give it |
+| PULSE is 10%: "duty cycle after the DC block" | Held two ways: **its harmonics** (2nd to 8th under 15 kHz, notes 36, 60, 84) are a 10% ramp's within 0.000 dB measured (0.05 allowed; 9% or 11% at least 1.24 dB off), and by time at notes 36 and 60 (twice the share under its middle: 9.88, 9.73) | A band-limited edge 46 samples a cycle long (note 84) reads 8.5 or 11.6 by counting samples, whichever line is drawn. The harmonics say what the wave is |
+| The saw's height "peak at notes 24, 60, 96 within 0.2 dB" | **Its fundamental** (2 / pi of its height) | A band-limited saw's peak is its ringing, not its height. Measured: 0.00 dB apart |
+| SOURCE MIX: "6.8 is 1:2, 7.6 is 1:3, within 0.3 dB", and "linear" | Straight, held to 0.05 dB; NAM's two readings held to 0.6 dB | A straight crossfade gives 1:2 at 6.67 and 1:3 at 7.5, so 6.8 is 0.53 dB over 1:2 and 7.6 0.47 over 1:3: the plan's 0.3 dB and its own straight line cannot both hold. NAM prints a dial to a tenth; 6.8 is a tenth and a third from 6.67 |
+| Each voice's noise seed "from the voice's number" | **From the count of keys**, as the start phases (batch 1) | One rule for every seed; allNotesOff puts the count back, so it is put back with it (`testFromTheTopWithBothDcos`) |
+| DCO-2's start phase | Its own, from the same count of keys hashed another way | The real counters run free and apart. With both at one phase the two DCOs at unison were always one saw (its mutant); apart, eight keys read 0.50 to 0.92 of the in-phase level |
+| METAL with DCO-2 on SQUARE: "resets the square's phase the same way" | Every DCO-2 wave is read from the reset ramp, the counter keeps time: a square starts low again at each reset | SELF, as planned |
+| ENV DEPTH | 10 is 24 semitones (`kDcoEnvSemitones`), straight in the dial, stepped on the tick | **SELF**: no source gives it |
+| The pitch "per tick, and per sample under GLIDE" | So; the key's period is worked out with one power of two a sample, and each DCO's count with one division | A glide works it out every sample: the moving-cutoff row was 0.78% with two powers and three divisions a DCO, 0.63 to 0.68 now |
+
+**A bug the mutants found** (fixed, tested): an edge or a bend that falls exactly on a sample's end
+was worked out to a hair past it and passed by, so the wave jumped raw. Its time is now held to the
+sample (`testAnEdgeOnTheSamplesEnd`).
+
+**The pulse after its mean is taken off swings from -1.9 to +0.1**, so at LEVEL 7 (where a full saw
+just meets the VCA's soft clip) its short part is bent by the clip. The clip's shape is a guess
+(batch 1); batch 3's filter will change the peaks anyway. For the owner: whether LEVEL 7 should
+leave a pulse unbent.
+
+**The top** (`testTheTopIsHeld`): at 21.6 kHz the tables' own band-limit leaves 0.011 of the
+fundamental (it was 0.064 with the polynomial BLEP); nothing folds back (0.000004).
+
+**Mutants (batch 2)**: 37 in the first round, 31 killed; the six survivors each got a test (the saw's
+direction, a wave turned under a held key, a fresh DCO owing nothing, DCO-2's own start phase, a
+freed voice's stale ENV, the 44.1 kHz clock) and one found the bug above. Last round: **38 made, 38
+killed**. One more (holding the edge's time to 1 before the compare) was equivalent to the clamp after
+it, and that line was taken out.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 3: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "One soft clip where the feedback meets the input, and one per stage" | **One, on the feedback only** (`kFeedbackKnee` 2.75), taken from the sample before as a gain | Tried both ways first. A bend on what goes INTO each stage made a full saw at RESONANCE 0 lose 2 dB at its peaks and moved SOURCE MIX's 1:2 by 0.16 dB (`testSourceMix` failed). A bend on what is ACROSS each OTA (the stage before less its own output) left slow sounds alone but, where the filter sings, lowered every stage's cutoff: 4 semitones flat at 79 Hz with the knee set for the level, still 16 cents off a semitone a semitone over Organ I with the knee at 4. The feedback's bend scales the loop's gain, not a cutoff, so it holds the level and moves no pitch, and it keeps every sound bounded (`testStaysBounded`: the filter alone fed a square of 10 never passes 14) |
+| Feedback 0 to 4, dial 10 "just past it" | 0 to **4.6** (`kResTop`), straight in the dial: it sings from 8.7 | At 4.4 the kick would take about 60 ms to grow at 1 kHz (worked out from the poles, not run); at 4.6 it is within 1 dB of its level in 50 ms at 1 and 4 kHz (`testItSings`). Higher sharpens its pitch more |
+| Self-oscillation 6 dB under the saw's peak (SELF) | So: 6.0 / 6.1 / 6.4 / 6.5 dB at 80 Hz / 300 Hz / 1 kHz / 4 kHz | `kFeedbackKnee` set for it |
+| Its pitch | **It sings sharp of its cutoff**: 0.7 cents at 80 Hz, 3 at 300 Hz, 10 at 1 kHz, 30 at 4 kHz | The bend taken from the sample before lags a sample. Organ I's notes (cutoff 39 to 316 Hz) are within 2.2 cents of a semitone a semitone. KEY FOLLOW's CV is a straight line exactly; what it sings over four octaves at KEY 10 is 17 cents off it (`testKeyFollow` allows 20) |
+| Organ I's pitch "read 200 ms in" | Read from **0.5 s** | At 40 Hz it is still growing at 0.2 s and reads 13 cents sharp there |
+| KEY FOLLOW's pitch read through the synth | The CV read from the synth, the singing from the filter alone at those cutoffs | Through the synth the saw's own partials near the cutoff pull the singing onto them (KEY 5: 183 cents off) |
+| The cutoff in Hz | 15 Hz to 15 kHz at **note 60** (`kKeyFollowNote`, SELF), held under 20 kHz and 0.45 of the rate | KEY FOLLOW turns about one key; the plan named none. **Organ I at C4 sings at 79 Hz**, two octaves and a third under the key: in tune with itself, not with the DCO. A cutoff table anchored so CUTOFF 2.4 at KEY 9.8 sings the key played is another reading of NAM's "plays in tune": the owner's call (section 8) |
+| ENV MOD's size, BRILLIANCE's | 10 octaves at ENV MOD 10 (`kVcfEnvOctaves`), plus or minus 2 at BRILLIANCE 0 and 10 (`kBrillianceOctaves`) | SELF: no source |
+| The S/H's smoothing "lands exactly" (1e-5, the VCA's) | The cutoff's CV (in octaves) lands at **1e-3 of an octave** (`kVcfCvLands`, 1.2 cents) | At 1e-5 a step of an octave slides for 11.5 ms (worked out), longer than the tick (`testTheCvSteps` fails), and the coefficient is worked out on every sample it slides |
+| `tan` and `exp2` "as short polynomials" | `exp2Poly` (a fitted polynomial, the whole part by its bits: no `floor`, no `ldexp`), `sinPoly` and `cosPoly` (their series, every step a multiply), G = sin / (sin + cos): one division | `floor` and `ldexp` are calls to the library, and a division by a constant (`x2 / 6.0`) is a real division. With them, and the bend's own division, the moving-cutoff row was 2.1%; without, 1.6 |
+| The coefficient only when the CV moves | So, and its powers with it (`VcfCoef`): each stage's output is written out from the input and the states, so the four are worked out side by side | A sample of the filter is a chain each sample waits on (15 ns, 13 after); the shorter it is, the quicker |
+| HPF: 0 off, 10 a guess of 1 kHz | 0 off; 0.1 to 10 is **10 Hz to 1 kHz** even in octaves (`kHpfLowHz`); its corner through a hold of 1 ms, set when the knob moves (the synth has no tick of its own until the LFO's) | Turned to 0, it slides down to 10 Hz and is then let go, with what it held (the sound under 10 Hz): from that sample the sound is untouched (`testHpfOffIsUntouched`) |
+| A fresh voice's filter | Emptied when a free voice takes a key, and its CVs set where they are going on its first tick (no slide from the last note's) | `testAVoiceTakenAgainIsFresh`, `testTheCvSteps` |
+| Bass loss (the owner's call: kept) | Kept: RESONANCE 8 takes the low end down 13.4 dB, 1 / (1 + 3.68); through the synth 13.2 (the feedback's bend gives a little back where the saw rings the filter) | `kBassLoss` false lifts the input by 1 + feedback; not built into a test, since it is a constant |
+
+**The kick (1e-4 into stage 1 at each key) is built, but in the synth no test
+reaches it**: the DCOs always feed the filter, so a key never meets a filter
+with nothing coming in. Its mutant in the synth survives; in the filter alone
+(`testItSings`) it is killed. Kept because the plan asks it and it costs nothing.
+
+**The cost, and what is left for it.** The 6-note row doubled (0.21 to about
+0.45%): the filter's sample is a chain of about 13 ns a voice. The moving
+cutoff, 1.6%, is the filter's sample, its coefficient (about 11 ns each time)
+and the DCOs' glide. Batches 4 and 5 add the LFO and the chorus on top. If the
+handheld's SPEED TEST says it is too much, the next step is to run the six
+voices' filters side by side, a sample of all six at a time, so their chains
+overlap (not tried: a rewrite of the voice loop).
+
+**Mutants (batch 3)**: 35 made, **34 killed** (the bend's shape and flat top,
+the feedback's sign, each stage's state, the kick in the filter, the
+polynomials, the top, the edge, the HPF's every part, the KCV and the glide,
+KEY FOLLOW's 100%, ENV MOD and its polarity, BRILLIANCE, the fresh voice, the
+hold's landing, the coefficient's recompute, the bass loss, the HPF's tail,
+its slide). Survived: the kick in the synth (above). Three mutants first hung or
+crashed the test (a filter that never sings gave a pitch of 0 to the
+harmonics' reader): it now fails instead.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 4: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "One tick for the synth" | The LFO's tick counts from allNotesOff (or the synth's making) and runs **whether anything sounds or not**. `render` cuts its block into pieces that end where the LFO ticks, so through a piece the LFO is one number and a voice's own tick reads it as of its sample | The same bits however the sound is cut (`testBlocks` in both programs, cut 1 to 1000 and at random). Reading the LFO once a block would tie it to the block's length |
+| The LFO "on the tick" | The LFO moves on its tick; **a voice takes it on the voice's tick** (counted from its key), the pitch stepped, the cutoff through the S/H | One CPU loop writes the CVs after working the LFO out (SN p.6); here the two grids differ by up to 10 ms, as the envelope's do. `testStepped` holds both grids |
+| Shapes | SINE from 0, rising; SQUARE +1 its first half; RANDOM a value a cycle from a hash of the count of cycles (`kLfoSeed`), pinned in the test | Never a generator walked. **A first seed was 2 x 0x9E3779B9**, so cycle 2 hashed to 0 and read exactly -1: the test found it |
+| RATE "a table, 0.1 to 20 Hz" | Even in octaves (`lfoRateHz`), so 5.0 is 1.41 Hz; measured within 0.01% in the LFO alone and in the synth at 48 and 44.1 kHz | SELF |
+| DELAY "0 to 5 s" | As the dial squared (5.0 is 1.25 s), in whole ticks; a straight fade from 0 to full, full on the tick DELAY's ticks after the first the key meets; **0 from the key's own sample** (`startDelay`) | SELF. Without the 0 at the key, a voice ticking before the LFO's next tick read the old full depth for up to 10 ms |
+| Which keys start the delay | A key with **no other key held** (`kDelayOnFirstKeyOnly`); a key played again while its voice rings counts as none held | SELF: not written down |
+| The routes' sizes (not in the plan) | LFO DEPTH 10 is 12 semitones each way, as the dial squared (2.0 is 0.48, 3.0 is 1.08: a vibrato in the low dial); LFO MOD 10 is 4 octaves each way, straight. They add to ENV's | SELF: no source. One constant each (`kDcoLfoSemitones`, `kVcfLfoOctaves`) |
+| Key trigger | **None: it runs free** (`testFreeRunning`: the LFO sample for sample the same with keys as without) | The 1983 machine has none; the 2018 plug-out lists key trigger as new |
+| allNotesOff puts it back | So: phase, count of cycles, delay, tick (`testAllNotesOffPutsItBack`; through the engine, `testPlayFromTheTop` now has a RANDOM LFO with a DELAY) | |
+| HPF's knob read on the tick | **Not changed**: read when the knob moves, as batch 3 built it | Its tests stand; a knob read up to a tick late is not worth changing them |
+
+**Known: a tail hears the LFO put back.** allNotesOff hands the ringing voices to tails, and puts the
+LFO back: a tail with the LFO on its pitch or cutoff takes the LFO from its start, mid-release.
+`testPlayFromTheTopWhileRinging` holds "fresh plus tails" with the LFO off; with it on, the tails of
+a Play would differ from those of a Stop alone. Left so: one LFO is the machine's.
+
+**The cost.** The LFO's tick is a sine (or a hash) every 10 ms for the synth, and a voice's tick two
+more adds; the pieces add a loop round the voices per 480 samples. Measured, nothing that shows: 6
+notes 0.43%, the worst row 0.86 / 0.87%, moving cutoff 1.67 / 1.68% with the LFO now on its cutoff
+and on DCO-1 (batch 3: 0.43 to 0.46 / 0.80 to 0.87 / 1.56 to 1.67). Still over the 1.2% target on
+the moving cutoff, under the 2.0 ceiling, with the chorus to come.
+
+**Mutants (batch 4)**: 31 made, **29 killed** (the square's half, RANDOM's count and its hash, the
+sine's turn, the delay's count, its start and its 0 at the key, which keys start it, RATE's octaves,
+DELAY's and DEPTH's squares, LFO MOD's size, each part of `reset`, allNotesOff's reset, each DCO's
+switch and its sign, the VCF's route, the rate's step through the synth, the pieces at the LFO's
+ticks, the macro's second setting, DELAY read, the wave read). Equivalent: the fade's `>=` against
+`>` (at `sinceKey == delayTicks` the fraction is exactly 1 too) and the step as `0.01` of a cycle a
+tick at the rate (the tick is a whole 480 or 441 samples at 48 and 44.1 kHz, so 10 ms exactly).
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 5: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "Two reads of one delay line", "a 2-pole low-pass at 10 kHz on the wet path, before and after" | One line and **one filter before it** for both sides (the two BBDs hear the same sound), one after each side: three filters, not the four the house-rules table lists | Two identical filters on one input are one filter twice |
+| "The wet path is 3 dB down at 10 kHz within 1 dB" | **Each filter** is 3.01 dB down at 10 kHz (held within 0.05); the wet path, through two of them, **6.29 dB** (held to 6 within 1; the cubic read takes the 0.27) | The SN gives each filter's corner; two in a row are 6 dB down there. The plan's line read the two as one |
+| "One triangle; left reads at d, right at the mirror of d" | The triangle sweeps **the BBD's clock** (what the VCO's CV moves), so a side's delay is 128 / clock: it lingers near 0.64 ms and hurries near 3.2 ms (`kSweepOnClock`; false sweeps the delay straight) | SELF. The SN says the VCO's frequency is what is swept |
+| "An impulse through finds the delay" | Found within 0.05 of a sample, **at the moment the impulse comes out**: an impulse in at 3.2 ms comes out after 3.16 ms | A BBD's delay is its clock's as the sound leaves it; at 40 kHz the delay shortens 0.0128 of a sample a sample |
+| Rate 0.5 Hz | So, and **its place is the synth's clock** (samples since allNotesOff, counted whole), as the LFO's | The same however the blocks are cut, Play from the top is the same sweep, and a chorus that slept is where one that never slept is (`testSleep`: woken, the same bits as a fresh one) |
+| Dry plus wet | **0.71 each** (`kChorusDry`, `kChorusWet`): a chord of saws on is 0.28 / 0.37 dB under off (left / right) | SELF |
+| The fade "lands exactly" | Counted in whole samples (960 at 48 kHz); faded out, the chorus is emptied. **Before the synth's first sample (made, set up, allNotesOff) a switch lands at once** (`sounded`), and allNotesOff lands a fade under way | A track whose CHORUS is set off as it is made must not fade a chorus nobody heard out over its first note |
+| Sleep | Nothing under `kChorusQuiet` (1e-12) goes on the line, filters snap under 1e-20; idle when the line has been fed zeros for its longest read and its taps (157 samples at 48 kHz) and every filter is 0: **189 samples after the last sound**. The synth then skips it. It is not skipped while its fade is under way, so a switch in silence is done by the next key, however the silence is cut (`testSwitchInTheSynth`) | |
+| Off is "the dry sound to the bit, mono" | So: left equals right, and the synth's sum is written as before | |
+
+**The tests that measure other parts turn the chorus off** (`held()` in `jx3p_test`, the plain
+patches of `jx3p_dco_test` and `jx3p_vcf_test`): with it on, a pitch read off the sound moved
+(DCO-1 at 220 Hz read 1824 cents off at first), and SOURCE MIX's levels by up to 1.5 dB. The house
+rules' tests (`testBlocks`, `testTooSmall`, `testSilence`, twice from fresh, the helpers' song, Play
+from the top) keep the start patch's chorus on.
+
+**Known: a tail hears the chorus's sweep start again**, as it hears the LFO (batch 4): allNotesOff
+puts the sweep back to its start, and the tails' sound on the line rides the new sweep.
+`testPlayFromTheTopWhileRinging` holds "fresh plus tails" with the chorus off (with it on, Play
+after Stop differed from Stop alone by 0.05 to 0.09 in the tails); `jx3p_chorus_test`
+`testFromTheTop` holds that once the tails have rung out the sound is a fresh synth's to the bit,
+both sides, with it on.
+
+**Not copied**: the BBDs' hiss (`kBbdHiss`, the owner's call), their clock's leak, and the loss
+of top along the bucket chain.
+
+**Mutants (batch 5)**: 30 made, **30 killed** (the stages, the mirror, the triangle, the delay's
+constant, the cubic's base tap, the read's index, each filter, the filters' Q, the quiet gate, the
+filters' snap, the quiet count, the reach, the fade's step, the clear at the fade's end, the dry
+share, the sweep from the clock, its rate, its wrap, the guard when off, snap's clear, the left's
+delay, allNotesOff's snap, the snap before the first sample, running while fading, running while
+not idle, the block's start, the switch read, the `sounded` flag, the right side's gain). Six
+survived the first round (the quiet gate, the dry share, snap's clear, allNotesOff's snap, running
+while fading, `sounded`): each has a test now.
+
+**What only the tests saw**: everything. Nothing here has been heard.
+
+### Batch 6a: what it learned (2026-11-14)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| The name stays TWIN ANALOG; `track jx3p`, `.jx3p` | **JAX-EP; `track jaxep`, `NAME.jaxep`** | The owner, 2026-11-14 |
+| The picker's line: "two DCOs, a filter, a chorus" | "virtual analog, after a popular DCO synth", no count of presets | The owner's sentence is 56 letters; the line holds about 42 |
+| 6a: the song and files; 6b: the spec pages | The spec (pages, macro names, `settingText`) is in 6a | `twinSpec()` read `TrackData::twin`, which is gone; a track must have a spec to load a preset at all |
+| The bounce's x8 goes in 8b | Gone here | It named `TrackKind::Twin` |
+| "the README and the update's notes say so" (old `.twin` files) | README says so | There are no update's notes in the repo |
+
+**Left for later batches, on purpose**: the still views are still called `twin`,
+`twin0` to `twin5` (6b renames them); `App::twin()` and `twin_` (8b);
+`bench`'s "Twin Analog x1 / x2 / x8" rows and the busiest song's two Twin
+tracks, and "BUSY: OVERSAMPLING DOWN" (8a, 8b); README's engineering half
+still describes Twin's envelope, its oversampling watch and its port (8c).
+JAX-EP has one preset ("Start") until batch 7, so README gives it no count.
+
+**The old song.** `twinsong_main.inc` was written by the first builder of this
+batch from `main` at 0.464 and could not be made again here (no program on
+this branch writes `track twin`). What holds it to `main`'s format: read and
+written back, every line but the track's word and its three sound lines comes
+out byte for byte (`testAnOldTwinSong`), and its `settings` line has Twin's 23
+numbers.
+
+**Bench** (desk, three runs on a busy machine; the engine is not touched, the
+rows are now named JAX-EP): 6 notes 0.70 / 0.53 / 0.53%, the worst patch 1.02
+/ 1.07 / 0.98%, moving cutoff 1.84 / 1.80 / 1.79%; in the same runs Phazed 0.7
+to 0.8, QMOD 2.8 to 3.3, Twin x1 4.1. As batch 5's.
+
+**What only the tests and stills saw**: all of it. Stills looked at: the list to
+pick from at SMALL, LARGE and XL (BROWN and PAPER), the SONG screen with twelve
+tracks (JAX in the narrow heads), JAX-EP's MAIN page and its last page.
+Nothing was heard, and nothing was run on the handheld.
+
+### Batch 6b: what it learned (2026-11-14)
+
+6a and 6b were first built by one run that a usage limit cut off; its work went
+out as 0.485 unreviewed. This batch read that commit against the lists above
+and built what was missing.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "On the device each folder's line says 1983 BOOKLET, SPEEDS GUESSED" | **On MAIN's PRESET row**, between the word PRESET and the count (`SynthScreen::kNoteGap` 10 after the word). A folder whose name begins "BANK " says the whole line (`kJaxepBankNote`); **any other built-in folder says SPEEDS GUESSED** (`kJaxepGuessNote`), so the one sound there is today, Start, says it; one of the player's own says nothing | The FOLDER box is 200 wide and the line is 245 at LARGE. The speeds are guesses for every sound of this synth, the banks' or not |
+| "checked at XL" | The row keeps room for a count as long as "888 / 888" whatever the count is. At LARGE the three are 57 + 245 + 73 of 379; at XL 61 + 262 + 78, which does not fit, so **at XL the whole row (PRESET, the note, the count) is drawn at LARGE**, where LARGE draws it. The short note fits at every size and follows the setting | "A held text takes its row with it" |
+| The banks' note cannot be seen until batch 7 (no folder is a bank yet) | `SynthScreen::folderNoteAs` shows it for a still and a test: the view `jaxep-bank`, and `textsize` with a hundred presets ("1 / 100") | So the long line is checked now, not when the presets land |
+| `settingText` in dial tenths | So on the handheld (6a). **On the designer page a knob read 0 to 100** (the page shows a plain number for a setting of more than 40 values): `pageReadsAsDevice` gives the page every reading, and it shows 7.3 where the handheld does. About 16 KB more in the page's spec, JAX-EP's only | Tried in Chrome (Playwright) against `design_test`'s server: CUTOFF read 10.0, and 7.3 after its slider was moved. The page's script is not changed |
+| `macroText` | -100 to +100, as the other synths' (`plusMinus`): how far from the patch, not a dial value | The macro's reading does not know the patch's value; +0 is "as the preset" on every synth |
+| Views `jx3p`, `jx3p0..5` | `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank`, `jaxep-held` (a knob, A held, turned to 7.3) | The device's name |
+| Picking a built-in preset rests the macros (main's 0.464 mend) | Holds on JAX-EP: `testABuiltInPresetRestsTheMacrosWhereTheyShow` runs it for all three synths; with the engine's rest and the app's send both taken out and the test cut to JAX-EP alone, it fails | Asked for with this batch |
+
+**Left for later batches, as 6a left them**: `App::twin()` and `twin_`, the
+tests' names with Twin in them (8a, 8b); README's engineering half on Twin
+(8c).
+
+**Mutants (batch 6b)**: 23 on this batch's code (the dial's tenths, each
+switch's words, the clamp, `macroText`, each branch of the folder's note, the
+page's readings for JAX-EP and for nobody else, each of the row's three texts'
+lettering, the gap, the room, the count's place, the row's height, the still's
+override, a view left out of `kViews`): **23 killed**. 15 on what the cut-off
+run's tests cover (a preset writing or keeping all 34, `twin` not read or not
+old, each of the old sound's lines read, lanes 0 to 7 kept or all lanes
+dropped, the word, the ending, the short name, a maker's name in the app, a
+new track's VELOCITY, the macros' rest): **15 killed**.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN at
+LARGE and XL, MAIN with a bank's note at LARGE, XL and SMALL on PAPER, the
+five pages at LARGE, DCO-2 at XL, the last page at XL on GREY, a knob held;
+and the designer page in Chrome. Nothing was heard, nothing was run on the
+handheld.
+
+### Batch 7: what it learned (2026-11-14)
+
+**Bad news first: B4 Song Whistle and B15 Planet are all but silent (-62 and
+-61 dB), and the whole bank is about 13 dB quieter than PHAZED's presets.**
+Neither is a fault of the presets: both come from guesses this plan made
+before any patch was played. The owner's calls are below.
+
+**The reading.** The scan is 16 pages, a panel drawing a sound with the
+number printed on each knob.
+
+| Step | What | Result |
+| --- | --- | --- |
+| First reading | Each panel cut from the scan at 400 dots an inch, one a picture | 32 lines |
+| Second reading | Another rendering (170 dots an inch, two panels a picture), read again without the first | **The same on all 1024 places** |
+| By the pointers | A program found each knob's pointer on the drawing and worked out the dial from its angle | 564 knobs: 0.07 off the printed number on average, **0.35 at worst**, but TUNE and FINE (a ring is drawn round them): 0.6 at worst |
+| The wave knobs | The same program's angles for RANGE, WAVE, CROSS MOD | DCO-1's three places: -33, 0, +30 degrees. DCO-2's WAVE: -47 (saw), +5 to +17 (ten patches), +50 (noise) |
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "From NAM as the plan's section 4 gives them" | Section 4 names the patches and the guesses; **the values are in `tests/jx3p_nam.inc`** (the booklet's terms) and `kPresets` (the engine's numbers, written from that reading by a script) | The plan never held the numbers |
+| Pulse against square "read off the knob's angle": twelve patches | **The same twelve, found again from the angles** (A4, A8, A9, A10, A12, A14, B2, B3, B7, B12, B13, B15). DCO-1 straight up is PULSE (A16, B7, B13), to the right SQUARE. Every DCO-2 one is at one place, read as the third of four: SQUARE | The booklet's words call A4's wave "square" (矩形波) and B2's, at the same angle, "pulse": so it stays a guess |
+| B14 Pulsar: cross mod "at an unlabelled place; read as METAL" | METAL: its pointer is at +31 degrees, where A13 Chime's (+28) is labelled Metal | Less of a guess than it was |
+| Not drawn: "A6, A7, B8 DCO-2; B3's DCO-1 wave; B4's DCO-1" | Also **A16 and B1's DCO-2** (MIX 0), **B16's DCO-1 and DCO-2 but NOISE**, the DCOs' ENV POLARITY on 23 panels, the VCF's on 6: 79 places in all. Kept at 8', SAW, OFF, 5.0, off, NORMAL | None can be heard as the patch stands, **but two**: the VCF's ENV POLARITY of A5 Organ III (ENV MOD 0.4) and A16 Voice (0.5) is not drawn. NORMAL, a guess |
+| The start patch is preset 0 | **Not a preset.** `Jx3p::startPatch()` is what a synth is made with; the engine's own tests play it, as before. Preset 0 is A1 | "The preset numbers are the factory numbers" |
+| `bench` row 1 is B12 Sync Sweep, "the worst patch" | **B15 Planet** | Measured, each of the 32 with six keys played again every half second: 0.47% (B3 Oboe) to 1.07% (Planet); Sync Sweep 0.55%. All under the 1.2% target |
+| The banks' note "cannot be seen until batch 7" (`folderNoteAs`) | Every built-in sound is in a bank now, so MAIN says 1983 BOOKLET, SPEEDS GUESSED on all 32. The short note (SPEEDS GUESSED) has no folder today; `folderNoteAs` is kept for its test. The view `jaxep-bank` is MAIN on B7 Distortion Guitar, the longest name | |
+| NAM's three checks | Fat Fifth: DCO-2 695.02 cents over DCO-1 (700, less FINE 4.5's 5). Accordion: 1216.00 (1200, plus FINE 6.6's 16). Organ I, the patch as written but for the chorus: a semitone a semitone within **3.0 cents** over keys 48 to 84 (the bar is 5), and it sings steadily | FAITHFUL for the first two; Organ I pins 9.8 = 100% (SELF) |
+
+**How loud** (`jx3p_presets_test --print`; C3 G3 C4 E4 at full velocity, the
+loudest tenth of a second):
+
+| | dB |
+| --- | --- |
+| A8 E. Piano I (LEVEL 9.9, in the VCA's clip, peak 1.34), A16 Voice (LEVEL 10) | -5.9, -8.7 |
+| The middle of the 32 | -28.5 |
+| A1 String I, what a new track plays | **-25.0** |
+| The quietest that sounds: B16 Jet | -37.9 |
+| **B15 Planet, B4 Song Whistle** | **-60.9, -62.3** |
+| The same chord on PHAZED's first three presets; QMOD's first | -15.5 to -14.7; -9.1 |
+| The start patch (LEVEL 7) | -11.3 |
+
+**Why, and the two calls for the owner** (section 8 has them):
+
+1. **LEVEL.** The booklet's LEVELs stand about 4.5 (from 1.7 to 10). This
+   plan put 0 dB at LEVEL 7 with 4 dB a dial step, so a patch at 4.5 is 10 dB
+   down, and B12 at 1.9 is 20 dB down. The booklet says the taper's middle is
+   lower than guessed. One constant (`kVcaUnityDial`); not changed here: it
+   moves every level the engine's tests hold.
+2. **The cutoff's Hz.** Song Whistle is one DCO at CUTOFF 2.8 under KEY FOLLOW
+   10: its filter is two octaves and more under the note, so nothing comes
+   through. Planet is RESONANCE 10 at CUTOFF 2.3 with the envelope inverted:
+   it sings at 74 Hz and under. **Tried, not kept**: with CUTOFF 0 at 49.6 Hz
+   in place of 15 (the other answer in section 8: Organ I then sings the key
+   played) Song Whistle is -35.8 dB and Planet -44.5, twelve more come up by
+   1 to 9 dB, and three go down by about 4. The factory patches are evidence for that answer. Still
+   one constant each (`kVcfLowHz`, `kVcfHighHz`).
+
+The test holds both as KNOWN (`testEveryPatchPlays`): when either constant
+moves, its two marked lines fail and are taken out.
+
+**Found on the way.** `design_test` took a new track's sound for a plain saw;
+on A1 its two saws beat (FINE 6.1) and a note's peak hung on where in the beat
+it began (0.006 to 0.013 from note to note). The test now makes the sound
+plain first. And a key within a few milliseconds of a preset change hears the
+HPF's corner slide from the last patch's (12 of 32 pairs tried): the design
+(a knob turned slides), said in `testAfterAnother`.
+
+**Mutants (batch 7): 35 made, 34 killed** (a value of the table, two patches
+swapped, a bank's name two ways, a name, the start patch two ways, the
+booklet's side, each of NAM's three and Organ I not singing, a preset writing
+the track's two, presets 32 and -1 taken, the VCA's clip, a new track's
+VELOCITY, a blank off its place, Planet's polarity, a silent patch, the
+filter's snap, allNotesOff's LFO and clock, the engine's pick, Song Whistle
+heard, the HPF never let go, its tail not run, the LFO once a block, the
+chorus's sweep from the block's end, the test's own reading of a number and of
+a blank, the app loading the preset after). One survived its first round (the
+VCA's clip three times as high: the peak's bar was 2.0; it is 1.5 now).
+**Survives here**: the chorus not emptied when switched off before the first
+sample; no patch reaches it (a chorus that has rung out is empty anyway), and
+batch 5's own test kills it.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+A1 at LARGE, XL and SMALL on PAPER, MAIN on B7 at LARGE, XL on GREY and MEDIUM
+on BLUE. Nothing was heard, nothing was run on the handheld.
+
+### Batches 6a, 6b and 7: the review's mend (2026-11-15)
+
+A review ran the three batches with its own programs (an old Twin song from
+`main` at 0.473, presets, undo, hints, every patch with six keys three ways,
+18 mutants) and found eight things. **Two are real faults of the sound or the
+files and are NOT mended, because each is the owner's call; both are now held
+as KNOWN by a test and said in README.** The other six are mended or shown.
+
+| Found | Fate | Test |
+| --- | --- | --- |
+| **A3 Organ I is out of tune with everything else** (high). What is heard is the filter's sine (25 to 28 dB over DCO-1 here), **20.79 semitones under the key, 21 cents off the nearest semitone**, at keys 48, 60 and 72. "Organ I plays in tune" only held a semitone for a semitone | **Reproduced, not mended: it is the owner's call "where the cutoff's Hz sit", taken at 15 Hz to 15 kHz.** Held as KNOWN (three checks that fail when the cutoff moves). **Measured for the call**: the plan's "49.6 Hz at CUTOFF 0" alone does NOT anchor it (Organ I then sings 5.07 semitones under the key). The anchored answer is both constants times 3.32, **49.84 Hz to 49.84 kHz** (the same span, held at 20 kHz as now): Organ I sings the key within 3 cents at keys 48 to 72, 15 dB over its DCO; B4 -35.8 dB, B15 -44.5; 14 of the 32 come up by more than 1 dB (B4 by 26.5), 3 go down (B6 by 4.2); the middle patch -27.0 dB from -28.5. **Meanwhile, on the device**: CUTOFF 4.1 and the track's BRILLIANCE 5.1 sing the key (0.0 cents at key 60, 3.3 at 48, -12 at 36; a scratch program, not in ctest). README says so | `jx3p_presets_test` `testNamsThree` |
+| **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as preset 1**; batch 7 made preset 1 A1 String I. A song from those builds says String I and plays Start (medium) | **Reproduced; the sound is kept, the name is not mended.** A song writes all 34 settings after its preset and they are read after it, so the track sounds as saved; MAIN names it String I, as it names any sound whose knobs were turned after its preset. Mending the name needs Start back on the list (a 33rd preset in a third folder, and the count beside every preset reads "/ 33"): the owner's call (section 8). Said in README and CLAUDE.md; **a preset's place is appended from here on** | `save_test` `testASongFromTheOnePresetBuilds` |
+| Undo of BRILLIANCE and VELOCITY had no test: `settingCount` swapped for `presetSettingCount` in `soundMark`, `restoreSounds` or `sendSynthPatch` passed everything | **A test.** Each turned is a step of its own; undone and redone in the project; VELOCITY undone is heard (a soft note 6 dB and more under a full one again), BRILLIANCE undone is heard (the note duller). The three mutants: killed | `app_test` `testUndoPutsBackTheTracksOwnTwo` |
+| No test held JAX-EP's hints to the bar | **A test.** MAIN and the five pages, every stop, A held and not, either help: 180 bars drawn, 0 pixels over. The 60-letter hint: killed (214 pixels over). A hint lengthened by 15 letters still fits, and passes: the bar has that room | `app_test` `testJaxepsHintsFit` |
+| Six keys with the macros full up pass the test's own peak bar (the review: A8 2.54, A16 2.23, A11 1.57, keys held 3 s) | **Reproduced, held as KNOWN, not changed: loudness is the owner's call with the bank's level.** Here, keys held 2 s: as written 1.464 at most (A8), macros full **A8 2.15, A16 1.88** (two over 1.5; A11 1.36), macros at 0 0.007 and 17 patches under -60 dB (the filter shut). Every sample a number, every patch ends, in all 96 runs. The bar: 1.5 as written, 2.75 macros full | `jx3p_presets_test` `testEveryPatchPlays` |
+| A player's own preset: the clamp in `jx::loadPreset` could be taken out with every test green; a knob out of range read "0.-5" and "10.5"; `readPreset` cast a file's number straight to int | **Mended, each with a test.** A file of numbers no dial has (250, -7, 1e300, -1e300) loads as each setting's most or least and plays (every sample a number); a knob reads inside 0.0 to 10.0 whatever it is given; `readPreset` holds a number as a double before the cast (macros to 0..1, settings to plus or minus a million) | `app_test` `testAPresetKeepsTheTracksOwnValues`, `testHowJaxepReads` |
+| MAIN shows "23 / 32", not B7 | **Not changed: the owner's call** (section 8). The folder box says BANK B; the count runs through both banks and the player's own, as on the other synths | |
+| The table-against-the-booklet test cannot see a digit misread in both files | **True, by design; said at the test.** The table is written from the .inc by a script. The reading was made twice and by the pointers' angles; the review read B4 and B15 again by eye. The other thirty have not been read a fourth time | |
+
+**Mutants (the mend)**: 12 made, **11 killed** (the three undo counts, the long
+hint, the preset's clamp, the knob's, the double's, the cutoff moved to the
+other answer, the VCA's ceiling doubled, a song reading 32 settings, a preset
+winning over the settings). One passes and is no fault: the hint 15 letters
+longer still fits its bar. `readPreset`'s hold of the macros to 0..1 is
+equivalent (`loadPreset` holds them again).
+
+**Small things put right**: the `jaxep-held` view shows 2.6 on A1, not 7.3 as
+"Batch 6b" says above. SPEED TEST still lists Twin Analog x1 / x2 / x8 (8b).
+
+**What only the tests saw**: all of it. Nothing was heard, nothing ran on the
+handheld, and the designer page was not opened in a browser for this mend
+(its script is not changed).
+
+### The owner's three calls (2026-11-15)
+
+**Bad news first: E. Piano I and Voice (LEVEL 10) are now 22 dB into the VCA's
+clip. They are driven hard, and six keys of either come out of the synth at
+2.85 and 2.56 times full scale as written (they were 1.46 and under).** That
+is what moving the 0 dB down does to a patch at LEVEL 10; the owner said yes
+to "LEVEL 10 clips harder", but nobody has heard it.
+
+| Call | Built | Measured |
+| --- | --- | --- |
+| The cutoff's range moves so Organ I sings the key | `kVcfLowHz` 15 to **49.84**, `kVcfHighHz` 15000 to **49840**; the top (20 kHz, 0.45 of the rate) was there already and is not changed | Organ I: **0.4 cents from the grid at worst, keys 48 to 84** (0.9 from 36), 15.3 dB over its DCO-1; the cutoff's CV 0.41 cents under the key. B4 -62.3 to -35.8 dB, B15 -60.9 to -44.5 (before the level moved) |
+| The bank comes up to PHAZED's loudness | `kVcaUnityDial` 70 to **45**; `kVcaClipDial` is the same number (the clip starts at a full wave, 1); the start patch's LEVEL 70 to 45, so it is the gain it was | Below |
+| MAIN's count reads within the bank | `SynthScreen::placeInFolder`: the place in the folder out of the folder's count, every synth, the player's own among themselves | B7 draws "7 / 16"; the first of a hundred own "1 / 100" |
+
+**How loud** (C3 G3 C4 E4, the loudest tenth of a second; PHAZED's first
+presets -15.5 to -12.6):
+
+| | Before | Cutoff moved | Both |
+| --- | --- | --- | --- |
+| The quietest | B4 -62.3 | B15 -44.5 | **B15 Planet -34.5** |
+| B4 Song Whistle / B15 Planet | -62.3 / -60.9 | -35.8 / -44.5 | **-25.8 / -34.5** |
+| The middle of the 32 | -28.5 | -27.0 | **-17.2** |
+| A1 String I | -25.0 | -24.5 | **-14.5** |
+| The loudest | A8 -5.9 | A8 -5.6 | **A16 Voice -2.0** (A8 -3.4) |
+| Peak, four keys | A8 1.34 | A16 1.35 | A8 2.00, A16 1.83, B14 1.06; the rest under 1 but A11 1.32 |
+| Peak, six keys as written | A8 1.46 | | **A8 2.85, A16 2.56**; every other 1.26 at most |
+| Peak, six keys, macros full | A8 2.15, A16 1.88 | | A8 2.69, A16 2.58, A11 2.53, B8 1.90 |
+| Macros at 0: patches under -60 dB | 17 | | 3 |
+
+**Tried, not kept: the 0 dB at LEVEL 4.0.** The middle is then -15.2 dB and A1
+-12.5, nearer the asked "-15 to -13", but four more patches pass 1.5 with six
+keys as written (Organ I 1.59, Chime 1.55, Harpsichord and Pulsar 1.51). At
+4.5 A1, what a new track plays, is in PHAZED's range and the middle 2 dB
+under it. One number to move if the owner wants the last 2 dB.
+
+**What the cutoff's move did to the tests.** Three of `jx3p_vcf_test`'s
+fixtures used a CUTOFF whose Hz moved up 3.32 times and took them where the
+filter is another thing (it sings 30 cents sharp of its cutoff at 4 kHz, and
+its slope is steeper near the top). Each got the CUTOFF that gives the Hz it
+had (5.0 to 3.3: 487 Hz; 4.0 to 2.3: 244 Hz); no bar was moved. New there:
+the range's own numbers, CUTOFF 8.6 against 8.7 and 10 at key 60 (18.9 kHz,
+then the top), and everything that raises the cutoff full up at the top key
+(exactly the top, every sample a number). The tests' plain patches were at
+LEVEL 5.0 and 7.0, under the old 0 dB; they are at 2.5 and 4.5, the same gain.
+
+**Found on the way.** Organ I's level sways (1 to 7 dB, twice a second at key
+48): DCO-2 is 27 cents under DCO-1 in the patch (FINE 2.3) and its harmonic
+beats with the filter's sine. It did before; the old test read 0.75 s and its
+"steady within 1 dB" passed by where the sine sat. The new one reads two
+halves of five seconds. And the sine is held to the key by DCO-1's second
+harmonic: with the cutoff 40 cents sharp it still sings within a cent, so the
+test holds the cutoff's CV to the key too (half a cent).
+
+**Mutants: 16 made, 16 killed** (the cutoff back at 15 Hz, 40 cents sharp, 5
+cents flat; the top not held, the top at 21.5 kHz; the 0 dB back at 7, at 5.0,
+at 4.0; the clip left at LEVEL 7; the ceiling doubled, and at 1.25; the start
+patch at LEVEL 7; the count out of all presets, the place among all, a
+folder's run one short at its end, and one late at its start).
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+B7 at LARGE, XL on PAPER ("7 / 16"). `bench`: 0.55 / 1.03 to 1.14 / 1.77 to
+1.86%, as before; the 32 one by one were not timed again. Nothing was heard,
+nothing ran on the handheld.
+
+### Batch 8a: what it learned (2026-11-15)
+
+**Not done, on purpose: two tests still play Twin.** `twin_test` and
+`engine_test`'s `testFallingBehindLowersTheQuality` test code only Twin has
+(its oversampling under the load watch). 8b deletes them with that code. Moved
+to JAX-EP they would test nothing.
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| "No test names Twin" | No test PLAYS Twin but its own two (above). The word is still in the tests of the old song and the old preset file (the file reader's), in one guard that no instrument offered is Twin's (`app_test`, until 8b takes the kind away), and as a plain word for "a second engine beside the first" (`effects_test`, `app_test`) | 8b's bar is "no word twin left but the file reader's" |
+| `engine_test` tails | Twin's tail tested the shared `Envelope` (20 s); JAX-EP has its own. Now: RELEASE 10.0 is 0.068 of the held note after 3 s (23 dB down of its 80 in 10 s), **exact silence after 11 s**, RELEASE 0 gone inside 20 ms; ATTACK 0 peaks 0.226 in its first 10 ms, 3.0 0.060, 5.0 0.019 | The settings reach the synth through the engine. The first attack check passed with ATTACK not read at all (its mutant survived); it compares three attacks now |
+| `engine_test` glide "without a JX exception" | So: the `kind == Twin` let-off on "from above, where it settled" is gone and JAX-EP passes it | |
+| The trio songs | `effects_test` (both), `throw_test`, `chordfx_test`, `mixer_test`, the helpers' song (three JAX-EP tracks of six) | |
+| **`effects_test`'s pinned song had Twin in it** (not in the plan) | **Its sum is remade**: 0xd8819d428dab766d to 0x6536b73551f423cb, rms 0.355528 to 0.353221. On the commit before, the old sum held and `--print` gave 42 lines; with only the synth's kind changed, the same 41 and the new song line | The rule is "remade only from code known to be right": the 40 renders that pin the old five effects did not move. The song's sum now moves when JAX-EP's sound does (a chorus constant moved in the eighth figure fails it) |
+| The PAIRED steal test | `glide_test` `testPairedOnSixVoices`: a real JAX-EP on the track, watched a sample at a time. A chord of four still held, then four gliding notes at once (two lengths), so **two take a free voice and two steal one sounding a chord key**. Each: told the key `glideLines` (PAIRED) draws, at its frame, for its length; at the key's pitch as it is taken (0.01 cents); a straight slide (0.19 cents off at worst); not there a hundredth early; landed (0.07) and staying. The two chord keys left play on in tune | SELF. Stolen or free reads the same |
+| `nextscene_test` on the new synth | Track 3 (`kChordTrack`) is JAX-EP. **Every proof is still 0** from the song left alone, on no helpers and on three. The one figure that is not 0 by design (a copy taken back on the last step, an early note already heard) reads 0.11; it was 0.28 on PHAZED. `testTheChordTrackIsHeard`: that track muted is another sound | |
+| `App::twin()` (8b in the notes above) | `App::jaxep()` now | The tests call it |
+
+**Thread sanitizer** (`-fsanitize=thread`, its own build under the scratch
+folder): `nextscene_test` whole, with the chord track on JAX-EP: **no
+warning, "next scene tests passed", 10 min 45 s** on a shared desk. (After
+it only a comment changed in that file.)
+
+**Mutants: 15 made, 14 killed.** A gliding key not at its from-pitch when
+taken; a stolen voice not sliding; a stolen voice sliding from its old key;
+a slide 2% fast; no glide at all; RELEASE not read; ATTACK not read (it
+survived its first round: the check was too weak, and is three attacks now);
+the chorus's dry share moved in its eighth figure (the song's sum); a preset
+not putting the macros back; a count shared by every JAX-EP in the start
+phase (twice from fresh: `chordfx_test`, `effects_test`, `throw_test`,
+`engine_test` all fail); the chord track back on Phazed; the old song sum;
+the tail read at RELEASE 0; eight voices (nothing stolen).
+**Survives, and is no fault of the test**: `allNotesOff` keeping the count of
+keys, against `nextscene_test`. Both rigs of every proof there stop and play
+alike, so they agree; `jx3p_test`'s Play from the top is what holds it.
+**So `nextscene_test` proves the engine's calls with JAX-EP on the track, not
+JAX-EP's own Play from the top.**
+
+**Not tested**: `render_demo` has no test. It was run: 20.7 s, peak 0.95.
+
+**Left for 8b**: `twin.hpp/.cpp`, `twin_test`, the quality limit and its
+test, `bench`'s and SPEED TEST's Twin rows, the busiest song's two Twin
+tracks (`app/bench_run.cpp`: moving them changes that figure, so it goes with
+the rows), `SynthKind::Twin` and the guard in `app_test`, the word "twin" as
+a variable's name.
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN and
+the VCF page (a knob held), unchanged. Nothing was heard, nothing ran on the
+handheld.
+
+### Batches 8b and 8c: what they learned (2026-11-15)
+
+| Plan said | Built | Why |
+| --- | --- | --- |
+| Remove `setQualityLimit`, the load watch | All of it: `Engine::watchLoad`, `qualityLimit`, `load`, `noteLoad`, the clock in `render()`, `Project::busy`, main's "keeping up" print | Twin was the only synth that answered. `load()` had one reader, that print. If a synth needs it again it is in git (the commit before this batch) |
+| "the bounce's x8" | Gone since 6a; its comment is put right here | |
+| "No word twin left but the file reader's" | Left: `kOldTwinWord` and the comments on the reader (`instruments.hpp/.cpp`, `song_file.cpp`, `session.hpp`, `project.hpp`, `jx3p.hpp`), the tests of the old song and the old preset file, `twinsong_main.inc`. Renamed: the tests' second engines (`twin` to `second`), Phazed's `kTwinTrim` (`kDoubleTrim`; a comment's word, no sound) | |
+| (not in the plan) | **`ctest -R words` has a rule for it**: a text of `app/` that says TWIN ANALOG or OVERSAMPLING fails; "twin" alone, the reader's word, passes. Two plants | So the name cannot come back on a screen unseen |
+| The busiest song (8a left it) | Its two Twin Analog tracks (x2) are two JAX-EP tracks, sent preset 0 as a new track in the program is | **Its figure is another song's now**: see below |
+| README's "Keeping up" | Gone. In its place two lines: no synth has a quality setting, a song too heavy stutters, SPEED TEST shows how near | It described the watch |
+| README's "A heavy song (six Twin Analog tracks at x4) took 55% / 23%" | The busiest song's figures, about 20% and 13% | The old song cannot be played any more |
+
+**Bench** (desk, 2026-11-15; one run before, three after, a shared machine):
+
+| Row | Before | After |
+| --- | --- | --- |
+| Phazed / QMOD, 8 notes | 0.7% / 2.8% | 0.7 to 1.2% / 2.8 to 3.9% |
+| Twin Analog x1 / x2 / x8 | 4.1% / 8.3% / 31.5% | gone |
+| JAX-EP 6 notes / worst patch / moving cutoff | 0.55% / 1.04% / 1.81% | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
+| The busiest song, alone / with 2 helpers | 23.0% / 13.8% of a block | **19.6 to 21.1% / 11.6 to 14.2%** |
+
+The sound is not touched: `effects_test --print` gives the same 42 lines
+before and after (the pinned song has three JAX-EP tracks in it).
+
+**Mutants: 4 made, 4 killed.** The words rule taken out (its plants are not
+caught); BUSY: OVERSAMPLING DOWN drawn again in the top bar (`words`); TWIN
+ANALOG as the instrument's name in the table (`words`); the old word not read
+(`save_test`). **No test covers**: `bench` and SPEED TEST (run, read), and
+that nothing is timed in `render()` any more (the tests that held the watch
+went with it).
+
+**Not changed then; changed in the review's mend, below**: the BOUNCE row's
+note said "A: write it as a WAV file, at best quality". It was true of Twin's
+x8; now a bounce is simply the song as it plays.
+`docs/plans/modulation-plan.md` and `physic-plan.md` still name Twin (other
+branches' plans: not touched here).
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+A1 while playing (the top bar), the list to change an instrument. Nothing was
+heard, nothing ran on the handheld; **SPEED TEST there is still owed**.
+
+### Batches 8a, 8b and 8c: the review's mend (2026-11-15)
+
+The review found no fault in the code, the tests or the docs: four low notes.
+
+| Finding | What was done |
+| --- | --- |
+| The BOUNCE row still said "at best quality" | **Mended.** It says "A: write it as a WAV file". `ctest -R words` fails a text that says BEST QUALITY (a plant). A still view of the row at rest, `bounce-ready`, in `kViews` (so `textviews` and `themeviews` draw it at every size and theme) |
+| `ctest -R words` did not read the engine | **Mended.** It reads `engine/`'s four folders, the two copied-in synths and `tools/` for a maker's or model's name, the synth that went and BEST QUALITY (`kBeside`; `.c` and `.h` too: Phazed's presets are a `.c` file). Not for SELECT: the engine draws nothing. A plant is now an app folder with those folders beside it, a name is planted in each, and a folder with nothing to read fails |
+| The sanitizer run was on 8a's code | **Run again** on the code as it stands (`-fsanitize=thread`, `nextscene_test` whole): clean, no warning, 11 minutes for the run |
+| `bench`, SPEED TEST and `render_demo` had no test | **Mended in part.** `tests/bench_test.cpp` (`ctest -R bench`, 2 s) holds what the busiest song IS: the effects on all twelve tracks, the buses and the master, that every track sounds, that the two JAX-EP tracks are on A1 (A1 chosen again: 0 apart; another preset: 0.08), and that the real-time rows count their blocks and helpers. `ctest -R demo` runs `render_demo` and reads its lines (the names, 20.7 seconds, a peak). **Still no test**: `bench`'s one-track rows and any figure; `render_demo`'s test reads the preset's name, not its sound |
+
+`ctest`: 44 of 44 (two more: `bench`, `demo`).
+
+**Mutants: 18 made, 18 killed in the end; three found the new check wanting
+first and it was mended.** BEST QUALITY back on the row; the rule taken out;
+a JAX-EP preset "Juno Strings" and a folder "JX-3P A" (the review's two, now
+caught by `words`); a Phazed category "Roland Keys" in the `.c` file;
+`render_demo` printing PG-200; `.c` and `.h` not read; the engine read as a
+screen (its SELECT plant). **The three**: with the plants in a folder of
+their own kind, the real folders could be dropped from the list unseen, so
+the plants now live in the same folders by the same list; and the check for
+"nothing to read" failed a folder that has no `.c` file. Then: the engine out
+of the list, `engine/src` out of the folders. For `bench_test` and `demo`:
+the JAX-EP tracks never given A1 (the review's mutant 19), HALL on every
+track, nothing on ECHO, the helpers' row without helpers, the blocks counted
+at another rate, the demo's chords on another preset, the demo two bars short.
+
+**What only the tests and stills saw**: all of it. Stills looked at: the SET
+page on BOUNCE at LARGE, XL, and SMALL on PAPER. Nothing was heard, nothing
+ran on the handheld; this branch's handheld program was not built again here.
+
+### Batches 2 to 5: the review's mend (2026-11-14)
+
+A review measured the four batches with its own harness (blocks, allocation, small numbers, Play
+from the top, NaN, the steal, aliasing, the LFO's rate, the chorus's delays: all held) and found
+five things. Each is mended, with a test.
+
+| Found | Mended | Test |
+| --- | --- | --- |
+| **The saw had an offset that grew with pitch**: 4.47 x dt over 0 (the corrected jumps are 2.23 samples late, the ramp between them was not). Through the synth 1.0% of the peak at key 48, 19.5% at key 96, 37.3% at key 96 at 4'; under ENV on the pitch it stepped at the tick (-60.9 dB at 100 Hz) | `Dco::take`: **every slope carries `kBlampCarry`**, the saw's too (`waveBaseSlope` is gone). Each wave's mean is under 3e-6 at 65 Hz to 8 kHz; a synced saw's is its shape's (-0.12353 for -0.12353); through the synth 0.12% of the peak at worst. **A saw sounds 2.23 samples later than it did**, and its level is not changed | `jx3p_dco_test` `testNoOffset` |
+| **The HPF's hold never landed at HPF 6.1 and over** (over 4 octaves a float's step is coarser than `kHoldLands` allows for; it stuck 1.1e-5 short), so the HPF and the chorus ran on silence for good: 0.14% of a desk core for an idle track | `Hold::next` **lands when a step no longer moves it** (stuck is stuck for good, so nothing that would have moved is changed). All of HPF 1 to 100, set and turned: landed within a second | `jx3p_test` `testAHoldAlwaysLands` (400 targets from 0.001 to 1000, three starts, three rates), `jx3p_vcf_test` `testTheHpfLands` (`Jx3p::hpfLanded`) |
+| A 0.2% change in the HPF's pass level passed every test | At the top (a sample up, a sample down) a trapezoidal high-pass is exactly 1: held to 1e-5 at both ends of the HPF's range | `jx3p_vcf_test` `testHpf` |
+| "Under 1 cent at the top notes" was wrong over key 108, and a DCO held at the top (0.45 of the rate) still reported the pitch asked for | The plan's figure is put right (DCOs, "Rounded to the counter"). `stepOf` sets `count` to what is played when it holds: key 127 at 4' says 21600 Hz | `jx3p_test` `testEveryKeyAsPlayed` (128 keys, three RANGEs: 0.85 cents at worst under 6.9 kHz, 2.46 over it, 3 keys held), `testTheTopIsHeld` |
+| A note under 0 held a voice that never sounded and was never let go, and stopped every later key starting the LFO's DELAY | `noteOn` and `noteOnFrom` **refuse a key outside 0..127** (`kLowestKey`, `kHighestKey` in `jx3p.cpp`). A key over 127 was played at a clamped pitch; it is refused now too. Whether the Session or MIDI can send one was not looked at | `jx3p_test` `testAKeyOutsideIsRefused` |
+
+**Mutants**: 11 made on the mend (the saw carrying nothing, the hold sticking, `count` left as
+asked, the top not held, each half of each range check, key 0 and key 127 refused, the HPF at
+0.998), **11 killed**. Tests: `jx3p_test` 31, `jx3p_dco_test` 21 (was 20), `jx3p_vcf_test` 18 (was 17:
+`testTheHpfLands`).
+
+**Left as found, for the owner**: the saw overshoots to -1.39 (the minimum-phase ringing), and a
+filter-open saw at LEVEL 7 peaks about 9% over the VCA's clip point. The moving-cutoff bench row
+is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend, one run:
+6 notes 0.53%, the worst patch 0.97%, moving cutoff 1.78%, Phazed 0.7% beside them). Nothing here has been heard.
+
 ## 7. Risks
 
 | Risk | What is done about it |
 | --- | --- |
 | **Most of the character is in figures nobody has published** (times, rates, Hz) | Each is one table with its guess named, its tests marked SELF. Batch 9 measures them. Until then the device says "speeds guessed" |
-| The SN figures cannot be checked here | Batch 0 finds the pages; anything without one becomes SELF |
+| The SN figures cannot be checked here | **Done in batch 0**: every SN claim has a page, read through OCR text (section 0). No saw figure is printed, so the self-oscillation level stays SELF |
 | NAM may not be the ROM | Said on the device; a ROM dump, if one turns up, replaces them |
-| The polynomial BLEP may not reach 50 dB under 15 kHz | A table BLEP, 0.3% budgeted, measured in batch 2 |
-| The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3 |
+| The polynomial BLEP may not reach 50 dB under 15 kHz | **Batch 2: it did not (-35 dB).** Minimum-phase tables reach -86 dB; the whole of batch 2 costs 0.13% more than batch 1 at six notes |
+| The filter's maths on the handheld | Polynomial `tan` and `exp2`, worked out only when the cutoff moves; the moving-cutoff bench row; SPEED TEST after batch 3. **Batch 3: 1.6% on the desk for the moving cutoff (target 1.2, ceiling 2.0); the SPEED TEST waits on the owner** |
 | The 10 ms steps may sound rough to anyone used to Twin | It is the real machine's. The tick is one constant |
 | 6 voices: chords of 7 or more, fast strums with long releases, PAIRED glides over a chord steal | The steal is a retrigger with no click (or a fade: the owner's call). A glide's pitch is not changed by a steal; the old note's sound is. The owner may pick 8 |
 | Twin's load watch is removed | No other synth needs it; if one ever does, it is in git |
@@ -566,7 +1271,7 @@ joined one batch at a time.
 
 | Question | Recommended |
 | --- | --- |
-| The name on the device | Keep TWIN ANALOG |
+| The name on the device | **JAX-EP** (decided by the owner, 2026-11-14): "a virtual analog synth modeled after a popular DCO synth" |
 | 6 voices or 8 | 6, as the real one |
 | VELOCITY: a track value, ON for a new track (full velocity = the patch as written), or ignore velocity as the real one (then HUMAN LEVEL and soft notes do nothing on this synth) | **A track value, ON**. Faithful at full velocity, and the program's chord effects still work |
 | BRILLIANCE: per track (kept through a preset change) or per patch | **Per track**, as the real one's panel knob |
@@ -575,12 +1280,22 @@ joined one batch at a time.
 | DCO-2 TUNE in semitone steps (Roland's plug-out says so) or smooth (no source) | **Stepped**. The TUNE macro and a SYNC sweep by TUNE then move in semitones; smooth sweeps come from FINE, ENV and LFO |
 | DCO pitch rounded to the counter's whole divisions (faithful; under 1 cent off at the top) or exact | **Rounded**, once batch 0 confirms the 6 MHz clock |
 | A stolen voice: retrigger from its level with no fade (how a software envelope behaves; not documented) or a 2 ms fade | **Retrigger, no fade** |
+| Which voice is stolen: the oldest whose key is up (ringing in its release), or the oldest sounding, held or not (not documented) | **The oldest let go first** (`kStealLetGoFirst`): a held key is cut only when every voice is held |
+| After Stop and Play, the last notes' releases ring on beside six fresh voices (up to twelve for a release's length), so Play from the top is the same performance; or they take voices from the new notes (faithful to six, but every Play after a long pad differs) | **Ring beside** (`kTailVoices`) |
 | KEY FOLLOW: 9.8 is 100% (from NAM's Organ I) | Yes, until a recording says otherwise |
+| Where the cutoff's Hz sit (batch 3): CUTOFF 0 to 10 is 15 Hz to 15 kHz at note 60 (Organ I at C4 sings at 79 Hz, in tune with itself), or anchored so Organ I sings the key played (CUTOFF 2.4, KEY 9.8: the cutoff is the key's own pitch) | **Decided (owner, 2026-11-15): anchored.** 49.84 Hz to 49.84 kHz (the same span), held at 20 kHz. It was 15 Hz to 15 kHz |
 | Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | Keep it until a recording says otherwise |
 | Note starts on the CPU's 10 ms grid (faithful, up to 10 ms late) or on the sample | On the sample |
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |
 | **Where batch 9's recordings come from**: the owner's own unit, a hired one, or dry multisample libraries of a real unit (Roland's plug-out is a model, not a source) | A hired or borrowed unit: every knob of the table at 0, 2.5, 5, 7.5 and 10, one held note, dry. A multisample library can give the patches' speeds but not each knob. Without one, batch 9 cannot start and the speeds stay guesses |
 | Bass patches: the factory 32 have none | Add own patches later, in a third folder |
+| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | **Decided (owner, 2026-11-15): up.** `kVcaUnityDial` 45 (it was 70), the clip's start with it. The middle patch -17.2 dB, A1 -14.5; LEVEL 10 clips harder (A8, A16) |
+| **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | **Mended by the cutoff's row (2026-11-15)**: -25.8 and -34.5 dB with both calls built |
+| **(From batch 7.) The VCF's ENV POLARITY of A5 and A16 is not drawn** | NORMAL |
+| **(From the review, 2026-11-15.) A3 Organ I is out of tune with the other tracks**: its filter sings 20.8 semitones under the key, 21 cents off the grid | **Mended by the cutoff's row (2026-11-15)**: it sings the key within 0.4 cents, keys 48 to 84 |
+| **(From the review.) A song from builds 0.485 to 0.493 on "Start" is named String I** (its sound is kept) | Not decided: leave it (said in README), or put Start back as a 33rd preset in a folder of its own and read such a song onto it |
+| **(From the review.) MAIN's count reads "23 / 32" on B7**, not the factory's number | **Decided (owner, 2026-11-15): "7 / 16"**, the preset's place in its folder, on every synth |
+| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | Changed by the bank's level (2026-11-15), **still the owner's to weigh**: six keys AS WRITTEN now pass full scale on the two patches at LEVEL 10 (A8 2.85, A16 2.56); macros full, four pass 1.5 (2.69 at most). `kVcaClipCeiling` is not changed |
 
 ## 9. Decisions on the review (2026-11-13)
 
@@ -591,9 +1306,9 @@ joined one batch at a time.
 | 3 | BRILLIANCE and VELOCITY would be reset by `loadPreset` | **Accepted.** Checked: `loadPreset` writes 0 to `kSettings`, and a factory preset replaces the whole patch. Ids 32 and 33 are track values that preset loading and saving skip, with a test |
 | 4 | Play from the top is not the same performance | **Accepted.** `allNotesOff` puts back the assigner, phases, seeds and LFO; start phase from a seed at note-on, no free-running; `testPlayFromTheTop` |
 | 5 | Juno-60 chorus rates misquoted | **Accepted.** The comparison is dropped; 0.5 Hz is a plain guess |
-| 6 | MN3009 confirmed; 40-200 kHz and 10 kHz are SN-only; give pages | **Accepted in part.** The SN pages are not in hand here; batch 0 fills them or marks the claim SELF |
-| 7 | SYNC direction ambiguous in the press | **Accepted.** Kept as DCO-1 the master, on the grounds that OM p.23 and NAM sweep pulse width with DCO-2's TUNE; SOS's wording noted; SN page in batch 0 |
-| 8 | The VCA type is contested | **Accepted.** Said in section 0; the design does not depend on it |
+| 6 | MN3009 confirmed; 40-200 kHz and 10 kHz are SN-only; give pages | **Accepted in part.** The SN pages are not in hand here; batch 0 fills them or marks the claim SELF. **Done: p.7 (40-200 kHz, 180°, 10 kHz), p.3 (MN3009, MN3101)** |
+| 7 | SYNC direction ambiguous in the press | **Accepted.** Kept as DCO-1 the master, on the grounds that OM p.23 and NAM sweep pulse width with DCO-2's TUNE; SOS's wording noted; SN page in batch 0 **Settled in batch 0: SN p.6 has DCO-1 reset DCO-2** |
+| 8 | The VCA type is contested | **Accepted.** Said in section 0; the design does not depend on it **Settled in batch 0: the parts list (SN p.3) says BA662B VCA** |
 | 9 | NAM probably the ROM, not proven | **Accepted.** Said on the device's folder line |
 | 10 | Self-oscillation cannot start from silence | **Accepted.** A fixed 1e-4 into stage 1 at note-on; tested to start within 50 ms |
 | 11 | "Solved together" with clips is not what was timed | **Accepted.** Linear solve, clips from the previous sample; that is what the prototype timed |
@@ -604,7 +1319,7 @@ joined one batch at a time.
 | 16 | Voice stealing has no stated sound | **Accepted.** Retrigger from the current level, no fade, recommended; the owner's call; tested |
 | 17 | Most tests check the clone against its own guesses | **Accepted.** Every test marked FAITHFUL or SELF |
 | 18 | The Organ I test is circular | **Accepted.** Said plainly: 9.8 = 100% is chosen from NAM and the test pins the choice; pitch read at the steady level |
-| 19 | The 600 mV test needs the saw's figure | **Accepted.** The level is SELF until batch 0 finds the saw's peak to peak |
+| 19 | The 600 mV test needs the saw's figure | **Accepted.** The level is SELF until batch 0 finds the saw's peak to peak **Batch 0: the SN prints no saw figure (p.7, adjustment 3-4 is "maximum amplitude without clip"), so the level stays SELF until batch 9** |
 | 20 | Batch 9 has no source of recordings | **Accepted.** The owner's call, with the options; "speeds guessed" on the device |
 | 21 | `track twin` mapping changes a word's meaning | **Accepted** as the owner's call; the reader's rule stated; a real old song as a test; `.twin` files an owner's call |
 | 22 | HUMAN LEVEL does nothing with VELOCITY OFF | **Accepted, another way.** VELOCITY becomes a track value, ON for a new track; full velocity plays the patch as written. The owner's call |

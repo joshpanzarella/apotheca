@@ -19,4 +19,9 @@ struct WholeSongTimes {
 };
 // `mods`: how many MODs run (0, 1, or 24: two on every track), for the bench's own rows.
 WholeSongTimes timeWholeSong(int helpers, double seconds, int mods = 0);
+
+// That song, sent to a fresh engine and set playing (what the rows above time). For bench_test,
+// which holds what the song is: nothing else in ctest runs the timings.
+class Engine;
+void sendBusiestSong(Engine& engine);
 }

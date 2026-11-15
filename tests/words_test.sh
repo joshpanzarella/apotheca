@@ -1,5 +1,15 @@
 #!/bin/sh
 # SELECT is drawn as SEL on the device (the owner's, 2026-11-12).
+# And no maker's or model's name is shown (the owner's, 2026-11-14: the synth
+# is JAX-EP): none in a text of the app, on the two web pages or in README.md.
+# And the synth that went is not named in a text of the app (jx3p-plan.md,
+# batch 8b): no TWIN ANALOG, no OVERSAMPLING. The one word left is the file
+# reader's, "twin" by itself, which an old song's track is read by. Nor does a
+# text promise BEST QUALITY: a bounce is the song as it plays (no synth has a
+# quality to turn up; the mend of batches 8a to 8c).
+# The engine's texts are read for those names too (preset and folder names
+# are there: engine/, and the copied-in synths under third_party/), and the
+# tools' (render_demo and bench print what a player may read).
 #
 # This reads the app's sources for every piece of text that says SELECT (in
 # any case) and fails on one the screen would show spelled out.
@@ -25,17 +35,25 @@ app=$1
 [ -d "$app" ] || { echo "usage: words_test.sh APP_FOLDER"; exit 2; }
 
 # Prints a line for each fault in the folder; nothing if it is clean.
+# scan FOLDER [names]: with "names", only the names nobody is to read (the engine's folders).
 scan() {
-    for f in "$1"/*.cpp "$1"/*.hpp; do
+    for f in "$1"/*.cpp "$1"/*.hpp "$1"/*.c "$1"/*.h; do
         [ -f "$f" ] || continue
         case $f in */design_page.cpp) continue ;; esac
-        awk -v file="$f" '
+        awk -v file="$f" -v namesOnly="${2:+1}" '
             function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
             # A whole text has ended (every piece of it): does the screen show SELECT?
             function ended(   low, ok) {
                 if (!have) return
                 have = 0
                 low = tolower(str)
+                # No name of a maker or of a model where a player reads (owner, 2026-11-14: the synth is JAX-EP).
+                # (The name of a file in an #include is not on the screen.)
+                if (low ~ /roland|jx-?3p|pg-?200|juno/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
+                # Nor the name of the synth that went, nor its oversampling (batch 8b). "twin" alone is the word an old song has.
+                if (low ~ /twin analog|oversampl/) printf "%s:%d: the synth that went: \"%s\"\n", file, strline, str
+                if (low ~ /best quality/) printf "%s:%d: a quality nothing has: \"%s\"\n", file, strline, str
+                if (namesOnly) return   # (the engine: no screen, so no SELECT to draw)
                 if (low !~ /(^|[^a-z])select([^a-z]|$)/) return
                 ok = 0
                 if (ctx ~ /hint\($/) ok = 1                                                    # hint("SELECT...", ...)
@@ -50,7 +68,7 @@ scan() {
             }
             # buttonName is the word in controls.txt; only these lines may use it.
             function names(   c) {
-                if (code !~ /buttonName/) return
+                if (namesOnly || code !~ /buttonName/) return
                 c = trim(code)
                 if (file ~ /\/input\.hpp$/ && c == "const char* buttonName(Button button);") return
                 if (file ~ /\/input\.cpp$/ && c == "const char* buttonName(Button button) {") return
@@ -114,14 +132,40 @@ scan() {
     done
 }
 
-bad=$(scan "$app")
+# The two web pages and the manual are read by a player too. They keep SELECT in full, so scan()
+# leaves them out; a maker's or a model's name is looked for in them here, comments and all.
+makers() {
+    for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md; do
+        [ -f "$f" ] || continue
+        grep -n -i -E 'roland|jx-?3p|pg-?200|juno' "$f" | sed "s|^|$f:|"
+    done
+}
+
+# The engine's texts (preset and folder names, an effect's words) and the tools', beside the app.
+# (A plant is an app folder of its own with the same folders beside it: one is planted in each.)
+kBeside="engine/src engine/src/fx engine/src/jx3p engine/include/apotheca third_party/easycz/dsp third_party/shapetaker/entanglement tools"
+engine() {
+    for d in $kBeside; do
+        [ -d "$1/../$d" ] && scan "$1/../$d" names
+    done
+}
+
+# Everything looked for, in the app's folder or in a plant's: the one list both are read by.
+faults() { scan "$1"; makers "$1"; engine "$1"; }
+
+bad=$(faults "$app")
 if [ -n "$bad" ]; then
-    echo "The device would show SELECT spelled out (it is drawn as SEL):"
+    echo "The device would show SELECT spelled out (it is drawn as SEL), a maker's name (the synth is JAX-EP), or the synth that went:"
     echo "$bad"
     exit 1
 fi
 # The check must be able to see: the hints it allows are there to be found.
 grep -q 'hint("SELECT"' "$app"/song_screen.cpp || { echo "words_test: found no SELECT hint at all; is the folder right?"; exit 1; }
+for d in $kBeside; do # (a folder moved or renamed would be read by nobody, and say nothing)
+    some=0
+    for f in "$app/../$d"/*.cpp "$app/../$d"/*.hpp "$app/../$d"/*.c "$app/../$d"/*.h; do [ -f "$f" ] && some=1; done
+    [ "$some" -eq 1 ] || { echo "words_test: nothing to read in $d beside the app; is the folder right?"; exit 1; }
+done
 [ "$2" = "--only" ] && { echo "words test passed"; exit 0; }
 
 # The check checked: each of these, planted in a folder of its own, must be caught, and the last must not.
@@ -129,9 +173,10 @@ tmp=$(mktemp -d) || exit 2
 trap 'rm -rf "$tmp"' EXIT
 fails=0
 plant() { # plant NAME FILE WANT(caught|clean) : the text comes on stdin
-    mkdir -p "$tmp/$1"
-    cat > "$tmp/$1/$2"
-    got=$(scan "$tmp/$1")
+    mkdir -p "$tmp/$1/app"
+    mkdir -p "$(dirname "$tmp/$1/app/$2")"
+    cat > "$tmp/$1/app/$2"
+    got=$(faults "$tmp/$1/app")
     if [ "$3" = caught ] && [ -z "$got" ]; then echo "words_test: not caught: $1"; fails=$((fails + 1)); fi
     if [ "$3" = clean ] && [ -n "$got" ]; then echo "words_test: caught, and should not be: $1: $got"; fails=$((fails + 1)); fi
 }
@@ -183,7 +228,69 @@ PLANT
 plant the-file-word-after-strokes x.cpp caught <<'PLANT'
     std::snprintf(text, sizeof text, "a//b %s", buttonName(last));
 PLANT
+plant a-makers-name x.cpp caught <<'PLANT'
+    {TrackKind::Jx3p, "JAX-EP", "JAX", "JAX-EP", "a copy of the Roland", false, "jaxep", SynthKind::Jx3p, ".jaxep"},
+PLANT
+plant a-models-name x.cpp caught <<'PLANT'
+    jx3pRow("JX-3P, 6 notes", 0);
+PLANT
+plant a-models-name-small x.hpp caught <<'PLANT'
+constexpr const char* kEnding = ".jx3p";
+PLANT
+plant the-programmers-name x.cpp caught <<'PLANT'
+    fonts.small.draw(r, x, y, "AS THE PG-200 READS", kDim);
+PLANT
+plant a-makers-name-on-the-page design_page.cpp caught <<'PLANT'
+<div id="nothing" hidden>Move to a PHAZED or JX-3P track.</div>
+PLANT
+plant a-makers-name-on-the-wifi-page transfer.cpp caught <<'PLANT'
+const char* const kPage = R"page(<p>Presets for the Juno are kept here.</p>
+)page";
+PLANT
+plant the-synth-that-went x.cpp caught <<'PLANT'
+    {TrackKind::Jx3p, "TWIN ANALOG", "TWIN", "TWIN ANALOG", "two morphing oscillators", true, "twin", SynthKind::Jx3p, ".twin"},
+PLANT
+plant its-oversampling ui.cpp caught <<'PLANT'
+        fonts.small.drawRight(r, room - 6.f, textY, "BUSY: OVERSAMPLING DOWN", kBrass);
+PLANT
+plant a-quality-nothing-has settings_screen.cpp caught <<'PLANT'
+                note = "A: write it as a WAV file, at best quality";
+PLANT
+plant a-preset-in-the-engine ../engine/src/jx3p.cpp caught <<'PLANT'
+    {"Juno Strings", "BANK A", {0.5f, 0.5f}},
+PLANT
+plant a-folder-in-the-engine ../engine/src/jx3p.cpp caught <<'PLANT'
+    {"String I", "JX-3P A", {0.5f, 0.5f}},
+PLANT
+plant a-preset-in-a-c-file ../third_party/easycz/dsp/cz_presets.c caught <<'PLANT'
+    { "Roland Brass", { 0x10, 0x22 } },
+PLANT
+plant a-name-in-a-c-header ../third_party/easycz/dsp/cz_presets.h caught <<'PLANT'
+#define CAT_KEYS "Juno Keys"
+PLANT
+plant the-synth-that-went-in-the-engine ../engine/include/apotheca/presets.hpp caught <<'PLANT'
+static const char* const kNames[] = {"Init", "Twin Analog Lead"};
+PLANT
+n=0
+for d in $kBeside; do # every folder read beside the app is read: a name planted in each
+    n=$((n + 1))
+    plant "beside-$n" "../$d/x.cpp" caught <<'PLANT'
+    const char* says = "as the PG-200 has it";
+PLANT
+done
+[ "$n" -eq 7 ] || { echo "words_test: $n folders beside the app, not 7"; fails=$((fails + 1)); }
+plant what-the-engine-may-say ../engine/src/engine.cpp clean <<'PLANT'
+#include "apotheca/jx3p.hpp"
+#include "jx3p/dco.hpp"
+// the JX-3P's DCO, in a comment
+    const char* word = "SELECT"; // no screen here: the engine's SELECT is not drawn
+    const char* name = buttonName(b);
+PLANT
 plant what-is-allowed app.cpp clean <<'PLANT'
+constexpr const char* kOldTwinWord = "twin"; // Twin Analog's, in a comment
+#include "apotheca/jx3p.hpp"
+// "the JX-3P" in a comment is not on the screen
+    const Jx3pPatch first = Jx3p::presetPatch(0); // "PG-200"
 // "SELECT + Y" in a comment is not on the screen
 /* nor "SELECT" here,
    nor "SELECT" on its second line */

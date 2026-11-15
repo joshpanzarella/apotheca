@@ -1,5 +1,5 @@
 #pragma once
-// The Device screen for a synth: Phazed or Twin Analog. Each is described
+// The Device screen for a synth: Phazed, JAX-EP or QMOD. Each is described
 // by a SynthSpec (synth_spec.hpp); the screen itself is the same.
 //
 // MAIN is all most sounds need: the folder, the preset, eight macros, and a
@@ -14,7 +14,7 @@
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
-// drawn out. For Twin Analog, three. L1 and R1 turn the pages; B goes back
+// drawn out. For JAX-EP, five. L1 and R1 turn the pages; B goes back
 // to MAIN.
 
 #include "screen.hpp"
@@ -60,6 +60,22 @@ public:
         return rows < 1 ? kMacroH : (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
     }
 
+    // MAIN's two boxes, and the folder's note (SynthSpec::folderNote: JAX-EP's "SPEEDS GUESSED"). The
+    // note stands on PRESET's top row, kNoteGap after the word PRESET, and the row keeps room for a
+    // count as long as kCountLongest whatever the count is, so the note is drawn the same way for
+    // every preset. Where the three do not fit at the size chosen the whole row is drawn at LARGE.
+    static constexpr int kFolderX = 8, kFolderW = 200, kPresetX = 216, kPresetW = 416, kNoteGap = 10;
+    static constexpr const char* kCountLongest = "888 / 888";
+    // For a still or a test: the note as a folder of batch 7 (BANK A) will say it, or nullptr for the spec's own.
+    void folderNoteAs(const char* note) { noteAs_ = note; }
+    const char* folderNote() const { return noteAs_ ? noteAs_ : spec_.folderNote ? spec_.folderNote(trk().preset) : nullptr; }
+
+    // The count on PRESET's row is the preset's place IN ITS FOLDER, out of that folder's presets
+    // (owner, 2026-11-15: JAX-EP's B7 reads "7 / 16", the factory's number, not "23 / 32"). A folder
+    // is the run of presets side by side under one name, as stepFolder steps them; the player's own
+    // (USER) count among themselves. Every synth alike.
+    int placeInFolder(int preset, int& of) const;
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
@@ -73,6 +89,7 @@ private:
     int columns() const;
     bool envelopePage() const { return page_ > 0 && spec_.envelopePage(page_); }
     int* values() { return spec_.values(trk()); }
+    const char* noteAs_ = nullptr;
     const int* values() const { return spec_.values(const_cast<TrackData&>(trk())); }
     void moveCursor(Button direction);
     void stepPreset(int by);

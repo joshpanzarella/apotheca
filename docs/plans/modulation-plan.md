@@ -655,7 +655,7 @@ the merge base (42 lines, the whole song's checksum too).
 | # | Finding | Fate |
 | --- | --- | --- |
 | 1 | A preset chosen while a MOD runs on a macro dropped the MOD, then moved it about the old knob | **Mended.** `Command::SelectPreset` sets the eight macro lanes' centre to the middle (`kPresetMacro` 0.5, where every synth's `selectPreset` puts its macros and `Session::chooseSynthPreset` the project's) and gives each lane a MOD is adding to, at once. With nothing added no macro is given. `mod_test` `testAPresetUnderAModMovesAboutTheMiddle` (a spy synth that resets on a preset, as the real ones) |
-| 2 | A legato Phazed part stayed 3 dB up after DETUNE came back to exactly 0.5 | **Mended, with a call for the owner.** A note that BEGINS on a twin kept at the middle has its two lines in tune and in phase (6 dB over one line, not the 3 a detuned pair averages), so from that note's start the twin is trimmed 3 dB more (`kTwinInTuneTrim` in `phazed.cpp`; 0 turns it off), and the trim is given back when DETUNE leaves the middle. Not taken when DETUNE merely reaches or passes the middle: a held note's lines are wherever their beat left them, and trimmed there it fell to 0.61 to 0.80. The CZ glides its volume over 10 ms, so no click. Measured: a legato part at the middle +0.02 dB against DETUNE never moved (17 presets, plain notes and glided; it was +3.02) |
+| 2 | A legato Phazed part stayed 3 dB up after DETUNE came back to exactly 0.5 | **Mended, with a call for the owner.** A note that BEGINS on a twin kept at the middle has its two lines in tune and in phase (6 dB over one line, not the 3 a detuned pair averages), so from that note's start the twin is trimmed 3 dB more (`kDoubleInTuneTrim` in `phazed.cpp`; 0 turns it off), and the trim is given back when DETUNE leaves the middle. Not taken when DETUNE merely reaches or passes the middle: a held note's lines are wherever their beat left them, and trimmed there it fell to 0.61 to 0.80. The CZ glides its volume over 10 ms, so no click. Measured: a legato part at the middle +0.02 dB against DETUNE never moved (17 presets, plain notes and glided; it was +3.02) |
 | 3 | Ten of 18 mutants survived | **Tests added; 9 of the 10 are killed now, one is equivalent.** See below |
 | 4 | "Phazed is not the same in blocks of 1" was the tempo, not Phazed | **Words mended** (section 13, CLAUDE.md, the test's comment); `testTheSameInAnyBlocks` also runs the song WITH Phazed at 120 in blocks of 1, 64 and 333 with 3 helpers, MODs and none |
 | 5 | The "24 MODs on macros" cost was arithmetic | **Run now**: `bench` has "24 MODs on macros, run" (twelve silent tracks of the synth, a SINE and a STEPPER on two macros of each, through the engine). The worked-out row stays beside it |
@@ -665,7 +665,7 @@ twin's short notes are already 1.2 to 3.0 dB over one line, on `main` too:
 they begin with their lines together and the beat is slow. So a part at
 exactly 0.5 on a kept twin could be left like its neighbours (3 dB up, no
 trim) or made as loud as the patch (the trim, what `main` gave once its cut
-was over). **Taken: as loud as the patch.** `kTwinInTuneTrim = 0` is the
+was over). **Taken: as loud as the patch.** `kDoubleInTuneTrim = 0` is the
 other answer.
 
 **Also changed by finding 1, said plainly**: a built-in preset chosen while
@@ -703,7 +703,7 @@ the commit), 20 this round, **19 killed, 1 equivalent**:
 | A held note as DETUNE reaches the middle | 0.86 to 1.10 of the twin left alone (the beat); with the trim taken there it was 0.61 to 0.80 |
 | `phazed_test` | about 17 s (the legato parts are most of it) |
 
-**Left for the owner**: `kTwinInTuneTrim` (above); the nine effects that
+**Left for the owner**: `kDoubleInTuneTrim` (above); the nine effects that
 glide a call at a time under a MOD (section 13); the cost over the plan's
 targets (batch 9).
 
@@ -768,3 +768,33 @@ screen sets one yet: `Session::setMod` is called by the tests alone.
 **For batch 3**: `Session::setMod` / `modData` are the way in and out; the
 first free MOD is the first whose `kind` is `kModOff`; `modTargetFits` says
 whether X + UP on this knob may take one (a choice may not).
+
+## 16. Joined with `main` (2026-11-15)
+
+Batches 0 to 2 were built before `main` gained JAX-EP's presets, Twin
+Analog's removal, FEEL, the picker, AT END, the mixer and the effect type
+memory. The join:
+
+- **Twin Analog is gone; JAX-EP stands where this plan says Twin.** The bench's
+  macro-cost row and the 24-MODs-on-macros row run on JAX-EP
+  (`bench_run.cpp`); `modapp_test` aims its "every macro an amount" synth at a
+  JAX-EP track. JAX-EP's `setMacro` does not return early on the value it has
+  (Phazed's and QMOD's do). Its cost under a MOD is printed by `bench`, not
+  recorded yet.
+- **Phazed's DETUNE mend keeps `main`'s name**: `kTwinTrim` is `kDoubleTrim`
+  on `main`; this plan's `kTwinInTuneTrim` is now `kDoubleInTuneTrim`.
+- **Command ids moved** (memory only, never saved): `SetMod` 42 to 44,
+  `SetModStep` 43 to 45, `ModAudition` 44 to 46, after `main`'s `SetSongEnd`
+  (42) and `SetLaneFeel` (43).
+- **Stop is `Engine::stopPlaying`**, which `main`'s AT END STOP calls too: the
+  MODs are let go there (`stillMods`, the audition's mark), so a song that
+  stops at its end lets go of its MODs as Stop does
+  (`mod_test testASongThatStopsAtItsEndLetsGoOfTheMods`).
+- **A preset chosen** sets the macro lanes' centre, glide and target together
+  (`main`'s) and gives a lane a MOD adds to at once (this plan's).
+- **A track taken away** forgets its lanes' FEEL and its MODs both.
+- `soundMark`, `restoreSounds` and `sendSong` carry the MODs and FEEL both.
+- Measured: `effects_test --print` the same on `main` and joined (a song with
+  no MOD is the same to the bit). FEEL, chord effects and MODs in one song
+  (`mod_test testFeelChordsAndModsInAnyBlocks`, 120 BPM, JAX-EP chords) the
+  same in blocks of 1, 64 and 333 on 0 and 3 helpers. Nobody has heard it.

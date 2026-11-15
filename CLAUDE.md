@@ -52,9 +52,9 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (35) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (46) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
-| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling), each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); any view with `--no-menu` is as on a handheld with no MENU button) |
+| A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
 - **Shipping a build**: run the handheld build, copy `Apotheca-port.zip`,
@@ -112,7 +112,8 @@ Where effects are, in the engine:
 | `engine/src/fx/tank.hpp` | what REVERB's newer types share (BLOOM, SHIMMER): one tank of eight lines mixed eight into eight, DECAY a real time per line, PLATE's TONE, the sway; BLOOM's 64-tap swell and SHIMMER's octave shifter |
 | `engine/src/fx/bend.hpp` | what the newer DRIVE types share (FOLD, FUZZ): a side bent at twice the rate (`BendSide`; FOLD at four, `BendSide4`) a sample at a time (so the TICK holds), back on centre, the plain sound made as late; `bendLevel` |
 | `engine/include/apotheca/denormals.hpp` | flush-to-zero |
-| `tests/effects_test.cpp` | the pinned sound of the old five, and the measuring tools |
+| `tests/effects_test.cpp` | the pinned sound of the old five, and the tools that drive an effect |
+| `tests/measure.hpp` | the measuring tools every sound test shares: level, spectrum (`harmonicsIn`), pitch, checksum, no click |
 
 **Adding an effect**:
 1. an `EffectKind` at the **end** of the list in `effects.hpp`;
@@ -196,6 +197,114 @@ effect in those two groups and fails one that does not.
   Session and the WiFi page share. Renamed over, the first one's revs paired
   with the second song.
 - **Every synth has `kSynthMacros` (8) macros.** Each synth header checks it.
+- **The JX-3P clone is JAX-EP wherever a player reads** (owner, 2026-11-14):
+  "a virtual analog synth modeled after a popular DCO synth". **No maker's or
+  model's name** (Roland, JX-3P, PG-200, Juno) in a text of `app/`, on the two
+  web pages or in README.md; `ctest -R words` fails one, with its own plants.
+  **It reads the engine's texts for those names too** (preset and folder names
+  are there: `kBeside` in `tests/words_test.sh` lists `engine/`'s folders, the
+  two copied-in synths under `third_party/` and `tools/`; `.c` and `.h` as
+  well). **A new folder of engine sources goes in `kBeside`**, which plants a
+  name in each and fails on one with nothing to read. No SELECT rule there:
+  the engine draws nothing.
+  Code, file names, tests and `docs/plans` keep `jx3p` / `Jx3p`. Its song-file
+  word is `jaxep` and its presets are `NAME.jaxep` (`jx3p` was never written
+  by anything released and is not read). The list to pick from says "virtual
+  analog, after a popular DCO synth" with no count: the line holds about 42
+  letters.
+- **A JAX-EP knob reads as its dial, 0.0 to 10.0, wherever a player reads
+  it**: `settingText` on the handheld, and on the designer page too
+  (`SynthSpec::pageReadsAsDevice`: the page is given every reading of every
+  setting; for the other synths only a setting of 40 values or fewer). A new
+  knob of this synth needs nothing more.
+- **MAIN says what is known of a folder's sounds** (`SynthSpec::folderNote`,
+  JAX-EP's only): on PRESET's top row, after the word. SPEEDS GUESSED for a
+  built-in folder, 1983 BOOKLET, SPEEDS GUESSED for one named "BANK ..."
+  (BANK A and BANK B: every built-in sound today, so the short one has no
+  folder; `SynthScreen::folderNoteAs` shows it for its test), nothing
+  for the player's own. **The count beside it is the preset's place in its
+  folder** (owner, 2026-11-15; `SynthScreen::placeInFolder`: B7 reads
+  "7 / 16", the player's own count among themselves, every synth alike; a
+  folder is the run of presets side by side under one name, as `stepFolder`
+  steps them). The row keeps room for the longest count
+  (`kCountLongest`), and where the three texts do not fit the size chosen the
+  whole row is drawn at LARGE (the bank's line at XL). No maker's name in it.
+- **JAX-EP's 32 presets are the booklet's, and the table is not edited by
+  hand** (`kPresets`, `engine/src/jx3p.cpp`; batch 7): A1 to B16 in two
+  folders, BANK A and BANK B, so a preset's number is the factory's and a
+  folder jump is a bank jump. `tests/jx3p_nam.inc` holds the booklet as read
+  (twice, and by the pointers' angles), in its own terms; `jx3p_presets_test`
+  holds the table to it value for value. **Change the reading and the table
+  together, with the scan in hand**, and keep each guess marked (PULSE or
+  SQUARE on twelve, B14's METAL, the blanks). The start patch is not a preset
+  (`Jx3p::startPatch()`: what a synth is made with, what the engine's tests
+  play); a new track and an old `track twin` are on A1.
+  - **The cutoff's range and the VCA's 0 dB were set from the bank (owner,
+    2026-11-15; three "known" faults mended).** `kVcfLowHz` 49.84 and
+    `kVcfHighHz` 49840 (`jx3p/ir3109.hpp`; they were 15 and 15000: the same
+    span times 3.32), held at `kVcfTopHz` 20 kHz as before, so **at key 60
+    CUTOFF 8.7 to 10 is one sound**. `kVcaUnityDial` 45 (`jx3p/env.hpp`; it
+    was 70) and **`kVcaClipDial` is the same number: the clip starts at a full
+    wave, 1, wherever the 0 dB is.** The start patch's LEVEL moved with it (45),
+    so it and the engine's tests are the gain they were; **a test that wants a
+    clean wave sets LEVEL 4.5 or under** (the tests' plain patches: 25, 35, 45).
+    - **A3 Organ I sings the key played**: 0.4 cents from the grid at worst,
+      keys 48 to 84, read over five seconds (`testNamsThree`). Its sine sits on
+      DCO-1's second harmonic (16') and is held by it: the cutoff 40 cents off
+      still sings the key, so the test also holds the cutoff's CV to the key
+      within half a cent. Its level sways (DCO-2 is 27 cents flat in the patch
+      and beats with the sine, twice a second at key 48): the patch, not a fault.
+    - **No patch is all but silent** (`testEveryPatchPlays`, the chord's
+      loudest tenth of a second): B15 Planet -34.5 dB, the quietest; B4 Song
+      Whistle -25.8; the middle of the 32 -17.2; A1 String I -14.5 (PHAZED's
+      first presets: -15.5 to -12.6); A16 Voice -2.0, the loudest.
+    - **Known, held there, not hidden: the two patches at LEVEL 10 are 22 dB
+      into the clip and pass full scale.** Six keys as written: A8 E. Piano I
+      2.85, A16 Voice 2.56 out of the synth; every other patch 1.26 at most.
+      Macros full: A8 2.69, A16 2.58, A11 2.53, B8 1.90. Nothing is
+      not-a-number and everything ends. It is what "LEVEL 10 clips harder"
+      means (the owner's yes); `kVcaClipCeiling` (1.5) is not changed.
+    - **A song from build 0.502 or earlier loads and sounds brighter and 10 dB
+      louder** on a JAX-EP track (said in README).
+  - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
+    preset 1.** A song from them keeps its sound (all 34 settings are read
+    after the preset) under String I's name (`save_test`
+    `testASongFromTheOnePresetBuilds`). **A preset's place is in songs from
+    now on: append, never put one in before another.**
+  - **A test that listens to a new JAX-EP track makes it plain first** (MIX
+    0, ATTACK 0, CHORUS off): A1's two saws beat, and a note's peak hangs on
+    where in the beat it began (`design_test`).
+- **`track twin` is the one word whose meaning changed** (owner, 2026-11-14;
+  nothing was released): it reads as a JAX-EP track without its sound
+  (`trackKindFromWord`'s `old`, `parseSong`'s `oldSound`: no `preset`,
+  `macros`, `settings`, no automation on lanes 0 to 7; everything else kept).
+  It is never written. `tests/twinsong_main.inc` is a song `main` wrote with
+  one: **not to be remade**. An old `NAME.twin` preset is left on the card,
+  unlisted. **Twin's code is out (batch 8b, 2026-11-15), and that reader is
+  the one place the word lives**: `kOldTwinWord` and its comments, the tests
+  of the old song and the old preset file, README's note on old files. There
+  is no `SynthKind::Twin` (the kinds are memory only: Phazed, Sampler, Qmod,
+  Jx3p). `ctest -R words` fails a text of `app/` that says TWIN ANALOG or
+  OVERSAMPLING, with its own plants, **or BEST QUALITY: a bounce is the song
+  as it plays** (the BOUNCE row said "at best quality" from Twin's x8 until
+  the mend of 2026-11-15; no synth has a quality to turn up).
+- **The timings' song is held by `ctest -R bench`** (`tests/bench_test.cpp`,
+  through `sendBusiestSong`): what is on each track, bus and the master, that
+  the two JAX-EP tracks are on A1 (choosing A1 again changes nothing, to the
+  bit), and that the real-time rows count the blocks and helpers they say.
+  **It times nothing**; the figures are still run and read. `ctest -R demo`
+  runs `render_demo` and reads its three lines. `bench`'s one-track rows have
+  no test.
+- **A preset holds `presetSettingCount(kind)` settings, a song
+  `settingCount(kind)`.** They differ for JAX-EP: ids 32 and 33 (VELOCITY,
+  BRILLIANCE) are the track's own, so `loadPreset` (built-in and the player's
+  own) and `savePreset` stop at 32, and a new `TrackData` starts with them
+  (`Jx3p::presetPatch(0)`). **Undo counts a song's** (`soundMark`,
+  `restoreSounds`, `sendSynthPatch`: `app_test`
+  `testUndoPutsBackTheTracksOwnTwo`, in the engine too). A number in a preset
+  file is held as a double first, then to its setting's range (`readPreset`,
+  `jx::loadPreset`), and a knob reads inside its dial whatever it is given. A new track value of any synth goes after its
+  patch's ids and is kept out the same way.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
 - **The five old effects are pinned to the bit** (FILTER, DRIVE, DELAY,
@@ -203,6 +312,10 @@ effect in those two groups and fails one that does not.
   checksums taken before they were moved. Old songs depend on them. Do not
   touch their arithmetic, not even to fix it; make a new effect instead. The
   checksums are remade (`effects_test --print`) only from code known to be right.
+  **The whole song's sum was remade once (2026-11-15)**: its third synth went from
+  Twin Analog to JAX-EP, and `--print` gave the same 40 renders before and after.
+  It pins JAX-EP's sound too now: a change to that synth moves it, and is then
+  proved by the 40 renders standing still.
 - **An effect has a number, a word and a place, and they are three things.**
   The number (`EffectKind`) is in memory and commands: appended, never
   reordered. The `word` is in song files: never changed. The place in the
@@ -277,7 +390,18 @@ effect in those two groups and fails one that does not.
   other takings away fade beside it (a new song takes all twelve at once).
   `caughtUp()` counts the held command. A test that takes a sounding track away
   and wants the next thing at once renders 5 ms first (`engine_test`
-  `testATrackTakenAwayFades` holds it beside a twin engine, sample for sample).
+  `testATrackTakenAwayFades` holds it beside a second engine, sample for sample).
+- **A lane with nothing written in a scene goes back to the knob** (`Track::autoBase`, read in `fireStep`
+  and by `settleAutomation` at Stop), not to the last value written. So a FILTER's CUTOFF automated in
+  the last scene only opens up at the wrap when the knob is more open, which sounds like the filter
+  left (owner's report, 2026-11-14). That is the design; whether an unwritten scene should HOLD the last
+  value instead is the owner's call, not made. **Whatever changes a knob in the engine sets its rest
+  too**: `SetMacro`, `SetEffectParam`, `SetSend`, and `SelectPreset`, which puts all eight macros' rest
+  at the middle as the synth does (it left the old sound's knobs as the rest, and the song played the
+  old sound's macros after every wrap into a scene with none written: `engine_test`
+  `testAPresetPutsTheMacrosRestBack`). The app sends the macros after a built-in preset too
+  (`chooseSynthPreset`), as `sendSong` does: the engine is told the project's knobs, never left to agree
+  by itself (`app_test` `testABuiltInPresetRestsTheMacrosWhereTheyShow`).
 - **A tempo change keeps every place in the step** (`SetTempo`): what is left
   of the step, an arpeggio's wait, notes waiting, notes' ends and drum hits
   waiting are all scaled by the same amount, so the arpeggio stays on the beat.
@@ -395,6 +519,19 @@ effect in those two groups and fails one that does not.
   COMP's level reading for good. The old five do not (their arithmetic is not
   touched). `effects_test` tries every effect newer than CRUSH, each choice
   of each setting, and fails a new one that forgets.
+- **A one-pole that lands exactly must land further out than a float can
+  step.** Heading for 1, a 1 ms smoothing at 48 kHz stops moving 1.4e-6 short
+  (k times the gap is under half a float step there), so a landing at 1e-6
+  never came and the JX-3P's voice was never freed. Its hold lands at 1e-5
+  (`jx3p::kHoldLands`); a new smoother picks its gap the same way. **And it
+  lands when a step no longer moves it** (`Hold::next`): a float's step grows
+  with the value, so a fixed gap is right only near 1. The HPF's hold, over 4,
+  stuck 1.1e-5 short and the HPF and chorus ran on silence for good.
+- **A minimum-phase BLEP makes the jumps late (2.23 samples at the bottom), so
+  every slope of the wave carries the same lateness** (`kBlampCarry` in
+  `Dco::take`, the saw's too). A saw that did not had a mean of 4.47 x dt:
+  37% of its peak at the top keys. **A test that takes the mean off cannot
+  see an offset**: `testNoOffset` reads the mean itself.
 - **A `Glide` always lands, at any block length** (never slower than `kLeast`
   a sample). A fraction of what is left falls below what a float can add in
   blocks of 8 frames and under, and `moving()` then stayed true for good.
@@ -489,6 +626,56 @@ effect in those two groups and fails one that does not.
   the old knob. A lane a MOD is adding to is given at once; with nothing
   added no macro is given. **A new `Instrument` keeps that promise**
   (`selectPreset`: macros to 0.5), or the engine's centre is wrong for it.
+- **The JX-3P's `allNotesOff` hands every sounding voice to a tail**
+  (`kTailVoices`, `engine/src/jx3p.cpp`): it rings out its release beside the
+  six, which start again as from fresh, so Play from the top is the same
+  performance after Stop however long the release (`jx3p_test`
+  `testPlayFromTheTopWhileRinging`). Play and Stop let notes go, never cut
+  them; a fresh voice is `State::Voice()`, so anything new a voice remembers
+  is put back with it. Its steal takes a key let go before a key held
+  (`kStealLetGoFirst`).
+- **The JX-3P's VCF bends only its feedback** (`engine/src/jx3p/ir3109.hpp`):
+  four trapezoidal one-poles solved as one sum, the feedback's soft clip taken
+  from the sample before as a gain. A bend in each stage was tried and taken
+  out: it moved the singing's pitch with its level (16 cents off over Organ
+  I's three octaves; the plan holds 5). Its coefficient is worked out only on
+  a sample its CV moved, from polynomials (`exp2Poly`, `sinPoly`, `cosPoly`:
+  no `floor`, `ldexp`, `tan`, and **no division by a constant**, which the
+  compiler does not turn into a multiply; together with the bend's division
+  folded into the filter's own, taking them out brought the moving-cutoff
+  bench row from 2.1% to 1.6%). The cutoff's hold lands 1e-3 of an octave
+  from its step (`kVcfCvLands`): landing at the VCA's 1e-5 it slid on into
+  the last part of the tick (`testTheCvSteps` fails), and the coefficient is
+  worked out on every sample it slides.
+- **The JX-3P's LFO is one for the synth, on a 10 ms tick counted from
+  allNotesOff, and it runs whether anything sounds or not** (`engine/src/jx3p/lfo.hpp`).
+  `Jx3p::render` cuts its block into pieces that end where the LFO ticks, so a
+  voice's own tick reads it as of its sample however the sound is cut
+  (`jx3p_lfo_test` `testBlocks`). Anything new the synth works out once for all
+  voices on a tick goes in that loop, never once a block. A voice reads the LFO
+  only on its tick; a key with no other key held starts the DELAY again, and the
+  LFO reads 0 from that sample (`startDelay`). RANDOM is a hash of the count of
+  cycles (`kLfoSeed`, pinned): never a generator walked.
+- **The JX-3P's chorus sweeps from the synth's clock, and is switched at once
+  before the first sample** (`engine/src/jx3p/chorus.hpp`). Its place is the
+  samples since allNotesOff, counted whole, so it is the same however the
+  sound is cut, Play from the top is the same sweep, and it can sleep (exact
+  zeros, skipped) and wake as a fresh one. **It is not skipped while its fade
+  is under way**, or a switch in silence would wait for the next sound. Until
+  the synth's first sample after it is made, set up or allNotesOff'd
+  (`sounded`), a switch of CHORUS lands at once. The tests that measure
+  another part turn it off (`held()` and the plain patches); the house rules'
+  tests keep it on. Tails hear its sweep start again, as they hear the LFO.
+- **The JX-3P's DCOs correct every jump and every bend where it falls in the
+  sample** (`engine/src/jx3p/dco.hpp`): minimum-phase BLEP and BLAMP tables, so
+  nothing is late and a key still sounds on its own sample. The tables are
+  numbers written by `tools/jx3p_blep.py` (`blep_table.hpp`): change the
+  script and run it, never the numbers. A bend's correction leaves a constant
+  (`kBlampCarry`), kept as a state worked out from the slope, never summed.
+  **A jump or a bend worked out to a hair past the sample's end is still that
+  sample's** (passed by, the wave jumped raw: `testAnEdgeOnTheSamplesEnd`).
+  A wave, DCO-2's start phase and the noise seed are each a voice's own; what
+  a free voice starts with comes from the count of keys, as batch 1's phase.
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -616,6 +803,37 @@ effect in those two groups and fails one that does not.
   - Up / down in the list goes round; right goes to the setting the line
     last used (`last_`, kept through a change of track); left comes back.
     `update()` only pulls the cursor in when the line has fewer settings now.
+  - **In a slot's settings, A HELD + LEFT / RIGHT switch its TYPE** (owner, 2026-11-14;
+    `FxScreen::stepType`): the type before / after, in the grip that turns the value with
+    UP / DOWN, as LEFT / RIGHT is the TYPE with A held in the list. The ends stop, the
+    cursor keeps its row (pulled in where the new type has fewer), every setting row alike,
+    D-pad only (the stick with A held turns the value), repeating at the list's pace
+    (`kListEveryMs`). **Without A, LEFT is the list from any setting and RIGHT does
+    nothing.** (A first try that day had plain LEFT / RIGHT switch, with LEFT the list only
+    from the first setting: LEFT doing two jobs was awkward, and a long RIGHT in from the
+    list ran through the types. It is gone, `cameIn_` with it.) **With A held the
+    heading's TYPE row and the bar show the key that switches** (`typeKey`, `typeKeyFor`:
+    RIGHT, LEFT or LEFT / RIGHT; no RIGHT on the family's last type, no LEFT on its first,
+    none for a family of one or on SENDS); with A up the bar says LEFT list and HOLD A
+    "turn, type" ("turn" where there are no types). B's hint there is "default".
+  - **A slot remembers each type's own settings** (`Session::rememberType` /
+    `rememberedType`, `switchEffectType` in fx_screen.cpp): a switch goes through
+    `changeEffectType` (lanes moved as always: **a remembered type's automation is not
+    kept**, only its settings), then sets the remembered settings, WRITE off. COMP ->
+    DUCK -> COMP is the COMP to the bit. **Every setting, so a MIX or a bus's LEVEL too**:
+    a bus turned down to 0 on PING is at TAPE's own LEVEL again on the way back (plain
+    `changeEffectType` carried it; the owner has not ruled on this). **The lanes are not
+    to the bit**: a shared lane is carried there and back, so where the two scales differ
+    it comes back rounded (CLEAN -> TAPE -> CLEAN: FEEDBACK 0.3333 as 0.33, a TIME lane to
+    the nearest choice) and an unshared lane is cleared; undo puts them back. The list's LEFT / RIGHT with A held tries and
+    commits the same (`wouldGoIn` takes the remembered settings). In memory only, never in
+    the song file; forgotten by `Session::setEffect` when another FAMILY or EMPTY goes in
+    (a same-family `setEffect` keeps it: `changeEffectType` goes through it), by
+    `applyProject`, `setTrackKind`, `addTrack`; `removeTrack` moves the tracks after it
+    up with theirs. Undo puts back the type before (as any change of TYPE); it does not
+    touch the memory. With the song stopped a switch sounds the track (`hear`); playing,
+    or stopped by an end, it does not. `app_test` `testFxSwitchesType`, `testFxSwitchMends`; the engine's slot is read with
+    `Engine::effectKindIn` (`Effect::madeAs`, kept by the audio thread beside the meters).
   - **Hold A on a slot's line opens the list of effects** (`picking()`), drawn
     from `familyAt`: DOWN is the next line of it, since it is seen (it was UP
     when the list was stepped through blind). Left / right is the TYPE. The
@@ -720,7 +938,9 @@ effect in those two groups and fails one that does not.
   strip; no empty band), the kit's lanes `kLaneRowH` 45 (was 37), the
   sampler's settings 109 and its recording's picture `kWaveH` 80 (was 40;
   with no recording its words stand in that room's middle). The line is
-  placed by `ui::scopeLineY` (full scale 4 rows inside the strip's edges). A box taller than `kBoxUsualH` (70) moves its value down by half
+  placed by `ui::scopeLineY` (full scale 4 rows inside the strip's edges), **its height bent, not to
+  scale** (`scopeBent`, the power `kScopeBend` 0.4; owner, 2026-11-14: to scale a quiet recording was
+  half a pixel): 30 dB down stands 3 pixels, half scale 11 of the 14; louder is never smaller. A box taller than `kBoxUsualH` (70) moves its value down by half
   the extra (`boxValueDrop`); at 70 and under nothing moves. The envelope
   pages never had the scope and do not. `scope_test` reads it all off the
   drawn screen in BROWN and PAPER.
@@ -821,7 +1041,7 @@ effect in those two groups and fails one that does not.
   pairs, held to twelve blocks past the last key (a busy machine made minutes
   of sound otherwise). It is clean under the thread sanitizer
   (`-fsanitize=thread`, about nine minutes; sixteen with its build, on a busy
-  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; clean 2026-11-14 with the scene move's asking again, nineteen minutes for the run alone on a shared desk; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
+  desk, since the chord track and the helpers' round: clean again 2026-11-13, and once more that day with GLIDE FROM, fifteen minutes; clean 2026-11-14 with the scene move's asking again, nineteen minutes for the run alone on a shared desk; clean 2026-11-15 with the chord track on JAX-EP, eleven minutes for the run alone; the test's counted `new` has the kind that gives back nullptr too, which a sanitizer's own does not pass on); run that again after a change to
   what a scene move hands over.
 - **Taking a NEXT SCENE back, or putting it back, sends no track whole**
   (`Session::restorePatterns` with a move: `moveScenesHere`, then
@@ -856,7 +1076,7 @@ effect in those two groups and fails one that does not.
   bar (`askAheadHits`, `askAheadNotes`, the same code `fireStep` asks with),
   as far into the step as the playing is. A new step clears the marks first.
   **One thing it cannot mend**: an early note of the copy already heard
-  (here from 61.7 of the step on: 0.28 from the song left alone, as before),
+  (here from 61.7 of the step on: 0.11 from the song left alone with the chord track on JAX-EP; it was 0.28 on PHAZED),
   and the next scene's notes whose moment has gone by are not played late.
   `nextscene_test` `testTakenBackOnTheLastStep` (in ctest) holds 0 up to there
   for `fill` and for a song with more asked ahead (`addEdges`);
@@ -892,7 +1112,7 @@ effect in those two groups and fails one that does not.
   there.**
 - **The song `nextscene_test` plays (`fill`) has a track of chords strummed,
   as arpeggios, humanised, ratcheted, thrown, in every ORDER, and a glide of
-  every length, on a track whose GLIDE FROM is PAIRED**, so every proof of the sound has them in flight when the
+  every length, on a JAX-EP track (six voices: its chords and glides steal; `testTheChordTrackIsHeard`) whose GLIDE FROM is PAIRED**, so every proof of the sound has them in flight when the
   scene moves. The proofs marked `sound` in its table run again with the
   tracks on three helper threads, and the song left alone is held to the same
   sound on none and on three. `nextscene_test --only NAME...` runs just
@@ -915,7 +1135,8 @@ effect in those two groups and fails one that does not.
   (`testTheHintsFitAndSayWhatTheyDo`) holds the SONG screen and the drum grid
   to 0 with either help (pit stop, 2026-11-14: SONG's cell leaves mute and
   solo to the head, the drum grid lists a hit's own jobs on a hit and the
-  brushes on an empty step). **The piano roll on a note is still 48 to 69
+  brushes on an empty step). JAX-EP's MAIN and five pages are held to 0 at
+  every stop, A held and not (`testJaxepsHintsFit`). **The piano roll on a note is still 48 to 69
   pixels over** (its help is not drawn): not mended.
 - **With X held on a hit, a note or a chord, each button's chip stands under
   the field it sets** (owner, 2026-11-12; `ui::hintsUnder`): no word, the
@@ -950,9 +1171,9 @@ effect in those two groups and fails one that does not.
     at every size: the top bar (and the tempo's box), the hints bar and
     `hintsUnder` (inside `ui.cpp`: hand them the set you were given), the
     strip under the drum grid and under the piano roll (`tight` in both),
-    anything written over a little picture (a cell's bar count on SONG, a
+    anything written over a little picture (a
     recording's seconds in the list), the heads of narrow SONG columns, the
-    controls setup, the offer at the start (`ui::relearnOffer`). The tests that read a strip or a bar off the screen
+    controls setup. The tests that read a strip or a bar off the screen
     draw at LARGE and hold at every size for that reason.
   - **Everything else follows the setting, and a new text is checked at XL.**
     Where it would not fit its room at XL it is drawn with
@@ -1060,6 +1281,99 @@ effect in those two groups and fails one that does not.
   pitch, ratchet, reverse, cut. Hold X on a hit sets them. In a song file they
   are `stepfx` lines (`fx` is an effect in a slot: the first try clashed).
   A ratchet waits in one `Pending` slot that re-arms itself.
+- **FEEL is two amounts on each drum LANE, and it is live** (owner, 2026-11-14; built on branch
+  `feel`, 2026-11-15; `engine/include/apotheca/feel_rule.hpp`, `LaneFeel`): HUMAN TIME and
+  HUMAN LEVEL, 0..100, a chord's six clicks (`kAmountAt`) and a chord's two "mosts"
+  (`kHumanTimeMs` 12, `kHumanLevelMost` 0.15). Nothing is written into the hits. A hit on a
+  main beat (steps 1, 5, 9, 13: `feelOnBeat`) moves half as much (`kFeelBeatShare`), in time and
+  in level. **Nobody has listened to it**: the tests measure where each hit lands and how loud.
+  - **Every roll is worked out from where and which time** (`feelSeed(track, lane, bar of the
+    cell, step, steps since Play)`): never a generator walked, never the scene's number
+    (`nextscene_test`'s `fill` has three felt lanes, and fails if the seed takes the song's bar).
+  - **A lane with both at 0 takes the path it always did** (`schedule`, `playHit`): old songs
+    are the same to the bit (`effects_test --print` the same before and after, and a busy drum
+    song with nudges, ratchets, chance, throws, a DUCK, tempo changes and a Play-once gave one
+    checksum on `main`'s engine and this one).
+  - **A lane with HUMAN TIME has every hit asked a step ahead** (`askAheadHits`: the roll may
+    bring it early), and the track keeps that it was (`Track::feelAsked`, the step's number, as
+    `chordAsked`): the hit is not begun again on its own step, whatever the lane says by then.
+    Without it a feel turned while the song played lost hits or played them twice
+    (`testTurnedWhilePlaying`). Play clears it; a track taken away puts the lane at rest.
+  - **Everything a felt hit times is a whole number of samples** (the wait, `std::ceil`; a
+    ratchet's gap, `std::floor`), so it is the same at any block length. A plain lane's nudge and
+    ratchet are still a part of a sample long, as they always were: `feel_test`'s block test
+    gives the lanes with HUMAN LEVEL alone no nudge and no ratchet for that reason.
+  - The song's first step has no step before it: an early roll lands on the top. Played once
+    (a bounce, AT END STOP) the last step asks nothing of the first, as for chords.
+  - **Asked again** (a scene move, AT END switched on the last step: `askAgain`): a felt hit
+    counts from the sample its asking step began on (`std::floor(elapsed)`), so it comes on the
+    very sample it would have. One that has not sounded gives its mark back and may be asked
+    again; **asked again after its early moment has gone by, it comes on its step** (a downbeat
+    a few ms late, not lost: `schedule` returns false, the mark is not set). One that has
+    sounded (`Pending::begun`) keeps its mark; its ratchet pieces still waiting go, as an early
+    hit's always did. **In a scene move the old scene's hit and the new one's on the same lane
+    and step are one roll** (the seed has no scene in it), so on the grid the hit is on the same
+    sample sounded or not, and giving the mark back shows only when AT END is switched: that
+    line's mutant is killed by `testAskedAgain`, not by any scene move (`nextscene_test` does not
+    see it; `feel_test` `testASceneMoved` holds the rest of the path beside a song built with the
+    scene in it: the sample counted from, and a felt hit WRITTEN early whose moment has gone by,
+    which is not played late, as a plain one is not).
+  - **CHANCE is still the walked dice** (`dice_`), so a felt hit with a CHANCE that is asked
+    again rolls its chance again (as a nudged-early one always did), and from then on the song is
+    not "the song played straight through" in its chances. `fill` keeps the feel off its CHANCE
+    lane for that reason. Not mended: making chance a roll by place is a change to every song.
+  - **A run of slices moves as one, through the bar lines inside its cell** (`feelRunBack`): a
+    hit that starts further into its sound, with a hit on the step before it, takes the TIME of
+    the hit its run begins with, so slices in order still carry the sound on (`testSlices`: the
+    same samples, sooner or later, to the bit). Its LEVEL is its own (tested step by step). Moved
+    each by itself, every slice met the sound up to 24 ms off and cut it. **The run goes back
+    over a bar line of the same cell** (review, 2026-11-15: a two-bar break in order was cut at
+    its inner bar line in 4 rounds of 6; `testSlicesOverABarLine`), never from the cell's first
+    bar to its last: where the cell goes round a new run begins. `schedule` reaches the bars
+    before with `&scene - bar` (a cell's bars stand in a row in `SceneStore::drums`): **whoever
+    calls `schedule` hands it the bar of the CELL and that bar's own `DrumScene`.** The walk is
+    a step a slice: at most 127 for the last slice of an eight-bar break.
+  - **A tempo change keeps a felt hit's wait whole** (`Pending::whole`, `SetTempo`: the wait
+    `ceil`, a ratchet's gap `floor`): scaled to a part of a sample, the one hit waiting on each
+    felt lane came a sample sooner or later by the block length (review; `feel_test`'s block
+    test turns the tempo five times, at blocks of 1 to 333 and on three helpers).
+  - HUMAN LEVEL is held to 0.02..1: **a hit written at full only gets quieter** (as a chord's).
+  - Three waiting slots a lane are still enough (a ratchet running on, this step's hit, the next
+    step's): HUMAN TIME is never more than a quarter of a step (`kFeelMostOfStep`; at the
+    program's fastest, 240 BPM, 12 ms is under a fifth).
+  - **The app**: `TrackData::laneFeel`, `Session::setLaneFeel`, `Command::SetLaneFeel` (a = lane,
+    b = time, c = level). `sendSong` tells every drum lane's, at rest too. In a song file
+    `feel LANE TIME LEVEL`, a line of the kit's own for each lane, **left out when both are 0**;
+    under a synth track it is not taken; the numbers are held as doubles first. **In undo by
+    `soundMark` / `restoreSounds`** (as GLIDE FROM: not a pattern), the turns of one hold one step.
+  - **The gesture: X held on a lane's NAME** (`PatternScreen::feelHeld_`, as `fxHeld_` on a
+    hit): LEFT / RIGHT HUMAN TIME, UP / DOWN HUMAN LEVEL, a click each, stopping at the ends
+    (`app/lane_feel.hpp`); Y the dice (OFF, 10 or 25% of each, never none, never what it was);
+    A this lane's feel onto every lane (from OFF: all plain). **X there still hears the drum,
+    exactly as before** (`hearLaneHeld` on the press, `keepHearing` lets go): the one hold is
+    both, and a turn of the feel sounds nothing (the feel is the playing pattern's). L1 and R1 do
+    nothing while it is held (kept for SWING). **Y let go after X is not a tap** (`yDidSomething_`
+    is set by the dice): it rolled the lane's hits, and on a hit it stepped the chance. **A or Y
+    pressed while X was held does nothing of its own if X is let go first** (`aSpent_`,
+    `ySpent_`, until the button comes up; a hit's THROW and dice too): with A still down the
+    D-pad turned the lane's volume, with Y it rolled the lane's hits (review, 2026-11-15;
+    `testXLetGoFirst`). The directions move the cursor meanwhile.
+  - **The name's one-line summary gives way to what is said on its row** (`said()`: why L1 opened
+    no slices on a built-in drum): the two were drawn one over the other.
+  - The strip's fields and their chips share `kFeelTimeX`, `kFeelLevelX`, `kFeelAllX`
+    (`pattern_layout.hpp`); EVERY LANE reads COPY, or THE SAME once they are. With X up the name's
+    strip says the feel in one purple line. **The mark** (`drawFeelMark`, both views): at the left
+    of the name, the upper piece HUMAN TIME, the lower HUMAN LEVEL, purple.
+  - Tests: `tests/feel_test.cpp` (the engine: the rule by hand, each hit's place and level,
+    blocks, helpers, Play twice, once, turned while playing, slices, DUCK and THROW, asked
+    again) and `tests/feelapp_test.cpp` (the gesture, the strip off the drawn screen, the song
+    file, undo, a song sent again, a bounce, X still hearing, the stick's pace, X let go first).
+    `feel_test testTime testSlices` runs just those. `textsize` holds the name's line and the
+    held strip as tight rows. SWING is not built.
+- **An `Engine` is 1.4 MB: a test does not stand many on the stack.** `engine_test`'s
+  `testNudgeMovesAHitOffTheGrid` had six in one frame, 8.37 MB of the 8 MB there is, with 20 KB
+  to spare by luck; an Engine a kilobyte bigger (FEEL) and it crashed one run in three, before
+  `main` printed anything. Five of them are on the heap now. `testLaneLevel` has five (6.98 MB).
 - **Note effects are two bytes on a note** (`NoteEvent::ratchet`, `glide`; a
   chord has `ratchet` and its own five, next rule). They reach the engine in `Command::e` (low byte
   the ratchet, +256 a glide, and `glide << 11` for a length other than half a
@@ -1269,20 +1583,96 @@ effect in those two groups and fails one that does not.
   Moving OFF the middle with a one-line note held still cuts it, once.
   `phazed_test` (`testDetuneThroughTheMiddleKeepsTheNote`).
   **A note that begins on the kept twin is trimmed 3 dB more**
-  (`kTwinInTuneTrim`, `trimInTune`: its lines start in tune and in phase; a
+  (`kDoubleInTuneTrim`, `trimInTune`: its lines start in tune and in phase; a
   legato part never falls silent and stayed 3 dB up), from that note's start,
   given back when DETUNE leaves the middle. Never taken as DETUNE merely
   reaches the middle: a held note fell to 0.61 of itself. 0 turns it off (the
   owner's call: a twin's short notes just off the middle are 1.2 to 3 dB up
   too, as on `main`).
-- **QMOD's `setMacro` returns early on the value it has**, as Phazed's and
-  Twin's do: its `apply()` is the whole wiring again, about 1 us
+- **QMOD's `setMacro` returns early on the value it has**, as Phazed's
+  does (JAX-EP's does not; `bench` times it): its `apply()` is the whole wiring again, about 1 us
   (`Qmod::applied()` counts them for `qmod_test`).
 - **Phazed's glide is the CZ's portamento given a rate**
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played
   with.
-- **A recording's name may carry one folder**: `kicks/808`. Everything that
+- **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
+  plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
+  folder with the cursor (always the middle column), and what is under the cursor.
+  `rowsAt(depth, folder)` is the one place a column's rows are made (0 SAMPLES: the first row,
+  UNSORTED if anything is loose, the folders; with no folders at all, the recordings
+  themselves: `flat()`). **A D-pad press puts the recording on at once; rows going by faster
+  than one every `kAtOnceMs` (the stick, a D-pad held past `kFasterAfterMs`) do not: the one
+  rested on does** (each is a file read from the card). A, X and B go by what is SHOWING or
+  what was on (`on_`), never by the cursor alone. A folder puts nothing on. Deleting a
+  folder's last recording leaves the folder (an empty folder is deleted by itself: batch 2).
+  Its places are constants in the header; `sample_test` (`testFoldersInTheSamplePicker`,
+  `testThePickersPace`) and `textsize_test` (every place it can be, the hints at 0 over).
+  **The still `picker-deleting` holds B over a real file**: main.cpp takes its picture at
+  600 ms, before the second is up (`picker-folder-deleting` the same, over a real FOLDER).
+  - **It changes the card too** (batch 2, 2026-11-15): `Session::moveSample`,
+    `makeSampleFolder`, `deleteSampleFolder`, each a `Session::FileJob` (Done, Same, TooLong,
+    Taken, NotEmpty, Failed), reached through the list's `Jobs`. The list never touches a file.
+  - **Hold R1 on a recording carries it** (`kCarryHoldMs` 300, or at once with a direction or
+    the stick). So **R1 on a recording pages when it is LET GO**; on any other row at once.
+    While carried nothing goes on the lane (`arrive` returns), A, X and Y do nothing, and the
+    top line says CARRYING TO place: name (`carryTo()`: the folder under the cursor, else the
+    folder showing; SAMPLES itself is "out of every folder", which is how a recording leaves
+    when UNSORTED is not listed). B with R1 held calls it off. A let-go the list never saw
+    (`update`: R1 not held) calls it off too: nothing moves without a let-go that was seen.
+  - **A move is `moveSample`**: the file renamed with the ending it had (written again and the
+    old one taken away where the card will not rename, as the page does:
+    `Transfer::renameBroken` is the tests' such card), then `recordingChanged` (the name only),
+    `savedSongsFollow`, `saveNow`. Nothing is written over, capitals not counted; the folder
+    must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
+    list's `original_` and `on_` follow, so B's tap is still "as it was".
+  - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
+    folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
+    opens the keys a track's name is typed with (the list's own copy: `typeButton`,
+    `drawTyping`; SettingsScreen's was not touched), twelve letters, made in SMALL letters,
+    a space at the end dropped. **While typing every button is the list's, START too**
+    (`picker_.typing()` in the kit's and the sampler's `onButton`); the still `picker-typing`
+    is therefore not given the demo's START, which would make the folder.
+  - **Hold B on a folder deletes it only if it is empty** (`emptyFolder`: no recording under
+    it, no folder in it), by `rmdir`, so a folder holding a file that is no recording stays and
+    the top line says NOT DELETED: OTHER FILES ARE IN IT.
+  - What was done, or why not, is on the top line for `kSaidMs` (`said()`).
+  - On a recording the bar says HOLD R1 carry where it said L1 / R1 page: it holds five.
+  - `tests/picker_test.cpp` (real files; the saved song and rev byte for byte; the list by
+    itself with jobs that count), `textsize_test` (each state drawn, the bar's words).
+  - **The review's mend (batch 3, 2026-11-15):**
+    - **Big moves.** The stick is `kStickRowsPerSecond` 80 times its setting, by the SQUARE of
+      the push (a little push reads each name). A held D-pad has a third pace
+      (`kFastestEveryMs` 20 after `kFastestAfterMs` 3.5 s), counted from when each row was due
+      (several a frame; a stall makes no burst). **L1 held pages on, and R1 where it does not
+      carry.** 500 rows: the stick 8.3 s, DOWN held 12.6, L1 held 5.5 (each was 33 or more).
+    - **Hold R1 carries only where there is a folder to carry to** (`carries()`: not `flat()`).
+      Let go where it was: LEFT WHERE IT WAS.
+    - **Hold B on a folder that is not empty says so** after `kHoldSaysMs` (NOT DELETED: IT IS
+      NOT EMPTY), and letting go is then no tap. A tap still closes.
+    - **`moveSample` answers `NotSaved`** when the file moved but a saved song that names it, or
+      the open song, could not be written (`savedSongsFollow`'s `failed`, `saveNow` is a bool);
+      the list shows it moved and says MOVED, BUT A SONG COULD NOT BE SAVED WITH ITS NEW PLACE.
+    - **A column's rows are made when the place or the card changes, never per frame**
+      (`index()` counts each folder once; `side()` keeps the two columns beside the cursor's;
+      `rowsMade()` is the tests' count). Whatever changes `all_` or `dirs_` calls `index()`.
+    - **While a folder's name is typed L2 / R2 and MENU's help are the list's too**
+      (`App::typingAFolder`).
+    - **`wavNames` lists only what `sampleNameOk` takes** (a file of 64 letters or more is not
+      offered: resting on it put a cut name on the lane).
+    - **On the WiFi page a file in a folder may be as long as a loose one** (60 with its ending;
+      the whole still 63): held to 36, a long recording carried into a folder on the handheld
+      was gone from the page, which then refused to delete it. The page's script changed with it
+      (tried in a browser, 2026-11-15).
+    - **Not mended: the freeze on a carry let go** (`savedSongsFollow` reads every saved song and
+      rev on the app thread, as a rename on the page does). Doing it a file a frame means a
+      switched-off handheld can leave songs naming the old place: the owner's call.
+- **A recording's name may carry two folders** (owner, 2026-11-14; it was one):
+  `kicks/808`, `drums/kicks/808`. `sampleFolderOf` is ALL of the folder (`drums/kicks`),
+  `sampleLabel` the last part; a song file's one-folder name is still a name. The whole name
+  fits `kSampleNameRoom` (63 letters), on the WiFi page too (`safeSamplePath` ends in
+  `sampleNameOk`; each folder 24, the file 60 with its ending, in a folder or out). `wavNames` lists two levels, `wavFolders`
+  the folders (empty ones too). The page's folder import still makes one level. Everything that
   takes a name from outside (a song file, the WiFi page, delete) checks it
   with `sampleNameOk` or the page's `plainName`. Show `sampleLabel(name)`.
 - **THROW is a value on a hit, a note or a chord** (`throwTo`: 1 ECHO, 2
@@ -1292,11 +1682,59 @@ effect in those two groups and fails one that does not.
   `note` (the nudge is then written even at 0), the third of `chordfx` (the
   ratchet is then written even at 1). A chord's THROW is every key's.
 - **Mute is its own gate** (`SetTrackHeard`), not the track level.
+- **A head's M or S mark is a box made to its letter** (`SongScreen::headMarkWidth`: the letter at the
+  heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
+  stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)
+  the number is centred in the room left of it, clear of the mixer's mark. Stills `song-marks`, `-12`.
+- **Solo is L1 HELD on a track** (`SongScreen::kSoloHoldMs`, 400 ms, fired once in `update()`; owner,
+  2026-11-14: a tap of L1 soloed a track by mistake too easily). A tap does nothing; a hold carried to
+  another track, or with the mixer or a list up, is called off. Y's mute is still at once. The head's
+  hint for R1 reads "change" (its instrument) so the bar holds HOLD L1.
+- **AT END: a song played as a song LOOPs (as it always did) or STOPs**
+  (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
+  song file `songend 1` among the song's own lines (`cutSong` knows it),
+  **left out at LOOP**, so a looping song is written as before and an old
+  program plays it round. In undo with the song (`restorePatterns`); told to
+  the engine by `syncSong` (`Command::SetSongEnd`, `sentSongEnd_`, live: it
+  may be switched while the song plays). **LOOP is the engine as it was, to
+  the bit** (`effects_test --print` and a busy song against `main`, the
+  same). STOP: the engine asks nothing early of the top at the last step
+  (`playsOnce()`, as a bounce's `once_`), and on the first sample of the step
+  after the last step of scene `sceneCount_` (its last time round) it stops
+  exactly as `Command::Stop` does (`stopPlaying`, `songEndsNow`, checked in
+  `render()` before anything of that sample). Not for a scene alone, not for
+  a bounce (`once_`: it stops itself, so a STOP song bounces to the same
+  file). **The engine says it stopped, the app does not guess**: it counts
+  the Plays it takes (`playsTaken_`) and keeps the one that ended in
+  `songEnded()`; the Session counts the Plays it sent (`playsSent_`) and
+  takes `project.playing` down only when the two are equal, so a START
+  pressed just after the end is never lost. The place: the PLAYS box of the
+  first empty row (`SongScreen::songEndRow`, `onSongEnd`) shows a loop arrow
+  (dim) or a square (brass); A switches, B puts LOOP back; that box had a
+  repeat count of a scene with nothing in it, which it no longer shows.
+  Tests: `tests/songend_test.cpp`; stills `song-end-loop`, `song-end-stop`.
+  - **A `songend` number nobody knows is LOOP** (`songEndKind`), as an unknown
+    GLIDE FROM is TOP: a later program's third choice plays round here.
+  - **Where the song stops is a bar line for Catch** (`Engine::barLine`, called
+    by `fireStep` and before `stopPlaying` in `render()`): a bar's end is
+    marked where the next begins, and a stopped song begins none. Without it
+    Catch after the end gave the bar before the last. (A Stop by hand exactly
+    on a bar line still gives the bar before: as on `main`.)
+  - **AT END switched during the song's LAST step asks that step again**
+    (`askAgain(true)` from `SetSongEnd`, only when `playsOnce()` flips and only
+    on that step): to LOOP, the top's early hits and notes are asked for (it
+    is LOOP all along, to the bit, if none was due yet); to STOP, those not
+    yet begun are taken back. On any other step, or told what it already is,
+    nothing is asked again: a ratchet's waiting pieces would be dropped.
+  - **Only Plays that went are counted** (`togglePlay`: not a Stop, not a
+    Play lost to a full queue), and `playsSent_ != 0` keeps a play mark set
+    by hand in the tests ("as if playing") from being taken down.
 - **The mixer (owner, 2026-11-14): hold A on a track's head on SONG, or on
   MASTER (the head right of + TRACK), and UP / DOWN is LEVEL, LEFT / RIGHT PAN;
   B with A held puts both back.** A tap of A on a head still names the track:
   it acts on letting go, as on a cell, and **only if no other button was
-  pressed while A was held** (`mixTurned_`); while A is held on a head every
+  pressed while A was held** (`mixTurned_`) **and it was let go before the card came up**
+  (`kMixCardMs`, 300 ms: `mixShown_`; owner, 2026-11-14: a look at the level opened the keyboard); while A is held on a head every
   other button but START does nothing (Y there muted the track under the
   card). **A pressed while B's delete is filling calls the delete off**, on a
   head and on a cell (`update()`), and is then no tap. `TrackData::mixDb` (whole dB from the
@@ -1402,6 +1840,17 @@ effect in those two groups and fails one that does not.
   two, for trying a change); `ctest` runs them all. `through()` there hits a
   drum five times a second, lanes 1 and 8, so the checks for every effect
   reach DUCK; no other effect hears it.
+- **The measuring tools are one copy, in `tests/measure.hpp`** (JX-3P plan,
+  batch 0): a tool that reads a run of samples and knows no Effect or Synth
+  goes there, not into a test program of its own. Moved out of `effects_test`
+  unchanged: `--measure` and `--print` gave the same lines before and after
+  (but for the block timings). The older copies in `engine_test`
+  and `phazed_test` are other tools under the same names
+  (interleaved buffers, int places) and were left. Batch 2 added `partNear`
+  (one frequency through a window, any pitch), `spectrumOf` and `asideOf`
+  (an oscillator's aliasing: the loudest part that is not a harmonic, under
+  a frequency). **A band-limited wave's zero crossings are not its pitch near
+  the top** (its ringing crosses too): read it through `bandOf` first.
 - **Numbers measured from today's effects are written in `effects_test` as
   comments and checked** (`--measure` prints them). A new effect's row in the
   plan's testing table is checked with the same tools.
@@ -1414,7 +1863,9 @@ effect in those two groups and fails one that does not.
 | --- | --- |
 | Phazed, 8 notes | 0.9% of a core |
 | QMOD, 8 notes | 2.6% |
-| Twin Analog x1 / x2 / x8, 8 notes | 4.7% / 9.1% / 34% |
+| JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
+| JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
+| JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
@@ -1442,12 +1893,14 @@ effect in those two groups and fails one that does not.
 | ...BLOOM turned all the while; SHIMMER at 0, or its DECAY turned all the while | 0.66 to 0.67%; 0.34 to 0.35% / 0.39 to 0.40% |
 | ...TAPE and PLATE on the buses of twelve busy drum tracks (TAPE and HALL 0.28 to 0.39% in the same runs) | 0.28 to 0.42% |
 | Everything at once on twelve busy drum tracks: every hit thrown to both buses, sends up, TAPE and HALL on them, a DUCK on each track (2026-11-12; the tracks themselves 1.44%, DRIVE 0.12%) | 1.70% |
+| FEEL on every lane of twelve busy drum tracks, HUMAN TIME and HUMAN LEVEL at 100% (2026-11-15, three runs: the tracks themselves 1.47 to 1.48%, DRIVE 0.12%; the same plain song measured again read -0.03 to +0.04) | 0.10 to 0.11% more; HUMAN TIME alone 0.08 to 0.11; HUMAN LEVEL alone nothing that shows |
 | The step clock alone, eleven silent synth tracks, four plain chords of four keys a bar on each (2026-11-12; 0.68% before chord effects: the cost is looking through each track's waiting notes every chunk) | 0.69 to 0.72% |
 | ...every chord WIDE STRUM, RANDOM, the three human amounts at 100%, x4 | 1.22% |
 | ...every chord an arpeggio at 1/4 step, RANDOM, human at 100% | 1.14% |
 | ...plain chords, two gliding notes after each, the tracks' GLIDE FROM at TOP / PAIRED / NEAREST / RANDOM (2026-11-13, three runs; plain chords alone 0.71 to 0.75% in them, 0.71 to 0.76% just before GLIDE FROM) | 0.71 to 0.72% each: the choice costs nothing that shows |
 | The busiest song (`bench_run.cpp`, `busiestSong`: 12 tracks, chords, throws, three effects a track, buses) in real time, 256-frame blocks: the audio thread alone / with 2 helpers (2026-11-14; SPEED TEST shows both, so the handheld can say whether the helpers carry it; **not yet run on the handheld**) | 19.9% / 13.5% of a block, worst block 2.98 / 2.75 ms of 5.33 |
-| A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin. The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
+| ...the same song with its two Twin Analog tracks (x2) now two JAX-EP tracks on A1 (2026-11-15, three runs after; one run before on the same desk that day read 23.0% / 13.8%). The figures above are the old song's. **Not yet run on the handheld** | 19.6 to 21.1% / 11.6 to 14.2% of a block, worst block 2.92 to 5.95 / 3.96 to 6.08 ms of 5.33 (a shared desk: 0 to 2 blocks of 1875 late) |
+| A macro changed, the synth alone, 8 notes held, a call (MOD batch 0, 2026-11-14; Phazed 8 notes 0.7%, QMOD 2.8%, DRIVE 0.12% in the same run): Phazed / QMOD / Twin Analog (gone since; `bench` now has JAX-EP's row in its place, not yet recorded here). The same value: 0.002 us each | 0.36 / 0.95 / 0.05 us: 24 MODs on QMOD macros 0.21% of a core at a 512-sample tick, 1.71% at 64 |
 | MODs worked out, twelve silent drum tracks, on the sends (MOD batch 1, 2026-11-14, two runs; Phazed 0.7%, QMOD 2.8%, DRIVE 0.12% in them): 1 MOD / 24 MODs, over none | +0.028% / +0.096% (over the plan's 0.02% / 0.03%: for its cost batch) |
 | 24 MODs on macros RUN through the engine, twelve silent tracks of the synth, a SINE and a STEPPER each (2026-11-14, two runs, a build beside them): QMOD / Phazed, over none | +0.26 to +0.27% / +0.15 and +0.36% (twelve silent Phazed tracks are 2.3 to 2.4% by themselves: noisy) |
 | Chunks a second, the busiest song: no MOD / a MOD on (one or 24) | 1030 / 1285. The song's own time with them is within the desk's noise (21.7 / 24.3 / 22.5% alone in the quieter run) |
@@ -1456,19 +1909,29 @@ effect in those two groups and fails one that does not.
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
 | ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
 
-**Twin Analog is the costly one**, and its time is spread over plain
-arithmetic with no single hot spot. Do not "optimise" it blind: any change
-there is a change to the sound, and needs the owner's ears.
+**QMOD is the costly synth now** (Twin Analog, at 4.7% and up, is gone:
+batch 8b). **No synth has a quality setting and nothing watches the load**:
+`Instrument::setQualityLimit`, `Engine::watchLoad` / `qualityLimit` / `load`
+/ `noteLoad`, `Project::busy` and the top bar's BUSY: OVERSAMPLING DOWN went
+with Twin, their only user. A song too heavy for the handheld stutters; SPEED
+TEST's busiest song is how to see how near one is. If a synth ever needs the
+watch again, it is in git (the commit before batch 8b).
 
 ## Next, in the owner's order
 
-1. The effects plan (`docs/plans/effects-plan.md`): sends, THROW and DUCK are built and joined; of the later set PING is built (branch `fx-ping`, to be joined); the seven families and the FX page to the hints bar are built (branch `families`, to be joined), of their fifteen new types COMB, VOWEL, EQ, FOLD, FUZZ, RING, WEAR, LIMITER and SNAP are built (branch `newfx`), FLANGER, ENSEMBLE, PHASER, TREMOLO, DUB, REVERSE, STUTTER, BLOOM and SHIMMER (branch `newfx2`): all fifteen.
-2. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); batch 3 (the DEVICE knob) next, once the owner has seen its still.
+1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
+2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
+3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); batch 3 (the DEVICE knob) next, once the owner has seen its still. **Joined with `main` (2026-11-15)**: FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
+4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
+5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).
+7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
+6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 
 Open: which chord packs ship, more presets, own WiFi hotspot, an automation
-step-editor, a picture of QMOD's wiring. **Rethink Twin Analog** (owner,
-2026-11-11): it has more features than it needs and is the costly synth; cut
-it down rather than tune it. **Decided (owner, 2026-11-13): Twin Analog becomes a
-faithful Roland JX-3P clone**, which is what it was meant to be; it grew past that
-in VCV Rack. Queued after the pit stop. The engine stays at 48 kHz: 44.1 would save about
-8%, which the owner judged not worth it.
+step-editor, a picture of QMOD's wiring. **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
+becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
+clone is JAX-EP, built in batches 0 to 8c of `docs/plans/jx3p-plan.md` on
+branch `jx3p`; each batch's "what it learned" is there. The owner's calls
+(plan section 8) are taken at the recommended answers, each one constant in
+`jx3p.hpp` ("THE OWNER'S CALLS") or one named place. The engine stays at
+48 kHz: 44.1 would save about 8%, which the owner judged not worth it.

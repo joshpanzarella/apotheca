@@ -452,7 +452,7 @@ static void testEachMacroDoesItsJob() {
     });
     CHECK(checked >= 3);
     // A sound with ONE line has nothing to detune against. Off the middle it
-    // is given a twin of its line, so the macro does something there too:
+    // is given a copy of its line, so the macro does something there too:
     // both ways, differently, and at about the loudness it had.
     std::atomic<int> ones{0};
     forEachPreset([&](int preset) {
@@ -543,7 +543,7 @@ static void testDetuneThroughTheMiddleKeepsTheNote() {
         const double after = rmsOf(heard[0][2], 11025, 22050) / rmsOf(heard[1][2], 11025, 22050);
         if (std::getenv("DETUNE_PRINT")) std::printf("preset %d: through the middle %.3f, after %.3f of the twin left alone\n", preset, middle, after);
         // Not cut (it was a tenth), and not turned down either: the trim for lines in tune
-        // (kTwinInTuneTrim) is taken when a note BEGINS at the middle, never from a held note
+        // (kDoubleInTuneTrim) is taken when a note BEGINS at the middle, never from a held note
         // (taken there, this was 0.61 to 0.80). Louder is the slow beat of the two lines in
         // another place.
         CHECK(middle > 0.82); // 0.859 the least (preset 55), 1.097 the most
@@ -765,7 +765,7 @@ static double rmsMono(const std::vector<float>& v, std::size_t from, std::size_t
 // A legato part (each note on before the last is let go) never falls silent, so a twin kept at
 // DETUNE's middle is never sent back to one line while it plays. Its notes, begun on two lines in
 // tune, sum in phase: they were 3 dB over the patch (review, 2026-11-14) until the kept twin was
-// trimmed 3 dB more (kTwinInTuneTrim). Now as loud as DETUNE never moved, as on main once the cut
+// trimmed 3 dB more (kDoubleInTuneTrim). Now as loud as DETUNE never moved, as on main once the cut
 // was over. DETUNE goes 0.52 to 0.5 at the fifth note; heard 5 to 10 s in. The trim is taken as
 // the first note begins at the middle, and given back when DETUNE leaves it.
 static void testALegatoPartAtTheMiddleIsAsLoudAsTheMiddle() {

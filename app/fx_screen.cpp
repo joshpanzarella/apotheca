@@ -75,6 +75,22 @@ bool changeEffectType(Session& session, int track, int slot, EffectKind to) {
     return true;
 }
 
+bool switchEffectType(Session& session, int track, int slot, EffectKind to) {
+    if (slot < 0 || slot >= slotsOf(track)) return false;
+    const EffectData was = session.effectData(track, slot);
+    float back[kEffectParams];
+    const bool known = session.rememberedType(track, slot, to, back);
+    if (!changeEffectType(session, track, slot, to)) return false;
+    session.rememberType(track, slot, was);
+    if (known) {
+        const bool writing = session.writing();
+        session.setWriting(false); // not the player moving a knob
+        for (int i = 0; i < effectInfo(to).params; ++i) session.setEffectParam(track, slot, i, back[i]);
+        session.setWriting(writing);
+    }
+    return true;
+}
+
 // ---- trying an effect with A held ----------------------------------------------------------
 //
 // With A held on a slot's line the list of effects is open, and up / down / left / right try what the cursor
@@ -87,13 +103,18 @@ namespace {
 // What a slot holding `start` would hold with `to` put in by the list of effects: `to` itself, with the
 // settings it shares with `start` carried by name (another type of the same family), or at its usual
 // settings (another family; its first type's carried to the type picked, as stepping there always did).
-EffectData wouldGoIn(const EffectData& start, EffectKind to, bool onBus) {
+// Another type the slot remembers (`remembered`, else nullptr) comes as it was left: switchEffectType.
+EffectData wouldGoIn(const EffectData& start, EffectKind to, bool onBus, const float* remembered) {
     EffectData d;
     d.kind = static_cast<int>(to);
     const EffectKind from = static_cast<EffectKind>(start.kind);
     if (to == from) return start;
     if (to == EffectKind::None) return d;
     if (from != EffectKind::None && std::strcmp(effectFamily(from), effectFamily(to)) == 0) {
+        if (remembered) {
+            for (int i = 0; i < kEffectParams; ++i) d.param[i] = i < effectInfo(to).params ? remembered[i] : effectDefault(to, i, onBus); // (past its settings: as setEffect leaves them)
+            return d;
+        }
         effectCarry(from, to, start.param, onBus, d.param);
         return d;
     }
@@ -156,7 +177,9 @@ void FxScreen::startTrying() {
 void FxScreen::tryKind(EffectKind kind) {
     if (tryRow_ < 0) return;
     const EffectData& start = session_.effectData(tryTrack_, slotOf(tryRow_));
-    tried_ = wouldGoIn(start, kind, busOf(tryRow_) >= 0);
+    float remembered[kEffectParams];
+    const bool known = session_.rememberedType(tryTrack_, slotOf(tryRow_), kind, remembered);
+    tried_ = wouldGoIn(start, kind, busOf(tryRow_) >= 0, known ? remembered : nullptr);
     if (!away_ && sameEffect(tried_, start)) return; // (the engine has it already)
     holdAutomation(true);
     sendSlot(tried_);
@@ -183,7 +206,7 @@ void FxScreen::letGo() {
     tryRow_ = -1; // (data() is the project's again)
     away_ = false;
     if (to != EffectKind::None && from != EffectKind::None && std::strcmp(effectFamily(from), effectFamily(to)) == 0) {
-        changeEffectType(session_, track, slot, to); // the settings the two share, and their automation, go with it
+        switchEffectType(session_, track, slot, to); // the settings the two share (or its own, remembered), and their automation, go with it
     } else {
         const EffectKind first = to == EffectKind::None ? to : effectTypeAt(to, 0);
         session_.setEffect(track, slot, first); // (its automation is cleared: it meant nothing to this one)
@@ -319,7 +342,9 @@ void FxScreen::press(Button b) {
             if (b == Button::Down) goTo(row_ + 1, 0);
             if (b == Button::Right && settings(row_) > 0) goTo(row_, last_[row_]);
         } else {
-            // In the settings: up and down through them (the ends stop); left back to the list.
+            // In the settings: up and down through them (the ends stop); left is back to the list, from any
+            // of them; right does nothing. The slot's TYPE is switched with A HELD (below): owner, 2026-11-14,
+            // LEFT doing two jobs (the type before, but the list from the first setting) was awkward.
             if (b == Button::Up && column_ > 1) goTo(row_, column_ - 1);
             if (b == Button::Down) goTo(row_, column_ + 1);
             if (b == Button::Left) column_ = 0;
@@ -348,7 +373,12 @@ void FxScreen::press(Button b) {
         if (!project_.playing) hear();
         return;
     }
-    if (!upDown) return;
+    if (!upDown) {
+        // A held on a setting, LEFT / RIGHT: the slot's TYPE before / after, in the same grip that turns the
+        // value with UP / DOWN (as LEFT / RIGHT is the TYPE with A held in the list). The ends stop.
+        if (!sends(row_) && stepType(b == Button::Right ? 1 : -1) && !project_.playing) hear();
+        return;
+    }
     const int by = b == Button::Up ? 1 : -1;
     if (sends(row_)) {
         // A send: a twentieth at a push.
@@ -435,6 +465,30 @@ void FxScreen::onButton(const ButtonEvent& event, const Input& input) {
     }
 }
 
+bool FxScreen::stepType(int by) {
+    if (sends(row_)) return false;
+    const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
+    const EffectKind next = effectTypeAt(kind, effectTypeIndex(kind) + by); // (None past an end, and for nothing)
+    if (next == EffectKind::None || kind == EffectKind::None) return false;
+    if (!switchEffectType(session_, trackOf(row_), slotOf(row_), next)) return false;
+    goTo(row_, column_); // the row stays (one the new type does not have: its last)
+    return true;
+}
+
+const char* FxScreen::typeKeyFor(int column, int types, int at) {
+    if (column < 1) return nullptr; // the list. (A family of one: neither way is true, so no key.)
+    const bool right = at + 1 < types, left = at > 0;
+    return left && right ? "LEFT / RIGHT" : (right ? "RIGHT" : (left ? "LEFT" : nullptr));
+}
+
+// With A held on a slot's setting: the direction(s) that switch its TYPE, or nullptr (not held, the list,
+// SENDS, a family of one).
+const char* FxScreen::typeKey() const {
+    if (!holding_ || column_ == 0 || sends(row_)) return nullptr;
+    const EffectKind kind = static_cast<EffectKind>(data(row_).kind);
+    return typeKeyFor(column_, effectTypes(kind), effectTypeIndex(kind));
+}
+
 // L1 / R1: the track before / after, on the same line and setting. It stops at the first and the last, as the
 // SONG screen's columns do. An effect being tried is called off first (it is the old track's).
 void FxScreen::stepTrack(int by) {
@@ -449,6 +503,7 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    // The RIGHT (D-pad or stick) that came in from the list is let go: RIGHT switches the TYPE from now.
     // Trying an effect with A held: A let go unseen, or the track changed under it: nothing goes in.
     if (tryRow_ >= 0 && (!holding_ || trackOf(tryRow_) != tryTrack_ || row_ != tryRow_)) callOff(), holding_ = false;
     // B held on an effect's line: the bar fills for a second, then the effect is deleted. Let go,
@@ -489,7 +544,8 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
             saved_ = 0.f;
             stickWas_ = false;
         } else {
-            saved_ += stickWas_ ? std::fabs(push) * (holding_ ? kKindsPerSecond : kMovesPerSecond) * dt : 1.f;
+            const bool kinds = holding_ || (sideways && typeKey() != nullptr); // (a TYPE from the settings: at the list's pace)
+            saved_ += stickWas_ ? std::fabs(push) * (kinds ? kKindsPerSecond : kMovesPerSecond) * dt : 1.f;
             stickWas_ = true;
             for (; saved_ >= 1.f; saved_ -= 1.f)
                 press(sideways ? (push > 0.f ? Button::Right : Button::Left) : (push > 0.f ? Button::Down : Button::Up));
@@ -498,7 +554,8 @@ void FxScreen::update(const Input& input, Uint32 nowMs) {
     if (repeating_ != Button::None && repeatAt_ == 0) {
         repeatAt_ = nowMs + kRepeatDelayMs;
     } else if (repeating_ != Button::None && input.held(repeating_) && nowMs >= repeatAt_) {
-        repeatAt_ = nowMs + (picking() ? 200u : kRepeatEveryMs);
+        const bool types = typeKey() != nullptr && (repeating_ == Button::Left || repeating_ == Button::Right); // a TYPE: a choice
+        repeatAt_ = nowMs + (picking() ? 200u : (types ? ui::kListEveryMs : kRepeatEveryMs));
         press(repeating_);
     }
 }
@@ -673,7 +730,7 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
         // Its types in a row; the one it is stands out. (MOD has one, CHORUS: it is named all the same.)
         std::vector<std::string> names;
         for (int t = 0; t < types; ++t) names.push_back(effectTypeName(effectTypeAt(kind, t)));
-        drawTypeRow(r, fonts, names, effectTypeIndex(kind), list);
+        drawTypeRow(r, fonts, names, effectTypeIndex(kind), list, typeKey());
     }
     if (list) outline(r, kPaneX - 1, kPaneY - 1, kPaneW + 2, kHeadH + 2, kBrass, 2);
 
@@ -737,7 +794,7 @@ void FxScreen::drawSlot(SDL_Renderer* r, const Fonts& fonts) const {
 
 // The heading's TYPE row: as many as fit about the one it is, "..." for the rest (six DELAYs at LARGE do not all
 // fit beside the key), and with A held the key that gives another. The room for the key is kept, held or not.
-void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& chosen, const std::vector<std::string>& names, int at, bool list) {
+void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& chosen, const std::vector<std::string>& names, int at, bool list, const char* key) {
     const int types = static_cast<int>(names.size());
     const float ty = static_cast<float>(kTypeRowY);
     int from = 0, to = types;
@@ -760,7 +817,8 @@ void FxScreen::drawTypeRow(SDL_Renderer* r, const Fonts& chosen, const std::vect
         tx += w + kTypeGapX;
     }
     if (to < types) fonts.small.draw(r, tx, ty, kTypeMore, kDim);
-    if (list && types > 1) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, "LEFT / RIGHT"), ty, "LEFT / RIGHT", kText);
+    if (list) key = "LEFT / RIGHT";
+    if (key && types > 1) drawKey(r, fonts, kPaneX + kPaneW - 12.f - keyWidth(fonts, key), ty, key, kText); // (its room is LEFT / RIGHT's, kept)
 }
 
 // A family's types on its line of the list of effects, ", " between: one row, or two at LARGE (pickRows).
@@ -797,6 +855,7 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     if (holding_) {
         if (column_ > 0) {
             hint("UP / DOWN", "turn it");
+            if (const char* key = typeKey()) hint(key, "type");
         } else if (!onSends) {
             hint("UP / DOWN", "effect");
             if (effectTypes(kind) > 1) hint("LEFT / RIGHT", "type");
@@ -811,8 +870,8 @@ void FxScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("START", project_.playing ? "stop" : "play");
     } else {
         hint("LEFT", "list");
-        hint("HOLD A", "turn");
-        hint("B", onSends ? "none" : "default value");
+        hint("HOLD A", !onSends && effectTypes(kind) > 1 ? "turn, type" : "turn"); // (with A held the bar says which way)
+        hint("B", onSends ? "none" : "default");
         hint("L1 / R1", "track");
         hint("START", project_.playing ? "stop" : "play");
     }

@@ -95,7 +95,7 @@ PhazedPatch fromPreset(const cz_preset_t& preset) {
     return p;
 }
 
-constexpr int kTwinTrim = -3; // dB, when DETUNE gives a one-line sound its twin
+constexpr int kDoubleTrim = -3; // dB, when DETUNE gives a one-line sound a second line
 // dB more once a note BEGINS on a twin kept at DETUNE's middle (keepTwin): its two lines start
 // together at one pitch and sum in phase, 6 dB over one line, not the 3 a detuned pair averages.
 // With it such a note is as loud as one line alone, as the middle always was. Taken at that
@@ -103,7 +103,7 @@ constexpr int kTwinTrim = -3; // dB, when DETUNE gives a one-line sound its twin
 // has its lines wherever their beat left them (3 dB on average), and a DETUNE only passing the
 // middle must not dip it. Given back when DETUNE leaves the middle. The CZ glides its volume
 // over 10 ms, so neither is a click. 0 turns it off (owner's call: review, 2026-11-14).
-constexpr int kTwinInTuneTrim = -3;
+constexpr int kDoubleInTuneTrim = -3;
 
 // ---- the macros: bend a copy of the patch ---------------------------------------
 
@@ -140,17 +140,17 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& level
     if (detune != 0.f || keepTwin) {
         // A sound with one line has nothing to detune against, and the
         // macro would do nothing at all. So off the middle, such a sound
-        // gets a twin of its line to tune (the machine's own "1 + 1'"
+        // gets a copy of its line to tune (the machine's own "1 + 1'"
         // mode), a little quieter so that two lines are about as loud as
         // one was. Any ring or noise setting is left out: it was not being
-        // heard with one line, and must not arrive with the twin.
+        // heard with one line, and must not arrive with the copy.
         if (t.line_select == CZ_LINE_1 || t.line_select == CZ_LINE_2) {
             if (t.line_select == CZ_LINE_2) t.line[0] = t.line[1];
             t.line_select = CZ_LINE_1_1;
             t.mod = CZ_MOD_NONE;
             t.detune_sign = 1;
             t.detune_oct = t.detune_note = t.detune_fine = 0;
-            levelTrim = kTwinTrim;
+            levelTrim = kDoubleTrim;
         }
         const int perNote = 60, most = 3 * 12 * perNote + 11 * perNote + 60;
         int amount = (t.detune_sign < 0 ? -1 : 1) * ((t.detune_oct * 12 + t.detune_note) * perNote + t.detune_fine);
@@ -286,7 +286,7 @@ void Phazed::apply(bool newSound) {
     twinByDetune_ = oneLine && panel.line_select == CZ_LINE_1_1;
     // The trim a note begun in tune asked for (trimInTune) stays while the twin is kept at the middle.
     inTuneTrim_ = inTuneTrim_ && keepTwin && macro_[phazed::Detune] == 0.5f;
-    if (inTuneTrim_) levelTrim += kTwinInTuneTrim;
+    if (inTuneTrim_) levelTrim += kDoubleInTuneTrim;
     cz_tone_t tone;
     cz_tone_from_panel(&panel, &tone);
     if (newSound) cz_synth_select_tone(&state_->synth, &tone);
@@ -325,11 +325,11 @@ void Phazed::lineBack() {
 }
 
 // A note about to begin on a twin still kept at the middle (others sound: a legato part): its two
-// lines will be in tune and in phase, so the twin is trimmed for that from here on (kTwinInTuneTrim).
+// lines will be in tune and in phase, so the twin is trimmed for that from here on (kDoubleInTuneTrim).
 void Phazed::trimInTune() {
     if (inTuneTrim_ || !twinByDetune_ || macro_[phazed::Detune] != 0.5f) return;
     inTuneTrim_ = true;
-    cz_synth_set_volume(&state_->synth, patch_.value[phazed::Level] + kTwinTrim + kTwinInTuneTrim);
+    cz_synth_set_volume(&state_->synth, patch_.value[phazed::Level] + kDoubleTrim + kDoubleInTuneTrim);
 }
 
 bool Phazed::sounding() const {

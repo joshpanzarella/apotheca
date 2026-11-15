@@ -185,11 +185,6 @@ TopBar topBar(SDL_Renderer* r, const Fonts& chosen, View view, const char* conte
     if (project.silenced) {
         fonts.small.drawRight(r, room - 6.f, textY, "SILENCED", kBrass);
         room -= fonts.small.width("SILENCED") + 16.f;
-    } else if (project.busy) {
-        // The handheld could not keep up with the sound asked of it, and has
-        // turned Twin Analog's oversampling down to stop the stutter.
-        fonts.small.drawRight(r, room - 6.f, textY, "BUSY: OVERSAMPLING DOWN", kBrass);
-        room -= fonts.small.width("BUSY: OVERSAMPLING DOWN") + 16.f;
     } else if (project.playing && project.playScene >= 0 && project.playScene < kMaxScenes) {
         const int right = static_cast<int>(room) - 6, w = 46;
         const int plays = project.playLoop ? 1 : project.repeats[project.playScene];
@@ -405,15 +400,6 @@ void hints(SDL_Renderer* r, const Fonts& chosen, const Hint* list, int count) {
     gHintsOver = over > 0.f ? over : 0.f;
 }
 
-void relearnOffer(SDL_Renderer* r, const Fonts& chosen, float part) {
-    const Fonts& fonts = chosen.fixed(); // a tight row: its words run the screen's width at LARGE
-    const int y = kScreenH - kHintsH;
-    fill(r, 0, y, kScreenW, kHintsH, kPanel2);
-    fill(r, 0, y, static_cast<int>(kScreenW * part), 3, kBrass);
-    fonts.small.drawCentered(r, kScreenW / 2.f, y + (kHintsH - fonts.small.capHeight()) / 2.f + 1.f,
-                             "BUTTONS NOT WORKING? HOLD ANY BUTTON FOR 2 SECONDS NOW TO SET THEM UP AGAIN", kBrass);
-}
-
 float hintDiceEndX(const Fonts& chosen, const char* dice) {
     const Fonts& fonts = chosen.fixed(); // the bar's own lettering, always LARGE
     return std::floor(hintsEnd(fonts) - kDie - 5.f - hintChipWidth(fonts, dice)); // (short of RESTART TO UPDATE when it is there)
@@ -482,17 +468,26 @@ void scopeStrip(SDL_Renderer* r, const Fonts& fonts, const Engine& engine) {
     int lastX = x + 1, lastY = kScopeMiddle;
     for (int i = 0; i < count; ++i) {
         const int px = x + 1 + (w - 3) * i / (count - 1);
-        const int py = scopeLineY(samples[i] * 1.5f);
+        const int py = scopeLineY(samples[i]);
         if (i > 0) SDL_RenderDrawLine(r, lastX, lastY, px, py);
         lastX = px;
         lastY = py;
     }
 }
 
-int scopeLineY(float sample) {
+// The line's height is the sample's size bent (to the power kScopeBend), not to scale: to scale, the
+// strip's 14 pixels a side showed a quiet recording as half a pixel (owner, 2026-11-14). Bent, a sound
+// 30 dB down stands 3 pixels and one 20 dB down 5, a louder sound is still taller, full scale is still
+// the edge and silence is still the middle line.
+float scopeBent(float sample) {
     const float s = sample < -1.f ? -1.f : (sample > 1.f ? 1.f : sample);
-    return kScopeMiddle - static_cast<int>(std::round(s * kScopeHalf));
+    const float size = std::fabs(s);
+    if (!(size > 0.f)) return 0.f; // (not a number: the middle too)
+    const float bent = std::pow(size, kScopeBend);
+    return s < 0.f ? -bent : bent;
 }
+
+int scopeLineY(float sample) { return kScopeMiddle - static_cast<int>(std::round(scopeBent(sample) * kScopeHalf)); }
 
 void trackName(const Project& project, int track, char* out, int size) {
     const TrackKind kind = project.tracks[track].kind;

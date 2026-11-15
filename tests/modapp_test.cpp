@@ -120,7 +120,7 @@ void testTheSessionHoldsAMod() {
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
-    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Qmod) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Twin));
+    CHECK(session.addTrack(TrackKind::Phazed) && session.addTrack(TrackKind::Qmod) && session.addTrack(TrackKind::Sampler) && session.addTrack(TrackKind::Jx3p));
     rig.settle();
     for (int t = 0; t < 5; ++t)
         for (int m = 0; m < kModsPerTrack; ++m) CHECK(blank(session.modData(t, m)));
@@ -161,7 +161,7 @@ void testTheSessionHoldsAMod() {
         CHECK(!session.setMod(0, 0, square(macro, 0.5f)) && !session.setMod(3, 0, square(macro, 0.5f)));
         CHECK(session.setMod(1, 0, square(macro, 0.5f)) == (macro < 6)); // Phazed: CHORUS and OCTAVE are choices
         CHECK(session.setMod(2, 1, square(macro, 0.5f)) == (macro < 7)); // QMOD: OCTAVE
-        CHECK(session.setMod(4, 0, square(macro, 0.5f)));                // Twin: every one an amount
+        CHECK(session.setMod(4, 0, square(macro, 0.5f)));                // JAX-EP: every one an amount
         CHECK(blank(project.tracks[0].mods[0]) && blank(project.tracks[3].mods[0]));
         CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && blank(project.tracks[2].mods[1]) == (macro >= 7));
     }
@@ -622,9 +622,9 @@ void testAnotherInstrumentAndATrackDeleted() {
     CHECK(session.setMod(1, 0, square(2, 0.5f)) && session.setMod(1, 1, square(lane(0, 0), 0.25f)));
     CHECK(session.setMod(2, 0, square(20, 0.125f)) && session.setMod(2, 1, square(3, -0.25f)));
     CHECK(rig.added(1, 2) == 0.5f);
-    CHECK(session.setTrackKind(1, TrackKind::Twin));
+    CHECK(session.setTrackKind(1, TrackKind::Jx3p));
     CHECK(blank(project.tracks[1].mods[0]) && sameMod(project.tracks[1].mods[1], square(lane(0, 0), 0.25f)));
-    CHECK(rig.onlyAt(1, lane(0, 0), 0.25f)); // (Twin has a macro 2 as well: the MOD is not on it)
+    CHECK(rig.onlyAt(1, lane(0, 0), 0.25f)); // (JAX-EP has a macro 2 as well: the MOD is not on it)
     CHECK(rig.added(2, 20) == 0.125f && rig.added(2, 3) == -0.25f);
     // To a drum track: still the effect's.
     CHECK(session.setMod(1, 0, square(5, 0.5f)) && session.setTrackKind(1, TrackKind::Drums));

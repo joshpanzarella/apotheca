@@ -150,11 +150,23 @@ public:
     const EffectData& effectData(int track, int slot) const { return busOfTrack(track) >= 0 ? project.busEffects[busOfTrack(track)] : (track == kMasterTrack ? project.masterEffects[slot] : project.tracks[track].effects[slot]); }
     void setEffect(int track, int slot, EffectKind kind); // goes in at its usual settings
     void setEffectParam(int track, int slot, int index, float value); // 0..1
+    // EACH TYPE'S OWN SETTINGS (owner, 2026-11-14): a slot remembers the settings of each type of its family it
+    // has been switched away from (COMP -> DUCK -> COMP gives the COMP back as it was left, to the bit). Kept
+    // in memory only, never in the song file: forgotten when another family or EMPTY goes in the slot
+    // (setEffect), when another song opens (applyProject), when the track is given another instrument, and
+    // with the track when it is deleted (the tracks after it take theirs with them). The FX screen asks it
+    // (switchEffectType in fx_screen.hpp). `track` as effectData's: a track, kMasterTrack, or a bus.
+    void rememberType(int track, int slot, const EffectData& settings); // under settings.kind
+    bool rememberedType(int track, int slot, EffectKind kind, float out[kEffectParams]) const; // false: none kept
+    void forgetTypes(int track, int slot);
     // How much of a track goes to a bus (0 ECHO, 1 SPACE), 0..1. Written as automation like any setting.
     void setSend(int track, int bus, float value);
     // GLIDE FROM, a synth track's: which key of the moment before its glides come from (kFromTop and
     // the rest, apotheca/glide_rule.hpp). A step of undo, as a send or a sound is.
     void setGlideFrom(int track, int type);
+    // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
+    // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
+    void setLaneFeel(int track, int lane, int time, int level);
     // MOD 1 or 2 of a track (mod 0 or 1): the whole of it, held to what it can be. One that is OFF,
     // or aimed at something that does not fit the track (mods.hpp: an empty slot, a choice, a macro
     // on a track with none), is stored OFF, blank. A step of undo, as GLIDE FROM is. True if the
@@ -172,7 +184,22 @@ public:
     std::vector<std::string> sampleNames() const;
     // Delete a recording's file from the samples folder. Lanes that were playing it go back to
     // their built-in drum (a sampler: to none). False if there is no such recording.
+    std::vector<std::string> sampleFolders() const; // the folders in the samples folder, two levels, the empty ones too
+    int sampleUses(const std::string& name) const; // how many drum lanes and sampler tracks of the open song have it on
     bool deleteSample(const std::string& name);
+    // What the handheld does to the samples folder itself (the list of recordings: carry, + NEW FOLDER,
+    // hold B on an empty folder), and how it went.
+    enum class FileJob { Done, Same, TooLong, Taken, NotEmpty, Failed, NotSaved }; // NotSaved: done, but a song that names it could not be written (a full card)
+    // Move a recording to another folder (or out of every folder), under the name `to`: its file is
+    // renamed (the long way where the card will not), the open song follows (recordingChanged: the
+    // name only, the sound plays on), every saved song and rev that names it follows
+    // (savedSongsFollow), and the open song is written. Nothing is written over (Taken, case not
+    // counted); the folder it goes to must be there already; `to` must fit kSampleNameRoom (TooLong).
+    FileJob moveSample(const std::string& from, const std::string& to);
+    // A new, empty folder: "name", or "folder/name" inside one of the first level.
+    FileJob makeSampleFolder(const std::string& name);
+    // Only an EMPTY folder is deleted: NotEmpty if anything at all is in it (a file that is no recording too).
+    FileJob deleteSampleFolder(const std::string& name);
     // A recording's file was changed from outside (the WiFi page), and the open song follows.
     // Renamed or moved (`from` and `to`): every lane and sampler track that used the old name
     // uses the new one, and goes on playing the sound it has: nothing is read again. Deleted
@@ -194,7 +221,7 @@ public:
     // itself and moved into place, with the date it had. Pairs with a name that is no
     // recording's (one sent or deleted has an empty side) are passed over. The open song's own file is left to
     // recordingChanged and the autosave. Returns how many files were written.
-    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames);
+    int savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed = nullptr); // failed: those that name one and could not be written
     void setLaneSample(int track, int lane, const std::string& name); // "" brings the drum back
     void setLaneFit(int track, int lane, int steps);                  // 0: as recorded
     // A lane's sound as slices, for chopping a break. How many there are: sixteen,
@@ -278,7 +305,7 @@ public:
     std::vector<std::string> songNames() const; // most recently saved first
     void newSong();                             // saves the current one first
     bool openSong(const std::string& name);     // likewise
-    void saveNow();                             // only writes if something changed
+    bool saveNow();                             // only writes if something changed; false: it had to and could not
     // Give the open song a new two-word name (there is no keyboard to type
     // one). Its file and its revs follow. Returns the new name.
     std::string renameSong();
@@ -316,8 +343,8 @@ public:
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
     // The song, or its tracks, written out as WAV files in the "bounces"
-    // folder. Worked out off to one side, not recorded as it plays, so it can
-    // use the best quality whatever the handheld could keep up with.
+    // folder. Worked out off to one side, not recorded as it plays, so it is
+    // whole whatever the handheld could keep up with.
     enum class Bounce { Song, EachTrack, ThisTrack };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it
@@ -401,6 +428,10 @@ public:
     // (-kPanMost..kPanMost); `track` may be kMasterTrack. Held to their limits; a step of undo.
     // Nothing else below zero is a track: a bus or a number past the tracks does nothing.
     void setMix(int track, int db, int pan);
+    // AT END (kSongLoop, kSongStop): what the song does at its end, played as a song. A step of
+    // undo; the engine is told by syncSong. The engine says when a song stopped by itself, and
+    // update() then takes project.playing down (songEnded, playsSent_).
+    void setSongEnd(int end);
     int mixDb(int track) const { return track == kMasterTrack ? project.masterDb : (track >= 0 && track < kNumTracks ? project.tracks[track].mixDb : 0); }
     int mixPan(int track) const { return track == kMasterTrack ? project.masterPan : (track >= 0 && track < kNumTracks ? project.tracks[track].mixPan : 0); }
     void sendMix(int track); // what the engine is told for it: its level and its pan
@@ -417,7 +448,8 @@ public:
     // ROLL: a new generated sound, on a synth that has such a thing (QMOD). False on the others.
     bool rollSynth(int track, unsigned seed);
     void sendSynthPatch(int track);
-    // The player's own presets: files in this folder, "NAME.phazed" and "NAME.twin".
+    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's) and "NAME.qmod".
+    // (An old "NAME.twin", the Twin Analog that went, is left on the card and not listed.)
     void usePresetFolder(const std::string& folder);
     // Keep the track's sound, as it is now with its macros, under a name.
     // The track is then on that preset. False if the name is no good or it could not be written.
@@ -469,6 +501,15 @@ public:
     void setCellBars(int track, int scene, int bars);
 
 private:
+    // What rememberType keeps: for each slot (every track's, the master's, the buses'), each kind's settings.
+    struct TypeMemory {
+        bool has[kEffectKinds] = {};
+        float param[kEffectKinds][kEffectParams] = {};
+    };
+    static constexpr int kMemorySlots = kNumTracks * kTrackSlots + kMasterSlots + kBuses;
+    static int memorySlot(int track, int slot); // -1: no such slot
+    TypeMemory typeMemory_[kMemorySlots];
+    void forgetTrackTypes(int track) { for (int s = 0; s < kTrackSlots; ++s) forgetTypes(track, s); }
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it
@@ -484,6 +525,8 @@ private:
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;
     int sentSceneCount_ = 1;
+    int sentSongEnd_ = -1;    // what the engine was last told of AT END (-1: nothing yet)
+    unsigned playsSent_ = 0;  // Command::Play sent and taken into the queue (Engine::songEnded)
 
     std::string pathOf(const std::string& name) const;
     std::string revPath(int rev) const;

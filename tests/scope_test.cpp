@@ -53,16 +53,17 @@ struct Page {
 const Page kPages[] = {
     {"phazed MAIN", TrackKind::Phazed, 0, true}, {"phazed SOUND", TrackKind::Phazed, 1, true},
     {"phazed LINE 1", TrackKind::Phazed, 2, true}, {"phazed LINE 2", TrackKind::Phazed, 3, true},
-    {"twin MAIN", TrackKind::Twin, 0, true}, {"twin OSCILLATORS", TrackKind::Twin, 1, true},
-    {"twin CHARACTER", TrackKind::Twin, 2, true}, {"twin ENVELOPE", TrackKind::Twin, 3, true},
-    {"twin 4", TrackKind::Twin, 4, true},
+    {"JAX-EP MAIN", TrackKind::Jx3p, 0, true}, {"JAX-EP DCO-1", TrackKind::Jx3p, 1, true},
+    {"JAX-EP DCO-2", TrackKind::Jx3p, 2, true}, {"JAX-EP VCF", TrackKind::Jx3p, 3, true},
+    {"JAX-EP VCA AND ENVELOPE", TrackKind::Jx3p, 4, true}, {"JAX-EP LFO AND CHORUS", TrackKind::Jx3p, 5, true},
+    {"JAX-EP 6", TrackKind::Jx3p, 6, true},
     {"qmod MAIN", TrackKind::Qmod, 0, true}, {"qmod SOUND", TrackKind::Qmod, 1, true},
     {"qmod CHARACTER", TrackKind::Qmod, 2, true}, {"qmod ENVELOPE", TrackKind::Qmod, 3, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Twin ? &rig.app.twin() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.
@@ -285,7 +286,14 @@ void testTheLineStaysInTheStrip() {
     CHECK(scopeLineY(0.f) == kScopeMiddle);
     CHECK(scopeLineY(1.f) == kScopeY + 4 && scopeLineY(-1.f) == kScopeY + kScopeH - 4);
     CHECK(scopeLineY(5.f) == scopeLineY(1.f) && scopeLineY(-5.f) == scopeLineY(-1.f));
-    CHECK(scopeLineY(0.5f) == kScopeMiddle - 7);
+    // Bent, so a quiet sound shows (owner, 2026-11-14): half scale is 11 of the 14 pixels, a sound 30 dB
+    // down (0.03) stands 3 pixels and one 20 dB down 5 or 6, where to scale they were under one and under two.
+    CHECK(scopeLineY(0.5f) == kScopeMiddle - 11 && scopeLineY(-0.5f) == kScopeMiddle + 11);
+    CHECK(scopeLineY(0.03f) == kScopeMiddle - 3 && scopeLineY(-0.03f) == kScopeMiddle + 3);
+    CHECK(kScopeMiddle - scopeLineY(0.1f) >= 5 && kScopeMiddle - scopeLineY(0.1f) <= 6);
+    // A louder sound is never drawn smaller, the sign is kept, and what is not a number is the middle.
+    for (float a = 0.f; a < 1.f; a += 0.01f) CHECK(scopeBent(a + 0.01f) >= scopeBent(a) && scopeBent(-a) == -scopeBent(a));
+    CHECK(scopeBent(0.f) == 0.f && scopeBent(1.f) == 1.f && scopeBent(-1.f) == -1.f && scopeBent(std::nanf("")) == 0.f);
 }
 
 // The sampler with no recording: what it says stands in the middle of the picture's room.

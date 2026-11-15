@@ -72,6 +72,16 @@ void Session::chooseSynthPreset(int track, int index) {
         c.type = Command::SelectPreset; // the engine has these itself, and puts its macros back
         c.a = index;
         engine.send(c);
+        // ...and is told the knobs too, as sendSong tells them: the engine is always told the
+        // project's macros, never left to agree with them by itself.
+        for (int m = 0; m < kSynthMacros; ++m) {
+            Command k;
+            k.type = Command::SetMacro;
+            k.track = track;
+            k.a = m;
+            k.value = t.macro[m];
+            engine.send(k);
+        }
         return;
     }
     // One of the player's own: the engine is told every setting, and the macros it was saved with.
@@ -115,6 +125,7 @@ void Session::sendSynthPatch(int track) {
 
 namespace {
 // A preset file: "apotheca-preset 1", then "macros" and "settings" lines.
+const double kPresetValueMost = 1000000.0;
 bool readPreset(const std::string& text, UserPreset& out) {
     std::istringstream lines(text);
     std::string line;
@@ -124,8 +135,11 @@ bool readPreset(const std::string& text, UserPreset& out) {
         std::string word;
         in >> word;
         double v = 0.0;
-        if (word == "macros") while (in >> v) out.macros.push_back(std::isfinite(v) ? static_cast<float>(v) : 0.5f);
-        if (word == "settings") while (in >> v) out.values.push_back(std::isfinite(v) ? static_cast<int>(v) : 0);
+        // A number from a file is held to its limits as a double before it is made a float or an int
+        // ("settings 1e300" cast first is undefined). The widest setting of any synth is well inside
+        // kPresetValueMost; each synth's loadPreset then holds a value to its own setting's range.
+        if (word == "macros") while (in >> v) out.macros.push_back(std::isfinite(v) ? static_cast<float>(v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v)) : 0.5f);
+        if (word == "settings") while (in >> v) out.values.push_back(std::isfinite(v) ? static_cast<int>(v < -kPresetValueMost ? -kPresetValueMost : (v > kPresetValueMost ? kPresetValueMost : v)) : 0);
     }
     return !out.values.empty();
 }
@@ -181,7 +195,8 @@ bool Session::savePreset(int track, const std::string& typed) {
     for (float m : t.macro) std::snprintf(number, sizeof number, " %.6g", m), text += number;
     text += "\nsettings";
     const int* values = spec->values(t);
-    for (int id = 0; id < settingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
+    // (What a preset holds, not everything the track has: the JX-3P's VELOCITY and BRILLIANCE are not in the file.)
+    for (int id = 0; id < presetSettingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
     text += "\n";
     if (!writeTextFile(presetFolder_ + "/" + name + info->presetEnding, text)) return false;
     // It is in the list now; the track is on it. The sound itself has not changed.
@@ -210,8 +225,9 @@ std::string Session::designSpec(TrackKind kind) const {
             const int lo = spec->settingMin(id), hi = spec->settingMax(id);
             std::snprintf(text, sizeof text, ",\"id\":%d,\"min\":%d,\"max\":%d", id, lo, hi);
             out += (i ? ",{\"name\":" : "{\"name\":") + jsonText(name) + text;
-            // A setting with few values is a choice: the page is given their names.
-            if (hi - lo <= 40) {
+            // A setting with few values is a choice: the page is given their names. JAX-EP's knobs
+            // too (pageReadsAsDevice): the page then shows 7.0 where the device does, not 70.
+            if (hi - lo <= 40 || spec->pageReadsAsDevice) {
                 out += ",\"texts\":[";
                 for (int v = lo; v <= hi; ++v) {
                     spec->settingText(id, v, text, sizeof text);

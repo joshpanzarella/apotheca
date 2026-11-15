@@ -16,7 +16,7 @@ and they cost about 2.5% of one handheld core.
 | THROW | A hit or a note opens its send for itself alone. Hold X, press **A** |
 | Insert slots | Tracks go from 2 to **3**. The master stays at 2 |
 | Settings per effect | **Stay at 4.** One knob that moves several things (AGE, SPEED) is faster on a handheld than a fifth knob |
-| Cost | Every first-set effect is **under 1% of a handheld core** (estimated). A full song's effects cost less than one Twin Analog track |
+| Cost | Every first-set effect is **under 1% of a handheld core** (estimated). A full song's effects cost about what one QMOD track does (it was "less than one Twin Analog track" until that synth went, 2026-11-15) |
 | Old songs | Load and sound the same. Nothing is renumbered; the five old effects are not touched |
 | First thing to build | Step 0 below: the effects test bench and the effect table, so every later step is measured |
 
@@ -199,16 +199,18 @@ Two things the numbers decided:
 ### Budget
 
 Instruments on the handheld, from CLAUDE.md times 5: drums 0.5%, Phazed 4.5%,
-QMOD 13%, Twin Analog x1 23.5%, x2 45%.
+QMOD 13%, JAX-EP 2.8% (six notes of A1; its worst preset 5.2%, a cutoff moving
+on every sample 9%). (Revised 2026-11-15, when Twin Analog went: it was 23.5%
+at x1 and 45% at x2, and the song below, with three of them at x1, came to 128.)
 
 | A 12-track song | % of one handheld core |
 | --- | --- |
-| 2 drums, 4 Phazed, 3 QMOD, 3 Twin x1, all voices sounding | 128 (about 43 on each of three cores) |
+| 2 drums, 4 Phazed, 3 QMOD, 3 JAX-EP, all voices sounding | 66 (about 22 on each of three cores); 74 with JAX-EP's worst preset on all three |
 | Two of three slots used on every track, typical effects | 12 |
 | Both buses, master COMP and LIMITER | 2.5 |
 | **Worst case: all 36 slots hold SATURATE** | 32 |
 
-**All the effects in a normal song cost less than one Twin Analog track.**
+**All the effects in a normal song cost about what one QMOD track does.**
 There is no need for a limit on how many of each. The instruments set the
 ceiling, as now.
 

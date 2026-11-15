@@ -88,20 +88,21 @@ std::vector<std::string> Session::songNames() const {
     return names;
 }
 
-void Session::saveNow() {
-    if (folder_.empty()) return;
+bool Session::saveNow() {
+    if (folder_.empty()) return true;
     const std::string& text = textNow(); // (made again only where a track has changed: this comes round every two seconds)
-    if (text == savedText_) return;
+    if (text == savedText_) return true;
     // A song nobody has put anything in is not worth a file.
     static const std::string empty = [] { std::unique_ptr<Project> fresh(new Project); return songText(*fresh); }();
-    if (text == empty && !fileExists(pathOf(songName_))) return;
+    if (text == empty && !fileExists(pathOf(songName_))) return true;
     {
         // Not while the WiFi page writes or deletes a song (Transfer::songFiles).
         std::lock_guard<std::mutex> hold(transfer_.songFiles());
-        if (!writeTextFile(pathOf(songName_), text)) return; // try again next time
+        if (!writeTextFile(pathOf(songName_), text)) return false; // try again next time
     }
     savedText_ = text;
     writeTextFile(folder_ + "/last.txt", songName_ + "\n");
+    return true;
 }
 
 void Session::newSong() {
@@ -125,7 +126,8 @@ bool Session::openSong(const std::string& name) {
     return true;
 }
 
-int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames) {
+int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::string>>& renames, int* failed) {
+    if (failed) *failed = 0;
     std::vector<std::pair<std::string, std::string>> good;
     for (const auto& rename : renames)
         if (sampleNameOk(rename.first) && sampleNameOk(rename.second)) good.push_back(rename);
@@ -154,7 +156,11 @@ int Session::savedSongsFollow(const std::vector<std::pair<std::string, std::stri
         bool named = false;
         for (const auto& rename : good) named = named || text.find(rename.first) != std::string::npos;
         if (!named) continue;
-        if (!renameRecordings(text, good) || !writeTextFile(path, text)) continue; // only one that names it is written
+        if (!renameRecordings(text, good)) continue; // only one that names it is written
+        if (!writeTextFile(path, text)) { // (no room on the card: it still names the old place, and whoever asked is told)
+            if (failed) ++*failed;
+            continue;
+        }
         utimbuf times;
         times.actime = info.st_atime;
         times.modtime = info.st_mtime; // the song list is in order of date, and a rev shows its own: neither moves

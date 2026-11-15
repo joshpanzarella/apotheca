@@ -23,7 +23,7 @@ these unless they are put back.
   note that finds the synth silent. A note that BEGINS on the kept twin (a
   legato part never falls silent) has its lines in tune and in phase, 3 dB
   over the patch: from that note on the twin is trimmed 3 dB more
-  (`kTwinInTuneTrim`, `trimInTune`), given back when DETUNE leaves the middle.
+  (`kDoubleInTuneTrim`, `trimInTune`), given back when DETUNE leaves the middle.
   Moving DETUNE OFF the middle with notes held still changes the layout and
   fades them, once. Held by `phazed_test`
   (`testDetuneThroughTheMiddleKeepsTheNote`). A fresh copy of `cz_synth.c`

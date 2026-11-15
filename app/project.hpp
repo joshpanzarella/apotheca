@@ -190,7 +190,9 @@ inline float mixGain(int db, bool master) {
 }
 inline float panAmount(int pan) { return static_cast<float>(pan) / static_cast<float>(kPanMost); }
 
-enum class TrackKind { None, Drums, Phazed, Twin, Sampler, Qmod };
+// (Memory only: a song file names an instrument by its word, instruments.hpp. Jx3p is JAX-EP on the device
+// and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5.)
+enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Qmod };
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
@@ -214,9 +216,12 @@ struct TrackData {
     char laneSample[kDrumLanes][64] = {}; // a recording on the lane in place of the built-in drum: its file's name ("kick", or "kicks/808" in a folder), or empty
     int laneFit[kDrumLanes] = {};         // stretch that recording to last this many steps at the song's tempo; 0: as recorded
     bool laneOneSlice[kDrumLanes] = {};   // each hit on the lane plays one slice of its sound and stops (false: it runs on to the next hit)
+    LaneFeel laneFeel[kDrumLanes];        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, 0..100 (apotheca/feel_rule.hpp). The track's,
+                                          // not a scene's; live, nothing is written into the hits
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
-    TwinPatch twin;              // when it is Twin Analog
+    Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and
+                                 // BRILLIANCE, are the track's own: no preset writes them, so a new track's start here
     QmodPatch qmod;              // when it is QMOD
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
@@ -252,6 +257,12 @@ struct TrackData {
 // new song should start with other effects.
 constexpr EffectKind kNewSongBus[kBuses] = {EffectKind::Tape, EffectKind::Hall};
 
+// What a song played as a song does at its end (Project::songEnd). The numbers are in song files: appended.
+constexpr int kSongLoop = 0;
+constexpr int kSongStop = 1;
+// A number nobody knows (a later program's) is the usual, LOOP, as an unknown GLIDE FROM is TOP.
+inline int songEndKind(int number) { return number == kSongStop ? kSongStop : kSongLoop; }
+
 struct Project {
     TrackData tracks[kNumTracks];
     int repeats[kMaxScenes];
@@ -260,6 +271,7 @@ struct Project {
     EffectData busEffects[kBuses];          // what the ECHO and the SPACE bus hold: one effect each, its MIX read as LEVEL
     float tempo = 120.f;
     int masterDb = 0, masterPan = 0; // the master's level and pan on the mixer, as a track's are
+    int songEnd = 0; // AT END, played as a song: kSongLoop round to the first scene (as it always did), kSongStop stop there
     char chordPack[32] = {}; // the chord pack this song picks from; empty is the built-in one
     int track = 0; // the track and scene the Pattern and Device screens show
     int scene = 0;
@@ -270,7 +282,6 @@ struct Project {
     int playScene = -1, playStep = -1, playRepeat = 0, playBar = 0;
     bool playLoop = false; // one scene going round, not the song
     bool writing = false;  // automation WRITE is on: a macro or effect setting moved while playing is recorded
-    bool busy = false;     // the handheld cannot keep up: synths are doing plainer work (Engine::qualityLimit)
     bool silenced = false; // a panic has shut the output and it has not opened again yet
 
     Project() {

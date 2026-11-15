@@ -755,6 +755,12 @@ int runViews(const char* program, const char* only) {
     wav("hat closed", 0.1f, 4000.f);
     wav("vocal take 06", 1.2f, 220.f);
     wav("long ambient texture", 2.f, 110.f);
+    // Folders two levels down (owner, 2026-11-14), one of them empty: the list of recordings shows them in columns.
+    for (const char* dir : {"/drums", "/drums/kicks", "/drums/snares", "/drums/empty", "/vocals"}) mkdir((samples + dir).c_str(), 0755);
+    wav("drums/kicks/tight", 0.2f, 60.f);
+    wav("drums/kicks/sub drop with a long name", 1.1f, 40.f);
+    wav("drums/snares/crack", 0.15f, 900.f);
+    wav("drums/one shot", 0.3f, 300.f);
 
     if (!only) testTheStillsFlag(program, folder);
     // The controls setup is a still of its own (--learn), drawn by main.cpp with no App.

@@ -66,10 +66,14 @@ void KitScreen::openPicker() {
     jobs.hear = [this](bool held) { hear(held); };
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
+    jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };
+    jobs.makeFolder = [this](const std::string& name) { return session_.makeSampleFolder(name); };
+    jobs.removeFolder = [this](const std::string& name) { return session_.deleteSampleFolder(name); };
     jobs.playhead = [this] { return &head_; };
     char title[48];
     std::snprintf(title, sizeof title, "LANE %d: PICK ITS SOUND", lane + 1);
-    picker_.open(session_.sampleNames(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
+    jobs.used = [this, track, lane](const std::string& name) { return session_.sampleUses(name) - (name == project_.tracks[track].laneSample[lane] ? 1 : 0); };
+    picker_.open(session_.sampleNames(), session_.sampleFolders(), trk().laneSample[lane_], title, "THE BUILT-IN DRUM", jobs);
 }
 
 void KitScreen::press(Button b) {
@@ -88,7 +92,7 @@ void KitScreen::press(Button b) {
 void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     if (picker_.isOpen()) {
-        if (b == Button::Start && event.down && !input.held(Button::Select)) session_.togglePlay(false); // to hear it in the beat
+        if (b == Button::Start && event.down && !input.held(Button::Select) && !picker_.typing()) session_.togglePlay(false); // to hear it in the beat
         else picker_.onButton(event, project_.playing);
         return;
     }
@@ -219,7 +223,7 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, soundX + 7.f, y + (h - fonts.small.capHeight()) / 2.f, text, kDim);
         if (file[0]) {
             // Its own name, and the folder it is in (if any) small on the right.
-            std::string upper = sampleLabel(file), folder = sampleFolderOf(file);
+            std::string upper = sampleLabel(file), folder = sampleLabel(sampleFolderOf(file)); // (the folder it is in: of two, the inner one)
             for (char& c : upper) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
             for (char& c : folder) c = static_cast<char>(c >= 'a' && c <= 'z' ? c - 32 : c);
             // (At XL a name that does not fit whole is held at LARGE, and cut as it is cut at LARGE: never shorter.)

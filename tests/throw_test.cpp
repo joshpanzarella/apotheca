@@ -804,7 +804,7 @@ static std::vector<float> throwSong(int helpers, bool throws = true, bool ducks 
             engine->send(c);
         }
     }
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Twin};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {
@@ -996,7 +996,7 @@ static void testThrownIntoAHowl() {
 }
 
 // A drum track taken away while a thrown hit rings fades its copy into the bus with the track, over
-// the same 5 ms (review, 2026-11-14): cut, the bus was handed a click. Beside a twin where the
+// the same 5 ms (review, 2026-11-14): cut, the bus was handed a click. Beside a second engine where the
 // track stays, what the bus is given is the same times the fade, then nothing.
 static void testATrackTakenAwayFadesItsThrows() {
     Rig gone, kept;

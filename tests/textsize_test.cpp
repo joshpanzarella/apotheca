@@ -168,6 +168,12 @@ int runViews(const char* program, const char* only) {
     wav("hat closed", 0.1f, 4000.f);
     wav("vocal take 06", 1.2f, 220.f);
     wav("long ambient texture", 2.f, 110.f);
+    // Folders two levels down (owner, 2026-11-14), one of them empty: the list of recordings shows them in columns.
+    for (const char* dir : {"/drums", "/drums/kicks", "/drums/snares", "/drums/empty", "/vocals"}) mkdir((samples + dir).c_str(), 0755);
+    wav("drums/kicks/tight", 0.2f, 60.f);
+    wav("drums/kicks/sub drop with a long name", 1.1f, 40.f);
+    wav("drums/snares/crack", 0.15f, 900.f);
+    wav("drums/one shot", 0.3f, 300.f);
 
     if (!only) testTheStillsFlag(program, folder);
     std::vector<std::vector<std::string>> faults(static_cast<std::size_t>(kViewCount));
@@ -491,7 +497,7 @@ void testTheSizes() {
     // Where it started, the step after, what the screens were laid out at, and a little bigger.
     CHECK(kTextSizes == 4 && kTextSmall == 0 && kTextMedium == 1 && kTextLarge == 2 && kTextXl == 3); // (the numbers are kept in settings.txt)
     CHECK(Session::kTextSizeCount == kTextSizes && Session::kTextSizeAsBuilt == kTextLarge);
-    const float points[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.5f, 16.f, 18.5f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
+    const float points[kTextSizes][3] = {{12.f, 14.f, 16.f}, {13.25f, 15.5f, 18.f}, {14.5f, 17.f, 20.f}, {15.5f, 18.5f, 21.5f}};
     const char* names[kTextSizes] = {"SMALL", "MEDIUM", "LARGE", "XL"};
     for (int size = 0; size < kTextSizes; ++size) {
         CHECK(std::string(kTextSizeNames[size]) == names[size]);
@@ -861,6 +867,18 @@ void testTheDrumGridsRows() {
     rig.frames(2);
     holds(rig, "the drum grid, the dice on a lane", kDrumStrip);
     rig.key(Y, false);
+    // FEEL: the name's one purple line, and X held (the strip is the feel): tight rows, the same at every size.
+    rig.session().setLaneFeel(0, 5, 100, 100);
+    rig.frames(2);
+    holds(rig, "the drum grid, on a felt lane's name", kDrumStrip);
+    CHECK(drew("HUMAN TIME 100%   HUMAN LEVEL 100%"));
+    rig.key(X, true);
+    rig.frames(2);
+    CHECK(drums.feeling());
+    holds(rig, "the drum grid, X held on a lane's name", kDrumStrip);
+    rig.key(X, false);
+    rig.session().setLaneFeel(0, 5, 0, 0);
+    rig.frames(40); // (what X heard has rung out)
     // The tempo: its box is in the top bar, which holds() compares.
     drums.moveCursorTo(0, 0);
     rig.tap(UP);
@@ -984,6 +1002,22 @@ void testTheOtherScreens() {
     for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
     CHECK(writeWav(samples + "/a folder with a long name/a recording with a very long name indeed.wav", sound, 48000));
     CHECK(writeWav(samples + "/short.wav", sound, 48000));
+    // Two folders down, each name as long as a folder's may be, and an empty folder beside it.
+    const std::string deep = "a folder with a long name/another just as long as it/x of names";
+    mkdir((samples + "/a folder with a long name/another just as long as it").c_str(), 0755);
+    mkdir((samples + "/a folder with a long name/nothing in this folder yet").c_str(), 0755);
+    CHECK(writeWav(samples + "/" + deep + ".wav", sound, 48000) && sampleNameOk(deep) && deep.size() == 63);
+    // A short one two folders down (a lane says the inner folder), and a folder of more than the list shows at once.
+    mkdir((samples + "/ab").c_str(), 0755);
+    mkdir((samples + "/ab/cd").c_str(), 0755);
+    mkdir((samples + "/mm").c_str(), 0755);
+    CHECK(writeWav(samples + "/ab/cd/ef.wav", sound, 48000));
+    CHECK(writeWav(samples + "/ab/a dozen chars.wav", sound, 48000)); // (too long a name to carry two folders down)
+    for (int i = 1; i <= 14; ++i) {
+        char many[32];
+        std::snprintf(many, sizeof many, "/mm/m %02d.wav", i);
+        CHECK(writeWav(samples + many, sound, 48000));
+    }
     Rig rig;
     Session& session = rig.session();
     Project& project = rig.project();
@@ -991,7 +1025,7 @@ void testTheOtherScreens() {
     const std::string longest = "a folder with a long name/a recording with a very long name indeed";
 
     // SONG: twelve tracks, the narrowest columns there are, every one with a name of ten wide letters.
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Twin, TrackKind::Qmod, TrackKind::Sampler, TrackKind::Drums};
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Sampler, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 5]));
     session.view = View::Song;
     rig.frames(2);
@@ -1003,12 +1037,12 @@ void testTheOtherScreens() {
     rig.frames(2);
     holds(rig, "SONG, twelve tracks with long names");
     {
-        // The four-bar cell's count, over its little picture: at LARGE whatever is chosen, and so is track 4's number
-        // on its narrow head (beside the S or M mark). The scene's own number 4 follows the setting.
+        // Track 4's number on its narrow head (beside the S or M mark) is at LARGE whatever is chosen; the scene's own
+        // number 4 follows the setting. A four-bar cell has no count over its little picture (owner, 2026-11-14).
         int held = 0, follows = 0;
         for (const textfit::Text& t : lastXl.texts)
             if (t.words == "4") (t.cap == screens().at[kTextLarge]->small.capHeight() ? held : follows) += 1;
-        CHECK(held == 2 && follows >= 1);
+        CHECK(held == 1 && follows >= 1);
     }
     rig.app.song().moveCursorTo(0, 1);
     rig.key(B, true); // deleting a track: its head says so
@@ -1117,7 +1151,7 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Twin, &rig.app.twin(), "TWIN"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1139,6 +1173,114 @@ void testTheOtherScreens() {
         rig.frames(1);
     }
     CHECK(pagesSeen >= 10 + 4 + 2);
+
+    // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
+    // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Jx3p) project.track = t;
+        CHECK(project.current().kind == TrackKind::Jx3p);
+        SynthScreen& jax = rig.app.jaxep();
+        const SynthSpec& spec = jx3pSpec();
+        int settings = 0, knobs = 0;
+        for (int page = 1; page < jax.pageCount(); ++page) {
+            for (int stop = 0; stop < spec.itemCount(page); ++stop, ++settings) {
+                jax.goTo(page, stop);
+                const int id = jax.settingHere();
+                CHECK(id >= 0 && id < jx3p::kSettings);
+                const int was = project.current().jx3p.value[id];
+                char reads[32];
+                session.setSynthSetting(project.track, id, spec.settingMin(id));
+                rig.frames(1);
+                holds(rig, "JAX-EP, a setting at its least");
+                spec.settingText(id, spec.settingMin(id), reads, sizeof reads);
+                CHECK(drew(reads));
+                session.setSynthSetting(project.track, id, spec.settingMax(id));
+                rig.key(A, true);
+                rig.frames(1);
+                holds(rig, "JAX-EP, a setting at its most, A held");
+                spec.settingText(id, spec.settingMax(id), reads, sizeof reads);
+                CHECK(drew(reads));
+                knobs += std::string(reads) == "10.0" ? 1 : 0;
+                rig.key(A, false);
+                rig.frames(1);
+                session.setSynthSetting(project.track, id, was);
+            }
+        }
+        CHECK(settings == jx3p::kSettings && knobs == 19);
+
+        // MAIN: what the folder says stands on PRESET's top row, between the word and the count. The short
+        // one follows the setting; the long one (a bank's, the plan's batch 7) does not fit at XL beside a
+        // count of three figures, and the whole row is then at LARGE, as LARGE draws it.
+        const Fonts& large = *screens().at[kTextLarge];
+        const Fonts& xl = *screens().at[kTextXl];
+        const auto place = [](const textfit::Frame& frame, const char* words, float& x, float& w) {
+            for (const textfit::Text& t : frame.texts)
+                if (t.words == words && t.y >= 30.f) { x = t.x; w = t.w; return true; }
+            return false;
+        };
+        const auto rowIsClear = [&](const textfit::Frame& frame, const char* note, const char* count) {
+            float px = 0.f, pw = 0.f, nx = 0.f, nw = 0.f, cx = 0.f, cw = 0.f;
+            if (!place(frame, "PRESET", px, pw) || !place(frame, note, nx, nw) || !place(frame, count, cx, cw)) return false;
+            return std::fabs(nx - (px + pw + SynthScreen::kNoteGap)) < 0.01f && cx - (nx + nw) >= SynthScreen::kNoteGap && std::fabs(cx + cw - 622.f) < 0.01f;
+        };
+        jax.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        // A bank's (batch 7: every built-in sound is in BANK A or BANK B), beside the preset's place in
+        // its bank (owner, 2026-11-15: the factory's number, 1 to 16, not its place among the 32).
+        holds(rig, "JAX-EP MAIN, what a bank says");
+        CHECK(Jx3p::presetCount() == 32 && std::string(kJaxepBankNote) == "1983 BOOKLET, SPEEDS GUESSED" && drew(kJaxepBankNote) && drew("BANK A") && drew("String I"));
+        CHECK(rowIsClear(lastLarge, kJaxepBankNote, "1 / 16") && rowIsClear(lastXl, kJaxepBankNote, "1 / 16") && !drew("1 / 32"));
+        CHECK(xl.small.capHeight() > large.small.capHeight());
+        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 16") == large.small.capHeight());
+        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 16"));
+        // The short one (a built-in folder that is no bank: none today) follows the setting.
+        jax.folderNoteAs(kJaxepGuessNote);
+        rig.frames(1);
+        holds(rig, "JAX-EP MAIN, the short note");
+        CHECK(std::string(kJaxepGuessNote) == "SPEEDS GUESSED" && drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepGuessNote, "1 / 16") && rowIsClear(lastXl, kJaxepGuessNote, "1 / 16"));
+        CHECK(capAtXl(kJaxepGuessNote) == xl.small.capHeight() && capAtXl("PRESET", 30.f) == xl.small.capHeight() && capAtXl("1 / 16") == xl.small.capHeight());
+        jax.folderNoteAs(nullptr);
+        // Every one of the 32, by its name and its folder (B7's is the longest name).
+        for (int preset = 0; preset < Jx3p::presetCount(); ++preset) {
+            session.chooseSynthPreset(project.track, preset);
+            rig.frames(2);
+            char what[64], count[16];
+            std::snprintf(what, sizeof what, "JAX-EP MAIN, %s", Jx3p::presetName(preset));
+            std::snprintf(count, sizeof count, "%d / 16", preset % 16 + 1); // B7 is "7 / 16"
+            holds(rig, what);
+            CHECK(drew(Jx3p::presetName(preset)) && drew(preset < 16 ? "BANK A" : "BANK B") && drew(count) && drew(kJaxepBankNote));
+        }
+        session.chooseSynthPreset(project.track, 0);
+        rig.frames(2);
+        // A hundred of the player's own beside them: a bank's count is still its own sixteen, and the
+        // player's own count among themselves, to three figures.
+        std::vector<UserPreset> many(100);
+        for (std::size_t i = 0; i < many.size(); ++i) many[i].name = "OWN " + std::to_string(i);
+        setUserPresets(TrackKind::Jx3p, many);
+        rig.frames(1);
+        holds(rig, "JAX-EP MAIN, what a bank says, a hundred and thirty-two presets");
+        CHECK(drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepBankNote, "1 / 16") && rowIsClear(lastXl, kJaxepBankNote, "1 / 16") && !drew("1 / 132"));
+        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 16") == large.small.capHeight());
+        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 16"));
+        // ...and it would not have fitted at XL: the row's room is for the longest count there can be.
+        CHECK(7.f + xl.small.width("PRESET") + xl.small.width(kJaxepBankNote) + xl.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap > SynthScreen::kPresetW - 10.f);
+        std::printf("    JAX-EP's PRESET row at LARGE: %.1f + %.1f + %.1f, at XL %.1f + %.1f + %.1f, of %d\n", large.small.width("PRESET"), large.small.width(kJaxepBankNote), large.small.width(SynthScreen::kCountLongest), xl.small.width("PRESET"), xl.small.width(kJaxepBankNote), xl.small.width(SynthScreen::kCountLongest), SynthScreen::kPresetW - 17 - 2 * SynthScreen::kNoteGap);
+        CHECK(7.f + large.small.width("PRESET") + large.small.width(kJaxepBankNote) + large.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap <= SynthScreen::kPresetW - 10.f);
+        // One of the player's own says nothing, and its row is as any synth's.
+        session.chooseSynthPreset(project.track, Jx3p::presetCount());
+        rig.frames(2);
+        holds(rig, "JAX-EP MAIN, one of the player's own");
+        CHECK(drew("OWN 0") && drew("USER") && drew("PRESET") && !drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && capAtXl("PRESET", 30.f) == xl.small.capHeight());
+        CHECK(drew("1 / 100") && !drew("33 / 132")); // the first of the player's own hundred
+        session.chooseSynthPreset(project.track, Jx3p::presetCount() + 99);
+        rig.frames(2);
+        holds(rig, "JAX-EP MAIN, the last of the player's own hundred");
+        CHECK(drew("OWN 99") && drew("100 / 100") && xl.small.width("100 / 100") <= xl.small.width(SynthScreen::kCountLongest));
+        session.chooseSynthPreset(project.track, 0);
+        setUserPresets(TrackKind::Jx3p, {});
+        rig.frames(2);
+    }
 
     // The sampler: with nothing, with the longest name there is, and with a recording that has gone.
     for (int t = 0; t < kNumTracks; ++t)
@@ -1194,18 +1336,132 @@ void testTheOtherScreens() {
     rig.frames(1);
     holds(rig, "the kit, on FIT TO");
     rig.app.kit().goTo(2, KitScreen::kSound);
-    rig.tap(A); // the list, in the long folder
-    holds(rig, "the kit's list of recordings");
-    rig.tap(R1);
-    holds(rig, "the kit's list, the next folder");
-    rig.tap(DOWN);
+    // The list, in columns: in the long folder, on the long name; then every place it can be, and
+    // the hints bar holding all it says at each.
+    const SDL_Keycode UP = SDLK_UP;
+    const auto listHolds = [&](const char* what, const char* words) {
+        holds(rig, what);
+        if (ui::gHintsOver != 0.f) std::printf("    %s: the hints are %.0f pixels over\n", what, static_cast<double>(ui::gHintsOver));
+        if (!drew(words)) std::printf("    %s: \"%s\" is not drawn\n", what, words);
+        CHECK(ui::gHintsOver == 0.f && drew(words));
+    };
+    session.setLaneSample(0, 2, deep);
+    session.finishStretching();
+    rig.tap(A);
+    CHECK(rig.app.kit().picker().depth() == 2 && rig.app.kit().picker().cursor() == 0);
+    listHolds("the kit's list, two folders down", "ANOTHER JUST AS LONG AS IT");
+    CHECK(drew("carry") && drew("delete it") && drew("keep it")); // the bar, on a recording: HOLD R1 carries, HOLD B deletes
+    CHECK(drew("1 OF 1") && drew("LANE 3: PICK ITS SOUND") && drew("0.50 S") && drew("X OF NAMES"));
     rig.key(B, true);
     rig.frames(10);
-    holds(rig, "the kit's list, B held");
+    listHolds("the kit's list, B held", "DELETING: CANNOT BE UNDONE");
+    CHECK(asAtLarge("DELETING: CANNOT BE UNDONE")); // (too long for its row at XL: held at LARGE, where it fits)
     rig.key(B, false);
-    rig.tap(L1);
     rig.tap(A);
+    session.setLaneSample(0, 7, deep); // on another lane too: the list says so
+    listHolds("the kit's list, a recording on in two places", "ALSO IN THIS SONG: 1 PLACE");
+    session.setLaneSample(0, 6, deep);
+    listHolds("the kit's list, a recording on in three places", "ALSO IN THIS SONG: 2 PLACES");
+    session.setLaneSample(0, 6, "");
+    session.setLaneSample(0, 7, "");
+    rig.tap(LEFT); // on the folder it is in, itself in a folder: what it holds beside it
+    CHECK(rig.app.kit().picker().depth() == 1 && rig.app.kit().picker().count() == 3); // (the 66-letter one on the card is too long to be a name: not listed)
+    listHolds("the kit's list, on a folder in a folder", "X OF NAMES");
+    CHECK(!drew("carry") && !drew("delete it") && drew("open") && drew("page")); // a folder with something in it: neither
+    rig.key(B, true); // B held on it: no bar, and after a moment the top line says why
+    rig.frames(30);
+    listHolds("the kit's list, B held on a folder that is not empty", "NOT DELETED: IT IS NOT EMPTY");
+    rig.key(B, false);
+    CHECK(rig.app.kit().picker().isOpen());
+    rig.frames(SamplePicker::kSaidMs / 16 + 2);
+    rig.tap(DOWN); // on an empty one
+    listHolds("the kit's list, on an empty folder", "NOTHING IN IT");
+    rig.tap(RIGHT); // in it
+    CHECK(rig.app.kit().picker().depth() == 2 && rig.app.kit().picker().count() == 0);
+    listHolds("the kit's list, in an empty folder", "NOTHING IN IT");
+    rig.tap(LEFT);
+    rig.tap(LEFT); // SAMPLES
+    CHECK(rig.app.kit().picker().depth() == 0);
+    listHolds("the kit's list, SAMPLES", "UNSORTED");
+    rig.tap(UP);
+    listHolds("the kit's list, UNSORTED", "SHORT");
+    rig.tap(UP);
+    listHolds("the kit's list, the first row", "THE BUILT-IN DRUM");
+    // More rows than show: the list goes along with the cursor (a page at a time with R1, the ends stop).
+    rig.tap(DOWN, 4);
+    rig.tap(RIGHT);
+    CHECK(rig.app.kit().picker().folderName() == "mm" && rig.app.kit().picker().count() == 15);
+    listHolds("the kit's list, a long folder's top", "M 01");
+    CHECK(drew("M 11") && !drew("M 12") && drew("1 OF 15"));
+    rig.tap(R1);
+    listHolds("the kit's list, a page down", "M 11");
+    CHECK(drew("M 14") && !drew("M 04") && drew("M 05") && drew("+ NEW FOLDER") && drew("11 OF 15")); // (the last eleven: the cursor is not kept in the middle past the end)
+    rig.tap(R1);
+    listHolds("the kit's list, its end", "+ NEW FOLDER");
+    CHECK(drew("15 OF 15") && drew("M 14") && drew("M 05") && !drew("M 04"));
+    // + NEW FOLDER: its name typed, at its longest, and the folder made.
+    rig.tap(A);
+    CHECK(rig.app.kit().picker().typing());
+    listHolds("the kit's list, a new folder's name, nothing typed", "NEW FOLDER IN MM: ITS NAME");
+    rig.tap(DOWN, 2);
+    rig.tap(RIGHT, 2);
+    rig.tap(A, 14);
+    listHolds("the kit's list, a new folder's name at its longest", "WWWWWWWWWWWW");
+    CHECK(drew("12 OF 12") && drew("SPACE"));
+    rig.tap(Y);
+    CHECK(!rig.app.kit().picker().typing());
+    listHolds("the kit's list, a folder made", "MADE WWWWWWWWWWWW");
+    // Carrying: the top line says what, and where it would go; then what came of it.
+    const SDL_Keycode R1 = SDLK_w, L1 = SDLK_q;
+    rig.tap(L1, 3);
+    rig.tap(R1, 3);
+    rig.tap(UP);
+    rig.key(R1, true);
+    rig.frames(25);
+    CHECK(rig.app.kit().picker().carried() == "mm/m 14");
+    listHolds("the kit's list, carrying", "CARRYING TO MM: M 14");
+    rig.tap(LEFT);
+    rig.tap(UP, 2);
+    listHolds("the kit's list, carrying to a long folder", "CARRYING TO A FOLDER WITH A LONG NAME: M 14");
+    rig.key(R1, false);
+    listHolds("the kit's list, moved", "MOVED TO A FOLDER WITH A LONG NAME");
+    rig.tap(DOWN);
+    rig.tap(RIGHT);
+    rig.tap(L1);
+    rig.tap(DOWN);
+    CHECK(rig.app.kit().picker().under() && rig.app.kit().picker().under()->name == "ab/a dozen chars");
+    rig.key(R1, true);
+    rig.tap(LEFT);
+    rig.tap(UP);
+    rig.tap(RIGHT);
+    rig.tap(L1, 3);
+    CHECK(rig.app.kit().picker().carryTo() == "a folder with a long name/another just as long as it");
+    listHolds("the kit's list, carrying into a folder in a folder", "CARRYING TO ANOTHER JUST AS LONG AS IT: A DOZEN CHARS");
+    rig.key(R1, false);
+    listHolds("the kit's list, not moved", "NOT MOVED: ITS NAME WOULD BE TOO LONG THERE");
+    // B held on an empty folder: its bar. Let go: B's tap, and the lane is as it was.
+    rig.tap(LEFT);
+    rig.tap(DOWN, 2);
+    rig.tap(RIGHT);
+    rig.tap(L1, 3);
+    CHECK(rig.app.kit().picker().under() && rig.app.kit().picker().under()->name == "mm/wwwwwwwwwwww");
+    listHolds("the kit's list, on an empty folder that can be deleted", "WWWWWWWWWWWW");
+    CHECK(drew("delete it") && !drew("carry"));
+    rig.key(B, true);
+    rig.frames(10);
+    CHECK(rig.app.kit().picker().deletePart() > 0.f);
+    listHolds("the kit's list, B held on an empty folder", "DELETING: CANNOT BE UNDONE");
+    rig.key(B, false);
     rig.frames(2);
+    CHECK(!rig.app.kit().picker().isOpen());
+    session.setLaneSample(0, 2, longest);
+    session.setLaneSample(0, 3, "ab/cd/ef");
+    session.finishStretching();
+    rig.frames(2);
+    holds(rig, "the kit, a recording two folders down");
+    CHECK(drew("EF") && drew("CD") && !drew("AB/CD")); // its lane says the folder it is in: of two, the inner one
+    session.setLaneSample(0, 3, "short");
+    session.finishStretching();
 
     // What comes up over any screen: the volume, the help card (with a MENU button and without), ALL SOUND STOPPED.
     session.view = View::Song;
@@ -1806,32 +2062,12 @@ void testNoLettersAreLeftBehind() {
     CHECK(Font::sheets() == before); // (a font that goes takes its letters with it)
 }
 
-// The offer at the start (BUTTONS NOT WORKING?) stands where the hints bar does and runs the
-// screen's width: the same pixels whatever is chosen, and inside the screen.
-void testTheOfferAtTheStart() {
+// Where the dice's chip starts at the end of the bar under a strip: worked out from the bar's own
+// lettering, so the same at every size.
+void testTheDiceEndAtEverySize() {
     Screens& s = screens();
-    // (And where the dice's chip starts at the end of the bar under a strip: worked out from the bar's own lettering.)
     for (int size = 0; size < kTextSizes; ++size) CHECK(ui::hintDiceEndX(*s.at[size], "Y") == ui::hintDiceEndX(*s.canvas.fonts, "Y"));
     CHECK(ui::hintDiceEndX(*s.canvas.fonts, "Y") > 500.f);
-    std::vector<Uint32> large;
-    for (int size : {kTextLarge, kTextSmall, kTextMedium, kTextXl}) {
-        DrawLog log;
-        s.canvas.clear();
-        gDrawLog = &log;
-        ui::relearnOffer(s.canvas.r, *s.at[size], 0.5f);
-        gDrawLog = nullptr;
-        SDL_RenderPresent(s.canvas.r);
-        const std::vector<Uint32> now = s.canvas.all();
-        if (size == kTextLarge) large = now;
-        CHECK(now == large);
-        CHECK(log.texts.size() == 1 && log.texts[0].font == &s.canvas.fonts->small);
-        // (Its words are 655 pixels at LARGE, 15 more than the screen: so they are on main too, a letter's edge
-        // lost at each end. Not mended here: it would change LARGE. They are in the bar's place, up and down.)
-        CHECK(log.texts.size() == 1 && log.texts[0].y >= ui::kScreenH - ui::kHintsH && log.texts[0].y + log.texts[0].h <= ui::kScreenH);
-        CHECK(log.texts.size() == 1 && near(log.texts[0].x + log.texts[0].w / 2.f, ui::kScreenW / 2.f));
-        // The line that fills is half way, and the bar is nowhere but the hints bar's place.
-        CHECK(log.boxes.size() == 2 && log.boxes[0].y == ui::kScreenH - ui::kHintsH && log.boxes[0].h == ui::kHintsH && log.boxes[1].w == ui::kScreenW / 2 && log.boxes[1].h == 3);
-    }
 }
 
 // ---- the SET page's bars: never through the words beside them -----------------------------------
@@ -1960,7 +2196,7 @@ int main(int argc, char** argv) {
     testTheOtherScreens();
     testWhatOnlyLargeHadRoomFor();
     testNoLettersAreLeftBehind();
-    testTheOfferAtTheStart();
+    testTheDiceEndAtEverySize();
     testTheControlsSetup();
     testTheUpdateNotice();
     testTheFxScreen();
