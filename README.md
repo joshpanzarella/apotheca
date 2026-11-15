@@ -7,8 +7,8 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth, 32 presets) or QMOD (FM rolled
-from a number, 24 presets). Up to sixteen scenes of
+(a virtual analog synth modeled after a popular DCO synth, 32 presets) or FM-6 (six-operator
+FM, after a classic 80s synth, 32 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -17,7 +17,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, five for JAX-EP).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -440,7 +440,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP or QMOD track. Move to another track there and the page follows.
+  PHAZED, JAX-EP or FM-6 track. Move to another track there and the page follows.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -449,7 +449,13 @@ designer".
 - **SAVE AS PRESET** keeps the sound, macros included, under a name. It
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
-  `NAME.jaxep`, `NAME.qmod`). Saving under the same name again replaces it.
+  `NAME.jaxep`, `NAME.fm6`). Saving under the same name again replaces it.
+- **FM-6 stands where QMOD stood** (gone from the program, 2026-11-15). What
+  was made for QMOD does not carry over: an old `NAME.qmod` preset stays on
+  the card, not listed, and an old song's QMOD tracks open as FM-6 tracks on
+  its first preset (BRASS 1), knobs in the middle. They keep their notes,
+  scenes, effects, sends, level and pan; not their sound, their macros'
+  automation or a MOD on a macro.
 - **JAX-EP stands where Twin Analog stood** (a synth of earlier builds, gone
   from the program now), and is another synth, so what was made for Twin
   Analog does not carry over:
@@ -650,42 +656,71 @@ to the next value) and **CHANCE** (how often a step plays a fresh random value
 instead of the one written). An LFO keeps a row too, for when it becomes a
 STEPPER.
 
-### QMOD
+### FM-6
 
-An FM synth that is **rolled, not programmed**. FM is sine waves
-("operators") bending each other's pitch very fast; which bends which is the
-wiring, and it decides the sound. QMOD never asks you to wire anything: a
-number generates a whole wiring of eight operators, from one of thirty-two
-families. A second wiring, a cousin of the first, is generated beside it,
-and ENTANGLE morphs from one to the other.
+**Six-operator FM, after a classic 80s synth.** FM is sine waves
+("operators") bending each other's pitch very fast. An operator that is heard
+is a carrier; one that only bends another is a modulator. Which bends which is
+the ALGORITHM, one of 32 wirings. Each operator has its own envelope, tuning
+and level.
 
-The generator is the one in the Entanglement module of the Shapetaker VCV
-Rack plugin (`third_party/shapetaker`, unchanged). QMOD's voice is its own
-and much lighter than the module's. It is still the costliest synth here:
-eight notes at once take about 3% of one core of the build machine, against
-under 1% for PHAZED and about half a percent for six notes of JAX-EP.
+- **32 presets, one folder, ROM 1A**: the first factory cartridge of the synth
+  it is modeled after, in its order (BRASS 1 ... TAKE OFF), names as the
+  cartridge writes them. A new FM-6 track starts on the first.
+- **Every one of the original's 145 voice settings is there**, by its own
+  number, so a sound from any bank of the original goes in setting for
+  setting. Not played: pitch bend, the mod wheel, breath and foot.
+- **Sixteen voices.** A voice costs only while it sounds.
+- **Built on msfa**, the FM core of Google's music-synthesizer-for-android
+  (Apache 2.0; its licence ships with the program). The plan, the choices and
+  what each preset measures: `docs/plans/fm6-plan.md`.
 
-| Control | Does |
+The macros. Each at +0 is the patch as it is; a preset puts all eight back.
+
+| Macro | Down | Up |
+| --- | --- | --- |
+| BRIGHT | The modulators quieter, to none: plain sines | Up to 12 dB more: harsher |
+| FEEDBACK | The patch's feedback, to none | Up to 7, smoothly |
+| ATTACK | Every operator's first rate faster | Slower |
+| DECAY | The middle of the envelopes shorter | Longer |
+| RELEASE | Shorter after the key is let go | Longer |
+| DETUNE | The patch's own detune taken out: all in tune | The operators spread apart, up to 20 cents |
+| LFO | The LFO's depths to none | To full (where the patch lets the LFO in) |
+| PITCH ENV | The pitch envelope's depth to none | To twice |
+
+FEEDBACK up does nothing on a patch already at 7 (18 of the 32), and LFO up
+does nothing where the patch has no LFO sensitivity.
+
+ADVANCED is eight pages. L1 and R1 turn them.
+
+| Page | Holds |
 | --- | --- |
-| **Y** (on its DEVICE screen) | **ROLL**: a new sound, at once, and it is heard. Only the sound's numbers change; how bright it is and its envelope stay as set. |
-| ENTANGLE | All the first wiring, to all the second |
-| TENSION | How hard the operators bend each other: mellow to metallic |
-| EVOLVE | How long that brightness lasts in each note: a quick pluck of it, or all the way through |
-| VARIATION | Which cousin the second wiring is. Turning it flips through them. |
-| SOUND NUMBER | 1 to 9999: every one is a playable sound (tested) |
-| MUTATION | How far a cousin strays |
-| AFFINITY | How much the generator likes feedback: rougher |
-| SYMMETRY | Plain harmonic tunings, or bell-like ones |
-| FAMILY | AUTO (whichever the sound's number gives), or one of the 32 by name |
+| VOICE AND LFO | ALGORITHM (1 to 32), FEEDBACK, TRANSPOSE (in semitones), KEY SYNC; LFO WAVE, SPEED, DELAY, SYNC; PITCH DEPTH, LEVEL DEPTH (the LFO's), PITCH SENS |
+| OPERATOR 1 to 6 | One page each, all of it: **ON**, OUTPUT LEVEL, COARSE, FINE; MODE, DETUNE, VELOCITY, LEVEL SENS (how much the LFO moves its level); RATE 1 to 4 over LEVEL 1 to 4 (its envelope: each rate is how fast it goes to the level under it); RATE SCALING, BREAK POINT, LEFT and RIGHT DEPTH, LEFT and RIGHT CURVE (how its level follows the keys) |
+| PITCH ENVELOPE | RATE 1 to 4 over LEVEL 1 to 4 (50 is the key's own pitch) |
 
-The same number is always the same sound, so a rolled sound saved in a song
-or as a preset comes back exactly. The sound designer page shows QMOD like
-any other synth, with a ROLL A NEW SOUND button.
+- **ON turns an operator off** without touching its settings: the quick way
+  to hear what each one adds.
+- **COARSE and FINE read as what they make.** With MODE at RATIO, COARSE is
+  the ratio to the key (0.50, 1.00, 2.00 ...) and FINE the whole ratio with
+  it (1.41). With MODE at FIXED the operator plays one pitch whatever the key:
+  COARSE reads 1, 10, 100 or 1000 HZ and FINE the pitch (324 HZ).
+- **BREAK POINT reads as a key** (C3 is where the original's middle is),
+  DETUNE -7 to +7, the curves -LIN, -EXP, +EXP, +LIN.
+- A setting is heard from the next key played; the LFO's SPEED, DELAY and
+  WAVE and the macros at once.
+- The operator pages have six rows, so they stand a little closer than other
+  pages. At XL their boxes are drawn at LARGE: XL's value would stand on its
+  bar.
+
+**Not heard on the handheld yet**, and not run there: the tests and the stills
+have seen it. Its estimated cost there is about 6 to 10% of one core for eight
+notes (QMOD's was 57%).
 
 ### The envelope
 
-QMOD and the sampler share one volume envelope (and any synth added
-later can use it), so a setting means the same on each:
+The sampler has one volume envelope (and any synth added later can use
+it), so a setting means the same wherever it is:
 
 | Setting | 0 | 50 | 100 |
 | --- | --- | --- | --- |
@@ -705,10 +740,11 @@ The tracks do not depend on each other until they are mixed, so they are
 worked out side by side: the audio thread and two helpers each take the next
 track not yet done, and the results are mixed in track order. The busiest
 song the SPEED TEST knows (twelve tracks: six of drums, two each of JAX-EP,
-QMOD and PHAZED playing strummed chords and arpeggios, every hit and chord
+FM-6 and PHAZED playing strummed chords and arpeggios, every hit and chord
 thrown, three effects on every track, both buses, two on the master) took
 about 20% of the time it had on one core of the build machine and about 13%
-with two helpers (2026-11-15; not yet run on the handheld). The sound is the
+with two helpers (2026-11-15, with QMOD where FM-6 is now; not yet run on the
+handheld). The sound is the
 same to the last bit, and a test holds it to that. One core is left for the
 screen. Bounces use it too.
 
@@ -748,7 +784,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
-| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER or QMOD | | | |
+| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER or FM-6 | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
 The song runs to the last scene with anything in it. Then, by its **song end**:
@@ -1418,7 +1454,8 @@ before chord effects skips the line and plays the chord plain.
 
 MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
 MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. JAX-EP's are
-CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. Hold A + stick turns the one under
+CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. FM-6's are BRIGHT,
+FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
@@ -1434,8 +1471,9 @@ instead of eight.
 
 ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
 each line's volume, wave and pitch envelopes drawn out). JAX-EP has
-five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). L1 and R1 turn the pages; B
-goes back to MAIN.
+five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). FM-6 has eight
+(the voice and its LFO, one for each operator, the pitch envelope: see FM-6,
+above). L1 and R1 turn the pages; B goes back to MAIN.
 
 JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
 pages are that synth's panel:
@@ -1537,8 +1575,9 @@ tests/    engine tests, and screen tests that press the buttons.
 third_party/  stb_truetype, which reads the font (public domain);
           easycz, the engine behind Phazed, copied unchanged from
           joshpanzarella/schwung-easycz (MIT, with a BSD-3-Clause chip
-          emulation from MAME); and signalsmith, which stretches
-          recordings to fit the tempo (MIT).
+          emulation from MAME); msfa, the FM core behind FM-6
+          (Apache 2.0, changed: third_party/CHANGES.md); and signalsmith,
+          which stretches recordings to fit the tempo (MIT).
 tools/    render_demo, which renders a short piece to a WAV file.
 cmake/    cross-compile settings.
 scripts/  the handheld build and the port launcher.

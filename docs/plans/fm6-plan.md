@@ -2,9 +2,8 @@
 
 Written 2026-11-15. **The engine part is built (branch `fm6`)**: a six-operator
 FM synth on msfa, its 32 factory sounds, eight macros, its tests and two
-`bench` rows. **The app side is not built**: no track can be made FM-6 yet,
-and QMOD is still in. **Nobody has heard it, and it has not run on the
-handheld** (it has run built for the handheld, under an emulator: its tests
+`bench` rows. **The app side is built too (section 10), and QMOD is gone.**
+**Nobody has heard it, and it has not run on the handheld** (it has run built for the handheld, under an emulator: its tests
 pass there, the same bits as the desk).
 
 The owner's decision (2026-11-15): QMOD costs 57% of a handheld core for 8
@@ -220,3 +219,44 @@ retrigger's level and gain, OPERATOR ON/OFF, a key below 0, ATTACK's floor).
    original that no factory sound hears.
 7. **More banks**: the other factory cartridges (ROM1B to ROM4B) are in the same
    archive, and the generator would take them as they are.
+8. **The preset names' inner spaces** (question 4) are shown as the cartridge has them on MAIN:
+   "BRASS   1".
+9. **TRANSPOSE reads in semitones** (+0, +12, -24), not as a note (C3) as the original shows it.
+10. **An operator page's ON is first**, and the pages run VOICE AND LFO, OPERATOR 1 to 6, PITCH
+    ENVELOPE (section 10). No picture of the ALGORITHM's wiring yet.
+
+## 10. The app side (built 2026-11-15)
+
+| Part | Where |
+| --- | --- |
+| The row: FM-6, "6-operator FM, after a classic 80s synth", word `fm6`, presets `NAME.fm6`, in QMOD's place in the list | `app/instruments.cpp` |
+| `TrackKind::Fm6` (QMOD's slot: the kinds are memory only); `TrackData::fm6` | `app/project.hpp` |
+| `track qmod` read as FM-6 on its first preset (its preset, macros, settings, the macros' automation and a MOD on a macro not read) | `kOldQmodWord`, `parseSong` |
+| The spec: the 32 in one folder (ROM 1A), the macros, how each setting reads | `fm` in `app/synth_spec.cpp` |
+| An operator's ON as a bit of OPERATORS ON | `SynthSpec::bitOf`, `settingValue`, `settingWrite` |
+| COARSE and FINE read with their operator (ratio, or Hz under FIXED) | `SynthSpec::readingIn`, `settingReading` |
+| Six rows a page, 3 apart; held at LARGE at XL | `SynthScreen::settingGap`, `settingY`, `boxFontsFor` |
+| A new synth track tells the engine its first preset | `Session::addTrack` |
+| The busiest song: FM-6 on E.PIANO 1 where QMOD was | `app/bench_run.cpp`, `kBusiestFm6Preset`, `bench_test` |
+| Stills | `fm6`, `fm6-1` to `fm6-8`, `fm6-long`, `fm6-fixed`, `fm6-off` |
+| Tests | `app_test` (`testFm6OnATrack`, `testAQmodSongOpensOnFm6`, `testFm6sHintsFit`), `design_test` (`testFm6FromThePage`), `textsize`, `scope_test` |
+
+The pages, MAIN then eight (L1 / R1 turn them):
+
+| Page | Rows of four |
+| --- | --- |
+| VOICE AND LFO | ALGORITHM, FEEDBACK, TRANSPOSE, KEY SYNC / LFO WAVE, LFO SPEED, LFO DELAY, LFO SYNC / PITCH DEPTH (PMD), LEVEL DEPTH (AMD), PITCH SENS (PMS) |
+| OPERATOR n | ON, OUTPUT LEVEL, COARSE, FINE / MODE, DETUNE, VELOCITY, LEVEL SENS (AMS) / RATE 1 to 4 / LEVEL 1 to 4 / RATE SCALING, BREAK POINT, LEFT DEPTH, RIGHT DEPTH / LEFT CURVE, RIGHT CURVE |
+| PITCH ENVELOPE | RATE 1 to 4 / LEVEL 1 to 4 |
+
+Why a page an operator: one operator is worked on without turning a page, and its envelope
+reads as the original's panel does (rates over the levels they go to). Two pages an operator
+would be fourteen pages to step through.
+
+Removed with QMOD: `engine/src/qmod.cpp`, its header, `SynthKind::Qmod` (the kinds renumbered:
+memory only), `qmod_test`, `third_party/shapetaker` (nothing else used it), ROLL (the device's Y,
+the WiFi page's button and its `roll` request, `Session::rollSynth`, `SynthSpec::roll`), `bench`'s
+QMOD rows. Tests that used QMOD moved to FM-6, or to Phazed where they needed an OCTAVE macro or a
+choice macro. The whole song pinned in `effects_test` is remade (its second synth is FM-6; the 40
+renders and the maths line held).
+
