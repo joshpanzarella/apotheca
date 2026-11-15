@@ -35,7 +35,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/qmod.cpp engine/src/jx3p.cpp engine/src/physic.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
@@ -105,10 +105,16 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
   add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
+  # PHYSIC (docs/plans/physic-plan.md): the rule header, the modes, the string, the strike, the voices, the
+  # dice and the house rules. It reads the synth's own parts (engine/src/physic/) and the measuring tools.
+  add_executable(physic_test tests/physic_test.cpp)
+  target_link_libraries(physic_test PRIVATE apotheca_engine)
+  target_include_directories(physic_test PRIVATE engine/src tests)
+  add_test(NAME physic COMMAND physic_test)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
-  set_tests_properties(engine phazed qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets mod PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets mod physic PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

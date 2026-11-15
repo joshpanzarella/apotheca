@@ -1,6 +1,8 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/denormals.hpp"
 #include "apotheca/mod_rule.hpp"
+#include "apotheca/physic.hpp"
+#include "apotheca/physic_rule.hpp"
 
 #include <cmath>
 #include <utility>
@@ -446,6 +448,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     if (kind == SynthKind::Sampler) synth.reset(new Sampler);
     else if (kind == SynthKind::Qmod) synth.reset(new Qmod);
     else if (kind == SynthKind::Jx3p) synth.reset(new Jx3p);
+    else if (kind == SynthKind::Physic) synth.reset(new Physic);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
@@ -482,10 +485,11 @@ void Engine::readScope(float* out, int count) const {
     }
 }
 
-void Engine::letGoOfNotes() {
+void Engine::letGoOfNotes(bool stopping) {
     for (Track& track : tracks_) {
         if (!track.synth) continue;
-        track.synth->allNotesOff();
+        if (stopping) track.synth->stopNotes(); // (every synth but PHYSIC: its allNotesOff, as always)
+        else track.synth->allNotesOff();
         for (double& off : track.offIn) off = kNoNote;
     }
     closeThrows();
@@ -521,7 +525,8 @@ double arpMoved(const ChordPlay& play, std::uint32_t seed, long m, double sample
 }
 
 // Play a pattern's note now, or set it waiting.
-void Engine::startNote(Track& track, const Note& note, double delaySamples, double at) {
+void Engine::startNote(Track& track, const Note& note, double delaySamples, double at, double strikeAt) {
+    if (strikeAt == kSameStrike) strikeAt = at;
     // A PAIRED track's step, the first time through: the note is only told as coming, so that
     // the first note of a moment to begin knows the whole moment (glide_rule.hpp).
     if (telling_) {
@@ -551,7 +556,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
             // arpeggio's, come with ratchet 0, since startChordNote counts a chord's pieces itself.
             // An abort here passed every test, 2026-11-15. Kept as a guard, as aheadIsNow is.)
             if (note.how & kWholeFrames) wait = std::ceil(wait);
-            startNote(track, one, wait, at);
+            startNote(track, one, wait, at, strikeAt + static_cast<double>(static_cast<float>(k) * apart)); // (each piece its own roll)
         }
         return;
     }
@@ -567,6 +572,8 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         const bool glides = note.glide != kGlideOff && note.piece != kLaterPiece;
         const int trackIndex = static_cast<int>(&track - tracks_);
         const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, glideSeed(trackIndex, at)) : GlideTrail::From();
+        // The strike's roll (a synth with dice: PHYSIC), from where and which time it is struck.
+        track.synth->noteSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt));
         if (glides && from.pitch >= 0 && from.pitch != note.pitch) {
             const double steps = glideSteps(note.glide, at - from.at, note.piece);
             track.synth->noteOnFrom(note.pitch, note.velocity, from.pitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
@@ -591,6 +598,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         p.glide = note.glide;
         p.piece = note.piece;
         p.at = at;
+        p.strikeOff = static_cast<float>(strikeAt - at);
         p.velocity = note.velocity;
         p.length = note.length;
         p.throwTo = note.throwTo;
@@ -666,6 +674,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
             arp->length = note.length;
             arp->throwTo = note.throwTo;
             arp->ahead = asking_;
+            arp->at = at;
             arp->moved = arpMoved(play, seed, 0, static_cast<double>(sampleRate_) / 1000.0, samplesPerStep_);
             if (own + arp->moved < 0.0) arp->moved = -own;
             arp->wait = own + arp->moved;
@@ -724,7 +733,7 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
             one.hold = hold;
             one.piece = k > 0 ? kLaterPiece : static_cast<std::uint8_t>(hits);
         }
-        startNote(track, one, std::ceil(delay + static_cast<double>(k) * apart * samplesPerStep_), at);
+        startNote(track, one, std::ceil(delay + static_cast<double>(k) * apart * samplesPerStep_), at, at + static_cast<double>(static_cast<float>(k) * apart));
     }
 }
 
@@ -765,7 +774,7 @@ void Engine::fireArps() {
             one.throwTo = arp.throwTo;
             one.hold = static_cast<float>(left);
             one.how = kUntold | kWholeFrames;
-            startNote(track, one, 0.0, 0.0);
+            startNote(track, one, 0.0, 0.0, arp.at + static_cast<double>(m) * gap); // (each note of it its own roll, every time round)
             if (static_cast<double>(m + 1) * gap > arp.length - kShortestNote) {
                 arp.on = false;
             } else {
@@ -796,9 +805,9 @@ void Engine::firePendingNotes() {
             note.throwTo = p.throwTo;
             note.hold = p.hold;
             note.how = p.how;
-            const double at = p.at;
+            const double at = p.at, strikeAt = p.at + static_cast<double>(p.strikeOff);
             p = Track::PendingNote();
-            startNote(track, note, 0.0, at);
+            startNote(track, note, 0.0, at, strikeAt);
         }
     }
 }
@@ -1492,7 +1501,7 @@ void Engine::barLine() {
 void Engine::stopPlaying() {
     playing_ = false;
     clearPending(); // a hit that was waiting for its moment does not come after the song has stopped
-    letGoOfNotes();
+    letGoOfNotes(true); // (Stop: a note that rings after let go rings on, so a bounce's tail keeps it)
     for (Track& track : tracks_) stillMods(track); // no MOD runs while stopped: every knob is given its centre
     heardTrack_ = -1;
     heardMask_ = 0;

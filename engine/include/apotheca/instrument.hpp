@@ -4,6 +4,8 @@
 // The constructor and prepare() may allocate and are not for the audio
 // thread. Everything else is called on it and must not allocate or wait.
 
+#include <cstdint>
+
 namespace apotheca {
 
 class Instrument {
@@ -25,6 +27,14 @@ public:
     }
     virtual void noteOff(int note) = 0;
     virtual void allNotesOff() = 0;
+    // The roll of the next noteOn / noteOnFrom: where and which time it is struck (the track, the
+    // key and the strike's own moment since Play: physic_rule.hpp, strikeSeed), handed over just
+    // before it. A synth with no dice ignores it. (PHYSIC's; docs/plans/physic-plan.md, section 3.)
+    virtual void noteSeed(std::uint32_t seed) { (void)seed; }
+    // Stop (not Play, not panic): every note let go as by noteOff. A synth whose notes ring on
+    // after they are let go keeps ringing, so a bounce, which sends Stop when the song's last sample
+    // has played and then records the tail, keeps it. By default allNotesOff, as it always was.
+    virtual void stopNotes() { allNotesOff(); }
     // For an instrument that plays a recording: here it is (or nullptr for
     // none). The samples stay alive until replaced. Realtime safe.
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }
@@ -33,7 +43,7 @@ public:
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Sampler, Qmod, Jx3p };
+enum class SynthKind { Phazed, Sampler, Qmod, Jx3p, Physic }; // (memory only: appended all the same)
 
 // Every synth has this many macros (the eight knobs on its DEVICE screen).
 // Songs, presets and automation lanes 0..7 all count on it; each synth's
