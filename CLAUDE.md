@@ -462,6 +462,14 @@ effect in those two groups and fails one that does not.
     THROW's check inside the one loop, twelve unthrown drum tracks cost half
     as much again (1.46% to 2.18%). The line that adds to `left` is as it
     was; the thrown copy is worked out again beside it, not taken from it.
+  - **A voice's plain stretches are runs** (speed plan batch 2; `plainRun`,
+    drums.cpp): forward at speed 1, its level, rise, fade and THROW at rest,
+    up to the sound's end, its part's end or the sample its cut falls on. A
+    run is a plain loop with the same sum written the same way; every other
+    sample goes the long way. **Anything new that moves in a voice from one
+    sample to the next makes `plainRun` say 0 while it moves**, or the run
+    skips it. `speed_test` (`testDrumRuns`) holds the two ways side by side
+    (`setRunsForTests`). Twelve drum tracks 1.47% to 0.43% of a desk core.
   - **A track that throws nothing takes the old loop in `feedBuses`**, which
     is why a song without throws is the same to the bit (the pinned song).
   - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do
@@ -2134,6 +2142,7 @@ effect in those two groups and fails one that does not.
 | Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1 | 2,070 / 351 / 67.5 / 214 / 435 M |
 | ...after batch 1 (the step clock walks only what waits, Phazed rests, its tables shared) | 2,023 / 39.0 / 22.1 / 212 / 432 M; the busiest song's L2 read misses (a 256 KB model) 5.61 to 3.60 M |
 | Twelve silent tracks after batch 1 (one run, load 6): Phazed / QMOD / JAX-EP; eleven silent samplers with plain chords | 0.32 / 0.15 / 0.15%; 0.15% (were 2.38 / 0.70 / 0.71%; 0.72%) |
+| ...after batch 2 (the drum voice loop in runs): instructions, twelve drum tracks / thrown / busiest; timed (load 7 to 9), twelve drum tracks / every hit thrown, added / the busiest song alone, 2 helpers | 53 / 143 / 1,877 M (were 212 / 432 / 2,023); 0.43% / +0.31% (were 1.47% / +1.18%); 15.5 / 10.8% of a block |
 
 **QMOD is the costly synth now** (Twin Analog, at 4.7% and up, is gone:
 batch 8b). **No synth has a quality setting and nothing watches the load**:

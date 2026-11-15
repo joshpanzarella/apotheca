@@ -401,3 +401,69 @@ The plan's targets for the device (eleven silent tracks under 2.5%, twelve
 silent Phazed under 4%): by section 0's rule (1 G instructions a handheld
 core-second), about 2.2% and 3.9%, just inside both. **The device's SPEED TEST
 says.**
+
+### Batch 2: the drum voice loop in runs (2026-11-15)
+
+**Bit-exact**: `effects_test --print` the same, the pins untouched.
+
+`DrumMachine::renderVoice` looks, before each sample, for a **run**: the
+samples from here on where nothing about the voice moves but its place
+(`plainRun`): forward at speed 1, its level not gliding, not rising, not
+fading, its THROW not sliding, and up to the first sample where something
+would change (the sound's end, its part's end where the fade begins, the sample
+its cut falls on). A run is one plain loop, `left[i] += s[i] * gain * fade *
+rise * laneLevel`, the long way's sum word for word with what does not move
+read once, so the compiler can do several samples at a time and the bits are
+the same; the thrown copy the same way. Every other sample (pitched, backwards,
+rising, fading, a level or a THROW gliding) goes the long way, one at a time,
+as before. A double place plus a whole number is exact, so a run's places are
+the long way's.
+
+Held by `speed_test`: `testDrumRuns` (two machines on the built-in kit, one the
+long way (`setRunsForTests`), 30 s in blocks of 1 to 300: hits plain, pitched
+both ways, backwards, part-way in, parts, cuts, a lane's own short recording,
+slices of the crash carried on at another level and another THROW, lane levels
+and parts set, auditions let go, the buses' ways out given or not: the same
+bits on both sides and both buses, the same buses written) and
+`testDrumRunsInTheSong` (the busiest song both ways).
+
+**Mutation tests**: killed, each: the run's gain or lane level left out, the
+bus not cleared before the run first writes it, the run one sample past the
+cut, past the part's end, one sample too long, a run taken while the level
+glides, while it rises, while it fades, while pitched, while the bus share
+glides, the cut not counted down in a run, the place a sample short. **One
+survivor, equivalent**: the bus share left out of the run's thrown copy (in a
+run it is exactly 1: 0 is skipped, and between is a slide, which is no run).
+
+**Instructions, one second of sound** (callgrind, clang -O2 -g):
+
+| Setup | Batch 1 | Batch 2 | |
+| --- | --- | --- | --- |
+| drums (twelve drum tracks) | 212 M | 53.0 M | **-75%** |
+| drums-thrown | 432 M | 143 M | **-67%** |
+| busiest | 2,023 M | 1,877 M | -7% |
+
+From the plan's start (batch 0): **the busiest song 2,070 to 1,877 M (-9%)**,
+its L2 read misses about a third fewer (batch 1).
+
+**Timed, one run, load 7 to 9** (before: the batch 1 run):
+
+| Row | Before | After |
+| --- | --- | --- |
+| twelve drum tracks | 1.47% | **0.43%** |
+| ...every hit thrown to both buses, added | +1.18% | **+0.31%** |
+| ...thrown, TAPE, HALL, 12 DUCKs, added | +1.68% | +0.81% |
+| the busiest song alone / 2 helpers / 3 helpers | 15.7 / 11.7 / 11.3% | 15.5 / 10.8 / 9.9% |
+
+The plan's targets for the device (twelve drum tracks under 8%, their THROW
+under 8%): by section 0's rule, 53 M and 143 M are about 5% and 14% of a
+handheld core for the drums with every hit thrown (the 8% target for THROW is
+its added cost: 90 M, about 9%). **Close; the device's SPEED TEST says.**
+
+### What is left
+
+- Batch 1's other half of #9, a `Glide` at rest skipping its step: in nineteen
+  effects' own loops, about 1% of the busiest song. Not done.
+- The device's figures: **none of this has run on the handheld.** The SPEED
+  TEST of a build with these batches is the next thing (batch 0's rows say the
+  governor, the clocks, the L2 and the sound card; then batch 3 can be chosen).

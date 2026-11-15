@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/drums.hpp"
 #include "apotheca/engine.hpp"
 #include "apotheca/glide_rule.hpp"
 #include "apotheca/phazed.hpp"
@@ -435,6 +436,105 @@ void testSoundOnly() {
         }
     CHECK(tried > 2000);
 }
+
+// ---- batch 2: the drum voice loop in runs ----------------------------------------------------
+
+// Two drum machines on the built-in kit, one working every sample the long way (setRunsForTests),
+// given the same things at the same moments in blocks of 1 to 300 frames: hits plain, pitched up
+// and down, backwards, started part-way in, a part of the sound (its fade at its end), cut short,
+// on a lane's own recording shorter than a block; hits that carry a sound on (slices in order), at
+// another level (it glides) and another THROW (the bus share glides); lane levels and parts set,
+// held auditions let go, the buses' ways out given in some blocks and not in others. The same bits
+// on both sides and both buses, and the same buses written.
+void testDrumRuns() {
+    const DrumKit& kit = DrumKit::builtIn(48000.f);
+    std::vector<float> recording(5000);
+    for (std::size_t i = 0; i < recording.size(); ++i) recording[i] = std::sin(0.03f * static_cast<float>(i)) * (1.f - static_cast<float>(i) / 5000.f);
+    std::unique_ptr<DrumMachine> machines[2] = {std::unique_ptr<DrumMachine>(new DrumMachine), std::unique_ptr<DrumMachine>(new DrumMachine)};
+    for (auto& m : machines) {
+        m->setKit(&kit);
+        m->prepare(48000.f);
+        m->setLaneSample(6, recording.data(), static_cast<int>(recording.size()));
+    }
+    const int crash = static_cast<int>(kit.samples[7].size());
+    std::vector<float> outs[2];
+    std::vector<int> wrote[2];
+    float left[300], right[300], echo[300], space[300];
+    std::uint32_t dice = 2024u;
+    const auto roll = [&](int n) { dice = dice * 1664525u + 1013904223u; return static_cast<int>((dice >> 8) % static_cast<std::uint32_t>(n)); };
+    long frames = 0, sliceFrom = -1;
+    int slices = 0;
+    while (frames < 48000L * 30) {
+        const int length = 1 + roll(300);
+        // What happens at this block's start: rolled once, done to both.
+        struct Hit { int lane; float velocity, start, part; HitPlay how; };
+        std::vector<Hit> hits;
+        if (roll(3) == 0) {
+            Hit h;
+            h.lane = roll(kDrumLanes);
+            const float velocities[3] = {1.f, 0.8f, 0.45f};
+            h.velocity = velocities[roll(3)];
+            h.start = roll(4) == 0 ? static_cast<float>(roll(16)) / 16.f : 0.f;
+            const float parts[4] = {-1.f, 0.f, 0.05f, 0.2f};
+            h.part = parts[roll(4)];
+            const float rates[4] = {1.f, 1.f, 1.5f, 0.75f};
+            h.how.rate = rates[roll(4)];
+            h.how.reverse = roll(6) == 0;
+            h.how.life = roll(4) == 0 ? 100 + roll(3000) : 0;
+            h.how.throwTo = roll(4);
+            h.how.audition = roll(8) == 0;
+            hits.push_back(h);
+        }
+        // Slices of the crash in order, every quarter second or so: each carries the sound on.
+        if (sliceFrom < 0 && roll(40) == 0) {
+            sliceFrom = frames, slices = 0;
+            Hit h{7, 0.9f, 0.01f, 0.f, HitPlay()};
+            hits.push_back(h);
+        } else if (sliceFrom >= 0 && frames - sliceFrom > 12000L * (slices + 1)) {
+            ++slices;
+            Hit h{7, slices % 2 ? 0.5f : 1.f, static_cast<float>(0.01 + static_cast<double>(frames - sliceFrom) / crash), 0.f, HitPlay()};
+            h.how.throwTo = slices % 3; // the bus share glides when it changes
+            hits.push_back(h);
+            if (slices == 5) sliceFrom = -1;
+        }
+        const int lane = roll(kDrumLanes), what = roll(30);
+        const float level = static_cast<float>(roll(5)) / 4.f, part = static_cast<float>(roll(3)) / 8.f;
+        const bool buses = roll(3) != 0;
+        for (int k = 0; k < 2; ++k) {
+            DrumMachine& m = *machines[k];
+            DrumMachine::setRunsForTests(k == 0);
+            for (const Hit& h : hits) m.trigger(h.lane, h.velocity, h.start, h.part, h.how);
+            if (what == 0) m.setLaneLevel(lane, level);
+            if (what == 1) m.setLanePart(lane, part);
+            if (what == 2) m.letGo(lane);
+            for (int i = 0; i < length; ++i) echo[i] = space[i] = 7.f; // (left as found when not written)
+            wrote[k].push_back(m.render(left, right, length, buses ? echo : nullptr, buses ? space : nullptr));
+            outs[k].insert(outs[k].end(), left, left + length);
+            outs[k].insert(outs[k].end(), right, right + length);
+            outs[k].insert(outs[k].end(), echo, echo + length);
+            outs[k].insert(outs[k].end(), space, space + length);
+        }
+        frames += length;
+    }
+    DrumMachine::setRunsForTests(true);
+    CHECK(anySound(outs[0]));
+    CHECK(wrote[0] == wrote[1]);
+    CHECK(sameBits(outs[0], outs[1]));
+    if (!sameBits(outs[0], outs[1])) std::printf("  apart from sample %ld\n", firstApart(outs[0], outs[1]));
+}
+
+// The busiest song (six drum tracks, ratchets, every hit thrown) the same both ways.
+void testDrumRunsInTheSong() {
+    std::vector<float> outs[2];
+    for (int k = 0; k < 2; ++k) {
+        DrumMachine::setRunsForTests(k == 0);
+        outs[k] = busiest(0, false, 4.0);
+    }
+    DrumMachine::setRunsForTests(true);
+    CHECK(anySound(outs[0]));
+    CHECK(sameBits(outs[0], outs[1]));
+    if (!sameBits(outs[0], outs[1])) std::printf("  apart from sample %ld\n", firstApart(outs[0], outs[1]));
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -447,6 +547,8 @@ int main(int argc, char** argv) {
         {"testPhazedTablesShared", testPhazedTablesShared},
         {"testConverterSkips", testConverterSkips},
         {"testSoundOnly", testSoundOnly},
+        {"testDrumRuns", testDrumRuns},
+        {"testDrumRunsInTheSong", testDrumRunsInTheSong},
     };
     for (const auto& test : tests) {
         bool wanted = argc < 2;
