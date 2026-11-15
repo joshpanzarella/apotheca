@@ -2174,7 +2174,7 @@ watch again, it is in git (the commit before batch 8b).
    through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
    Keep the engine free of Linux-only calls where it costs nothing.
 
-Open: which chord packs ship, more presets, own WiFi hotspot, an automation
+Open: FM-6's other factory cartridges (ROM1B to ROM4B) as more folders (owner, 2026-11-15: later), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
 becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
 clone is JAX-EP, built in batches 0 to 8c of `docs/plans/jx3p-plan.md` on

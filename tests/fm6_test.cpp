@@ -86,10 +86,10 @@ static double cents(double hz, int key) { return 1200.0 * std::log2(hz / (440.0 
 // FAITHFUL: the 32 are the first factory cartridge, in its order, under its names (tools/fm6/README.md:
 // the bank's checksum is right, every value in its range); and no name is a maker's or a model's.
 static void testPresets() {
-    const char* const names[32] = {"BRASS   1", "BRASS   2", "BRASS   3", "STRINGS 1", "STRINGS 2", "STRINGS 3", "ORCHESTRA", "PIANO   1",
-                                   "PIANO   2", "PIANO   3", "E.PIANO 1", "GUITAR  1", "GUITAR  2", "SYN-LEAD 1", "BASS    1", "BASS    2",
-                                   "E.ORGAN 1", "PIPES   1", "HARPSICH 1", "CLAV    1", "VIBE    1", "MARIMBA", "KOTO", "FLUTE   1",
-                                   "ORCH-CHIME", "TUB BELLS", "STEEL DRUM", "TIMPANI", "REFS WHISL", "VOICE   1", "TRAIN", "TAKE OFF"};
+    const char* const names[32] = {"BRASS 1", "BRASS 2", "BRASS 3", "STRINGS 1", "STRINGS 2", "STRINGS 3", "ORCHESTRA", "PIANO 1",
+                                   "PIANO 2", "PIANO 3", "E.PIANO 1", "GUITAR 1", "GUITAR 2", "SYN-LEAD 1", "BASS 1", "BASS 2",
+                                   "E.ORGAN 1", "PIPES 1", "HARPSICH 1", "CLAV 1", "VIBE 1", "MARIMBA", "KOTO", "FLUTE 1",
+                                   "ORCH-CHIME", "TUB BELLS", "STEEL DRUM", "TIMPANI", "REFS WHISL", "VOICE 1", "TRAIN", "TAKE OFF"};
     CHECK(Fm6::presetCount() == 32);
     for (int i = 0; i < 32; ++i) {
         CHECK(std::strcmp(Fm6::presetName(i), names[i]) == 0);
@@ -225,7 +225,7 @@ static void testEveryPresetPlaysAndEnds(bool print) {
 // FAITHFUL (the direction): a preset whose operators read the velocity is louder struck harder; the
 // start patch, whose operators do not, is the same either way.
 static void testVelocity() {
-    const int piano = presetNamed("PIANO   1"); // (E.PIANO 1's velocity is mostly brightness: 3.4 dB)
+    const int piano = presetNamed("PIANO 1"); // (E.PIANO 1's velocity is mostly brightness: 3.4 dB)
     double level[2];
     for (int i = 0; i < 2; ++i) {
         std::unique_ptr<Fm6> s = preset(piano);
@@ -411,8 +411,8 @@ static void testGlide() {
 static void testMacros() {
     struct Case { const char* preset; int macro; int frames; bool letGo; };
     const Case cases[] = {
-        {"E.PIANO 1", MacroBright, kRate / 2, false}, {"BRASS   3", MacroFeedback, kRate / 2, false},
-        {"STRINGS 1", MacroAttack, kRate / 2, false}, {"PIANO   1", MacroDecay, kRate, false},
+        {"E.PIANO 1", MacroBright, kRate / 2, false}, {"BRASS 3", MacroFeedback, kRate / 2, false},
+        {"STRINGS 1", MacroAttack, kRate / 2, false}, {"PIANO 1", MacroDecay, kRate, false},
         {"STRINGS 1", MacroRelease, kRate, true},     {"STRINGS 2", MacroDetune, kRate, false},
         {"STRINGS 3", MacroLfo, kRate * 2, false},    {"REFS WHISL", MacroPitchEnv, kRate / 2, false},
     };

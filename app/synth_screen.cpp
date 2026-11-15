@@ -115,6 +115,11 @@ void SynthScreen::stepFolder(int by) {
     const int count = spec_.presetCount();
     const char* here = spec_.presetCategory(trk().preset);
     int i = trk().preset;
+    // One folder holds every preset (FM-6's ROM 1A, with none of the player's own): nowhere to go.
+    // Without this the walks below went round for good and the program froze (owner, 2026-11-15).
+    bool oneFolder = true;
+    for (int p = 0; p < count && oneFolder; ++p) oneFolder = std::strcmp(spec_.presetCategory(p), here) == 0;
+    if (oneFolder) return;
     if (by > 0) {
         while (std::strcmp(spec_.presetCategory(i), here) == 0) i = (i + 1) % count;
     } else {

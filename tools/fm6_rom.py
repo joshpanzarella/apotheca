@@ -78,7 +78,7 @@ def main():
                 raise SystemExit("voice %d, parameter %d: %d is over %d" % (v + 1, i, value, top))
         if not all(32 <= ord(c) < 127 for c in name):
             raise SystemExit("voice %d: a name that is not plain letters" % (v + 1))
-        voices.append((name.rstrip(" "), params))
+        voices.append((" ".join(name.split()), params))  # gaps closed up: "BRASS   1" is BRASS 1 (owner, 2026-11-15)
 
     lines = [
         "#pragma once",

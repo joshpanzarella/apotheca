@@ -2569,6 +2569,13 @@ void testFm6OnATrack() {
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.fm6();
+    // FOLDER turned with only ROM 1A there: nothing moves, and it does not hang (it froze the
+    // handheld: owner, 2026-11-15). Both ways, held A and the stick's step alike go through stepFolder.
+    screen.goTo(0, SynthScreen::kFolder);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(UP), rig.tap(DOWN), rig.tap(RIGHT), rig.tap(LEFT);
+    rig.key(A, false), rig.frames(1);
+    CHECK(track.preset == 0);
     screen.goTo(0, SynthScreen::kAdvanced);
     rig.tap(A);
     CHECK(screen.page() == 1 && screen.pageCount() == 9);

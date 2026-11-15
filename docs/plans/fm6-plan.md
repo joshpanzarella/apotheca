@@ -204,6 +204,11 @@ retrigger's level and gain, OPERATOR ON/OFF, a key below 0, ATTACK's floor).
 
 ## 9. Open questions for the owner
 
+**Answered (owner, 2026-11-15, "go with your picks"):** the names are closed up ("BRASS 1",
+`tools/fm6_rom.py`); the other factory cartridges come later, as more folders; 16 voices and
+these eight macros stay; TRANSPOSE stays in semitones. Still open: 1 (whether the factory
+sounds may ship, which matters only if Apotheca is ever sold), 5, 6 and 10.
+
 1. **May the factory sounds ship?** They are the maker's work (1983), shared
    everywhere (every FM emulator offers them; the archive used calls them public
    domain) but not under a licence anyone wrote down. msfa itself is Apache 2.0
