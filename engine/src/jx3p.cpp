@@ -22,7 +22,7 @@ namespace {
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// A voice at LEVEL 7 with its envelope at the top puts out a wave of this height. SELF: about
+// A voice at the VCA's 0 dB (LEVEL 4.5: kVcaUnityDial) with its envelope at the top puts out a wave of this height. SELF: about
 // what Twin gives, so a track swapped to it is not much louder or quieter (the start patch's note
 // measured 1.6 dB over Twin's first preset's, 2026-11-14).
 constexpr float kOutputGain = 0.3f;
@@ -40,7 +40,7 @@ struct Preset {
 // is made with (the engine's own tests play it); a player never meets it: a track is sent its
 // preset's patch by the app.
 // RANGE WAVE LFO ENV | RANGE WAVE XMOD TUNE FINE LFO ENV | LFO-D ENV-D POL | MIX HPF CUT RES LFO ENV POL KEY | MODE LEVEL | WAVE DELAY RATE | A D S R | CHORUS
-const Preset kStart = {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 70, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}};
+const Preset kStart = {"Start", "START", {1, 0, 0, 0, /**/ 1, 0, 0, 50, 50, 0, 0, /**/ 0, 0, 0, /**/ 0, 0, 100, 0, 0, 0, 0, 0, /**/ 0, 45, /**/ 0, 0, 50, /**/ 0, 50, 70, 30, /**/ 1}}; // (LEVEL 4.5: the VCA's 0 dB, kVcaUnityDial, as LEVEL 7 was until 2026-11-15)
 
 // THE 32 FACTORY PATCHES (the plan, section 4, batch 7), A1 to B16, in the factory order, from
 // the maker's 1983 booklet of the programmer's settings for 32 sounds (NAM-0150), which draws a

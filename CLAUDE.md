@@ -215,7 +215,11 @@ effect in those two groups and fails one that does not.
   built-in folder, 1983 BOOKLET, SPEEDS GUESSED for one named "BANK ..."
   (BANK A and BANK B: every built-in sound today, so the short one has no
   folder; `SynthScreen::folderNoteAs` shows it for its test), nothing
-  for the player's own. The row keeps room for the longest count
+  for the player's own. **The count beside it is the preset's place in its
+  folder** (owner, 2026-11-15; `SynthScreen::placeInFolder`: B7 reads
+  "7 / 16", the player's own count among themselves, every synth alike; a
+  folder is the run of presets side by side under one name, as `stepFolder`
+  steps them). The row keeps room for the longest count
   (`kCountLongest`), and where the three texts do not fit the size chosen the
   whole row is drawn at LARGE (the bank's line at XL). No maker's name in it.
 - **JAX-EP's 32 presets are the booklet's, and the table is not edited by
@@ -228,22 +232,33 @@ effect in those two groups and fails one that does not.
   SQUARE on twelve, B14's METAL, the blanks). The start patch is not a preset
   (`Jx3p::startPatch()`: what a synth is made with, what the engine's tests
   play); a new track and an old `track twin` are on A1.
-  - **Known, held by `testEveryPatchPlays`, not hidden**: B4 Song Whistle and
-    B15 Planet are all but silent (-62 and -61 dB) and the bank is about
-    13 dB under PHAZED's presets. Both come from guesses in the engine
-    (`kVcfLowHz`, `kVcaUnityDial`), not from the table: the owner's calls
-    (the plan, section 8). When either moves, the test's two KNOWN lines fail
-    and are taken out.
-  - **Known the same way (the review's mend, 2026-11-15): A3 Organ I is in
-    tune with itself, not with the other tracks.** What is heard is the
-    filter's sine, 20.8 semitones under the key and 21 cents off the grid
-    (`testNamsThree` holds it as KNOWN). The cutoff anchored so it sings the
-    key is BOTH constants times 3.32 (49.84 Hz to 49.84 kHz: the same span;
-    `kVcfLowHz` alone at 49.6 leaves it 5 semitones under). Meanwhile CUTOFF
-    4.1 with the track's BRILLIANCE at 5.1 sings the key (README says so).
-  - **Six keys with every macro full up pass full scale** (A8 2.15, A16 1.88
-    out of the synth; `testEveryPatchPlays`, KNOWN): loudness, the owner's
-    call with the bank's level. Nothing is not-a-number and everything ends.
+  - **The cutoff's range and the VCA's 0 dB were set from the bank (owner,
+    2026-11-15; three "known" faults mended).** `kVcfLowHz` 49.84 and
+    `kVcfHighHz` 49840 (`jx3p/ir3109.hpp`; they were 15 and 15000: the same
+    span times 3.32), held at `kVcfTopHz` 20 kHz as before, so **at key 60
+    CUTOFF 8.7 to 10 is one sound**. `kVcaUnityDial` 45 (`jx3p/env.hpp`; it
+    was 70) and **`kVcaClipDial` is the same number: the clip starts at a full
+    wave, 1, wherever the 0 dB is.** The start patch's LEVEL moved with it (45),
+    so it and the engine's tests are the gain they were; **a test that wants a
+    clean wave sets LEVEL 4.5 or under** (the tests' plain patches: 25, 35, 45).
+    - **A3 Organ I sings the key played**: 0.4 cents from the grid at worst,
+      keys 48 to 84, read over five seconds (`testNamsThree`). Its sine sits on
+      DCO-1's second harmonic (16') and is held by it: the cutoff 40 cents off
+      still sings the key, so the test also holds the cutoff's CV to the key
+      within half a cent. Its level sways (DCO-2 is 27 cents flat in the patch
+      and beats with the sine, twice a second at key 48): the patch, not a fault.
+    - **No patch is all but silent** (`testEveryPatchPlays`, the chord's
+      loudest tenth of a second): B15 Planet -34.5 dB, the quietest; B4 Song
+      Whistle -25.8; the middle of the 32 -17.2; A1 String I -14.5 (PHAZED's
+      first presets: -15.5 to -12.6); A16 Voice -2.0, the loudest.
+    - **Known, held there, not hidden: the two patches at LEVEL 10 are 22 dB
+      into the clip and pass full scale.** Six keys as written: A8 E. Piano I
+      2.85, A16 Voice 2.56 out of the synth; every other patch 1.26 at most.
+      Macros full: A8 2.69, A16 2.58, A11 2.53, B8 1.90. Nothing is
+      not-a-number and everything ends. It is what "LEVEL 10 clips harder"
+      means (the owner's yes); `kVcaClipCeiling` (1.5) is not changed.
+    - **A song from build 0.502 or earlier loads and sounds brighter and 10 dB
+      louder** on a JAX-EP track (said in README).
   - **Builds 0.485 to 0.493 shipped JAX-EP with one preset, "Start", as
     preset 1.** A song from them keeps its sound (all 34 settings are read
     after the preset) under String I's name (`save_test`
@@ -1657,6 +1672,7 @@ effect in those two groups and fails one that does not.
 | JX-3P with the LFO (batch 4), 6 notes / the worst row / moving cutoff, now with the LFO on the cutoff and DCO-1 (2026-11-14, two runs: Phazed 0.8%, QMOD 2.8 / 3.2%, Twin x1 4.2 / 4.0% in them). **Not yet run on the handheld** | 0.43% / 0.86 to 0.87% / 1.67 to 1.68% |
 | JX-3P with the chorus (batch 5), 6 notes / the worst row / moving cutoff (2026-11-14, the quietest of five runs on a busy desk: Phazed 0.7%, QMOD 2.8 to 3.2%, Twin x1 4.1 / 4.2% in them). **Not yet run on the handheld** | 0.52 to 0.53% / 0.96 to 0.97% / 1.77 to 1.78% |
 | JAX-EP with its presets (batch 7): 6 notes of A1 String I / the worst of the 32, B15 Planet, keys again every half second / moving cutoff (2026-11-14, three runs: Phazed 0.7%, QMOD 2.8 to 2.9%, Twin x1 4.0 to 4.4% in them). Each of the 32 that way: 0.47% (B3 Oboe) to 1.07%. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.06% / 1.78 to 1.83% |
+| JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
 | JAX-EP after batch 6a (the app; the engine not touched), `bench`'s three rows (2026-11-14, the two quieter of three runs: Phazed 0.7 to 0.8%, QMOD 2.8 to 3.1%, Twin x1 4.1% in them) | 0.53% / 0.98 to 1.07% / 1.79 to 1.80% |
 | JX-3P with both DCOs (batch 2), 6 notes / a synced pulse with ENV on DCO-2's pitch / every note gliding (2026-11-14, two runs: Phazed 0.7 / 1.1%, Twin x1 4.1 / 4.5% in them) | 0.21 to 0.22% / 0.30% / 0.63 to 0.68% |
 | Drums, 8 lanes | 0.1% |
@@ -1704,7 +1720,7 @@ there is a change to the sound, and needs the owner's ears.
 ## Next, in the owner's order
 
 1. The effects plan (`docs/plans/effects-plan.md`): all built and joined (0.452): the seven families and their 27 types.
-2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done; 8a, the tests off Twin, is next. **Two calls wait on the owner from batch 7: the bank is quiet, and two presets are all but silent; a third, Organ I, is out of tune with the other tracks for the same guess** (the review's mend, 2026-11-15)).
+2. Twin Analog becomes a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: the engine, batches 6a and 6b (the song, files and screens) and 7 (the 32 presets) are done; 8a, the tests off Twin, is next. **The owner's three calls of 2026-11-15 are built: the cutoff's range moved (Organ I in tune, no preset silent), the bank is up to PHAZED's loudness, MAIN's count is the preset's place in its bank.** Nobody has heard any of it).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`; branch `mods`, batches 0 to 2 under way).
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`.
 5. **An acid mono bass** (303-style: accent, slide), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14).

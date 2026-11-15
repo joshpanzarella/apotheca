@@ -10,6 +10,7 @@
 //   jx3p_presets_test testNam ...     just those
 //   jx3p_presets_test --print         how loud each patch is, and how long it rings
 
+#include <algorithm>
 #include <cfenv>
 #include <cmath>
 #include <cstdio>
@@ -234,7 +235,7 @@ static void testNam() {
     // The start patch is not one of them: what a synth is made with, before anything picks a patch.
     std::unique_ptr<Jx3p> fresh(new Jx3p);
     for (int id = 0; id < kSettings; ++id) CHECK(fresh->setting(id) == Jx3p::startPatch().value[id]);
-    CHECK(Jx3p::startPatch().value[Cutoff] == 100 && Jx3p::startPatch().value[VcaLevel] == 70 && Jx3p::presetPatch(0).value[VcaLevel] == 34);
+    CHECK(Jx3p::startPatch().value[Cutoff] == 100 && Jx3p::startPatch().value[VcaLevel] == 45 && Jx3p::presetPatch(0).value[VcaLevel] == 34);
 }
 
 // PICKING ONE (SELF): selectPreset writes the 32, puts the macros back, and keeps the track's two.
@@ -285,52 +286,39 @@ static void testNamsThree() {
         CHECK(std::string(Jx3p::presetName(2)) == "Organ I");
         const Jx3pPatch organ = Jx3p::presetPatch(2);
         CHECK(organ.value[Resonance] == 100 && organ.value[KeyFollow] == 98 && organ.value[Cutoff] == 24 && organ.value[VcaMode] == 1);
-        // The patch as written, but for the chorus (it bends every pitch read off the sound: batch 5).
-        double first = 0.0, worst = 0.0, worstCv = 0.0, firstCv = 0.0;
-        for (int key = 48; key <= 84; key += 4) {
+        // ORGAN I SINGS THE KEY PLAYED (the owner's call, 2026-11-15: the cutoff's range is 49.84 Hz to
+        // 49.84 kHz, set by this patch; until then it sang 20.8 semitones under the key, 21 cents off
+        // the grid, out of tune with every other track). The patch as written, but for the chorus (it
+        // bends every pitch read off the sound: batch 5). What is heard is the filter's sine, 15 dB over
+        // DCO-1's fundamental (DCO-1 is at 16', an octave under the key, so the sine sits on its second
+        // harmonic and is held there by it): every key from 48 to 84 within 1 cent of the grid (measured
+        // 2026-11-15: 0.4 at worst from 48 to 72, 0.9 from 36), read over five seconds.
+        // (Five seconds, and the level over two halves of them: DCO-2 is 27 cents under DCO-1 in this
+        // patch, FINE 2.3, so its harmonic beats with the sine twice a second at key 48, and a short
+        // reading catches the beat, not the pitch.)
+        double worst = 0.0;
+        for (int key = 48; key <= 84; ++key) {
             std::unique_ptr<Jx3p> j = patched(2);
             j->setSetting(Chorus, 0);
             j->noteOn(key, 1.f);
-            std::vector<float> l(72000), r(72000);
-            j->render(l.data(), r.data(), 72000);
-            const double cv = j->voiceCutoffHz(0);
-            const std::vector<float> band = bandOf(l, cv);
-            const double hz = pitchOf(band, 36000, band.size());
-            if (key == 48) first = hz, firstCv = cv;
-            const double off = cents(hz, first) - 100.0 * (key - 48);
+            const std::size_t n = 6 * 48000;
+            std::vector<float> l(n), r(n);
+            j->render(l.data(), r.data(), static_cast<int>(n));
+            const double written = 440.0 * std::pow(2.0, (key - 69) / 12.0), cv = j->voiceCutoffHz(0);
+            const std::vector<float> band = bandOf(l, written);
+            const double sings = pitchOf(band, 48000, n), off = cents(sings, written);
+            const double level = rmsOf(band, 48000, n) * std::sqrt(2.0), dco = partNear(l.data() + 48000, n - 48000, j->voiceHz(0));
             worst = std::fmax(worst, std::fabs(off));
-            worstCv = std::fmax(worstCv, std::fabs(cents(cv, firstCv) - 100.0 * (key - 48)));
-            if (gPrint) std::printf("  Organ I at key %d: sings at %.2f Hz (its cutoff %.2f), %.2f cents off a semitone a semitone\n", key, hz, cv, off);
-            // It sings: the part at its pitch is there, steady, a second in and at the end.
-            CHECK(rmsOf(band, 36000, 48000) > 1e-3 && std::fabs(dB(rmsOf(band, 60000, 72000) / rmsOf(band, 36000, 48000))) < 1.0);
-        }
-        CHECK(worst < 5.0);
-        CHECK(worstCv < 0.5);
-        // KNOWN, HELD HERE, NOT HIDDEN (the review, 2026-11-15): ORGAN I IS IN TUNE WITH ITSELF, NOT
-        // WITH ANYTHING ELSE. What is heard of it is almost only the filter's sine (25 to 28 dB over
-        // the DCOs' fundamental), and that sine is 20.8 semitones under the key played: an octave and
-        // most of a major sixth down, and 21 cents off the nearest semitone. A melody on A3 is out
-        // of tune with every other track. It comes from where the cutoff's Hz sit, a guess (15 Hz to
-        // 15 kHz about key 60: jx3p/ir3109.hpp), as B4's and B15's silence does; the owner's call
-        // (the plan, section 8) was taken at that guess. Anchored so Organ I sings the key played,
-        // this is 0. When the cutoff is measured or moved, the check below fails and is taken out.
-        for (int key : {48, 60, 72}) {
-            std::unique_ptr<Jx3p> j = patched(2);
-            j->setSetting(Chorus, 0);
-            j->noteOn(key, 1.f);
-            std::vector<float> l(72000), r(72000);
-            j->render(l.data(), r.data(), 72000);
-            const double cv = j->voiceCutoffHz(0);
-            const std::vector<float> band = bandOf(l, cv);
-            const double sings = pitchOf(band, 36000, band.size()), written = 440.0 * std::pow(2.0, (key - 69) / 12.0);
-            const double under = -cents(sings, written) / 100.0, dco = partNear(l.data() + 36000, 36000, j->voiceHz(0));
             if (gPrint)
-                std::printf("  Organ I at key %d: the key is %.2f Hz, it sings %.2f semitones under it (%+.0f cents from a semitone), %.1f dB over its DCO-1 at %.2f Hz\n", key, written, under,
-                            100.0 * (std::round(under) - under), dB(rmsOf(band, 36000, 72000) * std::sqrt(2.0) / dco), j->voiceHz(0));
-            CHECK(under > 20.6 && under < 21.0);                              // KNOWN: not the key played (0), nor an octave of it
-            CHECK(std::fabs(100.0 * (std::round(under) - under)) > 15.0);     // KNOWN: nor any semitone
-            CHECK(rmsOf(band, 36000, 72000) * std::sqrt(2.0) > 10.0 * dco);   // ...and it is the filter that is heard: 20 dB and more over the DCO
+                std::printf("  Organ I at key %d: the key is %.2f Hz, it sings %.2f Hz, %+.2f cents from it (its cutoff %+.2f); %.1f dB over its DCO-1 at %.2f Hz\n", key, written, sings, off,
+                            cents(cv, written), dB(level / dco), j->voiceHz(0));
+            CHECK(std::fabs(off) < 1.0);                       // in tune with the grid, and so with the other tracks
+            CHECK(std::fabs(cents(cv, written)) < 0.5);        // the cutoff's CV is the key's own pitch (KEY FOLLOW 9.8 is 100%)
+            CHECK(level > 4.0 * dco);                          // it is the filter that is heard: 12 dB and more over the DCO (15.3 measured)
+            // It sings steadily: as loud over the last two and a half seconds as over the two and a half before.
+            CHECK(level > 0.02 && std::fabs(dB(rmsOf(band, 48000 + 120000, n) / rmsOf(band, 48000, 48000 + 120000))) < 0.5);
         }
+        if (gPrint) std::printf("  Organ I: %.2f cents from the key at worst, keys 48 to 84\n", worst);
     }
 }
 
@@ -338,65 +326,83 @@ static void testNamsThree() {
 // passes a stated peak, and after the keys are let go the synth comes to exact silence, within
 // the patch's own RELEASE and a little.
 //
-// HOW LOUD (measured 2026-11-14, C3 G3 C4 E4 at full velocity, the loudest tenth of a second;
-// --print): 30 of the 32 are between -37.9 dB (B16 Jet) and -5.9 dB (A8 E. Piano I, LEVEL 9.9);
-// the middle one -28.5 dB. The same chord on PHAZED's first presets is -15.5 to -12.6 dB: the
-// factory bank is some 13 dB quieter, since the booklet's LEVELs stand about 4.5 and the VCA's
-// guessed taper has 0 dB at 7 (4 dB a dial step: jx3p/env.hpp). The owner's call (the plan).
-//
-// KNOWN, HELD HERE, NOT HIDDEN: B4 SONG WHISTLE AND B15 PLANET ARE ALL BUT SILENT (-62.3 and
-// -60.9 dB). Both lean on where the cutoff's Hz sit, which is a guess (15 Hz to 15 kHz about
-// key 60: jx3p/ir3109.hpp): Song Whistle's CUTOFF 2.8 under KEY FOLLOW 10 is two octaves and
-// more under its one DCO, and Planet's RESONANCE 10 sings at 74 Hz and under while its inverted
-// envelope holds the filter shut. With the cutoff anchored so Organ I sings the key played
-// (tried, not kept: 49.6 Hz at CUTOFF 0) they come up to -35.8 and -44.5 dB. When the cutoff
-// is measured or moved, the two checks marked KNOWN below fail, and are then taken out.
+// HOW LOUD (measured 2026-11-15, C3 G3 C4 E4 at full velocity, the loudest tenth of a second;
+// --print): from -34.5 dB (B15 Planet) to -2.0 dB (A16 Voice, LEVEL 10); the middle of the 32
+// -17.2 dB, and A1 String I, what a new track plays, -14.5. The same chord on PHAZED's first
+// presets is -15.5 to -12.6 dB. THE OWNER'S TWO CALLS (2026-11-15) made it so. Until then the
+// middle was -28.5 dB and two patches all but silent (B4 Song Whistle -62.3, B15 Planet -60.9):
+//  - the VCA's 0 dB is at LEVEL 4.5, where the booklet's LEVELs stand (it was 7; jx3p/env.hpp):
+//    10 dB more on every patch under the clip;
+//  - the cutoff's range is 49.84 Hz to 49.84 kHz about key 60 (it was 15 Hz to 15 kHz;
+//    jx3p/ir3109.hpp): Song Whistle's CUTOFF 2.8 under KEY FOLLOW 10 lets its one DCO through
+//    (-25.8 dB), and Planet's filter is no longer shut (-34.5).
+// NO PATCH IS ALL BUT SILENT: every one is over -36 dB, and the checks below hold the middle
+// and A1 where they were measured.
 static const int kSongWhistle = 19, kPlanet = 30;
 static void testEveryPatchPlays() {
     double quietest = 1e9, loudest = 0.0;
     int quietAt = 0, loudAt = 0;
+    std::vector<double> held;
     for (int i = 0; i < Jx3p::presetCount(); ++i) {
         const Heard h = hear(i);
         CHECK(h.number);
-        const bool known = i == kSongWhistle || i == kPlanet;
-        if (known) CHECK(h.heldRms > 3e-4 && h.heldRms < 2e-3); // KNOWN: all but silent, not silent (above)
-        else CHECK(h.heldRms > 0.0125 * 0.8);                    // -38 dB and a little: the quietest is B16 Jet, -37.9
-        CHECK(h.peak < 1.5);                                      // the loudest, A8 E. Piano I (LEVEL 9.9, in the VCA's clip), peaks at 1.34
+        CHECK(h.heldRms > 0.0158);                                // -36 dB: no patch is all but silent (the quietest is B15 Planet, -34.5)
+        CHECK(h.peak < 2.2);                                      // the loudest, A8 E. Piano I (LEVEL 9.9, deep in the VCA's clip), peaks at 2.00
+        held.push_back(h.heldRms);
+        if (i == 0) CHECK(dB(h.heldRms) > -15.5 && dB(h.heldRms) < -13.5); // A1 String I, a new track's sound: -14.5, where PHAZED's first presets are
+        if (i == kSongWhistle) CHECK(dB(h.heldRms) > -27.0 && dB(h.heldRms) < -24.5); // -25.8 (it was -62.3)
+        if (i == kPlanet) CHECK(dB(h.heldRms) > -35.5 && dB(h.heldRms) < -33.0);      // -34.5 (it was -60.9)
         CHECK(h.rings >= 0.0 && h.rings < 11.0); // RELEASE 10 is 10 s (a guess: jx3p/env.hpp); Jet's
         if (h.heldRms < quietest) quietest = h.heldRms, quietAt = i;
         if (h.heldRms > loudest) loudest = h.heldRms, loudAt = i;
         if (gPrint)
             std::printf("  %s%-2d %-18s LEVEL %4.1f  held %6.1f dB  peak %5.2f  rings %5.2f s\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i),
                         Jx3p::presetPatch(i).value[VcaLevel] / 10.0, dB(h.heldRms), h.peak, h.rings);
-        if ((!known && h.heldRms <= 0.01) || h.peak >= 1.5 || h.rings < 0.0 || h.rings >= 11.0) std::printf("     (that was %s)\n", Jx3p::presetName(i));
+        if (h.heldRms <= 0.0158 || h.peak >= 2.2 || h.rings < 0.0 || h.rings >= 11.0) std::printf("     (that was %s)\n", Jx3p::presetName(i));
     }
-    // SIX KEYS, AND THE MACROS AT THEIR ENDS (the review, 2026-11-15; SELF). Four keys with the macros
-    // in the middle is not the loudest a patch gets: six keys of A8 as written peak at 1.46, and with
-    // every macro full up (RESO at 10, the filter open, MIX on DCO-2) A8 peaks at 2.15, A16 at 1.88
-    // and A11 at 1.36 (keys held two seconds; the review held three and read 2.54, 2.23 and 1.57):
-    // over full scale out of the synth, before the track's level (0.65) and the
-    // mixer. KNOWN, HELD HERE: it is loudness, not a fault of the numbers (every sample a number,
-    // every patch comes to exact silence); the VCA's clip bends toward a ceiling a voice, and six
-    // voices add. How loud a patch may get is the owner's call with the bank's level (the plan,
-    // section 8). With every macro at 0 the filter is shut: 17 of the 32 are under -60 dB.
+    // The middle of the 32 (the mean of the sixteenth and seventeenth by loudness): -17.2 dB.
+    {
+        std::sort(held.begin(), held.end());
+        const double middle = 0.5 * (dB(held[15]) + dB(held[16]));
+        if (gPrint) std::printf("  the middle of the 32: %.1f dB\n", middle);
+        CHECK(middle > -18.2 && middle < -16.2);
+    }
+    // SIX KEYS, AND THE MACROS AT THEIR ENDS (the review, 2026-11-15; measured again that day with
+    // the VCA's 0 dB at LEVEL 4.5; SELF). Four keys with the macros in the middle is not the loudest a
+    // patch gets. Six keys as written (held two seconds): THE TWO PATCHES AT LEVEL 10 PASS FULL SCALE,
+    // A8 E. Piano I 2.85 and A16 Voice 2.56 out of the synth (1.85 and 1.66 after the track's usual
+    // level, 0.65; the master's soft clip takes what is over), since each of their voices is 22 dB
+    // into the VCA's clip and bends toward 1.5, and six voices add. KNOWN, HELD HERE, NOT HIDDEN: it
+    // is what "LEVEL 10 clips harder" means, the owner's call with the bank's level. Every other
+    // patch as written is under 1.3 (A3 Organ I and A11 Harpsichord, 1.26). With every macro full up
+    // four pass 1.5: A8 2.69, A16 2.58, A11 2.53, B8 Juicy Funk 1.90. Every sample is a number and
+    // every patch comes to exact silence in all 96 runs. With every macro at 0 three of the 32 are
+    // under -60 dB (the filter shut; it was 17 before the cutoff's range moved).
     {
         double mostFull = 0.0, mostWritten = 0.0;
-        int fullAt = 0, over = 0, shut = 0;
+        int fullAt = 0, writtenAt = 0, over = 0, overWritten = 0, shut = 0;
+        double nextWritten = 0.0; // the highest peak as written but for the two at LEVEL 10
         for (int i = 0; i < Jx3p::presetCount(); ++i) {
             const Heard written = hear(i, 256, 6), full = hear(i, 256, 6, 1.f), none = hear(i, 256, 6, 0.f);
             CHECK(written.number && full.number && none.number);
             CHECK(written.rings >= 0.0 && written.rings < 11.0 && full.rings >= 0.0 && full.rings < 11.0 && none.rings >= 0.0 && none.rings < 11.0);
-            CHECK(written.peak < 1.5 && full.peak < 2.75 && none.peak < 1.5);
-            mostWritten = std::fmax(mostWritten, written.peak);
+            CHECK(written.peak < 3.1 && full.peak < 3.0 && none.peak < 0.3);
+            if (written.peak > mostWritten) mostWritten = written.peak, writtenAt = i;
+            overWritten += written.peak > 1.5;
+            if (Jx3p::presetPatch(i).value[VcaLevel] < 99) nextWritten = std::fmax(nextWritten, written.peak);
             if (full.peak > mostFull) mostFull = full.peak, fullAt = i;
             over += full.peak > 1.5;
             shut += none.heldRms < 1e-3;
             if (gPrint) std::printf("  %s%-2d %-18s six keys: peak %5.2f as written, %5.2f macros full, %5.3f macros at 0 (held %6.1f dB)\n", i < 16 ? "A" : "B", i % 16 + 1, Jx3p::presetName(i), written.peak, full.peak, none.peak, dB(none.heldRms));
         }
-        if (gPrint) std::printf("  six keys: the highest peak as written %.3f; macros full %.3f (%s), %d patches over 1.5; macros at 0, %d patches under -60 dB\n", mostWritten, mostFull, Jx3p::presetName(fullAt), over, shut);
-        CHECK(fullAt == 7 && mostFull > 2.0 && over == 2 && mostWritten > 1.4); // KNOWN: A8 E. Piano I, 2.15, and A16 Voice over 1.5
+        if (gPrint)
+            std::printf("  six keys: the highest peak as written %.3f (%s), %d patches over 1.5, the rest %.3f at most; macros full %.3f (%s), %d patches over 1.5; macros at 0, %d patches under -60 dB\n", mostWritten,
+                        Jx3p::presetName(writtenAt), overWritten, nextWritten, mostFull, Jx3p::presetName(fullAt), over, shut);
+        CHECK(writtenAt == 7 && mostWritten > 2.6 && overWritten == 2); // KNOWN: A8 E. Piano I, 2.85, and A16 Voice, 2.56: the two at LEVEL 10, and no other
+        CHECK(nextWritten > 1.1 && nextWritten < 1.4);                  // every other patch as written: 1.26 at most
+        CHECK(fullAt == 7 && mostFull > 2.4 && over == 4 && shut == 3);  // macros full: A8 2.69, and four over 1.5
     }
-    CHECK(quietAt == kSongWhistle && loudAt == 7 && std::string(Jx3p::presetName(kSongWhistle)) == "Song Whistle" && std::string(Jx3p::presetName(kPlanet)) == "Planet");
+    CHECK(quietAt == kPlanet && loudAt == 15 && std::string(Jx3p::presetName(kSongWhistle)) == "Song Whistle" && std::string(Jx3p::presetName(kPlanet)) == "Planet");
     if (gPrint) std::printf("  the quietest %s, %.1f dB; the loudest %s, %.1f dB: %.1f dB apart\n", Jx3p::presetName(quietAt), dB(quietest), Jx3p::presetName(loudAt), dB(loudest), dB(loudest / quietest));
     // A patch with CHORUS on is stereo, one with it off the same on both sides.
     for (int i : {0, 5}) {

@@ -69,7 +69,7 @@ struct Set { int id, value; };
 static std::unique_ptr<Jx3p> synth(const std::vector<Set>& sets) {
     std::unique_ptr<Jx3p> j(new Jx3p);
     j->prepare(48000.f);
-    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 50}, {Dco1Range, 1}, {SourceMix, 0},
+    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 25}, {Dco1Range, 1}, {SourceMix, 0},
                          {Cutoff, 100}, {Resonance, 0}, {KeyFollow, 0}, {VcfEnv, 0}, {Hpf, 0}, {Chorus, 0}};
     for (const Set& s : plain) j->setSetting(s.id, s.value);
     for (const Set& s : sets) j->setSetting(s.id, s.value);
@@ -105,6 +105,26 @@ static void testPolynomials() {
     }
     CHECK(worstG < 1e-6);
     CHECK(cornerHz(100.0, kVcfLowHz, 48000.0) == kVcfTopHz && cornerHz(100.0, kVcfLowHz, 32000.0) == 0.45 * 32000.0); // the top
+    // WHERE THE RANGE SITS (the owner's call, 2026-11-15; it was 15 Hz to 15 kHz): 49.84 Hz to 49.84 kHz,
+    // the same span, so Organ I's CUTOFF 2.4 is middle C at key 60 (testOrganI, and the presets' test).
+    // CUTOFF 10 is over the top now: through the synth the cutoff is held at 20 kHz from CUTOFF 8.7 up
+    // at key 60 (8.6 is 18.9 kHz), and with everything that raises it full up (KEY FOLLOW, ENV MOD,
+    // BRILLIANCE, the top key) it is still exactly the top: the polynomials are never asked past it.
+    CHECK(kVcfLowHz == 49.84 && kVcfHighHz == 1000.0 * kVcfLowHz && kVcfTopHz == 20000.0 && kVcfTopOfRate == 0.45);
+    CHECK(std::fabs(cents(cutoffHz(24), 440.0 * std::pow(2.0, (60 - 69) / 12.0))) < 0.5);
+    for (int dial : {86, 87, 100}) {
+        std::unique_ptr<Jx3p> j = synth({{Cutoff, dial}});
+        j->noteOn(60, 1.f);
+        play(*j, 4800);
+        CHECK(dial == 86 ? j->voiceCutoffHz(0) > 18800.0 && j->voiceCutoffHz(0) < 19000.0 : j->voiceCutoffHz(0) == kVcfTopHz);
+    }
+    {
+        std::unique_ptr<Jx3p> j = synth({{Cutoff, 100}, {KeyFollow, 100}, {VcfEnv, 100}, {Brilliance, 100}, {Resonance, 100}});
+        j->noteOn(127, 1.f);
+        const std::vector<float> out = play(*j, 4800);
+        CHECK(j->voiceCutoffHz(0) == kVcfTopHz);
+        for (float x : out) CHECK(std::isfinite(x));
+    }
     if (printing()) std::printf("  polynomials: 2^x within %.2g, G within %.2g\n", worst, worstG);
 }
 
@@ -133,7 +153,7 @@ static void testTheBend() {
 
 // A 24 dB SLOPE (FAITHFUL: SN p.6, "a 4-pole LPF"): at RESONANCE 0, two to four octaves over the
 // cutoff, 24 dB an octave within 2 dB, by small sines through the filter alone; and by noise through
-// the synth (DCO-2's NOISE, CUTOFF 4.0), from the spectrum, within 2 dB too.
+// the synth (DCO-2's NOISE, CUTOFF 2.3: 244 Hz, where 4.0 was before the range moved), from the spectrum, within 2 dB too.
 static void testSlope() {
     const double fc = 250.0;
     const double two = dB(gainAt(4.0 * fc, fc, 0)), four = dB(gainAt(16.0 * fc, fc, 0));
@@ -142,12 +162,12 @@ static void testSlope() {
     CHECK(std::fabs(dB(gainAt(fc / 32.0, fc, 0))) < 0.05); // the pass band is flat
     CHECK(std::fabs(dB(gainAt(fc, fc, 0)) - 4.0 * dB(std::sqrt(0.5))) < 0.1); // four poles each 3 dB down at the cutoff
     // Noise through the synth.
-    std::unique_ptr<Jx3p> j = synth({{Dco2Wave, 3}, {SourceMix, 100}, {Cutoff, 40}});
+    std::unique_ptr<Jx3p> j = synth({{Dco2Wave, 3}, {SourceMix, 100}, {Cutoff, 23}});
     j->noteOn(60, 1.f);
     play(*j, 4800);
     const std::vector<float> out = play(*j, 65536);
     const std::vector<double> size = spectrumOf(out.data(), 65536);
-    const double bin = 48000.0 / 65536.0, at = cutoffHz(40);
+    const double bin = 48000.0 / 65536.0, at = cutoffHz(23);
     const auto band = [&](double hz) { // the mean power over a third of an octave about `hz`
         double sum = 0.0;
         int n = 0;
@@ -230,7 +250,7 @@ static void testKeyFollow() {
         double cv[2], sung[2];
         int n = 0;
         for (int note : {36, 84}) {
-            std::unique_ptr<Jx3p> j = synth({{Resonance, 100}, {KeyFollow, key}, {Cutoff, 50}});
+            std::unique_ptr<Jx3p> j = synth({{Resonance, 100}, {KeyFollow, key}, {Cutoff, 33}});
             j->noteOn(note, 1.f);
             play(*j, 4800);
             cv[n] = j->voiceCutoffHz(0);
@@ -244,10 +264,10 @@ static void testKeyFollow() {
         if (printing()) std::printf("  KEY %.1f: 36 to 84 is %.4f octaves of cutoff (want %.4f); it sings %.1f cents off that\n", key / 10.0, std::log2(cv[1] / cv[0]), want, off);
     }
     // At its reference key KEY FOLLOW adds nothing.
-    std::unique_ptr<Jx3p> j = synth({{KeyFollow, 100}, {Cutoff, 50}});
+    std::unique_ptr<Jx3p> j = synth({{KeyFollow, 100}, {Cutoff, 33}});
     j->noteOn(kKeyFollowNote, 1.f);
     play(*j, 1);
-    CHECK(std::fabs(cents(j->voiceCutoffHz(0), cutoffHz(50))) < 0.01);
+    CHECK(std::fabs(cents(j->voiceCutoffHz(0), cutoffHz(33))) < 0.01);
 }
 
 // THE POLARITY (FAITHFUL: OM p.25): ENV MOD up, NORMAL, the cutoff goes up with the envelope; INVERTED,
@@ -255,14 +275,14 @@ static void testKeyFollow() {
 // the note (the VCA on GATE, so it stays) is brighter at the top NORMAL, darker INVERTED.
 static void testPolarity() {
     for (int inverted = 0; inverted < 2; ++inverted) {
-        std::unique_ptr<Jx3p> j = synth({{VcfEnv, 50}, {VcfEnvPolarity, inverted}, {Cutoff, 50}, {Decay, 100}, {Sustain, 0}, {VcaMode, 1}});
+        std::unique_ptr<Jx3p> j = synth({{VcfEnv, 50}, {VcfEnvPolarity, inverted}, {Cutoff, 33}, {Decay, 100}, {Sustain, 0}, {VcaMode, 1}});
         j->noteOn(60, 1.f);
         play(*j, 480); // the first tick: the envelope is at its top (ATTACK 0)
         const double top = j->voiceCutoffHz(0), want = (inverted ? -0.5 : 0.5) * kVcfEnvOctaves;
-        CHECK(std::fabs(std::log2(top / cutoffHz(50)) - want) < 1e-4);
+        CHECK(std::fabs(std::log2(top / cutoffHz(33)) - want) < 1e-4);
         const std::vector<float> bright = play(*j, 4800);
         play(*j, 15 * 48000); // DECAY 10 to SUSTAIN 0: the envelope down
-        CHECK(std::fabs(cents(j->voiceCutoffHz(0), cutoffHz(50))) < 1.0);
+        CHECK(std::fabs(cents(j->voiceCutoffHz(0), cutoffHz(33))) < 1.0);
         const std::vector<float> after = play(*j, 4800);
         const double hiTop = rmsOf(bandOf(bright, 1000.0)), hiAfter = rmsOf(bandOf(after, 1000.0));
         CHECK(inverted ? hiTop < 0.5 * hiAfter : hiTop > 2.0 * hiAfter);

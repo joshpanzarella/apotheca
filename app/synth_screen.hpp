@@ -70,6 +70,12 @@ public:
     void folderNoteAs(const char* note) { noteAs_ = note; }
     const char* folderNote() const { return noteAs_ ? noteAs_ : spec_.folderNote ? spec_.folderNote(trk().preset) : nullptr; }
 
+    // The count on PRESET's row is the preset's place IN ITS FOLDER, out of that folder's presets
+    // (owner, 2026-11-15: JAX-EP's B7 reads "7 / 16", the factory's number, not "23 / 32"). A folder
+    // is the run of presets side by side under one name, as stepFolder steps them; the player's own
+    // (USER) count among themselves. Every synth alike.
+    int placeInFolder(int preset, int& of) const;
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 

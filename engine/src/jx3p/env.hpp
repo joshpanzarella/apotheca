@@ -29,9 +29,10 @@
 //   | Decay and release            | a fall by a fixed ratio a tick, landing on   | SELF   |
 //   |                              | its target when 80 dB from it (kEnvLand)     |        |
 //   | SUSTAIN 0 to 10              | 0 to 1, straight                             | SELF   |
-//   | The VCA's taper              | 4 dB a dial step (kVcaDbPerDial), 0 dB at    | SELF   |
-//   |                              | LEVEL 7 (kVcaUnityDial), LEVEL 0 silent      |        |
-//   | Too high a LEVEL             | a soft clip over what LEVEL 7 gives a full   | OM p.26 says it distorts; |
+//   | The VCA's taper              | 4 dB a dial step (kVcaDbPerDial), 0 dB at    | SELF; the owner's call |
+//   |                              | LEVEL 4.5 (kVcaUnityDial: where NAM's 32     | (2026-11-15: it was 7, |
+//   |                              | LEVELs stand), LEVEL 0 silent                | and the bank 10 dB quieter) |
+//   | Too high a LEVEL             | a soft clip over what LEVEL 4.5 gives a full | OM p.26 says it distorts; |
 //   |                              | wave (kVcaClipDial), to 1.5 times that at    | the shape is SELF |
 //   |                              | most (kVcaClipCeiling)                       |        |
 //   | VELOCITY ON                  | 30 dB from full to none (kVelocityDb); full  | SELF (the real one has none) |
@@ -84,8 +85,8 @@ constexpr float kFallSeconds[101] = {
 constexpr float kAttackAim = 1.5f;   // SELF: where the attack heads for; it is stopped at 1
 constexpr float kEnvLand = 1e-4f;    // SELF: a decay or a release this near its target (80 dB) is on it
 constexpr float kVcaDbPerDial = 4.f; // SELF: a whole step of the dial (ten tenths)
-constexpr float kVcaUnityDial = 70.f;// SELF: LEVEL 7.0 is 0 dB: a full wave there just meets the clip
-constexpr float kVcaClipDial = 70.f; // SELF: over what LEVEL 7.0 gives a full wave, a soft clip comes in
+constexpr float kVcaUnityDial = 45.f;// The owner's call (2026-11-15; it was 70): LEVEL 4.5 is 0 dB, where the booklet's LEVELs stand: a full wave there just meets the clip
+constexpr float kVcaClipDial = kVcaUnityDial; // SELF: over what that LEVEL gives a full wave (1), a soft clip comes in: it moved with the 0 dB, so a LEVEL of 10 is 22 dB into it
 constexpr float kVcaClipCeiling = 1.5f; // SELF: ...and bends toward this many times that, never past it
 constexpr float kVelocityDb = 30.f;  // SELF: VELOCITY ON, velocity 0 is this far under velocity 1
 

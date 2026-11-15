@@ -497,10 +497,10 @@ void testTwinFromThePage() {
     rig.tell("set " + std::to_string(jx3p::Chorus) + " 0"); // (off: its sweep moves a note's peak from one note to the next)
     rig.tell("set " + std::to_string(jx3p::SourceMix) + " 0");
     rig.tell("set " + std::to_string(jx3p::Attack) + " 0");
-    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 70");
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 45"); // (the VCA's 0 dB: over it the clip bends the wave)
     const float before = rig.loud();
     CHECK(rig.tell("set " + std::to_string(jx3p::Resonance) + " 30") && rig.track().jx3p.value[jx3p::Resonance] == 30);
-    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 20"); // five steps of the dial: 20 dB down
+    rig.tell("set " + std::to_string(jx3p::VcaLevel) + " 5"); // four steps of the dial: 16 dB down
     CHECK(rig.loud() < 0.2f * before);
     rig.tell("set " + std::to_string(jx3p::Resonance) + " 500");
     CHECK(rig.track().jx3p.value[jx3p::Resonance] == 100);
@@ -524,7 +524,7 @@ void testTwinFromThePage() {
     rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     rig.tell("preset 0"); // the first built-in one
     CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
-    rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 2.0)
+    rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 0.5)
     CHECK(rig.track().preset == 7 && rig.track().jx3p.value[jx3p::VcaLevel] == 99 && rig.loud() > 3.f * sound);
     rig.tell("preset " + std::to_string(Jx3p::presetCount()));
     CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value));

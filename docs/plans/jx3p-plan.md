@@ -1035,6 +1035,70 @@ equivalent (`loadPreset` holds them again).
 handheld, and the designer page was not opened in a browser for this mend
 (its script is not changed).
 
+### The owner's three calls (2026-11-15)
+
+**Bad news first: E. Piano I and Voice (LEVEL 10) are now 22 dB into the VCA's
+clip. They are driven hard, and six keys of either come out of the synth at
+2.85 and 2.56 times full scale as written (they were 1.46 and under).** That
+is what moving the 0 dB down does to a patch at LEVEL 10; the owner said yes
+to "LEVEL 10 clips harder", but nobody has heard it.
+
+| Call | Built | Measured |
+| --- | --- | --- |
+| The cutoff's range moves so Organ I sings the key | `kVcfLowHz` 15 to **49.84**, `kVcfHighHz` 15000 to **49840**; the top (20 kHz, 0.45 of the rate) was there already and is not changed | Organ I: **0.4 cents from the grid at worst, keys 48 to 84** (0.9 from 36), 15.3 dB over its DCO-1; the cutoff's CV 0.41 cents under the key. B4 -62.3 to -35.8 dB, B15 -60.9 to -44.5 (before the level moved) |
+| The bank comes up to PHAZED's loudness | `kVcaUnityDial` 70 to **45**; `kVcaClipDial` is the same number (the clip starts at a full wave, 1); the start patch's LEVEL 70 to 45, so it is the gain it was | Below |
+| MAIN's count reads within the bank | `SynthScreen::placeInFolder`: the place in the folder out of the folder's count, every synth, the player's own among themselves | B7 draws "7 / 16"; the first of a hundred own "1 / 100" |
+
+**How loud** (C3 G3 C4 E4, the loudest tenth of a second; PHAZED's first
+presets -15.5 to -12.6):
+
+| | Before | Cutoff moved | Both |
+| --- | --- | --- | --- |
+| The quietest | B4 -62.3 | B15 -44.5 | **B15 Planet -34.5** |
+| B4 Song Whistle / B15 Planet | -62.3 / -60.9 | -35.8 / -44.5 | **-25.8 / -34.5** |
+| The middle of the 32 | -28.5 | -27.0 | **-17.2** |
+| A1 String I | -25.0 | -24.5 | **-14.5** |
+| The loudest | A8 -5.9 | A8 -5.6 | **A16 Voice -2.0** (A8 -3.4) |
+| Peak, four keys | A8 1.34 | A16 1.35 | A8 2.00, A16 1.83, B14 1.06; the rest under 1 but A11 1.32 |
+| Peak, six keys as written | A8 1.46 | | **A8 2.85, A16 2.56**; every other 1.26 at most |
+| Peak, six keys, macros full | A8 2.15, A16 1.88 | | A8 2.69, A16 2.58, A11 2.53, B8 1.90 |
+| Macros at 0: patches under -60 dB | 17 | | 3 |
+
+**Tried, not kept: the 0 dB at LEVEL 4.0.** The middle is then -15.2 dB and A1
+-12.5, nearer the asked "-15 to -13", but four more patches pass 1.5 with six
+keys as written (Organ I 1.59, Chime 1.55, Harpsichord and Pulsar 1.51). At
+4.5 A1, what a new track plays, is in PHAZED's range and the middle 2 dB
+under it. One number to move if the owner wants the last 2 dB.
+
+**What the cutoff's move did to the tests.** Three of `jx3p_vcf_test`'s
+fixtures used a CUTOFF whose Hz moved up 3.32 times and took them where the
+filter is another thing (it sings 30 cents sharp of its cutoff at 4 kHz, and
+its slope is steeper near the top). Each got the CUTOFF that gives the Hz it
+had (5.0 to 3.3: 487 Hz; 4.0 to 2.3: 244 Hz); no bar was moved. New there:
+the range's own numbers, CUTOFF 8.6 against 8.7 and 10 at key 60 (18.9 kHz,
+then the top), and everything that raises the cutoff full up at the top key
+(exactly the top, every sample a number). The tests' plain patches were at
+LEVEL 5.0 and 7.0, under the old 0 dB; they are at 2.5 and 4.5, the same gain.
+
+**Found on the way.** Organ I's level sways (1 to 7 dB, twice a second at key
+48): DCO-2 is 27 cents under DCO-1 in the patch (FINE 2.3) and its harmonic
+beats with the filter's sine. It did before; the old test read 0.75 s and its
+"steady within 1 dB" passed by where the sine sat. The new one reads two
+halves of five seconds. And the sine is held to the key by DCO-1's second
+harmonic: with the cutoff 40 cents sharp it still sings within a cent, so the
+test holds the cutoff's CV to the key too (half a cent).
+
+**Mutants: 16 made, 16 killed** (the cutoff back at 15 Hz, 40 cents sharp, 5
+cents flat; the top not held, the top at 21.5 kHz; the 0 dB back at 7, at 5.0,
+at 4.0; the clip left at LEVEL 7; the ceiling doubled, and at 1.25; the start
+patch at LEVEL 7; the count out of all presets, the place among all, a
+folder's run one short at its end, and one late at its start).
+
+**What only the tests and stills saw**: all of it. Stills looked at: MAIN on
+B7 at LARGE, XL on PAPER ("7 / 16"). `bench`: 0.55 / 1.03 to 1.14 / 1.77 to
+1.86%, as before; the 32 one by one were not timed again. Nothing was heard,
+nothing ran on the handheld.
+
 ### Batches 2 to 5: the review's mend (2026-11-14)
 
 A review measured the four batches with its own harness (blocks, allocation, small numbers, Play
@@ -1088,19 +1152,19 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 | Which voice is stolen: the oldest whose key is up (ringing in its release), or the oldest sounding, held or not (not documented) | **The oldest let go first** (`kStealLetGoFirst`): a held key is cut only when every voice is held |
 | After Stop and Play, the last notes' releases ring on beside six fresh voices (up to twelve for a release's length), so Play from the top is the same performance; or they take voices from the new notes (faithful to six, but every Play after a long pad differs) | **Ring beside** (`kTailVoices`) |
 | KEY FOLLOW: 9.8 is 100% (from NAM's Organ I) | Yes, until a recording says otherwise |
-| Where the cutoff's Hz sit (batch 3): CUTOFF 0 to 10 is 15 Hz to 15 kHz at note 60 (Organ I at C4 sings at 79 Hz, in tune with itself), or anchored so Organ I sings the key played (CUTOFF 2.4, KEY 9.8: the cutoff is the key's own pitch) | 15 Hz to 15 kHz, as planned, until a recording. One constant each (`kVcfLowHz`, `kVcfHighHz`, `kKeyFollowNote`) |
+| Where the cutoff's Hz sit (batch 3): CUTOFF 0 to 10 is 15 Hz to 15 kHz at note 60 (Organ I at C4 sings at 79 Hz, in tune with itself), or anchored so Organ I sings the key played (CUTOFF 2.4, KEY 9.8: the cutoff is the key's own pitch) | **Decided (owner, 2026-11-15): anchored.** 49.84 Hz to 49.84 kHz (the same span), held at 20 kHz. It was 15 Hz to 15 kHz |
 | Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | Keep it until a recording says otherwise |
 | Note starts on the CPU's 10 ms grid (faithful, up to 10 ms late) or on the sample | On the sample |
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |
 | **Where batch 9's recordings come from**: the owner's own unit, a hired one, or dry multisample libraries of a real unit (Roland's plug-out is a model, not a source) | A hired or borrowed unit: every knob of the table at 0, 2.5, 5, 7.5 and 10, one held note, dry. A multisample library can give the patches' speeds but not each knob. Without one, batch 9 cannot start and the speeds stay guesses |
 | Bass patches: the factory 32 have none | Add own patches later, in a third folder |
-| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | Not decided. One constant (`kVcaUnityDial`): at 4.5 the middle patch is about as loud as PHAZED's, and LEVEL 10 clips harder. Or leave it and turn the track up in the mixer |
-| **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | Not decided; the row above ("Where the cutoff's Hz sit") was taken at 15 Hz to 15 kHz. **The factory patches speak for the other answer**: anchored so Organ I sings the key played, both can be heard (-36 and -45 dB), twelve more come up and three go down by about 4 dB |
+| **(From batch 7.) The bank is quiet**: its LEVELs stand about 4.5, and 0 dB is at LEVEL 7 here, so the 32 are about 13 dB under PHAZED's presets (A1 at -25 dB against -15) | **Decided (owner, 2026-11-15): up.** `kVcaUnityDial` 45 (it was 70), the clip's start with it. The middle patch -17.2 dB, A1 -14.5; LEVEL 10 clips harder (A8, A16) |
+| **(From batch 7.) B4 Song Whistle and B15 Planet are all but silent** with the cutoff at 15 Hz to 15 kHz about key 60 | **Mended by the cutoff's row (2026-11-15)**: -25.8 and -34.5 dB with both calls built |
 | **(From batch 7.) The VCF's ENV POLARITY of A5 and A16 is not drawn** | NORMAL |
-| **(From the review, 2026-11-15.) A3 Organ I is out of tune with the other tracks**: its filter sings 20.8 semitones under the key, 21 cents off the grid | Not decided; it is the cutoff row again, and a third factory patch that speaks for the other answer. **That answer is both constants times 3.32: 49.84 Hz to 49.84 kHz** (the mend's table has what it does to all 32). It moves every figure `jx3p_vcf_test` holds in Hz |
+| **(From the review, 2026-11-15.) A3 Organ I is out of tune with the other tracks**: its filter sings 20.8 semitones under the key, 21 cents off the grid | **Mended by the cutoff's row (2026-11-15)**: it sings the key within 0.4 cents, keys 48 to 84 |
 | **(From the review.) A song from builds 0.485 to 0.493 on "Start" is named String I** (its sound is kept) | Not decided: leave it (said in README), or put Start back as a 33rd preset in a folder of its own and read such a song onto it |
-| **(From the review.) MAIN's count reads "23 / 32" on B7**, not the factory's number | Not decided: leave it (the folder box says BANK B), or show the bank's own number ("B7", or "7 / 16") |
-| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | Not decided; goes with the bank's level (`kVcaUnityDial`, `kVcaClipCeiling`) |
+| **(From the review.) MAIN's count reads "23 / 32" on B7**, not the factory's number | **Decided (owner, 2026-11-15): "7 / 16"**, the preset's place in its folder, on every synth |
+| **(From the review.) Six keys with every macro full pass full scale** (A8 2.15, A16 1.88 out of the synth) | Changed by the bank's level (2026-11-15), **still the owner's to weigh**: six keys AS WRITTEN now pass full scale on the two patches at LEVEL 10 (A8 2.85, A16 2.56); macros full, four pass 1.5 (2.69 at most). `kVcaClipCeiling` is not changed |
 
 ## 9. Decisions on the review (2026-11-13)
 

@@ -47,7 +47,7 @@ struct Set { int id, value; };
 static std::unique_ptr<Jx3p> synth(const std::vector<Set>& sets = {}) {
     std::unique_ptr<Jx3p> j(new Jx3p);
     j->prepare(48000.f);
-    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 50}, {Dco1Range, 1}, {Dco2Range, 1},
+    const Set plain[] = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 25}, {Dco1Range, 1}, {Dco2Range, 1},
                          {SourceMix, 0}, {Cutoff, 40}, {Resonance, 0}, {KeyFollow, 0}, {VcfEnv, 0}, {Hpf, 0}, {DcoEnvDepth, 0},
                          {LfoWave, LfoSine}, {LfoRate, 0}, {LfoDelay, 0}, {DcoLfoDepth, 0}, {VcfLfo, 0}, {Dco1Lfo, 0}, {Dco2Lfo, 0}};
     for (const Set& s : plain) j->setSetting(s.id, s.value);

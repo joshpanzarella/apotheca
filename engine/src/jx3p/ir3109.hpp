@@ -43,8 +43,10 @@
 //   | What                         | Here                                          | Source |
 //   | ---------------------------- | --------------------------------------------- | ------ |
 //   | 4 poles, feedback            | four one-poles, the 4th fed back to the 1st   | SN p.6 |
-//   | CUTOFF 0 to 10               | 15 Hz to 15 kHz, even in octaves (kVcfLowHz,  | SELF   |
-//   |                              | kVcfHighHz), at KEY FOLLOW's reference note   |        |
+//   | CUTOFF 0 to 10               | 49.84 Hz to 49.84 kHz, even in octaves        | The span SELF; where it sits, |
+//   |                              | (kVcfLowHz, kVcfHighHz), at KEY FOLLOW's      | NAM's Organ I: its filter sings |
+//   |                              | reference note: held at the highest cutoff,   | the key played (the owner's call, |
+//   |                              | so at key 60 CUTOFF 8.7 to 10 are one sound   | 2026-11-15; it was 15 Hz to 15 kHz) |
 //   | The highest cutoff           | 20 kHz, and never past 0.45 of the rate       | SELF   |
 //   | KEY FOLLOW's reference       | note 60 (kKeyFollowNote): KEY adds nothing    | SELF   |
 //   |                              | there                                         |        |
@@ -77,8 +79,8 @@
 namespace apotheca {
 namespace jx3p {
 
-constexpr double kVcfLowHz = 15.0;        // SELF: CUTOFF 0
-constexpr double kVcfHighHz = 15000.0;    // SELF: CUTOFF 10
+constexpr double kVcfLowHz = 49.84;       // CUTOFF 0. The owner's call (2026-11-15): set so NAM's Organ I (CUTOFF 2.4, KEY FOLLOW 9.8) sings the key played
+constexpr double kVcfHighHz = 49840.0;    // CUTOFF 10, before the top holds it: the same span as the first guess (15 Hz to 15 kHz), ten octaves less a hair
 constexpr double kVcfTopHz = 20000.0;     // SELF: the cutoff is held under this...
 constexpr double kVcfTopOfRate = 0.45;    // ...and under this share of the sample rate
 constexpr int kKeyFollowNote = 60;        // SELF: KEY FOLLOW turns about this key

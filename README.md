@@ -1357,17 +1357,25 @@ pages are that synth's panel:
     SQUARE alike, told apart only by the angle of a knob (Organ II, both
     E. Pianos, Clavi, Vibraphone, Celesta, Flute, Oboe, Distortion Guitar,
     Sync Sweep, Funky Clavi, Planet). Pulsar's CROSS MOD is read as METAL.
-  - **Song Whistle and Planet are all but silent, and the bank is quiet**
-    (about 13 dB under PHAZED's presets). Both come from the guesses above,
-    not from the presets: turn CUTOFF or the track's level up meanwhile.
-  - **Organ I is out of tune with the other tracks.** What is heard of it is
-    its filter singing, and for the same guess (where the cutoff sits) it
-    sings 21 semitones under the key played, a fifth of a semitone sharp. It
-    is in tune with itself. To play it in tune meanwhile, set its CUTOFF to
-    4.1 and the track's BRILLIANCE to 5.1: it then sings the key played.
-  - **With six keys down and the macros turned full up, E. Piano I and Voice
-    come out of the synth over full scale** (twice it at most). Turn the
-    track down in the mixer if that is wanted.
+  - **The filter's range and the loudness were set from the presets**
+    (2026-11-15). CUTOFF 0 to 10 is 50 Hz to 20 kHz at middle C, placed so
+    Organ I's filter sings the key played: it is in tune with the other
+    tracks now. (At middle C the top of the knob, 8.7 to 10, is one sound:
+    the filter is as open as it goes.) LEVEL 4.5, where most of the presets
+    stand, is the full clean level, so the bank is about as loud as PHAZED's
+    presets, and every one of the 32 can be heard. **A JAX-EP track saved by
+    build 0.502 or earlier loads as it was saved and sounds brighter and
+    about 10 dB louder.**
+  - **LEVEL over 4.5 bends the sound** (it distorts, more the higher), as
+    too high a LEVEL does on the synth it is modeled after. E. Piano I and
+    Voice are at LEVEL 10 in the booklet, so they are driven hard, and
+    **with six keys down they come out of the synth over full scale**
+    (almost three times it at most; the master's soft clip takes what is
+    over). Turn their LEVEL down, or the track in the mixer, if that is not
+    wanted.
+- **The number beside PRESET is the preset's place in its folder**: 7 / 16
+  in BANK B is the booklet's B7. Your own presets are counted among
+  themselves (every synth counts this way).
 - **VELOCITY and BRILLIANCE (last page) belong to the track**, not to the
   preset: picking a preset leaves them as set.
 

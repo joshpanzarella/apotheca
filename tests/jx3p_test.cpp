@@ -64,7 +64,7 @@ struct Set { int id, value; };
 // A plain sound to measure on: the start patch, held at the top, the chorus off (batch 5: it is
 // measured by jx3p_chorus_test; here it would move every pitch and level read off the sound).
 static std::vector<Set> held(std::vector<Set> more = {}) {
-    std::vector<Set> s = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 70}, {Dco1Range, 1}, {Chorus, 0}};
+    std::vector<Set> s = {{Attack, 0}, {Decay, 0}, {Sustain, 100}, {Release, 0}, {VcaMode, 0}, {VcaLevel, 45}, {Dco1Range, 1}, {Chorus, 0}};
     s.insert(s.end(), more.begin(), more.end());
     return s;
 }
@@ -103,10 +103,10 @@ static void testSettings() {
     // The start patch, and a new track's own two.
     std::unique_ptr<Jx3p> fresh = synth();
     CHECK(fresh->setting(Dco1Range) == 1 && fresh->setting(Dco1Wave) == 0 && fresh->setting(Dco2Tune) == 50 && fresh->setting(Cutoff) == 100);
-    CHECK(fresh->setting(VcaLevel) == 70 && fresh->setting(Chorus) == 1 && fresh->setting(Velocity) == kNewTrackVelocity && fresh->setting(Brilliance) == kNewTrackBrilliance);
+    CHECK(fresh->setting(VcaLevel) == 45 && fresh->setting(Chorus) == 1 && fresh->setting(Velocity) == kNewTrackVelocity && fresh->setting(Brilliance) == kNewTrackBrilliance);
     CHECK(kNewTrackVelocity == 1 && kNewTrackBrilliance == 50 && kVoices == 6);
     // (The start patch is what a synth is made with; the presets are the 32 of batch 7: jx3p_presets_test.)
-    CHECK(Jx3p::presetCount() == 32 && Jx3p::startPatch().value[VcaLevel] == 70 && Jx3p::startPatch().value[Cutoff] == 100);
+    CHECK(Jx3p::presetCount() == 32 && Jx3p::startPatch().value[VcaLevel] == 45 && kVcaUnityDial == 45.f && kVcaClipDial == kVcaUnityDial && Jx3p::startPatch().value[Cutoff] == 100);
     CHECK(Jx3p::presetPatch(0).value[Velocity] == 1 && Jx3p::presetPatch(0).value[Brilliance] == 50);
     CHECK(Jx3p::startPatch().value[Velocity] == 1 && Jx3p::startPatch().value[Brilliance] == 50);
 }
@@ -483,7 +483,7 @@ static void testAKeyStartsOnItsSample() {
 // THE VCA (SELF: the taper, kVcaDbPerDial; FAITHFUL to OM p.26 only that too high a LEVEL distorts).
 static void testVca() {
     std::vector<double> rms;
-    for (int level = 20; level <= 70; level += 10) {
+    for (int level = 5; level <= 45; level += 10) { // (up to the VCA's 0 dB, LEVEL 4.5: over it the clip bends the wave)
         std::unique_ptr<Jx3p> j = synth(held({{VcaLevel, level}}));
         j->noteOn(57, 1.f);
         const std::vector<float> out = play(*j, 48000);
@@ -496,14 +496,14 @@ static void testVca() {
         j->noteOn(57, 1.f);
         CHECK(peakOf(play(*j, 9600)) == 0.f);
     }
-    // Over LEVEL 7 a full wave is clipped: LEVEL 10 is louder than 7, but its peak never reaches
+    // Over LEVEL 4.5 a full wave is clipped: LEVEL 7.5 is louder than 4.5, but its peak never reaches
     // what a straight line would give, and it stays under the clip's ceiling.
     {
-        std::unique_ptr<Jx3p> a = synth(held({{VcaLevel, 70}})), b = synth(held({{VcaLevel, 100}}));
+        std::unique_ptr<Jx3p> a = synth(held({{VcaLevel, 45}})), b = synth(held({{VcaLevel, 75}}));
         a->noteOn(57, 1.f);
         b->noteOn(57, 1.f);
         const std::vector<float> sa = play(*a, 48000), sb = play(*b, 48000);
-        const float straight = peakOf(sa) * vcaGain(100.f) / vcaGain(70.f);
+        const float straight = peakOf(sa) * vcaGain(75.f) / vcaGain(45.f);
         CHECK(rmsOf(sb, 4800) > rmsOf(sa, 4800) * 1.2 && peakOf(sb) < 0.5f * straight && peakOf(sb) <= peakOf(sa) * kVcaClipCeiling);
         CHECK(vcaClip(0.5f, 1.f) == 0.5f && vcaClip(-1.f, 1.f) == -1.f && vcaClip(1e9f, 1.f) <= kVcaClipCeiling && vcaClip(1.5f, 1.f) < 1.5f && vcaClip(-1.5f, 1.f) > -1.5f);
         CHECK(std::fabs((vcaClip(1.f + 1e-3f, 1.f) - 1.f) / 1e-3f - 1.f) < 0.01f); // no corner where it starts to bend
@@ -514,7 +514,7 @@ static void testVca() {
         std::unique_ptr<Jx3p> j = synth(held({{VcaMode, 1}, {Attack, 100}, {Release, 100}}));
         j->noteOn(57, 1.f);
         play(*j, 960);
-        CHECK(j->voiceVca(0) == vcaGain(70.f));
+        CHECK(j->voiceVca(0) == vcaGain(45.f) && vcaGain(45.f) == 1.f);
         CHECK(j->voiceEnv(0) < 0.1f); // (the envelope is on its way up all the same: it is not the VCA's here)
         j->noteOff(57);
         play(*j, 960);
@@ -528,7 +528,7 @@ static void testGateHeldAtLevelZero() {
     std::unique_ptr<Jx3p> j = synth(held({{VcaMode, 1}, {VcaLevel, 0}}));
     j->noteOn(57, 1.f);
     CHECK(peakOf(play(*j, 4800)) == 0.f && voiceOf(*j, 57) == 0);
-    j->setSetting(VcaLevel, 70);
+    j->setSetting(VcaLevel, 45);
     CHECK(peakOf(play(*j, 4800)) > 0.05f);
 }
 

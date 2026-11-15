@@ -6395,12 +6395,12 @@ void testTheEngineHearsTwinsSettings() {
         rig->tap(R2);
         rig->app.twin().goTo(4, 1);
         CHECK(rig->app.twin().settingHere() == jx3p::VcaLevel);
-        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 60);
+        rig->app.session().setSynthSetting(1, jx3p::VcaLevel, 35); // (a step under the VCA's 0 dB, LEVEL 4.5: over it the clip bends the wave)
         rig->key(A, true);
         rig->tap(DOWN, down);
         rig->key(A, false);
         const int level = rig->project().tracks[1].jx3p.value[jx3p::VcaLevel];
-        CHECK(down == 0 ? level == 60 : level < 60);
+        CHECK(down == 0 ? level == 35 : level < 35);
         const float loud = jxLoud(*rig, 1.f);
         return std::pair<float, int>(loud, level);
     };

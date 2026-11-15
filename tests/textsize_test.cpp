@@ -1204,19 +1204,20 @@ void testTheOtherScreens() {
         };
         jax.goTo(0, SynthScreen::kPreset);
         rig.frames(1);
-        // A bank's (batch 7: every built-in sound is in BANK A or BANK B), beside the count of the 32.
+        // A bank's (batch 7: every built-in sound is in BANK A or BANK B), beside the preset's place in
+        // its bank (owner, 2026-11-15: the factory's number, 1 to 16, not its place among the 32).
         holds(rig, "JAX-EP MAIN, what a bank says");
         CHECK(Jx3p::presetCount() == 32 && std::string(kJaxepBankNote) == "1983 BOOKLET, SPEEDS GUESSED" && drew(kJaxepBankNote) && drew("BANK A") && drew("String I"));
-        CHECK(rowIsClear(lastLarge, kJaxepBankNote, "1 / 32") && rowIsClear(lastXl, kJaxepBankNote, "1 / 32"));
+        CHECK(rowIsClear(lastLarge, kJaxepBankNote, "1 / 16") && rowIsClear(lastXl, kJaxepBankNote, "1 / 16") && !drew("1 / 32"));
         CHECK(xl.small.capHeight() > large.small.capHeight());
-        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 32") == large.small.capHeight());
-        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 32"));
+        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 16") == large.small.capHeight());
+        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 16"));
         // The short one (a built-in folder that is no bank: none today) follows the setting.
         jax.folderNoteAs(kJaxepGuessNote);
         rig.frames(1);
         holds(rig, "JAX-EP MAIN, the short note");
-        CHECK(std::string(kJaxepGuessNote) == "SPEEDS GUESSED" && drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepGuessNote, "1 / 32") && rowIsClear(lastXl, kJaxepGuessNote, "1 / 32"));
-        CHECK(capAtXl(kJaxepGuessNote) == xl.small.capHeight() && capAtXl("PRESET", 30.f) == xl.small.capHeight() && capAtXl("1 / 32") == xl.small.capHeight());
+        CHECK(std::string(kJaxepGuessNote) == "SPEEDS GUESSED" && drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepGuessNote, "1 / 16") && rowIsClear(lastXl, kJaxepGuessNote, "1 / 16"));
+        CHECK(capAtXl(kJaxepGuessNote) == xl.small.capHeight() && capAtXl("PRESET", 30.f) == xl.small.capHeight() && capAtXl("1 / 16") == xl.small.capHeight());
         jax.folderNoteAs(nullptr);
         // Every one of the 32, by its name and its folder (B7's is the longest name).
         for (int preset = 0; preset < Jx3p::presetCount(); ++preset) {
@@ -1224,21 +1225,22 @@ void testTheOtherScreens() {
             rig.frames(2);
             char what[64], count[16];
             std::snprintf(what, sizeof what, "JAX-EP MAIN, %s", Jx3p::presetName(preset));
-            std::snprintf(count, sizeof count, "%d / 32", preset + 1);
+            std::snprintf(count, sizeof count, "%d / 16", preset % 16 + 1); // B7 is "7 / 16"
             holds(rig, what);
             CHECK(drew(Jx3p::presetName(preset)) && drew(preset < 16 ? "BANK A" : "BANK B") && drew(count) && drew(kJaxepBankNote));
         }
         session.chooseSynthPreset(project.track, 0);
         rig.frames(2);
-        // A hundred of the player's own beside them: a count of three figures.
-        std::vector<UserPreset> many(99);
+        // A hundred of the player's own beside them: a bank's count is still its own sixteen, and the
+        // player's own count among themselves, to three figures.
+        std::vector<UserPreset> many(100);
         for (std::size_t i = 0; i < many.size(); ++i) many[i].name = "OWN " + std::to_string(i);
         setUserPresets(TrackKind::Jx3p, many);
         rig.frames(1);
-        holds(rig, "JAX-EP MAIN, what a bank says, a hundred and thirty-one presets");
-        CHECK(drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepBankNote, "1 / 131") && rowIsClear(lastXl, kJaxepBankNote, "1 / 131"));
-        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 131") == large.small.capHeight());
-        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 131"));
+        holds(rig, "JAX-EP MAIN, what a bank says, a hundred and thirty-two presets");
+        CHECK(drew(kJaxepBankNote) && rowIsClear(lastLarge, kJaxepBankNote, "1 / 16") && rowIsClear(lastXl, kJaxepBankNote, "1 / 16") && !drew("1 / 132"));
+        CHECK(capAtXl(kJaxepBankNote) == large.small.capHeight() && capAtXl("PRESET", 30.f) == large.small.capHeight() && capAtXl("1 / 16") == large.small.capHeight());
+        CHECK(asAtLarge(kJaxepBankNote) && asAtLarge("1 / 16"));
         // ...and it would not have fitted at XL: the row's room is for the longest count there can be.
         CHECK(7.f + xl.small.width("PRESET") + xl.small.width(kJaxepBankNote) + xl.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap > SynthScreen::kPresetW - 10.f);
         std::printf("    JAX-EP's PRESET row at LARGE: %.1f + %.1f + %.1f, at XL %.1f + %.1f + %.1f, of %d\n", large.small.width("PRESET"), large.small.width(kJaxepBankNote), large.small.width(SynthScreen::kCountLongest), xl.small.width("PRESET"), xl.small.width(kJaxepBankNote), xl.small.width(SynthScreen::kCountLongest), SynthScreen::kPresetW - 17 - 2 * SynthScreen::kNoteGap);
@@ -1248,6 +1250,11 @@ void testTheOtherScreens() {
         rig.frames(2);
         holds(rig, "JAX-EP MAIN, one of the player's own");
         CHECK(drew("OWN 0") && drew("USER") && drew("PRESET") && !drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && capAtXl("PRESET", 30.f) == xl.small.capHeight());
+        CHECK(drew("1 / 100") && !drew("33 / 132")); // the first of the player's own hundred
+        session.chooseSynthPreset(project.track, Jx3p::presetCount() + 99);
+        rig.frames(2);
+        holds(rig, "JAX-EP MAIN, the last of the player's own hundred");
+        CHECK(drew("OWN 99") && drew("100 / 100") && xl.small.width("100 / 100") <= xl.small.width(SynthScreen::kCountLongest));
         session.chooseSynthPreset(project.track, 0);
         setUserPresets(TrackKind::Jx3p, {});
         rig.frames(2);

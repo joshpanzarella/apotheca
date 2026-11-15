@@ -94,6 +94,20 @@ void SynthScreen::choosePreset(int index) {
 
 void SynthScreen::stepPreset(int by) { choosePreset(trk().preset + by); }
 
+// A preset's place in its folder, from 1, and how many the folder holds: the run of presets side
+// by side with its folder's name.
+int SynthScreen::placeInFolder(int preset, int& of) const {
+    const int count = spec_.presetCount();
+    of = 0;
+    if (preset < 0 || preset >= count) return 0;
+    const char* here = spec_.presetCategory(preset);
+    int first = preset, last = preset;
+    while (first > 0 && std::strcmp(spec_.presetCategory(first - 1), here) == 0) --first;
+    while (last + 1 < count && std::strcmp(spec_.presetCategory(last + 1), here) == 0) ++last;
+    of = last - first + 1;
+    return preset - first + 1;
+}
+
 // To the first preset of the next or the previous folder.
 void SynthScreen::stepFolder(int by) {
     const int count = spec_.presetCount();
@@ -311,7 +325,9 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         valueBox(r, fonts, kFolderX, kPresetY, kFolderW, kPresetH, "FOLDER", spec_.presetCategory(t.preset), -1.f, cursor_ == kFolder, holding_);
         char place[24];
         std::snprintf(text, sizeof text, "%s", spec_.presetName(t.preset));
-        std::snprintf(place, sizeof place, "%d / %d", t.preset + 1, spec_.presetCount());
+        int inFolder = 0;
+        const int placeHere = placeInFolder(t.preset, inFolder);
+        std::snprintf(place, sizeof place, "%d / %d", placeHere, inFolder);
         const float rowY = kPresetY + 7.f, countRight = kPresetX + kPresetW - 10.f;
         if (const char* note = folderNote()) {
             // PRESET, the folder's note and the count share the top row: one lettering for all three.
