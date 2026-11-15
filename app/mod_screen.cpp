@@ -628,6 +628,10 @@ void ModScreen::drawModPane(SDL_Renderer* r, const Fonts& fonts) const {
     drawRow(r, fonts, rowY(4), ModKnob::moreName(s), text, 0.f, stepper ? kModSteps : kModPhases, stepper ? modLength(s.length) - 1 : modPhase(s.phase), false, column_ == kMore);
 }
 
+int ModScreen::otherTarget() const {
+    return mod(1 - modOf(picking() ? pickRow_ : row_)).target; // an OFF MOD is blank: kModTargetNone
+}
+
 void ModScreen::drawPick(SDL_Renderer* r, const Fonts& fonts) const {
     const TrackData& t = project_.tracks[track()];
     box(r, kPaneX, kPickY, kPaneW, kPickLineH * kPickLines, kPanel, kLine);
@@ -643,6 +647,7 @@ void ModScreen::drawPick(SDL_Renderer* r, const Fonts& fonts) const {
         }
         int targets[8], count = 0;
         pickLineTargets(t, line, targets, &count);
+        const int taken = otherTarget(); // the other MOD's target: marked in purple (owner, 2026-11-15)
         fonts.medium.draw(r, static_cast<float>(kPickNameX), y + 10.f, names[line], cursor ? kBrass : (count ? kText : kDim));
         if (line >= kPickFx1 && line <= kPickFx3) {
             const int kind = t.effects[line - kPickFx1].kind;
@@ -675,8 +680,10 @@ void ModScreen::drawPick(SDL_Renderer* r, const Fonts& fonts) const {
             const float w = font.width(word) + (i + 1 < count ? font.width(", ") : 0.f);
             if (x + w > itemsRight && x > kPickItemsX) x = static_cast<float>(kPickItemsX), ty += font.capHeight() + 7.f;
             const bool lit = cursor && i == pickItem_;
+            const bool other = targets[i] == taken;
             if (lit) fill(r, static_cast<int>(x) - 3, static_cast<int>(ty) - 3, static_cast<int>(font.width(word)) + 6, static_cast<int>(font.capHeight()) + 7, kBrass);
-            font.draw(r, x, ty, word, lit ? kBg : kText);
+            font.draw(r, x, ty, word, lit ? kBg : (other ? kPurple : kText));
+            if (other) fill(r, static_cast<int>(x), static_cast<int>(ty + font.capHeight()) + (lit ? 5 : 3), static_cast<int>(font.width(word)), 2, kPurple);
             if (i + 1 < count) font.draw(r, x + font.width(word), ty, ", ", kDim);
             x += w;
         }
