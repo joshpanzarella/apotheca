@@ -83,6 +83,8 @@ void ModScreen::targetText(const TrackData& track, int target, char* out, int si
         std::snprintf(out, n, "%s, FX %d", name, modTargetSlot(target) + 1);
     } else if (modTargetIsSend(target)) {
         std::snprintf(out, n, "%s SEND", target == kModFirstSend ? "ECHO" : "SPACE");
+    } else if (modTargetIsMix(target)) {
+        std::snprintf(out, n, "%s", target == kModTargetLevel ? "LEVEL" : "PAN");
     } else {
         std::snprintf(out, n, "NOTHING");
     }
@@ -94,6 +96,7 @@ void ModScreen::pickLineTargets(const TrackData& track, int line, int* out, int*
     if (line == kPickMacros) first = kModFirstMacro, many = 8;
     else if (line >= kPickFx1 && line <= kPickFx3) first = kModFirstEffect + (line - kPickFx1) * 4, many = 4;
     else if (line == kPickSends) first = kModFirstSend, many = 2;
+    else if (line == kPickMixer) first = kModTargetLevel, many = 2;
     for (int t = first; t < first + many; ++t)
         if (modTargetFits(track, t)) out[(*count)++] = t;
 }
@@ -621,7 +624,7 @@ void ModScreen::drawModPane(SDL_Renderer* r, const Fonts& fonts) const {
 void ModScreen::drawPick(SDL_Renderer* r, const Fonts& fonts) const {
     const TrackData& t = project_.tracks[track()];
     box(r, kPaneX, kPickY, kPaneW, kPickLineH * kPickLines, kPanel, kLine);
-    static const char* const names[kPickLines] = {"MACROS", "FX 1", "FX 2", "FX 3", "SENDS"};
+    static const char* const names[kPickLines] = {"MACROS", "FX 1", "FX 2", "FX 3", "SENDS", "MIXER"};
     const float itemsRight = static_cast<float>(kPaneX + kPaneW - 12);
     for (int line = 0; line < kPickLines; ++line) {
         const int y = pickLineY(line);

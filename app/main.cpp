@@ -957,6 +957,12 @@ int main(int argc, char** argv) {
             s.setEffect(0, 0, EffectKind::Filter);
             steps.target = kModFirstEffect; // the FILTER's CUTOFF
             s.setMod(0, 1, steps);
+        } else if (std::strcmp(view, "mod-mixer") == 0) {
+            // LEVEL under the LFO, PAN under the STEPPER (batch 8): the mixer's own two as targets.
+            lfo.target = kModTargetLevel;
+            steps.target = kModTargetPan;
+            s.setMod(track, 0, lfo);
+            s.setMod(track, 1, steps);
         } else if (std::strcmp(view, "mod-off") != 0) {
             s.setMod(track, 0, lfo);
             s.setMod(track, 1, steps);

@@ -166,8 +166,14 @@ void testTheSessionHoldsAMod() {
         CHECK(blank(project.tracks[1].mods[0]) == (macro >= 6) && blank(project.tracks[2].mods[1]) == (macro >= 7));
     }
     CHECK(session.setMod(1, 0, square(4, 0.5f)) && rig.onlyAt(1, 4, 0.5f));
-    // The spare lanes, LEVEL and PAN, and numbers nobody knows: no target.
-    for (int target : {22, 23, kModTargetLevel, kModTargetPan, 24, 99, -1, -7}) {
+    // LEVEL and PAN (batch 8): every track that has something on it.
+    for (int t : {0, 1, 2, 3, 4}) {
+        CHECK(session.setMod(t, 1, square(kModTargetLevel, 0.5f)) && project.tracks[t].mods[1].target == kModTargetLevel);
+        CHECK(session.setMod(t, 1, square(kModTargetPan, -0.5f)) && project.tracks[t].mods[1].target == kModTargetPan);
+        CHECK(session.setMod(t, 1, ModSettings()));
+    }
+    // The DEPTH lanes and numbers nobody knows: no target.
+    for (int target : {22, 23, 24, 31, 34, 99, -1, -7}) {
         CHECK(!session.setMod(1, 1, square(target, 0.5f)) && blank(project.tracks[1].mods[1]));
     }
     // No such track, no such MOD, a track with nothing on it.
@@ -443,7 +449,7 @@ void testTheSongFile() {
     // OFF: a KIND or a TARGET nobody knows, a MOD that is not 1 or 2, a line cut short before its TARGET,
     // a target that does not fit (a choice, an empty slot, a setting that is not there, a choice macro).
     for (const std::string& odd : {std::string("mod 2 9 ") + target + " 0.375 4 6 0 3", std::string("mod 2 0 ") + target + " 0.375 4 6 0 3", std::string("mod 2 -1 ") + target + " 0.375",
-                                   std::string("mod 2 1 22 0.375 4 6 0 3"), std::string("mod 2 1 23 0.375"), std::string("mod 2 1 32 0.375"), std::string("mod 2 1 33 0.375"), std::string("mod 2 1 99 0.375"),
+                                   std::string("mod 2 1 22 0.375 4 6 0 3"), std::string("mod 2 1 23 0.375"), std::string("mod 2 1 31 0.375"), std::string("mod 2 1 34 0.375"), std::string("mod 2 1 99 0.375"),
                                    std::string("mod 2 1 -1 0.375"), std::string("mod 2 1 1e9 0.375"), std::string("mod 2 1"), std::string("mod 2"), std::string("mod"), std::string("mod x 1 20 0.4"),
                                    std::string("mod 3 1 20 0.375"), std::string("mod 0 1 20 0.375"), std::string("mod -1 1 20 0.375"), std::string("mod 1e300 1 20 0.375"), std::string("mud 2 1 20 0.375"),
                                    std::string("mod 2 1 ") + std::to_string(lane(2, time)) + " 0.375", std::string("mod 2 1 ") + std::to_string(lane(0, 0)) + " 0.375",

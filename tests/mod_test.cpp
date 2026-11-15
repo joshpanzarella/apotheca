@@ -48,9 +48,10 @@ static void testTheNumbers() {
     CHECK(modPhase(4) == 0 && modPhase(3) == 3 && modRestart(1) == kModRestartPlay && modLength(0) == 1 && modLength(17) == 16 && modLength(5) == 5);
     CHECK(kRollMod == 6); // appended to ChordRoll after GLIDE FROM's 5
     CHECK(kModTick == 64 && kModMacroTicks == 8);
-    // Targets: the automation lanes. 22 and 23 are spare and kept for DEPTH; LEVEL and PAN later.
+    // Targets: the automation lanes, but 22 and 23 (the MODs' DEPTH: batch 7); LEVEL and PAN (batch 8).
     CHECK(kModFirstEffect == 8 && kModFirstSend == kAutoSendLane && kModTargetLanes == 22 && kAutoLanes == 24);
-    for (int t = -1; t < 40; ++t) CHECK(modTargetKnown(t) == (t >= 0 && t <= 21));
+    for (int t = -1; t < 40; ++t) CHECK(modTargetKnown(t) == ((t >= 0 && t <= 21) || t == 32 || t == 33));
+    for (int t = -1; t < 40; ++t) CHECK(modTargetIsMix(t) == (t == 32 || t == 33));
     CHECK(modTargetIsMacro(0) && modTargetIsMacro(7) && !modTargetIsMacro(8));
     CHECK(modTargetIsEffect(8) && modTargetIsEffect(19) && !modTargetIsEffect(20) && modTargetIsSend(20) && modTargetIsSend(21) && !modTargetIsSend(22));
     for (int slot = 0; slot < 3; ++slot)
@@ -1158,6 +1159,125 @@ static void testASceneMoveCarriesTheDepthLane() {
     CHECK(turned);
 }
 
+// ---- batch 8: LEVEL and PAN as targets ----------------------------------------------------------
+
+// The rule: LEVEL times (1 + added), held to 0..2; PAN plus added, held to -1..1; nothing added
+// (or not a number) gives the mixer's value exactly.
+static void testTheMixRule() {
+    CHECK(modLevelGiven(0.65f, 0.f) == 0.65f && modLevelGiven(0.65f, std::nanf("")) == 0.65f);
+    CHECK(modLevelGiven(0.65f, 0.5f) == 0.65f * 1.5f && modLevelGiven(0.65f, -1.f) == 0.f && modLevelGiven(0.65f, 1.f) == 1.3f);
+    CHECK(modLevelGiven(0.65f, 3.f) == 1.3f && modLevelGiven(0.65f, -3.f) == 0.f);
+    CHECK(modPanGiven(0.2f, 0.f) == 0.2f && modPanGiven(0.2f, std::nanf("")) == 0.2f && modPanGiven(0.2f, -0.5f) == 0.2f - 0.5f);
+    CHECK(modPanGiven(0.5f, 0.9f) == 1.f && modPanGiven(-0.5f, -0.9f) == -1.f);
+}
+
+// On the engine: given at the tick, about the mixer's own (which a SetTrackLevel or SetTrackPan
+// moves under it), two on LEVEL add, and Stop, a MOD aimed elsewhere and a track taken away give
+// the mixer's exactly again.
+static void testLevelAndPan() {
+    Rig rig;
+    rig.send(make(Command::SetTrackLevel, 1, 0, 0, 0.65f));
+    rig.send(make(Command::SetTrackPan, 1, 0, 0, 0.2f));
+    float l = 0.f, r = 0.f, wantL = 0.f, wantR = 0.f;
+    rig.mod(0, lfo(kModTargetLevel, 0.5f)); // a SQUARE: +depth whole
+    rig.mod(1, lfo(kModTargetPan, -0.5f));
+    CHECK(rig.engine->levelGiven(1) == 0.65f); // stopped: nothing runs
+    rig.send(make(Command::Play));
+    rig.frames(64);
+    CHECK(rig.engine->levelGiven(1) == 0.65f * 1.5f);
+    rig.engine->panGiven(1, l, r);
+    panGains(0.2f - 0.5f, wantL, wantR);
+    CHECK(l == wantL && r == wantR);
+    // The mixer turned under it: about the new level at once.
+    rig.send(make(Command::SetTrackLevel, 1, 0, 0, 0.4f));
+    CHECK(rig.engine->levelGiven(1) == 0.4f * 1.5f);
+    rig.send(make(Command::SetTrackPan, 1, 0, 0, -0.8f));
+    rig.engine->panGiven(1, l, r);
+    panGains(-1.f, wantL, wantR); // (-0.8 - 0.5, held)
+    CHECK(l == wantL && r == wantR);
+    // Two on LEVEL add: +50% and -100%, half the gain.
+    rig.mod(1, lfo(kModTargetLevel, -1.f));
+    rig.frames(64);
+    CHECK(rig.engine->levelGiven(1) == 0.2f);
+    rig.engine->panGiven(1, l, r);
+    panGains(-0.8f, wantL, wantR); // (MOD 2 left PAN: the mixer's again)
+    CHECK(l == wantL && r == wantR);
+    // Stop: the mixer's exactly.
+    rig.send(make(Command::Stop));
+    CHECK(rig.engine->levelGiven(1) == 0.4f);
+    rig.send(make(Command::Play));
+    rig.frames(64);
+    CHECK(rig.engine->levelGiven(1) == 0.2f);
+    // MOD 2 turned to 0%: what both added goes at once (the mixer's), MOD 1's back at its next tick.
+    CHECK(rig.engine->setMod(1, 1, lfo(kModTargetLevel, 0.f)));
+    rig.frames(1);
+    CHECK(rig.engine->levelGiven(1) == 0.4f);
+    rig.frames(64);
+    CHECK(rig.engine->levelGiven(1) == 0.4f * 1.5f);
+    // Held at the mixer's most (4) however far a MOD takes it.
+    rig.send(make(Command::SetTrackLevel, 1, 0, 0, 3.f));
+    CHECK(rig.engine->setMod(1, 1, lfo(kModTargetLevel, 1.f)));
+    rig.frames(64);
+    CHECK(rig.engine->levelGiven(1) == 4.f);
+    rig.send(make(Command::SetTrackLevel, 1, 0, 0, 0.4f));
+    // A track taken away: its usual level and the middle, nothing added, when it comes back; and the
+    // mixer's own forgotten with it (the next level or pan sent does not bring the old other back).
+    rig.send(make(Command::RemoveInstrument, 1));
+    rig.frames(512);
+    CHECK(rig.engine->levelGiven(1) == kUsualTrackLevel);
+    rig.engine->panGiven(1, l, r);
+    CHECK(l == 1.f && r == 1.f);
+    rig.send(make(Command::SetTrackLevel, 1, 0, 0, 0.5f));
+    rig.engine->panGiven(1, l, r);
+    CHECK(l == 1.f && r == 1.f && rig.engine->levelGiven(1) == 0.5f);
+    rig.send(make(Command::RemoveInstrument, 1));
+    rig.frames(512);
+    rig.send(make(Command::SetTrackPan, 1, 0, 0, 0.f));
+    CHECK(rig.engine->levelGiven(1) == kUsualTrackLevel);
+}
+
+// What is heard: a drum track under a SQUARE on LEVEL at -100% is silent once the level has glided
+// down (5 ms); on PAN at -100% from the middle its right side is silent. The same in any blocks
+// and on helpers (the tick is on the step's grid, the glide a sample at a time).
+static std::vector<float> mixSong(int block, int helpers, float levelDepth, float panDepth, int frames) {
+    std::unique_ptr<Engine> e(new Engine);
+    e->prepare(48000.f);
+    e->useWorkers(helpers);
+    for (int step = 0; step < 16; ++step) e->send(make(Command::SetStep, 0, step % 3, step, 0.9f));
+    std::vector<float> out(2 * static_cast<std::size_t>(frames)), scratch(1024);
+    e->render(scratch.data(), 256);
+    ModSettings level = lfo(kModTargetLevel, levelDepth, kModSine, kModRateQuarter), pan = lfo(kModTargetPan, panDepth, kModSquare, kModRateEightBars);
+    if (levelDepth != 0.f) e->setMod(0, 0, level);
+    if (panDepth != 0.f) e->setMod(0, 1, pan);
+    e->render(scratch.data(), 256);
+    e->send(make(Command::Play));
+    for (int at = 0; at < frames; at += block) e->render(out.data() + 2 * at, frames - at < block ? frames - at : block);
+    e->useWorkers(0);
+    return out;
+}
+static void testLevelAndPanHeard() {
+    const int frames = 16 * 6000;
+    const std::vector<float> plain = mixSong(64, 0, 0.f, 0.f, frames);
+    // PAN -100% from the middle: hard left, the right side nothing once the pan has glided there.
+    const std::vector<float> left = mixSong(64, 0, 0.f, -1.f, frames);
+    double rightMost = 0.0, leftMost = 0.0, plainMost = 0.0;
+    for (int i = 1000; i < frames; ++i) {
+        rightMost = std::max(rightMost, static_cast<double>(std::fabs(left[2 * i + 1])));
+        leftMost = std::max(leftMost, static_cast<double>(std::fabs(left[2 * i])));
+        plainMost = std::max(plainMost, static_cast<double>(std::fabs(plain[2 * i])));
+    }
+    CHECK(rightMost == 0.0 && leftMost > plainMost && plainMost > 0.01);
+    // LEVEL under a SINE at 100%, a quarter note: loud and quiet by turns, never louder than twice.
+    const std::vector<float> wobble = mixSong(64, 0, 1.f, 0.f, frames);
+    CHECK(wobble != plain);
+    double most = 0.0;
+    for (float v : wobble) most = std::max(most, static_cast<double>(std::fabs(v)));
+    CHECK(most > plainMost && most <= 2.0 * plainMost + 1e-6);
+    // The same in any blocks and on helpers.
+    for (int block : {1, 7, 333}) CHECK(mixSong(block, 0, 1.f, -1.f, frames) == mixSong(64, 0, 1.f, -1.f, frames));
+    CHECK(mixSong(256, 3, 1.f, -1.f, frames) == mixSong(64, 0, 1.f, -1.f, frames));
+}
+
 // Stopped, X held on a modulated knob: its MODs run from the moment X went down, as from Play, and
 // the knob is given its centre when X is let go. Play and Stop let go too; while it plays the
 // song's MODs run and an audition is not taken.
@@ -1477,6 +1597,9 @@ int main(int argc, char** argv) {
         {"testFeelChordsAndModsInAnyBlocks", testFeelChordsAndModsInAnyBlocks},
         {"testASongThatStopsAtItsEndLetsGoOfTheMods", testASongThatStopsAtItsEndLetsGoOfTheMods},
         {"testTheDepthScale", testTheDepthScale},
+        {"testTheMixRule", testTheMixRule},
+        {"testLevelAndPan", testLevelAndPan},
+        {"testLevelAndPanHeard", testLevelAndPanHeard},
         {"testTheDepthLanes", testTheDepthLanes},
         {"testTheDepthKnobStopsTheLanesGlide", testTheDepthKnobStopsTheLanesGlide},
         {"testNoDepthLetsGoAtOnce", testNoDepthLetsGoAtOnce},

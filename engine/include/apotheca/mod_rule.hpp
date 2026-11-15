@@ -58,10 +58,11 @@ inline float modDepthFromLane(float v) {
     const float d = 2.f * v - 1.f;
     return d == d ? (d > 1.f ? 1.f : (d < -1.f ? -1.f : d)) : 0.f;
 }
-constexpr int kModTargetLevel = 32; // the track's LEVEL and PAN: not lanes (batch 8; not taken yet)
+constexpr int kModTargetLevel = 32; // the track's LEVEL and PAN on the mixer: not lanes, not automated (batch 8)
 constexpr int kModTargetPan = 33;
-// A target the engine takes today. LEVEL and PAN (and anything else) read as no target.
-inline bool modTargetKnown(int target) { return target >= 0 && target < kModTargetLanes; }
+inline bool modTargetIsMix(int target) { return target == kModTargetLevel || target == kModTargetPan; }
+// A target the engine takes: a lane that is not a DEPTH lane, LEVEL or PAN. Anything else reads as no target.
+inline bool modTargetKnown(int target) { return (target >= 0 && target < kModTargetLanes) || modTargetIsMix(target); }
 inline bool modTargetIsMacro(int target) { return target >= kModFirstMacro && target < kModFirstEffect; }
 inline bool modTargetIsEffect(int target) { return target >= kModFirstEffect && target < kModFirstSend; }
 inline bool modTargetIsSend(int target) { return target >= kModFirstSend && target < kModTargetLanes; }
@@ -288,6 +289,23 @@ inline float modOffsetAt(const ModSettings& m, double position, int track, int m
 inline float modOffsetAt(const ModSettings& m, double position, int track, int mod) { return modOffsetAt(m, position, track, mod, m.depth); }
 
 // ---- the combine ---------------------------------------------------------------------------------
+// LEVEL and PAN (batch 8) are not 0..1 settings, so they have their own combine, with the same
+// promise: nothing added gives the mixer's value exactly as it is.
+//   LEVEL: the track's gain times (1 + what is added), held to 0..2: at 100% a SINE swings from
+//          silence up to twice the gain (+6 dB, the mixer's top step), about the mixer's level.
+//   PAN:   the place (-1 hard left .. 1 hard right) plus what is added, held to -1..1: at 100% from
+//          the middle it reaches either side.
+constexpr float kModLevelMost = 2.f;
+inline float modLevelGiven(float level, float offset) {
+    if (offset == 0.f || !(offset == offset)) return level;
+    const float times = 1.f + offset;
+    return level * (times > 0.f ? (times < kModLevelMost ? times : kModLevelMost) : 0.f);
+}
+inline float modPanGiven(float pan, float offset) {
+    if (offset == 0.f || !(offset == offset)) return pan;
+    const float v = pan + offset;
+    return v > -1.f ? (v < 1.f ? v : 1.f) : -1.f;
+}
 // What a setting is given: its centre plus what the MODs aimed at it add (two on one target add,
 // then one clamp), held to 0..1. Nothing added (0, or not a number): the centre exactly as it is,
 // in the same call as before there were MODs. That is the bit-exact path.

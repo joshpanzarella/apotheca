@@ -1212,13 +1212,19 @@ void Engine::apply(const Command& c) {
         break;
     case Command::SetTrackLevel:
         if (!std::isfinite(c.value)) break;
-        if (validTrack(c.track)) tracks_[c.track].level = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
-        else if (c.track == kMasterTrack) masterLevel_ = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            track.levelSet = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
+            giveMix(track); // (a MOD on LEVEL moves about it; with none, the level is this exactly)
+        } else if (c.track == kMasterTrack) masterLevel_ = c.value < 0.f ? 0.f : (c.value > 4.f ? 4.f : c.value);
         break;
     case Command::SetTrackPan:
         if (!std::isfinite(c.value)) break;
-        if (validTrack(c.track)) panGains(c.value, tracks_[c.track].panL, tracks_[c.track].panR);
-        else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
+        if (validTrack(c.track)) {
+            Track& track = tracks_[c.track];
+            track.panSet = c.value < -1.f ? -1.f : (c.value > 1.f ? 1.f : c.value); // (panGains holds it the same)
+            giveMix(track);
+        } else if (c.track == kMasterTrack) panGains(c.value, masterPanL_, masterPanR_);
         break;
     case Command::SetTrackHeard:
         if (validTrack(c.track)) tracks_[c.track].heard = c.a != 0;
@@ -1774,8 +1780,9 @@ void Engine::takeAway(int t) {
     modsChanged();
     for (LaneFeel& feel : track.feel) feel = LaneFeel(); // the next kit here plays plain until it is told
     for (long& asked : track.feelAsked) asked = -1;
-    track.level = track.levelNow = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
+    track.level = track.levelNow = track.levelSet = kUsualTrackLevel; // a track that comes back starts at its usual level and pan
     track.panL = track.panR = track.panLNow = track.panRNow = 1.f;
+    track.panSet = track.modMix[0] = track.modMix[1] = 0.f;
     track.drums.reset();
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         if (!track.laneSamples[lane]) continue;
@@ -1959,6 +1966,15 @@ void Engine::giveLane(Track& track, int lane) {
     } // (the last two lanes are the MODs' DEPTH: runMods reads them at each tick, nothing is given)
 }
 
+// LEVEL and PAN given (batch 8): the mixer's own (levelSet, panSet), with what the MODs on them add
+// (modLevelGiven, modPanGiven). With nothing added, exactly what SetTrackLevel and SetTrackPan gave
+// before there were MODs: the render's at-rest path is taken as it always was.
+void Engine::giveMix(Track& track) {
+    const float level = modLevelGiven(track.levelSet, track.modMix[0]);
+    track.level = level > 4.f ? 4.f : level;
+    panGains(modPanGiven(track.panSet, track.modMix[1]), track.panL, track.panR);
+}
+
 // ---- MOD: a track's two modulators (mod_rule.hpp) -------------------------------------------
 
 // One tick, on the audio thread, before the tracks are shared out (the helpers only read what it
@@ -1993,6 +2009,15 @@ void Engine::runMods(double position, bool macros) {
             if (!runs[m]) continue;
             const int lane = track.mods[m].target;
             if (m == 1 && runs[0] && track.mods[0].target == lane) continue; // added in with MOD 1's
+            if (modTargetIsMix(lane)) { // LEVEL or PAN: not a lane
+                float sum = added[m];
+                if (m == 0 && runs[1] && track.mods[1].target == lane) sum += added[1];
+                float& now = track.modMix[lane - kModTargetLevel];
+                if (sum == now) continue;
+                now = sum;
+                giveMix(track);
+                continue;
+            }
             if (track.autoWaits(lane)) continue;
             const int slot = autoSlotOfLane(lane);
             if (slot >= 0 && ((track.slotChoices[slot] >> ((lane - 8) % 4)) & 1)) continue;
@@ -2007,6 +2032,13 @@ void Engine::runMods(double position, bool macros) {
 
 // A lane's offset back to nothing, and the lane given its centre (where the centre is known).
 void Engine::stillLane(Track& track, int lane) {
+    if (modTargetIsMix(lane)) { // LEVEL or PAN: the mixer's own given again
+        float& now = track.modMix[lane - kModTargetLevel];
+        if (now == 0.f) return;
+        now = 0.f;
+        giveMix(track);
+        return;
+    }
     if (lane < 0 || lane >= kAutoLanes || track.modOffset[lane] == 0.f) return;
     track.modOffset[lane] = 0.f;
     if (track.autoNow[lane] >= 0.f) giveLane(track, lane);
@@ -2014,6 +2046,8 @@ void Engine::stillLane(Track& track, int lane) {
 
 void Engine::stillMods(Track& track) {
     for (int lane = 0; lane < kAutoLanes; ++lane) stillLane(track, lane);
+    stillLane(track, kModTargetLevel);
+    stillLane(track, kModTargetPan);
     for (int m = 0; m < kModsPerTrack; ++m) {
         track.modShown[m].store(0.f, std::memory_order_relaxed);
         track.modPlace[m].store(-1, std::memory_order_relaxed);

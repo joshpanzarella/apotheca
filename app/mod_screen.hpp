@@ -72,7 +72,7 @@ public:
 
     // A held on TARGET (or on a MOD's line): the list of targets. Its lines, and what is on each.
     bool picking() const { return pickRow_ >= 0; }
-    enum PickLine { kPickMacros = 0, kPickFx1, kPickFx2, kPickFx3, kPickSends, kPickLines };
+    enum PickLine { kPickMacros = 0, kPickFx1, kPickFx2, kPickFx3, kPickSends, kPickMixer, kPickLines }; // MIXER: LEVEL, PAN (batch 8)
     static void pickLineTargets(const TrackData& track, int line, int* out, int* count); // up to 8: what fits, in order
     int pickLine() const { return pickLine_; }
     int pickItem() const { return pickItem_; }

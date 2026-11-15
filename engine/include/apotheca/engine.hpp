@@ -446,6 +446,12 @@ public:
     // its automation), what a track's send has been given, and what the MODs add to a lane.
     float laneCentre(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].autoNow[lane] : kAutoNone; }
     float sendGiven(int track, int bus) const { return track >= 0 && track < kNumTracks && bus >= 0 && bus < kBuses ? tracks_[track].send[bus] : 0.f; }
+    // A track's LEVEL (gain) and PAN (the two sides' gains) as given, with what MODs add (batch 8). For the tests.
+    float levelGiven(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].level : 0.f; }
+    void panGiven(int track, float& left, float& right) const {
+        left = track >= 0 && track < kNumTracks ? tracks_[track].panL : 0.f;
+        right = track >= 0 && track < kNumTracks ? tracks_[track].panR : 0.f;
+    }
     float modOffsetForTests(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].modOffset[lane] : 0.f; }
 
     // ---- MOD: a track's two modulators (mod_rule.hpp, docs/plans/modulation-plan.md) ----------
@@ -661,6 +667,11 @@ private:
         float levelNow = kUsualTrackLevel; // ...as it is this sample: it glides to `level` over kSendGlideSeconds
         float panL = 1.f, panR = 1.f;       // PAN: the two sides' gains it is set to (panGains; 1 and 1: the middle)
         float panLNow = 1.f, panRNow = 1.f; // ...as they are this sample, gliding as the level does
+        // The mixer's own LEVEL (gain) and PAN (place), as SetTrackLevel and SetTrackPan set them: the
+        // centre a MOD on LEVEL or PAN moves about (batch 8). `level`, `panL` and `panR` are what is
+        // given (giveMix); with nothing added, these exactly.
+        float levelSet = kUsualTrackLevel, panSet = 0.f;
+        float modMix[2] = {}; // what the MODs add to LEVEL and to PAN (runMods); 0 while none runs
         bool heard = true;   // not muted (SetTrackHeard)
         float gate = 1.f;    // ...as it is this sample: moving toward 1 or 0
         float send[kBuses] = {};    // how much goes to each bus (SetSend, or its automation lane)
@@ -702,6 +713,7 @@ private:
     void fireStep();
     void applyAuto(Track& track, int lane, float value);
     void giveLane(Track& track, int lane);
+    void giveMix(Track& track); // LEVEL and PAN given: the mixer's, with what the MODs add (batch 8)
     // MOD. runMods: one tick, at `position` (steps since Play, or since X went down); `macros`: this
     // tick also gives the synth's macros (every kModMacroTicks'th). stillLane: a lane's offset back
     // to 0, and the lane given its centre. stillMods: every lane of the track so. modsChanged:

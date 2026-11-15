@@ -820,6 +820,53 @@ void testUndo() {
     CHECK(session.mixDb(kMasterTrack) == 0 && session.mixPan(1) == -kPanMost);
 }
 
+// A MOD on a track's LEVEL or PAN (batch 8): it moves about what the mixer says, and the mixer's own
+// numbers, its file and its card, are never the wobble. Let go (Stop, OFF), the mixer's exactly.
+void testAModOnLevelAndPan() {
+    Rig rig;
+    CHECK(rig.session().addTrack(TrackKind::Phazed));
+    const int t = rig.project().trackCount() - 1;
+    rig.session().setMix(t, -6, 20);
+    ModSettings level;
+    level.kind = kModLfo, level.target = kModTargetLevel, level.depth = 0.5f, level.shape = kModSquare, level.rate = kModRateEightBars;
+    ModSettings pan = level;
+    pan.target = kModTargetPan, pan.depth = -0.5f;
+    CHECK(rig.session().setMod(t, 0, level) && rig.session().setMod(t, 1, pan));
+    rig.frames(2);
+    rig.engine->render(std::vector<float>(2 * 512).data(), 512);
+    float l = 0.f, r = 0.f, wantL = 0.f, wantR = 0.f;
+    CHECK(rig.engine->levelGiven(t) == mixGain(-6, false)); // stopped: the mixer's
+    rig.session().togglePlay(false);
+    rig.frames(1);
+    rig.engine->render(std::vector<float>(2 * 512).data(), 512);
+    CHECK(rig.engine->levelGiven(t) == mixGain(-6, false) * 1.5f);
+    rig.engine->panGiven(t, l, r);
+    panGains(panAmount(20) - 0.5f, wantL, wantR);
+    CHECK(l == wantL && r == wantR);
+    CHECK(rig.session().mixDb(t) == -6 && rig.session().mixPan(t) == 20); // the mixer's own, not the wobble
+    rig.session().setMix(t, 0, 0); // turned while it runs: about the new level at once
+    rig.frames(1);
+    rig.engine->render(std::vector<float>(2 * 64).data(), 64);
+    CHECK(rig.engine->levelGiven(t) == kUsualTrackLevel * 1.5f);
+    rig.engine->panGiven(t, l, r);
+    panGains(-0.5f, wantL, wantR);
+    CHECK(l == wantL && r == wantR);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("mod 1 1 32 ") != std::string::npos && text.find("mod 2 1 33 ") != std::string::npos);
+    rig.session().togglePlay(false); // Stop
+    rig.frames(1);
+    rig.engine->render(std::vector<float>(2 * 64).data(), 64);
+    CHECK(rig.engine->levelGiven(t) == kUsualTrackLevel);
+    rig.engine->panGiven(t, l, r);
+    CHECK(l == 1.f && r == 1.f); // the middle: untouched, so the track runs the loop it always ran
+    CHECK(rig.session().setMod(t, 0, ModSettings()) && rig.session().setMod(t, 1, ModSettings()));
+    rig.session().togglePlay(false);
+    rig.frames(1);
+    rig.engine->render(std::vector<float>(2 * 512).data(), 512);
+    CHECK(rig.engine->levelGiven(t) == kUsualTrackLevel); // OFF: nothing moves
+    rig.session().togglePlay(false);
+}
+
 } // namespace
 
 int main() {
@@ -839,6 +886,7 @@ int main() {
     testTheHints();
     testTheSongFile();
     testUndo();
+    testAModOnLevelAndPan();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

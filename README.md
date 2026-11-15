@@ -584,7 +584,10 @@ one of two kinds:
 | **STEPPER** | A row of up to 16 values, one held for each note length, round and round |
 
 Each track has **two MODs**. Each one is aimed at one knob: a macro (DEVICE),
-a setting of one of the track's effects, or a send (FX). A setting that is a
+a setting of one of the track's effects, a send (FX), or the track's LEVEL or
+PAN on the mixer (aimed from the MOD tab). On LEVEL a MOD at 100% swings from
+silence to twice the mixer's level; on PAN from the middle it reaches either
+side. The mixer still shows its own LEVEL and PAN. A setting that is a
 choice (a filter's TYPE, a delay's TIME, Phazed's CHORUS and OCTAVE) takes no MOD.
 
 **Hold X on the knob.** While X is held its MOD shows: on DEVICE where LIVE
@@ -631,7 +634,7 @@ the step playing.
 | On the MOD tab | Does |
 | --- | --- |
 | Up / down, right, left | Move: right goes into the line's settings, left back to the list |
-| **Hold A** on TARGET (or on a MOD's line) | The list of targets: MACROS, FX 1 to 3, SENDS, only what a MOD can move. Up / down a line, left / right along it, **let go** to aim it there (a MOD that was off starts as LFO, SINE, 1 BAR, +25%). B with A held: as it was |
+| **Hold A** on TARGET (or on a MOD's line) | The list of targets: MACROS, FX 1 to 3, SENDS, MIXER (LEVEL, PAN), only what a MOD can move. Up / down a line, left / right along it, **let go** to aim it there (a MOD that was off starts as LFO, SINE, 1 BAR, +25%). B with A held: as it was |
 | **Hold A** + up / down on a setting | Turns it: DEPTH 1% a push, a step or SLEW or CHANCE 5%; SHAPE, RATE, PHASE and LENGTH a click. The stick turns the amounts smoothly |
 | **Hold A** + left / right on the row | The step before / after, still holding A: a whole row in one grip |
 | B | A setting back to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, a step 0...) |

@@ -1038,3 +1038,28 @@ stopped, the lanes not at no depth on a new engine, `anyMod_` by `on()`, a retar
 
 **What only the tests and stills saw**: all of it.
 
+## 24. Batch 8, LEVEL and PAN, as built (2026-11-15, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** Call 14 at its recommended answer
+**except TREMOLO, which stays** (the owner, 2026-11-15: an effect taken out would break the songs
+that use it). LEVEL is target 32, PAN 33 (section 2's ids; the song file's TARGET).
+
+| Part | What is there |
+| --- | --- |
+| The rule | `mod_rule.hpp`: `modTargetIsMix`; `modTargetKnown` takes 32 and 33. `modLevelGiven(level, added)`: the gain times (1 + added), held to 0..`kModLevelMost` (2): at 100% a SINE swings from silence to twice the mixer's gain (+6 dB, the mixer's top). `modPanGiven(pan, added)`: the place plus added, held to -1..1. Nothing added (or not a number): the mixer's value exactly |
+| The engine | `Track::levelSet`, `panSet`: the mixer's own, as `SetTrackLevel` / `SetTrackPan` set them. `giveMix` gives `level` and `panL` / `panR` from them and `Track::modMix` (what the MODs add, set by `runMods` on every tick, two on one adding). `stillLane` lets LEVEL and PAN go as it does a lane (Stop, Panic, OFF, 0%, aimed elsewhere, a track taken away; the track comes back at its usual level and the middle). The glides (`kSendGlideSeconds`) smooth the tick's steps, a sample at a time, so it is the same in any blocks and helpers |
+| At rest | With nothing added `level` is `levelSet` and the pan gains are `panGains(panSet)`, as before: the render takes the loop it always took, and `effects_test --print` is the same before and after |
+| The app | `modTargetFits`: LEVEL and PAN fit any track with something on it. The MOD tab's list of targets has a sixth line, MIXER: level, pan (`kPickMixer`); TARGET reads LEVEL or PAN. The mixer's card, `mix` line and undo stay the mixer's own. No knob gesture for them (the mixer is A held on a head on SONG) and no brass mark on the card: choices made here |
+| Still | `mod-mixer` (LEVEL under the LFO, PAN under the STEPPER), in `kViews`; `mod-target --hold-a` and `mod-drums --hold-a` show the sixth line |
+| Tests | `mod_test` `testTheMixRule`, `testLevelAndPan` (about the mixer's, the mixer turned under it, two add, Stop, 0%, a track taken away), `testLevelAndPanHeard` (a drum track: hard left gives a right side of exact zeros; LEVEL at 100% never over twice; blocks of 1, 7, 333 and 3 helpers the same to the bit). `mixer_test` `testAModOnLevelAndPan` (the Session: the mixer's dB and pan kept, setMix under it, the file's `mod 1 1 32`, Stop and OFF give the mixer's exactly). `modapp_test`: LEVEL and PAN fit every track. `modtab_test`: the MIXER line, the end stops there |
+
+**Choices made here**: LEVEL is linear (times 1 + added), not in dB, so 100% reaches silence, as a
+tremolo does; its top is twice the gain (the mixer's +6 dB); the master is not a target (nothing
+on the master is automated or modulated); the list's line is called MIXER.
+
+**What only the tests and stills saw**: all of it. Nobody has heard a MOD on LEVEL or PAN.
+
+**Mutants** (batch 8): 20 made, 20 killed (16 at first; four survivors have tests now: the level
+held at the mixer's most, 4; a track taken away keeping the mixer's own pan or level, which the
+next level or pan sent would have brought back; TARGET's words LEVEL and PAN).
+

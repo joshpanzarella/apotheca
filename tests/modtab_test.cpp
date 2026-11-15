@@ -281,6 +281,15 @@ void testTheListOfTargets() {
     CHECK(count == 3 && targets[0] == kModFirstEffect + 4); // FILTER: CUTOFF, RESONANCE, MIX (TYPE a choice)
     ModScreen::pickLineTargets(rig.project().tracks[t], S::kPickSends, targets, &count);
     CHECK(count == 2 && targets[1] == kModFirstSend + 1);
+    ModScreen::pickLineTargets(rig.project().tracks[t], S::kPickMixer, targets, &count);
+    CHECK(count == 2 && targets[0] == kModTargetLevel && targets[1] == kModTargetPan); // (batch 8: every track)
+    ModScreen::pickLineTargets(rig.project().tracks[0], S::kPickMixer, targets, &count);
+    CHECK(count == 2); // the drums too
+    char said[40];
+    ModScreen::targetText(rig.project().tracks[t], kModTargetLevel, said, sizeof said);
+    CHECK(std::strcmp(said, "LEVEL") == 0);
+    ModScreen::targetText(rig.project().tracks[t], kModTargetPan, said, sizeof said);
+    CHECK(std::strcmp(said, "PAN") == 0);
     // A held: the list opens on the first line with something; up / down skip what has nothing; nothing kept yet.
     rig.key(A, true), rig.frames(1);
     CHECK(tab.picking() && tab.pickLine() == S::kPickMacros && tab.pickItem() == 0);
@@ -291,6 +300,8 @@ void testTheListOfTargets() {
     rig.tap(UP);
     CHECK(tab.pickLine() == S::kPickMacros && tab.pickItem() == 2); // the place kept where it can be
     rig.tap(DOWN, 4);
+    CHECK(tab.pickLine() == S::kPickMixer && tab.pickItem() == 1); // MIXER, the last line: PAN (the end stops)
+    rig.tap(UP);
     CHECK(tab.pickLine() == S::kPickSends && tab.pickItem() == 1);
     CHECK(rig.mod(t, 0).kind == kModOff); // only tried: nothing in the song yet
     rig.key(A, false), rig.frames(1);
