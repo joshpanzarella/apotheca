@@ -983,3 +983,30 @@ SPEED TEST).
 Mutants of the mend: the two fixes taken back and the six above put in again, eight made, eight
 killed, each put back. Full `ctest -j3`: 51 of 51. No engine code changed. **Seen only by the tests
 and the stills** (`mod-steps`: the list's row now stands as the pane's, the MOD's picture turned over).
+
+## 22. Batch 6, the brass mark, as built (2026-11-15, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** Call 18 at its recommended answer:
+a thin brass mark on the target's own bar.
+
+| Part | What is there |
+| --- | --- |
+| Where | DEVICE MAIN's eight macro bars, FX's slot settings (a track's, not a bus's or the master's) and the two SENDS bars |
+| What it shows | `modMarkAt(session, track, lane, shown)` (`app/mod_knob.hpp`): the bar's own value (`shown`: the knob, or where its automation has it while playing) plus `Engine::modShown` of every MOD aimed at that lane (two add), held to 0..1, as the engine gives it (`modGiven`). Not a number, and nothing drawn, unless the song plays or X runs that MOD (`Session::modsHeard`), and the engine has ticked it (`modNow` a number) |
+| How it looks | `drawModMark`: `kModMarkW` 2 pixels wide, from `kModMarkOver` 3 above the bar to 3 below, brass (the job of a meter: it moves by itself), held inside the bar's ends. Over a brass bar (A held) it shows above and below. The macro bar's place is now three constants, `ui::kMacroBarInset`, `kMacroBarFromFoot`, `kMacroBarH`, which `macroBox` and the mark both use |
+| Redraw | It moves only while the song plays (stirred already) or X is held (a button held): nothing new to stir. `idle_test` has two parts: a macro and a send, the song played then stopped |
+| Stills | `device-modded` (TONE under an LFO, the third macro under a STEPPER), `fx-modded` (TAPE's FEEDBACK under an LFO, AGE under a STEPPER), in `kViews` |
+| Tests | `modknob_test` `testTheBrassMark`: no mark stopped; playing, a SQUARE's mark exactly where centre + depth is, 2 wide, 3 over and under and no further; no mark on the seven other macros; a MOD set while playing has none until its tick; two MODs on one knob add and the mark is held inside the bar at the top; gone on the very pass START stops it (before the engine has heard the Stop); X held while stopped shows it, let go hides it; FX: FEEDBACK's mark, none on TIME, AGE, MIX; a send's about the send's own value; the same in PAPER |
+
+**Choices made here**: the mark is drawn where the song gives the knob, not where the MOD alone
+would put it about the bare knob (so on an automated knob it moves about the automation); two MODs
+on one knob make one mark (their sum); none on the list's small bars (only the target's own bar).
+
+**Mutants**: 13 made, 13 killed (the running check, the playing check, the target check, two not
+added, no clamp, the edge not held in, a short mark, DEVICE not drawn or on the wrong macro, FX's
+setting or send not drawn, a send's mark about nothing, not brass). Two guards the first run found
+no way to reach were taken out of FX's call (a choice: no MOD is aimed at one; an effect being
+tried: the settings are not drawn then).
+
+**What only the tests and stills saw**: all of it.
+

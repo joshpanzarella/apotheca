@@ -125,4 +125,16 @@ private:
     unsigned rolls_ = 0;
 };
 
+// ---- the brass mark (batch 6): a thin mark on a target's own bar where the value is NOW ----------
+// While a MOD aimed at a knob runs (the song playing, or X held on it while stopped), the knob's own
+// bar on DEVICE or FX shows the value the setting is given this moment: the bar's centre (`shown`,
+// what the bar itself is drawn at) plus what the MODs aimed there add (Engine::modShown, the two
+// added), one clamp, as the engine gives it (mod_rule.hpp's modGiven). Brass, as a meter is: it
+// moves by itself. Not a number where no MOD aimed at that lane runs: nothing is drawn.
+float modMarkAt(const Session& session, int track, int lane, float shown);
+// The mark: kModMarkW wide, standing kModMarkOver above and below a bar at (x, y), w by h.
+constexpr int kModMarkW = 2, kModMarkOver = 3;
+int modMarkX(int x, int w, float at); // the mark's left edge
+void drawModMark(SDL_Renderer* r, int x, int y, int w, int h, float at);
+
 } // namespace apotheca

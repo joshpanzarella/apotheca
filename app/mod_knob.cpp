@@ -326,4 +326,38 @@ void ModKnob::drawHints(SDL_Renderer* r, const Fonts& fonts, const ModPlaces& p)
     }
 }
 
+// ---- the brass mark -----------------------------------------------------------------------------
+
+float modMarkAt(const Session& session, int track, int lane, float shown) {
+    if (track < 0 || track >= kNumTracks || lane < 0) return kModNotRunning;
+    float added = 0.f;
+    bool runs = false;
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        const ModSettings& mod = session.modData(track, m);
+        if (!mod.on() || mod.target != lane) continue;
+        // As the MOD tab's dot: only while the song plays or X runs it, so a Stop takes it away on
+        // the very pass (the engine's last tick would stand with nothing to stir the redraw).
+        if (!session.project.playing && !(session.modsHeard(track) & (1u << m))) continue;
+        const double at = session.engine.modNow(track, m);
+        if (!(at == at)) continue;
+        runs = true;
+        added += session.engine.modShown(track, m);
+    }
+    if (!runs) return kModNotRunning;
+    const float v = shown + added;
+    return v > 0.f ? (v < 1.f ? v : 1.f) : 0.f;
+}
+
+int modMarkX(int x, int w, float at) {
+    const float part = at > 0.f ? (at < 1.f ? at : 1.f) : 0.f;
+    const int centre = x + static_cast<int>(std::round(static_cast<float>(w) * part));
+    const int left = centre - kModMarkW / 2;
+    return left < x ? x : (left > x + w - kModMarkW ? x + w - kModMarkW : left);
+}
+
+void drawModMark(SDL_Renderer* r, int x, int y, int w, int h, float at) {
+    if (!(at == at)) return;
+    fill(r, modMarkX(x, w, at), y - kModMarkOver, kModMarkW, h + 2 * kModMarkOver, kBrass);
+}
+
 } // namespace apotheca

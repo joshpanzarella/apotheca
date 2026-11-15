@@ -1027,6 +1027,128 @@ void testDrawnOnFx() {
     CHECK(rig.plainBar(busBar, 5));
 }
 
+
+// ---- batch 6: the thin brass mark on a target's own bar ---------------------------------------
+
+// The brass run along row `y` from x0 to x1: its left edge and width (the first run), or {-1, 0}.
+std::pair<int, int> brassIn(const Rig& rig, int x0, int x1, int y) {
+    for (int x = x0; x < x1; ++x)
+        if (rig.canvas.is(x, y, ui::kBrass)) return {x, rig.canvas.run(x, y, ui::kBrass)};
+    return {-1, 0};
+}
+
+// The mark on a bar at (x, y), w by h, at `at`: kModMarkW wide, brass from kModMarkOver above the bar
+// to kModMarkOver below it, and nothing of it a row further out. `none`: no brass in the rows above.
+bool markAt(const Rig& rig, int x, int y, int w, int h, float at) {
+    const int mx = modMarkX(x, w, at);
+    const std::pair<int, int> top = brassIn(rig, x, x + w, y - kModMarkOver);
+    if (printing) std::printf("mark: want %d, found %d (%d wide)\n", mx, top.first, top.second);
+    if (top.first != mx || top.second != kModMarkW) return false;
+    for (int py = y - kModMarkOver; py < y + h + kModMarkOver; ++py)
+        for (int px = mx; px < mx + kModMarkW; ++px)
+            if (!rig.canvas.is(px, py, ui::kBrass)) return false;
+    return !rig.canvas.is(mx, y - kModMarkOver - 1, ui::kBrass) && !rig.canvas.is(mx, y + h + kModMarkOver, ui::kBrass);
+}
+bool noMark(const Rig& rig, int x, int y, int w) { return brassIn(rig, x, x + w, y - kModMarkOver).first < 0; }
+
+void testTheBrassMark() {
+    Rig rig;
+    CHECK(rig.canvas.ok);
+    if (!rig.canvas.ok) return;
+    const int t = rig.phazed;
+    // MOTION (macro 1) under a SQUARE at +30%: what it adds is exactly +30% for the first half bar.
+    ModSettings square = lfoOn(kModFirstMacro + 1, 0.3f);
+    square.shape = kModSquare;
+    CHECK(rig.session().setMod(t, 0, square));
+    rig.device(t, 0);
+    const auto bar = [](int m, int& x, int& y, int& w) {
+        x = 8 + (m % 4) * SynthScreen::kMacroPitchX + ui::kMacroBarInset;
+        y = SynthScreen::kMacroY + (m / 4) * (SynthScreen::kMacroH + SynthScreen::kMacroGap) + SynthScreen::kMacroH - ui::kMacroBarFromFoot;
+        w = SynthScreen::kMacroW - 2 * ui::kMacroBarInset;
+    };
+    int x = 0, y = 0, w = 0;
+    bar(1, x, y, w);
+    rig.draw();
+    CHECK(noMark(rig, x, y, w)); // stopped: the MOD does not run, nothing moves
+    CHECK(std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f)));
+    rig.tap(SDLK_RETURN); // START
+    CHECK(rig.project().playing);
+    rig.draw();
+    CHECK(rig.session().engine.modShown(t, 0) == 0.3f);
+    {   // A MOD set while playing has no position until the engine's next tick: no mark until then.
+        CHECK(rig.session().setMod(t, 1, lfoOn(kModFirstMacro + 2)));
+        CHECK(std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 2, 0.5f)));
+        rig.frames(3); // (a macro's MOD runs on every 8th tick: 512 samples)
+        CHECK(!std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 2, 0.5f)));
+        rig.session().setMod(t, 1, ModSettings());
+    }
+    CHECK(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f) == 0.8f);
+    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 0.8f));
+    for (int m = 0; m < 8; ++m) { // the other seven: no mark (TONE has the cursor, the rest nothing aimed)
+        if (m == 1) continue;
+        int ox = 0, oy = 0, ow = 0;
+        bar(m, ox, oy, ow);
+        CHECK(noMark(rig, ox, oy, ow));
+    }
+    // The second MOD on the same knob adds (one clamp): +30% and +40% from the middle is the top.
+    ModSettings more = square;
+    more.depth = 0.4f;
+    CHECK(rig.session().setMod(t, 1, more));
+    rig.frames(40); // (to the next macro tick)
+    rig.draw();
+    CHECK(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f) == 1.f);
+    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 1.f) && modMarkX(x, w, 1.f) == x + w - kModMarkW); // held inside the bar
+    rig.session().setMod(t, 1, ModSettings());
+    // Stopped: gone on the very pass START is pressed.
+    rig.key(SDLK_RETURN, true);
+    CHECK(std::isnan(modMarkAt(rig.session(), t, kModFirstMacro + 1, 0.5f))); // (before the engine has heard the Stop)
+    rig.draw();
+    CHECK(!rig.project().playing && noMark(rig, x, y, w));
+    rig.key(SDLK_RETURN, false);
+    // X held on MOTION while stopped: the MOD runs, and the mark is there; let go, gone.
+    rig.device(t, 1);
+    rig.key(X, true);
+    rig.frames(3);
+    rig.draw();
+    CHECK(markAt(rig, x, y, w, ui::kMacroBarH, 0.8f));
+    rig.key(X, false);
+    rig.draw();
+    CHECK(noMark(rig, x, y, w));
+
+    // FX: a TAPE's FEEDBACK (0.4) under a SQUARE at -25%, its MIX under none, and the ECHO send under +50%.
+    const int d = 0;
+    rig.session().setEffect(d, 0, EffectKind::Tape);
+    ModSettings fb = lfoOn(kModFirstEffect + 1, -0.25f);
+    fb.shape = kModSquare;
+    CHECK(rig.session().setMod(d, 0, fb));
+    ModSettings echo = lfoOn(kModFirstSend, 0.5f);
+    echo.shape = kModSquare;
+    CHECK(rig.session().setMod(d, 1, echo));
+    rig.session().setSend(d, 0, 0.3f); // (the mark stands about where the send is, not about nothing)
+    rig.fx(d, 0, 2);
+    rig.draw();
+    const auto setBar = [](int p) { return FxScreen::kSetY + p * (FxScreen::kSetH + FxScreen::kSetGap) + FxScreen::kSetH / 2 - FxScreen::kBarH / 2; };
+    for (int p = 0; p < 4; ++p) CHECK(noMark(rig, FxScreen::kBarX, setBar(p), FxScreen::kBarW)); // stopped
+    rig.tap(SDLK_RETURN);
+    rig.draw();
+    const float fbAt = rig.session().project.tracks[d].effects[0].param[1] - 0.25f;
+    CHECK(markAt(rig, FxScreen::kBarX, setBar(1), FxScreen::kBarW, FxScreen::kBarH, fbAt));
+    CHECK(noMark(rig, FxScreen::kBarX, setBar(0), FxScreen::kBarW) && noMark(rig, FxScreen::kBarX, setBar(2), FxScreen::kBarW) && noMark(rig, FxScreen::kBarX, setBar(3), FxScreen::kBarW));
+    rig.app.fx().goTo(FxScreen::kSendsRow, 1);
+    rig.draw();
+    const float echoAt = rig.session().project.tracks[d].send[0] + 0.5f;
+    CHECK(markAt(rig, FxScreen::kPaneX + 12, FxScreen::kSendY + FxScreen::kSendBarY, FxScreen::kPaneW - 24, 14, echoAt > 1.f ? 1.f : echoAt));
+    const int spaceY = FxScreen::kSendY + FxScreen::kSendH + FxScreen::kSendGap + FxScreen::kSendBarY;
+    CHECK(noMark(rig, FxScreen::kPaneX + 12, spaceY, FxScreen::kPaneW - 24)); // SPACE: nothing aimed
+    // In PAPER too: the mark is the theme's brass.
+    ui::useTheme(kThemePaper);
+    rig.session().setTheme(kThemePaper);
+    rig.draw();
+    CHECK(markAt(rig, FxScreen::kPaneX + 12, FxScreen::kSendY + FxScreen::kSendBarY, FxScreen::kPaneW - 24, 14, echoAt > 1.f ? 1.f : echoAt));
+    rig.session().setTheme(kThemeBrown);
+    ui::useTheme(kThemeBrown);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1047,6 +1169,7 @@ int main(int argc, char** argv) {
     testDrawnOnDevice();
     testTheGestureOnFx();
     testDrawnOnFx();
+    testTheBrassMark();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;

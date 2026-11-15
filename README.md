@@ -608,6 +608,10 @@ made. The knob, or its automation, is the middle the MOD moves around.
 WRITE records the knob, never the wobble. Undo (SELECT + B) takes a MOD
 back like any other change. A song saves its MODs.
 
+While a MOD runs (the song playing, or X held with it stopped), the knob's own
+bar on DEVICE or FX has a **thin brass mark** where the knob is this moment:
+the bar shows where the knob rests, the mark where the MOD has it.
+
 #### The MOD tab
 
 The tab after FX shows both MODs of the track: a list at the left (MOD 1, its

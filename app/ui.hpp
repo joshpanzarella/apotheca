@@ -228,6 +228,9 @@ void valueBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
 // from the middle, so the ones in use stand out.
 void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, const char* name, const char* value,
               float part, bool cursor, bool held);
+// Where a macro box's bar is: kMacroBarInset in from each side, its top kMacroBarFromFoot above the
+// box's foot, kMacroBarH tall (the brass mark of a MOD stands on it: mod_knob.hpp).
+constexpr int kMacroBarInset = 7, kMacroBarFromFoot = 11, kMacroBarH = 5;
 
 // How far through a scene the song is: one block per time the scene plays.
 // `play` is the pass it is on (from 0) and `step` the step within it.

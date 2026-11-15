@@ -806,7 +806,14 @@ int main(int argc, char** argv) {
             ModSettings steps;
             steps.kind = kModStepper, steps.target = kModFirstEffect + 1, steps.depth = 1.f, steps.rate = kModRateEighthTriplet, steps.length = 16;
             for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 2 ? 0.7f : -0.5f) + 0.03f * static_cast<float>(i);
-            if (std::strcmp(view, "fx-mod-held") == 0) s.setMod(0, 0, lfo);
+            if (std::strcmp(view, "fx-modded") == 0) {
+                // The song playing, no X: the TAPE's FEEDBACK under its LFO and its AGE under a STEPPER,
+                // each bar with the thin brass mark where it is given now (batch 6); on FEEDBACK.
+                lfo.depth = -0.5f, lfo.rate = kModRateHalf;
+                s.setMod(0, 0, lfo);
+                steps.target = kModFirstEffect + 2, steps.depth = 0.6f;
+                s.setMod(0, 1, steps);
+            } else if (std::strcmp(view, "fx-mod-held") == 0) s.setMod(0, 0, lfo);
             else if (std::strcmp(view, "fx-mod-stepper") == 0) s.setMod(0, 1, steps);
             else if (std::strcmp(view, "fx-mod-full") == 0) {
                 lfo.target = kModFirstEffect + 4 * 1 + 0; // the FILTER's CUTOFF
@@ -819,7 +826,7 @@ int main(int argc, char** argv) {
             }
             if (std::strcmp(view, "fx-sends-mod-held") == 0) fx.goTo(FxScreen::kSendsRow, 1);
             else fx.goTo(0, 2);
-            pushKey(SDLK_s, true); // X held
+            if (std::strcmp(view, "fx-modded") != 0) pushKey(SDLK_s, true); // X held
         } else if (std::strcmp(view, "fx-deleting") == 0) {
             // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).
             fx.goTo(0, 0);
@@ -984,14 +991,20 @@ int main(int argc, char** argv) {
         ModSettings steps;
         steps.kind = kModStepper, steps.target = kModFirstMacro, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8;
         for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.35f) + 0.05f * static_cast<float>(i % 4);
-        if (std::strcmp(view, "device-mod-stepper") == 0) s.setMod(1, 1, steps);
+        if (std::strcmp(view, "device-modded") == 0) {
+            // The song playing, no X: TONE under its LFO, the third macro under a STEPPER, each bar with
+            // the thin brass mark where it is given now (batch 6).
+            s.setMod(1, 0, lfo);
+            steps.target = kModFirstMacro + 2;
+            s.setMod(1, 1, steps);
+        } else if (std::strcmp(view, "device-mod-stepper") == 0) s.setMod(1, 1, steps);
         else if (std::strcmp(view, "device-mod-full") == 0) {
             lfo.target = kModFirstMacro + 1;
             s.setMod(1, 0, lfo);
             steps.target = kModFirstSend;
             s.setMod(1, 1, steps);
         } else if (std::strcmp(view, "device-mod-new") != 0) s.setMod(1, 0, lfo);
-        pushKey(SDLK_s, true); // X held
+        if (std::strcmp(view, "device-modded") != 0) pushKey(SDLK_s, true); // X held
         if (std::strcmp(view, "device-mod-deleting") == 0) {
             pushKey(SDLK_z, true); // B held
             if (stillMs > 600) stillMs = 600;

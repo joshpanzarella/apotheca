@@ -104,12 +104,12 @@ void macroBox(SDL_Renderer* r, const Fonts& fonts, int x, int y, int w, int h, c
                     SDL_RenderDrawLine(r, px + s.p[2 * i], py + s.p[2 * i + 1] + thick, px + s.p[2 * i + 2], py + s.p[2 * i + 3] + thick);
     }
     // The bar grows from the middle, in the macro's own colour.
-    const int bx = x + 7, bw = w - 14, by = y + h - 11;
-    fill(r, bx, by, bw, 5, kLine);
+    const int bx = x + kMacroBarInset, bw = w - 2 * kMacroBarInset, by = y + h - kMacroBarFromFoot;
+    fill(r, bx, by, bw, kMacroBarH, kLine);
     if (part > 1.f) part = 1.f;
     if (part < 0.f) part = 0.f;
     const int mid = bx + bw / 2, to = bx + static_cast<int>(std::round(bw * part));
-    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, 5, cursor ? accent : family);
+    fill(r, to < mid ? to : mid, by, to < mid ? mid - to : to - mid, kMacroBarH, cursor ? accent : family);
     fill(r, mid, by - 2, 1, 9, kDim);
     if (cursor) outline(r, x - 1, y - 1, w + 2, h + 2, accent, 2);
 }

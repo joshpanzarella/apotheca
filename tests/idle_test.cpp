@@ -476,6 +476,25 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(L2); // FX
     rig.press(L2); // DEVICE again
     rig.run(300);
+    // The thin brass mark (batch 6): on a modulated knob's own bar, where it is given now. It moves by
+    // itself while the song plays, and goes at Stop.
+    rig.part = "the brass mark on a macro's bar while the song plays, and stopped";
+    rig.byHand([&] { rig.app->phazed().goTo(0, SynthScreen::kFirstMacro + 3); }); // (the MOD is on the first macro)
+    rig.run(200);
+    rig.press(START);
+    rig.run(1500);
+    rig.press(START);
+    rig.run(3000);
+    rig.part = "the brass mark on a send's bar while the song plays, and stopped";
+    rig.press(R2); // FX
+    rig.byHand([&] { rig.app->fx().goTo(FxScreen::kSendsRow, 0); });
+    rig.run(200);
+    rig.press(START);
+    rig.run(1500);
+    rig.press(START);
+    rig.run(3000);
+    rig.press(L2); // DEVICE again
+    rig.run(300);
 
     rig.part = "a keyboard's key on the roll";
     {
