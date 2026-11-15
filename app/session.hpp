@@ -431,7 +431,6 @@ public:
     // What the player calls a track: capitals, digits, spaces, - and _, ten
     // at most. Empty puts back its instrument's name.
     void setTrackName(int track, const std::string& name);
-    void hearTrack(int track); // X on the SONG screen: its kick, or a middle C
 
     // ---- the mixer (the SONG screen's heads) -----------------------------------------
     // A track's level, in whole dB from its usual (kMixLeastDb..kMixMostDb), and its pan

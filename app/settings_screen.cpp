@@ -42,11 +42,15 @@ void SettingsScreen::typeButton(Button b) {
         // No space first, and not two together; ten at most.
         const bool space = c == ' ';
         if (static_cast<int>(typed_.size()) < kNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
+    } else if (b == Button::Y) {
+        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
     } else if (b == Button::B) {
-        if (typed_.empty()) typing_ = false; // nothing typed: leave, and the name stays as it was
-        else typed_.pop_back();
-    } else if (b == Button::Y || b == Button::Start) {
-        session_.setTrackName(project_.track, typed_);
+        // Leaves, keeping what is typed (owner, 2026-11-15: B is pressed to back out). Nothing typed: the
+        // name stays as it was.
+        if (!typed_.empty()) session_.setTrackName(project_.track, typed_);
+        typing_ = false;
+    } else if (b == Button::Start) {
+        session_.setTrackName(project_.track, typed_); // (nothing typed: the instrument's own name)
         typing_ = false;
     }
     // Opened from the SONG screen: back to it when the typing is over.
@@ -242,8 +246,9 @@ void SettingsScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
             font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
         }
-        const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "delete"}, {"Y", "keep"}};
-        hints(r, fonts, list, 3);
+        const bool none = typed_.empty();
+        const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", none ? "leave" : "keep"}, {"START", none ? "its own name" : nullptr}};
+        hints(r, fonts, list, 4);
         return;
     }
     if (testing_) {

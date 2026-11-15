@@ -12,7 +12,7 @@
 //                  check that sound came out, quit after one second
 //   --demo         start with a song already made: drums and two Phazed tracks
 //   --view NAME    with --demo, open on: song, drums, notes, phazed, kit,
-//                  add-track, change-instrument, song-deleting, song-mixer, song-mixer-master
+//                  add-track, change-instrument, song-deleting, song-head, song-mixer, song-mixer-master
 //                  (A held on a head: the mixer; with -12 on the end, twelve tracks), fx-deleting (B held: take
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
@@ -857,6 +857,11 @@ int main(int argc, char** argv) {
         }
         app.session().setMuted(1, true);
         app.session().setSolo(2, true);
+    } else if (std::strcmp(view, "song-head") == 0) {
+        // The cursor on track 2's head: its hints (A name, HOLD A mix, R1 instrument, HOLD B delete, Y mute, X solo).
+        app.session().view = View::Song;
+        app.song().moveCursorTo(0, 1);
+        tapKey(SDLK_UP);
     } else if (std::strcmp(view, "song-end-loop") == 0 || std::strcmp(view, "song-end-stop") == 0) {
         // AT END: the cursor on the PLAYS box of the row just past the last scene, where the song ends.
         app.session().view = View::Song;
@@ -1075,7 +1080,7 @@ int main(int argc, char** argv) {
         // nothing more: any press would put the notice away
     } else if (demo && std::strcmp(view, "help-nomenu") == 0) {
         // nothing more: START with SELECT held is "quit"
-    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strcmp(view, "picker-typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder)
+    } else if (demo && std::strcmp(view, "add-track") != 0 && std::strstr(view, "-deleting") == nullptr && std::strcmp(view, "picker-typing") != 0 && std::strcmp(view, "typing") != 0) { // (another press calls a held B off; START keeps a name being typed, and makes the folder: the "typing" still showed the SET page, not the keys, until 2026-11-15)
         tapKey(SDLK_RETURN); // playing, so the stills show the play position and the scope
     }
     // A gesture held on the drum grid.

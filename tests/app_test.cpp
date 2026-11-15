@@ -1153,67 +1153,68 @@ void testMuteSoloAndNames() {
     rig.render(2000);
     levels(d, p);
     CHECK(d > 0.05f && !rig.project().tracks[0].muted);
-    // L1 HELD: soloed. Only it is heard, and a muted track that is soloed is heard too. A tap of L1 does
-    // nothing (owner, 2026-11-14), nor does a hold let go just short, or one carried to another track.
-    const auto holdL1 = [&](int ms) { rig.key(L1, true); rig.frames(ms / 16 + 2); rig.key(L1, false); rig.frames(1); };
-    const int solo = static_cast<int>(SongScreen::kSoloHoldMs);
+    // X tapped on a track: soloed, at once (owner, 2026-11-15; it was L1 held). Only it is heard, and a
+    // muted track that is soloed is heard too. L1 does nothing on a track now, tapped or held.
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(L1);
-    rig.frames(40);
-    CHECK(!rig.project().tracks[1].solo);
-    holdL1(solo - 100);
-    CHECK(!rig.project().tracks[1].solo);
+    CHECK(!rig.project().tracks[1].solo && session.heard(0));
     rig.key(L1, true);
-    rig.frames(10);
-    rig.tap(LEFT);
-    rig.frames(40);
-    rig.key(L1, false);
-    CHECK(!rig.project().tracks[0].solo && !rig.project().tracks[1].solo);
-    rig.app.song().moveCursorTo(0, 1);
-    rig.key(L1, true);
-    rig.frames(solo / 16 + 2);
-    CHECK(rig.project().tracks[1].solo); // at the hold's end, before L1 is let go
     rig.frames(60);
-    CHECK(rig.project().tracks[1].solo); // once: kept held, it does not flip back
     rig.key(L1, false);
-    CHECK(rig.project().tracks[1].solo && session.heard(1) && !session.heard(0));
+    rig.frames(2);
+    CHECK(!rig.project().tracks[0].solo && !rig.project().tracks[1].solo && session.heard(0) && session.heard(1));
+    rig.tap(X);
+    CHECK(rig.project().tracks[1].solo && session.heard(1) && !session.heard(0)); // at the press
     rig.render(2000);
     levels(d, p);
     CHECK(d == 0.f && p > 0.01f);
     rig.tap(Y); // muted as well: solo still wins while it is on
     CHECK(session.heard(1));
     rig.app.song().moveCursorTo(0, 0);
-    holdL1(solo); // both soloed: both heard
+    rig.tap(X); // both soloed: both heard
     CHECK(session.heard(0) && session.heard(1));
-    holdL1(solo);
+    rig.tap(X);
     rig.app.song().moveCursorTo(0, 1);
-    holdL1(solo); // no solo left: the mute shows again
-    CHECK(session.heard(0) && !session.heard(1));
+    rig.tap(X); // no solo left: the mute shows again
+    CHECK(session.heard(0) && !session.heard(1) && !rig.project().tracks[1].solo);
     rig.render(2000);
     levels(d, p);
     CHECK(d > 0.05f && p == 0.f);
     rig.tap(Y);
-    // Not on the repeat counts or + TRACK: nothing to mute there, and nothing breaks.
+    // On a track's head X solos too.
+    rig.app.song().moveCursorTo(0, 0);
+    rig.tap(UP);
+    CHECK(rig.app.song().cursorOnHead());
+    rig.tap(X);
+    CHECK(rig.project().tracks[0].solo && !session.heard(1));
+    rig.tap(X);
+    CHECK(!rig.project().tracks[0].solo && session.heard(1));
+    rig.tap(DOWN);
+    // Not on the repeat counts or + TRACK: nothing to mute or solo there, and nothing breaks.
     rig.app.song().moveCursorTo(0, -1);
     rig.tap(Y);
-    holdL1(solo);
+    rig.tap(L1);
     rig.tap(X);
     rig.app.song().moveCursorTo(0, 2);
     rig.tap(Y);
-    holdL1(solo);
-    CHECK(session.heard(0) && session.heard(1) && !rig.app.song().listingSongs());
+    rig.tap(L1);
+    rig.tap(X);
+    CHECK(session.heard(0) && session.heard(1) && !rig.project().tracks[0].solo && !rig.project().tracks[1].solo && !rig.app.song().listingSongs());
     rig.tap(START);
     rig.render(96000);
     rig.frames(1);
-    // X hears the track under the cursor: its kick, or a note.
+    // X no longer hears the track on SONG (its DEVICE page does): stopped, a tap of X there is silent.
     CHECK(rig.listen(2000) == 0.f);
     rig.app.song().moveCursorTo(0, 0);
     rig.tap(X);
-    CHECK(rig.listen(2000) > 0.05f && !rig.project().tracks[0].muted);
+    CHECK(rig.listen(4000) == 0.f && rig.project().tracks[0].solo);
+    rig.tap(X);
     rig.render(96000);
     rig.app.song().moveCursorTo(0, 1);
     rig.tap(X);
-    CHECK(rig.listen(4000) > 0.01f);
+    CHECK(rig.listen(4000) == 0.f);
+    rig.tap(X);
+    CHECK(!rig.project().tracks[1].solo);
 
     // Names: made safe, ten letters at most, shown in place of the instrument's; empty puts that back.
     char text[24];
@@ -2270,7 +2271,7 @@ void testTheHelpCardDrawsSel() {
         plain.fonts->small.draw(plain.r, 190.f, static_cast<float>(top), does, ui::kText);
         return canvas.part(190, top - 3, 408, 17) == plain.part(190, top - 3, 408, 17);
     };
-    CHECK(says(0, "hear it. Held on a hit or note: buttons under its effects"));
+    CHECK(says(0, "hear it (SONG: solo). Held on a hit or note: its effects")); // (SONG: owner, 2026-11-15)
     CHECK(says(3, "delete, empty, or go back") && !says(0, "delete, empty, or go back")); // (the check can tell)
     for (int top : tops)
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));
@@ -2666,8 +2667,8 @@ void testTypingATrackName() {
     rig.tap(DOWN); // off the bottom: round to the top
     rig.tap(A);
     CHECK(setup.typed() == "ABJ J");
-    // B deletes the last one.
-    rig.tap(B, 2);
+    // Y deletes the last one (owner, 2026-11-15; it was B).
+    rig.tap(Y, 2);
     CHECK(setup.typed() == "ABJ" && setup.typing());
     // Ten at most.
     rig.tap(A, 20);
@@ -2678,8 +2679,8 @@ void testTypingATrackName() {
     rig.tap(SELECT);
     rig.tap(X);
     CHECK(rig.view() == View::Settings && setup.typing() && setup.cursorRow() == SettingsScreen::kTrackName && name[0] == 0);
-    // Y keeps it.
-    rig.tap(Y);
+    // B leaves, keeping it (owner, 2026-11-15: B is what a player presses to back out).
+    rig.tap(B);
     CHECK(!setup.typing() && std::string(name) == "ABJJJJJJJJ");
     char shown[24];
     ui::trackName(rig.project(), 0, shown, sizeof shown);
@@ -2687,24 +2688,24 @@ void testTypingATrackName() {
     // Opened again it starts from the name there is. START keeps too (and does not play).
     rig.tap(A);
     CHECK(setup.typed() == "ABJJJJJJJJ");
-    rig.tap(B, 8);
+    rig.tap(Y, 8);
     rig.tap(START);
     CHECK(!setup.typing() && std::string(name) == "AB" && !rig.project().playing);
-    // B with nothing typed leaves, and the name stays as it was.
+    // B with nothing typed leaves, and the name stays as it was. Y with nothing typed does nothing.
     rig.tap(A);
-    rig.tap(B, 2);
+    rig.tap(Y, 3);
     CHECK(setup.typing() && setup.typed().empty());
     rig.tap(B);
     CHECK(!setup.typing() && std::string(name) == "AB");
-    // Emptied and kept: the instrument's own name again. A space cannot come first.
+    // Emptied and kept with START: the instrument's own name again. A space cannot come first.
     rig.tap(A);
-    rig.tap(B, 2);
+    rig.tap(Y, 2);
     rig.tap(UP); // the bottom row
     rig.tap(LEFT); // its last key: space
     rig.tap(A);
     CHECK(setup.typed().empty());
-    rig.tap(Y);
-    CHECK(name[0] == 0);
+    rig.tap(START);
+    CHECK(name[0] == 0 && !setup.typing() && !rig.project().playing);
     // The stick moves over the keys too; left and right on the row still pick from the list when the keys are closed.
     rig.tap(A);
     rig.key(STICK_RIGHT, true);
@@ -2713,7 +2714,9 @@ void testTypingATrackName() {
     rig.frames(1);
     rig.tap(A);
     CHECK(setup.typed() == "B");
-    rig.tap(B, 2);
+    rig.tap(Y);
+    rig.tap(B);
+    CHECK(!setup.typing() && name[0] == 0);
     rig.tap(RIGHT);
     CHECK(std::string(name) == kTrackNames[1]);
     // The digits and marks are all there, and every key is one a name may have.
@@ -7069,8 +7072,16 @@ void testNamingATrackFromTheSongScreen() {
     const std::string kept = rig.project().tracks[1].name;
     rig.tap(A);
     rig.frames(1);
-    rig.tap(B, 3);
+    rig.tap(Y, 2);
+    rig.tap(B);
     CHECK(rig.view() == View::Song && kept == rig.project().tracks[1].name);
+    // B with a name typed keeps it and comes back (owner, 2026-11-15).
+    rig.tap(A);
+    rig.frames(1);
+    rig.tap(Y);
+    CHECK(rig.app.settings().typed() == kept.substr(0, 1));
+    rig.tap(B);
+    CHECK(rig.view() == View::Song && std::string(rig.project().tracks[1].name) == kept.substr(0, 1) && song.cursorOnHead());
     // From the SET tab's own row the keyboard stays on SET when it is done.
     rig.app.session().view = View::Settings;
     rig.app.settings().goTo(SettingsScreen::kTrackName);
@@ -8365,6 +8376,18 @@ void testTheHintsFitAndSayWhatTheyDo() {
         // ...on a head (mute and solo are said there), on + TRACK, on a repeat count.
         rig.tap(UP);
         CHECK(rig.app.song().cursorOnHead() && draw() && hintedOn(canvas, scratch, "mute") && hintedOn(canvas, scratch, "solo"));
+        CHECK(hintKeyed(canvas, scratch, "X", "solo") && hintKeyed(canvas, scratch, "R1", "instrument"));
+        // ...typing its name (A on the head): Y deletes, B keeps, with something typed; with nothing, B leaves
+        // and START gives the track its instrument's own name (owner, 2026-11-15).
+        rig.tap(A);
+        rig.frames(1);
+        CHECK(session.view == View::Settings && rig.app.settings().typing());
+        rig.tap(A);
+        CHECK(draw() && hintKeyed(canvas, scratch, "A", "type") && hintKeyed(canvas, scratch, "Y", "delete") && hintKeyed(canvas, scratch, "B", "keep") && !hintedOn(canvas, scratch, "its own name"));
+        rig.tap(Y);
+        CHECK(rig.app.settings().typed().empty() && draw() && hintKeyed(canvas, scratch, "B", "leave") && hintKeyed(canvas, scratch, "START", "its own name") && !hintedOn(canvas, scratch, "delete"));
+        rig.tap(B);
+        CHECK(session.view == View::Song && rig.app.song().cursorOnHead());
         rig.tap(DOWN);
         rig.app.song().moveCursorTo(0, rig.project().trackCount());
         CHECK(draw());
@@ -9139,6 +9162,14 @@ int main(int argc, char** argv) {
         testSongFilesAreAsTheyWere();
         testTheFxScreenShowsCompAtWork();
         if (failures == 0) std::printf("app tests passed (FX only)\n");
+        return failures == 0 ? 0 : 1;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--keys") { // just solo on SONG and typing a name (owner, 2026-11-15)
+        testMuteSoloAndNames();
+        testTypingATrackName();
+        testNamingATrackFromTheSongScreen();
+        testTheHintsFitAndSayWhatTheyDo();
+        if (failures == 0) std::printf("app tests passed (keys only)\n");
         return failures == 0 ? 0 : 1;
     }
     if (argc > 1 && std::string(argv[1]) == "--hands") { // just the button standards of the pit stop

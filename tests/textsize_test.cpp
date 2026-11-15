@@ -1408,7 +1408,7 @@ void testTheOtherScreens() {
     rig.tap(A, 14);
     listHolds("the kit's list, a new folder's name at its longest", "WWWWWWWWWWWW");
     CHECK(drew("12 OF 12") && drew("SPACE"));
-    rig.tap(Y);
+    rig.tap(B);
     CHECK(!rig.app.kit().picker().typing());
     listHolds("the kit's list, a folder made", "MADE WWWWWWWWWWWW");
     // Carrying: the top line says what, and where it would go; then what came of it.
@@ -1489,7 +1489,7 @@ void testTheOtherScreens() {
     rig.tap(A);
     CHECK(setup.typing());
     holds(rig, "typing a name, as it was");
-    rig.tap(B, static_cast<int>(setup.typed().size())); // nothing typed: the words say what an empty name means
+    rig.tap(Y, static_cast<int>(setup.typed().size())); // nothing typed: the words say what an empty name means
     CHECK(setup.typing() && setup.typed().empty());
     holds(rig, "typing a name, nothing typed");
     for (int i = 0; i < 22; ++i) rig.tap(RIGHT); // (W is the widest letter: row 3, column 3)
@@ -1498,7 +1498,7 @@ void testTheOtherScreens() {
     for (int i = 0; i < 10; ++i) rig.tap(A);
     CHECK(setup.typed().size() == 10);
     holds(rig, "typing a name, ten letters");
-    rig.tap(Y);
+    rig.tap(B);
     CHECK(!setup.typing());
     setup.goTo(SettingsScreen::kTest);
     rig.tap(A);

@@ -83,7 +83,7 @@ and the stick shapes the thing under the cursor:
 | Y | Chance, on the drum grid |
 
 **Hold MENU (the small button in the middle) and a help card comes up**: what the buttons do
-on every screen (X hears what is under the cursor, the stick and D-pad
+on every screen (X hears what is under the cursor, on SONG it solos the track; the stick and D-pad
 move, A, B, START, L2 / R2, what SELECT does with other buttons, how to
 stop all sound), and the **battery**. Let go and it closes. On a handheld whose firmware keeps MENU for
 itself, holding SELECT for a moment does it instead. The bar at the bottom of each screen lists
@@ -153,7 +153,7 @@ in the folder of the recording that is on, on it.
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
-| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, B deletes, Y or START keeps it) |
+| A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
 | B | A tap: put back what was there before the list opened |
 | X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
@@ -379,7 +379,7 @@ and the day it was built. The number goes up by one with every build.
 | --- | --- | --- |
 | TEMPO | A beat a minute | |
 | CHORD PACK | Another pack | |
-| TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, B deletes, Y keeps. Ten characters. |
+| TRACK NAME | A name for the track being worked on, from a list | **Type one**: a grid of letters and numbers. A types, **Y deletes a letter, B keeps the name and leaves** (with nothing typed B leaves and the name stays as it was), START keeps it too (with nothing typed: the instrument's own name). Ten characters. |
 | VOLUME | A twentieth | |
 | STICK SPEED | 25% to 150%, kept for next time | |
 | TEXT SIZE | SMALL, MEDIUM, LARGE or XL, kept for next time | |
@@ -666,8 +666,8 @@ The track columns share the width of the screen: with few tracks they are wide.
 | On | A | Hold A + stick | B | Hold R1 and drag |
 | --- | --- | --- | --- | --- |
 | A cell | Opens it on PATTERN | | Empties it | Copies it into every cell crossed |
-| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y, L1 and X work there as on its cells. | | | |
-| A track (any of its cells) | **Y** mutes it and **X** hears it, at once, playing or not. **Hold L1** (under half a second) solos it, or takes its solo off; a tap of L1 does nothing, so a track is not soloed by mistake. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
+| A track's head (up from the top scene, with the D-pad) | **A** (a quick tap) types its name. Held, it is the mixer: once its card is up, letting go never names the track, turned or not. **R1** changes its instrument: its notes, name and effects stay, and it starts on the new instrument's first sound. Its old sound and its knob moves go, and the list says so: this cannot be undone. **Hold B** two seconds deletes the track. Y and X work there as on its cells. | | | |
+| A track (any of its cells) | **Y** mutes it and **X** solos it, each a tap, at once, playing or not; again to undo. X does not hear the track here: on its DEVICE page it does. L1 does nothing on a track. A muted track's head shows M, a soloed one S. The song keeps mutes, not solos. | | | |
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |

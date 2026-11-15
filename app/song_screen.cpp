@@ -359,7 +359,7 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         return;
     }
     // Any other button with A held on a head: letting go of A is then no tap (no keyboard for the name),
-    // and only START does its job (Y, X, L1 would mute, hear or solo the track under the card).
+    // and only START does its job (Y and X would mute or solo the track under the card).
     if (mixing_ && event.down) mixTurned_ = true;
     if (mixing_ && b != Button::Start) return;
     if (onMaster_ && (b == Button::B || b == Button::R1)) return; // nothing to empty, delete or change there
@@ -413,12 +413,12 @@ void SongScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         return;
     }
-    // On a track: Y mutes it and X hears it, at once, playing or not. L1 HELD solos it (update(): a tap
-    // soloed a track by mistake too easily, so a tap does nothing).
-    if (onCell() && event.down && !holding_ && (b == Button::X || b == Button::Y || b == Button::L1)) {
+    // On a track: Y mutes it and X solos it, each a tap, at once, playing or not (owner, 2026-11-15: solo was
+    // L1 held, and "Y for mute is just a one tap"). X does not hear the track here: its DEVICE page does.
+    // L1 does nothing on a track.
+    if (onCell() && event.down && !holding_ && (b == Button::X || b == Button::Y)) {
         if (b == Button::Y) session_.setMuted(column_, !project_.tracks[column_].muted);
-        if (b == Button::L1) soloHold_ = true, soloHoldTimed_ = false, soloColumn_ = column_;
-        if (b == Button::X) session_.hearTrack(column_);
+        if (b == Button::X) session_.setSolo(column_, !project_.tracks[column_].solo);
         return;
     }
     if (b == Button::R1) {
@@ -478,16 +478,6 @@ void SongScreen::update(const Input& input, Uint32 nowMs) {
     if (!onCell()) onHead_ = false; // the track under it went
     if (onMaster_ && (listing_ || choosing_)) onMaster_ = false; // (a song opened: start at its top)
     if (!input.held(Button::B)) bHeld_ = false;
-    // L1 kept held on a track: at kSoloHoldMs its solo goes on, or comes off, once. Let go sooner, a move to
-    // another track, or the mixer or a list up, and nothing happens.
-    if (!input.held(Button::L1) || !onCell() || column_ != soloColumn_ || mixing_ || listing_ || choosing_) soloHold_ = false;
-    if (soloHold_) {
-        if (!soloHoldTimed_) soloHoldTimed_ = true, soloHoldSince_ = nowMs;
-        if (nowMs - soloHoldSince_ >= kSoloHoldMs) {
-            session_.setSolo(column_, !project_.tracks[column_].solo);
-            soloHold_ = false;
-        }
-    }
     // B kept held on a track: after a moment a bar begins to fill on its head, and when it is full the track is deleted.
     // A pressed while it fills calls it off, as any other button does on the FX screen.
     if (!input.held(Button::B) || input.held(Button::A) || !onCell() || listing_ || choosing_) trackHold_ = false, trackHoldPart_ = 0.f;
@@ -976,10 +966,10 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     } else if (onHead_) {
         hint("A", "name");
         hint("HOLD A", "mix");
-        hint("R1", "change"); // (its instrument: shortened when solo became HOLD L1, so the bar still holds every hint)
+        hint("R1", "instrument");
         hint("HOLD B", "delete");
         hint("Y", "mute");
-        hint("HOLD L1", "solo"); // (X hears it, as everywhere: the help card says so, and the bar has no room since HOLD A)
+        hint("X", "solo"); // (X does not hear the track on SONG: its DEVICE page does)
     } else if (copying_) {
         hint("DRAG", "copy this bar into every cell crossed");
     } else if (holding_ && onCell()) {
@@ -1000,7 +990,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         hint("START", project_.playing ? "stop" : "play song");
     } else {
         // All of these fit, with the help at the end (the bar is not left to drop any). Mute and solo
-        // are the head's, where its hints say them; "hold A + a direction changes it" is the help card's.
+        // are the head's, where its hints say them (X solo here too ran 20 pixels over, 2026-11-15); "hold A + a direction changes it" is the help card's.
         hint("A", "open");
         hint("B", "empty");
         hint("HOLD B", "delete track");

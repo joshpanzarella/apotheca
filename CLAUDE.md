@@ -38,8 +38,8 @@ never "rub out".
 New screens and gestures keep these; do not invent a variant.
 
 - **A** places, opens, picks. **Hold A + a direction** shapes or turns what is under the cursor.
-- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button.
-- **X** hears. **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
+- **B** deletes, empties, goes back. **Hold B deletes for good** (with a bar that fills): never another button. Typing a name, B keeps it and leaves; Y deletes a letter.
+- **X** hears (on SONG it solos the track: owner, 2026-11-15). **Hold X** is "what it does": step effects on a drum hit, ratchet and glide on a note.
 - **Hold R1** drags: paint from an empty step, carry from a note, copy on SONG.
 - **Y** is the screen's special (chance, chord, mute, catch, roll).
 - **SELECT + something** is for whole-song things. **L2 / R2** are the tabs.
@@ -1261,7 +1261,7 @@ effect in those two groups and fails one that does not.
   carries the sound on takes it over; a lane plays one sound, so any
   audition chokes the hit before it anyway, joined or not). On a hit, X held stays the step
   effects' hold. The line over the picture stops with it (`heardEnds`).
-  `tests/hear_test.cpp`. The SONG screen's X (`hearTrack`) is not held.
+  `tests/hear_test.cpp`. The SONG screen's X solos the track (it heard it until 2026-11-15).
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end
   `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
   `recordingThere`, `deleteSample`).
@@ -1581,6 +1581,15 @@ effect in those two groups and fails one that does not.
     `saveNow`, `followLater` (next rule). Nothing is written over, capitals not counted; the folder
     must be there, as itself (no link); the whole name must fit `kSampleNameRoom`. After it the
     list's `original_` and `on_` follow, so B's tap is still "as it was".
+  - **Typing a name: A types, Y deletes the last letter, B keeps what is typed and leaves, START
+    keeps it too** (owner, 2026-11-15: "I find myself pressing B to back out of the track naming"; it
+    was B delete, Y or START keep). With nothing typed B leaves and changes nothing (the track's name
+    stays, no folder is made), and START gives a track its instrument's own name. The two places a
+    name is typed, `SettingsScreen::typeButton` (a track's name, from SET or a SONG head) and
+    `SamplePicker::typeButton` (a new folder), keep the same keys; a new one does too. A folder
+    refused (taken, too long) keeps the keys up, whichever of B or START asked. Y does not repeat
+    (B never did). The still `typing` showed the SET page, not the keys, until then: the demo's START
+    kept the name.
   - **+ NEW FOLDER is a row** (`Kind::NewFolder`: the last of SAMPLES and of a first-level
     folder; not in UNSORTED, not two levels down; only when `Jobs::makeFolder` is given). A
     opens the keys a track's name is typed with (the list's own copy: `typeButton`,
@@ -1655,10 +1664,14 @@ effect in those two groups and fails one that does not.
   heads' own lettering, LARGE, 2 pixels clear all round; owner, 2026-11-14: in a fixed 11 by 11 the letter
   stood out of it). Where the mark would stand on the track's number (11 and 12 in the narrowest heads)
   the number is centred in the room left of it, clear of the mixer's mark. Stills `song-marks`, `-12`.
-- **Solo is L1 HELD on a track** (`SongScreen::kSoloHoldMs`, 400 ms, fired once in `update()`; owner,
-  2026-11-14: a tap of L1 soloed a track by mistake too easily). A tap does nothing; a hold carried to
-  another track, or with the mixer or a list up, is called off. Y's mute is still at once. The head's
-  hint for R1 reads "change" (its instrument) so the bar holds HOLD L1.
+- **Solo is a tap of X on a track** (a cell or its head; owner, 2026-11-15: "I don't like the hold L1
+  for solo since Y for mute is just a one tap"). It was a tap of L1, then for a day L1 HELD 400 ms
+  (a tap of L1 soloed by mistake too easily); the hold, its timer and `kSoloHoldMs` are gone, and **L1
+  does nothing on a track**. **X no longer hears the track on SONG** (`Session::hearTrack` is gone with
+  it): a track is heard by X on its DEVICE page. The head's bar says `X solo` and R1 `instrument` again;
+  the cell's bar has no room for `X solo` (20 pixels over): mute and solo are said on the head. The help
+  card's X line reads "hear it (SONG: solo). Held on a hit or note: its effects" ("buttons under its
+  effects" was cut to fit the card's margin). `app_test` `testMuteSoloAndNames`, still `song-head`.
 - **AT END: a song played as a song LOOPs (as it always did) or STOPs**
   (owner, 2026-11-14; `Project::songEnd`, `kSongLoop` / `kSongStop`). In a
   song file `songend 1` among the song's own lines (`cutSong` knows it),

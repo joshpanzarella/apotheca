@@ -298,11 +298,10 @@ void SamplePicker::typeButton(Button b) {
         // No space first, and not two together.
         const bool space = c == ' ';
         if (static_cast<int>(typed_.size()) < kFolderNameLength && !(space && (typed_.empty() || typed_.back() == ' '))) typed_ += c;
-    } else if (b == Button::B) {
-        if (typed_.empty()) typing_ = false; // nothing typed: leave, and no folder is made
-        else typed_.pop_back();
-    } else if (b == Button::Y || b == Button::Start) {
-        keepFolder();
+    } else if (b == Button::Y) {
+        if (!typed_.empty()) typed_.pop_back(); // the last letter goes
+    } else if (b == Button::B || b == Button::Start) {
+        keepFolder(); // B leaves keeping what is typed, as on the SET page; nothing typed: no folder is made
     }
 }
 
@@ -711,7 +710,8 @@ void SamplePicker::drawTyping(SDL_Renderer* r, const Fonts& fonts) const {
         const Font& font = kKeys[i] == ' ' ? fonts.within(&Fonts::small, one, kw - 4 - 6.f) : fonts.large; // ("SPACE" at XL is wider than its key: held at LARGE)
         font.drawCentered(r, x + kw / 2.f, y + (kh - font.capHeight()) / 2.f, one, here ? kBg : kText);
     }
-    const Hint list[] = {{"A", "type"}, {"B", typed_.empty() ? "leave" : "delete"}, {"Y", "keep"}};
+    const bool none = typed_.empty();
+    const Hint list[] = {{"A", "type"}, {"Y", none ? nullptr : "delete"}, {"B", none ? "leave" : "make it"}};
     hints(r, fonts, list, 3);
 }
 

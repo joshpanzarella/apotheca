@@ -178,21 +178,23 @@ void testMakingAFolder() {
     CHECK(list.typing() && list.typed().empty() && list.isOpen());
     rig.tap(B);
     CHECK(!list.typing() && list.isOpen() && rig.on(Kind::NewFolder, ""));
-    // Y with nothing typed makes nothing.
+    // Y with nothing typed deletes nothing and stays; START with nothing typed makes nothing.
     rig.tap(A);
     rig.tap(Y);
-    CHECK(!list.typing() && list.isOpen() && rig.session().sampleFolders().empty());
-    // Typed: no space first, no two together, B deletes the last, twelve at most.
+    CHECK(list.typing() && list.typed().empty());
+    rig.tap(START);
+    CHECK(!list.typing() && list.isOpen() && rig.session().sampleFolders().empty() && !rig.app.project().playing);
+    // Typed: no space first, no two together, Y deletes the last (owner, 2026-11-15; it was B), twelve at most.
     rig.tap(A);
     {
         int at = 0;
         rig.type(" K  ", &at);
         CHECK(list.typed() == "K ");
-        rig.tap(B, 2);
+        rig.tap(Y, 2);
         CHECK(list.typed().empty() && list.typing());
         rig.type("ABCDEFGHIJKLMNOP", &at);
         CHECK(list.typed() == "ABCDEFGHIJKL" && SamplePicker::kFolderNameLength == 12);
-        rig.tap(B, 12);
+        rig.tap(Y, 12);
         // The keys go round at their edges; the stick moves over them, and a held direction runs.
         rig.tap(B); // (leave, and come back: the first key again)
         rig.tap(A);
@@ -203,7 +205,7 @@ void testMakingAFolder() {
         rig.tap(LEFT);
         rig.tap(A);
         CHECK(list.typed() == "_");
-        rig.tap(B);
+        rig.tap(Y);
         rig.tap(DOWN);
         rig.tap(RIGHT, 2);
         rig.key(STICK_RIGHT, true);
@@ -217,14 +219,15 @@ void testMakingAFolder() {
         rig.key(DOWN, false);
         rig.tap(A);
         CHECK(list.typed() == "BB");
-        rig.tap(B, 3);
-        CHECK(!list.typing());
+        rig.tap(Y, 2);
+        rig.tap(B);
+        CHECK(!list.typing() && rig.session().sampleFolders().empty());
     }
-    // KICKS, and a space after it that is not kept. START keeps it too, and does not start the song.
+    // KICKS, and a space after it that is not kept. B leaves keeping it: the folder is made (owner, 2026-11-15).
     rig.tap(A);
     rig.type("KICKS ");
     CHECK(list.typed() == "KICKS ");
-    rig.tap(START);
+    rig.tap(B);
     CHECK(!list.typing() && list.isOpen() && !rig.app.project().playing);
     // Made, in small letters; the list has folders now (the loose ones are UNSORTED), and the cursor is on the new one.
     struct stat info;
@@ -239,9 +242,12 @@ void testMakingAFolder() {
     rig.tap(DOWN);
     rig.tap(A);
     rig.type("KICKS");
-    rig.tap(Y);
-    CHECK(list.typing() && list.said() == "THERE IS ONE OF THAT NAME" && rig.session().sampleFolders().size() == 1);
-    rig.tap(B, 6);
+    rig.tap(START); // START makes it too, and does not start the song: here it is refused
+    CHECK(list.typing() && list.said() == "THERE IS ONE OF THAT NAME" && rig.session().sampleFolders().size() == 1 && !rig.app.project().playing);
+    rig.tap(B); // B the same
+    CHECK(list.typing() && list.typed() == "KICKS" && rig.session().sampleFolders().size() == 1);
+    rig.tap(Y, 5);
+    rig.tap(B);
     CHECK(!list.typing());
     // UNSORTED holds no folders: no + NEW FOLDER in it.
     CHECK(rig.goTo(Kind::Folder, ""));
@@ -254,7 +260,7 @@ void testMakingAFolder() {
     CHECK(list.depth() == 1 && list.count() == 1 && rig.on(Kind::NewFolder, ""));
     rig.tap(A);
     rig.type("LONG 1");
-    rig.tap(Y);
+    rig.tap(B);
     CHECK(!list.typing() && lstat((card.samples + "/kicks/long 1").c_str(), &info) == 0 && S_ISDIR(info.st_mode));
     CHECK(list.depth() == 1 && list.count() == 2 && list.cursor() == 0 && rig.on(Kind::Folder, "kicks/long 1") && list.said() == "MADE LONG 1");
     // Two levels and no further: none is offered in a folder in a folder.
@@ -279,10 +285,10 @@ void testMakingAFolder() {
     other.tap(RIGHT);
     other.tap(A);
     other.type("ABCDEFGHIJKL");
-    other.tap(Y);
+    other.tap(START);
     CHECK(other.list().typing() && other.list().said() == "THAT NAME IS TOO LONG HERE" && other.session().sampleFolders().size() == 3);
-    other.tap(B, 11);
-    other.tap(Y); // one letter fits
+    other.tap(Y, 11);
+    other.tap(START); // one letter fits
     CHECK(!other.list().typing() && other.session().sampleFolders().size() == 4 && exists(card.samples + "/" + wide + "/a"));
 
     // Asked directly: only a plain new name, in a real folder of the first level.
@@ -709,9 +715,22 @@ void testTheHintsFit() {
     CHECK(rig.goTo(Kind::NewFolder, "") && rig.hintsFit(canvas));
     rig.tap(A);
     CHECK(list.typing() && rig.hintsFit(canvas));
+    // The bar says the keys (owner, 2026-11-15): nothing typed, A type and B leave; typed, Y delete and B make it.
+    Canvas want;
+    const auto barIs = [&](const ui::Hint* hints, int count) {
+        canvas.clear();
+        rig.app.draw(canvas.r, *canvas.fonts);
+        want.clear();
+        ui::hints(want.r, *want.fonts, hints, count);
+        const int y = ui::kScreenH - ui::kHintsH;
+        return canvas.part(0, y, ui::kScreenW, ui::kHintsH) == want.part(0, y, ui::kScreenW, ui::kHintsH);
+    };
+    const ui::Hint none[] = {{"A", "type"}, {"B", "leave"}}, typed[] = {{"A", "type"}, {"Y", "delete"}, {"B", "make it"}};
+    CHECK(barIs(none, 2) && !barIs(typed, 3));
     rig.type("AB");
-    CHECK(rig.hintsFit(canvas));
-    rig.tap(B, 3);
+    CHECK(rig.hintsFit(canvas) && barIs(typed, 3));
+    rig.tap(Y, 2);
+    rig.tap(B);
     CHECK(rig.goTo(Kind::Folder, "void"));
     rig.tap(RIGHT);
     CHECK(list.count() == 1 && rig.on(Kind::NewFolder, "") && rig.hintsFit(canvas));
@@ -1035,7 +1054,8 @@ void testTheRest() {
     rig.tap(SDLK_1);
     rig.tap(SDLK_1);
     CHECK(session.view == View::Device && list.typing() && list.typed() == "AB");
-    rig.tap(B, 3);
+    rig.tap(Y, 2);
+    rig.tap(B);
     CHECK(!list.typing() && list.isOpen());
     rig.tap(SDLK_2); // (and with no name being typed they are the tabs, as ever)
     CHECK(session.view == View::Effects);

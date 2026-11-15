@@ -1141,21 +1141,6 @@ void Session::sendMix(int track) {
     engine.send(c);
 }
 
-void Session::hearTrack(int track) {
-    if (track < 0 || track >= kNumTracks) return;
-    const TrackKind kind = project.tracks[track].kind;
-    if (isSynth(kind)) {
-        audition(track, 60, 0.8f);
-    } else if (kind == TrackKind::Drums) {
-        Command c;
-        c.type = Command::Trigger;
-        c.track = track;
-        c.a = 0;
-        c.value = 0.8f;
-        engine.send(c);
-    }
-}
-
 void Session::setTrackName(int track, const std::string& name) {
     if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
     std::string safe = presetNameFrom(name).substr(0, sizeof project.tracks[track].name - 1);
