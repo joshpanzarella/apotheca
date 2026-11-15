@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "apotheca/chord_rule.hpp"
 
@@ -99,6 +100,8 @@ inline int modRestart(int n) { return n >= 0 && n < kModRestarts ? n : kModResta
 // sample; a synth's macros only every kModMacroTicks'th (each change works a whole tone out
 // again: QMOD about a microsecond). The engine's runMods uses them; here so the tests hold one number.
 constexpr int kModTick = 64;
+// A position that is none: the MOD does not run (Engine::modNow).
+constexpr double kModNotRunning = std::numeric_limits<double>::quiet_NaN();
 constexpr int kModMacroTicks = 8;
 
 // ---- the settings of one MOD ---------------------------------------------------------------------
@@ -184,13 +187,24 @@ inline double modRollUnit(std::uint32_t seed, int mod, int what) { return chordU
 // floor(x) as a whole number, for cycle counts (which go below 0 before the first step).
 inline long modFloor(double x) { return static_cast<long>(std::floor(x)); }
 
+// How many of its cycles an LFO has gone through at a position (PHASE included): its whole part is
+// which cycle, the rest where in it. And back: the position at a count of cycles (the MOD tab draws
+// the cycle playing from it, with a dot at now).
+inline double lfoCycles(const ModSettings& m, double position) {
+    const ModRateInfo& r = modRateInfo(modRate(m.rate));
+    return position * r.den / r.num + 0.25 * modPhase(m.phase);
+}
+inline double lfoPositionAt(const ModSettings& m, double cycles) {
+    const ModRateInfo& r = modRateInfo(modRate(m.rate));
+    return (cycles - 0.25 * modPhase(m.phase)) * r.num / r.den;
+}
+
 // ---- an LFO's value: -1..1 at a position in steps -------------------------------------------------
 // The cycle is the rate's length, started at Play, moved on by PHASE quarters. SINE starts at 0
 // going up, as do TRIANGLE; the RAMPs and SQUARE are at an edge. RANDOM holds one seeded value a
 // cycle; DRIFT glides (a cosine) from each cycle's value to the next's.
 inline double lfoValue(const ModSettings& m, double position, int track, int mod) {
-    const ModRateInfo& r = modRateInfo(modRate(m.rate));
-    const double cycles = position * r.den / r.num + 0.25 * modPhase(m.phase);
+    const double cycles = lfoCycles(m, position);
     const long whole = modFloor(cycles);
     const double p = cycles - static_cast<double>(whole); // 0 up to 1 in the cycle
     switch (modShape(m.shape)) {

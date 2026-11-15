@@ -66,7 +66,7 @@ private:
     long long seen_ = 0, lastSound_ = 0, cap_, fade_, quiet_, after_;
 };
 
-enum class View { Song, Pattern, Device, Effects, Settings };
+enum class View { Song, Pattern, Device, Effects, Mods, Settings }; // (the order of the tabs; never saved by number)
 
 // Somewhere to record from: a USB microphone or interface. The app gives the
 // session one (main.cpp, through SDL); the tests give it a made-up one.

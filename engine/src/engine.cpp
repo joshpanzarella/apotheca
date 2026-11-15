@@ -60,6 +60,7 @@ Engine::Engine() {
         for (auto& m : track.meters) m.store(0.f, std::memory_order_relaxed);
         for (auto& m : track.modShown) m.store(0.f, std::memory_order_relaxed);
         for (auto& m : track.modPlace) m.store(-1, std::memory_order_relaxed);
+        for (auto& m : track.modAt) m.store(kModNotRunning, std::memory_order_relaxed);
     }
     for (Track& track : tracks_)
         for (auto& k : track.kinds) k.store(0, std::memory_order_relaxed);
@@ -1174,6 +1175,7 @@ void Engine::apply(const Command& c) {
             if (!mod.on()) {
                 track.modShown[c.a].store(0.f, std::memory_order_relaxed);
                 track.modPlace[c.a].store(-1, std::memory_order_relaxed);
+                track.modAt[c.a].store(kModNotRunning, std::memory_order_relaxed);
             }
             modsChanged();
         }
@@ -1961,6 +1963,7 @@ void Engine::runMods(double position, bool macros) {
             added[m] = modOffsetAt(mod, position, t, m);
             track.modShown[m].store(added[m], std::memory_order_relaxed);
             track.modPlace[m].store(stepperPlace(mod, position), std::memory_order_relaxed);
+            track.modAt[m].store(position, std::memory_order_relaxed);
         }
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (!runs[m]) continue;
@@ -1990,6 +1993,7 @@ void Engine::stillMods(Track& track) {
     for (int m = 0; m < kModsPerTrack; ++m) {
         track.modShown[m].store(0.f, std::memory_order_relaxed);
         track.modPlace[m].store(-1, std::memory_order_relaxed);
+        track.modAt[m].store(kModNotRunning, std::memory_order_relaxed);
     }
 }
 
@@ -2026,6 +2030,10 @@ float Engine::modShown(int track, int mod) const {
 
 int Engine::modPlace(int track, int mod) const {
     return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modPlace[mod].load(std::memory_order_relaxed) : -1;
+}
+
+double Engine::modNow(int track, int mod) const {
+    return validTrack(track) && mod >= 0 && mod < kModsPerTrack ? tracks_[track].modAt[mod].load(std::memory_order_relaxed) : kModNotRunning;
 }
 
 // Move every gliding lane on. The glide takes the first half of a step, in

@@ -3,7 +3,7 @@
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
 here, then revised the same day after a review (section 11). **Batches 0 and
-1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17). The owner answered section 17's calls on 2026-11-15 ("go with all your picks"), `main` was joined again, and batches 3 and 4 (X held on a knob, DEVICE and FX) are built (section 18). Nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
+1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17). The owner answered section 17's calls on 2026-11-15 ("go with all your picks"), `main` was joined again, and batches 3 and 4 (X held on a knob, DEVICE and FX) are built (section 18), and batch 5, the MOD tab (section 20). Nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -421,7 +421,7 @@ or Twin Analog** (neither is block-exact; section 9); drawn checks through
 | 2 Song (**built 2026-11-14, branch `mods`: section 15**) | `ModData mods[2]` on `TrackData`, `Session::setMod`, `applyProject` sends them, `mod` / `modsteps` words, undo through `soundMark`, the TYPE carry, another family or a choice clears (on load too). `tests/modapp_test.cpp` | Old songs and everykind as they were; round trip; NaN and 1e300 held |
 | 3 DEVICE knob (**built 2026-11-15: section 18**) | The X-held fields in LIVE OUTPUT's place (once the owner has seen the still), MODS FULL, hold B delete, the dice, the MOD heard while stopped, X checked before Y and the stick | `under_test`, the three order tests (section 7), stills, hints at 0, `textviews`, `themeviews`, `ctest -R words` |
 | 4 FX knob (**built 2026-11-15: section 18**) | The same on slot settings and SENDS, in the heading's place; X checked before L1 / R1 | The same |
-| 5 MOD tab | The tab, both MODs, the list of targets, STEPS, L1 / R1 | The same, plus the top bar at every size |
+| 5 MOD tab (**built 2026-11-15: section 20**) | The tab, both MODs, the list of targets, STEPS, L1 / R1 | The same, plus the top bar at every size |
 | 6 Marks | The brass mark on DEVICE and FX (if the owner wants it), the shape picture | Pixels read in BROWN and PAPER |
 | 7 Depth lanes | Lanes 22 / 23 as MOD DEPTH automation (owner's call) | Scene move and undo tests |
 | 8 LEVEL, PAN | Targets 32 / 33 | `mixer_test`; a song with no MOD untouched (`runMaster`) |
@@ -920,3 +920,53 @@ FX track check, the DEVICE track check, `keepModsHeard`'s track term, the lost l
 knob check: **5 made, 5 killed.**
 
 **What only the tests saw**: all of it. Nothing heard, nothing run on the handheld.
+
+
+## 20. Batch 5, the MOD tab, as built (2026-11-15, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** The owner (2026-11-15): "keep going
+with the LFO and random stepper"; every open call of section 9 at its recommended answer (the tab
+after FX; the brass mark yes, thin, which is batch 6; lanes 22 / 23 as DEPTH automation, batch 7;
+LEVEL / PAN as targets, batch 8), **except TREMOLO, which stays** (call 14: an effect taken out
+would break the songs that use it).
+
+| Part | What is there |
+| --- | --- |
+| The tab | `View::Mods`, between FX and SET (`app/session.hpp`: `View` is never saved by number); `App::mods()`; the top bar's six words |
+| **Does a sixth tab fit?** | **The tabs fit; the screen's words lost room.** At 5 pixels either side the six tabs left 143 pixels for the screen's words stopped, 70 playing (the scene's blocks take the rest) and 8 playing with WRITE: "2 PHAZED" read "2 PHAZE" while playing. **The plainest fit: 3 pixels either side of a tab's word** (`ui::kTabPad`, was 5): 167 stopped, 94 playing, 32 with WRITE (five tabs had 186, 113, 51). A track's name ("12 PHAZED", 77) fits stopped and playing (`modtab_test`); with WRITE on while playing it is cut, as a long name already was. The bar is a tight row, the same at every TEXT SIZE (`textviews` holds the stills' top rows to LARGE's) |
+| The screen | `app/mod_screen.hpp/.cpp`, laid out as FX (`kListX`, `kPaneX`, `kHeadH` as FX's; the page to `kPageBottom`, `static_assert`ed). The list: MOD 1, its STEPS, MOD 2, its STEPS, under the headings MOD 1 / MOD 2 (the track's name beside MOD 1). A MOD's line: its shape (or OFF), its target, DEPTH and RATE, a small picture with the dot. A STEPS line: its length and a small row, the step playing lit; an LFO's says AN LFO: NOT PLAYED |
+| A MOD's settings | TARGET, SHAPE (SINE ... DRIFT, STEPPER: the knob's one list, `ModKnob::shapeAt` / `shapePlace`; the ends stop here, where the knob's A goes round), DEPTH (1% a push, the stick smooth, from the middle), RATE (a click), PHASE or LENGTH. An OFF MOD has TARGET alone, and words on how to aim it |
+| STEPS | The 16 in a box (from the middle; past LENGTH faint; the cursor's outlined; the one playing purple), then LENGTH (a click), SLEW, CHANCE (5% a push, the stick smooth). LEFT / RIGHT go along the row, LEFT from the first is the list, DOWN is LENGTH, UP from LENGTH the step it came from. **A held + LEFT / RIGHT moves along the row too, so a row is written in one grip** |
+| The list of targets | Hold A on TARGET or on a MOD's line: MACROS, FX 1 to 3 (each with its effect's name), SENDS, a line each, what may be moved small and lower case, the cursor's lit. **Only `modTargetFits` decides** (`pickLineTargets`): a choice, an empty slot, a drum track's macros are never offered. UP / DOWN skip a line with nothing; the place along a line is kept where it can be. **Nothing is set or heard while A is held**; let go aims it (an OFF MOD starts as the knob's first, call C; one that is on keeps everything but its target). B with A held, another track (L1 / R1, or any other way), another screen, A let go unseen: called off |
+| B, hold B, Y | B: a setting to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, PHASE 0, LENGTH 16, SLEW and CHANCE 0, a step 0); none on TARGET. Hold B on either of a MOD's lines: deleted at a second (the bar on the line and the heading's foot, DELETING THIS MOD); any press, the stick moving the cursor off, A held: called off. Y: the dice, the knob's on a MOD's line (call F), the row on STEPS (an LFO's row too, kept as an LFO) |
+| X, L1 / R1, START | X hears the track (held: a synth's note held, a drum lane until let go); **held on a MOD's line with the song stopped, that MOD runs** (`Session::hearMods`, only its bit; App lets go as for the knob). L1 / R1 the track before / after (the ends stop). START play / stop |
+| The dot at now | `drawPicture`: an LFO's cycle playing drawn at full height (upside down for a negative DEPTH), from `lfoCycles` / `lfoPositionAt` (`mod_rule.hpp`, the arithmetic `lfoValue` always did, moved into a function: `effects_test --print` identical), the dot where it is now; a STEPPER's row with the step playing lit. The position comes from the engine: **`Engine::modNow(track, mod)`**, the position of the MOD's last tick (`Track::modAt`, an atomic set beside `modShown`, not a number while it does not run). **Drawn only while the song plays or X runs that MOD**: from the engine alone a Stop left the dot for a block with nothing to stir the redraw |
+| Hints | Every place on three tracks (drums, PHAZED, QMOD), OFF, LFO and STEPPER, A held and not: `gHintsOver` 0 |
+| Stills | `mod`, `mod-lfo`, `mod-steps`, `mod-target` (with `--hold-a`), `mod-off`, `mod-drums` (with `--hold-a`), `mod-deleting`, `mod-12`, in `kViews` (`textviews` at four sizes, `themeviews` in six themes) |
+| Tests | `tests/modtab_test.cpp` (`modtab`, `TIMEOUT 120`, about 3 s): the tabs and the top bar's room; the list and its settings (round, ends, RIGHT to the one last used, a MOD gone OFF under the cursor); each setting turned and its ends, the stick, B; the list of targets (what is offered, skipping, kept place, let go, B, another screen, another track two ways, the drum track); a row written in one grip, its ends, LENGTH / SLEW / CHANCE; the dice and undo; hold B (tap, called off by a press and by the stick, on STEPS, undo); L1 / R1 and X (only that MOD runs, none while playing, let go on another screen); the hints; what is DRAWN (no dot stopped; while playing the dot where the ramp is, the one dot, the step playing lit and only it; the STEPS pane; the dot gone on the very pass START is pressed; X held while stopped; a negative DEPTH drawn falling). `app_test` (the tabs, START on the tab), `idle_test` (two parts) |
+
+**Choices made here** (each one place): hold A on a MOD's line in the list opens the targets too (as A
+held on an FX slot's line opens the effects); hold B deletes from either of a MOD's two lines; the
+dice on a MOD's line too (Y is the screen's special); on STEPS of an LFO the row can be written and
+rolled (it is kept); SHAPE stops at its ends on the tab (UP / DOWN), where the knob's A goes round;
+a step moves 5% a push (DEPTH 1%, as the plan says); the target list's words are lower case, as the
+list of effects'; the dot is drawn at full height (the shape, not DEPTH x shape) and turned over for
+a negative DEPTH; X held on a STEPS line runs that MOD too.
+
+**Mutants** (made by a script, each built and run, put back; `git diff` read before the commit):
+**34 written, 33 made (one's text was not there), 29 killed, 2 equivalent, 2 showed code to take out.**
+Six survived at first and have tests now: another track up by another way while A is held, A held +
+RIGHT at the row's end, the stick moving the cursor off while B is held (with both MODs on, so
+deleting the other is seen), the step lit on the pass START is pressed, the engine's position against
+its own value (`modOffsetAt(modNow) == modShown`), UP from LENGTH to a middle step. Equivalent: SHAPE's
+end at 8 (`shapeAt` reads every place past DRIFT as STEPPER); B with A held on the list not letting go
+of the list itself (the next `update` calls it off, A no longer counted held). Taken out because no
+gesture reaches them: `shapeAt`'s "already a STEPPER" return, and the list's row rounded down to the
+MOD's line (only a MOD's line opens it).
+
+**What only the tests and stills saw**: everything. No MOD has been heard, nothing has run on the
+handheld.
+
+**Left**: batch 6 (the thin brass mark on the target's own bar on DEVICE and FX), 7 (lanes 22 / 23 as
+MOD DEPTH automation), 8 (LEVEL and PAN as targets; TREMOLO kept), 9 (the cost on the busiest song,
+SPEED TEST).

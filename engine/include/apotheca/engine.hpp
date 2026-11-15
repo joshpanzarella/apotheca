@@ -457,6 +457,10 @@ public:
     float modShown(int track, int mod) const;
     // A STEPPER's place in its row as of its last tick (0..15); -1 while it does not run, or an LFO.
     int modPlace(int track, int mod) const;
+    // Where the song was at a MOD's last tick (steps since Play, or since X went down: mod_rule.hpp's
+    // position), so the MOD tab can draw its shape with a dot at now; not a number while it does not
+    // run. Any thread, no lock.
+    double modNow(int track, int mod) const;
     // Chunks worked out since the engine was made (a MOD's tick cuts more of them: the bench counts
     // them). As of the end of the last render(); any thread.
     std::uint64_t chunksRendered() const { return chunksShown_.load(std::memory_order_relaxed); }
@@ -570,6 +574,7 @@ private:
         ModSettings mods[kModsPerTrack];          // MOD 1 and MOD 2 (SetMod, SetModStep): OFF unless told
         std::atomic<float> modShown[kModsPerTrack]; // what each adds as of its last tick, for the screen
         std::atomic<int> modPlace[kModsPerTrack];   // a STEPPER's place as of its last tick; -1: not running
+        std::atomic<double> modAt[kModsPerTrack];   // the position of its last tick; not a number: not running
         std::uint8_t slotChoices[kTrackSlots] = {}; // a bit a setting: which of each slot's effect's settings are
                                                     //   choices (InstallEffect). A MOD never moves a choice.
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];

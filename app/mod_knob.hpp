@@ -87,6 +87,13 @@ public:
     static const char* moreName(const ModSettings& m) { return modKind(m.kind) == kModStepper ? "LENGTH" : "PHASE"; }
     // The first MOD UP makes (owner's call C).
     static ModSettings fresh(int target);
+    // SHAPE as one list, as A steps it here and UP / DOWN on the MOD tab: SINE ... DRIFT (an LFO's
+    // shapes, places 0 to 6), then STEPPER (7). `shapeAt`: the MOD at that place, everything else
+    // kept; a STEPPER whose row was never written comes in rolled, so it moves (a row of nothing
+    // moves nothing), from a seed of the track and the target.
+    static constexpr int kShapePlaces = kModShapes + 1;
+    static int shapePlace(const ModSettings& m) { return modKind(m.kind) == kModStepper ? kModShapes : modShape(m.shape); }
+    static ModSettings shapeAt(const ModSettings& m, int place, int track);
     // The dice (owner's call F), from a seed: a STEPPER's row rolled, LENGTH, SLEW and CHANCE kept; an
     // LFO's SHAPE and RATE, never both as they were, DEPTH kept.
     static ModSettings rolled(const ModSettings& m, std::uint32_t seed);

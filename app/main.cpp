@@ -19,6 +19,8 @@
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
+//                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12 (the MOD tab; with
+//                  --hold-a on mod-target and mod-drums, the list of targets)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -922,6 +924,51 @@ int main(int argc, char** argv) {
         app.phazed().goTo(0, SynthScreen::kFirstMacro);
         pushKey(SDLK_x, true);  // hold A on TONE
         tapKey(SDLK_UP, 6);     // and turn it up
+    } else if (std::strcmp(view, "mod") == 0 || std::strncmp(view, "mod-", 4) == 0) {
+        // The MOD tab. A Phazed track with an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4) on TONE and a STEPPER (8 long,
+        // 1/4) on its ECHO send. mod: in the list, on MOD 1. mod-lfo: on MOD 1's DEPTH, X held (stopped: it runs,
+        // the dot moves). mod-steps: MOD 2's row, on step 5. mod-target: on MOD 1's TARGET (--hold-a: the list
+        // of targets). mod-off: no MOD, on MOD 1's TARGET. mod-drums: the drum track, a STEPPER on its first
+        // effect (--hold-a: the list of targets, no macros). mod-deleting: B held on MOD 1's line (the still is
+        // taken before the second is up). mod-12: twelve tracks, on the last, its MODs as above.
+        Session& s = app.session();
+        int track = 1;
+        if (std::strcmp(view, "mod-12") == 0) {
+            const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Qmod};
+            for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
+            track = kNumTracks - 1;
+        }
+        app.project().track = track;
+        s.view = View::Mods;
+        ModSettings lfo;
+        lfo.kind = kModLfo, lfo.target = kModFirstMacro, lfo.shape = kModTriangle, lfo.depth = 0.4f, lfo.rate = kModRateHalf, lfo.phase = 1;
+        ModSettings steps;
+        steps.kind = kModStepper, steps.target = kModFirstSend, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8, steps.slew = 0.25f, steps.chance = 0.1f;
+        for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.4f) + 0.05f * static_cast<float>(i % 5);
+        if (std::strcmp(view, "mod-drums") == 0) {
+            app.project().track = track = 0;
+            s.setEffect(0, 0, EffectKind::Filter);
+            steps.target = kModFirstEffect; // the FILTER's CUTOFF
+            s.setMod(0, 1, steps);
+        } else if (std::strcmp(view, "mod-off") != 0) {
+            s.setMod(track, 0, lfo);
+            s.setMod(track, 1, steps);
+        }
+        ModScreen& mods = app.mods();
+        if (std::strcmp(view, "mod-lfo") == 0) {
+            mods.goTo(0, ModScreen::kDepth);
+            pushKey(SDLK_s, true); // X held
+        } else if (std::strcmp(view, "mod-steps") == 0) {
+            mods.goTo(3, ModScreen::kFirstStep + 4);
+        } else if (std::strcmp(view, "mod-target") == 0 || std::strcmp(view, "mod-off") == 0 || std::strcmp(view, "mod-drums") == 0) {
+            mods.goTo(std::strcmp(view, "mod-drums") == 0 ? 2 : 0, ModScreen::kTarget);
+        } else if (std::strcmp(view, "mod-deleting") == 0) {
+            mods.goTo(0, 0);
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
+        } else {
+            mods.goTo(0, 0);
+        }
     } else if (std::strncmp(view, "device-mod", 10) == 0) {
         // X held on a macro of a Phazed track (TONE): its MOD's fields in LIVE OUTPUT's place, each button's
         // chip under its field. device-mod-held: an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4). device-mod-stepper:
@@ -1154,6 +1201,8 @@ int main(int argc, char** argv) {
         drums.moveCursorTo(0, 0);
         tapKey(SDLK_UP);
         pushKey(SDLK_x, true);
+    } else if (holdA && std::strncmp(view, "mod", 3) == 0) {
+        pushKey(SDLK_x, true); // A, held on the MOD tab: the list of targets, or a setting being turned
     } else if (holdA && std::strncmp(view, "fx", 2) == 0) {
         pushKey(SDLK_x, true); // A, held on the FX screen: the list of effects, or a setting being turned
     } else if (holdA) {

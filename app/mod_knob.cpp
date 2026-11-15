@@ -157,23 +157,26 @@ void ModKnob::moreBy(int by) {
     set(s);
 }
 
+ModSettings ModKnob::shapeAt(const ModSettings& m, int place, int track) {
+    ModSettings s = m;
+    if (place < kModShapes) {
+        s.kind = kModLfo;
+        s.shape = modShape(place);
+        return s;
+    }
+    s.kind = kModStepper;
+    // A row of nothing moves nothing: one never written is rolled as it comes in, so it is heard.
+    bool any = false;
+    for (int i = 0; i < kModSteps; ++i) any = any || s.steps[i] != 0.f;
+    if (!any) s = rolled(s, 0x51ed27u + static_cast<std::uint32_t>(track) * 131u + static_cast<std::uint32_t>(s.target));
+    return s;
+}
+
 void ModKnob::nextShape() {
     const int m = mod();
     if (m < 0) return;
-    ModSettings s = session_.modData(track_, m);
-    if (modKind(s.kind) == kModStepper) {
-        s.kind = kModLfo;
-        s.shape = kModSine;
-    } else if (modShape(s.shape) + 1 < kModShapes) {
-        s.shape = modShape(s.shape) + 1;
-    } else {
-        s.kind = kModStepper;
-        // A row of nothing moves nothing: one never written is rolled as it comes in, so it is heard.
-        bool any = false;
-        for (int i = 0; i < kModSteps; ++i) any = any || s.steps[i] != 0.f;
-        if (!any) s = rolled(s, 0x51ed27u + static_cast<std::uint32_t>(track_) * 131u + static_cast<std::uint32_t>(target_));
-    }
-    set(s);
+    const ModSettings& s = session_.modData(track_, m);
+    set(shapeAt(s, (shapePlace(s) + 1) % kShapePlaces, track_));
 }
 
 void ModKnob::dice(Uint32 nowMs) {

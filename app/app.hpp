@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 
+#include "mod_screen.hpp"
 #include "fx_screen.hpp"
 #include "input.hpp"
 #include "kit_screen.hpp"
@@ -60,6 +61,7 @@ public:
     SynthScreen& qmod() { return qmod_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
+    ModScreen& mods() { return mods_; }
     SamplerScreen& sampler() { return sampler_; }
     SettingsScreen& settings() { return settings_; }
     // Quieter or louder, and show the volume for a moment.
@@ -102,6 +104,7 @@ private:
     NoteScreen notes_;
     KitScreen kit_;
     FxScreen fx_;
+    ModScreen mods_;
     SamplerScreen sampler_;
     SettingsScreen settings_;
     std::string batteryRoot_;  // where to read it from, if not the usual place (for stills and tests)
