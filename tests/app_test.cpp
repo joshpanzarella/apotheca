@@ -2671,6 +2671,8 @@ void testFm6OnATrack() {
     p.value[fm6::OpsOn] = 63 - 4; // OP4 off: its ON reads OFF, the others ON
     CHECK(readsIn(fm6::kSettings + 3) == "OFF" && readsIn(fm6::kSettings + 2) == "ON" && readsIn(fm6::kSettings + 4) == "ON");
     CHECK(readsIn(fm6::Algorithm) == "1"); // (one with no reading of its own reads as alone)
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpLevel)) == std::to_string(p.value[fm6::opSetting(2, fm6::OpLevel)]) && readsIn(fm6::opSetting(2, fm6::OpR1)) == "99"); // nor an operator's other settings
+    CHECK(reads(fm6::kSettings, 1) == "ON" && reads(fm6::kSettings, 0) == "OFF"); // OPERATOR 1's ON, the first past the synth's own
     spec.macroText(fm6::MacroBright, 1.f, text, sizeof text);
     CHECK(std::string(text) == "+100");
     CHECK(std::string(spec.macroNames[0]) == "BRIGHT" && std::string(spec.macroNames[7]) == "PITCH ENV");
@@ -2707,6 +2709,30 @@ void testFm6OnATrack() {
     CHECK(track.fm6.value[fm6::OpsOn] == 63 - 16 - 1);
     session.setSynthSetting(1, fm6::kSettings + 6, 0); // past the six: nothing
     CHECK(track.fm6.value[fm6::OpsOn] == 63 - 16 - 1);
+    // ...and tells the engine OPERATORS ON whole: all six off through the Session, a key is silence;
+    // one back on, it sounds.
+    for (int op = 0; op < 6; ++op) session.setSynthSetting(1, fm6::kSettings + op, 0);
+    CHECK(track.fm6.value[fm6::OpsOn] == 0);
+    rig.render(96000);
+    {
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 60;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        CHECK(rig.listen(4000) == 0.f);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(96000);
+        session.setSynthSetting(1, fm6::kSettings, 1); // OP1, a carrier in every algorithm
+        c.type = Command::NoteOn;
+        rig.engine->send(c);
+        CHECK(rig.listen(4000) > 0.01f);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(96000);
+    }
     // A song keeps an FM-6 track: its kind and every number of its sound.
     track.fm6.value[fm6::Algorithm] = 21;
     track.macro[fm6::MacroDecay] = 0.9f;
