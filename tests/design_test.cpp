@@ -472,7 +472,7 @@ void testQmodFromThePage() {
     CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.track().patch.value));
 }
 
-// JAX-EP, where Twin Analog stood (jx3p-plan.md, batch 6a).
+// JAX-EP (jx3p-plan.md, batch 6a).
 void testJaxepFromThePage() {
     Rig rig;
     rig.addSynth(true);

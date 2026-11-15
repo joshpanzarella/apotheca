@@ -1,7 +1,7 @@
 #pragma once
 // The JX-3P: a clone of Roland's 1983 six-voice synth, its PG-200 patch
-// setting for setting. It will take Twin Analog's place (owner, 2026-11-13);
-// until the plan's batch 6a / 8b it is built beside Twin, which is untouched.
+// setting for setting. It took the place of the synth that stood here before
+// (owner, 2026-11-13; that one's code went in the plan's batch 8b).
 // The plan, with every source and every guess: docs/plans/jx3p-plan.md.
 //
 // One voice: DCO-1 and DCO-2 -> SOURCE MIX -> a 4-pole VCF -> the VCA (ENV or

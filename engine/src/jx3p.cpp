@@ -23,8 +23,8 @@ int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 // A voice at the VCA's 0 dB (LEVEL 4.5: kVcaUnityDial) with its envelope at the top puts out a wave of this height. SELF: about
-// what Twin gives, so a track swapped to it is not much louder or quieter (the start patch's note
-// measured 1.6 dB over Twin's first preset's, 2026-11-14).
+// what the synth it took the place of gave (the start patch's note measured 1.6 dB over that one's
+// first preset's, 2026-11-14).
 constexpr float kOutputGain = 0.3f;
 // The highest a DCO is let go: a little under half the sample rate (its corrections need room).
 constexpr double kHighestStep = 0.45;

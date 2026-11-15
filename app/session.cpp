@@ -266,7 +266,6 @@ void Session::update(Uint32 nowMs) {
     // AT END STOP: the engine has stopped the playing it was last sent, by itself, at the song's end.
     if (project.playing && playsSent_ != 0 && engine.songEnded() == playsSent_) project.playing = false;
     project.silenced = engine.silenced();
-    project.busy = engine.qualityLimit() < 3;
 
     // A full queue loses commands, and then the engine and the song no longer
     // agree (a note on the screen that never plays). It takes the audio thread

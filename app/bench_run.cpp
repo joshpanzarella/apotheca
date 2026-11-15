@@ -25,7 +25,6 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
-#include "apotheca/twin.hpp"
 #include "apotheca/jx3p.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
@@ -260,13 +259,12 @@ static double chordSong(ChordPlay play, int ratchet, int from = -1) {
 
 // THE BUSIEST SONG (the pit stop audit's, 2026-11-14): 140 BPM, twelve tracks. Six drum
 // tracks, every lane on every other step, ratchets of four on three lanes, every hit thrown to
-// both buses. Two Twin Analog (x2), two QMOD and two Phazed, each four chords of four keys a
+// both buses. Two JAX-EP (A1 String I), two QMOD and two Phazed, each four chords of four keys a
 // bar, half WIDE STRUM and half arpeggios at a quarter step, RANDOM, human at 100%, thrown;
 // a ratchet of two on the strummed ones. COMP, then SATURATE or CHORUS, then HALL or PLATE on
 // every track; TAPE and PLATE on the buses, every track sending 0.4 to each; COMP and SATURATE
-// on the master. Flush-to-zero on, as in the program. Twin stays at full quality: the
-// program would make it plainer if it fell behind (watchLoad), and this is to see whether
-// it has to.
+// on the master. Flush-to-zero on, as in the program. (Until 2026-11-15 the two JAX-EP tracks
+// were the synth that went, at x2 oversampling: the figures before that day are that song's.)
 static void busiestSong(Engine& e) {
     std::vector<float> scratch(512);
     const auto settle = [&](int blocks) {
@@ -277,16 +275,15 @@ static void busiestSong(Engine& e) {
     c.value = 140.f;
     e.send(c);
     for (int t = 1; t < 6; ++t) e.addDrumTrack(t); // (track 1 has drums from the start)
-    const SynthKind kinds[6] = {SynthKind::Twin, SynthKind::Twin, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
+    const SynthKind kinds[6] = {SynthKind::Jx3p, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
     for (int i = 0; i < 6; ++i) e.addSynthTrack(6 + i, kinds[i]);
     settle(4);
     for (int i = 0; i < 6; ++i)
-        if (kinds[i] == SynthKind::Twin) {
+        if (kinds[i] == SynthKind::Jx3p) { // as a new track in the program: on A1 (the engine makes it on its start patch)
             c = Command();
-            c.type = Command::SetSetting;
+            c.type = Command::SelectPreset;
             c.track = 6 + i;
-            c.a = twin::Oversample;
-            c.b = 1; // x2
+            c.a = 0;
             e.send(c);
         }
     for (int t = 0; t < 6; ++t) {
@@ -429,9 +426,6 @@ static void wholeSongRows() {
 int apotheca::runBench() {
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
-    instrument("Twin Analog x1, 8 notes", SynthKind::Twin, 8, twin::Oversample, 0);
-    instrument("Twin Analog x2, 8 notes", SynthKind::Twin, 8, twin::Oversample, 1);
-    instrument("Twin Analog x8, 8 notes", SynthKind::Twin, 8, twin::Oversample, 3);
     instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
     jx3pRow("JAX-EP, 6 notes", 0);
     jx3pRow("JAX-EP, 6, worst patch", 1);

@@ -337,8 +337,8 @@ public:
 
     // ---- bouncing (bounce.cpp) ---------------------------------------------------------
     // The song, or its tracks, written out as WAV files in the "bounces"
-    // folder. Worked out off to one side, not recorded as it plays, so it can
-    // use the best quality whatever the handheld could keep up with.
+    // folder. Worked out off to one side, not recorded as it plays, so it is
+    // whole whatever the handheld could keep up with.
     enum class Bounce { Song, EachTrack, ThisTrack };
     void useBounceFolder(const std::string& folder); // (and what a killed bounce left there is removed)
     bool startBounce(Bounce what); // false if one is under way, or there is nowhere to put it

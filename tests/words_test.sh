@@ -2,6 +2,9 @@
 # SELECT is drawn as SEL on the device (the owner's, 2026-11-12).
 # And no maker's or model's name is shown (the owner's, 2026-11-14: the synth
 # is JAX-EP): none in a text of the app, on the two web pages or in README.md.
+# And the synth that went is not named in a text of the app (jx3p-plan.md,
+# batch 8b): no TWIN ANALOG, no OVERSAMPLING. The one word left is the file
+# reader's, "twin" by itself, which an old song's track is read by.
 #
 # This reads the app's sources for every piece of text that says SELECT (in
 # any case) and fails on one the screen would show spelled out.
@@ -41,6 +44,8 @@ scan() {
                 # No name of a maker or of a model where a player reads (owner, 2026-11-14: the synth is JAX-EP).
                 # (The name of a file in an #include is not on the screen.)
                 if (low ~ /roland|jx-?3p|pg-?200|juno/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
+                # Nor the name of the synth that went, nor its oversampling (batch 8b). "twin" alone is the word an old song has.
+                if (low ~ /twin analog|oversampl/) printf "%s:%d: the synth that went: \"%s\"\n", file, strline, str
                 if (low !~ /(^|[^a-z])select([^a-z]|$)/) return
                 ok = 0
                 if (ctx ~ /hint\($/) ok = 1                                                    # hint("SELECT...", ...)
@@ -130,7 +135,7 @@ makers() {
 
 bad=$(scan "$app"; makers "$app")
 if [ -n "$bad" ]; then
-    echo "The device would show SELECT spelled out (it is drawn as SEL), or a maker's name (the synth is JAX-EP):"
+    echo "The device would show SELECT spelled out (it is drawn as SEL), a maker's name (the synth is JAX-EP), or the synth that went:"
     echo "$bad"
     exit 1
 fi
@@ -216,7 +221,14 @@ plant a-makers-name-on-the-wifi-page transfer.cpp caught <<'PLANT'
 const char* const kPage = R"page(<p>Presets for the Juno are kept here.</p>
 )page";
 PLANT
+plant the-synth-that-went x.cpp caught <<'PLANT'
+    {TrackKind::Jx3p, "TWIN ANALOG", "TWIN", "TWIN ANALOG", "two morphing oscillators", true, "twin", SynthKind::Jx3p, ".twin"},
+PLANT
+plant its-oversampling ui.cpp caught <<'PLANT'
+        fonts.small.drawRight(r, room - 6.f, textY, "BUSY: OVERSAMPLING DOWN", kBrass);
+PLANT
 plant what-is-allowed app.cpp clean <<'PLANT'
+constexpr const char* kOldTwinWord = "twin"; // Twin Analog's, in a comment
 #include "apotheca/jx3p.hpp"
 // "the JX-3P" in a comment is not on the screen
     const Jx3pPatch first = Jx3p::presetPatch(0); // "PG-200"

@@ -452,7 +452,7 @@ static void testEachMacroDoesItsJob() {
     });
     CHECK(checked >= 3);
     // A sound with ONE line has nothing to detune against. Off the middle it
-    // is given a twin of its line, so the macro does something there too:
+    // is given a copy of its line, so the macro does something there too:
     // both ways, differently, and at about the loudness it had.
     std::atomic<int> ones{0};
     forEachPreset([&](int preset) {

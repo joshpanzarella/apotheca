@@ -996,7 +996,7 @@ static void testThrownIntoAHowl() {
 }
 
 // A drum track taken away while a thrown hit rings fades its copy into the bus with the track, over
-// the same 5 ms (review, 2026-11-14): cut, the bus was handed a click. Beside a twin where the
+// the same 5 ms (review, 2026-11-14): cut, the bus was handed a click. Beside a second engine where the
 // track stays, what the bus is given is the same times the fade, then nothing.
 static void testATrackTakenAwayFadesItsThrows() {
     Rig gone, kept;

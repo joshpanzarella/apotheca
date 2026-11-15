@@ -95,7 +95,7 @@ PhazedPatch fromPreset(const cz_preset_t& preset) {
     return p;
 }
 
-constexpr int kTwinTrim = -3; // dB, when DETUNE gives a one-line sound its twin
+constexpr int kDoubleTrim = -3; // dB, when DETUNE gives a one-line sound a second line
 
 // ---- the macros: bend a copy of the patch ---------------------------------------
 
@@ -130,17 +130,17 @@ void applyMacros(const float* macro, cz_panel_tone_t& t, int& chorus, int& level
     if (detune != 0.f) {
         // A sound with one line has nothing to detune against, and the
         // macro would do nothing at all. So off the middle, such a sound
-        // gets a twin of its line to tune (the machine's own "1 + 1'"
+        // gets a copy of its line to tune (the machine's own "1 + 1'"
         // mode), a little quieter so that two lines are about as loud as
         // one was. Any ring or noise setting is left out: it was not being
-        // heard with one line, and must not arrive with the twin.
+        // heard with one line, and must not arrive with the copy.
         if (t.line_select == CZ_LINE_1 || t.line_select == CZ_LINE_2) {
             if (t.line_select == CZ_LINE_2) t.line[0] = t.line[1];
             t.line_select = CZ_LINE_1_1;
             t.mod = CZ_MOD_NONE;
             t.detune_sign = 1;
             t.detune_oct = t.detune_note = t.detune_fine = 0;
-            levelTrim = kTwinTrim;
+            levelTrim = kDoubleTrim;
         }
         const int perNote = 60, most = 3 * 12 * perNote + 11 * perNote + 60;
         int amount = (t.detune_sign < 0 ? -1 : 1) * ((t.detune_oct * 12 + t.detune_note) * perNote + t.detune_fine);

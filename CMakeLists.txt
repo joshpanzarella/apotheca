@@ -35,7 +35,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/twin.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz)
 target_include_directories(apotheca_engine PUBLIC engine/include)
@@ -50,11 +50,8 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(phazed_test tests/phazed_test.cpp)
   target_link_libraries(phazed_test PRIVATE apotheca_engine)
   add_test(NAME phazed COMMAND phazed_test)
-  add_executable(twin_test tests/twin_test.cpp)
   add_executable(qmod_test tests/qmod_test.cpp)
-  target_link_libraries(twin_test PRIVATE apotheca_engine)
   target_link_libraries(qmod_test PRIVATE apotheca_engine)
-  add_test(NAME twin COMMAND twin_test)
   add_test(NAME qmod COMMAND qmod_test)
   add_executable(song_test tests/song_test.cpp)
   target_link_libraries(song_test PRIVATE apotheca_engine)
@@ -108,7 +105,7 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
   add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
-  set_tests_properties(engine phazed twin qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

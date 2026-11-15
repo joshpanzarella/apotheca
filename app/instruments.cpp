@@ -9,7 +9,7 @@ const InstrumentInfo kInstruments[] = {
     {TrackKind::Phazed, "PHAZED", "PHZD", "PHAZED", "phase distortion synth", true, "phazed", SynthKind::Phazed, ".phazed"},
     // JAX-EP (owner, 2026-11-14): the name on the device, and what it says it is. No maker's or model's
     // name anywhere a player reads; in the code it is Jx3p (jx3p-plan.md, sections 5 and 8). It stands
-    // in the list where Twin Analog stood.
+    // in the list where the synth before it stood (an old song's word for that one is read, below).
     // What it is, in the owner's words: "a virtual analog synth modeled after a popular DCO synth". The
     // list's line holds about 42 letters at LARGE (DRUMS' fills it), so here it is shortened to its
     // nouns, and the count of presets, which would not fit after it, is left off this one line.

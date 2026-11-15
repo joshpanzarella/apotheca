@@ -392,7 +392,6 @@ int main(int argc, char** argv) {
     }
     engine.prepare(static_cast<float>(have.freq)); // builds the drum kit for this sample rate
     engine.setFlushDenormals(true); // numbers too small to hear count as nothing, so a long tail never slows the processor (owner, 2026-11-11)
-    engine.watchLoad(!smoke && !shot);
     // The handheld has four processor cores: the tracks are worked out across them, one fewer
     // than there are (one is left for the screen and everything else).
     {
@@ -1173,11 +1172,6 @@ int main(int argc, char** argv) {
             app.session().startedFine();
         }
 
-        static int lastLimit = 3;
-        if (engine.qualityLimit() != lastLimit) {
-            lastLimit = engine.qualityLimit();
-            std::printf("keeping up: oversampling held to x%d at most (the last block took %.0f%% of its time)\n", 1 << lastLimit, 100.f * engine.load());
-        }
         if (!reported && audio.realtime.load() >= 0) {
             reported = true;
             std::printf("realtime priority: %s\n", audio.realtime.load() == 1 ? "granted" : "not granted");

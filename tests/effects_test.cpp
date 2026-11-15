@@ -4950,15 +4950,15 @@ static void testABusTakesItsOwnKind() {
     for (int k = 0; k < kEffectKinds; ++k) {
         const EffectKind kind = static_cast<EffectKind>(k);
         for (int bus = 0; bus < kBuses; ++bus) {
-            std::unique_ptr<Engine> engine = sineEngine(), twin = sineEngine();
-            for (Engine* e : {engine.get(), twin.get()}) {
+            std::unique_ptr<Engine> engine = sineEngine(), second = sineEngine();
+            for (Engine* e : {engine.get(), second.get()}) {
                 CHECK(e->setEffect(busTrack(bus), 0, busEffectAt(bus, 1))); // DELAY, or REVERB
                 e->send(make(Command::SetSend, 0, bus, 0, 1.f));
             }
             const bool fits = kind == EffectKind::None || effectBus(kind) == bus;
             CHECK(engine->setEffect(busTrack(bus), 0, kind) == fits);
             fits ? ++taken : ++refused;
-            const std::vector<float> out = leftOf(*engine, 24000), same = leftOf(*twin, 24000);
+            const std::vector<float> out = leftOf(*engine, 24000), same = leftOf(*second, 24000);
             // Refused: nothing changed, and the bus holds what it held. (A FILTER there would have
             // given the track's own sound back a second time: twice as loud at once.)
             if (!fits) CHECK(out == same && peakOf(std::vector<float>(out.begin(), out.begin() + 1000)) < kEngineSine * 1.01f);
@@ -5024,19 +5024,19 @@ static void testBusLevel() {
         back.insert(back.begin(), 0.f); // (it was silent before: a step at the first sample is seen)
         CHECK(peakOf(back) > 0.03f); // the echoes were kept (0.9 of the last, a second apart: about 0.07 by now)
         CHECK(largestJump(back) / sineStep(100.0, 2.0 * kEngineSine) < 1.05);
-        // The level is where it was said: a twin never turned down has the same echoes by now.
+        // The level is where it was said: a second engine never turned down has the same echoes by now.
         engine->send(make(Command::SetEffectParam, kEchoBus, 0, 3, 0.5f));
         leftOf(*engine, 4800);
         const std::vector<float> half = leftOf(*engine, 48000);
-        std::unique_ptr<Engine> twin = sineEngine();
-        CHECK(twin->setEffect(kEchoBus, 0, EffectKind::Delay));
-        twin->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.99f));
-        twin->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 1.f));
-        twin->send(make(Command::SetSend, 0, 0, 0, 1.f));
-        leftOf(*twin, 48000 + 1320);
-        twin->send(make(Command::SetTrackHeard, 0, 0));
-        leftOf(*twin, 2400 + static_cast<int>(1.2f * kBusRestSeconds * 48000.f) + 96000 + 4800);
-        const std::vector<float> whole = leftOf(*twin, 48000);
+        std::unique_ptr<Engine> second = sineEngine();
+        CHECK(second->setEffect(kEchoBus, 0, EffectKind::Delay));
+        second->send(make(Command::SetEffectParam, kEchoBus, 0, 0, 0.99f));
+        second->send(make(Command::SetEffectParam, kEchoBus, 0, 1, 1.f));
+        second->send(make(Command::SetSend, 0, 0, 0, 1.f));
+        leftOf(*second, 48000 + 1320);
+        second->send(make(Command::SetTrackHeard, 0, 0));
+        leftOf(*second, 2400 + static_cast<int>(1.2f * kBusRestSeconds * 48000.f) + 96000 + 4800);
+        const std::vector<float> whole = leftOf(*second, 48000);
         double worst = 0.0;
         for (std::size_t i = 0; i < whole.size(); ++i) worst = std::fmax(worst, std::fabs(static_cast<double>(half[i]) - 0.5 * whole[i]));
         CHECK(peakOf(whole) > 0.03f && worst < 1e-6);

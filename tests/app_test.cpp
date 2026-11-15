@@ -6125,7 +6125,7 @@ void testEveryPatchSettingIsOnSomePage() {
     for (bool s : seen) CHECK(s);
 }
 
-// ---- JAX-EP (it took Twin Analog's place), through the same screens ------------------------------------------
+// ---- JAX-EP, through the same screens ------------------------------------------
 
 Rig* onJaxep() {
     Rig* rig = new Rig;
@@ -6148,7 +6148,7 @@ void testAddingJaxep() {
     CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
           std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
     CHECK(kInstrumentCount == 5);
-    for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin" && kInstruments[i].synth != SynthKind::Twin);
+    for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin");
     bool old = false;
     CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
     old = true;
@@ -8666,11 +8666,11 @@ void testFxSwitchesType() {
     }
     {
         // Automation: what changeEffectType does with it, both ways, whatever is remembered; WRITE writes nothing.
-        Rig rig, twin;
+        Rig rig, second;
         Session& session = rig.app.session();
         FxScreen& fx = rig.app.fx();
         session.view = View::Effects;
-        for (Rig* r : {&rig, &twin}) {
+        for (Rig* r : {&rig, &second}) {
             turnedComp(*r);
             for (int p = 0; p < kEffectParams; ++p) r->app.session().setAutomation(0, p % 3, autoLaneOfEffect(0, p), 2 + p, 0.1f + 0.2f * static_cast<float>(p));
             r->frames(1);
@@ -8682,11 +8682,11 @@ void testFxSwitchesType() {
         CHECK(rig.project().playing);
         fx.goTo(0, 2);
         typeTap(rig, RIGHT);
-        CHECK(changeEffectType(twin.app.session(), 0, 0, EffectKind::Duck));
-        CHECK(same(tunedOf(rig, 0, 0), tunedOf(twin, 0, 0)));
+        CHECK(changeEffectType(second.app.session(), 0, 0, EffectKind::Duck));
+        CHECK(same(tunedOf(rig, 0, 0), tunedOf(second, 0, 0)));
         typeTap(rig, LEFT); // the COMP's settings are remembered; its lanes are those the DUCK's moved back
-        CHECK(changeEffectType(twin.app.session(), 0, 0, EffectKind::Comp));
-        CHECK(tunedOf(rig, 0, 0).lanes == tunedOf(twin, 0, 0).lanes && session.writing());
+        CHECK(changeEffectType(second.app.session(), 0, 0, EffectKind::Comp));
+        CHECK(tunedOf(rig, 0, 0).lanes == tunedOf(second, 0, 0).lanes && session.writing());
     }
     {
         // The heading's TYPE row shows the key where it switches (RIGHT on the first setting, LEFT / RIGHT below

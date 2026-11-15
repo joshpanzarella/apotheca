@@ -11,7 +11,6 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
-#include "apotheca/twin.hpp" // (only testFallingBehindLowersTheQuality: both go with Twin's code, jx3p-plan.md batch 8b)
 #include "apotheca/jx3p.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/rate_converter.hpp"
@@ -772,79 +771,6 @@ static void testTheSharedEnvelope() {
     const float up0 = jaxStart(0), up30 = jaxStart(30), up50 = jaxStart(50);
     if (std::getenv("TAIL_PRINT")) std::printf("  JAX-EP's first 10 ms: ATTACK 0 peaks %.4f, 3.0 %.4f, 5.0 %.4f\n", up0, up30, up50);
     CHECK(up0 > 0.15f && up30 < 0.4f * up0 && up30 > 0.15f * up0 && up50 < 0.15f * up0); // 0.226, 0.060, 0.019
-}
-
-static void testFallingBehindLowersTheQuality() {
-    const int block = 256;
-    {
-        Engine engine;
-        CHECK(engine.qualityLimit() == 3);
-        // One slow block is a hiccup, not a habit.
-        engine.noteLoad(0.95f, block);
-        engine.noteLoad(0.5f, block);
-        engine.noteLoad(0.95f, block);
-        CHECK(engine.qualityLimit() == 3 && std::fabs(engine.load() - 0.95f) < 1e-6f);
-        // Two in a row: down a notch. And again, to the bottom, and no further.
-        engine.noteLoad(0.95f, block);
-        CHECK(engine.qualityLimit() == 2);
-        engine.noteLoad(0.86f, block);
-        CHECK(engine.qualityLimit() == 2); // the count began again
-        engine.noteLoad(0.86f, block);
-        CHECK(engine.qualityLimit() == 1);
-        for (int i = 0; i < 10; ++i) engine.noteLoad(2.f, block);
-        CHECK(engine.qualityLimit() == 0);
-        // Just under the line is keeping up.
-        Engine fine;
-        for (int i = 0; i < 100; ++i) fine.noteLoad(0.85f, block);
-        CHECK(fine.qualityLimit() == 3);
-        // Back up a notch only after ten seconds with plenty to spare.
-        const int tenSeconds = 480000 / block;
-        for (int i = 0; i < tenSeconds - 1; ++i) engine.noteLoad(0.2f, block);
-        CHECK(engine.qualityLimit() == 0);
-        engine.noteLoad(0.2f, block);
-        CHECK(engine.qualityLimit() == 1);
-        // "Getting by" (between 35% and 85%) is not "plenty": it stays where it is, and the ten seconds start again.
-        for (int i = 0; i < tenSeconds - 1; ++i) engine.noteLoad(0.2f, block);
-        engine.noteLoad(0.4f, block);
-        for (int i = 0; i < tenSeconds - 1; ++i) engine.noteLoad(0.2f, block);
-        CHECK(engine.qualityLimit() == 1);
-        engine.noteLoad(0.2f, block);
-        CHECK(engine.qualityLimit() == 2);
-        for (int i = 0; i < 3 * tenSeconds; ++i) engine.noteLoad(0.f, block);
-        CHECK(engine.qualityLimit() == 3); // and never past the top
-        engine.noteLoad(std::nanf(""), block); // nonsense is ignored
-        engine.noteLoad(-1.f, block);
-        CHECK(engine.qualityLimit() == 3);
-    }
-    // Twin Analog at x8, held to x1, sounds as it does set to x1; a synth added
-    // while the limit is on joins under it; let back up, it is x8 again.
-    const auto twin = [](int oversample, int slowBlocks, bool addAfter) {
-        std::unique_ptr<Engine> engine(new Engine);
-        if (!addAfter) CHECK(engine->addSynthTrack(1, SynthKind::Twin));
-        renderFrames(*engine, 64);
-        for (int i = 0; i < slowBlocks; ++i) engine->noteLoad(1.5f, 256);
-        if (addAfter) CHECK(engine->addSynthTrack(1, SynthKind::Twin));
-        engine->send(make(Command::SetSetting, 1, twin::Oversample, oversample));
-        Command note = make(Command::NoteOn, 1, 57, 0, 0.8f);
-        engine->send(note);
-        return renderFrames(*engine, 4000);
-    };
-    const std::vector<float> plain = twin(0, 0, false), best = twin(3, 0, false);
-    CHECK(plain != best);
-    CHECK(twin(3, 6, false) == plain); // three notches down from x8 is x1
-    CHECK(twin(3, 6, true) == plain);
-    CHECK(twin(3, 2, false) != plain && twin(3, 2, false) != best); // one notch: x4, neither
-    CHECK(twin(0, 6, false) == plain); // a limit never raises what the player set
-    CHECK(twin(1, 2, false) == twin(1, 0, false)); // x2 is under a limit of x4: untouched
-    // With the watch off (as in every test and offline render), render() never times itself.
-    Engine unwatched;
-    for (int i = 0; i < 50; ++i) renderFrames(unwatched, 16);
-    CHECK(unwatched.qualityLimit() == 3 && unwatched.load() == 0.f);
-    // With it on it does: something is measured.
-    Engine watched;
-    watched.watchLoad(true);
-    renderFrames(watched, 256);
-    CHECK(watched.load() > 0.f);
 }
 
 static void testPatternPlaysOnTheExactSample() {
@@ -1789,7 +1715,7 @@ static void testStepEffectCut() {
 }
 
 // A track taken away while it sounds fades over 5 ms (its instrument and its effects' tails), no
-// click; then it is gone. Beside a twin engine where it stays, the sound is the same times the fade.
+// click; then it is gone. Beside a second engine where it stays, the sound is the same times the fade.
 static void testATrackTakenAwayFades() {
     for (int kind = 0; kind < 2; ++kind) {
         const int t = kind == 0 ? 1 : 0;
@@ -3391,7 +3317,6 @@ int main() {
     testOddStepCounts();
     testAutomation();
     testTheSharedEnvelope();
-    testFallingBehindLowersTheQuality();
     testPatternPlaysOnTheExactSample();
     testNudgeMovesAHitOffTheGrid();
     testNudgedHitsKeepTheirOwnLevels();

@@ -55,7 +55,6 @@
 #include "apotheca/phazed.hpp"
 #include "apotheca/sampler.hpp"
 #include "apotheca/qmod.hpp"
-#include "apotheca/twin.hpp"
 #include "apotheca/jx3p.hpp"
 #include "apotheca/spsc_queue.hpp"
 
@@ -433,21 +432,6 @@ public:
     bool flushesDenormals() const { return flush_.load(std::memory_order_relaxed); }
     int workers() const { return static_cast<int>(workers_.size()); }
 
-    // ---- keeping up ---------------------------------------------------------------
-    // A sound that takes longer to work out than it lasts cannot be played:
-    // the output stutters. With the watch on, render() times itself, and
-    // when it is falling behind it tells the synths to do plainer work
-    // (Twin Analog's oversampling, a notch at a time) until it keeps up.
-    // The player's settings are not changed. It is off unless turned on, so
-    // that tests and renders that do not run in real time are never touched.
-    void watchLoad(bool on) { watchLoad_ = on; }
-    // 3: nothing held back. 0: plainest. Lower than 3 means "it could not keep up".
-    int qualityLimit() const { return qualityLimit_.load(std::memory_order_relaxed); }
-    // How long the last render() took, as a part of the time it had (1 = all of it).
-    float load() const { return load_.load(std::memory_order_relaxed); }
-    // What render() does with each timing. Public for the tests: `part` is
-    // time taken over time available, for a block of `frames`.
-    void noteLoad(float part, int frames);
     // Which of a track's slots have their automation held, a bit a slot (HoldEffectAutomation). For the
     // tests: read between renders, never while one is under way.
     int automationHeld(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].autoHeld : 0; }
@@ -789,11 +773,6 @@ private:
     bool cutEverything_ = false; // the gate has just shut: cut the drums and clear the effects
     int shutFrames_ = 0, quietFrames_ = 0;
     std::atomic<bool> silenced_{false};
-    bool watchLoad_ = false;
-    std::atomic<int> qualityLimit_{3};
-    std::atomic<float> load_{0.f};
-    int busyBlocks_ = 0;      // blocks in a row that took nearly all their time
-    long long calmFrames_ = 0; // frames in a row with time to spare
 
     // The master's level and pan (the mixer): after its slots, before the ceiling. At 1, 1 and 1
     // it is not run at all, so a song left alone comes out as it did to the bit.

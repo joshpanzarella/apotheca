@@ -3,8 +3,8 @@
 // A bounce is not recorded from the output as the song plays. It is worked
 // out again from the beginning, by a second engine that nobody is listening
 // to, as fast as the handheld can go. So the handheld can be used (and can go
-// on playing) while it happens. (It used to turn Twin Analog's oversampling up
-// to x8 for the bounce; the JX-3P that took its place has none to turn.)
+// on playing) while it happens. (No synth has a quality to turn up for it:
+// a bounce is the song as it plays, to the sample.)
 //
 // The song is bounced from its first scene to its last, each as many times
 // as it plays, and then for as long as echoes and tails take to die away
