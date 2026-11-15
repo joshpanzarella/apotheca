@@ -162,6 +162,12 @@ effect in those two groups and fails one that does not.
   fresh copy from where it came from does not lose it without anyone knowing.
 
 ### Files and compatibility
+- **Nothing is released; old songs are owed nothing** (owner, 2026-11-15: "don't
+  ever worry about old tracks. this is all in beta"). The rules below keep old
+  files loading and old sounds to the bit; they still hold as the house way, but
+  where one stands in the way of a better program or a cheaper one, change it,
+  and say so. Never keep slow code, an instrument or a format for an old song's
+  sake. (QMOD is to be replaced by FM-6 outright, its word read as FM-6.)
 - **Song files must keep loading.** Words in a song file (`track phazed`,
   `auto`, `steps`, `name`) never change meaning. Unknown lines are skipped.
 - **Ids are appended, never reordered or reused**: `Command::Type`, every
