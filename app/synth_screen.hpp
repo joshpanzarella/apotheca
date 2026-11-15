@@ -10,7 +10,8 @@
 //                    A new sound is played at once when the song is stopped.
 //   a macro          hold A + stick up / down. B puts it back in the middle.
 //   ADVANCED         A opens the pages.
-//   X                hear the sound
+//   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
+//                    OUTPUT's place while X is held, and the note heard as long as X is.
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
@@ -21,6 +22,7 @@
 #include <SDL.h>
 
 #include "input.hpp"
+#include "mod_knob.hpp"
 #include "session.hpp"
 #include "synth_spec.hpp"
 #include "ui.hpp"
@@ -29,7 +31,7 @@ namespace apotheca {
 
 class SynthScreen : public Screen {
 public:
-    SynthScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec) {}
+    SynthScreen(Session& session, const SynthSpec& spec) : session_(session), project_(session.project), spec_(spec), modKnob_(session, this) {}
 
     void choosePreset(int index); // any preset, the player's own included; it comes round at the ends
     void onButton(const ButtonEvent& event, const Input& input) override;
@@ -76,6 +78,9 @@ public:
     // (USER) count among themselves. Every synth alike.
     int placeInFolder(int preset, int& of) const;
 
+    // X held on a macro: its MOD (for the tests: held(), mod(), full()...).
+    const ModKnob& modKnob() const { return modKnob_; }
+
     // Cursor stops on MAIN.
     enum { kFolder, kPreset, kFirstMacro, kAdvanced = kFirstMacro + kSynthMacros, kMainStops };
 
@@ -119,6 +124,9 @@ private:
     Uint32 lastMs_ = 0;
     float stickX_ = 0.f, stickY_ = 0.f;
     bool stickWasX_ = false, stickWasY_ = false;
+    ModKnob modKnob_;
+    bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
+    void endMod(const Input& input);
 };
 
 } // namespace apotheca

@@ -173,6 +173,16 @@ public:
     // track holds what was asked for (false: it was put OFF, or there is no such track or MOD).
     bool setMod(int track, int mod, const ModSettings& settings);
     const ModSettings& modData(int track, int mod) const;
+    // X HELD on a knob with a MOD while the song is stopped (owner's call E): the engine runs the
+    // MODs in `mask` (bit 0 MOD 1, bit 1 MOD 2) of `track`, counted from now as from Play
+    // (Command::ModAudition), so the gesture is heard. The screen asks every frame X is held there;
+    // a command goes only when what runs changes. Mask 0 lets go. While the song plays nothing is
+    // sent (its MODs run), and after it stops the next ask starts it again. `owner` is the screen:
+    // App lets go when X is up, another screen is up or another track picked (keepModsHeard), and
+    // a new song and panic let go too.
+    void hearMods(int track, unsigned mask, const void* owner);
+    void keepModsHeard(bool xHeld, const void* screen);
+    unsigned modsHeard(int track) const { return track == modsHeard_.track ? modsHeard_.mask : 0u; } // for the tests
 
     // ---- recordings on drum lanes ----------------------------------------------------
     // A lane of a drum track plays the built-in drum, or a WAV file from the
@@ -541,6 +551,9 @@ private:
     void stopLane(int track, int lane);
     void endHearing();  // what is due to stop now, stopped
     void dropHearing(); // panic, a new song: nothing held, nothing waiting to stop
+    struct ModsHeard { int track = -1; unsigned mask = 0; const void* owner = nullptr; };
+    ModsHeard modsHeard_; // what the engine was told to run while stopped (hearMods); track -1: nothing
+    void letGoOfMods();
     Uint32 now_ = 0;
     unsigned droppedSeen_ = 0; // engine.dropped() when the song was last sent whole
     int resyncs_ = 0;

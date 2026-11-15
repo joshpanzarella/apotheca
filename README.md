@@ -573,6 +573,41 @@ With WRITE off, moving a knob is only moving a knob. Stopped, nothing is
 ever written. There is no screen yet for drawing automation step by step:
 it is recorded by performing it.
 
+### MOD: a knob that moves by itself
+
+A **MOD** turns a knob up and down by itself, in time with the song. It is
+one of two kinds:
+
+| Kind | What it does |
+| --- | --- |
+| **LFO** | A slow wave: SINE, TRIANGLE, RAMP UP, RAMP DOWN, SQUARE, RANDOM (a new value each cycle) or DRIFT (glides between random values) |
+| **STEPPER** | A row of up to 16 values, one held for each note length, round and round |
+
+Each track has **two MODs**. Each one is aimed at one knob: a macro (DEVICE),
+a setting of one of the track's effects, or a send (FX). A setting that is a
+choice (a filter's TYPE, a delay's TIME, Phazed's CHORUS and OCTAVE) takes no MOD.
+
+**Hold X on the knob.** While X is held its MOD shows: on DEVICE where LIVE
+OUTPUT was, on FX where the heading was (on SENDS, in the other send's row).
+Each button's chip in the bottom bar stands under the field it sets.
+
+| With X held on a knob | Does |
+| --- | --- |
+| **UP** (no MOD yet) | Makes one: LFO, SINE, 1 BAR, +25% |
+| Up / down | DEPTH, 1% a push. The stick turns it smoothly. Below 0% it turns the other way |
+| Left / right | RATE: 1/2 STEP up to 8 BARS, a click a push |
+| A | SHAPE: the next wave; after DRIFT, a STEPPER (its row rolled); then SINE again |
+| L1 / R1 | An LFO's PHASE (0, 1/4, 1/2, 3/4); a STEPPER's LENGTH (1 to 16) |
+| Y | The dice: a STEPPER's row; an LFO's shape and rate (DEPTH stays) |
+| **Hold B** | Deletes the MOD (a second; the strip fills) |
+
+NOW, at the right, shows what the MOD is adding this moment. With the song
+stopped, holding X runs the MOD and holds the note, so you hear it. With
+both MODs in use on other knobs, the strip says **MODS FULL** and nothing is
+made. The knob, or its automation, is the middle the MOD moves around.
+WRITE records the knob, never the wobble. Undo (SELECT + B) takes a MOD
+back like any other change. A song saves its MODs.
+
 ### QMOD
 
 An FM synth that is **rolled, not programmed**. FM is sine waves
@@ -947,7 +982,7 @@ A few things mean one thing everywhere:
 | A | Place, open, pick. Held: a direction shapes or turns what is under the cursor |
 | B | Delete, empty, go back |
 | **Hold B** | **Delete for good**: a track (2 s), a song (1 s), a recording in the list (1 s). The row fills as you hold; let go early and nothing happens |
-| X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects |
+| X | Hear it. A recording plays **for as long as X is held** (a tap: a moment). Held on a drum hit: its step effects. Held on a knob: its MOD |
 | Hold R1 | On an empty step: paint as you drag. On a note: carry it. On SONG: copy a bar as you drag |
 | L2 / R2 | The tabs |
 | SELECT + something | Things about the whole song: undo, tempo, volume, WRITE, the scene's length, the next scene |

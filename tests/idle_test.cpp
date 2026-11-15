@@ -428,6 +428,30 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.press(X);
     rig.run(3000);
 
+    // MOD (mod_knob.hpp): X held on a knob shows its fields in LIVE OUTPUT's place (DEVICE) or the
+    // heading's (FX), and while stopped the MOD runs, so NOW moves by itself; let go, they go.
+    rig.part = "X held on a macro: its MOD made and heard while stopped, then let go";
+    rig.byHand([&] { rig.app->phazed().goTo(0, SynthScreen::kFirstMacro); });
+    rig.run(200);
+    rig.key(X, true);
+    rig.run(300);
+    rig.press(UP); // the first UP makes an LFO
+    rig.run(1500);
+    rig.key(X, false);
+    rig.run(3000);
+    rig.part = "X held on an FX setting: its MOD made and heard while stopped, then let go";
+    rig.byHand([&] { s.setEffect(rig.project().track, 0, EffectKind::Filter); });
+    rig.press(R2); // FX
+    rig.byHand([&] { rig.app->fx().goTo(0, 1); }); // CUTOFF
+    rig.run(200);
+    rig.key(X, true);
+    rig.press(UP);
+    rig.run(1500);
+    rig.key(X, false);
+    rig.run(3000);
+    rig.press(L2); // DEVICE again
+    rig.run(300);
+
     rig.part = "a keyboard's key on the roll";
     {
         const std::string midiFolder = tempFolder("midi");

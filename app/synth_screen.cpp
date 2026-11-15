@@ -1,5 +1,7 @@
 #include "synth_screen.hpp"
 
+#include "mods.hpp"
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -213,8 +215,29 @@ void SynthScreen::stepExact(int by) {
 
 // ---- buttons ----------------------------------------------------------------------------
 
+void SynthScreen::endMod(const Input& input) {
+    if (!modKnob_.held()) return;
+    modKnob_.letGo();
+    stickWait_ = input.stickX() != 0.f || input.stickY() != 0.f;
+    repeating_ = Button::None;
+}
+
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
+    // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
+    // check comes before every other button's own job (Y's ROLL, B's middle, the D-pad's cursor).
+    if (b == Button::X) {
+        if (!event.down) {
+            endMod(input);
+            return;
+        }
+        const bool onMacro = page_ == 0 && cursor_ >= kFirstMacro && cursor_ < kAdvanced && !holding_;
+        if (onMacro && modKnob_.hold(project_.track, kModFirstMacro + (cursor_ - kFirstMacro), input)) repeating_ = Button::None;
+        if (onMacro && !project_.playing) session_.auditionHeld(project_.track, 60, 0.8f, this); // heard as long as X is (a tap as ever)
+        else hear();
+        return;
+    }
+    if (modKnob_.held() && modKnob_.onButton(event, lastMs_)) return;
     if (b == Button::A) {
         if (event.down && page_ == 0 && cursor_ == kAdvanced) {
             goTo(1, 0);
@@ -257,8 +280,6 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         goTo(page_ == spec_.pages - 1 ? 1 : page_ + 1, 0);
     } else if (b == Button::L1 && page_ > 0) {
         goTo(page_ == 1 ? spec_.pages - 1 : page_ - 1, 0);
-    } else if (b == Button::X) {
-        hear();
     } else if (b == Button::Start && !input.held(Button::Select)) {
         session_.togglePlay(false);
     }
@@ -268,14 +289,22 @@ void SynthScreen::update(const Input& input, Uint32 nowMs) {
     // A button let go while another screen was showing (a song opened, a tab turned) never told this
     // screen so. What is held is asked afresh each frame, so nothing can stay "held" by mistake.
     if (!input.held(Button::A)) holding_ = false;
+    if (!input.held(Button::X) || page_ != 0) endMod(input);
 
     float dt = lastMs_ == 0 ? 0.016f : static_cast<float>(nowMs - lastMs_) / 1000.f;
     if (dt > 0.05f) dt = 0.05f;
     dt *= ui::gStickSpeed; // everything the stick does, slower or faster, from one number
     lastMs_ = nowMs;
     const float x = input.stickX(), y = input.stickY();
+    if (modKnob_.held()) {
+        modKnob_.update(input, nowMs, dt); // the stick and the D-pad are the MOD's; the cursor stays on the knob
+        return;
+    }
+    if (stickWait_ && x == 0.f && y == 0.f) stickWait_ = false;
 
-    if (holding_) {
+    if (stickWait_) {
+        // (the stick was pushed for the MOD: it moves nothing until it has come back)
+    } else if (holding_) {
         const float push = -y;
         turn(push * std::fabs(push) * dt);
         if (push == 0.f) choicePushed_ = false; // back in the middle: the next push is a new click
@@ -360,6 +389,13 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, 174.f, middle - 14.f, text, kDim);
         fonts.small.draw(r, 174.f, middle + 2.f, "The macros above bend the sound and leave it as it was made.", kDim);
 
+        if (modKnob_.held()) {
+            // X held on a macro: its MOD's fields in LIVE OUTPUT's place, each button under its field.
+            const int m = modKnob_.target() - kModFirstMacro;
+            modKnob_.drawFields(r, fonts, kDeviceModPlaces, 0.f, kScopeX, kScopeY, kScopeW, kScopeH, spec_.macroNames[m]);
+            modKnob_.drawHints(r, fonts, kDeviceModPlaces);
+            return;
+        }
         scopeStrip(r, fonts, session_.engine);
 
         if (holding_) {
@@ -371,6 +407,8 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             else hint("HOLD A", cursor_ < kFirstMacro ? "change" : "turn");
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             if (spec_.roll) hint("Y", "roll a new sound");
+            // (Where the bar has room for it with nothing left out: not beside QMOD's ROLL. The help card says it everywhere.)
+            if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && !spec_.roll && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);

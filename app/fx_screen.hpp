@@ -48,7 +48,10 @@
 //   L1 / R1          the track before / after (it stops at the first and the
 //                    last, as the SONG screen's columns do); the cursor stays
 //   X                hear the track (a recording on it, on lane 1 or the sampler:
-//                    for as long as X is held; a tap for a moment)
+//                    for as long as X is held; a tap for a moment). Held on a track's slot
+//                    setting or a send: its MOD (mod_knob.hpp), its fields in the heading's
+//                    place (on SENDS, in the other send's row) while X is held; a synth's
+//                    note is heard as long as X is
 //   START            play / stop
 //   (Y does nothing here.)
 
@@ -59,6 +62,7 @@
 #include <vector>
 
 #include "input.hpp"
+#include "mod_knob.hpp"
 #include "session.hpp"
 #include "ui.hpp"
 
@@ -83,7 +87,7 @@ bool switchEffectType(Session& session, int track, int slot, EffectKind to);
 
 class FxScreen : public Screen {
 public:
-    explicit FxScreen(Session& session) : session_(session), project_(session.project) {}
+    explicit FxScreen(Session& session) : session_(session), project_(session.project), modKnob_(session, this) {}
 
     void onButton(const ButtonEvent& event, const Input& input) override;
     void update(const Input& input, Uint32 nowMs) override;
@@ -124,6 +128,14 @@ public:
     // What a meter says in the heading: "TURNING DOWN 7 DB" (COMP), "DIPPING 7 DB"
     // (DUCK). Empty under half a dB, and for an effect with no meter.
     static void meterWords(EffectKind kind, float dB, char* out, int size);
+
+    // X held on a track's slot setting or a send: its MOD (for the tests). The knob under the cursor as
+    // an automation lane, or -1 (the list, a bus, the master).
+    const ModKnob& modKnob() const { return modKnob_; }
+    int knobHere() const;
+    // Where the MOD's fields are drawn while X is held: the heading's place; on SENDS the other send's row.
+    int modPanelY() const { return !sends(row_) ? kPaneY : (column_ == 1 ? kSendY + kSendH + kSendGap : kSendY); }
+    int modPanelH() const { return sends(row_) ? kSendH : kHeadH; }
 
     static constexpr int kRows = kTrackSlots + 1 + kBuses + kMasterSlots;
     static constexpr int kSendsRow = kTrackSlots, kBusRow = kSendsRow + 1, kMasterRow = kBusRow + kBuses;
@@ -263,6 +275,10 @@ private:
     bool stickWas_ = false;
     Button repeating_ = Button::None;
     Uint32 repeatAt_ = 0, lastMs_ = 0;
+    ModKnob modKnob_;
+    bool stickWait_ = false; // X let go off a MOD with the stick still pushed: it moves nothing until it comes back
+    void endMod(const Input& input);
+    void drawModPanel(SDL_Renderer* r, const Fonts& fonts) const;
 };
 
 // The page reaches its foot exactly: the list's last line, the fourth setting and the second send.

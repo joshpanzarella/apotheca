@@ -247,6 +247,7 @@ void Session::endHearing() {
 }
 
 void Session::dropHearing() {
+    modsHeard_ = ModsHeard(); // (the engine has let go: a new song takes every track away, panic stops)
     if (heard_.track >= 0 && heard_.held) heard_.ends = now_;
     heard_.held = false;
     for (LaneStop& stop : laneStops_) stop.track = -1;
@@ -1210,9 +1211,73 @@ bool Session::setMod(int track, int mod, const ModSettings& settings) {
     const bool taken = held.kind != kModOff || settings.kind == kModOff; // (asked for OFF and OFF: taken)
     ModSettings& now = project.tracks[track].mods[mod];
     if (std::memcmp(&now, &held, sizeof now) == 0) return taken;
+    const ModSettings was = now;
     now = held;
-    sendMod(track, mod); // (lost to a full queue: the whole song is sent again, this with it)
+    if (was.kind == kModOff || held.kind == kModOff) {
+        sendMod(track, mod); // (lost to a full queue: the whole song is sent again, this with it)
+        return taken;
+    }
+    // One on, still on (a knob's MOD turned while X is held, every frame): only what changed, so a
+    // turn is one or two commands, not twenty-six. The engine's MOD is the project's before this.
+    Command c;
+    c.track = track;
+    c.a = mod;
+    for (int field = 0; field < kModFields; ++field) {
+        if (modGet(was, field) == modGet(held, field)) continue;
+        c.type = Command::SetMod;
+        c.b = field;
+        c.value = modGet(held, field);
+        engine.send(c);
+    }
+    for (int step = 0; step < kModSteps; ++step) {
+        if (was.steps[step] == held.steps[step]) continue;
+        c.type = Command::SetModStep;
+        c.b = step;
+        c.value = held.steps[step];
+        engine.send(c);
+    }
     return taken;
+}
+
+void Session::hearMods(int track, unsigned mask, const void* owner) {
+    if (project.playing) {
+        modsHeard_ = ModsHeard(); // the song's MODs run (and Stop lets the engine's audition go): asked again after it
+        return;
+    }
+    if (track < 0 || track >= kNumTracks) mask = 0;
+    mask &= 3u;
+    if (mask == 0) {
+        letGoOfMods();
+        return;
+    }
+    if (track == modsHeard_.track && mask == modsHeard_.mask) {
+        modsHeard_.owner = owner;
+        return;
+    }
+    Command c;
+    c.type = Command::ModAudition;
+    c.track = track;
+    c.a = static_cast<int>(mask);
+    if (!engine.send(c)) return; // (lost: asked again next frame)
+    modsHeard_.track = track;
+    modsHeard_.mask = mask;
+    modsHeard_.owner = owner;
+}
+
+void Session::letGoOfMods() {
+    if (modsHeard_.track < 0) return;
+    Command c;
+    c.type = Command::ModAudition;
+    c.track = modsHeard_.track;
+    c.a = 0;
+    if (engine.send(c)) modsHeard_ = ModsHeard(); // (lost: let go again next frame)
+}
+
+void Session::keepModsHeard(bool xHeld, const void* screen) {
+    if (modsHeard_.track >= 0 && (!xHeld || screen != modsHeard_.owner || project.track != modsHeard_.track || project.playing)) {
+        if (project.playing) modsHeard_ = ModsHeard(); // (Play: the engine runs the song's; Stop lets go)
+        else letGoOfMods();
+    }
 }
 
 void Session::sendMod(int track, int mod) {

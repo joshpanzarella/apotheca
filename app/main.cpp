@@ -17,6 +17,8 @@
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
+//                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
+//                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
@@ -792,6 +794,30 @@ int main(int argc, char** argv) {
             fx.goTo(0, 0);
             pushKey(SDLK_x, true);
             tapKey(SDLK_UP, 2);
+        } else if (std::strncmp(view, "fx-mod", 6) == 0 || std::strcmp(view, "fx-sends-mod-held") == 0) {
+            // X held on a setting of the track's TAPE (FEEDBACK), or on its ECHO send: its MOD's fields in
+            // the heading's place (on SENDS, in the other send's row). fx-mod-held: an LFO (RAMP DOWN, -100%,
+            // 1/2 STEP). fx-mod-stepper: a STEPPER. fx-mod-new: none on it yet. fx-mod-full: both MODs on
+            // other knobs. fx-sends-mod-held: a STEPPER on ECHO.
+            ModSettings lfo;
+            lfo.kind = kModLfo, lfo.target = kModFirstEffect + 1, lfo.shape = kModRampDown, lfo.depth = -1.f, lfo.rate = kModRateHalfStep, lfo.phase = 3;
+            ModSettings steps;
+            steps.kind = kModStepper, steps.target = kModFirstEffect + 1, steps.depth = 1.f, steps.rate = kModRateEighthTriplet, steps.length = 16;
+            for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 2 ? 0.7f : -0.5f) + 0.03f * static_cast<float>(i);
+            if (std::strcmp(view, "fx-mod-held") == 0) s.setMod(0, 0, lfo);
+            else if (std::strcmp(view, "fx-mod-stepper") == 0) s.setMod(0, 1, steps);
+            else if (std::strcmp(view, "fx-mod-full") == 0) {
+                lfo.target = kModFirstEffect + 4 * 1 + 0; // the FILTER's CUTOFF
+                s.setMod(0, 0, lfo);
+                steps.target = kModFirstSend + 1;
+                s.setMod(0, 1, steps);
+            } else if (std::strcmp(view, "fx-sends-mod-held") == 0) {
+                steps.target = kModFirstSend;
+                s.setMod(0, 0, steps);
+            }
+            if (std::strcmp(view, "fx-sends-mod-held") == 0) fx.goTo(FxScreen::kSendsRow, 1);
+            else fx.goTo(0, 2);
+            pushKey(SDLK_s, true); // X held
         } else if (std::strcmp(view, "fx-deleting") == 0) {
             // B held on the TAPE's line: its bar filling (it is deleted at a second; stills are taken sooner).
             fx.goTo(0, 0);
@@ -891,6 +917,33 @@ int main(int argc, char** argv) {
         app.phazed().goTo(0, SynthScreen::kFirstMacro);
         pushKey(SDLK_x, true);  // hold A on TONE
         tapKey(SDLK_UP, 6);     // and turn it up
+    } else if (std::strncmp(view, "device-mod", 10) == 0) {
+        // X held on a macro of a Phazed track (TONE): its MOD's fields in LIVE OUTPUT's place, each button's
+        // chip under its field. device-mod-held: an LFO (TRIANGLE, +40%, 1/2, PHASE 1/4). device-mod-stepper:
+        // a STEPPER. device-mod-new: no MOD on it yet (UP makes one). device-mod-full: both MODs on other knobs
+        // (MODS FULL). device-mod-deleting: B held on its LFO, the bar filling (the still is taken before the
+        // second is up).
+        Session& s = app.session();
+        app.project().track = 1;
+        s.view = View::Device;
+        app.phazed().goTo(0, SynthScreen::kFirstMacro);
+        ModSettings lfo;
+        lfo.kind = kModLfo, lfo.target = kModFirstMacro, lfo.shape = kModTriangle, lfo.depth = 0.4f, lfo.rate = kModRateHalf, lfo.phase = 1;
+        ModSettings steps;
+        steps.kind = kModStepper, steps.target = kModFirstMacro, steps.depth = -0.6f, steps.rate = kModRateQuarter, steps.length = 8;
+        for (int i = 0; i < kModSteps; ++i) steps.steps[i] = (i % 3 == 0 ? 0.8f : -0.35f) + 0.05f * static_cast<float>(i % 4);
+        if (std::strcmp(view, "device-mod-stepper") == 0) s.setMod(1, 1, steps);
+        else if (std::strcmp(view, "device-mod-full") == 0) {
+            lfo.target = kModFirstMacro + 1;
+            s.setMod(1, 0, lfo);
+            steps.target = kModFirstSend;
+            s.setMod(1, 1, steps);
+        } else if (std::strcmp(view, "device-mod-new") != 0) s.setMod(1, 0, lfo);
+        pushKey(SDLK_s, true); // X held
+        if (std::strcmp(view, "device-mod-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600;
+        }
     } else if (std::strncmp(view, "page", 4) == 0) {
         app.project().track = 1;
         app.session().view = View::Device;

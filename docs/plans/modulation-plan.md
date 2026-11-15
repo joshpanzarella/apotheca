@@ -3,7 +3,7 @@
 Written 2026-11-14 from three independent designs (one from the player's
 hands, one from the engine and song file, one from music), judged and joined
 here, then revised the same day after a review (section 11). **Batches 0 and
-1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17); nothing else is, and nothing is heard. Section 17 lists the owner's calls batch 3 waits on.** The code at 0.442 was read. The review timed `setMacro`
+1 are built (sections 12 and 13), their review mended (section 14), batch 2 is built (section 15), joined with `main` (section 16) and the join reviewed and mended (section 17). The owner answered section 17's calls on 2026-11-15 ("go with all your picks"), `main` was joined again, and batches 3 and 4 (X held on a knob, DEVICE and FX) are built (section 18). Nothing is heard.** The code at 0.442 was read. The review timed `setMacro`
 and found a Phazed note cut in a copy; those figures are the only ones run,
 and none on the handheld.
 
@@ -419,8 +419,8 @@ or Twin Analog** (neither is block-exact; section 9); drawn checks through
 | **0 Groundwork** (**built 2026-11-14, branch `mods`: section 12**) | (a) `engine/include/apotheca/mod_rule.hpp`, no SDL: target ids, rate table, shapes, `lfoValue(settings, position)`, `stepValue(settings, steps, position, seed)` with SLEW and CHANCE, `kRollMod = 6`, the combine and clamp, positions on a fractional step. `tests/mod_test.cpp` against hand-worked values. (b) **`giveLane`: `applyAuto`, `SetMacro`, `SetEffectParam` and `SetSend` all give `clamp(centre + offset)` through it**, offset fixed at 0; centre below 0 skipped; a send's given value clamped while `autoNow` keeps the centre (tested with a fake offset in the test build). (c) **Phazed DETUNE**: no fade on a line-select change from DETUNE, a `third_party/CHANGES.md` line, the held-note test. (d) QMOD `setMacro` returns early on an equal value. (e) The review's `setMacro` timing program as a `bench` row | ctest green; **`effects_test --print` identical**; the DETUNE test fails with the mend taken out. **Nothing on screen; no sound change but the DETUNE cut** |
 | 1 Engine (**built 2026-11-14, branch `mods`: section 13**) | `Track::Mod mods[2]`, `SetMod`, `SetModStep`, `ModAudition`, the tick and its cuts under `anyMod_`, macros every 8th tick, `runMods`, waiting on held slots, OFF on `RemoveInstrument`, offsets to 0 on Stop, `modShown` | Same bits across blocks and helpers **on tracks without HALL or Twin** (section 9); Play twice gives the same; tempo change keeps phase; scene move with a MOD running equals the song built; bounce against live phase; chunks a second counted; old FILTER's steps and the new effects' softening measured |
 | 2 Song (**built 2026-11-14, branch `mods`: section 15**) | `ModData mods[2]` on `TrackData`, `Session::setMod`, `applyProject` sends them, `mod` / `modsteps` words, undo through `soundMark`, the TYPE carry, another family or a choice clears (on load too). `tests/modapp_test.cpp` | Old songs and everykind as they were; round trip; NaN and 1e300 held |
-| 3 DEVICE knob | The X-held fields in LIVE OUTPUT's place (once the owner has seen the still), MODS FULL, hold B delete, the dice, the MOD heard while stopped, X checked before Y and the stick | `under_test`, the three order tests (section 7), stills, hints at 0, `textviews`, `themeviews`, `ctest -R words` |
-| 4 FX knob | The same on slot settings and SENDS, in the heading's place; X checked before L1 / R1 | The same |
+| 3 DEVICE knob (**built 2026-11-15: section 18**) | The X-held fields in LIVE OUTPUT's place (once the owner has seen the still), MODS FULL, hold B delete, the dice, the MOD heard while stopped, X checked before Y and the stick | `under_test`, the three order tests (section 7), stills, hints at 0, `textviews`, `themeviews`, `ctest -R words` |
+| 4 FX knob (**built 2026-11-15: section 18**) | The same on slot settings and SENDS, in the heading's place; X checked before L1 / R1 | The same |
 | 5 MOD tab | The tab, both MODs, the list of targets, STEPS, L1 / R1 | The same, plus the top bar at every size |
 | 6 Marks | The brass mark on DEVICE and FX (if the owner wants it), the shape picture | Pixels read in BROWN and PAPER |
 | 7 Depth lanes | Lanes 22 / 23 as MOD DEPTH automation (owner's call) | Scene move and undo tests |
@@ -843,6 +843,9 @@ listening. Its four findings:
 
 ### The owner's calls before batch 3
 
+**Answered 2026-11-15: "go with all your picks"**, each final: every call below at its recommended
+answer. Section 18 says how each is built.
+
 | # | Call | Recommended |
 | --- | --- | --- |
 | A | JAX-EP's TUNE (DCO-2) under a MOD steps in semitones, as its knob does: allow it, keep it out (as a choice), or make the MOD's TUNE glide | **Allow it as it is**: a stepped pitch wobble is a sound of its own, and it is what the knob does; a gliding TUNE is a change to the synth |
@@ -854,3 +857,52 @@ listening. Its four findings:
 | G | "HOLD X: MOD" in DEVICE MAIN's hints bar (it is full) | **On the help card only**, unless it fits with `gHintsOver` at 0 |
 | H | Nine effects glide a setting a call at a time, so under a MOD they are not the same to the bit in other blocks (at most 0.0024 apart, about 46 dB down), and a fast MOD on them is mostly smoothed away (CLAUDE.md) | **Leave them**: mending it changes their glide on old songs |
 
+
+## 18. Batches 3 and 4, X held on a knob, as built (2026-11-15, branch `mods`)
+
+**Built and tested; nothing heard, nothing on the handheld.** `main` was joined first (JAX-EP's
+straight VCA, the picker's spread-out follow, emptied folders kept, the idle redraw: two
+conflicts, CMakeLists.txt's test list and CLAUDE.md's test count, both sides kept). The owner's
+calls A to H are taken as answered. One piece of code serves both screens: `app/mod_knob.hpp`
+(`ModKnob`), handed the knob, a place to draw and the screen's own button order.
+
+| Part | What is there |
+| --- | --- |
+| Where | DEVICE MAIN: a macro that takes a MOD (`modTargetFits`; Phazed's CHORUS and OCTAVE, QMOD's OCTAVE do not). FX: a TRACK's slot setting that is an amount, and its two sends. Not the list, a bus, the master, a choice: X only hears there, as before |
+| The gesture | UP / DOWN DEPTH by 1% on whole percents; **the first UP on a knob with none makes LFO, SINE, 1 BAR, +25% (call C) in the first free MOD; DOWN makes nothing**. The stick: up / down DEPTH smoothly (1.2 a second at full push, squared), left / right RATE a click (5 a second held). LEFT / RIGHT RATE; A SHAPE (SINE ... DRIFT, STEPPER, SINE); L1 / R1 PHASE or LENGTH; Y the dice (call F); hold B deletes (a second, any other press calls it off). The ends stop. A held D-pad repeats: DEPTH at the cursor's pace, RATE at a list's |
+| MODS FULL (call D) | Both MODs aimed elsewhere: the strip says MODS FULL and BOTH MODS ARE IN USE, no chips, nothing is made |
+| The order (section 7) | The X-held check comes right after X in `onButton`, before Y's ROLL (QMOD), B's middle / default, L1 / R1's track (FX), A's turn, the D-pad's cursor; `update` hands the stick to the knob and returns. X is not the MOD's with A held. A stick still pushed when X is let go moves no cursor until it has come back (both screens), and one pushed when X goes down turns nothing until it has come back |
+| The fields (call B) | DEVICE: in the LIVE OUTPUT strip's place (one row: the knob and MOD n; SHAPE; DEPTH; RATE; PHASE or LENGTH; NOW). FX: in the heading's place (the knob and NOW above, the four fields below); **on SENDS in the other send's row**, so the send held stays in view (a choice made here: the SENDS heading is one line). Only while X is held. A tight row (LARGE at every size), each chip under its field from one constant (`kDeviceModPlaces`, `kFxModPlaces`), the dice at the left, HOLD B under the knob's field. NOW: `Engine::modShown`, purple from the middle |
+| Heard while stopped (call E) | `Session::hearMods(track, mask, screen)` each frame X is held: `ModAudition` sent only on a change, nothing while playing, sent again after Stop; `keepModsHeard` (App) lets go on X up, another screen or track; panic and a new song forget it. The synth's note is held while X is (`auditionHeld`), on DEVICE and on FX |
+| Hints (call G) | "HOLD X: mod" where it fits at `gHintsOver` 0: DEVICE MAIN on a macro that takes one (Phazed, JAX-EP; not QMOD, whose ROLL leaves it 50 pixels short), FX on SENDS (a setting's bar is 22 pixels short). The help card's X line: "hear it. Held: a hit's or a note's effects, a knob's MOD" |
+| Call A | JAX-EP's TUNE takes a MOD as it is (every JAX-EP macro fits): nothing to build |
+| Call H | The nine effects that glide a call at a time are left as they are |
+| `Session::setMod` | While a MOD stays on, only the fields and steps that changed are sent (a turn every frame was 26 commands) |
+| Stills | `device-mod-held`, `-stepper`, `-new`, `-full`, `-deleting`; `fx-mod-held`, `-stepper`, `-new`, `-full`, `fx-sends-mod-held`, in `kViews` (`textviews` at four sizes, `themeviews` in six themes) |
+| Tests | `tests/modknob_test.cpp` (`modknob`, `TIMEOUT 120`, under a second): the words and the dice; the gesture on a macro; MODS FULL, choices, FOLDER, A held; the order (Y before X still rolls, X held Y is the dice, the stick and D-pad keep the cursor, B is not the middle, the stick after X let go); heard while stopped and let go (X up, another screen, Play and Stop, a tap); only what changed is sent (a SQUARE's offset is DEPTH exactly, a STEPPER's first value); panic; B let go out of sight; X let go out of sight; the drawn strip and heading (every field where its constant says, each chip at its field, the widest values clear of the next, NOW purple, DELETING, MODS FULL, the plain bar and LIVE OUTPUT back pixel for pixel, the heading back pixel for pixel); the same pixels at XL as at LARGE. `idle_test` has two parts (DEVICE and FX: made, heard, let go). `app_test`'s help card line. `ctest`: 50 of 50 |
+
+**Choices made here** (each one place): DOWN with no MOD makes nothing (call C names UP); a STEPPER
+reached by A with a row never written is rolled, so it moves; the dice's LFO rates are 1/8 to 4
+BARS (the faster ones are mostly smoothed away on the newer effects); NOW is drawn on both screens
+(the plan's "what moves" asked for it on the MOD tab; here it shows the gesture is alive); on SENDS
+the fields take the other send's row, not the one-line heading.
+
+**Mutants** (made by a script, each built and run, put back; `git diff` read before the commit):
+**55 made, 52 killed (one by not building), 3 equivalent.** Eight survived at first and have
+tests now (B let go on another screen, X let go on another screen, the stick pushed when X goes
+down, the first stick push up making one, the fixed lettering, FX's A-held check, FX's stick after
+the knob, and DEVICE's stick after X let go: its test held the stick 20 frames, and the cursor went
+round the four rows back to where it started). Equivalent: LENGTH's ends (`modLength` holds it
+anyway); FX letting go when the knob under the cursor changes (it cannot while X is held: every
+direction and L1 / R1 are the knob's); sending every field instead of the changed ones (the same in
+the engine, only more commands). Not counted: `main.cpp`'s view name renamed (`textviews` holds the
+names, `modknob` does not), and one idle part's UP taken out (the session still passes: X held
+stirs the redraw whatever it shows).
+
+**What only the tests and stills saw**: everything. No MOD has been heard and nothing has run on
+the handheld.
+
+**Left**: batch 5 (the MOD tab: both MODs, the list of targets, a STEPPER's row written by hand,
+SLEW and CHANCE, which the knob does not reach), 6 (the brass mark on the target's own bar, the
+shape picture), 7 (lanes 22 / 23 as DEPTH automation), 8 (LEVEL and PAN), 9 (the cost on the
+busiest song, SPEED TEST).
