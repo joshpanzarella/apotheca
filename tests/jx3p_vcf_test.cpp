@@ -399,6 +399,18 @@ static void testTheLowEnd() {
             if (printing()) std::printf("  the low end at RESONANCE %.1f: %.0f Hz under a 2 kHz cutoff %.2f dB (want %.2f; the old loss %.2f)\n", res / 10.0, hz, at, want, -dB(1.0 + k));
         }
     }
+    // At RESONANCE 0 nothing is given back, the low end's two poles are not run and wait at 0, so a
+    // share given back again starts from nothing (with the feedback's hold), not from where they were.
+    {
+        Ir3109 f;
+        VcfCoef g;
+        g.set(2000.0, 48000.0);
+        const float k = resFeedback(80);
+        for (int i = 0; i < 4800; ++i) f.run(0.5f, g, k, bassGiven(k, kBassKept));
+        CHECK(f.l[1] > 0.4f);
+        f.run(0.5f, g, 0.f, 0.f);
+        CHECK(f.l[0] == 0.f && f.l[1] == 0.f);
+    }
     const double octave = dB(gainAt(1000.0, 2000.0, 90));
     CHECK(octave < -9.0);
     if (printing()) std::printf("  the octave under the cutoff at RESONANCE 9: %.2f dB\n", octave);

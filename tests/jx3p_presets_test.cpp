@@ -291,7 +291,7 @@ static void testNamsThree() {
         // ORGAN I SINGS THE KEY PLAYED (the owner's call, 2026-11-15: the cutoff's range is 49.84 Hz to
         // 49.84 kHz, set by this patch; until then it sang 20.8 semitones under the key, 21 cents off
         // the grid, out of tune with every other track). The patch as written, but for the chorus (it
-        // bends every pitch read off the sound: batch 5). What is heard is the filter's sine, 15 dB over
+        // bends every pitch read off the sound: batch 5). What is heard is the filter's sine, 13 dB over
         // DCO-1's fundamental (DCO-1 is at 16', an octave under the key, so the sine sits on its second
         // harmonic and is held there by it): every key from 48 to 84 within 1 cent of the grid (measured
         // 2026-11-15: 0.4 at worst from 48 to 72, 0.9 from 36), read over five seconds.
@@ -316,7 +316,7 @@ static void testNamsThree() {
                             cents(cv, written), dB(level / dco), j->voiceHz(0));
             CHECK(std::fabs(off) < 1.0);                       // in tune with the grid, and so with the other tracks
             CHECK(std::fabs(cents(cv, written)) < 0.5);        // the cutoff's CV is the key's own pitch (KEY FOLLOW 9.8 is 100%)
-            CHECK(level > 4.0 * dco);                          // it is the filter that is heard: 12 dB and more over the DCO (15.3 measured)
+            CHECK(level > 4.0 * dco);                          // it is the filter that is heard: 12 dB and more over the DCO (13.2 measured; 15.3 before the resonance was mended, 2026-11-16)
             // It sings steadily: as loud over the last two and a half seconds as over the two and a half before.
             CHECK(level > 0.02 && std::fabs(dB(rmsOf(band, 48000 + 120000, n) / rmsOf(band, 48000, 48000 + 120000))) < 0.5);
         }

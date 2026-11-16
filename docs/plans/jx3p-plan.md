@@ -39,6 +39,8 @@ what it learned". **Batches 8b and 8c are done (2026-11-15)**: Twin Analog's
 code, its test, the quality limit and the load watch are out, and the docs
 say so; see "Batches 8b and 8c: what they learned". **What is left is batch
 9**, which waits on a source of recordings.
+**The filter's resonance was mended after the owner's report (2026-11-16,
+branch `jaxfilter`)**: see "The filter's resonance: the owner's report".
 Nobody has heard anything: every figure is a test's.
 
 ## The recommendation
@@ -358,9 +360,9 @@ feedback amount... controlled by mTR103, 104").
 | --- | --- | --- |
 | Model | **Four one-pole stages, a "zero-delay feedback" filter solved as a linear system each sample**, with each stage's soft clip taken from the previous sample's value (no iterations). This is the method the 0.68% prototype timed | Holds its pitch and resonance at 48 kHz without oversampling. An exact nonlinear solve needs iterations each sample; not budgeted |
 | Saturation | One soft clip (a ratio of polynomials, not `tanh`) where the feedback meets the input, and one per stage, as above | Keeps self-oscillation at a steady level |
-| Resonance | Feedback 0 to 4 (4 = the edge of oscillation in a 4-pole), mapped so dial 10 is just past it | NAM's Organ I uses res 10 as a pitched source |
+| Resonance | Feedback 0 to 4 (4 = the edge of oscillation in a 4-pole) straight to 9.5, then to 5 at 10 (2026-11-16; it was 4.6 at 10, the edge at 8.7) | NAM's Organ I uses res 10 as a pitched source |
 | Starting to sing | **At each note-on a fixed 1e-4 is put into stage 1.** A filter that is linear near zero stays at exact zero with nothing in, so without this res 10 on silence never starts | It is the same number every time, so the same bits |
-| Bass loss | **Not compensated**: the low end falls as resonance rises, by 1/(1 + feedback) | A trait of the IR3109 on the Juno-60, **not documented on the JX-3P**. The owner's call |
+| Bass loss | **Half given back** (2026-11-16, the owner's report): the input low-passed at a quarter of the cutoff, added outside the loop, so the low end is (1 + k / 2) / (1 + k) of itself, 4 to 5 dB down at the top (it was 1/(1 + feedback), 13 to 15) | A trait of the IR3109 on the Juno-60, **not documented on the JX-3P**. See "The filter's resonance" |
 | Self-oscillation level | **SELF**: a guess of 6 dB under the saw's peak. SN adjustment 5-3 (p.7) trims it to 600 mV peak to peak, but **the SN prints no figure for the saw** (adjustment 3-4 sets the D/A "for the maximum amplitude without clip"), so there is no ratio to take. Batch 9's recordings can give it | SN p.7 |
 | Cutoff CV | Sum of CUTOFF, KEY FOLLOW × key, LFO, ENV (with its polarity), BRILLIANCE. Exponential: a volt an octave | SN p.6: "KCV, CUTOFF, LFO and ADSR" |
 | Cutoff in Hz | **A guess**: dial 0 to 10 covers 10 octaves, 15 Hz to 15 kHz, until a recording | No source gives it |
@@ -1312,6 +1314,124 @@ filter-open saw at LEVEL 7 peaks about 9% over the VCA's clip point. The moving-
 is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend, one run:
 6 notes 0.53%, the worst patch 0.97%, moving cutoff 1.78%, Phazed 0.7% beside them). Nothing here has been heard.
 
+### The filter's resonance: the owner's report (2026-11-16)
+
+**The owner (2026-11-15, listening on the handheld): "The resonance makes the
+low end of the signal basically disappear and when it is turned up all the way
+it just squeals in a very unpleasant way."** Branch `jaxfilter`. Measured
+first, then mended; **nobody has heard the mend**, and nothing ran on the
+handheld. Before/after WAVs were rendered for the owner (not in the repo).
+
+**What caused it, in numbers** (through the synth: key 48's saw, KEY FOLLOW 0,
+dB against the note's fundamental at RESONANCE 0):
+
+| | Before | After |
+| --- | --- | --- |
+| A bass note's fundamental at RESONANCE 8 / 10 (key 36 under CUTOFF 5) | -13.2 / -13.6 dB | **-4.4 / -4.2** |
+| The same, key 48 under CUTOFF 3 (an octave and a half under the cutoff) | -9.6 / -9.0 | -7.9 / -7.3 |
+| RESONANCE 10 under CUTOFF 5 (1.6 kHz): the note / the sine it sings | -13.1 / **-3.1** (the sine 10 dB over the note) | -4.7 / -3.9 (within a dB) |
+| ...under CUTOFF 8 (12.5 kHz) | the sine **-0.7**, the note -13.9, sidebands at the sine +- the note 6 dB under the sine | the sine -13.4, the note -4.5; nothing off the note's harmonics within 6.7 dB of it |
+| Where it starts to sing on the dial | 8.7 (the top 13% of the knob) | **9.6** |
+| The singing, filter alone, from silence: its level | 6.0 dB under a saw's peak at 80 Hz, 6.5 at 4 kHz, **2.9 at 10 kHz** | 7.2 dB under at every cutoff, 80 Hz to 10 kHz |
+| ...its pitch against the cutoff | +0.7 cents at 80 Hz, +10 at 1 kHz, **+30 at 4 kHz**, +24 at 10 kHz | within 0.5 cents everywhere |
+| ...its harmonics / what is not a harmonic at 10 kHz (folded back) | 55 dB / 40.6 dB under | 51 dB / 46.6 dB under |
+| A saw chord swept with RESONANCE 10 (the WAVs), its loudest sample | 1.00 (it hit full scale: the squeal at the top of the sweep) | 0.68 |
+
+Three causes:
+1. **The bend was taken from the sample before** as a gain. Where the filter
+   sings that is a sample late: the higher the cutoff, the later it is in the
+   sine, so it sang sharp (30 cents at 4 kHz), louder at the top (3 dB more
+   at 10 kHz), and a bass note in the loop beat the sine into sidebands. The
+   one-sample lag, not the bend's shape, was the buzz.
+2. **The edge was low and the singing loud**: feedback 4.6 at RESONANCE 10,
+   the edge (4) at 8.7, the sine 6 dB under a saw's peak.
+3. **The bass loss**, 1 / (1 + feedback): 13 to 15 dB at the top of the
+   knob, so the note under the singing was 10 dB under the sine.
+
+**What is known of the real filter, and what is a guess.** Known (SN p.6,
+p.3): a 4-pole low-pass, an IR3109, four OTA stages, "feedback amount and the
+amplitude of resonance is controlled by mTR103, 104" (transistors: a pair
+like that bends as a tanh does, which is why the bend stays on the feedback),
+and that it sings (NAM: Organ I uses RESONANCE 10 as its sound; SN p.7 trims
+the sine to 600 mV, with no saw figure beside it). Known of the IR3109 in
+other Roland synths (the Juno-60 and 106, not the JX-3P's own notes): the low
+end falls as resonance rises. **Guesses (SELF)**: how much of the low end the
+JX-3P keeps, where its edge is on the dial, how loud it sings against a saw,
+the bend's shape. **One reading of the booklet**: B8 Juicy Funk at RESONANCE
+8.8 is a funk sound, not a sine organ, so the edge is likely higher than 8.8.
+And Organ I (RESONANCE 10, DCO-1 at 16') is evidence that at the top the
+sine stands well over the octave under the cutoff, so that octave keeps its
+loss.
+
+**What was built** (`jx3p/ir3109.hpp`; its table says what is read and what is
+SELF):
+
+| Plan said (batch 3) | Built now | Why |
+| --- | --- | --- |
+| The bend from the sample before, as a gain | The bend's gain read at where the feedback is GOING: the last three samples read ahead as a steady part plus a sine at the cutoff (`turn` = 1 + 2 cos of the cutoff's turn, worked out with the coefficient). Still one division, no iterations | Tried first: the tangent at the sample before (worse: 267 cents flat at 10 kHz), a straight line from the last two (8 cents sharp and 2 dB down at 4 kHz), the sine alone (bass notes at 12.5 kHz 3 dB off). Against the exact solve (Newton to the end) this one is within 0.1 dB and 0.3 cents |
+| A soft clip, flat past 3 knees | The same ratio of polynomials with no flat top: it rises on at a ninth of its first slope | A flat top is a hard clip |
+| Feedback 0 to 4.6, straight | Straight to 4 at 9.5 (`kResEdgeDial`), then to **5.0** at 10 (`kResTop`) | **Straight to 4.21 (edge at 9.5) was tried and failed Organ I**: so near the edge its sine was held by whichever DCO's harmonic was stronger, and DCO-2 (FINE 2.3, 27 cents flat) won by 1 dB: Organ I played 27 cents flat at every key. At 5.0 the sine holds DCO-1's harmonic by 2.8 dB |
+| `kFeedbackKnee` 2.75: the sine 6 dB under a saw's peak | **2.0: 7.2 dB under** | At 1.8 (8.1 dB under) Organ I's sine was 12.4 dB over its 16' DCO, against the test's 12; at 2.0, 13.2 |
+| Bass loss not made up (the owner's call then) | **Half of it given back** (`kBassKept` 0.5): the input through two plain one-poles at a quarter of the cutoff (`kBassCorner`), times 0.5 k / (1 + k), added to the output | Added outside the loop, so it moves no pitch and no edge, and the octave under the cutoff keeps its loss (11.4 dB down at RESONANCE 9: Organ I unchanged). Tried and not built: a high-pass in the loop (bass out of the feedback: the pitch of the singing moves 1 to 2 semitones, the edge moves), the input lifted (makes up the octave under the cutoff too: Organ I's sine sank under its DCO). **kBassKept 0.7** (2.5 dB lost) put A8 E. Piano I (LEVEL 9.9) 13 samples into the VCA's clip: 0.6 was clean but close |
+| — | At RESONANCE 0 the bend, its division and the low end are not worked out | Saves what the rest costs, for the 15 patches at 0 |
+
+**The presets** (C3 G3 C4 E4, the loudest tenth of a second; jx3p_presets_test
+`--print`): the middle of the 32 -16.6 to **-15.9 dB**, the quietest B15 Planet
+-36.1 to **-34.0**, the loudest now A13 Chime -6.6 to **-4.6** (B7 -5.7, the
+same). The patches with RESONANCE came up with their low end: A11 Harpsichord
+-28.6 to -21.2, B9 Filter Flow -19.5 to -14.2, B11 Sync Wah -24.6 to -19.8, B6
+Synth Brass II +2.7, A15, B13, B15 and A13 about +2, A8, A9, A4, B3 1.2 to 1.6.
+Those whose sound is the singing came down: B14 Pulsar -9.9 to -11.6, A16
+Voice -11.4 to -13.0, A3 Organ I -9.9 to -11.4. The 15 at RESONANCE 0 are as
+they were. **Nothing reaches the VCA's clip as written** (six keys: A8 E.
+Piano I peaks 1.56 out of the synth, was 1.46; the rest 1.31 at most, A13
+Chime, was 1.17), **and now not with every macro full either** (twenty did,
+B8 at 1.79; now A8 1.54 is the highest). Organ I: within 0.35 cents of the key
+from 48 to 84, its sine 13.2 dB over its DCO-1 (it was 15.3).
+
+**The cost: over today's on resonant patches, under it at RESONANCE 0.**
+Timed in turns against the build before (60 rounds of half a second each,
+the best; a busy desk): 6 notes of A1 (RESONANCE 0) **0.49 to 0.50%** against
+0.51 to 0.54; the worst patch, B15 Planet (RESONANCE 10, its cutoff moving
+with the envelope) **1.14 to 1.19%** against 0.98 to 1.02 (+15%); the moving
+cutoff (RESONANCE 5) **1.92 to 2.01%** against 1.72 to 1.78 (+13%). By
+instruction counts (callgrind) the filter's own work on Planet went from 64 to
+90 million for the same sound: the low end's poles and the read-ahead, about
+half each. Working the filter on locals (the WEAR rule) bought nothing here.
+**Not run on the handheld**, where 6 notes were 9.6% of a core: a resonant
+patch may be about 11%.
+
+**Tests** (`jx3p_vcf_test`): `testItSings` (the level at 80 Hz to 10 kHz
+within 0.3 dB of 7.2 under, on its cutoff within 1 cent, harmonics 45 dB
+under, nothing folded back within 40 dB at 10 kHz, the edge: 9.4 dies to exact
+zeros, 9.6 sings), `testTheBend` (no flat top, rising on at a ninth),
+`testKeyFollow` (now within 1 cent; it allowed 20), `testTheLowEnd` (replaces
+`testBassLoss`: (1 + k / 2) / (1 + k) within 0.6 dB, the octave under the
+cutoff 9 dB and more down, through the synth within 5 dB of RESONANCE 0 at 8,
+9.5 and 10, the poles at rest at RESONANCE 0), `testSingsBesideTheNote` (the
+sine within 3 dB of the note's fundamental under CUTOFF 5; under CUTOFF 8
+nothing off the note's harmonics within 5 dB of it). `jx3p_presets_test`'s
+pins were measured again. `effects_test`'s whole-song sum was remade (its
+JAX-EP track is at RESONANCE 0, which now skips the feedback's sum: the last
+bits moved, the rms is the same to nine figures, and the 40 pinned renders and
+the maths line are the same on main 0.565 and here).
+
+**Mutants: 19 made, 19 killed** (one only after a check was added): the bend
+read from the sample before, `turn` at 2, its sign; the flat top back; the
+edge at 8.7; the top at 4.6; the knee at 2.75; `kBassKept` 0 and 0.7; the low
+end not added, one pole of it, its corner doubled, its second pole fed the
+input, its share without the / (1 + k), its poles not put to rest at
+RESONANCE 0 (killed once `testTheLowEnd` read them); the RESONANCE-0 path taken
+under 1; the feedback stored without the knee; the denominator 1% off; the
+climb above the edge 1% off.
+
+**Known, not mended**: with a chord at RESONANCE 10 every voice sings at the
+cutoff and the sines beat (the band's level swings 14 to 17 dB in 20 ms
+windows; it swung 12.5 before): six filters, as on the real one. Under the
+highest cutoffs (12.5 kHz) the lowest notes still beat the weak sine (sidebands
+within a dB of it, all of it 13 dB under the note): the bass is in the
+feedback, as on the real one; keeping it out moved the pitch.
+
 ## 7. Risks
 
 | Risk | What is done about it |
@@ -1342,7 +1462,7 @@ is still over the 1.2% target (1.77 / 1.79% in the review's runs; after the mend
 | After Stop and Play, the last notes' releases ring on beside six fresh voices (up to twelve for a release's length), so Play from the top is the same performance; or they take voices from the new notes (faithful to six, but every Play after a long pad differs) | **Ring beside** (`kTailVoices`) |
 | KEY FOLLOW: 9.8 is 100% (from NAM's Organ I) | Yes, until a recording says otherwise |
 | Where the cutoff's Hz sit (batch 3): CUTOFF 0 to 10 is 15 Hz to 15 kHz at note 60 (Organ I at C4 sings at 79 Hz, in tune with itself), or anchored so Organ I sings the key played (CUTOFF 2.4, KEY 9.8: the cutoff is the key's own pitch) | **Decided (owner, 2026-11-15): anchored.** 49.84 Hz to 49.84 kHz (the same span), held at 20 kHz. It was 15 Hz to 15 kHz |
-| Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | Keep it until a recording says otherwise |
+| Bass loss with resonance (the Juno-60 has it; the JX-3P is not documented) | **Changed by the owner's report (2026-11-15: "the low end basically disappears")**: half given back (`kBassKept` 0.5; "The filter's resonance"). A recording would settle how much the real one keeps |
 | Note starts on the CPU's 10 ms grid (faithful, up to 10 ms late) or on the sample | On the sample |
 | BBD hiss, the hidden Poly II and noise LFO | Not copied |
 | **Where batch 9's recordings come from**: the owner's own unit, a hired one, or dry multisample libraries of a real unit (Roland's plug-out is a model, not a source) | A hired or borrowed unit: every knob of the table at 0, 2.5, 5, 7.5 and 10, one held note, dry. A multisample library can give the patches' speeds but not each knob. Without one, batch 9 cannot start and the speeds stay guesses |

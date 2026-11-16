@@ -96,8 +96,9 @@ constexpr bool kStealLetGoFirst = true;     // a steal takes the oldest voice wh
 constexpr int kKeyFollowFull = 98;          // KEY FOLLOW 9.8 is 100% (read by the voices' tick, jx3p.cpp)
 constexpr float kBassKept = 0.5f;           // the share of the low end RESONANCE takes away that is given back
                                             // (owner's report, 2026-11-15: "the low end basically disappears"):
-                                            // at RESONANCE 10 it is 2.4 dB under RESONANCE 0 (it was 13 to 15).
-                                            // 0: the IR3109's own loss, 1 / (1 + feedback); 1: none lost
+                                            // a bass note at RESONANCE 8 to 10 is 4 to 5 dB under RESONANCE 0
+                                            // (it was 13 to 15). 0: the IR3109's own loss, 1 / (1 + feedback);
+                                            // 1: none lost. At 0.7, A8 E. Piano I reached the VCA's clip
                                             // (jx3p/ir3109.hpp, bassGiven)
 constexpr bool kKeysOnTheSample = true;     // a key starts (and lets go) on its own sample; false: on the
                                             // 10 ms grid of one CPU loop, as the real one (up to 10 ms late)

@@ -24,29 +24,33 @@
 // stage's cutoff).
 //
 // THE OWNER'S REPORT (2026-11-15: "the resonance makes the low end basically
-// disappear and when it is turned up all the way it just squeals"), measured
-// (the plan, "The filter's resonance: the owner's report"):
+// disappear and when it is turned up all the way it just squeals"), measured and
+// mended 2026-11-16 (the plan, "The filter's resonance: the owner's report"):
 //  - The bend was taken from the sample BEFORE. Where the filter sings that is
 //    a sample late: it sang sharp of its cutoff (10 cents at 1 kHz, 30 at 4
-//    kHz), 3 dB louder at 10 kHz than at 1 kHz, and with a bass note under a
-//    12.5 kHz cutoff the sine was beaten by the note into sidebands 6 dB under
-//    it (a buzz). Read ahead, it sings on its cutoff within 0.2 cents at every
-//    cutoff, at one level, and those sidebands are 12 to 25 dB down (all but
-//    the lowest key under the highest cutoffs: below).
-//  - RESONANCE 10 was feedback 4.6 and the edge 4 was at 8.7: the top 13% of
-//    the knob was all singing, and the singing was 6 dB under the saw's peak
-//    while the note under it was 13 to 15 dB down (the bass loss): a sine at
-//    the cutoff 10 dB over the note. Now the edge is at 9.5 (RESONANCE 10 is
-//    feedback 4.21), the singing 10 dB under the saw's peak, rounder (its
-//    harmonics 63 dB down, were 55), and the low end is given back (next).
-//  - The bass loss (1 / (1 + feedback): 13 to 15 dB at the top) is mostly given
-//    back: a share of the input, low-passed (two poles at a quarter of the
-//    cutoff), is added to what comes out, so the low end at RESONANCE 10 is
-//    2.4 dB under RESONANCE 0 (kBassKept 0.7). It is added outside the loop, so
-//    it moves no pitch and no edge, and the octave under the cutoff keeps its
-//    loss (A3 Organ I's sine stays over its 16' DCO).
+//    kHz) and 3 dB louder at 10 kHz than at 1 kHz, and under a 12.5 kHz cutoff
+//    it stood 13 dB over the note it was played with, beaten by that note into
+//    sidebands 6 dB under itself (a buzz). Read ahead, it sings on its cutoff
+//    within 0.5 cents at every cutoff, at one level (7.2 dB under a saw's peak,
+//    80 Hz to 10 kHz), and under 12.5 kHz it is 6.7 dB UNDER the note.
+//  - RESONANCE 10 was feedback 4.6 and the edge (4) was at 8.7: the top 13% of
+//    the knob all sang, 6 dB under a saw's peak, over a note the bass loss had
+//    taken 13 to 15 dB down: a sine at the cutoff 10 dB over the note. Now it
+//    is straight to the edge at 9.5, then climbs to 5 at 10 (kResTop): from 9.6
+//    it sings. (Straight to 4.21 at 10, so near the edge, A3 Organ I's two
+//    DCOs, 27 cents apart, took turns to hold the singing and it played 27
+//    cents flat: the singing must be strong enough to hold DCO-1's harmonic.)
+//  - The low end is mostly given back: a share of the input, low-passed (two
+//    plain one-poles at a quarter of the cutoff), is added to what comes out,
+//    outside the loop, so it moves no pitch and no edge, and the octave under
+//    the cutoff keeps its loss (Organ I's sine stays 13 dB over its 16' DCO).
+//    At RESONANCE 8 to 10 a bass note is 4 to 5 dB under RESONANCE 0 (it was 13
+//    to 14). Half of what the feedback takes is given back (kBassKept 0.5, at
+//    0.7 A8 E. Piano I, at LEVEL 9.9, reached the VCA's clip).
 //  - The bend had a flat top past three knees (a hard clip); it is gone: the
 //    curve rises on past them at a ninth of its first slope, with no corner.
+//  - At RESONANCE 0 (no feedback) the bend and its division are not worked
+//    out at all, and the low end's poles are not run.
 //
 // NOT BUILT: a bend in each stage (the plan's words). Tried two ways
 // (2026-11-14): bending what goes into each OTA made a full saw at RESONANCE 0
@@ -81,23 +85,27 @@
 //   | ENV MOD 10                   | 10 octaves (kVcfEnvOctaves), straight in the  | SELF   |
 //   |                              | dial; polarity turns it over                  | OM p.25 (polarity) |
 //   | BRILLIANCE 0 / 5 / 10        | -2 / 0 / +2 octaves (kBrillianceOctaves)      | SELF (the knob is on the panel) |
-//   | RESONANCE 0 to 10            | feedback 0 to 4.21, straight: 4, the edge, is | SELF; that 10 sings: NAM Organ I; |
-//   |                              | at 9.5 (kResEdgeDial), so it sings from 9.6   | that 8.8 (B8 Juicy Funk) does not: |
-//   |                              | (was 0 to 4.6, singing from 8.7)              | a reading of the booklet (2026-11-15) |
+//   | RESONANCE 0 to 10            | feedback straight from 0 to 4, the edge, at   | SELF; that 10 sings: NAM Organ I; |
+//   |                              | 9.5 (kResEdgeDial), then to 5.0 at 10         | that 8.8 (B8 Juicy Funk) does not: |
+//   |                              | (kResTop): it sings from 9.6 (was 0 to 4.6    | a reading of the booklet (2026-11-16) |
+//   |                              | straight, singing from 8.7)                   |        |
 //   | The feedback's bend          | x (27 + x^2) / (27 + 9 x^2) of x /            | SELF (its shape); that it is |
 //   |                              | kFeedbackKnee, a ratio of polynomials, no     | the feedback's: SN p.6, mTR103, 104 |
 //   |                              | flat top (was flat past 3 knees)              |        |
 //   | Where the bend is read       | at where the feedback is going, from the last | SELF (was the sample before: |
-//   |                              | three (exact for a steady part and a sine at  | 2026-11-15) |
-//   |                              | the cutoff)                                   |        |
-//   | kFeedbackKnee                | 2.75: the sine it sings at RESONANCE 10 is    | SELF: SN p.7 trims it to 600 mV, |
-//   |                              | 10 dB under the saw's peak (was 6 dB, at 4.6) | but prints no saw figure |
+//   |                              | three (exact for a steady part and a sine at  | until |
+//   |                              | the cutoff)                                   | 2026-11-16) |
+//   | kFeedbackKnee                | 2.0: the sine it sings at RESONANCE 10 is 7.2 | SELF: SN p.7 trims it to 600 mV, |
+//   |                              | dB under the saw's peak (was 2.75: 6 dB, at   | but prints no saw figure |
+//   |                              | 4.6), its harmonics 51 dB under it            |        |
 //   | Starting to sing             | 1e-4 put into stage 1 at each key (kVcfKick)  | SELF   |
-//   | Bass loss                    | mostly given back: the input, low-passed (two | SELF: the IR3109 loses it (the |
-//   |                              | poles at a quarter of the cutoff), times      | Juno-60's does; the JX-3P's is |
-//   |                              | kBassKept k / (1 + k), added to the output:   | not written down). The owner's |
-//   |                              | 2.4 dB lost at RESONANCE 10 (was 1 / (1 + k), | report, 2026-11-15: "basically |
-//   |                              | 13 to 15 dB). jx3p.hpp: kBassKept             | disappear" |
+//   | Bass loss                    | half given back: the input, low-passed (two   | SELF: the IR3109 loses it (the |
+//   |                              | one-poles at a quarter of the cutoff,         | Juno-60's does; the JX-3P's is |
+//   |                              | kBassCorner), times kBassKept k / (1 + k),    | not written down). The owner's |
+//   |                              | added to the output: (1 + k / 2) / (1 + k) of | report, 2026-11-15: "basically |
+//   |                              | the low end comes out, 4 to 5 dB down at      | disappear" |
+//   |                              | RESONANCE 8 to 10 (was 1 / (1 + k), 13 to 15) |        |
+//   |                              | jx3p.hpp: kBassKept                           |        |
 //   | The S/H's smoothing          | env.hpp's Hold, 1 ms, on the tick's part of   | SELF   |
 //   |                              | the CV (in octaves), landing 1e-3 of an octave|        |
 //   |                              | (kVcfCvLands) from its target; the key moves  |        |
@@ -122,8 +130,8 @@ constexpr double kVcfEnvOctaves = 10.0;   // SELF: ENV MOD 10
 constexpr double kBrillianceOctaves = 2.0;// SELF: BRILLIANCE 0 and 10, from 5
 constexpr double kResEdgeDial = 95.0;     // SELF: RESONANCE 9.5 is the edge, feedback 4 (it was 8.7): it sings from 9.6
 constexpr double kResTop = 5.0;           // SELF: the feedback at RESONANCE 10 (it was 4.6): the last half step climbs to it
-constexpr float kFeedbackKnee = 2.0f;     // SELF: where the feedback's bend comes in: RESONANCE 10 sings 8 dB under the saw's peak
-constexpr double kBassCorner = 0.25;      // SELF: the low end given back is under this share of the cutoff (two poles there)
+constexpr float kFeedbackKnee = 2.0f;     // SELF: where the feedback's bend comes in: RESONANCE 10 sings 7.2 dB under the saw's peak
+constexpr double kBassCorner = 0.25;      // SELF: the low end given back is under this share of the cutoff (two one-poles there)
 constexpr float kVcfKick = 1e-4f;         // SELF: put into stage 1 at a key, so RESONANCE 10 can start from silence
 constexpr double kHpfLowHz = 10.0;        // SELF: HPF just over 0
 constexpr double kHpfHighHz = 1000.0;     // SELF: HPF 10

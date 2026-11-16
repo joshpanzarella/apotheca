@@ -272,18 +272,24 @@ effect in those two groups and fails one that does not.
       within half a cent. Its level sways (DCO-2 is 27 cents flat in the patch
       and beats with the sine, twice a second at key 48): the patch, not a fault.
     - **No patch is all but silent** (`testEveryPatchPlays`, the chord's
-      loudest tenth of a second): B15 Planet -36.1 dB, the quietest; B4 Song
-      Whistle -28.3; A11 Harpsichord -28.6; the middle of the 32 -16.6; A1
-      String I -13.5 (PHAZED's first presets: -15.5 to -12.6); B7 Distortion
-      Guitar -5.7, the loudest. The straight taper moved the high-LEVEL
-      patches down against the rest (A11 -17.4 to -28.6, B16 Jet -24.3 to
-      -30.3) and the low ones up (B7 -7.5 to -5.7).
-    - **Six keys as written: nothing clips, A8 E. Piano I peaks 1.46 out of
-      the synth** (0.95 after the track's usual level), every other patch 1.17
-      at most (A16 1.08; they were 2.85 and 2.56). **Macros full: twenty
-      patches reach the clip**, B8 1.79 and A8 1.53 pass 1.5 (it was A8 2.69,
-      A16 2.58, A11 2.53, B8 1.90). Nothing is not-a-number and everything
-      ends. `kVcaClipCeiling` (1.5) is not changed.
+      loudest tenth of a second; measured again 2026-11-16 after the
+      resonance was mended): B15 Planet -34.0 dB, the quietest; B16 Jet
+      -30.3; B4 Song Whistle -28.3; A11 Harpsichord -21.2; the middle of the
+      32 -15.9; A1 String I -13.5 (PHAZED's first presets: -15.5 to -12.6);
+      A13 Chime -4.6, the loudest (B7 Distortion Guitar -5.7). The low end
+      given back moved the patches with RESONANCE up (A11 +7.4, B9 Filter
+      Flow +5.3, B11 Sync Wah +4.8), the quieter singing those at 8 to 10
+      down (B14 Pulsar -1.7, A16 Voice -1.6, A3 Organ I -1.5); the fifteen at
+      RESONANCE 0 are as they were. (Before: Planet -36.1, A11 -28.6, the
+      middle -16.6, B7 the loudest.)
+    - **Six keys as written: nothing clips, A8 E. Piano I peaks 1.56 out of
+      the synth** (1.01 after the track's usual level; it was 1.46), every
+      other patch 1.31 at most (A13 Chime; it was 1.17). **Macros full:
+      nothing reaches the clip either** (since 2026-11-16; twenty patches did
+      while RESONANCE 10 sang loud from 8.7 up, B8 at 1.79); A8 1.54 is the
+      highest. Nothing is not-a-number and everything ends.
+      `kVcaClipCeiling` (1.5) is not changed. **`kBassKept` 0.7 put A8 into
+      the clip** (13 samples): the share given back is held by that.
     - **A song from builds 0.504 to 0.514 loads as saved; a JAX-EP track at
       LEVEL 4 or under is within 2 dB of how it sounded, higher LEVELs
       quieter and clean (LEVEL 6 about 4 dB, LEVEL 8 about 10 dB before its
@@ -666,8 +672,21 @@ effect in those two groups and fails one that does not.
   is put back with it. Its steal takes a key let go before a key held
   (`kStealLetGoFirst`).
 - **The JX-3P's VCF bends only its feedback** (`engine/src/jx3p/ir3109.hpp`):
-  four trapezoidal one-poles solved as one sum, the feedback's soft clip taken
-  from the sample before as a gain. A bend in each stage was tried and taken
+  four trapezoidal one-poles solved as one sum, the feedback's soft clip (no
+  flat top) taken as a gain **at where the feedback is going: read ahead from
+  its last three samples as a steady part plus a sine at the cutoff**
+  (`VcfCoef::turn`; the owner's report, 2026-11-15, "it just squeals").
+  Taken from the sample before, the gain was a sample late where the filter
+  sings: 30 cents sharp at 4 kHz, 3 dB louder at 10 kHz, and a bass note beat
+  the sine into a buzz. **Keep the read-ahead**: a line from the last two, or
+  the tangent at the last, were tried and are worse. RESONANCE is straight to
+  the edge (4) at 9.5, then climbs to 5 at 10 (`kResEdgeDial`, `kResTop`):
+  **straight to 4.21 left Organ I's sine so weak that DCO-2's harmonic, 27
+  cents flat, held it**. Half the low end the feedback takes is given back
+  outside the loop (`kBassKept` 0.5, two plain one-poles at a quarter of the
+  cutoff), so the octave under the cutoff keeps its loss and Organ I's sine
+  stays 13 dB over its 16' DCO. At RESONANCE 0 the bend's sum is not worked
+  out (y4 is the stages' sum). A bend in each stage was tried and taken
   out: it moved the singing's pitch with its level (16 cents off over Organ
   I's three octaves; the plan holds 5). Its coefficient is worked out only on
   a sample its CV moved, from polynomials (`exp2Poly`, `sinPoly`, `cosPoly`:
@@ -2090,6 +2109,7 @@ effect in those two groups and fails one that does not.
 | JAX-EP, the same three rows with Twin Analog's code out (batch 8b, 2026-11-15, three runs; the engine's sound not touched: `effects_test --print` the same before and after; Phazed 0.7 to 1.2%, QMOD 2.8 to 3.9% in them). How it got there, batch by batch (0.08% for the bare skeleton), is in `docs/plans/jx3p-plan.md` | 0.55 to 0.67% / 1.04 to 1.26% / 1.78 to 1.79% |
 | JAX-EP after the cutoff's range and the VCA's 0 dB moved (2026-11-15), `bench`'s three rows, the four quieter of seven runs on a busy desk (Phazed 0.7 to 1.1% in them). The 32 one by one were not timed again. **Not yet run on the handheld** | 0.55 to 0.56% / 1.03 to 1.14% / 1.77 to 1.86% |
 | JAX-EP with the VCA straight and its clip counted (2026-11-15, `bench`'s three rows, the two quieter of five runs on a desk shared with another build; Phazed 1.0 to 1.2% in them). **Not yet run on the handheld** | 0.56% / 1.05 to 1.11% / 1.79 to 1.81% |
+| JAX-EP after the resonance was mended (2026-11-16; the read-ahead and the low end given back), `bench`'s three rows timed in turns against the build before, each the best of 60 half seconds, on a busy desk: before 0.51 to 0.54% / 0.98 to 1.02% / 1.72 to 1.78%. **Over on resonant patches (+15%, +13%), under at RESONANCE 0 (-7%)**. Not run on the handheld | 0.49 to 0.50% / 1.14 to 1.19% / 1.92 to 2.01% |
 | Drums, 8 lanes | 0.1% |
 | FILTER / DRIVE / DELAY / REVERB / CRUSH, one each | 0.03% / 0.12% / 0.02% / 0.07% / 0.01% |
 | TAPE / HALL / HALL with TONE above 50% (a later, slower run: REVERB read 0.09% in it) | 0.13% / 0.18% / 0.21% |
