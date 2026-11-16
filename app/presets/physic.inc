@@ -5,7 +5,7 @@ R"presets(
 # `ctest -R presets` fails on any line here it cannot read.
 
 new SHIMMER / Glass Steps
-base 19                         # Church Bell (BELLS), then:
+base Church Bell                # (BELLS), by its name: a place moves, a name does not. Then:
 set 3 35  4 70                  # POSITION 35, DECAY 70
 fx 1 shimmer 0.6 0.7 0.6 0.4    # SHIMMER, DECAY, TONE, MIX
 send 1 0.2                      # into ECHO

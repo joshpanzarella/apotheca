@@ -6,7 +6,7 @@ R"presets(
 # `ctest -R presets` fails on any line here it cannot read.
 
 new PADS / Warm Pad
-base 1                          # String I (BANK A 1), then:
+base String I                   # (BANK A 1), by its name. Then:
 set 27 70  28 60  29 80  30 75  # ATTACK 7.0, DECAY 6.0, SUSTAIN 8.0, RELEASE 7.5
 set 31 0                        # the synth's own CHORUS off: the track's CHORUS does it
 fx 1 chorus 0.3 0.6 0 0.7       # RATE, DEPTH, TYPE, MIX

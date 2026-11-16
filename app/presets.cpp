@@ -1,5 +1,6 @@
 #include "presets.hpp"
 
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -52,6 +53,25 @@ std::vector<int> engineValues(TrackKind kind, int index) {
 const char* engineFolder(TrackKind kind, int index) {
     return kind == TrackKind::Phazed ? Phazed::presetCategory(index) : kind == TrackKind::Jx3p ? Jx3p::presetCategory(index)
          : kind == TrackKind::Fm6 ? Fm6::presetCategory(index) : kind == TrackKind::Physic ? Physic::presetCategory(index) : "";
+}
+
+// An engine built-in's name (the engine's own, as engineFolder).
+const char* engineName(TrackKind kind, int index) {
+    return kind == TrackKind::Phazed ? Phazed::presetName(index) : kind == TrackKind::Jx3p ? Jx3p::presetName(index)
+         : kind == TrackKind::Fm6 ? Fm6::presetName(index) : kind == TrackKind::Physic ? Physic::presetName(index) : "";
+}
+
+// Two names the same, as a designer writes them: capitals not counted.
+bool sameName(const std::string& a, const char* b) {
+    if (a.size() != std::strlen(b)) return false;
+    for (std::size_t i = 0; i < a.size(); ++i)
+        if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i]))) return false;
+    return true;
+}
+
+std::string trimmed(const std::string& s) {
+    const std::size_t first = s.find_first_not_of(" \t"), last = s.find_last_not_of(" \t");
+    return first == std::string::npos ? "" : s.substr(first, last - first + 1);
 }
 
 // The track sound's own lines, into a preset's TrackSound: song_file.cpp's one reader of them.
@@ -146,6 +166,43 @@ PresetData readPresetData(TrackKind kind, const std::string& text) {
         if (s && finishSound(kind, *s) > 0) problem("a MOD aimed at nothing there (an empty slot, a choice, a macro that is a choice): OFF");
         adding = nullptr, sound = nullptr;
     };
+    // Which built-in a `base` or `preset` line names, among the first `known` (the engine's own, then
+    // the ones added before): its index, or -1 with the problem said. A built-in is named by its NAME
+    // (capitals not counted), by FOLDER / NAME where two folders have the name, or by its place from 1.
+    // A name is what to write: a place moves when presets are put into a folder (batch 10's did).
+    const auto builtInCalled = [&](const std::string& said, int known, bool engineOnly) {
+        const auto nameAt = [&](int i) { return i < engine ? engineName(kind, i) : data.added[static_cast<std::size_t>(i - engine)].name.c_str(); };
+        const auto folderAt = [&](int i) { return i < engine ? engineFolder(kind, i) : data.added[static_cast<std::size_t>(i - engine)].folder.c_str(); };
+        if (said.empty()) {
+            problem("a built-in's NAME (or FOLDER / NAME, or its place from 1) is missing");
+            return -1;
+        }
+        char* end = nullptr;
+        const double n = std::strtod(said.c_str(), &end);
+        if (end && *end == '\0') {
+            if (!(n >= 1.0) || n > known || n != std::floor(n)) {
+                problem(engineOnly ? "no such built-in of the engine's own (a place is from 1)" : "no such built-in before this one (a place is from 1)");
+                return -1;
+            }
+            return static_cast<int>(n) - 1;
+        }
+        const std::size_t cut = said.find(" / ");
+        const std::string folder = cut == std::string::npos ? "" : trimmed(said.substr(0, cut)), name = cut == std::string::npos ? said : trimmed(said.substr(cut + 3));
+        int found = -1, count = 0;
+        for (int i = 0; i < known; ++i)
+            if (sameName(name, nameAt(i)) && (folder.empty() || sameName(folder, folderAt(i)))) found = found < 0 ? i : found, ++count;
+        if (count == 0) {
+            std::snprintf(text_, sizeof text_, "line %d: no built-in %s is called \"%s\"", number, engineOnly ? "of the engine's own" : "before this one", said.c_str());
+            data.problems.push_back(text_);
+            return -1;
+        }
+        if (count > 1) {
+            std::snprintf(text_, sizeof text_, "line %d: %d built-ins are called \"%s\": write FOLDER / NAME", number, count, said.c_str());
+            data.problems.push_back(text_);
+            return -1;
+        }
+        return found;
+    };
     while (std::getline(lines, line)) {
         ++number;
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -199,12 +256,12 @@ PresetData readPresetData(TrackKind kind, const std::string& text) {
         }
         if (word == "preset") {
             finish();
-            double n = 0;
-            if (!(in >> n) || !(n >= 1.0) || n > engine) {
-                problem("\"preset N\": N is one of the engine's own built-ins, from 1");
-                continue;
-            }
-            sound = &data.sounds[static_cast<std::size_t>(n - 1.0)];
+            // preset NAME (or FOLDER / NAME, or the place N from 1): one of the engine's own.
+            std::string rest;
+            std::getline(in >> std::ws, rest);
+            const int n = builtInCalled(trimmed(rest), engine, true);
+            if (n < 0) continue;
+            sound = &data.sounds[static_cast<std::size_t>(n)];
             if (sound->whole) {
                 problem("a built-in given its sound twice");
                 *sound = TrackSound();
@@ -244,13 +301,11 @@ PresetData readPresetData(TrackKind kind, const std::string& text) {
             continue;
         }
         if (word == "base") {
-            double n = 0;
-            const int known = engine + static_cast<int>(data.added.size()) - 1; // (not itself)
-            if (!(in >> n) || !(n >= 1.0) || n > known) {
-                problem("\"base N\": N is a built-in before this one, from 1");
-                continue;
-            }
-            const int b = static_cast<int>(n) - 1;
+            // base NAME (or FOLDER / NAME, or the place N from 1): a built-in before this one.
+            std::string rest;
+            std::getline(in >> std::ws, rest);
+            const int b = builtInCalled(trimmed(rest), engine + static_cast<int>(data.added.size()) - 1, false); // (not itself)
+            if (b < 0) continue;
             if (b < engine) {
                 adding->values = engineValues(kind, b);
                 adding->macros.assign(kSynthMacros, 0.5f);

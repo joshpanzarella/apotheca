@@ -277,6 +277,84 @@ void testTheDataSaysWhatIsWrong() {
     CHECK(data.sounds[3].whole && data.sounds[3].glideFrom == kFromPaired);
 }
 
+// A built-in is named by its NAME (capitals not counted), by FOLDER / NAME where two folders share
+// it, or by its place: `base` among every built-in before the one being written, `preset` among the
+// engine's own. A name nobody has, or one two folders share, is a problem named with its line, and
+// nothing is taken from it.
+void testABuiltInByItsName() {
+    {
+        const std::string text =
+            "new MINE / By Name\n"
+            "base church bell\n"      // 2 capitals not counted
+            "new MINE / By Place\n"
+            "base 19\n"               // 4 the same, by its place
+            "new MINE / Of Mine\n"
+            "base  By Name  \n"       // 6 an added one before it, spaces round the name passed by
+            "new MINE / In Its Folder\n"
+            "base WOOD AND SKIN / Tom\n"
+            "preset Wine Glass\n"     // 9 one of the engine's own, given a sound
+            "send 2 0.5\n"
+            "preset Bells / Crystal\n"
+            "send 1 0.25\n";
+        const PresetData data = readPresetData(TrackKind::Physic, text);
+        for (const std::string& p : data.problems) std::printf("  %s\n", p.c_str());
+        CHECK(data.problems.empty() && data.added.size() == 4u);
+        int bell = -1, tom = -1, glass = -1, crystal = -1;
+        for (int i = 0; i < Physic::presetCount(); ++i) {
+            const std::string name = Physic::presetName(i);
+            bell = name == "Church Bell" ? i : bell, tom = name == "Tom" ? i : tom, glass = name == "Wine Glass" ? i : glass, crystal = name == "Crystal" ? i : crystal;
+        }
+        CHECK(bell == 18 && tom >= 0 && glass >= 0 && crystal >= 0);
+        const PhysicPatch bellPatch = Physic::presetPatch(bell), tomPatch = Physic::presetPatch(tom);
+        const std::vector<int> bellValues(bellPatch.value, bellPatch.value + presetSettingCount(TrackKind::Physic));
+        const std::vector<int> tomValues(tomPatch.value, tomPatch.value + presetSettingCount(TrackKind::Physic));
+        CHECK(data.added[0].values == bellValues && data.added[1].values == bellValues && data.added[2].values == bellValues && data.added[3].values == tomValues);
+        CHECK(data.sounds[static_cast<std::size_t>(glass)].send[1] == 0.5f && data.sounds[static_cast<std::size_t>(crystal)].send[0] == 0.25f);
+    }
+    {
+        const std::string text =
+            "new MINE / One\n"
+            "base Chruch Bell\n"         // 2 nobody has it
+            "base One\n"                 // 3 not itself: only one BEFORE it
+            "base BELLS / Tom\n"         // 4 not in that folder
+            "base\n"                     // 5 nothing named
+            "base 2.5\n"                 // 6 not a place
+            "set 4 70\n"
+            "preset One\n";              // 8 an added one is not the engine's own
+        const PresetData data = readPresetData(TrackKind::Physic, text);
+        const auto said = [&](int line) {
+            const std::string start = "line " + std::to_string(line) + ":";
+            int n = 0;
+            for (const std::string& p : data.problems) n += p.compare(0, start.size(), start) == 0;
+            return n;
+        };
+        CHECK(said(1) == 0 && said(2) == 1 && said(3) == 1 && said(4) == 1 && said(5) == 1 && said(6) == 1 && said(7) == 0 && said(8) == 1);
+        CHECK(data.problems.size() == 6u && data.problems[0].find("\"Chruch Bell\"") != std::string::npos);
+        const PhysicPatch firstPatch = Physic::presetPatch(0);
+        const std::vector<int> first(firstPatch.value, firstPatch.value + presetSettingCount(TrackKind::Physic));
+        CHECK(data.added.size() == 1u && data.added[0].values[physic::Decay] == 70); // nothing taken from a name not found: the first built-in's, then the set
+        CHECK(std::vector<int>(data.added[0].values.begin(), data.added[0].values.begin() + physic::Decay) == std::vector<int>(first.begin(), first.begin() + physic::Decay));
+    }
+    {
+        // FM-6's cartridges share names: the folder says which. (Two of a name whose sounds differ.)
+        const int count = presetSettingCount(TrackKind::Fm6);
+        int one = -1, two = -1;
+        for (int i = 0; i < Fm6::presetCount() && two < 0; ++i)
+            for (int j = i + 1; j < Fm6::presetCount() && two < 0; ++j) {
+                const Fm6Patch a = Fm6::presetPatch(i), b = Fm6::presetPatch(j);
+                if (std::string(Fm6::presetName(i)) == Fm6::presetName(j) && std::vector<int>(a.value, a.value + count) != std::vector<int>(b.value, b.value + count)) one = i, two = j;
+            }
+        CHECK(one >= 0 && two >= 0);
+        if (two < 0) return;
+        const std::string name = Fm6::presetName(two), folder = Fm6::presetCategory(two);
+        const PresetData data = readPresetData(TrackKind::Fm6, "new MINE / Two\nbase " + name + "\nnew MINE / Three\nbase " + folder + " / " + name + "\n");
+        CHECK(data.problems.size() == 1u && data.problems[0].find("line 2: 2 built-ins are called \"" + name + "\"") == 0);
+        const Fm6Patch twoPatch = Fm6::presetPatch(two), firstPatch = Fm6::presetPatch(0);
+        CHECK(data.added.size() == 2u && data.added[1].values == std::vector<int>(twoPatch.value, twoPatch.value + count));
+        CHECK(data.added[0].values == std::vector<int>(firstPatch.value, firstPatch.value + count)); // nothing taken from a name two share
+    }
+}
+
 // ---- the player's own presets ------------------------------------------------------------------
 
 // SAVE writes the track's whole sound, and picking it again puts every part of it back, in the
@@ -698,6 +776,7 @@ int main(int argc, char** argv) {
     testTheShippedData(print);
     testTheDataReads();
     testTheDataSaysWhatIsWrong();
+    testABuiltInByItsName();
     testASavedPresetHoldsTheWholeSound();
     testAnOlderFileIsPlain();
     testADamagedFile();
