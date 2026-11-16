@@ -43,7 +43,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/jx3p.cpp engine/src/fm6.cpp engine/src/physic.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/jx3p.cpp engine/src/fm6.cpp engine/src/physic.cpp engine/src/acid.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz msfa)
 target_include_directories(apotheca_engine PUBLIC engine/include)
@@ -128,6 +128,11 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(physic_test PRIVATE apotheca_engine)
   target_include_directories(physic_test PRIVATE engine/src tests)
   add_test(NAME physic COMMAND physic_test)
+  # ACID (docs/plans/acid-plan.md): the rule header, the voice, accent and slide, the house rules.
+  add_executable(acid_test tests/acid_test.cpp)
+  target_link_libraries(acid_test PRIVATE apotheca_engine)
+  target_include_directories(acid_test PRIVATE engine/src tests)
+  add_test(NAME acid COMMAND acid_test)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
@@ -135,7 +140,7 @@ if(APOTHECA_BUILD_TESTS)
   # never followed; and no test source makes one another way (33,000 left behind filled the disk).
   add_executable(temp_test tests/temp_test.cpp)
   add_test(NAME temp COMMAND temp_test ${CMAKE_SOURCE_DIR})
-  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic load temp PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic acid load temp PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
