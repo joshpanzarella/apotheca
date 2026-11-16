@@ -1071,8 +1071,7 @@ bool Session::readStep(const std::string& text, StepRead& was, bool same[kNumTra
         const std::string& now = textNow_.track(t);
         const TrackData* read = &project.tracks[t];
         if (!whole && !readUndoWhole_ && now.size() == to - from && text.compare(from, to - from, now) == 0) {
-            same[t] = true;
-            was.kind[t] = project.tracks[t].kind;
+            same[t] = true; // (not read: its kind is left None, and nothing looks at it)
         } else {
             slots[t] = &room(t);
             reader.readTrack(t, from, to);

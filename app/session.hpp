@@ -683,7 +683,7 @@ private:
     struct StepRead {
         ProjectHead head;
         int count = 0;                       // how many tracks the step has
-        TrackKind kind[kNumTracks] = {};     // each one's kind (None past `count`)
+        TrackKind kind[kNumTracks] = {};     // each read track's kind (None past `count`, and for one not read)
         bool read[kNumTracks] = {};          // read into tracks[t]; false: its text is the track's now, and it was not read
         std::unique_ptr<TrackData> tracks[kNumTracks];
         const TrackData& track(int t) const { return *tracks[t]; }

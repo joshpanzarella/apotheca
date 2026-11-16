@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1253,10 +1254,18 @@ void testTheTextKeptIsTheSongsText() {
         TrackData& t = p->tracks[roll(8)];
         const int scene = roll(kMaxScenes), bar = roll(kMaxBars), lane = roll(kDrumLanes), step = roll(kSteps);
         switch (roll(17)) {
-        case 0: t.drums[scene][bar].level[lane][step] = roll(3) ? 0.25f * static_cast<float>(1 + roll(4)) : 0.f; break;
+        case 0: { // (a level the text does not write: under 0, not a number)
+            const float odd[3] = {-0.5f, std::nanf(""), -0.f};
+            t.drums[scene][bar].level[lane][step] = roll(3) ? 0.25f * static_cast<float>(1 + roll(4)) : (roll(4) ? 0.f : odd[roll(3)]);
+            break;
+        }
         case 1: t.drums[scene][bar].fx[lane][step].ratchet = static_cast<std::uint8_t>(roll(4)); break;
         case 2: t.notes[scene][bar].notes[roll(kMaxNotes)] = NoteEvent{step, 40 + roll(40), 1.f, 0.f, roll(2) ? 0.8f : 0.f}; break;
-        case 3: t.automation[scene][roll(kAutoLanes)][roll(kAutoSteps)] = roll(2) ? 0.001f * static_cast<float>(roll(1000)) : kAutoNone; break;
+        case 3: { // (and steps written as -0 and as not a number, which the text writes; one under 0 that is not kAutoNone, which it does not)
+            const float odd[3] = {-0.f, std::nanf(""), -0.25f};
+            t.automation[scene][roll(kAutoLanes)][roll(kAutoSteps)] = roll(2) ? 0.001f * static_cast<float>(roll(1000)) : (roll(4) ? kAutoNone : odd[roll(3)]);
+            break;
+        }
         case 4: t.bars[scene] = 1 << roll(4); break;
         case 5: t.muted = !t.muted; break;
         case 6: t.solo = !t.solo; break; // not in the text: nothing to see, and nothing wrong
@@ -1374,14 +1383,15 @@ static void testALineReadsAsAStreamReadsIt() {
     // Numbers as they are written: every one read to the same bits as the stream reads it.
     for (int round = 0; round < 300000; ++round) {
         char text[64];
-        const int kind = round % 4;
+        const int kind = round % 5;
         double d;
         std::uint64_t bits = next();
         std::memcpy(&d, &bits, sizeof d);
         if (kind == 0) std::snprintf(text, sizeof text, "%.6g", static_cast<double>(static_cast<float>(next() % 2000001) / 1e6f - 1.f));
         else if (kind == 1) std::snprintf(text, sizeof text, "%.*g", static_cast<int>(next() % 18) + 1, d);
         else if (kind == 2) std::snprintf(text, sizeof text, "%s%llu.%llue%d", next() % 2 ? "-" : "", static_cast<unsigned long long>(next() % 100000000), static_cast<unsigned long long>(next() % 10000000000ull), static_cast<int>(next() % 61) - 30);
-        else std::snprintf(text, sizeof text, "%.17g", static_cast<double>(next() % 100000) * std::pow(10.0, static_cast<double>(next() % 45) - 22.0));
+        else if (kind == 3) std::snprintf(text, sizeof text, "%.17g", static_cast<double>(next() % 100000) * std::pow(10.0, static_cast<double>(next() % 45) - 22.0));
+        else std::snprintf(text, sizeof text, "%llue%d", static_cast<unsigned long long>(next() % 10000000000000000000ull), static_cast<int>(next() % 9)); // (16 to 19 whole digits, mostly)
         std::istringstream in(text);
         LineIn mine(text, text + std::strlen(text));
         double a = 7, b = 7;
@@ -1438,12 +1448,110 @@ static void testNumbersAsSnprintfWritesThem() {
     CHECK(wrong == 0);
 }
 
+// parseSong reads in place: into a project that held another song (twelve busy tracks, the screens
+// somewhere, WRITE on), a song reads as it reads into a new one. Every track it does not name is as
+// new, its patterns, lanes and settings too; the song's own lines and the screens' places as new.
+void testASongReadsInPlaceAsIntoANewOne() {
+    std::unique_ptr<Project> busy(new Project), fresh(new Project), small(new Project);
+    for (int t = 0; t < kNumTracks; ++t) {
+        TrackData& track = busy->tracks[t];
+        track.kind = t % 2 ? TrackKind::Phazed : TrackKind::Drums;
+        for (int scene = 0; scene < kMaxScenes; ++scene) {
+            track.bars[scene] = 2;
+            for (int bar = 0; bar < kMaxBars; ++bar) {
+                track.drums[scene][bar].level[bar][scene] = 0.5f;
+                track.drums[scene][bar].chance[1][2] = 0.3f;
+                track.notes[scene][bar].notes[bar] = NoteEvent{scene, 50 + bar, 1.f, 0.f, 0.7f};
+                track.notes[scene][bar].chords[1].root = 70;
+            }
+            for (int lane = 0; lane < kAutoLanes; ++lane) track.automation[scene][lane][lane] = 0.25f;
+        }
+        std::snprintf(track.name, sizeof track.name, "OLD");
+        track.muted = true;
+        track.send[0] = 0.5f;
+        track.laneLevel[2] = 0.1f;
+    }
+    busy->tempo = 99.f;
+    busy->repeats[3] = 4;
+    busy->steps[2] = 20;
+    busy->scene = 5;
+    busy->track = 7;
+    busy->writing = true;
+    busy->masterDb = -6;
+    // The song read: two tracks, a drum and a synth, a few things in them.
+    small->tracks[1].kind = TrackKind::Jx3p;
+    specFor(TrackKind::Jx3p)->loadPreset(small->tracks[1], 2);
+    small->tracks[0].drums[1][0].level[3][4] = 0.75f;
+    small->tracks[1].notes[0][0].notes[0] = NoteEvent{2, 60, 1.f, 0.f, 0.8f};
+    small->tracks[1].automation[0][9][3] = 0.5f;
+    small->tempo = 133.f;
+    const std::string text = songText(*small);
+    CHECK(parseSong(text, *busy) && parseSong(text, *fresh));
+    CHECK(songText(*busy) == songText(*fresh) && songText(*busy) == text);
+    CHECK(busy->scene == 0 && busy->track == 0 && !busy->writing && busy->masterDb == 0 && busy->repeats[3] == 1 && busy->steps[2] == 0);
+    std::unique_ptr<TrackData> blank(new TrackData);
+    int unlike = 0;
+    for (int t = 0; t < kNumTracks; ++t) {
+        const TrackData& u = busy->tracks[t];
+        const TrackData& v = fresh->tracks[t];
+        unlike += std::memcmp(u.drums, v.drums, sizeof u.drums) != 0;
+        unlike += std::memcmp(u.notes, v.notes, sizeof u.notes) != 0;
+        unlike += std::memcmp(u.automation, v.automation, sizeof u.automation) != 0;
+        unlike += std::memcmp(u.bars, v.bars, sizeof u.bars) != 0 || u.kind != v.kind || u.muted != v.muted || std::strcmp(u.name, v.name) != 0;
+        unlike += std::memcmp(u.send, v.send, sizeof u.send) != 0 || std::memcmp(u.laneLevel, v.laneLevel, sizeof u.laneLevel) != 0;
+        if (t >= 2) unlike += std::memcmp(u.drums, blank->drums, sizeof u.drums) != 0 || std::memcmp(u.automation, blank->automation, sizeof u.automation) != 0 || u.kind != TrackKind::None;
+    }
+    CHECK(unlike == 0);
+}
+
+// SongReader (undo's reading, a part at a time) reads each part as parseSong reads the whole: the
+// song's own lines, each track, and what parseSong does last (a MOD aimed at nothing is OFF; an old
+// song's "steps" made a length; a length of every step kept as 0). Songs written by hand for it.
+void testASongReadInPartsIsAsReadWhole() {
+    const char* const songs[] = {
+        "apotheca-song 1\ntempo 97.5\nrepeats 2 3\nlength 40 0 13\nfx 1 drive 0.5 0.25\nbusfx 1 ping 0.1\nmaster -3 10\n"
+        "track drums\nname KIT\nmod 1 1 8 0.75 4 0 0 0\nscene 1\nbars 2\nhit 1 1 0.5\nauto 1 8 3 0.5\n"
+        "track phazed\npreset 3\nfx 2 filter 0.5\nmod 2 1 12 0.25\nscene 3\nbars 4\nnote 1 60 1 0.8\n"
+        "track drums\nsend 1 0.5\nscene 2\nhit 2 2 1 0 1 0\n",
+        "apotheca-song 1\nsteps 13 4\ntrack drums\nscene 1\nbars 2\nhit 1 1 1\ntrack jaxep\nscene 2\nbars 8\nnote 3 50 2 0.9\n",
+        "apotheca-song 1\nlength 16 128 2\ntrack acid\n\r\ntrack drums\r\nscene 2\r\nbars 4\r\n",
+    };
+    int wrong = 0;
+    for (const char* song : songs) {
+        const std::string text(song);
+        std::unique_ptr<Project> whole(new Project);
+        CHECK(parseSong(text, *whole));
+        std::vector<std::size_t> starts;
+        CHECK(cutSongAt(text, starts) && !starts.empty());
+        std::unique_ptr<Project> parts(new Project); // (only as somewhere to put the parts: its tracks are read into one by one)
+        TrackData* slots[kNumTracks];
+        for (int t = 0; t < kNumTracks; ++t) slots[t] = &parts->tracks[t];
+        ProjectHead head;
+        head.tempo = 1.f; // (made as new by the reader)
+        SongReader reader(text, head, slots);
+        reader.readHead(starts[0]);
+        int bars[kMaxScenes];
+        for (int& b : bars) b = 1;
+        for (std::size_t t = 0; t < starts.size(); ++t) {
+            reader.readTrack(static_cast<int>(t), starts[t], t + 1 < starts.size() ? starts[t + 1] : text.size());
+            for (int s = 0; s < kMaxScenes; ++s) bars[s] = std::max(bars[s], parts->tracks[t].bars[s]);
+        }
+        reader.finish(bars);
+        wrong += songHeadText(head) != songHeadText(*whole) || std::memcmp(head.steps, whole->steps, sizeof head.steps) != 0;
+        for (int t = 0; t < whole->trackCount(); ++t) wrong += trackText(parts->tracks[t]) != trackText(whole->tracks[t]);
+        wrong += static_cast<int>(starts.size()) != whole->trackCount();
+    }
+    CHECK(wrong == 0);
+}
+
 int main(int, char**) {
     testNumbersAsSnprintfWritesThem();
     testALineReadsAsAStreamReadsIt();
     testCuttingASong();
     testTheAutosaveWritesNothingOutWhenNothingChanged();
     testTheTextKeptIsTheSongsText();
+    testASongReadsInPlaceAsIntoANewOne();
+    testASongReadInPartsIsAsReadWhole();
     testTextRoundTrip();
     testAnOldTwinSong();
     testASongFromTheOnePresetBuilds();

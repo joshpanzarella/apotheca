@@ -29,7 +29,7 @@ public:
     LineIn(const char* begin, const char* end) : at_(begin), end_(end) {}
     explicit operator bool() const { return !fail_; }
     bool operator!() const { return fail_; }
-    void clear() { fail_ = eof_ = false; }
+    void clear() { fail_ = false; }
 
     static bool space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; }
 
@@ -38,7 +38,6 @@ public:
         const char* from = at_;
         while (at_ < end_ && !space(*at_)) ++at_;
         word.assign(from, static_cast<std::size_t>(at_ - from));
-        if (at_ == end_) eof_ = true;
         return *this;
     }
 
@@ -81,7 +80,6 @@ public:
             }
             ++at_;
         }
-        if (at_ == end_) eof_ = true;
         const char* text = n < sizeof small - 1 ? (small[n] = 0, small) : big.c_str();
         double read = 0.0;
         if (exactly(text, read)) { // (the usual numbers: no strtod)
@@ -107,17 +105,14 @@ public:
 
     friend void skipSpace(LineIn& in) {
         while (in.at_ < in.end_ && space(*in.at_)) ++in.at_;
-        if (in.at_ == in.end_) in.eof_ = true;
     }
-    friend void restOfLine(LineIn& in, std::string& rest) {
-        if (in.fail_ || in.eof_) {
+    friend void restOfLine(LineIn& in, std::string& rest) { // (nothing left to take: failed, as getline at the end)
+        if (in.fail_ || in.at_ == in.end_) {
             in.fail_ = true;
             return;
         }
         rest.assign(in.at_, static_cast<std::size_t>(in.end_ - in.at_));
-        if (rest.empty()) in.fail_ = true;
         in.at_ = in.end_;
-        in.eof_ = true;
     }
 
 private:
@@ -168,15 +163,14 @@ private:
         return true;
     }
 
-    // A stream's sentry for `>>`: nothing if it is not good; white space skipped; the end: failed.
+    // A stream's sentry for `>>`: nothing once it has failed; white space skipped; the end: failed.
+    // (A stream also stops at its end-of-file mark, set by a read that reached the end; here the end
+    // is where it is, and a read from there fails the same.)
     bool sentry() {
-        if (fail_ || eof_) {
-            fail_ = true;
-            return false;
-        }
+        if (fail_) return false;
         while (at_ < end_ && space(*at_)) ++at_;
         if (at_ == end_) {
-            eof_ = fail_ = true;
+            fail_ = true;
             return false;
         }
         return true;
@@ -184,7 +178,7 @@ private:
 
     const char* at_;
     const char* end_;
-    bool fail_ = false, eof_ = false;
+    bool fail_ = false;
 };
 
 } // namespace apotheca
