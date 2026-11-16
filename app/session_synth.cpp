@@ -18,6 +18,7 @@
 #include "samples.hpp"
 #include "session_parts.hpp"
 #include "presets.hpp"
+#include "sampler_screen.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
 #include "synth_spec.hpp"
@@ -203,9 +204,12 @@ bool Session::savePreset(int track, const std::string& typed) {
     return true;
 }
 
-// What the synth has, for the page to build its controls from. It only
-// changes when the synth does, or a preset is saved.
-std::string Session::designSpec(TrackKind kind) const {
+// What the track has, for the page to build its controls from: a synth's pages and presets, or a
+// sampler's settings and recording (samplerSpec). "page" says which; the page asks for this again
+// when it changes (the state's "spec" number: serveDesigner).
+std::string Session::designSpec(int track) const {
+    const TrackKind kind = project.tracks[track].kind;
+    if (kind == TrackKind::Sampler) return samplerSpec(track);
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
     std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
@@ -238,19 +242,65 @@ std::string Session::designSpec(TrackKind kind) const {
     out += "],\"presets\":[";
     for (int i = 0; i < spec->presetCount(); ++i)
         out += (i ? ",{\"name\":" : "{\"name\":") + jsonText(spec->presetName(i)) + ",\"folder\":" + jsonText(spec->presetCategory(i)) + "}";
+    return out + "],\"page\":\"synth\"}";
+}
+
+// A SAMPLER's page: its eight settings in the order its screen shows them, each with every reading
+// the screen gives (PITCH is kept as the root key, so it is marked "flip": the page's slider goes up
+// as the pitch does), and its recording as a picture with START and END on it.
+//
+// "waves" is a list of pictures, one here; the KIT's page will have one a lane. A picture is the
+// recording's outline (its 512 loudest points, 0 to 1000, made on this thread when the recording
+// was read: LaneSound::peaks), and the settings that mark it ("marks": a setting's id, at 0 to 100%
+// of the way along), which never come within "least" of each other (sampler::heldApart).
+std::string Session::samplerSpec(int track) const {
+    const TrackData& t = project.tracks[track];
+    const LaneSound& sound = sounds_[track][0];
+    char text[128];
+    std::string out = "{\"name\":\"SAMPLER\",\"macros\":[],\"pages\":[{\"name\":\"SETTINGS\",\"env\":false,\"items\":[";
+    for (int place = 0; place < sampler::kSettings; ++place) {
+        const int id = SamplerScreen::settingAt(place), lo = sampler::settingMin(id), hi = sampler::settingMax(id);
+        std::snprintf(text, sizeof text, ",\"id\":%d,\"min\":%d,\"max\":%d", id, lo, hi);
+        out += (place ? ",{\"name\":" : "{\"name\":") + jsonText(samplerSettingName(id)) + text + (id == sampler::Root ? ",\"flip\":true" : "") + ",\"texts\":[";
+        for (int v = lo; v <= hi; ++v) {
+            samplerSettingText(id, v, text, sizeof text);
+            out += (v > lo ? "," : "") + jsonText(text);
+        }
+        out += "]}";
+    }
+    out += "]}],\"presets\":[],\"page\":\"sampler\"";
+    std::snprintf(text, sizeof text, ",\"hear\":%d,\"waves\":[{\"seconds\":%.3f,\"missing\":%s,\"recording\":", kHearKey, sound.seconds, sound.missing ? "true" : "false");
+    out += text + jsonText(t.sample);
+    std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"peaks\":[", sampler::Start, sampler::End, sampler::kLeastSpan);
+    out += text;
+    for (std::size_t i = 0; i < sound.peaks.size(); ++i) {
+        const float p = sound.peaks[i]; // (loudest, so never under 0; a float file's may pass 1)
+        std::snprintf(text, sizeof text, i ? ",%d" : "%d", static_cast<int>(std::lround((p > 1.f ? 1.f : p) * 1000.f)));
+        out += text;
+    }
+    out += "]}],\"recordings\":[";
+    for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
     return out + "]}";
 }
 
 std::string Session::designState() const {
     const TrackData& t = project.tracks[project.track];
     const SynthSpec* spec = specFor(t.kind);
-    char text[64];
+    char text[96];
+    if (t.kind == TrackKind::Sampler) {
+        std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"SAMPLER\",\"spec\":%u,\"called\":", project.track + 1, designSpecSerial_);
+        std::string out = text + jsonText(t.name) + ",\"presets\":0,\"preset\":-1,\"macros\":[],\"values\":[";
+        for (int id = 0; id < sampler::kSettings; ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", t.sampler[id]), out += text;
+        return out + "]}";
+    }
     if (!spec) {
-        std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"\"}", project.track + 1);
+        std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"\",\"spec\":%u}", project.track + 1, designSpecSerial_);
         return text;
     }
     std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":", project.track + 1);
     std::string out = text + jsonText(spec->name);
+    std::snprintf(text, sizeof text, ",\"spec\":%u", designSpecSerial_);
+    out += text;
     out += ",\"called\":" + jsonText(t.name);
     std::snprintf(text, sizeof text, ",\"presets\":%d,\"preset\":%d,\"values\":[", spec->presetCount(), t.preset);
     out += text;
@@ -260,6 +310,10 @@ std::string Session::designState() const {
     out += "],\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) std::snprintf(text, sizeof text, m ? ",%.4g" : "%.4g", t.macro[m]), out += text;
     return out + "]}";
+}
+
+namespace {
+constexpr Uint32 kDesignListEveryMs = 5000; // a sampler's page sees a recording put on the card by other ways this soon
 }
 
 void Session::serveDesigner() {
@@ -276,10 +330,21 @@ void Session::serveDesigner() {
     };
     if (!transfer_.running()) return letGo();
     const TrackKind kind = project.current().kind;
+    const bool sampler = kind == TrackKind::Sampler;
     for (const DesignRequest& r : designer_.take()) {
-        if (!specFor(kind)) continue; // no synth on this track: nothing to do it to
+        if (!specFor(kind) && !sampler) continue; // no synth or sampler on this track: nothing to do it to
         switch (r.kind) {
-        case DesignRequest::Set: setSynthSetting(project.track, r.a, r.b); break;
+        case DesignRequest::Set:
+            if (sampler) { // as its screen turns it: START and END never cross (an id it has not: nothing)
+                const int* v = project.current().sampler;
+                setSamplerSetting(project.track, r.a, sampler::heldApart(r.a, r.b, v[sampler::Start], v[sampler::End]));
+            } else {
+                setSynthSetting(project.track, r.a, r.b);
+            }
+            break;
+        case DesignRequest::Sample: // only a recording the page was offered (it was on the card), or none; a sampler's only
+            if (r.name.empty() || std::find(designRecordings_.begin(), designRecordings_.end(), r.name) != designRecordings_.end()) setTrackSample(project.track, r.name);
+            break;
         case DesignRequest::Macro: setSynthMacro(project.track, r.a, r.value); break;
         case DesignRequest::Preset: chooseSynthPreset(project.track, r.a); break;
         case DesignRequest::Save: savePreset(project.track, r.name); break;
@@ -305,12 +370,25 @@ void Session::serveDesigner() {
     if (designer_.looks() != designLooks_) designLooks_ = designer_.looks(), designSeenAt_ = now_;
     else if (now_ - designSeenAt_ > 3000) letGo();
 
+    // The recordings a sampler's page offers: read from the card here, never by the server's thread.
+    const bool looking = now_ - designSeenAt_ <= 3000 && designLooks_ != 0;
+    bool listed = false;
+    if (sampler && looking && (!designListed_ || now_ - designListAt_ >= kDesignListEveryMs || transfer_.received() != designReceived_)) {
+        designRecordings_ = sampleNames();
+        designListAt_ = now_;
+        designReceived_ = transfer_.received();
+        designListed_ = listed = true;
+    }
     const SynthSpec* spec = specFor(kind);
     const int presets = spec ? spec->presetCount() : 0;
-    if (kind != designSpecKind_ || presets != designSpecPresets_) {
+    const unsigned sound = sounds_[project.track][0].version; // (a sampler's recording read again: its picture)
+    if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || listed) {
         designSpecKind_ = kind;
         designSpecPresets_ = presets;
-        designSpecText_ = designSpec(kind);
+        designSpecTrack_ = project.track;
+        designSpecSound_ = sound;
+        std::string text = designSpec(project.track);
+        if (text != designSpecText_) designSpecText_.swap(text), ++designSpecSerial_;
     }
     designer_.show(designSpecText_, designState());
 }
