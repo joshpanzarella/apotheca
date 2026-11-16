@@ -234,7 +234,7 @@ void SynthScreen::endMod(const Input& input) {
 void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
     const Button b = event.button;
     // X: hear the sound. Held on a macro (MAIN, A not held), it is also the macro's MOD: the X-held
-    // check comes before every other button's own job (B's middle, the D-pad's cursor).
+    // check comes before every other button's own job (Y's roll, B's middle, the D-pad's cursor).
     if (b == Button::X) {
         if (!event.down) {
             endMod(input);
@@ -254,6 +254,12 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         holding_ = event.down;
         saved_ = 0.f;
+        return;
+    }
+    // Y on MAIN: a new sound from the dice, on a synth that has them (PHYSIC: SynthSpec::roll). At once,
+    // and it is heard. Not with A held (turning), and on the pages nothing.
+    if (b == Button::Y && event.down && spec_.roll && page_ == 0 && !holding_) {
+        if (session_.rollSynth(project_.track, lastMs_ * 2654435761u + (++rolls_) * 40503u)) hear();
         return;
     }
     if (!event.down) {
@@ -417,6 +423,8 @@ void SynthScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced) hint("B", "back to the middle");
             // (Where the bar has room for it with nothing left out. The help card says it everywhere.)
             if (cursor_ >= kFirstMacro && cursor_ < kAdvanced && modTargetFits(t, kModFirstMacro + cursor_ - kFirstMacro)) hint("HOLD X", "mod");
+            // PHYSIC's roll: said off the macros, where the bar has room (on a macro B and HOLD X fill it).
+            if (spec_.roll && (cursor_ < kFirstMacro || cursor_ >= kAdvanced)) hint("Y", "new sound");
             hint("START", project_.playing ? "stop" : "play");
         }
         hints(r, fonts, list, count);

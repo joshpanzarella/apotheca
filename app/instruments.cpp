@@ -19,6 +19,10 @@ const InstrumentInfo kInstruments[] = {
     // where QMOD stood, whose tracks it takes (an old song's word for that one is read, below). As JAX-EP's, the
     // line names no maker and no model, and leaves the count of presets off (it would not fit after it).
     {TrackKind::Fm6, "FM-6", "FM-6", "FM-6", "6-operator FM, after a classic 80s synth", false, "fm6", SynthKind::Fm6, ".fm6"},
+    // PHYSIC (owner, 2026-11-14; docs/plans/physic-plan.md): plucked and struck sounds that ring by themselves, a
+    // model of a string or of the ways a bar, bell or skin rings. Last in the list (the plan's call 18). The line
+    // says what it plays, not how many presets: the count would not fit after it.
+    {TrackKind::Physic, "PHYSIC", "PHYS", "PHYSIC", "plucked and struck: strings, mallets, bells", false, "physic", SynthKind::Physic, ".physic"},
 };
 const int kInstrumentCount = static_cast<int>(sizeof kInstruments / sizeof kInstruments[0]);
 

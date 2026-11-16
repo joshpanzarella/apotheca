@@ -109,6 +109,7 @@ struct Rig {
         setUserPresets(TrackKind::Phazed, {});
         setUserPresets(TrackKind::Jx3p, {});
         setUserPresets(TrackKind::Fm6, {});
+        setUserPresets(TrackKind::Physic, {});
     }
     void frames(int n) { for (int i = 0; i < n; ++i) app.update(input, clock += 16); }
     Answer get(const std::string& path) { return raw(port, "GET " + door + path + " HTTP/1.1\r\nHost: x\r\n\r\n"); }
@@ -465,7 +466,10 @@ void testFm6FromThePage() {
     CHECK(rig.tell("set 152 0") && rig.track().fm6.value[fm6::OpsOn] == 63 - 8 - 1); // past the six: nothing
     CHECK(has(rig.get("/design/state").body, ",54,1,1,0,1,1,0"));
     CHECK(rig.tell("set 134 4") && rig.track().fm6.value[fm6::Algorithm] == 4);
-    CHECK(rig.post("roll 5").status == 400); // the page's ROLL went with QMOD
+    // ROLL is PHYSIC's: on FM-6 the request is taken and changes nothing.
+    const Fm6Patch beforeRoll = rig.track().fm6;
+    rig.tell("roll 5");
+    CHECK(std::equal(beforeRoll.value, beforeRoll.value + fm6::kSettings, rig.track().fm6.value));
     // Saved, it is an ".fm6" preset, in FM-6's list only, and comes back as it was.
     const Fm6Patch made = rig.track().fm6;
     CHECK(rig.tell("save made one"));
@@ -474,6 +478,58 @@ void testFm6FromThePage() {
     CHECK(rig.track().fm6.value[fm6::Algorithm] != made.value[fm6::Algorithm] && rig.track().fm6.value[fm6::OpsOn] == 63);
     rig.tell("preset " + std::to_string(Fm6::presetCount()));
     CHECK(std::equal(made.value, made.value + fm6::kSettings, rig.track().fm6.value));
+}
+
+// PHYSIC (physic-plan.md, section 7): its four pages, every setting read as the device reads it alone,
+// and its ROLL, which is the device's Y.
+void testPhysicFromThePage() {
+    Rig rig;
+    rig.app.session().addTrack(TrackKind::Physic);
+    rig.app.project().track = rig.app.project().trackCount() - 1;
+    rig.frames(1);
+    CHECK(rig.track().kind == TrackKind::Physic && rig.track().preset == 0);
+    const std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"PHYSIC\",\"roll\":true,\"macros\":[\"TONE\",\"POSITION\",\"DECAY\",\"MATERIAL\",\"STRETCH\",\"RELEASE\",\"DICE\",\"OCTAVE\"]"));
+    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 4 && !has(spec, "\"env\":true"));
+    CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\""));
+    // Every setting is given its readings, the long ones too (pageReadsAsDevice): DECAY in seconds.
+    CHECK(count(spec, "\"texts\":") == physic::kSettings);
+    CHECK(has(spec, "{\"name\":\"MODEL\",\"id\":0,\"min\":0,\"max\":10,\"texts\":[\"STRING\",\"MARIMBA\""));
+    CHECK(has(spec, "\"name\":\"DECAY\",\"id\":4,\"min\":0,\"max\":100,\"texts\":[\"50 MS\"") && has(spec, "\"30 S\"]"));
+    CHECK(has(spec, "\"RING\"]") && has(spec, "\"name\":\"LEVEL\",\"id\":12,\"min\":-24,\"max\":6,\"texts\":[\"-24 DB\""));
+    CHECK(has(spec, "\"folder\":\"MALLETS\"") && has(spec, "\"folder\":\"WOOD AND SKIN\"") && has(spec, "\"name\":\"Marimba\""));
+    // The state: one value an id, MARIMBA's.
+    const std::string state = rig.get("/design/state").body;
+    const std::size_t from = state.find("\"values\":[");
+    CHECK(from != std::string::npos);
+    const std::string values = state.substr(from, state.find(']', from) - from);
+    CHECK(count(values, ",") == physic::kSettings - 1 && has(values, "[1,1,"));
+    // A setting from the page.
+    CHECK(rig.tell("set 4 90") && rig.track().physic.value[physic::Decay] == 90);
+    CHECK(rig.tell("set 0 99") && rig.track().physic.value[physic::Model] == 10); // held to its range
+    rig.tell("set 0 1");
+    // ROLL: a new strike and ring for the same MODEL, the levels and the dice as they were.
+    const PhysicPatch before = rig.track().physic;
+    CHECK(rig.tell("roll 5"));
+    const PhysicPatch& after = rig.track().physic;
+    bool moved = false;
+    for (int id : {physic::Strike, physic::Hardness, physic::Position, physic::Decay, physic::Material, physic::Stretch}) moved = moved || after.value[id] != before.value[id];
+    CHECK(moved);
+    for (int id : {physic::Model, physic::Release, physic::Velocity, physic::Octave, physic::Fine, physic::Width, physic::Level, physic::Dice,
+                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay})
+        CHECK(after.value[id] == before.value[id]);
+    // Saved, it is a ".physic" preset, in PHYSIC's list only, and comes back as it was.
+    const PhysicPatch made = rig.track().physic;
+    CHECK(rig.tell("save made one"));
+    CHECK(exists(rig.root + "/presets/MADE ONE.physic") && physicSpec().presetCount() == Physic::presetCount() + 1 && fm6Spec().presetCount() == Fm6::presetCount());
+    rig.tell("preset 3");
+    rig.tell("preset " + std::to_string(Physic::presetCount()));
+    CHECK(std::equal(made.value, made.value + physic::kSettings, rig.track().physic.value));
+    // FM-6's page has no ROLL.
+    rig.app.session().addTrack(TrackKind::Fm6);
+    rig.app.project().track = rig.app.project().trackCount() - 1;
+    rig.frames(1);
+    CHECK(!has(rig.get("/design/spec").body, "\"roll\""));
 }
 
 // JAX-EP (jx3p-plan.md, batch 6a).
@@ -556,11 +612,18 @@ int main() {
     testKeysFromThePage();
     testSavingAPreset();
     testFm6FromThePage();
+    testPhysicFromThePage();
     testJaxepFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
-        rig.addSynth(std::getenv("APOTHECA_DESIGN_JAXEP") != nullptr);
-        rig.tell("preset 8");
+        if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)
+            rig.app.session().addTrack(TrackKind::Physic);
+            rig.app.project().track = rig.app.project().trackCount() - 1;
+            rig.frames(1);
+        } else {
+            rig.addSynth(std::getenv("APOTHECA_DESIGN_JAXEP") != nullptr);
+            rig.tell("preset 8");
+        }
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);
         for (int i = 0; i < std::atoi(hold) * 60; ++i) {

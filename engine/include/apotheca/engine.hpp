@@ -626,7 +626,7 @@ private:
         // go, to the sample. kNoNote: that key is not sounding.
         // Notes waiting for their moment: late ones from the step that just
         // began, early ones that belong to the next.
-        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; double at = 0.0; std::uint8_t how = 0; bool ahead = false; };
+        struct PendingNote { double samplesLeft = 0.0; std::uint8_t pitch = 0, glide = 0, throwTo = 0; float velocity = 0.f, length = 0.f, hold = 0.f; std::uint8_t piece = 0; float strikeOff = 0.f; double at = 0.0; std::uint8_t how = 0; bool ahead = false; }; // strikeOff: the strike's own moment less `at`, in steps (a ratchet's piece: k apart; it fits where the padding was)
         GlideTrail trail; // the notes the track last began, for a glide to start from (none since Play)
         std::uint8_t glideFrom = 0; // GLIDE FROM: which of them (kFromTop and the rest, glide_rule.hpp)
         // Room for the most a step can ask: every note of the scene, ratcheted to the full and pushed late.
@@ -655,6 +655,7 @@ private:
             int slot = -1, step = -1;     // where its chord is written: which bar of the song, which step
             bool look = false;            // that bar has been written to: see that the chord is still there
             bool ahead = false;           // asked a step ahead, from the step after the one playing
+            double at = 0.0;              // the chord's own moment, in steps since Play (its note m is struck at + m gap: a roll each)
         };
         Arp arps[3];
         // The step (counted from Play) whose chord has been asked for a step ahead: that chord
@@ -733,7 +734,11 @@ private:
     int slotOf(const Track& track, int scene, int bar) const { return scene * kMaxBars + bar % track.bars[scene]; }
     void fireNoteOffs();
     void firePendingNotes();
-    void startNote(Track& track, const Note& note, double delaySamples, double at); // at: when it begins, in steps since Play
+    // at: when it begins, in steps since Play. strikeAt: when this very strike is, for its roll
+    // (Instrument::noteSeed) and nothing else: a ratchet's piece and an arpeggio's note each have
+    // their own (kSameStrike: the same as `at`).
+    void startNote(Track& track, const Note& note, double delaySamples, double at, double strikeAt = kSameStrike);
+    static constexpr double kSameStrike = -1e300;
     // A chord's note with a chord effect set (chord_rule.hpp). `ahead`: asked a step before the
     // note's own step, as an early note is; `stepAt`: when that step begins, in steps since Play;
     // `wait`: samples from now until it does.
@@ -778,7 +783,7 @@ private:
     bool schedule(Track& track, int lane, const DrumScene& scene, int step, double delaySamples, int bar, long stepAt, bool ahead);
     void firePending();
     void clearPending();
-    void letGoOfNotes();
+    void letGoOfNotes(bool stopping = false); // stopping: Stop (each synth's stopNotes), else Play and panic (allNotesOff)
     void renderChunk(float* interleaved, int frames, float* peaks);
     void renderTrack(int t);   // one track's chunk into trackL_ / trackR_, with its effects, level and mute
     void shareOutTracks();     // take tracks from the list until none is left

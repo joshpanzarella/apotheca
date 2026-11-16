@@ -1244,9 +1244,9 @@ void testTheTextKeptIsTheSongsText() {
     SongTextCache cache;
     std::uint32_t seed = 12345u;
     const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
-    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler};
-    for (int t = 1; t < 6; ++t) {
-        p->tracks[t].kind = kinds[t % 5];
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Physic};
+    for (int t = 1; t < 7; ++t) {
+        p->tracks[t].kind = kinds[t % 6];
         if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
     }
     CHECK(cache.text(*p) == songText(*p));
@@ -1271,8 +1271,8 @@ void testTheTextKeptIsTheSongsText() {
         case 13: p->tempo = static_cast<float>(60 + roll(100)); break;
         case 14: p->repeats[scene] = 1 + roll(4); break;
         case 15: { // another instrument, or none: the tracks after it then do not count
-            const int k = roll(7);
-            t.kind = k < 5 ? kinds[k] : (k == 5 ? TrackKind::None : TrackKind::Drums);
+            const int k = roll(8);
+            t.kind = k < 6 ? kinds[k] : (k == 6 ? TrackKind::None : TrackKind::Drums);
             break;
         }
         default: t.glideFrom = static_cast<std::uint8_t>(roll(4)); break;

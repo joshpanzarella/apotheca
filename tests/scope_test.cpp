@@ -60,11 +60,14 @@ const Page kPages[] = {
     {"FM-6 MAIN", TrackKind::Fm6, 0, true}, {"FM-6 VOICE AND LFO", TrackKind::Fm6, 1, true},
     {"FM-6 OPERATOR 1", TrackKind::Fm6, 2, true}, {"FM-6 OPERATOR 6", TrackKind::Fm6, 7, true},
     {"FM-6 PITCH ENVELOPE", TrackKind::Fm6, 8, true},
+    {"PHYSIC MAIN", TrackKind::Physic, 0, true}, {"PHYSIC SOUND", TrackKind::Physic, 1, true},
+    {"PHYSIC RING", TrackKind::Physic, 2, true}, {"PHYSIC PLAY", TrackKind::Physic, 3, true},
+    {"PHYSIC DICE", TrackKind::Physic, 4, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Fm6 ? &rig.app.fm6() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Fm6 ? &rig.app.fm6() : kind == TrackKind::Physic ? &rig.app.physic() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.
@@ -201,6 +204,13 @@ void testTheRowsAreSpreadDown() {
         if (!canvas.ok || !drawPage(canvas, page, kThemeBrown)) { CHECK(false); continue; }
         const int x = 8 + SynthScreen::kMacroPitchX + 12; // the second box (the cursor is on the first)
         if (!canvas.is(x, ui::kAboveScope - 1, ui::kLine)) std::printf("  %s: its boxes do not reach the strip\n", page.name);
+        CHECK(canvas.is(x, ui::kAboveScope - 1, ui::kLine) && canvas.is(x, ui::kAboveScope, ui::kBg));
+    }
+    // PHYSIC's PLAY and DICE: five boxes, the fifth alone on its row, which reaches the strip (the cursor on the second).
+    for (const Page& page : {Page{"PHYSIC PLAY", TrackKind::Physic, 3, true}, Page{"PHYSIC DICE", TrackKind::Physic, 4, true}}) {
+        Canvas canvas;
+        if (!canvas.ok || !drawPage(canvas, page, kThemeBrown, 1)) { CHECK(false); continue; }
+        const int x = 8 + 12;
         CHECK(canvas.is(x, ui::kAboveScope - 1, ui::kLine) && canvas.is(x, ui::kAboveScope, ui::kBg));
     }
 }

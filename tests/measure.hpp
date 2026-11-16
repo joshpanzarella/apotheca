@@ -18,6 +18,9 @@
 //                             any frequency, not only one whose cycles fit whole
 //   asideOf                   the loudest part that is not a harmonic, under a
 //                             frequency: an oscillator's aliasing (JX-3P batch 2)
+//   phaseAt, centsOff         a part's phase, and its pitch read by how its phase
+//                             moves over 60 periods (PHYSIC: 0.5 cent and finer)
+//   sizeAt, t60At             a part's size at a time, and its T60 (PHYSIC)
 //
 // Header only; no framework, no CHECK (each test program keeps its own).
 
@@ -282,5 +285,54 @@ inline float largestJump(const std::vector<float>& v, std::size_t from = 0, std:
 }
 // The largest step a plain sine takes by itself.
 inline double sineStep(double hz, double amp, double rate = 48000.0) { return amp * 2.0 * std::sin(kPi * hz / rate); }
+
+// ---- a part's phase, pitch, size and decay (PHYSIC) ------------------------------------------
+
+// The phase of the part at `hz` in a window of `width` samples centred on `centre` (Hann), the
+// sine's phase taken from sample 0: for a part at hz + e, it moves 2 pi e a second.
+inline double phaseAt(const std::vector<float>& v, double centre, double hz, double width, double rate = 48000.0) {
+    const long from = static_cast<long>(centre - width / 2), n = static_cast<long>(width);
+    const double w = 2.0 * kPi * hz / rate;
+    double re = 0.0, im = 0.0;
+    double cr = std::cos(w * from), ci = -std::sin(w * from); // e^{-j w n}, stepped
+    const double sr = std::cos(w), si = -std::sin(w);
+    for (long i = 0; i < n; ++i) {
+        const long k = from + i;
+        if (k < 0 || k >= static_cast<long>(v.size())) break;
+        const double win = 0.5 - 0.5 * std::cos(2.0 * kPi * (i + 0.5) / n);
+        re += win * v[static_cast<std::size_t>(k)] * cr;
+        im += win * v[static_cast<std::size_t>(k)] * ci;
+        const double nr = cr * sr - ci * si, ni = cr * si + ci * sr;
+        cr = nr, ci = ni;
+        if ((i & 1023) == 1023) { // (keep the stepped phasor on the circle)
+            const double m = std::sqrt(cr * cr + ci * ci);
+            cr /= m, ci /= m;
+        }
+    }
+    return std::atan2(im, re);
+}
+// THE FREQUENCY of the part near `hz`, by how its phase moves over `periods` of its cycles (the
+// plan's way: 60), each read through a window of `wide` cycles. In cents from `hz`.
+inline double centsOff(const std::vector<float>& v, double hz, double startSeconds, double periods = 60.0, double wide = 32.0, double rate = 48000.0) {
+    const double width = wide * rate / hz, apart = periods * rate / hz;
+    const double c1 = startSeconds * rate + width / 2;
+    double d = phaseAt(v, c1 + apart, hz, width, rate) - phaseAt(v, c1, hz, width, rate);
+    while (d > kPi) d -= 2.0 * kPi;
+    while (d < -kPi) d += 2.0 * kPi;
+    const double e = d / (2.0 * kPi * apart / rate); // hertz off
+    return 1200.0 * std::log2((hz + e) / hz);
+}
+// A part's size at `hz`, read through a window of `wide` cycles from `startSeconds`.
+inline double sizeAt(const std::vector<float>& v, double hz, double startSeconds, double wide = 32.0, double rate = 48000.0) {
+    const std::size_t from = static_cast<std::size_t>(startSeconds * rate);
+    std::size_t n = static_cast<std::size_t>(wide * rate / hz);
+    if (from + n > v.size()) n = v.size() - from;
+    return partNear(v.data() + from, n, hz, rate);
+}
+// A part's T60 at `hz`: its size read at two times `apart` seconds apart.
+inline double t60At(const std::vector<float>& v, double hz, double t1, double apart, double wide = 32.0, double rate = 48000.0) {
+    const double a = sizeAt(v, hz, t1, wide, rate), b = sizeAt(v, hz, t1 + apart, wide, rate);
+    return apart * 60.0 / (dB(a) - dB(b));
+}
 
 #endif

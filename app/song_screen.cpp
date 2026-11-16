@@ -922,7 +922,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     // ---- the instrument list -----------------------------------------------------
     if (choosing_) {
         // Another instrument for a track that is there: what goes is said under the list (it cannot be undone).
-        const int w = 340, h = 46 + kInstrumentCount * 52 + (changing_ >= 0 ? kChangeLostH : 0), x = (kScreenW - w) / 2, y = 70;
+        const int w = 340, h = listH(kInstrumentCount, changing_ >= 0), x = (kScreenW - w) / 2, y = listTop(kInstrumentCount, changing_ >= 0);
         fill(r, 0, kTopBarH + 1, kScreenW, kScreenH - kTopBarH - kHintsH - 1, faded(kBg, 200));
         box(r, x, y, w, h, kPanel, kLine);
         if (changing_ >= 0) std::snprintf(text, sizeof text, "TRACK %d: CHANGE ITS INSTRUMENT", changing_ + 1);
@@ -930,7 +930,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, x + 12.f, y + 12.f, text, kDim);
         for (int i = 0; i < kInstrumentCount; ++i) {
             const InstrumentInfo& info = kInstruments[i];
-            const int by = y + 36 + i * 52;
+            const int by = y + 36 + i * kInstrumentPitch;
             char about[64];
             if (info.countPresets) std::snprintf(about, sizeof about, "%s, %d presets", info.about, builtInPresets(info.kind));
             else std::snprintf(about, sizeof about, "%s", info.about);
@@ -940,7 +940,7 @@ void SongScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
             if (i == choice_) outline(r, x + 11, by - 1, w - 22, 48, kTeal, 2);
         }
         if (changing_ >= 0 && kInstruments[choice_].kind != project_.tracks[changing_].kind) { // (A on the one it has changes nothing)
-            const float ly = y + 36.f + kInstrumentCount * 52.f + 4.f;
+            const float ly = y + 36.f + kInstrumentCount * static_cast<float>(kInstrumentPitch) + 4.f;
             for (int line = 0; line < 2; ++line)
                 fonts.within(&Fonts::small, kChangeLostWords[line], w - 24.f).draw(r, x + 12.f, ly + line * 20.f, kChangeLostWords[line], kBrass);
         }

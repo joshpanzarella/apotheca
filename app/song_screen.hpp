@@ -69,6 +69,13 @@ public:
     // Under the list of instruments when a track's is being changed: what goes with the old one.
     static constexpr const char* kChangeLostWords[2] = {"ITS SOUND AND ITS KNOB MOVES GO.", "THIS CANNOT BE UNDONE."};
     static constexpr int kChangeLostH = 44;
+    // The list of instruments: a box of rows kInstrumentPitch apart, its top at kListY, or higher where it
+    // would reach the hints bar (six instruments since PHYSIC, with what goes said under them: 46 higher).
+    static constexpr int kListY = 70, kInstrumentPitch = 52, kListBottom = ui::kScreenH - ui::kHintsH - 8;
+    static constexpr int listH(int instruments, bool changing) { return 46 + instruments * kInstrumentPitch + (changing ? kChangeLostH : 0); }
+    static constexpr int listTop(int instruments, bool changing) {
+        return kListBottom - listH(instruments, changing) < kListY ? kListBottom - listH(instruments, changing) : kListY;
+    }
     // On a song's row while B is held on it.
     static constexpr const char* kSongDeletingWords = "CANNOT BE UNDONE"; // (short: the song's name shares the row)
     float trackDeletePart() const { return trackHoldPart_; }

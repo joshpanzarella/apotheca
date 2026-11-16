@@ -474,8 +474,11 @@ public:
     void setSynthMacro(int track, int macro, float value);
     // A built-in preset or one of the player's own. The macros go back to the middle.
     void chooseSynthPreset(int track, int index);
+    // Y on MAIN: a new sound from the dice, on a synth that has such a thing (PHYSIC: SynthSpec::roll).
+    // The engine is told the whole patch. False on the others, and nothing changes.
+    bool rollSynth(int track, unsigned seed);
     void sendSynthPatch(int track);
-    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's) and "NAME.fm6".
+    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's), "NAME.fm6" and "NAME.physic".
     // (An old "NAME.twin" or "NAME.qmod", of the synths that went, is left on the card and not listed.)
     void usePresetFolder(const std::string& folder);
     // Keep the track's sound, as it is now with its macros, under a name.

@@ -145,7 +145,7 @@ makers() {
 
 # The engine's texts (preset and folder names, an effect's words) and the tools', beside the app.
 # (A plant is an app folder of its own with the same folders beside it: one is planted in each.)
-kBeside="engine/src engine/src/fx engine/src/jx3p engine/src/fm6 engine/include/apotheca third_party/easycz/dsp third_party/msfa tools"
+kBeside="engine/src engine/src/fx engine/src/jx3p engine/src/fm6 engine/src/physic engine/include/apotheca third_party/easycz/dsp third_party/msfa tools"
 engine() {
     for d in $kBeside; do
         [ -d "$1/../$d" ] && scan "$1/../$d" names
@@ -285,6 +285,12 @@ PLANT
 plant the-synth-that-went-in-the-engine ../engine/include/apotheca/presets.hpp caught <<'PLANT'
 static const char* const kNames[] = {"Init", "Twin Analog Lead"};
 PLANT
+plant a-preset-of-physic ../engine/src/physic.cpp caught <<'PLANT'
+    {"Juno Bells", "BELLS", {6, 1, 70, 30, 95, 100, 50, 100, 70, 0, 0, 0, -3, 0, 0, 0, 0, 0}},
+PLANT
+plant a-word-in-physics-parts ../engine/src/physic/modes.hpp caught <<'PLANT'
+constexpr const char* kSays = "a JX-3P's bell";
+PLANT
 n=0
 for d in $kBeside; do # every folder read beside the app is read: a name planted in each
     n=$((n + 1))
@@ -292,7 +298,7 @@ for d in $kBeside; do # every folder read beside the app is read: a name planted
     const char* says = "as the PG-200 has it";
 PLANT
 done
-[ "$n" -eq 8 ] || { echo "words_test: $n folders beside the app, not 8"; fails=$((fails + 1)); }
+[ "$n" -eq 9 ] || { echo "words_test: $n folders beside the app, not 9"; fails=$((fails + 1)); }
 plant what-the-engine-may-say ../engine/src/engine.cpp clean <<'PLANT'
 #include "apotheca/jx3p.hpp"
 #include "msfa/dx7note.h"
