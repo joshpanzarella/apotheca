@@ -9,7 +9,7 @@ A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
 (a virtual analog synth modeled after a popular DCO synth, 33 presets), FM-6 (six-operator
 FM, after a classic 80s synth, 209 presets) or PHYSIC (plucked and struck sounds that ring by
-themselves: strings, mallets, bells, 25 presets). Up to sixteen scenes of
+themselves: strings, mallets, bells, 96 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
