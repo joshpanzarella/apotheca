@@ -4,8 +4,8 @@
 // One oscillator (SAW or SQUARE) into a four-pole diode ladder with resonance, a filter decay that
 // opens the cutoff (ENV MOD) and an amp decay. ACCENT is a note at velocity 0.95 or over: louder,
 // the filter's shortest decay, and the accent SWEEP that climbs when accents come close together.
-// SLIDE is a note's GLIDE: tied to the note before (end to end), the pitch slides and no envelope
-// starts again. The rules and figures are acid_rule.hpp's; the filter is engine/src/acid/ladder.hpp.
+// SLIDE is a note's GLIDE: tied to the note before (its gate open, or shut under a step ago), the
+// pitch slides and no envelope starts again; a GLIDE to the same key is a tie, one long note. The rules and figures are acid_rule.hpp's; the filter is engine/src/acid/ladder.hpp.
 //
 // One voice, the newest key wins; letting it go does not go back to a key still held. One tail
 // slot: allNotesOff hands the sounding note to it (a 3 ms fade) and the voice starts fresh, so Play
@@ -44,6 +44,8 @@ public:
     void noteOn(int note, float velocity) override;
     void noteOnFrom(int note, float velocity, int from, float seconds) override;
     void noteOff(int note) override;
+    void noteStep(double seconds) override; // the tie's window (acid_rule.hpp, tieSeconds)
+    bool tiesSameKey() const override { return true; }
     void allNotesOff() override; // Play, Stop, panic: the note to the tail (3 ms), the voice fresh
     void render(float* left, float* right, int frames) override;
 

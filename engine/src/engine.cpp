@@ -579,7 +579,9 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         const GlideTrail::From from = glides ? track.trail.from(track.glideFrom, note.pitch, at, glideSeed(trackIndex, at)) : GlideTrail::From();
         // The strike's roll (a synth with dice: PHYSIC), from where and which time it is struck.
         track.synth->noteSeed(physic::strikeSeed(trackIndex, note.pitch, strikeAt));
-        if (glides && from.pitch >= 0 && from.pitch != note.pitch) {
+        track.synth->noteStep(samplesPerStep_ / sampleRate_);
+        // From the note's own key: a tie for a synth that asks for it (ACID), a plain note for the rest.
+        if (glides && from.pitch >= 0 && (from.pitch != note.pitch || track.synth->tiesSameKey())) {
             const double steps = glideSteps(note.glide, at - from.at, note.piece);
             track.synth->noteOnFrom(note.pitch, note.velocity, from.pitch, static_cast<float>(steps * samplesPerStep_ / sampleRate_));
         } else {

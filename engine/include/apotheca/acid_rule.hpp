@@ -91,10 +91,21 @@ constexpr float kAccentAt = 0.95f;
 inline bool accented(float velocity, float accentDial) { return velocity >= kAccentAt && accentDial > 0.f; }
 
 // THE TIE: a note with GLIDE slides (no envelope starts again) when the gate is open or shut
-// under this long ago: notes placed end to end, in either order on one sample (the plan's
-// section 2). After a longer rest it slides in pitch but starts the envelopes again.
+// under tieSeconds ago. After a longer rest it slides in pitch but starts the envelopes again.
+// The window is a step less a sixteenth of one (the owner's word through the coordinator,
+// 2026-11-16: "a fast acid workflow"): a note placed shorter than its step (0.9, 0.5) still ties to
+// the GLIDE note on the next step, as the original holds the gate into a slide; a whole step's rest
+// (an empty step between) starts again. Never under kTieMs (notes end to end in either order on one
+// sample; with no step known: a synth played by hand).
 constexpr double kTieMs = 5.0;
-inline bool slides(bool glide, bool gateOpen, double shutSeconds) { return glide && (gateOpen || shutSeconds < kTieMs / 1000.0); }
+constexpr double kTieSteps = 15.0 / 16.0; // SELF
+inline double tieSeconds(double stepSeconds) {
+    const double steps = stepSeconds > 0.0 ? kTieSteps * stepSeconds : 0.0;
+    return steps > kTieMs / 1000.0 ? steps : kTieMs / 1000.0;
+}
+inline bool slides(bool glide, bool gateOpen, double shutSeconds, double stepSeconds = 0.0) {
+    return glide && (gateOpen || shutSeconds < tieSeconds(stepSeconds));
+}
 
 // SLIDE's time: the note's own glide length (NOTE: the roll's line is the truth) or FIXED.
 constexpr double kSlideFixedSeconds = 0.060; // SELF (the folklore's 60 ms)

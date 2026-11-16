@@ -115,6 +115,15 @@ static void testRule() {
     CHECK(!slides(false, true, 0.0));      // no GLIDE: starts again, overlap or not
     CHECK(!slides(false, false, 0.0));
     CHECK(slides(true, true, 100.0));      // the gate open: however long ago it last shut
+    // With the song's step known: a gap under 15/16 of a step ties (a note placed shorter than its
+    // step), a whole step's rest does not; never under 5 ms.
+    CHECK(tieSeconds(0.0) == 0.005 && tieSeconds(0.125) == 0.125 * 15.0 / 16.0 && tieSeconds(0.004) == 0.005);
+    CHECK(slides(true, false, 0.0125, 0.125));  // a note of 0.9 of a step at 120 BPM, then a GLIDE
+    CHECK(slides(true, false, 0.0625, 0.125));  // a note of half a step
+    CHECK(slides(true, false, 0.1171, 0.125));
+    CHECK(!slides(true, false, 0.1172, 0.125)); // 15/16 of a step and over
+    CHECK(!slides(true, false, 0.125, 0.125));  // an empty step between: starts again
+    CHECK(!slides(false, false, 0.0, 0.125));
 }
 
 // The slide's time and shape: an RC of three time constants, landing exactly.
@@ -553,6 +562,29 @@ static void testTie() {
     play(*b, {on(0, 48), off(5520, 48), from(6000, 60, 48, 0.06f)}, 6001);
     CHECK(b->ties() == 0 && b->strikes() == 2 && b->now().filterEnv > 0.99);
     CHECK(near(b->now().pitchOctaves, (48 - 69) / 12.0, 1e-9));
+    // The song's step told (noteStep): a note shorter than its step ties to the GLIDE note on the
+    // next step; a whole step's rest starts again. A GLIDE to the same key is a tie with no slide.
+    for (long offAt : {5400L, 3000L, 0L}) {
+        std::unique_ptr<Acid> t = synth(sets);
+        t->noteStep(0.125);
+        play(*t, {on(0, 48), off(offAt, 48), from(6000, 60, 48, 0.06f)}, 6001);
+        CHECK(offAt == 0 ? t->ties() == 0 && t->strikes() == 2 : t->ties() == 1 && t->strikes() == 1);
+    }
+    std::unique_ptr<Acid> same = synth(sets);
+    play(*same, {on(0, 48), off(6000, 48), from(6000, 48, 48, 0.06f)}, 9000);
+    CHECK(same->ties() == 1 && same->strikes() == 1 && same->gateOpen() && same->now().filterEnv == alone->now().filterEnv);
+    CHECK(near(same->now().pitchOctaves, (48 - 69) / 12.0, 1e-12));
+    std::unique_ptr<Acid> held = synth(sets);
+    held->noteStep(0.125);
+    play(*held, {on(0, 48), off(5400, 48), from(6000, 48, 48, 0.06f)}, 6001);
+    CHECK(held->ties() == 1 && held->strikes() == 1);
+    // A voice keeps awake through the window (a step) and sleeps after it.
+    std::unique_ptr<Acid> w = synth(sets);
+    w->noteStep(0.125);
+    play(*w, {on(0, 48), off(100, 48)}, 100 + 5600);
+    CHECK(w->awake());
+    play(*w, {}, 500);
+    CHECK(!w->awake());
     // Without GLIDE, overlap or not: started again, the pitch at once.
     std::unique_ptr<Acid> c = synth(sets);
     play(*c, {on(0, 48), on(6000, 60)}, 6001);
@@ -680,13 +712,17 @@ static void testThroughTheEngine() {
         engine->send(noteAt(3, 3, 67, 1.f, 256));       // a slide over an open gate
         engine->send(noteAt(4, 5, 72, 1.f, 256));       // after a rest: starts again (and slides)
         engine->send(noteAt(5, 7, 36, 1.f));            // plain
+        engine->send(noteAt(6, 8, 36, 1.f, 256));       // a GLIDE to the same key: a tie, one long note
+        engine->send(noteAt(7, 9, 43, 0.5f));           // plain, half a step long
+        engine->send(noteAt(8, 10, 46, 0.5f, 256));     // a GLIDE after half a step's gap: ties
+        engine->send(noteAt(9, 12, 48, 1.f, 256));      // a GLIDE after a whole empty step: starts again
         Command p;
         p.type = Command::Play;
         engine->send(p);
-        std::vector<float> first(2 * 8 * kStep), second(2 * 8 * kStep);
-        engine->render(first.data(), 8 * kStep);
+        std::vector<float> first(2 * 14 * kStep), second(2 * 14 * kStep);
+        engine->render(first.data(), 14 * kStep);
         const Acid* acid = dynamic_cast<const Acid*>(engine->synthForTests(1));
-        CHECK(acid && acid->ties() == 3 && acid->strikes() == 3);
+        CHECK(acid && acid->ties() == 5 && acid->strikes() == 5);
         if (acid && gPrint) std::printf("  through the engine (GLIDE FROM %d): %ld ties, %ld strikes\n", fromKind, acid->ties(), acid->strikes());
         Command s;
         s.type = Command::Stop;
@@ -694,7 +730,7 @@ static void testThroughTheEngine() {
         std::vector<float> rest(2 * 48000);
         engine->render(rest.data(), 48000);
         engine->send(p);
-        engine->render(second.data(), 8 * kStep);
+        engine->render(second.data(), 14 * kStep);
         CHECK(first == second);
     }
 }

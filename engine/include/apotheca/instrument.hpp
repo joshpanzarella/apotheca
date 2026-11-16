@@ -31,6 +31,14 @@ public:
     // key and the strike's own moment since Play: physic_rule.hpp, strikeSeed), handed over just
     // before it. A synth with no dice ignores it. (PHYSIC's; docs/plans/physic-plan.md, section 3.)
     virtual void noteSeed(std::uint32_t seed) { (void)seed; }
+    // How long a step of the song is, in seconds, handed over just before every noteOn /
+    // noteOnFrom the step clock sends. A synth with no use for it ignores it. (ACID's: a GLIDE note
+    // ties to the one before when the gap between them is under a step: acid_rule.hpp, tieSeconds.)
+    virtual void noteStep(double seconds) { (void)seconds; }
+    // True: a GLIDE whose key of the moment before is the note's own key comes as noteOnFrom with
+    // from == note (a tie: one long note), not as a plain noteOn. Every other synth: false, and such
+    // a glide is a plain noteOn as it always was. (ACID's.)
+    virtual bool tiesSameKey() const { return false; }
     // Stop (not Play, not panic): every note let go as by noteOff. A synth whose notes ring on
     // after they are let go keeps ringing, so a bounce, which sends Stop when the song's last sample
     // has played and then records the tail, keeps it. By default allNotesOff, as it always was.

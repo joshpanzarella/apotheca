@@ -67,7 +67,6 @@ struct Eff {
     float topHz = 20000.f;
     float attackStep = 0.f, gateStep = 0.f;
     int levelGlide = 1, tailSamples = 144;
-    long tieSamples = 240;
 };
 
 struct Voice {
@@ -107,6 +106,8 @@ struct Acid::State {
     Voice voice, tail;
     long tunings = 0, clipped = 0, strikes = 0, ties = 0;
     int tuneTick = kTuneTick;
+    double stepSeconds = 0.0; // the song's step (noteStep): the tie's window...
+    long tieWindow = 240;     // ...in samples (a voice sleeps only after it)
 
     float bent(int m) const {
         const int id = macroSetting(m);
@@ -144,7 +145,7 @@ struct Acid::State {
         e.gateStep = static_cast<float>(1.0 / (kGateSeconds * rate));
         e.tailSamples = static_cast<int>(std::ceil(kTailSeconds * rate));
         e.levelGlide = static_cast<int>(std::ceil(kLevelGlideSeconds * rate));
-        e.tieSamples = static_cast<long>(std::ceil(kTieMs / 1000.0 * rate));
+        tieWindow = static_cast<long>(std::ceil(tieSeconds(stepSeconds) * rate));
     }
     void levelTo(Voice& v, float to, bool glide) {
         v.levelTo = to;
@@ -232,7 +233,7 @@ struct Acid::State {
         return 0.0;
     }
     static float snap(float v) { return std::fabs(v) < kSnap ? 0.f : v; }
-    bool sleeps(const Voice& v) const { return !v.gate && v.gateLevel == 0.f && v.shut >= eff.tieSamples && v.sweep < kSweepQuiet; }
+    bool sleeps(const Voice& v) const { return !v.gate && v.gateLevel == 0.f && v.shut >= tieWindow && v.sweep < kSweepQuiet; }
 
     float clip(float y) {
         const float a = std::fabs(y);
@@ -304,8 +305,9 @@ void Acid::noteOnFrom(int note, float velocity, int from, float seconds) {
     const Eff& e = s.eff;
     velocity = clampf(velocity, 0.f, 1.f);
     Voice& v = s.voice;
-    const bool glide = from >= 0 && from <= 127 && from != note && seconds > 0.f && seconds < 1e6f;
-    const bool tie = !v.asleep && slides(glide, v.gate, static_cast<double>(v.shut) / s.sampleRate);
+    // (from == note: a GLIDE to the same key, a tie with nothing to slide)
+    const bool glide = from >= 0 && from <= 127 && seconds > 0.f && seconds < 1e6f;
+    const bool tie = !v.asleep && slides(glide, v.gate, static_cast<double>(v.shut) / s.sampleRate, s.stepSeconds);
     const bool accent = accented(velocity, e.accentDial);
     v.asleep = false;
     v.key = note;
@@ -313,7 +315,7 @@ void Acid::noteOnFrom(int note, float velocity, int from, float seconds) {
     v.shut = 0;
     v.noteOct = (note - 69) / 12.0;
     v.slideN = 0, v.slideSpan = 0.0;
-    if (glide) {
+    if (glide) { // (to the same key the span is 0: no slide)
         const double time = slideSeconds(e.slide, seconds);
         const long n = slideSamples(time, s.sampleRate);
         if (n >= 1) {
@@ -336,6 +338,13 @@ void Acid::noteOnFrom(int note, float velocity, int from, float seconds) {
     v.attack = true;
     v.tuneIn = 0;
     ++s.strikes;
+}
+
+void Acid::noteStep(double seconds) {
+    State& s = *state_;
+    if (!(seconds > 0.0 && seconds < 60.0) || seconds == s.stepSeconds) return;
+    s.stepSeconds = seconds;
+    s.tieWindow = static_cast<long>(std::ceil(tieSeconds(seconds) * s.sampleRate));
 }
 
 void Acid::noteOff(int note) {
