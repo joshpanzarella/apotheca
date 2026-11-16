@@ -5,9 +5,10 @@
 // the synth on the track has (its pages, settings, ranges and the names of
 // their values) and builds itself from the answer, so a new synth or a new
 // setting shows up without touching this file. The spec's "page" says what
-// kind of track it is: "synth", or "sampler" (its settings, and a picture of
-// its recording with START and END on it to drag: `wave()` below, which the
-// KIT's page will use once a lane).
+// kind of track it is: "synth", "sampler" (its settings, and a picture of
+// its recording with START and END on it to drag: `wave()` below) or "kit"
+// (eight lanes, each a card with its sound, its picture by `wave()`, its
+// settings and EDIT).
 
 namespace apotheca {
 
@@ -51,6 +52,20 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
 .wavetop select{min-width:220px;max-width:100%}
 .wave canvas{display:block;width:100%;height:150px;background:var(--bg);border:1px solid var(--line);touch-action:none;cursor:ew-resize}
 .wave .note{font-size:11px;color:var(--dim);margin-top:4px}
+body.kit{padding-bottom:24px}
+#kithelp{font-size:12px;color:var(--dim);margin:2px 0 12px}
+.lanes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,480px),1fr));gap:14px}
+.lane{margin:0;min-width:0}
+.lane .top{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-bottom:8px}
+.lane .num{font-weight:700;font-size:16px;color:var(--brass);min-width:16px}
+.lane .top select{flex:1;min-width:0;max-width:100%}
+.lane .wave canvas{height:96px}
+.lane h3{font-size:11px;letter-spacing:.14em;color:var(--dim);margin:12px 0 6px;font-weight:600}
+.lane .grid{grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:8px 16px}
+.lane .grid.five{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}
+.lane .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button.on{background:var(--brass)}
+@media (max-width:600px){body{padding:14px 16px 150px} body.kit{padding-bottom:24px} #keys{padding:10px 16px 12px} section{padding:12px}}
 </style></head><body>
 <header>
   <h1>SOUND DESIGNER</h1><span id="what" class="dim"></span>
@@ -63,7 +78,7 @@ input[type=range]{width:100%;accent-color:var(--teal);margin:2px 0}
   <a id="files" href="#">files</a>
 </header>
 <div id="said" class="dim">The handheld makes the sound. Turn it up, or plug headphones into it.</div>
-<div id="nothing" hidden>The track being worked on is not a synth or a sampler. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC or SAMPLER track (or add one with + TRACK).</div>
+<div id="nothing" hidden>The track being worked on has no instrument. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC, SAMPLER or DRUMS track (or add one with + TRACK).</div>
 <div id="all"></div>
 <div id="keys">
   <div class="row"><span>PLAY: click the keys, or use the computer keyboard: A W S E D F T G Y H U J K. Z and X: octave down / up.</span><span id="oct"></span></div>
@@ -92,23 +107,30 @@ async function get(path) { return (await fetch(base + path, {cache: 'no-store'})
 
 // ---- building the page from what the synth has ----
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
-function shown(item, v) { return item.texts ? item.texts[v - item.min] : String(v); }
+// A setting with "stops" takes only those values (a kit's FADE, FIT, HUMAN TIME and LEVEL): its place
+// among them is the last at or under the value, as on the handheld.
+function stopPlace(item, v) { let k = 0; item.stops.forEach((s, i) => { if (s <= v) k = i; }); return k; }
+function shown(item, v) { return item.texts ? item.texts[item.stops ? stopPlace(item, v) : v - item.min] : String(v); }
 // A setting's control. A "flip" setting's slider runs the other way (the sampler's PITCH is kept as
-// its root key: right is higher).
+// its root key: right is higher). An item with a "reading" says itself what a value reads.
 function control(item, label) {
   const box = el('div', 'ctl'), lab = el('label'), val = el('b');
   lab.append(el('span', '', label || item.name), val); box.append(lab);
+  const count = item.stops ? item.stops.length : item.max - item.min + 1;
+  // the input's place <-> the setting's value
+  const toValue = p => item.stops ? item.stops[p] : item.flip ? item.min + item.max - p : p;
+  const toPlace = v => item.stops ? stopPlace(item, v) : item.flip ? item.min + item.max - v : v;
   let input;
-  if (item.texts && item.max - item.min <= 8) {
+  if (item.texts && count <= 9) {
     input = el('select');
-    item.texts.forEach((t, i) => { const o = el('option', '', t); o.value = item.min + i; input.append(o); });
+    item.texts.forEach((t, i) => { const o = el('option', '', t); o.value = item.stops ? i : item.min + i; input.append(o); });
   } else {
-    input = el('input'); input.type = 'range'; input.min = item.min; input.max = item.max; input.step = 1;
+    input = el('input'); input.type = 'range'; input.min = item.stops ? 0 : item.min; input.max = item.stops ? count - 1 : item.max; input.step = 1;
   }
-  const turn = v => item.flip ? item.min + item.max - v : v; // the input's place <-> the setting's value
-  const show = () => { val.textContent = input.tagName === 'SELECT' ? '' : shown(item, turn(+input.value)); };
-  const put = v => { input.value = turn(v); show(); };
-  input.addEventListener('input', () => setValue(item.id, turn(+input.value)));
+  let now = null; // the value shown (a value between two stops is shown as it is)
+  const show = () => { if (now === null) now = toValue(+input.value); val.textContent = input.tagName === 'SELECT' ? '' : item.reading ? item.reading(now) : shown(item, now); };
+  const put = v => { input.value = toPlace(v); now = v; show(); };
+  input.addEventListener('input', () => { now = toValue(+input.value); setValue(item.id, now); });
   // Once a choice is made the dropdown lets go of the keyboard, so the next
   // key pressed is a note again (and not a letter typed into the dropdown).
   if (input.tagName === 'SELECT') input.addEventListener('change', () => input.blur());
@@ -126,21 +148,27 @@ function setValue(id, v) {
 }
 
 // ---- a recording as a picture, its marks dragged ----
-// w: {peaks (0..1000), seconds, recording, missing, marks: [id, id] (settings at 0..100% of the way
-// along, in order), least: how near two marks may come}. The marks are the settings themselves, so
-// a drag is the same request a slider makes.
+// w: {peaks (0..1000), seconds, recording, missing, marks: [id, id] (settings at 0..units of the way
+// along, in order; units 100 unless it says), least: how near two marks may come}. The marks are the
+// settings themselves, so a drag is the same request a slider makes. A kit's lane adds what only it
+// has: label(id) (a mark's words), level(at) (how loud the edits make that point: the part played is
+// drawn so), noteText() and emptyText.
+function itemOf(id) {
+  if (spec.page === 'kit') { const f = spec.fields.find(f => f.field === id % spec.stride); return f ? Object.assign({}, f, {id}) : {name: '', id}; }
+  return spec.pages.flatMap(p => p.items).find(i => i.id === id) || {name: '', id};
+}
 function wave(w) {
   const box = el('div', 'wave'), cv = el('canvas'), note = el('div', 'note');
   box.append(cv, note);
-  const item = id => spec.pages.flatMap(p => p.items).find(i => i.id === id) || {name: '', id};
+  const item = itemOf, units = w.units || 100;
   const at = id => state && state.values ? +state.values[id] : 0;
   let drag = -1;
-  function place(e) { const r = cv.getBoundingClientRect(); return Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / Math.max(1, r.width) * 100))); }
+  function place(e) { const r = cv.getBoundingClientRect(); return Math.max(0, Math.min(units, Math.round((e.clientX - r.left) / Math.max(1, r.width) * units))); }
   // Each mark stops `least` short of its neighbours, as on the handheld.
   function held(k, v) {
     if (k > 0) v = Math.max(v, at(w.marks[k - 1]) + w.least);
     if (k < w.marks.length - 1) v = Math.min(v, at(w.marks[k + 1]) - w.least);
-    const it = item(w.marks[k]); return Math.max(it.min ?? 0, Math.min(it.max ?? 100, v));
+    const it = item(w.marks[k]); return Math.max(it.min ?? 0, Math.min(it.max ?? units, v));
   }
   function move(e) { const v = held(drag, place(e)); if (v !== at(w.marks[drag])) setValue(w.marks[drag], v); }
   cv.addEventListener('pointerdown', e => {
@@ -159,13 +187,16 @@ function wave(w) {
     const g = cv.getContext('2d'); g.clearRect(0, 0, W, H);
     if (!w.peaks.length) {
       g.fillStyle = c('--dim'); g.font = (14 * dpr) + 'px system-ui,sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(w.missing ? 'MISSING FROM THE CARD: ' + w.recording : 'NO RECORDING: PICK ONE ABOVE', W / 2, H / 2);
+      g.fillText(w.emptyText || (w.missing ? 'MISSING FROM THE CARD: ' + w.recording : 'NO RECORDING: PICK ONE ABOVE'), W / 2, H / 2);
       note.textContent = ''; return;
     }
-    const x = id => at(id) / 100 * W, lo = x(w.marks[0]), hi = x(w.marks[w.marks.length - 1]), mid = H / 2, n = w.peaks.length;
+    const x = id => at(id) / units * W, lo = x(w.marks[0]), hi = x(w.marks[w.marks.length - 1]), mid = H / 2, n = w.peaks.length;
     for (let px = 0; px < W; ++px) {
-      const p = w.peaks[Math.min(n - 1, Math.floor(px / W * n))] / 1000, h = Math.max(1, p * (mid - 6 * dpr));
-      g.fillStyle = px >= lo && px <= hi ? c('--teal') : c('--line');
+      const i = Math.min(n - 1, Math.floor(px / W * n)), played = px >= lo && px <= hi;
+      let p = w.peaks[i] / 1000;
+      if (played && w.level) p = Math.abs(guarded(p * w.level(i / n)));
+      const h = Math.max(1, p * (mid - 6 * dpr));
+      g.fillStyle = played ? c('--teal') : c('--line');
       g.fillRect(px, mid - h, 1, 2 * h);
     }
     g.font = (11 * dpr) + 'px system-ui,sans-serif'; g.textBaseline = 'top';
@@ -173,11 +204,14 @@ function wave(w) {
       const mx = Math.min(W - 2 * dpr, Math.max(0, x(id) - dpr)), last = k === w.marks.length - 1;
       g.fillStyle = c('--brass'); g.fillRect(mx, 0, 2 * dpr, H);
       g.fillRect(last ? mx - 8 * dpr : mx, 0, 10 * dpr, 10 * dpr); // its handle, on the side of what is played
-      const label = item(id).name + ' ' + at(id) + '%';
+      const label = w.label ? w.label(id) : item(id).name + ' ' + at(id) + '%';
       g.textAlign = last ? 'right' : 'left';
-      g.fillText(label, last ? mx - 4 * dpr : mx + 6 * dpr, H - 16 * dpr);
+      const lx = last ? mx - 4 * dpr : mx + 6 * dpr, lw = g.measureText(label).width; // (on a patch of the background, to read over the picture)
+      g.fillStyle = c('--bg'); g.fillRect(last ? lx - lw - 3 * dpr : lx - 3 * dpr, H - 18 * dpr, lw + 6 * dpr, 15 * dpr);
+      g.fillStyle = c('--brass'); g.fillText(label, lx, H - 16 * dpr);
     });
     const s = w.seconds;
+    if (w.noteText) { note.textContent = w.noteText(); return; }
     note.textContent = w.recording + ' · ' + s.toFixed(2) + ' S · a note plays ' + (s * (at(w.marks[w.marks.length - 1]) - at(w.marks[0])) / 100).toFixed(2) + ' S of it (at its own pitch). Drag a mark, or click to move the nearer one.';
   }
   waves.push({draw});
@@ -187,11 +221,13 @@ function drawWaves() { for (const w of waves) w.draw(); }
 window.addEventListener('resize', drawWaves);
 function build() {
   const all = $('all'); all.textContent = ''; controls = {}; macroControls = []; envs = []; waves = [];
-  const none = !spec || !spec.name, sampler = !none && spec.page === 'sampler';
-  $('nothing').hidden = !none; $('keys').hidden = none; $('roll').hidden = none || !spec.roll;
-  // A sampler keeps no presets: its sound is its recording.
-  for (const id of ['presetbox', 'name', 'save']) $(id).hidden = none || sampler;
+  const none = !spec || !spec.name, sampler = !none && spec.page === 'sampler', kit = !none && spec.page === 'kit';
+  $('nothing').hidden = !none; $('keys').hidden = none || kit; $('roll').hidden = none || !spec.roll;
+  document.body.classList.toggle('kit', kit);
+  // A sampler keeps no presets (its sound is its recording), nor does a kit.
+  for (const id of ['presetbox', 'name', 'save']) $(id).hidden = none || sampler || kit;
   if (none) return;
+  if (kit) return buildKit(all);
   if (sampler) for (const w of spec.waves) all.append(recordingSection(w));
   // presets, in their folders
   const sel = $('preset'); sel.textContent = ''; let group = null, folder = null;
@@ -239,15 +275,7 @@ function recordingSection(w) {
   const s = el('section'), top = el('div', 'wavetop'), pick = el('select'), play = el('button');
   s.append(el('h2', '', 'RECORDING'));
   pick.id = 'recording';
-  const none = el('option', '', 'NONE'); none.value = ''; pick.append(none);
-  let group = null, folder = null;
-  for (const name of spec.recordings) {
-    const cut = name.lastIndexOf('/'), f = cut < 0 ? '' : name.slice(0, cut);
-    if (f !== folder || !group) { folder = f; group = el('optgroup'); group.label = f || 'UNSORTED'; pick.append(group); }
-    const o = el('option', '', name.slice(cut + 1)); o.value = name; o.disabled = /[^ -~]/.test(name); group.append(o);
-  }
-  if (w.recording && !spec.recordings.includes(w.recording)) { const o = el('option', '', w.recording + ' (missing)'); o.value = w.recording; o.disabled = true; pick.append(o); }
-  pick.value = w.recording;
+  recordingOptions(pick, 'NONE', w.recording);
   pick.addEventListener('change', () => { tell('sample', ('sample ' + pick.value).trim()); pick.blur(); });
   play.id = 'play'; play.textContent = 'PLAY  (hold, or hold the space bar)';
   play.addEventListener('pointerdown', e => { note(spec.hear, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });
@@ -256,6 +284,106 @@ function recordingSection(w) {
   s.append(top, wave(w));
   return s;
 }
+// The recordings on the card, in their folders, after a first choice that is none of them ('' ).
+function recordingOptions(pick, first, now) {
+  const none = el('option', '', first); none.value = ''; pick.append(none);
+  let group = null, folder = null;
+  for (const name of spec.recordings) {
+    const cut = name.lastIndexOf('/'), f = cut < 0 ? '' : name.slice(0, cut);
+    if (f !== folder || !group) { folder = f; group = el('optgroup'); group.label = f || 'UNSORTED'; pick.append(group); }
+    const o = el('option', '', name.slice(cut + 1)); o.value = name; o.disabled = /[^ -~]/.test(name); group.append(o);
+  }
+  if (now && !spec.recordings.includes(now)) { const o = el('option', '', now + ' (missing)'); o.value = now; o.disabled = true; pick.append(o); }
+  pick.value = now;
+}
+
+// ---- a drum KIT: a card a lane ----
+// Each lane's settings are ids of their own (lane * spec.stride + field), so a lane's control sends
+// `set` as any other. Fields 0 to 7 are EDIT's rows (START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE,
+// REVERSE); then FIT, CHOKE, VOLUME, HUMAN TIME, HUMAN LEVEL.
+const kEdit = {start: 0, end: 1, fadeIn: 2, fadeOut: 3, gain: 4, pitch: 5, fine: 6, reverse: 7}, kFit = 8, kChoke = 9, kVolume = 10, kHumanTime = 11, kHumanLevel = 12;
+// The guard and how loud a point of the file is made, for the picture only: lane_edit.cpp's guarded()
+// and laneEditLevelAt(), which the KIT page's EDIT view draws with. Keep them the same.
+function guarded(x) { const a = Math.abs(x); if (a <= 0.9) return x; const y = 0.9 + 0.1 * Math.tanh((a - 0.9) / 0.1); return x < 0 ? -y : y; }
+function levelAt(v, b, at, seconds) {
+  const start = v[b + kEdit.start] / 100000, end = v[b + kEdit.end] / 100000;
+  if (at < start || at >= end) return 1;
+  const speed = Math.pow(2, (v[b + kEdit.pitch] + v[b + kEdit.fine] / 100) / 12);
+  const heard = (v[b + kEdit.reverse] ? end - at : at - start) * seconds / speed, length = (end - start) * seconds / speed;
+  let g = v[b + kEdit.gain] === 0 ? 1 : Math.pow(10, v[b + kEdit.gain] / 200);
+  const fadeIn = v[b + kEdit.fadeIn] / 1000, fadeOut = v[b + kEdit.fadeOut] / 1000;
+  if (heard < fadeIn) g *= heard / fadeIn;
+  if (length - heard < fadeOut) g *= (length - heard) / fadeOut;
+  return g;
+}
+// START and END as the handheld reads them (laneEditText): a time into the lane's own file. Shown
+// while a mark is dragged; the handheld's own reading takes its place when it comes.
+function timeText(v, seconds) { const s = v / 100000 * seconds; return s < 1 ? (s * 1000).toFixed(1) + ' MS' : s.toFixed(3) + ' S'; }
+function buildKit(all) {
+  const help = el('div', '', 'PLAY a lane: hold its PLAY, or hold 1 to 8 on the computer\'s keyboard. Drag START and END on a picture. The files on the card are never changed.');
+  help.id = 'kithelp'; all.append(help);
+  const lanes = el('div', 'lanes');
+  for (const w of spec.waves) lanes.append(laneCard(w));
+  all.append(lanes);
+  drawWaves();
+}
+function laneCard(w) {
+  const lane = w.lane, base = lane * spec.stride, card = el('section', 'lane'), top = el('div', 'top');
+  card.dataset.lane = lane;
+  const pick = el('select'), play = el('button', '', 'PLAY');
+  pick.id = 'sound' + lane; play.id = 'play' + lane;
+  recordingOptions(pick, 'BUILT-IN ' + w.drum, w.recording);
+  pick.addEventListener('change', () => { tell('lanesample' + lane, ('lanesample ' + lane + ' ' + pick.value).trim()); pick.blur(); });
+  play.addEventListener('pointerdown', e => { hear(lane, true); play.setPointerCapture(e.pointerId); e.preventDefault(); });
+  for (const up of ['pointerup', 'pointercancel']) play.addEventListener(up, () => hear(lane, false));
+  top.append(el('span', 'num', String(lane + 1)), pick, play);
+  card.append(top);
+  const laneState = () => state && state.lanes ? state.lanes[lane] : null;
+  // A setting of this lane: what the handheld reads, once it has the value shown.
+  const item = field => {
+    const it = itemOf(base + field);
+    if (field <= kEdit.reverse) it.reading = v => { const s = laneState(); return s && state.values[it.id] === v ? s.readings[field] : it.time ? timeText(v, w.seconds) : shown(it, v); };
+    return it;
+  };
+  w.units = w.units || 100000;
+  w.label = id => itemOf(id).name + ' ' + item(id % spec.stride).reading(state ? +state.values[id] : 0);
+  w.level = at => state && state.values ? levelAt(state.values, base, at, w.seconds) : 1;
+  w.emptyText = w.missing ? 'NOT ON THE CARD: ' + w.recording + '. THE DRUM PLAYS.' : 'NO SOUND';
+  w.noteText = () => {
+    const s = laneState(), fit = state && state.values ? state.values[base + kFit] : 0;
+    const what = (w.recording || w.drum + ', BUILT IN') + ' · ' + w.seconds.toFixed(2) + ' S';
+    if (!s) return what;
+    return what + ' · ' + (s.making ? 'MAKING IT...' : s.fitting ? 'FITTING...' : 'PLAYS ' + s.plays.toFixed(2) + ' S' + (fit > 0 && w.recording ? ', FITTED' : ''));
+  };
+  card.append(wave(w));
+  const g = el('div', 'grid five');
+  for (const f of [kVolume, kChoke, kFit, kHumanTime, kHumanLevel]) {
+    const box = control(item(f));
+    if (f === kFit && !w.recording) { box.querySelector('select').disabled = true; box.title = 'FIT stretches a recording: a built-in drum has none.'; }
+    g.append(box);
+  }
+  card.append(g, el('h3', '', 'EDIT'));
+  const e = el('div', 'grid');
+  for (const f of [kEdit.start, kEdit.end, kEdit.fadeIn, kEdit.fadeOut, kEdit.gain, kEdit.pitch, kEdit.fine, kEdit.reverse]) e.append(control(item(f)));
+  const acts = el('div', 'acts'), norm = el('button', 'quiet', 'NORMALIZE'), trim = el('button', 'quiet', 'TRIM SILENCE');
+  norm.id = 'normalize' + lane; trim.id = 'trim' + lane;
+  // Done on the handheld (it knows the sound): the boxes take what it made of them.
+  const after = fields => { for (const f of fields) touched[base + f] = 0; setTimeout(look, 250); };
+  norm.addEventListener('click', () => { tell('normalize' + lane, 'normalize ' + lane); after([kEdit.gain]); });
+  trim.addEventListener('click', () => { tell('trim' + lane, 'trim ' + lane); after([kEdit.start, kEdit.end]); });
+  acts.append(norm, trim);
+  card.append(e, acts);
+  return card;
+}
+// A lane heard for as long as it is held, as X on the handheld.
+const lanesDown = new Set();
+function hear(lane, on) {
+  if (on === lanesDown.has(lane)) return;
+  on ? lanesDown.add(lane) : lanesDown.delete(lane);
+  tell('h' + (++serial), 'hear ' + lane + ' ' + (on ? 1 : 0));
+  const b = $('play' + lane); if (b) b.classList.toggle('on', on);
+}
+
 // An envelope as a line: each step moves to its level, quicker for a higher rate.
 function drawEnvs() {
   if (!state || !state.values) return;
@@ -287,6 +415,7 @@ function fill() {
   $('what').textContent = 'TRACK ' + state.track + ' · ' + state.name;
   const pick = $('recording');
   if (pick && spec.waves && document.activeElement !== pick) pick.value = spec.waves[0].recording; // (a pick refused: back to what is on)
+  if (spec.page === 'kit') for (const w of spec.waves) { const p = $('sound' + w.lane); if (p && document.activeElement !== p) p.value = w.recording; }
   drawEnvs(); drawWaves();
 }
 async function look() {
@@ -329,15 +458,17 @@ window.addEventListener('keydown', e => {
   // Only a box being typed in keeps the keys to itself. Sliders and dropdowns do not.
   if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || (e.target.tagName === 'INPUT' && e.target.type === 'text')) return;
   const k = e.key.toLowerCase();
+  if (spec && spec.page === 'kit') { const lane = '12345678'.indexOf(k); if (lane >= 0 && k) { hear(lane, true); e.preventDefault(); } return; }
   if (k === ' ' && spec && spec.page === 'sampler') { note(spec.hear, true); e.preventDefault(); return; }
   if (k === 'z' || k === 'x') { for (const held of [...down]) note(held, false); octave = Math.max(1, Math.min(8, octave + (k === 'x' ? 1 : -1))); board(); return; }
   const i = letters.indexOf(k); if (i >= 0) { note((octave + 1) * 12 + i, true); e.preventDefault(); }
 });
 window.addEventListener('keyup', e => {
+  if (spec && spec.page === 'kit') { const lane = '12345678'.indexOf(e.key); if (lane >= 0 && e.key) hear(lane, false); return; }
   if (e.key === ' ' && spec && spec.page === 'sampler') return note(spec.hear, false);
   const i = letters.indexOf(e.key.toLowerCase()); if (i >= 0) note((octave + 1) * 12 + i, false);
 });
-window.addEventListener('blur', () => { for (const held of [...down]) note(held, false); });
+window.addEventListener('blur', () => { for (const held of [...down]) note(held, false); for (const lane of [...lanesDown]) hear(lane, false); });
 
 board(); look(); setInterval(look, 800);
 </script></body></html>
