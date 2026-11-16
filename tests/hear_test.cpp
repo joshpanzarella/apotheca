@@ -26,6 +26,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "samples.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -43,12 +44,6 @@ namespace {
 const SDL_Keycode A = SDLK_x, X = SDLK_s, UP = SDLK_UP;
 const int kFrameMs = 16, kFrameSound = 768; // one screen frame, and the sound it lasts
 const float kQuiet = 1e-4f;
-
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-hear-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 
 std::vector<float> tone(float seconds, float level) {
     std::vector<float> out(static_cast<std::size_t>(seconds * 48000.f));
@@ -353,7 +348,7 @@ void theGestures(Rig& rig, const char* page, Hold hold, Away away, Back back, co
 // The list's preview stops as soon as the cursor moves on (owner, 2026-11-15), onto a folder too,
 // out of the folder, or with B: none of those puts another recording on to take the lane over.
 void testThePreviewStopsWhenTheCursorMovesOn() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("hear");
     mkdir((folder + "/drums").c_str(), 0755);
     mkdir((folder + "/drums/inner").c_str(), 0755);
     writeWav(folder + "/drums/long.wav", tone(3.f, 0.25f), 48000);
@@ -403,7 +398,7 @@ void testThePreviewStopsWhenTheCursorMovesOn() {
 }
 
 void testThePages() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("hear");
     writeWav(folder + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(folder + "/short.wav", tone(0.4f, 0.25f), 48000);
     Rig rig(folder);
@@ -618,7 +613,7 @@ void testThePages() {
 }
 
 void testTheSampler() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("hear");
     writeWav(folder + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(folder + "/short.wav", tone(0.4f, 0.25f), 48000);
     Rig rig(folder);
@@ -711,7 +706,7 @@ void testTheSampler() {
 
 // The FX screen on a drum track: lane 1.
 void testTheFxScreenOnDrums() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("hear");
     writeWav(folder + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(folder + "/short.wav", tone(0.4f, 0.25f), 48000);
     Rig rig(folder);
@@ -725,7 +720,7 @@ void testTheFxScreenOnDrums() {
 // The built-in kit tapped is heard whole, as it always was (its cymbal is 1.8 s): the 350 ms tap is
 // for a recording. Held and let go, it stops all the same.
 void testTheBuiltInDrumTapped() {
-    Rig rig(tempFolder());
+    Rig rig(tempFolder("hear"));
     Session& session = rig.session();
     rig.project().track = 0;
     const auto x = [&](bool down) { rig.key(X, down); };

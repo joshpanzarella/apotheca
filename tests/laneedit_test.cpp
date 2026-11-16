@@ -26,6 +26,7 @@
 #include "song_file.hpp"
 #include "stretch.hpp"
 #include "ui.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -63,9 +64,7 @@ std::vector<float> asRead(const std::string& path) {
 struct TempFolder {
     std::string path;
     explicit TempFolder() {
-        char pattern[] = "/tmp/apotheca-laneedit-XXXXXX";
-        const char* got = mkdtemp(pattern);
-        path = got ? got : "/tmp";
+        path = tempFolder("laneedit");
         CHECK(writeWav(path + "/hit.wav", made(24000), 48000));       // half a second
         CHECK(writeWav(path + "/break.wav", made(96000), 48000));     // two seconds: a bar at 120 is exactly two
         std::vector<float> quiet(48000, 0.f);

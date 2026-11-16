@@ -20,6 +20,7 @@
 #include "apotheca/engine.hpp"
 #include "app.hpp"
 #include "midi.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -35,12 +36,6 @@ static int failures = 0;
 namespace {
 
 const int kStep = 6000; // at 120 BPM, 48 kHz
-
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-midi-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 
 // Wait for something another thread does, a second at most.
 bool until(const std::function<bool()>& done) {
@@ -149,7 +144,7 @@ void testOnlyNotesComeInLive() {
 // ---- the thread that reads keyboards ------------------------------------------------------------
 
 void testAKeyboardPlaysTheTrack() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("midi");
     // Other things live in /dev/snd too; they are left alone.
     // (This one even holds bytes that would be a note, if it were read.)
     {
@@ -246,7 +241,7 @@ struct Rig {
     Input input;
     App app{*engine};
     Uint32 clock = 1000;
-    std::string folder = tempFolder();
+    std::string folder = tempFolder("midi");
     Keyboard keys{folder, "midiC1D0"};
 
     Rig() {

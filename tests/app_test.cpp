@@ -29,6 +29,7 @@
 #include "mods.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -1517,8 +1518,7 @@ void testStepsInAScene() {
 }
 
 void testTheBattery() {
-    char pattern[] = "/tmp/apotheca-battery-XXXXXX";
-    const std::string root = mkdtemp(pattern);
+    const std::string root = tempFolder("battery");
     bool charging = true;
     CHECK(batteryPercent(&charging, root) == -1 && !charging);           // nothing there: a desk computer
     CHECK(batteryPercent(nullptr, root + "/no-such-folder") == -1);
@@ -1587,8 +1587,7 @@ static bool endsOnItsLastSound(const Wav& w, std::size_t body) {
 
 // Bouncing: the song, or its tracks, written out as WAV files by a second engine.
 void testBouncing() {
-    char pattern[] = "/tmp/apotheca-bounce-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("bounce");
     const auto wavsIn = [&] { return filesEnding(folder, ".wav"); };
     const auto read = [&](const std::string& name) { return readWav(folder + "/" + name); };
     const auto peakIn = [](const Wav& w, std::size_t from, std::size_t to) { float p = 0.f; for (std::size_t i = from; i < to && i < w.left.size(); ++i) p = std::fmax(p, std::fabs(w.left[i])); return p; };
@@ -1872,8 +1871,7 @@ void testWhereABounceEnds() {
 
 // A BOUNCE RUNS UNTIL ITS TAIL ENDS (owner, 2026-11-12): it used to stop three seconds after the last step.
 void testABounceRunsUntilTheTailEnds() {
-    char pattern[] = "/tmp/apotheca-tail-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("tail");
     Rig rig;
     Session& session = rig.app.session();
     session.useBounceFolder(folder);
@@ -2318,8 +2316,7 @@ void testTheHelpCardSaysTheLoad() {
     CHECK(App::loadWords(all) == "SOUND 43%  WORST 88%  CPU 37%");
     CHECK(App::loadWords(sound) == "SOUND 43%  WORST 88%");
     CHECK(App::loadWords(program) == "CPU 37%");
-    char pattern[] = "/tmp/apotheca-cpu-XXXXXX";
-    const std::string folder = mkdtemp(pattern), stat = folder + "/stat";
+    const std::string folder = tempFolder("cpu"), stat = folder + "/stat";
     const auto ticks = [&](long utime) {
         std::FILE* f = std::fopen(stat.c_str(), "w");
         std::fprintf(f, "9 (apotheca) S 1 2 3 4 5 6 7 8 9 10 %ld 0 0 0\n", utime);
@@ -3153,8 +3150,7 @@ void testSelectGoesToTheSongScreen() {
 }
 
 void testTheSetupScreen() {
-    char pattern[] = "/tmp/apotheca-setup-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("setup");
     const float stickBefore = ui::gStickSpeed;
     {
         Rig rig;
@@ -6675,8 +6671,8 @@ void testAPresetKeepsTheTracksOwnValues() {
     const float fullOff = jxLoud(*rig, 1.f), softOff = jxLoud(*rig, 0.3f);
     CHECK(softOff > 0.75f * fullOff && softOff < 1.33f * fullOff);
     // One of the player's own, saved with them turned another way: its file does not hold them...
-    char folder[] = "/tmp/apotheca-keeps-XXXXXX";
-    CHECK(mkdtemp(folder) != nullptr);
+    const std::string keeps = tempFolder("keeps");
+    const char* folder = keeps.c_str();
     session.usePresetFolder(folder);
     session.setSynthSetting(1, jx3p::Resonance, 41);
     session.setSynthSetting(1, jx3p::Velocity, 1);
@@ -9355,8 +9351,7 @@ void testDeletingASongSaysItCannotBeUndone() {
     CHECK(canvas.ok && scratch.ok);
     if (!canvas.ok || !scratch.ok) return;
     const Fonts& fonts = *canvas.fonts;
-    char pattern[] = "/tmp/apotheca-delsong-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("delsong");
     {
         Rig rig;
         Session& session = rig.app.session();

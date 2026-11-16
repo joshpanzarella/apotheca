@@ -21,6 +21,7 @@
 #include "chords.hpp"
 #include "note_marks.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -822,8 +823,7 @@ void testScenes() {
 // A bounce plays the song once. With HUMAN TIME on the song's first chord its early keys were
 // asked for on the song's last step, sounded in its last 12 ms and rang on into the file's tail.
 void testABounce() {
-    char pattern[] = "/tmp/apotheca-chordfx-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("chordfx");
     const auto read = [&](const std::string& name) {
         std::vector<float> left;
         std::string bytes;

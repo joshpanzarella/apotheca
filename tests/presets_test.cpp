@@ -25,6 +25,7 @@
 #include "presets.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -62,11 +63,7 @@ struct Rig {
     Project& project() { return app.project(); }
 };
 
-std::string folderMade() {
-    char folder[] = "/tmp/apotheca-presets-XXXXXX";
-    CHECK(mkdtemp(folder) != nullptr);
-    return folder;
-}
+std::string folderMade() { return tempFolder("presets"); }
 void removeFolder(const std::string& folder) {
     const std::string command = "rm -rf '" + folder + "'";
     CHECK(std::system(command.c_str()) == 0);

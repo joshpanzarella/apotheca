@@ -22,6 +22,7 @@
 #include "app.hpp"
 #include "canvas.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -761,8 +762,7 @@ std::string readFile(const std::string& path) {
 }
 
 void testABounceIsUnchanged() {
-    char pattern[] = "/tmp/apotheca-songend-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("songend");
     std::string files[2];
     for (int end = kSongLoop; end <= kSongStop; ++end) {
         Rig rig;

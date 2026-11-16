@@ -26,6 +26,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "transfer.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -40,11 +41,6 @@ static int failures = 0;
 
 namespace {
 
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-transfer-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 bool exists(const std::string& path) {
     struct stat info;
     return stat(path.c_str(), &info) == 0;
@@ -119,7 +115,7 @@ void testNames() {
 }
 
 void testTheServer() {
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     const std::string samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
     mkdir(songs.c_str(), 0755);
     writeTextFile(songs + "/quiet road.song", "apotheca-song 1\ntempo 97\n");
@@ -285,7 +281,7 @@ void testTheServer() {
 
 // Deleting, renaming and moving from the page, and what the page is told about the card.
 void testDeletingAndMoving() {
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     const std::string samples = root + "/samples", songs = root + "/songs", chords = root + "/chords", bounces = root + "/bounces", out = root + "/out";
     for (const std::string& folder : {songs, bounces, out}) mkdir(folder.c_str(), 0755);
     const std::string song = "apotheca-song 1\ntempo 97\n", wav = aWav(), other = aWav(0.2f);
@@ -423,7 +419,7 @@ void testDeletingAndMoving() {
 }
 
 void testTurningItOnFromTheDevice() {
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     std::unique_ptr<Engine> engine(new Engine);
     Input input;
     App app(*engine);
@@ -526,7 +522,7 @@ void testUpdatingOverWiFi() {
         CHECK(!isProgramForThisMachine(spoiled));
     }
 
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     const std::string programs = root + "/apotheca";
     mkdir(programs.c_str(), 0755);
     writeTextFile(programs + "/apotheca", "the one running now");
@@ -665,7 +661,7 @@ void testUpdatingOverWiFi() {
 
 // A card that will not rename a file into another folder: the move still happens, the long way.
 static void testMovingWhereRenameIsRefused() {
-    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
+    const std::string root = tempFolder("transfer"), samples = root + "/samples", songs = root + "/songs", chords = root + "/chords";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/kicks").c_str(), 0755);
     const std::string wav = aWav();
@@ -694,7 +690,7 @@ static void testMovingWhereRenameIsRefused() {
 
 // A recording renamed, moved or deleted from the page while a song that uses it is open.
 static void testTheOpenSongFollows() {
-    const std::string root = tempFolder(), samples = root + "/samples";
+    const std::string root = tempFolder("transfer"), samples = root + "/samples";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/kicks").c_str(), 0755);
     const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
@@ -867,7 +863,7 @@ static void testTheOpenSongFollows() {
 
 // The page's SPEED TEST: what the timing run prints, behind the number like everything else.
 static void testTheSpeedTest() {
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     Transfer transfer;
     CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 4242));
     const int port = transfer.port();
@@ -1002,7 +998,7 @@ void setDate(const std::string& path, time_t when) {
 // A recording moved while its song was shut is found again when the song is opened: by its base
 // name, and only if exactly one recording has it.
 static void testFoundOnLoad() {
-    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs";
+    const std::string root = tempFolder("transfer"), samples = root + "/samples", songs = root + "/songs";
     mkdir(samples.c_str(), 0755);
     for (const char* folder : {"kicks", "a", "b", "x", "y", "od..d", "pads", "solo", "dup"}) mkdir((samples + "/" + folder).c_str(), 0755);
     const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
@@ -1178,7 +1174,7 @@ static void testFoundOnLoad() {
 
 // A recording renamed or moved on the page: the songs that are shut are rewritten on the card.
 static void testSavedSongsFollow() {
-    const std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs";
+    const std::string root = tempFolder("transfer"), samples = root + "/samples", songs = root + "/songs";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/kicks").c_str(), 0755);
     const auto steady = [](float seconds) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), 0.25f); };
@@ -1304,7 +1300,7 @@ static void testSavedSongsFollow() {
 // While the session goes through the saved songs it holds a lock; the server waits for it before
 // it writes or deletes a song, and for nothing else.
 static void testTheServerWaitsForTheSongs() {
-    const std::string root = tempFolder(), songs = root + "/songs";
+    const std::string root = tempFolder("transfer"), songs = root + "/songs";
     mkdir(songs.c_str(), 0755);
     CHECK(writeTextFile(songs + "/old.song", "apotheca-song 1\ntempo 97\n"));
     Transfer transfer;
@@ -1332,7 +1328,7 @@ static void testTheServerWaitsForTheSongs() {
 
 // The song open on the handheld is refused from the page: the autosave would write over it.
 static void testTheOpenSongIsRefused() {
-    const std::string root = tempFolder(), songs = root + "/songs";
+    const std::string root = tempFolder("transfer"), songs = root + "/songs";
     mkdir(songs.c_str(), 0755);
     CHECK(writeTextFile(songs + "/quiet road.song", "apotheca-song 1\ntempo 97\n"));
     Transfer transfer;
@@ -1392,7 +1388,7 @@ static void testTheOpenSongIsRefused() {
 
 // Five wrong numbers and every try is refused for a while, then five more.
 static void testTooManyWrongNumbers() {
-    const std::string root = tempFolder();
+    const std::string root = tempFolder("transfer");
     Transfer::lockoutMs = 700;
     Transfer transfer;
     CHECK(transfer.start(root + "/samples", root + "/songs", root + "/chords", 0, 12345));

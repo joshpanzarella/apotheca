@@ -28,6 +28,7 @@
 #include "pattern_layout.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -52,10 +53,8 @@ struct TempFolder {
     std::string path;
     bool made = false;
     TempFolder() {
-        char pattern[] = "/tmp/apotheca-feel-XXXXXX";
-        const char* got = mkdtemp(pattern);
-        made = got != nullptr;
-        path = made ? got : "/tmp";
+        path = tempFolder("feel");
+        made = true;
         std::vector<float> click(480, 0.f);
         click[0] = 0.9f;
         CHECK(writeWav(path + "/click.wav", click, 48000));
@@ -817,8 +816,7 @@ void testUndoAndASongSentAgain() {
 
 void testABounce() {
     const TempFolder temp;
-    char pattern[] = "/tmp/apotheca-feelb-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("feelb");
     Rig rig(temp.path);
     Session& session = rig.app.session();
     session.useBounceFolder(folder);

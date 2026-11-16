@@ -40,6 +40,7 @@
 #include "song_file.hpp"
 #include "stills.hpp"
 #include "textfit.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -154,8 +155,7 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
 
 int runViews(const char* program, const char* only) {
     testEveryViewIsListed();
-    char pattern[] = "/tmp/apotheca-textviews-XXXXXX";
-    const std::string folder = mkdtemp(pattern), samples = folder + "/samples";
+    const std::string folder = tempFolder("textviews"), samples = folder + "/samples";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/kicks").c_str(), 0755);
     // A few recordings, one a break, one in a folder with a long name: the kit, the sampler, the picker and the slices need them.
@@ -335,8 +335,7 @@ void testTheMeasure() {
         CHECK(has(faults(marked(70), wide), "ran into its neighbour"));
     }
     // What the program writes down ("--texts") is read back as it was drawn.
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern), file = folder + "/texts";
+    const std::string folder = tempFolder("textsize"), file = folder + "/texts";
     writeTextFile(file, "SIZE 0\nT 3 10 26.5 108 60 10 TEMPO: 120 BPM\nB 0 1 0 0 640 480\nB 1 0 16 100 608 28\nSIZE 1\nSIZE 2\nT 0 12 1 2 3 4 A\nSIZE 3\n");
     Frame read[4];
     CHECK(readFrames(file.c_str(), read) == 4);
@@ -643,8 +642,7 @@ void testTheBoxes() {
 
 // ---- the setting: kept, read back, an old file reads LARGE ------------------------------------
 void testTheSettingIsKept() {
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern), file = folder + "/settings.txt";
+    const std::string folder = tempFolder("textsize"), file = folder + "/settings.txt";
     const float stickBefore = ui::gStickSpeed;
     std::string kept;
     {
@@ -819,8 +817,7 @@ const int kDrumStrip = pattern_layout::kStripY;
 int rollStrip(int octaves) { return 45 + (octaves == 1 ? 24 : octaves == 2 ? 22 : 16) + 2 + 16 * 21 + 4; } // under the keys and sixteen rows of 21, 4 down
 
 void testTheDrumGridsRows() {
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("textsize");
     std::vector<float> sound(48000);
     for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
     CHECK(writeWav(folder + "/a very long recording name.wav", sound, 48000)); // (a lane's name at its longest)
@@ -995,8 +992,7 @@ void holdUntilItSays(Rig& rig) {
 
 // ---- the other screens at their fullest ---------------------------------------------------------
 void testTheOtherScreens() {
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern), samples = folder + "/samples";
+    const std::string folder = tempFolder("textsize"), samples = folder + "/samples";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/a folder with a long name").c_str(), 0755);
     std::vector<float> sound(24000);
@@ -2106,8 +2102,7 @@ void testTheListOfEffectsAsDrawn() {
 // the longest thing the scene's length says, and the step numbers of a long cell's last bars.
 void testWhatOnlyLargeHadRoomFor() {
     Screens& s = screens();
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("textsize");
     // A new song's name is two words from a list. The widest pairs that still clear OPEN NOW > REVS at LARGE:
     // a seed for each is looked for, and the open song's row drawn.
     {
@@ -2302,8 +2297,7 @@ void testTheBounceBarClearsItsWords() {
 // past the scene's end reads "-" (26 to 32: seven of them), on the drum grid, its slice view and the
 // piano roll alike. Read off what is drawn, at LARGE.
 void testTheStepNumbersOfAShortScene() {
-    char pattern[] = "/tmp/apotheca-textsize-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("textsize");
     std::vector<float> sound(48000);
     for (std::size_t i = 0; i < sound.size(); ++i) sound[i] = 0.4f * std::sin(static_cast<float>(i) * 0.05f);
     CHECK(writeWav(folder + "/loop.wav", sound, 48000));

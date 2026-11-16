@@ -24,6 +24,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "transfer.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -44,12 +45,6 @@ const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
 typedef SamplePicker::Kind Kind;
 typedef Session::FileJob Job;
 
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-picker-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
-
 bool exists(const std::string& path) {
     struct stat info;
     return lstat(path.c_str(), &info) == 0;
@@ -62,7 +57,7 @@ std::string contents(const std::string& path) {
 
 // A card: `root`/samples and `root`/songs.
 struct Card {
-    std::string root = tempFolder(), samples = root + "/samples", songs = root + "/songs";
+    std::string root = tempFolder("picker"), samples = root + "/samples", songs = root + "/songs";
     Card() {
         mkdir(samples.c_str(), 0755);
         mkdir(songs.c_str(), 0755);

@@ -20,6 +20,7 @@
 #include "app.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
+#include "temp_folder.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>
@@ -69,11 +70,6 @@ const int kStep = 6000, kBar = 16 * kStep;
 const SDL_Keycode X = SDLK_s, Y = SDLK_a;
 const SDL_Keycode A = SDLK_x, B = SDLK_z, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE, L2 = SDLK_1, UP = SDLK_UP, DOWN = SDLK_DOWN;
 
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-test-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 bool exists(const std::string& path) {
     struct stat info;
     return stat(path.c_str(), &info) == 0;
@@ -312,7 +308,7 @@ void testBadFiles() {
 }
 
 void testSavedAsYouGoAndBackAtTheNextStart() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     std::string name, text;
     {
         Rig rig(folder);
@@ -353,7 +349,7 @@ void testSavedAsYouGoAndBackAtTheNextStart() {
 }
 
 void testAnOpenedSongSoundsLikeTheOneSaved() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig made(folder);
     fillSong(made);
     made.session().saveNow();
@@ -376,7 +372,7 @@ void testAnOpenedSongSoundsLikeTheOneSaved() {
 }
 
 void testNewSongAndTheList() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     fillSong(rig);
     rig.session().saveNow();
@@ -431,7 +427,7 @@ void testNewSongAndTheList() {
 }
 
 void testTheSongListOnScreen() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     fillSong(rig);
     rig.session().saveNow();
@@ -536,7 +532,7 @@ void testChordsEndToEndLoadBack() {
 }
 
 void testRevs() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     Session& session = rig.session();
     fillSong(rig);
@@ -664,7 +660,7 @@ void testRevs() {
 void testASongMadeAMomentAgoIsInTheList() {
     // Nothing has been saved yet when SELECT is pressed: the list must still
     // show the song, so its revs can be reached.
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     fillSong(rig);
     rig.project().playing = false;
@@ -679,7 +675,7 @@ void testASongMadeAMomentAgoIsInTheList() {
 }
 
 void testRenamingAndDeletingSongs() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     Session& session = rig.session();
     SongScreen& song = rig.app.song();
@@ -811,7 +807,7 @@ void testRenamingAndDeletingSongs() {
 }
 
 void testNamesDoNotRepeat() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder, 3);
     std::vector<std::string> seen;
     for (int i = 0; i < 40; ++i) {
@@ -908,7 +904,7 @@ void testHiddenBarsAreKept() {
 void testSavedToTheCardBeforeItIsMoved() {
 #ifdef __linux__
     char real[PATH_MAX];
-    const std::string made = tempFolder();
+    const std::string made = tempFolder("test");
     const std::string folder = realpath(made.c_str(), real) ? real : made;
     const auto steps = [&](const std::string& path) {
         std::lock_guard<std::mutex> hold(gDiskMutex);
@@ -941,7 +937,7 @@ void testSavedToTheCardBeforeItIsMoved() {
 // A deleted song goes to "deleted" with its revs, under a name nothing there has: new songs reuse
 // the names of deleted ones, and the second "ash well" deleted wrote over the first.
 void testADeletedSongIsNeverWrittenOver() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     Session& session = rig.session();
     const std::string name = session.songName();
@@ -1061,7 +1057,7 @@ void fillBusy(Project& p, Session& session, int scenes, int bars) {
 // text: it used to make the whole song's text each time to find it the same (a 2.5 MB song:
 // 70 ms on the desk, every two seconds, with the screen and the buttons waiting).
 void testTheAutosaveWritesNothingOutWhenNothingChanged() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     Rig rig(folder);
     Project& p = rig.project();
     fillBusy(p, rig.session(), 4, 2);
@@ -1215,7 +1211,7 @@ void testAnOldTwinSong() {
     CHECK(!renameRecordings(same, {{"kick", "boom"}}) && same == old);
 
     // Through the program: the file on the card opens, the track plays, and the autosave writes the new word.
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("test");
     CHECK(writeTextFile(folder + "/old one.song", old));
     Rig rig(folder);
     CHECK(rig.session().openSong("old one"));
