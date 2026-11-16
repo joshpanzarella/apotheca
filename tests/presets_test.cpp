@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unistd.h>
@@ -248,9 +249,10 @@ void testTheDataSaysWhatIsWrong() {
         "preset 99\n"                                // 21 past the engine's
         "preset 4\n"
         "set 3 4\n"                                  // 23 an engine built-in takes only the sound's lines
-        "glidefrom 1\n";
+        "glidefrom 1\n"
+        "new LAST / Pair\n"                          // 25 (fine)
+        "set 3\n";                                   // 26 a pair cut short (twice: and nothing set)
     const PresetData data = readPresetData(TrackKind::Jx3p, text);
-    for (const std::string& p : data.problems) std::printf("    %s\n", p.c_str());
     const auto said = [&](int line) {
         const std::string start = "line " + std::to_string(line) + ":";
         int n = 0;
@@ -260,8 +262,12 @@ void testTheDataSaysWhatIsWrong() {
     CHECK(said(1) == 1 && said(2) == 1 && said(3) == 1 && said(4) == 1 && said(5) == 1 && said(6) == 0);
     CHECK(said(7) == 5 && said(8) == 0 && said(9) == 1 && said(10) == 1 && said(11) == 1 && said(12) == 1 && said(13) == 1);
     CHECK(said(15) == 1 && said(16) == 1 && said(17) == 1 && said(18) == 1 && said(19) == 1 && said(20) == 1 && said(21) == 1 && said(22) == 0 && said(23) == 1 && said(24) == 0);
-    CHECK(data.problems.size() == 23u);
-    CHECK(data.added.size() == 2 && data.added[0].name == "One" && data.added[1].name == "Two");
+    CHECK(said(25) == 0 && said(26) == 2);
+    CHECK(data.problems.size() == 25u);
+    if (data.problems.size() != 25u)
+        for (const std::string& p : data.problems) std::printf("    %s\n", p.c_str());
+    CHECK(data.added.size() == 3 && data.added[0].name == "One" && data.added[1].name == "Two");
+    CHECK(data.added[0].values[jx3p::Dco2Range] == Jx3p::presetPatch(0).value[jx3p::Dco2Range] && Jx3p::presetPatch(0).value[jx3p::Dco2Range] != Jx3p::presetPatch(1).value[jx3p::Dco2Range]); // no base: the first built-in's
     const UserPreset& one = data.added[0];
     CHECK(one.values[jx3p::Resonance] == 100 && one.values[jx3p::Cutoff] == 0 && one.values[jx3p::Hpf] == 0 && one.values[3] == 1);
     CHECK(one.values[0] == 1 && one.values[1] == 2 && one.values[2] == 1); // settings 1 2 1, after the set
@@ -433,6 +439,10 @@ void testABuiltInWithItsSound() {
         "fx 2 plate 0.2 0.5 0.6 0.4\n"
         "send 2 0.3\n"
         "mod 1 1 20 0.75 8 4 0 0\n"           // a SQUARE on the ECHO send, +50%
+        "preset 6\n"
+        "fx 2 plate 0.2 0.5 0.6 0.4\n"
+        "send 2 0.3\n"
+        "mod 1 1 20 0.9 8 4 0 0\n"           // preset 4's MOD, deeper: +80%
         "new MORE / Added\n"
         "base 5\n"
         "fx 1 shimmer 0.5 0.6 0.6 0.3\n"
@@ -447,6 +457,7 @@ void testABuiltInWithItsSound() {
     const int track = 1, engine = Jx3p::presetCount();
     TrackData& t = rig.project().tracks[track];
     CHECK(builtInPresets(TrackKind::Jx3p) == engine + 2 && std::string(jx3pSpec().presetCategory(engine)) == "MORE");
+    CHECK(jx3pSpec().folderNote(engine) == kJaxepGuessNote && jx3pSpec().folderNote(0) == kJaxepBankNote); // an added folder's speeds are guesses too
     // The player's own: a FILTER in slot 1, a send, a MOD on it.
     session.setEffect(track, 0, EffectKind::Filter);
     session.setEffectParam(track, 0, 0, 0.3f);
@@ -496,6 +507,58 @@ void testABuiltInWithItsSound() {
     rig.settle();
     CHECK(soundNow(t) == turned && turned != mine);
     // Saving leaves nothing to give back: the sound is the player's own preset's.
+    const std::string folder = folderMade();
+    session.usePresetFolder(folder);
+    session.chooseSynthPreset(track, 4);
+    session.chooseSynthPreset(track, 3);
+    const std::string plate = soundNow(t);
+    CHECK(session.savePreset(track, "MINE"));
+    session.chooseSynthPreset(track, 4);
+    CHECK(soundNow(t) == plate);
+    setUserPresets(TrackKind::Jx3p, {});
+    removeFolder(folder);
+    // Another song, another instrument, a track added or taken away: nothing to give back either...
+    const auto plainAfter = [&](int on, const std::function<void()>& between) {
+        session.chooseSynthPreset(on, 4);
+        for (int slot = 0; slot < kTrackSlots; ++slot) session.setEffect(on, slot, EffectKind::None);
+        session.setEffect(on, 0, EffectKind::Filter);
+        session.chooseSynthPreset(on, 3);
+        between();
+        session.chooseSynthPreset(on, 4);
+        rig.settle();
+        return rig.project().tracks[on].effects[1].kind == static_cast<int>(EffectKind::Plate);
+    };
+    CHECK(plainAfter(track, [&] { session.applyProject(); }));
+    CHECK(plainAfter(track, [&] { CHECK(session.setTrackKind(track, TrackKind::Phazed) && session.setTrackKind(track, TrackKind::Jx3p)); }));
+    // ...but a track taken away takes its memory with it, and the one after it brings its own.
+    CHECK(session.addTrack(TrackKind::Jx3p) && session.addTrack(TrackKind::Jx3p));
+    session.chooseSynthPreset(3, 4);
+    session.setEffect(3, 0, EffectKind::Filter);
+    session.chooseSynthPreset(3, 3); // the whole one on track 4, its FILTER remembered
+    CHECK(session.removeTrack(2));   // track 4 is track 3 now
+    session.chooseSynthPreset(2, 4);
+    rig.settle();
+    CHECK(rig.project().tracks[2].effects[0].kind == static_cast<int>(EffectKind::Filter) && rig.project().tracks[2].effects[1].kind == 0);
+    CHECK(session.addTrack(TrackKind::Jx3p)); // a new track there has nothing to give back
+    session.setEffect(3, 0, EffectKind::Filter);
+    session.chooseSynthPreset(3, 4);
+    CHECK(rig.project().tracks[3].effects[0].kind == static_cast<int>(EffectKind::Filter));
+    // WRITE on and the song playing: a preset's sound is written into no lane (its MOD's DEPTH, its sends).
+    session.chooseSynthPreset(track, 3);
+    session.setWriting(true);
+    session.togglePlay(false);
+    rig.frames(2);
+    rig.render(4800);
+    session.chooseSynthPreset(track, 5); // the MOD stays on, deeper: a turn of DEPTH, were it the knob's
+    rig.frames(2);
+    rig.render(4800);
+    session.togglePlay(false);
+    session.setWriting(false);
+    bool written = false;
+    for (int scene = 0; scene < kMaxScenes; ++scene)
+        for (int lane = 0; lane < kAutoLanes; ++lane)
+            for (int i = 0; i < kAutoSteps; ++i) written = written || rig.project().tracks[track].automation[scene][lane][i] != kAutoNone;
+    CHECK(!written && t.mods[0].kind == kModLfo && std::fabs(t.mods[0].depth - 0.8f) < 1e-6f);
     useBuiltInDataForTests(TrackKind::Jx3p, shipped);
 }
 

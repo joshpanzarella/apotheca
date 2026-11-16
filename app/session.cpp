@@ -118,8 +118,7 @@ bool Session::addTrack(TrackKind kind) {
     // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
     // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)
     if (specFor(kind)) sendSynthPatch(track);
-    forgetTrackTypes(track);
-    presetSounds_[track] = PresetSoundMemory();
+    forgetTrackTypes(track); // (what a preset found there went with the track taken away: removeTrack)
     if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;
 }
