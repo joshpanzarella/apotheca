@@ -327,7 +327,7 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
     }
     const int step = 6000; // frames in one step at 120 BPM and 48 kHz
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Fm6, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {
@@ -374,8 +374,11 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
 // REMADE AGAIN, 2026-11-15, when JAX-EP's VCA went straight (the owner's call: no patch distorts;
 // it was 0x6536b73551f423cb, rms 0.353221477): the 40 pinned renders and the maths line held, and
 // only the song moved, by a hair in its loudness (its JAX-EP track is quiet in the mix).
-static const std::uint64_t kSongSum = 0x97cdd450e1e17437ull;
-static const double kSongRms = 0.353221461;
+// REMADE A THIRD TIME, 2026-11-15, when its second synth went from QMOD to FM-6 (the owner's
+// decision, fm6-plan.md; it was 0x97cdd450e1e17437, rms 0.353221461): the 40 pinned renders and
+// the maths line held, with only that track's kind changed. It pins FM-6's start patch now too.
+static const std::uint64_t kSongSum = 0x4d22a4cb79f8b0f5ull;
+static const double kSongRms = 0.352323948;
 
 static void testWholeSong() {
     const std::vector<float> alone = effectsSong(0);
@@ -3671,7 +3674,7 @@ static std::vector<float> swapSong(int helpers) {
     engine->useWorkers(helpers);
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
     for (int t = 1; t <= 3; ++t) {
-        CHECK(engine->addSynthTrack(t, t == 2 ? SynthKind::Qmod : SynthKind::Phazed));
+        CHECK(engine->addSynthTrack(t, t == 2 ? SynthKind::Fm6 : SynthKind::Phazed));
         for (int n = 0; n < 4; ++n) {
             Command note = make(Command::SetNote, t, n, n * 4 + (t % 3), 0.7f);
             note.c = 40 + 5 * t + 3 * n;
@@ -4406,7 +4409,7 @@ static std::vector<float> sendSong(int helpers, bool sends = true) {
     std::unique_ptr<Engine> engine(new Engine);
     engine->useWorkers(helpers);
     for (int s = 0; s < kSteps; s += 2) engine->send(make(Command::SetStep, 0, s % 4 == 0 ? 0 : 6, s, 0.9f));
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Jx3p};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Fm6, SynthKind::Jx3p};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {
@@ -5286,7 +5289,7 @@ static std::vector<float> duckSong(int helpers, bool ducks = true) {
     fx.d = 3;
     engine->send(fx);
     engine->send(make(Command::SetStepChance, 0, 2, 10, 0.5f));
-    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Qmod, SynthKind::Phazed};
+    const SynthKind kinds[3] = {SynthKind::Phazed, SynthKind::Fm6, SynthKind::Phazed};
     for (int t = 1; t <= 3; ++t) {
         CHECK(engine->addSynthTrack(t, kinds[t - 1]));
         for (int n = 0; n < 4; ++n) {

@@ -58,7 +58,7 @@ public:
     NoteScreen& notes() { return notes_; }
     SynthScreen& phazed() { return phazed_; }
     SynthScreen& jaxep() { return jaxep_; }
-    SynthScreen& qmod() { return qmod_; }
+    SynthScreen& fm6() { return fm6_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     ModScreen& mods() { return mods_; }
@@ -120,7 +120,7 @@ private:
     bool nextSceneY_ = false;  // Y is down from SELECT + Y (next scene): letting it go is not a tap of Y
     SynthScreen phazed_; // the same screen, once for each synth
     SynthScreen jaxep_;
-    SynthScreen qmod_;
+    SynthScreen fm6_;
 };
 
 } // namespace apotheca

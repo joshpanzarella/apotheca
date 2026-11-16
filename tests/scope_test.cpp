@@ -57,13 +57,14 @@ const Page kPages[] = {
     {"JAX-EP DCO-2", TrackKind::Jx3p, 2, true}, {"JAX-EP VCF", TrackKind::Jx3p, 3, true},
     {"JAX-EP VCA AND ENVELOPE", TrackKind::Jx3p, 4, true}, {"JAX-EP LFO AND CHORUS", TrackKind::Jx3p, 5, true},
     {"JAX-EP 6", TrackKind::Jx3p, 6, true},
-    {"qmod MAIN", TrackKind::Qmod, 0, true}, {"qmod SOUND", TrackKind::Qmod, 1, true},
-    {"qmod CHARACTER", TrackKind::Qmod, 2, true}, {"qmod ENVELOPE", TrackKind::Qmod, 3, true},
+    {"FM-6 MAIN", TrackKind::Fm6, 0, true}, {"FM-6 VOICE AND LFO", TrackKind::Fm6, 1, true},
+    {"FM-6 OPERATOR 1", TrackKind::Fm6, 2, true}, {"FM-6 OPERATOR 6", TrackKind::Fm6, 7, true},
+    {"FM-6 PITCH ENVELOPE", TrackKind::Fm6, 8, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
 SynthScreen* synthScreen(Rig& rig, TrackKind kind) {
-    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Qmod ? &rig.app.qmod() : nullptr;
+    return kind == TrackKind::Phazed ? &rig.app.phazed() : kind == TrackKind::Jx3p ? &rig.app.jaxep() : kind == TrackKind::Fm6 ? &rig.app.fm6() : nullptr;
 }
 
 // Draws the page into the canvas, in a theme.
@@ -161,11 +162,19 @@ void testTheRowsAreSpreadDown() {
     // MAIN: FOLDER and PRESET, two rows of macros, ADVANCED, ending where the strip leaves room.
     CHECK(SynthScreen::kAdvancedY + SynthScreen::kAdvancedH == ui::kAboveScope);
     CHECK(SynthScreen::kMacroH > 70 && SynthScreen::kAdvancedH > 40 && SynthScreen::kPresetH > 50); // all taller than they were
-    // A page of settings: however many rows it has (one to four), they fill it down to the strip.
-    for (int rows = 1; rows <= 4; ++rows) {
-        const int end = SynthScreen::kSettingY + rows * SynthScreen::settingH(rows) + (rows - 1) * SynthScreen::kSettingGap;
-        CHECK(end <= ui::kAboveScope && end > ui::kAboveScope - 4);
+    // A page of settings: however many rows it has (one to six), they fill it down to the strip, the
+    // last ending on it exactly, every gap kSettingGap or a pixel more, and the first where it always was.
+    for (int rows = 1; rows <= 6; ++rows) {
+        const int h = SynthScreen::settingH(rows);
+        CHECK(SynthScreen::settingY(rows, 0) == SynthScreen::kSettingY);
+        CHECK(SynthScreen::settingY(rows, rows - 1) + h == ui::kAboveScope || (rows == 1 && SynthScreen::kSettingY + h == ui::kAboveScope));
+        for (int row = 1; row < rows; ++row) {
+            const int gap = SynthScreen::settingY(rows, row) - SynthScreen::settingY(rows, row - 1) - h;
+            const int want = rows >= SynthScreen::kTightRows ? SynthScreen::kTightGap : SynthScreen::kSettingGap;
+            CHECK(gap >= want && gap <= want + 1);
+        }
     }
+    CHECK(SynthScreen::settingH(6) == 55); // FM-6's operator pages: six rows, closer together, each tall enough for its value
     // The kit's eight lanes and the sampler's two rows of settings.
     CHECK(KitScreen::kLaneTop + kDrumLanes * KitScreen::kLaneRowH - KitScreen::kLaneGap == ui::kAboveScope);
     CHECK(SamplerScreen::kSettingY + 2 * SamplerScreen::kSettingH + SamplerScreen::kSettingGap == ui::kAboveScope);
@@ -185,8 +194,9 @@ void testTheRowsAreSpreadDown() {
         if (!canvas.ok || !drawPage(canvas, e.page, kThemeBrown)) { CHECK(false); continue; }
         CHECK(canvas.is(e.x, ui::kAboveScope - 1, ui::kLine));
     }
-    // A page of two rows and one of one: their boxes end on the row above kAboveScope too.
-    for (const Page& page : {Page{"qmod SOUND", TrackKind::Qmod, 1, true}, Page{"phazed LINE 1", TrackKind::Phazed, 2, true}}) {
+    // A page of two rows, one of one and one of six: their boxes end on the row above kAboveScope too.
+    for (const Page& page : {Page{"FM-6 PITCH ENVELOPE", TrackKind::Fm6, 8, true}, Page{"phazed LINE 1", TrackKind::Phazed, 2, true},
+                             Page{"FM-6 OPERATOR 3", TrackKind::Fm6, 4, true}}) {
         Canvas canvas;
         if (!canvas.ok || !drawPage(canvas, page, kThemeBrown)) { CHECK(false); continue; }
         const int x = 8 + SynthScreen::kMacroPitchX + 12; // the second box (the cursor is on the first)

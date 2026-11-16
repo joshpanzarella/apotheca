@@ -32,10 +32,10 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/chord_rule.hpp"
+#include "apotheca/fm6.hpp"
 #include "apotheca/jx3p.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/phazed.hpp"
-#include "apotheca/qmod.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -108,6 +108,28 @@ static void jx3pRow(const char* name, int how) {
                 if (how == 2) synth->noteOnFrom(k, 0.8f, k - 12, 0.5f);
                 else synth->noteOn(k, 0.8f);
             }
+        ++block;
+        synth->render(l.data(), r.data(), 256);
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core\n", name, 100.0 * each / (256.0 / 48.0));
+}
+
+// FM-6 (docs/plans/fm6-plan.md, section 6): `notes` keys of `preset`, held; `again`: each key played
+// again every half second, so every operator's envelope is up (a decaying sound costs less as its
+// operators fall under the level the core works out). Measured over the 32 (2026-11-15), 8 keys each:
+// 0.22% (TUB BELLS) to 0.52% (BRASS 1, 2; STRINGS 1), most at 0.50 to 0.52: the cost is six operators
+// a voice, whatever the patch. The worst row is 16 keys, every voice the synth has.
+static void fm6Row(const char* name, int preset, int notes, bool again) {
+    std::unique_ptr<Fm6> synth(new Fm6);
+    synth->prepare(48000.f);
+    synth->selectPreset(preset);
+    std::vector<float> l(256), r(256);
+    for (int n = 0; n < notes; ++n) synth->noteOn(40 + 3 * n, 0.8f);
+    synth->render(l.data(), r.data(), 256);
+    int block = 0;
+    const double each = ms([&] {
+        if (again && block % 94 == 0)
+            for (int n = 0; n < notes; ++n) synth->noteOn(40 + 3 * n, 0.8f);
         ++block;
         synth->render(l.data(), r.data(), 256);
     }, 600);
@@ -281,12 +303,13 @@ static double chordSong(ChordPlay play, int ratchet, int from = -1) {
 
 // THE BUSIEST SONG (the pit stop audit's, 2026-11-14): 140 BPM, twelve tracks. Six drum
 // tracks, every lane on every other step, ratchets of four on three lanes, every hit thrown to
-// both buses. Two JAX-EP (A1 String I), two QMOD and two Phazed, each four chords of four keys a
+// both buses. Two JAX-EP (A1 String I), two FM-6 (E.PIANO 1) and two Phazed, each four chords of four keys a
 // bar, half WIDE STRUM and half arpeggios at a quarter step, RANDOM, human at 100%, thrown;
 // a ratchet of two on the strummed ones. COMP, then SATURATE or CHORUS, then HALL or PLATE on
 // every track; TAPE and PLATE on the buses, every track sending 0.4 to each; COMP and SATURATE
 // on the master. Flush-to-zero on, as in the program. (Until 2026-11-15 the two JAX-EP tracks
-// were the synth that went, at x2 oversampling: the figures before that day are that song's.)
+// were the synth that went, at x2 oversampling, and later that day the two FM-6 tracks were QMOD, the other
+// synth that went: the figures before then are those songs'.)
 static void busiestSong(Engine& e) {
     std::vector<float> scratch(512);
     const auto settle = [&](int blocks) {
@@ -297,15 +320,15 @@ static void busiestSong(Engine& e) {
     c.value = 140.f;
     e.send(c);
     for (int t = 1; t < 6; ++t) e.addDrumTrack(t); // (track 1 has drums from the start)
-    const SynthKind kinds[6] = {SynthKind::Jx3p, SynthKind::Jx3p, SynthKind::Qmod, SynthKind::Qmod, SynthKind::Phazed, SynthKind::Phazed};
+    const SynthKind kinds[6] = {SynthKind::Jx3p, SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Fm6, SynthKind::Phazed, SynthKind::Phazed};
     for (int i = 0; i < 6; ++i) e.addSynthTrack(6 + i, kinds[i]);
     settle(4);
     for (int i = 0; i < 6; ++i)
-        if (kinds[i] == SynthKind::Jx3p) { // as a new track in the program: on A1 (the engine makes it on its start patch)
-            c = Command();
-            c.type = Command::SelectPreset;
+        if (kinds[i] != SynthKind::Phazed) { // JAX-EP as a new track in the program is, on A1; FM-6 on E.PIANO 1, its
+            c = Command();                  // costliest honest case (it rings longest of the common sounds). The
+            c.type = Command::SelectPreset; // engine makes each on its start patch, which is not a preset.
             c.track = 6 + i;
-            c.a = 0;
+            c.a = kinds[i] == SynthKind::Fm6 ? kBusiestFm6Preset : 0;
             e.send(c);
         }
     for (int t = 0; t < 6; ++t) {
@@ -815,12 +838,12 @@ int apotheca::runProfile(const char* name, double seconds) {
         engine = busSongEngine(false, EffectKind::None, EffectKind::None, true);
     } else if (what == "chords") {
         engine = chordSongEngine(ChordPlay(), 0); // eleven silent tracks, plain chords: the step clock
-    } else if (what == "phazed-silent" || what == "jaxep-silent" || what == "qmod-silent") {
-        engine = macroModsEngine(what == "phazed-silent" ? SynthKind::Phazed : what == "jaxep-silent" ? SynthKind::Jx3p : SynthKind::Qmod, false);
+    } else if (what == "phazed-silent" || what == "jaxep-silent" || what == "fm6-silent") {
+        engine = macroModsEngine(what == "phazed-silent" ? SynthKind::Phazed : what == "jaxep-silent" ? SynthKind::Jx3p : SynthKind::Fm6, false);
     } else if (what == "empty") {
         engine.reset(new Engine);
     } else {
-        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, qmod-silent, empty\n");
+        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
         return 1;
     }
     const int blocks = static_cast<int>(std::max(0.0, seconds) * 48000.0 / 256.0);
@@ -875,10 +898,11 @@ int apotheca::runBench() {
     soundCardRow();
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
-    instrument("QMOD, 8 notes", SynthKind::Qmod, 8);
     jx3pRow("JAX-EP, 6 notes", 0);
     jx3pRow("JAX-EP, 6, worst patch", 1);
     jx3pRow("JAX-EP, 6, moving cutoff", 2);
+    fm6Row("FM-6, 8 notes", 10, 8, false);          // E.PIANO 1
+    fm6Row("FM-6, 16, worst preset", 3, 16, true);  // STRINGS 1, keys again every half second
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);
@@ -906,13 +930,13 @@ int apotheca::runBench() {
     {
         std::printf("a macro changed (what a MOD on a macro costs), the synth alone, 8 notes held:\n");
         std::unique_ptr<Phazed> phazed(new Phazed);
-        std::unique_ptr<Qmod> qmod(new Qmod);
+        std::unique_ptr<Fm6> fm6(new Fm6);
         std::unique_ptr<Jx3p> jaxep(new Jx3p);
         macroCost("Phazed, TONE", *phazed, phazed::Tone);
-        macroCost("QMOD, TENSION", *qmod, qmod::MacroTension);
+        macroCost("FM-6, BRIGHT", *fm6, fm6::MacroBright);
         macroCost("JAX-EP, macro 1", *jaxep, 0);
         std::printf("24 MODs on macros, run (twelve silent tracks of the synth, a SINE and a STEPPER each):\n");
-        const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"QMOD", SynthKind::Qmod}, {"JAX-EP", SynthKind::Jx3p}};
+        const struct { const char* name; SynthKind kind; } synths[] = {{"Phazed", SynthKind::Phazed}, {"FM-6", SynthKind::Fm6}, {"JAX-EP", SynthKind::Jx3p}};
         for (const auto& one : synths) {
             double none = 0.0, all = 0.0;
             macroModsRun(one.kind, none, all);
@@ -991,7 +1015,7 @@ int apotheca::runBench() {
     App app(*engine);
     Session& session = app.session();
     // A full song: twelve tracks, eight scenes, notes and hits in every cell, some automation.
-    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Drums};
+    const TrackKind kinds[4] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) session.addTrack(kinds[t % 4]);
     Project& p = app.project();
     for (int t = 0; t < kNumTracks; ++t)

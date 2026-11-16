@@ -112,6 +112,10 @@ bool Session::addTrack(TrackKind kind) {
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
+    // The engine makes a synth on its start patch, which is no preset (JAX-EP's plain saw, FM-6's one
+    // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
+    // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)
+    if (specFor(kind)) sendSynthPatch(track);
     forgetTrackTypes(track);
     if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;

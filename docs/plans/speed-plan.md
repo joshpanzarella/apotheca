@@ -291,7 +291,7 @@ SPEED TEST now prints, besides its old rows:
 | **The sound card**: the default output opened once with any change allowed, said, shut. The program does it at start, before it opens the card for its sound, prints it (`sound card: ...`) and hands it to the SPEED TEST in `APOTHECA_SOUND_CARD`, since the test cannot open a card the program holds. Run alone (`apotheca --bench`), the bench looks for itself | `probeSoundCard`, `main.cpp` | could not be opened (no card) |
 | **The busiest song with 3 helpers**, and **heaviest first** with 2 and 3, in real time | `sharingRows`, `Engine::setHeaviestFirst` | below |
 | **A screen pass while the song plays**: the app's update and its drawing, timed apart, on SONG and the drum grid. SDL's software renderer into memory (the test cannot draw on the program's screen), so it is the drawing's work, not the handheld's renderer or its present | `screenRows` | update 0.05 to 0.06 ms, drawing 1.6 to 1.7 ms |
-| `bench --profile NAME [SECONDS]`: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, qmod-silent, empty | `runProfile` | the instruction rows below |
+| `bench --profile NAME [SECONDS]`: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent (qmod-silent until FM-6 took its place), empty | `runProfile` | the instruction rows below |
 
 **Heaviest first** is in the engine, off unless asked for (only the SPEED
 TEST asks): the helpers take the tracks from `taken_`, sorted by each one's
@@ -459,6 +459,22 @@ The plan's targets for the device (twelve drum tracks under 8%, their THROW
 under 8%): by section 0's rule, 53 M and 143 M are about 5% and 14% of a
 handheld core for the drums with every hit thrown (the 8% target for THROW is
 its added cost: 90 M, about 9%). **Close; the device's SPEED TEST says.**
+
+### Joined with main 0.565 (FM-6 in QMOD's place, 2026-11-16)
+
+The figures above are the busiest song with two QMOD tracks. On main 0.565 the
+two are FM-6 (`bench --profile`, the same build way):
+
+| Setup | main 0.565 | with batches 0 to 2 | |
+| --- | --- | --- | --- |
+| busiest | 1,617 M | 1,424 M | **-12%** |
+| fm6-silent (twelve silent FM-6 tracks) | 69.1 M | 22.6 M | **-67%** |
+
+So from the plan's start the busiest song went **2,070 to 1,424 M (-31%)**: FM-6
+for QMOD and these three batches. `effects_test --print` on the join is the same
+as on main 0.565 (its pins were remade there for FM-6), and `ctest` passed: 44
+of 52 in one run at a load of 20 (the other eight timed out, `themeviews`
+failed at the place it fails under load) and those eight one at a time after.
 
 ### What is left
 

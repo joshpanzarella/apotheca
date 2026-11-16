@@ -15,7 +15,10 @@ const InstrumentInfo kInstruments[] = {
     // nouns, and the count of presets, which would not fit after it, is left off this one line.
     {TrackKind::Jx3p, "JAX-EP", "JAX", "JAX-EP", "virtual analog, after a popular DCO synth", false, "jaxep", SynthKind::Jx3p, ".jaxep"},
     {TrackKind::Sampler, "SAMPLER", "SMPL", "SAMPLER", "one recording, played from the keys", false, "sampler", SynthKind::Sampler, nullptr},
-    {TrackKind::Qmod, "QMOD", "QMOD", "QMOD", "FM you roll like dice, not program", false, "qmod", SynthKind::Qmod, ".qmod"},
+    // FM-6 (owner, 2026-11-15): six-operator FM on msfa, with the first factory cartridge's 32 sounds. It stands
+    // where QMOD stood, whose tracks it takes (an old song's word for that one is read, below). As JAX-EP's, the
+    // line names no maker and no model, and leaves the count of presets off (it would not fit after it).
+    {TrackKind::Fm6, "FM-6", "FM-6", "FM-6", "6-operator FM, after a classic 80s synth", false, "fm6", SynthKind::Fm6, ".fm6"},
 };
 const int kInstrumentCount = static_cast<int>(sizeof kInstruments / sizeof kInstruments[0]);
 
@@ -30,10 +33,15 @@ TrackKind trackKindFromWord(const char* word, bool* old) {
     for (int i = 0; i < kInstrumentCount; ++i)
         if (std::strcmp(kInstruments[i].word, word) == 0) return kInstruments[i].kind;
     // THE ONE PLACE the word `twin` lives on: an old song's Twin Analog track is read as a JAX-EP
-    // track, without its sound (song_file.cpp, parseSong).
+    // track, without its sound (song_file.cpp, parseSong). And `qmod` the same: a QMOD track is read as
+    // an FM-6 track on its first preset, its knobs in the middle (fm6-plan.md: the owner's decision).
     if (std::strcmp(word, kOldTwinWord) == 0) {
         if (old) *old = true;
         return TrackKind::Jx3p;
+    }
+    if (std::strcmp(word, kOldQmodWord) == 0) {
+        if (old) *old = true;
+        return TrackKind::Fm6;
     }
     return TrackKind::None;
 }

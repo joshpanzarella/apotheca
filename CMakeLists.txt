@@ -24,6 +24,14 @@ if(MATH_LIBRARY)
   target_link_libraries(easycz PUBLIC ${MATH_LIBRARY})
 endif()
 
+# The FM core behind FM-6 (third_party/msfa, Apache 2.0; changes: third_party/CHANGES.md). Its
+# fixed-point arithmetic lets numbers wrap round (phases), so it is built to wrap, never to guess.
+add_library(msfa STATIC
+  third_party/msfa/dx7note.cc third_party/msfa/env.cc third_party/msfa/exp2.cc
+  third_party/msfa/fm_core.cc third_party/msfa/fm_op_kernel.cc third_party/msfa/freqlut.cc
+  third_party/msfa/lfo.cc third_party/msfa/pitchenv.cc third_party/msfa/sin.cc)
+target_compile_options(msfa PRIVATE -fwrapv -Wall -Wextra)
+
 # The version shown on screen: 0.N, N being the number of changes kept so far plus this one.
 execute_process(COMMAND git rev-list --count HEAD WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE APOTHECA_CHANGES OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(NOT APOTHECA_CHANGES)
@@ -35,9 +43,9 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/qmod.cpp engine/src/jx3p.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/jx3p.cpp engine/src/fm6.cpp
     ${APOTHECA_FX})
-target_link_libraries(apotheca_engine PRIVATE easycz)
+target_link_libraries(apotheca_engine PRIVATE easycz msfa)
 target_include_directories(apotheca_engine PUBLIC engine/include)
 target_include_directories(apotheca_engine PRIVATE third_party)
 target_compile_options(apotheca_engine PRIVATE -Wall -Wextra)
@@ -50,9 +58,6 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(phazed_test tests/phazed_test.cpp)
   target_link_libraries(phazed_test PRIVATE apotheca_engine)
   add_test(NAME phazed COMMAND phazed_test)
-  add_executable(qmod_test tests/qmod_test.cpp)
-  target_link_libraries(qmod_test PRIVATE apotheca_engine)
-  add_test(NAME qmod COMMAND qmod_test)
   add_executable(song_test tests/song_test.cpp)
   target_link_libraries(song_test PRIVATE apotheca_engine)
   add_test(NAME song COMMAND song_test)
@@ -105,10 +110,15 @@ if(APOTHECA_BUILD_TESTS)
   target_link_libraries(jx3p_presets_test PRIVATE apotheca_engine)
   target_include_directories(jx3p_presets_test PRIVATE engine/src tests)
   add_test(NAME jx3p_presets COMMAND jx3p_presets_test)
+  # FM-6 (docs/plans/fm6-plan.md): the 32 factory sounds, the pitch, the macros, the house rules.
+  add_executable(fm6_test tests/fm6_test.cpp)
+  target_link_libraries(fm6_test PRIVATE apotheca_engine)
+  target_include_directories(fm6_test PRIVATE tests)
+  add_test(NAME fm6 COMMAND fm6_test)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
-  set_tests_properties(engine phazed qmod song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets mod PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

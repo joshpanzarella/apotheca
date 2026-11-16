@@ -1025,7 +1025,7 @@ void testTheOtherScreens() {
     const std::string longest = "a folder with a long name/a recording with a very long name indeed";
 
     // SONG: twelve tracks, the narrowest columns there are, every one with a name of ten wide letters.
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod, TrackKind::Sampler, TrackKind::Drums};
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Drums};
     for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 5]));
     session.view = View::Song;
     rig.frames(2);
@@ -1086,7 +1086,7 @@ void testTheOtherScreens() {
         few.app.song().moveCursorTo(0, 1);
         few.tap(A); // the list of instruments
         holds(few, "SONG, the list of instruments");
-        CHECK(drew("8 lanes: built-in drums or your recordings") && capAtXl("8 lanes: built-in drums or your recordings") == 12.f && capAtXl("FM you roll like dice, not program") == 13.f);
+        CHECK(drew("8 lanes: built-in drums or your recordings") && capAtXl("8 lanes: built-in drums or your recordings") == 12.f && capAtXl("6-operator FM, after a classic 80s synth") == 12.f && capAtXl("one recording, played from the keys") == 13.f);
         few.tap(B);
         // Another instrument for track 1: under the list, what goes with the old one.
         few.app.song().moveCursorTo(0, 0);
@@ -1151,7 +1151,7 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Qmod, &rig.app.qmod(), "QMOD"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Fm6, &rig.app.fm6(), "FM-6"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1163,7 +1163,10 @@ void testTheOtherScreens() {
             rig.frames(2);
             char what[48];
             std::snprintf(what, sizeof what, "%s, page %d", synth.name, page);
-            CHECK(holds(rig, what) > 3);
+            // (FM-6's operators: six rows, their boxes held at LARGE at XL; the page's name, its count
+            // and LIVE OUTPUT still follow the setting.)
+            const bool sixRows = synth.kind == TrackKind::Fm6 && fm6Spec().itemCount(page) > 20;
+            CHECK(holds(rig, what) > (sixRows ? 1 : 3));
         }
         synth.screen->goTo(0, SynthScreen::kFirstMacro);
         rig.key(A, true);
@@ -1172,7 +1175,7 @@ void testTheOtherScreens() {
         rig.key(A, false);
         rig.frames(1);
     }
-    CHECK(pagesSeen >= 10 + 4 + 2);
+    CHECK(pagesSeen == 10 + 6 + 9);
 
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
@@ -1279,6 +1282,65 @@ void testTheOtherScreens() {
         CHECK(drew("OWN 99") && drew("100 / 100") && xl.small.width("100 / 100") <= xl.small.width(SynthScreen::kCountLongest));
         session.chooseSynthPreset(project.track, 0);
         setUserPresets(TrackKind::Jx3p, {});
+        rig.frames(2);
+    }
+
+    // FM-6: every setting of every page with the cursor on it, at its least and, with A held, at its most
+    // (as the device reads it: COARSE and FINE with their operator, a FIXED one in Hz, an ON as a bit).
+    // An operator's page has six rows: at XL its boxes are drawn at LARGE, names and values, or the value
+    // stood on its bar (SynthScreen::boxFontsFor); at LARGE and under, as chosen.
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Fm6) project.track = t;
+        CHECK(project.current().kind == TrackKind::Fm6);
+        SynthScreen& fm = rig.app.fm6();
+        const SynthSpec& spec = fm6Spec();
+        const Fonts& large = *screens().at[kTextLarge];
+        const Fonts& xl = *screens().at[kTextXl];
+        int settings = 0;
+        char reads[32];
+        for (int page = 1; page < fm.pageCount(); ++page) {
+            for (int stop = 0; stop < spec.itemCount(page); ++stop, ++settings) {
+                fm.goTo(page, stop);
+                const int id = fm.settingHere();
+                CHECK(id >= 0 && id < shownSettingCount(TrackKind::Fm6) && id != fm6::OpsOn);
+                const int was = settingValue(spec, project.current().fm6.value, id);
+                session.setSynthSetting(project.track, id, spec.settingMin(id));
+                rig.frames(1);
+                holds(rig, "FM-6, a setting at its least");
+                settingReading(spec, project.current().fm6.value, id, reads, sizeof reads);
+                CHECK(drew(reads));
+                session.setSynthSetting(project.track, id, spec.settingMax(id));
+                rig.key(A, true);
+                rig.frames(1);
+                holds(rig, "FM-6, a setting at its most, A held");
+                settingReading(spec, project.current().fm6.value, id, reads, sizeof reads);
+                CHECK(drew(reads));
+                const bool six = spec.itemCount(page) > 20;
+                if (std::string(reads) == "ON") reads[0] = 0; // (an operator's ON box is named ON too: its value is not told apart)
+                if (reads[0] && capAtXl(reads, 50.f) != (six ? large.large.capHeight() : xl.large.capHeight()))
+                    std::printf("  FM-6 page %d stop %d: \"%s\" at %.1f\n", page, stop, reads, static_cast<double>(capAtXl(reads, 50.f)));
+                CHECK(!reads[0] || capAtXl(reads, 50.f) == (six ? large.large.capHeight() : xl.large.capHeight()));
+                rig.key(A, false);
+                rig.frames(1);
+                session.setSynthSetting(project.track, id, was);
+            }
+        }
+        CHECK(settings == fm6::kSettings + 5 && xl.large.capHeight() > large.large.capHeight());
+        // The longest fixed pitch an operator reads, and the widest preset name.
+        session.chooseSynthPreset(project.track, 18);
+        fm.goTo(2, 3);
+        session.setSynthSetting(project.track, fm6::opSetting(1, fm6::OpMode), 1);
+        session.setSynthSetting(project.track, fm6::opSetting(1, fm6::OpCoarse), 3);
+        session.setSynthSetting(project.track, fm6::opSetting(1, fm6::OpFine), 99);
+        rig.frames(1);
+        holds(rig, "FM-6, a FIXED operator at its highest");
+        CHECK(drew("9772 HZ") && drew("1000 HZ"));
+        fm.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        holds(rig, "FM-6 MAIN, HARPSICH 1");
+        CHECK(drew("HARPSICH 1") && drew("ROM 1A") && drew("19 / 32"));
+        session.chooseSynthPreset(project.track, 0);
         rig.frames(2);
     }
 

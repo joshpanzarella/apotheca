@@ -17,6 +17,8 @@
 //                  the still before a second, --still-ms 500), page1 .. page9 (Phazed's advanced pages), or
 //                  jaxep, jaxep0 .. jaxep5 (JAX-EP's main panel, a macro lit; and its pages, MAIN first),
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
+//                  fm6, fm6-1 .. fm6-8 (FM-6's main panel, a macro lit; and its pages), fm6-long (MAIN on the
+//                  widest of its 32 names), fm6-fixed (an operator at a FIXED pitch, on FINE), fm6-off (an operator OFF)
 //                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12 (the MOD tab; with
@@ -876,7 +878,7 @@ int main(int argc, char** argv) {
             app.session().setMix(11, 3, 50);
             app.session().setMix(6, 0, -20);
         } else {
-            app.session().addTrack(TrackKind::Qmod); // four tracks
+            app.session().addTrack(TrackKind::Fm6); // four tracks
         }
         app.session().setMix(1, -6, -30);
         if (master) {
@@ -948,7 +950,7 @@ int main(int argc, char** argv) {
         Session& s = app.session();
         int track = 1;
         if (std::strcmp(view, "mod-12") == 0) {
-            const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Qmod};
+            const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Fm6};
             for (int i = 0; app.project().trackCount() < kNumTracks; ++i) app.session().addTrack(kinds[i % 3]);
             track = kNumTracks - 1;
         }
@@ -1166,11 +1168,28 @@ int main(int argc, char** argv) {
         app.settings().goTo(SettingsScreen::kTrackName);
         tapKey(SDLK_x);
         for (const char* k = "\x01\x01x\x02x\x02\x02x"; *k; ++k) tapKey(*k == 1 ? SDLK_RIGHT : *k == 2 ? SDLK_DOWN : SDLK_x);
-    } else if (std::strncmp(view, "qmod", 4) == 0) {
-        app.session().addTrack(TrackKind::Qmod);
-        app.project().track = app.project().trackCount() - 1;
+    } else if (std::strncmp(view, "fm6", 3) == 0) {
+        // An FM-6 track, added the way the Song screen adds one: MAIN, a macro lit ("fm6"); a page
+        // ("fm6-1" .. "fm6-8"); MAIN on the widest of the 32 names ("fm6-long", HARPSICH 1); TUB BELLS'
+        // OPERATOR 5, a FIXED pitch, on FINE ("fm6-fixed"); OPERATOR 2 turned off, on its ON ("fm6-off").
+        app.session().addTrack(TrackKind::Fm6);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
         app.session().view = View::Device;
-        if (view[4]) app.qmod().goTo(std::atoi(view + 4), 0);
+        if (std::strcmp(view, "fm6-long") == 0) {
+            app.session().chooseSynthPreset(track, 18);
+            app.fm6().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "fm6-fixed") == 0) {
+            app.session().chooseSynthPreset(track, 25);
+            app.fm6().goTo(6, 3); // OPERATOR 5: FINE
+        } else if (std::strcmp(view, "fm6-off") == 0) {
+            app.session().setSynthSetting(track, fm6::kSettings + 1, 0); // OPERATOR 2 ON: OFF
+            app.fm6().goTo(3, 0);
+        } else if (view[3] == '-') {
+            app.fm6().goTo(std::atoi(view + 4), 0);
+        } else {
+            app.fm6().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
     } else if (std::strcmp(view, "help") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
     } else if (std::strncmp(view, "next-scene", 10) == 0) {

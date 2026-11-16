@@ -108,7 +108,7 @@ struct Rig {
     ~Rig() {
         setUserPresets(TrackKind::Phazed, {});
         setUserPresets(TrackKind::Jx3p, {});
-        setUserPresets(TrackKind::Qmod, {});
+        setUserPresets(TrackKind::Fm6, {});
     }
     void frames(int n) { for (int i = 0; i < n; ++i) app.update(input, clock += 16); }
     Answer get(const std::string& path) { return raw(port, "GET " + door + path + " HTTP/1.1\r\nHost: x\r\n\r\n"); }
@@ -439,37 +439,41 @@ void testSavingAPreset() {
     CHECK(rig.app.project().current().kind == TrackKind::Phazed && asMade());
 }
 
-void testQmodFromThePage() {
+void testFm6FromThePage() {
     Rig rig;
-    // A QMOD track, added as the SONG screen adds one.
-    rig.app.session().addTrack(TrackKind::Qmod);
+    // An FM-6 track, added as the SONG screen adds one.
+    rig.app.session().addTrack(TrackKind::Fm6);
     rig.app.project().track = rig.app.project().trackCount() - 1;
     rig.frames(1);
-    CHECK(rig.track().kind == TrackKind::Qmod);
+    CHECK(rig.track().kind == TrackKind::Fm6);
     const std::string spec = rig.get("/design/spec").body;
-    CHECK(has(spec, "\"name\":\"QMOD\",\"roll\":true") && has(spec, "\"macros\":[\"ENTANGLE\",\"TENSION\"") && count(spec, "\"id\":") == qmod::kSettings);
-    CHECK(has(spec, "{\"name\":\"SOUND NUMBER\",\"id\":0,\"min\":1,\"max\":9999}")); // a slider through every sound there is
-    // The page's ROLL button: a new sound; twice, two different ones.
-    const int before = rig.track().qmod.value[qmod::Sound];
-    CHECK(rig.tell("roll 12345"));
-    const int once = rig.track().qmod.value[qmod::Sound];
-    CHECK(rig.tell("roll 999"));
-    CHECK(once != before && rig.track().qmod.value[qmod::Sound] != once);
-    CHECK(rig.post("roll").status == 400 && rig.post("roll x").status == 400);
-    // Saved, it is a ".qmod" preset, in QMOD's list only, and comes back as it was.
-    const QmodPatch made = rig.track().qmod;
-    CHECK(rig.tell("save rolled one"));
-    CHECK(exists(rig.root + "/presets/ROLLED ONE.qmod") && qmodSpec().presetCount() == Qmod::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount());
+    // Its 145 settings, and its six ONs (OPERATORS ON is never offered as a number); no ROLL any more.
+    CHECK(has(spec, "\"name\":\"FM-6\",\"macros\":[\"BRIGHT\",\"FEEDBACK\"") && count(spec, "\"id\":") == fm6::kSettings + 5 && !has(spec, "\"roll\""));
+    CHECK(has(spec, "{\"name\":\"ALGORITHM\",\"id\":134,\"min\":0,\"max\":31,\"texts\":[\"1\",\"2\""));
+    CHECK(has(spec, "{\"name\":\"ON\",\"id\":146,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}") && has(spec, "\"id\":151,") && !has(spec, "\"id\":145,"));
+    CHECK(has(spec, "\"name\":\"OPERATOR 6\"") && has(spec, "\"name\":\"PITCH ENVELOPE\""));
+    // The state has a value for every id the page shows, the ONs read from their bits.
+    const std::string state = rig.get("/design/state").body;
+    const std::size_t from = state.find("\"values\":[");
+    CHECK(from != std::string::npos);
+    const std::string values = state.substr(from, state.find(']', from) - from);
+    CHECK(count(values, ",") == fm6::kSettings + 5 && has(values, ",63,1,1,1,1,1,1"));
+    // An ON set from the page is its bit: OPERATOR 3 off.
+    CHECK(rig.tell("set 148 0"));
+    CHECK(rig.track().fm6.value[fm6::OpsOn] == 63 - 8);
+    CHECK(rig.tell("set 151 0") && rig.track().fm6.value[fm6::OpsOn] == 63 - 8 - 1);
+    CHECK(rig.tell("set 152 0") && rig.track().fm6.value[fm6::OpsOn] == 63 - 8 - 1); // past the six: nothing
+    CHECK(has(rig.get("/design/state").body, ",54,1,1,0,1,1,0"));
+    CHECK(rig.tell("set 134 4") && rig.track().fm6.value[fm6::Algorithm] == 4);
+    CHECK(rig.post("roll 5").status == 400); // the page's ROLL went with QMOD
+    // Saved, it is an ".fm6" preset, in FM-6's list only, and comes back as it was.
+    const Fm6Patch made = rig.track().fm6;
+    CHECK(rig.tell("save made one"));
+    CHECK(exists(rig.root + "/presets/MADE ONE.fm6") && fm6Spec().presetCount() == Fm6::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount());
     rig.tell("preset 2");
-    CHECK(rig.track().qmod.value[qmod::Sound] != made.value[qmod::Sound]);
-    rig.tell("preset " + std::to_string(Qmod::presetCount()));
-    CHECK(std::equal(made.value, made.value + qmod::kSettings, rig.track().qmod.value));
-    // On a synth that is not rolled the request is taken and does nothing; the page is not offered the button.
-    rig.addSynth();
-    CHECK(!has(rig.get("/design/spec").body, "\"roll\""));
-    const PhazedPatch phazed = rig.track().patch;
-    rig.tell("roll 5");
-    CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.track().patch.value));
+    CHECK(rig.track().fm6.value[fm6::Algorithm] != made.value[fm6::Algorithm] && rig.track().fm6.value[fm6::OpsOn] == 63);
+    rig.tell("preset " + std::to_string(Fm6::presetCount()));
+    CHECK(std::equal(made.value, made.value + fm6::kSettings, rig.track().fm6.value));
 }
 
 // JAX-EP (jx3p-plan.md, batch 6a).
@@ -551,7 +555,7 @@ int main() {
     testPhazedFromThePage();
     testKeysFromThePage();
     testSavingAPreset();
-    testQmodFromThePage();
+    testFm6FromThePage();
     testJaxepFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;

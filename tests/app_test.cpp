@@ -1378,15 +1378,15 @@ void testNothingStaysHeld() {
 void testDeletingATrack() {
     Rig rig;
     Session& session = rig.app.session();
-    // Four tracks, each with something of its own: drums, Phazed (named), JAX-EP, QMOD.
+    // Four tracks, each with something of its own: drums, Phazed (named), JAX-EP, FM-6.
     rig.app.drums().setStep(0, 0, 1.f);
     session.addTrack(TrackKind::Phazed);
     session.addTrack(TrackKind::Jx3p);
-    session.addTrack(TrackKind::Qmod);
+    session.addTrack(TrackKind::Fm6);
     session.setTrackName(1, "BASS");
     rig.project().tracks[2].notes[0][0].notes[0] = NoteEvent{4, 62, 2.f, 0.f, 0.8f};
     rig.project().tracks[3].notes[1][0].notes[0] = NoteEvent{0, 50, 1.f, 0.f, 0.7f};
-    session.setSynthSetting(3, qmod::Sound, 4321);
+    session.setSynthSetting(3, fm6::Algorithm, 21);
     session.setAutomation(2, 0, 3, 5, 0.25f);
     session.setMuted(3, true);
     rig.project().track = 3;
@@ -1411,9 +1411,9 @@ void testDeletingATrack() {
     rig.frames(130);
     rig.key(B, false);
     CHECK(rig.project().trackCount() == 3);
-    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Jx3p && rig.project().tracks[2].kind == TrackKind::Qmod && rig.project().tracks[3].kind == TrackKind::None);
+    CHECK(rig.project().tracks[0].kind == TrackKind::Drums && rig.project().tracks[1].kind == TrackKind::Jx3p && rig.project().tracks[2].kind == TrackKind::Fm6 && rig.project().tracks[3].kind == TrackKind::None);
     CHECK(rig.project().tracks[1].name[0] == 0 && rig.project().tracks[1].notes[0][0].at(62, 4) >= 0 && near(rig.project().tracks[1].automation[0][3][5], 0.25f));
-    CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].qmod.value[qmod::Sound] == 4321 && rig.project().tracks[2].muted);
+    CHECK(rig.project().tracks[2].notes[1][0].at(50, 0) >= 0 && rig.project().tracks[2].fm6.value[fm6::Algorithm] == 21 && rig.project().tracks[2].muted);
     CHECK(rig.project().tracks[0].drums[0][0].level[0][0] == 1.f && rig.project().track == 2 && !rig.project().playing);
     for (float v : rig.project().tracks[3].automation[0][3]) CHECK(v < 0.f); // the freed place is clean
     // The engine has them in their new places: the JAX-EP note sounds from track 2, and the kick still plays.
@@ -2106,18 +2106,16 @@ void testRecordingAutomation() {
     // And the engine plays it: OCTAVE (macro 7) written up for steps 9 to 12 is heard there and not before.
     // (Phazed's octave macro jumps at three quarters; a long plain note makes it countable.)
     Rig heard;
-    heard.app.session().addTrack(TrackKind::Qmod);
+    heard.app.session().addTrack(TrackKind::Phazed);
     heard.project().track = 1;
     Session& hs = heard.app.session();
-    hs.setSynthSetting(1, qmod::Tension, 0);
-    hs.setSynthSetting(1, qmod::Sustain, 100);
     NotePattern& bar = heard.project().tracks[1].notes[0][0];
     bar.notes[0].step = 0;
     bar.notes[0].pitch = 45;
     bar.notes[0].length = 16.f;
     bar.notes[0].velocity = 0.8f;
     hs.sendNotePattern(1, 0);
-    for (int i = 8; i < 12; ++i) hs.setAutomation(1, 0, qmod::MacroOctave, i, 1.f);
+    for (int i = 8; i < 12; ++i) hs.setAutomation(1, 0, phazed::MacroOctave, i, 1.f);
     hs.view = View::Pattern;
     heard.tap(START);
     const auto count = [&] { const std::vector<float> got = heard.render(kStep); int n = 0; for (int i = 1; i < kStep; ++i) n += got[2 * (i - 1)] < 0.f && got[2 * i] >= 0.f ? 1 : 0; return n; };
@@ -2128,7 +2126,7 @@ void testRecordingAutomation() {
     heard.tap(START);
     heard.render(96000);
     heard.frames(60);
-    hs.clearAutomation(1, 0, qmod::MacroOctave);
+    hs.clearAutomation(1, 0, phazed::MacroOctave);
     heard.frames(60);
     heard.tap(START);
     waves.clear();
@@ -2545,48 +2543,90 @@ void testHoldBErasesDrumHits() {
     CHECK(drums.level(3, 0) > 0.f);
 }
 
-void testQmodOnATrack() {
+void testFm6OnATrack() {
     Rig rig;
     Session& session = rig.app.session();
-    // + TRACK: QMOD is the fifth instrument, after the sampler.
+    // + TRACK: FM-6 is the fifth instrument, after the sampler, where QMOD was.
     session.view = View::Song;
     rig.app.song().moveCursorTo(0, rig.project().trackCount());
     rig.tap(A);
     rig.tap(DOWN, 3);
     rig.tap(A);
-    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Qmod);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Fm6);
     TrackData& track = rig.project().tracks[1];
     rig.project().track = 1;
     char text[24];
     ui::trackName(rig.project(), 1, text, sizeof text);
-    CHECK(std::string(text) == "2 QMOD" && isSynth(track.kind));
-    // It starts on its first preset, and plays.
-    const QmodPatch first = Qmod::presetPatch(0);
-    CHECK(track.preset == 0 && std::equal(first.value, first.value + qmod::kSettings, track.qmod.value));
+    CHECK(std::string(text) == "2 FM-6" && isSynth(track.kind));
+    // It starts on its first preset, every operator on, and plays.
+    const Fm6Patch first = Fm6::presetPatch(0);
+    CHECK(track.preset == 0 && std::equal(first.value, first.value + fm6::kSettings, track.fm6.value) && track.fm6.value[fm6::OpsOn] == 63);
     session.audition(1, 60, 0.8f);
     CHECK(rig.listen(4000) > 0.02f);
     rig.render(96000);
-    // The device screen: Y rolls a new sound, at once, and it is heard. Only the sound's numbers change.
+    // The device screen: ADVANCED, then R1 to OPERATOR 1. Its first box is its ON: turned off, it is one
+    // bit of OPERATORS ON (OP1 is bit 5), and the engine is told that whole setting, not a bit.
     session.view = View::Device;
     rig.frames(2);
-    const int before = track.qmod.value[qmod::Sound];
-    rig.tap(Y);
-    CHECK(track.qmod.value[qmod::Sound] != before && track.qmod.value[qmod::Sound] >= 1 && track.qmod.value[qmod::Sound] <= 9999);
-    CHECK(track.qmod.value[qmod::Tension] == first.value[qmod::Tension] && track.qmod.value[qmod::Release] == first.value[qmod::Release]);
-    CHECK(rig.listen(4000) > 0.02f);
+    SynthScreen& screen = rig.app.fm6();
+    // FOLDER turned with only ROM 1A there: nothing moves, and it does not hang (it froze the
+    // handheld: owner, 2026-11-15). Both ways, held A and the stick's step alike go through stepFolder.
+    screen.goTo(0, SynthScreen::kFolder);
+    rig.key(A, true), rig.frames(1);
+    rig.tap(UP), rig.tap(DOWN), rig.tap(RIGHT), rig.tap(LEFT);
+    rig.key(A, false), rig.frames(1);
+    CHECK(track.preset == 0);
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.pageCount() == 9);
+    rig.tap(R1);
+    CHECK(screen.page() == 2 && screen.cursor() == 0 && screen.settingHere() == fm6::kSettings); // OPERATOR 1: ON
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 32);
+    rig.key(A, true);
+    rig.tap(DOWN); // the end stops: OFF stays OFF, and no other operator is touched
+    rig.key(A, false);
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 32);
+    // R1 again, OPERATOR 2: its ON is bit 4. On again for OP1 after.
+    rig.tap(R1);
+    CHECK(screen.page() == 3 && screen.settingHere() == fm6::kSettings + 1);
+    rig.key(A, true);
+    rig.tap(DOWN);
+    rig.key(A, false);
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 32 - 16);
+    rig.tap(L1);
+    rig.key(A, true);
+    rig.tap(UP);
+    rig.key(A, false);
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 16);
+    // A setting of an operator: OPERATOR 1's OUTPUT LEVEL, the next box, is OP1's own (id 121: OP6 comes first).
+    rig.tap(RIGHT);
+    CHECK(screen.settingHere() == fm6::opSetting(1, fm6::OpLevel) && fm6::opSetting(1, fm6::OpLevel) == 121);
+    const int level = track.fm6.value[121];
+    rig.key(A, true);
+    rig.tap(DOWN, 3);
+    rig.key(A, false);
+    CHECK(track.fm6.value[121] == level - 3);
+    // The engine has the sound as the track has it: what a fresh FM-6 given the same numbers plays. (The LFO
+    // and the waves' places run on in the engine's synth: they are stilled, and Play and Stop start its voices
+    // afresh, so the two can be held sample to sample.)
+    session.setSynthSetting(1, fm6::LfoPmd, 0);
+    session.setSynthSetting(1, fm6::LfoAmd, 0);
+    session.setSynthSetting(1, fm6::KeySync, 1);
+    session.togglePlay(false);
+    rig.render(4800);
+    session.togglePlay(false);
     rig.render(96000);
-    const int second = track.qmod.value[qmod::Sound];
-    rig.tap(Y);
-    CHECK(track.qmod.value[qmod::Sound] != second); // each roll is another
-    // The engine has the rolled sound: it is what a fresh QMOD given the same numbers plays.
     {
-        Qmod same;
+        Fm6 same;
         same.prepare(48000.f);
-        for (int id = 0; id < qmod::kSettings; ++id) same.setSetting(id, track.qmod.value[id]);
+        for (int id = 0; id < fm6::kSettings; ++id) same.setSetting(id, track.fm6.value[id]);
         same.noteOn(60, 0.8f);
         std::vector<float> l(4000), r(4000);
         for (int at = 0; at < 4000; at += 64) same.render(l.data() + at, r.data() + at, 4000 - at < 64 ? 4000 - at : 64);
-        rig.frames(200); // long enough for the note the roll played to be let go
+        rig.frames(200);
         rig.render(96000);
         rig.render(96000);
         Command c;
@@ -2601,54 +2641,142 @@ void testQmodOnATrack() {
         for (int i = 0; i < 4000; ++i)
             if (std::fabs(l[i]) > top) top = std::fabs(l[i]), scale = heard[2 * i] / l[i];
         for (int i = 0; i < 4000; ++i) worst = std::fmax(worst, std::fabs(heard[2 * i] - scale * l[i]));
-        CHECK(top > 0.02f && scale > 0.2f && scale < 1.f && worst < 0.02f * top * scale);
+                CHECK(top > 0.02f && scale > 0.2f && scale < 1.f && worst < 0.02f * top * scale);
         c.type = Command::NoteOff;
         rig.engine->send(c);
         rig.render(96000);
     }
-    // Y does not roll on a synth that is not rolled (Phazed), nor while A has hold of something.
-    addPhazed(rig);
-    rig.project().track = 2;
-    session.view = View::Device;
-    const PhazedPatch phazed = rig.project().tracks[2].patch;
+    // Y does nothing on a synth's DEVICE screen any more (ROLL went with QMOD).
+    const Fm6Patch before = track.fm6;
+    screen.goTo(0, SynthScreen::kPreset);
     rig.tap(Y);
-    CHECK(std::equal(phazed.value, phazed.value + phazed::kSettings, rig.project().tracks[2].patch.value));
-    CHECK(!session.rollSynth(2, 5) && !session.rollSynth(0, 5) && !session.rollSynth(99, 5));
-    rig.project().track = 1;
-    rig.frames(1);
-    const int kept = track.qmod.value[qmod::Sound];
-    rig.key(A, true);
-    rig.tap(Y);
-    rig.key(A, false);
-    CHECK(track.qmod.value[qmod::Sound] == kept);
+    CHECK(std::equal(before.value, before.value + fm6::kSettings, track.fm6.value) && track.preset == 0);
     // Its settings read as what they are.
-    const SynthSpec& spec = qmodSpec();
-    spec.settingText(qmod::Family, 0, text, sizeof text);
-    CHECK(std::string(text) == "AUTO");
-    spec.settingText(qmod::Family, 1, text, sizeof text);
-    CHECK(std::string(text) == qmod::familyName(1) && text[0]);
-    spec.settingText(qmod::Release, 100, text, sizeof text);
-    CHECK(std::string(text) == "20.0 S");
-    spec.macroText(qmod::MacroVariation, 1.f, text, sizeof text);
-    CHECK(std::string(text) == "+16");
-    // Every setting is on some page, once.
-    int seen[qmod::kSettings] = {};
+    const SynthSpec& spec = fm6Spec();
+    const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
+    CHECK(reads(fm6::Algorithm, 0) == "1" && reads(fm6::Algorithm, 31) == "32");
+    CHECK(reads(fm6::Transpose, 24) == "+0" && reads(fm6::Transpose, 36) == "+12" && reads(fm6::Transpose, 0) == "-24");
+    CHECK(reads(fm6::LfoWave, 0) == "TRIANGLE" && reads(fm6::LfoWave, 5) == "RANDOM" && reads(fm6::KeySync, 1) == "ON");
+    CHECK(reads(fm6::opSetting(3, fm6::OpBreakPoint), 39) == "C3" && reads(fm6::opSetting(3, fm6::OpBreakPoint), 0) == "A-1" && reads(fm6::opSetting(3, fm6::OpBreakPoint), 99) == "C8");
+    CHECK(reads(fm6::opSetting(6, fm6::OpLeftCurve), 0) == "-LIN" && reads(fm6::opSetting(1, fm6::OpRightCurve), 2) == "+EXP");
+    CHECK(reads(fm6::opSetting(2, fm6::OpDetune), 7) == "+0" && reads(fm6::opSetting(2, fm6::OpDetune), 0) == "-7");
+    CHECK(reads(fm6::opSetting(2, fm6::OpMode), 1) == "FIXED" && reads(fm6::kSettings + 5, 0) == "OFF");
+    CHECK(reads(fm6::opSetting(4, fm6::OpCoarse), 0) == "0.50" && reads(fm6::opSetting(4, fm6::OpCoarse), 3) == "3.00");
+    // COARSE and FINE on the device: a ratio, or under FIXED a pitch, read with the rest of the operator.
+    Fm6Patch p = Fm6::startPatch();
+    const auto readsIn = [&](int id) { settingReading(spec, p.value, id, text, sizeof text); return std::string(text); };
+    p.value[fm6::opSetting(2, fm6::OpCoarse)] = 2;
+    p.value[fm6::opSetting(2, fm6::OpFine)] = 50;
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpCoarse)) == "2.00" && readsIn(fm6::opSetting(2, fm6::OpFine)) == "3.00");
+    p.value[fm6::opSetting(2, fm6::OpMode)] = 1;
+    p.value[fm6::opSetting(2, fm6::OpFine)] = 51;
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpCoarse)) == "100 HZ" && readsIn(fm6::opSetting(2, fm6::OpFine)) == "324 HZ");
+    p.value[fm6::opSetting(2, fm6::OpCoarse)] = 4; // only its last two bits count: 1 Hz
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpCoarse)) == "1.00 HZ" && readsIn(fm6::opSetting(2, fm6::OpFine)) == "3.24 HZ");
+    p.value[fm6::opSetting(2, fm6::OpCoarse)] = 1;
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpFine)) == "32.4 HZ" && readsIn(fm6::opSetting(1, fm6::OpFine)) == "1.00");
+    p.value[fm6::OpsOn] = 63 - 4; // OP4 off: its ON reads OFF, the others ON
+    CHECK(readsIn(fm6::kSettings + 3) == "OFF" && readsIn(fm6::kSettings + 2) == "ON" && readsIn(fm6::kSettings + 4) == "ON");
+    CHECK(readsIn(fm6::Algorithm) == "1"); // (one with no reading of its own reads as alone)
+    CHECK(readsIn(fm6::opSetting(2, fm6::OpLevel)) == std::to_string(p.value[fm6::opSetting(2, fm6::OpLevel)]) && readsIn(fm6::opSetting(2, fm6::OpR1)) == "99"); // nor an operator's other settings
+    CHECK(reads(fm6::kSettings, 1) == "ON" && reads(fm6::kSettings, 0) == "OFF"); // OPERATOR 1's ON, the first past the synth's own
+    spec.macroText(fm6::MacroBright, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "+100");
+    CHECK(std::string(spec.macroNames[0]) == "BRIGHT" && std::string(spec.macroNames[7]) == "PITCH ENV");
+    // Every setting is on some page, once: OPERATORS ON as its six ONs, never as itself.
+    CHECK(shownSettingCount(TrackKind::Fm6) == fm6::kSettings + 6 && settingCount(TrackKind::Fm6) == fm6::kSettings);
+    int seen[fm6::kSettings + 6] = {};
     for (int page = 1; page < spec.pages; ++page)
         for (int i = 0; i < spec.itemCount(page); ++i) {
             int id = -1;
             const char* name = "";
             spec.item(page, i, id, name);
-            CHECK(id >= 0 && id < qmod::kSettings && name[0]);
-            if (id >= 0 && id < qmod::kSettings) ++seen[id];
+            CHECK(id >= 0 && id < fm6::kSettings + 6 && name[0]);
+            if (id >= 0 && id < fm6::kSettings + 6) ++seen[id];
         }
-    for (int count : seen) CHECK(count == 1);
-    // A song keeps a QMOD track: its kind and every number of its sound.
-    track.qmod.value[qmod::Tension] = 77;
-    track.macro[qmod::MacroEvolve] = 0.9f;
+    for (int id = 0; id < fm6::kSettings + 6; ++id) CHECK(seen[id] == (id == fm6::OpsOn ? 0 : 1));
+    CHECK(spec.itemCount(0) == 0 && spec.itemCount(9) == 0 && spec.itemCount(2) == 22 && spec.itemCount(1) == 11 && spec.itemCount(8) == 8);
+    // A page's ON is a bit, set and read by the helpers alone.
+    int whole = -1, bit = -1;
+    CHECK(spec.bitOf(fm6::kSettings, whole, bit) && whole == fm6::OpsOn && bit == 5);
+    CHECK(spec.bitOf(fm6::kSettings + 5, whole, bit) && bit == 0);
+    CHECK(!spec.bitOf(fm6::OpsOn, whole, bit) && !spec.bitOf(fm6::kSettings + 6, whole, bit) && !spec.bitOf(0, whole, bit));
+    CHECK(spec.settingMin(fm6::kSettings + 2) == 0 && spec.settingMax(fm6::kSettings + 2) == 1 && spec.settingMax(fm6::kSettings + 6) == 0);
+    int realId = -1, realValue = -1;
+    settingWrite(spec, p.value, fm6::kSettings + 3, 1, realId, realValue);
+    CHECK(realId == fm6::OpsOn && realValue == 63);
+    settingWrite(spec, p.value, fm6::kSettings + 3, 7, realId, realValue); // held to 1 first
+    CHECK(realId == fm6::OpsOn && realValue == 63);
+    settingWrite(spec, p.value, fm6::kSettings, 0, realId, realValue);
+    CHECK(realValue == 63 - 4 - 32);
+    settingWrite(spec, p.value, fm6::Algorithm, 99, realId, realValue);
+    CHECK(realId == fm6::Algorithm && realValue == 31);
+    // The Session takes an ON too (the WiFi page sets it by its id).
+    session.setSynthSetting(1, fm6::kSettings + 5, 0);
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 16 - 1);
+    session.setSynthSetting(1, fm6::kSettings + 6, 0); // past the six: nothing
+    CHECK(track.fm6.value[fm6::OpsOn] == 63 - 16 - 1);
+    // ...and tells the engine OPERATORS ON whole: all six off through the Session, a key is silence;
+    // one back on, it sounds.
+    for (int op = 0; op < 6; ++op) session.setSynthSetting(1, fm6::kSettings + op, 0);
+    CHECK(track.fm6.value[fm6::OpsOn] == 0);
+    rig.render(96000);
+    {
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 60;
+        c.value = 0.8f;
+        rig.engine->send(c);
+        CHECK(rig.listen(4000) == 0.f);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(96000);
+        session.setSynthSetting(1, fm6::kSettings, 1); // OP1, a carrier in every algorithm
+        c.type = Command::NoteOn;
+        rig.engine->send(c);
+        CHECK(rig.listen(4000) > 0.01f);
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        rig.render(96000);
+    }
+    // A song keeps an FM-6 track: its kind and every number of its sound.
+    track.fm6.value[fm6::Algorithm] = 21;
+    track.macro[fm6::MacroDecay] = 0.9f;
+    addPhazed(rig);
     std::unique_ptr<Project> again(new Project);
-    CHECK(parseSong(songText(rig.project()), *again));
-    CHECK(again->tracks[1].kind == TrackKind::Qmod && std::equal(track.qmod.value, track.qmod.value + qmod::kSettings, again->tracks[1].qmod.value));
-    CHECK(near(again->tracks[1].macro[qmod::MacroEvolve], 0.9f) && again->tracks[2].kind == TrackKind::Phazed);
+    const std::string written = songText(rig.project());
+    CHECK(written.find("\ntrack fm6\n") != std::string::npos);
+    CHECK(parseSong(written, *again));
+    CHECK(again->tracks[1].kind == TrackKind::Fm6 && std::equal(track.fm6.value, track.fm6.value + fm6::kSettings, again->tracks[1].fm6.value));
+    CHECK(near(again->tracks[1].macro[fm6::MacroDecay], 0.9f) && again->tracks[2].kind == TrackKind::Phazed);
+}
+
+// A song written with QMOD (the synth that went, 2026-11-15) opens with an FM-6 track in its place: on
+// FM-6's first preset, its knobs in the middle, none of QMOD's sound read (its preset, macros, settings,
+// the macros' automation, a MOD on a macro), and everything else as it was.
+void testAQmodSongOpensOnFm6() {
+    const std::string song =
+        "apotheca-song 1\ntempo 120\nscenes 1\n"
+        "track drums\n"
+        "track qmod\nname LEAD\npreset 5\nmacros 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.9\nsettings 4321 7 8 9\n"
+        "auto 1 3 0 0.9 1 0.8\nauto 1 20 0 0.6\nsend 1 0.4\nmod 1 1 6 0.75\nmod 2 1 20 0.75\nmuted\n"
+        "scene 1\nnote 1 60 2 0.8\n"
+        "track phazed\npreset 2\n";
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(song, *back));
+    const TrackData& t = back->tracks[1];
+    const Fm6Patch first = Fm6::presetPatch(0);
+    CHECK(back->trackCount() == 3 && t.kind == TrackKind::Fm6 && back->tracks[2].kind == TrackKind::Phazed);
+    CHECK(t.preset == 0 && std::equal(first.value, first.value + fm6::kSettings, t.fm6.value));
+    for (float m : t.macro) CHECK(m == 0.5f);
+    CHECK(t.automation[0][3][0] == kAutoNone && near(t.automation[0][20][0], 0.6f)); // a macro's lane goes, a send's stays
+    CHECK(t.mods[0].kind == kModOff && t.mods[1].kind == kModLfo && t.mods[1].target == 20); // the same
+    CHECK(near(t.send[0], 0.4f) && std::string(t.name) == "LEAD" && t.muted && t.notes[0][0].at(60, 0) >= 0);
+    CHECK(back->tracks[2].preset == 1); // (the next track's own sound is read again)
+    // And it is written back as FM-6's own word.
+    const std::string again = songText(*back);
+    CHECK(again.find("track fm6") != std::string::npos && again.find("qmod") == std::string::npos);
 }
 
 void testTypingATrackName() {
@@ -5847,7 +5975,7 @@ Rig* onPhazed() {
 // into one without played the old sound's macros there (owner, 2026-11-14, "went back to a previous sound").
 // The song, through the Session, beside one whose knobs were never turned: the same to the sample, after the wrap.
 void testABuiltInPresetRestsTheMacrosWhereTheyShow() {
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Qmod};
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6};
     for (TrackKind kind : kinds) {
         const auto song = [kind](bool turned) {
             Rig* rig = new Rig;
@@ -6178,12 +6306,12 @@ void testAddingJaxep() {
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 4); // PHAZED > JAX-EP > SAMPLER > QMOD > DRUMS
+    rig->tap(DOWN, 4); // PHAZED > JAX-EP > SAMPLER > FM-6 > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
     rig->tap(A);
-    rig->tap(UP, 3); // PHAZED > DRUMS > QMOD > SAMPLER
+    rig->tap(UP, 3); // PHAZED > DRUMS > FM-6 > SAMPLER
     rig->tap(A);
     CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
@@ -6331,7 +6459,7 @@ void testHowJaxepReads() {
     CHECK(names(3) == "MIX, HPF, CUTOFF, RESONANCE, LFO MOD, ENV MOD, ENV POLARITY, KEY FOLLOW");
     CHECK(names(4) == "MODE, LEVEL, ATTACK, DECAY, SUSTAIN, RELEASE");
     CHECK(names(5) == "WAVE, DELAY, RATE, CHORUS, BRILLIANCE, VELOCITY");
-    CHECK(spec.itemCount(0) == 0 && spec.itemCount(6) == 0 && !spec.envelopePage(1) && !spec.roll);
+    CHECK(spec.itemCount(0) == 0 && spec.itemCount(6) == 0 && !spec.envelopePage(1));
 
     // The eight macros, by lane (they are automation lanes 0 to 7), and how far each is from the patch.
     const char* macros[kSynthMacros] = {"CUTOFF", "RESO", "ENV", "TUNE", "MIX", "LFO", "ATTACK", "RELEASE"};
@@ -6352,7 +6480,7 @@ void testHowJaxepReads() {
     // the player's own say nothing; the other synths have nothing to say. No maker's name in either.
     CHECK(std::string(jaxepFolderNote("BANK A")) == "1983 BOOKLET, SPEEDS GUESSED" && jaxepFolderNote("BANK B") == kJaxepBankNote);
     CHECK(std::string(jaxepFolderNote("START")) == "SPEEDS GUESSED" && jaxepFolderNote("BANKS") == kJaxepGuessNote && jaxepFolderNote("USER") == kJaxepGuessNote && jaxepFolderNote("") == kJaxepGuessNote);
-    CHECK(spec.folderNote && !phazedSpec().folderNote && !qmodSpec().folderNote && spec.pageReadsAsDevice && !phazedSpec().pageReadsAsDevice && !qmodSpec().pageReadsAsDevice);
+    CHECK(spec.folderNote && !phazedSpec().folderNote && !fm6Spec().folderNote && spec.pageReadsAsDevice && !phazedSpec().pageReadsAsDevice && !fm6Spec().pageReadsAsDevice);
     for (int i = 0; i < Jx3p::presetCount(); ++i) CHECK(spec.folderNote(i) == jaxepFolderNote(Jx3p::presetCategory(i)));
     UserPreset own;
     own.name = "MINE";
@@ -6378,7 +6506,7 @@ void testHowJaxepReads() {
     CHECK(screen.folderNote() == nullptr);
     rig->project().track = 0; // (and a drum track is not asked)
     setUserPresets(TrackKind::Jx3p, {});
-    CHECK(rig->app.phazed().folderNote() == nullptr && rig->app.qmod().folderNote() == nullptr);
+    CHECK(rig->app.phazed().folderNote() == nullptr && rig->app.fm6().folderNote() == nullptr);
 }
 
 // How loud a note at `velocity` is on the Rig's track 2, the JX-3P, as it stands.
@@ -6427,7 +6555,7 @@ void testAPresetKeepsTheTracksOwnValues() {
     Session& session = rig->app.session();
     TrackData& track = rig->project().tracks[1];
     CHECK(jx3p::kPatchSettings == 32 && presetSettingCount(TrackKind::Jx3p) == 32 && settingCount(TrackKind::Jx3p) == 34);
-    CHECK(presetSettingCount(TrackKind::Phazed) == settingCount(TrackKind::Phazed) && presetSettingCount(TrackKind::Qmod) == settingCount(TrackKind::Qmod));
+    CHECK(presetSettingCount(TrackKind::Phazed) == settingCount(TrackKind::Phazed) && presetSettingCount(TrackKind::Fm6) == settingCount(TrackKind::Fm6));
     // With VELOCITY on, as a new track has it, a soft note is quieter than a full one.
     const float fullOn = jxLoud(*rig, 1.f), softOn = jxLoud(*rig, 0.3f);
     CHECK(fullOn > 0.01f && softOn < 0.3f * fullOn);
@@ -6489,7 +6617,7 @@ void testAPresetKeepsTheTracksOwnValues() {
     // An old Twin Analog preset on the card is left there and not listed.
     CHECK(writeTextFile(std::string(folder) + "/OLD.twin", "apotheca-preset 1\nsynth twin\nmacros 0.5\nsettings 1 2 3\n"));
     session.usePresetFolder(folder);
-    CHECK(userPresets(TrackKind::Jx3p).size() == 2 && userPresets(TrackKind::Jx3p)[0].name == "HAND" && userPresets(TrackKind::Phazed).empty() && userPresets(TrackKind::Qmod).empty());
+    CHECK(userPresets(TrackKind::Jx3p).size() == 2 && userPresets(TrackKind::Jx3p)[0].name == "HAND" && userPresets(TrackKind::Phazed).empty() && userPresets(TrackKind::Fm6).empty());
     session.chooseSynthPreset(1, Jx3p::presetCount());
     CHECK(track.jx3p.value[jx3p::Resonance] == 9 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
     std::string still;
@@ -6635,6 +6763,45 @@ void testJaxepsHintsFit() {
         }
     }
     CHECK(states == 2 * 2 * (SynthScreen::kMainStops + jx3p::kSettings));
+}
+
+// FM-6's bar holds every hint on MAIN and on its eight pages, at every stop, A held and not, with
+// either help (owner: hints must fit; a page of six rows has the same bar as one of two).
+void testFm6sHintsFit() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(new Rig);
+    CHECK(rig->app.session().addTrack(TrackKind::Fm6));
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.fm6();
+    CHECK(screen.pageCount() == 9);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu) {
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : fm6Spec().itemCount(page);
+            for (int cursor = 0; cursor < stops; ++cursor) {
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL FM-6's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+            }
+        }
+    }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + fm6::kSettings + 5)); // every setting, OPERATORS ON as six
 }
 
 } // namespace
@@ -7168,9 +7335,9 @@ void testChangingATracksInstrument() {
     rig.tap(START);
     session.setMuted(0, false);
     rig.frames(1);
-    CHECK(session.setTrackKind(1, TrackKind::Qmod) && t.notes[0][0].notes[0].velocity == 0.8f);
+    CHECK(session.setTrackKind(1, TrackKind::Fm6) && t.notes[0][0].notes[0].velocity == 0.8f);
     // Nonsense is refused.
-    CHECK(!session.setTrackKind(1, TrackKind::None) && !session.setTrackKind(1, TrackKind::Qmod) && !session.setTrackKind(5, TrackKind::Drums) && !session.setTrackKind(-1, TrackKind::Drums));
+    CHECK(!session.setTrackKind(1, TrackKind::None) && !session.setTrackKind(1, TrackKind::Fm6) && !session.setTrackKind(5, TrackKind::Drums) && !session.setTrackKind(-1, TrackKind::Drums));
     // B held on the head deletes the track, as on a cell: two seconds, and let go sooner it does nothing.
     song.moveCursorTo(0, 1);
     rig.tap(UP);
@@ -7184,7 +7351,7 @@ void testChangingATracksInstrument() {
     rig.key(B, true);
     rig.frames(130);
     rig.key(B, false);
-    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[0].kind == TrackKind::Drums); // the Qmod went; the one after it moved up
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Phazed && rig.project().tracks[0].kind == TrackKind::Drums); // the FM-6 went; the one after it moved up
     rig.frames(2);
     // + TRACK still adds one (the list is not left thinking it is changing a track).
     song.moveCursorTo(0, 2);
@@ -7388,7 +7555,7 @@ void testPresetsEightAtATime() {
 void testNoteEffectsHoldUp() {
     Rig rig;
     Session& session = rig.app.session();
-    session.addTrack(TrackKind::Qmod);
+    session.addTrack(TrackKind::Fm6);
     rig.project().track = 1;
     rig.frames(2);
     NoteScreen& roll = rig.app.notes();
@@ -7506,10 +7673,10 @@ void testNoteEffectsHoldUp() {
 void testNoteEffects() {
     Rig rig;
     Session& session = rig.app.session();
-    session.addTrack(TrackKind::Qmod);
+    session.addTrack(TrackKind::Fm6);
     rig.project().track = 1;
-    session.setSynthMacro(1, qmod::MacroRelease, 0.f); // a note let go is gone at once, so a gap between two notes can be heard
-    session.setSynthMacro(1, qmod::MacroAttack, 0.f);
+    session.setSynthMacro(1, fm6::MacroRelease, 0.f); // a note let go is gone at once, so a gap between two notes can be heard
+    session.setSynthMacro(1, fm6::MacroAttack, 0.f);
     rig.frames(2);
     NoteScreen& roll = rig.app.notes();
     NotePattern& p = rig.project().tracks[1].notes[0][0];
@@ -9138,6 +9305,7 @@ int main(int argc, char** argv) {
         testAPresetKeepsTheTracksOwnValues();
         testUndoPutsBackTheTracksOwnTwo();
         testJaxepsHintsFit();
+        testFm6sHintsFit();
         std::printf(failures ? "%d check(s) failed\n" : "JAX-EP's tests passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -9247,7 +9415,8 @@ int main(int argc, char** argv) {
     testTheHelpCardDrawsSel();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
-    testQmodOnATrack();
+    testFm6OnATrack();
+    testAQmodSongOpensOnFm6();
     testTypingATrackName();
     testHoldXCarriesANote();
     testSelectGoesToTheSongScreen();
@@ -9287,6 +9456,7 @@ int main(int argc, char** argv) {
     testAPresetKeepsTheTracksOwnValues();
     testUndoPutsBackTheTracksOwnTwo();
     testJaxepsHintsFit();
+    testFm6sHintsFit();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
