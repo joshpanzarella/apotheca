@@ -5,6 +5,8 @@
 
 #include <SDL.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -762,17 +764,143 @@ void show() {
     }
 }
 
+// ---- PHYSIC's added presets, heard through their whole sound ---------------------------------------
+
+// What one preset gave, playing the phrase through its synth, its slots, its sends into a new song's
+// buses (TAPE on ECHO, HALL on SPACE) and its MODs (docs/plans/physic-plan.md, section 17).
+struct Heard {
+    double loudestDb = -200.0; // the loudest tenth of a second, RMS of the louder side, dB of full scale
+    float peak = 0.f;          // the largest sample, anywhere, the tail too
+    double tail = 0.0;         // seconds from Stop to the last tenth over -80 dB
+    bool ended = false;        // silent for 12 s before the cap
+    bool numbers = true;       // every sample a number
+    float modSwing[kModsPerTrack] = {}; // how far what each MOD adds moved while playing (0: did not move)
+    double cost = 0.0;         // the engine's time over the sound's while it played: a share of a core (this machine)
+};
+
+// The phrase: four notes up, a four-key chord held, a high note, all at the level a note is placed
+// at, a bar at 120 BPM played round twice, then Stop and the tail. The chord is loose notes so it
+// is four strikes at one moment, as a chord is.
+Heard hearPhysicPreset(int preset) {
+    Heard h;
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Physic));
+    const int track = rig.project().trackCount() - 1;
+    session.chooseSynthPreset(track, preset);
+    rig.settle();
+    NotePattern& bar = rig.project().tracks[track].notes[0][0];
+    const int phrase[][3] = {{0, 60, 2}, {2, 67, 2}, {4, 64, 2}, {6, 72, 2}, {8, 55, 6}, {8, 60, 6}, {8, 64, 6}, {8, 71, 6}, {14, 79, 2}};
+    int slot = 0;
+    for (const auto& n : phrase) bar.notes[slot++] = NoteEvent{n[0], n[1], static_cast<float>(n[2]), 0.f, kPlacedLevel};
+    session.sendNotePattern(track, 0);
+    rig.settle();
+    rig.render(48000); // anything the pick sounded, gone by
+    const int window = 4800;
+    std::vector<float> out(2 * 768);
+    double sumL = 0.0, sumR = 0.0;
+    int inWindow = 0;
+    long frame = 0, lastLoud = 0, stopAt = -1;
+    float least[kModsPerTrack], most[kModsPerTrack];
+    for (int m = 0; m < kModsPerTrack; ++m) least[m] = 1e9f, most[m] = -1e9f;
+    double busy = 0.0;
+    const long playFrames = 4 * 48000, cap = playFrames + 120L * 48000;
+    session.togglePlay(false);
+    rig.frames(1);
+    while (frame < cap) {
+        if (frame >= playFrames && stopAt < 0) {
+            session.togglePlay(false);
+            stopAt = frame;
+        }
+        const auto start = std::chrono::steady_clock::now();
+        rig.engine->render(out.data(), 768);
+        if (stopAt < 0) busy += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        rig.frames(1);
+        for (int i = 0; i < 768; ++i) {
+            const float l = out[2 * i], r = out[2 * i + 1];
+            h.numbers = h.numbers && std::isfinite(l) && std::isfinite(r);
+            h.peak = std::max(h.peak, std::max(std::fabs(l), std::fabs(r)));
+            sumL += static_cast<double>(l) * l, sumR += static_cast<double>(r) * r;
+            if (++inWindow == window) {
+                const double rms = std::sqrt(std::max(sumL, sumR) / window);
+                h.loudestDb = std::max(h.loudestDb, 20.0 * std::log10(rms + 1e-12));
+                if (rms > 1e-4) lastLoud = frame + i + 1;
+                sumL = sumR = 0.0, inWindow = 0;
+            }
+        }
+        frame += 768;
+        if (stopAt < 0)
+            for (int m = 0; m < kModsPerTrack; ++m) {
+                const float shown = rig.engine->modShown(track, m);
+                if (std::isfinite(shown)) least[m] = std::min(least[m], shown), most[m] = std::max(most[m], shown);
+            }
+        if (stopAt >= 0 && frame - lastLoud > 12L * 48000) {
+            h.ended = true;
+            break;
+        }
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) h.modSwing[m] = most[m] > least[m] ? most[m] - least[m] : 0.f;
+    h.tail = (lastLoud > stopAt ? lastLoud - stopAt : 0) / 48000.0;
+    h.cost = busy / (playFrames / 48000.0);
+    return h;
+}
+
+// The limits every added PHYSIC preset is held to, so an edit by ear cannot break one without a word.
+// The window is the engine's own 32 played the same way, with room either side (measured 2026-11-16:
+// section 17 of physic-plan.md). Nothing is pinned by checksum: the owner tunes them by ear.
+constexpr double kQuietestDb = -28.0, kLoudestDb = -12.0;
+constexpr float kPeakMost = 0.9f;
+constexpr double kTailMost = 60.0;
+
+void testPhysicPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Physic;
+    const SynthSpec& spec = *specFor(kind);
+    const int first = measure ? 0 : enginePresets(kind);
+    if (measure) std::printf("  %-3s %-14s %-20s %8s %6s %6s %7s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "MODs swing");
+    for (int i = first; i < builtInPresets(kind); ++i) {
+        const Heard h = hearPhysicPreset(i);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[64] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f;
+            char one[24];
+            std::snprintf(one, sizeof one, " %d:%.2f", m + 1, h.modSwing[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-14s %-20s %6.1f dB %6.3f %5.1fs %6.2f%% %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.cost * 100.0, swing);
+        if (i < enginePresets(kind)) continue;
+        const bool fine = h.numbers && h.loudestDb >= kQuietestDb && h.loudestDb <= kLoudestDb && h.peak < kPeakMost && h.ended && h.tail <= kTailMost && modsMove;
+        if (!fine) std::printf("  PHYSIC %d %s / %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s, MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kQuietestDb && h.loudestDb <= kLoudestDb);
+        CHECK(h.peak < kPeakMost);
+        CHECK(h.ended && h.tail <= kTailMost);
+        CHECK(modsMove);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     SDL_SetMainReady();
     bool print = false;
     for (int a = 1; a < argc; ++a) print = print || std::strcmp(argv[a], "--print") == 0;
-    for (int a = 1; a < argc; ++a)
+    for (int a = 1; a < argc; ++a) {
         if (std::strcmp(argv[a], "--show") == 0) {
             show();
             return 0;
         }
+        // --heard: PHYSIC's added presets played through their whole sound and held to their limits
+        // (its own ctest entry, presets_heard). --measure: every PHYSIC built-in's figures, printed.
+        if (std::strcmp(argv[a], "--heard") == 0 || std::strcmp(argv[a], "--measure") == 0) {
+            testPhysicPresetsAsHeard(std::strcmp(argv[a], "--measure") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "PHYSIC's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+    }
     testTheShippedData(print);
     testTheDataReads();
     testTheDataSaysWhatIsWrong();

@@ -209,7 +209,14 @@ send 2 0.3
 2. `./build/presets_test --show` prints every preset with a sound as the device reads it:
    each effect's settings ("SIZE 2.0 S"), the sends, each MOD with its target's name.
 3. `./build/presets_test --print` lists the added ones and their places.
-4. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
+4. **PHYSIC's added presets are heard through their whole sound**: `./build/presets_test --heard`
+   (in ctest as `presets_heard`) plays a phrase on each, with its slots, sends and MODs into a new
+   song's buses, and fails one too quiet or too loud (-28 to -12 dB, its loudest tenth of a
+   second), one that clips (a peak of 0.9), one whose tail does not end within 60 s, and one with a
+   MOD that does not move. `--measure` prints those figures for every PHYSIC built-in. The limits
+   and why: `docs/plans/physic-plan.md`, section 17. (The other synths' added presets have no such
+   test yet: the same function, given their kind, would be the start of one.)
+5. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
    list (it shows the folder and the name).
 
 Nobody has listened to any of it on the handheld: the owner cannot hear, so what a preset

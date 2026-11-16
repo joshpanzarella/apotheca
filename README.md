@@ -515,7 +515,7 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
 | --- | --- |
 | One of your own, saved from now on | puts its whole sound in: every slot, send and MOD as saved (an empty slot is emptied) |
 | A built-in that holds a track sound (a few added ones, like JAX-EP's PADS) | the same |
-| A plain one: the booklet's, the cartridges', PHYSIC's first 24, one of your own saved before | changes the synth only, and leaves your effects, sends and MODs as they are |
+| A plain one: the booklet's, the cartridges', PHYSIC's own 32, one of your own saved before | changes the synth only, and leaves your effects, sends and MODs as they are |
 
 - **One step of undo** takes a pick back: the synth, the effects, the sends and
   the MODs together.
@@ -530,7 +530,7 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
 - Built-in presets beyond the synth's own are added after them, each in a
-  folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER). How to write one:
+  folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER, ATMOS, METAL...). How to write one:
   `docs/plans/presets-plan.md`.
 
 ### A scene of any length
@@ -817,7 +817,19 @@ damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
   starts on Marimba**, so notes placed at once play a marimba line. After
   them, presets that hold a track sound (effects, sends, MODs: "Presets"
   above), in folders of their own: SHIMMER (Glass Steps, a bell through
-  SHIMMER with a STEPPER on POSITION).
+  SHIMMER with a STEPPER on POSITION), then **63 more in eight folders**:
+  ATMOS (glass drawn by a breath, a singing bowl, pads that swell and beat),
+  METAL (gongs, an anvil, a steel pan, a comb, a ring modulator), GAMELAN
+  (bronze in pairs that beat), PREPARED (strings with bolts, paper, clips,
+  felt and tacks), PERCUSSION (a brush snare, a hand pan, udu, tabla, a
+  rattle), PLUCKS (strings and tines through ensemble, dub, phaser, flanger,
+  bloom), TEXTURES (worn, crushed, fuzzed, backwards) and MOVING (a MOD is
+  most of the sound: a STEPPER walking where a marimba is struck, wood
+  turning to metal while it rings). Ten to try first: Bowed Glass, Singing
+  Bowl, Gong Wash, Ombak, Bolt Piano, Hand Pan, Dub Kalimba, Jawari, Timbre
+  Walk, Wood To Metal. Nobody has heard them yet; each was measured to play
+  at a sane level, not clip, end its tail and move its MODs
+  (`docs/plans/physic-plan.md`, section 17).
 - **Eight voices.** A voice costs only while it rings. A key struck again
   while it rings is the same voice: on a bar or a bell the new hit adds to the
   ringing (a ratchet is a real roll); a string is damped for 2 ms first, as a

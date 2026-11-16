@@ -1154,3 +1154,157 @@ string, CHIME's mode, NOISE's length, envelope, comb and both levels, BUZZ's gap
 off, the second string emptied, the readings, the roll, the page). **One survives**: a sleep that
 does not look at the second string. Its two strings die at the same rate, so when the first is
 quiet the second is within a hair; kept as a guard.
+
+## 17. The second set of presets (2026-11-16, branch `physicpresets`)
+
+The owner, of the first 32: "they do sound fairly close to the name of the preset, but they are kind
+of flat and boring. Can we add a bunch more and make them more interesting and cool." **63 more, in
+eight new folders, each a whole track sound** (the synth, its slots, its sends, its MODs:
+`docs/plans/presets-plan.md`), written in `app/presets/physic.inc` after SHIMMER / Glass Steps.
+**Nobody has heard any of them.** What each does is what its numbers say; the figures below are
+measured, the sound is a guess to be tuned by ear.
+
+| Folder | Count | What is in it |
+| --- | --- | --- |
+| ATMOS | 8 | long rings that swell, beat and drift: glass drawn by NOISE, a singing bowl, a tine pad, BLOOM and SHIMMER |
+| METAL | 8 | bells and strings stretched, saturated, ring-modulated, combed and flanged |
+| GAMELAN | 8 | bronze in pairs that beat (ombak): PAIR on every one, gongs an octave or two down |
+| PREPARED | 7 | strings with things on them: BUZZ (bolts, paper, clips), mutes, tacks |
+| PERCUSSION | 8 | skins and wood: a brush snare (NOISE and BUZZ), a hand pan (a skin's modes made whole by STRETCH 0), udu, tabla |
+| PLUCKS | 8 | strings and tines made by their effect: ENSEMBLE, DUB, PHASER, FLANGER, BLOOM, REVERSE |
+| TEXTURES | 8 | worn, broken and backwards: WEAR, CRUSH, FUZZ, RING, STUTTER, REVERSE |
+| MOVING | 8 | a MOD is most of the sound: STEPPERS on POSITION, TONE, DECAY, PAN and LEVEL; LFOs on MATERIAL and STRETCH, which move ringing notes |
+
+**Each preset's every MOD moves something you hear while the note rings or at the next strike**:
+MATERIAL, DECAY and STRETCH act on ringing notes (STRETCH retunes the partials as they ring: Warp
+Bells, Gong Wash, Singing Bowl), TONE and POSITION at the next strike (a STEPPER on POSITION is a tune
+of timbres: Timbre Walk, Log Steps, Tabla), an effect's setting at once, LEVEL and PAN at once.
+FREE LFOs (SPEED in Hz) are on the slow drifts, so they do not follow the tempo. PAIR, MOTOR, BODY
+MIX and BUZZ are not MOD targets (section 16), so what moves them is set in the patch.
+
+### How they were measured (`presets_test --heard`, in ctest as `presets_heard`)
+
+Each added preset is put on a PHYSIC track of a new song (TAPE on ECHO, HALL on SPACE, as a new song
+has) and plays a phrase: four notes up (keys 60, 67, 64, 72), a four-key chord held six steps (55, 60,
+64, 71), a high note (79), each at the level a note is placed at, a bar at 120 BPM played round twice;
+then Stop and the tail. Everything the track and the buses give is read off the master. Held:
+
+| Limit | Value | Why |
+| --- | --- | --- |
+| The loudest tenth of a second (RMS, the louder side) | -28 to -12 dB | the first 32 played the same way: -30.1 (Hand Drum) to -16.5 dB (Plucked Bass), the middle about -21 |
+| The largest sample, the tail too | under 0.9 | nothing clips through the synth and the effects; the master holds at 1.0, so 1.0 would be a clip |
+| The tail, Stop to the last tenth over -80 dB | ends, within 60 s | a tail always ends (CLAUDE.md); Gong Ageng, the longest, is 27 s |
+| Every sample | a number | |
+| Each MOD on | moves (what the engine says it adds swings by more than 0.005) | a MOD aimed where nothing moves would be dead weight |
+
+**No checksum is pinned**: the owner tunes them by ear, and a tuned preset only has to stay inside the
+limits. Tried by breaking it: a LEVEL turned up to +6 (Rusty Spring: peak 1.000), a MOD at no depth
+(Robot Tines: swing 0) and a LEVEL down to -24 (Gong Ageng: -42 dB) each fail it, naming the preset.
+**What it cannot catch**: whether a preset sounds good, or like its name. A DUB at 150% FEEDBACK
+passes (it howls and then comes down by itself, as DUB is made to). `presets_test --measure` prints
+the same figures for every PHYSIC built-in, the first 32 too.
+
+### The presets (★: the ten to try first)
+
+| Folder | Name | The idea | What makes it (synth; slots; sends. MODs) | Loudest | Peak | Tail |
+| --- | --- | --- | --- | --- | --- | --- |
+| ATMOS | **Bowed Glass** ★ | a glass drawn by a breath, through a SHIMMER that swells | Wine Glass, NOISE 0.9 s, PAIR 4; SHIMMER; SPACE 20%. LFOs FREE: SHIMMER's amount (0.06 Hz), PAN (DRIFT) | -22.9 dB | 0.25 | 5.2 s |
+| ATMOS | **Singing Bowl** ★ | a bowl that beats and breathes | GLASS, padded stick, DECAY 18 S, RING, PAIR 6, MOTOR 0.3 Hz; PLATE; SPACE 25%. LFOs FREE: LEVEL -40% (0.05 Hz), STRETCH (DRIFT): the partials bend | -22.9 dB | 0.25 | 16.0 s |
+| ATMOS | Tine Pad | vibes that ring for ever, wide | Vibes Still, DECAY 13 S, PAIR 3, MOTOR 0.6 Hz, TUBES 40; ENSEMBLE, HALL; ECHO 15%. LFOs: HALL's MIX (4 BARS), TONE (8 BARS) | -23.1 dB | 0.20 | 3.9 s |
+| ATMOS | Bloom Cluster | an octave-up handbell cluster, its dice tuning it out of true, swelling in | Handbell, OCTAVE +1, DICE 60 (TUNE 70), PAIR 5; BLOOM 1.3 s. LFOs: BLOOM's TONE (FREE DRIFT), DICE (2 BARS) | -22.6 dB | 0.36 | 9.6 s |
+| ATMOS | Breath Choir | a breath into tubes, sung through vowels | Tubular Bell, NOISE 1.2 s, PAIR 5; VOWEL, HALL. LFOs: the VOWEL A to O (2 BARS), PAN (DRIFT) | -22.4 dB | 0.24 | 2.6 s |
+| ATMOS | Under Ice | bright inharmonic glass, each sound again backwards | Crystal, HARDNESS 95, STRETCH 82, DICE; REVERSE 1/4, PLATE 8.6 S. LFOs: STRETCH (4 BARS), PLATE's TONE (DRIFT) | -19.8 dB | 0.33 | 8.7 s |
+| ATMOS | Ghost Harp | a harp in a big room, its pluck moving | Harp, PAIR 4, DECAY 6 S; PING 1/8 DOT, HALL 90%; SPACE 15%. LFOs: POSITION (2 BARS), HALL's MIX (FREE) | -19.2 dB | 0.55 | 5.0 s |
+| ATMOS | Glass Harmonica | glasses rubbed, turning slowly | Wine Glass, NOISE 0.4 s, PAIR 2, MOTOR 0.33 Hz; CHORUS, PLATE. LFO: MATERIAL -40% (8 BARS) | -23.1 dB | 0.26 | 3.6 s |
+| METAL | **Gong Wash** ★ | a big stretched gong, a little taped, its wash shimmering | Church Bell, OCTAVE -1, STRETCH 75, PAIR 12; SATURATE TAPE, HALL. LFOs: STRETCH (FREE 0.07 Hz), the SPACE send (4 BARS) | -17.0 dB | 0.45 | 18.2 s |
+| METAL | Comb Clang | hard glock hits ringing a comb at C3 | Glockenspiel, DECAY 0.9 s, DICE 60; COMB C3, PING 1/8. STEPPER: COMB's FEEDBACK, 1/8 | -22.2 dB | 0.25 | 0.9 s |
+| METAL | Anvil | a hammer on steel, then a file | Church Bell, HARDNESS 100, STRETCH 92, DECAY 4 S; SATURATE HARD, short PLATE. LFO: TONE, a SQUARE a bar | -23.5 dB | 0.28 | 0.9 s |
+| METAL | Steel Pan | vibes bars pulled towards whole partials, tubes under them | Vibes Still, STRETCH 32, PAIR 3, TUBES 35; CHORUS, SPRING. LFO: POSITION (1 BAR) | -17.0 dB | 0.41 | 0.6 s |
+| METAL | Robot Tines | a kalimba through a ring modulator | Kalimba (no BUZZ); RING 503 Hz, PING 1/4 TRIP. LFO: RING's FREQ (1 BAR) | -21.0 dB | 0.40 | 2.1 s |
+| METAL | Rusty Spring | a mallet on a very stiff string, rattling, in a spring | Steel, MALLET, STRETCH 85, BUZZ 30; SPRING (DRIP 90%). LFO: STRETCH (2 BARS) | -16.3 dB | 0.68 | 1.4 s |
+| METAL | Cymbal Swell | a 2 s burst of noise on a stretched bell: it swells in | Church Bell, NOISE 2 S, OCTAVE +1, STRETCH 96, PAIR 20; FLANGER. LFO: FLANGER's FEEDBACK (4 BARS) | -23.4 dB | 0.24 | 2.7 s |
+| METAL | Fold Bell | a handbell folded over and back | Handbell, PAIR 4; SATURATE FOLD; SPACE 30%. LFO: the DRIVE (2 BARS) | -18.8 dB | 0.27 | 1.1 s |
+| GAMELAN | Gender | a bronze bar over its tube, two of it beating (ombak) | Vibes Still, STRETCH 64, PAIR 8, TUBES 50; PLATE; SPACE 20%. LFO: POSITION (2 BARS) | -16.4 dB | 0.45 | 2.3 s |
+| GAMELAN | Bonang | a pot gong, each struck its own way | Handbell, STRETCH 40, PAIR 6; small HALL. LFO: TONE, RANDOM a bar | -22.6 dB | 0.40 | 1.0 s |
+| GAMELAN | Saron | a thick bronze bar, hard mallet | Glockenspiel, PAIR 7, MATERIAL 85; EQ, PLATE. STEPPER of 5: POSITION, 1/8 | -19.3 dB | 0.35 | 3.5 s |
+| GAMELAN | Gong Ageng | the great gong: two octaves down, a slow beat, half a minute | Church Bell, OCTAVE -2, HARDNESS 15, DECAY 26 S, PAIR 3; HALL; SPACE 25%. LFO: DECAY (8 BARS) | -15.1 dB | 0.53 | 27.3 s |
+| GAMELAN | Kempul | a hanging gong, an octave down, moving across | Church Bell, OCTAVE -1, PAIR 5, DECAY 14 S; PLATE. LFO: PAN (FREE 0.1 Hz) | -16.3 dB | 0.68 | 13.5 s |
+| GAMELAN | **Ombak** ★ | bars beating fast, in an ensemble | Vibes Still, PAIR 14, MOTOR 0.28 Hz; ENSEMBLE, HALL. LFO: DECAY (4 BARS) | -20.4 dB | 0.27 | 2.6 s |
+| GAMELAN | Kenong | a kettle gong into a dark echo that opens | Church Bell, POSITION 50, PAIR 4; DUB 1/4. LFO: DUB's TONE (2 BARS) | -18.4 dB | 0.61 | 7.8 s |
+| GAMELAN | Slenthem Dub | a low bronze bar, dubbed | Vibes Still, OCTAVE -1, PAIR 9; DUB 1/8 DOT, HALL. LFO: DUB's FEEDBACK (4 BARS) | -14.8 dB | 0.53 | 5.7 s |
+| PREPARED | **Bolt Piano** ★ | a hammered string with a bolt in it, on a box | Dulcimer, POSITION 12, STRETCH 30, BUZZ 40, BOX 40; PLATE. LFO: POSITION, RANDOM a bar | -14.5 dB | 0.70 | 2.2 s |
+| PREPARED | Felt Thuds | felt-muted strings: a thud, sometimes a ring | Dulcimer, HARDNESS 10, DECAY 0.5 s, MATERIAL 20, BOX 70; COMP, EQ (+6 dB low). LFO: DECAY (2 BARS) | -17.9 dB | 0.70 | 0.7 s |
+| PREPARED | Paper Strings | paper woven through the strings | Steel, BUZZ 70; EQ. LFO: TONE (1 BAR) | -19.3 dB | 0.57 | 0.1 s |
+| PREPARED | Screw Bells | screws on bell plates, each sitting differently | Handbell, STRETCH 85, BUZZ 25; SPRING. STEPPER of 7: STRETCH, 1/8 | -23.0 dB | 0.41 | 0.9 s |
+| PREPARED | Rubber Mute | rubber wedged at the bridge: a thump | Nylon, DECAY 0.3 s, MATERIAL 10, GUITAR 85; SNAP. LFO: MATERIAL (1 BAR) | -20.2 dB | 0.71 | 0.1 s |
+| PREPARED | Tack Piano | brass tacks on the hammers, two strings out of tune | Dulcimer, HARDNESS 95, PAIR 9, BUZZ 10, BOX 35; SATURATE TUBE, TAPE 1/4 TRIP. LFO: TAPE's AGE (2 BARS) | -20.3 dB | 0.54 | 2.7 s |
+| PREPARED | Clip Harp | a harp with clips on its strings, slapped back | Harp, PAIR 3, BUZZ 50; DELAY 1/16, PLATE. LFO: POSITION -40% (2 BARS) | -22.8 dB | 0.48 | 2.3 s |
+| PERCUSSION | Brush Snare | a brush on a skin with wires under it | Tom, NOISE 0.13 s, BUZZ 70, DICE 40; COMP, PLATE. LFO: TONE (the brush's length), RANDOM a bar | -22.7 dB | 0.46 | 1.1 s |
+| PERCUSSION | **Hand Pan** ★ | a skin's modes pulled to whole numbers: a tuned steel drum | Tom, STRETCH 0, MATERIAL 100, DECAY 5 S, TUBES 60; PLATE; SPACE 20%. LFO: POSITION (2 BARS) | -16.5 dB | 0.50 | 9.9 s |
+| PERCUSSION | Udu | a clay pot with its hole: a deep boom | Tom, OCTAVE -1, TUBES 85; EQ. LFO: POSITION, a RAMP a bar | -15.1 dB | 0.68 | 1.1 s |
+| PERCUSSION | Rattle | seeds in wood, here and there | Woodblock, NOISE 11 ms, BUZZ 60, DICE 80; EQ. LFO: PAN, RANDOM each 1/8 | -19.4 dB | 0.74 | 0.0 s |
+| PERCUSSION | Bent Skin | a drum whose tension talks | Tom, DECAY 1.7 s; SPRING. STEPPER of 8: STRETCH, 1/8 | -21.5 dB | 0.27 | 1.0 s |
+| PERCUSSION | Log Steps | a log drum walked along, thrown into ECHO now and then | Log Drum, DICE 40; PING 1/8. STEPPERS: POSITION every step; the ECHO send (a throw on two steps of 7) | -21.4 dB | 0.42 | 2.8 s |
+| PERCUSSION | Frame Drum | a hand on a big frame, rim to middle | Hand Drum, OCTAVE -1, BOX 60; SPRING. LFO: POSITION (1 BAR) | -24.6 dB | 0.22 | 0.6 s |
+| PERCUSSION | Tabla | a loaded skin, near whole partials: centre and edge strokes | Tom, STRETCH 10, MATERIAL 70, HARDNESS 70; EQ. STEPPER of 6: POSITION, 1/8 | -19.2 dB | 0.56 | 1.1 s |
+| PLUCKS | Twelve Ensemble | a twelve-string, further apart, in an ensemble | Twelve, PAIR 9; ENSEMBLE, PLATE. LFO: TONE (4 BARS) | -23.2 dB | 0.48 | 1.5 s |
+| PLUCKS | **Dub Kalimba** ★ | a buzzing kalimba into a dub echo that opens and closes | Kalimba, BUZZ 35; DUB 1/8 DOT; SPACE 15%. LFO: DUB's TONE (2 BARS) | -16.1 dB | 0.61 | 11.1 s |
+| PLUCKS | **Jawari** ★ | a long string over a buzzing bridge, a sympathetic second | Steel, POSITION 8, DECAY 7 S, PAIR 4, BUZZ 55; PHASER, PLATE. LFO: POSITION (4 BARS) | -22.4 dB | 0.64 | 2.1 s |
+| PLUCKS | Harp Pings | harp into an echo whose feedback steps | Harp, DECAY 4 S; PING 1/8 DOT. STEPPER of 5: PING's FEEDBACK, 1/8 | -19.9 dB | 0.60 | 3.9 s |
+| PLUCKS | Koto Rain | a loose koto, backwards behind it | Koto, DICE 40 (TUNE 50); REVERSE 1/8 DOT, HALL; ECHO 20%. LFO: POSITION (2 BARS) | -22.8 dB | 0.41 | 2.1 s |
+| PLUCKS | Tin Banjo | a string on a drum-head box, plucked hard by the bridge | Steel, HARDNESS 90, POSITION 10, BOX 85; EQ. LFO: TONE, a SQUARE a bar | -18.5 dB | 0.66 | 0.1 s |
+| PLUCKS | Pizz Flange | pizzicato through a jet | Pizz; FLANGER, PLATE. LFO: FLANGER's DEPTH (4 BARS) | -23.0 dB | 0.39 | 1.0 s |
+| PLUCKS | Nylon Bloom | a nylon guitar, doubled, swelling into a BLOOM | Nylon, PAIR 3, DECAY 2.7 S; BLOOM. LFO: BLOOM's MIX (4 BARS) | -20.7 dB | 0.43 | 3.8 s |
+| TEXTURES | Worn Music Box | a music box on a worn tape | Music Box, DECAY 3.4 S; WEAR, TAPE 1/8 DOT; SPACE 20%. LFO: WEAR's WOW (FREE DRIFT) | -18.4 dB | 0.39 | 2.5 s |
+| TEXTURES | Crushed Glock | a glockenspiel in 8 bits, the bits stepping | Glockenspiel, DICE 30; CRUSH, PING 1/8. STEPPER of 4: the BITS, 1/8 | -22.2 dB | 0.24 | 2.2 s |
+| TEXTURES | Broken Kalimba | a kalimba through a fuzz that comes and goes | Kalimba, BUZZ 45; FUZZ, SPRING. LFO: FUZZ's MIX -40% (2 BARS) | -19.5 dB | 0.40 | 1.1 s |
+| TEXTURES | Backwards Chimes | wind chimes, backwards | Wind Chime, DECAY 8 S; REVERSE 1/4, HALL. LFO: REVERSE's MIX -40% (4 BARS) | -19.5 dB | 0.36 | 8.8 s |
+| TEXTURES | Static Bells | handbells on a dirty record, sung through O | Handbell; WEAR (DIRT 80%), VOWEL. LFO: the VOWEL (2 BARS) | -22.8 dB | 0.26 | 0.6 s |
+| TEXTURES | Radio Glass | a glass on a small speaker, ring-modulated | Wine Glass; RING 145 Hz, EQ (a band). LFO: RING's FREQ (FREE DRIFT) | -19.9 dB | 0.38 | 4.0 s |
+| TEXTURES | Ice Stutter | crystal caught and repeated by chance | Crystal, DICE 30; STUTTER 1/8 x3, PLATE. LFO: STUTTER's CHANCE (4 BARS) | -18.2 dB | 0.41 | 4.1 s |
+| TEXTURES | Rain On Tin | dice rain on a buzzing roof | Rain, BUZZ 40; TAPE 1/8, EQ. LFO: DICE (FREE DRIFT) | -17.5 dB | 0.59 | 1.1 s |
+| MOVING | **Timbre Walk** ★ | a marimba whose strike walks: a tune of timbres | Marimba; PING 1/4 TRIP; SPACE 15%. STEPPERS: POSITION (16, every step) against TONE (5, 1/8) | -18.9 dB | 0.33 | 1.0 s |
+| MOVING | Phaser Marimba | a marimba in a drifting phaser | Marimba; PHASER, HALL. LFO: PHASER's FEEDBACK (FREE DRIFT) | -22.0 dB | 0.23 | 1.3 s |
+| MOVING | **Wood To Metal** ★ | a ringing bar turned from wood to metal and back | Marimba, DECAY 9.5 S, MATERIAL 50, RING; PLATE; ECHO 20%. LFO: MATERIAL +90% (2 BARS) | -19.6 dB | 0.30 | 5.6 s |
+| MOVING | Warp Bells | handbells whose partials sway as they ring | Handbell, DECAY 9.5 S, RING, PAIR 3; HALL. LFO: STRETCH (FREE 0.3 Hz) | -23.4 dB | 0.27 | 7.7 s |
+| MOVING | Decay Steps | vibes: a note short, a note rings | Vibes Still, RING; TAPE 1/8 DOT. STEPPER of 8: DECAY, 1/8 | -23.0 dB | 0.35 | 3.6 s |
+| MOVING | Pan Pong Blocks | temple blocks thrown side to side | Temple Blocks, WIDTH 0; PING 1/8. STEPPER of 6: PAN every step; LFO: TONE (2 BARS) | -22.8 dB | 0.69 | 1.1 s |
+| MOVING | Filter Tide | vibes through a resonant low-pass that rises and falls | Vibes, DECAY 9.5 S; FILTER LOW 24, HALL. LFO: the CUTOFF +60% (4 BARS) | -15.6 dB | 0.49 | 2.5 s |
+| MOVING | Gated Glass | crystal chopped by a gate on LEVEL | Crystal, RING; PLATE. STEPPER of 6: LEVEL +100%, every half step (-1 is silence) | -19.9 dB | 0.37 | 4.8 s |
+
+Every level was set by measuring: LEVEL moved each one into about -23 to -15 dB, its peak kept under 0.7
+(Frame Drum is at LEVEL +6 already, so -24.6 dB). The figures are this container's, with the phrase
+above; a busier part (more keys at once, a ratchet) is louder.
+
+### The ten to try first
+
+| Preset | Why it is a favourite (on paper) |
+| --- | --- |
+| ATMOS / Bowed Glass | the long NOISE strike is the only bowed sound PHYSIC has; through a SHIMMER that swells it should be the most "cool" pad here |
+| ATMOS / Singing Bowl | a bowl that beats (PAIR 6), breathes (LEVEL on a 20 s LFO) and bends (STRETCH drifting while it rings) |
+| METAL / Gong Wash | a big stretched gong whose partials shimmer as they ring, the SPACE send rising and falling |
+| GAMELAN / Ombak | PAIR 14 beats fast against an ENSEMBLE: the gamelan's shimmer |
+| PREPARED / Bolt Piano | BUZZ on a hammered string, the strike moving at random: the prepared-piano quality the owner asked for |
+| PERCUSSION / Hand Pan | STRETCH 0 makes a skin's modes whole numbers: a drum that is in tune, with TUBES under it |
+| PLUCKS / Dub Kalimba | the BUZZ the kalimba has, into a dark DUB echo whose TONE opens and closes |
+| PLUCKS / Jawari | a long string over a buzzing bridge (BUZZ 55) and a sympathetic second (PAIR 4) |
+| MOVING / Timbre Walk | two STEPPERS, 16 and 5 long, on POSITION and TONE: one marimba line, every note another colour |
+| MOVING / Wood To Metal | MATERIAL swung +90% in two bars: each ringing note turns from wood to metal and back |
+
+### Cost
+
+The checker times the engine while the phrase plays (this container, the best of three runs; the
+first 32 read 0.08% (Woodblock) to 0.35% (Dulcimer) the same way, Marimba 0.18%, about `bench`'s
+0.21%). **The heaviest: Bowed Glass 0.96%** (SHIMMER, a NOISE strike, the SPACE bus woken), Bloom
+Cluster 0.92% and Nylon Bloom 0.86% (BLOOM), Gong Ageng 0.79% (HALL and the SPACE bus); every other
+one under 0.8%, most 0.3 to 0.6%. On the handheld (x 13 to 17) the heaviest is 12 to 16% of a core for
+the track, against FM-6's 16 notes at 1.22% desk. **Not run on the handheld.** None stacks two of
+BLOOM, SHIMMER and FOLD: Nylon Bloom lost its CHORUS for that (PAIR 3 does its work), and Fold Bell
+uses SATURATE's FOLD and a send (0.66% in all) where FOLD and a HALL of its own cost 1.04%. A reverb a preset only needs a
+little of is a send into the song's own SPACE, which the song is running anyway.
+
+### Presets name the presets they start from
+
+`base NAME` and `preset NAME` (presets-plan.md, "The words"), so a preset is not moved onto another
+sound when built-ins are put into a folder: batch 10 did that, and `base 19` had to be checked by
+hand. Every `base` here names its preset.
