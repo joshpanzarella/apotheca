@@ -274,6 +274,31 @@ void DrumMachine::letGo(int lane) {
         if (v.audition && v.position >= 0.0 && v.fadeStep == 0.f) v.fadeStep = chokeStep_;
 }
 
+// RUNS (speed plan, batch 2). For a stretch of samples nothing about a voice moves but its place:
+// forward at speed 1, its level at rest (no glide, no rise, no fade), its THROW at rest, and none of
+// the things that change it falls inside (the end of the sound or of its part, where its fade begins,
+// or the sample its time is up on). That stretch is a plain loop with the same sum written the same
+// way, so the sound is the same to the bit; every other sample goes the long way, one at a time, as
+// before. 0: the next sample is not plain.
+namespace {
+bool gRuns = true; // setRunsForTests
+}
+void DrumMachine::setRunsForTests(bool on) { gRuns = on; }
+
+template <bool kThrown>
+int DrumMachine::plainRun(const Voice& v, int length, int most) {
+    if (v.rate != 1.0 || v.gain != v.gainTo || v.rise < 1.f || v.fadeStep != 0.f) return 0;
+    if (kThrown && (v.thrown[0] != v.thrownTo[0] || v.thrown[1] != v.thrownTo[1])) return 0;
+    int n = most;
+    if (v.life > 0 && v.life - 1 < n) n = v.life - 1; // (the sample it reaches 0 on starts the fade)
+    // The samples whose place is still short of the sound's end and of its part's (places p, p + 1...:
+    // exact in a double, as the long way's adding of 1 is).
+    const double room = static_cast<double>(v.end < length ? v.end : length) - v.position;
+    if (!(room > 0.0)) return 0;
+    if (room < static_cast<double>(n)) n = static_cast<int>(std::ceil(room));
+    return n;
+}
+
 // One voice's part of a block, added to `left`. Written once and built twice: `kThrown` false is
 // a hit as it always was, with nothing of THROW in its loop, so a hit that is not thrown costs
 // what it did; true also writes the voice out for the buses. Returns `wrote` with the bits of
@@ -284,7 +309,32 @@ int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float la
     // Backwards, the fade must be over when it reaches its start (the front of a drum is its
     // loudest part): it begins this far short of it.
     const double fadeRoom = v.rate < 0.0 ? -v.rate / static_cast<double>(quick) : 0.0;
-    for (int i = 0; i < frames; ++i) {
+    int i = 0;
+    while (i < frames) {
+        const int run = gRuns ? plainRun<kThrown>(v, length, frames - i) : 0;
+        if (run > 0) {
+            // The long way's sum, word for word, with what does not move taken once.
+            const float gain = v.gain, fade = v.fade, rise = v.rise;
+            const float* from = sample + static_cast<int>(v.position);
+            float* to = left + i;
+            for (int k = 0; k < run; ++k) to[k] += from[k] * gain * fade * rise * laneLevel;
+            if (kThrown)
+                for (int bus = 0; bus < 2; ++bus) {
+                    if (v.thrown[bus] == 0.f && v.thrownTo[bus] == 0.f) continue;
+                    if (!thrownOut[bus]) continue;
+                    if (!(wrote & (1 << bus))) {
+                        for (int k = 0; k < frames; ++k) thrownOut[bus][k] = 0.f;
+                        wrote |= 1 << bus;
+                    }
+                    const float thrown = v.thrown[bus];
+                    float* out = thrownOut[bus] + i;
+                    for (int k = 0; k < run; ++k) out[k] += from[k] * gain * fade * rise * laneLevel * thrown;
+                }
+            v.position += run;
+            if (v.life > 0) v.life -= run;
+            i += run;
+            continue;
+        }
         if (v.position >= length || (v.rate < 0.0 && v.position < v.stop)) { v.position = -1.0; break; }
         // The end of its part: a quick fade, so the next slice's first moment is not heard as a tick.
         if (v.fadeStep == 0.f && (v.rate > 0.0 ? v.position >= v.end : v.position <= v.stop + fadeRoom)) v.fadeStep = quick;
@@ -324,6 +374,7 @@ int DrumMachine::renderVoice(Voice& v, const float* sample, int length, float la
             v.fade -= v.fadeStep;
             if (v.fade <= 0.f) { v.position = -1.0; break; }
         }
+        ++i;
     }
     return wrote;
 }

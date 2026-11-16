@@ -52,8 +52,8 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (51) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
-| Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them) |
+| All tests (52) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
 
@@ -415,7 +415,11 @@ effect in those two groups and fails one that does not.
 - **Helper threads** (`useWorkers`): tracks are rendered side by side and
   mixed in track order, so the result is the same to the last bit with any
   number of helpers. **Anything a helper waits on is set with `wakeMutex_`
-  held.** Setting the stop flag without it hung the quit.
+  held.** Setting the stop flag without it hung the quit. The helpers take
+  the tracks from `taken_`, in track order, or heaviest first by last chunk's
+  times (`setHeaviestFirst`, off: only the SPEED TEST's rows ask for it, speed
+  plan batch 0); the mix always walks `active_`. `speed_test` holds both to
+  the bit.
 - **The built-in drum kit is built once per sample rate** and shared
   (`DrumKit::builtIn`). It never changes after that.
 - **A track taken away while it sounds fades for 5 ms first** (`RemoveInstrument`,
@@ -469,6 +473,14 @@ effect in those two groups and fails one that does not.
     THROW's check inside the one loop, twelve unthrown drum tracks cost half
     as much again (1.46% to 2.18%). The line that adds to `left` is as it
     was; the thrown copy is worked out again beside it, not taken from it.
+  - **A voice's plain stretches are runs** (speed plan batch 2; `plainRun`,
+    drums.cpp): forward at speed 1, its level, rise, fade and THROW at rest,
+    up to the sound's end, its part's end or the sample its cut falls on. A
+    run is a plain loop with the same sum written the same way; every other
+    sample goes the long way. **Anything new that moves in a voice from one
+    sample to the next makes `plainRun` say 0 while it moves**, or the run
+    skips it. `speed_test` (`testDrumRuns`) holds the two ways side by side
+    (`setRunsForTests`). Twelve drum tracks 1.47% to 0.43% of a desk core.
   - **A track that throws nothing takes the old loop in `feedBuses`**, which
     is why a song without throws is the same to the bit (the pinned song).
   - `letGoOfNotes` shuts every send a THROW held (Play, Stop, panic), as do
@@ -726,6 +738,13 @@ effect in those two groups and fails one that does not.
   sample's** (passed by, the wave jumped raw: `testAnEdgeOnTheSamplesEnd`).
   A wave, DCO-2's start phase and the noise seed are each a voice's own; what
   a free voice starts with comes from the count of keys, as batch 1's phase.
+- **The step clock walks only the places that may hold something** (speed
+  plan batch 1; `PlaceBits` in engine.hpp: `Track::notesWaiting`, `keysHeld`,
+  `hitsWaiting`). **Whatever fills a waiting note's place, sets a key's
+  `offIn` or fills a drum hit's place sets its bit**; an emptied place may keep
+  its bit (the next walk takes it off). A walk visits the bits lowest first,
+  the order a walk of every place had. `speed_test` (`testStepClockPlaces`)
+  holds it beside an engine that walks every place (`gWalkEveryPlace`).
 - **The MIDI thread only uses `sendLive`** (notes and drum hits, its own queue).
 - **A hit written into a cell sends that one hit** (`Session::sendDrumHit`),
   never the whole cell again: a keyboard's eight pads at once on a busy
@@ -1798,6 +1817,15 @@ effect in those two groups and fails one that does not.
   (`porta_rate16`, `third_party/CHANGES.md`): it moves on the CZ's 122 Hz
   tick. A note waiting for its slot keeps the rate and the key it was played
   with.
+- **Phazed rests in silence, to the bit** (speed plan batch 1;
+  `cz_synth_resting` / `cz_synth_rest`, `RateConverter::silent` / `skip`):
+  idle, its output settled, its chorus fed silence longer than it remembers
+  and the converter's history zeros, a block is zeros and only the CZ's counts
+  and its volume's glide move. **Anything new the CZ moves in a silent frame
+  goes in `cz_synth_rest` too**, or a woken Phazed is not the one that never
+  slept; `speed_test` (`testPhazedRests`) holds the two side by side.
+  Its filter tables and the converter's are made once and shared
+  (`cz_synth_init_shared`, `RateConverter::tableFor`): never written after.
 - **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
   plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
   folder with the cursor (always the middle column), and what is under the cursor.
@@ -2158,6 +2186,13 @@ effect in those two groups and fails one that does not.
 | A frame that ends an edit (undo snapshot) | 1 ms |
 | Undo plus redo (bench: twelve tracks, an edit to one) | 20 ms; 21 to 31 before undo took sounds, 22 after (2026-11-14, a busy desk) |
 | ...a knob and a hit on two tracks, undone and redone | 19 to 24 ms before, 12 to 13 after |
+| The busiest song shared out other ways (speed plan batch 0, 2026-11-15, one run, load 6): 2 helpers / 3 / 2 heaviest first / 3 heaviest first. **The desk cannot tell; the device's SPEED TEST decides** | 12.0 / 13.3 / 11.4 / 11.1% of a block |
+| A screen pass while the song plays, SDL's software renderer (batch 0): SONG / drum grid | update 0.06 / 0.05 ms, drawing 1.7 / 1.6 ms |
+| Instructions in one second of sound (callgrind, clang -O2 -g, `bench --profile`; speed plan section 8): busiest / twelve silent Phazed / eleven silent samplers, chords / twelve drum tracks / thrown, before batch 1. The busiest song then had two QMOD tracks where FM-6 is now | 2,070 / 351 / 67.5 / 214 / 435 M |
+| ...after batch 1 (the step clock walks only what waits, Phazed rests, its tables shared) | 2,023 / 39.0 / 22.1 / 212 / 432 M; the busiest song's L2 read misses (a 256 KB model) 5.61 to 3.60 M |
+| Twelve silent tracks after batch 1 (one run, load 6): Phazed / QMOD / JAX-EP; eleven silent samplers with plain chords | 0.32 / 0.15 / 0.15%; 0.15% (were 2.38 / 0.70 / 0.71%; 0.72%) |
+| ...after batch 2 (the drum voice loop in runs): instructions, twelve drum tracks / thrown / busiest; timed (load 7 to 9), twelve drum tracks / every hit thrown, added / the busiest song alone, 2 helpers | 53 / 143 / 1,877 M (were 212 / 432 / 2,023); 0.43% / +0.31% (were 1.47% / +1.18%); 15.5 / 10.8% of a block |
+| The busiest song with FM-6 (main 0.565) without / with speed batches 0 to 2; twelve silent FM-6 tracks (instructions, a second of sound) | 1,617 / 1,424 M; 69.1 / 22.6 M |
 
 **No synth is far costlier than another now**: Twin Analog (4.7% and up) went in batch 8b,
 QMOD (2.6 to 3.4%; 57% of a handheld core) on 2026-11-15, for FM-6. **No synth has a quality setting and nothing watches the load**:

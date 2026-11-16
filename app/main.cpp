@@ -387,6 +387,13 @@ int main(int argc, char** argv) {
     AudioState audio;
     audio.engine = &engine;
 
+    // What the sound card itself runs at, before the program opens it for its sound: said here and
+    // handed to the SPEED TEST, which cannot open a card the program holds (speed plan, batch 0).
+    if (!smoke && !shot) {
+        const std::string card = probeSoundCard();
+        std::printf("sound card: %s\n", card.c_str());
+        setenv(kSoundCardVariable, card.c_str(), 1);
+    }
     SDL_AudioSpec want = {};
     want.freq = 48000; // SDL converts if the device differs
     want.format = AUDIO_F32SYS;
@@ -395,7 +402,14 @@ int main(int argc, char** argv) {
     want.callback = audioCallback;
     want.userdata = &audio;
     SDL_AudioSpec have = {};
-    const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    // Tried a few times: the probe above has just let go of the card, and a sound card may take a
+    // moment to be free again (never tried on the handheld: a program that would not start is the
+    // worst thing a probe could cost).
+    SDL_AudioDeviceID device = 0;
+    for (int tries = 0; tries < 10 && !device; ++tries) {
+        if (tries) SDL_Delay(100);
+        device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);
+    }
     if (!device) {
         std::fprintf(stderr, "could not open audio: %s\n", SDL_GetError());
         SDL_Quit();

@@ -3,6 +3,7 @@
 #include "apotheca/fm6.hpp"
 #include "apotheca/mod_rule.hpp"
 
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -488,6 +489,7 @@ void Engine::letGoOfNotes() {
         if (!track.synth) continue;
         track.synth->allNotesOff();
         for (double& off : track.offIn) off = kNoNote;
+        track.keysHeld.clearAll();
     }
     closeThrows();
 }
@@ -577,6 +579,7 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         if (note.piece != kLaterPiece && !(note.how & kUntold)) track.trail.began(note.pitch, at); // (a ratchet's later pieces are the same note still)
         track.offIn[note.pitch] = static_cast<double>(note.length) * samplesPerStep_;
         if (note.how & kWholeFrames) track.offIn[note.pitch] = std::ceil(track.offIn[note.pitch]);
+        track.keysHeld.set(note.pitch);
         // THROW: the track's send to the bus is held open from here for as long as the note lasts.
         for (int bus = 0; bus < kBuses; ++bus) {
             if (!((note.throwTo >> bus) & 1)) continue;
@@ -585,8 +588,10 @@ void Engine::startNote(Track& track, const Note& note, double delaySamples, doub
         }
         return;
     }
-    for (auto& p : track.pendingNotes) {
+    for (int i = 0; i < kMaxNotes * kMaxRatchet; ++i) {
+        Track::PendingNote& p = track.pendingNotes[i];
         if (p.velocity > 0.f) continue;
+        track.notesWaiting.set(i);
         p.samplesLeft = delaySamples;
         p.pitch = note.pitch;
         p.glide = note.glide;
@@ -630,8 +635,10 @@ void Engine::startChordNote(Track& track, int slot, const Note& note, bool top, 
         if (own < 1.0) {
             track.trail.began(note.pitch, at);
         } else {
-            for (auto& p : track.pendingNotes) {
+            for (int i = 0; i < kMaxNotes * kMaxRatchet; ++i) {
+                Track::PendingNote& p = track.pendingNotes[i];
                 if (p.velocity > 0.f) continue;
+                track.notesWaiting.set(i);
                 p = Track::PendingNote();
                 p.samplesLeft = own;
                 p.pitch = note.pitch;
@@ -781,12 +788,18 @@ void Engine::fireArps() {
 void Engine::firePendingNotes() {
     for (Track& track : tracks_) {
         if (!track.synth) continue;
-        for (auto& p : track.pendingNotes) {
-            if (p.velocity <= 0.f || p.samplesLeft >= 1.0) continue;
+        track.notesWaiting.each([&](int i) {
+            Track::PendingNote& p = track.pendingNotes[i];
+            if (p.velocity <= 0.f) {
+                track.notesWaiting.clear(i);
+                return;
+            }
+            if (p.samplesLeft >= 1.0) return;
+            track.notesWaiting.clear(i);
             if (p.how & kTellOnly) { // a spread chord's own moment: its key is what a glide comes from
                 track.trail.began(p.pitch, p.at);
                 p = Track::PendingNote();
-                continue;
+                return;
             }
             Note note;
             note.pitch = p.pitch;
@@ -800,7 +813,7 @@ void Engine::firePendingNotes() {
             const double at = p.at;
             p = Track::PendingNote();
             startNote(track, note, 0.0, at);
-        }
+        });
     }
 }
 
@@ -808,12 +821,13 @@ void Engine::firePendingNotes() {
 void Engine::fireNoteOffs() {
     for (Track& track : tracks_) {
         if (!track.synth) continue;
-        for (int pitch = 0; pitch < 128; ++pitch) {
+        track.keysHeld.each([&](int pitch) {
             if (track.offIn[pitch] < 1.0) {
                 track.synth->noteOff(pitch);
                 track.offIn[pitch] = kNoNote;
             }
-        }
+            if (track.offIn[pitch] >= kNoNote) track.keysHeld.clear(pitch);
+        });
     }
 }
 
@@ -1354,11 +1368,14 @@ void Engine::apply(const Command& c) {
 void Engine::clearPending() {
     for (Track& track : tracks_) {
         for (auto& p : track.pendingNotes) p = Track::PendingNote();
+        track.notesWaiting.clearAll();
         for (auto& arp : track.arps) arp = Track::Arp();
     }
-    for (Track& track : tracks_)
+    for (Track& track : tracks_) {
         for (auto& lane : track.pending)
             for (auto& p : lane) p = Track::Pending();
+        track.hitsWaiting.clearAll();
+    }
 }
 
 // Roll for the hit, then play it now or put it in a waiting slot.
@@ -1425,8 +1442,10 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
         --more;
         begun = true;
     }
-    for (auto& p : track.pending[lane]) {
+    for (int k = 0; k < 3; ++k) {
+        Track::Pending& p = track.pending[lane][k];
         if (p.velocity <= 0.f) {
+            track.hitsWaiting.set(lane * 3 + k);
             p.samplesLeft = delaySamples;
             p.gap = gap;
             p.more = more;
@@ -1445,21 +1464,22 @@ void Engine::playHit(Track& track, int lane, float velocity, float start, float 
 void Engine::firePending() {
     for (Track& track : tracks_) {
         if (!track.hasDrums) continue;
-        for (int lane = 0; lane < kDrumLanes; ++lane) {
-            for (auto& p : track.pending[lane]) {
-                if (p.velocity > 0.f && p.samplesLeft < 1.0) {
-                    track.drums.trigger(lane, p.velocity, p.start, p.part, p.how);
-                    track.hitsNow |= 1u << lane;
-                    if (p.more > 0) { // a ratchet: the same again, a part of a step on
-                        --p.more;
-                        p.begun = true;
-                        p.samplesLeft += p.gap;
-                    } else {
-                        p = Track::Pending();
-                    }
+        track.hitsWaiting.each([&](int i) {
+            const int lane = i / 3;
+            Track::Pending& p = track.pending[lane][i % 3];
+            if (p.velocity > 0.f && p.samplesLeft < 1.0) {
+                track.drums.trigger(lane, p.velocity, p.start, p.part, p.how);
+                track.hitsNow |= 1u << lane;
+                if (p.more > 0) { // a ratchet: the same again, a part of a step on
+                    --p.more;
+                    p.begun = true;
+                    p.samplesLeft += p.gap;
+                } else {
+                    p = Track::Pending();
                 }
             }
-        }
+            if (!(p.velocity > 0.f)) track.hitsWaiting.clear(i);
+        });
     }
 }
 
@@ -1634,10 +1654,9 @@ void Engine::fireStep() {
     // What the step before asked a step ahead is this step's now: a scene move from here on does
     // not take it back (askAgain).
     for (Track& track : tracks_) {
-        for (auto& p : track.pendingNotes) p.ahead = false;
+        track.notesWaiting.each([&](int i) { track.pendingNotes[i].ahead = false; }); // (an empty place's is false)
         for (auto& arp : track.arps) arp.ahead = false;
-        for (auto& lane : track.pending)
-            for (auto& p : lane) p.ahead = false;
+        track.hitsWaiting.each([&](int i) { track.pending[i / 3][i % 3].ahead = false; });
         track.trail.aheadIsNow();
     }
     const bool veryFirst = firstStep_; // (only ever set for step 1)
@@ -1812,6 +1831,9 @@ void Engine::takeAway(int t) {
     for (auto& arp : track.arps) arp = Track::Arp();
     for (auto& lane : track.pending)
         for (auto& p : lane) p = Track::Pending();
+    track.keysHeld.clearAll();
+    track.notesWaiting.clearAll();
+    track.hitsWaiting.clearAll();
     for (int bus = 0; bus < kBuses; ++bus) { // the next instrument here starts with its sends as they are set
         track.throwLeft[bus] = 0.0;
         track.throwNow[bus] = 0.f;
@@ -1876,17 +1898,21 @@ void Engine::render(float* interleaved, int frames) {
         // waiting hit, or the next note to be let go.
         for (Track& track : tracks_) {
             if (track.synth && playing_) {
-                for (double off : track.offIn)
-                    if (off < next) next = off;
-                for (const auto& p : track.pendingNotes)
+                track.keysHeld.each([&](int pitch) {
+                    if (track.offIn[pitch] < next) next = track.offIn[pitch];
+                });
+                track.notesWaiting.each([&](int i) {
+                    const Track::PendingNote& p = track.pendingNotes[i];
                     if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+                });
                 for (const auto& arp : track.arps)
                     if (arp.on && arp.wait < next) next = arp.wait;
             }
             if (!track.hasDrums) continue;
-            for (auto& lane : track.pending)
-                for (auto& p : lane)
-                    if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+            track.hitsWaiting.each([&](int i) {
+                const Track::Pending& p = track.pending[i / 3][i % 3];
+                if (p.velocity > 0.f && p.samplesLeft < next) next = p.samplesLeft;
+            });
         }
         if (next < chunk) {
             const int toNext = static_cast<int>(std::ceil(next));
@@ -1909,17 +1935,21 @@ void Engine::render(float* interleaved, int frames) {
         if (playing_) untilStep_ -= chunk;
         for (Track& track : tracks_) {
             if (track.synth && playing_) {
-                for (double& off : track.offIn)
-                    if (off < kNoNote) off -= chunk;
-                for (auto& p : track.pendingNotes)
+                track.keysHeld.each([&](int pitch) {
+                    if (track.offIn[pitch] < kNoNote) track.offIn[pitch] -= chunk;
+                });
+                track.notesWaiting.each([&](int i) {
+                    Track::PendingNote& p = track.pendingNotes[i];
                     if (p.velocity > 0.f) p.samplesLeft -= chunk;
+                });
                 for (auto& arp : track.arps)
                     if (arp.on) arp.wait -= chunk;
             }
             if (!track.hasDrums) continue;
-            for (auto& lane : track.pending)
-                for (auto& p : lane)
-                    if (p.velocity > 0.f) p.samplesLeft -= chunk;
+            track.hitsWaiting.each([&](int i) {
+                Track::Pending& p = track.pending[i / 3][i % 3];
+                if (p.velocity > 0.f) p.samplesLeft -= chunk;
+            });
         }
         if (going_ > 0) { // a chunk ends where a fade of a track taken away does
             const double down = 1.0 / (kGoneFadeSeconds * sampleRate_);
@@ -2220,7 +2250,14 @@ void Engine::shareOutTracks() {
     for (;;) {
         const int i = nextActive_.fetch_add(1, std::memory_order_acq_rel);
         if (i >= activeCount_.load(std::memory_order_acquire)) return;
-        renderTrack(active_[i]);
+        const int t = taken_[i];
+        if (heaviestFirst_) { // (timed only when it is asked for: two clock reads a track a chunk)
+            const auto t0 = std::chrono::steady_clock::now();
+            renderTrack(t);
+            tookNs_[t] = static_cast<long>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count());
+        } else {
+            renderTrack(t);
+        }
         finished_.fetch_add(1, std::memory_order_release);
     }
 }
@@ -2440,6 +2477,13 @@ void Engine::renderChunk(float* interleaved, int frames, float* peaks) {
     } else {
         // Shared out. Everything above is set before the list is opened (nextActive_ = 0), so a
         // helper arriving late for the chunk before finds nothing, or this chunk whole.
+        // Taken in track order, or heaviest first (by last chunk's times; equal ones in track order).
+        for (int i = 0; i < count; ++i) {
+            int at = i;
+            if (heaviestFirst_)
+                while (at > 0 && tookNs_[taken_[at - 1]] < tookNs_[active_[i]]) taken_[at] = taken_[at - 1], --at;
+            taken_[at] = active_[i];
+        }
         finished_.store(0, std::memory_order_relaxed);
         activeCount_.store(count, std::memory_order_release);
         nextActive_.store(0, std::memory_order_release);

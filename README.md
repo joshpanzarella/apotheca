@@ -915,7 +915,8 @@ the same network.
 - **SPEED TEST** (top of the page) times every instrument and effect on the
   device and shows the numbers in a new tab, each row as it is timed, the
   busiest song with 24 MODs running among them. Stop the song first; it takes
-  about three minutes on the handheld.
+  about four minutes on the handheld. It also says how fast the
+  processor is let run and what the sound card takes.
 - **Recordings are shown by folder**, the loose ones as UNSORTED. Click a
   folder to open or shut it. FIND narrows the list by name.
 - **To send into a folder**: drop the files on it, or press its ADD FILES

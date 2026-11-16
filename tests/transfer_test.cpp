@@ -913,7 +913,7 @@ static void testTheSpeedTest() {
         }
         const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
         CHECK(got.find("first row\n") != std::string::npos && waited < 2.0);
-        CHECK(got.find("about three minutes") != std::string::npos && got.find("second row") == std::string::npos);
+        CHECK(got.find("about four minutes") != std::string::npos && got.find("second row") == std::string::npos);
         for (ssize_t n = recv(fd, block, sizeof block, 0); n > 0; n = recv(fd, block, sizeof block, 0)) got.append(block, static_cast<std::size_t>(n));
         close(fd);
         CHECK(got.find("second row\n(done)\n") != std::string::npos);

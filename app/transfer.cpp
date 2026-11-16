@@ -32,7 +32,7 @@ bool plainName(const std::string& name, std::size_t longest); // (below)
 namespace {
 
 // Said at the top of the speed test's page at once, before the first row is timed.
-const char* const kBenchSays = "The rows come as they are timed: about three minutes on the handheld. Leave the song stopped.\n\n";
+const char* const kBenchSays = "The rows come as they are timed: about four minutes on the handheld. Leave the song stopped.\n\n";
 const char* const kTooManyWrong = "too many wrong numbers: wait a minute\n";
 
 const char* const kPage = R"page(<!doctype html>
@@ -113,7 +113,7 @@ input.pick{width:17px;height:17px;margin:0;accent-color:#6fbfa3;cursor:pointer;f
  .fhead .fname{flex:1 1 60%}
 }
 </style></head><body><main>
-<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes about three minutes; the rows come as they are timed.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
+<header><h1>APOTHECA</h1><span class="meta" id="version"></span><span class="meta" id="free"></span><a class="btn" id="bench" href="#" target="_blank" title="Times the engine on this device. Stop the song first. Takes about four minutes; the rows come as they are timed.">Speed test</a><a class="btn" id="design" href="#">Open the sound designer</a></header>
 
 <div id="drop">
 <div class="line"><button class="main" id="pick">Choose files</button><button id="pickFolder">Choose a folder</button><span class="dim">or drop files or a whole folder on the page.</span></div>

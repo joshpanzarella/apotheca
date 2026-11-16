@@ -147,6 +147,9 @@ typedef struct {
 /* Not realtime-safe (builds tables, allocates the resampler). 0 on success. */
 int cz_synth_init(cz_synth_t *s);
 void cz_synth_free(cz_synth_t *s);
+/* Apotheca (third_party/CHANGES.md): cz_synth_init with the resampler on
+ * tables made once (resampler_design) and shared; they must outlive it. */
+int cz_synth_init_shared(cz_synth_t *s, const float *clean, const float *analog);
 
 /* Select a tone, as the CZ does on a tone change: sounding notes fade out
  * (about 16 ms) and held keys are forgotten. */
@@ -183,5 +186,15 @@ void cz_synth_render(cz_synth_t *s, float *out, int frames);
 
 /* Stereo output through the chorus (dry and centred when it is off). */
 void cz_synth_render_stereo(cz_synth_t *s, float *left, float *right, int frames);
+
+/* Apotheca (third_party/CHANGES.md): at rest. While resting, each frame of
+ * cz_synth_render_stereo is exact zeros on both sides and moves only the
+ * output's coupling capacitor (to zero), the chorus's count of silence and
+ * the volume's glide: nothing sounds, the output has settled and the chorus
+ * has been fed silence for longer than it remembers. `frames`: how many are
+ * about to be rested (the count must not wrap). cz_synth_rest does what
+ * `frames` one-frame calls of cz_synth_render_stereo would, but the zeros. */
+int cz_synth_resting(const cz_synth_t *s, int frames);
+void cz_synth_rest(cz_synth_t *s, int frames);
 
 #endif

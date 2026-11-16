@@ -58,11 +58,16 @@ inline float glideK(int frames, float seconds, float sampleRate) {
 // remembers (a delay line, a filter, a level reading): the effect is then
 // silent or broken until it is taken out. Every new effect calls it first
 // thing in process(); the engine does the same to what a bus is sent. The old
-// five do not (their arithmetic is not touched). One compare a sample.
+// five do not (their arithmetic is not touched). One compare a sample, and nothing written unless
+// one fails: the block is looked at in one sweep the compiler can do several samples at a time,
+// and mended only when a sample in it is bad (speed plan, batch 1).
 constexpr float kLoudest = 1e8f;
 inline void soundOnly(float* samples, int frames) {
+    bool bad = false;
+    for (int i = 0; i < frames; ++i) bad |= !(std::fabs(samples[i]) <= kLoudest); // (written so that not-a-number fails it)
+    if (!bad) return;
     for (int i = 0; i < frames; ++i)
-        if (!(std::fabs(samples[i]) <= kLoudest)) samples[i] = 0.f; // (written so that not-a-number fails it)
+        if (!(std::fabs(samples[i]) <= kLoudest)) samples[i] = 0.f;
 }
 inline void soundOnly(float* left, float* right, int frames) {
     soundOnly(left, frames);

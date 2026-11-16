@@ -127,6 +127,10 @@ public:
     // THROW: the sound slides into the bus, or out of it, over a millisecond.
     int render(float* left, float* right, int frames, float* echo = nullptr, float* space = nullptr);
 
+    // For the tests: the plain stretches of a voice (drums.cpp, RUNS) worked out the long way, a
+    // sample at a time, as before they were runs, in every machine. Not while one renders.
+    static void setRunsForTests(bool on);
+
 private:
     struct Voice {
         double position = -1.0; // below zero: silent. Not always a whole number: a pitched hit moves in parts of a sample
@@ -145,6 +149,9 @@ private:
         bool audition = false;  // started by a held audition (HitPlay::audition): letGo() fades it
     };
 
+    // How many samples from here are plain (drums.cpp, RUNS); 0: the next is not.
+    template <bool kThrown>
+    static int plainRun(const Voice& v, int length, int most);
     template <bool kThrown>
     int renderVoice(Voice& v, const float* sample, int length, float laneLevel, float* left, int frames, float* const* thrownOut, int wrote);
 

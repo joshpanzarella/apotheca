@@ -48,6 +48,7 @@ enum { RS_CLEAN, RS_ANALOG };
 
 typedef struct {
     float *coef[2];     /* [RS_UP][RS_TAPS] per design, allocated by resampler_init */
+    int shared;         /* Apotheca: coef are the caller's (resampler_init_shared), not freed here */
     int design;         /* RS_CLEAN or RS_ANALOG; switch any time */
     float buf[RS_BUF + RS_TAPS]; /* input history ring; its first RS_TAPS
                                   * entries are mirrored past the end, so
@@ -61,6 +62,14 @@ typedef struct {
  * Starts on RS_ANALOG. Returns 0 on success. */
 int resampler_init(resampler_t *r);
 void resampler_free(resampler_t *r);
+
+/* Apotheca (third_party/CHANGES.md): the two tables are the same for every
+ * resampler, so a host with many synths makes them once and shares them.
+ * resampler_design fills one design's [RS_UP][RS_TAPS] (RS_CLEAN or
+ * RS_ANALOG), exactly as resampler_init does; resampler_init_shared is
+ * resampler_init on tables made so, which must outlive it and are not freed. */
+void resampler_design(float *coef, int which);
+void resampler_init_shared(resampler_t *r, const float *clean, const float *analog);
 
 /* Input samples needed before resampler_next() can run. */
 static inline int resampler_needs(const resampler_t *r) {

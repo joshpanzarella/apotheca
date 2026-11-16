@@ -1,8 +1,23 @@
 #pragma once
 
+#include <string>
+
 namespace apotheca {
 // The timings, printed (see bench_run.cpp). Returns the program's exit code.
 int runBench();
+
+// One of the bench's setups rendered for `seconds` of sound with no clock and nothing printed
+// but its name, for callgrind (`bench --profile NAME [SECONDS]`; docs/plans/speed-plan.md). The
+// rendering is all inside profiledRender(), so `--toggle-collect='*profiledRender*'` counts only
+// it. An unknown NAME prints the names. Returns the program's exit code.
+int runProfile(const char* name, double seconds);
+
+// What the sound card itself runs at: the default output opened with any change allowed, said
+// in words, and shut again. SDL's audio must be started. The program asks once at start, before
+// it opens the card for its own sound (main.cpp), and says it to the SPEED TEST through the
+// environment (kSoundCardVariable): the test cannot open a card the program holds.
+std::string probeSoundCard();
+constexpr const char* kSoundCardVariable = "APOTHECA_SOUND_CARD";
 
 // The busiest song a player is likely to make, played in real time in the
 // program's own blocks (256 frames, 5.33 ms) for `seconds`, on the audio

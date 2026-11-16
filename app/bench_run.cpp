@@ -12,8 +12,15 @@
 // effect in one slot. The app figures are per call.
 
 #include <SDL.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -33,6 +40,8 @@
 #include "bench_run.hpp"
 #include "realtime.hpp"
 #include "song_file.hpp"
+#include "text.hpp"
+#include "ui.hpp"
 
 using namespace apotheca;
 
@@ -171,7 +180,7 @@ static void effect(const char* name, EffectKind kind, int setting = -1, float va
 // a slot of every track as well. `feelTime`, `feelLevel`: FEEL, every lane of every kit at that
 // HUMAN TIME and HUMAN LEVEL (so every hit is rolled for, asked a step ahead and set waiting).
 // The best of five runs of ten seconds.
-static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
+static std::unique_ptr<Engine> busSongEngine(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
     std::unique_ptr<Engine> engine(new Engine);
     for (int t = 1; t < kNumTracks; ++t) engine->addDrumTrack(t);
     Command c;
@@ -214,6 +223,11 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
     engine->send(c);
     std::vector<float> out(512);
     for (int i = 0; i < 400; ++i) engine->render(out.data(), 256);
+    return engine;
+}
+static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws = false, bool ducks = false, int feelTime = 0, int feelLevel = 0) {
+    std::unique_ptr<Engine> engine = busSongEngine(sends, echo, space, throws, ducks, feelTime, feelLevel);
+    std::vector<float> out(512);
     double best = 1e30;
     for (int run = 0; run < 5; ++run) {
         const double block = ms([&] { engine->render(out.data(), 256); }, 1875);
@@ -228,7 +242,7 @@ static double busSong(bool sends, EffectKind echo, EffectKind space, bool throws
 // `from`: -1, or the tracks' GLIDE FROM, and then two notes that glide follow each chord (so
 // the choice of key is worked out eight times a bar on each track; PAIRED also goes through
 // each step's notes twice).
-static double chordSong(ChordPlay play, int ratchet, int from = -1) {
+static std::unique_ptr<Engine> chordSongEngine(ChordPlay play, int ratchet, int from = -1) {
     std::unique_ptr<Engine> engine(new Engine);
     Command c;
     for (int t = 1; t < kNumTracks; ++t) {
@@ -274,6 +288,11 @@ static double chordSong(ChordPlay play, int ratchet, int from = -1) {
     engine->send(c);
     std::vector<float> out(512);
     for (int i = 0; i < 400; ++i) engine->render(out.data(), 256);
+    return engine;
+}
+static double chordSong(ChordPlay play, int ratchet, int from = -1) {
+    std::unique_ptr<Engine> engine = chordSongEngine(play, ratchet, from);
+    std::vector<float> out(512);
     double best = 1e30;
     for (int run = 0; run < 5; ++run) {
         const double block = ms([&] { engine->render(out.data(), 256); }, 1875);
@@ -431,7 +450,7 @@ void apotheca::sendBusiestMods(Engine& engine, int mods) { busiestMods(engine, m
 // The busiest song in real time: a block is worked out, then the thread sleeps until the next
 // is due, as the sound card's thread does. On its own thread, which asks for realtime priority
 // as the program's audio thread does (`realtime`), and the helpers as the program's do.
-static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0) {
+static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, int mods = 0, bool heaviest = false) {
     WholeSongTimes times;
     std::thread player([&] {
         if (realtime) times.realtime = makeThreadRealtime(70);
@@ -444,6 +463,7 @@ static WholeSongTimes playWholeSong(int helpers, double seconds, bool realtime, 
             engine->collectGarbage();
         }
         if (helpers > 0) engine->useWorkers(helpers, realtime ? static_cast<void (*)()>([] { makeThreadRealtime(69); }) : nullptr);
+        engine->setHeaviestFirst(heaviest);
         times.helpers = engine->workers();
         const double blockMs = 256.0 / 48.0;
         const int blocks = static_cast<int>(seconds * 48000.0 / 256.0);
@@ -588,17 +608,263 @@ static void macroModsRun(SynthKind kind, double& none, double& all) {
     all = 100.0 * best[1] / (256.0 / 48.0);
 }
 
+// ---- What the machine is (docs/plans/speed-plan.md, batch 0) -----------------------------------
+// The desk cannot say how fast the handheld's cores are let run, how big their cache is, or what
+// its sound card takes. These rows say it, from Linux's own files; elsewhere they say so.
+
+static std::string firstLine(const std::string& path) {
+    std::FILE* file = std::fopen(path.c_str(), "r");
+    if (!file) return "";
+    char line[256] = {};
+    const bool got = std::fgets(line, sizeof line, file) != nullptr;
+    std::fclose(file);
+    std::string text = got ? line : "";
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) text.pop_back();
+    return text;
+}
+static std::string cpuFile(unsigned core, const char* name) { return "/sys/devices/system/cpu/cpu" + std::to_string(core) + "/" + name; }
+static int mhzIn(const std::string& path) { // the file says kHz; -1: not told
+    const std::string text = firstLine(path);
+    return text.empty() ? -1 : static_cast<int>(std::atol(text.c_str()) / 1000);
+}
+
+// The governor and every core's clock: now, where the governor holds it, and how far the core can go.
+static void processorRows(const char* when, bool all) {
+    std::printf("the processor, %s:\n", when);
+    const unsigned cores = std::max(1u, std::thread::hardware_concurrency());
+    bool told = false;
+    for (unsigned c = 0; c < cores; ++c) {
+        const std::string governor = firstLine(cpuFile(c, "cpufreq/scaling_governor"));
+        const int now = mhzIn(cpuFile(c, "cpufreq/scaling_cur_freq"));
+        if (governor.empty() && now < 0) continue;
+        told = true;
+        std::printf("  cpu%-2u %-12s now %5d MHz, held to %d to %d, can go %d to %d\n", c, governor.c_str(), now, mhzIn(cpuFile(c, "cpufreq/scaling_min_freq")),
+                    mhzIn(cpuFile(c, "cpufreq/scaling_max_freq")), mhzIn(cpuFile(c, "cpufreq/cpuinfo_min_freq")), mhzIn(cpuFile(c, "cpufreq/cpuinfo_max_freq")));
+    }
+    if (!told) std::printf("  no clock told (nothing in /sys/devices/system/cpu/cpu*/cpufreq)\n");
+    if (!all) return;
+    // May this program set the governor? Opened for writing and shut again, nothing written.
+    const std::string governor = cpuFile(0, "cpufreq/scaling_governor");
+    const int fd = open(governor.c_str(), O_WRONLY);
+    const int why = errno;
+    if (fd >= 0) close(fd);
+    std::printf("  %-28s %s\n", "may set the governor?", fd >= 0 ? "yes" : (std::string("no (") + std::strerror(why) + ")").c_str());
+    // The caches, as cpu0 sees them.
+    std::string caches;
+    for (int i = 0; i < 8; ++i) {
+        const std::string base = "/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(i) + "/";
+        const std::string level = firstLine(base + "level"), size = firstLine(base + "size");
+        if (level.empty() || size.empty()) continue;
+        const std::string type = firstLine(base + "type"), shared = firstLine(base + "shared_cpu_list");
+        if (!caches.empty()) caches += ", ";
+        const bool many = shared.find_first_of(",-") != std::string::npos;
+        caches += "L" + level + " " + (type == "Data" ? "data " : type == "Instruction" ? "code " : "") + size + (many ? " (shared by cpus " + shared + ")" : "");
+    }
+    std::printf("  %-28s %s\n", "caches", caches.empty() ? "not told (nothing in /sys/devices/system/cpu/cpu0/cache)" : caches.c_str());
+}
+
+// Every core's clock while something runs: read ten times a second on a thread of its own (an
+// ordinary one, so it takes nothing from the realtime threads but a moment), lowest and highest.
+struct ClockWatch {
+    static const int kMost = 16;
+    int low[kMost], high[kMost];
+    unsigned cores = 0;
+    std::atomic<bool> done{false};
+    std::thread reader;
+    ClockWatch() {
+        cores = std::min<unsigned>(kMost, std::max(1u, std::thread::hardware_concurrency()));
+        for (int c = 0; c < kMost; ++c) low[c] = 1 << 30, high[c] = -1;
+        reader = std::thread([this] {
+            while (!done.load()) {
+                for (unsigned c = 0; c < cores; ++c) {
+                    const int mhz = mhzIn(cpuFile(c, "cpufreq/scaling_cur_freq"));
+                    if (mhz < 0) continue;
+                    low[c] = std::min(low[c], mhz);
+                    high[c] = std::max(high[c], mhz);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        });
+    }
+    ~ClockWatch() { stop(); }
+    void stop() {
+        done.store(true);
+        if (reader.joinable()) reader.join();
+    }
+    // "cpu0 1008 to 1512 MHz, ..." or "" if no clock is told.
+    std::string said() {
+        stop();
+        std::string out;
+        for (unsigned c = 0; c < cores; ++c) {
+            if (high[c] < 0) continue;
+            char one[48];
+            std::snprintf(one, sizeof one, low[c] == high[c] ? "%scpu%u %d" : "%scpu%u %d to %d", out.empty() ? "" : ", ", c, low[c], high[c]);
+            out += one;
+        }
+        return out.empty() ? out : out + " MHz";
+    }
+};
+static void sayClocks(ClockWatch& watch) {
+    const std::string clocks = watch.said();
+    if (!clocks.empty()) std::printf("  %-28s %s\n", "...the clocks meanwhile", clocks.c_str());
+}
+
+static const char* formatName(SDL_AudioFormat format) {
+    switch (format) {
+    case AUDIO_F32SYS: return "32-bit float";
+    case AUDIO_S16SYS: return "16-bit";
+    case AUDIO_S32SYS: return "32-bit";
+    case AUDIO_U8: return "8-bit";
+    case AUDIO_S8: return "8-bit signed";
+    default: return "another format";
+    }
+}
+
+std::string apotheca::probeSoundCard() {
+    SDL_AudioSpec want = {}, have = {};
+    want.freq = 48000; // as the program asks (main.cpp)
+    want.format = AUDIO_F32SYS;
+    want.channels = 2;
+    want.samples = 256;
+    want.callback = [](void*, Uint8* stream, int bytes) { std::memset(stream, 0, static_cast<std::size_t>(bytes)); };
+    const SDL_AudioDeviceID device = SDL_OpenAudioDevice(nullptr, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    const char* driver = SDL_GetCurrentAudioDriver();
+    if (!device) return std::string("could not be opened (") + SDL_GetError() + ")";
+    SDL_CloseAudioDevice(device);
+    char words[200];
+    const bool same = have.freq == 48000 && have.format == AUDIO_F32SYS && have.channels == 2;
+    std::snprintf(words, sizeof words, "%d Hz, %s, %d channels, %d frames a buffer (%s): %s", have.freq, formatName(have.format), have.channels, have.samples,
+                  driver ? driver : "no driver", same ? "what the program asks for" : "SDL converts the program's 48000 Hz float to it, on the audio thread");
+    return words;
+}
+
+static void soundCardRow() {
+    const char* told = std::getenv(kSoundCardVariable);
+    if (told && *told) {
+        std::printf("  %-28s %s\n", "the sound card (at start)", told);
+        return;
+    }
+    // Run by itself (`apotheca --bench`, ./build/bench): it looks for itself.
+    const bool started = SDL_WasInit(SDL_INIT_AUDIO) != 0 || SDL_InitSubSystem(SDL_INIT_AUDIO) == 0;
+    std::printf("  %-28s %s\n", "the sound card", started ? probeSoundCard().c_str() : (std::string("no sound (") + SDL_GetError() + ")").c_str());
+    if (started) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+}
+
+// The busiest song with its tracks shared out other ways: three helpers, and the heaviest track
+// taken first (Engine::setHeaviestFirst; the sound is the same). Real time, as the rows above.
+static void sharingRows() {
+    std::printf("the busiest song shared out other ways, in real time:\n");
+    const struct { int helpers; bool heaviest; } ways[] = {{3, false}, {2, true}, {3, true}};
+    for (const auto& way : ways) {
+        ClockWatch watch;
+        const WholeSongTimes t = playWholeSong(way.helpers, 10.0, true, 0, way.heaviest);
+        char name[48];
+        std::snprintf(name, sizeof name, "%d helper%s%s", t.helpers, t.helpers == 1 ? "" : "s", way.heaviest ? ", heaviest first" : "");
+        std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late%s\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over, t.blocks,
+                    t.realtime ? "" : " (no realtime priority)");
+        sayClocks(watch);
+    }
+}
+
+// A pass of the screen while the song plays: the app's update and its drawing, timed apart, on the
+// SONG screen and the drum grid. Drawn by SDL's software renderer into memory (the SPEED TEST
+// cannot draw on the program's own screen), so it is the drawing's work, not the handheld's
+// renderer or its present. The song is the app rows' twelve tracks, played; its sound is made
+// between passes, as the audio thread would, and not timed.
+static void screenRows(App& app, Session& session, Engine& engine, Input& input, Uint32& clock) {
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, ui::kScreenW, ui::kScreenH, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Renderer* renderer = surface ? SDL_CreateSoftwareRenderer(surface) : nullptr;
+    std::unique_ptr<Fonts> fonts(new Fonts);
+    if (!renderer || !fonts->load(renderer, loadFontFile(), kTextLarge)) {
+        std::printf("  %-28s no renderer or no lettering here\n", "a pass while playing");
+    } else {
+        std::vector<float> out(512);
+        const View was = session.view;
+        session.togglePlay(true);
+        const struct { const char* name; View view; } places[] = {{"SONG, playing", View::Song}, {"drum grid, playing", View::Pattern}};
+        for (const auto& place : places) {
+            session.view = place.view;
+            double work = 0.0, drawing = 0.0, worst = 0.0;
+            const int passes = 60;
+            for (int i = -10; i < passes; ++i) { // (ten first, not timed: the screen settles)
+                for (int k = 0; k < 3; ++k) engine.render(out.data(), 256); // a pass's 16 ms of sound
+                engine.collectGarbage();
+                const auto t0 = std::chrono::steady_clock::now();
+                app.update(input, clock += 16);
+                const auto t1 = std::chrono::steady_clock::now();
+                app.draw(renderer, *fonts);
+                const auto t2 = std::chrono::steady_clock::now();
+                if (i < 0) continue;
+                work += std::chrono::duration<double, std::milli>(t1 - t0).count();
+                const double drew = std::chrono::duration<double, std::milli>(t2 - t1).count();
+                drawing += drew;
+                worst = std::max(worst, drew);
+            }
+            char name[48];
+            std::snprintf(name, sizeof name, "a pass, %s", place.name);
+            std::printf("  %-28s %7.3f ms update, %7.3f ms drawing (worst %.3f), software renderer\n", name, work / passes, drawing / passes, worst);
+        }
+        session.togglePlay(true);
+        for (int k = 0; k < 20; ++k) engine.render(out.data(), 256);
+        session.view = was;
+    }
+    fonts.reset(); // the letters are the renderer's textures: they go first
+    if (renderer) SDL_DestroyRenderer(renderer);
+    if (surface) SDL_FreeSurface(surface);
+}
+
+// ---- bench --profile NAME (docs/plans/speed-plan.md, section 0) ---------------------------------
+// The rendering alone, so callgrind can be pointed at it: --toggle-collect='*profiledRender*'.
+__attribute__((noinline)) static void profiledRender(Engine& engine, int blocks) {
+    std::vector<float> out(512);
+    for (int b = 0; b < blocks; ++b) {
+        engine.render(out.data(), 256);
+        if (b % 3 == 0) engine.collectGarbage(); // (a frame's worth: as the screen's thread does)
+    }
+}
+
+int apotheca::runProfile(const char* name, double seconds) {
+    const std::string what = name;
+    std::unique_ptr<Engine> engine;
+    if (what == "busiest" || what == "busiest-mods") {
+        engine.reset(new Engine);
+        busiestSong(*engine);
+        busiestMods(*engine, what == "busiest-mods" ? 24 : 0);
+        std::vector<float> out(512);
+        for (int i = 0; i < 400; ++i) engine->render(out.data(), 256), engine->collectGarbage(); // every tail and bus going, as the rows
+    } else if (what == "drums") {
+        engine = busSongEngine(false, EffectKind::None, EffectKind::None); // twelve busy drum tracks
+    } else if (what == "drums-thrown") {
+        engine = busSongEngine(false, EffectKind::None, EffectKind::None, true);
+    } else if (what == "chords") {
+        engine = chordSongEngine(ChordPlay(), 0); // eleven silent tracks, plain chords: the step clock
+    } else if (what == "phazed-silent" || what == "jaxep-silent" || what == "fm6-silent") {
+        engine = macroModsEngine(what == "phazed-silent" ? SynthKind::Phazed : what == "jaxep-silent" ? SynthKind::Jx3p : SynthKind::Fm6, false);
+    } else if (what == "empty") {
+        engine.reset(new Engine);
+    } else {
+        std::printf("bench --profile NAME [SECONDS]: busiest, busiest-mods, drums, drums-thrown, chords, phazed-silent, jaxep-silent, fm6-silent, empty\n");
+        return 1;
+    }
+    const int blocks = static_cast<int>(std::max(0.0, seconds) * 48000.0 / 256.0);
+    std::printf("profiling %s: %d blocks of 256 frames\n", name, blocks);
+    profiledRender(*engine, blocks);
+    return 0;
+}
+
 // The SPEED TEST's rows for it: on the audio thread alone, then with the helpers the program
 // uses on this machine. Ten seconds each, in real time.
 static void wholeSongRows() {
     const int helpers = helpersFor(std::thread::hardware_concurrency());
     std::printf("the busiest song (12 tracks, chords, throws, 3 effects a track, buses), in real time, a block %.2f ms:\n", 256.0 / 48.0);
     for (int h : {0, helpers}) {
+        ClockWatch watch;
         const WholeSongTimes t = playWholeSong(h, 10.0, true);
         char name[40];
         std::snprintf(name, sizeof name, h == 0 ? "on the audio thread alone" : "with %d helper%s", t.helpers, t.helpers == 1 ? "" : "s");
         std::printf("  %-28s %5.1f%% of a block, 1 in 100 over %.2f ms, worst %.2f ms, %d of %d too late, %.0f chunks a second%s\n", name, 100.0 * t.meanMs / (256.0 / 48.0), t.p99Ms, t.worstMs, t.over,
                     t.blocks, t.chunksPerSecond, t.realtime ? "" : " (no realtime priority)");
+        sayClocks(watch);
         if (h == helpers) break; // a machine of one core has no helpers: one row
     }
 }
@@ -628,6 +894,8 @@ static void wholeSongModRows() {
 
 int apotheca::runBench() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
+    processorRows("before the rows", true);
+    soundCardRow();
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
     jx3pRow("JAX-EP, 6 notes", 0);
@@ -657,6 +925,7 @@ int apotheca::runBench() {
         std::printf("  %-28s %5.1f%% of one core\n", "an empty song", 100.0 * block / (256.0 / 48.0));
     }
     wholeSongRows();
+    sharingRows();
     wholeSongModRows();
     {
         std::printf("a macro changed (what a MOD on a macro costs), the synth alone, 8 notes held:\n");
@@ -795,6 +1064,8 @@ int apotheca::runBench() {
         std::printf("  %-28s %7.3f ms\n", "...a knob and a hit, undone", spent / rounds);
     }
     std::printf("  %-28s %7.3f ms\n", "a bar of notes to the engine", ms([&] { session.sendNoteBar(1, 0, 0); drain(); }, 200));
+    screenRows(app, session, *engine, input, clock);
+    processorRows("after the rows", false);
     std::printf("sizes: Project %zu KB, TrackData %zu KB, Engine %zu KB, a Command %zu bytes\n", sizeof(Project) / 1024, sizeof(TrackData) / 1024, sizeof(Engine) / 1024, sizeof(Command));
     return 0;
 }
