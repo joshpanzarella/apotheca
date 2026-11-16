@@ -7,12 +7,15 @@
 // whatever the tempo is.
 //
 //   the stick or D-pad moves: up / down through the lanes, left / right
-//   between SOUND and FIT.
+//   between SOUND, FIT and CHOKE.
 //   SOUND   tap A: the list of recordings (sample_picker.hpp), to pick one
 //           quickly. Or hold A + up / down: the built-in drum, then each
 //           recording, one at a time. B: the drum back.
 //   FIT     hold A + up / down: OFF, 1, 2, 4, 8, 16 (one bar), 32, 64 steps.
 //           B: off.
+//   CHOKE   hold A + up / down: NONE, 1, 2. A hit on a lane in a group cuts
+//           the other lanes of that group (the closed hat cuts the open one:
+//           a new kit has its two hats in 1). B: none.
 //   Y       CATCH: the last bar the song played, all of it as it was
 //           heard, becomes a recording on this lane, fitted to one bar.
 //   R1      RECORD from a USB microphone or interface onto this lane: once
@@ -54,10 +57,12 @@ public:
     int cursorColumn() const { return column_; }
     const std::string& said() const { return said_; }
     const ui::Playhead& playhead() const { return head_; }
-    enum { kSound, kFit };
+    enum { kSound, kFit, kChoke, kColumns };
     // The lanes' rows, from under the column heads down to the LIVE OUTPUT strip (ui::kAboveScope).
     static constexpr int kLaneTop = 50, kLaneGap = 4;
     static constexpr int kLaneRowH = (ui::kAboveScope + kLaneGap - kLaneTop) / kDrumLanes;
+    // The columns at the right of SOUND: FIT TO, CHOKE, the recording's picture (to the screen's edge, 8 in).
+    static constexpr int kFitX = 262, kFitW = 96, kChokeX = kFitX + kFitW + 4, kChokeW = 70, kWaveX = kChokeX + kChokeW + 4, kWaveW = ui::kScreenW - 8 - kWaveX;
     SamplePicker& picker() { return picker_; }
     const SamplePicker& picker() const { return picker_; }
 
@@ -67,6 +72,7 @@ private:
     void press(Button direction);
     void stepSound(int by);
     void stepFit(int by);
+    void stepChoke(int by);
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
 
     Session& session_;

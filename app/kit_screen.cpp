@@ -59,6 +59,13 @@ void KitScreen::stepFit(int by) {
     session_.setLaneFit(project_.track, lane_, kFits[to]);
 }
 
+// NONE, 1, 2: the ends stop.
+void KitScreen::stepChoke(int by) {
+    const int to = trk().laneChoke[lane_] + by;
+    if (to < kChokeNone || to > kChokeGroups) return;
+    session_.setLaneChoke(project_.track, lane_, to);
+}
+
 void KitScreen::openPicker() {
     const int track = project_.track, lane = lane_;
     SamplePicker::Jobs jobs;
@@ -83,12 +90,14 @@ void KitScreen::press(Button b) {
         if (b != Button::Up && b != Button::Down) return;
         stepped_ = true;
         if (column_ == kSound) stepSound(b == Button::Up ? 1 : -1);
-        else stepFit(b == Button::Up ? 1 : -1);
+        else if (column_ == kFit) stepFit(b == Button::Up ? 1 : -1);
+        else stepChoke(b == Button::Up ? 1 : -1);
         return;
     }
     if (b == Button::Up) lane_ = (lane_ + kDrumLanes - 1) % kDrumLanes;
     if (b == Button::Down) lane_ = (lane_ + 1) % kDrumLanes;
-    if (b == Button::Left || b == Button::Right) column_ = column_ == kSound ? kFit : kSound;
+    if (b == Button::Left) column_ = (column_ + kColumns - 1) % kColumns; // round the ends, as the lanes go
+    if (b == Button::Right) column_ = (column_ + 1) % kColumns;
 }
 
 void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
@@ -116,7 +125,8 @@ void KitScreen::onButton(const ButtonEvent& event, const Input& input) {
         repeatAt_ = 0;
     } else if (b == Button::B && !holding_) {
         if (column_ == kSound) session_.setLaneSample(project_.track, lane_, "");
-        else session_.setLaneFit(project_.track, lane_, 0);
+        else if (column_ == kFit) session_.setLaneFit(project_.track, lane_, 0);
+        else session_.setLaneChoke(project_.track, lane_, kChokeNone);
     } else if (b == Button::Y && !holding_) {
         const std::string name = session_.catchLastBar(project_.track, lane_);
         said_ = name.empty() ? "NOTHING TO CATCH: PLAY SOMETHING FIRST" : "CAUGHT THE LAST BAR AS \"" + name + "\"";
@@ -207,12 +217,16 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     std::snprintf(text, sizeof text, "%s / KIT", name);
     topBar(r, fonts, View::Device, text, project_);
     const SDL_Color cursorColor = holding_ ? kBrass : kTeal;
-    const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = 262, fitW = 96, waveX = 366, waveW = 266;
+    const int rowH = kLaneRowH, top = kLaneTop, soundX = 8, soundW = 250, fitX = kFitX, fitW = kFitW, chokeX = kChokeX, chokeW = kChokeW, waveX = kWaveX, waveW = kWaveW;
 
     fonts.small.draw(r, soundX + 2.f, 34.f, "SOUND", kDim);
-    fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
-    if (said_.empty()) fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
-    else fonts.within(&Fonts::small, said_.c_str(), waveW - 4.f).draw(r, waveX + 2.f, 34.f, said_.c_str(), kBrass);
+    if (said_.empty()) {
+        fonts.small.draw(r, fitX + 2.f, 34.f, "FIT TO", kDim);
+        fonts.small.draw(r, chokeX + 2.f, 34.f, "CHOKE", kDim);
+        fonts.small.draw(r, waveX + 2.f, 34.f, "THE RECORDING", kDim);
+    } else { // over the heads of the three columns at the right, for a moment
+        fonts.within(&Fonts::small, said_.c_str(), waveX + waveW - fitX - 4.f).draw(r, fitX + 2.f, 34.f, said_.c_str(), kBrass);
+    }
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         const int y = top + lane * rowH, h = rowH - kLaneGap;
         const Session::LaneSound& sound = session_.laneSound(project_.track, lane);
@@ -251,11 +265,20 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && file[0] ? kPurple : kDim);
         if (here && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
 
+        // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
+        const int group = trk().laneChoke[lane];
+        box(r, chokeX, y, chokeW, h, kPanel, kLine);
+        fonts.medium.draw(r, chokeX + 9.f, textY, group == kChokeNone ? "NONE" : group == 1 ? "1" : "2", group == kChokeNone ? kDim : kBrass);
+        if (here && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
+
         // The recording's outline, and what is being done with it.
-        if (sound.missing) {
-            const char* gone = "NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS.";
-            const Font& goneFont = fonts.within(&Fonts::small, gone, waveW - 6.f);
-            goneFont.draw(r, waveX + 4.f, y + (h - goneFont.capHeight()) / 2.f, gone, kBrass);
+        if (sound.missing) { // (on two short lines: the column is narrower since CHOKE)
+            const char* gone = "FILE NOT FOUND.";
+            const char* plays = "THE DRUM PLAYS.";
+            const Font& goneFont = fonts.within(&Fonts::small, plays, waveW - 6.f); // (the longer: both lines in its lettering)
+            const float lineGap = 4.f, linesH = 2.f * goneFont.capHeight() + lineGap;
+            goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f, gone, kBrass);
+            goneFont.draw(r, waveX + 4.f, y + (h - linesH) / 2.f + goneFont.capHeight() + lineGap, plays, kBrass);
         } else if (!sound.peaks.empty()) {
             const int count = static_cast<int>(sound.peaks.size()), ww = waveW - 70;
             for (int i = 0; i < count; ++i) {
@@ -274,10 +297,10 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     int count = 0;
     const auto hint = [&](const char* key, const char* does) { list[count].key = key; list[count].does = does; ++count; };
     if (holding_) {
-        hint("UP / DOWN", column_ == kSound ? "next / previous sound" : "longer / shorter");
+        hint("UP / DOWN", column_ == kSound ? "next / previous sound" : column_ == kFit ? "longer / shorter" : "next / previous group");
     } else {
-        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from list" : "fit to steps");
-        hint("B", column_ == kSound ? "default drum" : "fit off");
+        hint(column_ == kSound ? "A" : "HOLD A", column_ == kSound ? "pick from list" : column_ == kFit ? "fit to steps" : "choke group");
+        hint("B", column_ == kSound ? "default drum" : column_ == kFit ? "fit off" : "no choke");
         hint("Y", "catch");
         hint("R1", "record");
         if (trk().laneSample[lane_][0]) hint("L1", "slices");

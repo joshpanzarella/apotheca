@@ -52,7 +52,7 @@ New screens and gestures keep these; do not invent a variant.
 | Job | Command |
 | --- | --- |
 | Build | `cmake -S . -B build && cmake --build build -j8` |
-| All tests (52) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
+| All tests (55) | `cd build && ctest -j8` (about 100 s; `nextscene` is the longest; `effects_test` runs as `effects1` and `effects2`, `idle_test` as `idle1` to `idle3`; `textsize`, `textviews` and `themeviews` each run by themselves) |
 | Timings | `./build/bench`, or `apotheca --bench`. On the handheld: SPEED TEST on the WiFi page (the timings are in the program, `app/bench_run.cpp`, so an update over WiFi brings them). `./build/bench --profile NAME [SECONDS]` renders one setup with no clock for callgrind (`--toggle-collect='*profiledRender*'`; NAME empty lists them; `docs/plans/speed-plan.md`) |
 | A still of a screen | `SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy ./build/apotheca --demo --view NAME --shot out.bmp` (views are listed in `app/main.cpp`; the FX screen's are `fx`, `fx-type`, `fx-pick`, `fx-comp`, `fx-switch` (COMP, on its second setting; with `--hold-a` the heading shows the key that switches its TYPE), `fx-master`, `fx-duck`, `fx-choice`, `fx-auto`, `fx-sends`, `fx-bus`, `fx-level`, `fx-ping`, `fx-ping-bus`, `fx-spring` (REVERB SPRING on the track and on SPACE), `fx-plate`, `fx-family-1` to `-7` (the last type of each family, FILTER to LEVEL, in the track's second slot; with `--hold-a` the list of effects on its line, the type lit), `fx-kind-WORD` (the effect whose song-file word is WORD in the track's second slot: `fx-kind-comb`; `fx-kind-comb-1` on its first setting), `fx-deleting` (B held on an effect, its bar filling); the list of recordings: `picker` (SAMPLES, on a folder), `picker-in` (in a folder), `picker-deep` (two folders down), `picker-deleting`, `picker-new` (on + NEW FOLDER), `picker-typing` (its name being typed), `picker-carrying` (R1 held, steered onto a folder), `picker-folder-deleting` (B held on an empty folder), `sampler-picker`, each also with `--hold-a` (on a line of the list that opens the list of effects: `fx-pick --hold-a`, `fx-type --hold-a`, `fx-bus --hold-a`); the piano roll's strip at its fullest: `notefx-worst`, `notefx-space`; GLIDE FROM, one a type on the same notes: `notefx-from` (TOP), `notefx-from-paired`, `-nearest`, `-random`, each also with `-held` (X held: the strip says it); every length of glide and its line: `notefx-glides`, `-glides-alone`, `-glides-longest-held`, `-glides-far1` to `-far4` (a FULL glide from two bars back, each bar); the BOUNCE row at work: `bounce`, `bounce-tail`, and at rest: `bounce-ready`; NEXT SCENE just pressed: `next-scene`, `next-scene-notes`, `next-scene-full`; chord effects: `chordfx`, `chordfx-held`, `chordfx-ratchet` / `-strum` / `-order` / `-time` / `-level` / `-lengths` (X held, that one picked), `chordfx-off`, `chordfx-arp`, `chordfx-worst` (the strip at its fullest), `chordfx-line`; a track's other instrument offered: `change-instrument`; JAX-EP's panel and pages: `jaxep`, `jaxep0` to `jaxep5`, `jaxep-bank` (MAIN on B7 Distortion Guitar, in BANK B: the longest of the 32 names), `jaxep-held` (a knob, A held); FM-6's: `fm6` (MAIN), `fm6-1` to `fm6-8` (its pages), `fm6-long` (HARPSICH 1, the widest name), `fm6-fixed` (an operator at a FIXED pitch, on FINE), `fm6-off` (an operator OFF); PHYSIC's: `physic` (MAIN), `physic-1` to `physic-4` (SOUND, RING, PLAY, DICE), `physic-long` (its widest preset name), `physic-string` (RING on Steel: STRETCH reads B); a song being deleted: `song-deleting`; the mixer (A held on a head): `song-mixer`, `song-mixer-master`, each also `-12` (twelve tracks); FEEL on the drum grid: `feel` (lanes with their marks, the cursor on a name), `feel-held` (X held: the strip is the lane's feel), `feel-off-held`, `feel-same-held` (every lane at 100%, the strip at its widest), `feel-said` (L1 on a built-in drum with a feel: the message has the row), `slices-name-feel` (the slice view's name with its mark; needs `--samples`); X held on a knob, its MOD: `device-mod-held` (an LFO on Phazed's TONE), `device-mod-stepper`, `device-mod-new` (none yet), `device-mod-full` (MODS FULL), `device-mod-deleting` (B held), `fx-mod-held` (an LFO on TAPE's FEEDBACK), `fx-mod-stepper`, `fx-mod-new`, `fx-mod-full`, `fx-sends-mod-held` (on ECHO: the panel in SPACE's row); the brass mark with the song playing: `device-modded`, `fx-modded`; the MOD tab: `mod` (an LFO on TONE, a STEPPER on ECHO; the demo plays, so the dots move), `mod-lfo` (on DEPTH), `mod-steps` (MOD 2's row, on step 5), `mod-depth` (MOD 1's DEPTH lane written, the demo playing), `mod-mixer` (LEVEL and PAN as targets), `mod-target` and `mod-drums` (each with `--hold-a`: the list of targets), `mod-off`, `mod-deleting`, `mod-12`, `mod-free` (a free LFO: SPEED in Hz), `device-mod-free`; any view with `--no-menu` is as on a handheld with no MENU button) |
 | Handheld build | `scripts/build-handheld.sh` (clang cross-build against an Ubuntu 20.04 arm64 sysroot) |
@@ -1526,6 +1526,37 @@ effect in those two groups and fails one that does not.
     file, undo, a song sent again, a bounce, X still hearing, the stick's pace, X let go first).
     `feel_test testTime testSlices` runs just those. `textsize` holds the name's line and the
     held strip as tight rows. SWING is not built.
+- **CHOKE is a group on each drum LANE, two of them** (owner, 2026-11-15: "choke the open hi hat with a
+  closed one"; `DrumMachine::setLaneChoke`, `kChokeNone` / `kChokeGroups` and `chokeGroupOf` in
+  drums.hpp). A hit on a lane in a group gives every OTHER lane of that group still sounding the
+  fade a lane already cuts its own last hit with (`chokeStep_`, 3 ms), in `trigger` (`chokeOthers`).
+  **Every trigger counts**: a ratchet's pieces, a hit that carries its lane's sound on, a hit by
+  hand; the thrown copy goes with its voice. **Hits that start on the same sample do not cut each
+  other** (`Voice::born` against `renders_`, counted by `render`): both were written, and lane order
+  must not decide. A lane cuts itself as it always did, so a group of one is no group; nothing
+  grouped is the sound as before to the bit (`effects_test --print` the same, `speed_test` passes:
+  the runs see a choked voice's fade as any other). A group set cuts nothing by itself; a track
+  taken away is in none. **A new kit has its two hats in CHOKE 1** (`chokeTheHats` / `newKitChoke`
+  in project.hpp, `Session::chokeNewKit`): a drum track added, a new song's track 1, a track given
+  the kit, the first song on a card, the demo. A blank `TrackData` (a song read from a file) has none.
+  A new song is still not worth a file until something is put in it (`saveNow` takes its text with
+  the hats grouped, and a project as made, as empty).
+  - **The app**: `TrackData::laneChoke`, `Session::setLaneChoke`, `Command::SetLaneChoke` (a = lane,
+    b = group; appended). `sendSong` tells every drum lane's, NONE too. In a song file
+    `choke LANE GROUP`, **left out at NONE**; a group nobody knows is NONE; under a synth track it is
+    not taken. **In undo by `soundMark` / `restoreSounds`**, as FEEL.
+  - **Set on the KIT page's third column** (`KitScreen::kChoke`, between FIT TO and the recording,
+    `kChokeX`/`kChokeW` in kit_screen.hpp): hold A + UP / DOWN NONE, 1, 2 (the ends stop), B none;
+    left / right go round the three columns. The recording's column is narrower for it, so its
+    missing line is two short ones (FILE NOT FOUND. / THE DRUM PLAYS.), and what is said for a
+    moment (a catch, a recording) is drawn over the three heads from FIT TO on.
+  - **The mark** (`drawChokeMark`, both views, `kChokeMark...` in pattern_layout.hpp): brass, at
+    the bottom right of the lane's name, a dash for CHOKE 1, two for CHOKE 2.
+  - Tests: `tests/choke_test.cpp` (the engine: the cut and its fade, groups apart, the same sample,
+    as it was, ratchets, slices, THROW and a hit by hand, blocks and helpers, a group changed, a
+    track gone, numbers out of range) and `tests/chokeapp_test.cpp` (the new kit, the KIT page,
+    the mark off the drawn screen in BROWN and PAPER, the song file, undo, a song sent again).
+    Stills `choke`, `kit-choke`, `kit-choke-held`. **Nobody has heard it.**
 - **An `Engine` is 1.4 MB: a test does not stand many on the stack.** `engine_test`'s
   `testNudgeMovesAHitOffTheGrid` had six in one frame, 8.37 MB of the 8 MB there is, with 20 KB
   to spare by luck; an Engine a kilobyte bigger (FEEL) and it crashed one run in three, before

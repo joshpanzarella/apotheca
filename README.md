@@ -1330,11 +1330,33 @@ move to a step and press up or down until it plays the slice you want.
 
 A row for each lane. Each lane plays its built-in drum or a **recording**: a
 WAV file from the `samples` folder beside the program. A kit can mix the two.
+Left / right moves between the columns, SOUND, FIT TO and CHOKE (round the
+ends).
 
 | On | Hold A + stick up / down | B |
 | --- | --- | --- |
 | SOUND | The built-in drum, then each recording by name. Heard as it changes. | The drum back |
 | FIT TO | Off, 1, 2, 4, 8 steps, 1 bar, 2 bars, 4 bars | Off |
+| CHOKE | None, 1, 2 | None |
+
+**CHOKE: a hit cuts the other lanes of its group.** Each lane is in no
+group, CHOKE 1 or CHOKE 2. A hit on a lane in a group fades out every other
+lane of that group still sounding, over 3 ms (the fade a lane already cuts
+its own last hit with). The usual case: **the closed hat cuts the open hat**,
+and **a new kit has its two hats (lanes 3 and 4) in CHOKE 1** already: a new
+drum track, a new song's kit, a track given the kit. A song made before
+CHOKE has no groups.
+
+- Two hits of one group on the same step both play: both were written.
+- Every hit counts: each piece of a ratchet, a slice that carries the sound
+  on, a hit by hand with X. A ratchet's later piece on the lane that was cut
+  plays again.
+- A hit thrown to ECHO or SPACE is cut on the bus too.
+- A lane alone in a group plays as it would in none. Changing a group cuts
+  nothing by itself.
+- On the PATTERN tab a lane in a group has a small brass mark at the bottom
+  right of its name: one dash for CHOKE 1, two for CHOKE 2.
+- Kept with the song, and undone like a sound is.
 
 **X hears the lane. Hold X and a recording plays for as long as you hold it**,
 to its end; let go and it fades out. A tap plays a moment (0.35 s); a
@@ -1369,7 +1391,8 @@ anything while playing. Until it is ready the lane plays what it had.
   number of channels. They are played as one channel at 48 kHz.
 - **Ten seconds** of each is used.
 - The song file keeps each lane's file by name and each hit's start. If the
-  file is not on the card, the lane plays its drum and says so.
+  file is not on the card, the lane plays its drum and says so (FILE NOT
+  FOUND. THE DRUM PLAYS.).
 - The stretching is done by **Signalsmith Stretch** (MIT licence, in
   `third_party/signalsmith`). A recording too short for it, under about a
   tenth of a second, is done by a simpler method of our own

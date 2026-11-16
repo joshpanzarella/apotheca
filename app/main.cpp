@@ -174,6 +174,7 @@ void fillDemoSong(App& app) {
     }
     project.scene = 0;
     drums.moveCursorTo(1, 4);
+    session.chokeNewKit(0); // a new song's kit: its hats in CHOKE 1
 
     // Track 2: a bass. Track 3: chords.
     session.addTrack(TrackKind::Phazed);
@@ -539,6 +540,20 @@ int main(int argc, char** argv) {
         app.drums().moveCursorTo(std::strstr(view, "off") ? 3 : 2, -1);
         if (std::strstr(view, "-held")) pushKey(SDLK_s, true); // X held
         if (std::strstr(view, "-said")) app.drums().setSlicing(true); // L1 on a built-in drum: why it has no slices, said on the row the feel's line has
+    } else if (std::strcmp(view, "choke") == 0 || std::strncmp(view, "kit-choke", 9) == 0) {
+        // CHOKE: the hats in 1 (the demo's kit, as a new kit's), TOM and CRASH in 2, the closed hat with a
+        // feel too (its two marks side by side). choke: the drum grid, the cursor on the open hat's name.
+        // kit-choke: the KIT page on the open hat's CHOKE. kit-choke-held: A held there (what UP / DOWN do).
+        Session& session = app.session();
+        session.setLaneChoke(0, 5, 2);
+        session.setLaneChoke(0, 7, 2);
+        session.setLaneFeel(0, 2, 50, 25);
+        app.drums().moveCursorTo(3, -1);
+        if (view[0] == 'k') {
+            session.view = View::Device;
+            app.kit().goTo(3, KitScreen::kChoke);
+            if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
+        }
     } else if (std::strncmp(view, "chordfx", 7) == 0) {
         // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
         // chordfx-held: X held on it (the strip is its six effects). chordfx-ratchet, -strum,

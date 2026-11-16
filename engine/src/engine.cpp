@@ -1260,6 +1260,9 @@ void Engine::apply(const Command& c) {
     case Command::SetLanePart:
         if (validTrack(c.track)) tracks_[c.track].drums.setLanePart(c.a, c.value);
         break;
+    case Command::SetLaneChoke:
+        if (validTrack(c.track)) tracks_[c.track].drums.setLaneChoke(c.a, c.b);
+        break;
     case Command::NoteOn:
         if (validTrack(c.track) && tracks_[c.track].synth) tracks_[c.track].synth->noteOn(c.a, c.value);
         break;
@@ -1823,7 +1826,7 @@ void Engine::takeAway(int t) {
         track.laneSamples[lane] = nullptr;
         bin(trash);
     }
-    for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f);
+    for (int lane = 0; lane < kDrumLanes; ++lane) track.drums.setLaneLevel(lane, 1.f), track.drums.setLaneChoke(lane, kChokeNone); // (the next kit here is in no group until told)
     for (int slot = 0; slot < kPatternSlots; ++slot) {
         DrumScene& scene = track.drumScenes[slot];
         for (int lane = 0; lane < kDrumLanes; ++lane)

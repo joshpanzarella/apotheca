@@ -78,6 +78,10 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(feel_test tests/feel_test.cpp)
   target_link_libraries(feel_test PRIVATE apotheca_engine)
   add_test(NAME feel COMMAND feel_test)
+  # CHOKE (drums.hpp, DrumMachine::setLaneChoke): two groups on a drum track, a hit cuts the rest of its group.
+  add_executable(choke_test tests/choke_test.cpp)
+  target_link_libraries(choke_test PRIVATE apotheca_engine)
+  add_test(NAME choke COMMAND choke_test)
   # The JX-3P (docs/plans/jx3p-plan.md): the skeleton, its voices, tick, envelope and VCA. It reads
   # the synth's own parts (engine/src/jx3p/) and the shared measuring tools.
   add_executable(jx3p_test tests/jx3p_test.cpp)
@@ -124,7 +128,7 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
-  set_tests_properties(engine phazed song effects1 effects2 throw feel glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic PROPERTIES TIMEOUT 120)
+  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.
@@ -162,13 +166,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob modtab)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp picker bench modapp modknob modtab PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

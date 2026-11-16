@@ -22,6 +22,9 @@ constexpr float kFxPitchX = 190.f, kFxRatchetX = 260.f, kFxReverseX = 355.f, kFx
 constexpr float kFeelTimeX = 190.f, kFeelLevelX = 320.f, kFeelAllX = 450.f;
 // A lane with a feel wears a mark at the left of its name: the upper piece for HUMAN TIME, the lower for HUMAN LEVEL.
 constexpr int kFeelMarkX = kNameX + 3, kFeelMarkW = 3, kFeelMarkH = 12, kFeelMarkInset = 5;
+// A lane in a CHOKE group wears a brass mark at the bottom right of its name: one piece for CHOKE 1, two
+// for CHOKE 2, the right one ending at kChokeMarkRight, kChokeMarkInset up from the box's foot.
+constexpr int kChokeMarkRight = kNameX + kNameW - 4, kChokeMarkW = 8, kChokeMarkH = 3, kChokeMarkGap = 3, kChokeMarkInset = 4;
 
 } // namespace pattern_layout
 } // namespace apotheca

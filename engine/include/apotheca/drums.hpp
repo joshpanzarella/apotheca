@@ -10,6 +10,14 @@ namespace apotheca {
 constexpr int kDrumLanes = 8;
 constexpr int kSteps = 16;
 
+// CHOKE: a lane is in no group, CHOKE 1 or CHOKE 2 (DrumMachine::setLaneChoke). A hit on a lane in a
+// group cuts the other lanes of that group. The numbers are in song files: appended. A number nobody
+// knows is NONE.
+constexpr int kChokeNone = 0, kChokeGroups = 2;
+inline int chokeGroupOf(int number) { return number >= 1 && number <= kChokeGroups ? number : kChokeNone; }
+// The built-in kit's two hats: a new kit has them in CHOKE 1, so the closed hat cuts the open one.
+constexpr int kClosedHatLane = 2, kOpenHatLane = 3;
+
 // Eight mono samples.
 struct DrumKit {
     std::vector<float> samples[kDrumLanes];
@@ -110,6 +118,14 @@ public:
     // ringing too. Survives reset().
     void setLaneLevel(int lane, float level);
 
+    // CHOKE: the lane's group, kChokeNone, 1 or 2 (anything else is NONE). A hit on a lane in a group
+    // fades every OTHER lane of that group still sounding over the choke's few milliseconds, as a lane
+    // fades its own last hit: a ratchet's every piece, a hit that carries the lane's sound on, a hit by
+    // hand alike. Its thrown copies go with it (they are the same voice). Hits that start on the same
+    // sample (between the same two renders) do not cut each other: both were written. A lane cuts itself
+    // as it always did, and setting a group cuts nothing by itself. Survives reset().
+    void setLaneChoke(int lane, int group);
+
     // X let go: what a held audition started on this lane (a hit with `how.audition`) fades out
     // over the choke's few milliseconds. Nothing else on the lane is touched: a pattern's hit,
     // or a hit that has carried the audition's sound on, plays as it would have.
@@ -147,7 +163,9 @@ private:
         float thrown[2] = {};   // THROW: how much of it goes to each bus, as it is this sample...
         float thrownTo[2] = {}; // ...and where that is heading: 1 thrown, 0 not
         bool audition = false;  // started by a held audition (HitPlay::audition): letGo() fades it
+        std::uint32_t born = 0; // CHOKE: the render it started before (renders_); a voice not yet heard is not cut
     };
+    void chokeOthers(int lane); // CHOKE: fade the rest of this lane's group
 
     // How many samples from here are plain (drums.cpp, RUNS); 0: the next is not.
     template <bool kThrown>
@@ -162,6 +180,8 @@ private:
     int ownLength_[kDrumLanes] = {};
     float laneLevel_[kDrumLanes] = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f};
     float lanePart_[kDrumLanes] = {};
+    int choke_[kDrumLanes] = {};    // CHOKE: each lane's group (kChokeNone, 1, 2)
+    std::uint32_t renders_ = 0;     // renders that wrote a sample: which voices have been heard
     float chokeStep_ = 1.f / 144.f; // 3 ms at 48 kHz
     int joinFrames_ = 72;           // 1.5 ms: a hit this close to where the sound is carries it on
 };

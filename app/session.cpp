@@ -112,6 +112,7 @@ bool Session::addTrack(TrackKind kind) {
         if (const SynthSpec* spec = specFor(kind)) spec->loadPreset(project.tracks[track], 0);
     }
     project.tracks[track].kind = kind;
+    if (kind == TrackKind::Drums) chokeNewKit(track); // (its hats in CHOKE 1)
     // The engine makes a synth on its start patch, which is no preset (JAX-EP's plain saw, FM-6's one
     // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
     // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)
@@ -134,6 +135,7 @@ bool Session::setTrackKind(int track, TrackKind kind) {
             for (float& v : scene[lane]) v = kAutoNone;
     for (ModSettings& m : t.mods) // a MOD on a macro goes with the macros; one on an effect or a send stays
         if (modTargetIsMacro(m.target)) m = ModSettings();
+    if (kind == TrackKind::Drums) chokeTheHats(t); // a new kit (told with the song, next)
     sendSong(); // the engine is given the song afresh, with the new instrument in its place
     // Undo keeps its steps: they put back the other tracks, and pass this one by (it is another kind now).
     if (undoReady_) cellMark_ = cellMark(), soundMark_ = soundMark(); // (its new sound is not a step either)
@@ -685,7 +687,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -769,6 +771,9 @@ void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneFeel[lane] != then.laneFeel[lane]) setLaneFeel(t, lane, then.laneFeel[lane].time, then.laneFeel[lane].level);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;
@@ -1363,6 +1368,23 @@ void Session::setLaneFeel(int track, int lane, int time, int level) {
     engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
 }
 
+void Session::setLaneChoke(int track, int lane, int group) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    group = chokeGroupOf(group);
+    if (project.tracks[track].laneChoke[lane] == group) return;
+    project.tracks[track].laneChoke[lane] = static_cast<std::uint8_t>(group);
+    Command c;
+    c.type = Command::SetLaneChoke;
+    c.track = track;
+    c.a = lane;
+    c.b = group;
+    engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
+void Session::chokeNewKit(int track) {
+    for (int lane = 0; lane < kDrumLanes; ++lane) setLaneChoke(track, lane, newKitChoke(lane));
+}
+
 void Session::setSend(int track, int bus, float value) {
     if (track < 0 || track >= kNumTracks || bus < 0 || bus >= kBuses) return;
     value = value != value ? 0.f : (value < 0.f ? 0.f : (value > 1.f ? 1.f : value));
@@ -1582,6 +1604,18 @@ void Session::sendSong() {
             c.a = lane;
             c.b = project.tracks[track].laneFeel[lane].time;
             c.c = project.tracks[track].laneFeel[lane].level;
+            engine.send(c);
+        }
+    }
+    // Every drum lane's CHOKE group, NONE too.
+    for (int track = 0; track < kNumTracks; ++track) {
+        if (project.tracks[track].kind != TrackKind::Drums) continue;
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            c = Command();
+            c.type = Command::SetLaneChoke;
+            c.track = track;
+            c.a = lane;
+            c.b = project.tracks[track].laneChoke[lane];
             engine.send(c);
         }
     }

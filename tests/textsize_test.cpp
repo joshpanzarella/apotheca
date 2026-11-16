@@ -1443,15 +1443,34 @@ void testTheOtherScreens() {
     rig.app.kit().goTo(2, KitScreen::kSound);
     rig.frames(2);
     CHECK(holds(rig, "the kit") > 8);
-    CHECK(drew("NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS.") && drew("BUILT IN") && drew("SHORT"));
-    // (That line runs off the screen's edge at LARGE, as it does on main: at XL it is held at LARGE, no further off.)
-    CHECK(capAtXl("NOT IN THE SAMPLES FOLDER. THE DRUM PLAYS.") == 12.f && capAtXl("THE RECORDING") == 13.f);
-    rig.tap(Y); // nothing has played: it says so, over the recordings (and that runs off the edge at LARGE too)
+    CHECK(drew("FILE NOT FOUND.") && drew("THE DRUM PLAYS.") && drew("BUILT IN") && drew("SHORT"));
+    // (Since CHOKE that line is two short ones, in the narrower column, and they fit it at every size: it ran off the screen's edge before.)
+    CHECK(capAtXl("FILE NOT FOUND.") == 13.f && capAtXl("THE DRUM PLAYS.") == 13.f && capAtXl("THE RECORDING") == 13.f && capAtXl("CHOKE") == 13.f);
+    for (const textfit::Frame* frame : {&lastLarge, &lastXl})
+        for (const textfit::Text& t : frame->texts)
+            if (t.words == "FILE NOT FOUND." || t.words == "THE DRUM PLAYS.") CHECK(t.x + t.w <= KitScreen::kWaveX + KitScreen::kWaveW);
+    rig.tap(Y); // nothing has played: it says so, over the heads of FIT TO, CHOKE and the recordings
     holds(rig, "the kit, nothing to catch");
-    CHECK(drew("NOTHING TO CATCH: PLAY SOMETHING FIRST") && capAtXl("NOTHING TO CATCH: PLAY SOMETHING FIRST") == 12.f);
+    CHECK(drew("NOTHING TO CATCH: PLAY SOMETHING FIRST") && !drew("CHOKE"));
+    for (const textfit::Text& t : lastLarge.texts)
+        if (t.words == "NOTHING TO CATCH: PLAY SOMETHING FIRST") CHECK(t.x + t.w <= ui::kScreenW - 8);
     rig.app.kit().goTo(2, KitScreen::kFit);
     rig.frames(1);
     holds(rig, "the kit, on FIT TO");
+    // CHOKE: NONE, 1 and 2, with A up and held (what the bar says), every lane's at its widest.
+    session.setLaneChoke(0, 0, 2);
+    session.setLaneChoke(0, 1, 1);
+    rig.app.kit().goTo(5, KitScreen::kChoke);
+    rig.frames(200); // (what was said has gone: the heads are back)
+    CHECK(holds(rig, "the kit, on CHOKE") > 8);
+    CHECK(drew("CHOKE") && drew("NONE") && drew("2"));
+    CHECK(ui::gHintsOver == 0);
+    rig.key(SDLK_x, true); // A held
+    rig.frames(1);
+    holds(rig, "the kit, A held on CHOKE");
+    CHECK(ui::gHintsOver == 0);
+    rig.key(SDLK_x, false);
+    rig.frames(1);
     rig.app.kit().goTo(2, KitScreen::kSound);
     // The list, in columns: in the long folder, on the long name; then every place it can be, and
     // the hints bar holding all it says at each.
