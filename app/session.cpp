@@ -113,6 +113,8 @@ bool Session::addTrack(TrackKind kind) {
     }
     project.tracks[track].kind = kind;
     if (kind == TrackKind::Drums) chokeNewKit(track); // (its hats in CHOKE 1)
+    if (kind == TrackKind::Drums)
+        for (int lane = 0; lane < kDrumLanes; ++lane) loadLane(track, lane); // (the built-in drums: what EDIT starts from)
     // The engine makes a synth on its start patch, which is no preset (JAX-EP's plain saw, FM-6's one
     // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
     // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)

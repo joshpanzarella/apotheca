@@ -256,6 +256,19 @@ void Session::shapeLane(int track, int lane) {
     if (!sound.source) return; // missing: the drum plays, and nothing is made
     const LaneEdit& edit = project.tracks[track].laneEdit[lane];
     ++sound.version; // a stretch on its way is for the sound as it was
+    // PITCH on a long sound is too much for one frame of the handheld (a 10 s file two octaves down
+    // is 0.1 s on the desk): it is made on the helper thread, as a FIT is, and until it is ready the
+    // lane plays what it had (or, freshly read, the file as it is).
+    if (shapeCost(sound.source->size(), edit) > kShapeInAFrame) {
+        sound.shaping = sound.waiting = true;
+        if (!sound.shaped) {
+            sound.shaped = sound.source;
+            sound.seconds = static_cast<float>(sound.shaped->size()) / kSampleRate;
+        }
+        installLane(track, lane); // (the level, made at once, on what it has)
+        return;
+    }
+    sound.shaping = false;
     sound.shaped = edit.shapes() ? std::make_shared<const std::vector<float>>(makeShape(*sound.source, edit, kSampleRate)) : sound.source;
     sound.seconds = static_cast<float>(sound.shaped->size()) / kSampleRate;
     sound.fitted.reset();
@@ -306,6 +319,7 @@ void Session::setLaneSample(int track, int lane, const std::string& name) {
 
 void Session::setLaneEdit(int track, int lane, const LaneEdit& wanted) {
     if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    readyLane(track, lane);
     LaneEdit& edit = project.tracks[track].laneEdit[lane];
     const LaneSound& sound = sounds_[track][lane];
     const LaneEdit was = edit, now = laneEditHeld(wanted, sound.sourceSeconds);
@@ -315,6 +329,12 @@ void Session::setLaneEdit(int track, int lane, const LaneEdit& wanted) {
     shapeWas.gain = shapeNow.gain = shapeWas.fadeIn = shapeNow.fadeIn = shapeWas.fadeOut = shapeNow.fadeOut = 0;
     if (shapeWas != shapeNow) shapeLane(track, lane);
     else installLane(track, lane); // the fades and GAIN alone: on what is made already
+}
+
+void Session::readyLane(int track, int lane) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums) return;
+    const LaneSound& sound = sounds_[track][lane];
+    if (!sound.source && !sound.missing) loadLane(track, lane);
 }
 
 bool Session::normalizeLane(int track, int lane) {
@@ -535,8 +555,11 @@ void Session::setLaneFit(int track, int lane, int steps) {
     }
 }
 
+// A lane wants work on the helper thread: a shape too costly for a frame (shapeLane), or its FIT
+// for the tempo now.
 bool Session::wantsFitting(int track, int lane) const {
     const LaneSound& sound = sounds_[track][lane];
+    if (sound.shaping) return true;
     const int steps = project.tracks[track].laneFit[lane];
     return sound.recording && sound.shaped && steps > 0 && (sound.fittedTempo != steadyTempo_ || sound.fittedSteps != steps);
 }
@@ -550,13 +573,18 @@ void Session::startJob(int track, int lane) {
     job->lane = lane;
     job->version = sound.version;
     job->tempo = steadyTempo_;
-    job->in = sound.shaped; // the edited sound is what is fitted
-    // A step is a sixteenth note: a quarter of a beat.
-    job->frames = static_cast<int>(std::lround(project.tracks[track].laneFit[lane] * 15.0 / steadyTempo_ * kSampleRate));
+    job->shape = sound.shaping;
+    job->edit = project.tracks[track].laneEdit[lane];
+    job->in = sound.shaping ? sound.source : sound.shaped; // the edited sound is what is fitted
+    // A step is a sixteenth note: a quarter of a beat. (A shape is fitted in the same go once the tempo is known.)
+    const int steps = sound.recording ? project.tracks[track].laneFit[lane] : 0;
+    job->frames = steps > 0 && steadyTempo_ > 0.f ? static_cast<int>(std::lround(steps * 15.0 / steadyTempo_ * kSampleRate)) : 0;
     job->thread = std::thread([job] {
+        if (job->shape) job->shaped = makeShape(*job->in, job->edit, kSampleRate);
+        const std::vector<float>& from = job->shape ? job->shaped : *job->in;
         // As good as the right length already (a bar caught at this tempo): leave it be.
-        const int have = static_cast<int>(job->in->size());
-        job->out = std::abs(have - job->frames) <= 8 ? *job->in : fitTo(*job->in, job->frames, kSampleRate);
+        const int have = static_cast<int>(from.size());
+        if (job->frames > 0) job->out = std::abs(have - job->frames) <= 8 ? from : fitTo(from, job->frames, kSampleRate);
         job->done.store(true);
     });
 }
@@ -565,12 +593,23 @@ void Session::collectJob(bool wait) {
     if (!job_ || (!wait && !job_->done.load())) return;
     job_->thread.join();
     LaneSound& sound = sounds_[job_->track][job_->lane];
-    if (sound.version == job_->version && sound.shaped == job_->in) { // else the lane has moved on
-        sound.fittedTempo = job_->tempo;
-        sound.fittedSteps = project.tracks[job_->track].laneFit[job_->lane];
-        sound.waiting = false;
-        sound.fitted = std::make_shared<const std::vector<float>>(std::move(job_->out));
-        installLane(job_->track, job_->lane);
+    const int track = job_->track, lane = job_->lane;
+    if (sound.version == job_->version && (job_->shape ? sound.source : sound.shaped) == job_->in) { // else the lane has moved on
+        if (job_->shape) {
+            sound.shaping = false;
+            sound.shaped = std::make_shared<const std::vector<float>>(std::move(job_->shaped));
+            sound.seconds = static_cast<float>(sound.shaped->size()) / kSampleRate;
+            sound.fitted.reset();
+            sound.fittedTempo = 0.f;
+            sound.fittedSteps = 0;
+        }
+        if (job_->frames > 0) {
+            sound.fittedTempo = job_->tempo;
+            sound.fittedSteps = project.tracks[track].laneFit[lane];
+            sound.fitted = std::make_shared<const std::vector<float>>(std::move(job_->out));
+        }
+        sound.waiting = false; // (a shape and its FIT are made in the one go: a job starts only once the tempo is known)
+        installLane(track, lane);
     }
     job_.reset();
 }

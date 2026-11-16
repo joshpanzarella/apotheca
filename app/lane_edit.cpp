@@ -109,8 +109,8 @@ LaneEdit laneEditWith(LaneEdit e, int row, int value) {
 
 int leastSpan(float seconds) {
     if (!(seconds > 0.f)) return 1;
-    const int units = static_cast<int>(std::ceil(kLeastSpanMs / 1000.f / seconds * kEditUnits));
-    return units < 1 ? 1 : (units > kEditUnits ? kEditUnits : units);
+    const int units = static_cast<int>(std::ceil(kLeastSpanMs / 1000.f / seconds * kEditUnits)); // (a unit at least: ceil of more than 0)
+    return units > kEditUnits ? kEditUnits : units;
 }
 
 LaneEdit laneEditHeld(LaneEdit e, float seconds) {
@@ -200,6 +200,13 @@ float laneEditLevelAt(const LaneEdit& e, float at, float seconds) {
 float laneEditPlaceOf(const LaneEdit& e, float part) {
     const float start = static_cast<float>(e.start) / kEditUnits, end = static_cast<float>(e.end) / kEditUnits;
     return e.reverse ? end - part * (end - start) : start + part * (end - start);
+}
+
+double shapeCost(std::size_t n, const LaneEdit& e) {
+    if (e.pitch == 0 && e.fine == 0) return 0.0; // copies: a pass over the file
+    const double speed = e.speed(), cut = static_cast<double>(e.end - e.start) / kEditUnits;
+    const double out = static_cast<double>(n) * (cut > 0.0 ? cut : 0.0) / speed;
+    return out * (2.0 * kHalf / (speed > 1.0 ? 1.0 / speed : 1.0) + 1.0);
 }
 
 std::vector<float> makeShape(const std::vector<float>& in, const LaneEdit& e, float sampleRate) {

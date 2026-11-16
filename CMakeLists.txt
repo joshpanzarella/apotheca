@@ -169,13 +169,13 @@ if(APOTHECA_BUILD_APP)
 
   if(APOTHECA_BUILD_TESTS)
     # The app driven without a window or a sound card: one test program for each part of it.
-    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab)
+    foreach(name ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab laneedit)
       add_executable(${name}_test tests/${name}_test.cpp)
       target_link_libraries(${name}_test PRIVATE apotheca_app)
       add_test(NAME ${name} COMMAND ${name}_test)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
-    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab PROPERTIES TIMEOUT 120)
+    set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab laneedit PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

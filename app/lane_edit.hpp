@@ -89,6 +89,11 @@ float laneEditPlaceOf(const LaneEdit& e, float part);
 
 // 1 to 3: the shape (START to END, REVERSE, PITCH). Returns `in` as it is when nothing shapes it.
 std::vector<float> makeShape(const std::vector<float>& in, const LaneEdit& e, float sampleRate);
+// About how much work makeShape is for a file of n samples (taps worked out), and how much the app
+// does in a frame before it hands a shape to the helper thread (about 1.5 ms on the desk, 20 to 30 on
+// the handheld): a half-second hit pitched anywhere, a 10 s file cut or turned round, are made at once.
+double shapeCost(std::size_t n, const LaneEdit& e);
+constexpr double kShapeInAFrame = 2.0e6;
 // 4 and 5: the fades, GAIN and the guard, from `in` into `out` (n samples each; they may be one).
 void makeLevel(const float* in, int n, const LaneEdit& e, float sampleRate, float* out);
 // The guard by itself (5).

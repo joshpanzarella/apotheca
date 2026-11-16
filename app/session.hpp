@@ -288,6 +288,7 @@ public:
     // here and handed to the engine. The file is never written. START and END go back to the whole of
     // it when the lane is given another sound (setLaneSample); the rest stay.
     void setLaneEdit(int track, int lane, const LaneEdit& edit); // held to its limits (laneEditHeld)
+    void readyLane(int track, int lane);     // its sound read, if it has not been yet (the edit view draws it)
     bool normalizeLane(int track, int lane); // GAIN so the part played peaks at kNormalDb. False: silence
     bool trimLaneSilence(int track, int lane); // START and END at the first and last sound. False: silence
     struct LaneSound {
@@ -300,7 +301,8 @@ public:
         std::vector<float> peaks; // the outline of what the lane plays, for drawing (none for a built-in drum left as it is)
         float seconds = 0.f;      // ...and how long it lasts, unfitted
         bool missing = false;     // the song names a file that is not here
-        bool waiting = false;     // a fitted version is wanted and not yet in the engine
+        bool waiting = false;     // a fitted (or shaped) version is wanted and not yet in the engine
+        bool shaping = false;     // its shape is wanted from the helper thread (too costly for a frame)
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
         unsigned version = 0;     // goes up whenever the lane's sound changes
@@ -725,11 +727,13 @@ private:
     void startJob(int track, int lane);
     void collectJob(bool wait);
     struct Job {
-        int track = 0, lane = 0, frames = 0;
+        int track = 0, lane = 0, frames = 0; // frames: what to FIT it to (0: no fit)
         unsigned version = 0;
         float tempo = 0.f;
+        bool shape = false; // made from the source first (a costly shape: shapeLane)
+        LaneEdit edit;
         std::shared_ptr<const std::vector<float>> in;
-        std::vector<float> out;
+        std::vector<float> shaped, out;
         std::atomic<bool> done{false};
         std::thread thread;
     };
