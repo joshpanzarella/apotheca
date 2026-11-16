@@ -214,8 +214,13 @@ send 2 0.3
    song's buses, and fails one too quiet or too loud (-28 to -12 dB, its loudest tenth of a
    second), one that clips (a peak of 0.9), one whose tail does not end within 60 s, and one with a
    MOD that does not move. `--measure` prints those figures for every PHYSIC built-in. The limits
-   and why: `docs/plans/physic-plan.md`, section 17. (The other synths' added presets have no such
-   test yet: the same function, given their kind, would be the start of one.)
+   and why: `docs/plans/physic-plan.md`, section 17. **JAX-EP's the same way**: `--heard-jaxep`
+   (in ctest as `presets_heard_jaxep`) plays each with its folder's phrase (BASS a line an octave
+   and more down, LEAD a single line, SEQUENCE sixteenths, PADS / STRINGS / ATMOS a chord held, the
+   rest PHYSIC's phrase), holds the same limits, and the synth's own VCA clip at 0 at a placed
+   note's level and at full velocity; `--measure-jaxep` prints their figures and the booklet's 32
+   under every phrase (`docs/plans/jx3p-plan.md`, "The second set of presets"). FM-6's and
+   PHAZED's added presets have no such test yet.
 5. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
    list (it shows the folder and the name).
 

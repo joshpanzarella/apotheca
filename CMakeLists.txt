@@ -180,6 +180,10 @@ if(APOTHECA_BUILD_APP)
     # loudness window, no clip, a tail that ends and MODs that move (docs/plans/physic-plan.md, section 17).
     add_test(NAME presets_heard COMMAND presets_test --heard)
     set_tests_properties(presets_heard PROPERTIES TIMEOUT 120)
+    # JAX-EP's added presets the same way, each with its folder's phrase, and the synth's own VCA clip
+    # held at 0, at a placed note's level and at full velocity (docs/plans/jx3p-plan.md, "The second set").
+    add_test(NAME presets_heard_jaxep COMMAND presets_test --heard-jaxep)
+    set_tests_properties(presets_heard_jaxep PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

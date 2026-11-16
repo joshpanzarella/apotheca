@@ -7,7 +7,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth, 33 presets), FM-6 (six-operator
+(a virtual analog synth modeled after a popular DCO synth, 142 presets), FM-6 (six-operator
 FM, after a classic 80s synth, 160 presets) or PHYSIC (plucked and struck sounds that ring by
 themselves: strings, mallets, bells, 25 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
@@ -1710,8 +1710,19 @@ pages are that synth's panel:
   sounds the synth it is modeled after came with, in their order (String I,
   String II, Organ I ... Planet, Jet). On FOLDER, hold A and press up or down
   to go from one bank to the other. A new JAX-EP track starts on the first.
-  After them, presets that hold a track sound ("Presets" above), each folder
-  its own: PADS (Warm Pad: String I slowed, CHORUS and HALL, an LFO on CUTOFF).
+  After them, presets that hold a track sound (effects, sends, MODs: "Presets"
+  above), **110 in twelve folders of their own**: PADS (Warm Pad, then pads that
+  breathe, shimmer and bloom), STRINGS, BRASS, BASS (subs, an accented resonant
+  line, sync growls, a dub sub), LEAD (single lines: sync, fuzz, vowels, a breath),
+  KEYS (metal pianos, a rotor organ, a wah clavinet), PLUCK, SEQUENCE (for
+  sixteenths: STEPPERS that accent, re-tune a synced DCO-2, pan and gate),
+  SYNC & METAL (the two CROSS MODs), ATMOS (whistling noise, a worn radio, a
+  haunted organ), CLASSIC 80S and MOVING (a MOD is most of the sound). Every
+  one has at least one MOD. Ten to try first: Tidal Pad, Bowed Sync, Acid Line,
+  Dub Sub, Sync Scream, Suitcase Keys, Berlin Bass, Night Wind, Haunted Organ,
+  Interval Walk. Nobody has heard them yet; each was measured to play at a
+  sane level, never reach the VCA's clip (at full velocity too), end its tail
+  and move its MODs (the synth's plan in `docs/plans`, "The second set of presets").
 - **MAIN says 1983 BOOKLET, SPEEDS GUESSED beside PRESET.** The presets'
   settings are from a booklet of that year that prints each knob's value;
   they may not be the machine's own memory. And every time and rate in this

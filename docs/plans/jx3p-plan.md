@@ -1432,6 +1432,208 @@ highest cutoffs (12.5 kHz) the lowest notes still beat the weak sine (sidebands
 within a dB of it, all of it 13 dB under the note): the bass is in the
 feedback, as on the real one; keeping it out moved the pitch.
 
+### The second set of presets (2026-11-16, branch `jaxpresets`)
+
+The owner: "I would like to get a bunch more presets for the JAX-EP ... a ton of starting
+patches ... with the MOD and FX set up", and of PHYSIC's first ones, "flat and boring". **109
+more, in twelve folders, each a whole track sound** (the synth, its slots, its sends, its MODs:
+`docs/plans/presets-plan.md`), written in `app/presets/jaxep.inc` after PADS / Warm Pad (PADS
+goes on as one run). Every one has at least one MOD, and every MOD moves something heard.
+**Nobody has heard any of them.** What each does is what its numbers say; the figures below are
+measured, the sound is a guess to be tuned by ear.
+
+| Folder | Count | What is in it |
+| --- | --- | --- |
+| PADS | 9 (10 with Warm Pad) | slow chords that breathe: SHIMMER, BLOOM, a SYNC pulse swept by the LFO, NOISE under the chord, FREE LFOs on CUTOFF, LEVEL and PAN |
+| STRINGS | 8 | string machines, violas, pizzicato, tremolo, a bow's bite from SYNC |
+| BRASS | 8 | the ENV opening the filter: stabs, swells, fifths, a mute (VOWEL) |
+| BASS | 12 | subs, an accented resonant line, rubber, sync growl, wobble, dub |
+| LEAD | 10 | single lines: sync, fuzz, vowels, a breath of NOISE, delayed vibrato |
+| KEYS | 9 | METAL pianos, a rotor organ, a wah clavinet, toy keys, a reed organ |
+| PLUCK | 9 | short notes made by what follows them: DUB, BLOOM, SHIMMER, REVERSE, a sync tine |
+| SEQUENCE | 9 | for sixteenths and arpeggios: STEPPERS on ENV, TUNE under SYNC, PAN and LEVEL |
+| SYNC & METAL | 9 | the two CROSS MODs: sweeps, an inverted ENV, bells, a gong, a drone |
+| ATMOS | 9 | weather and machines: whistling NOISE, a worn radio, a haunted organ, underwater |
+| CLASSIC 80S | 8 | the decade's moves (chorused brass, phased strings, gated stabs), no named patch |
+| MOVING | 9 | a MOD is most of the sound: filter steps, a pan dance, interval walks, a gate |
+
+**How the MODs act on this synth**: CUTOFF, RESONANCE, ENV and the LFO macro bend the patch's
+value toward 0 or 10 (`bent` in jx3p.cpp), so +20% on a CUTOFF of 4.0 swings it 2.4 to 6.4: a small depth is a big move here.
+**TUNE moves DCO-2 in semitones**: aimed at a synced DCO-2 it is a timbre that steps (Sync Steps,
+Sync Growl, Kalimba Sync, Sync Scream), on a free one an interval that walks (Interval Walk:
+unison, a fourth, a tone, a sixth, a third down, a tritone, a third, an octave). MIX crossfades the
+DCOs (plain to METAL, saw to synced square). ATTACK and RELEASE are not used (they change only
+the next note). A STEPPER on LEVEL at -100% is a gate (Chord Chop, Gated Stab, Trance Gate).
+
+**A PWM-like sweep without PWM** (the clone has none, as the real one): DCO-2 on SQUARE under
+SYNC is a pulse whose width is DCO-1's frequency over DCO-2's (OM p.23), so the LFO on DCO-2's
+pitch sweeps the width (Tidal Pad, Sync Pad).
+
+#### How they were measured (`presets_test --heard-jaxep`, in ctest as `presets_heard_jaxep`)
+
+Each added preset is put on a JAX-EP track of a new song (TAPE on ECHO, HALL on SPACE, as a new
+song has) and plays its folder's phrase, a bar at 120 BPM round twice, every note at the level a
+note is placed at; then Stop and the tail. Everything the track and the buses give is read off
+the master, as PHYSIC's (section 17 of physic-plan.md).
+
+| Phrase | Folders | What it plays |
+| --- | --- | --- |
+| notes | BRASS, KEYS, PLUCK, SYNC & METAL, CLASSIC 80S, MOVING | PHYSIC's: four notes up (60 67 64 72), a four-key chord held six steps, a high note |
+| pad | PADS, STRINGS, ATMOS | a four-key chord (55 60 64 71) held fifteen steps, a top note over its second half |
+| bass | BASS | a line from key 34 to 48 |
+| lead | LEAD | a single line from key 72 to 79 |
+| seq | SEQUENCE | sixteen sixteenths, an arpeggio over two chords |
+
+Held, for every added preset:
+
+| Limit | Value | Why |
+| --- | --- | --- |
+| The loudest tenth of a second (RMS, the louder side) | -28 to -12 dB | the booklet's 32 played the same way: the middle -23.1 dB under the notes, -22.7 the pad, -27.3 the bass line, -28.7 the lead, -28.0 the sequence (`--measure-jaxep` prints all 32 under all five); the quietest B15 Planet and B16 Jet (-25 to -60 by phrase), the loudest A13 Chime (-10.1 under the notes) |
+| The largest sample, the tail too | under 0.9 | the master holds at 1.0 |
+| The synth's VCA clip (`Jx3p::samplesClipped`) | 0 samples, at the placed level **and at full velocity** | the owner's call: nothing distorts as written. VELOCITY is ON for a track, so a keyboard's full velocity is about 3 dB over a placed note; two presets with a PULSE at LEVEL 9.5 passed at the placed level and clipped there (15 and 3 samples), and came down to 8.0 |
+| The tail, Stop to the last tenth over -80 dB | ends, within 60 s | a tail always ends |
+| Every sample | a number | |
+| Each MOD | moves (what the engine says it adds swings by more than 0.005) | |
+
+**The levels were set by measuring**: LEVEL (id 23, straight) moved each preset toward -20 dB
+(-21 for a lead or a sequence) in its own phrase, by a script that read `--measure-jaxep`; the
+quiet single-line ones are LEVEL 9.5 and could go no higher without the clip (`Jx3p`'s VCA is
+straight and a saw overshoots to 1.31). **The 109: -26.8 dB (Muted Guitar, a short pluck) to
+-19.1 (Dub Sub), the middle -20.1**: a little over the booklet's own middle, as starting patches
+that sit forward. Peaks 0.67 at most (Muted Guitar: its COMP lets the pluck's edge through), the
+longest tail 8.3 s (Deep Space: SHIMMER).
+
+**Tried by breaking it**: a MOD at no depth (Gong Metal: swing 0), a LEVEL cut to a fifth
+(Haunted Organ: -35.3 dB) and Toy Keys' LEVEL at 10 (peak 0.904) each fail it, naming the
+preset; Muted Trumpets and Muted Guitar at LEVEL 9.5 failed the full-velocity clip before they
+were mended (above). **No checksum is pinned**: the owner tunes them by ear, and a tuned preset
+only has to stay inside the limits. **What it cannot catch**: whether a preset sounds good or
+like its name; whether a MOD's movement is musical (only that it moves); a clip with a chord of
+six at full velocity with every macro turned up (the phrase has four keys at most and the macros
+in the middle); and how it sounds on the handheld.
+
+**The cost** (`--measure-jaxep`'s cost column: the whole engine's time over the sound's while the
+phrase plays, the new song's TAPE and HALL buses included; the lower of two runs, this container):
+the heaviest **Gong Metal 1.66%** (FOLD in a slot, which runs at four times the rate, and a HALL),
+Bloom Field 1.54% and Polar Night 1.37% (BLOOM), Glass Pad 1.32% (SHIMMER); the lightest Round Sub
+0.24%. No preset holds two of BLOOM, SHIMMER and FOLD. **Not run on the handheld**: at 13 to 17
+times the desk, Gong Metal's track would be about a quarter of a core there (22 to 28%), and a pad with
+BLOOM a fifth to a quarter.
+
+#### The presets (★: the ten to try first)
+
+| Folder | Name | The idea | What makes it (synth; slots; sends. MODs) | Loudest | Peak | Tail |
+| --- | --- | --- | --- | --- | --- | --- |
+| PADS | Glass Pad | a bright square-and-saw pad an octave up rising out of it | 8' SQUARE + 4' SAW, CHORUS; SHIMMER; ECHO 10%. LFOs FREE: CUTOFF (0.08 Hz), PAN (DRIFT) | -19.9 dB | 0.30 | 4.4 s |
+| PADS | Velvet Fifths | two low saws a fifth apart, the fifth coming and going | 16' saws, TUNE +7; ENSEMBLE, HALL. LFOs: MIX (4 BARS), CUTOFF (8 BARS) | -19.9 dB | 0.34 | 3.0 s |
+| PADS | Breathing Pad | a soft pad whose level breathes | SQUARE + SAW, VCF LFO; PLATE. LFOs FREE: LEVEL -30% (0.07 Hz), CUTOFF (DRIFT) | -19.9 dB | 0.29 | 5.3 s |
+| PADS | Polar Night | a dark resonant pad with wind (NOISE) under it | 16' SAW + NOISE 25%, RESONANCE 5.5, LFO RANDOM on the VCF; BLOOM. LFOs: RESONANCE (4 BARS), PAN (DRIFT) | -19.6 dB | 0.26 | 7.9 s |
+| PADS | Choir Of Saws | detuned saws with a delayed vibrato, wide | two SAWs 12 cents apart; ENSEMBLE, HALL. LFOs: CUTOFF (2 BARS), HALL's MIX (4 BARS) | -19.9 dB | 0.32 | 2.9 s |
+| PADS | **Tidal Pad** ★ | a pulse whose width sweeps: SYNC's square, its pitch moved by the LFO | DCO-2 SQUARE under SYNC, +3, LFO DEPTH 3.0 on DCO-2; CHORUS, HALL. LFOs: CUTOFF (FREE 0.06 Hz), PAN (2 BARS) | -20.1 dB | 0.25 | 2.5 s |
+| PADS | Halo Pad | 4' and 8' squares, airy, high-passed, resonant | HPF 6.0, RESONANCE 4.0; PING 1/4 DOT, PLATE. LFOs: RESONANCE (8 BARS), PING's TONE (DRIFT) | -20.0 dB | 0.35 | 5.6 s |
+| PADS | Dark Matter | a low resonant 16' pad, taped | 16' SAW + SQUARE, CUTOFF 3.0, RESONANCE 6.0; SATURATE TAPE, HALL. LFO: CUTOFF +30% (8 BARS) | -19.7 dB | 0.31 | 4.3 s |
+| PADS | Sunrise Swell | a 2 s attack that opens the filter as it rises | ATTACK 9.0, ENV MOD 4.5; HALL; SPACE 15%. LFOs: SPACE send (4 BARS), MIX (8 BARS) | -20.0 dB | 0.32 | 4.7 s |
+| STRINGS | Ensemble Strings | a string machine | two SAWs detuned, delayed vibrato, HPF; ENSEMBLE, HALL. LFO: CUTOFF (4 BARS) | -20.0 dB | 0.32 | 2.1 s |
+| STRINGS | Slow Violas | dark, slow strings whose vibrato deepens | 16' + 8' SAW, ATTACK 0.66 s; PLATE. LFOs: the LFO macro (2 BARS), PAN (8 BARS) | -20.0 dB | 0.31 | 4.3 s |
+| STRINGS | Synth Pizz | plucked synth strings, each a different brightness | short SAWs; PING 1/8, PLATE. STEPPER of 6: CUTOFF, 1/8 | -24.8 dB | 0.37 | 0.5 s |
+| STRINGS | Tremolo Strings | strings bowed fast | SAWs; TREMOLO 1/16, HALL. LFO: TREMOLO's DEPTH (4 BARS) | -19.9 dB | 0.46 | 2.1 s |
+| STRINGS | Cinema Strings | a big section, 16' under 8' | SAWs, slow; EQ (high lift), HALL 85%; SPACE 10%. LFO: CUTOFF (8 BARS) | -20.8 dB | 0.33 | 4.7 s |
+| STRINGS | **Bowed Sync** ★ | strings with a bow's bite: the ENV lifts DCO-2 under SYNC | SYNC, ENV DEPTH 2.5 on DCO-2; CHORUS, PLATE. LFO: MIX (2 BARS) | -20.1 dB | 0.32 | 3.5 s |
+| STRINGS | Octave Strings | 8' and 4' saws through a slow phaser | PHASER, HALL. LFO FREE: PHASER's DEPTH (DRIFT) | -20.0 dB | 0.34 | 2.5 s |
+| STRINGS | Distant Section | strings far off in a large hall, moving across | HALL 90%. LFOs: PAN (4 BARS), CUTOFF (8 BARS) | -19.9 dB | 0.31 | 7.1 s |
+| BRASS | Bold Brass | bright saw brass, each bar its own swell | ENV MOD 5.0; SATURATE TUBE, PLATE. LFO RANDOM: ENV, a bar | -20.0 dB | 0.34 | 2.2 s |
+| BRASS | Soft Horns | a square and a saw, slow and round | ATTACK 0.11 s; CHORUS, HALL. LFO: CUTOFF (2 BARS) | -20.0 dB | 0.32 | 2.2 s |
+| BRASS | Fanfare Fifths | brass in fifths, a pitch blip at the start, side to side | TUNE +7, ENV DEPTH 0.4 on both DCOs; COMP, HALL. LFO SQUARE: PAN (2 BARS) | -21.0 dB | 0.43 | 2.0 s |
+| BRASS | Brass Stab | short brass hits | RESONANCE 2.5, ENV MOD 6.0; TAPE 1/8 DOT. STEPPER of 4: CUTOFF, 1/4 | -21.3 dB | 0.47 | 1.7 s |
+| BRASS | Sync Horn | brass whose DCO-2 is swept under SYNC | SYNC, ENV DEPTH 3.0; SATURATE TAPE, PLATE. LFO: MIX (2 BARS) | -20.3 dB | 0.31 | 2.7 s |
+| BRASS | Muted Trumpets | a 10% PULSE with a mute (VOWEL O) that opens each bar | PULSE, HPF 6.0, delayed vibrato; VOWEL, PLATE. LFO: the VOWEL, a bar | -25.6 dB | 0.24 | 1.5 s |
+| BRASS | Low Brass | 16' brass, low and dark | 16' SAW + SQUARE, CUTOFF 2.2; EQ, HALL. LFO: CUTOFF (4 BARS) | -19.9 dB | 0.34 | 2.6 s |
+| BRASS | Swell Brass | brass that swells in | ATTACK 0.49 s, ENV MOD 5.5; CHORUS, HALL; SPACE 10%. LFO: SPACE send (4 BARS) | -20.6 dB | 0.32 | 2.4 s |
+| BASS | Round Sub | a round 16' square | SQUARE alone, CUTOFF 3.0; COMP. LFO: CUTOFF, a bar | -19.5 dB | 0.17 | 0.1 s |
+| BASS | **Acid Line** ★ | a resonant saw line with accents on some steps | RESONANCE 8.5, ENV MOD 5.5; SATURATE HARD, PING 1/8 DOT. STEPPER of 16 on ENV, every step; LFO: CUTOFF (2 BARS) | -25.0 dB | 0.21 | 1.3 s |
+| BASS | Rubber Bass | a bass with a pitch blip and a bouncing filter | ENV DEPTH 0.8 on both DCOs, RESONANCE 4.0; COMP, CHORUS. STEPPER of 8: CUTOFF, 1/8 | -20.7 dB | 0.37 | 0.1 s |
+| BASS | Fifth Bass | a saw and its fifth, the fifth rising and falling | TUNE +7; DRIVE. LFO: MIX, a bar | -22.1 dB | 0.20 | 0.1 s |
+| BASS | Sync Growl | a synced bass whose growl changes each 1/8 | SYNC, ENV DEPTH 4.5 on DCO-2; SATURATE TUBE. STEPPER of 8: TUNE (DCO-2 under SYNC) | -23.3 dB | 0.23 | 0.1 s |
+| BASS | Deep Pluck | a short, deep pluck | SAW + SQUARE, RESONANCE 3.0, SUSTAIN 0; EQ (low lift). LFO: CUTOFF (2 BARS) | -22.8 dB | 0.26 | 0.0 s |
+| BASS | Metal Bass | a bass that turns metallic | METAL, TUNE +1; COMP. LFO: MIX (2 BARS) | -20.7 dB | 0.33 | 0.1 s |
+| BASS | Wobble | a filter swung each 1/8 | RESONANCE 5.0; SATURATE TUBE. LFOs: CUTOFF +40% each 1/8, RESONANCE (4 BARS) | -22.7 dB | 0.17 | 0.1 s |
+| BASS | **Dub Sub** ★ | a near-sine sub into a dark echo | SQUAREs at CUTOFF 1.8; DUB 1/4 DOT. LFO: DUB's TONE (2 BARS) | -19.1 dB | 0.19 | 1.9 s |
+| BASS | Chorus Bass | a smooth bass, chorused | SAW + SQUARE, the synth's CHORUS; CHORUS. LFO: CUTOFF (2 BARS) | -20.0 dB | 0.20 | 0.1 s |
+| BASS | Funk Pluck | a resonant funk pluck | SQUARE, RESONANCE 7.0, DECAY 0.1 s; COMP. STEPPER of 4: CUTOFF, 1/8 | -20.5 dB | 0.30 | 0.1 s |
+| BASS | Saw Stack | two saws, 16' and 8', taped and chorused | SAWs 7 cents apart; SATURATE TAPE, CHORUS. LFO FREE: CUTOFF (DRIFT) | -22.5 dB | 0.21 | 0.1 s |
+| LEAD | Singing Lead | a warm saw lead with a delayed vibrato | two SAWs, RESONANCE 3.5, vibrato after 1.25 s; TAPE 1/8 DOT; SPACE 15%. LFO: TAPE's FEEDBACK (4 BARS) | -21.3 dB | 0.23 | 2.3 s |
+| LEAD | **Sync Scream** ★ | a sync lead that climbs and falls | SYNC, ENV DEPTH 4.0; FUZZ, PING. LFO: TUNE (DCO-2 under SYNC, 2 BARS) | -21.7 dB | 0.19 | 1.7 s |
+| LEAD | Square Lead | two squares an octave apart, moving side to side | 8' + 4' SQUARE, CHORUS; DELAY 1/8 DOT. LFO: PAN, a bar | -21.1 dB | 0.20 | 1.8 s |
+| LEAD | Fat Mono | two detuned saws, saturated, dubbed | 16' + 8' SAW, RESONANCE 4.0; SATURATE TUBE, DUB 1/8 DOT. LFO: CUTOFF, a bar | -24.5 dB | 0.17 | 1.9 s |
+| LEAD | Pulse Lead | a thin 10% pulse with a saw, phased | PULSE + SAW, vibrato; PHASER, TAPE. LFO: PHASER's MIX (4 BARS) | -24.6 dB | 0.25 | 1.9 s |
+| LEAD | Brass Lead | a brassy lead, each 1/4 its own swell | ENV MOD 5.5; SATURATE TUBE, PLATE. LFO RANDOM: ENV, each 1/4 | -21.0 dB | 0.20 | 2.2 s |
+| LEAD | Metal Lead | a saw with METAL coming through | METAL, TUNE +4; CHORUS, PING 1/4. LFO: MIX, a bar | -21.0 dB | 0.25 | 2.0 s |
+| LEAD | Breath Flute | a 4' square with a breath of NOISE | SQUARE + NOISE 12%, ATTACK 0.06 s, vibrato; PLATE. LFO FREE: CUTOFF (0.3 Hz) | -21.0 dB | 0.16 | 3.1 s |
+| LEAD | Fuzz Lead | a saw through a fuzz whose tone moves | FUZZ, EQ. LFO: FUZZ's TONE (2 BARS) | -22.5 dB | 0.18 | 0.2 s |
+| LEAD | Formant Lead | a lead that speaks vowels | SAWs, vibrato; VOWEL, PLATE. LFO: the VOWEL +60% (2 BARS) | -21.0 dB | 0.18 | 2.1 s |
+| KEYS | **Suitcase Keys** ★ | an electric piano whose old amp sways | METAL, DCO-2 a fourth down, MIX 9.0; CHORUS, PLATE. LFO: PAN each 1/2 | -20.0 dB | 0.33 | 2.3 s |
+| KEYS | Rotor Organ | a square organ whose vibrato speeds and slows | 16' + 4' SQUARE, GATE; CHORUS VIBRATO. LFO: CHORUS's RATE (4 BARS) | -19.7 dB | 0.32 | 0.1 s |
+| KEYS | Clav Wah | a pulse clavinet with a wah each 1/4 | PULSE + SQUARE, RESONANCE 6.0; SATURATE TUBE, CHORUS. LFO: CUTOFF +40%, each 1/4 | -24.7 dB | 0.33 | 0.1 s |
+| KEYS | Bell Keys | bell-like keys from METAL a fourth up | METAL, TUNE +5, DECAY 2.5 s; HALL. LFO RANDOM: MIX, a bar | -20.0 dB | 0.33 | 2.2 s |
+| KEYS | Hard Piano | a struck saw-and-square, never twice alike | KEY FOLLOW 8.0, DECAY 1.8 s; COMP, EQ. LFO RANDOM: ENV, each 1/4 | -20.2 dB | 0.53 | 0.2 s |
+| KEYS | Toy Keys | 4' squares an octave apart, crushed | 4' SQUAREs, TUNE +12; CRUSH, PING 1/8. STEPPER of 4: CRUSH's BITS, 1/8 | -20.0 dB | 0.59 | 0.8 s |
+| KEYS | Dream Tines | BANK A's E. Piano II in a stereo tremolo | base E. Piano II; TREMOLO 1/4, PLATE. LFO: TREMOLO's DEPTH (4 BARS) | -20.0 dB | 0.53 | 2.9 s |
+| KEYS | Harpsi Tines | a pulse and a 4' square, plucked, in a spring | SPRING, CHORUS. LFO: CHORUS's MIX (2 BARS) | -20.0 dB | 0.46 | 0.2 s |
+| KEYS | Reed Organ | a reed organ with its bellows | SAW + SQUARE, GATE; CHORUS ENSEMBLE. LFO: LEVEL -15% each 1/8 | -19.7 dB | 0.29 | 0.1 s |
+| PLUCK | Harp Pluck | a harp, its pluck brighter and darker | SAW, SUSTAIN 0, DECAY 0.6 s; PLATE, PING. LFO TRIANGLE: ENV (2 BARS) | -20.4 dB | 0.42 | 2.1 s |
+| PLUCK | Resonant Pluck | a ringing resonant pluck | RESONANCE 8.0, ENV MOD 5.5; PING 1/8 DOT. LFO: RESONANCE (2 BARS) | -23.7 dB | 0.48 | 1.7 s |
+| PLUCK | Silk Pluck | a soft pluck, a blip of pitch, scattered left and right | SQUARE + PULSE, ENV DEPTH 0.4; SPRING, CHORUS. LFO RANDOM: PAN each 1/8 | -20.0 dB | 0.45 | 0.2 s |
+| PLUCK | Dub Pluck | a short square into a dub echo | DUB 1/8 DOT at 60%. LFO: DUB's FEEDBACK (4 BARS) | -20.0 dB | 0.62 | 3.9 s |
+| PLUCK | Glass Pluck | METAL at 4', a fifth up, shimmering | METAL, TUNE +7; SHIMMER. LFO: SHIMMER's amount (4 BARS) | -20.0 dB | 0.47 | 2.2 s |
+| PLUCK | Muted Guitar | a palm-muted pulse | PULSE, DECAY 0.2 s; COMP, CHORUS, PLATE. STEPPER of 8: CUTOFF, 1/8 | -26.8 dB | 0.67 | 1.1 s |
+| PLUCK | Pizz Bloom | plucks swelling into a BLOOM | BLOOM. LFO: BLOOM's MIX (4 BARS) | -25.8 dB | 0.32 | 3.0 s |
+| PLUCK | Kalimba Sync | a tine whose timbre steps: SYNC with a short ENV | SYNC 4', ENV DEPTH 1.5; PLATE. STEPPER of 5: TUNE (DCO-2 under SYNC), 1/4 | -21.5 dB | 0.61 | 1.8 s |
+| PLUCK | Reverse Pluck | each pluck again backwards | REVERSE 1/4, HALL. LFO: REVERSE's MIX -40% (4 BARS) | -20.7 dB | 0.45 | 2.8 s |
+| SEQUENCE | Step Acid | a resonant sequence, accented by a STEPPER | RESONANCE 8.0; SATURATE HARD, PING. STEPPER of 16 on ENV, every step; LFO: CUTOFF (4 BARS) | -25.3 dB | 0.23 | 1.4 s |
+| SEQUENCE | Sync Steps | each step a new synced timbre | SYNC, MIX 8.5; PING. STEPPER of 8: TUNE, every step | -25.4 dB | 0.26 | 1.4 s |
+| SEQUENCE | Bouncing Fifths | a fifth-stacked pluck bouncing side to side | TUNE +7; PING 1/4 TRIP. STEPPER of 4: PAN, every step | -21.6 dB | 0.43 | 1.6 s |
+| SEQUENCE | Chord Chop | a sustained sound chopped by a gate | SUSTAIN 8.0; PLATE. STEPPER of 8: LEVEL +100%, each half step (-1 silence) | -21.6 dB | 0.22 | 2.8 s |
+| SEQUENCE | **Berlin Bass** ★ | a sequencer bass under a long filter sweep | RESONANCE 6.0; SATURATE TAPE, TAPE 1/8 TRIP. LFOs: CUTOFF +40% (8 BARS), TAPE's AGE (4 BARS) | -24.8 dB | 0.19 | 1.0 s |
+| SEQUENCE | Arp Glass | 4' squares for arpeggios, each step struck its own way | PING 1/4 TRIP, PLATE. LFO RANDOM: ENV, every step | -23.7 dB | 0.28 | 2.6 s |
+| SEQUENCE | Blip Seq | short blips with a pitch drop, crushed | ENV DEPTH 2.0 on both DCOs, DECAY 0.05 s; CRUSH, PING 1/8. STEPPER of 6: CRUSH's RATE, 1/8 | -24.9 dB | 0.26 | 0.9 s |
+| SEQUENCE | Stutter Seq | a sequence caught and repeated by chance | STUTTER 1/8, PLATE. LFO: STUTTER's CHANCE +50% (4 BARS) | -25.1 dB | 0.22 | 1.5 s |
+| SEQUENCE | Ratchet Filter | a filter pattern each half step | RESONANCE 6.0; SATURATE TUBE. STEPPER of 16: CUTOFF, each half step, a little SLEW | -25.8 dB | 0.17 | 0.1 s |
+| SYNC & METAL | Sync Sweep Down | a sync sweep from bright to plain on each note | SYNC, ENV DEPTH 6.0; TAPE. LFO: MIX (2 BARS) | -20.0 dB | 0.37 | 1.8 s |
+| SYNC & METAL | Inverted Sync | an octave-up synced DCO-2 swept down by an inverted ENV | SYNC, TUNE +12, ENV DEPTH 5.0 INVERTED, ATTACK 0.36 s; PLATE. LFO: TUNE -20% (4 BARS) | -19.9 dB | 0.28 | 2.8 s |
+| SYNC & METAL | Metal Bells | bells from METAL | METAL, TUNE +10, FINE -3 cents, DECAY 3.5 s; HALL. LFO: MIX (4 BARS) | -20.0 dB | 0.38 | 2.3 s |
+| SYNC & METAL | Clangers | square METAL through a ring modulator | METAL SQUAREs, TUNE +5; RING 145 HZ, PLATE. LFO: RING's FREQ (2 BARS) | -19.9 dB | 0.46 | 2.0 s |
+| SYNC & METAL | Sync Pad | a synced pad whose width the LFO sweeps | SYNC, TUNE +12, LFO DEPTH 4.5 on DCO-2; ENSEMBLE, HALL. LFO: the LFO macro (8 BARS) | -19.8 dB | 0.35 | 2.4 s |
+| SYNC & METAL | Metal Drone | a 16' METAL drone, flanged | METAL, TUNE -1, RESONANCE 5.0; FLANGER. LFO: FLANGER's FEEDBACK (4 BARS) | -20.0 dB | 0.31 | 1.6 s |
+| SYNC & METAL | Sync Stab | short synced stabs | SYNC, ENV DEPTH 4.0; SATURATE TUBE, PING. LFO RANDOM: ENV, each 1/4 | -21.8 dB | 0.43 | 1.2 s |
+| SYNC & METAL | Cross Wah | METAL through a resonant wah | METAL, TUNE +3, RESONANCE 6.0; CHORUS. LFO: CUTOFF each 1/4 | -20.0 dB | 0.31 | 0.1 s |
+| SYNC & METAL | Gong Metal | a 16' gong: METAL a fifth down, folded | METAL, TUNE -7, DECAY 5 s; FOLD, HALL. LFO: FOLD's DRIVE (2 BARS) | -19.5 dB | 0.25 | 3.0 s |
+| ATMOS | **Night Wind** ★ | all NOISE through a near-singing filter: wind that whistles the chord | NOISE, RESONANCE 8.5, KEY FOLLOW full, LFO RANDOM on the VCF; HALL. LFOs FREE: CUTOFF, PAN (DRIFT) | -20.7 dB | 0.38 | 4.8 s |
+| ATMOS | Deep Space | a 16' METAL pad rising in octaves | METAL, ATTACK 1.5 s; SHIMMER. LFO FREE: MIX (DRIFT 0.05 Hz) | -20.0 dB | 0.31 | 8.3 s |
+| ATMOS | Frozen Choir | saws sung through slowly turning vowels | VOWEL I, HALL. LFO FREE: the VOWEL (DRIFT) | -20.0 dB | 0.25 | 4.9 s |
+| ATMOS | Radio Ghosts | a pad on a worn tape, ring-modulated, the station wandering | METAL; WEAR, RING. LFO FREE: RING's FREQ (DRIFT) | -20.0 dB | 0.41 | 1.7 s |
+| ATMOS | **Haunted Organ** ★ | a square organ with a fifth, wobbling, backwards behind | 4' fifth; WEAR (WOW 60%), REVERSE 1/4 DOT. LFO FREE: WEAR's WOW (DRIFT) | -20.0 dB | 0.33 | 4.1 s |
+| ATMOS | Underwater | a dark pad in a deep phaser and a dub echo | CUTOFF 3.0, RESONANCE 4.0; PHASER, DUB. LFO FREE: CUTOFF (0.1 Hz) | -20.8 dB | 0.23 | 5.7 s |
+| ATMOS | Tape Memory | a pad on a tape that is going | WEAR, TAPE 1/4. LFOs: WEAR's WOW (DRIFT), TAPE's AGE (4 BARS) | -20.0 dB | 0.32 | 4.5 s |
+| ATMOS | Bloom Field | a square and its fifth, swelling into BLOOM | TUNE +7 at 4'; BLOOM. LFOs: the LFO macro, which brings a 0.5 Hz filter wobble in and out (4 BARS), PAN (DRIFT) | -20.0 dB | 0.29 | 6.5 s |
+| ATMOS | Static Drift | a pad with NOISE in it, crushed | NOISE 30%; CRUSH, HALL. LFO FREE: MIX (DRIFT): more noise, less note | -20.7 dB | 0.30 | 4.2 s |
+| CLASSIC 80S | Neon Brass | saw brass with the synth's chorus and more | ENV MOD 5.0; CHORUS, PLATE. LFO: CUTOFF (2 BARS) | -20.0 dB | 0.33 | 2.8 s |
+| CLASSIC 80S | Arcade Keys | 8' and 4' squares, bright, a square wave of mix | PING 1/8. LFO SQUARE: MIX, a bar | -20.1 dB | 0.46 | 0.8 s |
+| CLASSIC 80S | Night Drive | a synced poly with a bow of ENV, in tape and hall | SYNC, ENV DEPTH 2.5; TAPE 1/4, HALL. LFO: PAN (4 BARS) | -20.0 dB | 0.32 | 3.1 s |
+| CLASSIC 80S | Gated Stab | a chord stab through a plate, gated | PLATE. STEPPER of 4: LEVEL +100%, each half step | -20.2 dB | 0.38 | 1.6 s |
+| CLASSIC 80S | Chorus Pluck | a bright pluck in an ensemble | ENSEMBLE. LFO TRIANGLE: ENV (2 BARS) | -20.8 dB | 0.50 | 0.0 s |
+| CLASSIC 80S | Video Strings | phased strings | PHASER, HALL. LFO: PHASER's MIX (4 BARS) | -19.9 dB | 0.36 | 2.1 s |
+| CLASSIC 80S | Power Ballad | an electric piano from METAL, chorused, in a hall | METAL, MIX 7.0, DECAY 1.8 s; CHORUS, HALL. LFO: MIX (4 BARS) | -20.1 dB | 0.26 | 2.8 s |
+| CLASSIC 80S | Pulse Pop | a 10% pulse with a square, bright | DELAY 1/8 DOT. LFO TRIANGLE: CUTOFF, a bar | -20.1 dB | 0.39 | 1.5 s |
+| MOVING | Filter Steps | a filter tune of sixteen steps, sliding | RESONANCE 5.0; PING. STEPPER of 16: CUTOFF, every step, SLEW 30% | -20.0 dB | 0.30 | 1.2 s |
+| MOVING | Pan Dance | notes thrown about the room and into ECHO | PLATE. STEPPER of 6: PAN, 1/8; LFO SQUARE: the ECHO send (2 BARS) | -19.9 dB | 0.41 | 1.8 s |
+| MOVING | Breathing Mix | from plain saw to synced square and back | SYNC, TUNE +3; CHORUS. LFOs: MIX +60% (2 BARS), RESONANCE (FREE DRIFT) | -20.2 dB | 0.28 | 0.2 s |
+| MOVING | Random Tone | each 1/8 a new brightness | RESONANCE 3.5; CHORUS. LFOs: CUTOFF RANDOM each 1/8, CHORUS's DEPTH (FREE DRIFT) | -20.9 dB | 0.35 | 0.1 s |
+| MOVING | Swell And Fall | a level and a filter that rise and fall each bar | HALL. LFOs TRIANGLE: LEVEL -40%, CUTOFF, a bar each | -20.5 dB | 0.34 | 2.3 s |
+| MOVING | **Interval Walk** ★ | DCO-2 walks to other intervals under the notes | MIX 5.0; PING 1/4 TRIP. STEPPER of 8: TUNE +60% (unison, a fourth, a tone, a sixth, a third down, a tritone, a third, an octave), 1/4 | -19.9 dB | 0.43 | 1.1 s |
+| MOVING | Echo Throws | a throw into ECHO now and then | no slot. STEPPER of 7: the ECHO send +100%; LFO: the SPACE send (4 BARS) | -20.1 dB | 0.45 | 2.4 s |
+| MOVING | Slow Morph | saw to METAL and back, the ENV drifting with it | METAL, TUNE +2; HALL. LFOs FREE: MIX (0.07 Hz), ENV (0.11 Hz) | -20.1 dB | 0.32 | 2.9 s |
+| MOVING | Trance Gate | a held saw chopped in sixteenths, opening over four bars | SUSTAIN 9.0; PING 1/8. STEPPER of 16: LEVEL +100%, each half step; LFO: CUTOFF (4 BARS) | -20.0 dB | 0.36 | 1.0 s |
+
 ## 7. Risks
 
 | Risk | What is done about it |
