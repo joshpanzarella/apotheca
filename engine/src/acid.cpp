@@ -24,16 +24,18 @@ constexpr double kGateSeconds = 0.003;       // SELF: the gate shuts (and opens 
 constexpr double kLevelGlideSeconds = 0.003; // SELF: a level changed on a sounding note glides this long
 constexpr double kTailSeconds = 0.003;       // allNotesOff: the note fades out in the tail this long
 constexpr int kTuneTick = 16;                // SELF: the cutoff is worked out every this many samples, counted from the strike
+constexpr float kSquareLevel = 0.5f;         // SELF: the square's fundamental as loud as the saw's (4/pi against 2/pi)
 constexpr double kSquareSag = 0.25;          // SELF: the square sags through a one-pole high-pass at this share of its pitch
 constexpr float kSweepQuiet = 1e-5f;         // the accent sweep under this (of its one-accent height) is gone
-constexpr float kOutputGain = 0.5f;          // SELF: the synth's output at LEVEL 0 dB
+constexpr float kOutputGain = 0.3f;          // SELF: the synth's output at LEVEL 0 dB (batch 4: 0.5 put both
+                                             // engine presets, accented, into the clip)
 constexpr float kClipKnee = 1.0f;            // the output is bent softly from here...
 constexpr float kClipCeiling = 1.5f;         // ...towards this, and the samples bent are counted
 
 int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-// The presets the engine knows (the plan's section 5: the 32 come as data in batch 4, after these).
+// The presets the engine knows: CLASSIC, the plan's section 5 (the other 24 come as data, after these).
 struct Preset {
     const char* name;
     const char* category;
@@ -43,6 +45,14 @@ struct Preset {
 const Preset kPresets[] = {
     {"Classic Saw", "CLASSIC", {kSaw, 0, 0, 30, 60, 50, 40, 50, 50, 0, 80, kSlideNote, 0, 0}},
     {"Classic Square", "CLASSIC", {kSquare, 0, 0, 35, 65, 55, 45, 50, 50, 0, 80, kSlideNote, 0, 0}},
+    // The rest of CLASSIC (batch 4): in the engine's table, since an added preset goes in a folder of its
+    // own (presets.cpp). Two of them carry a send into ECHO, given in app/presets/acid.inc.
+    {"Rubber Saw", "CLASSIC", {kSaw, 0, 0, 25, 70, 60, 30, 60, 60, 0, 80, kSlideNote, 0, -2}},
+    {"Hollow Square", "CLASSIC", {kSquare, 0, 0, 30, 55, 45, 50, 50, 50, 0, 80, kSlideNote, 0, 0}},
+    {"Echo Line", "CLASSIC", {kSaw, 0, 0, 28, 65, 55, 35, 50, 50, 0, 80, kSlideNote, 0, 0}},
+    {"Low Pulse", "CLASSIC", {kSquare, -1, 0, 38, 50, 40, 45, 50, 50, 0, 80, kSlideNote, 0, 0}},
+    {"Echo Square", "CLASSIC", {kSquare, 0, 0, 32, 72, 60, 30, 50, 50, 0, 80, kSlideNote, 0, 0}},
+    {"Bright Classic", "CLASSIC", {kSaw, 0, 0, 45, 50, 45, 35, 70, 50, 0, 80, kSlideNote, 0, -8}},
 };
 const int kPresetCount = static_cast<int>(sizeof kPresets / sizeof kPresets[0]);
 
@@ -182,7 +192,7 @@ struct Acid::State {
             const double t2 = t < 0.5 ? t + 0.5 : t - 0.5;
             const float sq = static_cast<float>((t < 0.5 ? 1.0 : -1.0) + blep(t, dt, v.invDt) - blep(t2, dt, v.invDt));
             v.sag = snap(v.sag + static_cast<float>(kSquareSag * 2.0 * 3.14159265358979323846 * dt) * (sq - v.sag));
-            o = sq - v.sag;
+            o = (sq - v.sag) * kSquareLevel;
         }
         v.phase = t + dt;
         if (v.phase >= 1.0) v.phase -= 1.0;

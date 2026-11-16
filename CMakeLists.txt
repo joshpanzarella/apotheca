@@ -196,6 +196,9 @@ if(APOTHECA_BUILD_APP)
     # held at 0, at a placed note's level and at full velocity (docs/plans/jx3p-plan.md, "The second set").
     add_test(NAME presets_heard_jaxep COMMAND presets_test --heard-jaxep)
     set_tests_properties(presets_heard_jaxep PROPERTIES TIMEOUT 120)
+    # ACID's (acid-plan.md, batch 4): an acid line of accents and slides, each MOD heard, the synth's clip at 0.
+    add_test(NAME presets_heard_acid COMMAND presets_test --heard-acid)
+    set_tests_properties(presets_heard_acid PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

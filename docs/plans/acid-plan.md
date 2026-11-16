@@ -344,3 +344,66 @@ in `App::screenNow()`, `app/presets/acid.inc` (empty: batch 4), the WiFi page's 
 Not done here: the 32 presets (batch 4), README's ACID page (batch 5). An accented SQUARE at CUTOFF
 55 and RESONANCE 80 peaked 1.36 out of the synth in `app_test` (into the soft clip, which starts at
 1.0): batch 4 must hold its presets, accented, under the clip (`samplesClipped()`).
+
+### Batch 4, the 32 presets (2026-11-16)
+
+**CLASSIC is the engine's own eight** (`kPresets` in engine/src/acid.cpp: an added preset may not go
+in an engine folder, so the six past the first two moved into the table); two of them carry a send
+into ECHO (`preset Echo Line`, `preset Echo Square` in `app/presets/acid.inc`). The other 24 are data
+in five folders' worth: SQUELCH 8 (4 with a STEPPER on CUTOFF), DEEP 6, DISTORTED 6 (every one whole:
+DRIVE, SATURATE or FUZZ in slot 1, two with an ECHO send, one with DUB in slot 2), MOVING 4 (LFOs on
+CUTOFF, RESONANCE, ENV MOD; a STEPPER on TUNE, a semitone either way).
+
+**`presets_test --heard-acid`** (ctest `presets_heard_acid`, 2.5 s) plays each of the 32 through its whole
+sound: the phrase is a 16-step acid line at 120 BPM (notes placed at 90%, six accents at 100%, six
+GLIDEs that tie: a GLIDE to the same key, one after a short note), round twice, Stop and the tail. Held:
+the loudest tenth between -26 and -10 dB, the master's peak under 0.9, **`samplesClipped()` 0** (the
+phrase has placed notes and accents), a tail that ends inside 60 s, each MOD moving and HEARD (the
+phrase with it off differs by 1% of the RMS or more), and the line's ties (12 ties, 20 strikes, every
+preset).
+
+**The engine's level moved for it**: `kOutputGain` 0.5 to 0.3, and the SQUARE at half (`kSquareLevel`:
+its fundamental as loud as the saw's; it was 5 dB over). At 0.5 both engine presets, accented, went into
+the clip. A resonant line's crest is high (12 dB), and the synth's clip starts at 1.0 out of it, which is
+0.65 at the master: **that, not the master's 0.9, is what binds**, so the squelchy ones carry LEVEL -6 to
+-16 dB. **RESONANCE turned up by a player is still louder** (Screamer at LEVEL 0, RESONANCE 97 and ENV MOD 95, was
+15 dB over Classic Saw): the singing, not the make-up (tried at 0.15: it moved the loud ones under a
+dB). Left for the owner's ears.
+
+★ marks my ten favourites, chosen from the settings and the numbers, **not heard**: a starting point
+for the owner's ears.
+
+| # | Folder | Name | Loudest dB | Peak | Tail s | MODs swing / heard |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | CLASSIC | Classic Saw | -18.1 | 0.444 | 0.1 | - |
+| 2 | CLASSIC | Classic Square | -16.4 | 0.395 | 0.1 | - |
+| 3 | CLASSIC | ★ Rubber Saw | -17.4 | 0.497 | 0.1 | - |
+| 4 | CLASSIC | Hollow Square | -19.7 | 0.250 | 0.1 | - |
+| 5 | CLASSIC | ★ Echo Line | -18.0 | 0.471 | 2.7 | - |
+| 6 | CLASSIC | Low Pulse | -13.4 | 0.423 | 0.1 | - |
+| 7 | CLASSIC | Echo Square | -16.5 | 0.415 | 2.6 | - |
+| 8 | CLASSIC | Bright Classic | -17.3 | 0.385 | 0.1 | - |
+| 9 | SQUELCH | ★ Squelch | -16.5 | 0.605 | 0.1 | - |
+| 10 | SQUELCH | Rubber Duck | -14.5 | 0.562 | 0.1 | - |
+| 11 | SQUELCH | ★ Wet Snap | -16.2 | 0.550 | 0.1 | - |
+| 12 | SQUELCH | Screamer | -14.0 | 0.566 | 0.1 | - |
+| 13 | SQUELCH | ★ Step Squelch | -14.0 | 0.606 | 0.1 | 1:0.80/-1dB |
+| 14 | SQUELCH | Gurgle Steps | -11.4 | 0.464 | 0.1 | 1:1.20/-1dB |
+| 15 | SQUELCH | Chance Squelch | -11.5 | 0.509 | 0.1 | 1:0.92/-1dB |
+| 16 | SQUELCH | ★ Long Squelch | -10.9 | 0.548 | 0.1 | 1:0.80/-1dB |
+| 17 | DEEP | ★ Sub Line | -21.3 | 0.194 | 0.1 | - |
+| 18 | DEEP | Deep Square | -19.2 | 0.194 | 0.1 | - |
+| 19 | DEEP | Warm Floor | -19.4 | 0.266 | 0.1 | - |
+| 20 | DEEP | Dark Round | -20.8 | 0.174 | 0.1 | - |
+| 21 | DEEP | Low Murmur | -20.1 | 0.236 | 0.1 | - |
+| 22 | DEEP | Velvet Bass | -20.3 | 0.234 | 0.1 | - |
+| 23 | DISTORTED | Driven | -14.2 | 0.310 | 0.1 | - |
+| 24 | DISTORTED | Saturated | -15.9 | 0.332 | 0.2 | - |
+| 25 | DISTORTED | Fuzz Line | -20.5 | 0.150 | 2.3 | - |
+| 26 | DISTORTED | Tube Acid | -15.5 | 0.373 | 0.2 | - |
+| 27 | DISTORTED | ★ Burnt Rubber | -15.8 | 0.269 | 2.6 | - |
+| 28 | DISTORTED | ★ Dub Smash | -19.7 | 0.161 | 3.0 | - |
+| 29 | MOVING | Breathing | -14.0 | 0.569 | 0.1 | 1:0.80/-1dB |
+| 30 | MOVING | Wobble Reso | -19.0 | 0.297 | 0.1 | 1:0.80/-8dB |
+| 31 | MOVING | Semitone Steps | -16.3 | 0.563 | 0.1 | 1:2.00/0dB 2:0.60/-2dB |
+| 32 | MOVING | ★ Drift | -11.0 | 0.545 | 0.1 | 1:0.38/-1dB 2:0.42/-11dB |

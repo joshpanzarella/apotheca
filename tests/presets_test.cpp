@@ -40,7 +40,7 @@ static int failures = 0;
 
 namespace {
 
-const TrackKind kSynths[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic};
+const TrackKind kSynths[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid};
 
 struct Rig {
     std::unique_ptr<Engine> engine{new Engine};
@@ -1199,6 +1199,168 @@ void testFm6PresetsAsHeard(bool measure) {
     }
 }
 
+// ---- ACID's added presets, heard through their whole sound ------------------------------------------
+// (docs/plans/acid-plan.md, batch 4.) As FM-6's: through the synth, its slots, its sends into a new
+// song's buses and its MODs, each MOD heard; and as JAX-EP's, the synth's own clip counted
+// (Acid::samplesClipped) and held at 0: the phrase has notes at the level a note is placed at and
+// accents (100%), so both are heard.
+
+struct AcidHeard {
+    double loudestDb = -200.0; // the loudest tenth of a second, RMS of the louder side, dB of full scale
+    float peak = 0.f;          // the largest sample at the master, anywhere, the tail too
+    double tail = 0.0;         // seconds from Stop to the last tenth over -80 dB
+    bool ended = false;        // silent for 12 s before the cap
+    bool numbers = true;       // every sample a number
+    float modSwing[kModsPerTrack] = {}; // how far what each MOD adds moved while playing
+    double modHeardDb[kModsPerTrack] = {-200.0, -200.0}; // the phrase with that MOD off against with it, dB
+    long clipped = 0;          // samples the synth's own clip bent
+    long ties = 0, strikes = 0; // what the line did: its slides tie
+    double cost = 0.0;         // the engine's time over the sound's while it played: a share of a core
+};
+
+// THE PHRASE: a 16-step acid line at 120 BPM, played round twice (4 s), then Stop and the tail. Notes
+// placed (90%) and accents (100%), four slides of half a step (end to end: each ties), a GLIDE to the
+// same key (a tie, one long note), two short notes (a gap under a step: the GLIDE after one still ties).
+// {step, key, length in quarter steps, accent, glide}
+const int kAcidLine[][5] = {{0, 36, 4, 1, 0}, {1, 36, 4, 0, 0}, {2, 48, 4, 0, 1}, {3, 36, 2, 1, 0}, {4, 39, 4, 0, 1},
+                            {5, 36, 4, 0, 0}, {6, 51, 4, 1, 0}, {7, 43, 4, 0, 1}, {8, 43, 4, 0, 1}, {9, 48, 2, 1, 0},
+                            {10, 46, 4, 0, 1}, {11, 36, 4, 0, 0}, {12, 34, 4, 1, 0}, {13, 41, 4, 0, 1}, {14, 36, 4, 0, 0},
+                            {15, 48, 4, 1, 0}};
+
+AcidHeard hearAcidPreset(int preset, int without = -1, std::vector<float>* out = nullptr) {
+    AcidHeard h;
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Acid));
+    const int track = rig.project().trackCount() - 1;
+    session.chooseSynthPreset(track, preset);
+    rig.settle();
+    if (without >= 0) {
+        CHECK(session.setMod(track, without, ModSettings()));
+        rig.settle();
+    }
+    NotePattern& bar = rig.project().tracks[track].notes[0][0];
+    int slot = 0;
+    for (const auto& n : kAcidLine) {
+        NoteEvent& e = bar.notes[slot++];
+        e = NoteEvent{n[0], n[1], n[2] / 4.f, 0.f, n[3] ? 1.f : kPlacedLevel};
+        e.glide = static_cast<std::uint8_t>(n[4] ? kGlideHalf : kGlideOff);
+    }
+    session.sendNotePattern(track, 0);
+    rig.settle();
+    rig.render(48000 * 2); // anything the pick sounded, gone by
+    const Acid* synth = dynamic_cast<const Acid*>(rig.engine->synthForTests(track));
+    CHECK(synth != nullptr);
+    const long clippedBefore = synth ? synth->samplesClipped() : 0, tiesBefore = synth ? synth->ties() : 0, strikesBefore = synth ? synth->strikes() : 0;
+    const int window = 4800;
+    std::vector<float> block(2 * 768);
+    double sumL = 0.0, sumR = 0.0;
+    int inWindow = 0;
+    long frame = 0, lastLoud = 0, stopAt = -1;
+    float least[kModsPerTrack], most[kModsPerTrack];
+    for (int m = 0; m < kModsPerTrack; ++m) least[m] = 1e9f, most[m] = -1e9f;
+    double busy = 0.0;
+    const long playFrames = 4 * 48000, cap = playFrames + 120L * 48000;
+    session.togglePlay(false);
+    rig.frames(1);
+    while (frame < cap) {
+        if (frame >= playFrames && stopAt < 0) {
+            session.togglePlay(false);
+            stopAt = frame;
+            if (out) break; // a take of the phrase only
+        }
+        const auto start = std::chrono::steady_clock::now();
+        rig.engine->render(block.data(), 768);
+        if (stopAt < 0) busy += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        rig.frames(1);
+        if (out) out->insert(out->end(), block.begin(), block.end());
+        for (int i = 0; i < 768; ++i) {
+            const float l = block[2 * i], r = block[2 * i + 1];
+            h.numbers = h.numbers && std::isfinite(l) && std::isfinite(r);
+            h.peak = std::max(h.peak, std::max(std::fabs(l), std::fabs(r)));
+            sumL += static_cast<double>(l) * l, sumR += static_cast<double>(r) * r;
+            if (++inWindow == window) {
+                const double rms = std::sqrt(std::max(sumL, sumR) / window);
+                h.loudestDb = std::max(h.loudestDb, 20.0 * std::log10(rms + 1e-12));
+                if (rms > 1e-4) lastLoud = frame + i + 1;
+                sumL = sumR = 0.0, inWindow = 0;
+            }
+        }
+        frame += 768;
+        if (stopAt < 0)
+            for (int m = 0; m < kModsPerTrack; ++m) {
+                const float shown = rig.engine->modShown(track, m);
+                if (std::isfinite(shown)) least[m] = std::min(least[m], shown), most[m] = std::max(most[m], shown);
+            }
+        if (stopAt >= 0 && frame - lastLoud > 12L * 48000) {
+            h.ended = true;
+            break;
+        }
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) h.modSwing[m] = most[m] > least[m] ? most[m] - least[m] : 0.f;
+    h.tail = (lastLoud > stopAt ? lastLoud - stopAt : 0) / 48000.0;
+    h.cost = busy / (playFrames / 48000.0);
+    if (synth) h.clipped = synth->samplesClipped() - clippedBefore, h.ties = synth->ties() - tiesBefore, h.strikes = synth->strikes() - strikesBefore;
+    return h;
+}
+
+// Every MOD of a preset, heard (as FM-6's): the phrase with it off against the phrase with both on.
+void hearAcidMods(int preset, AcidHeard& h) {
+    const TrackSound* sound = presetSound(TrackKind::Acid, preset);
+    if (!sound) return;
+    std::vector<float> all;
+    hearAcidPreset(preset, -1, &all);
+    double signal = 0.0;
+    for (float v : all) signal += static_cast<double>(v) * v;
+    for (int m = 0; m < kModsPerTrack; ++m) {
+        if (sound->mods[m].kind == kModOff) continue;
+        std::vector<float> without;
+        hearAcidPreset(preset, m, &without);
+        double apart = 0.0;
+        for (std::size_t i = 0; i < all.size() && i < without.size(); ++i) apart += (static_cast<double>(all[i]) - without[i]) * (static_cast<double>(all[i]) - without[i]);
+        h.modHeardDb[m] = 10.0 * std::log10((apart + 1e-30) / (signal + 1e-30));
+    }
+}
+
+// The limits every ACID preset is held to, the engine's own eight too. The window is grounded on Classic
+// Saw and Classic Square played the same way, with room either side as the other synths have (measured
+// 2026-11-16: acid-plan.md, batch 4). Nothing is pinned by checksum: the owner tunes them by ear.
+constexpr double kAcidQuietestDb = -26.0, kAcidLoudestDb = -10.0;
+constexpr float kAcidPeakMost = 0.9f;
+constexpr double kAcidTailMost = 60.0;
+constexpr double kAcidModHeardDb = -40.0; // a MOD turned off changes the phrase by at least 1% of its RMS
+void testAcidPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Acid;
+    const SynthSpec& spec = *specFor(kind);
+    const int first = 0; // (every one: the engine's own eight are batch 4's too, CLASSIC)
+    if (measure) std::printf("  %-3s %-10s %-18s %8s %6s %6s %7s %5s %s  %s\n", "", "folder", "name", "loudest", "peak", "tail", "cost", "clip", "ties", "MODs swing / heard");
+    for (int i = first; i < builtInPresets(kind); ++i) {
+        AcidHeard h = hearAcidPreset(i);
+        hearAcidMods(i, h);
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[96] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f && h.modHeardDb[m] >= kAcidModHeardDb;
+            char one[40];
+            std::snprintf(one, sizeof one, " %d:%.2f/%.0fdB", m + 1, h.modSwing[m], h.modHeardDb[m]);
+            std::strcat(swing, one);
+        }
+        if (measure)
+            std::printf("  %-3d %-10s %-18s %6.1f dB %6.3f %5.1fs %6.2f%% %5ld %ld/%ld %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.cost * 100.0, h.clipped, h.ties, h.strikes, swing);
+        CHECK(h.ties == 2 * 6 && h.strikes == 2 * 10); // (every preset: the line's six GLIDEs tie, as the rule says)
+        const bool fine = h.numbers && h.loudestDb >= kAcidQuietestDb && h.loudestDb <= kAcidLoudestDb && h.peak < kAcidPeakMost && h.ended && h.tail <= kAcidTailMost && modsMove && h.clipped == 0;
+        if (!fine) std::printf("  ACID %d %s / %s: loudest %.1f dB, peak %.3f, tail %.1f s%s%s, clipped %ld, MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", h.clipped, swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kAcidQuietestDb && h.loudestDb <= kAcidLoudestDb);
+        CHECK(h.peak < kAcidPeakMost);
+        CHECK(h.ended && h.tail <= kAcidTailMost);
+        CHECK(modsMove);
+        CHECK(h.clipped == 0);
+    }
+}
+
 // FM-6's `op N` line: one operator's 21 settings in order, refused for another synth or cut short.
 void testFm6sOpLine() {
     const std::string text =
@@ -1241,6 +1403,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[a], "--heard-fm6") == 0 || std::strcmp(argv[a], "--measure-fm6") == 0) {
             testFm6PresetsAsHeard(std::strcmp(argv[a], "--measure-fm6") == 0);
             std::printf(failures ? "%d check(s) failed\n" : "FM-6's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+        // --heard-acid: ACID's added presets the same way, each MOD heard and the synth's clip counted (its
+        // own ctest entry, presets_heard_acid). --measure-acid: every ACID built-in's figures, printed.
+        if (std::strcmp(argv[a], "--heard-acid") == 0 || std::strcmp(argv[a], "--measure-acid") == 0) {
+            testAcidPresetsAsHeard(std::strcmp(argv[a], "--measure-acid") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "ACID's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
         // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest
