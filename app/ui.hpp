@@ -170,6 +170,14 @@ struct Playhead {
 // Draws it over a picture `w` wide that starts at `x`.
 void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, int y, int w, int h);
 
+// A recording's picture with the part played marked (the sampler's START and END, a drum lane's
+// EDIT): every point of `peaks` a column, lit from `start` to `end` (0..1 of the whole) and drawn in
+// the line's colour outside it, with a purple mark at each. `lit`, if given, is the height to draw a
+// lit point at in place of its peak (a lane's GAIN and fades), 0..1 like the peaks.
+void wavePicture(SDL_Renderer* r, const std::vector<float>& peaks, int x, int y, int w, int h, float start, float end, const std::vector<float>* lit = nullptr);
+// END's mark, inside a picture `w` wide.
+inline int waveEndMarkX(float end, int w) { const int x = static_cast<int>(end * w) - 2; return x < 0 ? 0 : (x > w - 2 ? w - 2 : x); }
+
 // How a held D-pad runs, the same on every screen. Two speeds: a cursor (grids, and a
 // cursor among boxes) runs fast; a list, or a choice being stepped through, runs slowly
 // enough to see or hear each one go by.

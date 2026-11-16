@@ -287,15 +287,7 @@ void SamplerScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fonts.small.draw(r, sx + 7.f, wordsY, "Hold A and push up to pick a recording, or press Y to catch the last bar played.", kDim);
     } else if (!sound.peaks.empty()) {
         const int wx = sx + 7, wy = kWaveY, ww = sw - 14, wh = kWaveH;
-        const int count = static_cast<int>(sound.peaks.size());
-        const float start = static_cast<float>(t.sampler[sampler::Start]) / 100.f, end = endPart(t);
-        for (int i = 0; i < count; ++i) {
-            const int ph = 1 + static_cast<int>(sound.peaks[static_cast<std::size_t>(i)] * (wh - 1));
-            const float at = static_cast<float>(i) / count;
-            fill(r, wx + ww * i / count, wy + (wh - ph) / 2, ww / count, ph, at >= start && at < end ? kText : kLine); // what a note plays, lit
-        }
-        fill(r, wx + static_cast<int>(start * ww), wy - 2, 2, wh + 4, kPurple);   // where a note begins
-        fill(r, wx + endMarkX(end, ww), wy - 2, 2, wh + 4, kPurple);              // and where it ends
+        wavePicture(r, sound.peaks, wx, wy, ww, wh, static_cast<float>(t.sampler[sampler::Start]) / 100.f, endPart(t)); // what a note plays, lit
         drawPlayhead(r, head_, lastMs_, wx, wy - 2, ww, wh + 4);
         std::snprintf(text, sizeof text, "%.1f S", sound.seconds);
         fonts.small.drawRight(r, sx + sw - 8.f, sy + 7.f, text, kDim);
