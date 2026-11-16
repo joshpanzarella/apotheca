@@ -176,6 +176,10 @@ if(APOTHECA_BUILD_APP)
     endforeach()
     # A test that hangs is a failed test in two minutes, not a run that never ends.
     set_tests_properties(ui app save chord sample transfer design midi controls throwapp nextscene glideapp chordfxapp under scope hear mixer songend feelapp chokeapp picker bench modapp modknob modtab presets laneedit PROPERTIES TIMEOUT 120)
+    # PHYSIC's added presets played through their whole sound (slots, sends, MODs), each held to a
+    # loudness window, no clip, a tail that ends and MODs that move (docs/plans/physic-plan.md, section 17).
+    add_test(NAME presets_heard COMMAND presets_test --heard)
+    set_tests_properties(presets_heard PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

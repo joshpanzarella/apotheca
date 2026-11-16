@@ -67,13 +67,21 @@ One fact a line. `#` starts a note to the end of the line. Blank lines are passe
 | Line | Means |
 | --- | --- |
 | `new FOLDER / NAME` | a new built-in, after every one before it, in FOLDER. FOLDER up to 14 letters, NAME up to 20; plain letters, spaces, digits and `- . ' &` are fine. A folder is a run: its presets stand together, and a folder name used once may not come back after another folder. Not one of the engine's own folders (BANK A, ROM 1A, MALLETS...) and not USER |
-| `preset N` | the engine's own built-in N (from 1, as the song's `preset N`): give it a track sound. Only the track-sound lines may follow |
+| `preset NAME` | the engine's own built-in called NAME: give it a track sound. Only the track-sound lines may follow |
+
+**Name a built-in, never count to it** (`base` and `preset`). Capitals are not counted
+(`base church bell` is Church Bell). Where two folders hold the name (FM-6's cartridges), write
+`FOLDER / NAME`: `base ROM 1A / BRASS 1`. A name nobody has, or one two folders share, is a
+problem the test names ("line 9: no built-in before this one is called \"Chruch Bell\""). A
+number still reads, as the built-in's place from 1, but **a place moves**: batch 10 of PHYSIC
+put presets inside the engine's folders, and a `base 12` written before it pointed at another
+sound with nothing said. The name is what to write.
 
 ### The synth's sound (a `new` preset only)
 
 | Line | Means |
 | --- | --- |
-| `base N` | start from built-in N's settings (from 1; an engine one or an added one before this; an added one's macros too). Without it: built-in 1's, macros at the middle |
+| `base NAME` | start from the settings of the built-in called NAME (an engine one or an added one before this; an added one's macros too). Without it: built-in 1's, macros at the middle |
 | `set ID VALUE ID VALUE ...` | settings by id, each a whole number in its range |
 | `settings V0 V1 ...` | every setting from id 0, in order (fewer is fine: the rest stay) |
 | `macros M1 ... M8` | the eight macros, 0 to 1, 0.5 the middle ("+0" on the device) |
@@ -165,7 +173,7 @@ Both are in the data now, and `presets_test` plays them.
 
 ```
 new PADS / Warm Pad
-base 1                          # String I (BANK A 1), then:
+base String I                   # (BANK A 1), by its name. Then:
 set 27 70  28 60  29 80  30 75  # ATTACK 7.0, DECAY 6.0, SUSTAIN 8.0, RELEASE 7.5
 set 31 0                        # the synth's own CHORUS off: the track's CHORUS does it
 fx 1 chorus 0.3 0.6 0 0.7       # RATE, DEPTH, TYPE (the first of 4), MIX
@@ -178,7 +186,7 @@ mod 1 1 0 0.6 9 0 0 0           # MOD 1: an LFO on macro 1 (CUTOFF), +20%, 2 BAR
 
 ```
 new SHIMMER / Glass Steps
-base 19                         # Church Bell (BELLS), then:
+base Church Bell                # (BELLS), by its name: a place moves, a name does not. Then:
 set 3 35  4 70                  # POSITION 35, DECAY 70
 fx 1 shimmer 0.6 0.7 0.6 0.4    # SHIMMER, DECAY, TONE, MIX
 send 1 0.2                      # into ECHO
@@ -189,7 +197,7 @@ modsteps 1 8 0.2 0 0.5 -0.3 0.8 0 -0.6 0.2 0.9 -0.1 0 0 0 0 0 0 0 0
 Giving one of the engine's own a sound (here JAX-EP's A13 Chime, a bit of SPACE):
 
 ```
-preset 13
+preset Chime
 send 2 0.3
 ```
 
@@ -201,7 +209,14 @@ send 2 0.3
 2. `./build/presets_test --show` prints every preset with a sound as the device reads it:
    each effect's settings ("SIZE 2.0 S"), the sends, each MOD with its target's name.
 3. `./build/presets_test --print` lists the added ones and their places.
-4. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
+4. **PHYSIC's added presets are heard through their whole sound**: `./build/presets_test --heard`
+   (in ctest as `presets_heard`) plays a phrase on each, with its slots, sends and MODs into a new
+   song's buses, and fails one too quiet or too loud (-28 to -12 dB, its loudest tenth of a
+   second), one that clips (a peak of 0.9), one whose tail does not end within 60 s, and one with a
+   MOD that does not move. `--measure` prints those figures for every PHYSIC built-in. The limits
+   and why: `docs/plans/physic-plan.md`, section 17. (The other synths' added presets have no such
+   test yet: the same function, given their kind, would be the start of one.)
+5. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
    list (it shows the folder and the name).
 
 Nobody has listened to any of it on the handheld: the owner cannot hear, so what a preset
