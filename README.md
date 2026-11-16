@@ -7,9 +7,9 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth, 32 presets), FM-6 (six-operator
-FM, after a classic 80s synth, 32 presets) or PHYSIC (plucked and struck sounds that ring by
-themselves: strings, mallets, bells, 24 presets). Up to sixteen scenes of
+(a virtual analog synth modeled after a popular DCO synth, 33 presets), FM-6 (six-operator
+FM, after a classic 80s synth, 160 presets) or PHYSIC (plucked and struck sounds that ring by
+themselves: strings, mallets, bells, 25 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -469,10 +469,13 @@ designer".
   are drawn as lines. Turn something on the handheld and the page shows it.
 - **Play it** by clicking the keys or with the computer's keyboard
   (A W S E D F T G Y H U J K; Z and X change octave).
-- **SAVE AS PRESET** keeps the sound, macros included, under a name. It
+- **SAVE AS PRESET** keeps the track's whole sound under a name: the synth
+  (macros included), its three effects, its two sends, GLIDE FROM and its two
+  MODs. Not its LEVEL and PAN on the mixer: those are the song's balance. It
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
-  `NAME.jaxep`, `NAME.fm6`, `NAME.physic`). Saving under the same name again replaces it.
+  `NAME.jaxep`, `NAME.fm6`, `NAME.physic`). Saving under the same name again
+  replaces it. Picked again, it puts all of that back (see "Presets" below).
 - **ROLL A NEW SOUND** (PHYSIC only) is the handheld's Y on MAIN: a new
   strike and ring on the same MODEL.
 - **FM-6 stands where QMOD stood** (gone from the program, 2026-11-15). What
@@ -502,6 +505,33 @@ designer".
 
 A song keeps the whole sound of each track, not only the preset's number,
 so a song still sounds right if a preset is later changed or removed.
+
+### Presets
+
+A preset is a synth's sound, and **it may hold the track's whole sound**: its
+three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
+
+| Preset | Picked, it... |
+| --- | --- |
+| One of your own, saved from now on | puts its whole sound in: every slot, send and MOD as saved (an empty slot is emptied) |
+| A built-in that holds a track sound (a few added ones, like JAX-EP's PADS) | the same |
+| A plain one: the booklet's, the cartridges', PHYSIC's first 24, one of your own saved before | changes the synth only, and leaves your effects, sends and MODs as they are |
+
+- **One step of undo** takes a pick back: the synth, the effects, the sends and
+  the MODs together.
+- **Passing over a preset with a sound on the way to a plain one gives your
+  own back.** Browsing from your sound (say a FILTER and a little ECHO) over
+  PADS / Warm Pad (CHORUS and HALL) to a plain preset leaves your FILTER and
+  ECHO, as if Warm Pad had not been passed. Turn anything while on Warm Pad
+  and it is yours: the next plain preset leaves it.
+- What is heard while browsing is what loads. A track whose effects came from
+  a preset is an ordinary track afterwards.
+- **A new track starts plain** on its synth's first preset, whatever that
+  preset holds.
+- The mixer's LEVEL and PAN are never in a preset.
+- Built-in presets beyond the synth's own are added after them, each in a
+  folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER). How to write one:
+  `docs/plans/presets-plan.md`.
 
 ### A scene of any length
 
@@ -713,9 +743,12 @@ is a carrier; one that only bends another is a modulator. Which bends which is
 the ALGORITHM, one of 32 wirings. Each operator has its own envelope, tuning
 and level.
 
-- **32 presets, one folder, ROM 1A**: the first factory cartridge of the synth
-  it is modeled after, in its order (BRASS 1 ... TAKE OFF), names as the
-  cartridge writes them. A new FM-6 track starts on the first.
+- **160 presets in five folders, ROM 1A, 1B, 2B, 3B and 4B**: five factory
+  banks of the synth it is modeled after, each in its order (ROM 1A is the
+  first cartridge, BRASS 1 ... TAKE OFF), names as the cartridges write them
+  with their gaps closed up. A new FM-6 track starts on the first. Some names
+  are in two banks, and eight voices are copies of one before them (kept so
+  each bank is whole: `tools/fm6/README.md`).
 - **Every one of the original's 145 voice settings is there**, by its own
   number, so a sound from any bank of the original goes in setting for
   setting. Not played: pitch bend, the mod wheel, breath and foot.
@@ -780,7 +813,10 @@ damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
   TINES (Music Box), BELLS (Church Bell, Handbell, Tubular Bell, Wine Glass,
   Crystal), WOOD AND SKIN (Woodblock, Temple Blocks, Log Drum, Tom) and DICE
   (Rain, Wind Chime, Loose Strings, Drunk Marimba). **A new PHYSIC track
-  starts on Marimba**, so notes placed at once play a marimba line.
+  starts on Marimba**, so notes placed at once play a marimba line. After
+  them, presets that hold a track sound (effects, sends, MODs: "Presets"
+  above), in folders of their own: SHIMMER (Glass Steps, a bell through
+  SHIMMER with a STEPPER on POSITION).
 - **Eight voices.** A voice costs only while it rings. A key struck again
   while it rings is the same voice: on a bar or a bell the new hit adds to the
   ringing (a ratchet is a real roll); a string is damped for 2 ms first, as a
@@ -1641,6 +1677,8 @@ pages are that synth's panel:
   sounds the synth it is modeled after came with, in their order (String I,
   String II, Organ I ... Planet, Jet). On FOLDER, hold A and press up or down
   to go from one bank to the other. A new JAX-EP track starts on the first.
+  After them, presets that hold a track sound ("Presets" above), each folder
+  its own: PADS (Warm Pad: String I slowed, CHORUS and HALL, an LFO on CUTOFF).
 - **MAIN says 1983 BOOKLET, SPEEDS GUESSED beside PRESET.** The presets'
   settings are from a booklet of that year that prints each knob's value;
   they may not be the machine's own memory. And every time and rate in this

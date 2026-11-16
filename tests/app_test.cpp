@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "presets.hpp"
 #include "app.hpp"
 #include "battery.hpp"
 #include "bench_run.hpp"
@@ -2654,11 +2655,18 @@ void testFm6OnATrack() {
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.fm6();
-    // FOLDER turned with only ROM 1A there: nothing moves, and it does not hang (it froze the
-    // handheld: owner, 2026-11-15). Both ways, held A and the stick's step alike go through stepFolder.
+    // FOLDER turned: a bank at a time (ROM 1B is the 33rd), and back. (With ROM 1A alone it froze the
+    // handheld once, 2026-11-15: stepFolder's one-folder guard. Since the banks were added, 2026-11-16,
+    // no synth has one folder, and no test reaches the guard.)
     screen.goTo(0, SynthScreen::kFolder);
     rig.key(A, true), rig.frames(1);
-    rig.tap(UP), rig.tap(DOWN), rig.tap(RIGHT), rig.tap(LEFT);
+    rig.tap(UP);
+    CHECK(track.preset == 32);
+    rig.tap(DOWN);
+    CHECK(track.preset == 0);
+    rig.tap(LEFT);
+    CHECK(track.preset >= 4 * 32); // round to the last folder: ROM 4B, or one of the built-ins added after it
+    rig.tap(RIGHT);
     rig.key(A, false), rig.frames(1);
     CHECK(track.preset == 0);
     screen.goTo(0, SynthScreen::kAdvanced);
@@ -6115,7 +6123,7 @@ void testPresetsAndFolders() {
     CHECK(track.patch.value[phazed::Level] == Phazed::presetPatch(1).value[phazed::Level]);
     CHECK(rig->listen() > 0.f);
     rig->tap(DOWN, 2);
-    CHECK(track.preset == Phazed::presetCount() - 1); // round the end
+    CHECK(track.preset == builtInPresets(TrackKind::Phazed) - 1); // round the end
     rig->tap(UP);
     rig->key(A, false);
     CHECK(track.preset == 0);
@@ -6136,8 +6144,8 @@ void testPresetsAndFolders() {
     rig->tap(DOWN);
     CHECK(track.preset == 0);
     rig->tap(DOWN); // back round to the last folder's first preset
-    CHECK(std::strcmp(Phazed::presetCategory(track.preset), Phazed::presetCategory(Phazed::presetCount() - 1)) == 0);
-    CHECK(track.preset == 0 + Phazed::presetCount() - 1 || std::strcmp(Phazed::presetCategory(track.preset - 1), Phazed::presetCategory(track.preset)) != 0);
+    CHECK(std::strcmp(phazedSpec().presetCategory(track.preset), phazedSpec().presetCategory(builtInPresets(TrackKind::Phazed) - 1)) == 0);
+    CHECK(track.preset == 0 + builtInPresets(TrackKind::Phazed) - 1 || std::strcmp(phazedSpec().presetCategory(track.preset - 1), phazedSpec().presetCategory(track.preset)) != 0);
     rig->key(A, false);
 
     // The stick runs through presets quickly.
@@ -6421,7 +6429,7 @@ void testJaxepsDeviceScreen() {
     CHECK(rig->app.phazed().page() == 0); // Phazed's own screen is a separate one
 
     // Presets, and round: the factory 32 (the plan's batch 7).
-    const int presets = Jx3p::presetCount();
+    const int presets = builtInPresets(TrackKind::Jx3p);
     rig->key(A, true);
     rig->tap(UP);
     CHECK(track.preset == 1 % presets);
@@ -6566,13 +6574,13 @@ void testHowJaxepReads() {
     CHECK(std::string(jaxepFolderNote("BANK A")) == "1983 BOOKLET, SPEEDS GUESSED" && jaxepFolderNote("BANK B") == kJaxepBankNote);
     CHECK(std::string(jaxepFolderNote("START")) == "SPEEDS GUESSED" && jaxepFolderNote("BANKS") == kJaxepGuessNote && jaxepFolderNote("USER") == kJaxepGuessNote && jaxepFolderNote("") == kJaxepGuessNote);
     CHECK(spec.folderNote && !phazedSpec().folderNote && !fm6Spec().folderNote && spec.pageReadsAsDevice && !phazedSpec().pageReadsAsDevice && !fm6Spec().pageReadsAsDevice);
-    for (int i = 0; i < Jx3p::presetCount(); ++i) CHECK(spec.folderNote(i) == jaxepFolderNote(Jx3p::presetCategory(i)));
+    for (int i = 0; i < builtInPresets(TrackKind::Jx3p); ++i) CHECK(spec.folderNote(i) == jaxepFolderNote(spec.presetCategory(i))); // (an added built-in's folder: SPEEDS GUESSED)
     UserPreset own;
     own.name = "MINE";
     own.values.assign(jx3p::kPatchSettings, 0);
     own.macros.assign(kSynthMacros, 0.5f);
     setUserPresets(TrackKind::Jx3p, {own});
-    CHECK(spec.presetCount() == Jx3p::presetCount() + 1 && spec.folderNote(Jx3p::presetCount()) == nullptr && spec.folderNote(0) != nullptr);
+    CHECK(spec.presetCount() == builtInPresets(TrackKind::Jx3p) + 1 && spec.folderNote(builtInPresets(TrackKind::Jx3p)) == nullptr && spec.folderNote(0) != nullptr);
     setUserPresets(TrackKind::Jx3p, {});
 
     // On the screen: MAIN's PRESET row says it, and does not for the player's own.
@@ -6587,7 +6595,7 @@ void testHowJaxepReads() {
     rig->app.session().chooseSynthPreset(1, 31); // B16, in BANK B
     CHECK(screen.folderNote() == kJaxepBankNote && std::string(spec.presetCategory(31)) == "BANK B" && std::string(spec.presetCategory(15)) == "BANK A" && std::string(spec.presetCategory(16)) == "BANK B");
     setUserPresets(TrackKind::Jx3p, {own});
-    rig->app.session().chooseSynthPreset(1, Jx3p::presetCount());
+    rig->app.session().chooseSynthPreset(1, builtInPresets(TrackKind::Jx3p));
     CHECK(screen.folderNote() == nullptr);
     rig->project().track = 0; // (and a drum track is not asked)
     setUserPresets(TrackKind::Jx3p, {});
@@ -6655,7 +6663,7 @@ void testAPresetKeepsTheTracksOwnValues() {
     rig->tap(R2);
     rig->app.jaxep().goTo(0, SynthScreen::kPreset);
     rig->key(A, true);
-    rig->tap(UP, Jx3p::presetCount()); // all the way round, back to the first
+    rig->tap(UP, builtInPresets(TrackKind::Jx3p)); // all the way round, back to the first
     rig->key(A, false);
     const Jx3pPatch first = Jx3p::presetPatch(0);
     CHECK(track.preset == 0);
@@ -6685,13 +6693,13 @@ void testAPresetKeepsTheTracksOwnValues() {
         }
         CHECK(count == jx3p::kPatchSettings && at17 == 41);
     }
-    CHECK(track.preset == Jx3p::presetCount() && userPresets(TrackKind::Jx3p).size() == 1);
+    CHECK(track.preset == builtInPresets(TrackKind::Jx3p) && userPresets(TrackKind::Jx3p).size() == 1);
     // ...and picking it, with the track's two turned again, leaves them be.
     session.setSynthSetting(1, jx3p::Velocity, 0);
     session.setSynthSetting(1, jx3p::Brilliance, 12);
     session.chooseSynthPreset(1, 0);
     CHECK(track.jx3p.value[jx3p::Resonance] == first.value[jx3p::Resonance]);
-    session.chooseSynthPreset(1, Jx3p::presetCount());
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Jx3p));
     CHECK(track.jx3p.value[jx3p::Resonance] == 41 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
     const float fullMine = jxLoud(*rig, 1.f), softMine = jxLoud(*rig, 0.3f);
     CHECK(softMine > 0.75f * fullMine && softMine < 1.33f * fullMine);
@@ -6703,7 +6711,7 @@ void testAPresetKeepsTheTracksOwnValues() {
     CHECK(writeTextFile(std::string(folder) + "/OLD.twin", "apotheca-preset 1\nsynth twin\nmacros 0.5\nsettings 1 2 3\n"));
     session.usePresetFolder(folder);
     CHECK(userPresets(TrackKind::Jx3p).size() == 2 && userPresets(TrackKind::Jx3p)[0].name == "HAND" && userPresets(TrackKind::Phazed).empty() && userPresets(TrackKind::Fm6).empty());
-    session.chooseSynthPreset(1, Jx3p::presetCount());
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Jx3p));
     CHECK(track.jx3p.value[jx3p::Resonance] == 9 && track.jx3p.value[jx3p::Velocity] == 0 && track.jx3p.value[jx3p::Brilliance] == 12);
     std::string still;
     CHECK(readTextFile(std::string(folder) + "/OLD.twin", still) && still.find("synth twin") != std::string::npos);
@@ -6716,7 +6724,7 @@ void testAPresetKeepsTheTracksOwnValues() {
         CHECK(writeTextFile(std::string(folder) + "/WILD.jaxep", wild + "\n"));
         session.usePresetFolder(folder);
         CHECK(userPresets(TrackKind::Jx3p).size() == 3 && userPresets(TrackKind::Jx3p)[2].name == "WILD");
-        session.chooseSynthPreset(1, Jx3p::presetCount() + 2);
+        session.chooseSynthPreset(1, builtInPresets(TrackKind::Jx3p) + 2);
         for (int id = 0; id < jx3p::kPatchSettings; ++id) {
             const int most = jx3pSpec().settingMax(id), least = jx3pSpec().settingMin(id);
             CHECK(track.jx3p.value[id] == (id == jx3p::Cutoff ? most : id == jx3p::Resonance ? least : id % 2 ? most : least));
@@ -6725,7 +6733,7 @@ void testAPresetKeepsTheTracksOwnValues() {
         // ...and the engine plays it: every sample a number.
         const std::vector<float> heard = (jxLoud(*rig, 1.f), rig->render(9600));
         for (float v : heard) CHECK(std::isfinite(v));
-        session.chooseSynthPreset(1, Jx3p::presetCount());
+        session.chooseSynthPreset(1, builtInPresets(TrackKind::Jx3p));
         std::remove((std::string(folder) + "/WILD.jaxep").c_str());
     }
     // The track made another instrument and back: the two are the track's still.
@@ -7612,7 +7620,7 @@ void testPresetsEightAtATime() {
     rig.app.phazed().goTo(0, SynthScreen::kPreset);
     rig.frames(1);
     const TrackData& t = rig.project().tracks[1];
-    const int last = Phazed::presetCount() - 1;
+    const int last = builtInPresets(TrackKind::Phazed) - 1;
     CHECK(t.preset == 0 && last > 20);
     rig.key(A, true);
     rig.tap(RIGHT);
@@ -9402,7 +9410,7 @@ void testPhysicOnATrack() {
     const PhysicPatch first = Physic::presetPatch(0);
     CHECK(track.preset == 0 && std::string(physicSpec().presetName(0)) == "Marimba" && std::equal(first.value, first.value + physic::kSettings, track.physic.value));
     CHECK(track.physic.value[physic::Model] == physic::kMarimba && settingCount(TrackKind::Physic) == 18 && presetSettingCount(TrackKind::Physic) == 18);
-    CHECK(shownSettingCount(TrackKind::Physic) == 18 && builtInPresets(TrackKind::Physic) == Physic::presetCount());
+    CHECK(shownSettingCount(TrackKind::Physic) == 18 && builtInPresets(TrackKind::Physic) >= Physic::presetCount());
     session.audition(1, 60, 0.8f);
     CHECK(rig.listen(4000) > 0.01f);
     rig.render(96000 * 3);
@@ -9599,8 +9607,8 @@ void testPhysicOnATrack() {
     setUserPresets(TrackKind::Physic, {UserPreset{"SHORT ONE", {physic::kBell, 1, 12, 34}, {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f}}});
     session.chooseSynthPreset(1, 11); // Church Bell first: another sound under it
     CHECK(std::string(physicSpec().presetName(11)) == "Church Bell");
-    session.chooseSynthPreset(1, Physic::presetCount());
-    CHECK(track.preset == Physic::presetCount() && std::string(physicSpec().presetCategory(track.preset)) == "USER");
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Physic));
+    CHECK(track.preset == builtInPresets(TrackKind::Physic) && std::string(physicSpec().presetCategory(track.preset)) == "USER");
     CHECK(track.physic.value[physic::Model] == physic::kBell && track.physic.value[physic::Hardness] == 12 && track.physic.value[physic::Position] == 34);
     for (int id = physic::Decay; id < physic::kSettingRoom; ++id) CHECK(track.physic.value[id] == first.value[id]);
     setUserPresets(TrackKind::Physic, {});
@@ -9680,6 +9688,9 @@ void testPhysicsHintsFit() {
 }
 
 int main(int argc, char** argv) {
+    // The engine's own presets only: the tests here are of their tables. The presets the app's data
+    // adds (and any track sound it gives a built-in) are presets_test's.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
         testBouncing();

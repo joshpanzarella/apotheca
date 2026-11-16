@@ -17,6 +17,7 @@
 
 #include "samples.hpp"
 #include "session_parts.hpp"
+#include "presets.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
 #include "synth_spec.hpp"
@@ -68,8 +69,7 @@ void Session::chooseSynthPreset(int track, int index) {
     for (float& m : t.macro) m = 0.5f; // a new sound starts as it was made
     Command c;
     c.track = track;
-    const int own = index - builtInPresets(t.kind);
-    if (own < 0) {
+    if (index < enginePresets(t.kind)) {
         c.type = Command::SelectPreset; // the engine has these itself, and puts its macros back
         c.a = index;
         engine.send(c);
@@ -83,12 +83,34 @@ void Session::chooseSynthPreset(int track, int index) {
             k.value = t.macro[m];
             engine.send(k);
         }
+    } else {
+        // One the app holds (an added built-in, the player's own): the engine is told every setting,
+        // and the macros it was made with.
+        const std::vector<float>& macros = listedPreset(t.kind, index)->macros;
+        for (int m = 0; m < kSynthMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
+        sendSynthPatch(track);
+    }
+    putPresetSound(track, presetSound(t.kind, index));
+}
+
+// The track's sound past its synth as a preset picked leaves it (presets-plan.md). A whole preset
+// puts its own in; a plain one leaves the track's alone, but for one thing: where the track still
+// holds just what a whole preset put in a moment ago (nothing turned since), the plain one puts
+// back what the track had before that preset came, so passing over a whole preset on the way to
+// a plain one does not leave its effects behind.
+void Session::putPresetSound(int track, const TrackSound* sound) {
+    PresetSoundMemory& memory = presetSounds_[track];
+    const TrackData& t = project.tracks[track];
+    const bool untouched = memory.held && trackSoundText(t.kind, trackSoundOf(t)) == memory.put;
+    if (sound) {
+        if (!untouched) memory.before = trackSoundOf(t);
+        memory.held = true;
+        putTrackSound(track, *sound);
+        memory.put = trackSoundText(t.kind, trackSoundOf(t));
         return;
     }
-    // One of the player's own: the engine is told every setting, and the macros it was saved with.
-    const std::vector<float>& macros = userPresets(t.kind)[own].macros;
-    for (int m = 0; m < kSynthMacros && m < static_cast<int>(macros.size()); ++m) t.macro[m] = macros[m] < 0.f ? 0.f : (macros[m] > 1.f ? 1.f : macros[m]);
-    sendSynthPatch(track);
+    if (untouched) putTrackSound(track, memory.before);
+    memory = PresetSoundMemory();
 }
 
 // A new sound from the dice (PHYSIC's Y). A change of the sound like any other: undo sees it (soundMark).
@@ -125,26 +147,6 @@ void Session::sendSynthPatch(int track) {
 }
 
 namespace {
-// A preset file: "apotheca-preset 1", then "macros" and "settings" lines.
-const double kPresetValueMost = 1000000.0;
-bool readPreset(const std::string& text, UserPreset& out) {
-    std::istringstream lines(text);
-    std::string line;
-    if (!std::getline(lines, line) || line.compare(0, 15, "apotheca-preset") != 0) return false;
-    while (std::getline(lines, line)) {
-        std::istringstream in(line);
-        std::string word;
-        in >> word;
-        double v = 0.0;
-        // A number from a file is held to its limits as a double before it is made a float or an int
-        // ("settings 1e300" cast first is undefined). The widest setting of any synth is well inside
-        // kPresetValueMost; each synth's loadPreset then holds a value to its own setting's range.
-        if (word == "macros") while (in >> v) out.macros.push_back(std::isfinite(v) ? static_cast<float>(v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v)) : 0.5f);
-        if (word == "settings") while (in >> v) out.values.push_back(std::isfinite(v) ? static_cast<int>(v < -kPresetValueMost ? -kPresetValueMost : (v > kPresetValueMost ? kPresetValueMost : v)) : 0);
-    }
-    return !out.values.empty();
-}
-
 std::string jsonText(const char* text) {
     std::string out = "\"";
     for (const char* c = text; *c; ++c) {
@@ -176,7 +178,7 @@ void Session::usePresetFolder(const std::string& folder) {
             UserPreset preset;
             std::string text;
             preset.name = presetNameFrom(name.substr(0, name.size() - ending.size()));
-            if (!preset.name.empty() && readTextFile(folder + "/" + name, text) && readPreset(text, preset)) presets.push_back(preset);
+            if (!preset.name.empty() && readTextFile(folder + "/" + name, text) && readPresetFile(kind, text, preset)) presets.push_back(preset);
         }
         setUserPresets(kind, presets);
     }
@@ -189,19 +191,12 @@ bool Session::savePreset(int track, const std::string& typed) {
     const std::string name = presetNameFrom(typed);
     const InstrumentInfo* info = instrument(t.kind);
     if (!spec || !info || !info->presetEnding || name.empty()) return false;
-    std::string text = "apotheca-preset 1\nsynth ";
-    text += info->word;
-    text += "\nmacros";
-    char number[32];
-    for (float m : t.macro) std::snprintf(number, sizeof number, " %.6g", m), text += number;
-    text += "\nsettings";
-    const int* values = spec->values(t);
-    // (What a preset holds, not everything the track has: the JX-3P's VELOCITY and BRILLIANCE are not in the file.)
-    for (int id = 0; id < presetSettingCount(t.kind); ++id) std::snprintf(number, sizeof number, " %d", values[id]), text += number;
-    text += "\n";
-    if (!writeTextFile(presetFolder_ + "/" + name + info->presetEnding, text)) return false;
-    // It is in the list now; the track is on it. The sound itself has not changed.
+    // The synth's sound and the track's whole sound past it: effects, sends, GLIDE FROM, MODs.
+    if (!writeTextFile(presetFolder_ + "/" + name + info->presetEnding, presetFileText(t))) return false;
+    // It is in the list now; the track is on it. The sound itself has not changed, and it is the
+    // track's own now: a plain preset picked next leaves it.
     usePresetFolder(presetFolder_);
+    presetSounds_[track] = PresetSoundMemory();
     const std::vector<UserPreset>& mine = userPresets(t.kind);
     for (std::size_t i = 0; i < mine.size(); ++i)
         if (mine[i].name == name) t.preset = builtInPresets(t.kind) + static_cast<int>(i);

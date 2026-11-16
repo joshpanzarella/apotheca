@@ -3,6 +3,7 @@
 // presets, its macros, its pages of settings and how each value reads.
 // One screen (synth_screen.hpp) serves every synth from one of these.
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -59,18 +60,38 @@ const SynthSpec& jx3pSpec(); // JAX-EP on the device
 const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
 
-// Presets the player has made (on the sound-designer page) and saved. They
-// come after the built-in ones, in a folder called USER. The spec's preset
-// functions know about them; the engine does not, so choosing one sends
-// every setting (Session::chooseSynthPreset).
+// What a preset may hold past its synth (docs/plans/presets-plan.md): the track's three effects, its
+// two sends, its GLIDE FROM and its two MODs, "the track's sound". A preset that holds it is WHOLE:
+// picked, it puts every one of them in (a slot it leaves out is emptied, a send left out is 0, a MOD
+// left out is OFF). One that is not (the booklet's and the cartridges' sounds, an older file) leaves
+// the track's alone. Not the mixer's LEVEL and PAN: those are the song's balance, not the sound's.
+struct TrackSound {
+    bool whole = false;
+    EffectData effects[kTrackSlots];
+    float send[kBuses] = {};
+    std::uint8_t glideFrom = 0; // GLIDE FROM (0 TOP)
+    ModSettings mods[kModsPerTrack];
+};
+
+// A preset the app holds the values of: one the player made (on the sound-designer page, or SAVE)
+// and saved, in a folder called USER after every built-in; or a built-in added in the app's preset
+// data (app/presets/*.inc), after the engine's own, in the folder it names. The spec's preset
+// functions know about both; the engine does not, so choosing one sends every setting
+// (Session::chooseSynthPreset).
 struct UserPreset {
     std::string name;
-    std::vector<int> values; // one per setting, in the synth's own order
+    std::vector<int> values;   // one per setting, in the synth's own order
     std::vector<float> macros; // the eight macros as they were when it was saved
+    std::string folder;        // a built-in's folder; empty for the player's own (USER)
+    TrackSound sound;          // the track's sound past its synth (`whole` if the preset holds it)
 };
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets);
 const std::vector<UserPreset>& userPresets(TrackKind kind);
-int builtInPresets(TrackKind kind); // how many presets the synth comes with
+int builtInPresets(TrackKind kind); // how many presets the synth comes with: the engine's, then the app's added ones
+int enginePresets(TrackKind kind);  // how many of them the engine has itself (Command::SelectPreset takes those)
+// The preset at `index` of the synth's list when the app holds its values (an added built-in or the
+// player's own); null for one of the engine's (or no preset).
+const UserPreset* listedPreset(TrackKind kind, int index);
 int settingCount(TrackKind kind);   // how many settings it has (what a song keeps for a track)
 // How many of them, from id 0, a preset holds: what picking one writes and what saving one keeps. All
 // of them, but for JAX-EP: its last two (VELOCITY, BRILLIANCE) are the track's own, not the patch's.
