@@ -377,7 +377,12 @@ static std::vector<float> effectsSong(int helpers, bool buses = false) {
 // REMADE A THIRD TIME, 2026-11-15, when its second synth went from QMOD to FM-6 (the owner's
 // decision, fm6-plan.md; it was 0x97cdd450e1e17437, rms 0.353221461): the 40 pinned renders and
 // the maths line held, with only that track's kind changed. It pins FM-6's start patch now too.
-static const std::uint64_t kSongSum = 0x4d22a4cb79f8b0f5ull;
+// REMADE A FOURTH TIME, 2026-11-16, when JAX-EP's filter was mended (the owner's report on its
+// resonance, jx3p-plan.md; it was 0x4d22a4cb79f8b0f5): the song's JAX-EP track is at RESONANCE 0,
+// where the filter now skips the feedback's sum (y4 is the stages' sum itself, not 27 sum / 27), so
+// it moved in its last bits only: the rms is the same to nine figures, and `--print` on main (0.565)
+// and on this commit gave the same 40 pinned renders and the same maths line.
+static const std::uint64_t kSongSum = 0x2182632645c3686eull;
 static const double kSongRms = 0.352323948;
 
 static void testWholeSong() {

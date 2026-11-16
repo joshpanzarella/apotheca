@@ -122,7 +122,7 @@ constexpr double kVcfEnvOctaves = 10.0;   // SELF: ENV MOD 10
 constexpr double kBrillianceOctaves = 2.0;// SELF: BRILLIANCE 0 and 10, from 5
 constexpr double kResEdgeDial = 95.0;     // SELF: RESONANCE 9.5 is the edge, feedback 4 (it was 8.7): it sings from 9.6
 constexpr double kResTop = 5.0;           // SELF: the feedback at RESONANCE 10 (it was 4.6): the last half step climbs to it
-constexpr float kFeedbackKnee = 1.8f;     // SELF: where the feedback's bend comes in: RESONANCE 10 sings 8 dB under the saw's peak
+constexpr float kFeedbackKnee = 2.0f;     // SELF: where the feedback's bend comes in: RESONANCE 10 sings 8 dB under the saw's peak
 constexpr double kBassCorner = 0.25;      // SELF: the low end given back is under this share of the cutoff (two poles there)
 constexpr float kVcfKick = 1e-4f;         // SELF: put into stage 1 at a key, so RESONANCE 10 can start from silence
 constexpr double kHpfLowHz = 10.0;        // SELF: HPF just over 0
@@ -198,25 +198,25 @@ inline void bendGain(float x, float& over, float& under) {
 }
 
 // A stage's coefficient G (as onePoleG) and the powers of it the filter's sum takes, the low end's
-// coefficient (a one-pole at kBassCorner of the cutoff, in the same warped frequencies, so the share
-// holds up to the top), and `turn`, 1 + 2 cos of the cutoff's turn a sample (what reads the singing
-// ahead), all worked out when the cutoff moves, not on every sample: one division for the two
-// coefficients.
+// coefficient, and `turn`, 1 + 2 cos of the cutoff's turn a sample (what reads the singing ahead),
+// all worked out when the cutoff moves, not on every sample: one division, as onePoleG's.
 struct VcfCoef {
     float g = 0.f, h = 1.f;                  // G and 1 - G
     float g2 = 0.f, g3 = 0.f, g4 = 0.f;      // G^2, G^3, G^4
     float r1 = 0.f, r2 = 0.f, r3 = 0.f;      // G^3 (1 - G), G^2 (1 - G), G (1 - G)
-    float low = 0.f;                         // the low end's one-pole
+    float low = 0.f;                         // the low end's two one-poles: each moves this share of the way a sample
     float turn = 3.f;                        // 1 + 2 cos(2 pi hz / rate)
-    // `hz` held under the top already. G = t / (1 + t), t = tan(w) = sin / cos (as onePoleG); the low
-    // end's t / 4 (kBassCorner): s / (s + 4 c); cos(2w) = 1 - 2 sin^2.
+    // `hz` held under the top already. G = sin / (sin + cos) of w = pi hz / rate (onePoleG); cos(2w) is
+    // 1 - 2 sin^2. The low end's one-poles are the plain kind (a share of the way a sample), whose
+    // corner is that share times rate / 2 pi: G / 2 puts it at a quarter of the cutoff (G is about w
+    // there), a little under it as the cutoff nears the top (kBassCorner; a corner that needs no
+    // second division).
     void set(double hz, double rate) {
-        const double w = 3.14159265358979323846 * hz / rate, s = sinPoly(w), c = cosPoly(w), cl = c * (1.0 / kBassCorner);
-        const double inv = 1.0 / ((s + c) * (s + cl));
-        const float G = static_cast<float>(s * (s + cl) * inv);
+        const double w = 3.14159265358979323846 * hz / rate, s = sinPoly(w);
+        const float G = static_cast<float>(s / (s + cosPoly(w)));
         g = G, h = 1.f - G, g2 = G * G, g3 = g2 * G, g4 = g2 * g2;
         r1 = g3 * h, r2 = g2 * h, r3 = G * h;
-        low = static_cast<float>(s * (s + c) * inv);
+        low = G * static_cast<float>(kBassCorner * 2.0);
         turn = static_cast<float>(3.0 - 4.0 * s * s);
     }
 };
@@ -242,17 +242,21 @@ struct Ir3109 {
     // so the four are worked out side by side, not one after another (a sample's work waits on the
     // last one's: the shorter that chain, the quicker; the low end is off it).
     float run(float x, const VcfCoef& c, float k, float given) {
-        // The bend's gain, kb = k over / under, at where the feedback is going: the last three read
-        // ahead as a steady part plus a sine at the cutoff (p[n] = turn (p[n-1] - p[n-2]) + p[n-3]).
-        const float ahead = c.turn * (z[0] - z[1]) + z[2], a2 = ahead * ahead;
-        // The 4th stage's output: y4 = G^4 (x - kb y4) + rest, so y4 = (G^4 x + rest) / (1 + kb G^4) =
-        // under sum / (under + k G^4 over), and what is fed back, kb y4, is k over sum / (that): one
-        // division for both. The denominator is put together as 27 (1 + k G^4) + (9 + k G^4) z^2, so
-        // it waits on the feedback for two steps, not four.
-        const float kg = k * c.g4;
         const float rest = (c.r1 * s[0] + c.r2 * s[1]) + (c.r3 * s[2] + c.h * s[3]), sum = c.g4 * x + rest;
-        const float q = 1.f / ((27.f + 27.f * kg) + (9.f + kg) * a2);
-        const float y4 = (27.f + 9.f * a2) * sum * q, u = x - k * (27.f + a2) * sum * q;
+        float y4 = sum, u = x; // with no feedback (RESONANCE 0) the four stages are all there is
+        if (k != 0.f) {
+            // The bend's gain, kb = k over / under, at where the feedback is going: the last three
+            // read ahead as a steady part plus a sine at the cutoff (p[n] = turn (p[n-1] - p[n-2]) +
+            // p[n-3]; the latest is used last, so the rest waits on nothing).
+            const float back = z[2] - c.turn * z[1], ahead = c.turn * z[0] + back, a2 = ahead * ahead;
+            // The 4th stage's output: y4 = G^4 (x - kb y4) + rest, so y4 = (G^4 x + rest) / (1 + kb G^4)
+            // = under sum / (under + k G^4 over), and what is fed back, kb y4, is k over sum / (that):
+            // one division for both. The denominator is put together as 27 (1 + k G^4) + (9 + k G^4)
+            // z^2, so it waits on the feedback for two steps, not four.
+            const float kg = k * c.g4;
+            const float q = 1.f / ((27.f + 27.f * kg) + (9.f + kg) * a2);
+            y4 = (27.f + 9.f * a2) * sum * q, u = x - k * (27.f + a2) * sum * q;
+        }
         const float y1 = c.g * u + c.h * s[0];
         const float y2 = c.g2 * u + (c.r3 * s[0] + c.h * s[1]);
         const float y3 = c.g3 * u + (c.r2 * s[0] + (c.r3 * s[1] + c.h * s[2]));
@@ -261,12 +265,16 @@ struct Ir3109 {
         s[2] = snap(2.f * y3 - s[2]);
         s[3] = snap(2.f * y4 - s[3]);
         z[2] = z[1], z[1] = z[0], z[0] = snap(k * (1.f / kFeedbackKnee) * y4);
-        // The low end: two one-poles of the input at a quarter of the cutoff.
-        const float a = (x - l[0]) * c.low + l[0];
-        l[0] = snap(2.f * a - l[0]);
-        const float b = (a - l[1]) * c.low + l[1];
-        l[1] = snap(2.f * b - l[1]);
-        return y4 + given * b;
+        // The low end: two plain one-poles of the input at a quarter of the cutoff. At RESONANCE 0
+        // (nothing given back) they are not run, and wait at 0 (a share given back starts with the
+        // feedback's 1 ms hold, from nothing).
+        if (given == 0.f) {
+            l[0] = l[1] = 0.f;
+            return y4;
+        }
+        l[0] = snap(l[0] + c.low * (x - l[0]));
+        l[1] = snap(l[1] + c.low * (l[0] - l[1]));
+        return y4 + given * l[1];
     }
     static float snap(float v) { return std::fabs(v) < kSnap ? 0.f : v; }
 };

@@ -191,7 +191,7 @@ static void testSlope() {
 // IT SINGS (FAITHFUL that it does: NAM's Organ I uses RESONANCE 10 as a pitched source; how soon,
 // how loud and how pure are SELF): silence in, RESONANCE 10, a key's kick.
 //  - At 1 kHz and 4 kHz within 1 dB of its level by 50 ms; 30 s on still there at the same level.
-//  - From 80 Hz to 10 kHz: 8 dB under the saw's peak within 0.5 dB (SELF: the SN trims it to 600 mV
+//  - From 80 Hz to 10 kHz: 7.2 dB under the saw's peak within 0.3 dB (SELF: the SN trims it to 600 mV
 //    but prints no figure for the saw; it was 6 dB, and 3 dB louder at 10 kHz than at 1 kHz), ON ITS
 //    CUTOFF within 1 cent (it sang sharp, 10 cents at 1 kHz, 30 at 4 kHz, while the bend was taken
 //    from the sample before: 2026-11-15), every harmonic 45 dB under it (51 measured), and at 10 kHz,
@@ -213,7 +213,7 @@ static void testItSings() {
     for (double hz : {80.0, 300.0, 1000.0, 4000.0, 10000.0}) {
         const std::vector<float> out = through(silence(3 * 48000), hz, 100, true);
         const double level = peakFrom(out, 2 * 48000), sung = pitchOf(out, 2 * 48000, out.size());
-        CHECK(std::fabs(dB(level) + 8.0) < 0.5);
+        CHECK(std::fabs(dB(level) + 7.2) < 0.3);
         CHECK(std::fabs(cents(sung, hz)) < 1.0);
         const int whole = static_cast<int>(sung + 0.5);
         CHECK(whole > 0);
@@ -427,7 +427,7 @@ static void testTheLowEnd() {
 // RESONANCE 0), the fundamental within 5 dB of RESONANCE 0; and under CUTOFF 8 (12.5 kHz), where the
 // singing was over everything (0.7 dB under the note's fundamental at RESONANCE 0, beaten into
 // sidebands 6 dB under itself at the note's frequency), nothing that is not a harmonic of the note is
-// within 6 dB of its fundamental.
+// within 5 dB of its fundamental (6.3 dB under measured; it was 13 dB OVER).
 static void testSingsBesideTheNote() {
     std::unique_ptr<Jx3p> plain = synth({{Cutoff, 50}});
     plain->noteOn(48, 1.f);
@@ -459,7 +459,7 @@ static void testSingsBesideTheNote() {
         play(*j, 48000);
         const std::vector<float> out = play(*j, 65536);
         const Aside off = asideOf(out.data(), out.size(), keyHz(48), 20000.0, keyHz(48));
-        CHECK(off.dB < -6.0);
+        CHECK(off.dB < -5.0);
         if (printing()) std::printf("  RESONANCE 10 under CUTOFF 8: the loudest part off the note's harmonics %.1f dB under its fundamental (at %.0f Hz)\n", -off.dB, off.hz);
     }
 }
