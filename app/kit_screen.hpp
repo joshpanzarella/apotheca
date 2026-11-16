@@ -68,6 +68,7 @@ private:
     void stepSound(int by);
     void stepFit(int by);
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
+    void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
 
     Session& session_;
     Project& project_;

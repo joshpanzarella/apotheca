@@ -11,9 +11,11 @@
 //                         as the old "root key": middle C less the pitch.)
 //                TUNE     cents
 //                START    where in the recording a note begins
+//                END      where it ends (beside START; never before it: each stops a
+//                         percent short of the other)
 //                ATTACK   fade in
 //                RELEASE  fade out when the key is let go
-//                LOOP     go round from START while the key is held
+//                LOOP     go round from START to END while the key is held
 //                LEVEL
 //   Y          CATCH: the last bar the song played becomes this track's recording
 //   R1         RECORD from a USB microphone or interface: once to start (it
@@ -59,7 +61,11 @@ public:
     static constexpr int kSettingY = kSoundY + kSoundH + 10, kSettingGap = 6;
     static constexpr int kSettingH = (ui::kAboveScope - kSettingY - kSettingGap) / 2;
 
-    // For tests and stills. Stop 0 is SOUND; 1.. are the settings in order.
+    // For tests and stills. Stop 0 is SOUND; 1.. are the settings in the order the page shows them
+    // (settingAt: PITCH, TUNE, START, END, then ATTACK, RELEASE, LOOP, LEVEL).
+    static int settingAt(int place);                 // the setting's id at this place (0..7), -1 past them
+    static float endPart(const TrackData& t) { return static_cast<float>(sampler::playedEnd(t.sampler[sampler::Start], t.sampler[sampler::End])) / 100.f; } // 0..1 (past 1: START at 100)
+    static int endMarkX(float end, int w) { const int x = static_cast<int>(end * w) - 2; return x < 0 ? 0 : (x > w - 2 ? w - 2 : x); } // END's mark, inside the picture
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }
     int cursor() const { return stop_; }
     const ui::Playhead& playhead() const { return head_; }
@@ -74,6 +80,7 @@ private:
     void press(Button direction);
     void stepSound(int by);
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
+    void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
     void setSetting(int id, int value); // kept, and heard
 
     Session& session_;

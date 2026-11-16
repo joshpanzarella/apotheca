@@ -13,6 +13,7 @@
 #include <SDL.h>
 
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include <cmath>
 #include <cstdio>
@@ -349,6 +350,58 @@ void theGestures(Rig& rig, const char* page, Hold hold, Away away, Back back, co
     rig.run(32);
 }
 
+// The list's preview stops as soon as the cursor moves on (owner, 2026-11-15), onto a folder too,
+// out of the folder, or with B: none of those puts another recording on to take the lane over.
+void testThePreviewStopsWhenTheCursorMovesOn() {
+    const std::string folder = tempFolder();
+    mkdir((folder + "/drums").c_str(), 0755);
+    mkdir((folder + "/drums/inner").c_str(), 0755);
+    writeWav(folder + "/drums/long.wav", tone(3.f, 0.25f), 48000);
+    writeWav(folder + "/drums/inner/x.wav", tone(0.4f, 0.25f), 48000);
+    writeWav(folder + "/drums/next.wav", tone(3.f, 0.25f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    session.view = View::Device;
+    rig.project().track = 0;
+    rig.app.kit().goTo(3, KitScreen::kSound);
+    session.setLaneSample(0, 3, "drums/long");
+    const SamplePicker& list = rig.app.kit().picker();
+    const auto preview = [&] { // up onto INNER (a folder: nothing goes on), back down onto LONG: its preview
+        rig.tap(UP);
+        rig.listen();
+        rig.tap(SDLK_DOWN);
+        CHECK(list.under() && list.under()->name == "drums/long");
+        rig.run(496);
+    };
+    rig.tap(A);
+    CHECK(list.isOpen() && list.depth() == 1 && list.under() && list.under()->name == "drums/long");
+    preview(); // up onto the folder: stopped
+    rig.tap(UP);
+    rig.run(3000);
+    CHECK(near(rig.heardMs(), 496));
+    rig.tap(SDLK_DOWN);
+    preview(); // out to SAMPLES: stopped
+    rig.tap(SDLK_LEFT);
+    rig.run(3000);
+    CHECK(near(rig.heardMs(), 496));
+    rig.tap(SDLK_RIGHT); // (in again: back on LONG, which goes on and plays)
+    // The song started meanwhile (Play lets it go), and the next row goes on to be heard in the beat
+    // (nothing of it here: the lane has no hits).
+    preview();
+    rig.tap(SDLK_RETURN);
+    rig.run(208);
+    rig.tap(SDLK_DOWN);
+    CHECK(list.under() && list.under()->name == "drums/next");
+    rig.run(3000);
+    rig.tap(SDLK_RETURN);
+    CHECK(near(rig.heardMs(), 704));
+    rig.tap(UP);
+    preview(); // B: the list shut, what was on put back, and its preview stopped
+    rig.tap(SDLK_z);
+    rig.run(3000);
+    CHECK(!list.isOpen() && near(rig.heardMs(), 496));
+}
+
 void testThePages() {
     const std::string folder = tempFolder();
     writeWav(folder + "/long.wav", tone(3.f, 0.25f), 48000);
@@ -381,12 +434,48 @@ void testThePages() {
     x(false);
     rig.run(1500);
     CHECK(near(rig.heardMs(), 350));
-    // Arriving on a row (not X) plays it whole, as before: up to the built-in drum, down to "long" again.
+    // Arriving on a row (not X) plays HALF of it (owner, 2026-11-15; it played whole): up to the
+    // built-in drum, down to "long" again: 1.5 s of its 3.
     rig.tap(UP);
     rig.listen();
     rig.tap(SDLK_DOWN);
     rig.run(4000);
-    CHECK(rig.heardMs() > 2900);
+    CHECK(near(rig.heardMs(), 1500));
+    // ...and its line stops there too.
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(1488);
+    CHECK(rig.app.kit().playhead().at(rig.clock) > 0.45f);
+    rig.run(48);
+    CHECK(rig.app.kit().playhead().at(rig.clock) < 0.f);
+    // X while it plays: on to its end, not begun again (a tap or held, the same).
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(1000);
+    x(true);
+    rig.run(100);
+    x(false);
+    rig.run(4000);
+    CHECK(near(rig.heardMs(), 3000));
+    // The cursor moving on stops it at once: half a second of "long", then "short" (0.4 s: heard 0.35, a tap's moment at least).
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(496);
+    rig.tap(SDLK_DOWN);
+    rig.run(3000);
+    CHECK(near(rig.heardMs(), 496 + 350));
+    // ...and moving up onto the first row stops it too (the built-in drum is then heard whole, as a tap of it always is).
+    // Nothing playing any more: X is heard for as long as it is held, from the top.
+    rig.listen();
+    x(true);
+    rig.run(300);
+    x(false);
+    rig.run(1500);
+    CHECK(near(rig.heardMs(), 350)); // ("short": a tap's moment, from the top)
+    rig.tap(UP);
     rig.tap(A);
     session.setLaneSample(0, 3, "long");
 
@@ -553,6 +642,35 @@ void testTheSampler() {
     x(false);
     rig.run(1500);
     CHECK(near(rig.heardMs(), 1200));
+    // Arriving on it plays half of what a note plays (START to END at middle C: 1.5 s of 3); X while
+    // it plays, on to END. With START at 50%: half of the half.
+    rig.tap(UP); // NO RECORDING
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(4000);
+    CHECK(near(rig.heardMs(), 1500));
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(800);
+    x(true);
+    x(false);
+    rig.run(4000);
+    CHECK(near(rig.heardMs(), 3000));
+    session.setSamplerSetting(1, sampler::Start, 50);
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(4000);
+    CHECK(near(rig.heardMs(), 750));
+    session.setSamplerSetting(1, sampler::End, 60); // START to END is a tenth: 0.3 s, so a moment's 0.35 at least (it ends by itself at END)
+    rig.tap(UP);
+    rig.listen();
+    rig.tap(SDLK_DOWN);
+    rig.run(4000);
+    CHECK(near(rig.heardMs(), 300));
+    session.setSamplerSetting(1, sampler::Start, 0);
+    session.setSamplerSetting(1, sampler::End, 100);
     rig.tap(A);
 
     // The line: on while held, past what a tap gave it; gone once let go and the release has run.
@@ -659,6 +777,7 @@ int main(int argc, char** argv) {
     RUN(testAPatternHitIsNotStopped);
     RUN(testItsRatchetIsNotPlayedOn);
     RUN(testAnAuditionTakesTheLane);
+    RUN(testThePreviewStopsWhenTheCursorMovesOn);
     RUN(testThePages);
     RUN(testTheSampler);
     RUN(testTheFxScreenOnDrums);

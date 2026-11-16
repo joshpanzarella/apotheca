@@ -6,9 +6,9 @@ namespace apotheca {
 
 namespace sampler {
 namespace {
-const int kMin[kSettings] = {0, -100, 0, 0, 0, 0, 0};
-const int kMax[kSettings] = {127, 100, 100, 100, 100, 1, 100};
-const int kDefault[kSettings] = {60, 0, 0, 0, 20, 0, 80};
+const int kMin[kSettings] = {0, -100, 0, 0, 0, 0, 0, 1};
+const int kMax[kSettings] = {127, 100, 100, 100, 100, 1, 100, 100};
+const int kDefault[kSettings] = {60, 0, 0, 0, 20, 0, 80, 100};
 }
 int settingMin(int id) { return id >= 0 && id < kSettings ? kMin[id] : 0; }
 int settingMax(int id) { return id >= 0 && id < kSettings ? kMax[id] : 0; }
@@ -87,15 +87,19 @@ void Sampler::render(float* left, float* right, int frames) {
     for (int i = 0; i < frames; ++i) left[i] = 0.f;
     if (data_) {
         const double loopFrom = static_cast<double>(value_[Start]) / 100.0 * length_;
-        const bool loop = value_[Loop] != 0 && loopFrom < length_ - 2;
+        // END: where a note stops (or goes round from START). At 100% the recording's last sample, as
+        // before END was there (the sample after it is read between the two).
+        const double endAt = static_cast<double>(playedEnd(value_[Start], value_[End])) / 100.0 * length_;
+        const double last = endAt < length_ - 1 ? endAt : static_cast<double>(length_ - 1);
+        const bool loop = value_[Loop] != 0 && loopFrom < last - 1;
         for (Voice& v : voices_) {
             if (v.note < 0) continue;
             const float off = v.slide.take(frames); // a glide: semitones from its own pitch, for this block
             const double step = off == 0.f ? v.step : v.step * std::exp2(static_cast<double>(off) / 12.0);
             for (int i = 0; i < frames; ++i) {
-                if (v.position >= length_ - 1) {
+                if (v.position >= last) {
                     if (!loop) { v.note = -1; break; }
-                    v.position = loopFrom + std::fmod(v.position - loopFrom, length_ - 1 - loopFrom);
+                    v.position = loopFrom + std::fmod(v.position - loopFrom, last - loopFrom);
                 }
                 const float envelope = v.env.next(shape_);
                 if (v.env.idle()) { v.note = -1; break; }

@@ -127,8 +127,16 @@ public:
     static constexpr Uint32 kAuditionMs = 350;
     void auditionHeld(int track, int pitch, float velocity, const void* owner);  // a synth track (the sampler): this key
     void hearLaneHeld(int track, int lane, float level, const void* owner, float start = 0.f, float part = 0.f); // a drum lane
-    void letGoHeard();
+    void letGoHeard(Uint32 lasts = kAuditionMs); // X let go: it stops `lasts` after it began (a tap: kAuditionMs), or now if that has gone by
     void keepHearing(bool xHeld, const void* screen);
+    // The list of recordings' preview (owner, 2026-11-15): what was begun held is let go to stop
+    // `ms` after it began (half the recording), or, let go already and still sounding, its stop
+    // is moved there (X: on to its end). The built-in drum, heard whole, has no stop to move.
+    void hearFor(Uint32 ms);
+    // What `owner` began is still heard: X still holds it, or it was let go and has not stopped.
+    bool hearingOn(const void* owner) const { return heard_.track >= 0 && heard_.owner == owner && (heard_.held || (heard_.ends != 0 && now_ < heard_.ends)); }
+    // What `owner` began stops now (the list's cursor moved on). Nothing else is touched.
+    void stopHeard(const void* owner);
     bool hearingHeld() const { return heard_.track >= 0 && heard_.held; }
     int heardLane() const { return heard_.lane; } // the drum lane last heard (-1: a synth's key, or none)
     // When what X held stops, or stopped (now, for one cut by panic or a new song); 0 while X is

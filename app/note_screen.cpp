@@ -21,7 +21,7 @@ constexpr int kGridLeft = 28, kGridW = 612, kRowH = 21;
 constexpr int kCellH = kRowH - 2;
 constexpr int kOctaveTop = 33, kOctaveH = 11, kKeysTop = 45;
 constexpr int kStripGap = 4; // from the grid down to the strip
-constexpr float kNewLevel = 0.8f, kMinLevel = 0.05f;
+constexpr float kNewLevel = kPlacedLevel, kMinLevel = 0.05f; // a note or a chord placed (project.hpp)
 constexpr Uint32 kRepeatDelayMs = ui::kCursorDelayMs, kRepeatEveryMs = ui::kCursorEveryMs, kPickRepeatEveryMs = ui::kListEveryMs;
 constexpr float kStickKeysPerSecond = 36.f, kStickStepsPerSecond = 24.f, kFillPerSecond = 3.f, kLengthStepsPerSecond = 10.f;
 constexpr float kShortestLength = 0.1f; // of a step

@@ -4,6 +4,7 @@
 #include "redraw.hpp"
 #include "version.hpp"
 
+#include <cmath>
 #include <cstdio>
 
 namespace apotheca {
@@ -256,6 +257,22 @@ void App::update(const Input& input, Uint32 nowMs) {
         selectAlone_ = false;
         song_.selectWasUsed();
     }
+    // While the help card is up: how hard the sound works (the engine's last second) and the whole
+    // program (read once a second, from the second after it opened).
+    if (help_) {
+        if (!helpWas_) cpu_.restart();
+        cpu_.read(nowMs);
+        const float share = session_.engine.soundShare(), worst = session_.engine.soundWorst();
+        load_[0] = share < 0.f ? -1 : static_cast<int>(std::lround(100.f * share));
+        load_[1] = worst < 0.f ? -1 : static_cast<int>(std::lround(100.f * worst));
+        load_[2] = cpu_.percent();
+        if (pretending_)
+            for (int i = 0; i < 3; ++i) load_[i] = pretend_[i];
+        for (int& v : load_) v = v > 999 ? 999 : v; // (a call that took ten times its sound's time: still three figures)
+    } else {
+        load_[0] = load_[1] = load_[2] = -1;
+    }
+    helpWas_ = help_;
     if (panicNote_ && !panicking_ && nowMs >= panicNoteUntil_) panicNote_ = false;
     // A held for a whole second on the update notice: accepted.
     if (session_.updateWaiting() && updateHeld_) {
@@ -293,6 +310,24 @@ unsigned App::stirring() const {
     return stirs;
 }
 
+std::string App::loadWords(const int load[3]) {
+    std::string words;
+    char part[32];
+    if (load[0] >= 0) {
+        std::snprintf(part, sizeof part, "SOUND %d%%", load[0]);
+        words += part;
+    }
+    if (load[1] >= 0) {
+        std::snprintf(part, sizeof part, "%sWORST %d%%", words.empty() ? "" : "  ", load[1]);
+        words += part;
+    }
+    if (load[2] >= 0) {
+        std::snprintf(part, sizeof part, "%sCPU %d%%", words.empty() ? "" : "  ", load[2]);
+        words += part;
+    }
+    return words;
+}
+
 void App::readouts(Readouts& out) const {
     const Engine& engine = session_.engine;
     unsigned heard = 0;
@@ -305,6 +340,7 @@ void App::readouts(Readouts& out) const {
     out.meters.clear();
     for (int track = kMasterTrack; track < kNumTracks; ++track)
         for (int slot = 0; slot < slotsOf(track); ++slot) out.meters.push_back(engine.effectMeter(track, slot));
+    for (int i = 0; i < 3; ++i) out.load[i] = load_[i];
     out.midi[0] = static_cast<int>(session_.midiHeard());
     out.midi[1] = session_.midiKeyboards();
 }
@@ -435,9 +471,14 @@ void App::draw(SDL_Renderer* renderer, const Fonts& fonts) const {
             fill(renderer, bx + 26, by + 3, 2, 6, color);
             fill(renderer, bx + 2, by + 2, 22 * battery_ / 100, 8, color);
             fonts.small.drawRight(renderer, x + w - 18.f, y + h - 44.f, level, color);
-            // On its own line above, clear of the text to its left.
-            if (charging_) fonts.small.drawRight(renderer, x + w - 18.f, y + h - 64.f, "CHARGING", kDim);
+            // CHARGING before it on its line: the line above is how hard the program works.
+            if (charging_) fonts.small.drawRight(renderer, static_cast<float>(bx) - 10.f, y + h - 44.f, "CHARGING", kDim);
         }
+        // Above the battery: how hard the program works (owner, 2026-11-15). Held at LARGE where the
+        // chosen size would reach the card's own words to its left.
+        const std::string load = loadWords(load_);
+        const float leftEnds = x + 150.f + fonts.within(&Fonts::small, held[7].does, w - 162.f).width(held[7].does); // (quit Apotheca, on its row)
+        if (!load.empty()) fonts.within(&Fonts::small, load.c_str(), x + w - 18.f - leftEnds - kLoadClear).drawRight(renderer, x + w - 18.f, y + h - 64.f, load.c_str(), kText);
     }
 }
 

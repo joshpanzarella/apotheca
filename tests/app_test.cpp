@@ -455,7 +455,7 @@ void testPlacingAndDeletingNotes() {
     CHECK(notes.noteCount() == 0);
     rig->tap(A);
     CHECK(notes.noteCount() == 1);
-    CHECK(notes.noteHere() && notes.noteHere()->length == 1 && near(notes.noteHere()->velocity, 0.8f));
+    CHECK(notes.noteHere() && notes.noteHere()->length == 1 && near(notes.noteHere()->velocity, 0.9f));
     CHECK(rig->listen() > 0.f); // heard as it lands
     rig->tap(A);                // A on a note that is there places nothing more
     CHECK(notes.noteCount() == 1);
@@ -468,6 +468,31 @@ void testPlacingAndDeletingNotes() {
     // X hears the key and places nothing.
     rig->tap(X);
     CHECK(rig->listen() > 0.f && notes.noteCount() == 0);
+}
+
+// A hit placed starts at 90% (kPlacedLevel; owner, 2026-11-15: it was 80%), and the KIT page's X
+// hears the drum at that level too: what is heard is what is placed.
+void testHeardAsPlaced() {
+    Rig rig;
+    Session& session = rig.app.session();
+    PatternScreen& drums = rig.app.drums();
+    rig.project().track = 0;
+    session.view = View::Pattern;
+    drums.moveCursorTo(0, 0);
+    rig.listen(48000);
+    rig.tap(A); // a kick, heard as it lands
+    CHECK(drums.level(0, 0) == kPlacedLevel && kPlacedLevel == 0.9f);
+    const float placed = rig.listen(12000);
+    rig.listen(96000);
+    session.view = View::Device;
+    rig.app.kit().goTo(0, KitScreen::kSound);
+    rig.frames(2);
+    rig.tap(X); // a tap: a moment of the same drum
+    rig.frames(1);
+    const float heard = rig.listen(12000);
+    if (!(placed > 0.05f && std::fabs(heard - placed) < 1e-4f)) std::printf("  placed %.5f, heard %.5f\n", placed, heard);
+    CHECK(placed > 0.05f && std::fabs(heard - placed) < 1e-4f);
+    rig.listen(96000);
 }
 
 void testNoteLevelAndLength() {
@@ -483,9 +508,9 @@ void testNoteLevelAndLength() {
     rig->tap(UP, 9);
     CHECK(notes.noteHere()->length == 1); // never to nothing
     rig->tap(LEFT, 3);
-    CHECK(near(notes.noteHere()->velocity, 0.5f));
-    rig->tap(RIGHT);
     CHECK(near(notes.noteHere()->velocity, 0.6f));
+    rig->tap(RIGHT);
+    CHECK(near(notes.noteHere()->velocity, 0.7f));
     // The stick is free: the end goes to any point in a step.
     rig->key(STICK_DOWN, true);
     rig->frames(5);
@@ -527,7 +552,7 @@ void testNoteLevelAndLength() {
     rig->frames(100);
     rig->key(STICK_DOWN, false);
     CHECK(notes.noteHere()->length == 12); // to the end of the bar and no further
-    CHECK(near(notes.noteHere()->velocity, 0.6f));
+    CHECK(near(notes.noteHere()->velocity, 0.7f));
     // Drifting up during a sideways push does not also change the level.
     rig->key(STICK_DOWN, true);
     rig->frames(2);
@@ -535,7 +560,7 @@ void testNoteLevelAndLength() {
     rig->frames(10);
     rig->key(STICK_RIGHT, false);
     rig->key(STICK_DOWN, false);
-    CHECK(near(notes.noteHere()->velocity, 0.6f));
+    CHECK(near(notes.noteHere()->velocity, 0.7f));
     rig->frames(1);
     rig->key(STICK_RIGHT, true);
     rig->frames(40);
@@ -623,7 +648,7 @@ void testPaintingNotes() {
     rig->key(R1, false);
     {
         const NotePattern& p = rig->project().tracks[1].notes[0][0];
-        CHECK(p.at(72, 0) < 0 && p.at(72, 1) < 0 && p.at(72, 2) >= 0 && near(p.notes[p.at(72, 2)].velocity, 0.3f));
+        CHECK(p.at(72, 0) < 0 && p.at(72, 1) < 0 && p.at(72, 2) >= 0 && near(p.notes[p.at(72, 2)].velocity, 0.4f));
     }
 }
 
@@ -689,8 +714,8 @@ void testCellsOfSeveralBars() {
     rig.tap(RIGHT, 2);
     CHECK(rig.project().bar == 1 && drums.cursorStep() == 0);
     rig.tap(A); // a kick on step 1 of bar 2
-    CHECK(track.drums[0][1].level[0][0] == 0.8f && track.drums[0][0].level[0][0] == 0.f);
-    CHECK(drums.level(0, 0) == 0.8f); // the grid shows the bar it is on
+    CHECK(track.drums[0][1].level[0][0] == 0.9f && track.drums[0][0].level[0][0] == 0.f);
+    CHECK(drums.level(0, 0) == 0.9f); // the grid shows the bar it is on
     // Left of step 1 is the lane's name, in whichever bar; left of that, the bar before.
     rig.tap(LEFT);
     CHECK(drums.cursorStep() == -1 && rig.project().bar == 1);
@@ -809,10 +834,10 @@ void testCellsOfSeveralBars() {
     rig.key(R1, true);
     rig.tap(DOWN);
     rig.key(R1, false);
-    CHECK(track.bars[1] == 2 && track.drums[1][1].level[0][0] == 0.8f && near(track.drums[1][1].nudge[0][0], 0.1f));
+    CHECK(track.bars[1] == 2 && track.drums[1][1].level[0][0] == 0.9f && near(track.drums[1][1].nudge[0][0], 0.1f));
     rig.tap(B); // empty the copy
     CHECK(track.bars[1] == 1 && track.drums[1][1].empty() && track.sceneEmpty(1));
-    CHECK(track.bars[0] == 2 && track.drums[0][1].level[0][0] == 0.8f);
+    CHECK(track.bars[0] == 2 && track.drums[0][1].level[0][0] == 0.9f);
     // A cell with something only in a later bar is not "empty": the song runs to it.
     CHECK(!track.sceneEmpty(0));
     track.bars[3] = 2;
@@ -825,12 +850,12 @@ void testCellsOfSeveralBars() {
     // ---- the song file ------------------------------------------------------------------------
     const std::string text = songText(rig.project());
     CHECK(text.find("track drums\nlanes 1 1 1 1 1 1 1 1\nscene 1\nbars 2\nbar 2\nseeds") != std::string::npos);
-    CHECK(text.find("hit 1 1 0.8 0.1 1 0\n") != std::string::npos);
-    CHECK(text.find("scene 1\nbars 4\nnote 9 64 56 0.8\n") != std::string::npos);
-    CHECK(text.find("\nbar 2\nnote 1 60 1 0.8\n") != std::string::npos && text.find("\nbar 3\nnote 13 67 20 0.8\n") != std::string::npos);
+    CHECK(text.find("hit 1 1 0.9 0.1 1 0\n") != std::string::npos);
+    CHECK(text.find("scene 1\nbars 4\nnote 9 64 56 0.9\n") != std::string::npos);
+    CHECK(text.find("\nbar 2\nnote 1 60 1 0.9\n") != std::string::npos && text.find("\nbar 3\nnote 13 67 20 0.9\n") != std::string::npos);
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back) && songText(*back) == text);
-    CHECK(back->tracks[0].bars[0] == 2 && back->tracks[1].bars[0] == 4 && back->tracks[0].drums[0][1].level[0][0] == 0.8f);
+    CHECK(back->tracks[0].bars[0] == 2 && back->tracks[1].bars[0] == 4 && back->tracks[0].drums[0][1].level[0][0] == 0.9f);
     // Opened on another handheld it sounds the same as one whose engine was told bar by bar.
     Rig opened, told;
     opened.project() = *back;
@@ -932,14 +957,14 @@ void testNudgingWithTheOuterShoulderButtons() {
     CHECK(notes.noteHere()->nudge == before);
     // The song file keeps it; a note on its line has nothing extra written.
     const std::string text = songText(rig->project());
-    CHECK(text.find("note 5 60 1 0.8\n") != std::string::npos);
+    CHECK(text.find("note 5 60 1 0.9\n") != std::string::npos);
     CHECK(text.find(" nudge -0.2\n") != std::string::npos);
     notes.moveCursorTo(60, 4);
     rig->key(A, true);
     rig->tap(R2, 2);
     rig->key(A, false);
     const std::string nudgedText = songText(rig->project());
-    CHECK(nudgedText.find("note 5 60 1 0.8 0.2\n") != std::string::npos);
+    CHECK(nudgedText.find("note 5 60 1 0.9 0.2\n") != std::string::npos);
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(nudgedText, *back) && songText(*back) == nudgedText);
     CHECK(parseSong("apotheca-song 1\ntrack phazed\nscene 1\nnote 1 60 1 0.8 9\nchord 5 2 0.8 0 60 C 0 4 7 nudge -9\nchord 9 2 0.8 0 60 C 0 4 7 nudge\n", *back));
@@ -957,7 +982,7 @@ void testNudgingWithTheOuterShoulderButtons() {
     CHECK(near(drums.nudge(2, 6), -0.3f));
     drumsRig.tap(L2, 9);
     CHECK(near(drums.nudge(2, 6), -0.5f));
-    CHECK(drums.level(2, 6) == 0.8f && drums.cursorStep() == 6);
+    CHECK(drums.level(2, 6) == 0.9f && drums.cursorStep() == 6);
     drumsRig.key(A, false);
     drumsRig.tap(L2);
     CHECK(drumsRig.view() == View::Song && near(drums.nudge(2, 6), -0.5f));
@@ -2284,6 +2309,65 @@ void testTheHelpCardDrawsSel() {
         for (Uint32 px : canvas.part(583, top - 3, 15, 17)) CHECK(px == Canvas::colour(ui::kPanel));
 }
 
+// Above the battery the card says how hard the program works (owner, 2026-11-15): the sound's share
+// of its own time over the last second, its worst call, and the whole program's share of the
+// processor (read from /proc/self/stat; here a made-up one). Only while the card is up.
+void testTheHelpCardSaysTheLoad() {
+    const int none[3] = {-1, -1, -1}, all[3] = {43, 88, 37}, sound[3] = {43, 88, -1}, program[3] = {-1, -1, 37};
+    CHECK(App::loadWords(none).empty());
+    CHECK(App::loadWords(all) == "SOUND 43%  WORST 88%  CPU 37%");
+    CHECK(App::loadWords(sound) == "SOUND 43%  WORST 88%");
+    CHECK(App::loadWords(program) == "CPU 37%");
+    char pattern[] = "/tmp/apotheca-cpu-XXXXXX";
+    const std::string folder = mkdtemp(pattern), stat = folder + "/stat";
+    const auto ticks = [&](long utime) {
+        std::FILE* f = std::fopen(stat.c_str(), "w");
+        std::fprintf(f, "9 (apotheca) S 1 2 3 4 5 6 7 8 9 10 %ld 0 0 0\n", utime);
+        std::fclose(f);
+    };
+    Rig rig;
+    rig.app.useCpuFile(stat, 100.0, 4);
+    rig.app.session().view = View::Pattern;
+    ticks(1000);
+    rig.frames(2);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1); // shut: nothing read
+    rig.key(SDLK_TAB, true); // MENU held: the card
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1); // no second of sound yet; the program's first reading
+    rig.render(48000 * 11 / 10);
+    ticks(1100); // a whole core of four for the next second
+    rig.frames(30);
+    CHECK(rig.app.loadShown()[0] >= 0 && rig.app.loadShown()[1] >= rig.app.loadShown()[0] && rig.app.loadShown()[2] == -1);
+    rig.frames(33); // a second after it opened
+    CHECK(rig.app.loadShown()[2] == 25);
+    // Shut and opened again: the program's share is read afresh, a second later.
+    rig.key(SDLK_TAB, false);
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] == -1 && rig.app.loadShown()[2] == -1);
+    rig.key(SDLK_TAB, true);
+    rig.frames(1);
+    CHECK(rig.app.loadShown()[0] >= 0 && rig.app.loadShown()[2] == -1);
+    // As drawn: right of the card's words, above where the battery stands, inside the card's margin.
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (canvas.ok) {
+        rig.app.pretendLoad(43, 88, 37);
+        rig.frames(1);
+        rig.app.draw(canvas.r, *canvas.fonts);
+        const char* words = "SOUND 43%  WORST 88%  CPU 37%";
+        const int x = (ui::kScreenW - 560) / 2, y = ui::kTopBarH + 4, w = 560, h = 440;
+        const int right = x + w - 18, top = y + h - 64, wide = static_cast<int>(canvas.fonts->small.width(words)) + 2;
+        Canvas plain;
+        ui::fill(plain.r, right - wide, top - 3, wide + 2, 17, ui::kPanel);
+        plain.fonts->small.drawRight(plain.r, static_cast<float>(right), static_cast<float>(top), words, ui::kText);
+        CHECK(canvas.part(right - wide, top - 3, wide + 2, 17) == plain.part(right - wide, top - 3, wide + 2, 17));
+        CHECK(right - wide > x + 150 + static_cast<int>(canvas.fonts->small.width("quit Apotheca")) + 8); // clear of the line to its left
+    }
+    rig.key(SDLK_TAB, false);
+    std::remove(stat.c_str());
+    rmdir(folder.c_str());
+}
+
 void testTheHelpCard() {
     const SDL_Keycode MENU = SDLK_TAB;
     Rig rig;
@@ -2392,7 +2476,7 @@ void testUndoAndRedo() {
     // SELECT + B: the beat is back, with every level as it was.
     rig.key(SELECT, true);
     rig.tap(B);
-    CHECK(hits() == 11 && near(drums.level(0, 3), 0.8f) && drums.level(2, 8) > 0.f);
+    CHECK(hits() == 11 && near(drums.level(0, 3), 0.9f) && drums.level(2, 8) > 0.f);
     CHECK(std::string(rig.app.undoSaid()) == "UNDONE  (2 MORE)");
     // Again: the three hits go. Again: the painted row goes.
     rig.tap(B);
@@ -9713,6 +9797,7 @@ int main(int argc, char** argv) {
     testTheCopyBrushLifts();
     testTheSongScreenScrolls();
     testPlacingAndDeletingNotes();
+    testHeardAsPlaced();
     testNoteLevelAndLength();
     testTheEnginePlaysNotesAtTheirStepAndLength();
     testPaintingNotes();
@@ -9734,6 +9819,7 @@ int main(int argc, char** argv) {
     testChoicesClick();
     testTheHelpCard();
     testTheHelpCardDrawsSel();
+    testTheHelpCardSaysTheLoad();
     testUndoAndRedo();
     testHoldBErasesDrumHits();
     testFm6OnATrack();

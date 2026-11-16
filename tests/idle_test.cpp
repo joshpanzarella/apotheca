@@ -56,7 +56,7 @@ static int failures = 0;
 namespace {
 
 const SDL_Keycode A = SDLK_x, B = SDLK_z, X = SDLK_s, Y = SDLK_a, START = SDLK_RETURN, SELECT = SDLK_BACKSPACE;
-const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2;
+const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, MENU = SDLK_TAB;
 const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 const int kPassMs = 16, kPassSound = 768; // one pass of main.cpp's loop, and the sound it lasts
@@ -276,6 +276,14 @@ void theSession(Rig& rig, const std::string& samples) {
     Microphone mic;
     rig.part = "the drum grid at rest";
     rig.run(1000);
+
+    rig.part = "the help card: how hard the program works, a second at a time";
+    rig.key(MENU, true);
+    rig.run(2600); // SOUND and WORST at once (the sound made so far), CPU from the second after
+    CHECK(rig.app->loadShown()[0] >= 0 && rig.app->loadShown()[2] >= 0);
+    rig.key(MENU, false);
+    rig.run(500);
+    CHECK(rig.app->loadShown()[0] == -1); // shut: nothing read
 
     rig.part = "the stick held on the drum grid";
     rig.hold(STICK_RIGHT, 400);
@@ -641,18 +649,19 @@ int main(int argc, char** argv) {
     CHECK(runSession(samples, 0, &alone));
     if (!quick) {
         // Each reason, and which third of them it is in (ctest runs the three side by side: idle1 to idle3).
-        // Three are known to be covered by others where the session can show it (kept all the same: the
+        // Four are known to be covered by others where the session can show it (kept all the same: the
         // rule is "when unsure, draw", and a later change may leave one alone): PLAYING (nothing moves
         // within a step; the step itself is "place"), RECORDING (the kit and the sampler say how it is
         // going on their own line, "screen said") and the list's resting row ("picker": the row put on
-        // is heard, and its line starts at once, "playhead"; the pass it goes on is "after"). Every
-        // other one must be needed.
-        const unsigned belts = kStirPlaying | kStirRecording | kStirPicker;
+        // is heard, and its line starts at once, "playhead"; the pass it goes on is "after") and the
+        // help card's line of how hard the program works ("load": the card is up only while MENU, or
+        // SELECT, is held, so "held" draws every pass of it). Every other one must be needed.
+        const unsigned belts = kStirPlaying | kStirRecording | kStirPicker | kStirLoad;
         struct Reason { unsigned bit; int third; };
         const Reason reasons[] = {{kStirEvent, 1}, {kStirHeld, 1}, {kStirStick, 1}, {kStirPlaying, 1}, {kStirPlace, 1}, {kStirScope, 1},
                                   {kStirMeters, 1}, {kStirMidi, 1}, {kStirVolume, 1}, {kStirSaid, 1}, {kStirPanicNote, 2},
                                   {kStirUpdateSaid, 2}, {kStirFitting, 2}, {kStirRecording, 2}, {kStirBouncing, 2}, {kStirWifi, 2},
-                                  {kStirScreenSaid, 3}, {kStirPlayhead, 3}, {kStirPicker, 3}, {kStirButtonTest, 3}, {kStirAfter, 3}};
+                                  {kStirScreenSaid, 3}, {kStirPlayhead, 3}, {kStirPicker, 3}, {kStirButtonTest, 3}, {kStirAfter, 3}, {kStirLoad, 3}};
         // A reason that was never the only one on a pass changes nothing when taken away: it is not
         // run again, and is said as surviving. The others are run, and must fail.
         for (const Reason& r : reasons) {
