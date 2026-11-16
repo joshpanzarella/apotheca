@@ -366,14 +366,18 @@ effect in those two groups and fails one that does not.
   track starts plain on preset 1, whatever that one holds.
 - **The built-ins past the engine's own are DATA, compiled in** (`app/presets/NAME.inc`,
   one raw string a synth; `readPresetData`, read once, `builtInData`): `new FOLDER /
-  NAME` with `base`, `set`, `settings`, `macros` and the track-sound lines, and `preset
+  NAME` with `base`, `set`, `settings`, `macros`, FM-6's `op N` (an operator's 21 settings a line)
+  and the track-sound lines, and `preset
   N` to give one of the engine's own a sound. **Their places come after the engine's and
   before USER, and are in songs: APPEND, never insert, move or take out** (the engine
   never hears of them: `enginePresets` is what `SelectPreset` takes; past it the app
   sends every setting, as for the player's own). `builtInPresets` counts both; ask
   `listedPreset` for the values the app holds. Every line the data cannot read is a
   `problems` line, and `presets_test` fails on one; `presets_test --show` reads each as
-  the device does. **Tests of the engine's tables (`app_test`, `design_test`,
+  the device does. **The added PHYSIC and FM-6 presets are played through their whole sound**
+  (`presets_test --heard`, `--heard-fm6`): loudness, peak, a tail that ends, and every MOD moving;
+  FM-6's MODs must also be HEARD (the phrase with that MOD off differs by 1% or more: a MOD on BRIGHT
+  where no modulator sounds, or on LFO where PMS is 0, moves and changes nothing). `fm6-plan.md` section 11. **Tests of the engine's tables (`app_test`, `design_test`,
   `textsize`) run with the data emptied** (`useBuiltInDataForTests`), so a designer
   adding presets breaks none of them; `presets_test` holds the shipped data.
 - **FM-6's built-ins are five factory banks** (2026-11-16): ROM 1A, 1B, 2B, 3B, 4B,

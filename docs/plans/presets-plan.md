@@ -85,6 +85,7 @@ sound with nothing said. The name is what to write.
 | `set ID VALUE ID VALUE ...` | settings by id, each a whole number in its range |
 | `settings V0 V1 ...` | every setting from id 0, in order (fewer is fine: the rest stay) |
 | `macros M1 ... M8` | the eight macros, 0 to 1, 0.5 the middle ("+0" on the device) |
+| `op N V0 ... V20` | **FM-6 only**: operator N (1 to 6) and its 21 settings in the original's order (R1-R4, L1-L4, BREAK POINT, LEFT and RIGHT DEPTH, LEFT and RIGHT CURVE, RATE SCALING, AMS, VELOCITY, LEVEL, MODE, COARSE, FINE, DETUNE): one line an operator instead of 21 `set` pairs. Written after `base`, it changes that operator whole |
 
 ### The track's sound (any preset)
 
@@ -214,8 +215,10 @@ send 2 0.3
    song's buses, and fails one too quiet or too loud (-28 to -12 dB, its loudest tenth of a
    second), one that clips (a peak of 0.9), one whose tail does not end within 60 s, and one with a
    MOD that does not move. `--measure` prints those figures for every PHYSIC built-in. The limits
-   and why: `docs/plans/physic-plan.md`, section 17. (The other synths' added presets have no such
-   test yet: the same function, given their kind, would be the start of one.)
+   and why: `docs/plans/physic-plan.md`, section 17. **FM-6's** the same way:
+   `./build/presets_test --heard-fm6` (ctest `presets_heard_fm6`; `--measure-fm6` for every FM-6 built-in),
+   with its own phrase (a BASS folder plays low), a window of -26 to -10 dB, and **each MOD heard**: the
+   phrase played again with that MOD off must differ by 1% or more (`docs/plans/fm6-plan.md`, section 11).
 5. A still of the device on one: `--view jaxep` and pick it by hand, or the WiFi page's
    list (it shows the folder and the name).
 

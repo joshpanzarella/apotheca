@@ -8,7 +8,7 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
 kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
 (a virtual analog synth modeled after a popular DCO synth, 33 presets), FM-6 (six-operator
-FM, after a classic 80s synth, 160 presets) or PHYSIC (plucked and struck sounds that ring by
+FM, after a classic 80s synth, 209 presets) or PHYSIC (plucked and struck sounds that ring by
 themselves: strings, mallets, bells, 25 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
@@ -542,7 +542,7 @@ three effects, its ECHO and SPACE sends, GLIDE FROM and its two MODs.
   preset holds.
 - The mixer's LEVEL and PAN are never in a preset.
 - Built-in presets beyond the synth's own are added after them, each in a
-  folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER, ATMOS, METAL...). How to write one:
+  folder of its own (JAX-EP's PADS, PHYSIC's SHIMMER, ATMOS, METAL..., FM-6's KEYS, BASS...). How to write one:
   `docs/plans/presets-plan.md`.
 
 ### A scene of any length
@@ -761,6 +761,28 @@ and level.
   with their gaps closed up. A new FM-6 track starts on the first. Some names
   are in two banks, and eight voices are copies of one before them (kept so
   each bank is whole: `tools/fm6/README.md`).
+- **49 more in eight folders of their own, each a whole track sound** (the
+  synth with its effects, sends and MODs, picked as one): **KEYS** (7: electric
+  pianos, a clav through a wah, a worn celeste, vibes), **BASS** (6), **BELLS &
+  METAL** (6), **PADS** (6), **LEADS** (6), **PLUCKS** (6), **FX & ATMOS** (6) and
+  **MOVING** (6: a MOD is most of the sound). Some are factory voices dressed up,
+  some are new voices. Nobody has heard them yet: their levels, peaks and tails
+  are measured, and each MOD is checked to change the sound. The ten to try first:
+
+  | Preset | What it is |
+  | --- | --- |
+  | KEYS / Suitcase | the tine piano in its amp, panning side to side |
+  | KEYS / Glass Tines | a new piano: two bodies drifting in and out of tune, a glass layer |
+  | BASS / Growl | a rough saw through a low-pass that wobbles |
+  | BASS / Acid FM | an acid line: its accents and lengths step on two different counts |
+  | BELLS & METAL / Shimmer Bells | tubular bells into a SHIMMER that swells |
+  | BELLS & METAL / Chime Cluster | five out-of-tune chimes beating, each again backwards |
+  | PADS / Glass Pad | slow glass, its brightness and place drifting |
+  | LEADS / Talk Box | a lead that says a different vowel every eighth |
+  | FX & ATMOS / Wind Organ | a pipe with wind in it, sung through a vowel, in gusts |
+  | MOVING / Feedback Tide | three saws, one torn by FEEDBACK and smoothed again |
+
+  Every one, with what makes it and its figures: `docs/plans/fm6-plan.md`, section 11.
 - **Every one of the original's 145 voice settings is there**, by its own
   number, so a sound from any bank of the original goes in setting for
   setting. Not played: pitch bend, the mod wheel, breath and foot.

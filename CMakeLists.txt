@@ -180,6 +180,9 @@ if(APOTHECA_BUILD_APP)
     # loudness window, no clip, a tail that ends and MODs that move (docs/plans/physic-plan.md, section 17).
     add_test(NAME presets_heard COMMAND presets_test --heard)
     set_tests_properties(presets_heard PROPERTIES TIMEOUT 120)
+    # FM-6's added presets the same way, each MOD heard too (docs/plans/fm6-plan.md, section 11).
+    add_test(NAME presets_heard_fm6 COMMAND presets_test --heard-fm6)
+    set_tests_properties(presets_heard_fm6 PROPERTIES TIMEOUT 120)
     # The speed plan's changes (docs/plans/speed-plan.md), each held to the sound it made before,
     # to the bit, beside the old way of working it out. It reads the effects' and the CZ's own parts.
     add_executable(speed_test tests/speed_test.cpp)

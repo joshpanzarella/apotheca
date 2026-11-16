@@ -265,3 +265,161 @@ QMOD rows. Tests that used QMOD moved to FM-6, or to Phazed where they needed an
 choice macro. The whole song pinned in `effects_test` is remade (its second synth is FM-6; the 40
 renders and the maths line held).
 
+
+## 11. The first added presets (2026-11-16, branch `fm6presets`)
+
+The owner: "a bunch more presets for the JAX-EP and FM-6 ... with the MOD and FX set up ... of all
+different types." **49 more, in eight new folders, each a whole track sound** (the synth, its
+slots, its sends, its MODs: `docs/plans/presets-plan.md`), written in `app/presets/fm6.inc` after
+the 160 factory voices. **Nobody has heard any of them.** What each does is what its numbers say;
+the figures below are measured, the sound is a guess to be tuned by ear.
+
+| Folder | Count | What is in it |
+| --- | --- | --- |
+| KEYS | 7 | electric pianos (a suitcase with autopan, a glassy new one, a barking one, a reed one), a clav through a wah, a worn celeste, vibes with a motor |
+| BASS | 6 | a wobble and growl, a slap, a sub that boings, a fretless, an acid line, a dub |
+| BELLS & METAL | 6 | tubular bells into SHIMMER, an inharmonic bowl, struck steel, a chime ring-modulated, a steel drum dubbed, a cluster of chimes played backwards |
+| PADS | 6 | glass, strings swelling through BLOOM, a choir through vowels, a saw pad, frozen pipes, a water garden |
+| LEADS | 6 | a hollow square, a fuzzed wasp, a breathy flute, a feedback scream, a brass stab, a talk box |
+| PLUCKS | 6 | a koto thrown side to side, a harp in a mirror, a glass pluck, a sitar, a nylon guitar, a thumb piano |
+| FX & ATMOS | 6 | laser rain, a wind organ, a descent into a hall, a garden backwards, a train dubbed, a ghost on the radio |
+| MOVING | 6 | a MOD is most of the sound: STEPPERS on BRIGHT, LEVEL, DECAY and PITCH ENV, drifts on DETUNE, FEEDBACK swept |
+
+**Two kinds.** 30 take a factory voice as `base` (named `ROM 1B / E.PIANO 3`: cartridges share
+names) and give it effects, sends and MODs; where it was too quiet two carriers' LEVELs are set up
+(Sitar Swirl). 19 are **new voices** (Feedback Tide is Saw Drift's with two operators changed), each written an operator a line: the word **`op N`** and the
+operator's 21 settings in the original's order (added to `app/presets.cpp` for this; FM-6's only;
+`presets_test` `testFm6sOpLine`). Their recipes, in short:
+
+| Recipe | Presets |
+| --- | --- |
+| ALGORITHM 5, three pairs, each carrier's modulator at a ratio of its own: a body (1:1), a tine (ratio 14, gone in a moment), a glass layer bent by 3.51 | Glass Tines, Reed Piano, Motor Vibes, Glass Pluck, Thumb Piano |
+| inharmonic ratios (1.41, 2.76, 3.51, 5.4; ALGORITHM 31's five carriers at 1, 2.32, 3.93, 5.35, 7.14), long decays, DETUNE drifting so the partials beat | Glass Bowl, Chime Cluster, Hammered Steel |
+| ratio 1:1 pairs at a high index: a saw; slow first rates for a pad | Saw Drift, Glass Pad, Feedback Tide |
+| a stack with FEEDBACK 7 at its top: a rough saw or a scream | Growl, Scream, Acid FM |
+| ratio 2 on 1: odd harmonics, a hollow square | Hollow Square |
+| a modulator whose index falls fast: a filter's sweep made by FM | Acid FM, Glass Pluck |
+| the PITCH ENV up at once and down: a boing a STEPPER on PITCH ENV makes larger or smaller | Rubber Sub, Pitch Steps |
+| FEEDBACK 7 at ratio 7 bending a carrier: hiss, through a VOWEL | Wind Organ |
+
+**Each preset's MODs are heard, not only moving.** A MOD on BRIGHT is heard only where a modulator
+sounds (ALGORITHM 32's six carriers have none), FEEDBACK up does nothing at 7, LFO does nothing where
+PMS and AMS are 0, and a FEEDBACK change that a low-pass then takes away is all but silent. So the
+test plays the phrase once more with each MOD put OFF and compares the two, sample for sample (the
+engine is fresh both times, so with nothing changed they are the same to the bit): the difference
+must be at least 1% of the sound (-40 dB). Two MODs written first failed it and were changed (Reed
+Piano's FEEDBACK, -61 dB at first; Worn Celeste's BRIGHT on a voice whose only modulator is op 6,
+-31 dB, passed but was moved to the TAPE's AGE). Tried by breaking it: an LFO aimed at a patch with
+PMS 0 (Glass Tines: it moves, 0.70, but is heard at -73 dB), a MOD at no depth (Glass Bowl: swing 0)
+and two carriers turned down (Koto Pong: -51 dB) each fail it, naming the preset. **What it cannot
+catch**: whether a MOD is heard as music. A drift on DETUNE or a WOW moves the waveform a lot (0 dB
+apart) while it may be heard as a slight beating.
+
+### How they were measured (`presets_test --heard-fm6`, in ctest as `presets_heard_fm6`)
+
+Each added preset is put on an FM-6 track of a new song (TAPE on ECHO, HALL on SPACE, as a new song
+has) and plays a bar at 120 BPM round twice, then Stop and the tail. **Keys** (every folder but BASS):
+a low C (48) held the whole bar under four notes up (60, 67, 64, 72), a four-key chord held six
+steps (55, 60, 64, 71: loose notes, one moment), a high note (79). **BASS**: a line around C1 and C2
+(36, 43, 36, 40, 48), G0 (31) held six steps, 43. All at the level a note is placed at. Everything
+the track and the buses give is read off the master. Held:
+
+| Limit | Value | Why |
+| --- | --- | --- |
+| The loudest tenth of a second (RMS, the louder side) | -26 to -10 dB | the 160 factory voices played the same way: the middle -20.4 dB; ROM 1A from -29.1 (GUITAR 2) to -12.1 (ORCHESTRA), the five banks to -8.3 (PERC BRASS), TAKE OFF -46 (it swells after 10 s) and EXPLOSION -42 under |
+| The largest sample, the tail too | under 0.9 | the factory's loudest, PERC BRASS, is 0.899 |
+| The tail, Stop to the last tenth over -80 dB | ends, within 60 s | the factory's longest is EXPLOSION, 13.4 s; the longest here is Train Dub, 11.0 s (DUB) |
+| Every sample | a number | |
+| Each MOD on | moves (swings by more than 0.005) and is heard (the phrase without it is at least -40 dB apart) | above |
+
+`presets_test --measure-fm6` prints the same figures for every FM-6 built-in, the 160 too (about 15 s).
+**No checksum is pinned**: the owner tunes them by ear, and a tuned preset only has to stay inside the
+limits.
+
+### The presets (★: the ten to try first)
+
+Loudest is the loudest tenth of a second with the phrase; MOD n's heard figure is how far the phrase
+moved without it.
+
+| Folder | Name | The idea | What makes it (synth; slots; sends. MODs) | Loudest | Peak | Tail |
+| --- | --- | --- | --- | --- | --- | --- |
+| KEYS | **Suitcase** ★ | the classic tine piano in its amp, panning side to side | E.PIANO 1; TREMOLO 1/8 SPREAD 100%, CHORUS, PLATE; SPACE 12%. LFOs: BRIGHT (2 BARS), the TREMOLO's DEPTH -40% (4 BARS) | -15.8 dB | 0.52 | 1.5 s |
+| KEYS | **Glass Tines** ★ | a new tine piano: two bodies drifting in and out of tune, a tine, a glass layer bent off true | new, ALGORITHM 5; ENSEMBLE, PLATE; ECHO 10%. LFOs: DETUNE (FREE 0.08 Hz), BRIGHT -30% (4 BARS) | -19.6 dB | 0.26 | 2.6 s |
+| KEYS | Bark Piano | a bright piano that barks on some notes | ROM 1B E.PIANO 3; SATURATE TUBE, PHASER, SPRING. STEPPER of 8: BRIGHT; LFO: the DRIVE (2 BARS) | -16.5 dB | 0.48 | 0.8 s |
+| KEYS | Reed Piano | a reed piano: nasal, its amp's tremolo | new, ALGORITHM 5, FEEDBACK 5; DRIVE, TREMOLO 1/8; SPACE 15%. LFOs: BRIGHT (a TRIANGLE a bar), the TREMOLO's DEPTH (2 BARS) | -19.7 dB | 0.31 | 1.0 s |
+| KEYS | Funk Clav Wah | a clav through a wah pedal that steps | ROM 3B FUNK CLAV; VOWEL, EQ, SPRING. STEPPER of 8: the VOWEL, 1/8; LFO: PAN (a bar) | -24.3 dB | 0.17 | 0.4 s |
+| KEYS | Worn Celeste | a celeste on a worn tape | ROM 1B CELESTE; WEAR, TAPE 1/8 DOT; SPACE 20%. LFOs: WEAR's WOW (FREE DRIFT), the TAPE's AGE (4 BARS) | -13.2 dB | 0.68 | 3.0 s |
+| KEYS | Motor Vibes | vibes whose motor slows and speeds | new, ALGORITHM 5 (the bar's fourth partial, a strike at 10); TREMOLO 1/8 TRIP, HALL. LFOs: the TREMOLO's DEPTH (4 BARS), DECAY (2 BARS) | -21.2 dB | 0.26 | 1.5 s |
+| BASS | **Growl** ★ | a wobble bass: a rough saw through a resonant low-pass that swings | new, ALGORITHM 3, FEEDBACK 7; FILTER LOW 24, DRIVE. LFOs: the CUTOFF +50% (1/4 TRIP), FEEDBACK -40% (a RAMP a bar) | -24.6 dB | 0.17 | 0.1 s |
+| BASS | Slap Snap | the slap bass, squeezed, its slaps and pops stepping | ROM 1A BASS 1; COMP, EQ, SNAP. STEPPER of 6: BRIGHT, every step | -18.8 dB | 0.54 | 0.1 s |
+| BASS | Rubber Sub | a sub that boings: the pitch flicks up and falls | new, ALGORITHM 5 (two pairs), the PITCH ENV up and down; DUB 1/8, COMP. STEPPER of 8: PITCH ENV, 1/8 | -24.3 dB | 0.21 | 1.1 s |
+| BASS | Fretless Chorus | a fretless in a chorus, in and out of tune | ROM 3B FRETLESS 2; CHORUS, COMP, EQ. LFOs: DETUNE (FREE DRIFT), BRIGHT (2 BARS) | -14.4 dB | 0.32 | 0.2 s |
+| BASS | **Acid FM** ★ | an acid line made by FM: the index falls like a filter, accents step | new, ALGORITHM 1, FEEDBACK 6; DRIVE, PING 1/8. STEPPERS: BRIGHT (8, 1/8) against DECAY (5, 1/8) | -23.2 dB | 0.18 | 1.0 s |
+| BASS | Dub Sub | a synth bass into a dark dub | ROM 2B SYN-BASS 1; FILTER LOW 12, DUB 1/8 DOT; SPACE 10%. LFOs: the DUB's FEEDBACK (4 BARS), the CUTOFF (2 BARS) | -22.4 dB | 0.17 | 3.6 s |
+| BELLS & METAL | **Shimmer Bells** ★ | tubular bells into a SHIMMER that swells | ROM 1A TUB BELLS; SHIMMER; ECHO 10%, SPACE 20%. LFOs FREE: the SPACE send (DRIFT 0.07 Hz), the SHIMMER's amount (0.05 Hz) | -19.1 dB | 0.35 | 7.5 s |
+| BELLS & METAL | Glass Bowl | a bowl of inharmonic partials beating | new, ALGORITHM 5 (1.41, 2.76, 3.51, 5.4); PLATE; SPACE 15%. LFOs FREE: DETUNE (DRIFT), PAN | -19.6 dB | 0.34 | 5.6 s |
+| BELLS & METAL | Hammered Steel | struck plate steel, hammer and tap | new, ALGORITHM 5 (3.15, 1.98, 7.14, 4.2), FEEDBACK 6; SATURATE HARD, PING 1/4 TRIP. STEPPER of 6: BRIGHT; LFO: the PING's FEEDBACK | -22.3 dB | 0.25 | 1.5 s |
+| BELLS & METAL | Clang Ring | an orchestra chime through a ring modulator | ROM 1A ORCH-CHIME; RING 360 Hz, HALL. LFOs: the RING's FREQ (FREE DRIFT), its MIX -40% (4 BARS) | -18.4 dB | 0.43 | 3.2 s |
+| BELLS & METAL | Pan Dub | a steel drum into a dub, thrown about | ROM 1A STEEL DRUM; DUB 1/8 DOT; SPACE 10%. LFO: the DUB's TONE (2 BARS); STEPPER of 6: PAN, 1/8 | -15.5 dB | 0.50 | 4.1 s |
+| BELLS & METAL | **Chime Cluster** ★ | five inharmonic chimes, each again backwards | new, ALGORITHM 31 (1, 2.32, 3.93, 5.35, 7.14); REVERSE 1/4, HALL. LFOs: DETUNE (FREE DRIFT), the REVERSE's FEEDBACK (4 BARS) | -23.8 dB | 0.19 | 4.2 s |
+| PADS | **Glass Pad** ★ | a slow glass pad whose brightness and place drift | new, ALGORITHM 5, slow attacks, ratio 3 and 5 modulators, a slow vibrato; ENSEMBLE, HALL. LFOs FREE: BRIGHT (DRIFT 0.06 Hz), PAN | -21.9 dB | 0.20 | 4.4 s |
+| PADS | Bloom Strings | strings swelling through BLOOM | ROM 1A STRINGS 2; BLOOM 1.1 s. LFOs: DETUNE (2 BARS), the BLOOM's MIX (4 BARS) | -18.0 dB | 0.30 | 6.0 s |
+| PADS | Vowel Choir | the factory voice sung through vowels | ROM 1A VOICE 1; VOWEL, HALL. LFOs: the VOWEL (2 BARS), LFO +40% (4 BARS) | -21.0 dB | 0.28 | 3.7 s |
+| PADS | Saw Drift | a three-saw pad under a slow low-pass | new, ALGORITHM 5, each pair 1:1; FILTER LOW 24, CHORUS ENSEMBLE; SPACE 25%. LFOs: the CUTOFF -40% (4 BARS), FEEDBACK (8 BARS) | -17.9 dB | 0.29 | 1.4 s |
+| PADS | Frozen Pipes | an organ pipe in a long plate, breathing | ROM 1A PIPES 1; PLATE 13 S, EQ. LFOs: LEVEL -30% (FREE 0.25 Hz), BRIGHT (4 BARS) | -17.4 dB | 0.45 | 6.7 s |
+| PADS | Water Bloom | the water garden swelling through BLOOM | ROM 2B WATER GDN; CHORUS ENSEMBLE, BLOOM 1.6 s. LFOs FREE: the BLOOM's MIX (DRIFT), PAN | -25.3 dB | 0.19 | 6.5 s |
+| LEADS | Hollow Square | a hollow lead, its vibrato widening | new, ALGORITHM 5 (two pairs at 2:1), a late vibrato; DRIVE, PING 1/8 DOT. LFOs: LFO +50% (2 BARS), BRIGHT (a bar) | -19.1 dB | 0.27 | 2.0 s |
+| LEADS | Wasp | a buzzing synth lead, fuzzed | ROM 2B SYN-LEAD 2; FUZZ, PING 1/8. STEPPER of 8: BRIGHT; LFO: the FUZZ's TONE | -14.9 dB | 0.46 | 1.3 s |
+| LEADS | Breathy Flute | a flute whose breath and vibrato deepen | ROM 1A FLUTE 1; TAPE 1/4, PLATE; SPACE 15%. LFOs: LFO +50% (4 BARS), BRIGHT (2 BARS) | -20.1 dB | 0.30 | 3.0 s |
+| LEADS | Scream | a feedback scream that settles and screams again | new, ALGORITHM 1, FEEDBACK 7; SATURATE TUBE, DELAY 1/8 DOT. LFOs: FEEDBACK -50% (1/4), BRIGHT (2 BARS) | -23.1 dB | 0.27 | 1.5 s |
+| LEADS | Brass Stab | synth brass, some notes swelling in | ROM 2B SYNBRASS 1; COMP, PLATE. STEPPER of 4: ATTACK; LFO: BRIGHT -40% (2 BARS) | -13.5 dB | 0.51 | 1.9 s |
+| LEADS | **Talk Box** ★ | a lead that talks: a vowel stepping every eighth | ROM 1A SYN-LEAD 1; VOWEL, COMP. STEPPER of 8: the VOWEL +90%; LFO: the VOWEL's SHIFT (4 BARS) | -19.8 dB | 0.22 | 0.1 s |
+| PLUCKS | Koto Pong | a koto thrown side to side | ROM 1A KOTO; PING 1/8, EQ. STEPPER of 6: PAN, every step; LFO: BRIGHT (2 BARS) | -22.7 dB | 0.30 | 1.4 s |
+| PLUCKS | Harp Mirror | a harp with each note again backwards | ROM 1B HARP 1; REVERSE 1/8 DOT, HALL. LFOs: the REVERSE's MIX -40% (4 BARS), RELEASE (2 BARS) | -13.0 dB | 0.65 | 3.7 s |
+| PLUCKS | Glass Pluck | a pluck bright at the start, glass in it | new, ALGORITHM 5 (ratio 7 glass), FEEDBACK 4; PING 1/4 TRIP, PLATE. LFOs: BRIGHT (a bar), PAN (FREE DRIFT) | -23.1 dB | 0.22 | 1.8 s |
+| PLUCKS | Sitar Swirl | a sitar in a drifting phaser | ROM 1B SITAR, its carriers up; PHASER, SPRING, EQ. LFOs: the PHASER's FEEDBACK (FREE DRIFT), DETUNE (4 BARS) | -20.5 dB | 0.32 | 5.9 s |
+| PLUCKS | Nylon Chorus | a nylon guitar in a chorus | ROM 3B CLAS.GUIT; CHORUS, PLATE; ECHO 12%. LFOs: BRIGHT (4 BARS), PAN (FREE DRIFT) | -19.4 dB | 0.38 | 2.2 s |
+| PLUCKS | Thumb Piano | two tines a little apart, hard and soft thumbs | new, ALGORITHM 5 (a knock at 5.2, a partial at 8.0); TAPE 1/8, SPRING, COMP. STEPPER of 5: BRIGHT; LFO: the TAPE's AGE (4 BARS) | -20.8 dB | 0.44 | 1.6 s |
+| FX & ATMOS | Laser Rain | zaps falling side to side | ROM 2B LASER GUN; PING 1/8 TRIP, HALL. STEPPER of 7: PAN, every step; LFO: PITCH ENV -40% (4 BARS) | -17.1 dB | 0.48 | 3.4 s |
+| FX & ATMOS | **Wind Organ** ★ | a pipe with wind in it, sung through a vowel, in gusts | new, ALGORITHM 5 (two pairs; FEEDBACK 7 at ratio 7: hiss), slow; VOWEL, HALL. LFOs FREE: the VOWEL (DRIFT), LEVEL -20% (DRIFT) | -22.3 dB | 0.16 | 4.5 s |
+| FX & ATMOS | Descent Space | a falling sound in a big hall, wandering | ROM 2B DESCENT; HALL 13 S, EQ. LFOs: the HALL's MIX (FREE DRIFT), PAN (2 BARS) | -17.9 dB | 0.52 | 7.6 s |
+| FX & ATMOS | Backwards Garden | the water garden, half backwards | ROM 2B WATER GDN; REVERSE 1/4, HALL; ECHO 15%. LFOs: the REVERSE's FEEDBACK (4 BARS), PAN (FREE DRIFT) | -18.3 dB | 0.50 | 4.1 s |
+| FX & ATMOS | Train Dub | the factory train, filtered and dubbed | ROM 1A TRAIN; FILTER LOW 12, DUB 1/4, COMP. LFOs: the CUTOFF (4 BARS), the DUB's FEEDBACK (8 BARS) | -25.9 dB | 0.14 | 11.0 s |
+| FX & ATMOS | Radio Ghost | a voice on a radio being tuned | new, ALGORITHM 5, slow; RING 180 Hz, WEAR, COMP; SPACE 25%. LFOs FREE: the RING's FREQ (DRIFT), LEVEL (DRIFT) | -22.7 dB | 0.32 | 1.6 s |
+| MOVING | Bright Steps | a synth clav with sixteen brightnesses | ROM 2B SYN-CLAV 1; PING 1/8. STEPPERS: BRIGHT (16, every step) against FEEDBACK (5, 1/8) | -21.8 dB | 0.25 | 1.1 s |
+| MOVING | Gate Strings | strings chopped by a gate | ROM 1A STRINGS 1; DELAY 1/8 DOT, CHORUS ENSEMBLE. STEPPER of 8: LEVEL +100%, every half step (-1 is silence); LFO: DETUNE (4 BARS) | -12.4 dB | 0.44 | 2.0 s |
+| MOVING | Detune Drift | an electric piano in and out of tune | ROM 1B E.PIANO 2; CHORUS, TAPE 1/8 DOT. LFOs FREE: DETUNE +70% (DRIFT 0.06 Hz), LEVEL -30% (DRIFT) | -19.9 dB | 0.25 | 2.1 s |
+| MOVING | Decay Walk | a marimba: a note short, a note rings | ROM 1A MARIMBA; PING 1/8 DOT, PLATE. STEPPER of 8: DECAY +70%, 1/8; LFO: BRIGHT (2 BARS) | -24.0 dB | 0.27 | 1.3 s |
+| MOVING | Pitch Steps | each note falls a different way | new, ALGORITHM 5, the PITCH ENV from above; PING 1/4 TRIP, COMP; SPACE 12%. STEPPER of 6: PITCH ENV; LFO: PAN (FREE DRIFT) | -23.6 dB | 0.40 | 1.8 s |
+| MOVING | **Feedback Tide** ★ | Saw Drift's three saws, one torn by FEEDBACK and smoothed again | Saw Drift with its third pair up, FEEDBACK 2; FILTER LOW 24, ENSEMBLE; SPACE 20%. LFOs: FEEDBACK +70% (a TRIANGLE over 4 BARS), the CUTOFF (FREE DRIFT) | -18.3 dB | 0.35 | 1.3 s |
+
+Every level was set by measuring: from -25.9 (Train Dub) to -12.4 dB (Gate Strings), the middle about
+-20, the factory's own middle -20.4. Quiet first drafts were brought up by more carriers, not by a
+COMP: COMP's make-up is half of what a FULL-SCALE sound loses, so on a sound at -25 dB a low
+threshold turned it down (Thumb Piano went from -26 to -28 before a third pair was given it).
+
+### The ten to try first
+
+| Preset | Why it is a favourite (on paper) |
+| --- | --- |
+| KEYS / Suitcase | the tine piano everyone knows, in its amp: an autopan whose depth comes and goes and a bark that swells |
+| KEYS / Glass Tines | a new piano of three pairs: two bodies drifting apart beat slowly, a tine at ratio 14, a glass layer bent off true |
+| BASS / Growl | a rough FEEDBACK 7 saw through a resonant low-pass that wobbles in triplets, the growl clearing each bar |
+| BASS / Acid FM | the acid line made by FM: two STEPPERS, 8 and 5 long, on BRIGHT and DECAY, so the accents never repeat the same way |
+| BELLS & METAL / Shimmer Bells | tubular bells into a SHIMMER whose amount and SPACE send drift on their own clocks: the owner's own example |
+| BELLS & METAL / Chime Cluster | five inharmonic chimes (ALGORITHM 31) beating against each other, each again backwards |
+| PADS / Glass Pad | slow glass: ratio 3 and 5 modulators on detuned bodies, its brightness and its place drifting free |
+| LEADS / Talk Box | a lead that says something different every eighth note |
+| FX & ATMOS / Wind Organ | FEEDBACK 7 at ratio 7 is hiss: wind through a pipe, a vowel drifting, gusts on LEVEL |
+| MOVING / Feedback Tide | three saws, one torn by FEEDBACK over four bars and smoothed again |
+
+### Cost
+
+The checker times the engine while the phrase plays, the song's two buses included (this container,
+the best of four runs on a desk shared with other builds; the factory voices read 0.17% (E.ORGAN 1) to
+0.93% (HARPSI-STG) the same way, E.PIANO 1 0.36%). **The heaviest: Bloom Strings 1.12%** (BLOOM, and
+STRINGS 2's 0.81% alone), Shimmer Bells 1.05% (SHIMMER, TUB BELLS ringing), Water Bloom 0.97%
+(BLOOM); the middle 0.62%, the lightest Rubber Sub 0.21% (four operators, no reverb). On the handheld
+(x 13 to 17) the heaviest is 15 to 19% of a core for the track. **Not run on the handheld.** None
+stacks two of BLOOM, SHIMMER and FOLD (none uses FOLD); a reverb a preset only needs a little of is
+a send into the song's own SPACE.
