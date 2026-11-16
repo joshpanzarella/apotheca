@@ -1421,9 +1421,10 @@ void testTheOtherScreens() {
     rig.key(B, false);
     rig.tap(A);
     session.setLaneSample(0, 7, deep); // on another lane too: the list says so
-    listHolds("the kit's list, a recording on in two places", "ALSO IN THIS SONG: 1 PLACE");
+    listHolds("the kit's list, a recording on in two places", "ALSO IN THIS SONG:");
+    CHECK(drew("1 PLACE")); // (its own line: on one it ran past the panel's edge)
     session.setLaneSample(0, 6, deep);
-    listHolds("the kit's list, a recording on in three places", "ALSO IN THIS SONG: 2 PLACES");
+    listHolds("the kit's list, a recording on in three places", "2 PLACES");
     session.setLaneSample(0, 6, "");
     session.setLaneSample(0, 7, "");
     rig.tap(LEFT); // on the folder it is in, itself in a folder: what it holds beside it

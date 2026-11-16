@@ -1556,7 +1556,8 @@ void testTheSamplePicker() {
     rig.tap(R1);
     rig.tap(L1);
     CHECK(list.cursor() == 10 && kit.cursorLane() == 5 && kit.said().empty() && session.recording() == Session::Rec::Idle);
-    // X hears it again.
+    // X hears it again (its preview over: from the top, for as long as X is held).
+    rig.frames(130);
     rig.render(96000);
     rig.tap(X);
     CHECK(Rig::sounding(rig.render(20000)) > 1500);
@@ -2082,6 +2083,66 @@ void testOneSliceIsKeptInTheSong() {
 // Recordings kept in folders: the list shows a folder at a time, L1 and R1 turn them.
 // The list in columns (owner, 2026-11-14): where this folder is, this folder, what is under the
 // cursor. Folders two levels deep.
+// The columns stand still (owner, 2026-11-15: "start out with the sound preview open to the right of
+// the 2 levels ... that way it doesn't need to expand"). Read off the drawn screen: on SAMPLES the
+// cursor is in the first column, the folder under it in the second, and the preview's box already
+// in the third; going into the folder the cursor steps right, the second column's rows stay where
+// they were, pixel for pixel, and the preview's box is where it was.
+void testTheColumnsStandStill() {
+    const std::string folder = tempFolder();
+    for (const char* dir : {"/kicks", "/vocals"}) mkdir((folder + dir).c_str(), 0755);
+    std::vector<float> made(3000);
+    for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
+    for (const char* name : {"kicks/808", "kicks/909", "kicks/linn", "vocals/ah"}) CHECK(writeWav(folder + "/" + name + ".wav", made, 48000));
+    Rig rig(folder);
+    rig.app.session().view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    SamplePicker& list = kit.picker();
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    rig.tap(A);
+    rig.tap(DOWN); // KICKS
+    CHECK(list.depth() == 0 && list.under() && list.under()->name == "kicks" && list.cursorX() == SamplePicker::kLeftX);
+    Canvas before, after;
+    CHECK(before.ok && after.ok);
+    if (!before.ok || !after.ok) return;
+    rig.frames(1);
+    rig.app.draw(before.r, *before.fonts);
+    rig.tap(RIGHT); // into KICKS: 808 goes on
+    rig.frames(2);
+    CHECK(list.depth() == 1 && list.cursor() == 0 && list.cursorX() == SamplePicker::kMidX);
+    rig.app.draw(after.r, *after.fonts);
+    // The cursor's outline: the first column before, the second after.
+    const int rowY = SamplePicker::kRowsY - 1;
+    CHECK(before.is(SamplePicker::kLeftX - 1, rowY + SamplePicker::kRowH + 5, ui::kTeal) && !before.is(SamplePicker::kMidX - 1, rowY + 5, ui::kTeal));
+    CHECK(after.is(SamplePicker::kMidX - 1, rowY + 5, ui::kTeal) && !after.is(SamplePicker::kLeftX - 1, rowY + SamplePicker::kRowH + 5, ui::kTeal));
+    // KICKS' second and third rows (909, LINN): in the same place before and after, their boxes and
+    // their names (dim beside the cursor's column, bright in it: the only change).
+    const auto shape = [&](Canvas& c, int row) {
+        const int y = SamplePicker::kRowsY + row * SamplePicker::kRowH;
+        std::vector<int> marks; // the box's edges, and where its name's ink is, across its middle and along its top
+        for (int across = SamplePicker::kMidX - 2; across < SamplePicker::kMidX + SamplePicker::kMidW + 2; ++across) {
+            const int mid = y + (SamplePicker::kRowH - 4) / 2;
+            marks.push_back(c.is(across, y, ui::kLine) ? 1 : 0);
+            marks.push_back(c.is(across, mid, ui::kLine) ? 1 : !c.is(across, mid, ui::kPanel) && !c.is(across, mid, ui::kPanel2) ? 2 : 0);
+        }
+        return marks;
+    };
+    CHECK(shape(before, 1) == shape(after, 1) && shape(before, 2) == shape(after, 2));
+    CHECK(shape(before, 1) != shape(before, 2)); // (two names: the check sees the words)
+    // The preview's box: there before anything was picked, and there after, the same size.
+    const auto boxAt = [&](Canvas& c) {
+        return c.is(SamplePicker::kRightX, SamplePicker::kRowsY + 10, ui::kLine) && c.is(SamplePicker::kRightX + SamplePicker::kRightW - 1, SamplePicker::kRowsY + 10, ui::kLine) &&
+               c.is(SamplePicker::kRightX + 10, SamplePicker::kRowsY + SamplePicker::kPictureH - 1, ui::kLine);
+    };
+    CHECK(boxAt(before) && boxAt(after));
+    // ...and after it the picture of what went on, inside it.
+    int teal = 0;
+    for (int across = SamplePicker::kRightX + 2; across < SamplePicker::kRightX + SamplePicker::kRightW - 2; ++across) teal += after.is(across, SamplePicker::kRowsY + SamplePicker::kPictureH / 2, ui::kTeal);
+    CHECK(teal > SamplePicker::kRightW / 2);
+    rig.tap(B);
+}
+
 void testFoldersInTheSamplePicker() {
     const std::string folder = tempFolder();
     const auto make = [&](const std::string& name, int frames) {
@@ -2504,6 +2565,7 @@ void testARecordingEndingInCapitals() {
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
+    testTheColumnsStandStill();
     testFoldersInTheSamplePicker();
     testThePickersPace();
     testTheSliceView();

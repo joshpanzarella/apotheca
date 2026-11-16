@@ -150,19 +150,22 @@ recording. Eight notes at a time.
 **Tap A on SOUND** (a kit lane, or the sampler) and the recordings come up
 in **three columns**: the folder this one is in, this folder with the cursor
 in it, and what is under the cursor (a folder's contents, or a recording's
-waveform and length). The cursor's column is always the middle one. It opens
-in the folder of the recording that is on, on it.
+waveform and length). **The columns stand still**: on SAMPLES the cursor is in
+the first column, the folder under it is shown in the second and the
+recording's picture is already open in the third, so going into a folder only
+moves the cursor one column right. Inside a folder the cursor is in the middle
+column. It opens in the folder of the recording that is on, on it.
 
 | Button | Does |
 | --- | --- |
-| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, it plays once. Held: a steady pace, faster after a second and a half |
+| Up / down | The next in the column. A recording goes on **at once**: with the song playing you hear it in the beat; stopped, **half of it plays** (from where it plays from: the sampler's START), and it stops as soon as the cursor moves on. Held: a steady pace, faster after a second and a half |
 | The stick | Big moves: up to fifteen rows a second pushed all the way. Going by that fast, the one you stop on goes on, not each one passed |
 | Left / right | Out to the folder this one is in / into the folder under the cursor |
 | **L1 / R1** | A page up / down |
 | **Hold R1** | On a recording: **carry it**. Keep R1 down and steer (D-pad, stick, L1) to a folder, or into one; let go and it is there. The top line says where it would go. Let go on a row of SAMPLES that is no folder: out of every folder. **B with R1 held calls it off** |
 | A | On a recording: keep it. On a folder: into it. On **+ NEW FOLDER**: type its name (A types, Y deletes a letter, **B makes the folder and leaves**, as START does; with nothing typed B leaves and makes none) |
 | B | A tap: put back what was there before the list opened |
-| X | Hear it again. **Held: it plays until you let go**, or to its end; a tap plays a moment |
+| X | **While it is still playing: it plays on to its end.** Nothing playing: hear it again; **held, it plays until you let go**, or to its end; a tap plays a moment |
 | **Hold B** | For a second: **delete** the recording under the cursor from the handheld (a bad catch, a take not wanted). Lanes that were using it go back to their drum. Or an **empty folder**: one with anything in it is never deleted |
 | START | Play / stop, with the list still open |
 

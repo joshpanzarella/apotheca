@@ -64,6 +64,26 @@ void SamplerScreen::hear(bool held) {
     else session_.audition(project_.track, kHearKey, kPlacedLevel);
 }
 
+// The list of recordings: the preview, half of what a note plays at least (START to END at middle
+// C), stopped as soon as the cursor moves on; X on it plays on to the end (to END: with LOOP on,
+// once round).
+void SamplerScreen::hearFromList(SamplePicker::Hear how) {
+    if (how == SamplePicker::Hear::Held) return hear(true);
+    if (how == SamplePicker::Hear::Quiet) {
+        session_.stopHeard(this);
+        head_.since = 0; // its line goes with it
+        headHeld_ = false;
+        return;
+    }
+    if (how == SamplePicker::Hear::Preview) hear(true); // begun as X begins it, and let go at once (below)
+    const float whole = head_.wholeLength();
+    const Uint32 ms = static_cast<Uint32>(1000.f * (how == SamplePicker::Hear::Preview ? whole / 2.f : whole));
+    const Uint32 lasts = ms > Session::kAuditionMs ? ms : Session::kAuditionMs;
+    session_.hearFor(lasts);
+    headHeld_ = false;
+    head_.lasts = how == SamplePicker::Hear::Preview ? static_cast<float>(lasts) / 1000.f + release_ : 0.f; // (Rest: to END)
+}
+
 // A setting, changed: kept, and heard if the song is not playing. Not more
 // often than a few times a second, however fast the stick turns it.
 void SamplerScreen::setSetting(int id, int value) {
@@ -109,7 +129,8 @@ void SamplerScreen::openPicker() {
     const int track = project_.track;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track](const std::string& name) { session_.setTrackSample(track, name); };
-    jobs.hear = [this](bool held) { hear(held); };
+    jobs.hear = [this](SamplePicker::Hear how) { hearFromList(how); };
+    jobs.sounding = [this] { return session_.hearingOn(this) && head_.at(lastMs_) >= 0.f; }; // (its line still running: not ended by itself)
     jobs.playhead = [this] { return &head_; };
     jobs.sound = [this, track] { return &session_.trackSound(track); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };

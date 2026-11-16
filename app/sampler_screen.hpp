@@ -80,6 +80,7 @@ private:
     void press(Button direction);
     void stepSound(int by);
     void hear(bool held = false); // held: X is down, and it sounds until X is let go
+    void hearFromList(SamplePicker::Hear how); // the list of recordings' preview (SamplePicker::Hear)
     void setSetting(int id, int value); // kept, and heard
 
     Session& session_;

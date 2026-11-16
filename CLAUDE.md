@@ -1796,7 +1796,22 @@ effect in those two groups and fails one that does not.
   with.
 - **The list of recordings is three columns** (owner, 2026-11-14; `app/sample_picker.hpp`,
   plan `docs/plans/picker-plan.md`, batches 0 to 2 built): the folder this one is in, this
-  folder with the cursor (always the middle column), and what is under the cursor.
+  folder with the cursor, and what is under the cursor. **The columns stand still** (owner,
+  2026-11-15: the preview "already opened"): on SAMPLES (folders there) the cursor is in the FIRST
+  column, the folder under it in the second and the preview's box, empty, in the third
+  (`cursorFirst`, `cursorX`, `drawPreview`), so going in moves only the cursor; inside a folder
+  the cursor's column is the middle one; with no folders (`flat()`) the one list is the middle
+  column. `sample_test` `testTheColumnsStandStill` reads it off the drawn screen.
+  **What the list plays is a `SamplePicker::Hear`** (owner, 2026-11-15): a recording arrived on with
+  the song stopped is a PREVIEW, half of what it plays (the sampler: START to END at middle C; the
+  kit: the lane's sound, fitted or not), `Session::kAuditionMs` at least, stopped the moment the
+  cursor moves on to anything that puts nothing on (a folder, out, B: `quiet()`; a recording put
+  on takes the lane or the key over itself). **X while it plays is REST: on to its end, not begun
+  again** (`Session::hearFor` moves its stop); X with nothing playing is held, as everywhere.
+  "Playing" is `Session::hearingOn(screen)` and the screen's line still running (a sound that
+  ended by itself before its stop is not playing). The built-in drum is heard whole, as a tap of
+  it always is. `Session::stopHeard` stops only what that screen began. `hear_test`
+  (`testThePages`, `testTheSampler`, `testThePreviewStopsWhenTheCursorMovesOn`).
   `rowsAt(depth, folder)` is the one place a column's rows are made (0 SAMPLES: the first row,
   UNSORTED if anything is loose, the folders; with no folders at all, the recordings
   themselves: `flat()`). **A D-pad press puts the recording on at once; rows going by faster
