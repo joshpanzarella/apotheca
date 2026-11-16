@@ -501,6 +501,38 @@ static void testTuneTick() {
     if (gPrint) std::printf("  the cutoff on its tick against every sample: %.1f dB under the sound\n", under);
 }
 
+// LEVEL and DRIVE (batch 5's review: nothing held them): LEVEL -6 dB is the sound times 10^-0.3, to a
+// float's rounding; DRIVE bends the wave (its harmonics move) and keeps a full wave's peak, so its
+// RMS grows only as the wave squares up (3.5 dB on the saw, 4.9 on the square at 100: held under 6).
+static void testLevelAndDrive() {
+    const std::vector<Set> sets = {{Cutoff, 60}, {Resonance, 30}, {EnvMod, 0}, {AmpDecay, 100}};
+    std::unique_ptr<Acid> a = synth(sets), b = synth(sets);
+    b->setSetting(Level, -6);
+    const std::vector<float> x = play(*a, {on(0, 36)}, 9600), y = play(*b, {on(0, 36)}, 9600);
+    double worst = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i) worst = std::max(worst, std::fabs(y[i] - x[i] * std::pow(10.0, -0.3)));
+    CHECK(peakOf(x) > 0.05f && worst < 1e-6);
+    for (int wave : {kSaw, kSquare}) {
+        std::vector<Set> w = sets;
+        w.push_back({Wave, wave});
+        std::unique_ptr<Acid> clean = synth(w), dirty = synth(w);
+        dirty->setSetting(Drive, 100);
+        const std::vector<float> c = play(*clean, {on(0, 36)}, 9600), d = play(*dirty, {on(0, 36)}, 9600);
+        const double apart = dB(rmsOf(d, 2400, 9600) / rmsOf(c, 2400, 9600));
+        double diff = 0.0;
+        for (std::size_t i = 2400; i < c.size(); ++i) diff += (d[i] - c[i]) * (d[i] - c[i]);
+        CHECK(apart > 0.5 && apart < 6.0 && std::sqrt(diff / 7200.0) > 0.05 * rmsOf(c, 2400, 9600));
+        if (gPrint) std::printf("  DRIVE 100 on the %s: %.1f dB against DRIVE 0\n", waveName(wave), apart);
+    }
+    // The square is half the saw's wave (its fundamental as loud): the same key, the filter wide open.
+    std::unique_ptr<Acid> saw = synth(plainSets()), sq = synth(plainSets());
+    sq->setSetting(Wave, kSquare);
+    const std::vector<float> s1 = play(*saw, {on(0, 48)}, 48000), s2 = play(*sq, {on(0, 48)}, 48000);
+    const double f = hzOf(48), fs = dB(partNear(s2.data() + 24000, 24000, f) / partNear(s1.data() + 24000, 24000, f));
+    CHECK(std::fabs(fs) < 0.5);
+    if (gPrint) std::printf("  the square's fundamental against the saw's: %+.2f dB\n", fs);
+}
+
 // ---- batch 2: slide and accent --------------------------------------------------------------
 
 // The slide's time, measured: the pitch at tau, 2 tau, the sample before it lands and the landing,
@@ -782,6 +814,7 @@ int main(int argc, char** argv) {
         {"testNewestWins", testNewestWins},
         {"testTail", testTail},
         {"testTuneTick", testTuneTick},
+        {"testLevelAndDrive", testLevelAndDrive},
         {"testBlocks", testBlocks},
         {"testTooSmall", testTooSmall},
         {"testNaN", testNaN},

@@ -407,3 +407,18 @@ for the owner's ears.
 | 30 | MOVING | Wobble Reso | -19.0 | 0.297 | 0.1 | 1:0.80/-8dB |
 | 31 | MOVING | Semitone Steps | -16.3 | 0.563 | 0.1 | 1:2.00/0dB 2:0.60/-2dB |
 | 32 | MOVING | ★ Drift | -11.0 | 0.545 | 0.1 | 1:0.38/-1dB 2:0.42/-11dB |
+
+### Batch 5, README and the review (2026-11-16)
+
+README has an ACID page (after PHYSIC's) and the instrument count in its status. **The review** read
+the whole ACID diff again (engine, the two hooks, the app, the presets). Nothing found wrong in the
+code; one stale line in CLAUDE.md (the voice "sleeps 5 ms after the gate shuts": it is a step now) was
+mended. Thin coverage found and mutated: LEVEL, DRIVE and the square's level were held by nothing in
+`acid_test` (only the presets' loudness saw them); `testLevelAndDrive` holds them now (LEVEL -6 is the
+sound times 10^-0.3 to 1e-6; DRIVE 100 bends the wave and stays 3.5 dB (saw) and 4.9 dB (square) over
+DRIVE 0; the square's fundamental is the saw's, -0.28 dB). Seven mutants: DRIVE not applied, LEVEL not
+applied, the square at full, VELOCITY ON ignored, AMP DECAY ignored, the step not taken (`noteStep`),
+sleeping inside the step's window: **all killed**. In all, batches 0 to 5: 13 + 3 + 5 + 7 = 28 mutants, 26
+killed and 2 equivalent (each line taken out).
+
+What is still open: **nobody has heard it**; the handheld has not run it; RESONANCE turned up is much louder; batch 6 waits on recordings.
