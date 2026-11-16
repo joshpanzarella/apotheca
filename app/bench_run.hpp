@@ -18,6 +18,7 @@ int runProfile(const char* name, double seconds);
 // environment (kSoundCardVariable): the test cannot open a card the program holds.
 std::string probeSoundCard();
 constexpr const char* kSoundCardVariable = "APOTHECA_SOUND_CARD";
+constexpr const char* kRendererVariable = "APOTHECA_RENDERER"; // the screen's renderer, said at start for the SPEED TEST
 
 // The busiest song a player is likely to make, played in real time in the
 // program's own blocks (256 frames, 5.33 ms) for `seconds`, on the audio

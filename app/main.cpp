@@ -313,6 +313,16 @@ int main(int argc, char** argv) {
         SDL_Quit();
         return 1;
     }
+    {
+        // Which renderer the screen got (SPEED TEST says it: the drawing's cost hangs on it).
+        SDL_RendererInfo info = {};
+        char said[128] = "unknown";
+        if (SDL_GetRendererInfo(renderer, &info) == 0)
+            std::snprintf(said, sizeof said, "%s%s%s", info.name ? info.name : "?", info.flags & SDL_RENDERER_ACCELERATED ? ", accelerated" : "",
+                          info.flags & SDL_RENDERER_SOFTWARE ? ", software" : "");
+        std::printf("screen: %s\n", said);
+        setenv(kRendererVariable, said, 1);
+    }
     // Draw in 640x480 whatever size the display reports.
     SDL_RenderSetLogicalSize(renderer, kScreenW, kScreenH);
 

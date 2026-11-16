@@ -738,6 +738,11 @@ std::string apotheca::probeSoundCard() {
     return words;
 }
 
+static void rendererRow() {
+    const char* told = std::getenv(kRendererVariable);
+    std::printf("  %-28s %s\n", "the screen (at start)", told && *told ? told : "not told (run by itself)");
+}
+
 static void soundCardRow() {
     const char* told = std::getenv(kSoundCardVariable);
     if (told && *told) {
@@ -754,8 +759,10 @@ static void soundCardRow() {
 // taken first (Engine::setHeaviestFirst; the sound is the same). Real time, as the rows above.
 static void sharingRows() {
     std::printf("the busiest song shared out other ways, in real time:\n");
-    const struct { int helpers; bool heaviest; } ways[] = {{3, false}, {2, true}, {3, true}};
+    const struct { int helpers; bool heaviest; } ways[] = {{2, false}, {3, false}, {2, true}, {3, true}};
+    const int own = helpersFor(std::thread::hardware_concurrency());
     for (const auto& way : ways) {
+        if (way.helpers == own && !way.heaviest) continue; // the program's own way: the row above
         ClockWatch watch;
         const WholeSongTimes t = playWholeSong(way.helpers, 10.0, true, 0, way.heaviest);
         char name[48];
@@ -896,6 +903,7 @@ int apotheca::runBench() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
     processorRows("before the rows", true);
     soundCardRow();
+    rendererRow();
     std::printf("engine, one track, every voice sounding:\n");
     instrument("Phazed, 8 notes", SynthKind::Phazed, 8);
     jx3pRow("JAX-EP, 6 notes", 0);

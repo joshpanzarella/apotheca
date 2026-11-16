@@ -14,6 +14,7 @@
 #include "apotheca/effects.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "bench_run.hpp"
+#include "realtime.hpp"
 
 using namespace apotheca;
 
@@ -123,6 +124,8 @@ void testTheRowsCountWhatTheySay() {
     CHECK(helped.blocks == 46);
     CHECK(helped.helpers == 2);
     CHECK(helped.peak > 0.05f);
+    // Four cores: three helpers (the owner's SPEED TEST, 0.573); two cores: one; one: none.
+    CHECK(helpersFor(4) == 3 && helpersFor(8) == 3 && helpersFor(2) == 1 && helpersFor(1) == 0);
 }
 
 
