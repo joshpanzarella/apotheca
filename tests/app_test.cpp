@@ -9808,7 +9808,9 @@ void testAcidOnATrack() {
         }
     for (int id = 0; id < acid::kSettings; ++id) CHECK(seen[id] == 1);
     CHECK(spec.itemCount(1) == 6 && spec.itemCount(2) == 8 && spec.pages == 3 && std::string(spec.pageNames[1]) == "SOUND" && std::string(spec.pageNames[2]) == "FILTER");
-    CHECK(std::string(spec.macroNames[0]) == "CUTOFF" && std::string(spec.macroNames[1]) == "RESO" && std::string(spec.macroNames[2]) == "ENV MOD" && std::string(spec.macroNames[7]) == "TUNE");
+    const char* const lanes[kSynthMacros] = {"CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DRIVE", "SWEEP", "TUNE"}; // the engine's lanes (acid::Macro)
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(std::string(spec.macroNames[m]) == lanes[m]);
+    CHECK(acid::macroSetting(acid::MacroDrive) == acid::Drive && acid::macroSetting(acid::MacroSweep) == acid::Sweep);
     for (int id = 0; id < acid::kSettings; ++id) CHECK(spec.settingMin(id) == acid::settingMin(id) && spec.settingMax(id) == acid::settingMax(id));
 
     // Its settings read in their units.
@@ -9945,6 +9947,7 @@ void testAcidsAccentMark() {
                     if (y >= ui::kScreenH - 70) continue; // (the strip under the roll says the level: 90% / 100%)
                     if (accented[i] == Canvas::colour(ui::kBrass) && plain[i] != Canvas::colour(ui::kBrass)) ++brass;
                     if (plain[i] == Canvas::colour(ui::kBrass) && accented[i] != Canvas::colour(ui::kBrass)) ++other;
+                    if (plain[i] == Canvas::colour(ui::kPurple) && accented[i] != Canvas::colour(ui::kPurple)) ++other; // (a ratchet's purple edge stays whole)
                 }
                 if (brass != (t == 1 ? 21 : 0)) std::printf("  accent mark: track %d ratchet %d theme %d: %d brass, %d other\n", t, ratchet ? 1 : 0, theme, brass, other);
                 if (t == 1) CHECK(brass == 21 && other == 0); // a corner of 6 across

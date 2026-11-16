@@ -310,3 +310,37 @@ the level after the note, not before), a strike waiting for the cutoff's tick, a
 note stepping its level. Killed: the tie window, ACCENT 0, a tie that restarts, allNotesOff keeping the
 voice, sleeping inside the tie window, a slower sweep, the bend from the last sample with no read-ahead
 (sings 10+ cents off), the cutoff not the singing pitch, the envelope not snapped.
+
+### The two open points, settled (2026-11-16, the coordinator for the owner: "a fast acid workflow")
+
+- **A GLIDE to the same key ties** (one long note). `Instrument::tiesSameKey()`, true for ACID only:
+  `startNote` then calls `noteOnFrom` with `from == note` where it called plain `noteOn`. The other
+  synths are not asked and are the same to the bit (`effects_test --print` identical before and after).
+- **The tie's window is 15/16 of a step** (`kTieSteps`, never under 5 ms): `Instrument::noteStep` hands
+  ACID the step before every note. A note of 0.9 or 0.5 of a step ties to the GLIDE on the next step; an
+  empty step between starts again. Tests: `testRule`, `testTie`, `testThroughTheEngine` (a line through
+  the engine: a GLIDE to the same key, a GLIDE after half a step's gap, a GLIDE after an empty step).
+  Mutants: the engine's same-key call, the step not told: killed; ACID's "same key slides" was
+  equivalent (a span of 0), the condition taken out.
+
+### Batch 3, the app (2026-11-16)
+
+Built as PHYSIC's app commit was: `TrackKind::Acid` (appended), its row last in `kInstruments`, an
+`AcidPatch` on `TrackData`, the spec `ac` (MAIN, SOUND three rows of two, FILTER four rows of two; every
+setting in its unit: CUTOFF in HZ, the decays in MS / S, TUNE in CENTS, LEVEL in DB, SLIDE NOTE or 60 MS,
+ACCENT and DRIVE OFF at 0), `.acid`, `settingCount` 14, `userList`, `builtInPresets`, `specFor`, DEVICE
+in `App::screenNow()`, `app/presets/acid.inc` (empty: batch 4), the WiFi page's text. Stills `acid`,
+`acid-1`, `acid-2`, `acid-fixed`, `acid-long`, `acid-roll`; the tests' lists (`textsize`, `scope_test`,
+`save_test`, `modapp_test`, `design_test`).
+
+| What | As built |
+| --- | --- |
+| The accent mark | a brass corner, 6 across (4 on keys under 14 pixels), at the block's top right, left of a ratchet's purple edge; ACID tracks only; read off the drawn screen in BROWN and PAPER |
+| Presses for a 16-step line | 4 accents and 4 slides: **165**. An accent is 1 press (RIGHT while A is held to place it), a slide 3 (hold X, UP, UP); 16 places, 15 steps down, 118 presses walking the keys (the line leaps octaves: the stick is the faster way there) |
+| The list of instruments | seven rows do not fit at 52 apart with the "cannot be undone" words: the list stands as high as the top bar lets, and with the words only, its rows close to 47 (a pixel between boxes) |
+| Hints | MAIN and both pages, A held and not, both helps: 0 over; HOLD X on every macro, no Y |
+| Mutants | 5 of batch 3: the mark on every synth, the mark over a ratchet's edge, a player's preset over the track, the rows never closing, two macro names swapped: all killed (two after a check was added) |
+
+Not done here: the 32 presets (batch 4), README's ACID page (batch 5). An accented SQUARE at CUTOFF
+55 and RESONANCE 80 peaked 1.36 out of the synth in `app_test` (into the soft clip, which starts at
+1.0): batch 4 must hold its presets, accented, under the clip (`samplesClipped()`).

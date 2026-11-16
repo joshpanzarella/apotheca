@@ -98,8 +98,8 @@ has presets and macros, and its DEVICE screen in `App::screenNow()`. Then the
 places that list the synths by name: `userList`, `builtInPresets`,
 `settingCount`, `specFor` (synth_spec.cpp), `macroIsChoice` (mods.hpp, for a
 threshold macro), its stills in `main.cpp` and `kViews`, and the tests'
-lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). PHYSIC was the
-last added (2026-11-16): follow its commit.
+lists (`textsize`, `scope_test`, `save_test`, `modapp_test`). ACID was the
+last added (2026-11-16, batch 3 of acid-plan.md): follow its commit (PHYSIC's has a roll too).
 
 Where effects are, in the engine:
 
@@ -2049,19 +2049,25 @@ effect in those two groups and fails one that does not.
       generator walked. A NOISE note's level is what it is LIKELY to ring at (a random walk's size).
 - **ACID** (2026-11-16, the engine only: batches 0 to 2 of `docs/plans/acid-plan.md`;
   `engine/include/apotheca/acid.hpp`, `acid_rule.hpp`, `engine/src/acid.cpp`, `engine/src/acid/ladder.hpp`;
-  `tests/acid_test.cpp`). `SynthKind::Acid` appended; **no `TrackKind`, no screen yet** (batch 3).
-  Nobody has heard it, not run on the handheld. **Every figure is SELF** (no source was opened).
+  `tests/acid_test.cpp`). `SynthKind::Acid` appended. Nobody has heard it, not run on the handheld.
+  **Every figure is SELF** (no source was opened). The app: next block.
   - **One voice, the newest key wins**; letting it go never goes back to a key still held. `allNotesOff`
     (Play, Stop, panic: `stopNotes` is the default) hands the note to ONE tail slot (3 ms fade, counted
     in samples) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
   - **ACCENT is velocity 0.95 or over** (`kAccentAt`), **SLIDE is the note's GLIDE**, through
     `noteOnFrom` as the engine already calls it; nothing new on a note. **ACCENT 0 (setting or macro)
     is the plain path to the bit** (`accented()` is false there: `testAccentZero`).
-  - **The tie** (`slides()`): a GLIDE note with the gate open, or shut under 5 ms ago (`kTieMs`), starts
-    no envelope and feeds no new sweep; both orders on one sample tie (`testTie`). After a longer rest
-    the pitch slides and the envelopes start again. **The engine calls plain `noteOn` when GLIDE FROM
-    gives the same key** (`from.pitch != note.pitch` in `startNote`), so a GLIDE to the same note is a
-    new strike, not a tie: open, for batch 3 or the owner.
+  - **The tie** (`slides()`, `tieSeconds`): a GLIDE note with the gate open, or shut under 15/16 of a
+    step ago (`kTieSteps`; never under 5 ms, `kTieMs`, which is all a synth played by hand gets) starts no
+    envelope and feeds no new sweep: a note placed shorter than its step (0.9, 0.5) still ties to the
+    GLIDE on the next step, as the original holds the gate into a slide; an empty step between starts
+    again (and slides in pitch). Both orders on one sample tie (`testTie`). **The step comes from the
+    engine**: `Instrument::noteStep(seconds)` before every note the step clock starts (a no-op for the
+    others). The voice stays awake through the window (a step of silence, running) before it sleeps.
+  - **A GLIDE to the same key is a TIE, one long note** (coordinator for the owner, 2026-11-16):
+    `Instrument::tiesSameKey()` (ACID's only) has `startNote` call `noteOnFrom(note, ..., note, ...)`
+    where every other synth still gets a plain `noteOn`: `effects_test --print` identical. A new synth
+    that wants it says so; nothing else changes.
   - **The slide lands exactly**: an RC of three time constants bent so its last sample is on the key
     (`slideLeft`; the voice steps `slideR` a sample and counts `slideN` down). `testSlideTime` holds
     every sample it reads to the rule within 1e-6 cents.
@@ -2084,6 +2090,23 @@ effect in those two groups and fails one that does not.
     oscillator and filter run while the gate is shut until then, so a slide in the window is seamless.
   - **`setMacro` and `setSetting` store and return**; the settings are worked out at the top of the
     next render (or a note's start). `#pragma clang fp contract(off)`, as PHYSIC.
+- **ACID in the app** (batch 3, 2026-11-16; `ac` in `app/synth_spec.cpp`, `app_test` `testAcidOnATrack`,
+  `testAcidsHintsFit`, `testAcidsAccentMark`, `testAnAcidLine`; `app_test --acid` runs them).
+  `TrackKind::Acid` appended, its row LAST in `kInstruments` (word `acid`, presets `NAME.acid`, "mono
+  bass, after a classic bass line box": the words test fails "TB-303" and "tb303" too), `TrackData::acid`
+  an `AcidPatch` of 20, 14 used. A new track is on Classic Saw. MAIN, SOUND (WAVE, OCTAVE, TUNE, LEVEL,
+  VELOCITY, SLIDE) and FILTER (eight). Its own preset over preset 0's sound first (as PHYSIC's). **No
+  macro is a choice** (`macroIsChoice` has no ACID row), **no roll** (Y does nothing). Its built-in data
+  is `app/presets/acid.inc`, empty until batch 4.
+  - **The roll marks an accent** (a note at 0.95 or over, on an ACID track only): a brass corner of 6
+    (4 on narrow keys) at the block's top right, left of a ratchet's purple edge (`accentMark`,
+    `note_marks.hpp`). `testAcidsAccentMark` reads it off the drawn screen in BROWN and PAPER.
+  - **Writing a line** (`testAnAcidLine`): an accent is one press more (RIGHT while A is held to
+    place), a slide three (hold X, UP twice); a 16-step line with 4 of each was 165 presses, 133 of
+    them the D-pad walking the keys.
+  - **Seven instruments do not fit the list at its pitch with the words under it**: the list stands as
+    high as it must (`listTop`, now for adding a track too), and only with the words its rows close
+    from 52 to 47 (`SongScreen::listPitch`).
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).
