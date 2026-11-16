@@ -59,6 +59,7 @@ public:
     SynthScreen& phazed() { return phazed_; }
     SynthScreen& jaxep() { return jaxep_; }
     SynthScreen& fm6() { return fm6_; }
+    SynthScreen& physic() { return physic_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     ModScreen& mods() { return mods_; }
@@ -121,6 +122,7 @@ private:
     SynthScreen phazed_; // the same screen, once for each synth
     SynthScreen jaxep_;
     SynthScreen fm6_;
+    SynthScreen physic_;
 };
 
 } // namespace apotheca

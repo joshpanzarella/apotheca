@@ -44,6 +44,7 @@ inline const char* const kViews[] = {
     "feel", "feel-held", "feel-off-held", "feel-same-held", "feel-said",
     "setup", "buttons", "typing", "help",
     "fm6", "fm6-1", "fm6-2", "fm6-3", "fm6-4", "fm6-5", "fm6-6", "fm6-7", "fm6-8", "fm6-long", "fm6-fixed", "fm6-off",
+    "physic", "physic-1", "physic-2", "physic-3", "physic-4", "physic-long", "physic-string",
     "next-scene", "next-scene-notes", "next-scene-full", "volume", "update-ready", "update-ready-drums", "update-accepted", "nomenu", "help-nomenu", "kit-old",
     "", " --dice", " --paint", " --paint-random", " --on-name", " --on-tempo", " --hold-a", " --hold-y",
     "help --no-menu", "song --no-menu", "setup --no-menu",

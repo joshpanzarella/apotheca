@@ -43,6 +43,9 @@ struct SynthSpec {
     // under MODE FIXED a pitch in Hz). Null: as settingText reads it alone. The device reads this; the
     // WiFi page's list of readings is settingText's.
     void (*readingIn)(const int* values, int id, int value, char* out, int size);
+    // Y on MAIN: a new sound from the dice, `seed` deciding it (PHYSIC's: a new strike and ring on the
+    // same MODEL, its levels and dice left; physic-plan.md, section 3). Null: Y does nothing there.
+    void (*roll)(TrackData& track, unsigned seed);
 };
 
 // What JAX-EP's folders say (jx3p-plan.md, section 4): the two banks are from a booklet of 1983 and may
@@ -54,6 +57,7 @@ const char* jaxepFolderNote(const char* folder); // which of the two a built-in 
 const SynthSpec& phazedSpec();
 const SynthSpec& jx3pSpec(); // JAX-EP on the device
 const SynthSpec& fm6Spec();
+const SynthSpec& physicSpec();
 
 // Presets the player has made (on the sound-designer page) and saved. They
 // come after the built-in ones, in a folder called USER. The spec's preset

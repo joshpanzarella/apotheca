@@ -22,6 +22,7 @@ static_assert(sizeof(ModSettings) == (kModFields + kModSteps) * sizeof(float), "
 // at it (owner's call 12: later, a STEPPER only). The one place that says which.
 inline bool macroIsChoice(TrackKind kind, int macro) {
     if (kind == TrackKind::Phazed) return macro == 6 || macro == 7; // CHORUS (on / off), OCTAVE
+    if (kind == TrackKind::Physic) return macro == 7;                // OCTAVE (down / as the preset / up)
     return false;
 }
 

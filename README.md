@@ -6,9 +6,10 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of three synths: Phazed (phase distortion, 65 presets), JAX-EP
-(a virtual analog synth modeled after a popular DCO synth, 32 presets) or FM-6 (six-operator
-FM, after a classic 80s synth, 32 presets). Up to sixteen scenes of
+kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
+(a virtual analog synth modeled after a popular DCO synth, 32 presets), FM-6 (six-operator
+FM, after a classic 80s synth, 32 presets) or PHYSIC (plucked and struck sounds that ring by
+themselves: strings, mallets, bells, 24 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -17,7 +18,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, four for PHYSIC).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -440,7 +441,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP or FM-6 track. Move to another track there and the page follows.
+  PHAZED, JAX-EP, FM-6 or PHYSIC track. Move to another track there and the page follows.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.
@@ -449,7 +450,9 @@ designer".
 - **SAVE AS PRESET** keeps the sound, macros included, under a name. It
   appears at once in the handheld's preset list, in a folder called USER,
   and is kept as a file in `presets` beside the program (`NAME.phazed`,
-  `NAME.jaxep`, `NAME.fm6`). Saving under the same name again replaces it.
+  `NAME.jaxep`, `NAME.fm6`, `NAME.physic`). Saving under the same name again replaces it.
+- **ROLL A NEW SOUND** (PHYSIC only) is the handheld's Y on MAIN: a new
+  strike and ring on the same MODEL.
 - **FM-6 stands where QMOD stood** (gone from the program, 2026-11-15). What
   was made for QMOD does not carry over: an old `NAME.qmod` preset stays on
   the card, not listed, and an old song's QMOD tracks open as FM-6 tracks on
@@ -717,6 +720,83 @@ ADVANCED is eight pages. L1 and R1 turn them.
 have seen it. Its estimated cost there is about 6 to 10% of one core for eight
 notes (QMOD's was 57%).
 
+### PHYSIC
+
+**Plucked and struck sounds that ring by themselves**: strings, marimba,
+vibes, glockenspiel, kalimba, bells, glass, drums, wood. It copies how real
+things ring, not how oscillators sound. A note is a **strike**: a mallet or a
+pluck on an object (the MODEL), which then rings and dies away. There is no
+volume envelope: DECAY is how long the object rings, and letting go of the key
+damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
+
+- **24 presets in six folders**: MALLETS (Marimba, Soft Marimba, Xylophone,
+  Vibes Still, Glockenspiel), STRINGS (Steel, Harp, Koto, Pizz, Plucked Bass),
+  TINES (Music Box), BELLS (Church Bell, Handbell, Tubular Bell, Wine Glass,
+  Crystal), WOOD AND SKIN (Woodblock, Temple Blocks, Log Drum, Tom) and DICE
+  (Rain, Wind Chime, Loose Strings, Drunk Marimba). **A new PHYSIC track
+  starts on Marimba**, so notes placed at once play a marimba line.
+- **Eight voices.** A voice costs only while it rings. A key struck again
+  while it rings is the same voice: on a bar or a bell the new hit adds to the
+  ringing (a ratchet is a real roll); a string is damped for 2 ms first, as a
+  plectrum meets it.
+- **GLIDE on a ringing note bends it** without a new strike (a slide guitar),
+  when it is the only note of its moment gliding from that key.
+- **Stop lets the notes go** (RELEASE damps, RING rings on), so a bounce keeps
+  the last bar's bells ringing. Play and the panic damp everything at once.
+- **Y on MAIN rolls a new sound**: a new STRIKE, HARDNESS, POSITION, DECAY,
+  MATERIAL and STRETCH on the same MODEL. Its levels and dice stay. It is a
+  step of undo.
+- The plan, the sources of each figure and what was measured:
+  `docs/plans/physic-plan.md`.
+
+The macros. Each at +0 is the patch as it is; a preset puts all eight back.
+Below the middle a macro slides its setting down to the least, above it up to
+the most.
+
+| Macro | Moves | Heard |
+| --- | --- | --- |
+| TONE | HARDNESS | At the next strike |
+| POSITION | POSITION | At the next strike |
+| DECAY | DECAY | At once, on ringing notes too |
+| MATERIAL | MATERIAL | At once: wood to metal in one sweep |
+| STRETCH | STRETCH | At once: ringing notes retune |
+| RELEASE | RELEASE | At the next let go |
+| DICE | DICE | At the next strike |
+| OCTAVE | DOWN / AS PRESET / UP | At the next note. A choice, so it takes no MOD |
+
+ADVANCED is four pages. L1 and R1 turn them.
+
+| Page | Setting | Reads |
+| --- | --- | --- |
+| SOUND | MODEL | STRING, MARIMBA, XYLO, VIBES, GLOCK, KALIMBA, BELL, CHIME, GLASS, DRUM, WOOD |
+| | STRIKE | PLUCK or MALLET |
+| | HARDNESS | With a MALLET, how long it touches: 8.0 MS (yarn) to 0.30 MS (brass), at full velocity. Plucked, finger (0%) to plectrum (100%) |
+| | POSITION | Where along it is struck: 1.0% to 50% (the middle), "1/5" where it is the setting nearest a fifth. It decides which parts of the sound wake: a bar struck in its middle has no second part |
+| RING | DECAY | 50 MS to 30 S: the longest it rings |
+| | MATERIAL | WOOD to METAL. On METAL every part rings for DECAY; toward WOOD the high parts, and high keys, die sooner |
+| | STRETCH | AS MADE at the middle: the object's own partials. Below, toward whole-number partials; above, further apart. On a STRING it is the string's stiffness, B (B 0.0005: a piano's high partials are sharp) |
+| | RELEASE | 10 MS to 2.8 S after letting go, then RING |
+| PLAY | VELOCITY | How much a note's velocity moves its level and its mallet (OFF: every note full) |
+| | OCTAVE, FINE | -2 to +2; -50 to +50 CENTS |
+| | WIDTH | Low keys left, high keys right, as a marimba stands |
+| | LEVEL | -24 to +6 DB |
+| DICE | DICE | How much the four below are used: each note struck a little off where, how hard, how in tune and how long the last was |
+| | DICE POSITION, DICE HARDNESS | At 100: up to 25 and 30 points either way |
+| | DICE TUNE | Up to 15.0 CENTS either way |
+| | DICE DECAY | At 100: the time up to 30% longer or shorter |
+
+- The dice are rolled from where and when a note is struck, so Play twice is
+  the same performance, and each time round the loop rolls anew.
+- HARDNESS and POSITION act at the next strike, as on a real instrument;
+  DECAY, MATERIAL and STRETCH on notes already ringing.
+- On the designer page STRETCH reads as on a bar (AS MADE, +20): the string's
+  B is the handheld's reading only.
+
+**Nobody has heard it**, on the desk or the handheld: the tests and the stills
+have seen it, and every claim about its sound is a measurement. Its cost on
+the desk is 0.2 to 0.6% of one core for eight notes; the handheld is about 13
+to 17 times slower (not run there).
+
 ### The envelope
 
 The sampler has one volume envelope (and any synth added later can use
@@ -784,7 +864,7 @@ The track columns share the width of the screen: with few tracks they are wide.
 | A track | **Hold B for two seconds: delete the whole track.** (A tap of B only empties the cell.) After half a second its head starts to fill red and the bar at the bottom says it cannot be undone; let go before it is full and nothing is deleted. The tracks after it move down. This cannot be undone, and the last track cannot be deleted. | | | |
 | A repeat count | Tap: 1, 2, 4, 8 | Times the scene plays, 1 to 16 | Back to 1 | |
 | The song's end (the PLAYS box of the first empty row, just past the last scene) | Switches what the song does at its end: LOOP (a loop arrow) or STOP (a square) | | Back to LOOP | |
-| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER or FM-6 | | | |
+| + TRACK | Pick DRUMS, PHAZED, JAX-EP, SAMPLER, FM-6 or PHYSIC | | | |
 | MASTER (the head at the right-hand end, right of + TRACK) | | Its level and pan, as a track's (below) | | |
 
 The song runs to the last scene with anything in it. Then, by its **song end**:
@@ -1455,7 +1535,8 @@ before chord effects skips the line and plays the chord plain.
 MAIN: folder, preset, eight macros and ADVANCED. Phazed's macros are TONE,
 MOTION, ATTACK, RELEASE, DETUNE, VIBRATO, CHORUS, OCTAVE. JAX-EP's are
 CUTOFF, RESO, ENV, TUNE, MIX, LFO, ATTACK, RELEASE. FM-6's are BRIGHT,
-FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. Hold A + stick turns the one under
+FEEDBACK, ATTACK, DECAY, RELEASE, DETUNE, LFO, PITCH ENV. PHYSIC's are TONE, POSITION,
+DECAY, MATERIAL, STRETCH, RELEASE, DICE, OCTAVE. Hold A + stick turns the one under
 the cursor; B puts a macro back in the middle. Each macro has a small picture
 of what it does and a colour for its kind (teal: the sound's colour; purple:
 movement and width; cream: time), and stays dim until it is turned. Macros bend the sound and
@@ -1473,7 +1554,8 @@ ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
 each line's volume, wave and pitch envelopes drawn out). JAX-EP has
 five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). FM-6 has eight
 (the voice and its LFO, one for each operator, the pitch envelope: see FM-6,
-above). L1 and R1 turn the pages; B goes back to MAIN.
+above). PHYSIC has four (SOUND, RING, PLAY, DICE: see PHYSIC, above). L1 and
+R1 turn the pages; B goes back to MAIN.
 
 JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its
 pages are that synth's panel:

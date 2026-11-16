@@ -19,6 +19,8 @@
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  fm6, fm6-1 .. fm6-8 (FM-6's main panel, a macro lit; and its pages), fm6-long (MAIN on the
 //                  widest of its 32 names), fm6-fixed (an operator at a FIXED pitch, on FINE), fm6-off (an operator OFF)
+//                  physic, physic-1 .. physic-4 (PHYSIC's main panel, a macro lit; and its pages), physic-long (MAIN on
+//                  the widest of its names), physic-string (RING on a string: STRETCH reads B)
 //                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12 (the MOD tab; with
@@ -1182,6 +1184,29 @@ int main(int argc, char** argv) {
             app.fm6().goTo(std::atoi(view + 4), 0);
         } else {
             app.fm6().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
+    } else if (std::strncmp(view, "physic", 6) == 0) {
+        // A PHYSIC track, added the way the Song screen adds one: MAIN, a macro lit ("physic"); a page
+        // ("physic-1" .. "physic-4": SOUND, RING, PLAY, DICE); MAIN on the widest of its names
+        // ("physic-long"); RING on STEEL, a string, STRETCH under the cursor reading B ("physic-string").
+        app.session().addTrack(TrackKind::Physic);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "physic-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < Physic::presetCount(); ++i)
+                if (std::strlen(Physic::presetName(i)) > std::strlen(Physic::presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.physic().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "physic-string") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Steel") == 0) app.session().chooseSynthPreset(track, i);
+            app.physic().goTo(2, 2); // RING: STRETCH
+        } else if (view[6] == '-') {
+            app.physic().goTo(std::atoi(view + 7), 0);
+        } else {
+            app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
         }
     } else if (std::strcmp(view, "help") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held

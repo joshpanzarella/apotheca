@@ -91,6 +91,17 @@ void Session::chooseSynthPreset(int track, int index) {
     sendSynthPatch(track);
 }
 
+// A new sound from the dice (PHYSIC's Y). A change of the sound like any other: undo sees it (soundMark).
+bool Session::rollSynth(int track, unsigned seed) {
+    if (track < 0 || track >= kNumTracks) return false;
+    TrackData& t = project.tracks[track];
+    const SynthSpec* spec = specFor(t.kind);
+    if (!spec || !spec->roll) return false;
+    spec->roll(t, seed);
+    sendSynthPatch(track);
+    return true;
+}
+
 // Tell the engine every setting and macro of a synth track, as the project has them.
 void Session::sendSynthPatch(int track) {
     TrackData& t = project.tracks[track];
@@ -202,7 +213,7 @@ bool Session::savePreset(int track, const std::string& typed) {
 std::string Session::designSpec(TrackKind kind) const {
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
-    std::string out = "{\"name\":" + jsonText(spec->name) + ",\"macros\":[";
+    std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
     for (int m = 0; m < kSynthMacros; ++m) out += (m ? "," : "") + jsonText(spec->macroNames[m]);
     out += "],\"pages\":[";
     char text[48];
@@ -278,6 +289,7 @@ void Session::serveDesigner() {
         case DesignRequest::Preset: chooseSynthPreset(project.track, r.a); break;
         case DesignRequest::Save: savePreset(project.track, r.name); break;
         case DesignRequest::Name: setTrackName(project.track, r.name); break;
+        case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;

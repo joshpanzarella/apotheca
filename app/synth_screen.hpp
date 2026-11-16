@@ -1,5 +1,5 @@
 #pragma once
-// The Device screen for a synth: Phazed, JAX-EP or FM-6. Each is described
+// The Device screen for a synth: Phazed, JAX-EP, FM-6 or PHYSIC. Each is described
 // by a SynthSpec (synth_spec.hpp); the screen itself is the same.
 //
 // MAIN is all most sounds need: the folder, the preset, eight macros, and a
@@ -12,12 +12,14 @@
 //   ADVANCED         A opens the pages.
 //   X                hear the sound. Held on a macro: its MOD (mod_knob.hpp), its fields in LIVE
 //                    OUTPUT's place while X is held, and the note heard as long as X is.
+//   Y                PHYSIC only (SynthSpec::roll): a new sound from the dice, on its MODEL.
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
 // drawn out. For JAX-EP, five. For FM-6, eight: the voice and its LFO, one a
-// operator (its ON and all 21 of its settings), and the pitch envelope. L1 and
-// R1 turn the pages; B goes back to MAIN.
+// operator (its ON and all 21 of its settings), and the pitch envelope. For
+// PHYSIC, four: SOUND, RING, PLAY, DICE. L1 and R1 turn the pages; B goes back
+// to MAIN.
 
 #include "screen.hpp"
 #include <SDL.h>
@@ -136,6 +138,7 @@ private:
     static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
     bool isChoice(int id) const;
     bool choicePushed_ = false; // the stick is over, and has already clicked a choice once
+    unsigned rolls_ = 0;   // how many times Y has rolled, so two in one frame differ
     bool holding_ = false; // A is held
     float saved_ = 0.f;    // part-steps saved up while the stick turns
 

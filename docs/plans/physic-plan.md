@@ -5,7 +5,7 @@ designers each wrote a plan ("sound", "engine", "hands"); this one is joined
 from them, then revised after a review the same day (section 13 says what
 was taken and what was not). **The engine part (batches 0 to 5, and the
 presets as engine data) was built on 2026-11-15, branch `physic`: section 14.
-The app part (7a, 7b, 9, 10) is not. Nobody has heard anything.** The code
+The app part (7a, 7b, 9) was built on 2026-11-16: section 15. Batch 10 is not. Nobody has heard anything.** The code
 was only read. The designers ran four throwaway programs for cost and tuning
 in a scratchpad, not in the repo, on a 2.3 GHz Xeon container: those figures
 are marked **scratch**. They are not the owner's desk and not `bench`.
@@ -988,3 +988,79 @@ The plan's calls were taken at their recommended answers (section 12). Open:
 5. **Stiffness**: matched at partial 6 only; a fuller dispersion filter
    (Rauhala's design) would follow F64 on every partial, at more cost.
 6. **The handheld cost** is an estimate (x 13 to 17): SPEED TEST will say.
+
+## 15. As built: the app part (2026-11-16, branch `physic`)
+
+Batches 7a, 7b and 9, on the engine of section 14 (joined with `main` at 0.565). **Nobody has heard
+it, and it has not run on the handheld.** The tests and the stills have seen it.
+
+### What is there
+
+| Part | Where | What |
+| --- | --- | --- |
+| The track | `app/project.hpp`, `app/instruments.cpp` | `TrackKind::Physic` appended; its row **last** (call 18): PHYSIC, PHYS, word `physic`, presets `NAME.physic`, the line "plucked and struck: strings, mallets, bells" (held at LARGE at XL, as DRUMS' line is; no count of presets: it would not fit). `TrackData::physic`, a `PhysicPatch` of 22 (`kSettingRoom`), 18 used |
+| The spec | `app/synth_spec.cpp`, `ps` | 24 presets in their folders, the eight macros as the engine names them, `settingCount` = `presetSettingCount` = 18. **`loadPreset` puts preset 0's sound under a player's own first** (section 8). `pageReadsAsDevice`: the WiFi page gets every reading |
+| MAIN | `SynthScreen` | Folder, preset, eight macros, ADVANCED. **Y rolls a new sound** (call 10), heard at once; the bar says `Y new sound` off the macros (on a macro B and HOLD X fill the bar) |
+| The pages | `ps::kPages` | **SOUND** (MODEL, STRIKE, HARDNESS, POSITION), **RING** (DECAY, MATERIAL, STRETCH, RELEASE), **PLAY** (VELOCITY, OCTAVE, FINE, WIDTH, LEVEL), **DICE** (DICE, DICE POSITION, DICE HARDNESS, DICE TUNE, DICE DECAY). Two rows at most a page, so no box is held at LARGE |
+| MOD | `app/mods.hpp` | Every macro but OCTAVE (a threshold: `macroIsChoice`) |
+| The WiFi page | `app/design_page.cpp`, `designer.cpp` | Its four pages and readings, and **ROLL A NEW SOUND** again (it went with QMOD), shown only for a spec with a roll |
+| The list of instruments | `SongScreen::listTop` | Six rows and the words under them when a track's instrument is changed reached past the hints bar: the box rises to end 8 above it. Adding a track it stands where it always did |
+
+### How each setting reads
+
+| Setting | Reads |
+| --- | --- |
+| MODEL, STRIKE | Their words (`physic::modelName`; PLUCK, MALLET) |
+| HARDNESS | `45%`; **under MALLET the mallet's contact at full velocity**, `8.0 MS` to `0.30 MS` (`contactSeconds`) |
+| POSITION | Where along: `1.0%` to `50.0%`, and `1/2` ... `1/9` on the one setting nearest each |
+| DECAY | `50 MS` to `30 S` (`decaySeconds`) |
+| MATERIAL | `WOOD`, `1` ... `99`, `METAL` |
+| STRETCH | `AS MADE` at 50, else `+20`, `-50`; **on STRING the string's B**, `B 0.0005` (under 1e-4: `B 8.0E-05`). The WiFi page reads it as on a bar |
+| RELEASE | `10 MS` to `2.8 S`, then `RING` |
+| VELOCITY, DICE and its rows | `OFF` at 0, else `%` |
+| OCTAVE, FINE, LEVEL | `+1`; `-50 CENTS`; `+6 DB` |
+| DICE TUNE | Its most at DICE 100, `15.0 CENTS` |
+| WIDTH | `30%` |
+
+### Y's roll (call 10)
+
+STRIKE, HARDNESS, POSITION, DECAY, MATERIAL and STRETCH, each from a hash of the seed and its own
+place (`ps::unit`), never a generator walked. Inside the MODEL: a string is plucked three times in
+four and a bar or bell struck three times in four; HARDNESS 10 to 95, POSITION 5 to 95; DECAY 20 to
+92 (a string 30 to 85); MATERIAL anything; STRETCH 30 to 70 (a string 0 to 50: B up to 5e-4). MODEL,
+RELEASE, the levels and the dice are left. One step of undo. The ranges are SELF.
+
+### Tests and mutants
+
+- `app_test` (`--physic` runs these alone): `testPhysicOnATrack` (+ TRACK, Marimba, the engine plays
+  what the track holds: a fresh `Physic` given the same numbers, sample against sample at one gain,
+  before and after a roll; the pages, every reading, the macros, MOD targets, Y and its undo, the roll
+  by itself over 400 seeds, a player's own preset over Church Bell, the song file, a short `settings`
+  line); `testPhysicsHintsFit` (MAIN and every page, A held and not, both helps: 0 pixels over; `Y`
+  off the macros only, `HOLD X` on every macro but OCTAVE). The instrument list's tests take six.
+- `design_test` `testPhysicFromThePage` (its spec, readings, state, a setting, ROLL, a saved preset;
+  FM-6's page has no ROLL). **The page's script was tried in a browser** (Playwright and Chromium,
+  2026-11-16, against `design_test` with `APOTHECA_DESIGN_HOLD` and the new `APOTHECA_DESIGN_PHYSIC`):
+  the four pages drew with their readings, ROLL A NEW SOUND showed and changed only the six settings,
+  a slider set DECAY, no script errors.
+- `textsize` (every setting at its least and, A held, its most, on a bar and a string, MALLET and
+  PLUCK: each value drawn at XL; the widest preset name; the list's line), `scope_test` (its five
+  pages reach the strip), `save_test` and `modapp_test` (PHYSIC in their lists), `textviews` and
+  `themeviews` (the stills `physic`, `physic-1` to `physic-4`, `physic-long`, `physic-string`).
+- **22 mutants, every one killed**: the defaults under a player's preset; OCTAVE taken as an amount;
+  the roll touching MODEL or RELEASE, not touching STRIKE, STRIKE even, a string's STRETCH unbounded;
+  Y on a page, with A held, without telling the engine; `Y new sound` on a macro; HARDNESS read as a
+  contact under PLUCK; STRETCH read as B off a string; POSITION's fraction on two settings; the list
+  not rising; the page's readings off; the page's roll flag off; `roll` not read; `settingCount` 22;
+  DECAY's milliseconds, RELEASE's RING; FINE's reading too long at XL. (The first round found the
+  roll's STRIKE untested; its check now counts both ways.)
+
+### Left, and the owner's open questions
+
+- **Batch 10** (BODY, PAIR, MOTOR, NOISE, their four settings and 8 presets), when the owner says so.
+  The patch already has room; `loadPreset`'s defaults-first is there for it.
+- The open questions of section 14 stand, at what was built (their recommended answers): the
+  presets as a first guess, the bump, DECAY's two meanings, new dice each time round, stiffness at
+  partial 6, the handheld's cost. **New with the app**: whether Y may change MODEL too (no, call 10);
+  whether the WiFi page should read STRETCH as B on a string (it reads as on a bar: its readings are
+  one list a setting); the list line's words.

@@ -1025,8 +1025,8 @@ void testTheOtherScreens() {
     const std::string longest = "a folder with a long name/a recording with a very long name indeed";
 
     // SONG: twelve tracks, the narrowest columns there are, every one with a name of ten wide letters.
-    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Drums};
-    for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 5]));
+    const TrackKind kinds[] = {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Drums, TrackKind::Physic};
+    for (int t = 1; t < kNumTracks; ++t) CHECK(session.addTrack(kinds[(t - 1) % 6]));
     session.view = View::Song;
     rig.frames(2);
     CHECK(holds(rig, "SONG, twelve tracks") > 12);
@@ -1087,6 +1087,7 @@ void testTheOtherScreens() {
         few.tap(A); // the list of instruments
         holds(few, "SONG, the list of instruments");
         CHECK(drew("8 lanes: built-in drums or your recordings") && capAtXl("8 lanes: built-in drums or your recordings") == 12.f && capAtXl("6-operator FM, after a classic 80s synth") == 12.f && capAtXl("one recording, played from the keys") == 13.f);
+        CHECK(drew("plucked and struck: strings, mallets, bells") && capAtXl("plucked and struck: strings, mallets, bells") == 12.f); // (held at LARGE at XL)
         few.tap(B);
         // Another instrument for track 1: under the list, what goes with the old one.
         few.app.song().moveCursorTo(0, 0);
@@ -1151,7 +1152,8 @@ void testTheOtherScreens() {
 
     // The DEVICE screens: every page of every synth, the cursor on its first box.
     struct Synth { TrackKind kind; SynthScreen* screen; const char* name; };
-    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Fm6, &rig.app.fm6(), "FM-6"}};
+    const Synth synths[] = {{TrackKind::Phazed, &rig.app.phazed(), "PHAZED"}, {TrackKind::Jx3p, &rig.app.jaxep(), "JAX-EP"}, {TrackKind::Fm6, &rig.app.fm6(), "FM-6"},
+                            {TrackKind::Physic, &rig.app.physic(), "PHYSIC"}};
     session.view = View::Device;
     int pagesSeen = 0;
     for (const Synth& synth : synths) {
@@ -1175,7 +1177,7 @@ void testTheOtherScreens() {
         rig.key(A, false);
         rig.frames(1);
     }
-    CHECK(pagesSeen == 10 + 6 + 9);
+    CHECK(pagesSeen == 10 + 6 + 9 + 5);
 
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
@@ -1340,6 +1342,59 @@ void testTheOtherScreens() {
         rig.frames(1);
         holds(rig, "FM-6 MAIN, HARPSICH 1");
         CHECK(drew("HARPSICH 1") && drew("ROM 1A") && drew("19 / 32"));
+        session.chooseSynthPreset(project.track, 0);
+        rig.frames(2);
+    }
+
+    // PHYSIC: every setting of every page with the cursor on it, at its least and, with A held, at its most,
+    // as the device reads it, on a MALLET and on a PLUCK, on a bar and on a string (HARDNESS reads the
+    // mallet's contact, STRETCH a string's B). Two rows a page at most: at XL every value is drawn at XL.
+    {
+        for (int t = 0; t < kNumTracks; ++t)
+            if (project.tracks[t].kind == TrackKind::Physic) project.track = t;
+        CHECK(project.current().kind == TrackKind::Physic);
+        SynthScreen& ph = rig.app.physic();
+        const SynthSpec& spec = physicSpec();
+        const Fonts& xl = *screens().at[kTextXl];
+        int settings = 0;
+        char reads[32];
+        for (int model : {physic::kMarimba, physic::kString}) {
+            for (int strike = 0; strike < 2; ++strike) {
+                for (int page = 1; page < ph.pageCount(); ++page) {
+                    for (int stop = 0; stop < spec.itemCount(page); ++stop, ++settings) {
+                        session.setSynthSetting(project.track, physic::Model, model);
+                        session.setSynthSetting(project.track, physic::Strike, strike);
+                        ph.goTo(page, stop);
+                        const int id = ph.settingHere();
+                        CHECK(id >= 0 && id < physic::kSettings);
+                        const int was = project.current().physic.value[id];
+                        for (int end = 0; end < 2; ++end) {
+                            session.setSynthSetting(project.track, id, end ? spec.settingMax(id) : spec.settingMin(id));
+                            if (end) rig.key(A, true);
+                            rig.frames(1);
+                            holds(rig, end ? "PHYSIC, a setting at its most, A held" : "PHYSIC, a setting at its least");
+                            settingReading(spec, project.current().physic.value, id, reads, sizeof reads);
+                            CHECK(drew(reads));
+                            if (capAtXl(reads, 50.f) != xl.large.capHeight()) std::printf("  PHYSIC page %d stop %d: \"%s\" at %.1f\n", page, stop, reads, static_cast<double>(capAtXl(reads, 50.f)));
+                            CHECK(capAtXl(reads, 50.f) == xl.large.capHeight());
+                            if (end) rig.key(A, false);
+                            rig.frames(1);
+                        }
+                        session.setSynthSetting(project.track, id, was);
+                    }
+                }
+            }
+        }
+        CHECK(settings == 4 * physic::kSettings);
+        // The widest of its preset names, and its folder's.
+        int widest = 0;
+        for (int i = 1; i < Physic::presetCount(); ++i)
+            if (xl.large.width(Physic::presetName(i)) > xl.large.width(Physic::presetName(widest))) widest = i;
+        session.chooseSynthPreset(project.track, widest);
+        ph.goTo(0, SynthScreen::kPreset);
+        rig.frames(1);
+        holds(rig, "PHYSIC MAIN, its widest preset");
+        CHECK(drew(Physic::presetName(widest)) && drew(Physic::presetCategory(widest)));
         session.chooseSynthPreset(project.track, 0);
         rig.frames(2);
     }
