@@ -232,7 +232,7 @@ struct TrackData {
     Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and
                                  // BRILLIANCE, are the track's own: no preset writes them, so a new track's start here
     Fm6Patch fm6;                // when it is FM-6 (a new track's is its first preset: Session::addTrack)
-    PhysicPatch physic;          // when it is PHYSIC (the same: its first preset, MARIMBA). Room for 22, 18 used
+    PhysicPatch physic;          // when it is PHYSIC (the same: its first preset, MARIMBA). Room for 26, 23 used
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];

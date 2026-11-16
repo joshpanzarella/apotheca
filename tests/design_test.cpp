@@ -491,8 +491,11 @@ void testPhysicFromThePage() {
     CHECK(rig.track().kind == TrackKind::Physic && rig.track().preset == 0);
     const std::string spec = rig.get("/design/spec").body;
     CHECK(has(spec, "\"name\":\"PHYSIC\",\"roll\":true,\"macros\":[\"TONE\",\"POSITION\",\"DECAY\",\"MATERIAL\",\"STRETCH\",\"RELEASE\",\"DICE\",\"OCTAVE\"]"));
-    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 4 && !has(spec, "\"env\":true"));
-    CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\""));
+    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 5 && !has(spec, "\"env\":true"));
+    CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\"") && has(spec, "\"name\":\"BODY\",\"env\""));
+    CHECK(has(spec, "{\"name\":\"STRIKE\",\"id\":1,\"min\":0,\"max\":2,\"texts\":[\"PLUCK\",\"MALLET\",\"NOISE\"]"));
+    CHECK(has(spec, "{\"name\":\"PAIR\",\"id\":18,\"min\":0,\"max\":20,\"texts\":[\"OFF\",\"1 CENTS\"") && has(spec, "{\"name\":\"BODY\",\"id\":20,\"min\":0,\"max\":3,\"texts\":[\"NONE\",\"GUITAR\",\"BOX\",\"TUBES\"]"));
+    CHECK(has(spec, "\"name\":\"MOTOR\",\"id\":19,\"min\":0,\"max\":100,\"texts\":[\"OFF\",\"0.20 HZ\"") && has(spec, "\"8.0 HZ\"]") && has(spec, "\"name\":\"BUZZ\",\"id\":22"));
     // Every setting is given its readings, the long ones too (pageReadsAsDevice): DECAY in seconds.
     CHECK(count(spec, "\"texts\":") == physic::kSettings);
     CHECK(has(spec, "{\"name\":\"MODEL\",\"id\":0,\"min\":0,\"max\":10,\"texts\":[\"STRING\",\"MARIMBA\""));
@@ -517,7 +520,7 @@ void testPhysicFromThePage() {
     for (int id : {physic::Strike, physic::Hardness, physic::Position, physic::Decay, physic::Material, physic::Stretch}) moved = moved || after.value[id] != before.value[id];
     CHECK(moved);
     for (int id : {physic::Model, physic::Release, physic::Velocity, physic::Octave, physic::Fine, physic::Width, physic::Level, physic::Dice,
-                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay})
+                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay, physic::Body})
         CHECK(after.value[id] == before.value[id]);
     // Saved, it is a ".physic" preset, in PHYSIC's list only, and comes back as it was.
     const PhysicPatch made = rig.track().physic;

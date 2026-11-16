@@ -62,7 +62,7 @@ const Page kPages[] = {
     {"FM-6 PITCH ENVELOPE", TrackKind::Fm6, 8, true},
     {"PHYSIC MAIN", TrackKind::Physic, 0, true}, {"PHYSIC SOUND", TrackKind::Physic, 1, true},
     {"PHYSIC RING", TrackKind::Physic, 2, true}, {"PHYSIC PLAY", TrackKind::Physic, 3, true},
-    {"PHYSIC DICE", TrackKind::Physic, 4, true},
+    {"PHYSIC DICE", TrackKind::Physic, 4, true}, {"PHYSIC BODY", TrackKind::Physic, 5, true},
     {"sampler", TrackKind::Sampler, 0, true}, {"kit", TrackKind::None, 0, true},
 };
 
@@ -206,8 +206,8 @@ void testTheRowsAreSpreadDown() {
         if (!canvas.is(x, ui::kAboveScope - 1, ui::kLine)) std::printf("  %s: its boxes do not reach the strip\n", page.name);
         CHECK(canvas.is(x, ui::kAboveScope - 1, ui::kLine) && canvas.is(x, ui::kAboveScope, ui::kBg));
     }
-    // PHYSIC's PLAY and DICE: five boxes, the fifth alone on its row, which reaches the strip (the cursor on the second).
-    for (const Page& page : {Page{"PHYSIC PLAY", TrackKind::Physic, 3, true}, Page{"PHYSIC DICE", TrackKind::Physic, 4, true}}) {
+    // PHYSIC's PLAY, DICE and BODY: five boxes, the fifth alone on its row, which reaches the strip (the cursor on the second).
+    for (const Page& page : {Page{"PHYSIC PLAY", TrackKind::Physic, 3, true}, Page{"PHYSIC DICE", TrackKind::Physic, 4, true}, Page{"PHYSIC BODY", TrackKind::Physic, 5, true}}) {
         Canvas canvas;
         if (!canvas.ok || !drawPage(canvas, page, kThemeBrown, 1)) { CHECK(false); continue; }
         const int x = 8 + 12;

@@ -9409,8 +9409,13 @@ void testPhysicOnATrack() {
     // On MARIMBA, its first preset, and it plays.
     const PhysicPatch first = Physic::presetPatch(0);
     CHECK(track.preset == 0 && std::string(physicSpec().presetName(0)) == "Marimba" && std::equal(first.value, first.value + physic::kSettings, track.physic.value));
-    CHECK(track.physic.value[physic::Model] == physic::kMarimba && settingCount(TrackKind::Physic) == 18 && presetSettingCount(TrackKind::Physic) == 18);
-    CHECK(shownSettingCount(TrackKind::Physic) == 18 && builtInPresets(TrackKind::Physic) >= Physic::presetCount());
+    CHECK(track.physic.value[physic::Model] == physic::kMarimba && settingCount(TrackKind::Physic) == 23 && presetSettingCount(TrackKind::Physic) == 23);
+    CHECK(shownSettingCount(TrackKind::Physic) == 23 && builtInPresets(TrackKind::Physic) >= Physic::presetCount());
+    const auto presetNamed = [](const char* name) {
+        for (int i = 0; i < Physic::presetCount(); ++i)
+            if (std::string(Physic::presetName(i)) == name) return i;
+        return -1;
+    };
     session.audition(1, 60, 0.8f);
     CHECK(rig.listen(4000) > 0.01f);
     rig.render(96000 * 3);
@@ -9453,13 +9458,13 @@ void testPhysicOnATrack() {
     };
     CHECK(soundsAsTheTrack());
 
-    // The device screen: MAIN, then ADVANCED: four pages, SOUND first, MODEL its first box.
+    // The device screen: MAIN, then ADVANCED: five pages, SOUND first, MODEL its first box.
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.physic();
     screen.goTo(0, SynthScreen::kAdvanced);
     rig.tap(A);
-    CHECK(screen.page() == 1 && screen.pageCount() == 5 && screen.settingHere() == physic::Model);
+    CHECK(screen.page() == 1 && screen.pageCount() == 6 && screen.settingHere() == physic::Model);
     rig.key(A, true);
     rig.tap(DOWN); // MARIMBA > STRING: a choice, a click a press
     rig.key(A, false);
@@ -9470,12 +9475,14 @@ void testPhysicOnATrack() {
     CHECK(track.physic.value[physic::Model] == physic::kXylo);
     rig.tap(R1);
     CHECK(screen.page() == 2 && screen.settingHere() == physic::Decay);
-    rig.tap(R1, 3);
-    CHECK(screen.page() == 1); // round: RING, PLAY, DICE, SOUND
+    rig.tap(R1, 4);
+    CHECK(screen.page() == 1); // round: RING, PLAY, DICE, BODY, SOUND
+    rig.tap(L1);
+    CHECK(screen.page() == 5 && screen.settingHere() == physic::Pair);
+    rig.tap(RIGHT);
+    CHECK(screen.settingHere() == physic::Motor);
     rig.tap(L1);
     CHECK(screen.page() == 4 && screen.settingHere() == physic::Dice);
-    rig.tap(RIGHT);
-    CHECK(screen.settingHere() == physic::DicePosition);
     // Every setting is on one page, once; MAIN has none; the names are as the plan's.
     const SynthSpec& spec = physicSpec();
     int seen[physic::kSettings] = {};
@@ -9488,15 +9495,21 @@ void testPhysicOnATrack() {
             if (id >= 0 && id < physic::kSettings) ++seen[id];
         }
     for (int id = 0; id < physic::kSettings; ++id) CHECK(seen[id] == 1);
-    CHECK(spec.itemCount(0) == 0 && spec.itemCount(1) == 4 && spec.itemCount(2) == 4 && spec.itemCount(3) == 5 && spec.itemCount(4) == 5 && spec.itemCount(5) == 0);
+    CHECK(spec.itemCount(0) == 0 && spec.itemCount(1) == 4 && spec.itemCount(2) == 4 && spec.itemCount(3) == 5 && spec.itemCount(4) == 5 && spec.itemCount(5) == 5 && spec.itemCount(6) == 0);
     CHECK(std::string(spec.pageNames[1]) == "SOUND" && std::string(spec.pageNames[2]) == "RING" && std::string(spec.pageNames[3]) == "PLAY" && std::string(spec.pageNames[4]) == "DICE");
+    CHECK(std::string(spec.pageNames[5]) == "BODY" && spec.pages == 6);
     CHECK(std::string(spec.macroNames[0]) == "TONE" && std::string(spec.macroNames[1]) == "POSITION" && std::string(spec.macroNames[5]) == "RELEASE" && std::string(spec.macroNames[7]) == "OCTAVE");
     for (int id = 0; id < physic::kSettings; ++id) CHECK(spec.settingMin(id) == physic::settingMin(id) && spec.settingMax(id) == physic::settingMax(id));
 
     // Its settings read as what they are, in their units.
     const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
     CHECK(reads(physic::Model, 0) == "STRING" && reads(physic::Model, 1) == "MARIMBA" && reads(physic::Model, 6) == "BELL" && reads(physic::Model, 10) == "WOOD");
-    CHECK(reads(physic::Strike, 0) == "PLUCK" && reads(physic::Strike, 1) == "MALLET");
+    CHECK(reads(physic::Strike, 0) == "PLUCK" && reads(physic::Strike, 1) == "MALLET" && reads(physic::Strike, 2) == "NOISE");
+    // Batch 10's: PAIR in cents, MOTOR in hertz, BODY's names, BODY MIX a share, BUZZ in dB under the loudest.
+    CHECK(reads(physic::Pair, 0) == "OFF" && reads(physic::Pair, 7) == "7 CENTS" && reads(physic::Pair, 20) == "20 CENTS");
+    CHECK(reads(physic::Motor, 0) == "OFF" && reads(physic::Motor, 1) == "0.20 HZ" && reads(physic::Motor, 85) == "4.6 HZ" && reads(physic::Motor, 100) == "8.0 HZ");
+    CHECK(reads(physic::Body, 0) == "NONE" && reads(physic::Body, 1) == "GUITAR" && reads(physic::Body, 2) == "BOX" && reads(physic::Body, 3) == "TUBES");
+    CHECK(reads(physic::BodyMix, 0) == "OFF" && reads(physic::BodyMix, 60) == "60%" && reads(physic::Buzz, 0) == "OFF" && reads(physic::Buzz, 1) == "6 DB" && reads(physic::Buzz, 100) == "36 DB");
     CHECK(reads(physic::Decay, 0) == "50 MS" && reads(physic::Decay, 100) == "30 S" && reads(physic::Decay, 58) == "2.0 S" && reads(physic::Decay, 40) == "646 MS");
     CHECK(reads(physic::Release, 0) == "10 MS" && reads(physic::Release, 99) == "2.8 S" && reads(physic::Release, 100) == "RING");
     CHECK(reads(physic::Position, 100) == "1/2" && reads(physic::Position, 39) == "1/5" && reads(physic::Position, 0) == "1.0%" && reads(physic::Position, 50) == "25.5%");
@@ -9513,6 +9526,13 @@ void testPhysicOnATrack() {
     CHECK(readsIn(physic::Hardness) == "8.0 MS");
     p.value[physic::Hardness] = 100;
     CHECK(readsIn(physic::Hardness) == "0.30 MS");
+    p.value[physic::Strike] = 2; // NOISE: the burst's length
+    CHECK(readsIn(physic::Hardness) == "2 MS");
+    p.value[physic::Hardness] = 0;
+    CHECK(readsIn(physic::Hardness) == "2.0 S");
+    p.value[physic::Hardness] = 50;
+    CHECK(readsIn(physic::Hardness) == "63 MS");
+    p.value[physic::Hardness] = 100;
     p.value[physic::Strike] = 0;
     CHECK(readsIn(physic::Hardness) == "100%");
     p.value[physic::Stretch] = 50;
@@ -9537,8 +9557,9 @@ void testPhysicOnATrack() {
     CHECK(macroIsChoice(TrackKind::Physic, physic::MacroOctave) && !modTargetFits(track, kModFirstMacro + physic::MacroOctave));
     for (int m = 0; m < physic::MacroOctave; ++m) CHECK(!macroIsChoice(TrackKind::Physic, m) && modTargetFits(track, kModFirstMacro + m));
 
-    // Y on MAIN: a new sound on the same MODEL, heard; STRIKE, HARDNESS, POSITION, DECAY, MATERIAL and
-    // STRETCH rolled, the rest as it was. A step of undo, which puts it back.
+    // Y on MAIN: a new sound on the same MODEL, heard; STRIKE, HARDNESS, POSITION, DECAY, MATERIAL,
+    // STRETCH, PAIR, MOTOR, BODY MIX and BUZZ rolled, the rest as it was (BODY too). A step of undo, which
+    // puts it back.
     rig.tap(B); // MAIN
     screen.goTo(0, SynthScreen::kPreset);
     rig.frames(60); // (a step of undo is a burst of edits and 0.7 s of none)
@@ -9550,7 +9571,7 @@ void testPhysicOnATrack() {
     for (int id : {physic::Strike, physic::Hardness, physic::Position, physic::Decay, physic::Material, physic::Stretch}) moved = moved || track.physic.value[id] != before.value[id];
     CHECK(moved && session.undoSteps() == stepsWere + 1);
     for (int id : {physic::Model, physic::Release, physic::Velocity, physic::Octave, physic::Fine, physic::Width, physic::Level, physic::Dice,
-                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay})
+                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay, physic::Body})
         CHECK(track.physic.value[id] == before.value[id]);
     CHECK(rig.listen(4000) > 0.f); // heard at once (stopped)
     CHECK(soundsAsTheTrack()); // ...and the engine was told the whole new sound
@@ -9579,11 +9600,12 @@ void testPhysicOnATrack() {
     {
         TrackData* one = new TrackData;
         TrackData* two = new TrackData;
-        int plucked[2] = {}, ofModels[2] = {};
+        int plucked[2] = {}, ofModels[2] = {}, noise = 0, paired = 0, motor = 0, buzz = 0;
         for (unsigned seed = 0; seed < 400; ++seed) {
             for (TrackData* t : {one, two}) {
                 t->kind = TrackKind::Physic;
-                t->physic = Physic::presetPatch(seed % 2 ? 5 : 0); // STEEL (a string), MARIMBA
+                t->physic = Physic::presetPatch(seed % 2 ? presetNamed("Steel") : 0); // a string, MARIMBA
+                t->physic.value[physic::Body] = seed % 3; // (BODY is left as it is)
             }
             spec.roll(*one, seed);
             spec.roll(*two, seed);
@@ -9591,6 +9613,10 @@ void testPhysicOnATrack() {
             for (int id = 0; id < physic::kSettings; ++id) CHECK(one->physic.value[id] >= physic::settingMin(id) && one->physic.value[id] <= physic::settingMax(id));
             const int string = one->physic.value[physic::Model] == physic::kString ? 1 : 0;
             plucked[string] += one->physic.value[physic::Strike] == 0 ? 1 : 0;
+            noise += one->physic.value[physic::Strike] == physic::kNoise;
+            paired += one->physic.value[physic::Pair] > 0, motor += one->physic.value[physic::Motor] > 0, buzz += one->physic.value[physic::Buzz] > 0;
+            CHECK(one->physic.value[physic::Body] == static_cast<int>(seed % 3) && one->physic.value[physic::Pair] <= 12 && one->physic.value[physic::Buzz] <= 45);
+            CHECK(one->physic.value[physic::BodyMix] >= 20 && one->physic.value[physic::BodyMix] <= 90);
             ++ofModels[string];
             CHECK(one->physic.value[physic::Model] == (seed % 2 ? physic::kString : physic::kMarimba));
             if (string) CHECK(one->physic.value[physic::Stretch] <= 50 && one->physic.value[physic::Decay] <= 85);
@@ -9598,6 +9624,7 @@ void testPhysicOnATrack() {
             CHECK(!std::equal(one->physic.value, one->physic.value + physic::kSettings, two->physic.value));
         }
         CHECK(ofModels[0] == 200 && ofModels[1] == 200 && plucked[1] > 120 && plucked[1] < 190 && plucked[0] < 80 && plucked[0] > 10); // (both, each way)
+        CHECK(noise > 25 && noise < 80 && paired > 150 && paired < 250 && motor > 60 && motor < 140 && buzz > 40 && buzz < 120); // (an eighth, a half, a quarter, a fifth)
         delete one;
         delete two;
     }
@@ -9605,8 +9632,8 @@ void testPhysicOnATrack() {
     // A player's own preset goes over the FIRST preset's sound, never over what the track had: a value it
     // does not hold (a file saved before a setting was appended) is the factory's.
     setUserPresets(TrackKind::Physic, {UserPreset{"SHORT ONE", {physic::kBell, 1, 12, 34}, {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f}}});
-    session.chooseSynthPreset(1, 11); // Church Bell first: another sound under it
-    CHECK(std::string(physicSpec().presetName(11)) == "Church Bell");
+    session.chooseSynthPreset(1, presetNamed("Vibes")); // Vibes first: another sound under it, batch 10's settings on
+    CHECK(track.physic.value[physic::Motor] > 0 && track.physic.value[physic::Body] == physic::kBodyTubes);
     session.chooseSynthPreset(1, builtInPresets(TrackKind::Physic));
     CHECK(track.preset == builtInPresets(TrackKind::Physic) && std::string(physicSpec().presetCategory(track.preset)) == "USER");
     CHECK(track.physic.value[physic::Model] == physic::kBell && track.physic.value[physic::Hardness] == 12 && track.physic.value[physic::Position] == 34);
@@ -9614,7 +9641,8 @@ void testPhysicOnATrack() {
     setUserPresets(TrackKind::Physic, {});
 
     // A song keeps a PHYSIC track: its kind, its preset and every number of its sound.
-    session.chooseSynthPreset(1, 7); // Koto
+    session.chooseSynthPreset(1, presetNamed("Koto"));
+    session.setSynthSetting(1, physic::Buzz, 33); // (a batch 10 setting kept in the song too)
     session.setSynthSetting(1, physic::Width, 66);
     track.macro[physic::MacroMaterial] = 0.8f;
     addPhazed(rig);
@@ -9622,7 +9650,7 @@ void testPhysicOnATrack() {
     const std::string written = songText(rig.project());
     CHECK(written.find("\ntrack physic\n") != std::string::npos);
     CHECK(parseSong(written, *again));
-    CHECK(again->tracks[1].kind == TrackKind::Physic && again->tracks[1].preset == 7 && std::equal(track.physic.value, track.physic.value + physic::kSettingRoom, again->tracks[1].physic.value));
+    CHECK(again->tracks[1].kind == TrackKind::Physic && again->tracks[1].preset == presetNamed("Koto") && again->tracks[1].physic.value[physic::Buzz] == 33 && std::equal(track.physic.value, track.physic.value + physic::kSettingRoom, again->tracks[1].physic.value));
     CHECK(near(again->tracks[1].macro[physic::MacroMaterial], 0.8f) && again->tracks[2].kind == TrackKind::Phazed);
     // An older file's settings line, shorter: what it does not hold keeps its preset's value.
     std::string shortLine = written;
@@ -9631,7 +9659,7 @@ void testPhysicOnATrack() {
     const std::size_t end = shortLine.find('\n', at + 1);
     shortLine.replace(at, end - at, "\nsettings 0 0 77");
     CHECK(parseSong(shortLine, *again));
-    const PhysicPatch koto = Physic::presetPatch(7);
+    const PhysicPatch koto = Physic::presetPatch(presetNamed("Koto"));
     CHECK(again->tracks[1].physic.value[physic::Model] == 0 && again->tracks[1].physic.value[physic::Hardness] == 77 && again->tracks[1].physic.value[physic::Width] == koto.value[physic::Width]);
 }
 
@@ -9647,7 +9675,7 @@ void testPhysicsHintsFit() {
     rig->project().track = 1;
     rig->app.session().view = View::Device;
     SynthScreen& screen = rig->app.physic();
-    CHECK(screen.pageCount() == 5);
+    CHECK(screen.pageCount() == 6);
     int states = 0;
     for (int menu = 0; menu < 2; ++menu) {
         for (int page = 0; page < screen.pageCount(); ++page) {
