@@ -675,7 +675,8 @@ private:
     Uint32 editedAt_ = 0;
     std::uint32_t cellMark_ = 0;
     void serveDesigner();
-    std::string designSpec(TrackKind kind) const;
+    std::string designSpec(int track) const;  // what the page builds itself from (a synth's, or a sampler's)
+    std::string samplerSpec(int track) const;
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
@@ -684,8 +685,17 @@ private:
     unsigned designLooks_ = 0;
     Uint32 designSeenAt_ = 0;
     TrackKind designSpecKind_ = TrackKind::None;
-    int designSpecPresets_ = -1;
+    int designSpecPresets_ = -1, designSpecTrack_ = -1;
+    unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
     std::string designSpecText_ = "{}";
+    unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
+    // The recordings a sampler's page is offered: read from the card on this thread, when the page
+    // first looks, when the WiFi page has taken something, and every kDesignListEveryMs while it looks.
+    std::vector<std::string> designRecordings_;
+    Uint32 designListAt_ = 0;
+    unsigned designReceived_ = 0;
+    bool designListed_ = false;
+
     void recordAutomation(int track, int lane, float value);
     void hearMidi();
     MidiInput midi_;

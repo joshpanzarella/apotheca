@@ -30,6 +30,13 @@ constexpr int kLeastSpan = 1; // END is at least this many percent after START (
 // Where a note ends, as played: END, or kLeastSpan after START where END is not after it (a song
 // file may say so; the screen never does).
 inline int playedEnd(int start, int end) { return end < start + kLeastSpan ? start + kLeastSpan : end; }
+// START or END turned to `value`, held kLeastSpan short of the other, so they never cross. The one
+// rule for whatever turns them: the device's screen and the sound-designer page.
+inline int heldApart(int id, int value, int start, int end) {
+    if (id == Start && value > end - kLeastSpan) return end - kLeastSpan;
+    if (id == End && value < start + kLeastSpan) return start + kLeastSpan;
+    return value;
+}
 int settingMin(int id);
 int settingMax(int id);
 int settingDefault(int id);

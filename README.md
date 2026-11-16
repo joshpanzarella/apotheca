@@ -29,8 +29,8 @@ While it plays, the top bar of every screen shows which scene is playing and
 how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
-A sound designer web page (see "The sound designer") sets a synth's sounds
-from a computer's browser. Not built yet: the handheld making its own WiFi
+A sound designer web page (see "The sound designer") sets a synth's sounds,
+and a sampler's, from a computer's browser. Not built yet: the handheld making its own WiFi
 hotspot.
 
 ## Build
@@ -463,7 +463,19 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP, FM-6 or PHYSIC track. Move to another track there and the page follows.
+  PHAZED, JAX-EP, FM-6, PHYSIC or SAMPLER track. Move to another track there and the page follows.
+- **A SAMPLER track** shows its recording as a picture, with **START and END
+  as marks to drag** (or click: the nearer mark comes to the click). They stop
+  a percent short of each other, as on the handheld. Under it are its eight
+  settings, read as the handheld reads them (PITCH, TUNE, START, END, ATTACK,
+  RELEASE, LOOP, LEVEL). **PLAY** (or the space bar), held, plays it at its
+  own pitch; the keys play it higher and lower. The list above the picture
+  picks another recording from the card (a recording sent from the WiFi page
+  is in it at once, one put there another way within five seconds). A sampler
+  keeps no presets: its sound is its recording. Every change is the
+  handheld's own: undo, the song file and the SAMPLER screen follow.
+- **The drum KIT is not on the page yet.** It will be: one picture a lane,
+  each with its own marks.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.

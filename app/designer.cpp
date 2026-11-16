@@ -1,4 +1,5 @@
 #include "designer.hpp"
+#include "samples.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -67,11 +68,16 @@ bool Designer::ask(const std::string& line) {
         std::string rest;
         std::getline(in, rest);
         r.name = presetNameFrom(rest); // may be empty: the instrument's own name again
+    } else if (word == "sample") {
+        r.kind = DesignRequest::Sample;
+        std::getline(in, r.name);
+        if (!r.name.empty() && r.name[0] == ' ') r.name.erase(0, 1); // (the one space after the word)
+        if (!r.name.empty() && !sampleNameOk(r.name)) return false;   // nothing that could leave the folder
     } else {
         return false;
     }
     std::string more;
-    if (r.kind != DesignRequest::Save && r.kind != DesignRequest::Name && (in >> more)) return false; // something extra on the line
+    if (r.kind != DesignRequest::Save && r.kind != DesignRequest::Name && r.kind != DesignRequest::Sample && (in >> more)) return false; // something extra on the line
     std::lock_guard<std::mutex> lock(mutex_);
     ++looks_; // asking for something shows the page is there, as much as looking does
     if (waiting_.size() >= 512) return false; // nobody is taking them: the program has stalled

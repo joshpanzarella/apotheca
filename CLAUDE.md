@@ -2241,6 +2241,18 @@ effect in those two groups and fails one that does not.
   page offers DELETE FOLDER on a heading with no recording and no folder under it. Folders
   made for a request that is then refused are taken away again, and only those (`foldersMade`
   keeps what it made, `dropMade`): a folder that was there before is never touched.
+- **The sound designer page knows two kinds of track** (2026-11-16): the spec's `"page"` is
+  `"synth"` or `"sampler"` (`Session::designSpec` / `samplerSpec`), and the state's `"spec"` number
+  (`designSpecSerial_`) goes up whenever the spec's text changes, which is when the page asks for it
+  again. A sampler's spec carries `"waves"`: a list of pictures, each a recording's 512 loudest points
+  (`LaneSound::peaks`, made on the app thread when the recording is read; 0 to 1000) and the settings
+  that mark it (`"marks"`, ids, kept `"least"` apart by `sampler::heldApart`, the screen's rule too),
+  and `"recordings"`, read from the card on the app thread only while the page looks (at once, on
+  `Transfer::received()`, then every 5 s). `sample NAME` takes only a name in that list. **The KIT
+  step** reuses `wave()` in the page's script: `"page":"kit"`, one wave a lane, each lane's settings
+  under ids of their own (the choke and per-lane edit branches give the rows); the request handling
+  then routes `set` by lane. `design_test` `testSamplerFromThePage`; `APOTHECA_DESIGN_SAMPLER=1`
+  with `APOTHECA_DESIGN_HOLD` holds a sampler page open for a browser.
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from

@@ -18,6 +18,8 @@ const char* const kNames[sampler::kSettings] = {"PITCH", "TUNE", "START", "ATTAC
 const int kShown[sampler::kSettings] = {sampler::Root, sampler::Tune, sampler::Start, sampler::End, sampler::Attack, sampler::Release, sampler::Loop, sampler::Level};
 }
 
+const char* samplerSettingName(int id) { return id >= 0 && id < sampler::kSettings ? kNames[id] : ""; }
+
 int SamplerScreen::settingAt(int place) { return place >= 0 && place < sampler::kSettings ? kShown[place] : -1; }
 
 void samplerSettingText(int id, int value, char* out, int size) {
@@ -89,8 +91,7 @@ void SamplerScreen::hearFromList(SamplePicker::Hear how) {
 void SamplerScreen::setSetting(int id, int value) {
     const int before = trk().sampler[id];
     // START and END never cross: each stops kLeastSpan short of the other.
-    if (id == sampler::Start && value > trk().sampler[sampler::End] - sampler::kLeastSpan) value = trk().sampler[sampler::End] - sampler::kLeastSpan;
-    if (id == sampler::End && value < trk().sampler[sampler::Start] + sampler::kLeastSpan) value = trk().sampler[sampler::Start] + sampler::kLeastSpan;
+    value = sampler::heldApart(id, value, trk().sampler[sampler::Start], trk().sampler[sampler::End]);
     session_.setSamplerSetting(project_.track, id, value);
     if (trk().sampler[id] == before || project_.playing || lastMs_ - heardAt_ < kHearEveryMs) return;
     heardAt_ = lastMs_;
