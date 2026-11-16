@@ -1118,6 +1118,10 @@ page needed nothing (its pages and readings come from the spec). Stills `physic-
 | NOISE, 2 s bursts back to back: GLASS / STRING | 0.48 / 0.64% |
 | Vibes / Kalimba | 0.24 / 0.36% |
 
+`bench` (the same container, after joining `main` at 0.601; its Phazed row read 1.0%): Marimba 0.21%,
+Twelve 0.44%, breathed (Wine Glass, NOISE 2 s) 0.48%, the worst (Church Bell, DICE 100, every note
+gliding, PAIR 20, GUITAR, MOTOR, BUZZ) 0.66%, asleep 0.01%.
+
 **Under 0.7% with every new setting on, unless every note glides as well** (0.73 to 0.77%: the
 glide's own tick is most of it, as in version 1). Handheld, x 13 to 17: 6 to 10% for the 8-note rows,
 10 to 13% for the gliding ones. `bench` has a new row, "PHYSIC breathed" (NOISE), "PHYSIC string" is
@@ -1138,3 +1142,15 @@ resonance, +0.04 at 3 kHz, rests), `testBody` (the 2nd harmonic of a string at 4
 the note is over its gap, 0 samples off; longer with more BUZZ; bright). `testBlocks`, `testTooSmall`,
 `testNoAllocation` with every new setting on and turned. `app_test`, `design_test`, `textsize`,
 `scope_test` take the fifth page.
+
+**The handheld plays the desk's bits** with batch 10 too: `physic_test` built with the handheld's
+flags (clang, `-O2 -mcpu=cortex-a53`, its sysroot) and run under qemu-aarch64: the version 1 sums,
+the song, and every new setting's phrase checksum (`--print testBlocks`) the same as the desk's.
+
+**Mutation testing**: 33 mutants, 32 killed (the pair's sign, its halves, the second string's
+cents, the glide's turns, the re-strike's make, MOTOR's depth, its start, its ramp out and in, its
+interpolation, BODY's phase, its slide while skipped, a box changed, TUBES louder, longer, on a
+string, CHIME's mode, NOISE's length, envelope, comb and both levels, BUZZ's gap, its loudest, BUZZ
+off, the second string emptied, the readings, the roll, the page). **One survives**: a sleep that
+does not look at the second string. Its two strings die at the same rate, so when the first is
+quiet the second is within a hair; kept as a guard.

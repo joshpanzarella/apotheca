@@ -920,12 +920,14 @@ static void testBlocks() {
         const std::uint64_t first = phraseSum(model, 64);
         for (int block : {1, 7, 17, 48, 256, 333}) CHECK(phraseSum(model, block) == first);
         const std::uint64_t turned = phraseSum(model, 64, -1, nullptr, batchTenTurned());
+        if (gPrint) std::printf("  %s with batch 10 turned: 0x%016llx\n", modelName(model), static_cast<unsigned long long>(turned));
         CHECK(turned != first);
         for (int block : {1, 7, 17, 48, 256, 333}) CHECK(phraseSum(model, block, -1, nullptr, batchTenTurned()) == turned);
     }
     for (const char* name : {"Vibes", "Twelve", "Kalimba", "Hand Drum", "Dulcimer"}) {
         const int at = presetNamed(name);
         const std::uint64_t first = phraseSum(0, 64, at);
+        if (gPrint) std::printf("  %s: 0x%016llx\n", name, static_cast<unsigned long long>(first));
         for (int block : {1, 17, 333}) {
             const bool same = phraseSum(0, block, at) == first;
             if (!same) {
@@ -1564,16 +1566,27 @@ static void testPair() {
         play(*p, 64);
         CHECK(p->modesOf(0, hz) == 7);
     }
-    { // a paired string glides as one: half way through a glide its pitch is the lone string's
-        auto one = synth(plain(kString, {{Strike, kPluck}})), two = synth(plain(kString, {{Strike, kPluck}, {Pair, 10}}));
+    { // a ringing paired string struck again with another PAIR is made afresh: both its strings are emptied
+        auto p = synth(plain(kString, {{Strike, kPluck}, {Pair, 20}})), q = synth(plain(kString, {{Strike, kPluck}, {Pair, 3}}));
+        p->noteSeed(9u), p->noteOn(48, 0.8f);
+        play(*p, 9600);
+        p->setSetting(Pair, 3);
+        p->noteSeed(10u), p->noteOn(48, 0.8f);
+        q->noteSeed(10u), q->noteOn(48, 0.8f);
+        CHECK(play(*p, 9600) == play(*q, 9600));
+    }
+    { // a paired string glides as one: through a glide its pitch is the lone string's (PAIR 4: its first
+      // null, where the fundamental is gone and its pitch cannot be read, is after the glide, at 1.4 s)
+        auto one = synth(plain(kString, {{Strike, kPluck}})), two = synth(plain(kString, {{Strike, kPluck}, {Pair, 4}}));
         one->noteOnFrom(55, 0.8f, 48, 1.f), two->noteOnFrom(55, 0.8f, 48, 1.f);
         const std::vector<float> a = bandOf(play(*one, 48000 * 2), hzOf(51.5)), b = bandOf(play(*two, 48000 * 2), hzOf(51.5));
         double worst = 0.0;
         for (double t : {0.3, 0.5, 0.7}) {
             const std::size_t from = static_cast<std::size_t>(t * kRate), to = from + 960;
+            if (gPrint) std::printf("    at %.1f s: %.2f Hz, one string %.2f Hz\n", t, pitchOf(b, from, to), pitchOf(a, from, to));
             worst = std::max(worst, std::fabs(1200.0 * std::log2(pitchOf(b, from, to) / pitchOf(a, from, to))));
         }
-        if (gPrint) std::printf("  PAIR 10 on a gliding string: within %.2f cents of one string\n", worst);
+        if (gPrint) std::printf("  PAIR 4 on a gliding string: within %.2f cents of one string\n", worst);
         CHECK(worst < 5.0);
     }
 }
@@ -1616,13 +1629,18 @@ static void testMotor() {
         with->noteOn(72, 0.8f), plainOne->noteOn(72, 0.8f);
         const std::vector<float> a1 = play(*with, 2000), b1 = play(*plainOne, 2000);
         with->setSetting(Motor, 0);
-        const std::vector<float> a2 = play(*with, 4800), b2 = play(*plainOne, 4800);
+        std::vector<float> a2 = play(*with, 4800), b2 = play(*plainOne, 4800);
         CHECK(std::fabs(a1.back() / b1.back() - 1.f) > 0.05f); // (it was down)
         for (std::size_t i = 32; i < a2.size(); ++i) CHECK(a2[i] == b2[i]);
+        a2.insert(a2.begin(), a1.back()), b2.insert(b2.begin(), b1.back()); // (from the last sample before it was turned)
         float step = 0.f;
         for (std::size_t i = 1; i < 32; ++i)
             if (std::fabs(b2[i]) > 1e-3f && std::fabs(b2[i - 1]) > 1e-3f) step = std::max(step, std::fabs(a2[i] / b2[i] - a2[i - 1] / b2[i - 1]));
         CHECK(step < 0.07f);
+        // ...and on again: its turn starts again from full, not where it was left
+        with->setSetting(Motor, 90);
+        const std::vector<float> a3 = play(*with, 480), b3 = play(*plainOne, 480);
+        CHECK(std::fabs(a3[0] / b3[0] - 1.f) < 1e-3f && std::fabs(a3[15] / b3[15] - 1.f) < 0.01f);
     }
 }
 
