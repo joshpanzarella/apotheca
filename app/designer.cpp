@@ -1,5 +1,6 @@
 #include "designer.hpp"
 #include "samples.hpp"
+#include "apotheca/drums.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -73,11 +74,24 @@ bool Designer::ask(const std::string& line) {
         std::getline(in, r.name);
         if (!r.name.empty() && r.name[0] == ' ') r.name.erase(0, 1); // (the one space after the word)
         if (!r.name.empty() && !sampleNameOk(r.name)) return false;   // nothing that could leave the folder
+    } else if (word == "lanesample") {
+        r.kind = DesignRequest::LaneSample;
+        if (!(in >> r.a) || r.a < 0 || r.a >= kDrumLanes) return false;
+        std::getline(in, r.name);
+        if (!r.name.empty() && r.name[0] == ' ') r.name.erase(0, 1);
+        if (!r.name.empty() && !sampleNameOk(r.name)) return false;
+    } else if (word == "hear") {
+        r.kind = DesignRequest::Hear;
+        if (!(in >> r.a >> r.b) || r.a < 0 || r.a >= kDrumLanes || (r.b != 0 && r.b != 1)) return false;
+    } else if (word == "normalize" || word == "trim") {
+        r.kind = word == "trim" ? DesignRequest::Trim : DesignRequest::Normalize;
+        if (!(in >> r.a) || r.a < 0 || r.a >= kDrumLanes) return false;
     } else {
         return false;
     }
     std::string more;
-    if (r.kind != DesignRequest::Save && r.kind != DesignRequest::Name && r.kind != DesignRequest::Sample && (in >> more)) return false; // something extra on the line
+    const bool named = r.kind == DesignRequest::Save || r.kind == DesignRequest::Name || r.kind == DesignRequest::Sample || r.kind == DesignRequest::LaneSample;
+    if (!named && (in >> more)) return false; // something extra on the line
     std::lock_guard<std::mutex> lock(mutex_);
     ++looks_; // asking for something shows the page is there, as much as looking does
     if (waiting_.size() >= 512) return false; // nobody is taking them: the program has stalled

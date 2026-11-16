@@ -177,6 +177,9 @@ public:
     // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
     // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
     void setLaneFeel(int track, int lane, int time, int level);
+    // A drum lane's volume, 0..1 (the drum grid's lane name, and the sound designer's page). Not a step
+    // of undo, as it never was.
+    void setLaneLevel(int track, int lane, float level);
     // CHOKE: a drum lane's group, kChokeNone, 1 or 2 (drums.hpp; anything else is NONE). The engine is told
     // at once. A step of undo (seen by soundMark, as FEEL is).
     void setLaneChoke(int track, int lane, int group);
@@ -688,7 +691,9 @@ private:
     Uint32 editedAt_ = 0;
     std::uint32_t cellMark_ = 0;
     void serveDesigner();
-    std::string designSpec(int track) const;  // what the page builds itself from (a synth's, or a sampler's)
+    void serveKit(const DesignRequest& r); // a KIT's requests (serveDesigner)
+    std::string designSpec(int track) const;  // what the page builds itself from (a synth's, a sampler's or a kit's)
+    std::string kitSpec(int track) const;
     std::string samplerSpec(int track) const;
     std::string designState() const;
     Designer designer_;

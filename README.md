@@ -30,7 +30,7 @@ how far through it is: one block for each time the scene plays, filling as
 the bar goes by.
 
 A sound designer web page (see "The sound designer") sets a synth's sounds,
-and a sampler's, from a computer's browser. Not built yet: the handheld making its own WiFi
+a sampler's and a drum kit's, from a computer's browser. Not built yet: the handheld making its own WiFi
 hotspot.
 
 ## Build
@@ -463,7 +463,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP, FM-6, PHYSIC or SAMPLER track. Move to another track there and the page follows.
+  PHAZED, JAX-EP, FM-6, PHYSIC, SAMPLER or DRUMS track. Move to another track there and the page follows.
 - **A SAMPLER track** shows its recording as a picture, with **START and END
   as marks to drag** (or click: the nearer mark comes to the click). They stop
   a percent short of each other, as on the handheld. Under it are its eight
@@ -474,8 +474,19 @@ designer".
   is in it at once, one put there another way within five seconds). A sampler
   keeps no presets: its sound is its recording. Every change is the
   handheld's own: undo, the song file and the SAMPLER screen follow.
-- **The drum KIT is not on the page yet.** It will be: one picture a lane,
-  each with its own marks.
+- **A DRUMS track** shows its kit: **all eight lanes**, each a card (two
+  side by side on a computer, one under another on a phone). A lane's card
+  has its sound (the built-in drum, or a recording from the card, picked
+  from its list), its picture with **START and END to drag**, **PLAY** (held:
+  heard until it is let go; or hold 1 to 8 on the computer's keyboard), its
+  VOLUME, CHOKE, FIT TO and FEEL (HUMAN TIME, HUMAN LEVEL), and its EDIT:
+  START, END, FADE IN, FADE OUT, GAIN, PITCH, FINE, REVERSE, with
+  **NORMALIZE** and **TRIM SILENCE**. Everything reads as the handheld
+  reads it. The picture is what the KIT page's EDIT view draws: the whole
+  file (or the built-in drum), the part played lit, as loud as GAIN and the
+  fades make it. FIT is for a recording: a built-in drum has none. As on the
+  handheld, the file on the card is never changed, and a lane's EDIT, CHOKE
+  and FEEL are undone with undo; its sound, FIT and VOLUME are not.
 - Every setting of the synth is on the page, in the same groups as the
   handheld's pages, with the eight macros at the top. Phazed's envelopes
   are drawn as lines. Turn something on the handheld and the page shows it.

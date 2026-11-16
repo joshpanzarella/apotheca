@@ -9,9 +9,15 @@ namespace apotheca {
 
 using namespace ui;
 
+void laneFitText(int fit, char* text, std::size_t size) {
+    if (fit == 0) std::snprintf(text, size, "OFF");
+    else if (fit % 16 == 0) std::snprintf(text, size, "%d BAR%s", fit / 16, fit == 16 ? "" : "S");
+    else std::snprintf(text, size, "%d STEP%s", fit, fit == 1 ? "" : "S");
+}
+
+const char* laneChokeText(int group) { return group == kChokeNone ? "NONE" : group == 1 ? "1" : "2"; }
+
 namespace {
-const int kFits[] = {0, 1, 2, 4, 8, 16, 32, 64};
-constexpr int kFitCount = sizeof kFits / sizeof kFits[0];
 constexpr Uint32 kRepeatDelayMs = ui::kListDelayMs, kRepeatEveryMs = ui::kListEveryMs; // eight rows, and sounds stepped through
 constexpr float kStepsPerSecond = 8.f; // the stick with A held: slow enough to hear each sound
 }
@@ -72,11 +78,11 @@ void KitScreen::stepSound(int by) {
 
 void KitScreen::stepFit(int by) {
     int now = 0;
-    for (int i = 0; i < kFitCount; ++i)
-        if (kFits[i] <= trk().laneFit[lane_]) now = i;
+    for (int i = 0; i < kLaneFitCount; ++i)
+        if (kLaneFits[i] <= trk().laneFit[lane_]) now = i;
     const int to = now + by;
-    if (to < 0 || to >= kFitCount) return;
-    session_.setLaneFit(project_.track, lane_, kFits[to]);
+    if (to < 0 || to >= kLaneFitCount) return;
+    session_.setLaneFit(project_.track, lane_, kLaneFits[to]);
 }
 
 // NONE, 1, 2: the ends stop.
@@ -513,16 +519,14 @@ void KitScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const int fit = trk().laneFit[lane];
         box(r, fitX, y, fitW, h, kPanel, kLine);
         if (!file[0]) std::snprintf(text, sizeof text, "-");
-        else if (fit == 0) std::snprintf(text, sizeof text, "OFF");
-        else if (fit % 16 == 0) std::snprintf(text, sizeof text, "%d BAR%s", fit / 16, fit == 16 ? "" : "S");
-        else std::snprintf(text, sizeof text, "%d STEP%s", fit, fit == 1 ? "" : "S");
+        else laneFitText(fit, text, sizeof text);
         fonts.medium.draw(r, fitX + 9.f, textY, text, fit > 0 && file[0] ? kPurple : kDim);
         if (here && column_ == kFit) outline(r, fitX - 1, y - 1, fitW + 2, h + 2, cursorColor, 2);
 
         // CHOKE: NONE, or the group, in the colour of the mark on the drum grid's lane name.
         const int group = trk().laneChoke[lane];
         box(r, chokeX, y, chokeW, h, kPanel, kLine);
-        fonts.medium.draw(r, chokeX + 9.f, textY, group == kChokeNone ? "NONE" : group == 1 ? "1" : "2", group == kChokeNone ? kDim : kBrass);
+        fonts.medium.draw(r, chokeX + 9.f, textY, laneChokeText(group), group == kChokeNone ? kDim : kBrass);
         if (here && column_ == kChoke) outline(r, chokeX - 1, y - 1, chokeW + 2, h + 2, cursorColor, 2);
 
         // The recording's outline, and what is being done with it.

@@ -20,10 +20,19 @@
 //   name NAME         what the track is called ("name" alone: its instrument's name again)
 //   sample NAME       a SAMPLER track's recording: one of the names the page was offered ("sample"
 //                     alone: none). NAME is the whole name, folders and all ("drums/kicks/808").
+//   lanesample L NAME a drum KIT's lane L (0..7): a recording the page was offered, or (no NAME) its
+//                     built-in drum
+//   hear L 1 | 0      a KIT's lane heard while held, as X held on the handheld; 0 lets go
+//   normalize L       a KIT's lane: NORMALIZE (GAIN so what is played peaks at -1 dB)
+//   trim L            a KIT's lane: TRIM SILENCE (START and END at the first and last sound)
 //
-// What the page is shown says what KIND of page it is ("page": "synth" or "sampler"; the KIT's will
-// be "kit"), and the page builds itself from that: a synth's pages and presets, or a sampler's
-// settings round the picture of its recording (Session::designSpec).
+// What the page is shown says what KIND of page it is ("page": "synth", "sampler" or "kit"), and the
+// page builds itself from that: a synth's pages and presets, a sampler's settings round the picture of
+// its recording, or a kit's eight lanes, each with its picture and its settings (Session::designSpec).
+//
+// On a KIT, `set ID VALUE` names a lane's setting: ID is lane * kKitStride + a KitField. Fields 0 to 7
+// are the lane's EDIT rows in LaneEditRow's order (lane_edit.hpp); then FIT (steps), CHOKE (group),
+// VOLUME (percent) and FEEL's HUMAN TIME and HUMAN LEVEL (percent).
 
 #include <mutex>
 #include <string>
@@ -33,8 +42,12 @@
 
 namespace apotheca {
 
+// A KIT's settings: lane * kKitStride + field. The EDIT rows keep LaneEditRow's numbers (0 to 7).
+constexpr int kKitStride = 16;
+enum KitField { kKitFit = 8, kKitChoke, kKitVolume, kKitHumanTime, kKitHumanLevel, kKitFields };
+
 struct DesignRequest {
-    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample } kind = Set;
+    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample, LaneSample, Hear, Normalize, Trim } kind = Set;
     int a = 0, b = 0;
     float value = 0.f;
     std::string name;

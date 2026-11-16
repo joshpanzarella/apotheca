@@ -192,17 +192,7 @@ void PatternScreen::setChance(int lane, int step, float chance) {
     engine_.send(c);
 }
 
-void PatternScreen::setLaneLevel(float level) {
-    level = clampTo(level, 0.f, 1.f);
-    if (level == trk().laneLevel[lane_]) return;
-    trk().laneLevel[lane_] = level;
-    Command c;
-    c.type = Command::SetLaneLevel;
-    c.track = project_.track;
-    c.a = lane_;
-    c.value = level;
-    engine_.send(c);
-}
+void PatternScreen::setLaneLevel(float level) { session_.setLaneLevel(project_.track, lane_, clampTo(level, 0.f, 1.f)); }
 
 void PatternScreen::setTempo(float bpm) {
     tempoExact_ = clampTo(bpm, kMinTempo, kMaxTempo);
