@@ -113,7 +113,7 @@ inline int modRestart(int n) { return n >= 0 && n < kModRestarts ? n : kModResta
 // ---- the engine's tick ---------------------------------------------------------------------------
 // A MOD's value is worked out on a tick every kModTick samples, counted from each step's first
 // sample; a synth's macros only every kModMacroTicks'th (each change works a whole tone out
-// again: QMOD about a microsecond). The engine's runMods uses them; here so the tests hold one number.
+// again: Phazed about a third of a microsecond). The engine's runMods uses them; here so the tests hold one number.
 constexpr int kModTick = 64;
 // A position that is none: the MOD does not run (Engine::modNow).
 constexpr double kModNotRunning = std::numeric_limits<double>::quiet_NaN();

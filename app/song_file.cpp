@@ -407,7 +407,7 @@ bool parseSong(const std::string& text, Project& project) {
     std::unique_ptr<Project> song(new Project);
     const std::unique_ptr<const TrackData> blank(new TrackData); // a track as new (821 KB: never on the stack)
     song->tracks[0] = *blank; // no tracks until the file names them
-    bool oldSound = false; // the track being read was written as `track twin`: its notes are read, its sound is not
+    bool oldSound = false; // the track being read was written as `track twin` or `track qmod`: its notes are read, its sound is not
     int count = 0, scene = -1, bar = 0;
     int oldSteps[kMaxScenes]; // "steps": to a bar, as songs were kept before a scene had a length
     for (int& n : oldSteps) n = kSteps;
@@ -512,6 +512,7 @@ bool parseSong(const std::string& text, Project& project) {
             // whole song is read, below, since the track's effects may be written after this line.)
             double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0;
             if (!(in >> n >> kind >> target) || !(n >= 1.0) || n > kModsPerTrack) continue;
+            if (oldSound && target >= 0.0 && target < kSynthMacros) continue; // on another synth's macro: OFF, as its automation goes
             if (!(in >> depth)) depth = 0.5;
             else if (!(in >> rate)) rate = kModRateUsual;
             else if (!(in >> shape)) shape = 0;
@@ -572,7 +573,7 @@ bool parseSong(const std::string& text, Project& project) {
             double v;
             for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
-            continue; // an old Twin Analog track's sound: it plays the first preset, the knobs in the middle
+            continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {
             double preset;
             const SynthSpec* spec = specFor(track->kind);

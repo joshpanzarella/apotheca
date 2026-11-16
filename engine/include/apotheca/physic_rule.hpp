@@ -335,7 +335,7 @@ inline double heldPitch(double pitch, bool string) {
 }
 inline double hzOf(double pitch) { return 440.0 * std::pow(2.0, (pitch - 69.0) / 12.0); }
 
-// A mode's gain fades out between 0.40 and 0.45 of the sample rate (QMOD cuts at 0.45), so a
+// A mode's gain fades out between 0.40 and 0.45 of the sample rate (QMOD, gone since, cut at 0.45), so a
 // glide across the limit does not click; above, the mode is silent.
 constexpr double kFadeFrom = 0.40, kFadeTo = 0.45;
 inline double nyquistFade(double hz, double sampleRate) {

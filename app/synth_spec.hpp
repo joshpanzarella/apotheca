@@ -27,8 +27,6 @@ struct SynthSpec {
     int (*itemCount)(int page);
     void (*item)(int page, int index, int& id, const char*& name);
     bool (*envelopePage)(int page); // an eight-step envelope, drawn out
-    // For a synth whose sounds are generated from a number: a new sound from `seed`. Null for the others.
-    void (*roll)(TrackData& track, unsigned seed);
     // A few words about the folder a preset is in, said on MAIN beside PRESET; null for a synth with
     // nothing to say, and may give null for a preset. JAX-EP's say that its speeds are guesses.
     const char* (*folderNote)(int preset);
@@ -36,6 +34,15 @@ struct SynthSpec {
     // there are (JAX-EP: a knob reads as its dial, 0.0 to 10.0, not as 0 to 100). False: only for a
     // setting of few values, a choice, and a longer one shows its plain number there.
     bool pageReadsAsDevice;
+    // A setting shown on a page that is one bit of another (FM-6's OPERATOR n ON, a bit of its
+    // OPERATORS ON): its id is past the synth's own (settingCount); gives the setting it is a bit of
+    // and which bit. Null for a synth with none. Read and set them through settingValue and
+    // settingWrite, below, never by values()[id].
+    bool (*bitOf)(int id, int& whole, int& bit);
+    // How a setting reads beside the rest of the sound (FM-6's COARSE and FINE: a ratio of the key, or
+    // under MODE FIXED a pitch in Hz). Null: as settingText reads it alone. The device reads this; the
+    // WiFi page's list of readings is settingText's.
+    void (*readingIn)(const int* values, int id, int value, char* out, int size);
 };
 
 // What JAX-EP's folders say (jx3p-plan.md, section 4): the two banks are from a booklet of 1983 and may
@@ -46,7 +53,7 @@ const char* jaxepFolderNote(const char* folder); // which of the two a built-in 
 
 const SynthSpec& phazedSpec();
 const SynthSpec& jx3pSpec(); // JAX-EP on the device
-const SynthSpec& qmodSpec();
+const SynthSpec& fm6Spec();
 
 // Presets the player has made (on the sound-designer page) and saved. They
 // come after the built-in ones, in a folder called USER. The spec's preset
@@ -64,6 +71,14 @@ int settingCount(TrackKind kind);   // how many settings it has (what a song kee
 // How many of them, from id 0, a preset holds: what picking one writes and what saving one keeps. All
 // of them, but for JAX-EP: its last two (VELOCITY, BRILLIANCE) are the track's own, not the patch's.
 int presetSettingCount(TrackKind kind);
+// How many a page may show: settingCount, then those that are a bit of another (FM-6's six ONs, ids
+// settingCount to settingCount + 5). The WiFi page is given them all, in that order.
+int shownSettingCount(TrackKind kind);
+// A setting's value, a bit of another's included; and what to set for it: the engine's setting and its
+// whole new value (`value` held to its range first). Then how it reads on the device.
+int settingValue(const SynthSpec& spec, const int* values, int id);
+void settingWrite(const SynthSpec& spec, const int* values, int id, int value, int& realId, int& realValue);
+void settingReading(const SynthSpec& spec, const int* values, int id, char* out, int size);
 
 // The spec for a track's instrument, or nullptr for drums and empty tracks.
 const SynthSpec* specFor(TrackKind kind);

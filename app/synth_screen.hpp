@@ -1,5 +1,5 @@
 #pragma once
-// The Device screen for a synth: Phazed, JAX-EP or QMOD. Each is described
+// The Device screen for a synth: Phazed, JAX-EP or FM-6. Each is described
 // by a SynthSpec (synth_spec.hpp); the screen itself is the same.
 //
 // MAIN is all most sounds need: the folder, the preset, eight macros, and a
@@ -15,8 +15,9 @@
 //
 // ADVANCED is every setting. For Phazed that is nine pages: the sound as a
 // whole, each of the two lines, and each line's three eight-step envelopes
-// drawn out. For JAX-EP, five. L1 and R1 turn the pages; B goes back
-// to MAIN.
+// drawn out. For JAX-EP, five. For FM-6, eight: the voice and its LFO, one a
+// operator (its ON and all 21 of its settings), and the pitch envelope. L1 and
+// R1 turn the pages; B goes back to MAIN.
 
 #include "screen.hpp"
 #include <SDL.h>
@@ -57,9 +58,28 @@ public:
     // An advanced page that is not an envelope: rows of four settings, spread down to the strip
     // however few they are (owner's decision: no large empty band on these pages), so one row is
     // one tall box a setting, its value in the middle and its bar at the bottom.
-    static constexpr int kSettingY = 60, kSettingGap = 6;
+    // Six rows (FM-6's operators) stand kTightGap apart: at kSettingGap they were 52 high, and a value
+    // stood on its bar even at LARGE. At 3 the cursor's outline (a pixel outside its box) still clears
+    // the next box.
+    static constexpr int kSettingY = 60, kSettingGap = 6, kTightGap = 3, kTightRows = 6;
+    static constexpr int settingGap(int rows) { return rows >= kTightRows ? kTightGap : kSettingGap; }
     static constexpr int settingH(int rows) {
-        return rows < 1 ? kMacroH : (ui::kAboveScope - kSettingY - (rows - 1) * kSettingGap) / rows;
+        return rows < 1 ? kMacroH : (ui::kAboveScope - kSettingY - (rows - 1) * settingGap(rows)) / rows;
+    }
+    // Where row `row` of `rows` stands: the pixels the height does not divide evenly are shared out
+    // between the gaps, so the last row ends on kAboveScope however many rows.
+    static constexpr int settingY(int rows, int row) {
+        return kSettingY + row * (settingH(rows) + settingGap(rows)) +
+               (rows < 2 ? 0 : row * (ui::kAboveScope - kSettingY - rows * settingH(rows) - (rows - 1) * settingGap(rows)) / (rows - 1));
+    }
+
+    // The lettering a page's boxes are drawn in: the chosen size, or LARGE where the value would come
+    // within kValueClear of the box's bar (its name, the gap under it and the value's capitals, from the
+    // box's top: valueBox's own places). Nothing today (FM-6's six rows, 55 high, keep 2 pixels at XL):
+    // a guard for a page of more rows, or a lettering made larger.
+    static constexpr float kValueClear = 2.f;
+    static const Fonts& boxFontsFor(const Fonts& fonts, int h) {
+        return 7.f + fonts.small.capHeight() + 8.f + fonts.large.capHeight() + kValueClear > h - 10 ? fonts.fixed() : fonts;
     }
 
     // MAIN's two boxes, and the folder's note (SynthSpec::folderNote: JAX-EP's "SPEEDS GUESSED"). The
@@ -101,6 +121,7 @@ private:
     void stepFolder(int by);
     void setMacro(int macro, float value);
     void setSetting(int id, int value);
+    int valueOf(int id) const; // a setting's value, as settingValue reads it (a bit of another's too)
     void turn(float amount); // the stick with A held: -1..1 of "full range a second"
     void stepExact(int by);
     void stepHeld(Button direction); // the D-pad with A held
@@ -115,7 +136,6 @@ private:
     static constexpr int kChoiceRange = 12; // a setting with this many steps or fewer is a choice, not a range
     bool isChoice(int id) const;
     bool choicePushed_ = false; // the stick is over, and has already clicked a choice once
-    unsigned rolls_ = 0; // how many times Y has rolled, so two in one frame differ
     bool holding_ = false; // A is held
     float saved_ = 0.f;    // part-steps saved up while the stick turns
 

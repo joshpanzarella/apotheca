@@ -59,9 +59,6 @@ bool Designer::ask(const std::string& line) {
         std::getline(in, rest);
         r.name = presetNameFrom(rest);
         if (r.name.empty()) return false;
-    } else if (word == "roll") {
-        r.kind = DesignRequest::Roll;
-        if (!(in >> r.a)) return false;
     } else if (word == "name") {
         r.kind = DesignRequest::Name;
         std::string rest;
