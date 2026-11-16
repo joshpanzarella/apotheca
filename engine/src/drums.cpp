@@ -193,6 +193,24 @@ void DrumMachine::setLanePart(int lane, float part) {
     lanePart_[lane] = part; // trigger() takes anything that is not a share of the sound as "all of it"
 }
 
+void DrumMachine::setLaneChoke(int lane, int group) {
+    if (lane < 0 || lane >= kDrumLanes) return;
+    choke_[lane] = chokeGroupOf(group);
+}
+
+// CHOKE: the hit on `lane` cuts every other lane of its group, as a lane's own next hit cuts it (the
+// same 3 ms). Not a voice that has not been heard yet: it started on this very sample, and both hits
+// were written. Nothing at all for a lane in no group.
+void DrumMachine::chokeOthers(int lane) {
+    const int group = choke_[lane];
+    if (group == kChokeNone) return;
+    for (int other = 0; other < kDrumLanes; ++other) {
+        if (other == lane || choke_[other] != group) continue;
+        for (Voice& v : voices_[other])
+            if (v.position >= 0.0 && v.fadeStep == 0.f && v.born != renders_) v.fadeStep = chokeStep_;
+    }
+}
+
 void DrumMachine::reset() {
     for (int lane = 0; lane < kDrumLanes; ++lane) {
         voices_[lane][0] = Voice();
@@ -241,6 +259,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
             old.riseStep = chokeStep_ * 3.f;
             old.fade = 1.f;
         }
+        chokeOthers(lane); // (a hit all the same)
         return;
     }
     if (old.position >= 0.0 && old.fadeStep == 0.f) old.fadeStep = chokeStep_;
@@ -253,7 +272,7 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
     if (how.reverse) {
         // From the last sample it would have played, back to the first.
         const int last = (end < length ? end : length) - 1;
-        if (last < from) return; // nothing there to play
+        if (last < from) return; // nothing there to play (and it cuts nothing)
         fresh.position = last;
         fresh.rate = -rate;
         fresh.stop = from;
@@ -265,7 +284,9 @@ void DrumMachine::trigger(int lane, float velocity, float start, float part, con
         fresh.rise = from > 0 ? 0.f : 1.f;
         fresh.riseStep = from > 0 ? chokeStep_ * 3.f : 0.f; // a millisecond
     }
+    fresh.born = renders_;
     next_[lane] = 1 - next_[lane];
+    chokeOthers(lane);
 }
 
 void DrumMachine::letGo(int lane) {
@@ -399,6 +420,7 @@ int DrumMachine::render(float* left, float* right, int frames, float* echo, floa
         }
     }
     for (int i = 0; i < frames; ++i) right[i] = left[i];
+    if (frames > 0) ++renders_; // (every voice started before this render has been heard now)
     return wrote;
 }
 

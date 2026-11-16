@@ -176,6 +176,12 @@ public:
     // FEEL: a drum lane's HUMAN TIME and HUMAN LEVEL, each 0..100 (feel_rule.hpp). Live: the engine is told at
     // once, and hits asked for from then on go by it. A step of undo (seen by soundMark, as GLIDE FROM is).
     void setLaneFeel(int track, int lane, int time, int level);
+    // CHOKE: a drum lane's group, kChokeNone, 1 or 2 (drums.hpp; anything else is NONE). The engine is told
+    // at once. A step of undo (seen by soundMark, as FEEL is).
+    void setLaneChoke(int track, int lane, int group);
+    // A new kit's groups: its two hats in CHOKE 1 (the closed hat cuts the open one), the rest in none.
+    // A drum track added, a new song's first track, a track given the kit, the first song on a card.
+    void chokeNewKit(int track);
     // MOD 1 or 2 of a track (mod 0 or 1): the whole of it, held to what it can be. One that is OFF,
     // or aimed at something that does not fit the track (mods.hpp: an empty slot, a choice, a macro
     // on a track with none), is stored OFF, blank. A step of undo, as GLIDE FROM is. True if the

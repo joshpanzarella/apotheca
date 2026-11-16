@@ -168,6 +168,7 @@ public:
     bool feeling() const { return feelHeld_; } // X is held on a lane's name
     LaneFeel laneFeel(int lane) const { return project_.current().laneFeel[lane]; }
     static void drawFeelMark(SDL_Renderer* renderer, int nameY, LaneFeel feel); // the mark on a lane's name (both views)
+    static void drawChokeMark(SDL_Renderer* renderer, int nameY, int group); // CHOKE: the lane's group, on its name (both views)
     // The slice view (see the top of this file).
     bool slicing() const { return slicing_; }
     void setSlicing(bool on);         // on only if the cursor's lane plays a recording; if not, it says why

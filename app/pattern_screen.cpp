@@ -869,6 +869,13 @@ void PatternScreen::drawFeelMark(SDL_Renderer* r, int nameY, LaneFeel feel) {
     if (feel.level) fill(r, kFeelMarkX, nameY + kCellH - kFeelMarkInset - kFeelMarkH, kFeelMarkW, kFeelMarkH, kPurple);
 }
 
+// A lane in a CHOKE group: a brass mark at the bottom right of its name, a piece for each of the
+// group's number. `nameY`: the top of the name's box.
+void PatternScreen::drawChokeMark(SDL_Renderer* r, int nameY, int group) {
+    for (int piece = 0; piece < group && piece < kChokeGroups; ++piece)
+        fill(r, kChokeMarkRight - kChokeMarkW - piece * (kChokeMarkW + kChokeMarkGap), nameY + kCellH - kChokeMarkInset - kChokeMarkH, kChokeMarkW, kChokeMarkH, kBrass);
+}
+
 void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     char text[64];
     const bool onName = !onTempo_ && step_ == kLaneName;
@@ -929,6 +936,7 @@ void PatternScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
         const Font& nameFont = fonts.within(&Fonts::medium, laneLabel(lane), kNameW - 10.f); // (a long recording's name at XL: held at LARGE)
         nameFont.draw(r, 15.f, y + (kCellH - nameFont.capHeight()) / 2.f, laneLabel(lane), !onTempo_ && lane == lane_ ? kTeal : kText);
         drawFeelMark(r, y, trk().laneFeel[lane]);
+        drawChokeMark(r, y, trk().laneChoke[lane]);
 
         for (int s = 0; s < kSteps; ++s) {
             box(r, kGridLeft + s * kStepW, y, kCellW, kCellH, s % 4 == 0 ? kPanel2 : kPanel, kLine);

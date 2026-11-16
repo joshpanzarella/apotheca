@@ -190,6 +190,12 @@ void putTrack(std::string& out, const TrackData& track) {
             put(out, " %.0f", track.laneFeel[lane].time);
             put(out, " %.0f\n", track.laneFeel[lane].level);
         }
+        // choke LANE GROUP: a lane in CHOKE 1 or 2. Left out in none.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            if (track.laneChoke[lane] == kChokeNone) continue;
+            put(out, "choke %.0f", lane + 1);
+            put(out, " %.0f\n", track.laneChoke[lane]);
+        }
         // scene N, then "bars B" if the cell is longer than one, then each
         // bar's hits; "bar K" comes before those of the second bar on.
         // Then the bars the cell hides (made shorter: they come back as they were if it is made
@@ -610,6 +616,10 @@ bool parseSong(const std::string& text, Project& project) {
             if (!(in >> lane >> time) || !(lane >= 1) || lane > kDrumLanes) continue;
             if (!(in >> level)) level = 0;
             track->laneFeel[static_cast<int>(lane) - 1] = laneFeelOf(wholeIn(time, 0, 100), wholeIn(level, 0, 100)); // (held as doubles first)
+        } else if (word == "choke" && track->kind == TrackKind::Drums) {
+            double lane, group;
+            if (!(in >> lane >> group) || !(lane >= 1) || lane > kDrumLanes) continue;
+            track->laneChoke[static_cast<int>(lane) - 1] = static_cast<std::uint8_t>(chokeGroupOf(wholeIn(group, -1, kChokeGroups + 1))); // (a group nobody knows: none)
         } else if (word == "sound" && track->kind == TrackKind::Sampler) {
             std::string name;
             std::getline(in >> std::ws, name);

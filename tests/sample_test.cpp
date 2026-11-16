@@ -733,13 +733,15 @@ void testTheKitScreen() {
     rig.tap(R2); // on to DEVICE
     CHECK(rig.session().view == View::Device);
     CHECK(kit.cursorLane() == 0 && kit.cursorColumn() == KitScreen::kSound);
-    // Up and down through the lanes, round the ends; sideways between the two columns.
+    // Up and down through the lanes, round the ends; sideways through the three columns, round the ends.
     rig.tap(UP);
     CHECK(kit.cursorLane() == 7);
     rig.tap(DOWN, 3);
     CHECK(kit.cursorLane() == 2);
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kFit);
+    rig.tap(RIGHT);
+    CHECK(kit.cursorColumn() == KitScreen::kChoke);
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kSound);
 

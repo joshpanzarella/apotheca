@@ -237,9 +237,12 @@ struct Command {
         SetMod,         // one field of a track's MOD (mod_rule.hpp): track, a = MOD (0, 1), b = the field (ModField),
                         //   value = its value, held to what it can be (modSet). Taken at the MOD's next tick.
         SetModStep,     // one value of a STEPPER's row: track, a = MOD, b = place (0..15), value = -1..1
-        ModAudition     // stopped, X held on a modulated knob: track, a = which MODs run (bit 0 MOD 1, bit 1 MOD 2),
+        ModAudition,    // stopped, X held on a modulated knob: track, a = which MODs run (bit 0 MOD 1, bit 1 MOD 2),
                         //   counted from now as if Play had just been pressed; a = 0 lets go (the knob is given
                         //   its centre). Not taken while playing (the song's MODs run then); Stop and Panic let go.
+        SetLaneChoke    // CHOKE, a drum lane's group (drums.hpp): track, a = lane, b = kChokeNone, 1 or 2 (a number
+                        //   not known is NONE). A hit on a lane in a group cuts the group's other lanes; it cuts
+                        //   nothing by itself. Every lane at NONE: the kit plays as it always did.
     };
     Type type = Trigger;
     int track = 0;

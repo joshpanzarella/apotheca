@@ -227,6 +227,8 @@ struct TrackData {
     LaneEdit laneEdit[kDrumLanes];        // EDIT: what each lane does to its sound (START, END, GAIN...: lane_edit.hpp). The file is never written
     LaneFeel laneFeel[kDrumLanes];        // FEEL: each lane's HUMAN TIME and HUMAN LEVEL, 0..100 (apotheca/feel_rule.hpp). The track's,
                                           // not a scene's; live, nothing is written into the hits
+    std::uint8_t laneChoke[kDrumLanes] = {}; // CHOKE: each lane's group, kChokeNone, 1 or 2 (drums.hpp). The track's; a new kit
+                                          // has its hats in CHOKE 1 (Session::chokeNewKit), a blank TrackData none
     int preset = 0;              // a synth's preset, patch and macros
     PhazedPatch patch;           // when the track is Phazed
     Jx3pPatch jx3p = Jx3p::presetPatch(0); // when it is JAX-EP. Ids 32 and 33, VELOCITY and
@@ -259,6 +261,14 @@ struct TrackData {
         return true;
     }
 };
+
+// A new kit's CHOKE groups: the built-in kit's two hats in CHOKE 1, so the closed hat cuts the open one
+// (the owner's case, 2026-11-15), every other lane in none. The project only: Session::chokeNewKit tells
+// the engine too.
+inline int newKitChoke(int lane) { return lane == kClosedHatLane || lane == kOpenHatLane ? 1 : kChokeNone; }
+inline void chokeTheHats(TrackData& track) {
+    for (int lane = 0; lane < kDrumLanes; ++lane) track.laneChoke[lane] = static_cast<std::uint8_t>(newKitChoke(lane));
+}
 
 // What the two send buses of a new song hold, ECHO then SPACE: TAPE and HALL
 // (the plan). A song file with no `busfx` lines (an old song) gets these too:

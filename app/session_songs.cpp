@@ -66,6 +66,7 @@ void Session::useSongFolder(const std::string& folder, std::uint32_t seed) {
     }
     songName_ = freshName();
     savedText_.clear();
+    if (project.tracks[0].kind == TrackKind::Drums) chokeNewKit(0); // the first song there is is a new song: its hats in CHOKE 1
 }
 
 std::vector<std::string> Session::songNames() const {
@@ -96,8 +97,10 @@ bool Session::saveNow() {
     const std::string& text = textNow(); // (made again only where a track has changed: this comes round every two seconds)
     if (text == savedText_) return true;
     // A song nobody has put anything in is not worth a file.
-    static const std::string empty = [] { std::unique_ptr<Project> fresh(new Project); return songText(*fresh); }();
-    if (text == empty && !fileExists(pathOf(songName_))) return true;
+    // (A new song as newSong makes one, its kit's hats in CHOKE 1; or a project as made, with none.)
+    static const std::string empty = [] { std::unique_ptr<Project> fresh(new Project); chokeTheHats(fresh->tracks[0]); return songText(*fresh); }();
+    static const std::string plain = [] { std::unique_ptr<Project> fresh(new Project); return songText(*fresh); }();
+    if ((text == empty || text == plain) && !fileExists(pathOf(songName_))) return true;
     {
         // Not while the WiFi page writes or deletes a song (Transfer::songFiles).
         std::lock_guard<std::mutex> hold(transfer_.songFiles());
@@ -112,6 +115,7 @@ void Session::newSong() {
     saveNow();
     std::unique_ptr<Project> fresh(new Project);
     project = *fresh;
+    chokeTheHats(project.tracks[0]); // its kit's hats in CHOKE 1 (told with the song, next)
     songName_ = freshName();
     savedText_.clear();
     applyProject();
