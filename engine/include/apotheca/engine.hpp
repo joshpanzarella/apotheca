@@ -498,7 +498,7 @@ public:
     // A STEPPER's place in its row as of its last tick (0..15); -1 while it does not run, or an LFO.
     int modPlace(int track, int mod) const;
     // Where the song was at a MOD's last tick (steps since Play, or since X went down: mod_rule.hpp's
-    // position), so the MOD tab can draw its shape with a dot at now; not a number while it does not
+    // position; a FREE LFO's in seconds, modPositionFor), so the MOD tab can draw its shape with a dot at now; not a number while it does not
     // run. Any thread, no lock.
     double modNow(int track, int mod) const;
     // Chunks worked out since the engine was made (a MOD's tick cuts more of them: the bench counts
@@ -614,7 +614,7 @@ private:
         ModSettings mods[kModsPerTrack];          // MOD 1 and MOD 2 (SetMod, SetModStep): OFF unless told
         std::atomic<float> modShown[kModsPerTrack]; // what each adds as of its last tick, for the screen
         std::atomic<int> modPlace[kModsPerTrack];   // a STEPPER's place as of its last tick; -1: not running
-        std::atomic<double> modAt[kModsPerTrack];   // the position of its last tick; not a number: not running
+        std::atomic<double> modAt[kModsPerTrack];   // the position of its last tick (a FREE LFO's in seconds); not a number: not running
         std::uint8_t slotChoices[kTrackSlots] = {}; // a bit a setting: which of each slot's effect's settings are
                                                     //   choices (InstallEffect). A MOD never moves a choice.
         float autoFrom[kAutoLanes], autoTo[kAutoLanes];
@@ -751,16 +751,18 @@ private:
     void applyAuto(Track& track, int lane, float value);
     void giveLane(Track& track, int lane);
     void giveMix(Track& track); // LEVEL and PAN given: the mixer's, with what the MODs add (batch 8)
-    // MOD. runMods: one tick, at `position` (steps since Play, or since X went down); `macros`: this
+    // MOD. runMods: one tick, at `steps` since Play (or since X went down) and `seconds` (a FREE
+    // LFO's position: whole samples counted, so no tempo change moves it); `macros`: this
     // tick also gives the synth's macros (every kModMacroTicks'th). stillLane: a lane's offset back
     // to 0, and the lane given its centre. stillMods: every lane of the track so. modsChanged:
     // whether any MOD is on (anyMod_), after one was set or a track taken away.
-    void runMods(double position, bool macros);
+    void runMods(double steps, double seconds, bool macros);
     void stillLane(Track& track, int lane);
     void stillMods(Track& track);
     void modsChanged();
     bool anyMod_ = false;      // some track has a MOD on: chunks are cut on the tick while playing
     long sinceStep_ = 0;       // samples since the first sample of the step playing (the tick counts from it)
+    long playedFor_ = 0;       // samples since Play: a FREE LFO's clock (seconds, not steps)
     int heardTrack_ = -1;      // ModAudition: the track whose MODs run while stopped, -1 none
     unsigned heardMask_ = 0;   // ...which of them (bit 0 MOD 1), 0: none runs
     long heardFor_ = 0;        // ...samples since X went down

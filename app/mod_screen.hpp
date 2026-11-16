@@ -8,8 +8,9 @@
 //             STEPS        MOD 1's row of steps (a STEPPER's), the one playing lit
 //             MOD 2, STEPS the same for MOD 2
 //   RIGHT   the line the cursor is on, large: a heading (whose, which, the shape picture), then
-//           its settings as rows. A MOD: TARGET, SHAPE, DEPTH, RATE, PHASE (an LFO) or LENGTH (a
-//           STEPPER). Its STEPS: the row of sixteen, then LENGTH, SLEW and CHANCE.
+//           its settings as rows. A MOD: TARGET, SHAPE, DEPTH, RATE, PHASE (an LFO; SPEED, in Hz, an
+//           LFO at RATE FREE) or LENGTH (a STEPPER). Its STEPS: the row of sixteen, then LENGTH, SLEW
+//           and CHANCE.
 //
 //   in the list      up / down: the next line (round the ends). Right: into the line's settings,
 //                    at the one last used there. Hold A on a MOD's line: the list of targets (as
@@ -19,16 +20,17 @@
 //   in the settings  up / down: the next setting (the ends stop); left: back to the list. On the
 //                    row of steps left / right go along it (left from the first: the list), down
 //                    to LENGTH, and up from LENGTH back to the row.
-//                    Hold A + UP / DOWN turns it: DEPTH by 1%, a step by 5%, SLEW and CHANCE by 5%;
-//                    SHAPE, RATE, PHASE and LENGTH click once a push; the stick turns DEPTH, a step,
-//                    SLEW and CHANCE smoothly and clicks the rest. With A held on the row, LEFT /
+//                    Hold A + UP / DOWN turns it: DEPTH by 1%, a step by 5%, SLEW and CHANCE by 5%,
+//                    SPEED a click of its list (0.02, 0.025 ... 20 Hz); SHAPE, RATE, PHASE and LENGTH
+//                    click once a push; the stick turns DEPTH, a step, SLEW, CHANCE and SPEED
+//                    smoothly and clicks the rest. RATE's last is FREE (an LFO's only). With A held on the row, LEFT /
 //                    RIGHT go along it, so a row is written in one grip.
 //                    Hold A on TARGET: the list of targets (MACROS, FX 1 to 3, SENDS: only what a
 //                    MOD may move, mods.hpp). UP / DOWN a line, LEFT / RIGHT along it; let go and
 //                    it is aimed there (a MOD that was OFF starts as the knob's first: LFO, SINE,
 //                    1 BAR, +25%); B with A held: as it was. Nothing is heard or kept while A is held.
 //                    B: a setting back to its usual (DEPTH +25%, SHAPE SINE, RATE 1 BAR, PHASE 0,
-//                    LENGTH 16, SLEW and CHANCE 0, a step 0). TARGET has none: hold B deletes.
+//                    SPEED 1 Hz, LENGTH 16, SLEW and CHANCE 0, a step 0). TARGET has none: hold B deletes.
 //   L1 / R1          the track before / after (it stops at the first and the last); the cursor stays
 //   X                hear the track (held: until let go). Held on a MOD's line while the song is
 //                    stopped, that MOD runs (Session::hearMods), with a synth's note held, as X held
@@ -151,7 +153,7 @@ private:
     void pickMove(Button b);
     void pickLetGo(); // A let go on the list of targets: aimed there
     void hear(bool held);
-    bool amount() const; // the cursor's setting is turned smoothly by the stick (DEPTH, a step, SLEW, CHANCE)
+    bool amount() const; // the cursor's setting is turned smoothly by the stick (DEPTH, a step, SLEW, CHANCE, a FREE LFO's SPEED)
     void drawList(SDL_Renderer* r, const Fonts& fonts) const;
     void drawModPane(SDL_Renderer* r, const Fonts& fonts) const;
     void drawStepsPane(SDL_Renderer* r, const Fonts& fonts) const;

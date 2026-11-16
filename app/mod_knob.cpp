@@ -38,9 +38,14 @@ void ModKnob::depthText(float depth, char* out, int size) {
     std::snprintf(out, static_cast<std::size_t>(size), percent > 0 ? "+%d%%" : "%d%%", percent);
 }
 
+void ModKnob::speedText(float hz, char* out, int size) {
+    std::snprintf(out, static_cast<std::size_t>(size), "%.2g HZ", static_cast<double>(modSpeed(hz))); // two figures: 0.025, 1.2, 15
+}
+
 void ModKnob::moreText(const ModSettings& m, char* out, int size) {
     static const char* const phases[kModPhases] = {"0", "1/4", "1/2", "3/4"};
     if (modKind(m.kind) == kModStepper) std::snprintf(out, static_cast<std::size_t>(size), "%d", modLength(m.length));
+    else if (modFree(m)) speedText(m.speed, out, size);
     else std::snprintf(out, static_cast<std::size_t>(size), "%s", phases[modPhase(m.phase)]);
 }
 
@@ -62,7 +67,16 @@ ModSettings ModKnob::rolled(const ModSettings& m, std::uint32_t seed) {
         return out;
     }
     // An LFO: a shape and a rate, never both as they were. The rates a wobble is heard at (the faster
-    // ones are mostly smoothed away on the newer effects: CLAUDE.md).
+    // ones are mostly smoothed away on the newer effects: CLAUDE.md). A FREE one stays free: a shape
+    // and a SPEED, 0.1 to 5 Hz (the clicks between), never both as they were.
+    if (modFree(m)) {
+        for (std::uint32_t i = 0;; ++i) {
+            const std::uint32_t roll = mix(seed + 7919u * i);
+            out.shape = static_cast<int>(roll % kModShapes);
+            out.speed = modSpeedClick(kSpeedRollFirst + static_cast<int>((roll >> 8) % (kSpeedRollLast - kSpeedRollFirst + 1)));
+            if (out.shape != m.shape || out.speed != m.speed) return out;
+        }
+    }
     static const int rates[] = {kModRateEighth, kModRateQuarterTriplet, kModRateQuarter, kModRateDottedQuarter,
                                 kModRateHalf, kModRateBar, kModRateTwoBars, kModRateFourBars};
     for (std::uint32_t i = 0;; ++i) {
@@ -136,7 +150,7 @@ void ModKnob::rateBy(int by) {
     if (m < 0) return;
     ModSettings s = session_.modData(track_, m);
     const int place = modRatePlace(s.rate) + by;
-    if (place < 0 || place >= kModRates) return; // the ends stop
+    if (place < 0 || place >= rates(s)) return; // the ends stop (a STEPPER's at 8 BARS, an LFO's at FREE)
     s.rate = modRateAt(place);
     set(s);
 }
@@ -149,6 +163,8 @@ void ModKnob::moreBy(int by) {
         const int to = modLength(s.length) + by;
         if (to < 1 || to > kModSteps) return;
         s.length = to;
+    } else if (modFree(s)) {
+        s.speed = modSpeedStep(s.speed, by); // (at an end: as it was, and set() sends nothing)
     } else {
         const int to = modPhase(s.phase) + by;
         if (to < 0 || to >= kModPhases) return;
