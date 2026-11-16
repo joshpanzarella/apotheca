@@ -3,7 +3,9 @@
 // talking to the real server.
 //
 // Set APOTHECA_DESIGN_HOLD=seconds to leave the server up after the tests,
-// with a synth track ready, for looking at the page in a real browser.
+// with a synth track ready, for looking at the page in a real browser
+// (APOTHECA_DESIGN_SAMPLER=1, _PHYSIC, _JAXEP or _KIT for another kind of track;
+// a KIT's lanes are printed as the handheld has them whenever one changes).
 
 #include <SDL.h>
 
@@ -258,11 +260,20 @@ void testThePageIsServed() {
     // Not without the number from the handheld's screen.
     CHECK(raw(rig.port, "GET /design HTTP/1.1\r\nHost: x\r\n\r\n").status == 403);
     CHECK(raw(rig.port, "POST /0000/design/do HTTP/1.1\r\nHost: x\r\nContent-Length: 9\r\n\r\nnote 60 1").status == 403);
-    // A drum track is being worked on: there is nothing to design, and the page is told so.
+    // A drum track is being worked on: its KIT's page (testKitFromThePage). A synth's asks do nothing to it.
+    CHECK(rig.get("/design/spec").status == 200 && has(rig.get("/design/spec").body, "\"page\":\"kit\""));
+    CHECK(has(rig.get("/design/state").body, "\"track\":1") && has(rig.get("/design/state").body, "\"name\":\"KIT\""));
+    CHECK(rig.tell("note 60 1") && rig.tell("macro 0 0.9") && rig.tell("preset 3") && rig.tell("save x") && rig.tell("roll 2")); // taken, and nothing happens
+    CHECK(rig.peak(4000) == 0.f && !exists(rig.root + "/presets/X.phazed") && !exists(rig.root + "/presets/X"));
+    // A track with nothing on it: there is nothing to design, and the page is told so.
+    rig.app.project().track = rig.app.project().trackCount();
+    rig.frames(1);
     CHECK(rig.get("/design/spec").status == 200 && has(rig.get("/design/spec").body, "\"name\":\"\""));
-    CHECK(has(rig.get("/design/state").body, "\"track\":1") && has(rig.get("/design/state").body, "\"name\":\"\""));
-    CHECK(rig.tell("note 60 1") && rig.tell("set 0 1") && rig.tell("preset 3") && rig.tell("save x")); // taken, and nothing happens
+    CHECK(has(rig.get("/design/state").body, "\"name\":\"\""));
+    CHECK(rig.tell("note 60 1") && rig.tell("set 0 1") && rig.tell("hear 0 1") && rig.tell("preset 3") && rig.tell("save x")); // taken, and nothing happens
     CHECK(rig.peak(4000) == 0.f && !exists(rig.root + "/presets/X.phazed"));
+    rig.app.project().track = 0;
+    rig.frames(1);
     // What is not one short line of plain text is refused.
     CHECK(rig.post("").status == 400 && rig.post(std::string(201, 'a')).status == 400 && rig.post("set 1\n2").status == 400 && rig.post("s\xC3\xA9t 1 2").status == 400);
     CHECK(rig.post("nonsense").status == 400 && rig.post("set 1 2", "PUT").status == 200 && rig.post("set 1 2", "DELETE").status == 404);
@@ -754,6 +765,244 @@ void testSamplerFromThePage() {
     CHECK(has(rig.get("/design/spec").body, "\"page\":\"sampler\"") && has(rig.get("/design/spec").body, "\"recording\":\"stepped\""));
 }
 
+// The drum KIT (owner, 2026-11-16): eight lanes, each its sound, its picture (the whole file, made on
+// the app thread when it is read) with START and END, and its settings under ids of its own.
+namespace {
+// The values the page is given, as numbers (a kit's: kKitStride a lane).
+std::vector<int> numbersOf(const std::string& state) {
+    std::vector<int> out;
+    const std::string list = valuesOf(state);
+    if (list.size() < 11) return out;
+    std::istringstream in(list.substr(10, list.size() - 11));
+    std::string one;
+    while (std::getline(in, one, ',')) out.push_back(std::atoi(one.c_str()));
+    return out;
+}
+// The lane's picture in the spec (its "peaks" after the lane's own "lane":N).
+std::vector<int> lanePeaksOf(const std::string& spec, int lane) {
+    const std::size_t at = spec.find("{\"lane\":" + std::to_string(lane) + ",");
+    return at == std::string::npos ? std::vector<int>() : peaksOf(spec.substr(at));
+}
+std::string laneOf(const std::string& spec, int lane) { // its wave, as text
+    const std::size_t at = spec.find("{\"lane\":" + std::to_string(lane) + ",");
+    return at == std::string::npos ? "" : spec.substr(at, spec.find("]}", at) + 2 - at);
+}
+std::string readingsOf(const std::string& state, int lane) { // the lane's eight readings, as text
+    std::size_t at = state.find("\"lanes\":[");
+    for (int i = 0; i <= lane && at != std::string::npos; ++i) at = state.find("{\"readings\":[", at + 1);
+    return at == std::string::npos ? "" : state.substr(at + 13, state.find(']', at) - at - 13);
+}
+int kitId(int lane, int field) { return lane * kKitStride + field; }
+} // namespace
+
+void testKitFromThePage() {
+    Rig rig;
+    Session& session = rig.app.session();
+    mkdir((rig.root + "/samples").c_str(), 0755);
+    mkdir((rig.root + "/samples/drums").c_str(), 0755);
+    CHECK(writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000));
+    // A quarter second of quiet, a quarter of a tone, half a second of quiet: for TRIM SILENCE.
+    std::vector<float> padded(48000, 0.f);
+    for (std::size_t i = 12000; i < 24000; ++i) padded[i] = 0.5f * std::sin(6.2831853f * 440.f * static_cast<float>(i) / 48000.f);
+    CHECK(writeWav(rig.root + "/samples/drums/padded.wav", padded, 48000));
+    CHECK(rig.track().kind == TrackKind::Drums && rig.app.project().track == 0);
+    TrackData& kit = rig.track();
+    const auto hit = [&](int lane, int frames) { // the lane struck once, from silence: its loudest
+        rig.peak(2 * 48000);
+        Command c;
+        c.type = Command::Trigger;
+        c.track = 0;
+        c.a = lane;
+        c.value = 0.9f;
+        rig.engine->send(c);
+        return rig.peak(frames);
+    };
+
+    // What the page builds itself from: the KIT, its settings once (each lane's is lane * stride + field),
+    // a picture a lane. Until the page looks, the card is not read for it, and the lanes not for their pictures.
+    std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"KIT\",\"macros\":[],\"pages\":[],\"presets\":[],\"page\":\"kit\",\"stride\":16,") && has(spec, "\"recordings\":[]"));
+    CHECK(count(spec, "\"field\":") == kKitFields && count(spec, "{\"lane\":") == kDrumLanes);
+    CHECK(has(spec, "{\"name\":\"START\",\"field\":0,\"min\":0,\"max\":100000,\"time\":true}") && has(spec, "{\"name\":\"END\",\"field\":1,\"min\":0,\"max\":100000,\"time\":true}"));
+    CHECK(has(spec, "{\"name\":\"FADE IN\",\"field\":2,\"stops\":[0,1,2,3,5,10,") && has(spec, ",1500,2000],\"texts\":[\"0 MS\",\"1 MS\",") && has(spec, "\"750 MS\",\"1.0 S\",\"1.5 S\",\"2.0 S\"]}"));
+    CHECK(has(spec, "{\"name\":\"GAIN\",\"field\":4,\"min\":-240,\"max\":240,\"texts\":[\"-24.0 DB\",\"-23.9 DB\",") && has(spec, "\"-0.1 DB\",\"0 DB\",\"+0.1 DB\",") && has(spec, "\"+24.0 DB\"]}"));
+    CHECK(has(spec, "{\"name\":\"PITCH\",\"field\":5,\"min\":-24,\"max\":24,\"texts\":[\"-24\",") && has(spec, "\"-1\",\"0\",\"+1\",") && has(spec, "{\"name\":\"FINE\",\"field\":6,\"min\":-50,\"max\":50,\"texts\":[\"-50 CENTS\","));
+    CHECK(has(spec, "{\"name\":\"REVERSE\",\"field\":7,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}"));
+    CHECK(has(spec, "{\"name\":\"FIT TO\",\"field\":8,\"stops\":[0,1,2,4,8,16,32,64],\"texts\":[\"OFF\",\"1 STEP\",\"2 STEPS\",\"4 STEPS\",\"8 STEPS\",\"1 BAR\",\"2 BARS\",\"4 BARS\"]}"));
+    CHECK(has(spec, "{\"name\":\"CHOKE\",\"field\":9,\"min\":0,\"max\":2,\"texts\":[\"NONE\",\"1\",\"2\"]}") && has(spec, "{\"name\":\"VOLUME\",\"field\":10,\"min\":0,\"max\":100,\"texts\":[\"0%\",\"1%\","));
+    CHECK(has(spec, "{\"name\":\"HUMAN TIME\",\"field\":11,\"stops\":[0,10,25,50,75,100],\"texts\":[\"OFF\",\"10%\",\"25%\",\"50%\",\"75%\",\"100%\"]}") && has(spec, "{\"name\":\"HUMAN LEVEL\",\"field\":12,"));
+    CHECK(has(spec, "{\"lane\":0,\"drum\":\"KICK\",") && has(spec, "{\"lane\":3,\"drum\":\"OP HAT\",") && has(spec, "{\"lane\":7,\"drum\":\"CRASH\","));
+    CHECK(has(laneOf(spec, 5), "\"marks\":[80,81],") && has(laneOf(spec, 0), "\"recording\":\"\",") && has(laneOf(spec, 0), "\"units\":100000,"));
+    // The state: every lane's settings by its ids, and what the handheld reads for its EDIT rows.
+    std::string state = rig.get("/design/state").body;
+    std::vector<int> v = numbersOf(state);
+    CHECK(has(state, "\"name\":\"KIT\",") && v.size() == static_cast<std::size_t>(kDrumLanes * kKitStride));
+    if (v.size() == static_cast<std::size_t>(kDrumLanes * kKitStride)) {
+        CHECK(v[kitId(0, kEditEnd)] == kEditUnits && v[kitId(7, kEditEnd)] == kEditUnits && v[kitId(4, kKitVolume)] == 100 && v[kitId(4, kKitFit)] == 0);
+        CHECK(v[kitId(2, kKitChoke)] == 1 && v[kitId(3, kKitChoke)] == 1 && v[kitId(1, kKitChoke)] == 0); // a new kit: its hats in CHOKE 1
+    }
+    // ...and once it looks, each lane's picture comes, made on the program's own thread: not before a frame.
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recordings\":[\"drums/padded\",\"stepped\"]") || has(spec, "\"recordings\":[\"stepped\",\"drums/padded\"]"));
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const std::vector<int> peaks = lanePeaksOf(spec, lane);
+        CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) > 100); // the built-in drums, each its own
+        CHECK(session.laneSound(0, lane).sourcePeaks.size() == 512);
+    }
+    CHECK(lanePeaksOf(spec, 0) != lanePeaksOf(spec, 1) && has(laneOf(spec, 7), "\"seconds\":1.8"));
+    // START and END are parts of the lane's own sound: the kick is 0.6 s, so they come no nearer than 5 ms of it.
+    CHECK(has(laneOf(spec, 0), "\"seconds\":0.600,") && has(laneOf(spec, 0), ",\"least\":" + std::to_string(leastSpan(0.6f)) + ",") && leastSpan(0.6f) == 834);
+    state = rig.get("/design/state").body;
+    CHECK(has(readingsOf(state, 0), "\"0.0 MS\",\"600.0 MS\",") && has(readingsOf(state, 0), "\",\"0 MS\",\"0 MS\",\"0 DB\",\"0\",\"0 CENTS\",\"OFF\"") && has(state, "\"plays\":"));
+
+    // A recording on a lane from the page: only one it was offered. Its picture comes with the spec, the other lanes' as they were.
+    const int before = specNumber(rig.get("/design/state").body);
+    const std::vector<int> kick = lanePeaksOf(spec, 0);
+    CHECK(rig.post("lanesample 1 stepped").status == 200);
+    CHECK(rig.get("/design/spec").body == spec); // (the server only hands over what the program made)
+    rig.frames(1);
+    CHECK(std::string(kit.laneSample[1]) == "stepped" && std::string(kit.laneSample[0]).empty());
+    CHECK(specNumber(rig.get("/design/state").body) == before + 1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(laneOf(spec, 1), "\"seconds\":1.000,\"missing\":false,\"recording\":\"stepped\",\"marks\":[16,17],\"least\":500,"));
+    std::vector<int> peaks = lanePeaksOf(spec, 1);
+    CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) == 800 && lanePeaksOf(spec, 0) == kick);
+    if (peaks.size() == 512) CHECK(peaks[10] >= 195 && peaks[10] <= 200 && peaks[266] >= 795);
+    rig.frames(3);
+    CHECK(specNumber(rig.get("/design/state").body) == before + 1); // nothing changed: the page is not sent it again
+    CHECK(rig.post("lanesample 8 stepped").status == 400 && rig.post("lanesample -1 stepped").status == 400 && rig.post("lanesample x stepped").status == 400);
+    CHECK(rig.post("lanesample 1 ../songs/x").status == 400 && rig.post("lanesample 1 /etc/passwd").status == 400 && rig.post("lanesample").status == 400);
+    CHECK(rig.tell("lanesample 1 notthere") && std::string(kit.laneSample[1]) == "stepped"); // not on the card: nothing
+    CHECK(rig.tell("lanesample 2 drums/padded") && std::string(kit.laneSample[2]) == "drums/padded");
+    CHECK(rig.tell("lanesample 2") && std::string(kit.laneSample[2]).empty() && rig.tell("lanesample 2 drums/padded"));
+
+    // A lane's START from the page: that lane's, no other; the engine plays it from there.
+    const int picked = specNumber(rig.get("/design/state").body);
+    const float fromTop = hit(1, 4800);
+    CHECK(rig.tell("set 16 50000") && kit.laneEdit[1].start == 50000 && kit.laneEdit[0].start == 0 && kit.laneEdit[2].start == 0);
+    rig.frames(1);
+    const float fromMiddle = hit(1, 4800);
+    CHECK(fromMiddle > 3.f * fromTop);
+    CHECK(specNumber(rig.get("/design/state").body) == picked); // an edit: the picture (the file) is as it was
+    state = rig.get("/design/state").body;
+    CHECK(numbersOf(state)[kitId(1, kEditStart)] == 50000 && has(readingsOf(state, 1), "\"500.0 MS\",\"1.000 S\","));
+    // START and END never cross: as on the handheld, START gives way (laneEditHeld).
+    CHECK(rig.tell("set 17 40000") && kit.laneEdit[1].end == 40000 && kit.laneEdit[1].start == 39500);
+    CHECK(rig.tell("set 17 900000") && kit.laneEdit[1].end == kEditUnits && rig.tell("set 16 -5") && kit.laneEdit[1].start == 0);
+    // Every field reaches its lane.
+    CHECK(rig.tell("set 18 75") && kit.laneEdit[1].fadeIn == 75 && rig.tell("set 19 3000") && kit.laneEdit[1].fadeOut == kFadeMost);
+    CHECK(rig.tell("set 20 -60") && kit.laneEdit[1].gain == -60 && rig.tell("set 21 7") && kit.laneEdit[1].pitch == 7);
+    CHECK(rig.tell("set 22 -9") && kit.laneEdit[1].fine == -9 && rig.tell("set 23 1") && kit.laneEdit[1].reverse == 1);
+    state = rig.get("/design/state").body;
+    CHECK(has(readingsOf(state, 1), "\"75 MS\",\"2.0 S\",\"-6.0 DB\",\"+7\",\"-9 CENTS\",\"ON\""));
+    CHECK(rig.tell("set 24 16") && kit.laneFit[1] == 16 && rig.tell("set 25 2") && kit.laneChoke[1] == 2 && rig.tell("set 25 7") && kit.laneChoke[1] == kChokeNone);
+    CHECK(rig.tell("set 26 37") && kit.laneLevel[1] == 0.37f && rig.tell("set 27 25") && kit.laneFeel[1].time == 25 && rig.tell("set 28 50") && kit.laneFeel[1].level == 50 && kit.laneFeel[1].time == 25);
+    CHECK(rig.tell("set 27 0") && kit.laneFeel[1].time == 0 && kit.laneFeel[1].level == 50);
+    CHECK(rig.tell("set 26 400") && kit.laneLevel[1] == 1.f && rig.tell("set 26 -4") && kit.laneLevel[1] == 0.f);
+    v = numbersOf(rig.get("/design/state").body);
+    CHECK(v.size() == 128 && v[24] == 16 && v[25] == 0 && v[26] == 0 && v[27] == 0 && v[28] == 50 && v[kitId(2, kKitFit)] == 0);
+    // Nothing else is touched: lane 0's and lane 2's settings as they were.
+    CHECK(kit.laneEdit[0].atRest() && kit.laneEdit[2].atRest() && kit.laneLevel[0] == 1.f && kit.laneChoke[2] == 1 && kit.laneFit[0] == 0 && kit.laneFeel[0].atRest());
+    // An id with no lane or no setting changes nothing; nor do a synth's or a sampler's requests.
+    const TrackData kept = kit;
+    CHECK(rig.tell("set 128 5") && rig.tell("set -1 5") && rig.tell("set 13 5") && rig.tell("set 15 5") && rig.tell("set 125 5"));
+    CHECK(rig.tell("macro 0 0.2") && rig.tell("preset 1") && rig.tell("sample stepped") && rig.tell("roll 3") && rig.tell("note 60 1") && rig.tell("note 60 0"));
+    CHECK(std::memcmp(kept.laneEdit, kit.laneEdit, sizeof kit.laneEdit) == 0 && std::memcmp(kept.laneFeel, kit.laneFeel, sizeof kit.laneFeel) == 0);
+    CHECK(std::memcmp(kept.laneLevel, kit.laneLevel, sizeof kit.laneLevel) == 0 && std::memcmp(kept.laneChoke, kit.laneChoke, sizeof kit.laneChoke) == 0 && std::memcmp(kept.laneFit, kit.laneFit, sizeof kit.laneFit) == 0);
+    CHECK(rig.post("set 1").status == 400 && rig.post("set 16 1 2").status == 400 && rig.post("set x 1").status == 400);
+    CHECK(rig.tell("name  break kit") && std::string(kit.name) == "BREAK KIT"); // the track's name, as on any page
+
+    // The lane's volume reaches the engine; the drum grid sets it the same way (Session::setLaneLevel).
+    rig.tell("set 16 0");
+    rig.tell("set 17 100000");
+    for (int f : {18, 19, 20, 21, 22, 23}) rig.tell("set " + std::to_string(f) + " 0");
+    rig.tell("set 24 0");
+    rig.frames(1);
+    rig.tell("set 26 100");
+    const float full = hit(1, 48000);
+    rig.tell("set 26 25");
+    const float quarter = hit(1, 48000);
+    CHECK(full > 0.1f && quarter > 0.2f * full && quarter < 0.3f * full);
+    rig.tell("set 26 100");
+
+    // NORMALIZE: GAIN so what is played peaks at -1 dB (it starts in the loud half here, at 0.8).
+    rig.tell("set 16 50000");
+    CHECK(rig.tell("normalize 1") && kit.laneEdit[1].gain == 9);
+    CHECK(has(readingsOf(rig.get("/design/state").body, 1), "\"+0.9 DB\""));
+    // TRIM SILENCE: START and END at the first and last sound (START a millisecond ahead).
+    CHECK(rig.tell("trim 2") && kit.laneEdit[2].start >= 24800 && kit.laneEdit[2].start <= 24950 && kit.laneEdit[2].end >= 50000 && kit.laneEdit[2].end <= 50010);
+    CHECK(rig.post("normalize 8").status == 400 && rig.post("trim -1").status == 400 && rig.post("trim").status == 400 && rig.post("normalize 1 2").status == 400);
+
+    // PLAY, held: heard until it is let go, whatever X does on the handheld (it is not held there).
+    rig.tell("set 16 0");
+    rig.tell("set 20 0");
+    rig.frames(1);
+    rig.peak(2 * 48000);
+    CHECK(rig.peak(2400) == 0.f);
+    CHECK(rig.tell("hear 1 1") && rig.peak(2400) > 0.05f);
+    rig.frames(40); // 640 ms: a tap would have been let go by now
+    CHECK(rig.peak(2400) > 0.05f);
+    CHECK(rig.tell("hear 1 0"));
+    rig.peak(480);
+    CHECK(rig.peak(2400) < 0.001f);
+    // Two lanes: the second takes over, and letting go of the first then does nothing.
+    CHECK(rig.tell("hear 1 1") && rig.tell("hear 2 1") && rig.tell("hear 1 0"));
+    rig.frames(40);
+    rig.peak(480);
+    CHECK(session.hearingHeld() && session.heardLane() == 2);
+    rig.tell("hear 2 0");
+    CHECK(!session.hearingHeld());
+    // The page gone (it stops asking how things are) lets go; so does another track picked on the handheld.
+    CHECK(rig.tell("hear 1 1") && session.hearingHeld());
+    rig.frames(120);
+    CHECK(session.hearingHeld());
+    rig.frames(100);
+    CHECK(!session.hearingHeld());
+    CHECK(rig.tell("hear 1 1") && session.hearingHeld());
+    CHECK(session.addTrack(TrackKind::Sampler));
+    rig.app.project().track = 1;
+    rig.frames(1);
+    CHECK(!session.hearingHeld());
+    rig.app.project().track = 0;
+    rig.frames(1);
+    CHECK(rig.post("hear 8 1").status == 400 && rig.post("hear 1 2").status == 400 && rig.post("hear 1").status == 400 && rig.post("hear -1 0").status == 400 && rig.post("hear 1 -1").status == 400);
+
+    // What is turned on the handheld shows on the page; what is turned on the page is a step of undo.
+    session.setLaneChoke(0, 5, 2);
+    rig.frames(1);
+    CHECK(numbersOf(rig.get("/design/state").body)[kitId(5, kKitChoke)] == 2);
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(rig.tell("set 85 7") && kit.laneEdit[5].pitch == 7); // lane 5's PITCH: a built-in drum, edited
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(session.laneSound(0, 5).peaks.size() == 512); // drawn on the KIT page now: it is a lane sample
+    CHECK(session.undo() && kit.laneEdit[5].pitch == 0 && kit.laneChoke[5] == 2);
+
+    // A song may name a recording that is not on the card: the page is told so, and gets no picture.
+    session.setLaneSample(0, 6, "gone");
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(laneOf(spec, 6), "\"missing\":true,\"recording\":\"gone\"") && lanePeaksOf(spec, 6).empty());
+    // ...and a recording read again from the card (sent over WiFi) is a new picture.
+    CHECK(writeWav(rig.root + "/sent.wav", std::vector<float>(4800, 0.25f), 48000));
+    std::string bytes;
+    CHECK(readTextFile(rig.root + "/sent.wav", bytes) && !bytes.empty());
+    const int sentBefore = specNumber(rig.get("/design/state").body);
+    CHECK(raw(rig.port, "PUT " + rig.door + "/samples/gone.wav HTTP/1.1\r\nHost: x\r\nContent-Length: " + std::to_string(bytes.size()) + "\r\n\r\n" + bytes).status == 200);
+    rig.get("/design/state");
+    rig.frames(2);
+    spec = rig.get("/design/spec").body;
+    CHECK(specNumber(rig.get("/design/state").body) > sentBefore && has(laneOf(spec, 6), "\"missing\":false,\"recording\":\"gone\"") && lanePeaksOf(spec, 6).size() == 512 && lanePeaksOf(spec, 6)[0] == 250);
+
+    // The page follows the handheld to a sampler and back.
+    rig.app.project().track = 1;
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"sampler\""));
+    rig.app.project().track = 0;
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"kit\""));
+}
+
 // JAX-EP (jx3p-plan.md, batch 6a).
 void testJaxepFromThePage() {
     Rig rig;
@@ -819,7 +1068,7 @@ void testJaxepFromThePage() {
     // The page follows the handheld to another track: a different synth, a different page.
     rig.app.project().track = 0;
     rig.frames(1);
-    CHECK(has(rig.get("/design/spec").body, "\"name\":\"\""));
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"kit\""));
     rig.app.project().track = 1;
     rig.frames(1);
     CHECK(has(rig.get("/design/spec").body, "\"name\":\"JAX-EP\""));
@@ -840,6 +1089,7 @@ int main() {
     testPhysicFromThePage();
     testJaxepFromThePage();
     testSamplerFromThePage();
+    testKitFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
         if (std::getenv("APOTHECA_DESIGN_SAMPLER")) { // (a SAMPLER track, on a recording of four hits; two more on the card)
@@ -857,6 +1107,21 @@ int main() {
             rig.app.project().track = rig.app.project().trackCount() - 1;
             rig.app.session().setTrackSample(rig.app.project().track, "four hits");
             rig.frames(1);
+        } else if (std::getenv("APOTHECA_DESIGN_KIT")) { // (the first track's KIT: four hits on lane 2, a stepped sine on lane 6)
+            mkdir((rig.root + "/samples").c_str(), 0755);
+            mkdir((rig.root + "/samples/drums").c_str(), 0755);
+            std::vector<float> hits(2 * 48000);
+            for (std::size_t i = 0; i < hits.size(); ++i) {
+                const float t = static_cast<float>(i % 24000) / 48000.f;
+                hits[i] = (0.9f - 0.15f * static_cast<float>(i / 24000)) * std::exp(-7.f * t) * std::sin(6.2831853f * 220.f * static_cast<float>(i) / 48000.f);
+            }
+            writeWav(rig.root + "/samples/four hits.wav", hits, 48000);
+            writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000);
+            writeWav(rig.root + "/samples/drums/kick.wav", std::vector<float>(4800, 0.5f), 48000);
+            rig.app.project().track = 0;
+            rig.app.session().setLaneSample(0, 1, "four hits");
+            rig.app.session().setLaneSample(0, 5, "stepped");
+            rig.frames(1);
         } else if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)
             rig.app.session().addTrack(TrackKind::Physic);
             rig.app.project().track = rig.app.project().trackCount() - 1;
@@ -868,8 +1133,20 @@ int main() {
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);
         bool sounding = false;
+        const bool kit = rig.track().kind == TrackKind::Drums;
+        std::vector<std::string> lanesWere(kDrumLanes);
         for (int i = 0; i < std::atoi(hold) * 60; ++i) {
             rig.frames(1);
+            // A kit's lanes as the handheld has them, each time one changes (for a browser test: what the page did).
+            for (int lane = 0; kit && lane < kDrumLanes; ++lane) {
+                const TrackData& t = rig.track();
+                const LaneEdit& e = t.laneEdit[lane];
+                char line[256];
+                std::snprintf(line, sizeof line, "lane %d sample '%s' start %d end %d gain %d fadein %d fadeout %d pitch %d fine %d reverse %d fit %d choke %d volume %.2f time %d level %d",
+                              lane + 1, t.laneSample[lane], e.start, e.end, e.gain, e.fadeIn, e.fadeOut, e.pitch, e.fine, e.reverse, t.laneFit[lane], t.laneChoke[lane], static_cast<double>(t.laneLevel[lane]), t.laneFeel[lane].time, t.laneFeel[lane].level);
+                if (lanesWere[static_cast<std::size_t>(lane)] != line) std::printf("%s\n", line), std::fflush(stdout);
+                lanesWere[static_cast<std::size_t>(lane)] = line;
+            }
             const bool now = rig.peak(800) > 0.001f;
             if (now != sounding) std::printf(now ? "sounding\n" : "silent\n"), std::fflush(stdout); // (for a browser test: the page's key was heard)
             sounding = now;

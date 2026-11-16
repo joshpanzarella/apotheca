@@ -53,6 +53,12 @@
 
 namespace apotheca {
 
+// FIT's stops, and how FIT and CHOKE read (on this screen and on the sound designer's page).
+constexpr int kLaneFits[] = {0, 1, 2, 4, 8, 16, 32, 64};
+constexpr int kLaneFitCount = sizeof kLaneFits / sizeof kLaneFits[0];
+void laneFitText(int steps, char* text, std::size_t size); // "OFF", "4 STEPS", "1 BAR", "2 BARS"
+const char* laneChokeText(int group);                      // "NONE", "1", "2"
+
 class KitScreen : public Screen {
 public:
     explicit KitScreen(Session& session) : session_(session), project_(session.project) {}

@@ -13,11 +13,15 @@
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <memory>
 
 #include "samples.hpp"
 #include "session_parts.hpp"
 #include "presets.hpp"
+#include "kit_screen.hpp"
+#include "lane_edit.hpp"
+#include "lane_feel.hpp"
 #include "sampler_screen.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
@@ -156,6 +160,25 @@ std::string jsonText(const char* text) {
     }
     return out + "\"";
 }
+// A picture's points as the page is given them: 0 to 1000 (a float file's may pass full: held there).
+std::string peaksText(const std::vector<float>& peaks) {
+    std::string out;
+    char text[16];
+    for (std::size_t i = 0; i < peaks.size(); ++i) {
+        const float p = peaks[i];
+        std::snprintf(text, sizeof text, i ? ",%d" : "%d", static_cast<int>(std::lround((p > 1.f ? 1.f : p) * 1000.f)));
+        out += text;
+    }
+    return out;
+}
+// One of a KIT's settings, as every lane has it: a range (min to max) or stops (only those values),
+// with every reading where a reading does not hang on the lane (START and END are a time into the
+// lane's own file: "time", read on the page and given in the state).
+std::string kitField(const char* name, int field, const char* rest) {
+    char text[64];
+    std::snprintf(text, sizeof text, ",\"field\":%d", field);
+    return std::string("{\"name\":") + jsonText(name) + text + rest;
+}
 } // namespace
 
 void Session::usePresetFolder(const std::string& folder) {
@@ -210,6 +233,7 @@ bool Session::savePreset(int track, const std::string& typed) {
 std::string Session::designSpec(int track) const {
     const TrackKind kind = project.tracks[track].kind;
     if (kind == TrackKind::Sampler) return samplerSpec(track);
+    if (kind == TrackKind::Drums) return kitSpec(track);
     const SynthSpec* spec = specFor(kind);
     if (!spec) return "{\"name\":\"\"}";
     std::string out = "{\"name\":" + jsonText(spec->name) + (spec->roll ? ",\"roll\":true" : "") + ",\"macros\":[";
@@ -272,13 +296,77 @@ std::string Session::samplerSpec(int track) const {
     std::snprintf(text, sizeof text, ",\"hear\":%d,\"waves\":[{\"seconds\":%.3f,\"missing\":%s,\"recording\":", kHearKey, sound.seconds, sound.missing ? "true" : "false");
     out += text + jsonText(t.sample);
     std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"peaks\":[", sampler::Start, sampler::End, sampler::kLeastSpan);
+    out += text + peaksText(sound.peaks) + "]}],\"recordings\":[";
+    for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
+    return out + "]}";
+}
+
+
+// A drum KIT's page (owner, 2026-11-16: "I think the kit could also be helpful"): its eight lanes, each
+// with its sound (the built-in drum or a recording), the picture the KIT page's EDIT view draws (the
+// lane's whole file, or the built-in drum: LaneSound::sourcePeaks, made on this thread when it was
+// read) with START and END on it, and its settings. "fields" is each setting once, as every lane has
+// it; a lane's own is the id lane * "stride" + field (designer.hpp: KitField). "waves" is one picture a
+// lane, as the sampler's, its marks the lane's START and END in parts of the file (kEditUnits), never
+// closer than "least" (leastSpan: kLeastSpanMs of that file).
+std::string Session::kitSpec(int track) const {
+    const TrackData& t = project.tracks[track];
+    char text[160];
+    std::string out = "{\"name\":\"KIT\",\"macros\":[],\"pages\":[],\"presets\":[],\"page\":\"kit\"";
+    std::snprintf(text, sizeof text, ",\"stride\":%d,\"fields\":[", kKitStride);
     out += text;
-    for (std::size_t i = 0; i < sound.peaks.size(); ++i) {
-        const float p = sound.peaks[i]; // (loudest, so never under 0; a float file's may pass 1)
-        std::snprintf(text, sizeof text, i ? ",%d" : "%d", static_cast<int>(std::lround((p > 1.f ? 1.f : p) * 1000.f)));
-        out += text;
+    const auto texts = [&](int lo, int hi, const std::function<void(int, char*)>& read) {
+        std::string list = ",\"texts\":[";
+        for (int v = lo; v <= hi; ++v) {
+            read(v, text);
+            list += (v > lo ? "," : "") + jsonText(text);
+        }
+        return list + "]";
+    };
+    const auto stops = [&](const int* values, int n, const std::function<void(int, char*)>& read) {
+        std::string list = ",\"stops\":[";
+        for (int i = 0; i < n; ++i) list += (i ? "," : "") + std::to_string(values[i]);
+        list += "],\"texts\":[";
+        for (int i = 0; i < n; ++i) {
+            read(values[i], text);
+            list += (i ? "," : "") + jsonText(text);
+        }
+        return list + "]";
+    };
+    for (int row = 0; row < kEditRows; ++row) {
+        const auto read = [&](int v, char* into) { laneEditText(laneEditWith(LaneEdit(), row, v), row, 1.f, into, 64); };
+        std::string rest;
+        if (row == kEditStart || row == kEditEnd) {
+            std::snprintf(text, sizeof text, ",\"min\":0,\"max\":%d,\"time\":true}", kEditUnits);
+            rest = text;
+        } else if (row == kEditFadeIn || row == kEditFadeOut) {
+            rest = stops(kFadeStops, kFadeStopCount, read) + "}";
+        } else {
+            const int lo = row == kEditGain ? -kGainMost : row == kEditPitch ? -kPitchMost : row == kEditFine ? -kFineMost : 0;
+            const int hi = row == kEditReverse ? 1 : -lo;
+            std::snprintf(text, sizeof text, ",\"min\":%d,\"max\":%d", lo, hi);
+            rest = text; // (before texts(), which writes in `text` too)
+            rest += texts(lo, hi, read) + "}";
+        }
+        out += (row ? "," : "") + kitField(laneEditName(row), row, rest.c_str());
     }
-    out += "]}],\"recordings\":[";
+    out += "," + kitField("FIT TO", kKitFit, (stops(kLaneFits, kLaneFitCount, [](int v, char* into) { laneFitText(v, into, 64); }) + "}").c_str());
+    out += "," + kitField("CHOKE", kKitChoke, (",\"min\":0,\"max\":2" + texts(kChokeNone, kChokeGroups, [](int v, char* into) { std::snprintf(into, 64, "%s", laneChokeText(v)); }) + "}").c_str());
+    out += "," + kitField("VOLUME", kKitVolume, (",\"min\":0,\"max\":100" + texts(0, 100, [](int v, char* into) { std::snprintf(into, 64, "%d%%", v); }) + "}").c_str());
+    const auto feel = [](int v, char* into) { feelAmountText(v, into, 64); };
+    out += "," + kitField("HUMAN TIME", kKitHumanTime, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
+    out += "," + kitField("HUMAN LEVEL", kKitHumanLevel, (stops(kAmountAt, kAmountClicks, feel) + "}").c_str());
+    out += "],\"waves\":[";
+    for (int lane = 0; lane < kDrumLanes; ++lane) {
+        const LaneSound& sound = sounds_[track][lane];
+        std::snprintf(text, sizeof text, "%s{\"lane\":%d,\"drum\":", lane ? "," : "", lane);
+        out += text + jsonText(DrumKit::laneName(lane));
+        std::snprintf(text, sizeof text, ",\"seconds\":%.3f,\"missing\":%s,\"recording\":", sound.sourceSeconds, sound.missing ? "true" : "false");
+        out += text + jsonText(t.laneSample[lane]);
+        std::snprintf(text, sizeof text, ",\"marks\":[%d,%d],\"least\":%d,\"units\":%d,\"peaks\":[", lane * kKitStride + kEditStart, lane * kKitStride + kEditEnd, leastSpan(sound.sourceSeconds), kEditUnits);
+        out += text + peaksText(sound.sourcePeaks) + "]}";
+    }
+    out += "],\"recordings\":[";
     for (std::size_t i = 0; i < designRecordings_.size(); ++i) out += (i ? "," : "") + jsonText(designRecordings_[i].c_str());
     return out + "]}";
 }
@@ -291,6 +379,34 @@ std::string Session::designState() const {
         std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"SAMPLER\",\"spec\":%u,\"called\":", project.track + 1, designSpecSerial_);
         std::string out = text + jsonText(t.name) + ",\"presets\":0,\"preset\":-1,\"macros\":[],\"values\":[";
         for (int id = 0; id < sampler::kSettings; ++id) std::snprintf(text, sizeof text, id ? ",%d" : "%d", t.sampler[id]), out += text;
+        return out + "]}";
+    }
+    if (t.kind == TrackKind::Drums) {
+        // Every lane's settings by their ids (kKitStride a lane), and what the handheld reads for each
+        // EDIT row (START and END are times into the lane's own file), and how long it plays.
+        std::snprintf(text, sizeof text, "{\"track\":%d,\"name\":\"KIT\",\"spec\":%u,\"called\":", project.track + 1, designSpecSerial_);
+        std::string out = text + jsonText(t.name) + ",\"presets\":0,\"preset\":-1,\"macros\":[],\"values\":[";
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            int v[kKitStride] = {};
+            for (int row = 0; row < kEditRows; ++row) v[row] = laneEditValue(t.laneEdit[lane], row);
+            v[kKitFit] = t.laneFit[lane];
+            v[kKitChoke] = t.laneChoke[lane];
+            v[kKitVolume] = static_cast<int>(std::lround(t.laneLevel[lane] * 100.f));
+            v[kKitHumanTime] = t.laneFeel[lane].time;
+            v[kKitHumanLevel] = t.laneFeel[lane].level;
+            for (int f = 0; f < kKitStride; ++f) std::snprintf(text, sizeof text, lane || f ? ",%d" : "%d", v[f]), out += text;
+        }
+        out += "],\"lanes\":[";
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            const LaneSound& sound = sounds_[project.track][lane];
+            out += lane ? ",{\"readings\":[" : "{\"readings\":[";
+            for (int row = 0; row < kEditRows; ++row) {
+                laneEditText(t.laneEdit[lane], row, sound.sourceSeconds, text, sizeof text);
+                out += (row ? "," : "") + jsonText(text);
+            }
+            std::snprintf(text, sizeof text, "],\"plays\":%.2f,\"making\":%s,\"fitting\":%s}", sound.seconds, sound.shaping ? "true" : "false", sound.waiting && !sound.shaping ? "true" : "false");
+            out += text;
+        }
         return out + "]}";
     }
     if (!spec) {
@@ -318,6 +434,7 @@ constexpr Uint32 kDesignListEveryMs = 5000; // a sampler's page sees a recording
 
 void Session::serveDesigner() {
     const auto letGo = [&] {
+        if (hearingHeld() && heard_.owner == &designer_) letGoHeard(); // a kit's lane the page was holding
         Command c;
         c.type = Command::NoteOff;
         c.track = designHeldTrack_;
@@ -330,9 +447,13 @@ void Session::serveDesigner() {
     };
     if (!transfer_.running()) return letGo();
     const TrackKind kind = project.current().kind;
-    const bool sampler = kind == TrackKind::Sampler;
+    const bool sampler = kind == TrackKind::Sampler, kit = kind == TrackKind::Drums;
     for (const DesignRequest& r : designer_.take()) {
-        if (!specFor(kind) && !sampler) continue; // no synth or sampler on this track: nothing to do it to
+        if (!specFor(kind) && !sampler && !kit) continue; // no synth, sampler or kit on this track: nothing to do it to
+        if (kit && r.kind != DesignRequest::Name) { // a kit's own (a synth's or a sampler's asks do nothing to it)
+            serveKit(r);
+            continue;
+        }
         switch (r.kind) {
         case DesignRequest::Set:
             if (sampler) { // as its screen turns it: START and END never cross (an id it has not: nothing)
@@ -350,6 +471,7 @@ void Session::serveDesigner() {
         case DesignRequest::Save: savePreset(project.track, r.name); break;
         case DesignRequest::Name: setTrackName(project.track, r.name); break;
         case DesignRequest::Roll: rollSynth(project.track, now_ * 2654435761u + static_cast<unsigned>(r.a)); break;
+        case DesignRequest::LaneSample: case DesignRequest::Hear: case DesignRequest::Normalize: case DesignRequest::Trim: break; // (a kit's: above)
         case DesignRequest::Note: {
             if (designHeldTrack_ != project.track) letGo(); // another track now: the old keys come up first
             designHeldTrack_ = project.track;
@@ -370,18 +492,26 @@ void Session::serveDesigner() {
     if (designer_.looks() != designLooks_) designLooks_ = designer_.looks(), designSeenAt_ = now_;
     else if (now_ - designSeenAt_ > 3000) letGo();
 
-    // The recordings a sampler's page offers: read from the card here, never by the server's thread.
+    // The recordings a sampler's or a kit's page offers: read from the card here, never by the server's thread.
     const bool looking = now_ - designSeenAt_ <= 3000 && designLooks_ != 0;
     bool listed = false;
-    if (sampler && looking && (!designListed_ || now_ - designListAt_ >= kDesignListEveryMs || transfer_.received() != designReceived_)) {
+    if ((sampler || kit) && looking && (!designListed_ || now_ - designListAt_ >= kDesignListEveryMs || transfer_.received() != designReceived_)) {
         designRecordings_ = sampleNames();
         designListAt_ = now_;
         designReceived_ = transfer_.received();
         designListed_ = listed = true;
     }
+    // A kit's lanes are read for its pictures, as the KIT page's EDIT view reads one (a built-in drum's
+    // sound is the kit's own: nothing is copied).
+    if (kit && looking)
+        for (int lane = 0; lane < kDrumLanes; ++lane) readyLane(project.track, lane);
     const SynthSpec* spec = specFor(kind);
     const int presets = spec ? spec->presetCount() : 0;
-    const unsigned sound = sounds_[project.track][0].version; // (a sampler's recording read again: its picture)
+    // A sampler's recording read again, or any of a kit's lanes given another sound or edited: its
+    // pictures may have changed. (Versions only go up, so their sum moves whenever one does.)
+    unsigned sound = sounds_[project.track][0].version;
+    if (kit)
+        for (int lane = 1; lane < kDrumLanes; ++lane) sound += sounds_[project.track][lane].version;
     if (kind != designSpecKind_ || presets != designSpecPresets_ || project.track != designSpecTrack_ || sound != designSpecSound_ || listed) {
         designSpecKind_ = kind;
         designSpecPresets_ = presets;
@@ -391,6 +521,36 @@ void Session::serveDesigner() {
         if (text != designSpecText_) designSpecText_.swap(text), ++designSpecSerial_;
     }
     designer_.show(designSpecText_, designState());
+}
+
+// A KIT's requests, on the lanes of the track being worked on, through the calls the KIT page and the
+// drum grid make (so undo, the song file, the engine and the handheld's screens follow as they do).
+void Session::serveKit(const DesignRequest& r) {
+    const int track = project.track;
+    const TrackData& t = project.tracks[track];
+    switch (r.kind) {
+    case DesignRequest::Set: {
+        if (r.a < 0 || r.a >= kDrumLanes * kKitStride) return;
+        const int lane = r.a / kKitStride, field = r.a % kKitStride;
+        if (field < kEditRows) setLaneEdit(track, lane, laneEditWith(t.laneEdit[lane], field, r.b)); // (held to its limits there)
+        else if (field == kKitFit) setLaneFit(track, lane, r.b);
+        else if (field == kKitChoke) setLaneChoke(track, lane, r.b);
+        else if (field == kKitVolume) setLaneLevel(track, lane, static_cast<float>(r.b) / 100.f); // (held to 0..1 there)
+        else if (field == kKitHumanTime) setLaneFeel(track, lane, r.b, t.laneFeel[lane].level);
+        else if (field == kKitHumanLevel) setLaneFeel(track, lane, t.laneFeel[lane].time, r.b);
+        return;
+    }
+    case DesignRequest::LaneSample: // only a recording the page was offered, or none (the built-in drum)
+        if (r.name.empty() || std::find(designRecordings_.begin(), designRecordings_.end(), r.name) != designRecordings_.end()) setLaneSample(track, r.a, r.name);
+        return;
+    case DesignRequest::Hear: // as X held on the KIT page: heard until let go (a tap: as a tap is)
+        if (r.b) hearLaneHeld(track, r.a, kPlacedLevel, &designer_);
+        else if (hearingHeld() && heard_.owner == &designer_ && heard_.lane == r.a) letGoHeard();
+        return;
+    case DesignRequest::Normalize: normalizeLane(track, r.a); return;
+    case DesignRequest::Trim: trimLaneSilence(track, r.a); return;
+    default: return; // a synth's or a sampler's: nothing on a kit
+    }
 }
 
 void Session::setMidiRecording(bool on) {

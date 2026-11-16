@@ -263,7 +263,14 @@ void Session::stopHeard(const void* owner) {
 }
 
 void Session::keepHearing(bool xHeld, const void* screen) {
-    if (hearingHeld() && (!xHeld || screen != heard_.owner || project.track != heard_.track)) letGoHeard();
+    if (!hearingHeld()) return;
+    // A lane the sound designer's page holds is let go by the page (serveKit), or when it goes away
+    // (serveDesigner), or here when the handheld moves to another track: never by X or a screen.
+    if (heard_.owner == &designer_) {
+        if (project.track != heard_.track) letGoHeard();
+        return;
+    }
+    if (!xHeld || screen != heard_.owner || project.track != heard_.track) letGoHeard();
 }
 
 void Session::stopLane(int track, int lane) {
@@ -1435,6 +1442,19 @@ void Session::setLaneFeel(int track, int lane, int time, int level) {
     c.b = feel.time;
     c.c = feel.level;
     engine.send(c); // (lost to a full queue: the whole song is sent again, this with it)
+}
+
+void Session::setLaneLevel(int track, int lane, float level) {
+    if (track < 0 || track >= kNumTracks || lane < 0 || lane >= kDrumLanes || project.tracks[track].kind != TrackKind::Drums || level != level) return;
+    level = level < 0.f ? 0.f : (level > 1.f ? 1.f : level);
+    if (level == project.tracks[track].laneLevel[lane]) return;
+    project.tracks[track].laneLevel[lane] = level;
+    Command c;
+    c.type = Command::SetLaneLevel;
+    c.track = track;
+    c.a = lane;
+    c.value = level;
+    engine.send(c);
 }
 
 void Session::setLaneChoke(int track, int lane, int group) {

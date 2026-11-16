@@ -2290,18 +2290,37 @@ effect in those two groups and fails one that does not.
   page offers DELETE FOLDER on a heading with no recording and no folder under it. Folders
   made for a request that is then refused are taken away again, and only those (`foldersMade`
   keeps what it made, `dropMade`): a folder that was there before is never touched.
-- **The sound designer page knows two kinds of track** (2026-11-16): the spec's `"page"` is
-  `"synth"` or `"sampler"` (`Session::designSpec` / `samplerSpec`), and the state's `"spec"` number
+- **The sound designer page knows three kinds of track** (2026-11-16): the spec's `"page"` is
+  `"synth"`, `"sampler"` or `"kit"` (`Session::designSpec` / `samplerSpec` / `kitSpec`), and the state's `"spec"` number
   (`designSpecSerial_`) goes up whenever the spec's text changes, which is when the page asks for it
   again. A sampler's spec carries `"waves"`: a list of pictures, each a recording's 512 loudest points
   (`LaneSound::peaks`, made on the app thread when the recording is read; 0 to 1000) and the settings
   that mark it (`"marks"`, ids, kept `"least"` apart by `sampler::heldApart`, the screen's rule too),
   and `"recordings"`, read from the card on the app thread only while the page looks (at once, on
-  `Transfer::received()`, then every 5 s). `sample NAME` takes only a name in that list. **The KIT
-  step** reuses `wave()` in the page's script: `"page":"kit"`, one wave a lane, each lane's settings
-  under ids of their own (the choke and per-lane edit branches give the rows); the request handling
-  then routes `set` by lane. `design_test` `testSamplerFromThePage`; `APOTHECA_DESIGN_SAMPLER=1`
-  with `APOTHECA_DESIGN_HOLD` holds a sampler page open for a browser.
+  `Transfer::received()`, then every 5 s). `sample NAME` takes only a name in that list.
+  - **The KIT** (owner, 2026-11-16: "I think the kit could also be helpful"): a card a lane, built by
+    `laneCard` round the same `wave()`. **A lane's setting is the id `lane * kKitStride + field`**
+    (`designer.hpp`: fields 0 to 7 are `LaneEditRow`'s, then `KitField`: FIT, CHOKE, VOLUME, HUMAN
+    TIME, HUMAN LEVEL); `"fields"` gives each once, every reading that does not hang on the lane with
+    it (START and END are a time into the lane's own file: the state gives the handheld's eight
+    readings a lane, `laneEditText`). `Session::serveKit` routes `set` by lane into the calls the
+    handheld makes (`setLaneEdit`, `setLaneFit`, `setLaneChoke`, `setLaneLevel`, `setLaneFeel`);
+    `lanesample L NAME` (only a name offered, or none: the drum), `hear L 1|0`, `normalize L`,
+    `trim L`. A synth's or a sampler's asks do nothing to a kit, but `name`. **VOLUME is
+    `Session::setLaneLevel`, which the drum grid now calls too.**
+  - **The picture is the EDIT view's**: the lane's whole source (`LaneSound::sourcePeaks`, made on the
+    app thread when the lane is read; `serveDesigner` readies every lane while the page looks), the
+    part played lit by GAIN and the fades. The page's `guarded` and `levelAt` copy `lane_edit.cpp`'s
+    `guarded` and `laneEditLevelAt` for that: **change them together** (tried against the C++ numbers
+    in the browser, 2026-11-16). So an edit changes no spec; another sound does: the spec is made
+    again when any lane's `LaneSound::version` moves (their sum), and its number goes up only when its
+    text changes.
+  - **PLAY held is `hearLaneHeld` with the Designer as its owner**, and `keepHearing` leaves that one
+    to the page (X is not held for it): it is let go by `hear L 0`, by the page going away, or by
+    another track on the handheld.
+  - `design_test` `testSamplerFromThePage`, `testKitFromThePage`; `APOTHECA_DESIGN_SAMPLER=1` or
+    `APOTHECA_DESIGN_KIT=1` with `APOTHECA_DESIGN_HOLD` holds a page open for a browser (the KIT's
+    lanes are printed whenever one changes on the handheld).
 - **The page's own script has no test in `ctest`.** A change to it is tried
   in a browser (Playwright is installed) against a `Transfer` started by a
   small program, as the folder import was (`planFolders` can be called from
