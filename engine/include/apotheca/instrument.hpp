@@ -43,7 +43,7 @@ public:
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended)
+enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic, Acid }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended, ACID after it)
 
 // Every synth has this many macros (the eight knobs on its DEVICE screen).
 // Songs, presets and automation lanes 0..7 all count on it; each synth's

@@ -37,6 +37,7 @@
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/phazed.hpp"
 #include "apotheca/physic.hpp"
+#include "apotheca/acid.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -163,6 +164,42 @@ static void physicRow(const char* name, const char* preset, bool worst, bool asl
         slept = slept || (!asleep && synth->awake() < 8);
     }, 600);
     std::printf("  %-28s %5.2f%% of one core%s\n", name, 100.0 * each / (256.0 / 48.0), slept ? "  FAILED: a voice slept" : asleep && synth->awake() ? "  FAILED: not asleep" : "");
+}
+
+// ACID (docs/plans/acid-plan.md, section 4): the plan's row, one voice playing a busy 16-step line at
+// 130 BPM (accents on every fourth step, a slide on every third, RESONANCE 85, ENV MOD 70, DECAY 30:
+// its cutoff moves all the while). `asleep`: one note, then timed long after it has gone to sleep.
+static void acidRow(const char* name, bool asleep) {
+    std::unique_ptr<Acid> synth(new Acid);
+    synth->prepare(48000.f);
+    synth->setSetting(acid::Resonance, 85);
+    synth->setSetting(acid::EnvMod, 70);
+    synth->setSetting(acid::Decay, 30);
+    std::vector<float> l(256), r(256);
+    const int keys[16] = {36, 36, 48, 36, 39, 36, 51, 43, 36, 48, 36, 46, 36, 34, 41, 36};
+    const double step = 60.0 / 130.0 / 4.0 * 48000.0;
+    if (asleep) {
+        synth->noteOn(36, 1.f);
+        synth->render(l.data(), r.data(), 256);
+        synth->noteOff(36);
+        for (int b = 0; b < 400 && synth->awake(); ++b) synth->render(l.data(), r.data(), 256);
+    }
+    long frame = 0, nextStep = 0;
+    int s = 0;
+    const double each = ms([&] {
+        if (!asleep)
+            while (frame >= nextStep) {
+                const int k = keys[s % 16];
+                const float velocity = s % 4 == 0 ? 1.f : 0.9f;
+                if (s % 3 == 1) synth->noteOnFrom(k, velocity, keys[(s + 15) % 16], 0.06f);
+                else synth->noteOn(k, velocity);
+                ++s;
+                nextStep = static_cast<long>(s * step);
+            }
+        synth->render(l.data(), r.data(), 256);
+        frame += 256;
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core%s\n", name, 100.0 * each / (256.0 / 48.0), asleep && synth->awake() ? "  FAILED: not asleep" : "");
 }
 
 // FM-6 (docs/plans/fm6-plan.md, section 6): `notes` keys of `preset`, held; `again`: each key played
@@ -974,6 +1011,8 @@ int apotheca::runBench() {
     physicRow("PHYSIC breathed, 8 notes", "Wine Glass", false, false, true);
     physicRow("PHYSIC worst", "Church Bell", true);
     physicRow("PHYSIC asleep", "Marimba", false, true);
+    acidRow("ACID, a busy line", false);
+    acidRow("ACID asleep", true);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);

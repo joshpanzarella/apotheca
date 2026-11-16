@@ -51,7 +51,7 @@ scan() {
                 low = tolower(str)
                 # No name of a maker or of a model where a player reads (owner, 2026-11-14: the synth is JAX-EP).
                 # (The name of a file in an #include is not on the screen.)
-                if (low ~ /roland|jx-?3p|pg-?200|juno|yamaha|dx-?7/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
+                if (low ~ /roland|jx-?3p|pg-?200|juno|yamaha|dx-?7|tb-?303/ && ctx !~ /^#[ \t]*include/) printf "%s:%d: a maker\047s or a model\047s name: \"%s\"\n", file, strline, str
                 # Nor the name of the synth that went, nor its oversampling (batch 8b). "twin" alone is the word an old song has.
                 if (low ~ /twin analog|oversampl/) printf "%s:%d: the synth that went: \"%s\"\n", file, strline, str
                 if (low ~ /best quality/) printf "%s:%d: a quality nothing has: \"%s\"\n", file, strline, str
@@ -139,13 +139,13 @@ scan() {
 makers() {
     for f in "$1"/design_page.cpp "$1"/transfer.cpp "$1"/../README.md; do
         [ -f "$f" ] || continue
-        grep -n -i -E 'roland|jx-?3p|pg-?200|juno|yamaha|dx-?7' "$f" | sed "s|^|$f:|"
+        grep -n -i -E 'roland|jx-?3p|pg-?200|juno|yamaha|dx-?7|tb-?303' "$f" | sed "s|^|$f:|"
     done
 }
 
 # The engine's texts (preset and folder names, an effect's words) and the tools', beside the app.
 # (A plant is an app folder of its own with the same folders beside it: one is planted in each.)
-kBeside="engine/src engine/src/fx engine/src/jx3p engine/src/fm6 engine/src/physic engine/include/apotheca third_party/easycz/dsp third_party/msfa tools"
+kBeside="engine/src engine/src/fx engine/src/jx3p engine/src/fm6 engine/src/physic engine/src/acid engine/include/apotheca third_party/easycz/dsp third_party/msfa tools"
 engine() {
     for d in $kBeside; do
         [ -d "$1/../$d" ] && scan "$1/../$d" names
@@ -291,6 +291,12 @@ PLANT
 plant a-word-in-physics-parts ../engine/src/physic/modes.hpp caught <<'PLANT'
 constexpr const char* kSays = "a JX-3P's bell";
 PLANT
+plant the-bass-boxs-model ../engine/src/acid.cpp caught <<'PLANT'
+    {"Classic TB-303", "CLASSIC", {0}},
+PLANT
+plant the-bass-boxs-model-on-the-page design_page.cpp caught <<'PLANT'
+// a bass like a tb303
+PLANT
 n=0
 for d in $kBeside; do # every folder read beside the app is read: a name planted in each
     n=$((n + 1))
@@ -298,7 +304,7 @@ for d in $kBeside; do # every folder read beside the app is read: a name planted
     const char* says = "as the PG-200 has it";
 PLANT
 done
-[ "$n" -eq 9 ] || { echo "words_test: $n folders beside the app, not 9"; fails=$((fails + 1)); }
+[ "$n" -eq 10 ] || { echo "words_test: $n folders beside the app, not 10"; fails=$((fails + 1)); }
 plant what-the-engine-may-say ../engine/src/engine.cpp clean <<'PLANT'
 #include "apotheca/jx3p.hpp"
 #include "msfa/dx7note.h"

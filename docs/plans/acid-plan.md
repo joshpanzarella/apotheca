@@ -267,3 +267,38 @@ RESONANCE's share of the edge, DRIVE's gain). `tests/acid_test.cpp` holds it (`t
 - **AMP DECAY's usual is 80, not 70**: on the scale 0.2 S to 6 S, 80 reads 3.0 S (the plan's guess
   for the original); 70 reads 2.2 S.
 - Both decays read as the time to fall to a tenth (-20 dB).
+
+### Batches 1 and 2, the voice, accent and slide (2026-11-16)
+
+Built together (one commit): `engine/include/apotheca/acid.hpp`, `engine/src/acid.cpp`,
+`engine/src/acid/ladder.hpp` (a new engine folder: in `kBeside`), `SynthKind::Acid` appended and made
+in `Engine::addSynthTrack`, two starter presets (Classic Saw, Classic Square, folder CLASSIC: the 32
+come as data in batch 4, after them), `bench` rows "ACID, a busy line" and "ACID asleep".
+
+| What | As built | Measured |
+| --- | --- | --- |
+| Oscillator | polyBLEP saw; SQUARE a polyBLEP pulse at 50% through a one-pole high-pass at a quarter of its pitch (the sag, SELF: both halves sag, not only the top) | **pitch 0.0000 cents off**, keys 24 to 72, both waves (phase in double); aliasing under 10 kHz **-95.7 dB at key 72**, -85 at key 84 (CUTOFF 100): no table needed |
+| Filter | A diode ladder: four coupled trapezoidal nodes, stage 1's capacitor half (SELF), a one-pole high-pass in the loop at 0.1 of the stages' corner (SELF). The 4x4 system's inverse on the tick; a sample is four sums and one division | slope **13.9 dB from the singing pitch to the octave over, 18.5 the next** (the "18 dB look" one octave up); the coupled poles spread, so four octaves under the cutoff it is already 2.1 dB down (0 six under) |
+| Its CUTOFF | the pitch it SINGS at: the loop's half-turn found once on the analog model (`ladderEdge`: 1.531 of the stages' corner, feedback 24.47 there), kept by the bilinear transform | **sings within 0.54 cent of CUTOFF, 80 Hz to 10 kHz, at one level** (-24.5 dB of v4 at every pitch, it stands to 0.2 dB); RESONANCE 90 dies away |
+| Its bend | the JX-3P's read-ahead, but **two samples ahead** from the three before the last, so the division is off the chain a sample waits on | read from the latest (as the JX-3P), a busy line cost 0.21%; two ahead, 0.15% |
+| Bass and level | coupled stages lose 28 dB round the loop, so the edge is at feedback 24 and the pass band there is 26 dB down; **`kMakeUp`: the output x (1 + 0.33 k)** (SELF) | key 36 at RESONANCE 100 is 19.7 dB over RESONANCE 0 (peak 0.93, no clip) |
+| The cutoff's tick | worked out every 16 samples from the strike (PHYSIC's tick); a strike on its own first sample | against every sample, the worst line differs **50 dB under the sound** |
+| Envelopes | filter decay and amp decay one-poles to a tenth in their time (to the sample), a 3 ms rise from where the amp is, the gate a 3 ms ramp | `testEnvelopes` |
+| Sleep | 5 ms after the gate shuts (the tie's window), the accent sweep under 1e-5: exact zeros, and a fresh voice | `testSilence`: a note after sleep is a fresh synth's to the bit |
+| Tail | `allNotesOff` (Play, Stop, panic) hands the note to one tail slot, 3 ms counted in samples; the voice fresh | Play from the top: the same line to the bit |
+| Accent | level x `accentGain` (8 dB at 100, SELF), the shortest decay (0.2 s), the sweep: a one-pole fed the accented envelope, its time 0 to 0.1 s by SWEEP times (1 + RESONANCE), normalised so one accent alone opens kAccentOctaves (2.5) x ACCENT | **one accent: 2.50 octaves; four 125 ms apart: 2.50, 3.46, 3.71, 3.76; a second apart: 2.50 each; SWEEP 0: 2.50 each**; heard, ACCENT 100 at CUTOFF 50 is 12.4 dB louder (level and brightness) |
+| Slide | the rule's RC, three time constants, landing exactly | **SLIDE NOTE 62.5 ms (3000 samples), FIXED 60 ms (2880)**: at tau 401.7 cents to go, at 2 tau 108.0; every sample within 1.4e-11 cents of the rule; on its key after (0.0 cent) |
+| The tie | the gate open, or shut under 5 ms: no envelope starts again, the level glides 3 ms, no sweep fed | both orders on one sample, and shut 4 ms before, tie; 10 ms after a rest starts again (and slides); through the engine a line of three ties and three strikes under GLIDE FROM TOP and PAIRED; Play again the same to the bit |
+| Cost | | **0.13% of a desk core** for the busy line (`acid_test --measure cost`; the plan's target 0.15%), 0.10% with the cutoff still. `bench`: "ACID, a busy line" 0.14%, "ACID asleep" 0.00% (that run: PHYSIC 8 notes 0.26%, JAX-EP 6 notes 0.65%) |
+
+**Open, for batch 3 or the owner:**
+- **A GLIDE to the same key is a new strike, not a tie**: the engine calls plain `noteOn` when GLIDE
+  FROM gives the note's own key (`from.pitch != note.pitch` in `startNote`). On the original a slide
+  to the same note is the tie (one long note). Mending it is an engine change (call `noteOnFrom`
+  with `from == note` and teach the other synths to read that as plain), not made here.
+- **A note placed shorter than its step leaves a rest**: at 120 BPM a note of 0.9 of a step leaves
+  12.5 ms, over the 5 ms tie, so a slide after it starts the envelopes again. Batch 3 should check the
+  length the roll places, or the owner may want the window longer.
+- The pass band four octaves under the cutoff is 2 dB down (the coupled ladder's spread poles): a
+  bass note under a low cutoff is quieter than a buffered ladder's. Whether that is the box's own is
+  batch 6's question.

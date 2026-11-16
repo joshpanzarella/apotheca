@@ -43,7 +43,7 @@ string(TIMESTAMP APOTHECA_BUILT "%Y-%m-%d")
 
 # The effects: one file each, and every .cpp in the folder is built (a new effect needs no line here).
 file(GLOB APOTHECA_FX CONFIGURE_DEPENDS engine/src/fx/*.cpp)
-add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/jx3p.cpp engine/src/fm6.cpp engine/src/physic.cpp
+add_library(apotheca_engine STATIC engine/src/engine.cpp engine/src/effects.cpp engine/src/denormals.cpp engine/src/drums.cpp engine/src/phazed.cpp engine/src/sampler.cpp engine/src/jx3p.cpp engine/src/fm6.cpp engine/src/physic.cpp engine/src/acid.cpp
     ${APOTHECA_FX})
 target_link_libraries(apotheca_engine PRIVATE easycz msfa)
 target_include_directories(apotheca_engine PUBLIC engine/include)

@@ -3,6 +3,7 @@
 #include "apotheca/fm6.hpp"
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/physic.hpp"
+#include "apotheca/acid.hpp"
 #include "apotheca/physic_rule.hpp"
 
 #include <chrono>
@@ -451,6 +452,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     else if (kind == SynthKind::Jx3p) synth.reset(new Jx3p);
     else if (kind == SynthKind::Fm6) synth.reset(new Fm6);
     else if (kind == SynthKind::Physic) synth.reset(new Physic);
+    else if (kind == SynthKind::Acid) synth.reset(new Acid);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);

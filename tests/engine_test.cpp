@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "apotheca/acid_rule.hpp"
 #include "apotheca/engine.hpp"
 #include "apotheca/slide.hpp"
 #include "apotheca/envelope.hpp"
@@ -2079,7 +2080,7 @@ static void testRatchetsHoldUp() {
 
 // A note that glides starts at the pitch of the note before it and slides to its own.
 static void testANoteGlides() {
-    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Physic}) {
+    for (SynthKind kind : {SynthKind::Jx3p, SynthKind::Fm6, SynthKind::Sampler, SynthKind::Phazed, SynthKind::Physic, SynthKind::Acid}) {
         const auto second = [&](int effects, int firstKey = 57, bool onlyOne = false) {
             std::unique_ptr<Engine> engine(new Engine);
             CHECK(engine->addSynthTrack(1, kind));
@@ -2090,6 +2091,11 @@ static void testANoteGlides() {
                 CHECK(engine->setTrackSample(1, std::move(tone)));
                 engine->send(make(Command::SetSetting, 1, sampler::Loop, 1));
             }
+            if (kind == SynthKind::Acid) { // ACID's resonant filter and its envelope: off, so the crossings are the pitch
+                engine->send(make(Command::SetSetting, 1, acid::Resonance, 0));
+                engine->send(make(Command::SetSetting, 1, acid::EnvMod, 0));
+                engine->send(make(Command::SetSetting, 1, acid::Cutoff, 100));
+            }
             if (!onlyOne) engine->send(noteAt(0, 0, firstKey, 1.f, 0, 0.02f)); // very quiet, and over long before: only where it was matters
             engine->send(noteAt(1, 4, 69, 8.f, effects));
             engine->send(make(Command::Play, 0, 0, 1));
@@ -2098,7 +2104,7 @@ static void testANoteGlides() {
             return std::make_pair(pitchOver(out, 4 * kStep + 96, 1440), pitchOver(out, 8 * kStep, 9600));
         };
         const auto plain = second(0), slid = second(256);
-        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Fm6 ? "fm-6" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Physic ? "physic" : "phazed";
+        const char* name = kind == SynthKind::Jx3p ? "jax-ep" : kind == SynthKind::Fm6 ? "fm-6" : kind == SynthKind::Sampler ? "sampler" : kind == SynthKind::Physic ? "physic" : kind == SynthKind::Acid ? "acid" : "phazed";
         if (!(slid.first < 0.85 * plain.first)) std::printf("  %s: began at %.0f Hz plain, %.0f Hz with a glide; settled at %.0f / %.0f\n", name, plain.first, slid.first, plain.second, slid.second);
         CHECK(slid.first < 0.85 * plain.first);                           // it begins well under its own pitch (the note before was an octave lower)
         CHECK(std::fabs(slid.second - plain.second) < 0.02 * plain.second); // and arrives at it

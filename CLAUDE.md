@@ -2047,6 +2047,43 @@ effect in those two groups and fails one that does not.
       time**: skipped, the slide fell a sample behind in blocks of 1 (`testBlocks` found it).
     - **NOISE and BUZZ are hashes of the seed and the sample since the strike** (`pluckNoise`), never a
       generator walked. A NOISE note's level is what it is LIKELY to ring at (a random walk's size).
+- **ACID** (2026-11-16, the engine only: batches 0 to 2 of `docs/plans/acid-plan.md`;
+  `engine/include/apotheca/acid.hpp`, `acid_rule.hpp`, `engine/src/acid.cpp`, `engine/src/acid/ladder.hpp`;
+  `tests/acid_test.cpp`). `SynthKind::Acid` appended; **no `TrackKind`, no screen yet** (batch 3).
+  Nobody has heard it, not run on the handheld. **Every figure is SELF** (no source was opened).
+  - **One voice, the newest key wins**; letting it go never goes back to a key still held. `allNotesOff`
+    (Play, Stop, panic: `stopNotes` is the default) hands the note to ONE tail slot (3 ms fade, counted
+    in samples) and the voice is fresh: Play from the top is the same line (`testPlayFromTheTop`).
+  - **ACCENT is velocity 0.95 or over** (`kAccentAt`), **SLIDE is the note's GLIDE**, through
+    `noteOnFrom` as the engine already calls it; nothing new on a note. **ACCENT 0 (setting or macro)
+    is the plain path to the bit** (`accented()` is false there: `testAccentZero`).
+  - **The tie** (`slides()`): a GLIDE note with the gate open, or shut under 5 ms ago (`kTieMs`), starts
+    no envelope and feeds no new sweep; both orders on one sample tie (`testTie`). After a longer rest
+    the pitch slides and the envelopes start again. **The engine calls plain `noteOn` when GLIDE FROM
+    gives the same key** (`from.pitch != note.pitch` in `startNote`), so a GLIDE to the same note is a
+    new strike, not a tie: open, for batch 3 or the owner.
+  - **The slide lands exactly**: an RC of three time constants bent so its last sample is on the key
+    (`slideLeft`; the voice steps `slideR` a sample and counts `slideN` down). `testSlideTime` holds
+    every sample it reads to the rule within 1e-6 cents.
+  - **The filter is a diode ladder solved per sample, its CUTOFF the pitch it sings at.** Four coupled
+    trapezoidal nodes (stage 1's capacitor half: SELF), a high-pass in the loop (`kLoopHighPass`),
+    the inverse of the 4x4 system worked out on the tick, so a sample is four sums side by side and one
+    division. The pitch where the loop turns half a cycle and the feedback there (`ladderEdge`: 1.531
+    of the stages' corner, 24.47) are found once on the analog model; g = tan(pi f / rate) / w180.
+    **Coupled stages lose 28 dB round the loop**, so the edge is at feedback 24 (a buffered ladder's 4)
+    and the pass band at the edge is 26 dB down: `kMakeUp` (output x (1 + 0.33 k)) gives most back.
+  - **The bend is read TWO samples ahead** (the JX-3P's read-ahead applied twice: exact for a steady
+    part plus a sine at the singing pitch), so its division waits on nothing of the sample before. Read
+    from the latest sample (the JX-3P's way) the division sat on the chain each sample waits on: 0.21%
+    of a core against 0.15%. It sings within 0.6 cent of CUTOFF, 80 Hz to 10 kHz, at one level.
+  - **The cutoff is worked out every 16 samples counted from the strike** (`kTuneTick`, PHYSIC's
+    tick; a strike works it out on its own first sample): against every sample, the worst line (ENV MOD,
+    ACCENT and SWEEP full) differs 50 dB under the sound (`testTuneTick` holds -40). At 8 it cost 0.16%.
+  - **It sleeps 5 ms after the gate shuts** (the tie's window, and the gate's 3 ms ramp at 0) once the
+    accent sweep is under `kSweepQuiet`, and wakes as a fresh voice to the bit (`testSilence`). Its
+    oscillator and filter run while the gate is shut until then, so a slide in the window is seamless.
+  - **`setMacro` and `setSetting` store and return**; the settings are worked out at the top of the
+    next render (or a note's start). `#pragma clang fp contract(off)`, as PHYSIC.
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).
