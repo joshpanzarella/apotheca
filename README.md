@@ -6,10 +6,11 @@ RG40XXV, 640x480, buttons only). Part of the Shapetaker family.
 ## Status
 
 A small song machine that runs, at 48 kHz. Up to twelve tracks, each a drum
-kit, a sampler, or one of four synths: Phazed (phase distortion, 65 presets), JAX-EP
+kit, a sampler, or one of five synths: Phazed (phase distortion, 65 presets), JAX-EP
 (a virtual analog synth modeled after a popular DCO synth, 142 presets), FM-6 (six-operator
-FM, after a classic 80s synth, 209 presets) or PHYSIC (plucked and struck sounds that ring by
-themselves: strings, mallets, bells, 96 presets). Up to sixteen scenes of
+FM, after a classic 80s synth, 209 presets), PHYSIC (plucked and struck sounds that ring by
+themselves: strings, mallets, bells, 96 presets) or ACID (a mono bass with accent and slide,
+after a classic bass line box, 32 presets). Up to sixteen scenes of
 one to eight bars, each with its own repeat count. Four screens:
 
 - **SONG**: tracks across, scenes down. Add tracks, set how many times each
@@ -463,7 +464,7 @@ makes the sound**: the page is only the controls. Turn the WiFi page on
 designer".
 
 - It works on **the track being worked on** on the handheld, if that is a
-  PHAZED, JAX-EP, FM-6, PHYSIC, SAMPLER or DRUMS track. Move to another track there and the page follows.
+  PHAZED, JAX-EP, FM-6, PHYSIC, ACID, SAMPLER or DRUMS track. Move to another track there and the page follows.
 - **A SAMPLER track** shows its recording as a picture, with **START and END
   as marks to drag** (or click: the nearer mark comes to the click). They stop
   a percent short of each other, as on the handheld. Under it are its eight
@@ -944,6 +945,92 @@ have seen it, and every claim about its sound is a measurement. Its cost on
 the desk is 0.2 to 0.6% of one core for eight notes, about 0.4 to 0.6% with
 every BODY page setting on (0.8% with every note gliding as well); the
 handheld is about 13 to 17 times slower (not run there).
+
+### ACID
+
+**A one-voice bass in the style of the classic bass line box**: one
+oscillator (SAW or SQUARE), a resonant four-pole filter, a filter decay and an
+amp decay, ACCENT and SLIDE. Nothing new to learn on the roll: an accent is a
+note at 100%, a slide is a note's GLIDE.
+
+- **ACCENT is a note at 95% or more.** A note is placed at 90%, so it is plain;
+  hold A + RIGHT once (90% to 100%) and it is accented: louder, its filter
+  decay the shortest (0.2 S), and the cutoff swept up. Accents close together
+  climb higher (the SWEEP): four accents a sixteenth apart open the filter
+  further each time; a second apart, each is the same. On an ACID track an
+  accented note wears a small brass corner at its top right. A keyboard's hard
+  hit (121 of 127) accents. At ACCENT 0 an accent is a plain note.
+- **SLIDE is a note's GLIDE** (hold X + UP on the note: 1/4, then 1/2 a step,
+  and longer). A gliding note slides in pitch from the note before and **does
+  not start the envelopes again**: it ties. It ties when the note before is
+  still held or ended under a step ago, so a note shorter than its step still
+  ties into the slide after it; with an empty step between, the slide starts
+  the envelopes again. **A GLIDE to the same key is a tie: one long note.** The
+  slide takes the glide's own length (the roll's line), or 60 MS at SLIDE FIXED.
+- **One voice**: the newest note wins, and letting it go never goes back to a
+  note still held. In a chord the last key to start sounds.
+- **32 presets in five folders**: CLASSIC (Classic Saw, Classic Square,
+  Rubber Saw, Hollow Square, Echo Line, Low Pulse, Echo Square, Bright
+  Classic), SQUELCH (resonance up, short decays: Squelch, Rubber Duck, Wet
+  Snap, Screamer, and four with a STEPPER walking the cutoff: Step Squelch,
+  Gurgle Steps, Chance Squelch, Long Squelch), DEEP (an octave down, little
+  envelope: Sub Line, Deep Square, Warm Floor, Dark Round, Low Murmur, Velvet
+  Bass), DISTORTED (each with DRIVE, SATURATE or FUZZ in its first slot:
+  Driven, Saturated, Fuzz Line, Tube Acid, Burnt Rubber, Dub Smash) and MOVING
+  (a MOD plays the knob: Breathing, Wobble Reso, Semitone Steps, Drift). **A
+  new ACID track starts on Classic Saw.** Ten to try first: Rubber Saw, Echo
+  Line, Squelch, Wet Snap, Step Squelch, Long Squelch, Sub Line, Burnt Rubber,
+  Dub Smash, Drift. Each was measured playing a 16-step acid line: a sane
+  level, nothing into the synth's clip (placed or accented), tails that end,
+  MODs that move and are heard.
+- **Y on MAIN does nothing** (no dice for this one).
+
+The macros. Each at +0 is the patch as it is; a preset puts all eight back.
+Below the middle a macro slides its setting down to the least, above it up to
+the most. None is a choice, so each takes a MOD (hold X on it).
+
+| Macro | Moves |
+| --- | --- |
+| CUTOFF | CUTOFF |
+| RESO | RESONANCE |
+| ENV MOD | ENV MOD |
+| DECAY | DECAY |
+| ACCENT | ACCENT |
+| DRIVE | DRIVE |
+| SWEEP | SWEEP |
+| TUNE | TUNE: a STEPPER on it is a line of semitones up and down |
+
+ADVANCED is two pages. L1 and R1 turn them.
+
+| Page | Setting | Reads |
+| --- | --- | --- |
+| SOUND | WAVE | SAW or SQUARE |
+| | OCTAVE | -2 to +1 |
+| | TUNE | -100 to +100 CENTS |
+| | LEVEL | -24 to +6 DB |
+| | VELOCITY | OFF: every plain note one level, as the original. ON: a plain note's level is its velocity |
+| | SLIDE | NOTE (the glide's own length) or 60 MS |
+| FILTER | CUTOFF | 50 HZ to 6400 HZ: the pitch the filter sings at, with no envelope |
+| | RESONANCE | 0% to 100%. From 95% it sings by itself, at the CUTOFF's pitch |
+| | ENV MOD | How far the filter decay opens the cutoff: up to 5 octaves |
+| | DECAY | 200 MS to 2.0 S, the filter decay's fall to a tenth. An accent always takes the shortest |
+| | ACCENT | OFF, or how much an accent does: up to 8 DB louder and 2.5 octaves of sweep |
+| | SWEEP | How far accents close together climb. 0: each accent the same |
+| | DRIVE | OFF, or into the filter's soft clip: up to 8 times. Heavy dirt is the FX screen's |
+| | AMP DECAY | 200 MS to 6.0 S, the amp's fall to a tenth while the note is held |
+
+- **Writing a line on the handheld**: A places a note (keep A held and press
+  RIGHT once for an accent); hold X and press UP twice for a slide of half a
+  step. A 16-step line with four accents and four slides was 165 presses, most
+  of them walking between keys: the stick is quicker for the big leaps.
+- Turning RESONANCE up makes the sound louder: the squelchy presets carry
+  their LEVEL down for it.
+
+**Nobody has heard it**, on the desk or the handheld: the tests and the stills
+have seen it, and every claim about its sound is a measurement against the
+plan's own guesses (no recording of the original was measured). Its cost on the
+desk is about 0.13% of one core for a busy line; the handheld is about 13 to
+17 times slower (not run there). The plan: `docs/plans/acid-plan.md`.
 
 ### The envelope
 
