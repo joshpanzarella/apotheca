@@ -41,6 +41,7 @@
 namespace apotheca {
 
 void samplerSettingText(int id, int value, char* out, int size);
+const char* samplerSettingName(int id); // PITCH, TUNE ... END: as the screen names it
 constexpr int kHearKey = 60;         // the sampler is heard at middle C
 constexpr Uint32 kHearEveryMs = 150; // a setting being turned is heard this often at most
 

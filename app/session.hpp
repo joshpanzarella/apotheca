@@ -15,6 +15,7 @@
 #include "chords.hpp"
 #include "recorder.hpp"
 #include "song_file.hpp"
+#include "synth_spec.hpp"
 #include "transfer.hpp"
 #include "midi.hpp"
 #include "designer.hpp"
@@ -186,7 +187,8 @@ public:
     // or aimed at something that does not fit the track (mods.hpp: an empty slot, a choice, a macro
     // on a track with none), is stored OFF, blank. A step of undo, as GLIDE FROM is. True if the
     // track holds what was asked for (false: it was put OFF, or there is no such track or MOD).
-    bool setMod(int track, int mod, const ModSettings& settings);
+    // `record` false: never written into its DEPTH lane, WRITE on or not (a preset putting its MODs in).
+    bool setMod(int track, int mod, const ModSettings& settings, bool record = true);
     const ModSettings& modData(int track, int mod) const;
     // A MOD's DEPTH as it is now: while the song plays, where its DEPTH lane's automation has it in
     // the scene playing (batch 7), else its own (exactly).
@@ -499,8 +501,16 @@ public:
     // and by the sound-designer page alike.
     void setSynthSetting(int track, int id, int value);
     void setSynthMacro(int track, int macro, float value);
-    // A built-in preset or one of the player's own. The macros go back to the middle.
+    // A built-in preset or one of the player's own. The macros go back to the middle (or to the
+    // preset's own, where the app holds them). A preset that holds the track's whole sound puts its
+    // effects, sends, GLIDE FROM and MODs in too (putPresetSound); a plain one leaves them. One step
+    // of undo brings back what was there (soundMark sees it all).
     void chooseSynthPreset(int track, int index);
+    // A track sound put in as a preset puts it: each slot, send, GLIDE FROM and MOD that differs (as
+    // the song file writes it) and nothing else, through the engine's usual commands (another kind of
+    // effect: Session::setEffect, its 10 ms fade, its slot's automation cleared). Nothing is written
+    // into automation, WRITE on or not.
+    void putTrackSound(int track, const TrackSound& sound);
     // Y on MAIN: a new sound from the dice, on a synth that has such a thing (PHYSIC: SynthSpec::roll).
     // The engine is told the whole patch. False on the others, and nothing changes.
     bool rollSynth(int track, unsigned seed);
@@ -571,6 +581,16 @@ private:
     static int memorySlot(int track, int slot); // -1: no such slot
     TypeMemory typeMemory_[kMemorySlots];
     void forgetTrackTypes(int track) { for (int s = 0; s < kTrackSlots; ++s) forgetTypes(track, s); }
+    // What a whole preset found on the track when it came (`before`), and what it left (`put`, as the
+    // song file writes it): a plain preset picked while the track still holds `put` puts `before`
+    // back (putPresetSound). Forgotten when anything else changed them, as the slots' types are.
+    struct PresetSoundMemory {
+        bool held = false;
+        TrackSound before;
+        std::string put;
+    };
+    PresetSoundMemory presetSounds_[kNumTracks];
+    void putPresetSound(int track, const TrackSound* sound); // null: a plain preset
     struct Sounding { int track = -1, pitch = 0; Uint32 until = 0; };
     Sounding sounding_[8];
     static constexpr Uint32 kHeldOn = 0xffffffffu; // a Sounding's `until` while X holds it
@@ -668,7 +688,8 @@ private:
     Uint32 editedAt_ = 0;
     std::uint32_t cellMark_ = 0;
     void serveDesigner();
-    std::string designSpec(TrackKind kind) const;
+    std::string designSpec(int track) const;  // what the page builds itself from (a synth's, or a sampler's)
+    std::string samplerSpec(int track) const;
     std::string designState() const;
     Designer designer_;
     std::string presetFolder_;
@@ -677,8 +698,17 @@ private:
     unsigned designLooks_ = 0;
     Uint32 designSeenAt_ = 0;
     TrackKind designSpecKind_ = TrackKind::None;
-    int designSpecPresets_ = -1;
+    int designSpecPresets_ = -1, designSpecTrack_ = -1;
+    unsigned designSpecSound_ = 0;  // the sampler's recording's version (LaneSound::version) it was made from
     std::string designSpecText_ = "{}";
+    unsigned designSpecSerial_ = 0; // goes up whenever designSpecText_ changes: the page asks for it again
+    // The recordings a sampler's page is offered: read from the card on this thread, when the page
+    // first looks, when the WiFi page has taken something, and every kDesignListEveryMs while it looks.
+    std::vector<std::string> designRecordings_;
+    Uint32 designListAt_ = 0;
+    unsigned designReceived_ = 0;
+    bool designListed_ = false;
+
     void recordAutomation(int track, int lane, float value);
     void hearMidi();
     MidiInput midi_;

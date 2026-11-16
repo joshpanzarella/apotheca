@@ -10,6 +10,9 @@
 //           the pick comb x(t) - x(t - P), P = POSITION of the period (JS): a string plucked at
 //           1/5 has no 5th or 10th harmonic. A modal model: a 0.1 ms click, its high modes
 //           turned down by a soft HARDNESS (a finger, SELF).
+//   NOISE   a burst of noise, its loudness a half-sine over its length (2 s to 2 ms by HARDNESS):
+//           a bow or a breath on glass when long, a brush when short. Into a string through the
+//           pick comb, as a pluck. Each sample a hash of the seed and its place.
 //
 // Every sample of a strike is worked out from the sample's place since the strike began, never
 // stepped along (the noise is a hash of the note's seed and that place), so a strike does not
@@ -47,9 +50,10 @@ inline void sinCos(float w, float& s, float& c) {
 
 // A strike as the voice keeps it: what each of its samples is, from its place.
 struct Push {
-    enum Kind { None, Pulse, Noise, Bump } kind = None;
+    enum Kind { None, Pulse, Noise, Bump, Burst } kind = None;
     std::uint32_t from = 0, to = 0; // in the voice's samples since its strike: when it pushes
     float length = 1.f;             // the pulse's contact, or the noise's period, in samples
+    float perLength = 1.f;          // a burst's: 1 / length
     float size = 1.f;               // a pulse's height, or the noise's
     float comb = 0.f;               // the pick comb's delay in samples (0: none)
     float grain = 1.f;              // the noise's grain: one random value every `grain` samples
@@ -71,7 +75,11 @@ struct Push {
         if (t < 0.f || t >= length) return 0.f;
         return sinHalfTurn((t + 0.5f) / length);
     }
-    float shapeAt(float t) const { return kind == Pulse ? pulseAt(t) : noiseAt(t); }
+    float burstAt(float t) const { // the burst, at a place t: a sample's own noise under the half-sine
+        if (t < 0.f || t >= length) return 0.f;
+        return pluckNoise(seed, static_cast<std::uint32_t>(t)) * sinHalfTurn((t + 0.5f) * perLength);
+    }
+    float shapeAt(float t) const { return kind == Pulse ? pulseAt(t) : kind == Burst ? burstAt(t) : noiseAt(t); }
 
     // Samples `at` .. `at + n` of it into `out` (asked for in order: a bump is stepped along from its
     // start, the same steps however the sound is cut).

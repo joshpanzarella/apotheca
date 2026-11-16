@@ -78,8 +78,10 @@ bool Session::removeTrack(int track) {
     const int count = project.trackCount();
     if (track < 0 || track >= count || count <= 1) return false;
     for (int t = track; t + 1 < kNumTracks; ++t) project.tracks[t] = project.tracks[t + 1];
-    for (int t = track; t < kNumTracks; ++t) // the types each slot remembers move with their tracks
+    for (int t = track; t < kNumTracks; ++t) { // the types each slot remembers move with their tracks, and what a preset found
         for (int s = 0; s < kTrackSlots; ++s) typeMemory_[t * kTrackSlots + s] = t + 1 < kNumTracks ? typeMemory_[(t + 1) * kTrackSlots + s] : TypeMemory();
+        presetSounds_[t] = t + 1 < kNumTracks ? presetSounds_[t + 1] : PresetSoundMemory();
+    }
     {
         std::unique_ptr<TrackData> blank(new TrackData); // large: not on the stack
         project.tracks[kNumTracks - 1] = *blank;
@@ -119,7 +121,7 @@ bool Session::addTrack(TrackKind kind) {
     // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
     // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)
     if (specFor(kind)) sendSynthPatch(track);
-    forgetTrackTypes(track);
+    forgetTrackTypes(track); // (what a preset found there went with the track taken away: removeTrack)
     if (undoReady_) soundMark_ = soundMark(); // a track added is not a step of undo (as before): nor is its first sound
     return true;
 }
@@ -128,6 +130,7 @@ bool Session::setTrackKind(int track, TrackKind kind) {
     if (track < 0 || track >= project.trackCount() || kind == TrackKind::None || project.tracks[track].kind == kind) return false;
     TrackData& t = project.tracks[track];
     forgetTrackTypes(track); // (its effects stay; what they were switched from is forgotten)
+    presetSounds_[track] = PresetSoundMemory();
     t.kind = kind;
     t.preset = 0;
     for (float& m : t.macro) m = 0.5f;
@@ -783,6 +786,33 @@ void Session::restoreEffect(int track, int slot, const EffectData& then) {
     now.kind = static_cast<int>(kind);
 }
 
+void Session::putTrackSound(int track, const TrackSound& sound) {
+    if (track < 0 || track >= kNumTracks || project.tracks[track].kind == TrackKind::None) return;
+    TrackData& t = project.tracks[track];
+    for (int slot = 0; slot < kTrackSlots; ++slot) {
+        const EffectData& then = sound.effects[slot];
+        if (effectSameAsText(t.effects[slot], then)) continue;
+        // Another kind: in through setEffect (the fade; the slot's automation and any MOD aimed at it
+        // go, as for any effect put in), then its settings where they are not its usual.
+        if (t.effects[slot].kind != then.kind) setEffect(track, slot, knownEffect(then.kind) ? static_cast<EffectKind>(then.kind) : EffectKind::None);
+        if (t.effects[slot].kind == then.kind) restoreEffect(track, slot, then);
+    }
+    for (int bus = 0; bus < kBuses; ++bus) {
+        if (sameAsText(t.send[bus], sound.send[bus])) continue;
+        t.send[bus] = sound.send[bus];
+        Command c;
+        c.type = Command::SetSend;
+        c.track = track;
+        c.a = bus;
+        c.value = sound.send[bus];
+        engine.send(c);
+    }
+    setGlideFrom(track, sound.glideFrom);
+    // (After the slots: a MOD may be aimed at one. Only what differs is told: setMod sends the fields that changed.)
+    for (int m = 0; m < kModsPerTrack; ++m)
+        if (modText(t.mods[m], m) != modText(sound.mods[m], m)) setMod(track, m, sound.mods[m], false);
+}
+
 // The rest of a step of undo: what undo covers besides the patterns, put back where it differs as
 // the song file writes it (sameAsText). A track whose text is the step's (same[t]) is as it was,
 // and is not looked at.
@@ -1245,7 +1275,7 @@ float Session::modDepthShown(int track, int mod) const {
     return lane == rests ? own : modDepthFromLane(lane);
 }
 
-bool Session::setMod(int track, int mod, const ModSettings& settings) {
+bool Session::setMod(int track, int mod, const ModSettings& settings, bool record) {
     if (track < 0 || track >= kNumTracks || mod < 0 || mod >= kModsPerTrack || project.tracks[track].kind == TrackKind::None) return false;
     const ModSettings held = modHeldFor(project.tracks[track], settings);
     const bool taken = held.kind != kModOff || settings.kind == kModOff; // (asked for OFF and OFF: taken)
@@ -1259,7 +1289,7 @@ bool Session::setMod(int track, int mod, const ModSettings& settings) {
     }
     // Its DEPTH turned: with WRITE on and the song playing, written into its DEPTH lane where the song
     // is (batch 7), as a macro's or a send's turn is. (Made or deleted is not a turn of DEPTH.)
-    if (held.depth != was.depth) recordAutomation(track, modDepthLane(mod), modDepthToLane(held.depth));
+    if (record && held.depth != was.depth) recordAutomation(track, modDepthLane(mod), modDepthToLane(held.depth));
     // One on, still on (a knob's MOD turned while X is held, every frame): only what changed, so a
     // turn is one or two commands, not twenty-six. The engine's MOD is the project's before this.
     Command c;
@@ -1546,6 +1576,7 @@ void Session::applyProject() {
     sendSong();
     // Another song: nothing of the last one to go back to.
     for (TypeMemory& m : typeMemory_) m = TypeMemory();
+    for (PresetSoundMemory& m : presetSounds_) m = PresetSoundMemory();
     undo_.clear();
     redo_.clear();
     editing_ = false;

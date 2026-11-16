@@ -20,6 +20,7 @@
 // Lanes, steps and scenes are written from 1, as on screen.
 
 #include <cstdint>
+#include <istream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -58,6 +59,23 @@ private:
 // One MOD of a track as the song file writes it: its `mod` line and, where its row is not as a new
 // one's, its `modsteps` line. Empty when it is OFF. (Undo asks whether two MODs are the same by this.)
 std::string modText(const ModSettings& mod, int index);
+
+// A track's sound past its synth: its three effects, its two sends, its GLIDE FROM and its two MODs,
+// in the lines a song file writes them in (fx, send, glidefrom, mod, modsteps), in that order. A
+// preset file holds the same lines (presets.hpp): THE ONE WRITER AND THE ONE READER of them.
+std::string soundText(TrackKind kind, const EffectData* effects, const float* send, int glideFrom, const ModSettings* mods);
+struct SoundParts { // where readSoundLine puts what it reads: a track's, or a preset's
+    TrackKind kind;
+    EffectData* effects;      // kTrackSlots
+    float* send;              // kBuses
+    std::uint8_t* glideFrom;
+    ModSettings* mods;        // kModsPerTrack
+};
+enum class SoundLine { NotOne, Taken, Refused }; // not one of those words; read; one of them, but not read (a slot past 3, an effect nobody knows...)
+// One line, its first word already read. Every number is held to its limits as a double first. A MOD's
+// target is not checked here: modsFit, once the whole track is read (its effects may come after).
+// `oldSound`: a Twin Analog or QMOD track's, whose MODs on macros are not taken.
+SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundParts& to, bool oldSound = false);
 
 // How many tracks songText, trackText and SongTextCache have written, and how many bytes of text
 // parseSong has read, since the program began: for the tests, which hold what a gesture costs by them.

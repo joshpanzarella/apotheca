@@ -7,7 +7,9 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -23,8 +25,11 @@
 #include <unistd.h>
 
 #include "apotheca/engine.hpp"
+#include "presets.hpp"
 #include "app.hpp"
 #include "designer.hpp"
+#include "samples.hpp"
+#include "apotheca/sampler.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 
@@ -219,6 +224,14 @@ void testNamesAndRequests() {
                             "preset 2 2", "note 128 1", "note -1 1", "note 60 2", "note 60", "save", "save !!!", "delete everything"})
         CHECK(!desk.ask(bad));
     CHECK(desk.take().empty());
+    // A sampler's recording: the whole name after the one space, folders and spaces and all; none; and
+    // nothing that could leave the samples folder.
+    CHECK(desk.ask("sample drums/kicks/big 808") && desk.ask("sample") && desk.ask("sample  two spaces"));
+    const std::vector<DesignRequest> samples = desk.take();
+    CHECK(samples.size() == 3 && samples[0].kind == DesignRequest::Sample && samples[0].name == "drums/kicks/big 808" && samples[1].name.empty() && samples[2].name == " two spaces");
+    for (const char* bad : {"sample ../songs/a", "sample a/../../b", "sample /abs", "sample a//b", "sample .hidden", "sample a\\b", "sample a/b/c/d", "samples x"})
+        CHECK(!desk.ask(bad));
+    CHECK(desk.take().empty());
     // If the program has stopped taking them, they do not pile up for ever.
     int taken = 0;
     for (int i = 0; i < 600; ++i) taken += desk.ask("note 60 1") ? 1 : 0;
@@ -271,7 +284,7 @@ void testPhazedFromThePage() {
     CHECK(count(spec, "\"env\":") == 9 && count(spec, "\"env\":true") == 6);
     CHECK(has(spec, "{\"name\":\"SOUND\",\"env\":false,\"items\":[{\"name\":\"LINES\",\"id\":0,\"min\":0,\"max\":3,\"texts\":[\"LINE 1\",\"LINE 2\",\"1 + 1'\",\"1 + 2'\"]}"));
     CHECK(count(spec, "\"id\":") == phazed::kSettings); // every setting is on some page, once
-    CHECK(count(spec, "\"folder\":") == Phazed::presetCount() && !has(spec, "\"folder\":\"USER\""));
+    CHECK(count(spec, "\"folder\":") == builtInPresets(TrackKind::Phazed) && !has(spec, "\"folder\":\"USER\""));
     // A setting with many values is a slider: no names for each.
     CHECK(has(spec, "{\"name\":\"DETUNE FINE\",\"id\":5,\"min\":0,\"max\":60}"));
 
@@ -359,7 +372,7 @@ void testSavingAPreset() {
     Rig rig;
     rig.addSynth();
     Session& session = rig.app.session();
-    const int builtIn = Phazed::presetCount();
+    const int builtIn = builtInPresets(TrackKind::Phazed);
     // Make a sound: a preset, bent with two settings and a macro.
     rig.tell("preset 3");
     // Quiet (a setting) and slow to start (a macro), so that both can be heard to come back.
@@ -473,10 +486,10 @@ void testFm6FromThePage() {
     // Saved, it is an ".fm6" preset, in FM-6's list only, and comes back as it was.
     const Fm6Patch made = rig.track().fm6;
     CHECK(rig.tell("save made one"));
-    CHECK(exists(rig.root + "/presets/MADE ONE.fm6") && fm6Spec().presetCount() == Fm6::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount());
+    CHECK(exists(rig.root + "/presets/MADE ONE.fm6") && fm6Spec().presetCount() == builtInPresets(TrackKind::Fm6) + 1 && phazedSpec().presetCount() == builtInPresets(TrackKind::Phazed));
     rig.tell("preset 2");
     CHECK(rig.track().fm6.value[fm6::Algorithm] != made.value[fm6::Algorithm] && rig.track().fm6.value[fm6::OpsOn] == 63);
-    rig.tell("preset " + std::to_string(Fm6::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Fm6)));
     CHECK(std::equal(made.value, made.value + fm6::kSettings, rig.track().fm6.value));
 }
 
@@ -490,8 +503,11 @@ void testPhysicFromThePage() {
     CHECK(rig.track().kind == TrackKind::Physic && rig.track().preset == 0);
     const std::string spec = rig.get("/design/spec").body;
     CHECK(has(spec, "\"name\":\"PHYSIC\",\"roll\":true,\"macros\":[\"TONE\",\"POSITION\",\"DECAY\",\"MATERIAL\",\"STRETCH\",\"RELEASE\",\"DICE\",\"OCTAVE\"]"));
-    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 4 && !has(spec, "\"env\":true"));
-    CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\""));
+    CHECK(count(spec, "\"id\":") == physic::kSettings && count(spec, "\"env\":false") == 5 && !has(spec, "\"env\":true"));
+    CHECK(has(spec, "\"name\":\"SOUND\"") && has(spec, "\"name\":\"RING\"") && has(spec, "\"name\":\"PLAY\"") && has(spec, "\"name\":\"DICE\"") && has(spec, "\"name\":\"BODY\",\"env\""));
+    CHECK(has(spec, "{\"name\":\"STRIKE\",\"id\":1,\"min\":0,\"max\":2,\"texts\":[\"PLUCK\",\"MALLET\",\"NOISE\"]"));
+    CHECK(has(spec, "{\"name\":\"PAIR\",\"id\":18,\"min\":0,\"max\":20,\"texts\":[\"OFF\",\"1 CENTS\"") && has(spec, "{\"name\":\"BODY\",\"id\":20,\"min\":0,\"max\":3,\"texts\":[\"NONE\",\"GUITAR\",\"BOX\",\"TUBES\"]"));
+    CHECK(has(spec, "\"name\":\"MOTOR\",\"id\":19,\"min\":0,\"max\":100,\"texts\":[\"OFF\",\"0.20 HZ\"") && has(spec, "\"8.0 HZ\"]") && has(spec, "\"name\":\"BUZZ\",\"id\":22"));
     // Every setting is given its readings, the long ones too (pageReadsAsDevice): DECAY in seconds.
     CHECK(count(spec, "\"texts\":") == physic::kSettings);
     CHECK(has(spec, "{\"name\":\"MODEL\",\"id\":0,\"min\":0,\"max\":10,\"texts\":[\"STRING\",\"MARIMBA\""));
@@ -516,20 +532,226 @@ void testPhysicFromThePage() {
     for (int id : {physic::Strike, physic::Hardness, physic::Position, physic::Decay, physic::Material, physic::Stretch}) moved = moved || after.value[id] != before.value[id];
     CHECK(moved);
     for (int id : {physic::Model, physic::Release, physic::Velocity, physic::Octave, physic::Fine, physic::Width, physic::Level, physic::Dice,
-                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay})
+                   physic::DicePosition, physic::DiceHardness, physic::DiceTune, physic::DiceDecay, physic::Body})
         CHECK(after.value[id] == before.value[id]);
     // Saved, it is a ".physic" preset, in PHYSIC's list only, and comes back as it was.
     const PhysicPatch made = rig.track().physic;
     CHECK(rig.tell("save made one"));
-    CHECK(exists(rig.root + "/presets/MADE ONE.physic") && physicSpec().presetCount() == Physic::presetCount() + 1 && fm6Spec().presetCount() == Fm6::presetCount());
+    CHECK(exists(rig.root + "/presets/MADE ONE.physic") && physicSpec().presetCount() == builtInPresets(TrackKind::Physic) + 1 && fm6Spec().presetCount() == builtInPresets(TrackKind::Fm6));
     rig.tell("preset 3");
-    rig.tell("preset " + std::to_string(Physic::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Physic)));
     CHECK(std::equal(made.value, made.value + physic::kSettings, rig.track().physic.value));
     // FM-6's page has no ROLL.
     rig.app.session().addTrack(TrackKind::Fm6);
     rig.app.project().track = rig.app.project().trackCount() - 1;
     rig.frames(1);
     CHECK(!has(rig.get("/design/spec").body, "\"roll\""));
+}
+
+// The SAMPLER: its settings with the screen's readings, its recording as a picture made on the app
+// thread, START and END as marks, the recording picked from the page, and its key.
+namespace {
+// A second of a 440 Hz sine, quiet for its first half and loud for its second: where a note starts
+// in it is heard in how loud its first quarter second is, and its pitch in how often it crosses zero.
+std::vector<float> steppedSine() {
+    std::vector<float> out(48000);
+    for (std::size_t i = 0; i < out.size(); ++i) out[i] = (i < 24000 ? 0.2f : 0.8f) * std::sin(6.2831853f * 440.f * static_cast<float>(i) / 48000.f);
+    return out;
+}
+std::string valuesOf(const std::string& state) {
+    const std::size_t from = state.find("\"values\":[");
+    return from == std::string::npos ? "" : state.substr(from, state.find(']', from) + 1 - from);
+}
+int specNumber(const std::string& state) {
+    const std::size_t at = state.find("\"spec\":");
+    return at == std::string::npos ? -1 : std::atoi(state.c_str() + at + 7);
+}
+// The picture's points, as the page is given them.
+std::vector<int> peaksOf(const std::string& spec) {
+    std::vector<int> out;
+    const std::size_t from = spec.find("\"peaks\":[");
+    if (from == std::string::npos) return out;
+    std::istringstream in(spec.substr(from + 9, spec.find(']', from) - from - 9));
+    std::string one;
+    while (std::getline(in, one, ',')) out.push_back(std::atoi(one.c_str()));
+    return out;
+}
+// A WAV of 32-bit floats, one channel at 48 kHz (writeWav makes 16-bit ones, which cannot pass full).
+std::string floatWav(const std::vector<float>& samples) {
+    std::string out;
+    const auto put = [&](std::uint32_t v, int bytes) { for (int i = 0; i < bytes; ++i) out += static_cast<char>((v >> (8 * i)) & 255); };
+    const std::uint32_t data = static_cast<std::uint32_t>(samples.size() * 4);
+    out += "RIFF"; put(36 + data, 4); out += "WAVEfmt "; put(16, 4); put(3, 2); put(1, 2); put(48000, 4); put(48000 * 4, 4); put(4, 2); put(32, 2);
+    out += "data"; put(data, 4);
+    for (float f : samples) { std::uint32_t v; std::memcpy(&v, &f, 4); put(v, 4); }
+    return out;
+}
+} // namespace
+
+void testSamplerFromThePage() {
+    Rig rig;
+    Session& session = rig.app.session();
+    mkdir((rig.root + "/samples").c_str(), 0755);
+    mkdir((rig.root + "/samples/drums").c_str(), 0755);
+    CHECK(writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000));
+    CHECK(writeWav(rig.root + "/samples/drums/kick.wav", std::vector<float>(4800, 0.5f), 48000));
+    CHECK(session.addTrack(TrackKind::Sampler));
+    const int track = rig.app.project().trackCount() - 1;
+    rig.app.project().track = track;
+    rig.frames(1);
+    CHECK(rig.track().kind == TrackKind::Sampler);
+
+    // Until the page looks, the card is not read for it: no recordings offered.
+    std::string spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"name\":\"SAMPLER\",\"macros\":[],") && has(spec, "\"page\":\"sampler\"") && has(spec, "\"recordings\":[]"));
+    rig.get("/design/state");
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recordings\":[\"drums/kick\",\"stepped\"]") || has(spec, "\"recordings\":[\"stepped\",\"drums/kick\"]"));
+    // Its eight settings, in the order its screen shows them, each with every reading the screen gives.
+    CHECK(count(spec, "\"id\":") == sampler::kSettings && count(spec, "\"texts\":") == sampler::kSettings);
+    const char* order[] = {"PITCH", "TUNE", "START", "END", "ATTACK", "RELEASE", "LOOP", "LEVEL"};
+    std::size_t at = 0;
+    for (const char* name : order) {
+        const std::size_t next = spec.find(std::string("{\"name\":\"") + name + "\"", at);
+        CHECK(next != std::string::npos);
+        at = next == std::string::npos ? at : next;
+    }
+    CHECK(has(spec, "{\"name\":\"PITCH\",\"id\":0,\"min\":0,\"max\":127,\"flip\":true,\"texts\":[\"+60\",\"+59\"") && count(spec, "\"flip\"") == 1);
+    CHECK(has(spec, "{\"name\":\"END\",\"id\":7,\"min\":1,\"max\":100,\"texts\":[\"1%\",") && has(spec, "{\"name\":\"LOOP\",\"id\":5,\"min\":0,\"max\":1,\"texts\":[\"OFF\",\"ON\"]}"));
+    CHECK(has(spec, "\"+5 CENTS\"") && has(spec, "\"8.0 S\"]") && has(spec, "\"20.0 S\"]"));
+    CHECK(has(spec, "\"hear\":60,") && has(spec, "\"marks\":[2,7],\"least\":1,"));
+    CHECK(has(spec, "\"recording\":\"\"") && peaksOf(spec).empty()); // no recording yet: no picture
+
+    // A recording picked on the handheld: its picture comes with the spec, made on the program's own
+    // thread when the recording was read. Not before a frame has gone by: the server only hands over
+    // what the program made.
+    const int before = specNumber(rig.get("/design/state").body);
+    session.setTrackSample(track, "stepped");
+    CHECK(rig.get("/design/spec").body == spec);
+    rig.frames(1);
+    std::string state = rig.get("/design/state").body;
+    CHECK(specNumber(state) == before + 1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recording\":\"stepped\"") && has(spec, "\"seconds\":1.000,\"missing\":false"));
+    const std::vector<int> peaks = peaksOf(spec);
+    CHECK(peaks.size() == 512 && *std::max_element(peaks.begin(), peaks.end()) == 800);
+    if (peaks.size() == 512) {
+        CHECK(peaks[10] >= 195 && peaks[10] <= 200 && peaks[245] >= 195 && peaks[245] <= 200); // the quiet half
+        CHECK(peaks[266] >= 795 && peaks[266] <= 800 && peaks[511] >= 795 && peaks[511] <= 800); // the loud half
+    }
+    rig.frames(3);
+    CHECK(specNumber(rig.get("/design/state").body) == before + 1); // nothing changed: the page is not sent it again
+    CHECK(has(state, "\"name\":\"SAMPLER\",") && has(state, "\"preset\":-1") && valuesOf(state) == "\"values\":[60,0,0,0,20,0,80,100]" );
+
+    // START from the page: the track has it, the engine plays from there.
+    rig.loud();
+    const float fromTop = rig.loud();
+    CHECK(rig.tell("set 2 50") && rig.track().sampler[sampler::Start] == 50);
+    const float fromMiddle = rig.loud();
+    CHECK(fromMiddle > 3.f * fromTop);
+    CHECK(valuesOf(rig.get("/design/state").body) == "\"values\":[60,0,50,0,20,0,80,100]");
+    // START and END never cross, from the page as on the handheld.
+    CHECK(rig.tell("set 7 30") && rig.track().sampler[sampler::End] == 51);
+    CHECK(rig.tell("set 2 99") && rig.track().sampler[sampler::Start] == 50);
+    CHECK(rig.tell("set 7 80") && rig.tell("set 2 79") && rig.track().sampler[sampler::Start] == 79);
+    CHECK(rig.tell("set 2 95") && rig.track().sampler[sampler::Start] == 79);
+    CHECK(rig.tell("set 7 -40") && rig.track().sampler[sampler::End] == 80);
+    CHECK(rig.tell("set 2 -40") && rig.track().sampler[sampler::Start] == 0);
+    CHECK(rig.tell("set 7 400") && rig.track().sampler[sampler::End] == 100);
+    // PITCH, kept as the root key: 72 plays middle C an octave down.
+    const int high = rig.crossings();
+    CHECK(rig.tell("set 0 72") && rig.track().sampler[sampler::Root] == 72);
+    const int low = rig.crossings();
+    CHECK(high > 100 && low * 2 >= high - 2 && low * 2 <= high + 2);
+    rig.tell("set 0 60");
+    // A setting that is not there changes nothing; nor do a synth's requests.
+    int kept[sampler::kSettings];
+    std::copy(rig.track().sampler, rig.track().sampler + sampler::kSettings, kept);
+    CHECK(rig.tell("set 8 5") && rig.tell("set -1 5") && rig.tell("macro 0 0.9") && rig.tell("preset 1") && rig.tell("roll 4") && rig.tell("save mine"));
+    CHECK(std::equal(kept, kept + sampler::kSettings, rig.track().sampler) && !exists(rig.root + "/presets/MINE.sampler") && !exists(rig.root + "/presets/MINE"));
+
+    // Its key: down, it sounds and goes on; up, it stops.
+    rig.peak(96000);
+    CHECK(rig.peak(4000) == 0.f);
+    CHECK(rig.tell("note 60 1") && rig.peak(4000) > 0.05f);
+    CHECK(rig.tell("note 60 0"));
+    rig.peak(96000);
+    CHECK(rig.peak(4000) < 0.002f);
+
+    // Another recording from the page: only one it was offered. A name that could leave the folder is
+    // refused at the door; one that is not on the card is taken and changes nothing.
+    CHECK(rig.tell("sample drums/kick") && std::string(rig.track().sample) == "drums/kick");
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recording\":\"drums/kick\"") && has(spec, "\"seconds\":0.100,") && peaksOf(spec).size() == 512 && peaksOf(spec)[0] == 500);
+    CHECK(rig.post("sample ../songs/x").status == 400 && rig.post("sample /etc/passwd").status == 400 && rig.post("sample a/b/c/d").status == 400);
+    CHECK(rig.tell("sample notthere") && std::string(rig.track().sample) == "drums/kick");
+    CHECK(rig.tell("sample") && std::string(rig.track().sample).empty());
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"recording\":\"\"") && peaksOf(rig.get("/design/spec").body).empty());
+    rig.tell("sample stepped");
+    CHECK(std::string(rig.track().sample) == "stepped");
+
+    // A recording put on the card some other way is offered within a few seconds while the page looks.
+    CHECK(writeWav(rig.root + "/samples/later.wav", std::vector<float>(480, 0.1f), 48000));
+    int waited = 0;
+    for (; waited < 8 && !has(rig.get("/design/spec").body, "\"later\""); ++waited) {
+        rig.get("/design/state"); // the page looks about once a second
+        rig.frames(60);
+    }
+    CHECK(waited >= 1 && waited <= 6); // not at once (the card is not read every frame), and within five seconds
+    CHECK(has(rig.get("/design/spec").body, "\"later\"") && rig.tell("sample later") && std::string(rig.track().sample) == "later");
+    rig.tell("sample stepped");
+
+    // A song may name a recording that is not on the card: the page is told so.
+    session.setTrackSample(track, "gone");
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"missing\":true,\"recording\":\"gone\"") && peaksOf(rig.get("/design/spec").body).empty());
+    session.setTrackSample(track, "stepped");
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"missing\":false,\"recording\":\"stepped\""));
+
+    // One sent from the WiFi page is offered on the next frame.
+    CHECK(writeWav(rig.root + "/sent.wav", std::vector<float>(480, 0.2f), 48000));
+    std::string bytes;
+    CHECK(readTextFile(rig.root + "/sent.wav", bytes) && !bytes.empty());
+    CHECK(raw(rig.port, "PUT " + rig.door + "/samples/sent.wav HTTP/1.1\r\nHost: x\r\nContent-Length: " + std::to_string(bytes.size()) + "\r\n\r\n" + bytes).status == 200);
+    rig.get("/design/state");
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"sent\""));
+
+    // What is turned on the handheld shows on the page; what is turned on the page is a step of undo.
+    session.setSamplerSetting(track, sampler::Level, 33);
+    rig.frames(1);
+    CHECK(has(valuesOf(rig.get("/design/state").body), ",33,100]"));
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(rig.tell("set 6 70") && rig.track().sampler[sampler::Level] == 70);
+    for (int i = 0; i < 4; ++i) rig.frames(30);
+    CHECK(session.undo() && rig.track().sampler[sampler::Level] == 33);
+
+    // A file of floats may be louder than full: its picture stops at the top. And a second sampler,
+    // its recording read as often as the first's (the same version), is its own picture.
+    CHECK(writeTextFile(rig.root + "/samples/hot.wav", floatWav(std::vector<float>(4800, 2.f))));
+    CHECK(session.addTrack(TrackKind::Sampler));
+    const int second = rig.app.project().trackCount() - 1;
+    while (session.trackSound(second).version < session.trackSound(track).version) session.setTrackSample(second, "hot");
+    CHECK(session.trackSound(second).version == session.trackSound(track).version && std::string(rig.app.project().tracks[second].sample) == "hot");
+    rig.app.project().track = second;
+    rig.frames(1);
+    spec = rig.get("/design/spec").body;
+    CHECK(has(spec, "\"recording\":\"hot\"") && peaksOf(spec).size() == 512 && peaksOf(spec)[3] == 1000);
+    rig.app.project().track = track;
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"recording\":\"stepped\""));
+
+    // The page follows the handheld to a synth and back.
+    const int onSampler = specNumber(rig.get("/design/state").body);
+    rig.addSynth();
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"synth\"") && specNumber(rig.get("/design/state").body) > onSampler);
+    rig.app.project().track = track;
+    rig.frames(1);
+    CHECK(has(rig.get("/design/spec").body, "\"page\":\"sampler\"") && has(rig.get("/design/spec").body, "\"recording\":\"stepped\""));
 }
 
 // JAX-EP (jx3p-plan.md, batch 6a).
@@ -580,13 +802,13 @@ void testJaxepFromThePage() {
         while (in >> v) ++n;
         CHECK(n == jx3p::kPatchSettings); // ids 0 to 31
     }
-    CHECK(jx3pSpec().presetCount() == Jx3p::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // its own list, not Phazed's
+    CHECK(jx3pSpec().presetCount() == builtInPresets(TrackKind::Jx3p) + 1 && phazedSpec().presetCount() == builtInPresets(TrackKind::Phazed)); // its own list, not Phazed's
     rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     rig.tell("preset 0"); // the first built-in one
     CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
     rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 0.5)
     CHECK(rig.track().preset == 7 && rig.track().jx3p.value[jx3p::VcaLevel] == 99 && rig.loud() > 3.f * sound);
-    rig.tell("preset " + std::to_string(Jx3p::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Jx3p)));
     CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value));
     CHECK(rig.track().jx3p.value[jx3p::Brilliance] == 39 && rig.track().jx3p.value[jx3p::Velocity] == 0); // as the track had them, not as they were at the save
     // ...and it sounds as it did, with BRILLIANCE where it was when it was listened to (it moves A1's
@@ -606,6 +828,9 @@ void testJaxepFromThePage() {
 } // namespace
 
 int main() {
+    // The engine's own presets only: the tests here are of their tables. The presets the app's data
+    // adds (and any track sound it gives a built-in) are presets_test's.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
     testNamesAndRequests();
     testThePageIsServed();
     testPhazedFromThePage();
@@ -614,9 +839,25 @@ int main() {
     testFm6FromThePage();
     testPhysicFromThePage();
     testJaxepFromThePage();
+    testSamplerFromThePage();
     if (const char* hold = std::getenv("APOTHECA_DESIGN_HOLD")) {
         Rig rig;
-        if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)
+        if (std::getenv("APOTHECA_DESIGN_SAMPLER")) { // (a SAMPLER track, on a recording of four hits; two more on the card)
+            mkdir((rig.root + "/samples").c_str(), 0755);
+            mkdir((rig.root + "/samples/drums").c_str(), 0755);
+            std::vector<float> hits(2 * 48000);
+            for (std::size_t i = 0; i < hits.size(); ++i) {
+                const float t = static_cast<float>(i % 24000) / 48000.f;
+                hits[i] = (0.9f - 0.15f * static_cast<float>(i / 24000)) * std::exp(-7.f * t) * std::sin(6.2831853f * 220.f * static_cast<float>(i) / 48000.f);
+            }
+            writeWav(rig.root + "/samples/four hits.wav", hits, 48000);
+            writeWav(rig.root + "/samples/stepped.wav", steppedSine(), 48000);
+            writeWav(rig.root + "/samples/drums/kick.wav", std::vector<float>(4800, 0.5f), 48000);
+            rig.app.session().addTrack(TrackKind::Sampler);
+            rig.app.project().track = rig.app.project().trackCount() - 1;
+            rig.app.session().setTrackSample(rig.app.project().track, "four hits");
+            rig.frames(1);
+        } else if (std::getenv("APOTHECA_DESIGN_PHYSIC")) { // (a PHYSIC track, on its first preset)
             rig.app.session().addTrack(TrackKind::Physic);
             rig.app.project().track = rig.app.project().trackCount() - 1;
             rig.frames(1);
@@ -626,9 +867,12 @@ int main() {
         }
         std::printf("open http://127.0.0.1:%d%s/design\n", rig.port, rig.door.c_str());
         std::fflush(stdout);
+        bool sounding = false;
         for (int i = 0; i < std::atoi(hold) * 60; ++i) {
             rig.frames(1);
-            rig.peak(800);
+            const bool now = rig.peak(800) > 0.001f;
+            if (now != sounding) std::printf(now ? "sounding\n" : "silent\n"), std::fflush(stdout); // (for a browser test: the page's key was heard)
+            sounding = now;
             usleep(16000);
         }
     }

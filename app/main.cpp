@@ -19,8 +19,10 @@
 //                  jaxep-bank (MAIN on B7, in BANK B: the longest of the 32 names), jaxep-held (a knob, A held, turned)
 //                  fm6, fm6-1 .. fm6-8 (FM-6's main panel, a macro lit; and its pages), fm6-long (MAIN on the
 //                  widest of its 32 names), fm6-fixed (an operator at a FIXED pitch, on FINE), fm6-off (an operator OFF)
-//                  physic, physic-1 .. physic-4 (PHYSIC's main panel, a macro lit; and its pages), physic-long (MAIN on
-//                  the widest of its names), physic-string (RING on a string: STRETCH reads B)
+//                  physic, physic-1 .. physic-5 (PHYSIC's main panel, a macro lit; and its pages: physic-5 is BODY, on
+//                  Vibes with PAIR and BUZZ turned up, every setting there read), physic-long (MAIN on the widest of its
+//                  names), physic-string (RING on a string: STRETCH reads B), physic-noise (SOUND on Hand Drum, HARDNESS
+//                  under the cursor: a NOISE burst's length)
 //                  device-mod-held, -stepper, -new, -full, -deleting (X held on a macro: its MOD), fx-mod-held,
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12, mod-free (the MOD tab;
@@ -1259,8 +1261,9 @@ int main(int argc, char** argv) {
         }
     } else if (std::strncmp(view, "physic", 6) == 0) {
         // A PHYSIC track, added the way the Song screen adds one: MAIN, a macro lit ("physic"); a page
-        // ("physic-1" .. "physic-4": SOUND, RING, PLAY, DICE); MAIN on the widest of its names
-        // ("physic-long"); RING on STEEL, a string, STRETCH under the cursor reading B ("physic-string").
+        // ("physic-1" .. "physic-5": SOUND, RING, PLAY, DICE, BODY; BODY on Vibes, PAIR 7 and BUZZ 30); MAIN
+        // on the widest of its names ("physic-long"); RING on STEEL, a string, STRETCH under the cursor
+        // reading B ("physic-string"); SOUND on Hand Drum, HARDNESS read as a NOISE burst ("physic-noise").
         app.session().addTrack(TrackKind::Physic);
         const int track = app.project().trackCount() - 1;
         app.project().track = track;
@@ -1275,6 +1278,16 @@ int main(int argc, char** argv) {
             for (int i = 0; i < Physic::presetCount(); ++i)
                 if (std::strcmp(Physic::presetName(i), "Steel") == 0) app.session().chooseSynthPreset(track, i);
             app.physic().goTo(2, 2); // RING: STRETCH
+        } else if (std::strcmp(view, "physic-noise") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Hand Drum") == 0) app.session().chooseSynthPreset(track, i);
+            app.physic().goTo(1, 2); // SOUND: HARDNESS
+        } else if (std::strcmp(view, "physic-5") == 0) {
+            for (int i = 0; i < Physic::presetCount(); ++i)
+                if (std::strcmp(Physic::presetName(i), "Vibes") == 0) app.session().chooseSynthPreset(track, i);
+            app.session().setSynthSetting(track, physic::Pair, 7);
+            app.session().setSynthSetting(track, physic::Buzz, 30);
+            app.physic().goTo(5, 1); // BODY: MOTOR
         } else if (view[6] == '-') {
             app.physic().goTo(std::atoi(view + 7), 0);
         } else {

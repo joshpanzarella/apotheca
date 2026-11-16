@@ -108,6 +108,86 @@ std::string modText(const ModSettings& mod, int index) {
     return out;
 }
 
+std::string soundText(TrackKind kind, const EffectData* effects, const float* send, int glideFrom, const ModSettings* mods) {
+    std::string out;
+    putEffects(out, effects, kTrackSlots);
+    // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
+    for (int bus = 0; bus < kBuses; ++bus) {
+        if (!(send[bus] > 0.f)) continue;
+        put(out, "send %.0f", bus + 1);
+        put(out, " %.6g\n", send[bus]);
+    }
+    // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
+    if (isSynth(kind) && glideFrom) put(out, "glidefrom %.0f\n", glideFrom);
+    for (int m = 0; m < kModsPerTrack; ++m) out += modText(mods[m], m); // (nothing for one that is OFF)
+    return out;
+}
+
+SoundLine readSoundLine(const std::string& word, std::istream& in, const SoundParts& to, bool oldSound) {
+    if (word == "fx") {
+        double slot, value;
+        std::string name;
+        if (!(in >> slot >> name) || !(slot >= 1) || slot > kTrackSlots) return SoundLine::Refused;
+        EffectData& data = to.effects[static_cast<int>(slot) - 1];
+        const EffectKind kind = effectFromWord(name.c_str());
+        if (kind == EffectKind::None) return SoundLine::Refused; // an effect this version does not have: the slot is left as it was
+        const EffectInfo& info = effectInfo(kind);
+        data.kind = static_cast<int>(kind);
+        for (int i = 0; i < kEffectParams; ++i) data.param[i] = info.defaults[i];
+        for (int i = 0; i < info.params && (in >> value); ++i) data.param[i] = fractionIn(value, 0.f, 1.f);
+        return SoundLine::Taken;
+    }
+    if (word == "send") {
+        double bus, amount;
+        if (!(in >> bus >> amount) || bus < 1 || bus > kBuses || !(amount >= 0.0)) return SoundLine::Refused;
+        to.send[static_cast<int>(bus) - 1] = static_cast<float>(amount > 1.0 ? 1.0 : amount);
+        return SoundLine::Taken;
+    }
+    if (word == "glidefrom") {
+        double type = 0;
+        if (!(in >> type) || !(type >= 0.0) || type > 255.0) return SoundLine::Refused;
+        if (!isSynth(to.kind)) return SoundLine::Refused; // (a drum track has none: one written there by hand would wait for the day it became a synth)
+        *to.glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
+        return SoundLine::Taken;
+    }
+    if (word == "mod") {
+        // (KIND and TARGET must be there; what is missing after them is as a new MOD's. A KIND or a
+        // TARGET nobody knows is OFF, and so is a target that does not fit the track: seen once the
+        // whole song or preset is read (modsFit), since the track's effects may be written after this line.)
+        double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0, speed = kModSpeedUsual;
+        if (!(in >> n >> kind >> target) || !(n >= 1.0) || n > kModsPerTrack) return SoundLine::Refused;
+        if (oldSound && target >= 0.0 && target < kSynthMacros) return SoundLine::Refused; // on another synth's macro: OFF, as its automation goes
+        if (!(in >> depth)) depth = 0.5;
+        else if (!(in >> rate)) rate = kModRateUsual;
+        else if (!(in >> shape)) shape = 0;
+        else if (!(in >> restart)) restart = 0;
+        else if (!(in >> phase)) phase = 0;
+        else if (!(in >> speed)) speed = kModSpeedUsual;
+        ModSettings& m = to.mods[static_cast<int>(n) - 1];
+        m.kind = modKind(wholeIn(kind, -1, 255));
+        const int lane = wholeIn(target, -1, 255);
+        m.target = modTargetKnown(lane) ? lane : kModTargetNone;
+        m.depth = depthFromFile(depth);
+        m.rate = modRate(wholeIn(rate, -1, 255));
+        m.shape = modShape(wholeIn(shape, -1, 255));
+        m.restart = modRestart(wholeIn(restart, -1, 255));
+        m.phase = modPhase(wholeIn(phase, -1, 255));
+        m.speed = fractionIn(speed, kModSpeedLeast, kModSpeedMost);
+        return SoundLine::Taken;
+    }
+    if (word == "modsteps") {
+        double n = 0, length = kModSteps, slew = 0, chance = 0, v = 0;
+        if (!(in >> n >> length) || !(n >= 1.0) || n > kModsPerTrack) return SoundLine::Refused;
+        ModSettings& m = to.mods[static_cast<int>(n) - 1];
+        m.length = wholeIn(length, 1, kModSteps);
+        if (in >> slew) m.slew = fractionIn(slew, 0.f, 1.f);
+        if (in >> chance) m.chance = fractionIn(chance, 0.f, 1.f);
+        for (int i = 0; i < kModSteps && (in >> v); ++i) m.steps[i] = rowIn(v);
+        return SoundLine::Taken;
+    }
+    return SoundLine::NotOne;
+}
+
 namespace {
 
 // One track of a song file: from its "track" line to the next one's.
@@ -136,16 +216,7 @@ void putTrack(std::string& out, const TrackData& track) {
         put(out, "mix %.0f", track.mixDb);
         put(out, " %.0f\n", track.mixPan);
     }
-    putEffects(out, track.effects, kTrackSlots);
-    // send BUS AMOUNT: how much of the track goes to the ECHO (1) or the SPACE (2) bus. Left out when none does.
-    for (int bus = 0; bus < kBuses; ++bus) {
-        if (!(track.send[bus] > 0.f)) continue;
-        put(out, "send %.0f", bus + 1);
-        put(out, " %.6g\n", track.send[bus]);
-    }
-    // glidefrom N: a synth track's GLIDE FROM (1 PAIRED, 2 NEAREST, 3 RANDOM). Left out at TOP.
-    if (isSynth(track.kind) && track.glideFrom) put(out, "glidefrom %.0f\n", track.glideFrom);
-    for (int m = 0; m < kModsPerTrack; ++m) out += modText(track.mods[m], m); // (nothing for one that is OFF)
+    out += soundText(track.kind, track.effects, track.send, track.glideFrom, track.mods);
     if (track.kind == TrackKind::Drums) {
         out += "lanes";
         for (float level : track.laneLevel) put(out, " %.6g", level);
@@ -466,11 +537,11 @@ bool parseSong(const std::string& text, Project& project) {
             std::string name;
             std::getline(in >> std::ws, name);
             std::snprintf(song->chordPack, sizeof song->chordPack, "%s", name.c_str());
-        } else if (word == "fx") {
+        } else if (word == "fx" && !track) { // the master's (a track's: readSoundLine, below)
             double slot, value;
             std::string name;
-            if (!(in >> slot >> name) || slot < 1 || slot > (track ? kTrackSlots : kMasterSlots)) continue;
-            EffectData& data = (track ? track->effects : song->masterEffects)[static_cast<int>(slot) - 1];
+            if (!(in >> slot >> name) || slot < 1 || slot > kMasterSlots) continue;
+            EffectData& data = song->masterEffects[static_cast<int>(slot) - 1];
             const EffectKind kind = effectFromWord(name.c_str());
             if (kind == EffectKind::None) continue; // an effect this version does not have: the slot is left as it was
             const EffectInfo& info = effectInfo(kind);
@@ -527,46 +598,8 @@ bool parseSong(const std::string& text, Project& project) {
                 if (index < 0 || index >= kAutoSteps || !(value >= 0.0)) continue;
                 track->automation[static_cast<int>(sceneNumber) - 1][static_cast<int>(lane)][static_cast<int>(index)] = static_cast<float>(value > 1.0 ? 1.0 : value);
             }
-        } else if (word == "send") {
-            double bus, amount;
-            if (!(in >> bus >> amount) || bus < 1 || bus > kBuses || !(amount >= 0.0)) continue;
-            track->send[static_cast<int>(bus) - 1] = static_cast<float>(amount > 1.0 ? 1.0 : amount);
-        } else if (word == "glidefrom") {
-            double type = 0;
-            if (!(in >> type) || !(type >= 0.0) || type > 255.0) continue;
-            if (!isSynth(track->kind)) continue; // (a drum track has none: one written there by hand would wait for the day it became a synth)
-            track->glideFrom = static_cast<std::uint8_t>(glideFromKind(static_cast<int>(type)));
-        } else if (word == "mod") {
-            // (KIND and TARGET must be there; what is missing after them is as a new MOD's. A KIND or a
-            // TARGET nobody knows is OFF, and so is a target that does not fit the track: seen once the
-            // whole song is read, below, since the track's effects may be written after this line.)
-            double n = 0, kind = 0, target = -1, depth = 0.5, rate = kModRateUsual, shape = 0, restart = 0, phase = 0, speed = kModSpeedUsual;
-            if (!(in >> n >> kind >> target) || !(n >= 1.0) || n > kModsPerTrack) continue;
-            if (oldSound && target >= 0.0 && target < kSynthMacros) continue; // on another synth's macro: OFF, as its automation goes
-            if (!(in >> depth)) depth = 0.5;
-            else if (!(in >> rate)) rate = kModRateUsual;
-            else if (!(in >> shape)) shape = 0;
-            else if (!(in >> restart)) restart = 0;
-            else if (!(in >> phase)) phase = 0;
-            else if (!(in >> speed)) speed = kModSpeedUsual;
-            ModSettings& m = track->mods[static_cast<int>(n) - 1];
-            m.kind = modKind(wholeIn(kind, -1, 255));
-            const int lane = wholeIn(target, -1, 255);
-            m.target = modTargetKnown(lane) ? lane : kModTargetNone;
-            m.depth = depthFromFile(depth);
-            m.rate = modRate(wholeIn(rate, -1, 255));
-            m.shape = modShape(wholeIn(shape, -1, 255));
-            m.restart = modRestart(wholeIn(restart, -1, 255));
-            m.phase = modPhase(wholeIn(phase, -1, 255));
-            m.speed = fractionIn(speed, kModSpeedLeast, kModSpeedMost);
-        } else if (word == "modsteps") {
-            double n = 0, length = kModSteps, slew = 0, chance = 0, v = 0;
-            if (!(in >> n >> length) || !(n >= 1.0) || n > kModsPerTrack) continue;
-            ModSettings& m = track->mods[static_cast<int>(n) - 1];
-            m.length = wholeIn(length, 1, kModSteps);
-            if (in >> slew) m.slew = fractionIn(slew, 0.f, 1.f);
-            if (in >> chance) m.chance = fractionIn(chance, 0.f, 1.f);
-            for (int i = 0; i < kModSteps && (in >> v); ++i) m.steps[i] = rowIn(v);
+        } else if (readSoundLine(word, in, SoundParts{track->kind, track->effects, track->send, &track->glideFrom, track->mods}, oldSound) != SoundLine::NotOne) {
+            continue; // fx, send, glidefrom, mod, modsteps: the track's sound past its synth (a preset file's too)
         } else if (word == "mix") {
             double db = 0, pan = 0;
             if (!(in >> db)) continue;

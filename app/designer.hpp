@@ -18,6 +18,12 @@
 //   save NAME         keep the sound as a preset called NAME
 //   roll N            a new sound from the dice (PHYSIC's: SynthSpec::roll); N is any number, to vary them
 //   name NAME         what the track is called ("name" alone: its instrument's name again)
+//   sample NAME       a SAMPLER track's recording: one of the names the page was offered ("sample"
+//                     alone: none). NAME is the whole name, folders and all ("drums/kicks/808").
+//
+// What the page is shown says what KIND of page it is ("page": "synth" or "sampler"; the KIT's will
+// be "kit"), and the page builds itself from that: a synth's pages and presets, or a sampler's
+// settings round the picture of its recording (Session::designSpec).
 
 #include <mutex>
 #include <string>
@@ -28,7 +34,7 @@
 namespace apotheca {
 
 struct DesignRequest {
-    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll } kind = Set;
+    enum Kind { Set, Macro, Preset, Note, Save, Name, Roll, Sample } kind = Set;
     int a = 0, b = 0;
     float value = 0.f;
     std::string name;
