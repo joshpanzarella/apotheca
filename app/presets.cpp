@@ -6,6 +6,7 @@
 #include <cstring>
 #include <sstream>
 
+#include "apotheca/fm6.hpp"
 #include "instruments.hpp"
 #include "mods.hpp"
 #include "song_file.hpp"
@@ -355,6 +356,24 @@ PresetData readPresetData(TrackKind kind, const std::string& text) {
                 set(static_cast<int>(id), v);
             }
             if (!any) problem("\"set\" takes pairs: ID VALUE");
+            continue;
+        }
+        if (word == "op") {
+            // op N V0 ... V20: FM-6's operator N (1 to 6), its 21 settings in the original's order
+            // (fm6::OpSetting: R1-R4, L1-L4, BREAK POINT, LEFT / RIGHT DEPTH, LEFT / RIGHT CURVE, RATE
+            // SCALING, AMS, VELOCITY, LEVEL, MODE, COARSE, FINE, DETUNE): one line an operator, not 21 pairs.
+            if (kind != TrackKind::Fm6) {
+                problem("\"op\" is FM-6's: an operator and its 21 settings");
+                continue;
+            }
+            double op = 0.0;
+            if (!(in >> op) || !(op >= 1.0 && op <= 6.0) || op != std::floor(op)) {
+                problem("\"op\" takes an operator, 1 to 6, then its 21 settings");
+                continue;
+            }
+            int s = 0;
+            for (; s < fm6::kOpSettings && (in >> v); ++s) set(fm6::opSetting(static_cast<int>(op), s), v);
+            if (s < fm6::kOpSettings || (in >> v)) problem("\"op N\" takes 21 settings, R1 to DETUNE");
             continue;
         }
         problem("a word a preset does not have");
