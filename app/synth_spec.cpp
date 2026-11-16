@@ -348,21 +348,23 @@ void item(int page, int index, int& id, const char*& name) {
 } // namespace fm
 
 // ---- PHYSIC ----------------------------------------------------------------------------
-// The plan: docs/plans/physic-plan.md, sections 3 and 7. Eighteen settings on four pages, every one
-// read in its own unit where it has one (seconds, cents, dB, where along it is struck).
+// The plan: docs/plans/physic-plan.md, sections 3 and 7. Twenty-three settings on five pages (BODY,
+// batch 10's), every one read in its own unit where it has one (seconds, cents, dB, hertz, where along
+// it is struck).
 
 namespace ps {
 using namespace physic;
 
-const char* const kPages[5] = {"MAIN", "SOUND", "RING", "PLAY", "DICE"};
+const char* const kPages[6] = {"MAIN", "SOUND", "RING", "PLAY", "DICE", "BODY"};
 struct Item { int id; const char* name; };
 const Item kSound[] = {{Model, "MODEL"}, {Strike, "STRIKE"}, {Hardness, "HARDNESS"}, {Position, "POSITION"}};
 const Item kRing[] = {{Decay, "DECAY"}, {Material, "MATERIAL"}, {Stretch, "STRETCH"}, {Release, "RELEASE"}};
 const Item kPlay[] = {{Velocity, "VELOCITY"}, {Octave, "OCTAVE"}, {Fine, "FINE"}, {Width, "WIDTH"}, {Level, "LEVEL"}};
 const Item kDice[] = {{Dice, "DICE"}, {DicePosition, "DICE POSITION"}, {DiceHardness, "DICE HARDNESS"}, {DiceTune, "DICE TUNE"}, {DiceDecay, "DICE DECAY"}};
+const Item kBody[] = {{Pair, "PAIR"}, {Motor, "MOTOR"}, {Body, "BODY"}, {BodyMix, "BODY MIX"}, {Buzz, "BUZZ"}};
 struct Page { const Item* items; int count; };
-const Page kPageItems[5] = {{nullptr, 0}, {kSound, 4}, {kRing, 4}, {kPlay, 5}, {kDice, 5}};
-static_assert(4 + 4 + 5 + 5 == kSettings, "every setting is on one page");
+const Page kPageItems[6] = {{nullptr, 0}, {kSound, 4}, {kRing, 4}, {kPlay, 5}, {kDice, 5}, {kBody, 5}};
+static_assert(4 + 4 + 5 + 5 + 5 == kSettings, "every setting is on one page");
 
 // A player's own preset is written over the FIRST preset's sound, not over what the track had: a
 // preset saved before a setting was appended (the plan's batch 10: PAIR, MOTOR, BODY) then plays
@@ -405,7 +407,22 @@ void settingText(int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
     switch (id) {
     case Model: std::snprintf(out, n, "%s", modelName(value)); return;
-    case Strike: std::snprintf(out, n, "%s", value == 1 ? "MALLET" : "PLUCK"); return;
+    case Strike: std::snprintf(out, n, "%s", strikeName(value)); return;
+    case Body: std::snprintf(out, n, "%s", bodyName(value)); return;
+    case Pair: // the two of a pair this far apart
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%d CENTS", value);
+        return;
+    case Motor: { // the tremolo's speed
+        const double hz = motorHz(value);
+        if (hz <= 0.0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, hz < 0.995 ? "%.2f HZ" : "%.1f HZ", hz);
+        return;
+    }
+    case Buzz: // how far under its loudest the note still rattles
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%.0f DB", buzzDb(value));
+        return;
     case Position: return positionText(value, out, n);
     case Decay: return secondsText(decaySeconds(value), out, n);
     case Material:
@@ -428,7 +445,7 @@ void settingText(int id, int value, char* out, int size) {
         if (value <= 0) std::snprintf(out, n, "OFF");
         else std::snprintf(out, n, "%.1f CENTS", kDiceTuneCents * value / 100.0);
         return;
-    case Velocity: case Dice: case DicePosition: case DiceHardness: case DiceDecay:
+    case Velocity: case Dice: case DicePosition: case DiceHardness: case DiceDecay: case BodyMix:
         if (value <= 0) std::snprintf(out, n, "OFF");
         else std::snprintf(out, n, "%d%%", value);
         return;
@@ -437,11 +454,12 @@ void settingText(int id, int value, char* out, int size) {
 }
 
 // What a setting does with the rest of the sound: HARDNESS under MALLET is the mallet's contact
-// ("2.1 MS", at full velocity: a softer note's is longer, by Hertz's law), and STRETCH on STRING is
-// the string's stiffness ("B 0.0004").
+// ("2.1 MS", at full velocity: a softer note's is longer, by Hertz's law) and under NOISE the burst's
+// length ("2.0 S" to "2 MS"), and STRETCH on STRING is the string's stiffness ("B 0.0004").
 void readingIn(const int* values, int id, int value, char* out, int size) {
     const std::size_t n = static_cast<std::size_t>(size);
-    if (id == Hardness && values[Strike] == 1) {
+    if (id == Hardness && values[Strike] == kNoise) return secondsText(noiseSeconds(value), out, n);
+    if (id == Hardness && values[Strike] == kMallet) {
         const double ms = contactSeconds(value, 1.0, 1.0) * 1000.0;
         std::snprintf(out, n, ms < 0.995 ? "%.2f MS" : "%.1f MS", ms);
         return;
@@ -456,7 +474,7 @@ void macroText(int macro, float v, char* out, int size) {
     else plusMinus(v, out, size);
 }
 bool envelopePage(int) { return false; }
-int itemCount(int page) { return page >= 1 && page < 5 ? kPageItems[page].count : 0; }
+int itemCount(int page) { return page >= 1 && page < 6 ? kPageItems[page].count : 0; }
 void item(int page, int index, int& id, const char*& name) {
     const Item& it = kPageItems[page].items[index];
     id = it.id;
@@ -465,9 +483,12 @@ void item(int page, int index, int& id, const char*& name) {
 
 // Y on MAIN (the plan's call 10): a new strike and ring for the same MODEL. STRIKE, HARDNESS,
 // POSITION, DECAY, MATERIAL and STRETCH are rolled, each from the seed and its own place (a hash,
-// never a generator walked); MODEL, RELEASE, the levels and the dice are left as they are. Each roll
-// keeps inside what sounds as the model: a modal model is struck by a mallet three times in four, a
-// string plucked; a string is never made more than a little stiff, nor rings past 15 s.
+// never a generator walked), and of batch 10's PAIR, MOTOR, BODY MIX and BUZZ; MODEL, BODY, RELEASE,
+// the levels and the dice are left as they are. Each roll keeps inside what sounds as the model: a
+// modal model is struck by a mallet three times in four, a string plucked, and either is breathed on
+// (NOISE) one time in eight; a string is never made more than a little stiff, nor rings past 15 s.
+// PAIR is off half the time (else 2 to 12 cents), MOTOR three times in four (else 10 to 90), BUZZ four
+// in five (else 5 to 45): a sound with all of them on every time is no longer the model's own.
 double unit(unsigned seed, int which) { // 0 up to 1
     return chordHash(chordHash(seed * 0x9E3779B1u + 0x2545F491u) ^ static_cast<std::uint32_t>(which + 1) * 0x85EBCA6Bu) / 4294967296.0;
 }
@@ -481,6 +502,11 @@ void roll(TrackData& t, unsigned seed) {
     v[Decay] = string ? between(seed, 3, 30, 85) : between(seed, 3, 20, 92);
     v[Material] = between(seed, 4, 0, 100);
     v[Stretch] = string ? between(seed, 5, 0, 50) : between(seed, 5, 30, 70);
+    if (unit(seed, 6) < 0.125) v[Strike] = kNoise;
+    v[Pair] = unit(seed, 7) < 0.5 ? 0 : between(seed, 8, 2, 12);
+    v[Motor] = unit(seed, 9) < 0.75 ? 0 : between(seed, 10, 10, 90);
+    v[Buzz] = unit(seed, 11) < 0.8 ? 0 : between(seed, 12, 5, 45);
+    v[BodyMix] = between(seed, 13, 20, 90);
 }
 } // namespace ps
 
@@ -557,7 +583,7 @@ const SynthSpec& physicSpec() {
     static const SynthSpec spec = {"PHYSIC", Presets<Physic, TrackKind::Physic>::count, Presets<Physic, TrackKind::Physic>::name, Presets<Physic, TrackKind::Physic>::category, ps::loadPreset, ps::values,
                                    physic::settingMin, physic::settingMax, ps::settingText,
                                    {"TONE", "POSITION", "DECAY", "MATERIAL", "STRETCH", "RELEASE", "DICE", "OCTAVE"}, ps::macroText,
-                                   5, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll};
+                                   6, ps::kPages, ps::itemCount, ps::item, ps::envelopePage, nullptr, true, nullptr, ps::readingIn, ps::roll};
     return spec;
 }
 

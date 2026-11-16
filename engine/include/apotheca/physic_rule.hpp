@@ -28,7 +28,7 @@ namespace physic {
 // Ids are appended, never reordered: songs and presets store them by number.
 enum Setting {
     Model,        // 0..10: STRING, MARIMBA ... WOOD (kModelNames)
-    Strike,       // 0..1: PLUCK, MALLET (NOISE is to be appended as 2: plan batch 10)
+    Strike,       // 0..2: PLUCK, MALLET, NOISE (StrikeKind; NOISE appended in batch 10)
     Hardness,     // 0..100: a mallet's contact 8 ms (yarn) to 0.3 ms (brass); a pluck's brightness
     Position,     // 0..100: struck 1% to 50% along
     Decay,        // 0..100: 50 MS to 30 S, the longest any mode rings
@@ -45,17 +45,37 @@ enum Setting {
     DiceHardness, // 0..100: at 100, HARDNESS +-30 points
     DiceTune,     // 0..100: at 100, +-15 cents
     DiceDecay,    // 0..100: at 100, DECAY's time +-30%
+    // Batch 10 (the plan's sections 2 and 3), each 0 (off) in every version 1 preset:
+    Pair,         // 0..20 cents: each note two of it, kept that far apart (they beat). STRING: a second
+                  // string; a modal model: its two lowest modes each split into a pair (a bell's doublets)
+    Motor,        // 0..100: OFF, then a tremolo from 0.2 Hz (a slow swell) to 8 Hz (a vibraphone's motor)
+    Body,         // 0..3: NONE, GUITAR, BOX, TUBES (BodyKind)
+    BodyMix,      // 0..100: how much of the BODY is heard (TUBES: how much louder and longer the note rings)
+    Buzz,         // 0..100: OFF, then loose parts rattle while the note is loud (an mbira's caps, a snare's
+                  // wires, a balafon's membranes): for the top 6 dB of its ring up to the top 36 dB
     kSettings
 };
-// A patch has room for the four the plan appends in batch 10 (PAIR, MOTOR, BODY, BODY MIX), at 0.
-constexpr int kSettingRoom = 22;
-static_assert(kSettings == 18, "ids are appended, never reordered");
+// A patch has room for three more after BUZZ, at 0.
+constexpr int kSettingRoom = 26;
+static_assert(kSettings == 23, "ids are appended, never reordered");
+enum StrikeKind { kPluck, kMallet, kNoise, kStrikes };
+enum BodyKind { kBodyNone, kBodyGuitar, kBodyBox, kBodyTubes, kBodies };
+inline const char* bodyName(int b) {
+    static const char* const names[kBodies] = {"NONE", "GUITAR", "BOX", "TUBES"};
+    return names[b < 0 || b >= kBodies ? 0 : b];
+}
+inline const char* strikeName(int s) {
+    static const char* const names[kStrikes] = {"PLUCK", "MALLET", "NOISE"};
+    return names[s < 0 || s >= kStrikes ? 0 : s];
+}
 
 inline int settingMin(int id) { return id == Octave ? -2 : id == Fine ? -50 : id == Level ? -24 : 0; }
 inline int settingMax(int id) {
     switch (id) {
     case Model: return 10;
-    case Strike: return 1;
+    case Strike: return kStrikes - 1;
+    case Pair: return 20;
+    case Body: return kBodies - 1;
     case Octave: return 2;
     case Fine: return 50;
     case Level: return 6;
@@ -455,6 +475,67 @@ inline Tuning tuningOf(double f0, double sampleRate, double pole, double dispers
     t.eta = std::sin(w * (1.0 - t.part) * 0.5) / std::sin(w * (1.0 + t.part) * 0.5);
     return t;
 }
+
+// ---- batch 10: NOISE, PAIR, MOTOR, BODY, BUZZ (the plan's sections 2 and 3) ------------------
+
+// NOISE: a burst of noise, its loudness a half-sine over its length, HARDNESS setting the length
+// from 2 s (0: a breath, a bow on glass) to 2 ms (100: a brush, a slap), on a log scale. Into the
+// modes or the string as a mallet's push is (AC's noise exciter is the model). SELF.
+constexpr double kNoiseLongest = 2.0, kNoiseShortest = 0.002;
+inline double noiseSeconds(double hardness) {
+    const double h = (hardness < 0.0 ? 0.0 : (hardness > 100.0 ? 100.0 : hardness)) / 100.0;
+    return kNoiseLongest * std::pow(kNoiseShortest / kNoiseLongest, h);
+}
+
+// PAIR: the two of a pair sit half its cents either side of the note, so the pitch heard stays the
+// note's, and they beat at the difference of their frequencies (FAITHFUL: two sines that far apart).
+inline double pairRatio(double cents, int side) { return std::pow(2.0, (side ? cents : -cents) / 2400.0); }
+inline double pairBeatHz(double hz, double cents) { return hz * (pairRatio(cents, 1) - pairRatio(cents, 0)); }
+constexpr int kPairedModes = 2; // a modal model's lowest two modes are paired (the plan: BELL 7 modes, 9 with PAIR)
+
+// MOTOR: a tremolo whose turn starts at each strike (the plan's call 17), so a note is the same each
+// time it is struck. 1 reads 0.2 Hz, 100 reads 8 Hz, on a log scale. The level falls from full at
+// the turn's start to 1 - kMotorDepth half a turn on (a vibraphone's discs shut the tubes). SELF.
+constexpr double kMotorSlowest = 0.2, kMotorFastest = 8.0, kMotorDepth = 0.6;
+inline double motorHz(double motor) {
+    if (!(motor >= 0.5)) return 0.0;
+    const double m = motor > 100.0 ? 100.0 : motor;
+    return kMotorSlowest * std::pow(kMotorFastest / kMotorSlowest, (m - 1.0) / 99.0);
+}
+
+// BODY: GUITAR and BOX are a few resonances of a box the strings or tines sit on, one for the track,
+// run on the voices' sum (its middle, L + R) and added back to both sides. At BODY MIX 100 each
+// resonance adds as much again as the sound had at its frequency (+6 dB there). Their frequencies
+// and rings: a guitar's air mode near 100 Hz and top plate near 200 and 400 Hz (FR ch. 9: the
+// figures SELF until a page is read); a small box's two near 180 and 420 Hz (SELF).
+struct BodyResonance { double hz, t60; };
+constexpr int kBodyModesMost = 3;
+inline int bodyResonances(int body, BodyResonance* out) {
+    switch (body) {
+    case kBodyGuitar: out[0] = {98.0, 0.14}, out[1] = {204.0, 0.10}, out[2] = {392.0, 0.07}; return 3;
+    case kBodyBox: out[0] = {180.0, 0.10}, out[1] = {420.0, 0.06}; return 2;
+    default: return 0;
+    }
+}
+constexpr double kBodyPeak = 1.0; // a resonance's gain at its frequency, at BODY MIX 100
+// TUBES is done in each voice (the plan): the played mode (a marimba's tube is tuned to it; CHIME's
+// lowest, which has none) rings louder and longer, a string's fundamental longer. At BODY MIX 100:
+// struck kTubeLouder + 1 times as hard against the rest, ringing kTubeLonger + 1 times as long. SELF.
+constexpr double kTubeLouder = 1.0, kTubeLonger = 2.0;
+
+// BUZZ: loose parts on the object rattle while it is loud. A rattle touches only when the sound is
+// over its gap, which sits BUZZ's reading in dB under the loudest the note has been: 6 dB (BUZZ 1:
+// only the top of each strike) to 36 dB (100: most of the ring). What is over the gap comes out as
+// a sizzle (hashed noise: never a generator walked), so it buzzes a few times a wave and stops by
+// itself as the note dies away. SELF.
+constexpr double kBuzzNearestDb = 6.0, kBuzzFurthestDb = 36.0;
+inline double buzzDb(double buzz) {
+    if (!(buzz >= 0.5)) return 0.0;
+    const double b = buzz > 100.0 ? 100.0 : buzz;
+    return kBuzzNearestDb + (kBuzzFurthestDb - kBuzzNearestDb) * (b - 1.0) / 99.0;
+}
+inline double buzzGap(double buzz) { return buzz >= 0.5 ? std::pow(10.0, -buzzDb(buzz) / 20.0) : 0.0; } // over the loudest
+constexpr float kBuzzSize = 1.f; // the sizzle: what is over the gap, times noise of this size
 
 // ---- the dice ------------------------------------------------------------------------------
 // A note's roll, from where and which time it is struck (the engine's noteSeed: the track, the

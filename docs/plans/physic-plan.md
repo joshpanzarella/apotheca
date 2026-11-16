@@ -5,7 +5,8 @@ designers each wrote a plan ("sound", "engine", "hands"); this one is joined
 from them, then revised after a review the same day (section 13 says what
 was taken and what was not). **The engine part (batches 0 to 5, and the
 presets as engine data) was built on 2026-11-15, branch `physic`: section 14.
-The app part (7a, 7b, 9) was built on 2026-11-16: section 15. Batch 10 is not. Nobody has heard anything.** The code
+The app part (7a, 7b, 9) was built on 2026-11-16: section 15. Batch 10 was built the same day, branch
+`physic2`: section 16. Nobody has heard anything.** The code
 was only read. The designers ran four throwaway programs for cost and tuning
 in a scratchpad, not in the repo, on a 2.3 GHz Xeon container: those figures
 are marked **scratch**. They are not the owner's desk and not `bench`.
@@ -1064,3 +1065,76 @@ RELEASE, the levels and the dice are left. One step of undo. The ranges are SELF
   partial 6, the handheld's cost. **New with the app**: whether Y may change MODEL too (no, call 10);
   whether the WiFi page should read STRETCH as B on a string (it reads as on a bar: its readings are
   one list a setting); the list line's words.
+
+## 16. As built: batch 10 (2026-11-16, branch `physic2`)
+
+Built on `main` at 0.593. **Nobody has heard it, and it has not run on the handheld.** The owner's word
+that day: the 24 presets "sound fairly close to the name ... but kind of flat and boring". This batch is
+the range interesting presets need; a later job designs them.
+
+### What is there
+
+| Id | Setting | Range, reading | What it does |
+| --- | --- | --- | --- |
+| 1 | STRIKE | NOISE appended (2) | A burst of noise, its loudness a half-sine over its length; HARDNESS sets the length, 2.0 S (0) to 2 MS (100), on a log scale (`noiseSeconds`). Into the modes or the string's loop (through the pick comb), as a mallet's push is. Each sample a hash of the note's seed and its place. SELF |
+| 18 | PAIR | 0..20, OFF / `7 CENTS` | Each note two of it, half the cents either side of the note (`pairRatio`), so the pitch heard stays the note's and they beat at the difference (`pairBeatHz`). STRING: a second string a voice (`str2`). Modal: the lowest two modes split (`kPairedModes`; BELL 7 modes, 9). Each half half as loud, so a pair begins as loud as one. Read at the strike |
+| 19 | MOTOR | 0..100, OFF / `0.20 HZ` .. `8.0 HZ` (log) | A tremolo `1 - 0.6 sin^2(pi f t)`, t from the strike (call 17): full at the strike, down to 0.4 (-8 dB) half a turn on. Slow it is a swell, fast a vibraphone. Live; turned on or off mid-note it starts from full, and goes back to full over a tick |
+| 20 | BODY | NONE, GUITAR, BOX, TUBES | GUITAR (98, 204, 392 Hz; T60 0.14, 0.10, 0.07 s) and BOX (180, 420 Hz; 0.10, 0.06 s): a few coupled-form resonances run on the voices' sum's middle and added to both sides; at MIX 100 each resonance is +6 dB (`kBodyPeak`). TUBES is in the voice: the played mode (CHIME: its lowest) struck `1 + MIX` times as hard against the rest and ringing `1 + 2 MIX` times as long; on a string the fundamental rings longer and the partial the loop is fitted at dies as it did (`b` raised to keep it). Figures SELF |
+| 21 | BODY MIX | 0..100, OFF / `%` | GUITAR and BOX: how much; it slides over 5 ms. TUBES: how much louder and longer |
+| 22 | BUZZ | 0..100, OFF / `6 DB` .. `36 DB` | Loose parts rattle (an mbira's caps, a snare's wires, a balafon's membranes, a sitar's bridge in spirit): where the voice's sound is over a gap BUZZ's dB under the loudest it has been, what is over comes out as hashed noise. So it rattles a few times a wave and stops by itself as the note dies; a bigger BUZZ rattles longer. Not in the plan: added for character (the job's "prepared" quality). SELF |
+
+**8 presets, at the end of their folders** (32 in all; every version 1 preset's index after MALLETS
+moved, nothing is released): Vibes (MOTOR 4.6 Hz, TUBES 60, RELEASE 0.4 s), Celesta (GLOCK, BOX,
+PAIR 3, a damper), Nylon (GUITAR), Dulcimer (MALLET on strings, PAIR 5, BOX), Twelve (PAIR 7, GUITAR),
+Plucked Bass Box (BOX), Kalimba (BOX, BUZZ 20), Hand Drum (DRUM, NOISE 6 ms). Every one peaks under 1
+as a four-key chord.
+
+**The page**: BODY, the fifth (PAIR, MOTOR, BODY, BODY MIX, BUZZ; two rows). HARDNESS reads the
+burst's length under NOISE. Y's roll: NOISE one time in eight, PAIR half the time (2 to 12), MOTOR a
+quarter (10 to 90), BUZZ a fifth (5 to 45), BODY MIX 20 to 90; BODY is left, as MODEL is. The WiFi
+page needed nothing (its pages and readings come from the spec). Stills `physic-5`, `physic-noise`.
+
+### What was not done, and what did not go as the plan said
+
+- **The plan's 8192-float line** was 2048 as built (the lowest string at 48 kHz); PAIR doubles it: 80 KB
+  a track, not 640.
+- **None of the five is a modulation target**: the eight macros are as they were (every synth has
+  eight), and a MOD reaches only macros, so a MOD cannot sweep PAIR, MOTOR, BODY MIX or BUZZ. Taking a
+  macro's place for one is the owner's call.
+- **BUZZ makes a note peak higher** than the 0.3 a struck note is held to (what is over the gap is
+  added as noise of up to its own size): up to about twice, at BUZZ 100.
+- **A NOISE note's level is a matter of luck**: it is set so its LIKELY size adds to 0.18 (modes) or a
+  pluck's (string); over 40 notes each model peaked 0.02 to 0.47.
+- **The string glide's coefficients** were worked out on every tick of a glide whether they were used
+  or not (the loop filter): now only when used. The sound is the same to the bit (`testVersionOne`).
+
+### Cost (`physic_test --measure`, this container; Phazed's bench row reads about 0.7% here)
+
+| Row, 8 notes struck every half second | Desk |
+| --- | --- |
+| Twelve (PAIR on a string) | 0.44% |
+| Every BODY page setting on (PAIR 20, MOTOR 60, GUITAR 80, BUZZ 50, DICE 100), not gliding: BELL / DRUM / STRING / MARIMBA | 0.49 / 0.51 / 0.57 / 0.43% |
+| The same, every note gliding all the while: BELL / STRING (version 1's glide alone: 0.48 / 0.47%) | 0.73 / 0.76% |
+| NOISE, 2 s bursts back to back: GLASS / STRING | 0.48 / 0.64% |
+| Vibes / Kalimba | 0.24 / 0.36% |
+
+**Under 0.7% with every new setting on, unless every note glides as well** (0.73 to 0.77%: the
+glide's own tick is most of it, as in version 1). Handheld, x 13 to 17: 6 to 10% for the 8-note rows,
+10 to 13% for the gliding ones. `bench` has a new row, "PHYSIC breathed" (NOISE), "PHYSIC string" is
+Twelve now and "PHYSIC worst" has PAIR, GUITAR, MOTOR and BUZZ on.
+
+### Tests
+
+`physic_test`: `testVersionOne` (the 24 presets' phrase checksums from before), `testPair` (the beat in
+Hz from the cents, by its nulls, within 3%: 3.022 Hz measured for 3.022 on VIBES at key 60, the 2nd
+mode 4 times as fast, 1.511 Hz on a string at key 48 and the 2nd harmonic twice; as loud as one;
+BELL 9 modes; PAIR at the strike; a paired string glides as one), `testMotor` (the level, sample by
+sample, against its sum: 1e-5 at worst; from the strike; on and off mid-note with no step),
+`testNoise` (heard as long as HARDNESS says, loudest in its middle, awake throughout, a hash, its
+level over 40 notes, the pick comb's even harmonics 26 dB down), `testBodyResonances` (+6.1 dB at each
+resonance, +0.04 at 3 kHz, rests), `testBody` (the 2nd harmonic of a string at 49 Hz +6.1 dB, its 20th
++0.1; MIX 0 and NONE the same bits; half is half; NONE turned while ringing slides out),
+`testTubes` (3.00 times as long, the other mode 1.00, louder 2.17), `testBuzz` (the sizzle exactly where
+the note is over its gap, 0 samples off; longer with more BUZZ; bright). `testBlocks`, `testTooSmall`,
+`testNoAllocation` with every new setting on and turned. `app_test`, `design_test`, `textsize`,
+`scope_test` take the fifth page.

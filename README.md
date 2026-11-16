@@ -18,7 +18,7 @@ one to eight bars, each with its own repeat count. Four screens:
   a synth, a piano roll on its side (keys across, time down) with chords
   from chord packs.
 - **DEVICE**: for a synth, a main panel of folder, preset and eight macros,
-  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, four for PHYSIC).
+  with advanced pages behind it (nine for Phazed, five for JAX-EP, eight for FM-6, five for PHYSIC).
   For drums, the kit: each lane plays its built-in drum or a recording.
 - **FX**: three effects on each track, two on the master, and two shared ones (ECHO and SPACE) that every track can send to.
 
@@ -753,10 +753,11 @@ pluck on an object (the MODEL), which then rings and dies away. There is no
 volume envelope: DECAY is how long the object rings, and letting go of the key
 damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
 
-- **24 presets in six folders**: MALLETS (Marimba, Soft Marimba, Xylophone,
-  Vibes Still, Glockenspiel), STRINGS (Steel, Harp, Koto, Pizz, Plucked Bass),
-  TINES (Music Box), BELLS (Church Bell, Handbell, Tubular Bell, Wine Glass,
-  Crystal), WOOD AND SKIN (Woodblock, Temple Blocks, Log Drum, Tom) and DICE
+- **32 presets in six folders**: MALLETS (Marimba, Soft Marimba, Xylophone,
+  Vibes Still, Glockenspiel, Vibes, Celesta), STRINGS (Steel, Harp, Koto, Pizz,
+  Plucked Bass, Nylon, Dulcimer, Twelve, Plucked Bass Box), TINES (Music Box,
+  Kalimba), BELLS (Church Bell, Handbell, Tubular Bell, Wine Glass, Crystal),
+  WOOD AND SKIN (Woodblock, Temple Blocks, Log Drum, Tom, Hand Drum) and DICE
   (Rain, Wind Chime, Loose Strings, Drunk Marimba). **A new PHYSIC track
   starts on Marimba**, so notes placed at once play a marimba line.
 - **Eight voices.** A voice costs only while it rings. A key struck again
@@ -768,8 +769,8 @@ damps it (RELEASE; at RING letting go does nothing, as a marimba has no damper).
 - **Stop lets the notes go** (RELEASE damps, RING rings on), so a bounce keeps
   the last bar's bells ringing. Play and the panic damp everything at once.
 - **Y on MAIN rolls a new sound**: a new STRIKE, HARDNESS, POSITION, DECAY,
-  MATERIAL and STRETCH on the same MODEL. Its levels and dice stay. It is a
-  step of undo.
+  MATERIAL and STRETCH on the same MODEL, and now and then PAIR, MOTOR and
+  BUZZ (BODY MIX too). Its BODY, levels and dice stay. It is a step of undo.
 - The plan, the sources of each figure and what was measured:
   `docs/plans/physic-plan.md`.
 
@@ -788,13 +789,13 @@ the most.
 | DICE | DICE | At the next strike |
 | OCTAVE | DOWN / AS PRESET / UP | At the next note. A choice, so it takes no MOD |
 
-ADVANCED is four pages. L1 and R1 turn them.
+ADVANCED is five pages. L1 and R1 turn them.
 
 | Page | Setting | Reads |
 | --- | --- | --- |
 | SOUND | MODEL | STRING, MARIMBA, XYLO, VIBES, GLOCK, KALIMBA, BELL, CHIME, GLASS, DRUM, WOOD |
-| | STRIKE | PLUCK or MALLET |
-| | HARDNESS | With a MALLET, how long it touches: 8.0 MS (yarn) to 0.30 MS (brass), at full velocity. Plucked, finger (0%) to plectrum (100%) |
+| | STRIKE | PLUCK, MALLET or NOISE (a burst of noise: a breath, a bow on glass, a brush) |
+| | HARDNESS | With a MALLET, how long it touches: 8.0 MS (yarn) to 0.30 MS (brass), at full velocity. Plucked, finger (0%) to plectrum (100%). With NOISE, how long the burst lasts: 2.0 S to 2 MS |
 | | POSITION | Where along it is struck: 1.0% to 50% (the middle), "1/5" where it is the setting nearest a fifth. It decides which parts of the sound wake: a bar struck in its middle has no second part |
 | RING | DECAY | 50 MS to 30 S: the longest it rings |
 | | MATERIAL | WOOD to METAL. On METAL every part rings for DECAY; toward WOOD the high parts, and high keys, die sooner |
@@ -808,18 +809,26 @@ ADVANCED is four pages. L1 and R1 turn them.
 | | DICE POSITION, DICE HARDNESS | At 100: up to 25 and 30 points either way |
 | | DICE TUNE | Up to 15.0 CENTS either way |
 | | DICE DECAY | At 100: the time up to 30% longer or shorter |
+| BODY | PAIR | OFF, or 1 to 20 CENTS: each note two of it, that far apart, so they beat (a twelve-string, a piano's or a dulcimer's course, a bell's warble). On a string, a second string; on the rest, the two lowest parts each doubled. 20 cents at middle C beats 3 times a second |
+| | MOTOR | OFF, or a tremolo of 0.20 HZ (a slow swell) to 8.0 HZ, as a vibraphone's motor. It starts with each note |
+| | BODY | NONE, GUITAR, BOX or TUBES. GUITAR and BOX are what the sound sits on: their low resonances (near 100, 200 and 400 Hz; 180 and 420 Hz) added to every note. TUBES is a marimba's tubes: the note's own part rings louder and three times as long |
+| | BODY MIX | How much of the BODY: at 100% a resonance is twice as loud |
+| | BUZZ | OFF, or loose parts that rattle while the note is loud (an mbira's bottle caps, a snare's wires): for the top 6 DB to 36 DB of its ring |
 
 - The dice are rolled from where and when a note is struck, so Play twice is
   the same performance, and each time round the loop rolls anew.
 - HARDNESS and POSITION act at the next strike, as on a real instrument;
-  DECAY, MATERIAL and STRETCH on notes already ringing.
+  DECAY, MATERIAL and STRETCH on notes already ringing. PAIR and TUBES are
+  how the object is made: they act at the next strike. MOTOR, BUZZ and the
+  GUITAR and BOX bodies act at once.
 - On the designer page STRETCH reads as on a bar (AS MADE, +20): the string's
   B is the handheld's reading only.
 
 **Nobody has heard it**, on the desk or the handheld: the tests and the stills
 have seen it, and every claim about its sound is a measurement. Its cost on
-the desk is 0.2 to 0.6% of one core for eight notes; the handheld is about 13
-to 17 times slower (not run there).
+the desk is 0.2 to 0.6% of one core for eight notes, about 0.4 to 0.6% with
+every BODY page setting on (0.8% with every note gliding as well); the
+handheld is about 13 to 17 times slower (not run there).
 
 ### The envelope
 
@@ -1579,7 +1588,7 @@ ADVANCED: every setting. Phazed has nine pages (the sound, each line, and
 each line's volume, wave and pitch envelopes drawn out). JAX-EP has
 five (DCO-1, DCO-2, VCF, VCA and envelope, LFO and chorus). FM-6 has eight
 (the voice and its LFO, one for each operator, the pitch envelope: see FM-6,
-above). PHYSIC has four (SOUND, RING, PLAY, DICE: see PHYSIC, above). L1 and
+above). PHYSIC has five (SOUND, RING, PLAY, DICE, BODY: see PHYSIC, above). L1 and
 R1 turn the pages; B goes back to MAIN.
 
 JAX-EP is a virtual analog synth modeled after a popular DCO synth, and its

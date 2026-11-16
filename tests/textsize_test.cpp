@@ -1177,7 +1177,7 @@ void testTheOtherScreens() {
         rig.key(A, false);
         rig.frames(1);
     }
-    CHECK(pagesSeen == 10 + 6 + 9 + 5);
+    CHECK(pagesSeen == 10 + 6 + 9 + 6);
 
     // JAX-EP (jx3p-plan.md, batch 6b): every setting of every page with the cursor on it, at the bottom of what
     // it reads and, with A held, at the top (a knob: 0.0 and 10.0; a choice: its first and its last word).
@@ -1347,8 +1347,9 @@ void testTheOtherScreens() {
     }
 
     // PHYSIC: every setting of every page with the cursor on it, at its least and, with A held, at its most,
-    // as the device reads it, on a MALLET and on a PLUCK, on a bar and on a string (HARDNESS reads the
-    // mallet's contact, STRETCH a string's B). Two rows a page at most: at XL every value is drawn at XL.
+    // as the device reads it, on a MALLET, a PLUCK and a NOISE, on a bar and on a string (HARDNESS reads the
+    // mallet's contact or the burst's length, STRETCH a string's B). Two rows a page at most: at XL every value
+    // is drawn at XL.
     {
         for (int t = 0; t < kNumTracks; ++t)
             if (project.tracks[t].kind == TrackKind::Physic) project.track = t;
@@ -1359,7 +1360,7 @@ void testTheOtherScreens() {
         int settings = 0;
         char reads[32];
         for (int model : {physic::kMarimba, physic::kString}) {
-            for (int strike = 0; strike < 2; ++strike) {
+            for (int strike = 0; strike < physic::kStrikes; ++strike) {
                 for (int page = 1; page < ph.pageCount(); ++page) {
                     for (int stop = 0; stop < spec.itemCount(page); ++stop, ++settings) {
                         session.setSynthSetting(project.track, physic::Model, model);
@@ -1385,7 +1386,7 @@ void testTheOtherScreens() {
                 }
             }
         }
-        CHECK(settings == 4 * physic::kSettings);
+        CHECK(settings == 2 * physic::kStrikes * physic::kSettings);
         // The widest of its preset names, and its folder's.
         int widest = 0;
         for (int i = 1; i < Physic::presetCount(); ++i)

@@ -118,14 +118,32 @@ static void jx3pRow(const char* name, int how) {
 // PHYSIC (docs/plans/physic-plan.md, section 6): its own rows, not instrument(), in which a marimba
 // would ring down and sleep in the 3.2 s timed. Eight notes struck again every half second at DECAY
 // 100 (30 s), and the row says FAILED if any voice slept meanwhile (it would be timing silence).
-//   preset   0 MARIMBA, 5 STEEL, 11 CHURCH BELL (with DICE 100 and every note a glide: the worst)
+//   Marimba; Twelve (a string with PAIR: two strings a note); Church Bell with DICE 100 and every note a
+//   glide, and batch 10's PAIR 20, BODY GUITAR, MOTOR and BUZZ on too (the worst); Wine Glass breathed
+//   on (NOISE, 2 s bursts, one after another)
 //   asleep   eight notes struck once, then timed long after they have all gone to sleep
-static void physicRow(const char* name, int preset, bool worst, bool asleep = false) {
+static int physicPreset(const char* name) {
+    for (int i = 0; i < Physic::presetCount(); ++i)
+        if (std::strcmp(Physic::presetName(i), name) == 0) return i;
+    return 0;
+}
+static void physicRow(const char* name, const char* preset, bool worst, bool asleep = false, bool noise = false) {
     std::unique_ptr<Physic> synth(new Physic);
     synth->prepare(48000.f);
-    synth->selectPreset(preset);
+    synth->selectPreset(physicPreset(preset));
     synth->setSetting(physic::Decay, asleep ? 0 : 100);
-    if (worst) synth->setSetting(physic::Dice, 100);
+    if (worst) {
+        synth->setSetting(physic::Dice, 100);
+        synth->setSetting(physic::Pair, 20);
+        synth->setSetting(physic::Body, physic::kBodyGuitar);
+        synth->setSetting(physic::BodyMix, 80);
+        synth->setSetting(physic::Motor, 60);
+        synth->setSetting(physic::Buzz, 50);
+    }
+    if (noise) {
+        synth->setSetting(physic::Strike, physic::kNoise);
+        synth->setSetting(physic::Hardness, 0);
+    }
     std::vector<float> l(256), r(256);
     const int keys[8] = {48, 52, 55, 59, 62, 65, 69, 72};
     if (asleep) {
@@ -951,10 +969,11 @@ int apotheca::runBench() {
     jx3pRow("JAX-EP, 6, moving cutoff", 2);
     fm6Row("FM-6, 8 notes", 10, 8, false);          // E.PIANO 1
     fm6Row("FM-6, 16, worst preset", 3, 16, true);  // STRINGS 1, keys again every half second
-    physicRow("PHYSIC, 8 notes", 0, false);
-    physicRow("PHYSIC string, 8 notes", 5, false);
-    physicRow("PHYSIC worst", 11, true);
-    physicRow("PHYSIC asleep", 0, false, true);
+    physicRow("PHYSIC, 8 notes", "Marimba", false);
+    physicRow("PHYSIC string, 8 notes", "Twelve", false);
+    physicRow("PHYSIC breathed, 8 notes", "Wine Glass", false, false, true);
+    physicRow("PHYSIC worst", "Church Bell", true);
+    physicRow("PHYSIC asleep", "Marimba", false, true);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);

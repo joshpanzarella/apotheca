@@ -35,6 +35,7 @@
 #include "apotheca/physic.hpp"
 #include "apotheca/physic_rule.hpp"
 #include "measure.hpp"
+#include "physic/body.hpp"
 #include "physic/strike.hpp"
 
 using namespace apotheca;
@@ -854,7 +855,7 @@ static std::vector<Event> phrase(int model) {
     (void)model;
     return e;
 }
-static std::uint64_t phraseSum(int model, int block, int preset = -1, std::vector<float>* out = nullptr) {
+static std::uint64_t phraseSum(int model, int block, int preset = -1, std::vector<float>* out = nullptr, const std::vector<Event>& more = {}) {
     auto p = synth({}, preset);
     if (preset < 0) {
         p->setSetting(Model, model);
@@ -865,7 +866,9 @@ static std::uint64_t phraseSum(int model, int block, int preset = -1, std::vecto
         p->setSetting(DiceTune, 50);
         p->setSetting(DicePosition, 50);
     }
-    const std::vector<Event> events = phrase(model);
+    std::vector<Event> events = phrase(model);
+    events.insert(events.end(), more.begin(), more.end());
+    std::stable_sort(events.begin(), events.end(), [](const Event& a, const Event& b) { return a.at < b.at; });
     const long total = 30000 + 48000 * 5;
     std::vector<float> l(static_cast<std::size_t>(total)), r(static_cast<std::size_t>(total));
     long at = 0;
@@ -883,11 +886,57 @@ static std::uint64_t phraseSum(int model, int block, int preset = -1, std::vecto
     if (out) *out = l;
     return s.h;
 }
-// The same to the bit in blocks of 1, 7, 17, 48, 64, 256 and 333, for each core.
+// The 24 version 1 presets, by name: the phrase's checksum of each (its re-strikes, take-overs,
+// steals, macros, Stop, sleep and waking), taken from the code BEFORE batch 10.
+static const char* const kVersionOne[24] = {"Marimba", "Soft Marimba", "Xylophone", "Vibes Still", "Glockenspiel", "Steel", "Harp", "Koto",
+                                            "Pizz", "Plucked Bass", "Music Box", "Church Bell", "Handbell", "Tubular Bell", "Wine Glass", "Crystal",
+                                            "Woodblock", "Temple Blocks", "Log Drum", "Tom", "Rain", "Wind Chime", "Loose Strings", "Drunk Marimba"};
+static int presetNamed(const char* name) {
+    for (int i = 0; i < Physic::presetCount(); ++i)
+        if (std::strcmp(Physic::presetName(i), name) == 0) return i;
+    return -1;
+}
+static void printVersionOneSums() {
+    for (const char* name : kVersionOne) std::printf("    0x%016llxull, // %s\n", static_cast<unsigned long long>(phraseSum(0, 64, presetNamed(name))), name);
+}
+
+// Batch 10's settings turned while the phrase plays: MOTOR on and off, a BODY and its MIX, BUZZ, a
+// NOISE strike, PAIR for the strikes after.
+static std::vector<Event> batchTenTurned() {
+    std::vector<Event> e;
+    e.push_back({6000, [](Physic& p) { p.setSetting(Motor, 60); }});
+    e.push_back({8500, [](Physic& p) { p.setSetting(Pair, 9); }});
+    e.push_back({15000, [](Physic& p) { p.setSetting(Body, kBodyGuitar); p.setSetting(BodyMix, 80); }});
+    e.push_back({18000, [](Physic& p) { p.setSetting(Body, kBodyBox); }});
+    e.push_back({20000, [](Physic& p) { p.setSetting(Buzz, 50); p.setSetting(Motor, 0); }});
+    e.push_back({23000, [](Physic& p) { p.setSetting(Strike, kNoise); p.setSetting(Hardness, 40); p.noteOn(57, 0.9f); }});
+    e.push_back({24000, [](Physic& p) { p.setSetting(Body, kBodyTubes); }});
+    return e;
+}
+// The same to the bit in blocks of 1, 7, 17, 48, 64, 256 and 333, for each core; and so with batch
+// 10's settings turned as it plays, and for each preset that uses them.
 static void testBlocks() {
     for (int model : {kMarimba, kString, kBell, kDrum}) {
         const std::uint64_t first = phraseSum(model, 64);
         for (int block : {1, 7, 17, 48, 256, 333}) CHECK(phraseSum(model, block) == first);
+        const std::uint64_t turned = phraseSum(model, 64, -1, nullptr, batchTenTurned());
+        CHECK(turned != first);
+        for (int block : {1, 7, 17, 48, 256, 333}) CHECK(phraseSum(model, block, -1, nullptr, batchTenTurned()) == turned);
+    }
+    for (const char* name : {"Vibes", "Twelve", "Kalimba", "Hand Drum", "Dulcimer"}) {
+        const int at = presetNamed(name);
+        const std::uint64_t first = phraseSum(0, 64, at);
+        for (int block : {1, 17, 333}) {
+            const bool same = phraseSum(0, block, at) == first;
+            if (!same) {
+                std::vector<float> a, b;
+                phraseSum(0, 64, at, &a), phraseSum(0, block, at, &b);
+                std::size_t i = 0;
+                while (i < a.size() && a[i] == b[i]) ++i;
+                std::printf("  %s in blocks of %d: not the same from sample %zu (%g, %g)\n", name, block, i, i < a.size() ? a[i] : 0.f, i < a.size() ? b[i] : 0.f);
+            }
+            CHECK(same);
+        }
     }
 }
 
@@ -895,9 +944,11 @@ static void testBlocks() {
 // scanned on every tick, over a 60 s tail of every model, at MATERIAL 0 on a high key (high modes die
 // first while the voice is still loud) and at METAL. Timed beside the same run with it on: at most 3
 // times as long.
-static double tailRun(int model, int material, int key, bool flush, bool scan, int stretch = 50) {
+static double tailRun(int model, int material, int key, bool flush, bool scan, int stretch = 50, const std::vector<Set>& more = {}) {
     FlushDenormals ftz(flush);
-    auto p = synth(plain(model, {{Material, material}, {Decay, 70}, {Strike, model == kString ? 0 : 1}, {Release, 100}, {Stretch, stretch}}));
+    std::vector<Set> sets = {{Material, material}, {Decay, 70}, {Strike, model == kString ? 0 : 1}, {Release, 100}, {Stretch, stretch}};
+    sets.insert(sets.end(), more.begin(), more.end());
+    auto p = synth(plain(model, sets));
     for (int k = 0; k < 4; ++k) p->noteOn(key + 3 * k, 0.9f);
     float l[16], r[16];
     const auto t0 = std::chrono::steady_clock::now();
@@ -924,6 +975,15 @@ static void testTooSmall() {
     for (int model = 0; model < kModels; ++model)
         for (int material : {0, 100}) tailRun(model, material, model == kString ? 96 : 100, false, true);
     for (int material : {0, 100}) tailRun(kString, material, 96, false, true, 0); // (a string with no stiffness takes the other loop)
+    // Batch 10: PAIR's second string, a BODY's resonances, MOTOR, BUZZ, a NOISE strike, TUBES.
+    const std::vector<Set> all = {{Pair, 15}, {Motor, 50}, {Body, kBodyGuitar}, {BodyMix, 100}, {Buzz, 60}};
+    for (int material : {0, 100}) {
+        tailRun(kString, material, 96, false, true, 50, all);
+        tailRun(kString, material, 40, false, true, 0, all);
+        tailRun(kBell, material, 100, false, true, 50, all);
+        tailRun(kMarimba, material, 40, false, true, 50, {{Body, kBodyTubes}, {BodyMix, 100}, {Strike, kNoise}, {Hardness, 30}});
+        tailRun(kString, material, 60, false, true, 50, {{Body, kBodyTubes}, {BodyMix, 100}, {Strike, kNoise}, {Hardness, 30}, {Pair, 5}});
+    }
     // Timed: the worst case without the scan, off and on.
     for (int model : {kGlock, kString}) {
         double off = 1e9, on = 1e9;
@@ -978,10 +1038,15 @@ static void testSilence() {
     CHECK(p->smallestState() == 0.f);
 }
 
-// Nothing after prepare allocates: note-on, steal, glide, take-over, macros, Stop, allNotesOff.
+// Nothing after prepare allocates: note-on, steal, glide, take-over, macros, Stop, allNotesOff; batch
+// 10's settings on too, and turned.
 static void testNoAllocation() {
-    for (int model : {kMarimba, kString, kBell}) {
+    for (int model : {int(kMarimba), int(kString), int(kBell), -1}) {
+        const bool all = model < 0;
+        if (all) model = kString;
         auto p = synth(plain(model, {{Strike, model == kString ? 0 : 1}, {Dice, 100}}));
+        if (all)
+            for (const Set& set : std::vector<Set>{{Pair, 12}, {Motor, 70}, {Body, kBodyGuitar}, {BodyMix, 60}, {Buzz, 40}, {Strike, kNoise}}) p->setSetting(set.id, set.value);
         std::vector<float> l(256), r(256);
         const long before = gNews;
         for (int n = 0; n < 12; ++n) {
@@ -994,6 +1059,9 @@ static void testNoAllocation() {
         p->setMacro(MacroStretch, 0.7f);
         p->setMacro(MacroDecay, 0.2f);
         p->setSetting(Material, 10);
+        p->setSetting(Body, kBodyBox);
+        p->setSetting(Pair, 3);
+        p->noteOn(70, 0.9f);
         for (int b = 0; b < 50; ++b) p->render(l.data(), r.data(), 256);
         p->stopNotes();
         p->render(l.data(), r.data(), 256);
@@ -1080,13 +1148,23 @@ static void testPlainControls() {
 // SELF: every preset makes sound, peaks under 1 (a chord of four at full velocity), rings about as
 // its DECAY says, and sleeps after its tail. Preset 0 is MARIMBA.
 static void testEveryPreset() {
-    CHECK(Physic::presetCount() == 24);
+    CHECK(Physic::presetCount() == 32);
+    // A folder is the presets side by side under one name: no name comes back after another.
+    for (int i = 1; i < Physic::presetCount(); ++i)
+        if (std::strcmp(Physic::presetCategory(i), Physic::presetCategory(i - 1)) != 0)
+            for (int j = 0; j < i - 1; ++j) CHECK(std::strcmp(Physic::presetCategory(j), Physic::presetCategory(i)) != 0);
+    // The 8 of batch 10 use what they were made for (the plan's section 5).
+    const auto has = [](const char* name, int id, int value) { const int at = presetNamed(name); return at >= 0 && Physic::presetPatch(at).value[id] == value; };
+    CHECK(has("Vibes", Body, kBodyTubes) && !has("Vibes", Motor, 0) && has("Celesta", Body, kBodyBox) && has("Celesta", Model, kGlock));
+    CHECK(has("Nylon", Body, kBodyGuitar) && has("Dulcimer", Strike, kMallet) && has("Dulcimer", Pair, 5) && has("Twelve", Pair, 7));
+    CHECK(has("Plucked Bass Box", Body, kBodyBox) && has("Kalimba", Body, kBodyBox) && !has("Kalimba", Buzz, 0) && has("Hand Drum", Strike, kNoise));
+    CHECK(std::strcmp(Physic::presetCategory(presetNamed("Hand Drum")), "WOOD AND SKIN") == 0 && std::strcmp(Physic::presetCategory(presetNamed("Kalimba")), "TINES") == 0);
     CHECK(Physic::presetPatch(0).value[Model] == kMarimba);
     CHECK(std::strcmp(Physic::presetName(0), "Marimba") == 0);
     for (int i = 0; i < Physic::presetCount(); ++i) {
         const PhysicPatch patch = Physic::presetPatch(i);
         for (int id = 0; id < kSettings; ++id) CHECK(patch.value[id] >= settingMin(id) && patch.value[id] <= settingMax(id));
-        for (int id = kSettings; id < kSettingRoom; ++id) CHECK(patch.value[id] == 0); // (batch 10's, at 0)
+        for (int id = kSettings; id < kSettingRoom; ++id) CHECK(patch.value[id] == 0); // (the room after BUZZ, at 0)
         auto p = synth({}, i);
         for (int key : {48, 55, 60, 64}) p->noteOn(key, 1.f);
         std::vector<float> right;
@@ -1278,7 +1356,7 @@ static void physicSong(Rig& rig) {
     rig.send(make(Command::Panic, 0, 0)); // (nothing: the engine starts quiet)
     CHECK(rig.engine->addSynthTrack(1, SynthKind::Physic));
     CHECK(rig.engine->addSynthTrack(2, SynthKind::Physic));
-    rig.send(make(Command::SelectPreset, 2, 5)); // STEEL
+    rig.send(make(Command::SelectPreset, 2, presetNamed("Steel")));
     rig.send(make(Command::SetSetting, 1, Dice, 100));
     rig.note(0, 0, 60, 1.f);
     rig.note(1, 2, 64, 0.5f, 3);
@@ -1381,17 +1459,389 @@ static void testPhysicSong() {
     if (kSongSum != 0ull) CHECK(s.h == kSongSum);
 }
 
+// ---- batch 10: PAIR, MOTOR, BODY, NOISE, BUZZ (the plan's sections 2 and 3) ---------------------------
+
+// HOUSE RULE: the 24 version 1 presets play as they did before batch 10, to the bit (each sets every
+// batch 10 setting to 0), through the phrase's re-strikes, take-overs, steals, macros, Stop and sleep.
+// The sums were taken from the code before batch 10 (6de54c0).
+static const std::uint64_t kVersionOneSums[24] = {
+    0x0e31d67b2a10d378ull, 0x95e21dd6fb82913full, 0x1c1300b1b1caa6ccull, 0xb781146c8397ec85ull, 0x4d17bb8e0250dc2cull, 0xed6ac47c5eafefcfull,
+    0xb8eebd7827e194f3ull, 0xfefc57828075784full, 0x965ecb8a9759e3ebull, 0x9d1efb4cb6a6a7dfull, 0x2a2640fb1120a62bull, 0x3a6d70a1914c3e47ull,
+    0x9fb6707807306987ull, 0xed1cb767cf5cb75bull, 0x0a114313bc871783ull, 0x03d765212034f973ull, 0xc0bf6c943939dbe3ull, 0x5352b3f5a9224fa7ull,
+    0x88f64d6e00a418dfull, 0xf3a587a8c3eee0f3ull, 0xc353a4750958bc21ull, 0x5bb44a33514e33baull, 0xedae162bc8f70754ull, 0xb46a320ab98e8badull};
+static void testVersionOne() {
+    for (int i = 0; i < 24; ++i) {
+        const int at = presetNamed(kVersionOne[i]);
+        CHECK(at >= 0);
+        if (at < 0) continue;
+        const PhysicPatch patch = Physic::presetPatch(at);
+        for (int id = Pair; id < kSettings; ++id) CHECK(patch.value[id] == 0);
+        const std::uint64_t sum = phraseSum(0, 64, at);
+        if (sum != kVersionOneSums[i]) std::printf("  %s: 0x%016llx, was 0x%016llx\n", kVersionOne[i], static_cast<unsigned long long>(sum), static_cast<unsigned long long>(kVersionOneSums[i]));
+        CHECK(sum == kVersionOneSums[i]);
+    }
+}
+
+// How fast the part near `hz` beats: its size read every 2 ms through a window of 8 of its cycles,
+// the times of its nulls (the quietest, under a fifth of its loudest) found to a part of a step, and
+// how many of them come a second.
+static double beatHzOf(const std::vector<float>& v, double hz, double fromSeconds, double toSeconds) {
+    const std::size_t width = static_cast<std::size_t>(8.0 * kRate / hz), step = 96;
+    std::vector<double> size, when;
+    for (std::size_t at = static_cast<std::size_t>(fromSeconds * kRate); at + width < v.size() && at < toSeconds * kRate; at += step) {
+        size.push_back(partNear(v.data() + at, width, hz));
+        when.push_back((at + width / 2.0) / kRate);
+    }
+    double most = 0.0;
+    for (double s : size) most = std::max(most, s);
+    std::vector<double> nulls;
+    for (std::size_t i = 1; i + 1 < size.size(); ++i)
+        if (size[i] < size[i - 1] && size[i] <= size[i + 1] && size[i] < 0.2 * most) {
+            // (the null is a V: where the two sides' lines meet)
+            const double left = size[i - 1] - size[i], right = size[i + 1] - size[i];
+            const double shift = 0.5 * (right - left) / std::max(left, right);
+            nulls.push_back(when[i] - shift * (step / kRate));
+        }
+    if (gPrint) std::printf("    %.1f Hz: %zu nulls\n", hz, nulls.size());
+    return nulls.size() >= 2 ? (nulls.size() - 1) / (nulls.back() - nulls.front()) : 0.0;
+}
+
+// FAITHFUL (two sines PAIR's cents apart beat at the difference of their frequencies): a modal
+// model's lowest two modes each split into a pair, half the cents either side; a string doubled,
+// the same. The beat in Hz from its cents (pairBeatHz). The pair begins as loud as one alone.
+static void testPair() {
+    const double f = hzOf(60);
+    CHECK(std::fabs(pairBeatHz(f, 20.0) - f * (std::pow(2.0, 10.0 / 1200.0) - std::pow(2.0, -10.0 / 1200.0))) < 1e-12);
+    for (int cents : {20, 8}) { // VIBES at key 60: modes 1, 4, 10; 1 and 4 paired
+        auto p = synth(plain(kVibes, {{Pair, cents}}));
+        p->noteOn(60, 0.8f);
+        const std::vector<float> v = play(*p, 48000 * 4);
+        double hz[kModesMost];
+        CHECK(p->modesOf(0, hz) == 5);
+        CHECK(std::fabs(hz[0] / (f * pairRatio(cents, 0)) - 1.0) < 1e-12 && std::fabs(hz[3] / (f * pairRatio(cents, 1)) - 1.0) < 1e-12);
+        CHECK(std::fabs(hz[1] / (4.0 * f * pairRatio(cents, 0)) - 1.0) < 1e-12 && std::fabs(hz[4] / (4.0 * f * pairRatio(cents, 1)) - 1.0) < 1e-12);
+        CHECK(std::fabs(hz[2] / (10.0 * f) - 1.0) < 1e-12); // the third is not paired
+        const double beat = beatHzOf(v, f, 0.02, 4.0), want = pairBeatHz(f, cents);
+        if (gPrint) std::printf("  PAIR %d on VIBES at key 60: beats %.3f Hz, %.3f from its cents\n", cents, beat, want);
+        CHECK(std::fabs(beat / want - 1.0) < 0.03);
+        const double upper = beatHzOf(v, 4.0 * f, 0.02, 2.0);
+        CHECK(std::fabs(upper / (4.0 * want) - 1.0) < 0.03); // the second mode beats four times as fast
+    }
+    { // a string: two strings; the fundamental beats at its pair's rate, the second harmonic twice as fast
+        const double g = hzOf(48);
+        auto p = synth(plain(kString, {{Strike, kPluck}, {Pair, 20}, {Hardness, 50}}));
+        p->noteOn(48, 0.8f);
+        const std::vector<float> v = play(*p, 48000 * 6);
+        const double beat = beatHzOf(v, g, 0.05, 6.0), want = pairBeatHz(g, 20);
+        if (gPrint) std::printf("  PAIR 20 on a STRING at key 48: beats %.3f Hz, %.3f from its cents\n", beat, want);
+        CHECK(std::fabs(beat / want - 1.0) < 0.03);
+        CHECK(std::fabs(beatHzOf(v, 2.0 * g, 0.05, 4.0) / (2.0 * want) - 1.0) < 0.03);
+    }
+    // As loud as one, at its start: the played note in the first 40 ms within 0.5 dB. (A bright string's
+    // high harmonics go out of step within a few periods, as they must: 20 cents apart, its 20th
+    // harmonic's two halves are half a turn apart in 10 ms.)
+    for (int model : {kVibes, kBell, kString}) {
+        auto one = synth(plain(model, {{Strike, model == kString ? 0 : 1}})), two = synth(plain(model, {{Strike, model == kString ? 0 : 1}, {Pair, 20}}));
+        one->noteOn(57, 0.8f), two->noteOn(57, 0.8f);
+        const std::vector<float> a = play(*one, 4800), b = play(*two, 4800);
+        const double change = dB(sizeAt(b, hzOf(57), 0.0, 8) / sizeAt(a, hzOf(57), 0.0, 8));
+        if (gPrint) std::printf("  PAIR 20 on %s: its note at the start %+.2f dB against one\n", modelName(model), change);
+        CHECK(std::fabs(change) < 0.5);
+    }
+    { // BELL: 7 modes, 9 with PAIR. PAIR acts at the next strike, as the object's own make.
+        auto p = synth(plain(kBell, {{Pair, 10}}));
+        p->noteOn(60, 0.8f);
+        play(*p, 64);
+        double hz[kModesMost];
+        CHECK(p->modesOf(0, hz) == 9);
+        p->setSetting(Pair, 0);
+        play(*p, 64);
+        CHECK(p->modesOf(0, hz) == 9);
+        p->noteOn(64, 0.8f);
+        play(*p, 64);
+        CHECK(p->modesOf(1, hz) == 7);
+        p->noteOn(60, 0.8f); // the same key struck again with PAIR off: made again, not added to
+        play(*p, 64);
+        CHECK(p->modesOf(0, hz) == 7);
+    }
+    { // a paired string glides as one: half way through a glide its pitch is the lone string's
+        auto one = synth(plain(kString, {{Strike, kPluck}})), two = synth(plain(kString, {{Strike, kPluck}, {Pair, 10}}));
+        one->noteOnFrom(55, 0.8f, 48, 1.f), two->noteOnFrom(55, 0.8f, 48, 1.f);
+        const std::vector<float> a = bandOf(play(*one, 48000 * 2), hzOf(51.5)), b = bandOf(play(*two, 48000 * 2), hzOf(51.5));
+        double worst = 0.0;
+        for (double t : {0.3, 0.5, 0.7}) {
+            const std::size_t from = static_cast<std::size_t>(t * kRate), to = from + 960;
+            worst = std::max(worst, std::fabs(1200.0 * std::log2(pitchOf(b, from, to) / pitchOf(a, from, to))));
+        }
+        if (gPrint) std::printf("  PAIR 10 on a gliding string: within %.2f cents of one string\n", worst);
+        CHECK(worst < 5.0);
+    }
+}
+
+// SELF: MOTOR is the level 1 - 0.6 (1 - cos 2 pi f t) / 2, f from MOTOR (0.2 to 8 Hz), t from the
+// strike: the sound with it over the same sound without, sample by sample, is that.
+static void testMotor() {
+    CHECK(motorHz(0) == 0.0 && std::fabs(motorHz(1) - 0.2) < 1e-12 && std::fabs(motorHz(100) - 8.0) < 1e-12);
+    for (int model : {kVibes, kString})
+        for (int motor : {1, 40, 85, 100}) {
+            auto with = synth(plain(model, {{Strike, model == kString ? 0 : 1}, {Motor, motor}})), plainOne = synth(plain(model, {{Strike, model == kString ? 0 : 1}}));
+            play(*with, 777), play(*plainOne, 777); // (struck later than the synth was made: the turn is from the strike)
+            with->noteOn(72, 0.8f), plainOne->noteOn(72, 0.8f);
+            const std::vector<float> a = play(*with, 48000 * 6), b = play(*plainOne, 48000 * 6);
+            const double hz = motorHz(motor);
+            double worst = 0.0, least = 1.0;
+            for (std::size_t i = 0; i < a.size(); ++i) {
+                if (std::fabs(b[i]) < 1e-3f) continue;
+                const double t = static_cast<double>(i) / kRate, want = 1.0 - kMotorDepth * 0.5 * (1.0 - std::cos(2.0 * kPi * hz * t));
+                worst = std::max(worst, std::fabs(a[i] / b[i] - want));
+                least = std::min(least, static_cast<double>(a[i] / b[i]));
+            }
+            if (gPrint) std::printf("  MOTOR %d (%.2f Hz) on %s: the level off its sum by %.1e at worst, down to %.3f\n", motor, hz, modelName(model), worst, least);
+            CHECK(worst < 2e-4);
+            if (hz * 6.0 >= 0.5) CHECK(std::fabs(least - (1.0 - kMotorDepth)) < 0.01); // (it reached the bottom of its turn)
+        }
+    { // turned on while a note rings: from full, with no step
+        auto with = synth(plain(kVibes)), plainOne = synth(plain(kVibes));
+        with->noteOn(72, 0.8f), plainOne->noteOn(72, 0.8f);
+        play(*with, 2003), play(*plainOne, 2003);
+        with->setSetting(Motor, 100);
+        const std::vector<float> a = play(*with, 4800), b = play(*plainOne, 4800);
+        float step = 0.f, least = 1.f;
+        for (std::size_t i = 1; i < a.size(); ++i)
+            if (std::fabs(b[i]) > 1e-3f && std::fabs(b[i - 1]) > 1e-3f) step = std::max(step, std::fabs(a[i] / b[i] - a[i - 1] / b[i - 1])), least = std::min(least, a[i] / b[i]);
+        CHECK(std::fabs(a[0] / b[0] - 1.f) < 1e-3f && step < 0.02f && least < 0.45f);
+    }
+    { // turned off while it turns: back to full within a tick, with no step
+        auto with = synth(plain(kVibes, {{Motor, 90}})), plainOne = synth(plain(kVibes));
+        with->noteOn(72, 0.8f), plainOne->noteOn(72, 0.8f);
+        const std::vector<float> a1 = play(*with, 2000), b1 = play(*plainOne, 2000);
+        with->setSetting(Motor, 0);
+        const std::vector<float> a2 = play(*with, 4800), b2 = play(*plainOne, 4800);
+        CHECK(std::fabs(a1.back() / b1.back() - 1.f) > 0.05f); // (it was down)
+        for (std::size_t i = 32; i < a2.size(); ++i) CHECK(a2[i] == b2[i]);
+        float step = 0.f;
+        for (std::size_t i = 1; i < 32; ++i)
+            if (std::fabs(b2[i]) > 1e-3f && std::fabs(b2[i - 1]) > 1e-3f) step = std::max(step, std::fabs(a2[i] / b2[i] - a2[i - 1] / b2[i - 1]));
+        CHECK(step < 0.07f);
+    }
+}
+
+// SELF: a NOISE strike is a burst HARDNESS long (2 s at 0, 2 ms at 100): the voice is awake and fed
+// for as long, and its sound follows it on a short DECAY. Each sample is a hash of the note's seed:
+// the same seed the same burst, another seed another. Its level: what is likely, at the mallet's.
+static void testNoise() {
+    CHECK(std::fabs(noiseSeconds(0) - 2.0) < 1e-12 && std::fabs(noiseSeconds(100) - 0.002) < 1e-12 && std::fabs(noiseSeconds(50) - 0.0632455532) < 1e-9);
+    for (int model : {kWood, kString})
+        for (int hardness : {0, 50, 100}) {
+            const double length = noiseSeconds(hardness);
+            auto p = synth(plain(model, {{Strike, kNoise}, {Hardness, hardness}, {Decay, 0}, {Material, 0}}));
+            p->noteOn(model == kString ? 60 : 72, 0.8f);
+            const std::size_t n = static_cast<std::size_t>((length + 0.6) * kRate);
+            const std::vector<float> v = play(*p, n);
+            // The burst's last loud stretch: the last 5 ms 40 dB under the loudest.
+            double most = 0.0, end = 0.0, top = 0.0;
+            for (std::size_t at = 0; at + 240 <= n; at += 240) most = std::max(most, rmsOf(v, at, at + 240));
+            for (std::size_t at = 0; at + 240 <= n; at += 240) {
+                const double r = rmsOf(v, at, at + 240);
+                if (r > most * 0.01) end = (at + 240) / kRate;
+                if (r == most) top = (at + 120) / kRate;
+            }
+            if (gPrint) std::printf("  NOISE HARDNESS %d (%.3f s) on %s: heard to %.3f s, loudest at %.3f s\n", hardness, length, modelName(model), end, top);
+            CHECK(end > 0.8 * length && end < length + 0.15);
+            if (hardness == 0) CHECK(top > 0.6 && top < 1.4); // (a half-sine: loudest in its middle)
+            play(*p, 48000);
+            CHECK(p->awake() == 0);
+        }
+    { // awake for its whole length, however short its DECAY
+        auto p = synth(plain(kGlass, {{Strike, kNoise}, {Hardness, 0}, {Decay, 0}}));
+        p->noteOn(72, 0.8f);
+        play(*p, static_cast<std::size_t>(1.99 * kRate));
+        CHECK(p->awake() == 1);
+    }
+    { // a hash: the same seed, the same; another, another
+        Sum a, b, c;
+        for (std::uint32_t seed : {5u, 5u, 6u}) {
+            auto p = synth(plain(kGlass, {{Strike, kNoise}, {Hardness, 40}}));
+            p->noteSeed(seed);
+            p->noteOn(76, 0.8f);
+            (seed == 6u ? c : (a.h == Sum().h ? a : b)).add(play(*p, 9600));
+        }
+        CHECK(a.h == b.h && a.h != c.h);
+    }
+    // Its level over 40 notes: never silent, never near full, a long burst into a long ring too.
+    for (int model : {kGlass, kDrum, kString, kMarimba})
+        for (int hardness : {0, 100}) {
+            float least = 1.f, most = 0.f;
+            for (std::uint32_t seed = 1; seed <= 40; ++seed) {
+                auto p = synth(plain(model, {{Strike, kNoise}, {Hardness, hardness}}));
+                p->noteSeed(seed * 7919u);
+                p->noteOn(model == kString ? 52 : 64, 1.f);
+                const float peak = peakOf(play(*p, static_cast<std::size_t>((noiseSeconds(hardness) + 0.3) * kRate)));
+                least = std::min(least, peak), most = std::max(most, peak);
+            }
+            if (gPrint) std::printf("  NOISE HARDNESS %d on %s: peaks %.3f to %.3f over 40 notes\n", hardness, modelName(model), least, most);
+            CHECK(least > 0.02f && most < 0.5f);
+        }
+    { // into a string through the pick comb: blown at its middle, its even harmonics 20 dB under the odd
+        auto p = synth(plain(kString, {{Strike, kNoise}, {Hardness, 0}, {Position, 100}, {Decay, 70}}));
+        p->noteOn(45, 0.8f);
+        const std::vector<float> v = play(*p, 48000);
+        const double f = hzOf(45);
+        const double odd = sizeAt(v, f, 0.5, 32) + sizeAt(v, 3 * f, 0.5, 96), even = sizeAt(v, 2 * f, 0.5, 64) + sizeAt(v, 4 * f, 0.5, 128);
+        if (gPrint) std::printf("  NOISE on a string at 1/2: the even harmonics %.1f dB under the odd\n", dB(odd / even));
+        CHECK(dB(odd / even) > 20.0);
+    }
+}
+
+// The BODY's resonances by themselves (FR ch. 9's figures SELF): at each, in step with what comes in
+// and as large (+6 dB at BODY MIX 100); far from them, nothing that shows. Silence in: it rests.
+static void testBodyResonances() {
+    for (int body : {kBodyGuitar, kBodyBox}) {
+        BodyResonance res[kBodyModesMost];
+        const int n = bodyResonances(body, res);
+        CHECK(n == (body == kBodyGuitar ? 3 : 2));
+        std::vector<double> at;
+        for (int k = 0; k < n; ++k) at.push_back(res[k].hz);
+        at.push_back(3000.0);
+        for (double hz : at) {
+            BodyBank bank;
+            bank.set(body, kRate);
+            std::vector<float> l = sineOf(hz, 0.1, 96000), r = l;
+            const std::vector<float> dry = l;
+            float mix = 1.f;
+            bank.run(l.data(), r.data(), 96000, mix, 1.f, 0.f);
+            const double gain = sizeAt(l, hz, 1.5, 32) / sizeAt(dry, hz, 1.5, 32);
+            // Nearby resonances add a little to each (they are no further apart than an octave).
+            if (gPrint) std::printf("  BODY %s at %.0f Hz: %+.2f dB\n", bodyName(body), hz, dB(gain));
+            if (hz == 3000.0) CHECK(std::fabs(dB(gain)) < 0.5);
+            else CHECK(dB(gain) > 5.0 && dB(gain) < 7.5);
+            CHECK(l == r);
+        }
+        BodyBank bank;
+        bank.set(body, kRate);
+        std::vector<float> l = sineOf(200.0, 0.3, 4800), r = l;
+        float mix = 1.f;
+        bank.run(l.data(), r.data(), 4800, mix, 1.f, 0.f);
+        CHECK(!bank.silent());
+        std::vector<float> z(48000, 0.f), y(48000, 0.f);
+        bank.run(z.data(), y.data(), 48000, mix, 1.f, 0.f); // its ring, then nothing
+        CHECK(bank.silent());
+        for (float s : z) CHECK(s == 0.f || std::fabs(s) >= FLT_MIN);
+    }
+}
+
+// Through the synth: GUITAR on a string at key 31 (49 Hz) lifts its 2nd harmonic (98 Hz, the air
+// mode) about 6 dB and leaves its 20th (980 Hz) as it was; BODY MIX 0 and NONE are the same to the
+// bit; NONE turned while it rings slides out with no step; TUBES has no box after the voices.
+static void testBody() {
+    const auto render = [](std::vector<Set> sets) {
+        sets.push_back({Strike, kPluck});
+        auto p = synth(plain(kString, sets));
+        p->noteOn(31, 0.8f);
+        return play(*p, 48000 * 2);
+    };
+    const std::vector<float> none = render({}), guitar = render({{Body, kBodyGuitar}, {BodyMix, 100}});
+    const double f = hzOf(31);
+    const double second = dB(sizeAt(guitar, 2 * f, 0.5, 32) / sizeAt(none, 2 * f, 0.5, 32)), twentieth = dB(sizeAt(guitar, 20 * f, 0.5, 64) / sizeAt(none, 20 * f, 0.5, 64));
+    if (gPrint) std::printf("  GUITAR on a string at key 31: the 2nd harmonic %+.1f dB, the 20th %+.1f dB\n", second, twentieth);
+    CHECK(second > 4.5 && second < 7.5 && std::fabs(twentieth) < 1.0);
+    CHECK(render({{Body, kBodyGuitar}, {BodyMix, 0}}) == none && render({{Body, kBodyTubes}, {BodyMix, 0}}) == none && render({{BodyMix, 100}}) == none);
+    CHECK(render({{Body, kBodyGuitar}, {BodyMix, 100}, {Body, kBodyBox}}) == render({{Body, kBodyBox}, {BodyMix, 100}})); // another box: its own resonances
+    { // half of it is half as much again
+        const std::vector<float> half = render({{Body, kBodyGuitar}, {BodyMix, 50}});
+        CHECK(std::fabs(sizeAt(half, 2 * f, 0.5, 32) / sizeAt(none, 2 * f, 0.5, 32) - 1.5) < 0.15);
+    }
+    { // BOX on a kalimba: up at 180 Hz
+        auto a = synth(plain(kKalimba)), b = synth(plain(kKalimba, {{Body, kBodyBox}, {BodyMix, 100}}));
+        a->noteOn(54, 0.8f), b->noteOn(54, 0.8f); // 185 Hz
+        const std::vector<float> x = play(*a, 48000), y = play(*b, 48000);
+        CHECK(dB(sizeAt(y, hzOf(54), 0.4) / sizeAt(x, hzOf(54), 0.4)) > 3.0);
+    }
+    { // turned to NONE while it rings: it slides out over 5 ms, no step
+        auto p = synth(plain(kString, {{Strike, kPluck}, {Body, kBodyGuitar}, {BodyMix, 100}}));
+        auto q = synth(plain(kString, {{Strike, kPluck}}));
+        p->noteOn(31, 0.8f), q->noteOn(31, 0.8f);
+        play(*p, 24000), play(*q, 24000);
+        p->setSetting(Body, kBodyNone);
+        const std::vector<float> a = play(*p, 960), b = play(*q, 960);
+        float step = 0.f;
+        for (std::size_t i = 1; i < a.size(); ++i) step = std::max(step, std::fabs((a[i] - b[i]) - (a[i - 1] - b[i - 1])));
+        CHECK(step < 0.01f);
+        for (std::size_t i = 240; i < a.size(); ++i) CHECK(a[i] == b[i]);
+    }
+}
+
+// SELF: TUBES (BODY MIX 100): the played mode rings 3 times as long and is struck twice as hard
+// against the rest; the other modes ring as they did. On a string the fundamental rings 3 times as
+// long and the 5th harmonic as it did. CHIME has no played mode: its lowest.
+static void testTubes() {
+    for (int model : {kMarimba, kChime}) {
+        auto a = synth(plain(model, {{Decay, 55}})), b = synth(plain(model, {{Decay, 55}, {Body, kBodyTubes}, {BodyMix, 100}}));
+        a->noteOn(60, 0.8f), b->noteOn(60, 0.8f);
+        const std::vector<float> x = play(*a, 48000 * 4), y = play(*b, 48000 * 4);
+        const double f1 = hzOf(60) * modelRow(model).ratio[0], f2 = hzOf(60) * modelRow(model).ratio[1];
+        const double longer = t60At(y, f1, 0.1, 1.0) / t60At(x, f1, 0.1, 1.0), other = t60At(y, f2, 0.1, 0.5) / t60At(x, f2, 0.1, 0.5);
+        const double louder = (sizeAt(y, f1, 0.0, 16) / sizeAt(y, f2, 0.0, 32)) / (sizeAt(x, f1, 0.0, 16) / sizeAt(x, f2, 0.0, 32));
+        if (gPrint) std::printf("  TUBES on %s: its mode 1 rings %.2f times as long, mode 2 %.2f; mode 1 %.2f times as loud against mode 2\n", modelName(model), longer, other, louder);
+        CHECK(std::fabs(longer - 3.0) < 0.15 && std::fabs(other - 1.0) < 0.05 && louder > 1.9 && louder < 2.35); // (over 2: the window sees mode 1's longer ring)
+    }
+    {
+        auto a = synth(plain(kString, {{Strike, kPluck}, {Decay, 55}, {Material, 60}})), b = synth(plain(kString, {{Strike, kPluck}, {Decay, 55}, {Material, 60}, {Body, kBodyTubes}, {BodyMix, 100}}));
+        a->noteOn(45, 0.8f), b->noteOn(45, 0.8f);
+        const std::vector<float> x = play(*a, 48000 * 4), y = play(*b, 48000 * 4);
+        const double f = hzOf(45);
+        const double longer = t60At(y, f, 0.1, 1.0) / t60At(x, f, 0.1, 1.0), fifth = t60At(y, 5 * f, 0.1, 0.3, 64) / t60At(x, 5 * f, 0.1, 0.3, 64);
+        if (gPrint) std::printf("  TUBES on a string: the fundamental rings %.2f times as long, the 5th harmonic %.2f\n", longer, fifth);
+        CHECK(std::fabs(longer - 3.0) < 0.2 && std::fabs(fifth - 1.0) < 0.1);
+    }
+}
+
+// SELF: BUZZ: the sound with it less the sound without is a sizzle exactly where the note is over its
+// gap (BUZZ's dB under its loudest so far), nothing anywhere else; a bigger BUZZ rattles longer; it is
+// noise (mostly over 5 kHz).
+static void testBuzz() {
+    CHECK(buzzDb(0) == 0.0 && buzzGap(0) == 0.0 && std::fabs(buzzDb(1) - 6.0) < 1e-12 && std::fabs(buzzDb(100) - 36.0) < 1e-12);
+    double lastWas = 0.0;
+    for (int buzz : {1, 50, 100}) {
+        auto a = synth(plain(kKalimba, {{Decay, 40}, {Strike, kPluck}})), b = synth(plain(kKalimba, {{Decay, 40}, {Strike, kPluck}, {Buzz, buzz}}));
+        a->noteOn(64, 0.8f), b->noteOn(64, 0.8f);
+        const std::vector<float> x = play(*a, 48000), y = play(*b, 48000);
+        const float gap = static_cast<float>(buzzGap(buzz));
+        float most = 0.f;
+        long wrong = 0, over = 0;
+        double last = 0.0;
+        std::vector<float> d(x.size());
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            d[i] = y[i] - x[i];
+            const float s = std::fabs(x[i]);
+            most = std::max(most, s);
+            const bool shouldBe = s > gap * most * 1.0001f, quiet = s < gap * most * 0.9999f;
+            over += shouldBe;
+            if ((shouldBe && d[i] == 0.f) || (quiet && d[i] != 0.f)) ++wrong;
+            if (d[i] != 0.f) last = i / kRate;
+        }
+        std::vector<float> high = d;
+        for (std::size_t i = 1; i < high.size(); ++i) high[i] = d[i] - d[i - 1]; // (a rough tilt up: the sizzle is bright)
+        if (gPrint) std::printf("  BUZZ %d (%.0f dB): rattles to %.3f s, %ld samples over its gap, %ld off\n", buzz, buzzDb(buzz), last, over, wrong);
+        CHECK(over > 100 && wrong < over / 200 + 2);
+        CHECK(last > lastWas);
+        lastWas = last;
+        CHECK(rmsOf(high) > 0.9 * rmsOf(d)); // white noise's first difference is 1.41 times it; a note's far under
+    }
+}
+
 // ---- the cost ------------------------------------------------------------------------------------------
 
 // The bench's way (the plan, section 6): 8 notes struck again every half second, DECAY 100 (none
 // sleeps), 256-frame blocks; the best of three runs of 600 blocks. Percent of one core.
-static double costOf(int model, int preset, int glide) {
+static double costOf(int model, int preset, int glide, const std::vector<Set>& more = {}) {
     double best = 1e30;
     for (int run = 0; run < 3; ++run) {
         auto p = synth({}, preset);
         if (preset < 0) {
             for (const Set& s : plain(model, {{Strike, model == kString ? 0 : 1}, {Material, 50}, {Hardness, 50}})) p->setSetting(s.id, s.value);
         }
+        for (const Set& s : more) p->setSetting(s.id, s.value);
         p->setSetting(Decay, 100);
         std::vector<float> l(256), r(256);
         const int keys[8] = {48, 52, 55, 59, 62, 65, 69, 72};
@@ -1414,7 +1864,23 @@ static double costOf(int model, int preset, int glide) {
     }
     return 100.0 * best / (256.0 / 48.0);
 }
+static void measureParts() {
+    for (int model : {int(kString), int(kBell)})
+        for (int glide : {0, 1}) {
+            std::printf("  %s glide %d: plain %.2f", modelName(model), glide, costOf(model, -1, glide));
+            const std::vector<std::vector<Set>> parts = {{{Pair, 20}}, {{Motor, 60}}, {{Body, kBodyGuitar}, {BodyMix, 80}}, {{Buzz, 50}}, {{Dice, 100}}};
+            const char* names[] = {"pair", "motor", "body", "buzz", "dice"};
+            for (std::size_t i = 0; i < parts.size(); ++i) std::printf(", %s %.2f", names[i], costOf(model, -1, glide, parts[i]));
+            std::printf("\n");
+        }
+}
 static void measureCost() {
+    if (std::getenv("PARTS")) return measureParts();
+    if (const char* what = std::getenv("PROFILE")) { // (one row, for callgrind)
+        const std::vector<Set> all = {{Pair, 20}, {Motor, 60}, {Body, kBodyGuitar}, {BodyMix, 80}, {Buzz, 50}, {Dice, 100}};
+        std::printf("%.2f%%\n", costOf(what[0] == 's' ? int(kString) : int(kBell), -1, what[1] == 'g', all));
+        return;
+    }
     std::printf("  cost, 8 notes struck every half second (desk; the handheld is 13 to 17 times this):\n");
     for (int model = 0; model < kModels; ++model) {
         const double c = costOf(model, -1, 0);
@@ -1422,6 +1888,14 @@ static void measureCost() {
     }
     const double glide = costOf(kBell, -1, 1), stringGlide = costOf(kString, -1, 1);
     std::printf("    BELL, every note gliding all the while %.2f%%; STRING the same %.2f%%\n", glide, stringGlide);
+    // Batch 10: PAIR doubles a string; a modal model's two lowest modes; BODY one more small bank a
+    // track; MOTOR and BUZZ a sample loop of their own; NOISE a hash a sample while it lasts.
+    const std::vector<Set> all = {{Pair, 20}, {Motor, 60}, {Body, kBodyGuitar}, {BodyMix, 80}, {Buzz, 50}, {Dice, 100}};
+    std::printf("    Twelve (PAIR on a string) %.2f%%; STRING with PAIR, BODY, MOTOR, BUZZ, gliding %.2f%%\n", costOf(0, presetNamed("Twelve"), 0), costOf(kString, -1, 1, all));
+    std::printf("    BELL with PAIR, BODY, MOTOR, BUZZ, DICE 100, gliding (the worst) %.2f%%; DRUM the same %.2f%%\n", costOf(kBell, -1, 1, all), costOf(kDrum, -1, 1, all));
+    std::printf("    ...not gliding: BELL %.2f%%, DRUM %.2f%%, STRING %.2f%%, MARIMBA %.2f%%\n", costOf(kBell, -1, 0, all), costOf(kDrum, -1, 0, all), costOf(kString, -1, 0, all), costOf(kMarimba, -1, 0, all));
+    std::printf("    NOISE 2 s, GLASS %.2f%%, STRING %.2f%%; Vibes (MOTOR, TUBES) %.2f%%; Kalimba (BOX, BUZZ) %.2f%%\n", costOf(kGlass, -1, 0, {{Strike, kNoise}, {Hardness, 0}}),
+                costOf(kString, -1, 0, {{Strike, kNoise}, {Hardness, 0}}), costOf(0, presetNamed("Vibes"), 0), costOf(0, presetNamed("Kalimba"), 0));
 }
 
 // ---- the program ---------------------------------------------------------------------------------------
@@ -1465,6 +1939,14 @@ int main(int argc, char** argv) {
         {"testRollsDiffer", testRollsDiffer},
         {"testPlayFromTheTop", testPlayFromTheTop},
         {"testPhysicSong", testPhysicSong},
+        {"testVersionOne", testVersionOne},
+        {"testPair", testPair},
+        {"testMotor", testMotor},
+        {"testNoise", testNoise},
+        {"testBodyResonances", testBodyResonances},
+        {"testBody", testBody},
+        {"testTubes", testTubes},
+        {"testBuzz", testBuzz},
     };
     std::vector<std::string> only;
     bool measure = false;
