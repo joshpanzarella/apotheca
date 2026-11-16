@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -18,6 +19,7 @@
 
 #include "apotheca/engine.hpp"
 #include "app.hpp"
+#include "line_in.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
 #include "temp_folder.hpp"
@@ -1322,7 +1324,123 @@ void testCuttingASong() {
     CHECK(!cutSong("track drums\n", head, parts) && !cutSong("", head, parts));
 }
 
+
+// LineIn reads a line as a std::istringstream of it does (song_file.cpp reads every line with it):
+// numbers, words, the rest of the line, a failure and what it leaves, clear(). Random lines of the
+// characters that matter (digits, signs, points, e, white space, letters), random reads.
+static void testALineReadsAsAStreamReadsIt() {
+    std::uint64_t seed = 0x9E3779B97F4A7C15ull;
+    const auto next = [&] { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; return seed; };
+    static const char kChars[] = "0123456789000.....eeE++--    \t\r\vxnaif,";
+    int wrong = 0;
+    for (int round = 0; round < 300000; ++round) {
+        std::string line;
+        const int length = static_cast<int>(next() % 24);
+        for (int i = 0; i < length; ++i) line += kChars[next() % (sizeof kChars - 1)];
+        if (round % 7 == 0) line = "hit 1 2 0.5 " + line; // (as the lines are)
+        if (round % 11 == 0) line += "1e999 -1e999 1e-999 0x10 1.2.3 1e5e3 .5 5. +.e3 007";
+        std::istringstream in(line);
+        LineIn mine(line.data(), line.data() + line.size());
+        for (int op = 0; op < 8; ++op) {
+            const int what = static_cast<int>(next() % 10);
+            bool same = true;
+            if (what < 5) {
+                double a = 12345.25, b = 12345.25;
+                in >> a;
+                mine >> b;
+                same = (a == b || (a != a && b != b)) && std::signbit(a) == std::signbit(b);
+            } else if (what < 8) {
+                std::string a = "was", b = "was";
+                in >> a;
+                mine >> b;
+                same = a == b;
+            } else if (what == 8) {
+                std::string a = "was", b = "was";
+                std::getline(in >> std::ws, a);
+                skipSpace(mine);
+                restOfLine(mine, b);
+                same = a == b;
+            } else {
+                in.clear();
+                mine.clear();
+            }
+            same = same && static_cast<bool>(in) == static_cast<bool>(mine);
+            if (!same) {
+                if (++wrong <= 5) std::printf("  \"%s\": read %d, op %d (%d) not as a stream\n", line.c_str(), round, op, what);
+                break;
+            }
+        }
+    }
+    // Numbers as they are written: every one read to the same bits as the stream reads it.
+    for (int round = 0; round < 300000; ++round) {
+        char text[64];
+        const int kind = round % 4;
+        double d;
+        std::uint64_t bits = next();
+        std::memcpy(&d, &bits, sizeof d);
+        if (kind == 0) std::snprintf(text, sizeof text, "%.6g", static_cast<double>(static_cast<float>(next() % 2000001) / 1e6f - 1.f));
+        else if (kind == 1) std::snprintf(text, sizeof text, "%.*g", static_cast<int>(next() % 18) + 1, d);
+        else if (kind == 2) std::snprintf(text, sizeof text, "%s%llu.%llue%d", next() % 2 ? "-" : "", static_cast<unsigned long long>(next() % 100000000), static_cast<unsigned long long>(next() % 10000000000ull), static_cast<int>(next() % 61) - 30);
+        else std::snprintf(text, sizeof text, "%.17g", static_cast<double>(next() % 100000) * std::pow(10.0, static_cast<double>(next() % 45) - 22.0));
+        std::istringstream in(text);
+        LineIn mine(text, text + std::strlen(text));
+        double a = 7, b = 7;
+        in >> a;
+        mine >> b;
+        if (std::memcmp(&a, &b, sizeof a) != 0 || static_cast<bool>(in) != static_cast<bool>(mine)) {
+            if (++wrong <= 10) std::printf("  \"%s\": %a, the stream %a\n", text, b, a);
+        }
+    }
+    CHECK(wrong == 0);
+}
+
+// appendNumber writes what snprintf writes, to the byte (speed plan batch 4: the song's text, and so
+// undo's compare and every pinned song file, must not move by a byte). Floats over their whole
+// range in steps, the values a song holds most (0..1, steps, levels, 1e-5..1e5), random doubles,
+// halves to the even digit, the edges of %g's two styles, denormals, -0, infinities, not a number.
+static void testNumbersAsSnprintfWritesThem() {
+    int wrong = 0;
+    long long tried = 0;
+    const auto same = [&](double v) {
+        static const char* const formats[] = {"%.0f", "%.4g", "%.6g", "%.1g", "%.9g"};
+        static const char conversions[] = {'f', 'g', 'g', 'g', 'g'};
+        static const int precisions[] = {0, 4, 6, 1, 9};
+        for (int f = 0; f < 5; ++f) {
+            char want[400];
+            std::snprintf(want, sizeof want, formats[f], v);
+            std::string got = "x";
+            appendNumber(got, v, conversions[f], precisions[f]);
+            ++tried;
+            if (got != std::string("x") + want) {
+                if (++wrong <= 10) std::printf("  appendNumber(%a, %s): \"%s\", snprintf \"%s\"\n", v, formats[f], got.c_str() + 1, want);
+            }
+        }
+    };
+    const auto bitsToFloat = [](std::uint32_t bits) { float f; std::memcpy(&f, &bits, sizeof f); return f; };
+    const auto bitsToDouble = [](std::uint64_t bits) { double d; std::memcpy(&d, &bits, sizeof d); return d; };
+    for (std::uint64_t bits = 0; bits < (1ull << 32); bits += 2147) same(bitsToFloat(static_cast<std::uint32_t>(bits))); // every exponent, both signs
+    std::uint64_t seed = 88172645463325252ull;
+    const auto next = [&] { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; return seed; };
+    for (int i = 0; i < 300000; ++i) same(bitsToFloat(static_cast<std::uint32_t>(next() % 0x3f800001u))); // a float in 0..1
+    for (int i = 0; i < 200000; ++i) same(bitsToDouble(next()));                                       // any double
+    for (int i = 0; i < 200000; ++i) same(std::pow(10.0, -5.0 + 10.0 * static_cast<double>(next() % 1000000) / 1e6)); // 1e-5..1e5
+    for (int i = -20000; i <= 20000; ++i) same(i), same(i / 1000.0), same(static_cast<float>(i / 1000.0)), same(i / 7.0), same(i + 0.5);
+    for (int k = 0; k < 400; ++k) same(static_cast<double>(k) / kEditUnits), same(k / 10.0), same((static_cast<double>(static_cast<float>(k / 400.0)) + 1.0) * 0.5);
+    // Halves on the exact value: to the even digit. And the carry into another digit and another style.
+    for (double v : {0.5, 1.5, 2.5, 1234565.0, 1234575.0, 12345650000.0, 0.125, 0.375, 3.0517578125e-05, 999999.5, 9999995.0, 99999.95, 999.95, 9.9995, 99995.0,
+                     0.0001, 0.00009999995, 0.000099999995, 1e-5, 1e5, 1e6, 999999.0, 100000.0, 123456.5, 4294967295.0, 4294967296.0, 1e15, 1e16, 9.2e18, 1e19})
+        same(v), same(-v);
+    for (double v : {0.0, -0.0, 1e-300, 4.9e-324, 2.2250738585072014e-308, 1.4e-45, 1.17549435e-38, 3.4028234663852886e38, 1.7976931348623157e308,
+                     std::numeric_limits<double>::infinity(), -std::numeric_limits<double>::infinity(), std::nan(""), -std::nan("")})
+        same(v), same(-v);
+    for (std::uint32_t m = 1; m < (1u << 23); m += 997) same(bitsToFloat(m)); // float denormals
+    if (wrong) std::printf("  %d of %lld numbers written otherwise than snprintf\n", wrong, tried);
+    CHECK(wrong == 0);
+}
+
 int main(int, char**) {
+    testNumbersAsSnprintfWritesThem();
+    testALineReadsAsAStreamReadsIt();
     testCuttingASong();
     testTheAutosaveWritesNothingOutWhenNothingChanged();
     testTheTextKeptIsTheSongsText();

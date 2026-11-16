@@ -285,8 +285,10 @@ constexpr int kSongStop = 1;
 // A number nobody knows (a later program's) is the usual, LOOP, as an unknown GLIDE FROM is TOP.
 inline int songEndKind(int number) { return number == kSongStop ? kSongStop : kSongLoop; }
 
-struct Project {
-    TrackData tracks[kNumTracks];
+// Everything a Project holds but its tracks: the song's own lines and where the screens are. Kept
+// apart so a song can be read back in place (parseSong) and a step of undo read without a whole
+// Project (Session::readStep): each is a few hundred bytes, where the tracks are 12 MB.
+struct ProjectHead {
     int repeats[kMaxScenes];
     int steps[kMaxScenes]; // how many steps each scene lasts, if it is cut short: 23 is a bar and seven steps. 0: every step of its longest cell
     EffectData masterEffects[kMasterSlots]; // on everything, after the tracks are mixed
@@ -306,16 +308,23 @@ struct Project {
     bool writing = false;  // automation WRITE is on: a macro or effect setting moved while playing is recorded
     bool silenced = false; // a panic has shut the output and it has not opened again yet
 
-    Project() {
+    ProjectHead() {
         for (int& r : repeats) r = 1;
         for (int& n : steps) n = 0;
-        tracks[0].kind = TrackKind::Drums; // a new project is one drum track
         for (int bus = 0; bus < kBuses; ++bus) setBusEffect(bus, kNewSongBus[bus]);
     }
     // Put an effect on a bus at its usual settings there (LEVEL at full).
     void setBusEffect(int bus, EffectKind kind) {
         busEffects[bus].kind = static_cast<int>(kind);
         for (int i = 0; i < kEffectParams; ++i) busEffects[bus].param[i] = effectDefault(kind, i, true);
+    }
+};
+
+struct Project : ProjectHead {
+    TrackData tracks[kNumTracks];
+
+    Project() {
+        tracks[0].kind = TrackKind::Drums; // a new project is one drum track
     }
     // Tracks are filled from the left, so the count is also the next free one.
     int trackCount() const {

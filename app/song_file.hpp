@@ -30,6 +30,12 @@
 
 namespace apotheca {
 
+// A number added to `out` as snprintf("%.<precision><conversion>") writes it, to the byte, for the
+// conversions the song file uses ('f' with precision 0, 'g' with 1 to 9). Without snprintf for the
+// usual numbers (speed plan batch 4: it was 65% of writing a song's text); save_test holds the two
+// the same. Anything else (another conversion, a precision past 9) is snprintf's.
+void appendNumber(std::string& out, double v, char conversion, int precision);
+
 std::string songText(const Project& project);
 // One track as the song file writes it (songText is these, after the song's own lines).
 std::string trackText(const TrackData& track);
@@ -86,6 +92,33 @@ std::uint64_t bytesRead();
 // lines it does not understand are skipped. False (and `project` untouched)
 // if the text is not a song at all.
 bool parseSong(const std::string& text, Project& project);
+
+// A song's text read a part at a time, as parseSong reads it whole (Session::readStep: a step of
+// undo reads only the tracks whose text differs from the track's now). The text must cut
+// (cutSongAt); each part is read alone, as it reads in the whole.
+struct SongReading;
+class SongReader {
+public:
+    // `head` is made as new now. `slots[t]` is where track t's part goes (kNumTracks of them; only
+    // those read are touched). `text` is kept by reference: it must outlast the reader.
+    SongReader(const std::string& text, ProjectHead& head, TrackData* const* slots);
+    ~SongReader();
+    void readHead(std::size_t to); // the song's own lines, up to `to` (where its first track begins)
+    // Track `index`'s part, from its "track" line at `from` to `to`, into slots[index], made blank
+    // first; its MODs made to fit (modsFit), as parseSong does once the whole is read.
+    void readTrack(int index, std::size_t from, std::size_t to);
+    // After the parts: what parseSong does last to the song's own lines (an old song's "steps"), with
+    // each scene's length in bars (Project::sceneBars over every track, read or not).
+    void finish(const int bars[kMaxScenes]);
+
+private:
+    const std::string& text_;
+    std::unique_ptr<SongReading> reading_;
+};
+
+// cutSong's places, nothing copied: the song's own lines are [0, starts[0]) (the whole, with no
+// track), track t is [starts[t], starts[t + 1]) and the last runs to the end.
+bool cutSongAt(const std::string& text, std::vector<std::size_t>& starts);
 
 // A song's text cut where parseSong cuts it: the song's own lines (`head`, from the first line),
 // then each track's, from its "track" line to the next "track" line, as parseSong counts them.

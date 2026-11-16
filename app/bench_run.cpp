@@ -994,6 +994,8 @@ static void wholeSongModRows() {
     std::printf("  %-28s %5.3f%% (%+.3f%% over in time)\n", "24 LFOs FREE", times.free, times.free - times.synced);
 }
 
+static int appRows(bool all);
+
 int apotheca::runBench() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
     processorRows("before the rows", true);
@@ -1119,6 +1121,16 @@ int apotheca::runBench() {
         std::printf("  %-28s %6.2f%% of one core\n", "...the plain song again", busSong(false, none, none) - dry);
     }
 
+    return appRows(true);
+}
+
+// The app's rows alone: `bench --app` (undo and the song's text: speed plan batch 4).
+int apotheca::runAppBench() {
+    std::setvbuf(stdout, nullptr, _IOLBF, 0);
+    return appRows(false);
+}
+
+static int appRows(bool all) {
     std::printf("app, on the screen's thread (a frame is 16.7 ms):\n");
     std::unique_ptr<Engine> engine(new Engine);
     Input input;
@@ -1174,6 +1186,7 @@ int apotheca::runBench() {
         std::printf("  %-28s %7.3f ms\n", "...a knob and a hit, undone", spent / rounds);
     }
     std::printf("  %-28s %7.3f ms\n", "a bar of notes to the engine", ms([&] { session.sendNoteBar(1, 0, 0); drain(); }, 200));
+    if (!all) return 0;
     screenRows(app, session, *engine, input, clock);
     processorRows("after the rows", false);
     std::printf("sizes: Project %zu KB, TrackData %zu KB, Engine %zu KB, a Command %zu bytes\n", sizeof(Project) / 1024, sizeof(TrackData) / 1024, sizeof(Engine) / 1024, sizeof(Command));
