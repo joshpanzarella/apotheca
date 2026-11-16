@@ -38,6 +38,7 @@
 #include "apotheca/phazed.hpp"
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
+#include "apotheca/cloud.hpp"
 #include "app.hpp"
 #include "bench_run.hpp"
 #include "realtime.hpp"
@@ -994,6 +995,36 @@ static void wholeSongModRows() {
     std::printf("  %-28s %5.3f%% (%+.3f%% over in time)\n", "24 LFOs FREE", times.free, times.free - times.synced);
 }
 
+// CLOUD (docs/plans/granular-plan.md, section 3): one key of preset 0 (Soft Cloud: about two grains
+// at once), and the pool full: six keys at 200 grains a second, SIZE 80 (0.35 s) and PITCH SPRAY on,
+// so every grain is read between samples (Hermite), on a 4 s noise made here as the recording.
+static void cloudRow(const char* name, bool full) {
+    std::unique_ptr<Cloud> synth(new Cloud);
+    synth->prepare(48000.f);
+    std::vector<float> recording(4 * 48000);
+    std::uint32_t x = 1;
+    for (float& v : recording) {
+        x = x * 1664525u + 1013904223u;
+        v = (static_cast<float>(x >> 8) / 8388608.f - 1.f) * 0.5f;
+    }
+    synth->setSample(recording.data(), static_cast<int>(recording.size()));
+    if (full) {
+        synth->setSetting(cloud::Density, 100);
+        synth->setSetting(cloud::Size, 80);
+        synth->setSetting(cloud::PitchSpray, 30);
+    }
+    for (int k = 0; k < (full ? cloud::kKeys : 1); ++k) synth->noteOn(48 + 3 * k, 0.9f);
+    std::vector<float> l(256), r(256);
+    for (int b = 0; b < 200; ++b) synth->render(l.data(), r.data(), 256); // the cloud grown
+    long grains = 0, blocks = 0;
+    const double each = ms([&] {
+        synth->render(l.data(), r.data(), 256);
+        grains += synth->grainsSounding();
+        ++blocks;
+    }, 600);
+    std::printf("  %-28s %5.2f%% of one core, %.1f grains\n", name, 100.0 * each / (256.0 / 48.0), blocks ? static_cast<double>(grains) / blocks : 0.0);
+}
+
 int apotheca::runBench() {
     std::setvbuf(stdout, nullptr, _IOLBF, 0); // a line at a time down the pipe, so the SPEED TEST page shows each row as it comes
     processorRows("before the rows", true);
@@ -1013,6 +1044,8 @@ int apotheca::runBench() {
     physicRow("PHYSIC asleep", "Marimba", false, true);
     acidRow("ACID, a busy line", false);
     acidRow("ACID asleep", true);
+    cloudRow("CLOUD, one key", false);
+    cloudRow("CLOUD, full pool", true);
     instrument("Sampler (no recording)", SynthKind::Sampler, 8);
     {
         std::unique_ptr<Engine> engine(new Engine);

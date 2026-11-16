@@ -4,6 +4,7 @@
 #include "apotheca/mod_rule.hpp"
 #include "apotheca/physic.hpp"
 #include "apotheca/acid.hpp"
+#include "apotheca/cloud.hpp"
 #include "apotheca/physic_rule.hpp"
 
 #include <chrono>
@@ -11,6 +12,8 @@
 #include <utility>
 
 namespace apotheca {
+
+static_assert(cloud::kPool == kGrainsShown, "the engine keeps every grain of a CLOUD for its picture");
 
 void panGains(float pan, float& left, float& right) {
     if (!(pan == pan) || pan == 0.f) { // the middle (and not a number): untouched
@@ -453,6 +456,7 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     else if (kind == SynthKind::Fm6) synth.reset(new Fm6);
     else if (kind == SynthKind::Physic) synth.reset(new Physic);
     else if (kind == SynthKind::Acid) synth.reset(new Acid);
+    else if (kind == SynthKind::Cloud) synth.reset(new Cloud);
     else synth.reset(new Phazed);
     if (!synth->ok()) return false;
     synth->prepare(sampleRate_);
@@ -464,6 +468,15 @@ bool Engine::addSynthTrack(int track, SynthKind kind) {
     synth.release(); // the audio thread owns it from here
     claimed_[track] = true;
     return true;
+}
+
+int Engine::grainPlaces(int track, float* places, int most) const {
+    if (!validTrack(track)) return -1;
+    const Track& t = tracks_[track];
+    int count = t.grainCount.load(std::memory_order_relaxed);
+    if (count > most) count = most;
+    for (int i = 0; i < count; ++i) places[i] = t.grainAt[i].load(std::memory_order_relaxed);
+    return count;
 }
 
 float Engine::effectMeter(int track, int slot) const {
@@ -1803,6 +1816,7 @@ void Engine::takeAway(int t) {
         bin(trash);
     }
     track.hasDrums = false;
+    track.grainCount.store(-1, std::memory_order_relaxed);
     track.glideFrom = kFromTop;
     // Its MODs go OFF, as GLIDE FROM goes back to TOP: the effects stay, so what was added to
     // their settings and the sends is taken off first.
@@ -2182,8 +2196,14 @@ void Engine::renderTrack(int t) {
     float* left = trackL_[t];
     float* right = trackR_[t];
     int thrown = 0; // THROW: which buses a drum hit was written out for, this chunk
-    if (track.synth) track.synth->render(left, right, frames);
-    else thrown = track.drums.render(left, right, frames, thrown_[t][0], thrown_[t][1]);
+    if (track.synth) {
+        track.synth->render(left, right, frames);
+        // CLOUD's grains, for the picture (grainPlaces): kept as of the end of each chunk.
+        float places[kGrainsShown];
+        const int shown = track.synth->grainPlaces(places, kGrainsShown);
+        for (int i = 0; i < shown; ++i) track.grainAt[i].store(places[i], std::memory_order_relaxed);
+        track.grainCount.store(shown, std::memory_order_relaxed);
+    } else thrown = track.drums.render(left, right, frames, thrown_[t][0], thrown_[t][1]);
     thrownMask_[t] = thrown;
     for (int slot = 0; slot < kTrackSlots; ++slot) {
         runSlot(track.effects[slot], track.fades[slot], left, right, frames, false, chunkHits_);

@@ -12,6 +12,7 @@
 // Every figure is SELF (the plan's own choice; nobody has heard any of it): a test of it only says
 // the code does what was chosen.
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -156,30 +157,28 @@ inline double windowAt(long k, long rise, long fall) {
     if (k <= 0 || k >= rise + fall) return 0.0;
     return k < rise ? halfCosine(static_cast<double>(k) / rise) : halfCosine(static_cast<double>(rise + fall - k) / fall);
 }
-// The table the synth reads it from: 257 points of the half cosine, read between two.
-constexpr int kWindowPoints = 256;
-struct WindowTable {
-    float v[kWindowPoints + 1];
-    WindowTable() {
-        for (int i = 0; i <= kWindowPoints; ++i) v[i] = static_cast<float>(halfCosine(static_cast<double>(i) / kWindowPoints));
-    }
-    // x in 0..1 (held there).
-    float at(float x) const {
-        const float f = (x < 0.f ? 0.f : (x > 1.f ? 1.f : x)) * static_cast<float>(kWindowPoints);
-        int i = static_cast<int>(f);
-        if (i >= kWindowPoints) i = kWindowPoints - 1;
-        return v[i] + (f - static_cast<float>(i)) * (v[i + 1] - v[i]);
-    }
-};
+// What the synth works it out with, a sample at a time: the half cosine as a polynomial, so no
+// sample waits on the one before (a table read or a cosine stepped along both cost more: section
+// "As built" of the plan). sin(pi y) to its y^9 term about the middle, y = x - 0.5: within 4e-6 of
+// the half cosine, a hair past 0 and 1 at the ends, held there, so it is exactly 0 at x = 0 and
+// exactly 1 at x = 1.
+inline float windowPoly(float x) {
+    const float y = x - 0.5f, y2 = y * y;
+    const float s = y * (3.14159265f + y2 * (-5.16771278f + y2 * (2.55016404f + y2 * (-0.599264529f + y2 * 0.0821458866f))));
+    return std::min(1.f, std::max(0.f, 0.5f + 0.5f * s)); // (min and max: the compiler takes four at a time)
+}
 // The mean square of either piece (3/8, whatever its length): what the overlap gain stands on.
 constexpr double kWindowPower = 0.375;
 
 // ---- level --------------------------------------------------------------------------------
 // Grains from different places add in power: a grain's gain is 1 / sqrt(the expected overlap),
 // DENSITY x SIZE, at least 1, so the cloud is about as loud at any DENSITY and SIZE. A sparse
-// cloud (fewer than one grain sounding) is a grain at a time, each at full.
+// cloud (fewer than one grain sounding) is a grain at a time, each at full. A key sounds at most
+// kGrainsPerKey grains at once, so the overlap is taken at most that.
+constexpr int kGrainsPerKey = 12;
 inline double overlapGain(double hz, double sizeSec) {
-    const double overlap = hz * sizeSec;
+    double overlap = hz * sizeSec;
+    if (overlap > kGrainsPerKey) overlap = kGrainsPerKey;
     return 1.0 / std::sqrt(overlap > 1.0 ? overlap : 1.0);
 }
 // STEREO: the grain's side rolled within +-width, equal power (the middle 0.7071 each side).

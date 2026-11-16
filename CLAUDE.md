@@ -2108,6 +2108,51 @@ effect in those two groups and fails one that does not.
   - **Seven instruments do not fit the list at its pitch with the words under it**: the list stands as
     high as it must (`listTop`, now for adding a track too), and only with the words its rows close
     from 52 to 47 (`SongScreen::listPitch`).
+- **CLOUD** (2026-11-16, the engine only: batches 0 and 1 of `docs/plans/granular-plan.md`;
+  `engine/include/apotheca/cloud.hpp`, `cloud_rule.hpp`, `engine/src/cloud.cpp`; `tests/cloud_test.cpp`).
+  `SynthKind::Cloud` appended. **Every figure is SELF. Nobody has heard it, not run on the handheld; no
+  app side yet** (batch 2). The plan's calls are at their picks but one: **the pool is 24, not 32**.
+  - **Every onset is a whole number of samples counted from the key's strike, every setting is read at
+    an onset, and a grain once started never changes** (`onsetWait`, `grainUnit(seed, n, what)`: the
+    strike's `noteSeed` and the grain's number, skipped ones counted). That is all the block and helper
+    rule needs: `testBlocks`, `testThroughTheEngine` (1 to 333 frames, 0 to 3 helpers, Play again).
+  - **A render is worked in pieces of 64**: every key's envelope first (it does not hang on the grains,
+    and says where a key ends), then the grains from one onset to the next, each added into ITS KEY's
+    sums in the pool's order, then the keys through their envelopes in key order. **A pool slot is free
+    from the very sample its grain ends**, and a key's grains are cut to the sample the key ends
+    (`dies`): freed at a piece's end instead, which slot the next grain took would hang on the block
+    length (`testBlocks`' full pool with keys ending). Anything new that frees a grain frees it on a
+    sample, never "at the end of this call".
+  - **A grain's place is 32.32 fixed point** (`kWhole`): one integer add a sample, whole samples
+    exact, the same in any blocks. At the recording's own pitch (ratio exactly 1: no PITCH SPRAY, TUNE
+    or glide) the place is rounded and whole samples are read (`plain`); under 20 ms a straight read
+    (`kLinearUnder`, the plan's third cut); else 4-point Hermite (`hermite`, within 2e-6 of a true sine,
+    `testTheRead`). Reads go in stretches with no end of the recording in them (`clearRun`); the sample
+    by an end reads round it. **The recording has no edges** (`wrapPlace`, and REVERSE reads the same
+    stretch from its far end).
+  - **The window is `windowPoly`**, the half cosine as a polynomial (sin to its y^9 term, held to 0..1:
+    exactly 0 and 1 at its ends, 2e-6 from the cosine), worked out over a run first, so the compiler
+    takes it four at a time. A 257-point table and a cosine stepped along were both tried: dearer (each
+    sample waited on the one before). Each piece at least 0.5 ms (`windowFloor`).
+  - **The gain is 1 / sqrt(DENSITY x SIZE, held to 1..12)** (`overlapGain`: a key sounds 12 at most),
+    so the level holds within 0.8 dB over DENSITY x SIZE (`testCloudLevel`); the sides equal power.
+  - **Keys: 6 sound, 12 slots** (6 more to fade out over 5 ms: a seventh key takes the oldest let go,
+    else the oldest; `allNotesOff`, Play and panic, fades them all; `stopNotes`, Stop, lets them go so
+    the grains ring on under RELEASE). The same key struck again is its own slot (its grains go on,
+    SCAN and the count start again). A key played by hand rolls `liveSeed` of a count `allNotesOff`
+    puts back, so Play from the top is the same cloud.
+  - **A new recording ends every grain at once** (`setSample`): the old one goes to the trash and is
+    freed next frame. ASan holds it (`testSwap`: the old one written over with not-a-number and freed;
+    that mutant reads past the new, shorter one). The engine hands it over as the sampler's
+    (`Engine::setTrackSample`, unchanged). No recording, or a length of 0: **the TONE** (`Cloud::tone`,
+    2 s about middle C, every partial whole cycles round; made once per rate in `prepare`, shared, as
+    `DrumKit::builtIn`).
+  - **The picture**: `Instrument::grainPlaces` (CLOUD's alone, -1 for the rest), read after each chunk
+    on the thread that rendered the track into `Track::grainAt` / `grainCount` (atomics, as the
+    meters); the app asks `Engine::grainPlaces(track, places, most)`. `kGrainsShown` is `cloud::kPool`
+    (a `static_assert`).
+  - `setMacro` and `setSetting` store and return; `selectPreset` puts the macros at 0.5. Three engine
+    presets (Soft Cloud, Dust, Fifths Choir); the plan's 24 are app data (batch 3).
 - **FM-6's `setMacro` returns early on the value it has**, as Phazed's
   does (JAX-EP's does not; `bench` times it: 0.035 us a change, 0.002 the same value;
   `Fm6::applied()` counts them for `fm6_test`).
@@ -2487,6 +2532,7 @@ effect in those two groups and fails one that does not.
 | PHYSIC, 8 notes struck again every half second, none asleep (2026-11-15, `bench` in a container whose Phazed row read 0.7%): MARIMBA / STEEL (a string) / the worst (CHURCH BELL, DICE 100, every note gliding) / asleep. **Not yet run on the handheld** (x 13 to 17: physic-plan.md, section 14) | 0.21% / 0.23 to 0.37% / 0.40 to 0.59% / 0.01% |
 | PHYSIC with batch 10 (2026-11-16, `physic_test --measure`, the same container): Twelve (PAIR: two strings a note) / every BODY page setting on, not gliding (BELL, DRUM, STRING, MARIMBA) / the same, every note gliding (BELL, STRING) / NOISE 2 s bursts on GLASS, STRING. **Not yet run on the handheld** | 0.44% / 0.43 to 0.57% / 0.73 to 0.77% / 0.48%, 0.64% |
 | ACID, one voice playing a busy 16-step line at 130 BPM (accents, slides, RESONANCE 85, ENV MOD 70: its cutoff moving all the while; batch 1, 2026-11-16): `acid_test --measure cost` / `bench`'s row / with the cutoff still / asleep. The plan's target was 0.15%. **Not yet run on the handheld** | 0.13% / 0.14% / 0.10% / 0.00% |
+| CLOUD (batch 1, 2026-11-16, a busy desk: load 5 to 7; in the same `bench` run PHYSIC 8 notes 0.31%, ACID 0.21%, JAX-EP 6 notes 0.64%, a third over their usual): one key of preset 0 (two grains) / a 4-key chord / the pool full (six keys at 200 grains a second, SIZE 0.35 s, PITCH SPRAY on: 24 grains, all Hermite). The plan's targets 0.08% / 0.5% (ceiling 0.7%). `cloud_test --measure cost` / `bench`. **Not yet run on the handheld** | 0.05 to 0.07% / 0.19 to 0.24% / 0.53 to 0.55%; `bench` 0.06% / - / 0.65% |
 | ...`bench`'s rows after batch 10 (one run, its Phazed row 1.0%): Marimba / Twelve / breathed (Wine Glass, NOISE) / the worst (Church Bell, DICE 100, gliding, PAIR, GUITAR, MOTOR, BUZZ) / asleep | 0.21% / 0.44% / 0.48% / 0.66% / 0.01% |
 | FM-6, 8 notes of E.PIANO 1 / 16 of STRINGS 1, keys again every half second (2026-11-15, `bench`; the plan's three runs 0.49 to 0.63% / 1.02 to 1.30%). QMOD's 8 were 2.6 to 3.4%. **Not yet run on the handheld** (estimated 6 to 10% of a core there for 8, QMOD's measured 57%: fm6-plan.md, section 6) | 0.67% / 1.22% |
 | The busiest song with FM-6 where QMOD was (2026-11-15, one run): the audio thread alone / 2 helpers. **Not yet run on the handheld** | 16.9% / 13.1% of a block, worst 3.0 / 4.4 ms of 5.33, 0 of 1875 late |
@@ -2567,7 +2613,7 @@ watch again, it is in git (the commit before batch 8b).
 2. Twin Analog became a JX-3P clone, **JAX-EP on the device** (`docs/plans/jx3p-plan.md`; branch `jx3p`: **batches 0 to 8c are done (2026-11-15)**: the engine, the app, the 32 presets, the tests off Twin, Twin's code out, the docs. Not joined to `main`, nobody has heard any of it, SPEED TEST has not run on the handheld. Left: batch 9, calibration from recordings, which waits on the owner's source; and the owner's open calls in the plan's section 8).
 3. LFO and random stepper per track (`docs/plans/modulation-plan.md`): batch 0, the groundwork, is built (branch `mods`: the rule, `giveLane`, DETUNE mended, QMOD's early return, the cost row), and batch 1, the engine (the tick, `runMods`, the commands, X held while stopped); their review is mended (the plan's section 14); batch 2, the song, is built too (`TrackData::mods`, `Session::setMod`, the `mod` / `modsteps` words, undo, the TYPE carry: section 15); **batches 3 and 4 are built (2026-11-15, the owner's calls A to H taken; section 18): X held on a knob is its MOD, on DEVICE and FX**; **batch 5, the MOD tab after FX, is built (2026-11-15, section 20)**; next, batch 6 (the brass mark on the target's own bar). **Joined with `main` (2026-11-15)**, and the join's review mended (section 17: no defect, the bench's MOD rows timed in turns): FEEL, AT END, the mixer, the picker, JAX-EP and Twin's removal sit beside the MODs; nobody has heard a MOD.
 4. **PHYSIC** (owner, 2026-11-14): a physical-model synth for plucked and struck sounds (strings, mallets, bells). Plan: `docs/plans/physic-plan.md`. **Built and joined: the engine (2026-11-15, 24 presets) and the app (2026-11-16). Batch 10 (BODY, PAIR, MOTOR, NOISE, BUZZ, a fifth page and 8 presets: 32) on branch `physic2`, 2026-11-16. Nobody has heard it, not run on the handheld.**
-5. **An acid mono bass** (303-style: accent, slide; **ACID, built 2026-11-16, batches 0 to 5 of `docs/plans/acid-plan.md`: the engine, the app, 32 presets, README. Nobody has heard it, not run on the handheld; batch 6, calibration from recordings, waits on the owner's source**), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14; **CLOUD, planned 2026-11-16 in `docs/plans/granular-plan.md`, nothing built**).
+5. **An acid mono bass** (303-style: accent, slide; **ACID, built 2026-11-16, batches 0 to 5 of `docs/plans/acid-plan.md`: the engine, the app, 32 presets, README. Nobody has heard it, not run on the handheld; batch 6, calibration from recordings, waits on the owner's source**), then **a granular synth** (clouds from the recordings) (owner, 2026-11-14; **CLOUD, planned 2026-11-16 in `docs/plans/granular-plan.md`; its engine built on branch `cloud` the same day (batches 0 and 1; the pool 24, not 32), not heard, not run on the handheld; the app, batch 2, is next**).
 7. **FEEL on the drum grid** (owner, 2026-11-14; `docs/plans/drum-feel-plan.md`): HUMAN TIME and HUMAN LEVEL for each lane, live, the main beats tighter. **Built on branch `feel` (2026-11-15), not joined, not heard by anyone**; SWING later.
 6. **The sample picker in columns** (owner, 2026-11-14; `docs/plans/picker-plan.md`): three columns as yazi, folders two levels deep, new folders and moving recordings on the device. The owner asked for it to go soon: after the JAX-EP's presets. **Batches 0 to 2 are built on branch `picker`** (two levels underneath, the three columns, + NEW FOLDER, carry with hold R1, hold B on an empty folder), not joined, not tried on the handheld; batch 3, the review and its mend, is done (2026-11-15).
 

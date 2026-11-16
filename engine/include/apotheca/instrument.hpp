@@ -46,12 +46,16 @@ public:
     // For an instrument that plays a recording: here it is (or nullptr for
     // none). The samples stay alive until replaced. Realtime safe.
     virtual void setSample(const float* data, int length) { (void)data; (void)length; }
+    // For an instrument that plays grains (CLOUD): where each sounding grain reads now, as a share
+    // of its recording (0..1), at most `most` of them, after the last render; how many. -1: it
+    // plays no grains. Called on the thread that renders it, after render.
+    virtual int grainPlaces(float* places, int most) const { (void)places; (void)most; return -1; }
 
     // Writes `frames` samples (replacing what was there).
     virtual void render(float* left, float* right, int frames) = 0;
 };
 
-enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic, Acid }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended, ACID after it)
+enum class SynthKind { Phazed, Sampler, Jx3p, Fm6, Physic, Acid, Cloud }; // (memory only: QMOD went, FM-6 took its place, 2026-11-15; PHYSIC appended, ACID after it, CLOUD after that)
 
 // Every synth has this many macros (the eight knobs on its DEVICE screen).
 // Songs, presets and automation lanes 0..7 all count on it; each synth's

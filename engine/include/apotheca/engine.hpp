@@ -71,6 +71,7 @@ constexpr int kMasterTrack = -1;  // "track" index that addresses the master
 constexpr int kBuses = 2;
 constexpr int kEchoBus = -2;      // bus 0: a delay
 constexpr int kSpaceBus = -3;     // bus 1: a reverb
+constexpr int kGrainsShown = 24; // CLOUD's grains the engine keeps for its picture (cloud::kPool)
 inline int busTrack(int bus) { return kEchoBus - bus; }                       // 0 -> kEchoBus, 1 -> kSpaceBus
 inline int busOfTrack(int track) { return track == kEchoBus ? 0 : (track == kSpaceBus ? 1 : -1); } // -1: not a bus
 // How many effect slots the thing a "track" number names has; 0 if it names nothing.
@@ -515,6 +516,11 @@ public:
     // position; a FREE LFO's in seconds, modPositionFor), so the MOD tab can draw its shape with a dot at now; not a number while it does not
     // run. Any thread, no lock.
     double modNow(int track, int mod) const;
+    // ---- CLOUD's grains, for its picture (docs/plans/granular-plan.md) ------------------------
+    // Where each grain of the track's synth reads, as a share of its recording (0..1), as of the
+    // end of the last chunk: how many (at most `most`, at most kGrainsShown). -1: the track plays
+    // no grains. Any thread, no lock (a picture: the count and the places may be a chunk apart).
+    int grainPlaces(int track, float* places, int most) const;
     // Chunks worked out since the engine was made (a MOD's tick cuts more of them: the bench counts
     // them). As of the end of the last render(); any thread.
     std::uint64_t chunksRendered() const { return chunksShown_.load(std::memory_order_relaxed); }
@@ -628,6 +634,8 @@ private:
         ModSettings mods[kModsPerTrack];          // MOD 1 and MOD 2 (SetMod, SetModStep): OFF unless told
         std::atomic<float> modShown[kModsPerTrack]; // what each adds as of its last tick, for the screen
         std::atomic<int> modPlace[kModsPerTrack];   // a STEPPER's place as of its last tick; -1: not running
+        std::atomic<int> grainCount{-1};            // CLOUD's grains sounding (grainPlaces); -1: no grains
+        std::atomic<float> grainAt[kGrainsShown];   // and where each reads
         std::atomic<double> modAt[kModsPerTrack];   // the position of its last tick (a FREE LFO's in seconds); not a number: not running
         std::uint8_t slotChoices[kTrackSlots] = {}; // a bit a setting: which of each slot's effect's settings are
                                                     //   choices (InstallEffect). A MOD never moves a choice.

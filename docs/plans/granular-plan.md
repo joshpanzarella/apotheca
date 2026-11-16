@@ -293,3 +293,102 @@ Each with the pick. A later "no" changes one constant or one row.
 | 14 | Presets | **24 in four folders** (STILL, DRIFT, DUST, CHOIR); preset 0 Soft Cloud |
 | 15 | A new recording while keys sound | **Cuts the cloud at once** (as the sampler) |
 | 16 | The recording's ends | **Wrap** (a cloud has no edge) |
+
+## As built: batches 0 and 1, the engine (2026-11-16, branch `cloud`)
+
+**The engine is built and tested; the app is not.** Nobody has heard it; it has not run on the
+handheld. Every figure is SELF. The owner's calls were not answered: built at the picks, **but the
+pool is 24, not 32** (the fourth cut, below).
+
+### What is where
+
+| File | Holds |
+| --- | --- |
+| `engine/include/apotheca/cloud_rule.hpp` | the settings (17, room 24), the macros, the readings, `grainUnit`, `onsetWait`, the window (`windowAt` exact, `windowPoly` the synth's), `overlapGain`, `sideGains`, PITCH STEPS' grid, `grainRatio`, `wrapPlace`, SCAN's place |
+| `engine/include/apotheca/cloud.hpp`, `engine/src/cloud.cpp` | the synth: 6 keys (12 slots: 6 to fade), the pool, the reads, the TONE, 3 engine presets |
+| `engine/include/apotheca/instrument.hpp` | `SynthKind::Cloud` appended; `Instrument::grainPlaces` (-1 for every other synth) |
+| `engine/src/engine.cpp`, `engine.hpp` | `addSynthTrack` makes it; `renderTrack` keeps its grains in `Track::grainAt` / `grainCount` after each chunk; `Engine::grainPlaces(track, places, most)` for the picture |
+| `app/bench_run.cpp` | the rows "CLOUD, one key" and "CLOUD, full pool" |
+| `tests/cloud_test.cpp` | `ctest -R cloud` (TIMEOUT 120): the rule and the synth, about 2 s |
+
+**The recording reaches it exactly as the sampler's does**: `Engine::setTrackSample(track,
+SampleData)` sends it, the audio thread hands it to `Instrument::setSample` and puts the old one in
+the trash. Nothing new in the engine for it. The app only has to call that for a CLOUD track.
+
+### Where it differs from section 3
+
+| Plan | Built | Why |
+| --- | --- | --- |
+| Window from a 257-point table, read between points | **`windowPoly`**: sin(pi y) to its y^9 term, held to 0..1 (exactly 0 and 1 at the ends, 2e-6 from the half cosine), worked out over a run before the samples | the table and a cosine stepped along both cost more: every sample waited on the one before. Laid out first, the compiler takes it four at a time |
+| A grain's place a double | **32.32 fixed point** | one integer add, whole samples exact |
+| Settings read at onsets; SCAN "POSITION + SCAN x seconds" | SCAN **added up grain by grain** (each gap at the SCAN read at its end) | so a MOD on SCAN moves the place on from where it is, never jumps it |
+| Gain 1 / sqrt(max(1, DENSITY x SIZE)) | the overlap **also held to 12** (`kGrainsPerKey`) | a key sounds 12 at most; without it the level fell 5 dB at the dense end |
+| Pool 32 | **24** | the fourth cut |
+| Steal: one tail slot | **12 key slots**: any key may fade (5 ms) while six new ones sound | allNotesOff fades all six; a slot free for each new key |
+| ROOT, TUNE | as planned; LEVEL straight (LEVEL 50 is -6 dB) | |
+
+### The cost, and the cuts
+
+Measured first, the pool full (six keys at 200 grains a second, SIZE 80 = 0.35 s, PITCH SPRAY 30, so
+every grain is a Hermite read; `cloud_test --measure cost`): **1.07 to 1.19%** of a desk core, against
+the target 0.5% and the ceiling 0.7%. In order:
+
+| Step | The pool full | One key of preset 0 |
+| --- | --- | --- |
+| first build: table window, double place, sample by sample, each grain times its key's envelope | 1.07 to 1.19% | 0.085 to 0.092% |
+| cut 1, the plain path (whole samples at ROOT) | (built from the start: the pool test has PITCH SPRAY on; one key at ROOT with 11 grains costs 0.10%) | |
+| cut 2, the window: `windowPoly` laid out over the run; each key's grains summed before its envelope; the Hermite in fewer sums, its four points gathered and the curve worked four at a time | 0.66 to 0.69% | 0.053 to 0.069% |
+| cut 3, a straight read under 20 ms | (the pool test's grains are 0.35 s: no change there) | |
+| **cut 4, the pool at 24** | **0.53 to 0.55%** | 0.05 to 0.07% |
+
+The desk was busy (load 5 to 7). In one `bench` run: **CLOUD, one key 0.06%, CLOUD, full pool 0.65%**
+with PHYSIC 8 notes at 0.31% (0.21% recorded), ACID 0.21% (0.14%) and JAX-EP 6 notes 0.64% (0.55%)
+beside it: about a third over their usual, so the full pool is near 0.45 to 0.5% on a quiet desk.
+**Still a hair over the target on this desk, under the ceiling.** Left if it must go lower: the
+Hermite read is now the most of it (about 40 of 55 instructions a grain-sample); 20 grains, or a
+straight read for every grain the owner's ear allows.
+
+### Measured (`cloud_test --measure`)
+
+| What | Figure |
+| --- | --- |
+| Grain timing | a click read at each grain's peak: 48 grains in 3 s, every one on its sample |
+| DENSITY | SCATTER 0: the count over 10 s within one onset of the rate; SCATTER 50 and 100: within 1% over 60 s where there are thousands (each gap is rolled: a few dozen are within three sigma) |
+| Pitch | keys 36 to 84 on a sine: 2e-5 cents at worst; PITCH STEPS: every grain on its grid |
+| The read | a long grain: what is not the sine 104 dB down; sample by sample against the true sine, Hermite 1.6e-6, the straight read 2.1e-4 (its bound A d^2 / 8), across both ends and backwards too |
+| Level | over 19 DENSITY x SIZE settings that are not sparse: -0.74 to +0.11 dB about the middle; 9.5 dB under the recording's RMS (the window's 3/8, the middle's two sides, LEVEL 80, VELOCITY) |
+| Clicks | grains of 5 ms, every SHAPE, a flat recording: no step past the windows' own slope; a full pool skipping 329 of 617: largest step 0.0023 against 0.0035 allowed; a steal: 0.0011 |
+| Tiny numbers | a minute held and 30 s let go: the least level held 1.7e-4 (the envelope's end is 1e-4), then exact zeros and nothing held |
+
+### Tests and mutants
+
+`tests/cloud_test.cpp`, in `ctest` as `cloud`: the rule (settings, readings, rolls, onsets, the window,
+the level, pitch, the place), and the synth (timing, density, pitch, clicks, level, blocks 1 to 333
+through the synth and through the engine with 0 to 3 helpers, Play again, the grains for the picture,
+no allocation, tiny numbers, NaN, silence, Play from the top by step and by hand, a recording
+swapped, the steal, the TONE, presets and macros, glide, SCAN and SPRAY, REVERSE, STEREO and
+VELOCITY, the read).
+
+- **The rule: 10 mutants, 10 killed** (an eleventh, the table's ends set by hand, was redundant and the
+  line went; the table itself went with cut 2).
+- **The synth: 26 mutants, 24 killed.** One more only by **AddressSanitizer**: the plain stretch that
+  lands on the recording's end not stepped round (one read past the end). One survives, kept as a
+  guard: the cut of a grain started in the piece its key ends in (it matters only to which slot a
+  later grain in that same piece takes with the pool full).
+- **AddressSanitizer** (a build of the engine and this test with `-fsanitize=address`, in a scratch
+  folder: about four minutes): the whole test clean, `testSwap` included (the old recording freed);
+  with `setSample`'s grain ending taken out it reports the read past the new, shorter recording.
+
+### What batch 2 (the app) needs from here
+
+- `TrackKind::Cloud` appended, its row last in `kInstruments` (word `cloud`, presets `.cloud`),
+  `TrackData::cloud` a `CloudPatch` (room `cloud::kSettingRoom` 24, 17 used), `SynthKind::Cloud`.
+- The recording: `holdsRecording(kind)` through the 26 places, and **`Engine::setTrackSample`** for a
+  CLOUD track as for a sampler. None: send nothing (the engine plays the TONE).
+- The spec `cl`: the settings' readings are `cloud_rule.hpp`'s (`sizeSeconds`, `densityHz`,
+  `pitchSprayCents`, `scanTimes`, `levelDb`, `spraySeconds(dial, the recording's seconds)`,
+  `envelope::attackSeconds` / `fallSeconds`, `stepsName`); the macros `cloud::macroSetting`; **no macro
+  is a choice**. Engine presets: `Cloud::presetCount()` (3), `presetName`, `presetCategory`, `presetPatch`.
+- The picture: **`Engine::grainPlaces(track, places, kGrainsShown)`** (shares 0..1 of the recording,
+  as of the last chunk; -1 for no grains): a readout for the redraw, and an `idle_test` part.
+- The pool is 24 (`cloud::kPool`): the plan's "32 grains" in its words goes with it.
