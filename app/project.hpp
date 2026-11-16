@@ -7,6 +7,7 @@
 
 #include "apotheca/engine.hpp"
 #include "apotheca/physic.hpp"
+#include "apotheca/acid.hpp"
 #include "lane_edit.hpp"
 
 namespace apotheca {
@@ -199,8 +200,8 @@ inline float panAmount(int pan) { return static_cast<float>(pan) / static_cast<f
 // (Memory only: a song file names an instrument by its word, instruments.hpp. Jx3p is JAX-EP on the device
 // and stands where Twin Analog stood, whose tracks it takes: docs/plans/jx3p-plan.md, section 5. Fm6 is
 // FM-6 and stands where QMOD stood, whose tracks it takes too: docs/plans/fm6-plan.md. Physic is PHYSIC,
-// appended: docs/plans/physic-plan.md.)
-enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic };
+// appended: docs/plans/physic-plan.md. Acid is ACID, appended after it: docs/plans/acid-plan.md.)
+enum class TrackKind { None, Drums, Phazed, Jx3p, Sampler, Fm6, Physic, Acid };
 // Played from the piano roll: everything but the drums. (What else there is
 // to know about each instrument is in instruments.hpp.)
 inline bool isSynth(TrackKind kind) { return kind != TrackKind::None && kind != TrackKind::Drums; }
@@ -235,6 +236,7 @@ struct TrackData {
                                  // BRILLIANCE, are the track's own: no preset writes them, so a new track's start here
     Fm6Patch fm6;                // when it is FM-6 (a new track's is its first preset: Session::addTrack)
     PhysicPatch physic;          // when it is PHYSIC (the same: its first preset, MARIMBA). Room for 26, 23 used
+    AcidPatch acid;              // when it is ACID (the same: its first preset, Classic Saw). Room for 20, 14 used
     float macro[kSynthMacros];
     // Automation: [scene][lane][bar * 16 + step], or kAutoNone (see the engine's kAutoLanes).
     float automation[kMaxScenes][kAutoLanes][kAutoSteps];

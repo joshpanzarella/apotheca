@@ -156,4 +156,14 @@ constexpr int kChordFxRowTop = 5, kChordFxRowH = 15;
 // list at kChordFxListX, A under THROW at kChordFxThrowX, and the dice at the right-hand end.
 constexpr float kChordFxPickedX = 8.f, kChordFxSetX = kChordFxPickedX;
 
+// ACID's accent mark on a note's block (x, y its top left inside its edge, `full` wide): a corner
+// of `w` across its top right and as many rows down, left of a ratchet's purple edge (4 wide and a
+// dark pixel). Narrow keys get a smaller one. One place for the screen and its test.
+struct AccentMark { int x, y, size; };
+inline AccentMark accentMark(int x, int y, int full, bool ratchet) {
+    const int size = full >= 14 ? 6 : 4;
+    const int right = x + full - (ratchet ? 5 : 0);
+    return AccentMark{right - size, y, size};
+}
+
 } // namespace apotheca

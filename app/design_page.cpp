@@ -78,7 +78,7 @@ button.on{background:var(--brass)}
   <a id="files" href="#">files</a>
 </header>
 <div id="said" class="dim">The handheld makes the sound. Turn it up, or plug headphones into it.</div>
-<div id="nothing" hidden>The track being worked on has no instrument. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC, SAMPLER or DRUMS track (or add one with + TRACK).</div>
+<div id="nothing" hidden>The track being worked on has no instrument. On the handheld, go to the SONG screen and move to a PHAZED, JAX-EP, FM-6, PHYSIC, ACID, SAMPLER or DRUMS track (or add one with + TRACK).</div>
 <div id="all"></div>
 <div id="keys">
   <div class="row"><span>PLAY: click the keys, or use the computer keyboard: A W S E D F T G Y H U J K. Z and X: octave down / up.</span><span id="oct"></span></div>

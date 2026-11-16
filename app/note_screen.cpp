@@ -981,6 +981,19 @@ void NoteScreen::draw(SDL_Renderer* r, const Fonts& fonts) const {
     };
     for (const NoteEvent& n : pat().notes)
         if (n.velocity > 0.f && (n.ratchet >= 2 || n.glide || n.throwTo) && !isUnderAnother(n)) marks(n.pitch, n.step, n.nudge, n.length, n.ratchet, n.glide != 0, n.throwTo);
+    // ACID's ACCENT (acid-plan.md, section 2): a note at velocity 0.95 or over (hold A + RIGHT once from
+    // a placed note) is accented, and wears a small brass corner at its top right, where nothing else
+    // goes: the glide's corner is at the left, a ratchet's purple edge at the right (it stands left of
+    // that), THROW's feet at the foot. Only on an ACID track: on the others 100% is just loud.
+    if (project_.tracks[project_.track].kind == TrackKind::Acid)
+        for (const NoteEvent& n : pat().notes) {
+            if (!(n.velocity >= acid::kAccentAt) || isUnderAnother(n) || !shows(n.pitch)) continue;
+            const AccentMark a = accentMark(gx(n.pitch) + 1, gy(n.step) + 1 + static_cast<int>(std::round(n.nudge * kRowH)), cellW() - 2, n.ratchet >= 2);
+            for (int d = 0; d < a.size; ++d) {
+                fill(r, a.x + d, a.y + d, a.size - d, 1, kBrass);
+                fill(r, a.x + d - 1, a.y + d, 1, 1, kBg); // a dark edge, so it stands clear of the note
+            }
+        }
     // A chord's RATCHET lines and its chord-effects corner are drawn ONCE (owner, 2026-11-13): on
     // the first of its keys under its name, which is its lowest that shows. They never write over
     // the name: where the name sits on that key (a chord on the first step, or one nudged early)

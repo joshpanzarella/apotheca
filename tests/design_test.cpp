@@ -1075,7 +1075,7 @@ void testJaxepFromThePage() {
 int main() {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
-    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid}) useBuiltInDataForTests(kind, PresetData());
     testNamesAndRequests();
     testThePageIsServed();
     testPhazedFromThePage();

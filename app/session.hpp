@@ -518,7 +518,7 @@ public:
     // The engine is told the whole patch. False on the others, and nothing changes.
     bool rollSynth(int track, unsigned seed);
     void sendSynthPatch(int track);
-    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's), "NAME.fm6" and "NAME.physic".
+    // The player's own presets: files in this folder, "NAME.phazed", "NAME.jaxep" (JAX-EP's), "NAME.fm6", "NAME.physic" and "NAME.acid".
     // (An old "NAME.twin" or "NAME.qmod", of the synths that went, is left on the card and not listed.)
     void usePresetFolder(const std::string& folder);
     // Keep the track's sound, as it is now with its macros, under a name.

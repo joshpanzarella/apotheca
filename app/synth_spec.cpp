@@ -12,8 +12,8 @@ namespace apotheca {
 namespace {
 
 std::vector<UserPreset>& userList(TrackKind kind) {
-    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes;
-    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : phazedOnes;
+    static std::vector<UserPreset> phazedOnes, jx3pOnes, fm6Ones, physicOnes, acidOnes;
+    return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : kind == TrackKind::Acid ? acidOnes : phazedOnes;
 }
 
 // The preset functions every spec uses: the engine's built-in presets first, then the ones the app's
@@ -518,6 +518,72 @@ void roll(TrackData& t, unsigned seed) {
 }
 } // namespace ps
 
+// ---- ACID ------------------------------------------------------------------------------
+// The plan: docs/plans/acid-plan.md, sections 1 and 3. Fourteen settings on two pages, SOUND (three
+// rows of two) and FILTER (four rows of two), each read in its unit where it has one.
+
+namespace ac {
+using namespace acid;
+
+const char* const kPages[3] = {"MAIN", "SOUND", "FILTER"};
+struct Item { int id; const char* name; };
+const Item kSound[] = {{Wave, "WAVE"}, {Octave, "OCTAVE"}, {Tune, "TUNE"}, {Level, "LEVEL"}, {Velocity, "VELOCITY"}, {acid::Slide, "SLIDE"}};
+const Item kFilter[] = {{Cutoff, "CUTOFF"}, {Resonance, "RESONANCE"}, {EnvMod, "ENV MOD"}, {Decay, "DECAY"},
+                        {Accent, "ACCENT"}, {Sweep, "SWEEP"}, {Drive, "DRIVE"}, {AmpDecay, "AMP DECAY"}};
+struct Page { const Item* items; int count; };
+const Page kPageItems[3] = {{nullptr, 0}, {kSound, 6}, {kFilter, 8}};
+static_assert(6 + 8 == kSettings, "every setting is on one page");
+
+// A player's own preset is written over the FIRST preset's sound (as PHYSIC's): a setting appended
+// after it was saved plays as the factory has it.
+void loadPreset(TrackData& t, int index) {
+    if (const std::vector<int>* own = Presets<Acid, TrackKind::Acid>::own(index)) {
+        t.acid = Acid::presetPatch(0);
+        for (int id = 0; id < kSettings && id < static_cast<int>(own->size()); ++id) t.acid.value[id] = settingHeld(id, (*own)[id]);
+    } else {
+        t.acid = Acid::presetPatch(index);
+    }
+}
+int* values(TrackData& t) { return t.acid.value; }
+
+// A time: "200 MS", "1.2 S".
+void secondsText(double s, char* out, std::size_t n) {
+    if (s < 0.9995) std::snprintf(out, n, "%.0f MS", s * 1000.0);
+    else std::snprintf(out, n, "%.1f S", s);
+}
+void settingText(int id, int value, char* out, int size) {
+    const std::size_t n = static_cast<std::size_t>(size);
+    switch (id) {
+    case Wave: std::snprintf(out, n, "%s", waveName(value)); return;
+    case acid::Slide: // NOTE: the glide's own length, as the roll draws it
+        if (value == kSlideFixed) std::snprintf(out, n, "%.0f MS", kSlideFixedSeconds * 1000.0);
+        else std::snprintf(out, n, "NOTE");
+        return;
+    case Velocity: std::snprintf(out, n, "%s", value ? "ON" : "OFF"); return;
+    case Octave: std::snprintf(out, n, "%+d", value); return;
+    case Tune: std::snprintf(out, n, "%+d CENTS", value); return;
+    case Level: std::snprintf(out, n, "%+d DB", value); return;
+    case Cutoff: std::snprintf(out, n, "%.0f HZ", cutoffHz(value)); return;
+    case Decay: return secondsText(decaySeconds(value), out, n);
+    case AmpDecay: return secondsText(ampDecaySeconds(value), out, n);
+    case Accent: case Drive:
+        if (value <= 0) std::snprintf(out, n, "OFF");
+        else std::snprintf(out, n, "%d%%", value);
+        return;
+    default: std::snprintf(out, n, "%d%%", value); return; // RESONANCE, ENV MOD, SWEEP
+    }
+}
+// No macro is a choice: each reads -100 to +100 about the patch.
+void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
+bool envelopePage(int) { return false; }
+int itemCount(int page) { return page >= 1 && page < 3 ? kPageItems[page].count : 0; }
+void item(int page, int index, int& id, const char*& name) {
+    const Item& it = kPageItems[page].items[index];
+    id = it.id;
+    name = it.name;
+}
+} // namespace ac
+
 } // namespace
 
 const char* const kJaxepBankNote = "1983 BOOKLET, SPEEDS GUESSED";
@@ -544,7 +610,7 @@ void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
 int enginePresets(TrackKind kind) {
     return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Fm6 ? Fm6::presetCount()
-         : kind == TrackKind::Physic ? Physic::presetCount() : 0;
+         : kind == TrackKind::Physic ? Physic::presetCount() : kind == TrackKind::Acid ? Acid::presetCount() : 0;
 }
 int builtInPresets(TrackKind kind) { return specFor(kind) ? enginePresets(kind) + static_cast<int>(builtInData(kind).added.size()) : 0; }
 const UserPreset* listedPreset(TrackKind kind, int index) {
@@ -558,7 +624,7 @@ const UserPreset* listedPreset(TrackKind kind, int index) {
 }
 int settingCount(TrackKind kind) {
     return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Fm6 ? static_cast<int>(fm6::kSettings)
-         : kind == TrackKind::Physic ? static_cast<int>(physic::kSettings) : 0;
+         : kind == TrackKind::Physic ? static_cast<int>(physic::kSettings) : kind == TrackKind::Acid ? static_cast<int>(acid::kSettings) : 0;
 }
 int shownSettingCount(TrackKind kind) { return kind == TrackKind::Fm6 ? fm::kShownSettings : settingCount(kind); }
 
@@ -605,9 +671,19 @@ const SynthSpec& physicSpec() {
     return spec;
 }
 
+// ACID's macros are the engine's eight (acid::Macro), none a choice. Its WiFi page reads every setting
+// as the device does (pageReadsAsDevice): "214 HZ", "500 MS". No roll: Y on MAIN does nothing.
+const SynthSpec& acidSpec() {
+    static const SynthSpec spec = {"ACID", Presets<Acid, TrackKind::Acid>::count, Presets<Acid, TrackKind::Acid>::name, Presets<Acid, TrackKind::Acid>::category, ac::loadPreset, ac::values,
+                                   acid::settingMin, acid::settingMax, ac::settingText,
+                                   {"CUTOFF", "RESO", "ENV MOD", "DECAY", "ACCENT", "DRIVE", "SWEEP", "TUNE"}, ac::macroText,
+                                   3, ac::kPages, ac::itemCount, ac::item, ac::envelopePage, nullptr, true, nullptr, nullptr, nullptr};
+    return spec;
+}
+
 const SynthSpec* specFor(TrackKind kind) {
     return kind == TrackKind::Phazed ? &phazedSpec() : kind == TrackKind::Jx3p ? &jx3pSpec() : kind == TrackKind::Fm6 ? &fm6Spec()
-         : kind == TrackKind::Physic ? &physicSpec() : nullptr;
+         : kind == TrackKind::Physic ? &physicSpec() : kind == TrackKind::Acid ? &acidSpec() : nullptr;
 }
 
 } // namespace apotheca

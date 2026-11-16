@@ -72,7 +72,13 @@ public:
     // The list of instruments: a box of rows kInstrumentPitch apart, its top at kListY, or higher where it
     // would reach the hints bar (six instruments since PHYSIC, with what goes said under them: 46 higher).
     static constexpr int kListY = 70, kInstrumentPitch = 52, kListBottom = ui::kScreenH - ui::kHintsH - 8;
-    static constexpr int listH(int instruments, bool changing) { return 46 + instruments * kInstrumentPitch + (changing ? kChangeLostH : 0); }
+    // Seven instruments (ACID's, 2026-11-16) and the words under them do not fit at the usual pitch even
+    // standing as high as the top bar lets: only then the rows close up (47, a pixel between boxes).
+    static constexpr int kListRoom = kListBottom - ui::kTopBarH - 1;
+    static constexpr int listPitch(int instruments, bool changing) {
+        return 46 + instruments * kInstrumentPitch + (changing ? kChangeLostH : 0) <= kListRoom ? kInstrumentPitch : (kListRoom - 46 - (changing ? kChangeLostH : 0)) / instruments;
+    }
+    static constexpr int listH(int instruments, bool changing) { return 46 + instruments * listPitch(instruments, changing) + (changing ? kChangeLostH : 0); }
     static constexpr int listTop(int instruments, bool changing) {
         return kListBottom - listH(instruments, changing) < kListY ? kListBottom - listH(instruments, changing) : kListY;
     }

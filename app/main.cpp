@@ -1293,6 +1293,52 @@ int main(int argc, char** argv) {
         } else {
             app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
         }
+    } else if (std::strncmp(view, "acid", 4) == 0) {
+        // An ACID track, added the way the Song screen adds one: MAIN, a macro lit ("acid"); a page
+        // ("acid-1", "acid-2": SOUND, FILTER); SOUND on SLIDE at FIXED ("acid-fixed"); MAIN on the widest
+        // of its names ("acid-long"); and the piano roll with a line on it ("acid-roll"): accents (their
+        // brass corner), slides, a GLIDE to the same key, an accent with a ratchet and one with a glide.
+        app.session().addTrack(TrackKind::Acid);
+        const int track = app.project().trackCount() - 1;
+        app.project().track = track;
+        app.session().view = View::Device;
+        if (std::strcmp(view, "acid-long") == 0) {
+            int widest = 0;
+            for (int i = 1; i < acidSpec().presetCount(); ++i)
+                if (std::strlen(acidSpec().presetName(i)) > std::strlen(acidSpec().presetName(widest))) widest = i;
+            app.session().chooseSynthPreset(track, widest);
+            app.acid().goTo(0, SynthScreen::kPreset);
+        } else if (std::strcmp(view, "acid-fixed") == 0) {
+            app.session().setSynthSetting(track, acid::Slide, acid::kSlideFixed);
+            app.acid().goTo(1, 5); // SOUND: SLIDE
+        } else if (std::strcmp(view, "acid-roll") == 0) {
+            NotePattern& p = app.project().tracks[track].notes[0][0];
+            p = NotePattern();
+            const auto note = [&](int slot, int step, int pitch, float length, float velocity, int glide, int ratchet = 0) {
+                p.notes[slot] = NoteEvent{step, pitch, length, 0.f, velocity};
+                p.notes[slot].glide = static_cast<std::uint8_t>(glide);
+                p.notes[slot].ratchet = static_cast<std::uint8_t>(ratchet);
+            };
+            note(0, 0, 48, 1.f, 1.f, 0);              // an accent
+            note(1, 2, 48, 1.f, 0.9f, 0);
+            note(2, 3, 60, 1.f, 1.f, kGlideHalf);     // a slide, accented
+            note(3, 4, 60, 1.f, 0.9f, kGlideHalf);    // a GLIDE to the same key: tied, one long note
+            note(4, 6, 51, 0.5f, 0.9f, 0);
+            note(5, 7, 55, 1.f, 0.9f, kGlideHalf);    // ties over the half step's gap
+            note(6, 8, 48, 1.f, 1.f, 0, 2);           // an accent with a ratchet
+            note(7, 10, 63, 1.f, 1.f, 0);
+            note(8, 11, 58, 1.f, 0.9f, kGlideHalf);
+            note(9, 12, 48, 1.f, 1.f, 0);
+            note(10, 14, 46, 1.f, 0.9f, kGlideHalf);
+            note(11, 15, 48, 1.f, 1.f, kGlideHalf);
+            app.session().sendNoteBar(track, 0, 0);
+            app.session().view = View::Pattern;
+            app.notes().moveCursorTo(55, 9);
+        } else if (view[4] == '-') {
+            app.acid().goTo(std::atoi(view + 5), 0);
+        } else {
+            app.acid().goTo(0, SynthScreen::kFirstMacro + 1);
+        }
     } else if (std::strcmp(view, "help") == 0 || std::strcmp(view, "help-load") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
         // How hard the program works, above the battery: the owner's example, or (help-load) the longest it can say.

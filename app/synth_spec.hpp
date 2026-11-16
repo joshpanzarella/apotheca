@@ -59,6 +59,7 @@ const SynthSpec& phazedSpec();
 const SynthSpec& jx3pSpec(); // JAX-EP on the device
 const SynthSpec& fm6Spec();
 const SynthSpec& physicSpec();
+const SynthSpec& acidSpec();
 
 // What a preset may hold past its synth (docs/plans/presets-plan.md): the track's three effects, its
 // two sends, its GLIDE FROM and its two MODs, "the track's sound". A preset that holds it is WHOLE:

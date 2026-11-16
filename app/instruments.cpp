@@ -23,6 +23,9 @@ const InstrumentInfo kInstruments[] = {
     // model of a string or of the ways a bar, bell or skin rings. Last in the list (the plan's call 18). The line
     // says what it plays, not how many presets: the count would not fit after it.
     {TrackKind::Physic, "PHYSIC", "PHYS", "PHYSIC", "plucked and struck: strings, mallets, bells", false, "physic", SynthKind::Physic, ".physic"},
+    // ACID (owner, 2026-11-14; docs/plans/acid-plan.md): a one-voice bass, ACCENT a note at 100%, SLIDE its
+    // GLIDE. Last in the list. The line names no maker and no model (the words test looks for the box's).
+    {TrackKind::Acid, "ACID", "ACID", "ACID", "mono bass, after a classic bass line box", false, "acid", SynthKind::Acid, ".acid"},
 };
 const int kInstrumentCount = static_cast<int>(sizeof kInstruments / sizeof kInstruments[0]);
 

@@ -1240,9 +1240,9 @@ void testTheTextKeptIsTheSongsText() {
     SongTextCache cache;
     std::uint32_t seed = 12345u;
     const auto roll = [&](int n) { seed = seed * 1664525u + 1013904223u; return static_cast<int>((seed >> 8) % static_cast<std::uint32_t>(n)); };
-    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Physic};
-    for (int t = 1; t < 7; ++t) {
-        p->tracks[t].kind = kinds[t % 6];
+    const TrackKind kinds[] = {TrackKind::Drums, TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Sampler, TrackKind::Physic, TrackKind::Acid};
+    for (int t = 1; t < 8; ++t) {
+        p->tracks[t].kind = kinds[t % 7];
         if (const SynthSpec* spec = specFor(p->tracks[t].kind)) spec->loadPreset(p->tracks[t], 0);
     }
     CHECK(cache.text(*p) == songText(*p));

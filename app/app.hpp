@@ -71,6 +71,7 @@ public:
     SynthScreen& jaxep() { return jaxep_; }
     SynthScreen& fm6() { return fm6_; }
     SynthScreen& physic() { return physic_; }
+    SynthScreen& acid() { return acid_; }
     KitScreen& kit() { return kit_; }
     FxScreen& fx() { return fx_; }
     ModScreen& mods() { return mods_; }
@@ -141,6 +142,7 @@ private:
     SynthScreen jaxep_;
     SynthScreen fm6_;
     SynthScreen physic_;
+    SynthScreen acid_;
 };
 
 } // namespace apotheca

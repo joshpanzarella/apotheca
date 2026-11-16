@@ -6374,7 +6374,7 @@ void testAddingJaxep() {
     const InstrumentInfo* info = instrument(TrackKind::Jx3p);
     CHECK(info && std::string(info->listName) == "JAX-EP" && std::string(info->name) == "JAX-EP" && std::string(info->word) == "jaxep" &&
           std::string(info->presetEnding) == ".jaxep" && info->synth == SynthKind::Jx3p);
-    CHECK(kInstrumentCount == 6);
+    CHECK(kInstrumentCount == 7);
     for (int i = 0; i < kInstrumentCount; ++i) CHECK(std::string(kInstruments[i].word) != "twin");
     bool old = false;
     CHECK(trackKindFromWord("twin", &old) == TrackKind::Jx3p && old);
@@ -6391,16 +6391,16 @@ void testAddingJaxep() {
     const Jx3pPatch first = Jx3p::presetPatch(0);
     for (int id = 0; id < jx3p::kSettings; ++id) CHECK(rig->project().tracks[1].jx3p.value[id] == first.value[id]);
     CHECK(first.value[jx3p::Velocity] == 1 && first.value[jx3p::Brilliance] == 50);
-    // The chooser goes round all six.
+    // The chooser goes round all seven.
     rig->tap(RIGHT);
     rig->tap(A);
     CHECK(rig->app.song().choosing());
-    rig->tap(DOWN, 5); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > DRUMS
+    rig->tap(DOWN, 6); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID > DRUMS
     rig->tap(A);
     CHECK(rig->project().tracks[2].kind == TrackKind::Drums);
     rig->tap(RIGHT);
     rig->tap(A);
-    rig->tap(UP, 4); // PHAZED > DRUMS > PHYSIC > FM-6 > SAMPLER
+    rig->tap(UP, 5); // PHAZED > DRUMS > ACID > PHYSIC > FM-6 > SAMPLER
     rig->tap(A);
     CHECK(rig->project().tracks[3].kind == TrackKind::Sampler);
 
@@ -9312,7 +9312,7 @@ void testChangingAnInstrumentSaysWhatGoes() {
     Session& session = rig.app.session();
     session.addTrack(TrackKind::Phazed);
     session.view = View::Song;
-    const int w = 340, x = (ui::kScreenW - w) / 2, top = SongScreen::listTop(kInstrumentCount, true), ly = top + 36 + kInstrumentCount * SongScreen::kInstrumentPitch + 4;
+    const int w = 340, x = (ui::kScreenW - w) / 2, top = SongScreen::listTop(kInstrumentCount, true), ly = top + 36 + kInstrumentCount * SongScreen::listPitch(kInstrumentCount, true) + 4;
     const auto says = [&] {
         rig.frames(1);
         canvas.clear();
@@ -9332,7 +9332,9 @@ void testChangingAnInstrumentSaysWhatGoes() {
     // (Six instruments and the words under them reach past the bar from the usual top: the box goes up.)
     CHECK(top + SongScreen::listH(kInstrumentCount, true) <= ui::kScreenH - ui::kHintsH && top > ui::kTopBarH && top < SongScreen::kListY);
     CHECK(ly + 20 + fonts.small.capHeight() < top + SongScreen::listH(kInstrumentCount, true));
-    CHECK(SongScreen::listTop(kInstrumentCount, false) == SongScreen::kListY); // adding a track: where it always stood
+    // Adding a track: seven rows (ACID's) stand higher too, at the usual pitch; the words make them close up.
+    CHECK(SongScreen::listTop(kInstrumentCount, false) == SongScreen::kListBottom - SongScreen::listH(kInstrumentCount, false) && SongScreen::listTop(kInstrumentCount, false) > ui::kTopBarH);
+    CHECK(SongScreen::listPitch(kInstrumentCount, false) == SongScreen::kInstrumentPitch && SongScreen::listPitch(kInstrumentCount, true) == 47 && SongScreen::listPitch(6, true) == SongScreen::kInstrumentPitch);
     rig.tap(B);
     CHECK(!says() && rig.project().tracks[1].kind == TrackKind::Phazed);
     // Adding a track loses nothing: nothing said.
@@ -9400,7 +9402,7 @@ void testPhysicOnATrack() {
     CHECK(std::string(text) == "2 PHYSIC" && isSynth(track.kind));
     const InstrumentInfo* info = instrument(TrackKind::Physic);
     CHECK(info && std::string(info->word) == "physic" && std::string(info->presetEnding) == ".physic" && info->synth == SynthKind::Physic);
-    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("physic") == TrackKind::Physic);
+    CHECK(&kInstruments[kInstrumentCount - 2] == info && trackKindFromWord("physic") == TrackKind::Physic); // (ACID after it)
     // On MARIMBA, its first preset, and it plays.
     const PhysicPatch first = Physic::presetPatch(0);
     CHECK(track.preset == 0 && std::string(physicSpec().presetName(0)) == "Marimba" && std::equal(first.value, first.value + physic::kSettings, track.physic.value));
@@ -9710,10 +9712,307 @@ void testPhysicsHintsFit() {
     CHECK(!hintKeyed(canvas, scratch, "Y", "new sound") && hintKeyed(canvas, scratch, "START", "play"));
 }
 
+// ACID (acid-plan.md, sections 1 to 3; batch 3): the seventh instrument, last in the list. A new track
+// is on Classic Saw; the engine plays what the track holds; its two pages, its readings, its macros
+// (none a choice), Y doing nothing, the song file, undo, and a player's own preset over the first.
+void testAcidOnATrack() {
+    Rig rig;
+    Session& session = rig.app.session();
+    session.view = View::Song;
+    rig.app.song().moveCursorTo(0, rig.project().trackCount());
+    rig.tap(A);
+    rig.tap(DOWN, 5); // PHAZED > JAX-EP > SAMPLER > FM-6 > PHYSIC > ACID
+    rig.tap(A);
+    CHECK(rig.project().trackCount() == 2 && rig.project().tracks[1].kind == TrackKind::Acid);
+    TrackData& track = rig.project().tracks[1];
+    rig.project().track = 1;
+    char text[32];
+    ui::trackName(rig.project(), 1, text, sizeof text);
+    CHECK(std::string(text) == "2 ACID" && isSynth(track.kind));
+    const InstrumentInfo* info = instrument(TrackKind::Acid);
+    CHECK(info && std::string(info->word) == "acid" && std::string(info->presetEnding) == ".acid" && info->synth == SynthKind::Acid);
+    CHECK(&kInstruments[kInstrumentCount - 1] == info && trackKindFromWord("acid") == TrackKind::Acid);
+    CHECK(std::string(info->about) == "mono bass, after a classic bass line box");
+    const AcidPatch first = Acid::presetPatch(0);
+    CHECK(track.preset == 0 && std::string(acidSpec().presetName(0)) == "Classic Saw" && std::equal(first.value, first.value + acid::kSettings, track.acid.value));
+    CHECK(settingCount(TrackKind::Acid) == 14 && presetSettingCount(TrackKind::Acid) == 14 && shownSettingCount(TrackKind::Acid) == 14);
+    CHECK(builtInPresets(TrackKind::Acid) >= Acid::presetCount());
+    session.audition(1, 36, 0.9f);
+    CHECK(rig.listen(4000) > 0.01f);
+    rig.render(48000);
+
+    // The engine has the sound as the track has it: what a fresh ACID given the same numbers plays
+    // (Play and Stop start its voice afresh).
+    session.setSynthSetting(1, acid::Cutoff, 55);
+    session.setSynthSetting(1, acid::Resonance, 80);
+    session.setSynthSetting(1, acid::Wave, acid::kSquare);
+    const auto soundsAsTheTrack = [&] {
+        session.togglePlay(false);
+        rig.render(4800);
+        session.togglePlay(false);
+        rig.render(48000);
+        Acid same;
+        same.prepare(48000.f);
+        for (int id = 0; id < acid::kSettings; ++id) same.setSetting(id, track.acid.value[id]);
+        for (int m = 0; m < kSynthMacros; ++m) same.setMacro(m, track.macro[m]);
+        same.noteOn(36, 1.f);
+        std::vector<float> l(4000), r(4000);
+        for (int at = 0; at < 4000; at += 64) same.render(l.data() + at, r.data() + at, 4000 - at < 64 ? 4000 - at : 64);
+        rig.frames(200);
+        Command c;
+        c.type = Command::NoteOn;
+        c.track = 1;
+        c.a = 36;
+        c.value = 1.f;
+        rig.engine->send(c);
+        const std::vector<float> heard = rig.render(4000);
+        float top = 0.f, scale = 0.f, worst = 0.f;
+        for (int i = 0; i < 4000; ++i)
+            if (std::fabs(l[i]) > top) top = std::fabs(l[i]), scale = heard[2 * i] / l[i];
+        for (int i = 0; i < 4000; ++i) worst = std::fmax(worst, std::fabs(heard[2 * i] - scale * l[i]));
+        c.type = Command::NoteOff;
+        rig.engine->send(c);
+        session.togglePlay(false);
+        rig.render(4800);
+        session.togglePlay(false);
+        rig.render(4800);
+        if (!(worst < 0.01f * top * scale)) std::printf("  ACID against a fresh one: top %g scale %g worst %g\n", top, scale, worst);
+        return top > 0.01f && scale > 0.2f && scale < 1.f && worst < 0.01f * top * scale;
+    };
+    CHECK(soundsAsTheTrack());
+
+    // The device screen: MAIN, then ADVANCED: SOUND (WAVE first), FILTER (CUTOFF first).
+    session.view = View::Device;
+    rig.frames(2);
+    SynthScreen& screen = rig.app.acid();
+    screen.goTo(0, SynthScreen::kAdvanced);
+    rig.tap(A);
+    CHECK(screen.page() == 1 && screen.pageCount() == 3 && screen.settingHere() == acid::Wave);
+    rig.key(A, true);
+    rig.tap(DOWN); // SQUARE > SAW: a choice, a click a press
+    rig.key(A, false);
+    CHECK(track.acid.value[acid::Wave] == acid::kSaw);
+    rig.tap(R1);
+    CHECK(screen.page() == 2 && screen.settingHere() == acid::Cutoff);
+    rig.tap(R1);
+    CHECK(screen.page() == 1); // round
+    const SynthSpec& spec = acidSpec();
+    int seen[acid::kSettings] = {};
+    for (int page = 1; page < spec.pages; ++page)
+        for (int i = 0; i < spec.itemCount(page); ++i) {
+            int id = -1;
+            const char* name = "";
+            spec.item(page, i, id, name);
+            CHECK(id >= 0 && id < acid::kSettings && name[0]);
+            if (id >= 0 && id < acid::kSettings) ++seen[id];
+        }
+    for (int id = 0; id < acid::kSettings; ++id) CHECK(seen[id] == 1);
+    CHECK(spec.itemCount(1) == 6 && spec.itemCount(2) == 8 && spec.pages == 3 && std::string(spec.pageNames[1]) == "SOUND" && std::string(spec.pageNames[2]) == "FILTER");
+    CHECK(std::string(spec.macroNames[0]) == "CUTOFF" && std::string(spec.macroNames[1]) == "RESO" && std::string(spec.macroNames[2]) == "ENV MOD" && std::string(spec.macroNames[7]) == "TUNE");
+    for (int id = 0; id < acid::kSettings; ++id) CHECK(spec.settingMin(id) == acid::settingMin(id) && spec.settingMax(id) == acid::settingMax(id));
+
+    // Its settings read in their units.
+    const auto reads = [&](int id, int value) { spec.settingText(id, value, text, sizeof text); return std::string(text); };
+    CHECK(reads(acid::Wave, 0) == "SAW" && reads(acid::Wave, 1) == "SQUARE" && reads(acid::Slide, 0) == "NOTE" && reads(acid::Slide, 1) == "60 MS");
+    CHECK(reads(acid::Velocity, 0) == "OFF" && reads(acid::Velocity, 1) == "ON" && reads(acid::Octave, -2) == "-2" && reads(acid::Octave, 0) == "+0");
+    CHECK(reads(acid::Tune, -100) == "-100 CENTS" && reads(acid::Level, 6) == "+6 DB" && reads(acid::Level, -24) == "-24 DB");
+    CHECK(reads(acid::Cutoff, 0) == "50 HZ" && reads(acid::Cutoff, 30) == "214 HZ" && reads(acid::Cutoff, 100) == "6400 HZ");
+    CHECK(reads(acid::Decay, 0) == "200 MS" && reads(acid::Decay, 40) == "502 MS" && reads(acid::Decay, 100) == "2.0 S");
+    CHECK(reads(acid::AmpDecay, 0) == "200 MS" && reads(acid::AmpDecay, 80) == "3.0 S" && reads(acid::AmpDecay, 100) == "6.0 S");
+    CHECK(reads(acid::Accent, 0) == "OFF" && reads(acid::Accent, 50) == "50%" && reads(acid::Drive, 0) == "OFF" && reads(acid::Drive, 30) == "30%");
+    CHECK(reads(acid::Resonance, 0) == "0%" && reads(acid::EnvMod, 50) == "50%" && reads(acid::Sweep, 100) == "100%");
+    // The macros: none a choice, each -100 to +100, each takes a MOD.
+    spec.macroText(acid::MacroCutoff, 1.f, text, sizeof text);
+    CHECK(std::string(text) == "+100");
+    for (int m = 0; m < kSynthMacros; ++m) CHECK(!macroIsChoice(TrackKind::Acid, m) && modTargetFits(track, kModFirstMacro + m));
+    // Y on MAIN does nothing (no roll).
+    rig.tap(B);
+    screen.goTo(0, SynthScreen::kPreset);
+    rig.frames(60);
+    const AcidPatch before = track.acid;
+    rig.tap(Y);
+    rig.frames(2);
+    CHECK(!spec.roll && std::equal(before.value, before.value + acid::kSettingRoom, track.acid.value) && !session.rollSynth(1, 7));
+    // A setting turned is a step of undo.
+    const int stepsWere = session.undoSteps();
+    session.setSynthSetting(1, acid::Sweep, 90);
+    rig.frames(60);
+    CHECK(session.undoSteps() == stepsWere + 1 && session.undo());
+    rig.frames(2);
+    CHECK(track.acid.value[acid::Sweep] == before.value[acid::Sweep]);
+
+    // A player's own preset goes over the FIRST preset's sound.
+    setUserPresets(TrackKind::Acid, {UserPreset{"SHORT ONE", {acid::kSquare, -1, 12}, {0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f}}});
+    session.chooseSynthPreset(1, 1); // Classic Square first: another sound under it
+    session.chooseSynthPreset(1, builtInPresets(TrackKind::Acid));
+    CHECK(std::string(acidSpec().presetCategory(track.preset)) == "USER");
+    CHECK(track.acid.value[acid::Wave] == acid::kSquare && track.acid.value[acid::Octave] == -1 && track.acid.value[acid::Tune] == 12);
+    for (int id = acid::Cutoff; id < acid::kSettingRoom; ++id) CHECK(track.acid.value[id] == first.value[id]);
+    setUserPresets(TrackKind::Acid, {});
+
+    // A song keeps an ACID track: its kind, its preset and every number of its sound.
+    session.chooseSynthPreset(1, 1);
+    session.setSynthSetting(1, acid::Drive, 33);
+    session.setSynthSetting(1, acid::Slide, acid::kSlideFixed);
+    track.macro[acid::MacroSweep] = 0.8f;
+    std::unique_ptr<Project> again(new Project);
+    const std::string written = songText(rig.project());
+    CHECK(written.find("\ntrack acid\n") != std::string::npos);
+    CHECK(parseSong(written, *again));
+    CHECK(again->tracks[1].kind == TrackKind::Acid && again->tracks[1].preset == 1 && std::equal(track.acid.value, track.acid.value + acid::kSettingRoom, again->tracks[1].acid.value));
+    CHECK(near(again->tracks[1].macro[acid::MacroSweep], 0.8f));
+}
+
+// ACID's hints fit the bar at 0 over, on MAIN and both pages, A held and not, with either help; MAIN
+// says HOLD X on every macro (none is a choice) and no Y.
+void testAcidsHintsFit() {
+    Canvas canvas, scratch;
+    CHECK(canvas.ok && scratch.ok);
+    if (!canvas.ok || !scratch.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(new Rig);
+    CHECK(rig->app.session().addTrack(TrackKind::Acid));
+    rig->project().track = 1;
+    rig->app.session().view = View::Device;
+    SynthScreen& screen = rig->app.acid();
+    CHECK(screen.pageCount() == 3);
+    int states = 0;
+    for (int menu = 0; menu < 2; ++menu)
+        for (int page = 0; page < screen.pageCount(); ++page) {
+            const int stops = page == 0 ? SynthScreen::kMainStops : acidSpec().itemCount(page);
+            for (int cursor = 0; cursor < stops; ++cursor)
+                for (int held = 0; held < 2; ++held) {
+                    screen.goTo(page, cursor);
+                    if (held) rig->key(A, true);
+                    rig->frames(1);
+                    ui::gHelpHint = menu ? "MENU: HELP" : "HLD SEL: HELP";
+                    canvas.clear();
+                    rig->app.draw(canvas.r, fonts);
+                    ++states;
+                    if (ui::gHintsOver != 0.f) {
+                        std::printf("FAIL ACID's hints: page %d stop %d, A %s: %.0f pixels over\n", page, cursor, held ? "held" : "up", static_cast<double>(ui::gHintsOver));
+                        ++failures;
+                    }
+                    if (!held && page == 0) {
+                        const bool macro = cursor >= SynthScreen::kFirstMacro && cursor < SynthScreen::kAdvanced;
+                        CHECK(!hintKeyed(canvas, scratch, "Y", "new sound"));
+                        if (macro) CHECK(hintKeyed(canvas, scratch, "HOLD X", "mod"));
+                    }
+                    if (held) rig->key(A, false);
+                    rig->frames(1);
+                }
+        }
+    CHECK(states == 2 * 2 * (SynthScreen::kMainStops + acid::kSettings));
+}
+
+// The roll on an ACID track marks an accent (a note at 100%): a small brass corner at the block's top
+// right, drawn off the screen in BROWN and PAPER, and nothing on a placed note (90%) or on another synth.
+void testAcidsAccentMark() {
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    const Fonts& fonts = *canvas.fonts;
+    std::unique_ptr<Rig> rig(new Rig);
+    Session& session = rig->app.session();
+    CHECK(session.addTrack(TrackKind::Acid) && session.addTrack(TrackKind::Physic));
+    for (int t : {1, 2})
+        for (bool ratchet : {false, true}) {
+            rig->project().track = t;
+            session.view = View::Pattern;
+            NotePattern& p = rig->project().tracks[t].notes[0][0];
+            p = NotePattern();
+            p.notes[0] = NoteEvent{3, 60, 1.f, 0.f, 0.9f};
+            p.notes[0].ratchet = ratchet ? 2 : 0;
+            session.sendNoteBar(t, 0, 0);
+            rig->app.notes().moveCursorTo(62, 10);
+            rig->frames(1);
+            for (int theme : {kThemeBrown, kThemePaper}) {
+                session.setTheme(theme);
+                p.notes[0].velocity = 0.9f;
+                rig->frames(1);
+                canvas.clear();
+                rig->app.draw(canvas.r, fonts);
+                const std::vector<Uint32> plain = canvas.all();
+                p.notes[0].velocity = 1.f;
+                rig->frames(1);
+                canvas.clear();
+                rig->app.draw(canvas.r, fonts);
+                const std::vector<Uint32> accented = canvas.all();
+                int brass = 0, other = 0;
+                for (std::size_t i = 0; i < plain.size(); ++i) {
+                    // (the block itself is filled as far as it is loud: only what turned brass is the mark)
+                    const int y = static_cast<int>(i) / ui::kScreenW;
+                    if (y >= ui::kScreenH - 70) continue; // (the strip under the roll says the level: 90% / 100%)
+                    if (accented[i] == Canvas::colour(ui::kBrass) && plain[i] != Canvas::colour(ui::kBrass)) ++brass;
+                    if (plain[i] == Canvas::colour(ui::kBrass) && accented[i] != Canvas::colour(ui::kBrass)) ++other;
+                }
+                if (brass != (t == 1 ? 21 : 0)) std::printf("  accent mark: track %d ratchet %d theme %d: %d brass, %d other\n", t, ratchet ? 1 : 0, theme, brass, other);
+                if (t == 1) CHECK(brass == 21 && other == 0); // a corner of 6 across
+                else CHECK(brass == 0 && other == 0);
+            }
+        }
+    session.setTheme(kThemeBrown);
+}
+
+// A 16-step line written on the roll with the buttons, counted (the plan's section 5): A places (held,
+// RIGHT once makes it an accent), hold X + UP twice is a slide of half a step, the D-pad walks. Then the
+// line plays: its slides tie, its accents are accents.
+void testAnAcidLine() {
+    std::unique_ptr<Rig> rig(new Rig);
+    Session& session = rig->app.session();
+    CHECK(session.addTrack(TrackKind::Acid));
+    rig->project().track = 1;
+    session.view = View::Pattern;
+    rig->frames(2);
+    NoteScreen& roll = rig->app.notes();
+    roll.moveCursorTo(36, 0);
+    const int keys[16] = {36, 36, 48, 36, 39, 36, 51, 43, 36, 48, 36, 46, 36, 34, 41, 36};
+    int presses = 0, pitch = 36;
+    for (int s = 0; s < 16; ++s) {
+        if (s > 0) rig->tap(DOWN), ++presses;
+        while (pitch != keys[s]) {
+            rig->tap(keys[s] > pitch ? RIGHT : LEFT), ++presses;
+            pitch += keys[s] > pitch ? 1 : -1;
+        }
+        rig->key(A, true), ++presses; // places
+        if (s % 4 == 0) rig->tap(RIGHT), ++presses; // 90% > 100%: an accent
+        rig->key(A, false);
+        if (s % 4 == 2) { // a slide: GLIDE OFF > 1/4 > 1/2
+            rig->key(X, true), ++presses;
+            rig->tap(UP, 2), presses += 2;
+            rig->key(X, false);
+        }
+        rig->frames(2);
+    }
+    const NotePattern& p = rig->project().tracks[1].notes[0][0];
+    int notes = 0, accents = 0, slides = 0;
+    for (const NoteEvent& n : p.notes) {
+        if (n.velocity <= 0.f) continue;
+        ++notes;
+        CHECK(n.pitch == keys[n.step] && n.length == 1.f);
+        accents += n.velocity >= acid::kAccentAt;
+        slides += n.glide == kGlideHalf;
+        CHECK((n.velocity >= acid::kAccentAt) == (n.step % 4 == 0) && (n.glide == kGlideHalf) == (n.step % 4 == 2));
+    }
+    CHECK(notes == 16 && accents == 4 && slides == 4);
+    std::printf("  an ACID line of 16 steps, 4 accents and 4 slides: %d presses (%d for the notes and the walk)\n", presses, presses - 4 - 12);
+    // Played: the four slides tie (notes a step long, end to end), the twelve others strike.
+    rig->render(48000); // (what placing them let be heard rings out)
+    const Acid* acid = dynamic_cast<const Acid*>(rig->engine->synthForTests(1));
+    CHECK(acid != nullptr);
+    if (!acid) return;
+    const long ties = acid->ties(), strikes = acid->strikes(); // (each note placed was heard)
+    session.togglePlay(false);
+    rig->frames(2);
+    rig->render(16 * 6000 - 100); // one bar, not its first note again
+    if (acid->ties() - ties != 4 || acid->strikes() - strikes != 12) std::printf("  played: %ld ties, %ld strikes\n", acid->ties() - ties, acid->strikes() - strikes);
+    CHECK(acid->ties() - ties == 4 && acid->strikes() - strikes == 12);
+}
+
 int main(int argc, char** argv) {
     // The engine's own presets only: the tests here are of their tables. The presets the app's data
     // adds (and any track sound it gives a built-in) are presets_test's.
-    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic, TrackKind::Acid}) useBuiltInDataForTests(kind, PresetData());
     ui::gStickSpeed = 1.f; // the checks below are of each screen's own speeds; the overall scale has its own check
     if (argc > 1 && std::string(argv[1]) == "--bounce") { // just the bouncing (for trying a change; ctest runs everything)
         testBouncing();
@@ -9735,6 +10034,14 @@ int main(int argc, char** argv) {
         testPhysicOnATrack();
         testPhysicsHintsFit();
         std::printf(failures ? "%d check(s) failed\n" : "PHYSIC's tests passed\n", failures);
+        return failures ? 1 : 0;
+    }
+    if (argc > 1 && std::string(argv[1]) == "--acid") { // just ACID's own
+        testAcidOnATrack();
+        testAcidsHintsFit();
+        testAcidsAccentMark();
+        testAnAcidLine();
+        std::printf(failures ? "%d check(s) failed\n" : "ACID's tests passed\n", failures);
         return failures ? 1 : 0;
     }
     if (argc > 1 && std::string(argv[1]) == "--undo") { // just undo kept through a resync, a delete, another instrument
@@ -9889,6 +10196,10 @@ int main(int argc, char** argv) {
     testJaxepsHintsFit();
     testFm6sHintsFit();
     testPhysicsHintsFit();
+    testAcidOnATrack();
+    testAcidsHintsFit();
+    testAcidsAccentMark();
+    testAnAcidLine();
     if (failures) {
         std::printf("%d check(s) failed\n", failures);
         return 1;
