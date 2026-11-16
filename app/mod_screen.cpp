@@ -325,11 +325,11 @@ void ModScreen::pickLetGo() {
 void ModScreen::hear(bool held) {
     const TrackKind kind = project_.current().kind;
     if (kind == TrackKind::Drums) {
-        session_.hearLaneHeld(track(), 0, 0.8f, this);
+        session_.hearLaneHeld(track(), 0, kPlacedLevel, this);
     } else if (held && !project_.playing && (isSynth(kind) || kind == TrackKind::Sampler)) {
-        session_.auditionHeld(track(), 60, 0.8f, this); // (heard as long as X is: a MOD that runs is heard moving)
+        session_.auditionHeld(track(), 60, kPlacedLevel, this); // (heard as long as X is: a MOD that runs is heard moving)
     } else if (isSynth(kind)) {
-        session_.audition(track(), 60, 0.8f);
+        session_.audition(track(), 60, kPlacedLevel);
     }
 }
 

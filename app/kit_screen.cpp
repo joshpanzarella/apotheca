@@ -27,14 +27,14 @@ void KitScreen::hear(bool held) {
     headLane_ = lane_;
     headHeld_ = held;
     if (held) {
-        session_.hearLaneHeld(project_.track, lane_, 0.8f, this);
+        session_.hearLaneHeld(project_.track, lane_, kPlacedLevel, this);
         return;
     }
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
     c.a = lane_;
-    c.value = 0.8f;
+    c.value = kPlacedLevel;
     session_.engine.send(c);
 }
 

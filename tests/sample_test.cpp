@@ -607,7 +607,7 @@ void testWhereAHitStarts() {
     CHECK(drums.start(2, 4) == 0.5f);
     // None of that was a tap of Y, and none of it touched the chance.
     rig.key(Y, false);
-    CHECK(drums.chance(2, 4) == 1.f && drums.level(2, 4) == 0.8f);
+    CHECK(drums.chance(2, 4) == 1.f && drums.level(2, 4) == 0.9f);
     // Up and down with Y is still the chance, and leaves the start alone.
     rig.key(Y, true);
     rig.tap(DOWN);
@@ -1704,7 +1704,7 @@ void testTheSliceView() {
     {
         float placed = 0.f;
         const int rang = Rig::sounding(rig.render(120000), &placed);
-        CHECK(rang >= kStep && rang <= kStep + 60 && near(placed, 0.8f * levelOfSlice(4)));
+        CHECK(rang >= kStep && rang <= kStep + 60 && near(placed, 0.9f * levelOfSlice(4)));
     }
     // Up and down: the next slice, the one before; round the ends. The lane does not change.
     rig.tap(UP);
@@ -1747,17 +1747,17 @@ void testTheSliceView() {
     };
     float level = 0.f;
     int frames = heard(&level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(6)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(6)));
     drums.moveCursorTo(2, 9);
     frames = heard(&level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(9)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(9)));
     // A slice picked with up / down is heard at once, alone.
     drums.moveCursorTo(2, 4);
     rig.render(120000);
     rig.frames(10);
     rig.tap(UP);
     frames = Rig::sounding(rig.render(120000), &level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(7)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(7)));
     // ...but not over the song while it plays.
     rig.tap(START);
     rig.render(100);
@@ -1776,7 +1776,7 @@ void testTheSliceView() {
     rig.tap(RIGHT, 3);
     rig.key(R1, false);
     for (int step = 0; step < 4; ++step) CHECK(drums.level(2, step) > 0.f && drums.start(2, step) == step / 16.f);
-    CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.8f);
+    CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.9f);
     CHECK(drums.level(2, 5) == 0.f); // only where the cursor went
     // Up with the brush down picks a slice; the brush does not put it straight back.
     rig.key(R1, true);
@@ -1825,15 +1825,15 @@ void testTheSliceView() {
     rig.key(Y, false);
 
     // In order, the sixteen hits are the recording: played, each step is its own slice's level.
-    drums.setStep(2, 1, 0.8f); // (the quiet one from before, back with the rest)
+    drums.setStep(2, 1, 0.9f); // (the quiet one from before, back with the rest)
     rig.render(200000);
     rig.tap(START);
     const std::vector<float> bar = rig.render(16 * kStep);
     rig.tap(START);
-    for (int step = 0; step < 16; ++step) CHECK(near(bar[2 * static_cast<std::size_t>(step * kStep + kStep / 2)], 0.8f * levelOfSlice(step)));
+    for (int step = 0; step < 16; ++step) CHECK(near(bar[2 * static_cast<std::size_t>(step * kStep + kStep / 2)], 0.9f * levelOfSlice(step)));
     // ...with no dip where one hands over to the next.
     for (int step = 1; step < 16; ++step)
-        for (int i = -40; i < 40; ++i) CHECK(bar[2 * static_cast<std::size_t>(step * kStep + i)] > 0.79f * levelOfSlice(step - 1));
+        for (int i = -40; i < 40; ++i) CHECK(bar[2 * static_cast<std::size_t>(step * kStep + i)] > 0.89f * levelOfSlice(step - 1));
     rig.render(200000);
 
     // Undo takes a slice back.

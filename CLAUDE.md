@@ -1350,6 +1350,11 @@ effect in those two groups and fails one that does not.
   audition chokes the hit before it anyway, joined or not). On a hit, X held stays the step
   effects' hold. The line over the picture stops with it (`heardEnds`).
   `tests/hear_test.cpp`. The SONG screen's X solos the track (it heard it until 2026-11-15).
+- **A hit, a note or a chord placed starts at `kPlacedLevel` (0.9, `project.hpp`; owner,
+  2026-11-15: it was 0.8), the brushes too, and every screen's X or A hears at it** (the KIT,
+  SAMPLER, synth, FX and MOD pages, the designer page's keys): what is heard is what is placed. A
+  new way to hear a sound takes it, never a number of its own (`app_test` `testHeardAsPlaced`). A
+  keyboard's notes keep their own velocity; the demo song and the dice keep theirs.
 - **Sample names from `wavNames` have no `.wav` ending.** The file may end
   `.wav` or `.WAV`: whatever opens or names one tries both (`readRecording`,
   `recordingThere`, `deleteSample`).

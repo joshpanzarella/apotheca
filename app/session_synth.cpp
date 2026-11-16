@@ -287,7 +287,7 @@ void Session::serveDesigner() {
             c.type = r.b ? Command::NoteOn : Command::NoteOff;
             c.track = project.track;
             c.a = r.a;
-            c.value = 0.8f;
+            c.value = kPlacedLevel;
             engine.send(c);
             break;
         }

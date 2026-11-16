@@ -55,8 +55,8 @@ void SamplerScreen::hear(bool held) {
     headHeld_ = held || (headHeld_ && session_.hearingHeld());
     head_.start(lastMs_, session_.trackSound(project_.track).seconds, static_cast<float>(t.sampler[sampler::Start]) / 100.f, speed,
                 headHeld_ ? 0.f : static_cast<float>(Session::kAuditionMs) / 1000.f + release_); // held: until it is let go (update)
-    if (held) session_.auditionHeld(project_.track, kHearKey, 0.8f, this);
-    else session_.audition(project_.track, kHearKey, 0.8f);
+    if (held) session_.auditionHeld(project_.track, kHearKey, kPlacedLevel, this);
+    else session_.audition(project_.track, kHearKey, kPlacedLevel);
 }
 
 // A setting, changed: kept, and heard if the song is not playing. Not more

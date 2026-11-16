@@ -83,7 +83,7 @@ void SynthScreen::moveCursor(Button direction) {
 // ---- changing the sound ----------------------------------------------------------------
 
 void SynthScreen::hear() {
-    if (!project_.playing) session_.audition(project_.track, 60, 0.8f);
+    if (!project_.playing) session_.audition(project_.track, 60, kPlacedLevel);
 }
 
 void SynthScreen::choosePreset(int index) {
@@ -242,7 +242,7 @@ void SynthScreen::onButton(const ButtonEvent& event, const Input& input) {
         }
         const bool onMacro = page_ == 0 && cursor_ >= kFirstMacro && cursor_ < kAdvanced && !holding_;
         if (onMacro && modKnob_.hold(project_.track, kModFirstMacro + (cursor_ - kFirstMacro), input)) repeating_ = Button::None;
-        if (onMacro && !project_.playing) session_.auditionHeld(project_.track, 60, 0.8f, this); // heard as long as X is (a tap as ever)
+        if (onMacro && !project_.playing) session_.auditionHeld(project_.track, 60, kPlacedLevel, this); // heard as long as X is (a tap as ever)
         else hear();
         return;
     }

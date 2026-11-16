@@ -235,7 +235,7 @@ void testATapOfYPlacesTheChordInHand() {
     rig.key(Y, false);
     CHECK(!rig.notes().picking() && rig.notes().chordCount() == 1);
     const ChordEvent* c = rig.chordOn(0);
-    CHECK(c && std::strcmp(c->name, "C") == 0 && c->root == 60 && c->step == 0 && c->length == 4 && c->velocity == 0.8f);
+    CHECK(c && std::strcmp(c->name, "C") == 0 && c->root == 60 && c->step == 0 && c->length == 4 && c->velocity == 0.9f);
     CHECK(c && keysAre(*c, {60, 64, 67}));
     CHECK(rig.notes().cursorStep() == 4 && rig.notes().cursorPitch() == 60); // on to where the next one goes
     CHECK(rig.notes().noteCount() == 0 && rig.pat().used() == 3);
@@ -335,7 +335,7 @@ void testSwappingAChordInPlace() {
     rig.tap(SDLK_RIGHT, 3);
     rig.tap(SDLK_UP);
     const ChordEvent* c = rig.chordOn(0);
-    CHECK(c && std::strcmp(c->name, "F") == 0 && c->step == 0 && c->length == 4 && c->velocity == 0.8f && c->inversion == 1);
+    CHECK(c && std::strcmp(c->name, "F") == 0 && c->step == 0 && c->length == 4 && c->velocity == 0.9f && c->inversion == 1);
     CHECK(c && c->root == 65); // the F nearest the old root, not nearest the cursor
     rig.key(Y, false);
     CHECK(rig.notes().chordCount() == 1 && rig.notes().noteCount() == 1); // nothing new landed
@@ -373,7 +373,7 @@ void testBreakingAChordIntoNotes() {
     const int want[4] = {60, 64, 67, 71};
     for (int i = 0; i < 4; ++i) {
         const int slot = broken.pat().at(want[i], 3);
-        CHECK(slot >= 0 && broken.pat().notes[slot].step == 0 && broken.pat().notes[slot].length == 4 && broken.pat().notes[slot].velocity == 0.8f);
+        CHECK(slot >= 0 && broken.pat().notes[slot].step == 0 && broken.pat().notes[slot].length == 4 && broken.pat().notes[slot].velocity == 0.9f);
     }
     whole.quiet();
     broken.quiet();
@@ -395,8 +395,8 @@ void testShapingAndRemovingAWholeChord() {
     rig.key(A, true);
     CHECK(rig.notes().noteCount() == 0); // A takes hold of the chord; it does not drop a note on it
     rig.tap(SDLK_RIGHT);
-    CHECK(std::fabs(rig.chordOn(0)->velocity - 0.9f) < 1e-4f);
-    CHECK(rig.chordOn(4)->velocity == 0.8f); // only this chord
+    CHECK(std::fabs(rig.chordOn(0)->velocity - 1.f) < 1e-4f);
+    CHECK(rig.chordOn(4)->velocity == 0.9f); // only this chord
     rig.tap(SDLK_UP, 5);
     CHECK(rig.chordOn(0)->length == 2); // never out from under the cursor
     rig.tap(SDLK_DOWN, 9);
@@ -543,7 +543,7 @@ void testPacksAndTheSongFile() {
     // The song file keeps the pack and the chords, as chords.
     const std::string text = songText(rig.app.project());
     CHECK(text.find("pack " + packs[1].name + "\n") != std::string::npos);
-    CHECK(text.find("\nchord 1 4 0.8 -1 ") != std::string::npos);
+    CHECK(text.find("\nchord 1 4 0.9 -1 ") != std::string::npos);
     std::unique_ptr<Project> back(new Project);
     CHECK(parseSong(text, *back));
     CHECK(songText(*back) == text);

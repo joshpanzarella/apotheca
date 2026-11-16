@@ -1030,7 +1030,9 @@ to again.
 | Hold Y, stick up / down | Chance | Fades toward a ghost |
 | Hold Y, stick left / right | Start: where in the drum's sound the hit begins | A mark slides under it, and it is heard as it moves |
 
-The stick does one of those per push. A places a hit. Y places a "maybe"
+The stick does one of those per push. A places a hit, at 90% (a note or a
+chord on the piano roll starts there too, and X or A hears a sound at that level
+on every screen). Y places a "maybe"
 (50%), or steps a hit's chance 100, 75, 50, 25. B deletes. X hears the lane:
 on its name or an empty step, held, for as long as you hold it (a tap: a
 moment). On a hit X is heard as the pattern plays it, whole.
@@ -1038,7 +1040,7 @@ moment). On a hit X is heard as the pattern plays it, whole.
 Hold **B** and drag to delete every hit the cursor crosses.
 
 Hold **R1** and drag to paint hits at one level (the level of the hit you
-started on, or 80%). **Add R2 while R1 is held** and the brush paints
+started on, or 90%). **Add R2 while R1 is held** and the brush paints
 random levels for as long as R2 is down. R2 by itself is "next screen", at
 once.
 
@@ -1129,7 +1131,7 @@ the drum), and:
 - It adds to what each hit has: its own nudge, its own level. A ratchet's
   hits move together and share one level.
 - A hit written at full level can only get quieter (nothing is louder than
-  full). At 80%, where A places them, it goes both ways.
+  full). At 90%, where A places them, it goes both ways (up to full).
 - **Play from the top is the same performance again**, and a bounce is what
   was heard: the moves are worked out from where each hit is and which time
   round it is, not from luck at the moment.
