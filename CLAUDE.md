@@ -344,9 +344,43 @@ effect in those two groups and fails one that does not.
   (`Jx3p::presetPatch(0)`). **Undo counts a song's** (`soundMark`,
   `restoreSounds`, `sendSynthPatch`: `app_test`
   `testUndoPutsBackTheTracksOwnTwo`, in the engine too). A number in a preset
-  file is held as a double first, then to its setting's range (`readPreset`,
+  file is held as a double first, then to its setting's range (`readPresetFile`,
   `jx::loadPreset`), and a knob reads inside its dial whatever it is given. A new track value of any synth goes after its
   patch's ids and is kept out the same way.
+- **A preset may hold the track's WHOLE sound** (2026-11-16, owner: "a great idea
+  for recall"; `app/presets.hpp`, `docs/plans/presets-plan.md`, `tests/presets_test.cpp`):
+  its three effects, two sends, GLIDE FROM and two MODs (`TrackSound`), **never the
+  mixer's LEVEL and PAN** (the song's balance). Written and read in the song file's own
+  lines by **the one writer and reader of them** (`soundText`, `readSoundLine` in
+  song_file.cpp; `parseSong` and `putTrack` go through them too): never a second parser.
+  A player's own file always says `whole` (SAVE: `presetFileText`); one from before has
+  none and is plain. **Picked, a whole preset puts every part in, what it leaves out
+  emptied; a plain one changes the synth only** (`Session::chooseSynthPreset`,
+  `putPresetSound`, `putTrackSound`: only what differs as the file writes it, another
+  kind through `setEffect`, nothing written into automation). **One exception: a plain
+  preset picked while the track still holds just what a whole one put in** (nothing
+  turned since: `PresetSoundMemory`, compared as text) **puts back what the track had
+  before it**, so browsing past a whole preset leaves no effects behind; forgotten by
+  any other change, SAVE, `applyProject`, `addTrack`, `setTrackKind`, moved by
+  `removeTrack`. One step of undo takes a pick back (`soundMark` sees it all). A new
+  track starts plain on preset 1, whatever that one holds.
+- **The built-ins past the engine's own are DATA, compiled in** (`app/presets/NAME.inc`,
+  one raw string a synth; `readPresetData`, read once, `builtInData`): `new FOLDER /
+  NAME` with `base`, `set`, `settings`, `macros` and the track-sound lines, and `preset
+  N` to give one of the engine's own a sound. **Their places come after the engine's and
+  before USER, and are in songs: APPEND, never insert, move or take out** (the engine
+  never hears of them: `enginePresets` is what `SelectPreset` takes; past it the app
+  sends every setting, as for the player's own). `builtInPresets` counts both; ask
+  `listedPreset` for the values the app holds. Every line the data cannot read is a
+  `problems` line, and `presets_test` fails on one; `presets_test --show` reads each as
+  the device does. **Tests of the engine's tables (`app_test`, `design_test`,
+  `textsize`) run with the data emptied** (`useBuiltInDataForTests`), so a designer
+  adding presets breaks none of them; `presets_test` holds the shipped data.
+- **FM-6's built-ins are five factory banks** (2026-11-16): ROM 1A, 1B, 2B, 3B, 4B,
+  160 voices, a folder each, written by `tools/fm6_rom.py` into
+  `engine/src/fm6/roms.hpp` (`kRom`, each with its folder). A bank is appended, never
+  put before another. ROM 3B's three values past their range are held by the script
+  (`HELD`); any other stops it. `fm6_pins.inc` pins all 160.
 - **The FILTER type order is fixed** (`int(v * 5)`: low 12, low 24, band, DJ,
   high). It was chosen so old songs' three types still land right.
 - **The five old effects are pinned to the bit** (FILTER, DRIVE, DELAY,
@@ -2307,7 +2341,7 @@ watch again, it is in git (the commit before batch 8b).
    through SDL2's Android side (sound, files, the WiFi page, which core the sound runs on).
    Keep the engine free of Linux-only calls where it costs nothing.
 
-Open: FM-6's other factory cartridges (ROM1B to ROM4B) as more folders (owner, 2026-11-15: later), which chord packs ship, more presets, own WiFi hotspot, an automation
+Open: FM-6's banks ROM2A, 3A and 4A (in the same archive; not taken: the job asked for the B sides), which chord packs ship, more presets, own WiFi hotspot, an automation
 step-editor, a picture of FM-6's ALGORITHM (its wiring; msfa's table says each). **Twin Analog is gone** (owner, 2026-11-11: rethink it; 2026-11-13: it
 becomes a faithful Roland JX-3P clone, which is what it was meant to be). The
 clone is JAX-EP, built in batches 0 to 8c of `docs/plans/jx3p-plan.md` on

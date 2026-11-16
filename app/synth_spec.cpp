@@ -1,4 +1,5 @@
 #include "synth_spec.hpp"
+#include "presets.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -15,17 +16,23 @@ std::vector<UserPreset>& userList(TrackKind kind) {
     return kind == TrackKind::Jx3p ? jx3pOnes : kind == TrackKind::Fm6 ? fm6Ones : kind == TrackKind::Physic ? physicOnes : phazedOnes;
 }
 
-// The preset functions every spec uses: the built-in presets first, then the
-// player's own.
+// The preset functions every spec uses: the engine's built-in presets first, then the ones the app's
+// preset data adds (presets.hpp), then the player's own.
 template <typename Synth, TrackKind kind>
 struct Presets {
-    static int count() { return Synth::presetCount() + static_cast<int>(userList(kind).size()); }
-    static const char* name(int i) { return i < Synth::presetCount() ? Synth::presetName(i) : userList(kind)[i - Synth::presetCount()].name.c_str(); }
-    static const char* category(int i) { return i < Synth::presetCount() ? Synth::presetCategory(i) : "USER"; }
-    // The player's values for preset `i`, or nullptr if it is a built-in one.
+    static int count() { return builtInPresets(kind) + static_cast<int>(userList(kind).size()); }
+    static const char* name(int i) {
+        const UserPreset* p = listedPreset(kind, i);
+        return p ? p->name.c_str() : Synth::presetName(i);
+    }
+    static const char* category(int i) {
+        const UserPreset* p = listedPreset(kind, i);
+        return p ? (p->folder.empty() ? "USER" : p->folder.c_str()) : Synth::presetCategory(i);
+    }
+    // The values the app holds for preset `i` (an added built-in, the player's own), or nullptr for one of the engine's.
     static const std::vector<int>* own(int i) {
-        const int at = i - Synth::presetCount();
-        return at >= 0 && at < static_cast<int>(userList(kind).size()) ? &userList(kind)[at].values : nullptr;
+        const UserPreset* p = listedPreset(kind, i);
+        return p ? &p->values : nullptr;
     }
 };
 
@@ -190,9 +197,10 @@ void settingText(int id, int value, char* out, int size) {
 // patch's value down to 0, over it up to 10 (the engine's apply), so the number is how far, not a dial.
 void macroText(int, float v, char* out, int size) { plusMinus(v, out, size); }
 bool envelopePage(int) { return false; }
-// The player's own presets (the USER folder) say nothing: they were set by ear, on this synth.
+// The player's own presets (the USER folder) say nothing: they were set by ear, on this synth. A
+// built-in added after the booklet's is in a folder of its own: SPEEDS GUESSED, as any built-in's.
 const char* folderNote(int index) {
-    if (Presets<Jx3p, TrackKind::Jx3p>::own(index)) return nullptr;
+    if (const UserPreset* p = listedPreset(TrackKind::Jx3p, index)) return p->folder.empty() ? nullptr : kJaxepGuessNote;
     return jaxepFolderNote(Jx3p::presetCategory(index));
 }
 int itemCount(int page) { return page >= 1 && page < 6 ? kPageItems[page].count : 0; }
@@ -508,9 +516,19 @@ const SynthSpec& jx3pSpec() {
 
 void setUserPresets(TrackKind kind, std::vector<UserPreset> presets) { userList(kind) = std::move(presets); }
 const std::vector<UserPreset>& userPresets(TrackKind kind) { return userList(kind); }
-int builtInPresets(TrackKind kind) {
+int enginePresets(TrackKind kind) {
     return kind == TrackKind::Jx3p ? Jx3p::presetCount() : kind == TrackKind::Phazed ? Phazed::presetCount() : kind == TrackKind::Fm6 ? Fm6::presetCount()
          : kind == TrackKind::Physic ? Physic::presetCount() : 0;
+}
+int builtInPresets(TrackKind kind) { return specFor(kind) ? enginePresets(kind) + static_cast<int>(builtInData(kind).added.size()) : 0; }
+const UserPreset* listedPreset(TrackKind kind, int index) {
+    if (!specFor(kind)) return nullptr;
+    const int engine = enginePresets(kind);
+    const std::vector<UserPreset>& added = builtInData(kind).added;
+    const int at = index - engine, own = at - static_cast<int>(added.size());
+    if (at < 0) return nullptr;
+    if (own < 0) return &added[static_cast<std::size_t>(at)];
+    return own < static_cast<int>(userList(kind).size()) ? &userList(kind)[static_cast<std::size_t>(own)] : nullptr;
 }
 int settingCount(TrackKind kind) {
     return kind == TrackKind::Jx3p ? static_cast<int>(jx3p::kSettings) : kind == TrackKind::Phazed ? static_cast<int>(phazed::kSettings) : kind == TrackKind::Fm6 ? static_cast<int>(fm6::kSettings)

@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "apotheca/engine.hpp"
+#include "presets.hpp"
 #include "app.hpp"
 #include "canvas.hpp"
 #include "chord_effects.hpp"
@@ -1273,12 +1274,12 @@ void testTheOtherScreens() {
         std::printf("    JAX-EP's PRESET row at LARGE: %.1f + %.1f + %.1f, at XL %.1f + %.1f + %.1f, of %d\n", large.small.width("PRESET"), large.small.width(kJaxepBankNote), large.small.width(SynthScreen::kCountLongest), xl.small.width("PRESET"), xl.small.width(kJaxepBankNote), xl.small.width(SynthScreen::kCountLongest), SynthScreen::kPresetW - 17 - 2 * SynthScreen::kNoteGap);
         CHECK(7.f + large.small.width("PRESET") + large.small.width(kJaxepBankNote) + large.small.width(SynthScreen::kCountLongest) + 2 * SynthScreen::kNoteGap <= SynthScreen::kPresetW - 10.f);
         // One of the player's own says nothing, and its row is as any synth's.
-        session.chooseSynthPreset(project.track, Jx3p::presetCount());
+        session.chooseSynthPreset(project.track, builtInPresets(TrackKind::Jx3p));
         rig.frames(2);
         holds(rig, "JAX-EP MAIN, one of the player's own");
         CHECK(drew("OWN 0") && drew("USER") && drew("PRESET") && !drew(kJaxepGuessNote) && !drew(kJaxepBankNote) && capAtXl("PRESET", 30.f) == xl.small.capHeight());
         CHECK(drew("1 / 100") && !drew("33 / 132")); // the first of the player's own hundred
-        session.chooseSynthPreset(project.track, Jx3p::presetCount() + 99);
+        session.chooseSynthPreset(project.track, builtInPresets(TrackKind::Jx3p) + 99);
         rig.frames(2);
         holds(rig, "JAX-EP MAIN, the last of the player's own hundred");
         CHECK(drew("OWN 99") && drew("100 / 100") && xl.small.width("100 / 100") <= xl.small.width(SynthScreen::kCountLongest));
@@ -1388,7 +1389,7 @@ void testTheOtherScreens() {
         CHECK(settings == 4 * physic::kSettings);
         // The widest of its preset names, and its folder's.
         int widest = 0;
-        for (int i = 1; i < Physic::presetCount(); ++i)
+        for (int i = 1; i < builtInPresets(TrackKind::Physic); ++i)
             if (xl.large.width(Physic::presetName(i)) > xl.large.width(Physic::presetName(widest))) widest = i;
         session.chooseSynthPreset(project.track, widest);
         ph.goTo(0, SynthScreen::kPreset);
@@ -2287,6 +2288,9 @@ void testTheStepNumbersOfAShortScene() {
 }
 
 int main(int argc, char** argv) {
+    // The engine's own presets only: the tests here are of their tables. The presets the app's data
+    // adds (and any track sound it gives a built-in) are presets_test's.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     if (argc >= 3 && std::strcmp(argv[1], "views") == 0) return runViews(argv[2], argc >= 4 ? argv[3] : nullptr);
     CHECK(screens().canvas.ok);

@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "apotheca/engine.hpp"
+#include "presets.hpp"
 #include "app.hpp"
 #include "designer.hpp"
 #include "song_file.hpp"
@@ -271,7 +272,7 @@ void testPhazedFromThePage() {
     CHECK(count(spec, "\"env\":") == 9 && count(spec, "\"env\":true") == 6);
     CHECK(has(spec, "{\"name\":\"SOUND\",\"env\":false,\"items\":[{\"name\":\"LINES\",\"id\":0,\"min\":0,\"max\":3,\"texts\":[\"LINE 1\",\"LINE 2\",\"1 + 1'\",\"1 + 2'\"]}"));
     CHECK(count(spec, "\"id\":") == phazed::kSettings); // every setting is on some page, once
-    CHECK(count(spec, "\"folder\":") == Phazed::presetCount() && !has(spec, "\"folder\":\"USER\""));
+    CHECK(count(spec, "\"folder\":") == builtInPresets(TrackKind::Phazed) && !has(spec, "\"folder\":\"USER\""));
     // A setting with many values is a slider: no names for each.
     CHECK(has(spec, "{\"name\":\"DETUNE FINE\",\"id\":5,\"min\":0,\"max\":60}"));
 
@@ -359,7 +360,7 @@ void testSavingAPreset() {
     Rig rig;
     rig.addSynth();
     Session& session = rig.app.session();
-    const int builtIn = Phazed::presetCount();
+    const int builtIn = builtInPresets(TrackKind::Phazed);
     // Make a sound: a preset, bent with two settings and a macro.
     rig.tell("preset 3");
     // Quiet (a setting) and slow to start (a macro), so that both can be heard to come back.
@@ -473,10 +474,10 @@ void testFm6FromThePage() {
     // Saved, it is an ".fm6" preset, in FM-6's list only, and comes back as it was.
     const Fm6Patch made = rig.track().fm6;
     CHECK(rig.tell("save made one"));
-    CHECK(exists(rig.root + "/presets/MADE ONE.fm6") && fm6Spec().presetCount() == Fm6::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount());
+    CHECK(exists(rig.root + "/presets/MADE ONE.fm6") && fm6Spec().presetCount() == builtInPresets(TrackKind::Fm6) + 1 && phazedSpec().presetCount() == builtInPresets(TrackKind::Phazed));
     rig.tell("preset 2");
     CHECK(rig.track().fm6.value[fm6::Algorithm] != made.value[fm6::Algorithm] && rig.track().fm6.value[fm6::OpsOn] == 63);
-    rig.tell("preset " + std::to_string(Fm6::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Fm6)));
     CHECK(std::equal(made.value, made.value + fm6::kSettings, rig.track().fm6.value));
 }
 
@@ -521,9 +522,9 @@ void testPhysicFromThePage() {
     // Saved, it is a ".physic" preset, in PHYSIC's list only, and comes back as it was.
     const PhysicPatch made = rig.track().physic;
     CHECK(rig.tell("save made one"));
-    CHECK(exists(rig.root + "/presets/MADE ONE.physic") && physicSpec().presetCount() == Physic::presetCount() + 1 && fm6Spec().presetCount() == Fm6::presetCount());
+    CHECK(exists(rig.root + "/presets/MADE ONE.physic") && physicSpec().presetCount() == builtInPresets(TrackKind::Physic) + 1 && fm6Spec().presetCount() == builtInPresets(TrackKind::Fm6));
     rig.tell("preset 3");
-    rig.tell("preset " + std::to_string(Physic::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Physic)));
     CHECK(std::equal(made.value, made.value + physic::kSettings, rig.track().physic.value));
     // FM-6's page has no ROLL.
     rig.app.session().addTrack(TrackKind::Fm6);
@@ -580,13 +581,13 @@ void testJaxepFromThePage() {
         while (in >> v) ++n;
         CHECK(n == jx3p::kPatchSettings); // ids 0 to 31
     }
-    CHECK(jx3pSpec().presetCount() == Jx3p::presetCount() + 1 && phazedSpec().presetCount() == Phazed::presetCount()); // its own list, not Phazed's
+    CHECK(jx3pSpec().presetCount() == builtInPresets(TrackKind::Jx3p) + 1 && phazedSpec().presetCount() == builtInPresets(TrackKind::Phazed)); // its own list, not Phazed's
     rig.tell("set " + std::to_string(jx3p::Brilliance) + " 39");
     rig.tell("preset 0"); // the first built-in one
     CHECK(rig.track().preset == 0 && rig.track().jx3p.value[jx3p::VcaLevel] == Jx3p::presetPatch(0).value[jx3p::VcaLevel]);
     rig.tell("preset 7"); // A8 E. Piano I: LEVEL 9.9, no attack (the made sound is at LEVEL 0.5)
     CHECK(rig.track().preset == 7 && rig.track().jx3p.value[jx3p::VcaLevel] == 99 && rig.loud() > 3.f * sound);
-    rig.tell("preset " + std::to_string(Jx3p::presetCount()));
+    rig.tell("preset " + std::to_string(builtInPresets(TrackKind::Jx3p)));
     CHECK(std::equal(made.value, made.value + jx3p::kPatchSettings, rig.track().jx3p.value));
     CHECK(rig.track().jx3p.value[jx3p::Brilliance] == 39 && rig.track().jx3p.value[jx3p::Velocity] == 0); // as the track had them, not as they were at the save
     // ...and it sounds as it did, with BRILLIANCE where it was when it was listened to (it moves A1's
@@ -606,6 +607,9 @@ void testJaxepFromThePage() {
 } // namespace
 
 int main() {
+    // The engine's own presets only: the tests here are of their tables. The presets the app's data
+    // adds (and any track sound it gives a built-in) are presets_test's.
+    for (TrackKind kind : {TrackKind::Phazed, TrackKind::Jx3p, TrackKind::Fm6, TrackKind::Physic}) useBuiltInDataForTests(kind, PresetData());
     testNamesAndRequests();
     testThePageIsServed();
     testPhazedFromThePage();
