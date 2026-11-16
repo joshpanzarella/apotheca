@@ -1537,6 +1537,14 @@ pages are that synth's panel:
     the synth it is modeled after. Six keys of E. Piano I, the loudest,
     come out of the synth at about one and a half times full scale (the
     track's usual level takes it under).
+  - **RESONANCE keeps the low end and sings only at the top** (2026-11-16).
+    Turned up, it used to take a bass note down by about 14 dB and sing a
+    loud whistle from 8.7 on. Now a bass note loses 4 to 5 dB at most, the
+    filter starts to sing at 9.6, and at 10 it sings a round sine about as
+    loud as the note's own lowest part, on the cutoff at any height. A preset
+    with RESONANCE up has more low end than before (Harpsichord about 7 dB
+    louder); those whose sound is the singing (Organ I, Voice, Pulsar) are
+    1.5 dB quieter.
   - **A JAX-EP track saved by an older build loads as it was saved, and
     may sound different.** From builds 0.504 to 0.514: a sound at LEVEL 4
     or under is within 2 dB of what it was; higher LEVELs are quieter and

@@ -1,6 +1,9 @@
 // The JX-3P's VCF and HPF (plan batch 3, engine/src/jx3p/ir3109.hpp): the
 // plan's VCF table (the slope, singing, Organ I, KEY FOLLOW, the polarity, the
-// bass loss, staying bounded), the HPF, BRILLIANCE, and the CV's steps.
+// low end, staying bounded), the HPF, BRILLIANCE, and the CV's steps; and what
+// the owner's report on the resonance (2026-11-15) changed: the singing on its
+// cutoff at one level up to 10 kHz, the edge at 9.5, the low end kept, the
+// singing beside a played note (testSingsBesideTheNote).
 //
 // Each test says FAITHFUL (held to a published figure: its source named) or
 // SELF (held to the plan's own guess or the house's bar). A green SELF test
@@ -45,10 +48,10 @@ static std::vector<float> through(const std::vector<float>& in, double hz, int r
     Ir3109 f;
     if (kick) f.kick();
     VcfCoef g;
-    g.set(onePoleG(hz, 48000.0));
-    const float k = resFeedback(res);
+    g.set(hz, 48000.0);
+    const float k = resFeedback(res), given = bassGiven(k, kBassKept);
     std::vector<float> out(in.size());
-    for (std::size_t i = 0; i < in.size(); ++i) out[i] = f.run(in[i], g, k);
+    for (std::size_t i = 0; i < in.size(); ++i) out[i] = f.run(in[i], g, k, given);
     return out;
 }
 static std::vector<float> silence(std::size_t n) { return std::vector<float>(n, 0.f); }
@@ -129,8 +132,10 @@ static void testPolynomials() {
 }
 
 // THE FEEDBACK'S BEND (SELF: its shape is the plan's guess, a ratio of polynomials): what it lets
-// through, x times its gain, rises with x, has no corner (its gain at 0 is 1), reaches the knee at
-// three knees and stays exactly there past it, and is the same on both sides.
+// through, x times its gain, rises all the way, has no corner (its gain at 0 is 1), reaches the knee
+// at three knees with a slope of 0 there, and goes on rising past it, slowly (a ninth of its first
+// slope far out), with no flat top (2026-11-15: it was held flat past three knees, a clip); the same on
+// both sides.
 static void testTheBend() {
     const auto bent = [](float x) {
         float over, under;
@@ -147,8 +152,11 @@ static void testTheBend() {
     }
     CHECK(rising);
     CHECK(std::fabs(bent(1e-3f) / 1e-3f - 1.f) < 1e-6f);
-    for (float x : {3.f, 3.5f, 5.f, 10.f, 100.f}) CHECK(std::fabs(bent(x * kFeedbackKnee) - kFeedbackKnee) < 1e-5f);
-    CHECK(std::fabs(bent(2.99f * kFeedbackKnee) - kFeedbackKnee) < 1e-3f); // no step at three knees
+    CHECK(std::fabs(bent(3.f * kFeedbackKnee) - kFeedbackKnee) < 1e-5f);                  // the knee at three knees...
+    CHECK(std::fabs(bent(3.01f * kFeedbackKnee) - bent(2.99f * kFeedbackKnee)) < 1e-6f);  // ...flat there for a moment...
+    for (float x : {3.5f, 5.f, 10.f, 100.f}) CHECK(bent(x * kFeedbackKnee) > bent((x - 0.25f) * kFeedbackKnee) + 1e-4f); // ...and rising on past it
+    const float far = (bent(1000.f * kFeedbackKnee) - bent(999.f * kFeedbackKnee)) / kFeedbackKnee;
+    CHECK(std::fabs(far - 1.f / 9.f) < 1e-3f);
 }
 
 // A 24 dB SLOPE (FAITHFUL: SN p.6, "a 4-pole LPF"): at RESONANCE 0, two to four octaves over the
@@ -180,12 +188,18 @@ static void testSlope() {
     if (printing()) std::printf("  slope: %.2f dB an octave two to four octaves up (sines), %.2f (noise through the synth, cutoff %.0f Hz)\n", slope, noiseSlope, at);
 }
 
-// IT SINGS (FAITHFUL that it does: NAM's Organ I uses RESONANCE 10 as a pitched source; how soon is
-// SELF): silence in, RESONANCE 10, a key's kick: at 1 kHz and 4 kHz within 1 dB of its level by 50 ms;
-// 30 s on it is still there at the same level; it is about a sine (every harmonic 20 dB under); its
-// level 6 dB under the saw's peak within 1.5 dB from 80 Hz to 4 kHz (SELF: the SN trims it to 600 mV
-// but prints no figure for the saw). Not kicked, silence stays exact zeros; under the edge (RESONANCE
-// 8.5) the kick dies away to exact zeros.
+// IT SINGS (FAITHFUL that it does: NAM's Organ I uses RESONANCE 10 as a pitched source; how soon,
+// how loud and how pure are SELF): silence in, RESONANCE 10, a key's kick.
+//  - At 1 kHz and 4 kHz within 1 dB of its level by 50 ms; 30 s on still there at the same level.
+//  - From 80 Hz to 10 kHz: 7.2 dB under the saw's peak within 0.3 dB (SELF: the SN trims it to 600 mV
+//    but prints no figure for the saw; it was 6 dB, and 3 dB louder at 10 kHz than at 1 kHz), ON ITS
+//    CUTOFF within 1 cent (it sang sharp, 10 cents at 1 kHz, 30 at 4 kHz, while the bend was taken
+//    from the sample before: 2026-11-15), every harmonic 45 dB under it (51 measured), and at 10 kHz,
+//    where its harmonics are past the top and fold back, nothing that is not a harmonic within 40 dB
+//    of it (45.7 measured; it was 40.6).
+//  - Not kicked, silence stays exact zeros. THE EDGE is at RESONANCE 9.5 (feedback exactly 4; the
+//    owner's report: it was at 8.7, so the top 13% of the knob sang): at 9.4 the kick dies away to
+//    exact zeros, at 9.6 it sings.
 static void testItSings() {
     for (double hz : {1000.0, 4000.0}) {
         const std::vector<float> out = through(silence(31 * 48000), hz, 100, true);
@@ -194,23 +208,32 @@ static void testItSings() {
         const double late = peakFrom(out, out.size() - 48000);
         CHECK(dB(at50 / level) > -1.0);
         CHECK(std::fabs(dB(late / level)) < 0.1);
-        const int whole = static_cast<int>(pitchOf(out, 48000, 2 * 48000) + 0.5);
+        if (printing()) std::printf("  sings at %.0f Hz: %.1f dB at 50 ms of its level\n", hz, dB(at50 / level));
+    }
+    for (double hz : {80.0, 300.0, 1000.0, 4000.0, 10000.0}) {
+        const std::vector<float> out = through(silence(3 * 48000), hz, 100, true);
+        const double level = peakFrom(out, 2 * 48000), sung = pitchOf(out, 2 * 48000, out.size());
+        CHECK(std::fabs(dB(level) + 7.2) < 0.3);
+        CHECK(std::fabs(cents(sung, hz)) < 1.0);
+        const int whole = static_cast<int>(sung + 0.5);
         CHECK(whole > 0);
         if (whole <= 0) continue; // (not singing: the harmonics' reader needs a pitch)
-        const Harmonics h = harmonicsIn(out.data() + 48000, 48000, whole, level);
-        CHECK(h.strongest < -20.0);
-        if (printing()) std::printf("  sings at %.0f Hz: %.1f dB at 50 ms of its level, its harmonics %.1f dB under\n", hz, dB(at50 / level), -h.strongest);
-    }
-    for (double hz : {80.0, 300.0, 1000.0, 4000.0}) {
-        const std::vector<float> out = through(silence(3 * 48000), hz, 100, true);
-        const double level = peakFrom(out, 2 * 48000);
-        CHECK(std::fabs(dB(level) + 6.0) < 1.5);
-        if (printing()) std::printf("  sings at %.0f Hz: %.2f dB under the saw's peak, %.1f cents from its cutoff\n", hz, -dB(level), cents(pitchOf(out, 2 * 48000, out.size()), hz));
+        const Harmonics h = harmonicsIn(out.data() + 2 * 48000, 48000, whole, level);
+        CHECK(hz > 9000.0 || h.strongest < -45.0);
+        const Aside aside = asideOf(out.data() + out.size() - 65536, 65536, sung, 24000.0, sung);
+        CHECK(aside.dB < -40.0);
+        if (printing())
+            std::printf("  sings at %.0f Hz: %.2f dB under the saw's peak, %+.2f cents from its cutoff, its harmonics %.1f dB under, the loudest else %.1f dB under (at %.0f Hz)\n", hz, -dB(level),
+                        cents(sung, hz), -h.strongest, -aside.dB, aside.hz);
     }
     CHECK(peakFrom(through(silence(48000), 1000.0, 100, false), 0) == 0.0);
-    const std::vector<float> under = through(silence(4 * 48000), 1000.0, 85, true);
-    CHECK(peakFrom(under, 3 * 48000) == 0.0);
-    CHECK(resFeedback(86) < 4.f && resFeedback(87) > 4.f); // the edge, 4, between 8.6 and 8.7
+    const std::vector<float> under = through(silence(8 * 48000), 1000.0, 94, true);
+    CHECK(peakFrom(under, 7 * 48000) == 0.0);
+    const std::vector<float> over = through(silence(8 * 48000), 1000.0, 96, true);
+    CHECK(peakFrom(over, 7 * 48000) > 0.05);
+    CHECK(resFeedback(95) == 4.f && resFeedback(94) < 4.f && resFeedback(96) > 4.f && resFeedback(100) == static_cast<float>(kResTop));
+    CHECK(std::fabs(resFeedback(50) - 2.f * 50.f / 47.5f) < 1e-6f); // straight below the edge
+    if (printing()) std::printf("  RESONANCE 9.6 sings at %.3f of a saw's peak, 10 at %.3f\n", peakFrom(over, 7 * 48000), peakFrom(through(silence(3 * 48000), 1000.0, 100, true), 2 * 48000));
 }
 
 // IT IS THE SAME EVERY TIME (SELF): the kick is a fixed number, so two filters singing from it give
@@ -243,8 +266,8 @@ static void testOrganI() {
 // KEY FOLLOW (SELF): the cutoff's CV between notes 36 and 84 is KEY / 9.8 times the four octaves
 // between them, exactly a straight line in KEY (0, 5, 8, 10); and the filter sings at those two
 // cutoffs (alone: through the synth the saw's own partials near the cutoff pull the singing to them,
-// as they would on any filter) a straight line within 20 cents (it sings sharp of its cutoff by 1
-// cent at 80 Hz, 3 at 300 Hz, 10 at 1 kHz, 30 at 4 kHz: testItSings prints it).
+// as they would on any filter) a straight line within 1 cent (it was 17 cents off at KEY 10, allowed
+// 20, while the bend was taken from the sample before and it sang sharp, 30 cents at 4 kHz).
 static void testKeyFollow() {
     for (int key : {0, 50, 80, 100}) {
         double cv[2], sung[2];
@@ -260,7 +283,7 @@ static void testKeyFollow() {
         const double want = 4.0 * key / 98.0;
         CHECK(std::fabs(std::log2(cv[1] / cv[0]) - want) < 1e-5);
         const double off = 1200.0 * (std::log2(sung[1] / sung[0]) - want);
-        CHECK(std::fabs(off) < 20.0);
+        CHECK(std::fabs(off) < 1.0);
         if (printing()) std::printf("  KEY %.1f: 36 to 84 is %.4f octaves of cutoff (want %.4f); it sings %.1f cents off that\n", key / 10.0, std::log2(cv[1] / cv[0]), want, off);
     }
     // At its reference key KEY FOLLOW adds nothing.
@@ -354,26 +377,103 @@ static void testBrilliance() {
     CHECK(std::fabs(std::log2(j->voiceCutoffHz(0) / cutoffHz(50)) - kBrillianceOctaves) < 1e-4);
 }
 
-// THE BASS LOSS (SELF: the IR3109's on the Juno-60; not documented on the JX-3P; kept, the owner's
-// call): a 100 Hz sine, cutoff 2 kHz, RESONANCE 0 goes through whole, RESONANCE 8 is down by 1 / (1 +
-// its feedback), within 0.5 dB; and the same through the synth.
-static void testBassLoss() {
-    CHECK(kBassLoss);
-    // Through the synth: note 45's saw, its 110 Hz fundamental, CUTOFF 7 (1.9 kHz).
-    double level[2];
-    for (int r = 0; r < 2; ++r) {
-        std::unique_ptr<Jx3p> j = synth({{Cutoff, 70}, {Resonance, r ? 80 : 0}});
-        j->noteOn(45, 1.f);
-        play(*j, 4800);
-        const std::vector<float> out = play(*j, 48000);
-        level[r] = partNear(out.data(), out.size(), keyHz(45));
+// THE LOW END (SELF: the IR3109 loses it as resonance rises, 1 / (1 + feedback), the Juno-60's
+// does; the owner's report, 2026-11-15: "the resonance makes the low end of the signal basically
+// disappear"): kBassKept of what the feedback takes away is given back, a share of the input
+// low-passed at a quarter of the cutoff (two poles), added outside the loop.
+//  - The filter alone, small sines under a 2 kHz cutoff: RESONANCE 0 whole; at RESONANCE 8 a sine at
+//    a sixteenth of the cutoff and under is (1 + kept k) / (1 + k) of itself within 0.6 dB (it was
+//    1 / (1 + k), 13.4 dB down); the octave under the cutoff keeps its loss, 9 dB and more down at
+//    RESONANCE 9 (A3 Organ I's sine is over its 16' DCO by that: testOrganI, the presets' test).
+//  - Through the synth, a saw's fundamental at a sixteenth of the cutoff and under (key 45 under
+//    CUTOFF 7, key 33 under CUTOFF 5): at RESONANCE 8, 9.5 and 10 (singing) within 5 dB of RESONANCE 0
+//    (it was 13 to 14 dB down).
+static void testTheLowEnd() {
+    CHECK(kBassKept == 0.5f);
+    for (int res : {0, 80}) {
+        const float k = resFeedback(res);
+        const double want = dB((1.0 + kBassKept * k) / (1.0 + k));
+        for (double hz : {31.25, 62.5, 125.0}) {
+            const double at = dB(gainAt(hz, 2000.0, res));
+            CHECK(std::fabs(at - want) < 0.6);
+            if (printing()) std::printf("  the low end at RESONANCE %.1f: %.0f Hz under a 2 kHz cutoff %.2f dB (want %.2f; the old loss %.2f)\n", res / 10.0, hz, at, want, -dB(1.0 + k));
+        }
     }
-    CHECK(std::fabs(dB(level[1] / level[0]) + dB(1.0 + resFeedback(80))) < 0.5);
-    if (printing()) std::printf("  bass loss through the synth: %.2f dB\n", dB(level[1] / level[0]));
-    const double at0 = dB(gainAt(100.0, 2000.0, 0)), at8 = dB(gainAt(100.0, 2000.0, 80)), want = -dB(1.0 + resFeedback(80));
-    CHECK(std::fabs(at0) < 0.05);
-    CHECK(std::fabs(at8 - want) < 0.5);
-    if (printing()) std::printf("  bass loss at RESONANCE 8: %.2f dB (1 / (1 + k) is %.2f)\n", at8, want);
+    // At RESONANCE 0 nothing is given back, the low end's two poles are not run and wait at 0, so a
+    // share given back again starts from nothing (with the feedback's hold), not from where they were.
+    {
+        Ir3109 f;
+        VcfCoef g;
+        g.set(2000.0, 48000.0);
+        const float k = resFeedback(80);
+        for (int i = 0; i < 4800; ++i) f.run(0.5f, g, k, bassGiven(k, kBassKept));
+        CHECK(f.l[1] > 0.4f);
+        f.run(0.5f, g, 0.f, 0.f);
+        CHECK(f.l[0] == 0.f && f.l[1] == 0.f);
+    }
+    const double octave = dB(gainAt(1000.0, 2000.0, 90));
+    CHECK(octave < -9.0);
+    if (printing()) std::printf("  the octave under the cutoff at RESONANCE 9: %.2f dB\n", octave);
+    // Through the synth.
+    const struct { int key, cut; } at[] = {{45, 70}, {33, 50}};
+    for (const auto& a : at) {
+        double level[4];
+        const int res[4] = {0, 80, 95, 100};
+        for (int r = 0; r < 4; ++r) {
+            std::unique_ptr<Jx3p> j = synth({{Cutoff, a.cut}, {Resonance, res[r]}});
+            j->noteOn(a.key, 1.f);
+            play(*j, 24000);
+            const std::vector<float> out = play(*j, 48000);
+            level[r] = partNear(out.data(), out.size(), keyHz(a.key));
+        }
+        for (int r = 1; r < 4; ++r) CHECK(dB(level[r] / level[0]) > -5.0 && dB(level[r] / level[0]) < 0.5);
+        if (printing())
+            std::printf("  the low end through the synth, key %d under CUTOFF %.1f (%.0f Hz): RESONANCE 8 %.2f, 9.5 %.2f, 10 %.2f dB\n", a.key, a.cut / 10.0, cutoffHz(a.cut), dB(level[1] / level[0]),
+                        dB(level[2] / level[0]), dB(level[3] / level[0]));
+    }
+}
+
+// SINGING BESIDE A NOTE (SELF; the owner's report, 2026-11-15: "when it is turned up all the way it
+// just squeals"): key 48's saw under CUTOFF 5 (1.6 kHz) at RESONANCE 10, KEY FOLLOW 0: the sine the
+// filter sings is within 3 dB of the note's fundamental (it was 10 dB over it, the note 13 dB under
+// RESONANCE 0), the fundamental within 5 dB of RESONANCE 0; and under CUTOFF 8 (12.5 kHz), where the
+// singing was over everything (0.7 dB under the note's fundamental at RESONANCE 0, beaten into
+// sidebands 6 dB under itself at the note's frequency), nothing that is not a harmonic of the note is
+// within 5 dB of its fundamental (6.3 dB under measured; it was 13 dB OVER).
+static void testSingsBesideTheNote() {
+    std::unique_ptr<Jx3p> plain = synth({{Cutoff, 50}});
+    plain->noteOn(48, 1.f);
+    play(*plain, 48000);
+    const std::vector<float> was = play(*plain, 65536);
+    const double ref = partNear(was.data(), was.size(), keyHz(48));
+    {
+        std::unique_ptr<Jx3p> j = synth({{Cutoff, 50}, {Resonance, 100}});
+        j->noteOn(48, 1.f);
+        play(*j, 48000);
+        const std::vector<float> out = play(*j, 65536);
+        const double note = partNear(out.data(), out.size(), keyHz(48));
+        const Aside sung = asideOf(out.data(), out.size(), keyHz(48), 3000.0, keyHz(48)); // the loudest part off the note's harmonics
+        // (The sine may sit on a harmonic: it sings where the saw's own partials near the cutoff pull it, as on any
+        // filter; read it as the loudest part within a third of an octave of the cutoff.)
+        const std::vector<double> size = spectrumOf(out.data(), out.size());
+        double top = 0.0;
+        const double bin = 48000.0 / out.size(), at = cutoffHz(50);
+        for (std::size_t i = 0; i < size.size(); ++i)
+            if (i * bin > at * 0.89 && i * bin < at * 1.12) top = std::fmax(top, size[i]);
+        const double sine = top / (0.35875 * out.size() / 2.0);
+        CHECK(std::fabs(dB(sine / note)) < 3.0);
+        CHECK(dB(note / ref) > -5.0);
+        if (printing()) std::printf("  RESONANCE 10 under CUTOFF 5: the note's fundamental %.2f dB from RESONANCE 0's, the sine %.2f dB from it (off the harmonics: %.1f dB at %.0f Hz)\n", dB(note / ref), dB(sine / note), sung.dB, sung.hz);
+    }
+    {
+        std::unique_ptr<Jx3p> j = synth({{Cutoff, 80}, {Resonance, 100}});
+        j->noteOn(48, 1.f);
+        play(*j, 48000);
+        const std::vector<float> out = play(*j, 65536);
+        const Aside off = asideOf(out.data(), out.size(), keyHz(48), 20000.0, keyHz(48));
+        CHECK(off.dB < -5.0);
+        if (printing()) std::printf("  RESONANCE 10 under CUTOFF 8: the loudest part off the note's harmonics %.1f dB under its fundamental (at %.0f Hz)\n", -off.dB, off.hz);
+    }
 }
 
 // IT STAYS BOUNDED (SELF): the filter alone, fed a square of 10 (twenty times a DCO's) and loud
@@ -552,7 +652,7 @@ int main(int argc, char** argv) {
     const Test tests[] = {
         {"testPolynomials", testPolynomials}, {"testTheBend", testTheBend}, {"testSlope", testSlope}, {"testItSings", testItSings}, {"testTheSameEveryTime", testTheSameEveryTime},
         {"testOrganI", testOrganI}, {"testKeyFollow", testKeyFollow}, {"testPolarity", testPolarity}, {"testTheCvSteps", testTheCvSteps},
-        {"testGlideMovesTheCutoff", testGlideMovesTheCutoff}, {"testBrilliance", testBrilliance}, {"testBassLoss", testBassLoss},
+        {"testGlideMovesTheCutoff", testGlideMovesTheCutoff}, {"testBrilliance", testBrilliance}, {"testTheLowEnd", testTheLowEnd}, {"testSingsBesideTheNote", testSingsBesideTheNote},
         {"testStaysBounded", testStaysBounded}, {"testHpf", testHpf}, {"testHpfOffIsUntouched", testHpfOffIsUntouched}, {"testAVoiceTakenAgainIsFresh", testAVoiceTakenAgainIsFresh}, {"testTheHpfSlides", testTheHpfSlides},
         {"testTheHpfLands", testTheHpfLands},
     };
