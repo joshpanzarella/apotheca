@@ -164,7 +164,7 @@ struct Acid::State {
         if (v.slideN > 0) {
             p += v.slideSpan * ((v.slideR - kSlideEnd) / (1.0 - kSlideEnd));
             v.slideR *= v.slideK;
-            if (--v.slideN == 0) v.slideSpan = 0.0; // landed: exactly on the key
+            --v.slideN; // at 0 it has landed: the key exactly (the span is no longer added)
         }
         if (p != v.lastPitch) {
             v.lastPitch = p;

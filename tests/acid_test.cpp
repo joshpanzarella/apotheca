@@ -333,6 +333,12 @@ static void testEnvelopes() {
     const long attack = static_cast<long>(std::ceil(kRate * 0.003)), t = static_cast<long>(std::lround(ampDecaySeconds(50) * kRate));
     play(*b, {on(0, 48)}, attack + t);
     CHECK(near(b->now().amp, 0.1, 0.001));
+    // A strike works its cutoff out on its own first sample, off the tick (here 3 samples past one).
+    std::unique_ptr<Acid> e = synth({{Cutoff, 0}, {EnvMod, 100}, {Decay, 100}, {Accent, 0}});
+    play(*e, {on(0, 48)}, 16 * 50 + 3);
+    const double fallen = e->now().filterEnv;
+    play(*e, {on(0, 50)}, 1);
+    CHECK(fallen < 0.99 && near(std::log2(e->now().cutoffHz / cutoffHz(0)), kEnvOctaves * e->now().filterEnv, 1e-4));
     // Let go: silent after 3 ms (exact zeros), the filter's decay still running, asleep after the tie's 5 ms.
     std::unique_ptr<Acid> c = synth({{Decay, 100}});
     play(*c, {on(0, 48)}, 4800);
@@ -577,8 +583,8 @@ static void testAccent() {
     std::unique_ptr<Acid> t = synth({{Accent, 100}}), u = synth({{Accent, 100}});
     play(*t, {on(0, 48, 0.9f)}, 6000);
     play(*u, {on(0, 48, 0.9f)}, 6000);
+    float last = static_cast<float>(t->now().level), biggest = 0.f;
     t->noteOnFrom(55, 1.f, 48, 0.05f);
-    float last = t->now().level, biggest = 0.f;
     for (int i = 0; i < 200; ++i) {
         play(*t, {}, 1);
         biggest = std::max(biggest, std::fabs(static_cast<float>(t->now().level) - last));
@@ -587,6 +593,14 @@ static void testAccent() {
     play(*u, {}, 200);
     CHECK(last == static_cast<float>(accentGain(100)) && biggest < 1.1f * static_cast<float>(accentGain(100) - 1.0) / 144.f);
     CHECK(t->now().sweep == 0.0 && t->now().filterEnv == u->now().filterEnv);
+    // A strike over a sounding note glides its level too (no step); from silence it is there at once.
+    std::unique_ptr<Acid> w = synth({{Accent, 100}});
+    play(*w, {on(0, 48, 0.9f)}, 6000);
+    play(*w, {on(0, 50, 1.f)}, 1);
+    CHECK(w->now().level > 1.0 && w->now().level < 1.0 + 1.1 * (accentGain(100) - 1.0) / 144.0);
+    std::unique_ptr<Acid> z = synth({{Accent, 100}});
+    play(*z, {on(0, 50, 1.f)}, 1);
+    CHECK(z->now().level == static_cast<float>(accentGain(100)));
     if (gPrint) std::printf("  accent: %.1f dB louder heard (ACCENT 100, CUTOFF 50: its level and its sweep)\n", louder);
 }
 

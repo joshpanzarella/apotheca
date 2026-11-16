@@ -302,3 +302,11 @@ come as data in batch 4, after them), `bench` rows "ACID, a busy line" and "ACID
 - The pass band four octaves under the cutoff is 2 dB down (the coupled ladder's spread poles): a
   bass note under a low cutoff is quieter than a buffered ladder's. Whether that is the box's own is
   batch 6's question.
+
+**Mutation testing (batches 0 to 2), 13 mutants:** 12 killed, 1 equivalent (zeroing the slide's span
+when it lands: the span is no longer added once the count is 0, so the line was taken out). Three
+survived the first run and each got a check: a tie's level stepping instead of gliding (the test read
+the level after the note, not before), a strike waiting for the cutoff's tick, a strike over a sounding
+note stepping its level. Killed: the tie window, ACCENT 0, a tie that restarts, allNotesOff keeping the
+voice, sleeping inside the tie window, a slower sweep, the bend from the last sample with no read-ahead
+(sings 10+ cents off), the cutoff not the singing pitch, the envelope not snapped.
