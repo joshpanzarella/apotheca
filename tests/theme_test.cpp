@@ -38,6 +38,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "stills.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -269,8 +270,7 @@ struct Rig {
 };
 
 void testTheSettingIsKept() {
-    char pattern[] = "/tmp/apotheca-theme-XXXXXX";
-    const std::string folder = mkdtemp(pattern), file = folder + "/settings.txt";
+    const std::string folder = tempFolder("theme"), file = folder + "/settings.txt";
     {
         Rig rig;
         Session& session = rig.session();
@@ -741,8 +741,7 @@ void testTheStillsFlag(const std::string& program, const std::string& folder) {
 
 int runViews(const char* program, const char* only) {
     using namespace stills;
-    char pattern[] = "/tmp/apotheca-themeviews-XXXXXX";
-    const std::string folder = mkdtemp(pattern), samples = folder + "/samples";
+    const std::string folder = tempFolder("themeviews"), samples = folder + "/samples";
     mkdir(samples.c_str(), 0755);
     mkdir((samples + "/kicks").c_str(), 0755);
     const auto wav = [&](const char* name, float seconds, float hz) {

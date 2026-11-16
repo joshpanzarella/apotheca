@@ -18,6 +18,7 @@
 #include "samples.hpp"
 #include "song_file.hpp"
 #include "stretch.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -37,12 +38,6 @@ const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK
 const SDL_Keycode STICK_UP = SDLK_i, STICK_RIGHT = SDLK_l, STICK_DOWN = SDLK_k;
 const float kTrackLevel = 0.65f;
 const int kStep = 6000; // frames in a step at 120 BPM
-
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-samples-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 
 // Steady at one level: easy to measure how long it plays and how loud.
 std::vector<float> steady(float seconds, float level) { return std::vector<float>(static_cast<std::size_t>(seconds * 48000.f), level); }
@@ -213,7 +208,7 @@ void testReadingWavFiles() {
     for (const std::string& text : bad) CHECK(!parseWav(text, out) && out.size() == 3 && out[0] == 7.f);
 
     // Written and read back.
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     std::vector<float> made(500);
     for (std::size_t i = 0; i < made.size(); ++i) made[i] = ramp(static_cast<int>(i), 0);
     made[3] = 2.f;   // too loud: held at full scale
@@ -353,7 +348,7 @@ void testFittingWithSignalsmith() {
     // And that is what a fitted lane plays: the same chord on a lane, fitted
     // to two bars (four seconds), comes out of the engine as steady as that.
     {
-        const std::string folder = tempFolder();
+        const std::string folder = tempFolder("samples");
         writeWav(folder + "/chord.wav", chord, 48000);
         Rig rig(folder);
         rig.session().setLaneSample(0, 2, "chord");
@@ -378,7 +373,7 @@ void testFittingWithSignalsmith() {
 }
 
 void testARecordingOnALane() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/tone.wav", steady(0.5f, 0.25f), 48000);
     writeWav(folder + "/loud.wav", steady(0.25f, 0.5f), 48000);
     Rig rig(folder);
@@ -421,7 +416,7 @@ void testARecordingOnALane() {
 }
 
 void testFittingToTheTempo() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/tone.wav", tone(0.5f, 0.25f), 48000);
     writeWav(folder + "/loud.wav", tone(0.3f, 0.5f), 48000);
     Rig rig(folder);
@@ -503,7 +498,7 @@ void testFittingToTheTempo() {
 }
 
 void testTheSongKeepsItsRecordings() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/my loop.wav", steady(0.5f, 0.25f), 48000);
     Rig rig(folder);
     rig.session().setLaneSample(0, 2, "my loop");
@@ -568,7 +563,7 @@ void testTheSongKeepsItsRecordings() {
 }
 
 void testWhereAHitStarts() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/tone.wav", steady(0.5f, 0.25f), 48000);
     Rig rig(folder);
     PatternScreen& drums = rig.app.drums();
@@ -723,7 +718,7 @@ void testRollingALanesStarts() {
 }
 
 void testTheKitScreen() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/alpha.wav", steady(0.5f, 0.25f), 48000);
     writeWav(folder + "/beta.wav", steady(0.25f, 0.25f), 48000);
     Rig rig(folder);
@@ -833,7 +828,7 @@ void testTheKitScreen() {
 }
 
 void testCatch() {
-    const std::string folder = tempFolder() + "/not-made-yet";
+    const std::string folder = tempFolder("samples") + "/not-made-yet";
     Rig rig(folder);
     KitScreen& kit = rig.app.kit();
     TrackData& track = rig.project().tracks[0];
@@ -924,7 +919,7 @@ void testCatch() {
 // The recording's picture takes the room the LIVE OUTPUT box left (owner, 2026-11-14): read off
 // the drawn screen, it is as tall as kWaveH allows, not the 40 rows it was.
 void testTheSamplersPictureIsTall() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/alpha.wav", tone(0.5f, 0.95f), 48000); // nearly full: its picture nearly the height
     Rig rig(folder);
     Session& session = rig.session();
@@ -959,7 +954,7 @@ void testTheSamplersPictureIsTall() {
 // marks it as it marks START, and lights only what a note plays.
 void testTheSamplersEnd() {
     const SDL_Keycode SELECT = SDLK_BACKSPACE;
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/alpha.wav", tone(1.f, 0.9f), 48000);
     Rig rig(folder);
     Session& session = rig.session();
@@ -1066,7 +1061,7 @@ void testTheSamplersEnd() {
 }
 
 void testTheSamplerTrack() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/alpha.wav", tone(0.5f, 0.25f), 48000);
     writeWav(folder + "/beta.wav", tone(0.25f, 0.25f), 48000);
     Rig rig(folder);
@@ -1400,7 +1395,7 @@ struct FakeInput : AudioInput {
 };
 
 void testRecordingOntoALane() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     Rig rig(folder);
     Session& session = rig.session();
     FakeInput input;
@@ -1502,7 +1497,7 @@ void testRecordingOntoALane() {
 // ---- the list of recordings ---------------------------------------------------------------
 
 void testTheSamplePicker() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     // Twenty recordings, each a different length so that they can be told apart by ear.
     char name[32];
     for (int i = 0; i < 20; ++i) {
@@ -1739,7 +1734,7 @@ void testTheSamplePicker() {
     rig.tap(A);
 
     // No recordings at all: the list opens with its one row, and says how to get some.
-    Rig empty(tempFolder());
+    Rig empty(tempFolder("samples"));
     empty.app.session().view = View::Device;
     empty.app.kit().goTo(0, KitScreen::kSound);
     empty.tap(A);
@@ -1763,7 +1758,7 @@ bool near(float a, float b) { return std::fabs(a - b) < 0.002f; }
 const SDL_Keycode L1 = SDLK_q, L2 = SDLK_1, SELECT = SDLK_BACKSPACE;
 
 void testTheSliceView() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/break.wav", sixteenLevels(), 48000);
     Rig rig(folder);
     PatternScreen& drums = rig.app.drums();
@@ -2049,7 +2044,7 @@ void testTheSliceView() {
 }
 
 void testOneSliceIsKeptInTheSong() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/break.wav", sixteenLevels(), 48000);
     Rig rig(folder);
     rig.session().setLaneSample(0, 2, "break");
@@ -2093,7 +2088,7 @@ void testOneSliceIsKeptInTheSong() {
 // in the third; going into the folder the cursor steps right, the second column's rows stay where
 // they were, pixel for pixel, and the preview's box is where it was.
 void testTheColumnsStandStill() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     for (const char* dir : {"/kicks", "/vocals"}) mkdir((folder + dir).c_str(), 0755);
     std::vector<float> made(3000);
     for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
@@ -2148,7 +2143,9 @@ void testTheColumnsStandStill() {
 }
 
 void testFoldersInTheSamplePicker() {
-    const std::string folder = tempFolder();
+    // (one folder down, so that "../outside.wav" below is still in a folder of the test's own)
+    const std::string folder = tempFolder("samples") + "/samples";
+    CHECK(mkdir(folder.c_str(), 0755) == 0);
     const auto make = [&](const std::string& name, int frames) {
         std::vector<float> made(static_cast<std::size_t>(frames));
         for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
@@ -2343,7 +2340,7 @@ void testFoldersInTheSamplePicker() {
     CHECK(session.sampleUses("kicks/808") == 3 && session.sampleUses("kicks/909") == 0);
 
     // With no folders at all the list is as it always was: one list, and left / right do nothing.
-    const std::string plain = tempFolder();
+    const std::string plain = tempFolder("samples");
     {
         std::vector<float> made(2000, 0.3f);
         CHECK(writeWav(plain + "/one.wav", made, 48000) && writeWav(plain + "/two.wav", made, 48000));
@@ -2360,7 +2357,7 @@ void testFoldersInTheSamplePicker() {
     flat.tap(LEFT);
     CHECK(simple.cursor() == 1 && simple.depth() == 0 && std::string(flat.app.project().tracks[0].laneSample[2]) == "one" && flat.app.session().recording() == Session::Rec::Idle);
     // Only folders, nothing loose: the first row and the folder, and there is no UNSORTED.
-    const std::string sorted = tempFolder();
+    const std::string sorted = tempFolder("samples");
     mkdir((sorted + "/hats").c_str(), 0755);
     {
         std::vector<float> made(2000, 0.3f);
@@ -2377,7 +2374,7 @@ void testFoldersInTheSamplePicker() {
     tidy.tap(RIGHT);
     CHECK(std::string(tidy.app.project().tracks[0].laneSample[2]) == "hats/closed");
     // An empty folder and nothing else: it is listed (there is something to go into), and says nothing is in it.
-    const std::string bare = tempFolder();
+    const std::string bare = tempFolder("samples");
     mkdir((bare + "/new").c_str(), 0755);
     Rig lone(bare);
     lone.app.session().view = View::Device;
@@ -2389,7 +2386,7 @@ void testFoldersInTheSamplePicker() {
 
 // How fast it moves (owner: "fast ... not so fast that it is hard to choose").
 void testThePickersPace() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     mkdir((folder + "/many").c_str(), 0755);
     char name[32];
     std::vector<float> made(2000, 0.3f);
@@ -2478,7 +2475,7 @@ void testThePlayhead() {
     head.start(1000, 0.f);
     CHECK(head.at(1000) < 0.f); // nothing to run across
 
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/half.wav", tone(0.5f, 0.25f), 48000);
     Rig rig(folder);
     Session& session = rig.session();
@@ -2542,7 +2539,7 @@ void testThePlayhead() {
 // track. (On a card that tells the two apart it was listed and loaded as missing.) A new take
 // is not given the name of one there under .WAV.
 void testARecordingEndingInCapitals() {
-    const std::string folder = tempFolder();
+    const std::string folder = tempFolder("samples");
     writeWav(folder + "/Snare.WAV", steady(0.5f, 0.25f), 48000);
     mkdir((folder + "/kicks").c_str(), 0755);
     writeWav(folder + "/kicks/Low.WAV", steady(0.25f, 0.25f), 48000);

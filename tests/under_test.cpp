@@ -24,6 +24,7 @@
 #include "note_marks.hpp"
 #include "pattern_layout.hpp"
 #include "samples.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -167,10 +168,8 @@ struct TempFolder {
     std::string path;
     bool made = false;
     TempFolder() {
-        char pattern[] = "/tmp/apotheca-under-XXXXXX";
-        const char* got = mkdtemp(pattern);
-        made = got != nullptr;
-        path = made ? got : "/tmp";
+        path = tempFolder("under");
+        made = true;
     }
     ~TempFolder() {
         if (!made) return;

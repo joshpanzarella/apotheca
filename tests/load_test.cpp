@@ -19,6 +19,7 @@
 #include "apotheca/engine.hpp"
 #include "apotheca/load_meter.hpp"
 #include "../app/cpu_use.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -112,8 +113,7 @@ void testTheProgramsTime() {
     CHECK(statTicks("nonsense") == -1 && statTicks(nullptr) == -1);
     CHECK(statTicks(std::string("1 (x) S 1 2 3").c_str()) == -1); // cut short
     // A made-up file read as the program would: four cores, 100 ticks a second.
-    char pattern[] = "/tmp/apotheca-load-XXXXXX";
-    const std::string folder = mkdtemp(pattern), file = folder + "/stat";
+    const std::string folder = tempFolder("load"), file = folder + "/stat";
     const auto write = [&](long utime, long stime) {
         std::FILE* f = std::fopen(file.c_str(), "w");
         std::fprintf(f, "77 (apotheca) S 1 2 3 4 5 6 7 8 9 10 %ld %ld 0 0 20 0\n", utime, stime);

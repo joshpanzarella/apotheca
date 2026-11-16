@@ -41,6 +41,7 @@
 #include "canvas.hpp"
 #include "redraw.hpp"
 #include "samples.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -60,14 +61,6 @@ const SDL_Keycode L1 = SDLK_q, R1 = SDLK_w, L2 = SDLK_1, R2 = SDLK_2, MENU = SDL
 const SDL_Keycode STICK_DOWN = SDLK_k, STICK_RIGHT = SDLK_l;
 const SDL_Keycode UP = SDLK_UP, DOWN = SDLK_DOWN, LEFT = SDLK_LEFT, RIGHT = SDLK_RIGHT;
 const int kPassMs = 16, kPassSound = 768; // one pass of main.cpp's loop, and the sound it lasts
-
-std::string tempFolder(const char* what) {
-    std::string pattern = std::string("/tmp/apotheca-idle-") + what + "-XXXXXX";
-    std::vector<char> buffer(pattern.begin(), pattern.end());
-    buffer.push_back(0);
-    const char* made = mkdtemp(buffer.data());
-    return made ? made : "/tmp";
-}
 
 std::vector<float> tone(float seconds, float level) {
     std::vector<float> out(static_cast<std::size_t>(seconds * 48000.f));
@@ -521,7 +514,7 @@ void theSession(Rig& rig, const std::string& samples) {
 
     rig.part = "a keyboard's key on the roll";
     {
-        const std::string midiFolder = tempFolder("midi");
+        const std::string midiFolder = tempFolder("idle-midi");
         Keyboard keys(midiFolder, "midiC1D0");
         rig.byHand([&] { s.startMidi(midiFolder); });
         keys.plugIn();
@@ -562,17 +555,17 @@ void theSession(Rig& rig, const std::string& samples) {
     rig.run(5000); // it closes by itself
 
     rig.part = "SETUP: a bounce";
-    rig.byHand([&] { s.useBounceFolder(tempFolder("bounces")); });
+    rig.byHand([&] { s.useBounceFolder(tempFolder("idle-bounces")); });
     rig.byHand([&] { rig.app->settings().goTo(SettingsScreen::kBounce); });
     rig.press(A);
     for (int i = 0; i < 2000 && s.bouncing(); ++i) rig.pass();
     rig.run(1000);
 
     rig.part = "SETUP: WiFi on, an update sent and accepted";
-    const std::string programs = tempFolder("program");
+    const std::string programs = tempFolder("idle-program");
     writeTextFile(programs + "/apotheca", "the one running now");
     rig.byHand([&] {
-        s.useSongFolder(tempFolder("songs"), 3);
+        s.useSongFolder(tempFolder("idle-songs"), 3);
         s.useProgramFolder(programs);
         rig.app->settings().goTo(SettingsScreen::kWifi);
     });
@@ -644,7 +637,7 @@ int main(int argc, char** argv) {
     const std::string first = argc > 1 ? argv[1] : "";
     const bool quick = first == "--quick";
     const int third = first == "--part" && argc > 2 ? std::atoi(argv[2]) : 0; // 1 to 3: that third of the reasons taken away
-    const std::string samples = tempFolder("samples");
+    const std::string samples = tempFolder("idle-samples");
     writeWav(samples + "/long.wav", tone(3.f, 0.25f), 48000);
     writeWav(samples + "/short.wav", tone(0.4f, 0.25f), 48000);
     for (int i = 0; i < 40; ++i) { // rows enough that the stick is still among them when let go

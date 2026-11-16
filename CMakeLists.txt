@@ -131,7 +131,11 @@ if(APOTHECA_BUILD_TESTS)
   add_executable(mod_test tests/mod_test.cpp)
   target_link_libraries(mod_test PRIVATE apotheca_engine)
   add_test(NAME mod COMMAND mod_test)
-  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic load PROPERTIES TIMEOUT 120)
+  # The tests' temporary folders (tests/temp_folder.hpp): each deleted when its program ends, links
+  # never followed; and no test source makes one another way (33,000 left behind filled the disk).
+  add_executable(temp_test tests/temp_test.cpp)
+  add_test(NAME temp COMMAND temp_test ${CMAKE_SOURCE_DIR})
+  set_tests_properties(engine phazed song effects1 effects2 throw feel choke glide chordfx jx3p jx3p_dco jx3p_vcf jx3p_lfo jx3p_chorus jx3p_presets fm6 mod physic load temp PROPERTIES TIMEOUT 120)
 endif()
 
 # Renders a short piece to a WAV file, to hear the engine without the app.

@@ -22,6 +22,7 @@
 #include "app.hpp"
 #include "chords.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -526,8 +527,7 @@ void testCopiedToAnotherScene() {
 // ---- a bounce -----------------------------------------------------------------------------------
 
 void testABounce() {
-    char pattern[] = "/tmp/apotheca-throw-XXXXXX";
-    const std::string folder = mkdtemp(pattern);
+    const std::string folder = tempFolder("throw");
     const auto read = [&](const std::string& name) {
         std::vector<float> left;
         std::string bytes;

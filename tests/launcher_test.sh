@@ -14,8 +14,12 @@ check() { # check "what" command...
 is() { [ "$(cat "$1" 2>/dev/null)" = "$2" ]; }
 ran() { [ "$(cat ran.txt 2>/dev/null | tr '\n' ' ')" = "$1" ]; }
 
+# Every setup's folder is inside one folder of the run's own, deleted when the test ends.
+base=$(mktemp -d "${TMPDIR:-/tmp}/apotheca-launcher-XXXXXX") || exit 2
+trap 'cd / && rm -rf "$base"' EXIT
 setup() {
-    root=$(mktemp -d /tmp/apotheca-launcher-XXXXXX)
+    cd / || exit 1
+    root=$(mktemp -d "$base/setup-XXXXXX") || exit 2
     mkdir "$root/apotheca"
     cp "$launcher" "$root/Apotheca.sh"
     cd "$root/apotheca" || exit 1

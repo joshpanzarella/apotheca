@@ -2407,6 +2407,16 @@ effect in those two groups and fails one that does not.
   plan's testing table is checked with the same tools.
 - When replacing a function by text range, bound it by **the next function in
   the file**, then count the functions before and after.
+- **A test's temporary folder comes from `tempFolder("name")`**
+  (`tests/temp_folder.hpp`): `$TMPDIR` or /tmp, `apotheca-name-XXXXXX`,
+  deleted with all in it when the program ends normally (never before, so a
+  second Session may open it again). A crash or a timeout keeps it (nothing
+  is deleted from a signal handler); `APOTHECA_KEEP_TEMP=1` keeps them for a
+  look. Links are deleted as links, never followed. **`ctest -R temp` fails a
+  test source that says `mkdtemp(` or `"/tmp/apotheca`**, and a shell test
+  whose `mktemp` has no `trap ... rm -rf` (2026-11-16: the tests had left
+  33,000 folders, 16 GB, and filled the disk mid-build). A test that writes
+  "../x" to prove a path is refused does it one folder down inside its own.
 
 ## Measured (desk machine; the handheld is roughly a fifth as fast)
 

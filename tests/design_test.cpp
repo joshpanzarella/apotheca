@@ -34,6 +34,7 @@
 #include "apotheca/sampler.hpp"
 #include "song_file.hpp"
 #include "synth_spec.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -48,11 +49,6 @@ static int failures = 0;
 
 namespace {
 
-std::string tempFolder() {
-    char pattern[] = "/tmp/apotheca-design-XXXXXX";
-    const char* made = mkdtemp(pattern);
-    return made ? made : "/tmp";
-}
 bool exists(const std::string& path) {
     struct stat info;
     return stat(path.c_str(), &info) == 0;
@@ -97,7 +93,7 @@ struct Rig {
     Input input;
     App app{*engine};
     Uint32 clock = 1000;
-    std::string root = tempFolder();
+    std::string root = tempFolder("design");
     int port = 0;
     std::string door;
 

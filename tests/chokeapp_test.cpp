@@ -25,6 +25,7 @@
 #include "pattern_layout.hpp"
 #include "samples.hpp"
 #include "song_file.hpp"
+#include "temp_folder.hpp"
 
 using namespace apotheca;
 
@@ -46,10 +47,8 @@ struct TempFolder {
     std::string path;
     bool made = false;
     TempFolder() {
-        char pattern[] = "/tmp/apotheca-choke-XXXXXX";
-        const char* got = mkdtemp(pattern);
-        made = got != nullptr;
-        path = made ? got : "/tmp";
+        path = tempFolder("choke");
+        made = true;
         CHECK(writeWav(path + "/held.wav", std::vector<float>(48000, 0.5f), 48000));
     }
     ~TempFolder() {
@@ -198,8 +197,7 @@ void testANewKit() {
     {
         // The first time there is no song on the card (a song folder with nothing in it): a new song.
         Rig rig(temp.path);
-        char pattern[] = "/tmp/apotheca-chokes-XXXXXX";
-        const std::string songs = mkdtemp(pattern);
+        const std::string songs = tempFolder("chokes");
         rig.session().useSongFolder(songs, 1);
         rig.frames(2);
         CHECK(rig.kit().laneChoke[kClosedHatLane] == 1 && rig.kit().laneChoke[kOpenHatLane] == 1);
