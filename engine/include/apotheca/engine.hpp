@@ -498,6 +498,9 @@ public:
         right = track >= 0 && track < kNumTracks ? tracks_[track].panR : 0.f;
     }
     float modOffsetForTests(int track, int lane) const { return track >= 0 && track < kNumTracks && lane >= 0 && lane < kAutoLanes ? tracks_[track].modOffset[lane] : 0.f; }
+    // For the tests, between renders, never while one is under way: a track's synth (null for drums
+    // or none), to read what only that synth counts (JAX-EP's samplesClipped).
+    const Instrument* synthForTests(int track) const { return track >= 0 && track < kNumTracks ? tracks_[track].synth.get() : nullptr; }
 
     // ---- MOD: a track's two modulators (mod_rule.hpp, docs/plans/modulation-plan.md) ----------
     // From the control thread: every field and every step of one MOD, as SetMod and SetModStep

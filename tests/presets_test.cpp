@@ -882,6 +882,170 @@ void testPhysicPresetsAsHeard(bool measure) {
     }
 }
 
+// ---- JAX-EP's added presets, heard through their whole sound ---------------------------------------
+// The same way as PHYSIC's (above), with a phrase that suits the folder, and one thing more: the
+// synth's own VCA clip, counted (Jx3p::samplesClipped), must stay at 0 (the owner's call, 2026-11-15:
+// nothing distorts as written). docs/plans/jx3p-plan.md, "The second set of presets".
+
+enum class JaxepPhrase { Notes, Pad, Bass, Lead, Sequence, Count };
+const char* const kJaxepPhraseNames[] = {"notes", "pad", "bass", "lead", "seq"};
+
+// Which phrase a folder is heard with: the engine's own 32 with the notes (PHYSIC's phrase).
+JaxepPhrase jaxepPhraseFor(const std::string& folder) {
+    if (folder == "BASS") return JaxepPhrase::Bass;
+    if (folder == "LEAD") return JaxepPhrase::Lead;
+    if (folder == "PADS" || folder == "STRINGS" || folder == "ATMOS") return JaxepPhrase::Pad;
+    if (folder == "SEQUENCE") return JaxepPhrase::Sequence;
+    return JaxepPhrase::Notes;
+}
+
+struct JaxepHeard {
+    Heard heard;
+    std::uint64_t clipped = 0; // samples the VCA's clip bent, the whole run
+};
+
+// The phrases, {step, key, length in steps}, a bar at 120 BPM played round twice, then Stop and the
+// tail, every note at the level a note is placed at (or `level`: a keyboard's full velocity).
+//   notes:    four notes up, a four-key chord held six steps, a high note (PHYSIC's phrase)
+//   pad:      a four-key chord held fifteen steps, a top note over its second half
+//   bass:     a line from key 34 to 48, an octave and more under the notes
+//   lead:     a single line from key 72 to 79
+//   sequence: sixteen sixteenths, an arpeggio over two chords
+JaxepHeard hearJaxepPreset(int preset, JaxepPhrase which, float level = kPlacedLevel) {
+    static const int notes[][3] = {{0, 60, 2}, {2, 67, 2}, {4, 64, 2}, {6, 72, 2}, {8, 55, 6}, {8, 60, 6}, {8, 64, 6}, {8, 71, 6}, {14, 79, 2}};
+    static const int pad[][3] = {{0, 55, 15}, {0, 60, 15}, {0, 64, 15}, {0, 71, 15}, {8, 76, 7}};
+    static const int bass[][3] = {{0, 36, 2}, {3, 36, 1}, {4, 43, 2}, {6, 48, 1}, {8, 34, 2}, {10, 41, 1}, {11, 46, 2}, {14, 36, 2}};
+    static const int lead[][3] = {{0, 72, 3}, {3, 74, 1}, {4, 76, 4}, {8, 79, 2}, {10, 77, 2}, {12, 74, 4}};
+    static const int seq[16] = {48, 60, 55, 63, 67, 63, 60, 55, 46, 58, 53, 62, 65, 62, 58, 53};
+    JaxepHeard out;
+    Heard& h = out.heard;
+    Rig rig;
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Jx3p));
+    const int track = rig.project().trackCount() - 1;
+    session.chooseSynthPreset(track, preset);
+    rig.settle();
+    NotePattern& bar = rig.project().tracks[track].notes[0][0];
+    int slot = 0;
+    auto put = [&](int step, int key, int length) { bar.notes[slot++] = NoteEvent{step, key, static_cast<float>(length), 0.f, level}; };
+    switch (which) {
+    case JaxepPhrase::Pad: for (const auto& n : pad) put(n[0], n[1], n[2]); break;
+    case JaxepPhrase::Bass: for (const auto& n : bass) put(n[0], n[1], n[2]); break;
+    case JaxepPhrase::Lead: for (const auto& n : lead) put(n[0], n[1], n[2]); break;
+    case JaxepPhrase::Sequence: for (int s = 0; s < 16; ++s) put(s, seq[s], 1); break;
+    default: for (const auto& n : notes) put(n[0], n[1], n[2]); break;
+    }
+    session.sendNotePattern(track, 0);
+    rig.settle();
+    rig.render(48000); // anything the pick sounded, gone by
+    const int window = 4800;
+    std::vector<float> buffer(2 * 768);
+    double sumL = 0.0, sumR = 0.0;
+    int inWindow = 0;
+    long frame = 0, lastLoud = 0, stopAt = -1;
+    float least[kModsPerTrack], most[kModsPerTrack];
+    for (int m = 0; m < kModsPerTrack; ++m) least[m] = 1e9f, most[m] = -1e9f;
+    double busy = 0.0;
+    const long playFrames = 4 * 48000, cap = playFrames + 120L * 48000;
+    session.togglePlay(false);
+    rig.frames(1);
+    while (frame < cap) {
+        if (frame >= playFrames && stopAt < 0) {
+            session.togglePlay(false);
+            stopAt = frame;
+        }
+        const auto start = std::chrono::steady_clock::now();
+        rig.engine->render(buffer.data(), 768);
+        if (stopAt < 0) busy += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        rig.frames(1);
+        for (int i = 0; i < 768; ++i) {
+            const float l = buffer[2 * i], r = buffer[2 * i + 1];
+            h.numbers = h.numbers && std::isfinite(l) && std::isfinite(r);
+            h.peak = std::max(h.peak, std::max(std::fabs(l), std::fabs(r)));
+            sumL += static_cast<double>(l) * l, sumR += static_cast<double>(r) * r;
+            if (++inWindow == window) {
+                const double rms = std::sqrt(std::max(sumL, sumR) / window);
+                h.loudestDb = std::max(h.loudestDb, 20.0 * std::log10(rms + 1e-12));
+                if (rms > 1e-4) lastLoud = frame + i + 1;
+                sumL = sumR = 0.0, inWindow = 0;
+            }
+        }
+        frame += 768;
+        if (stopAt < 0)
+            for (int m = 0; m < kModsPerTrack; ++m) {
+                const float shown = rig.engine->modShown(track, m);
+                if (std::isfinite(shown)) least[m] = std::min(least[m], shown), most[m] = std::max(most[m], shown);
+            }
+        if (stopAt >= 0 && frame - lastLoud > 12L * 48000) {
+            h.ended = true;
+            break;
+        }
+    }
+    for (int m = 0; m < kModsPerTrack; ++m) h.modSwing[m] = most[m] > least[m] ? most[m] - least[m] : 0.f;
+    h.tail = (lastLoud > stopAt ? lastLoud - stopAt : 0) / 48000.0;
+    h.cost = busy / (playFrames / 48000.0);
+    const Jx3p* synth = dynamic_cast<const Jx3p*>(rig.engine->synthForTests(track));
+    CHECK(synth != nullptr);
+    out.clipped = synth ? synth->samplesClipped() : 0;
+    return out;
+}
+
+// The window: the booklet's 32 played the same way, each phrase (measured 2026-11-16: jx3p-plan.md,
+// "The second set of presets"), with room either side. Peak and tail as PHYSIC's.
+constexpr double kJaxepQuietestDb = -28.0, kJaxepLoudestDb = -12.0;
+
+void testJaxepPresetsAsHeard(bool measure) {
+    const TrackKind kind = TrackKind::Jx3p;
+    const SynthSpec& spec = *specFor(kind);
+    if (measure) {
+        // The engine's own 32 under every phrase: the window's ground.
+        std::printf("  the booklet's 32, the loudest tenth (dB) under each phrase:\n  %-3s %-18s", "", "name");
+        for (int p = 0; p < static_cast<int>(JaxepPhrase::Count); ++p) std::printf(" %7s", kJaxepPhraseNames[p]);
+        std::printf("   peak  clipped\n");
+        for (int i = 0; i < enginePresets(kind); ++i) {
+            std::printf("  %-3d %-18s", i + 1, spec.presetName(i));
+            float peak = 0.f;
+            std::uint64_t clipped = 0;
+            for (int p = 0; p < static_cast<int>(JaxepPhrase::Count); ++p) {
+                const JaxepHeard j = hearJaxepPreset(i, static_cast<JaxepPhrase>(p));
+                std::printf(" %7.1f", j.heard.loudestDb);
+                peak = std::max(peak, j.heard.peak), clipped += j.clipped;
+            }
+            std::printf("  %5.3f  %llu\n", peak, static_cast<unsigned long long>(clipped));
+        }
+        std::printf("\n  %-3s %-14s %-20s %-5s %8s %6s %6s %7s %5s  %s\n", "", "folder", "name", "heard", "loudest", "peak", "tail", "cost", "clip/full", "MODs swing");
+    }
+    for (int i = enginePresets(kind); i < builtInPresets(kind); ++i) {
+        const JaxepPhrase phrase = jaxepPhraseFor(spec.presetCategory(i));
+        const JaxepHeard j = hearJaxepPreset(i, phrase);
+        const Heard& h = j.heard;
+        const TrackSound* sound = presetSound(kind, i);
+        bool modsMove = true;
+        char swing[64] = "";
+        for (int m = 0; m < kModsPerTrack; ++m) {
+            if (!sound || sound->mods[m].kind == kModOff) continue;
+            modsMove = modsMove && h.modSwing[m] > 0.005f;
+            char one[24];
+            std::snprintf(one, sizeof one, " %d:%.2f", m + 1, h.modSwing[m]);
+            std::strcat(swing, one);
+        }
+        // VELOCITY is ON for a track: a keyboard's full velocity is 3 dB over a note placed. The VCA's
+        // clip is held at 0 there too (every preset's LEVEL was set at the placed level).
+        const std::uint64_t clippedFull = hearJaxepPreset(i, phrase, 1.f).clipped;
+        const char* phraseName = kJaxepPhraseNames[static_cast<int>(phrase)];
+        if (measure)
+            std::printf("  %-3d %-14s %-20s %-5s %6.1f dB %6.3f %5.1fs %6.2f%% %3llu/%llu %s\n", i + 1, spec.presetCategory(i), spec.presetName(i), phraseName, h.loudestDb, h.peak, h.tail, h.cost * 100.0, static_cast<unsigned long long>(j.clipped), static_cast<unsigned long long>(clippedFull), swing);
+        const bool fine = h.numbers && h.loudestDb >= kJaxepQuietestDb && h.loudestDb <= kJaxepLoudestDb && h.peak < kPeakMost && h.ended && h.tail <= kTailMost && modsMove && j.clipped == 0 && clippedFull == 0;
+        if (!fine) std::printf("  JAX-EP %d %s / %s (%s): loudest %.1f dB, peak %.3f, tail %.1f s%s%s, clipped %llu (%llu at full velocity), MODs%s\n", i + 1, spec.presetCategory(i), spec.presetName(i), phraseName, h.loudestDb, h.peak, h.tail, h.ended ? "" : " (not ended)", h.numbers ? "" : ", NOT A NUMBER", static_cast<unsigned long long>(j.clipped), static_cast<unsigned long long>(clippedFull), swing);
+        CHECK(h.numbers);
+        CHECK(h.loudestDb >= kJaxepQuietestDb && h.loudestDb <= kJaxepLoudestDb);
+        CHECK(h.peak < kPeakMost);
+        CHECK(h.ended && h.tail <= kTailMost);
+        CHECK(modsMove);
+        CHECK(j.clipped == 0 && clippedFull == 0);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -898,6 +1062,13 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[a], "--heard") == 0 || std::strcmp(argv[a], "--measure") == 0) {
             testPhysicPresetsAsHeard(std::strcmp(argv[a], "--measure") == 0);
             std::printf(failures ? "%d check(s) failed\n" : "PHYSIC's presets as heard: passed\n", failures);
+            return failures ? 1 : 0;
+        }
+        // --heard-jaxep: JAX-EP's added presets the same way, the VCA's clip counted too (its own ctest
+        // entry, presets_heard_jaxep). --measure-jaxep: their figures, and the booklet's 32 under every phrase.
+        if (std::strcmp(argv[a], "--heard-jaxep") == 0 || std::strcmp(argv[a], "--measure-jaxep") == 0) {
+            testJaxepPresetsAsHeard(std::strcmp(argv[a], "--measure-jaxep") == 0);
+            std::printf(failures ? "%d check(s) failed\n" : "JAX-EP's presets as heard: passed\n", failures);
             return failures ? 1 : 0;
         }
     }
