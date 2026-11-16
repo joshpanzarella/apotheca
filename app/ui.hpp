@@ -148,19 +148,23 @@ struct Playhead {
     float from = 0.f;       // where in it the sound began, 0..1
     float rate = 1.f;       // how fast it moves: 2 is an octave up
     float lasts = 0.f;      // it is over after this many seconds, wherever it has got to (0: only at the end)
+    float to = 1.f;         // where the end is, 0..1 (the sampler's END); start() puts it at 1
     void start(Uint32 nowMs, float wholeSeconds, float fromPart = 0.f, float speed = 1.f, float forSeconds = 0.f) {
         since = nowMs ? nowMs : 1;
         seconds = wholeSeconds;
         from = fromPart;
         rate = speed;
         lasts = forSeconds;
+        to = 1.f;
     }
+    // How long it sounds from where it began to its end, in seconds, played as it is (0: not known).
+    float wholeLength() const { return seconds > 0.f && rate > 0.f && to > from ? (to - from) * seconds / rate : 0.f; }
     // Where it is, 0..1 of the recording; below zero when nothing is being heard.
     float at(Uint32 nowMs) const {
         if (since == 0 || seconds <= 0.f || nowMs < since) return -1.f;
         const float gone = static_cast<float>(nowMs - since) / 1000.f;
         const float where = from + gone * rate / seconds;
-        return where > 1.f || (lasts > 0.f && gone > lasts) ? -1.f : where;
+        return where > (to < 1.f ? to : 1.f) || (lasts > 0.f && gone > lasts) ? -1.f : where;
     }
 };
 // Draws it over a picture `w` wide that starts at `x`.

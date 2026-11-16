@@ -140,7 +140,7 @@ void SamplePicker::put(bool playing) {
     if (!row) return; // (never a folder: arrive() and the buttons see to that)
     on_ = row->kind == Kind::First ? "" : row->name;
     if (jobs_.use) jobs_.use(on_);
-    if (!playing && jobs_.hear) jobs_.hear(false);
+    if (!playing && jobs_.hear) jobs_.hear(Hear::Preview);
 }
 
 // The cursor has come to a row. A recording (or the first row) goes on: at once, unless rows are
@@ -151,9 +151,11 @@ void SamplePicker::arrive(bool playing, bool atOnce) {
     arrivedAt_ = lastMs_;
     waiting_ = false;
     const Row* row = under();
+    const bool putNow = row && row->kind != Kind::Folder && row->kind != Kind::NewFolder && carried_.empty() && (atOnce || since >= kAtOnceMs);
+    if (!putNow) quiet(); // the cursor has moved on: what was heard stops (one put on takes the lane, or the key, over itself)
     if (!row || row->kind == Kind::Folder || row->kind == Kind::NewFolder) return;
     if (!carried_.empty()) return; // carrying: the rows are only steered over
-    if (atOnce || since >= kAtOnceMs) put(playing);
+    if (putNow) put(playing);
     else waiting_ = true;
 }
 
@@ -180,6 +182,7 @@ void SamplePicker::into(bool playing) {
 
 void SamplePicker::out() {
     if (depth_ == 0) return;
+    quiet(); // the cursor moves on, to a folder
     const std::string was = here_;
     if (const Row* row = under()) last_[placeKey(depth_, here_)] = rowKey(*row);
     show(depth_ - 1, depth_ == 2 ? sampleFolderOf(was) : "");
@@ -369,6 +372,7 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
             deletePart_ = 0.f;
             waiting_ = false;
             // As it was. (Nothing to do if what is on is what was on.)
+            quiet();
             if (on_ != original_ && jobs_.use) jobs_.use(original_);
             open_ = false;
         }
@@ -408,7 +412,8 @@ void SamplePicker::onButton(const ButtonEvent& event, bool playing) {
     } else if (b == Button::X) {
         if (!row || row->kind == Kind::Folder || row->kind == Kind::NewFolder) return;
         if (waiting_) put(true);
-        if (jobs_.hear) jobs_.hear(true); // for as long as X is held
+        // The preview still playing: on to its end. Nothing playing: for as long as X is held.
+        if (jobs_.hear) jobs_.hear(jobs_.sounding && jobs_.sounding() ? Hear::Rest : Hear::Held);
     }
 }
 
@@ -609,7 +614,7 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
         fill(r, x, kHeadY + 17, w, 1, kLine);
     };
 
-    // Where this folder is: the folder it is in, this one picked out.
+    // Where this folder is: the folder it is in, this one picked out. (On SAMPLES the cursor is in this column.)
     if (depth_ > 0) {
         const std::string parent = depth_ == 2 ? sampleFolderOf(here_) : "";
         const std::vector<Row>& rows = side(leftRows_, leftKey_, depth_ - 1, parent);
@@ -621,55 +626,35 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
     }
 
     // This folder, scrolled to keep the cursor in view.
+    const int cx = cursorX(), cw = cursorW();
     const int first = firstShown(cursor_, count());
-    head(kMidX, kMidW, placeName(depth_, here_), kText);
-    drawColumn(r, fonts, kMidX, kMidW, rows_, cursor_, true, first);
-    if (!row) fonts.small.draw(r, kMidX + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
+    head(cx, cw, placeName(depth_, here_), kText);
+    drawColumn(r, fonts, cx, cw, rows_, cursor_, true, first);
+    if (!row) fonts.small.draw(r, cx + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
     if (count() > kRows) { // a bar down its side says where in the list this is
         const int track = kRows * kRowH - 4, bar = track * kRows / count();
-        fill(r, kMidX + kMidW + 3, kRowsY, 3, track, kLine);
-        fill(r, kMidX + kMidW + 3, kRowsY + (track - bar) * first / (count() - kRows), 3, bar, kTeal);
+        fill(r, cx + cw + 3, kRowsY, 3, track, kLine);
+        fill(r, cx + cw + 3, kRowsY + (track - bar) * first / (count() - kRows), 3, bar, kTeal);
     }
 
-    // What is under the cursor: a folder's rows, or a recording's picture and how long it is.
+    // What is under the cursor: a folder's rows, or a recording's picture and how long it is. On
+    // SAMPLES a folder's rows are in the middle column, and the preview's place is open beside them.
+    const int ux = cursorFirst() ? kMidX : kRightX, uw = cursorFirst() ? kMidW : kRightW;
     if (all_.empty() && dirs_.empty()) {
         fonts.small.draw(r, kMidX + 10.f, kRowsY + count() * kRowH + 8.f, "No recordings yet. Send .wav files over the WiFi page,", kDim);
         fonts.small.draw(r, kMidX + 10.f, kRowsY + count() * kRowH + 24.f, "catch a bar with Y, or record with R1.", kDim);
     } else if (row && row->kind == Kind::Folder) {
         const std::vector<Row>& rows = side(rightRows_, rightKey_, depth_ + 1, row->name);
-        head(kRightX, kRightW, placeName(depth_ + 1, row->name), kDim);
-        drawColumn(r, fonts, kRightX, kRightW, rows, -1, false, 0);
-        if (rows.empty()) fonts.small.draw(r, kRightX + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
+        head(ux, uw, placeName(depth_ + 1, row->name), kDim);
+        drawColumn(r, fonts, ux, uw, rows, -1, false, 0);
+        if (rows.empty()) fonts.small.draw(r, ux + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
+        if (cursorFirst()) drawPreview(r, fonts, nullptr);
     } else if (row && row->kind == Kind::NewFolder) {
-        head(kRightX, kRightW, "NEW FOLDER", kDim);
-        fonts.small.draw(r, kRightX + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
-    } else if (row) {
-        const int wx = kRightX, wy = kRowsY, ww = kRightW, wh = kPictureH;
-        head(kRightX, kRightW, row->kind == Kind::First ? first_ : upper(sampleLabel(row->name)), kDim);
-        box(r, wx, wy, ww, wh, kBg, kLine);
-        const Session::LaneSound* sound = jobs_.sound ? jobs_.sound() : nullptr;
-        if (row->kind == Kind::Recording && !waiting_ && row->name == on_ && sound && !sound->peaks.empty()) { // (carried over another: that one is not on)
-            const int n = static_cast<int>(sound->peaks.size());
-            for (int px = 0; px < ww - 4; ++px) {
-                const float p = sound->peaks[static_cast<std::size_t>(px * n / (ww - 4))];
-                const int half = static_cast<int>(std::round((p > 1.f ? 1.f : p) * (wh - 8) / 2.f));
-                fill(r, wx + 2 + px, wy + wh / 2 - half, 1, 2 * half + 1, kTeal);
-            }
-            if (const Playhead* playhead = jobs_.playhead ? jobs_.playhead() : nullptr) drawPlayhead(r, *playhead, lastMs_, wx + 2, wy + 2, ww - 4, wh - 4);
-            std::snprintf(text, sizeof text, "%.2f S", static_cast<double>(sound->seconds));
-            fonts.fixed().small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText); // (over the recording's picture: always at LARGE)
-        } else {
-            const char* words = row->kind == Kind::First ? first_.c_str() : "...";
-            const Font& font = fonts.within(&Fonts::small, words, ww - 12.f);
-            font.drawCentered(r, wx + ww / 2.f, wy + (wh - font.capHeight()) / 2.f, words, kDim);
-        }
-        // Where else in the open song it is on.
-        const int used = row->kind == Kind::Recording && jobs_.used ? jobs_.used(row->name) : 0;
-        if (used > 0) {
-            std::snprintf(text, sizeof text, "ALSO IN THIS SONG: %d PLACE%s", used, used == 1 ? "" : "S");
-            const Font& font = fonts.within(&Fonts::small, text, ww - 4.f);
-            font.draw(r, wx + 2.f, wy + wh + 10.f, text, kDim);
-        }
+        head(ux, uw, "NEW FOLDER", kDim);
+        fonts.small.draw(r, ux + 10.f, kRowsY + 8.f, "NOTHING IN IT", kDim);
+        if (cursorFirst()) drawPreview(r, fonts, nullptr);
+    } else {
+        drawPreview(r, fonts, row); // (a recording, the first row, or nothing in this folder: its place, open)
     }
 
     // (Up / down is not said: the bar is full, and the help card says the D-pad and the stick move.)
@@ -684,6 +669,48 @@ void SamplePicker::draw(SDL_Renderer* r, const Fonts& fonts) const {
     const Hint list[] = {{"A", !row ? nullptr : folder ? "open" : fresh ? "name it" : "keep it"}, {"B", "as it was"}, {flat() ? nullptr : row ? "LEFT / RIGHT" : "LEFT", row ? "out, in" : "out"},
                          {row && !carries ? "L1 / R1" : nullptr, "page"}, {"HOLD R1", carries ? "carry" : nullptr}, {"HOLD B", recording || (folder && emptyFolder(*row)) ? "delete it" : nullptr}};
     hints(r, fonts, list, 6);
+}
+
+// The third column: what is on, its picture, how long it is and where the line has got to while it
+// is heard. Drawn from the moment the list opens, so it never has to open later: with no recording
+// under the cursor (a folder's rows beside it, a new folder, nothing in this folder) its box stands empty.
+void SamplePicker::drawPreview(SDL_Renderer* r, const Fonts& fonts, const Row* row) const {
+    char text[64];
+    const int wx = kRightX, wy = kRowsY, ww = kRightW, wh = kPictureH;
+    if (row) {
+        std::string name = row->kind == Kind::First ? first_ : upper(sampleLabel(row->name));
+        const Font& font = fonts.within(&Fonts::small, name.c_str(), ww - 20.f);
+        while (!name.empty() && font.width(name.c_str()) > ww - 20.f) name.pop_back();
+        font.draw(r, wx + 10.f, kHeadY + (16 - font.capHeight()) / 2.f, name.c_str(), kDim);
+    }
+    fill(r, wx, kHeadY + 17, ww, 1, kLine);
+    box(r, wx, wy, ww, wh, kBg, kLine);
+    if (!row) return;
+    const Session::LaneSound* sound = jobs_.sound ? jobs_.sound() : nullptr;
+    if (row->kind == Kind::Recording && !waiting_ && row->name == on_ && sound && !sound->peaks.empty()) { // (carried over another: that one is not on)
+        const int n = static_cast<int>(sound->peaks.size());
+        for (int px = 0; px < ww - 4; ++px) {
+            const float p = sound->peaks[static_cast<std::size_t>(px * n / (ww - 4))];
+            const int half = static_cast<int>(std::round((p > 1.f ? 1.f : p) * (wh - 8) / 2.f));
+            fill(r, wx + 2 + px, wy + wh / 2 - half, 1, 2 * half + 1, kTeal);
+        }
+        if (const Playhead* playhead = jobs_.playhead ? jobs_.playhead() : nullptr) drawPlayhead(r, *playhead, lastMs_, wx + 2, wy + 2, ww - 4, wh - 4);
+        std::snprintf(text, sizeof text, "%.2f S", static_cast<double>(sound->seconds));
+        fonts.fixed().small.drawRight(r, wx + ww - 6.f, wy + 5.f, text, kText); // (over the recording's picture: always at LARGE)
+    } else {
+        const char* words = row->kind == Kind::First ? first_.c_str() : "...";
+        const Font& font = fonts.within(&Fonts::small, words, ww - 12.f);
+        font.drawCentered(r, wx + ww / 2.f, wy + (wh - font.capHeight()) / 2.f, words, kDim);
+    }
+    // Where else in the open song it is on: two lines (on one it ran past the panel's edge).
+    const int used = row->kind == Kind::Recording && jobs_.used ? jobs_.used(row->name) : 0;
+    if (used > 0) {
+        const char* also = "ALSO IN THIS SONG:";
+        const Font& font = fonts.within(&Fonts::small, also, ww - 4.f);
+        font.draw(r, wx + 2.f, wy + wh + 10.f, also, kDim);
+        std::snprintf(text, sizeof text, "%d PLACE%s", used, used == 1 ? "" : "S");
+        font.draw(r, wx + 2.f, wy + wh + 10.f + font.capHeight() + 8.f, text, kDim);
+    }
 }
 
 // A new folder's name being typed: the keys a track's name is typed with, in the list's own panel.

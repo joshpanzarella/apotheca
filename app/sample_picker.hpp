@@ -5,12 +5,21 @@
 // Three columns, as the file manager yazi (owner, 2026-11-14): where this
 // folder is, this folder with the cursor in it, and what is under the cursor
 // (a folder's contents, or a recording's picture and length). Folders go two
-// levels deep. The cursor's column is always the middle one.
+// levels deep. The columns stand still (owner, 2026-11-15: "start out with the
+// sound preview open to the right of the 2 levels ... that way it doesn't need
+// to expand"): on SAMPLES the cursor is in the FIRST column, what is under it in
+// the second and the preview, open from the start, in the third; going into a
+// folder the cursor steps right into the second column and nothing else moves.
+// Inside a folder the cursor's column is the middle one (two folders down, the
+// folder it is in is the first column). With no folders at all the one list is
+// the middle column, as it always was.
 //
 //   up / down      the next in the column; the ends stop. A recording under
 //                  the cursor goes onto the lane AT ONCE, so with the song
 //                  playing it is heard in its place in the beat; with the
-//                  song stopped it is played once. Held: the list's pace
+//                  song stopped it is played, half of it at least (from where
+//                  it plays from: the sampler's START), and stopped as soon
+//                  as the cursor moves on. Held: the list's pace
 //                  (ui::kListEveryMs), faster after kFasterAfterMs, and after
 //                  kFastestAfterMs as fast as kFastestEveryMs (a long list's end).
 //   the stick      big moves: up to kStickRowsPerSecond, by the SQUARE of how far it
@@ -36,8 +45,9 @@
 //                  EMPTY folder (nothing at all in it). Not the first row. Hold B is "delete for good" on
 //                  every screen. Held on a folder that is NOT empty: after kHoldSaysMs the top line
 //                  says so, and letting go is then no tap.
-//   X              hear it again, for as long as X is held (to its end); a tap
-//                  is heard for a moment
+//   X              while the preview plays: it plays on to its end (owner,
+//                  2026-11-15). Nothing playing: heard again, for as long as X
+//                  is held (to its end); a tap is heard for a moment
 //
 // The first column (SAMPLES) holds the first row ("THE BUILT-IN DRUM"), then
 // UNSORTED (the loose recordings, if there are any) and the folders. With no
@@ -63,9 +73,17 @@ namespace apotheca {
 
 class SamplePicker {
 public:
+    // How what is on is to be heard (Jobs::hear).
+    enum class Hear {
+        Preview, // the cursor came to it: half of it at least (Session::kAuditionMs at least), then it stops
+        Held,    // X went down with nothing playing: until X is let go (to its end at most)
+        Rest,    // X went down while the preview plays: on to its end, not begun again
+        Quiet,   // the cursor moved on: what the list started stops now
+    };
     struct Jobs {
         std::function<void(const std::string&)> use;       // put this recording on ("" is the first row: none)
-        std::function<void(bool held)> hear;               // play what is on now; held: X is down, and it sounds until X is let go
+        std::function<void(Hear)> hear;                    // play what is on now (or stop it)
+        std::function<bool()> sounding;                    // what the list started is still heard (Session::hearingOn); may be empty
         std::function<const Session::LaneSound*()> sound;  // what is on now, for its picture; may be empty
         std::function<bool(const std::string&)> remove;    // delete this recording's file; true if it is gone
         std::function<const ui::Playhead*()> playhead;     // where the sound being heard has got to, for a line across its picture
@@ -130,6 +148,10 @@ public:
     static constexpr int kGap = 8, kLeftW = 150, kMidW = 254, kRightW = kW - 24 - 2 * kGap - kLeftW - kMidW;
     static constexpr int kLeftX = kX + 12, kMidX = kLeftX + kLeftW + kGap, kRightX = kMidX + kMidW + kGap;
     static constexpr int kHeadY = kY + 30, kRowsY = kHeadY + 22, kRowH = 30, kPictureH = 70;
+    // Which column the cursor is in: the first on SAMPLES (folders there), else the middle one.
+    bool cursorFirst() const { return depth_ == 0 && !flat(); }
+    int cursorX() const { return cursorFirst() ? kLeftX : kMidX; }
+    int cursorW() const { return cursorFirst() ? kLeftW : kMidW; }
 
 private:
     void moveTo(int row, bool playing, bool atOnce);
@@ -145,6 +167,8 @@ private:
     void moveKey(Button direction);
     void keepFolder();
     void say(const std::string& words) { said_ = words; saidUntil_ = lastMs_ + kSaidMs; }
+    void quiet() { if (jobs_.hear) jobs_.hear(Hear::Quiet); } // what the list started stops (the cursor moved on)
+    void drawPreview(SDL_Renderer* r, const Fonts& fonts, const Row* row) const; // the third column: a recording's picture
     bool emptyFolder(const Row& row) const;  // a folder hold B deletes
     bool carries(const Row* row) const { return row && row->kind == Kind::Recording && jobs_.move && !flat(); } // hold R1 carries it
     void index();                            // all_ or dirs_ changed: the counts again

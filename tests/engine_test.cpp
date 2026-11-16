@@ -2869,6 +2869,34 @@ static void testTheSampler() {
     set(sampler::Loop, 0);
     set(sampler::Start, 0);
     quiet();
+    // END: a note stops there, on its sample (owner, 2026-11-15). Three quarters: 36000 frames.
+    set(sampler::End, 75);
+    out = play(60, 60000);
+    CHECK(soundingFrames(out) == 36000 && about(out[2 * 35999] / full, 0.25f + 0.5f * 35999.f / 48000.f));
+    quiet();
+    // ...from START to END, and with LOOP on it goes round inside the two.
+    set(sampler::Start, 25);
+    set(sampler::End, 50);
+    out = play(60, 60000);
+    CHECK(soundingFrames(out) == 12000 && about(out[2 * 100] / full, 0.25f + 0.5f * 12100.f / 48000.f));
+    quiet();
+    set(sampler::Loop, 1);
+    out = play(60, 60000);
+    CHECK(soundingFrames(out) == 60000);
+    CHECK(about(out[2 * 30000] / full, 0.25f + 0.5f * (12000.f + 6000.f) / 48000.f)); // round once and half way again
+    CHECK(peakOf(std::vector<float>(out.begin(), out.end())) <= full * (0.25f + 0.5f * 24000.f / 48000.f) + 1e-4f); // never past END
+    engine->send(make(Command::NoteOff, 1, 60));
+    quiet();
+    set(sampler::Loop, 0);
+    // END never before START: a song that says so plays kLeastSpan (1%) from START.
+    set(sampler::Start, 60);
+    set(sampler::End, 20);
+    out = play(60, 60000);
+    CHECK(soundingFrames(out) == 480);
+    quiet();
+    set(sampler::Start, 0);
+    set(sampler::End, 100);
+    quiet();
     // Letting go fades it over RELEASE; a longer one takes longer.
     const auto tail = [&](int release) {
         set(sampler::Release, release);
@@ -3256,6 +3284,42 @@ static void testCellsOfSeveralBars() {
 
 // Nine keys held on the sampler's eight voices: the ninth takes the OLDEST. Letting go of the first
 // key then fades nothing (it was taken), and letting go of the eighth fades one voice.
+// END stops a note on its sample, whatever blocks the sound is cut into (the sampler reads its
+// place a sample at a time): blocks of 1 to 333 frames, a key off its root, LOOP off and on.
+static void testTheSamplersEndInAnyBlocks() {
+    std::vector<float> data(48000);
+    for (int i = 0; i < 48000; ++i) data[static_cast<std::size_t>(i)] = 0.25f + 0.5f * static_cast<float>(i) / 48000.f;
+    for (int loop = 0; loop <= 1; ++loop) {
+        std::vector<float> first;
+        for (int block : {1, 7, 64, 256, 333}) {
+            std::unique_ptr<Sampler> s(new Sampler);
+            s->prepare(48000.f);
+            s->setSample(data.data(), 48000);
+            s->setSetting(sampler::Attack, 0);
+            s->setSetting(sampler::Start, 10);
+            s->setSetting(sampler::End, 37);
+            s->setSetting(sampler::Loop, loop);
+            s->noteOn(61, 1.f); // a semitone up: a place between samples
+            std::vector<float> out, left(static_cast<std::size_t>(block)), right(static_cast<std::size_t>(block));
+            for (int done = 0; done < 40000; done += block) {
+                s->render(left.data(), right.data(), block);
+                out.insert(out.end(), left.begin(), left.end());
+            }
+            out.resize(40000);
+            if (first.empty()) first = out;
+            CHECK(out == first);
+        }
+        int last = -1;
+        for (int i = 0; i < 40000; ++i)
+            if (first[static_cast<std::size_t>(i)] != 0.f) last = i;
+        // From 10% to 37% of the recording, 12960 samples, at 2^(1/12) a sample.
+        const double step = std::pow(2.0, 1.0 / 12.0), from = 4800.0, end = 0.37 * 48000.0;
+        const int expect = static_cast<int>(std::ceil((end - from) / step)) - 1;
+        if (loop == 0) CHECK(last == expect || last == expect + 1);
+        else CHECK(last == 39999);
+    }
+}
+
 static void testTheSamplerTakesTheOldest() {
     Sampler s;
     s.prepare(48000.f);
@@ -3282,6 +3346,7 @@ int main() {
     testCellsOfSeveralBars();
     testANoteNudgedOffItsStep();
     testTheSampler();
+    testTheSamplersEndInAnyBlocks();
     testTheSamplerTakesTheOldest();
     testEffectsOneByOne();
     testEffectsInTheEngine();

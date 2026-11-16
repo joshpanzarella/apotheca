@@ -3,9 +3,10 @@
 // time. At its ROOT key the recording plays as it was made; an octave up it
 // plays twice as fast and half as long.
 //
-// A key plays the recording from START to its end and stops (or, with LOOP
-// on, goes round from START for as long as the key is held). Letting go
-// fades it over RELEASE.
+// A key plays the recording from START to END and stops (or, with LOOP on,
+// goes round from START to END for as long as the key is held). Letting go
+// fades it over RELEASE. END is never before START: a note plays at least
+// kLeastSpan percent of the recording (playedEnd).
 
 #include "envelope.hpp"
 #include "apotheca/slide.hpp"
@@ -22,8 +23,13 @@ enum Setting {
     Release, // fade out when the key is let go: 0..100 (five milliseconds to four seconds)
     Loop,    // 0 off, 1 on
     Level,   // 0..100
+    End,     // where a note ends in the recording: 1..100 percent (owner, 2026-11-15). Appended: ids are in songs
     kSettings
 };
+constexpr int kLeastSpan = 1; // END is at least this many percent after START (the screen holds them so)
+// Where a note ends, as played: END, or kLeastSpan after START where END is not after it (a song
+// file may say so; the screen never does).
+inline int playedEnd(int start, int end) { return end < start + kLeastSpan ? start + kLeastSpan : end; }
 int settingMin(int id);
 int settingMax(int id);
 int settingDefault(int id);

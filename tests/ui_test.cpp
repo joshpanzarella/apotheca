@@ -156,7 +156,7 @@ void testAPlacesAHitAndPlaysIt() {
     Rig rig;
     CHECK(rig.listen() == 0.f);
     rig.tap(A);
-    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(near(rig.screen.level(0, 0), 0.9f));
     CHECK(rig.listen() > 0.2f); // heard at once, since the song is stopped
     // A on a hit that is already there leaves its level alone.
     rig.screen.setStep(0, 0, 0.3f);
@@ -445,7 +445,7 @@ void testYSetsTheChance() {
     Rig rig;
     // Y on an empty step places a hit that plays half the time, and you hear it.
     rig.tap(Y);
-    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(near(rig.screen.level(0, 0), 0.9f));
     CHECK(near(rig.screen.chance(0, 0), 0.5f));
     CHECK(rig.listen() > 0.2f);
     // Tapping Y on a hit steps its chance down by quarters, and round again.
@@ -478,7 +478,7 @@ void testYSetsTheChance() {
     rig.key(Y, false);
     CHECK(near(rig.screen.chance(0, 0), 0.2f));
     // None of that touched the level or the timing, or moved the cursor.
-    CHECK(near(rig.screen.level(0, 0), 0.8f) && rig.screen.nudge(0, 0) == 0.f);
+    CHECK(near(rig.screen.level(0, 0), 0.9f) && rig.screen.nudge(0, 0) == 0.f);
     CHECK(rig.screen.cursorLane() == 0 && rig.screen.cursorStep() == 0);
 
     // Y held with the stick sideways does nothing.
@@ -520,10 +520,10 @@ void testDeletingAHitLeavesNothingBehind() {
     rig.tap(SDLK_RIGHT); // nudged late
     rig.tap(SDLK_DOWN);  // and quieter
     rig.key(A, false);
-    CHECK(rig.screen.chance(0, 0) < 1.f && rig.screen.nudge(0, 0) > 0.f && rig.screen.level(0, 0) < 0.8f);
+    CHECK(rig.screen.chance(0, 0) < 1.f && rig.screen.nudge(0, 0) > 0.f && rig.screen.level(0, 0) < 0.9f);
     rig.tap(B);
     rig.tap(A); // a fresh hit on the same step is a plain one
-    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(near(rig.screen.level(0, 0), 0.9f));
     CHECK(rig.screen.nudge(0, 0) == 0.f);
     CHECK(rig.screen.chance(0, 0) == 1.f);
     // And the engine agrees: on the grid, every bar.
@@ -755,19 +755,19 @@ void testEachLaneHasItsOwnDice() {
 
 void testR1PaintsARowAtOneLevel() {
     Rig rig;
-    // Starting on an empty step, the brush is 80%. The first hit lands at once.
+    // Starting on an empty step, the brush is 90%. The first hit lands at once.
     rig.key(R1, true);
     CHECK(rig.screen.painting());
-    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(near(rig.screen.level(0, 0), 0.9f));
     CHECK(rig.listen() > 0.2f); // and is heard, since the song is stopped
     rig.tap(SDLK_RIGHT);
     rig.tap(SDLK_RIGHT);
     rig.tap(SDLK_RIGHT);
-    for (int step = 0; step <= 3; ++step) CHECK(near(rig.screen.level(0, step), 0.8f));
+    for (int step = 0; step <= 3; ++step) CHECK(near(rig.screen.level(0, step), 0.9f));
     CHECK(rig.screen.level(0, 4) == 0.f);
     // It paints down a column too.
     rig.tap(SDLK_DOWN);
-    CHECK(near(rig.screen.level(1, 3), 0.8f));
+    CHECK(near(rig.screen.level(1, 3), 0.9f));
     // Let go and the cursor is just a cursor again.
     rig.key(R1, false);
     CHECK(!rig.screen.painting());
@@ -801,12 +801,12 @@ void testR1CopiesTheLevelItStartsOn() {
     // A new hit is a plain one.
     CHECK(rig.screen.nudge(2, 1) == 0.f && rig.screen.chance(2, 1) == 1.f);
 
-    // The next sweep from an empty step is back at 80%, not the last brush.
+    // The next sweep from an empty step is back at 90%, not the last brush.
     rig.screen.moveCursorTo(3, 0);
     rig.key(R1, true);
     rig.tap(SDLK_RIGHT);
     rig.key(R1, false);
-    CHECK(near(rig.screen.level(3, 0), 0.8f) && near(rig.screen.level(3, 1), 0.8f));
+    CHECK(near(rig.screen.level(3, 0), 0.9f) && near(rig.screen.level(3, 1), 0.9f));
 }
 
 void testPaintingRunsWithTheStick() {
@@ -818,7 +818,7 @@ void testPaintingRunsWithTheStick() {
     rig.key(R1, false);
     const int reached = rig.screen.cursorStep();
     CHECK(reached >= 12); // most of the row
-    for (int step = 0; step <= reached; ++step) CHECK(near(rig.screen.level(0, step), 0.8f)); // and no step skipped
+    for (int step = 0; step <= reached; ++step) CHECK(near(rig.screen.level(0, step), 0.9f)); // and no step skipped
     // A held D-pad paints as it repeats.
     rig.screen.moveCursorTo(4, 0);
     rig.key(R1, true);
@@ -826,7 +826,7 @@ void testPaintingRunsWithTheStick() {
     rig.frames(30);
     rig.key(SDLK_RIGHT, false);
     rig.key(R1, false);
-    for (int step = 0; step <= rig.screen.cursorStep(); ++step) CHECK(near(rig.screen.level(4, step), 0.8f));
+    for (int step = 0; step <= rig.screen.cursorStep(); ++step) CHECK(near(rig.screen.level(4, step), 0.9f));
     CHECK(rig.screen.cursorStep() >= 8);
 }
 
@@ -834,17 +834,17 @@ void testTheBrushSkipsNamesAndTempo() {
     Rig rig;
     rig.tap(SDLK_LEFT); // onto the lane's name
     rig.key(R1, true);  // nothing to paint here
-    rig.tap(SDLK_LEFT); // round to step 16: painted, at 80%
-    CHECK(near(rig.screen.level(0, 15), 0.8f));
+    rig.tap(SDLK_LEFT); // round to step 16: painted, at 90%
+    CHECK(near(rig.screen.level(0, 15), 0.9f));
     rig.tap(SDLK_RIGHT); // back over the name
     rig.tap(SDLK_RIGHT); // step 1
-    CHECK(near(rig.screen.level(0, 0), 0.8f));
+    CHECK(near(rig.screen.level(0, 0), 0.9f));
     rig.listen(40000); // let those ring out
     rig.tap(SDLK_UP);  // the tempo: nothing is painted from up here
     CHECK(rig.screen.cursorOnTempo());
     CHECK(rig.listen() == 0.f);
     rig.tap(SDLK_UP); // round to the bottom lane
-    CHECK(near(rig.screen.level(kDrumLanes - 1, 0), 0.8f));
+    CHECK(near(rig.screen.level(kDrumLanes - 1, 0), 0.9f));
     rig.key(R1, false);
     CHECK(rig.screen.tempo() == 120.f && rig.screen.laneLevel(0) == 1.f);
     int hits = 0;
@@ -938,24 +938,24 @@ void testRandomIsR1WithR2() {
     rig.screen.moveCursorTo(3, 4);
     rig.key(R1, true);
     rig.tap(SDLK_RIGHT);
-    CHECK(near(rig.screen.level(3, 4), 0.8f) && near(rig.screen.level(3, 5), 0.8f) && !rig.screen.paintingRandom());
+    CHECK(near(rig.screen.level(3, 4), 0.9f) && near(rig.screen.level(3, 5), 0.9f) && !rig.screen.paintingRandom());
     rig.key(R2, true);
     CHECK(rig.screen.paintingRandom() && rig.screen.painting());
     const float rolled = rig.screen.level(3, 5);
     for (int i = 0; i < 8; ++i) rig.tap(SDLK_RIGHT);
-    int offEighty = !near(rolled, 0.8f) ? 1 : 0;
+    int offNinety = !near(rolled, 0.9f) ? 1 : 0;
     for (int step = 6; step <= 13; ++step) {
         CHECK(rig.screen.level(3, step) >= 0.25f);
-        offEighty += !near(rig.screen.level(3, step), 0.8f) ? 1 : 0;
+        offNinety += !near(rig.screen.level(3, step), 0.9f) ? 1 : 0;
     }
-    CHECK(offEighty >= 7); // random levels, not R1's 80%
+    CHECK(offNinety >= 7); // random levels, not R1's 90%
     rig.frames(60);
     CHECK(rig.screen.level(3, 13) >= 0.25f && rig.screen.level(3, 14) == 0.f); // holding still paints nothing more
     // R2 up: R1's own brush again, at the level it began with.
     rig.key(R2, false);
     CHECK(rig.screen.painting() && !rig.screen.paintingRandom());
     rig.tap(SDLK_RIGHT);
-    CHECK(near(rig.screen.level(3, 14), 0.8f));
+    CHECK(near(rig.screen.level(3, 14), 0.9f));
     // And back to random, as often as wanted.
     rig.key(R2, true);
     CHECK(rig.screen.paintingRandom());

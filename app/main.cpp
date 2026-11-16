@@ -25,11 +25,13 @@
 //                  fx-mod-stepper, fx-mod-new, fx-mod-full, fx-sends-mod-held (X held on an FX setting or a send)
 //                  mod, mod-lfo, mod-steps, mod-target, mod-off, mod-drums, mod-deleting, mod-12, mod-free (the MOD tab;
 //                  with --hold-a on mod-target and mod-drums, the list of targets), device-mod-free
-//                  help, volume (the SET page, on VOLUME), update-ready, update-ready-drums,
+//                  help (the card, with how hard the program works: 43, 88 and 37%), help-load (its longest line),
+//                  volume (the SET page, on VOLUME), update-ready, update-ready-drums,
 //                  update-accepted (an update accepted: the bar, and the notice), nomenu and help-nomenu
 //                  (a handheld with no MENU button: its hint, and its help card)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
+//                  sampler, sampler-end (with --samples: a sampler track, START 12% and END 80%, the cursor on START / END)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
 //   --no-menu      with --shot: any view as on a handheld with no MENU button (the bar's
@@ -715,13 +717,14 @@ int main(int argc, char** argv) {
         tapKey(SDLK_BACKSPACE); // SELECT: the list of songs
     } else if (std::strncmp(view, "sampler", 7) == 0) {
         // With --samples: a sampler track playing the first recording.
-        app.session().addTrack(TrackKind::Sampler);
+        if (!app.session().addTrack(TrackKind::Sampler)) app.session().setTrackKind(app.project().trackCount() - 1, TrackKind::Sampler); // (the demo has all twelve: the last becomes one)
         app.project().track = app.project().trackCount() - 1;
         const std::vector<std::string> names = app.session().sampleNames();
         if (!names.empty()) app.session().setTrackSample(app.project().track, names[0]);
         app.session().setSamplerSetting(app.project().track, sampler::Start, 12);
+        app.session().setSamplerSetting(app.project().track, sampler::End, 80); // (its mark too)
         app.session().view = View::Device;
-        app.sampler().goTo(3);
+        app.sampler().goTo(std::strcmp(view, "sampler-end") == 0 ? 4 : 3); // START; sampler-end: END, beside it
         if (std::strcmp(view, "sampler-picker") == 0) { // its list of recordings, open on the one that is on
             app.sampler().goTo(0);
             tapKey(SDLK_x);
@@ -1250,8 +1253,11 @@ int main(int argc, char** argv) {
         } else {
             app.physic().goTo(0, SynthScreen::kFirstMacro + 1);
         }
-    } else if (std::strcmp(view, "help") == 0) {
+    } else if (std::strcmp(view, "help") == 0 || std::strcmp(view, "help-load") == 0) {
         pushKey(SDLK_TAB, true); // MENU, held
+        // How hard the program works, above the battery: the owner's example, or (help-load) the longest it can say.
+        if (std::strcmp(view, "help") == 0) app.pretendLoad(43, 88, 37);
+        else app.pretendLoad(100, 999, 100);
     } else if (std::strncmp(view, "next-scene", 10) == 0) {
         // NEXT SCENE (SELECT + Y) just pressed: on the drum grid, on the piano roll ("next-scene-notes"),
         // and with every scene of the song used ("next-scene-full").

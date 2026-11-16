@@ -201,10 +201,10 @@ void Session::hearLaneHeld(int track, int lane, float level, const void* owner, 
     heard_.held = true;
 }
 
-void Session::letGoHeard() {
+void Session::letGoHeard(Uint32 lasts) {
     if (!hearingHeld()) return;
     heard_.held = false;
-    const Uint32 least = heard_.since + kAuditionMs; // a tap is heard as it always was
+    const Uint32 least = heard_.since + lasts; // a tap is heard as it always was
     heard_.ends = now_ > least ? now_ : least;
     if (heard_.lane < 0) {
         for (Sounding& s : sounding_)
@@ -219,6 +219,40 @@ void Session::letGoHeard() {
         free->track = heard_.track;
         free->lane = heard_.lane;
         free->at = heard_.ends;
+    }
+    endHearing();
+}
+
+void Session::hearFor(Uint32 ms) {
+    if (heard_.track < 0) return;
+    if (hearingHeld()) {
+        letGoHeard(ms);
+        return;
+    }
+    if (heard_.ends == 0 || now_ >= heard_.ends) return; // heard whole, or stopped already
+    const Uint32 was = heard_.ends;
+    heard_.ends = heard_.since + ms > now_ ? heard_.since + ms : now_;
+    if (heard_.lane >= 0) {
+        for (LaneStop& stop : laneStops_)
+            if (stop.track == heard_.track && stop.lane == heard_.lane) stop.at = heard_.ends;
+    } else {
+        for (Sounding& s : sounding_)
+            if (s.track == heard_.track && s.pitch == heard_.pitch && s.until == was) s.until = heard_.ends;
+    }
+    endHearing();
+}
+
+void Session::stopHeard(const void* owner) {
+    if (!hearingOn(owner)) return;
+    heard_.held = false;
+    heard_.ends = now_;
+    if (heard_.lane >= 0) {
+        for (LaneStop& stop : laneStops_)
+            if (stop.track == heard_.track && stop.lane == heard_.lane) stop.track = -1;
+        stopLane(heard_.track, heard_.lane);
+    } else {
+        for (Sounding& s : sounding_)
+            if (s.track == heard_.track && s.pitch == heard_.pitch) s.until = now_;
     }
     endHearing();
 }

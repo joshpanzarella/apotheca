@@ -26,7 +26,7 @@
 // the cursor with the stick or D-pad; every step it crosses gets a hit:
 //
 //   hold R1 and drag   every hit at ONE level: the level of the hit you
-//                      started on, or 80% if you started on an empty step
+//                      started on, or 90% if you started on an empty step
 //   ...and R2 as well  every hit at a RANDOM level, for as long as R2 is
 //                      held too. (R2 by itself is "next screen", at once.)
 //
@@ -258,7 +258,7 @@ private:
 
     bool erasing_ = false; // B is held: hits the cursor crosses are deleted
     Paint paint_ = Paint::None;
-    float brush_ = 0.8f;              // the level R1 is painting with
+    float brush_ = kPlacedLevel;              // the level R1 is painting with
     std::uint32_t dice_ = 0x9E3779B9u; // for R2's random levels
 
     Button repeating_ = Button::None; // D-pad direction being held
