@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -218,10 +219,12 @@ void putTrack(std::string& out, const TrackData& track) {
         }
     } else {
         if (track.kind == TrackKind::Sampler) {
-            // sound NAME: its recording. sampler: root tune start attack release loop level.
+            // sound NAME: its recording. sampler: root tune start attack release loop level [end]. END is
+            // left out at its usual 100%, so a sampler that does not use it is written as it always was.
             if (track.sample[0]) out += std::string("sound ") + track.sample + "\n";
             out += "sampler";
-            for (int v : track.sampler) put(out, " %.0f", v);
+            for (int id = 0; id < sampler::kSettings; ++id)
+                if (id < sampler::End || track.sampler[id] != sampler::settingDefault(id)) put(out, " %.0f", track.sampler[id]);
             out += "\n";
         } else {
             put(out, "preset %.0f\n", track.preset + 1);
@@ -578,6 +581,8 @@ bool parseSong(const std::string& text, Project& project) {
         } else if (word == "sampler" && track->kind == TrackKind::Sampler) {
             double v;
             for (int id = 0; id < sampler::kSettings && (in >> v); ++id) track->sampler[id] = wholeIn(v, sampler::settingMin(id), sampler::settingMax(id));
+            int& end = track->sampler[sampler::End]; // (held after START, as the screen holds it: the engine plays it so anyway)
+            end = std::min(sampler::playedEnd(track->sampler[sampler::Start], end), sampler::settingMax(sampler::End));
         } else if (oldSound && (word == "preset" || word == "macros" || word == "settings")) {
             continue; // an old Twin Analog or QMOD track's sound: it plays the first preset, the knobs in the middle
         } else if (word == "preset") {

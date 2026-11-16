@@ -15,7 +15,7 @@ using namespace ui;
 
 using namespace pattern_layout;
 
-constexpr float kNewHitLevel = 0.8f;
+constexpr float kNewHitLevel = kPlacedLevel; // a hit placed on an empty step (project.hpp)
 constexpr float kMinHitLevel = 0.05f; // B deletes; the stick cannot
 constexpr float kMinChance = 0.05f;   // likewise
 constexpr float kMaybe = 0.5f;        // the chance of a hit placed with Y
@@ -716,7 +716,7 @@ void PatternScreen::onButton(const ButtonEvent& event, const Input& input) {
             paint_ = Paint::None; // whichever brush it was
         } else if (!shaping_ && !dicing_ && paint_ == Paint::None) {
             paint_ = mine;
-            // The brush takes the level of the hit it starts on, or 80%.
+            // The brush takes the level of the hit it starts on, or 90%.
             brush_ = hitHere() ? pat().level[lane_][step_] : kNewHitLevel;
             paintHere();
         }

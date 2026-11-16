@@ -27,15 +27,35 @@ void KitScreen::hear(bool held) {
     headLane_ = lane_;
     headHeld_ = held;
     if (held) {
-        session_.hearLaneHeld(project_.track, lane_, 0.8f, this);
+        session_.hearLaneHeld(project_.track, lane_, kPlacedLevel, this);
         return;
     }
     Command c;
     c.type = Command::Trigger;
     c.track = project_.track;
     c.a = lane_;
-    c.value = 0.8f;
+    c.value = kPlacedLevel;
     session_.engine.send(c);
+}
+
+// The list of recordings: the preview, half of the recording at least (a fitted one: half its
+// steps at the tempo), stopped as soon as the cursor moves on; X on it plays on to the end. The
+// built-in drum is heard whole, as a tap of it always is (Session::letGoHeard).
+void KitScreen::hearFromList(SamplePicker::Hear how) {
+    if (how == SamplePicker::Hear::Held) return hear(true);
+    if (how == SamplePicker::Hear::Quiet) {
+        session_.stopHeard(this);
+        if (headLane_ == lane_) head_.since = 0; // its line goes with it
+        headHeld_ = false;
+        return;
+    }
+    if (how == SamplePicker::Hear::Preview) hear(true); // begun as X begins it, and let go at once (below)
+    const float whole = head_.wholeLength();
+    const Uint32 ms = static_cast<Uint32>(1000.f * (how == SamplePicker::Hear::Preview ? whole / 2.f : whole));
+    const Uint32 lasts = ms > Session::kAuditionMs ? ms : Session::kAuditionMs;
+    session_.hearFor(lasts);
+    headHeld_ = false;
+    head_.lasts = how == SamplePicker::Hear::Preview ? static_cast<float>(lasts) / 1000.f : 0.f; // the line: to where it stops (Rest: to the end)
 }
 
 // The built-in drum is the first choice; the recordings follow by name.
@@ -63,7 +83,8 @@ void KitScreen::openPicker() {
     const int track = project_.track, lane = lane_;
     SamplePicker::Jobs jobs;
     jobs.use = [this, track, lane](const std::string& name) { session_.setLaneSample(track, lane, name); };
-    jobs.hear = [this](bool held) { hear(held); };
+    jobs.hear = [this](SamplePicker::Hear how) { hearFromList(how); };
+    jobs.sounding = [this] { return session_.hearingOn(this) && head_.at(lastMs_) >= 0.f; }; // (its line still running: not ended by itself)
     jobs.sound = [this, track, lane] { return &session_.laneSound(track, lane); };
     jobs.remove = [this](const std::string& name) { return session_.deleteSample(name); };
     jobs.move = [this](const std::string& from, const std::string& to) { return session_.moveSample(from, to); };

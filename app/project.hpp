@@ -49,6 +49,10 @@ struct NoteEvent {
                               // and the chord's effects (apotheca/chord_rule.hpp). A loose note's is all nothing.
 };
 
+// The level a hit, a note or a chord starts at when it is placed (owner, 2026-11-15: 90%, it was
+// 80%), and what X and A hear a sound at on every screen, so what is heard is what is placed.
+constexpr float kPlacedLevel = 0.9f;
+
 // A chord placed in a bar. It stays one thing: one level, one length, one
 // name, and it can be swapped for another chord later. Its notes are worked
 // out from it each time, never stored.

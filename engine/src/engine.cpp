@@ -1872,6 +1872,7 @@ void Engine::takeCommands() {
 }
 
 void Engine::render(float* interleaved, int frames) {
+    const LoadMeter::Timing timed(load_, frames / static_cast<double>(sampleRate_)); // how long this call takes, against how long its sound lasts
     const FlushDenormals flushed(flush_.load(std::memory_order_relaxed)); // if asked for: on for this call, then the thread is as it was
     takeCommands();
     Command command;

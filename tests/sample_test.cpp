@@ -607,7 +607,7 @@ void testWhereAHitStarts() {
     CHECK(drums.start(2, 4) == 0.5f);
     // None of that was a tap of Y, and none of it touched the chance.
     rig.key(Y, false);
-    CHECK(drums.chance(2, 4) == 1.f && drums.level(2, 4) == 0.8f);
+    CHECK(drums.chance(2, 4) == 1.f && drums.level(2, 4) == 0.9f);
     // Up and down with Y is still the chance, and leaves the start alone.
     rig.key(Y, true);
     rig.tap(DOWN);
@@ -949,6 +949,118 @@ void testTheSamplersPictureIsTall() {
     CHECK(lowest < SamplerScreen::kSoundY + SamplerScreen::kSoundH - 6); // inside its box, clear of its edge
 }
 
+// END (owner, 2026-11-15: "an END parameter in the SAMPLER to complement the START"): beside START,
+// read the same way; turned, it never comes within a percent of START (nor START of it); a note
+// stops there; the song file keeps it only where it is not 100%; undo puts it back; the picture
+// marks it as it marks START, and lights only what a note plays.
+void testTheSamplersEnd() {
+    const SDL_Keycode SELECT = SDLK_BACKSPACE;
+    const std::string folder = tempFolder();
+    writeWav(folder + "/alpha.wav", tone(1.f, 0.9f), 48000);
+    Rig rig(folder);
+    Session& session = rig.session();
+    CHECK(session.addTrack(TrackKind::Sampler));
+    TrackData& track = rig.project().tracks[1];
+    CHECK(track.sampler[sampler::End] == 100 && sampler::settingDefault(sampler::End) == 100);
+    rig.project().track = 1;
+    session.view = View::Device;
+    session.setTrackSample(1, "alpha");
+    session.setSamplerSetting(1, sampler::Release, 0);
+    session.setSamplerSetting(1, sampler::Attack, 0);
+    SamplerScreen& screen = rig.app.sampler();
+    // Its place: right of START, in the first row (PITCH, TUNE, START, END); ATTACK begins the second.
+    CHECK(SamplerScreen::settingAt(2) == sampler::Start && SamplerScreen::settingAt(3) == sampler::End && SamplerScreen::settingAt(4) == sampler::Attack);
+    screen.goTo(0);
+    rig.tap(DOWN);
+    rig.tap(RIGHT, 3);
+    CHECK(screen.cursor() == 4);
+    rig.frames(2);
+    // Hold A: the D-pad turns it a percent, as START. Down to 40%.
+    rig.key(A, true);
+    rig.tap(DOWN, 60);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40);
+    char shown[24];
+    samplerSettingText(sampler::End, 40, shown, sizeof shown);
+    CHECK(std::string(shown) == "40%"); // as START reads
+    // A note stops there: 40% of a second.
+    rig.frames(60);
+    rig.render(100000);
+    session.audition(1, 60, 1.f);
+    rig.frames(1);
+    CHECK(std::abs(Rig::sounding(rig.render(48000)) - 19200) <= 2);
+    rig.frames(60);
+    rig.render(100000);
+    // START held under END: turned up, it stops a percent short; END turned down stops a percent over it.
+    rig.tap(LEFT); // START
+    rig.key(A, true);
+    rig.tap(UP, 70);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::Start] == 39);
+    rig.tap(RIGHT); // END
+    rig.key(A, true);
+    rig.tap(DOWN, 10);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40);
+    rig.key(A, true); // the stick, all the way down for a second: held there too
+    rig.key(STICK_DOWN, true);
+    rig.frames(70);
+    rig.key(STICK_DOWN, false);
+    rig.key(A, false);
+    CHECK(track.sampler[sampler::End] == 40 && track.sampler[sampler::Start] == 39);
+    // B: its usual value, the recording's end.
+    rig.tap(B);
+    CHECK(track.sampler[sampler::End] == 100);
+    rig.tap(LEFT);
+    rig.tap(B);
+    CHECK(track.sampler[sampler::Start] == 0);
+    rig.frames(120);
+
+    // The song file: left out at 100% (the line as it always was), written after LEVEL otherwise.
+    CHECK(songText(rig.project()).find("sampler 60 0 0 0 0 0 80\n") != std::string::npos);
+    session.setSamplerSetting(1, sampler::Start, 10);
+    session.setSamplerSetting(1, sampler::End, 65);
+    const std::string text = songText(rig.project());
+    CHECK(text.find("sampler 60 0 10 0 0 0 80 65\n") != std::string::npos);
+    std::unique_ptr<Project> back(new Project);
+    CHECK(parseSong(text, *back) && back->tracks[1].sampler[sampler::End] == 65 && songText(*back) == text);
+    // An older line has no END: the recording's end. One that puts END before START is held after it.
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 30 0 0 0 80\n", *back) && back->tracks[0].sampler[sampler::End] == 100);
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 30 0 0 0 80 12\n", *back) && back->tracks[0].sampler[sampler::End] == 31);
+    CHECK(parseSong("apotheca-song 1\ntrack sampler\nsampler 60 0 100 0 0 0 80 1e300\n", *back) && back->tracks[0].sampler[sampler::End] == 100);
+
+    // Undo: the END before the turn comes back (a sampler's settings are in soundMark).
+    rig.frames(120);
+    session.setSamplerSetting(1, sampler::End, 20);
+    rig.frames(120);
+    rig.key(SELECT, true);
+    rig.tap(B);
+    rig.key(SELECT, false);
+    rig.frames(2);
+    CHECK(track.sampler[sampler::End] == 65);
+
+    // The picture: START's mark and END's, purple, and only the part a note plays lit.
+    Canvas canvas;
+    CHECK(canvas.ok);
+    if (!canvas.ok) return;
+    screen.goTo(0);
+    rig.frames(2);
+    rig.app.draw(canvas.r, *canvas.fonts);
+    const int wx = 15, ww = 624 - 14, mid = SamplerScreen::kWaveY + SamplerScreen::kWaveH / 2;
+    const int startX = wx + static_cast<int>(0.10f * ww), endX = wx + SamplerScreen::endMarkX(0.65f, ww);
+    CHECK(canvas.is(startX, mid, ui::kPurple) && canvas.is(endX, mid, ui::kPurple) && canvas.is(endX + 1, mid, ui::kPurple));
+    int purple = 0;
+    for (int x = wx; x < wx + ww; ++x) purple += canvas.is(x, mid, ui::kPurple);
+    CHECK(purple == 4); // the two marks, two wide each
+    CHECK(canvas.is(wx + static_cast<int>(0.4f * ww), mid, ui::kText));  // played: lit
+    CHECK(canvas.is(wx + static_cast<int>(0.8f * ww), mid, ui::kLine));  // past END: not
+    CHECK(canvas.is(wx + static_cast<int>(0.05f * ww), mid, ui::kLine)); // before START: not
+    // The line across it while it is heard ends at END.
+    rig.tap(X);
+    rig.frames(2);
+    CHECK(screen.playhead().to == 0.65f && std::fabs(screen.playhead().wholeLength() - 0.55f) < 1e-3f);
+}
+
 void testTheSamplerTrack() {
     const std::string folder = tempFolder();
     writeWav(folder + "/alpha.wav", tone(0.5f, 0.25f), 48000);
@@ -1058,12 +1170,16 @@ void testTheSamplerTrack() {
     rig.tap(RIGHT, 3);
     CHECK(screen.cursor() == 4);
     rig.tap(DOWN);
-    CHECK(screen.cursor() == 7); // LEVEL is under ATTACK; there is no eighth
+    CHECK(screen.cursor() == 8); // LEVEL is under END (two rows of four)
     rig.tap(LEFT, 2);
-    CHECK(screen.cursor() == 5);
+    CHECK(screen.cursor() == 6);
     rig.tap(DOWN);
-    CHECK(screen.cursor() == 5);
+    CHECK(screen.cursor() == 6);
     rig.tap(UP);
+    CHECK(screen.cursor() == 2);
+    rig.tap(UP);
+    CHECK(screen.cursor() == 0);
+    rig.tap(DOWN);
     CHECK(screen.cursor() == 1);
     rig.tap(UP);
     CHECK(screen.cursor() == 0);
@@ -1440,7 +1556,8 @@ void testTheSamplePicker() {
     rig.tap(R1);
     rig.tap(L1);
     CHECK(list.cursor() == 10 && kit.cursorLane() == 5 && kit.said().empty() && session.recording() == Session::Rec::Idle);
-    // X hears it again.
+    // X hears it again (its preview over: from the top, for as long as X is held).
+    rig.frames(130);
     rig.render(96000);
     rig.tap(X);
     CHECK(Rig::sounding(rig.render(20000)) > 1500);
@@ -1704,7 +1821,7 @@ void testTheSliceView() {
     {
         float placed = 0.f;
         const int rang = Rig::sounding(rig.render(120000), &placed);
-        CHECK(rang >= kStep && rang <= kStep + 60 && near(placed, 0.8f * levelOfSlice(4)));
+        CHECK(rang >= kStep && rang <= kStep + 60 && near(placed, 0.9f * levelOfSlice(4)));
     }
     // Up and down: the next slice, the one before; round the ends. The lane does not change.
     rig.tap(UP);
@@ -1747,17 +1864,17 @@ void testTheSliceView() {
     };
     float level = 0.f;
     int frames = heard(&level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(6)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(6)));
     drums.moveCursorTo(2, 9);
     frames = heard(&level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(9)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(9)));
     // A slice picked with up / down is heard at once, alone.
     drums.moveCursorTo(2, 4);
     rig.render(120000);
     rig.frames(10);
     rig.tap(UP);
     frames = Rig::sounding(rig.render(120000), &level);
-    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.8f * levelOfSlice(7)));
+    CHECK(frames >= kStep && frames <= kStep + 60 && near(level, 0.9f * levelOfSlice(7)));
     // ...but not over the song while it plays.
     rig.tap(START);
     rig.render(100);
@@ -1776,7 +1893,7 @@ void testTheSliceView() {
     rig.tap(RIGHT, 3);
     rig.key(R1, false);
     for (int step = 0; step < 4; ++step) CHECK(drums.level(2, step) > 0.f && drums.start(2, step) == step / 16.f);
-    CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.8f);
+    CHECK(drums.level(2, 1) == 0.4f && drums.level(2, 0) == 0.9f);
     CHECK(drums.level(2, 5) == 0.f); // only where the cursor went
     // Up with the brush down picks a slice; the brush does not put it straight back.
     rig.key(R1, true);
@@ -1825,15 +1942,15 @@ void testTheSliceView() {
     rig.key(Y, false);
 
     // In order, the sixteen hits are the recording: played, each step is its own slice's level.
-    drums.setStep(2, 1, 0.8f); // (the quiet one from before, back with the rest)
+    drums.setStep(2, 1, 0.9f); // (the quiet one from before, back with the rest)
     rig.render(200000);
     rig.tap(START);
     const std::vector<float> bar = rig.render(16 * kStep);
     rig.tap(START);
-    for (int step = 0; step < 16; ++step) CHECK(near(bar[2 * static_cast<std::size_t>(step * kStep + kStep / 2)], 0.8f * levelOfSlice(step)));
+    for (int step = 0; step < 16; ++step) CHECK(near(bar[2 * static_cast<std::size_t>(step * kStep + kStep / 2)], 0.9f * levelOfSlice(step)));
     // ...with no dip where one hands over to the next.
     for (int step = 1; step < 16; ++step)
-        for (int i = -40; i < 40; ++i) CHECK(bar[2 * static_cast<std::size_t>(step * kStep + i)] > 0.79f * levelOfSlice(step - 1));
+        for (int i = -40; i < 40; ++i) CHECK(bar[2 * static_cast<std::size_t>(step * kStep + i)] > 0.89f * levelOfSlice(step - 1));
     rig.render(200000);
 
     // Undo takes a slice back.
@@ -1966,6 +2083,66 @@ void testOneSliceIsKeptInTheSong() {
 // Recordings kept in folders: the list shows a folder at a time, L1 and R1 turn them.
 // The list in columns (owner, 2026-11-14): where this folder is, this folder, what is under the
 // cursor. Folders two levels deep.
+// The columns stand still (owner, 2026-11-15: "start out with the sound preview open to the right of
+// the 2 levels ... that way it doesn't need to expand"). Read off the drawn screen: on SAMPLES the
+// cursor is in the first column, the folder under it in the second, and the preview's box already
+// in the third; going into the folder the cursor steps right, the second column's rows stay where
+// they were, pixel for pixel, and the preview's box is where it was.
+void testTheColumnsStandStill() {
+    const std::string folder = tempFolder();
+    for (const char* dir : {"/kicks", "/vocals"}) mkdir((folder + dir).c_str(), 0755);
+    std::vector<float> made(3000);
+    for (std::size_t n = 0; n < made.size(); ++n) made[n] = 0.5f * std::sin(0.05f * static_cast<float>(n));
+    for (const char* name : {"kicks/808", "kicks/909", "kicks/linn", "vocals/ah"}) CHECK(writeWav(folder + "/" + name + ".wav", made, 48000));
+    Rig rig(folder);
+    rig.app.session().view = View::Device;
+    KitScreen& kit = rig.app.kit();
+    SamplePicker& list = kit.picker();
+    kit.goTo(5, KitScreen::kSound);
+    rig.frames(1);
+    rig.tap(A);
+    rig.tap(DOWN); // KICKS
+    CHECK(list.depth() == 0 && list.under() && list.under()->name == "kicks" && list.cursorX() == SamplePicker::kLeftX);
+    Canvas before, after;
+    CHECK(before.ok && after.ok);
+    if (!before.ok || !after.ok) return;
+    rig.frames(1);
+    rig.app.draw(before.r, *before.fonts);
+    rig.tap(RIGHT); // into KICKS: 808 goes on
+    rig.frames(2);
+    CHECK(list.depth() == 1 && list.cursor() == 0 && list.cursorX() == SamplePicker::kMidX);
+    rig.app.draw(after.r, *after.fonts);
+    // The cursor's outline: the first column before, the second after.
+    const int rowY = SamplePicker::kRowsY - 1;
+    CHECK(before.is(SamplePicker::kLeftX - 1, rowY + SamplePicker::kRowH + 5, ui::kTeal) && !before.is(SamplePicker::kMidX - 1, rowY + 5, ui::kTeal));
+    CHECK(after.is(SamplePicker::kMidX - 1, rowY + 5, ui::kTeal) && !after.is(SamplePicker::kLeftX - 1, rowY + SamplePicker::kRowH + 5, ui::kTeal));
+    // KICKS' second and third rows (909, LINN): in the same place before and after, their boxes and
+    // their names (dim beside the cursor's column, bright in it: the only change).
+    const auto shape = [&](Canvas& c, int row) {
+        const int y = SamplePicker::kRowsY + row * SamplePicker::kRowH;
+        std::vector<int> marks; // the box's edges, and where its name's ink is, across its middle and along its top
+        for (int across = SamplePicker::kMidX - 2; across < SamplePicker::kMidX + SamplePicker::kMidW + 2; ++across) {
+            const int mid = y + (SamplePicker::kRowH - 4) / 2;
+            marks.push_back(c.is(across, y, ui::kLine) ? 1 : 0);
+            marks.push_back(c.is(across, mid, ui::kLine) ? 1 : !c.is(across, mid, ui::kPanel) && !c.is(across, mid, ui::kPanel2) ? 2 : 0);
+        }
+        return marks;
+    };
+    CHECK(shape(before, 1) == shape(after, 1) && shape(before, 2) == shape(after, 2));
+    CHECK(shape(before, 1) != shape(before, 2)); // (two names: the check sees the words)
+    // The preview's box: there before anything was picked, and there after, the same size.
+    const auto boxAt = [&](Canvas& c) {
+        return c.is(SamplePicker::kRightX, SamplePicker::kRowsY + 10, ui::kLine) && c.is(SamplePicker::kRightX + SamplePicker::kRightW - 1, SamplePicker::kRowsY + 10, ui::kLine) &&
+               c.is(SamplePicker::kRightX + 10, SamplePicker::kRowsY + SamplePicker::kPictureH - 1, ui::kLine);
+    };
+    CHECK(boxAt(before) && boxAt(after));
+    // ...and after it the picture of what went on, inside it.
+    int teal = 0;
+    for (int across = SamplePicker::kRightX + 2; across < SamplePicker::kRightX + SamplePicker::kRightW - 2; ++across) teal += after.is(across, SamplePicker::kRowsY + SamplePicker::kPictureH / 2, ui::kTeal);
+    CHECK(teal > SamplePicker::kRightW / 2);
+    rig.tap(B);
+}
+
 void testFoldersInTheSamplePicker() {
     const std::string folder = tempFolder();
     const auto make = [&](const std::string& name, int frames) {
@@ -2388,6 +2565,7 @@ void testARecordingEndingInCapitals() {
 int main(int, char**) {
     testThePlayhead();
     testTheSamplePicker();
+    testTheColumnsStandStill();
     testFoldersInTheSamplePicker();
     testThePickersPace();
     testTheSliceView();
@@ -2405,6 +2583,7 @@ int main(int, char**) {
     testCatch();
     testTheSamplerTrack();
     testTheSamplersPictureIsTall();
+    testTheSamplersEnd();
     testTheRecorder();
     testRecordingOntoALane();
     if (failures) {
