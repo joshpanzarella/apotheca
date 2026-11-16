@@ -221,6 +221,19 @@ void drawPlayhead(SDL_Renderer* r, const Playhead& head, Uint32 nowMs, int x, in
     if (at >= 0.f) fill(r, x + static_cast<int>(at * static_cast<float>(w - 2)), y, 2, h, kBrass);
 }
 
+void wavePicture(SDL_Renderer* r, const std::vector<float>& peaks, int x, int y, int w, int h, float start, float end, const std::vector<float>* lit) {
+    const int count = static_cast<int>(peaks.size());
+    for (int i = 0; i < count; ++i) {
+        const float at = static_cast<float>(i) / count;
+        const bool played = at >= start && at < end;
+        const float height = played && lit ? (*lit)[static_cast<std::size_t>(i)] : peaks[static_cast<std::size_t>(i)];
+        const int ph = 1 + static_cast<int>(height * (h - 1));
+        fill(r, x + w * i / count, y + (h - ph) / 2, w / count, ph, played ? kText : kLine); // what is played, lit
+    }
+    fill(r, x + static_cast<int>(start * w), y - 2, 2, h + 4, kPurple); // where it begins
+    fill(r, x + waveEndMarkX(end, w), y - 2, 2, h + 4, kPurple);        // and where it ends
+}
+
 namespace {
 constexpr float kArrowW = 11.f; // an arrow and the room after it
 constexpr float kStrokeGap = 2.f; // either side of the "/" between two words: close, to save room (the owner's, 2026-11-11)

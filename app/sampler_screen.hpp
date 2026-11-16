@@ -66,7 +66,7 @@ public:
     // (settingAt: PITCH, TUNE, START, END, then ATTACK, RELEASE, LOOP, LEVEL).
     static int settingAt(int place);                 // the setting's id at this place (0..7), -1 past them
     static float endPart(const TrackData& t) { return static_cast<float>(sampler::playedEnd(t.sampler[sampler::Start], t.sampler[sampler::End])) / 100.f; } // 0..1 (past 1: START at 100)
-    static int endMarkX(float end, int w) { const int x = static_cast<int>(end * w) - 2; return x < 0 ? 0 : (x > w - 2 ? w - 2 : x); } // END's mark, inside the picture
+    static int endMarkX(float end, int w) { return ui::waveEndMarkX(end, w); } // END's mark, inside the picture
     void goTo(int stop) { stop_ = stop < 0 ? 0 : (stop > sampler::kSettings ? sampler::kSettings : stop); }
     int cursor() const { return stop_; }
     const ui::Playhead& playhead() const { return head_; }

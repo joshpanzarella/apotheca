@@ -115,6 +115,8 @@ bool Session::addTrack(TrackKind kind) {
     }
     project.tracks[track].kind = kind;
     if (kind == TrackKind::Drums) chokeNewKit(track); // (its hats in CHOKE 1)
+    if (kind == TrackKind::Drums)
+        for (int lane = 0; lane < kDrumLanes; ++lane) loadLane(track, lane); // (the built-in drums: what EDIT starts from)
     // The engine makes a synth on its start patch, which is no preset (JAX-EP's plain saw, FM-6's one
     // sine): it is told the sound the track shows, its first preset, as a song sent is. (QMOD made
     // itself on its first preset; JAX-EP and FM-6 played their start patch until a preset was picked.)
@@ -724,7 +726,7 @@ std::uint32_t Session::soundMark() const {
         mix(track.send, sizeof track.send);
         mix(&track.glideFrom, sizeof track.glideFrom);
         mix(track.mods, sizeof track.mods);
-        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke);
+        if (track.kind == TrackKind::Drums) mix(track.laneFeel, sizeof track.laneFeel), mix(track.laneChoke, sizeof track.laneChoke), mix(track.laneEdit, sizeof track.laneEdit);
         if (const SynthSpec* spec = specFor(track.kind)) {
             mix(&track.preset, sizeof track.preset);
             mix(spec->values(const_cast<TrackData&>(track)), sizeof(int) * static_cast<std::size_t>(settingCount(track.kind)));
@@ -838,6 +840,9 @@ void Session::restoreSounds(const Project& was, const bool same[kNumTracks]) {
         if (now.kind == TrackKind::Drums)
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (now.laneChoke[lane] != then.laneChoke[lane]) setLaneChoke(t, lane, then.laneChoke[lane]);
+        if (now.kind == TrackKind::Drums)
+            for (int lane = 0; lane < kDrumLanes; ++lane)
+                if (now.laneEdit[lane] != then.laneEdit[lane]) setLaneEdit(t, lane, then.laneEdit[lane]);
         // (After the slots: the step's MODs fit the step's effects. Compared as the file writes them.)
         for (int m = 0; m < kModsPerTrack; ++m) {
             if (modText(now.mods[m], m) == modText(then.mods[m], m)) continue;

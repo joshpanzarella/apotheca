@@ -286,12 +286,25 @@ public:
     // fitted to one bar. Returns its name, or "" if there was only silence
     // to catch or nowhere to keep it.
     std::string catchLastBar(int track, int lane);
+    // EDIT (lane_edit.hpp): what a lane does to its sound, made from the file (or the built-in drum)
+    // here and handed to the engine. The file is never written. START and END go back to the whole of
+    // it when the lane is given another sound (setLaneSample); the rest stay.
+    void setLaneEdit(int track, int lane, const LaneEdit& edit); // held to its limits (laneEditHeld)
+    void readyLane(int track, int lane);     // its sound read, if it has not been yet (the edit view draws it)
+    bool normalizeLane(int track, int lane); // GAIN so the part played peaks at kNormalDb. False: silence
+    bool trimLaneSilence(int track, int lane); // START and END at the first and last sound. False: silence
     struct LaneSound {
         std::shared_ptr<const std::vector<float>> recording; // as it came off the card; null on a built-in lane
-        std::vector<float> peaks; // its outline, for drawing
-        float seconds = 0.f;
+        std::shared_ptr<const std::vector<float>> source;    // what the edits start from: the recording, or the built-in drum
+        std::shared_ptr<const std::vector<float>> shaped;    // ...cut, turned round and pitched (the source itself if nothing does)
+        std::shared_ptr<const std::vector<float>> fitted;    // ...and FIT to its steps, once that is made
+        std::vector<float> sourcePeaks; // the source's outline (the edit view draws all of it)
+        float sourceSeconds = 0.f;
+        std::vector<float> peaks; // the outline of what the lane plays, for drawing (none for a built-in drum left as it is)
+        float seconds = 0.f;      // ...and how long it lasts, unfitted
         bool missing = false;     // the song names a file that is not here
-        bool waiting = false;     // a fitted version is wanted and not yet in the engine
+        bool waiting = false;     // a fitted (or shaped) version is wanted and not yet in the engine
+        bool shaping = false;     // its shape is wanted from the helper thread (too costly for a frame)
         float fittedTempo = 0.f;  // the tempo the one in the engine was made for
         int fittedSteps = 0;
         unsigned version = 0;     // goes up whenever the lane's sound changes
@@ -738,15 +751,19 @@ private:
     std::string lastRecorded_;
     void loadTrackSample(int track);
     void install(int track, int lane, const std::vector<float>& samples);
+    void shapeLane(int track, int lane);   // the lane's sound made again from its source, from the cut on (then FIT, then installLane)
+    void installLane(int track, int lane); // the fades, GAIN and the guard on what is shaped (or fitted), into the engine
     bool wantsFitting(int track, int lane) const;
     void startJob(int track, int lane);
     void collectJob(bool wait);
     struct Job {
-        int track = 0, lane = 0, frames = 0;
+        int track = 0, lane = 0, frames = 0; // frames: what to FIT it to (0: no fit)
         unsigned version = 0;
         float tempo = 0.f;
+        bool shape = false; // made from the source first (a costly shape: shapeLane)
+        LaneEdit edit;
         std::shared_ptr<const std::vector<float>> in;
-        std::vector<float> out;
+        std::vector<float> shaped, out;
         std::atomic<bool> done{false};
         std::thread thread;
     };

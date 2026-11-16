@@ -220,13 +220,17 @@ void testTheKitPage() {
     rig.session().view = View::Device;
     rig.frames(1);
     CHECK(kit.cursorColumn() == KitScreen::kSound);
-    // Right: FIT, CHOKE, and round to SOUND; left back the other way.
+    // Right: FIT, CHOKE, EDIT, and round to SOUND; left back the other way.
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kFit);
     rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kChoke);
     rig.tap(RIGHT);
+    CHECK(kit.cursorColumn() == KitScreen::kEdit);
+    rig.tap(RIGHT);
     CHECK(kit.cursorColumn() == KitScreen::kSound);
+    rig.tap(LEFT);
+    CHECK(kit.cursorColumn() == KitScreen::kEdit);
     rig.tap(LEFT);
     CHECK(kit.cursorColumn() == KitScreen::kChoke);
     rig.tap(LEFT);

@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -236,6 +237,22 @@ void putTrack(std::string& out, const TrackData& track) {
             for (int lane = 0; lane < kDrumLanes; ++lane)
                 if (track.laneOneSlice[lane]) put(out, " %.0f", lane + 1);
             out += "\n";
+        }
+        // laneedit LANE START END GAIN FADEIN FADEOUT REVERSE PITCH FINE: what a lane does to its sound
+        // (lane_edit.hpp). START and END as parts of the file (0..1), GAIN in dB, the fades in ms, REVERSE
+        // 0 or 1, PITCH in semitones, FINE in cents. Left out when every edit is at rest.
+        for (int lane = 0; lane < kDrumLanes; ++lane) {
+            const LaneEdit& e = track.laneEdit[lane];
+            if (e.atRest()) continue;
+            put(out, "laneedit %.0f", lane + 1);
+            put(out, " %.6g", static_cast<double>(e.start) / kEditUnits);
+            put(out, " %.6g", static_cast<double>(e.end) / kEditUnits);
+            put(out, " %.6g", e.gain / 10.0);
+            put(out, " %.0f", e.fadeIn);
+            put(out, " %.0f", e.fadeOut);
+            put(out, " %.0f", e.reverse);
+            put(out, " %.0f", e.pitch);
+            put(out, " %.0f\n", e.fine);
         }
         // feel LANE TIME LEVEL: a lane's HUMAN TIME and HUMAN LEVEL, each 0..100. Left out when both are off.
         for (int lane = 0; lane < kDrumLanes; ++lane) {
@@ -607,6 +624,26 @@ bool parseSong(const std::string& text, Project& project) {
             double lane;
             while (in >> lane)
                 if (lane >= 1 && lane <= kDrumLanes) track->laneOneSlice[static_cast<int>(lane) - 1] = true;
+        } else if (word == "laneedit" && track->kind == TrackKind::Drums) {
+            // Each number held as a double first; one missing or not a number ends the line there, the
+            // rest at rest. END is held after START (by a unit: the file's length is not known here).
+            double lane = 0, v[8] = {0, 1, 0, 0, 0, 0, 0, 0};
+            if (!(in >> lane) || !(lane >= 1) || lane > kDrumLanes) continue;
+            for (double& one : v) {
+                double read = 0;
+                if (!(in >> read)) break; // (a failed read gives 0: not taken)
+                one = read;
+            }
+            LaneEdit e;
+            e.start = static_cast<int>(std::lround(fractionIn(v[0], 0.f, 1.f) * kEditUnits));
+            e.end = static_cast<int>(std::lround(fractionIn(v[1], 0.f, 1.f) * kEditUnits));
+            e.gain = static_cast<int>(std::lround(fractionIn(v[2], -kGainMost / 10.f, kGainMost / 10.f) * 10.f));
+            e.fadeIn = wholeIn(v[3], 0, kFadeMost);
+            e.fadeOut = wholeIn(v[4], 0, kFadeMost);
+            e.reverse = wholeIn(v[5], 0, 1);
+            e.pitch = wholeIn(v[6], -kPitchMost, kPitchMost);
+            e.fine = wholeIn(v[7], -kFineMost, kFineMost);
+            track->laneEdit[static_cast<int>(lane) - 1] = laneEditHeld(e, 0.f);
         } else if (word == "feel" && track->kind == TrackKind::Drums) {
             double lane, time = 0, level = 0;
             if (!(in >> lane >> time) || !(lane >= 1) || lane > kDrumLanes) continue;

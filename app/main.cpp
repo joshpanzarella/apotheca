@@ -33,6 +33,8 @@
 //                  (a handheld with no MENU button: its hint, and its help card)
 //                  picker, picker-in, picker-deep, picker-deleting, picker-new, picker-typing, picker-carrying, picker-folder-deleting, sampler-picker (with --samples: the list
 //                  of recordings in its columns: on SAMPLES, in a folder, two folders down, B held, the sampler's)
+//                  kit-edit, kit-edit-held, kit-edit-deleting, kit-edit-column (a lane's EDIT view: with --samples
+//                  on a recording, else on the built-in kick)
 //                  sampler, sampler-end (with --samples: a sampler track, START 12% and END 80%, the cursor on START / END)
 //   --hold-a, --hold-y, --on-name, --on-tempo, --dice, --paint, --paint-random
 //                  with --demo: a gesture held on the drum grid
@@ -557,6 +559,31 @@ int main(int argc, char** argv) {
             session.view = View::Device;
             app.kit().goTo(3, KitScreen::kChoke);
             if (std::strstr(view, "-held")) pushKey(SDLK_x, true); // A held
+        }
+    } else if (std::strncmp(view, "kit-edit", 8) == 0) {
+        // EDIT on a lane: with --samples the first recording on lane 6, else lane 1's built-in kick; cut
+        // to its middle, GAIN +3, a fade out, PITCH -2, backwards. kit-edit: the edit view on GAIN.
+        // kit-edit-held: A held there. kit-edit-deleting: B held (its bar filling). kit-edit-column: the
+        // KIT page, the cursor on the lane's picture (EDIT), its seconds purple.
+        Session& session = app.session();
+        const std::vector<std::string> names = session.sampleNames();
+        const int lane = names.empty() ? 0 : 5;
+        if (!names.empty()) session.setLaneSample(0, lane, names[0]);
+        LaneEdit e;
+        e.start = kEditUnits / 8;
+        e.end = kEditUnits * 7 / 8;
+        e.gain = 30;
+        e.fadeOut = 150;
+        e.pitch = -2;
+        e.reverse = 1;
+        session.setLaneEdit(0, lane, e);
+        session.view = View::Device;
+        app.kit().goTo(lane, KitScreen::kEdit);
+        if (std::strcmp(view, "kit-edit-column") != 0) app.kit().openEdit(kEditGain);
+        if (std::strcmp(view, "kit-edit-held") == 0) pushKey(SDLK_x, true); // A held
+        if (std::strcmp(view, "kit-edit-deleting") == 0) {
+            pushKey(SDLK_z, true); // B held
+            if (stillMs > 600) stillMs = 600; // (the picture is taken before the second is up)
         }
     } else if (std::strncmp(view, "chordfx", 7) == 0) {
         // Chord effects on the piano roll. chordfx: four chords, the cursor on a strummed one.
