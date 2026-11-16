@@ -14,9 +14,9 @@
 // A sound is an Fm6Patch: the original's 155 voice parameters in its own
 // order and numbering (0 to 125 the operators, OP6 first; 126 to 144 the
 // voice's), less the name, plus which operators are on. So a sound from any
-// bank of the original goes straight in, setting for setting. The 32 built-in
-// sounds are the first factory cartridge (engine/src/fm6/rom1a.hpp, made by
-// tools/fm6_rom.py). The macros bend what is played; they never change the patch.
+// bank of the original goes straight in, setting for setting. The 160 built-in
+// sounds are five factory banks, ROM 1A then 1B, 2B, 3B and 4B, each its own
+// folder (engine/src/fm6/roms.hpp, made by tools/fm6_rom.py; appended). The macros bend what is played; they never change the patch.
 
 #include <cstdint>
 #include <memory>
@@ -106,7 +106,8 @@ public:
     void prepare(float sampleRate) override;
 
     static int presetCount();
-    static const char* presetName(int index);     // as the cartridge has it: "BRASS   1"
+    static const char* presetName(int index);     // as the cartridge has it, its gaps closed up: "BRASS 1"
+                                                  // (folder: its bank, "ROM 1A" to "ROM 4B")
     static const char* presetCategory(int index);
     static Fm6Patch presetPatch(int index);
     static Fm6Patch startPatch(); // what a synth is made with: OP1 alone, a plain sine (not a preset)

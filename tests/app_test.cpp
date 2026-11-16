@@ -2570,11 +2570,18 @@ void testFm6OnATrack() {
     session.view = View::Device;
     rig.frames(2);
     SynthScreen& screen = rig.app.fm6();
-    // FOLDER turned with only ROM 1A there: nothing moves, and it does not hang (it froze the
-    // handheld: owner, 2026-11-15). Both ways, held A and the stick's step alike go through stepFolder.
+    // FOLDER turned: a bank at a time (ROM 1B is the 33rd), and back. (With ROM 1A alone it froze the
+    // handheld once, 2026-11-15: stepFolder's one-folder guard. Since the banks were added, 2026-11-16,
+    // no synth has one folder, and no test reaches the guard.)
     screen.goTo(0, SynthScreen::kFolder);
     rig.key(A, true), rig.frames(1);
-    rig.tap(UP), rig.tap(DOWN), rig.tap(RIGHT), rig.tap(LEFT);
+    rig.tap(UP);
+    CHECK(track.preset == 32);
+    rig.tap(DOWN);
+    CHECK(track.preset == 0);
+    rig.tap(LEFT);
+    CHECK(track.preset >= 4 * 32); // round to the last folder: ROM 4B, or one of the built-ins added after it
+    rig.tap(RIGHT);
     rig.key(A, false), rig.frames(1);
     CHECK(track.preset == 0);
     screen.goTo(0, SynthScreen::kAdvanced);

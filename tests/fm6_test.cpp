@@ -90,10 +90,17 @@ static void testPresets() {
                                    "PIANO 2", "PIANO 3", "E.PIANO 1", "GUITAR 1", "GUITAR 2", "SYN-LEAD 1", "BASS 1", "BASS 2",
                                    "E.ORGAN 1", "PIPES 1", "HARPSICH 1", "CLAV 1", "VIBE 1", "MARIMBA", "KOTO", "FLUTE 1",
                                    "ORCH-CHIME", "TUB BELLS", "STEEL DRUM", "TIMPANI", "REFS WHISL", "VOICE 1", "TRAIN", "TAKE OFF"};
-    CHECK(Fm6::presetCount() == 32);
-    for (int i = 0; i < 32; ++i) {
-        CHECK(std::strcmp(Fm6::presetName(i), names[i]) == 0);
-        CHECK(std::strcmp(Fm6::presetCategory(i), "ROM 1A") == 0);
+    // Then ROM 1B, 2B, 3B and 4B (2026-11-16), appended: each bank's first and last, its folder.
+    CHECK(Fm6::presetCount() == 160);
+    const char* const folders[5] = {"ROM 1A", "ROM 1B", "ROM 2B", "ROM 3B", "ROM 4B"};
+    const char* const ends[5][2] = {{"BRASS 1", "TAKE OFF"}, {"PIANO 4", "BASS 4"}, {"SYN-LEAD 2", "EXPLOSION"}, {"PIANO 2", "PLUCK BASS"}, {"CLAV-E.PNO", "EXPLOSION"}};
+    for (int b = 0; b < 5; ++b) {
+        CHECK(std::strcmp(Fm6::presetName(b * 32), ends[b][0]) == 0 && std::strcmp(Fm6::presetName(b * 32 + 31), ends[b][1]) == 0);
+        for (int i = b * 32; i < b * 32 + 32; ++i) CHECK(std::strcmp(Fm6::presetCategory(i), folders[b]) == 0);
+    }
+    CHECK(std::strcmp(Fm6::presetName(32 + 5), "PIANO 5THS") == 0 && std::strcmp(Fm6::presetName(64 + 29), "GRAND PRIX") == 0); // gaps closed up
+    for (int i = 0; i < Fm6::presetCount(); ++i) {
+        if (i < 32) CHECK(std::strcmp(Fm6::presetName(i), names[i]) == 0);
         std::string low = Fm6::presetName(i);
         for (char& c : low) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         CHECK(low.find("yamaha") == std::string::npos && low.find("dx") == std::string::npos);
@@ -108,6 +115,11 @@ static void testPresets() {
     CHECK(brass.value[opSetting(6, OpR1)] == 49 && brass.value[opSetting(6, OpR2)] == 99 && brass.value[opSetting(6, OpR3)] == 28 && brass.value[opSetting(6, OpR4)] == 68);
     CHECK(Fm6::presetPatch(10).value[Algorithm] == 4);
     CHECK(Fm6::presetPatch(31).value[Transpose] == 0);
+    // ROM 3B's three values past their range, held to it by tools/fm6_rom.py (tools/fm6/README.md):
+    // E.GRAND 1's OP6 R1 (127), HONKY TONK's KEY SYNC (3), 60-S ORGAN's OP1 FINE (100).
+    CHECK(std::strcmp(Fm6::presetName(96 + 1), "E.GRAND 1") == 0 && Fm6::presetPatch(96 + 1).value[opSetting(6, OpR1)] == 99);
+    CHECK(std::strcmp(Fm6::presetName(96 + 3), "HONKY TONK") == 0 && Fm6::presetPatch(96 + 3).value[KeySync] == 1);
+    CHECK(std::strcmp(Fm6::presetName(96 + 14), "60-S ORGAN") == 0 && Fm6::presetPatch(96 + 14).value[opSetting(1, OpFine)] == 99);
     // The settings' ranges are the original's.
     CHECK(settingMax(opSetting(1, OpCoarse)) == 31 && settingMax(opSetting(1, OpDetune)) == 14 && settingMax(opSetting(3, OpLeftCurve)) == 3);
     CHECK(settingMax(opSetting(2, OpRateScaling)) == 7 && settingMax(opSetting(2, OpMode)) == 1 && settingMax(opSetting(4, OpLevel)) == 99);
@@ -121,7 +133,7 @@ static void testPresets() {
     CHECK(s.setting(Feedback) == 0);
     s.setSetting(kSettings, 5); // not a setting: nothing
     CHECK(s.setting(kSettings) == 0);
-    s.selectPreset(32); // not a preset: nothing
+    s.selectPreset(Fm6::presetCount()); // not a preset: nothing
     CHECK(s.setting(Algorithm) == 31);
     s.selectPreset(3);
     for (int id = 0; id < kSettings; ++id) CHECK(s.setting(id) == Fm6::presetPatch(3).value[id]);
@@ -192,24 +204,27 @@ static void testPitch() {
 
 // SELF (the levels) and FAITHFUL (that each ends): every preset, a chord of four held a second
 // and a half, then let go: a number every sample, its loudest tenth of a second between -40 and
-// -6 dB (four keys; TAKE OFF swells for seconds, so it is given ten), no sample past 1.5, and
-// every voice free within twenty seconds of the keys going up, after which it is exact silence.
+// -6 dB (four keys; TAKE OFF and EVOLUTION swell for seconds, so they are given ten; PERC BRASS
+// is -4.3), no sample past 1.5, and every voice free within forty seconds of the keys going up
+// (EXPLOSION, in ROM 2B and 4B, rings 29.4; every other 12.1 at most), after which it is exact silence.
 static void testEveryPresetPlaysAndEnds(bool print) {
     const int keys[4] = {48, 55, 60, 64};
     for (int p = 0; p < Fm6::presetCount(); ++p) {
         std::unique_ptr<Fm6> s = preset(p);
         for (int k : keys) s->noteOn(k, 0.8f);
-        const int held = p == 31 ? 10 * kRate : kRate * 3 / 2;
+        const std::string name = Fm6::presetName(p);
+        const bool swells = name == "TAKE OFF" || name == "EVOLUTION"; // (EVOLUTION, in ROM 2B and 4B, is -40 dB after a second and a half)
+        const int held = swells ? 10 * kRate : kRate * 3 / 2;
         std::vector<float> v = play(*s, held);
         bool numbers = true;
         for (float x : v) numbers = numbers && std::isfinite(x);
         const double most = loudest(v);
         CHECK(numbers);
-        CHECK(dB(most) > -40.0 && dB(most) < -6.0);
+        CHECK(dB(most) > -40.0 && dB(most) < (name == "PERC BRASS" ? -4.0 : -6.0)); // (ROM 4B's PERC BRASS: -4.3 dB, the loudest of the 160)
         CHECK(peakOf(v) < 1.5f);
         for (int k : keys) s->noteOff(k);
         int tenths = 0;
-        while (s->voicesSounding() > 0 && tenths < 200) {
+        while (s->voicesSounding() > 0 && tenths < 400) {
             const std::vector<float> t = play(*s, kRate / 10);
             for (float x : t) numbers = numbers && std::isfinite(x);
             ++tenths;
@@ -585,10 +600,11 @@ static void testACarrierAlwaysEnds() {
 // The sound pinned (SELF, from code shown to be msfa's own to the bit: the plan, section 4): a
 // chord of each preset held a second and let go for half of one. A change to the core or to the
 // voice moves these; `--print` writes them again, from code known to be right only.
-static const std::uint64_t kPinned[32] = {
+static const std::uint64_t kPinned[] = {
 #include "fm6_pins.inc"
 };
 static void testPinned(bool print) {
+    if (!print) CHECK(static_cast<int>(sizeof kPinned / sizeof kPinned[0]) == Fm6::presetCount()); // a pin for every preset, the banks appended too
     for (int p = 0; p < Fm6::presetCount(); ++p) {
         std::unique_ptr<Fm6> s = preset(p);
         for (int k : {48, 55, 60, 64}) s->noteOn(k, 0.8f);

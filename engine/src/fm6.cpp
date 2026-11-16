@@ -7,7 +7,7 @@
 #include <cstdint>
 
 #include "apotheca/slide.hpp"
-#include "fm6/rom1a.hpp"
+#include "fm6/roms.hpp"
 #include "msfa/dx7note.h"
 #include "msfa/exp2.h"
 #include "msfa/freqlut.h"
@@ -148,10 +148,10 @@ Fm6::Fm6() : state_(new State) {
 Fm6::~Fm6() = default;
 
 int Fm6::presetCount() { return kRomVoices; }
-const char* Fm6::presetName(int i) { return kRom1a[clampi(i, 0, kRomVoices - 1)].name; }
-const char* Fm6::presetCategory(int) { return "ROM 1A"; }
+const char* Fm6::presetName(int i) { return kRom[clampi(i, 0, kRomVoices - 1)].name; }
+const char* Fm6::presetCategory(int i) { return kRom[clampi(i, 0, kRomVoices - 1)].folder; } // the bank: "ROM 1A"
 Fm6Patch Fm6::presetPatch(int i) {
-    const RomVoice& rom = kRom1a[clampi(i, 0, kRomVoices - 1)];
+    const RomVoice& rom = kRom[clampi(i, 0, kRomVoices - 1)];
     Fm6Patch patch;
     for (int id = 0; id < Transpose + 1; ++id) patch.value[id] = clampi(rom.value[id], 0, settingTop(id));
     patch.value[OpsOn] = 63;
